@@ -1,0 +1,57 @@
+Two options:
+
+Option A — Android Studio (easiest)
+cd ManagementDashboard.App
+npx cap open android
+In Android Studio:
+- Debug APK: Build → Build Bundle(s) / APK(s) → Build APK(s) → output in android/app/build/outputs/apk/debug/app-debug.apk
+- Release APK: Build → Generate Signed Bundle / APK → APK → you'll need a keystore (create one if you don't have it)
+
+---
+Option B — Command line (no Android Studio needed)
+
+Debug APK:
+cd ManagementDashboard.App/android
+.\gradlew assembleDebug
+Output: app/build/outputs/apk/debug/app-debug.apk
+
+Release APK (unsigned, for sideloading):
+.\gradlew assembleRelease
+Output: app/build/outputs/apk/release/app-release-unsigned.apk
+
+---
+Before either option, make sure the web assets are current:
+cd ManagementDashboard.App
+npm run build
+npx cap sync android
+
+For sideloading onto your own phone, the debug APK is the quickest path — no signing required, just enable "Install from unknown sources" on the device and transfer the APK.
+
+✻ Worked for 7s
+
+❯ ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
+
+  Please set the JAVA_HOME variable in your environment to match the
+  location of your Java installation.
+
+You need JDK 17. Quickest path:
+
+1. Install via winget (no browser needed):
+winget install Microsoft.OpenJDK.17
+
+2. Set JAVA_HOME (after install):
+[System.Environment]::SetEnvironmentVariable("JAVA_HOME", "C:\Program Files\Microsoft\jdk-17.0.x.x-hotspot", "Machine")
+The exact path will vary — check with:
+Get-ChildItem "C:\Program Files\Microsoft" | Where-Object Name -like "jdk-17*"
+Use whatever path that returns.
+
+3. Restart your terminal, then verify:
+java -version
+
+4. Then build:
+cd ManagementDashboard.App/android
+.\gradlew assembleDebug
+
+---
+Alternatively, if you'd rather use Android Studio, it bundles its own JDK — just run npx cap open android from ManagementDashboard.App/ and let Android Studio handle the build. No manual JDK setup needed.
+

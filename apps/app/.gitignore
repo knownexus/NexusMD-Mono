@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Capacitor build output
+www/
+.capacitor/
+
+# Android build outputs
+android/app/release/
+android/app/build/
+android/.gradle/
+
+# Android signing secrets — never commit these
+android/keystore.properties
+*.jks
+*.keystore
+
+# IDE
+.idea/
+android/.idea/
+*.swp
+*~
+
+# Misc
+*.zip
