@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+**/wwwroot/
+apps/web/server/wwwroot/
+
+# .NET
+bin/
+obj/
+
+# Local databases / runtime data
+*.db
+*.sqlite
+*.sqlite3
+data/profiles/
+
+# Test / coverage
+coverage/
+playwright-report/
+test-results/
+.nyc_output/
+
+# Capacitor / Android
+apps/app/android/app/build/
+apps/app/android/.gradle/
+apps/app/android/local.properties
+*.apk
+*.aab
+
+# Electron
+apps/desktop/dist/
+apps/desktop/release/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.user
+
+# Logs
+*.log
+npm-debug.log*

@@ -1,0 +1,23 @@
+{
+  "name": "nexusmd",
+  "private": true,
+  "version": "1.0.0",
+  "description": "NexusMD monorepo — shared core + platform apps (web, desktop, mobile)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e:web": "npm -w apps/web run e2e",
+    "test:e2e:desktop": "npm -w apps/desktop run e2e"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0"
+  }
+}

@@ -1,0 +1,24 @@
+# Normalize line endings: LF in the repo, checkout native
+* text=auto eol=lf
+
+# Windows-only scripts must stay CRLF
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary assets — never normalize/diff
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.db binary
+*.sqlite binary
+*.keystore binary
+*.jar binary
