@@ -6,3 +6,4 @@ export {
   isTerminalState, isActiveState, isReviewState, isBlockedState, stateCategory,
   PROJECT_COLORS, STATES,
 } from './helpers.js'
+export { makeAdoConfig } from './config.js'

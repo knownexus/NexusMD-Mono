@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@nexusmd/core": "*",
+    "@nexusmd/web-adapters": "*",
     "@azure/msal-browser": "^3.28.0",
     "dompurify": "^3.2.6",
     "flatpickr": "^4.6.13",

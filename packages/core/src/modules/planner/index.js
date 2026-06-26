@@ -5,6 +5,9 @@
 // and the Google-Drive sync engine stay in the apps; everything here is plain
 // data + date math so every app shares one implementation.
 
+// Planner v2 date/status helpers (PL_STATUSES, plParseYmd, plIsOverdueYmd, …).
+export * from './dates.js'
+
 // ── ISO week / date helpers ───────────────────────────────────────────────────
 
 /** ISO-8601 year+week for a given Date. */

@@ -2,14 +2,11 @@ import './profile-migration.js';
 import 'flatpickr/dist/flatpickr.min.css';
 
 import { initCore, createNoOpAdapters } from '@nexusmd/core';
-import { localStorageAdapter }  from './storage-adapter.js';
+import {
+  localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
+  clipboardAdapter, shareAdapter, notificationAdapter,
+} from '@nexusmd/web-adapters';
 import { createAdoHttpAdapter } from './ado-client.js';
-import { networkAdapter }       from './adapters/network.js';
-import { lifecycleAdapter }     from './adapters/lifecycle.js';
-import { themeAdapter }         from './adapters/theme.js';
-import { clipboardAdapter }     from './adapters/clipboard.js';
-import { shareAdapter }         from './adapters/share.js';
-import { notificationAdapter }  from './adapters/notification.js';
 import { navigationAdapter }    from './adapters/navigation.js';
 import { deepLinkAdapter }      from './adapters/deepLink.js';
 import { pickerAdapter }        from './adapters/picker.js';

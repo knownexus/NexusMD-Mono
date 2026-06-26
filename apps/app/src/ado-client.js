@@ -1,50 +1,21 @@
 // ado-client.js — direct Azure DevOps REST client for the Android app.
 // Uses CapacitorHttp (native HTTP, no CORS) on-device; falls back to fetch in browser dev.
 import { CapacitorHttp } from '@capacitor/core';
+import { makeAdoConfig } from '@nexusmd/core';
 import { getProfileKey } from './profile-keys.js';
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const KEYS = {
-  get org()           { return getProfileKey('helm.android.org');           },
-  get pat()           { return getProfileKey('helm.android.pat');           },
-  get projects()      { return getProfileKey('helm.android.projects');      },
-  get testProject()   { return getProfileKey('helm.android.testProject');   },
-  get uatProject()    { return getProfileKey('helm.android.uatProject');    },
-  get uatPipelineId() { return getProfileKey('helm.android.uatPipelineId'); },
-  get uatBranch()     { return getProfileKey('helm.android.uatBranch');     },
-  get refreshSecs()   { return getProfileKey('helm.android.refreshSecs');   },
+// Read/write logic lives in @nexusmd/core; the app keeps its `helm.android.*` key
+// scheme (via getProfileKey) and raw-string localStorage.
+const rawStorage = {
+  get: (k) => localStorage.getItem(k),
+  set: (k, v) => localStorage.setItem(k, v),
 };
 
-function getAdoConfig() {
-  let projects = [];
-  try { projects = JSON.parse(localStorage.getItem(KEYS.projects) || '[]'); } catch (_) {}
-  return {
-    org:           localStorage.getItem(KEYS.org)           || '',
-    pat:           localStorage.getItem(KEYS.pat)           || '',
-    projects,
-    testProject:   localStorage.getItem(KEYS.testProject)   || '',
-    uatProject:    localStorage.getItem(KEYS.uatProject)    || '',
-    uatPipelineId: parseInt(localStorage.getItem(KEYS.uatPipelineId) || '0', 10),
-    uatBranch:     localStorage.getItem(KEYS.uatBranch)     || 'refs/heads/uat',
-    refreshSecs:   parseInt(localStorage.getItem(KEYS.refreshSecs)   || '30', 10),
-  };
-}
-
-function saveAdoConfig(values) {
-  if (values.org          !== undefined) localStorage.setItem(KEYS.org,           values.org);
-  if (values.pat          !== undefined) localStorage.setItem(KEYS.pat,           values.pat);
-  if (values.projects     !== undefined) localStorage.setItem(KEYS.projects,      JSON.stringify(values.projects));
-  if (values.testProject  !== undefined) localStorage.setItem(KEYS.testProject,   values.testProject);
-  if (values.uatProject   !== undefined) localStorage.setItem(KEYS.uatProject,    values.uatProject);
-  if (values.uatPipelineId!== undefined) localStorage.setItem(KEYS.uatPipelineId, String(values.uatPipelineId));
-  if (values.uatBranch    !== undefined) localStorage.setItem(KEYS.uatBranch,     values.uatBranch);
-  if (values.refreshSecs  !== undefined) localStorage.setItem(KEYS.refreshSecs,   String(values.refreshSecs));
-}
-
-function isAdoConfigured() {
-  const c = getAdoConfig();
-  return !!(c.org && c.pat && c.projects.length > 0);
-}
+const { getAdoConfig, saveAdoConfig, isAdoConfigured } = makeAdoConfig({
+  storage: rawStorage,
+  key: (name) => getProfileKey('helm.android.' + name),
+});
 
 // ── HTTP ──────────────────────────────────────────────────────────────────────
 function authHeader(pat) {

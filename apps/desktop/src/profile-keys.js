@@ -1,10 +1,10 @@
-const ACTIVE_ID_KEY = 'nexusmd.activeProfileId';
+// profile-keys.js — thin platform binding over @nexusmd/core's makeProfileKeys.
+// Desktop uses the canonical `nexusmd.` namespace; the key logic lives in core.
+import { makeProfileKeys } from '@nexusmd/core'
 
-export function getActiveProfileId() {
-  return localStorage.getItem(ACTIVE_ID_KEY) || '';
-}
-
-export function getProfileKey(key) {
-  const id = getActiveProfileId();
-  return id ? `nexusmd.p.${id}.${key}` : `nexusmd.${key}`;
-}
+export const { getProfileKey, getActiveProfileId } = makeProfileKeys({
+  namespace: 'nexusmd',
+  getActiveId: () => {
+    try { return localStorage.getItem('nexusmd.activeProfileId') } catch { return '' }
+  },
+})

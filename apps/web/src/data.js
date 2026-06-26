@@ -3,7 +3,7 @@
 
 import { loadAdoData, loadCachedAdoData } from '@nexusmd/core';
 import { createAdoHttpAdapter } from './ado-client.js';
-import { localStorageAdapter } from './storage-adapter.js';
+import { localStorageAdapter } from '@nexusmd/web-adapters';
 import { GitHubClient } from './github-client.js';
 
 // ── Stored planner / themes ───────────────────────────────────────────────────

@@ -1,0 +1,32 @@
+{
+  "name": "@nexusmd/ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "description": "Shared React components and CSS tokens for NexusMD platform apps",
+  "exports": {
+    ".": "./src/index.js",
+    "./styles.css": "./src/styles/index.css"
+  },
+  "main": "./src/index.js",
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "dependencies": {
+    "@nexusmd/core": "*"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@vitejs/plugin-react": "^4.3.4"
+  }
+}

@@ -3,7 +3,7 @@ import { NexusMDData } from './data.js';
 // components.jsx — shared bits: Avatar, Pill, TypeIcon, FilterChip, EmptyState, Drawer
 
 import { Icon } from './icons.jsx';
-import { slugify, stateCategory } from '@nexusmd/core';
+import { slugify, stateCategory, effectiveNeedsMe as coreEffectiveNeedsMe } from '@nexusmd/core';
 
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
@@ -23,29 +23,10 @@ export function nexusMDPushPref(key, serialised) {
 }
 
 // ─── effectiveNeedsMe ─────────────────────────────────────────────────────────
-// Returns true if the PR needs review from the current user, using configurable criteria.
+// PR review-filter logic now lives in @nexusmd/core; this thin wrapper injects the
+// current user (NexusMDData.ME) so existing call sites keep their (pr, criteria) shape.
 export function effectiveNeedsMe(pr, criteria) {
-  criteria = criteria || {};
-  const votes = criteria.votes && criteria.votes.length ? criteria.votes : [0];
-  // Drafts
-  if (!criteria.includeDrafts && pr.draft) return false;
-  if (criteria.onlyActive && pr.status !== 'active') return false;
-  // Exclude PRs with merge conflicts
-  if (criteria.excludeConflicts && pr.hasConflicts) return false;
-  // Exclude PRs I authored
-  if (criteria.excludeMine) {
-    const myId = slugify((NexusMDData.ME && NexusMDData.ME.name) || '');
-    if (myId && pr.author === myId) return false;
-  }
-  // Minimum age (pr.age is a relative string like "5m", "3h", "2d")
-  if (criteria.minAgeDays) {
-    const a = String(pr.age || '');
-    const ageDays = a.endsWith('d') ? (parseInt(a, 10) || 0) : 0;
-    if (ageDays < criteria.minAgeDays) return false;
-  }
-  const meName = (NexusMDData.ME && NexusMDData.ME.name) || '';
-  if (!meName) return pr.needsMe;
-  return (pr.reviewerDetails || []).some(function(r) { return r.name === meName && votes.indexOf(r.vote) !== -1; });
+  return coreEffectiveNeedsMe(pr, criteria, NexusMDData.ME);
 }
 
 // ─── usePersisted ──────────────────────────────────────────────────────────────

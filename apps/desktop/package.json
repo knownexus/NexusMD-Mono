@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@nexusmd/core": "*",
+    "@nexusmd/web-adapters": "*",
     "electron-updater": "^6.0.0"
   },
   "devDependencies": {

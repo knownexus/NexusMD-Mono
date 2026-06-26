@@ -1,20 +1,14 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
 import flatpickr from 'flatpickr';
+import {
+  PL_STATUSES, PL_PRIOS, PL_OPEN,
+  plTodayDate, plParseYmd, plFmtYmd, plIsOverdueYmd, plIsTodayYmd, qaParseDue,
+} from '@nexusmd/core';
 // planner-ui.jsx — Planner v2 shared primitives (live in wwwroot alongside components.jsx)
 // Load AFTER icons.jsx/components.jsx and BEFORE planner-notes.jsx / planner-editors.jsx / view-planner.jsx.
+// PL_STATUSES/PL_PRIOS/PL_OPEN + ymd date helpers now come from @nexusmd/core (imported above).
 const { useState: useStatePU, useEffect: useEffectPU, useCallback: useCallbackPU, useRef: useRefPU } = React;
-
-const PL_STATUSES = ['', 'To Do', 'In Progress', 'Blocked', 'Done', 'Deferred'];
-const PL_PRIOS = ['', '1 - Critical', '2 - High', '3 - Medium', '4 - Low'];
-const PL_OPEN = s => s !== 'Done' && s !== 'Deferred';
-
-// ── Live date helpers (yyyy-mm-dd strings) ────────────────────
-function plTodayDate() { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
-function plParseYmd(s) { if (!s) return null; const [y, m, d] = s.split('-').map(Number); if (!y || !m || !d) return null; return new Date(y, m - 1, d); }
-function plFmtYmd(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
-function plIsOverdueYmd(due, status) { const d = plParseYmd(due); return !!d && PL_OPEN(status || '') && d < plTodayDate(); }
-function plIsTodayYmd(due) { const d = plParseYmd(due); return !!d && d.toDateString() === plTodayDate().toDateString(); }
 
 // ── Status select rendered as a colored chip ──────────────────
 function StatusChip({ value, onChange, stopClick, readOnly }) {
@@ -198,23 +192,7 @@ function DueLabel({ value, status }) {
 }
 
 // ── Quick-add parser ("Send budget update due:fri p2") ───────
-function qaParseDue(token) {
-  const t = token.toLowerCase();
-  const base = plTodayDate();
-  if (t === 'today') return plFmtYmd(base);
-  if (t === 'tomorrow' || t === 'tmw') { base.setDate(base.getDate() + 1); return plFmtYmd(base); }
-  const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-  const di = days.findIndex(d => t.startsWith(d));
-  if (di >= 0) {
-    const cur = base.getDay();
-    let delta = (di - cur + 7) % 7; if (delta === 0) delta = 7;
-    base.setDate(base.getDate() + delta); return plFmtYmd(base);
-  }
-  const m = t.match(/^(\d{1,2})[\/.](\d{1,2})$/);
-  if (m) return `${base.getFullYear()}-${String(Number(m[2])).padStart(2, '0')}-${String(Number(m[1])).padStart(2, '0')}`;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  return null;
-}
+// qaParseDue now comes from @nexusmd/core (imported above).
 function qaParse(text, section) {
   const out = {};
   let rest = text;

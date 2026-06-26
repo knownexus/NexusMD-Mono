@@ -13,13 +13,18 @@ export {
   deleteProfile, importProfile, exportProfile,
 } from './profiles/profile-store.js'
 export { validateProfile, buildProfile, generateProfileId, CURRENT_PROFILE_VERSION } from './profiles/profile-schema.js'
+export { makeProfileKeys } from './profiles/profile-keys.js'
 export * from './modules/ado/index.js'
+export { effectiveNeedsMe } from './modules/pr/index.js'
 export { mergeTeamRoster, enrichTeamMember, enrichTeam } from './modules/team/index.js'
 export {
   getIsoYearWeek, getYearWeekForOffset, getMondayOfDate, getIsoWeek,
   fmtDateShort, weekStorageKey, weekKeyToOffset,
   PLANNER_SECTIONS, PL_GROUPS, plSectionGroup,
   buildEmptyPlannerData, hasMeaningfulPlannerData,
+  // Planner v2 date/status helpers
+  PL_STATUSES, PL_PRIOS, PL_OPEN,
+  plTodayDate, plParseYmd, plFmtYmd, plIsOverdueYmd, plIsTodayYmd, qaParseDue,
 } from './modules/planner/index.js'
 export { filterTriageItems, buildTriageCsv } from './modules/triage/index.js'
 export {

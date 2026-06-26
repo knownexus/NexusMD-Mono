@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon } from './icons.jsx';
 import { HelmData } from './data.jsx';
 import { getProfileKey } from './profile-keys.js';
+import { effectiveNeedsMe as coreEffectiveNeedsMe } from '@nexusmd/core';
 // components.jsx — shared bits: Avatar, Pill, TypeIcon, FilterChip, EmptyState, Drawer
 
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
@@ -14,29 +15,10 @@ function helmPushPref(_key, _serialised) {
 export { helmPushPref };
 
 // ─── effectiveNeedsMe ─────────────────────────────────────────────────────────
-// Returns true if the PR needs review from the current user, using configurable criteria.
+// PR review-filter logic now lives in @nexusmd/core; this thin wrapper injects the
+// current user (HelmData.ME) so existing call sites keep their (pr, criteria) shape.
 function effectiveNeedsMe(pr, criteria) {
-  criteria = criteria || {};
-  const votes = criteria.votes && criteria.votes.length ? criteria.votes : [0];
-  // Drafts
-  if (!criteria.includeDrafts && pr.draft) return false;
-  if (criteria.onlyActive && pr.status !== 'active') return false;
-  // Exclude PRs with merge conflicts
-  if (criteria.excludeConflicts && pr.hasConflicts) return false;
-  // Exclude PRs I authored
-  if (criteria.excludeMine) {
-    const myId = (typeof slugify === 'function') ? slugify((HelmData.ME && HelmData.ME.name) || '') : '';
-    if (myId && pr.author === myId) return false;
-  }
-  // Minimum age (pr.age is a relative string like "5m", "3h", "2d")
-  if (criteria.minAgeDays) {
-    const a = String(pr.age || '');
-    const ageDays = a.endsWith('d') ? (parseInt(a, 10) || 0) : 0;
-    if (ageDays < criteria.minAgeDays) return false;
-  }
-  const meName = (HelmData.ME && HelmData.ME.name) || '';
-  if (!meName) return pr.needsMe;
-  return (pr.reviewerDetails || []).some(function(r) { return r.name === meName && votes.indexOf(r.vote) !== -1; });
+  return coreEffectiveNeedsMe(pr, criteria, HelmData.ME);
 }
 export { effectiveNeedsMe };
 

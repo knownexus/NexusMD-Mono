@@ -7,7 +7,7 @@ import {
   timeAgo, adoTypeToHelm, adoStateToHelm, slugify,
 } from '@nexusmd/core';
 import { getAdoConfig, isAdoConfigured, createAdoHttpAdapter } from './ado-client.js';
-import { localStorageAdapter } from './storage-adapter.js';
+import { localStorageAdapter } from '@nexusmd/web-adapters';
 import { getProfileKey } from './profile-keys.js';
 
 function getActiveProfileType() {
