@@ -1,0 +1,75 @@
+{
+  "name": "nexusmd-desktop",
+  "version": "1.0.0",
+  "description": "NexusMD desktop app — Electron shell with renderer built by Vite",
+  "type": "module",
+  "main": "electron/main.js",
+  "author": "Knownexus",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "start": "electron .",
+    "icons": "node scripts/create-icons.js",
+    "build": "electron-builder",
+    "build:win": "powershell -File scripts/build-api.ps1 -TargetRid win-x64 && electron-builder --win",
+    "build:mac": "TARGET_RID=osx-x64 bash scripts/build-api.sh && electron-builder --mac",
+    "build:linux": "TARGET_RID=linux-x64 bash scripts/build-api.sh && electron-builder --linux"
+  },
+  "dependencies": {
+    "@nexusmd/core": "*",
+    "electron-updater": "^6.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^29.0.0",
+    "electron-builder": "^24.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sharp": "^0.35.1",
+    "vite": "^5.4.19"
+  },
+  "build": {
+    "appId": "com.knownexus.nexusmd",
+    "productName": "NexusMD",
+    "icon": "assets/icon",
+    "directories": {
+      "output": "../dist/desktop"
+    },
+    "files": [
+      "electron/**/*",
+      "assets/**/*",
+      "dist/renderer/**/*"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis",     "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ],
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Knownexus",
+      "repo": "NexusMD-Desktop"
+    }
+  }
+}

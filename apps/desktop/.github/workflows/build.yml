@@ -1,0 +1,66 @@
+name: Build Desktop App
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            build_cmd: npm run build:win
+          - os: macos-latest
+            rid: osx-x64
+            build_cmd: npm run build:mac
+          - os: ubuntu-latest
+            rid: linux-x64
+            build_cmd: npm run build:linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the NexusMD-Desktop repo into a named subdirectory
+          # so it sits as a sibling to the API repo (matching local dev layout)
+          path: NexusMD-Desktop
+
+      - name: Checkout NexusMD-Web API
+        uses: actions/checkout@v4
+        with:
+          repository: Knownexus/NexusMD-Web
+          path: NexusMD-Web
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: NexusMD-Desktop
+        run: npm ci
+
+      - name: Build
+        working-directory: NexusMD-Desktop
+        run: ${{ matrix.build_cmd }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.rid }}
+          path: NexusMD-Desktop/dist/**
+          if-no-files-found: warn

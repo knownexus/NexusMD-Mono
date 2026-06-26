@@ -1,0 +1,22 @@
+# Bundled .NET API sidecar binary (copied in at build time)
+api/
+
+# electron-builder output
+dist/
+
+# Node dependencies
+node_modules/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.user
