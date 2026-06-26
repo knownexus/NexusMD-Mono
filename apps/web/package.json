@@ -1,0 +1,25 @@
+{
+  "name": "nexusmd-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@nexusmd/core": "file:../../NexusMD/develop/packages/core",
+    "@azure/msal-browser": "^3.28.0",
+    "dompurify": "^3.2.6",
+    "flatpickr": "^4.6.13",
+    "jszip": "^3.10.1",
+    "marked": "^9.1.6",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.19"
+  }
+}

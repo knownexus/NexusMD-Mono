@@ -1,0 +1,62 @@
+<h2>Dashboard — what looks unimplemented or restrictive</h2>
+<p class="subtitle">Select the issues that bother you most (pick as many as you like)</p>
+
+<div class="options" data-multiselect>
+
+  <div class="option" data-choice="search" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Search bar does nothing</h3>
+      <p>The ⌘K / search input in the topbar is a visual placeholder. Typing anything has no effect.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="sparks" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Sparklines &amp; trend badges are fake</h3>
+      <p>The mini charts and "on track / +2" trend labels on all four stat cards are hardcoded arrays, not real history.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="layout" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Widget layout is rigid</h3>
+      <p>Wide widgets (Sprint, Team) are permanently pinned to the left column; narrow widgets (Review, Blockers, etc.) are permanently pinned to the right. Drag-to-reorder only shuffles within each column — you can't mix them.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="quicklinks" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content">
+      <h3>Quick links are hardcoded</h3>
+      <p>The UAT / Dev / Cirrus HR links are baked into the code. There's no way to add, remove, or rename them from the UI.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="sprint-status" onclick="toggleSelect(this)">
+    <div class="letter">E</div>
+    <div class="content">
+      <h3>"On track" is always on track</h3>
+      <p>The green "On track" pill in the Sprint widget is hardcoded — it never shows "At risk" or "Behind" regardless of burndown data.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="greeting" onclick="toggleSelect(this)">
+    <div class="letter">F</div>
+    <div class="content">
+      <h3>Greeting is time-unaware</h3>
+      <p>"Good morning, Phillip" — always says morning, never afternoon or evening.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="activity" onclick="toggleSelect(this)">
+    <div class="letter">G</div>
+    <div class="content">
+      <h3>Recent Activity widget is passive</h3>
+      <p>Shows a feed but items are not clickable — you can't navigate to the PR/work item from there.</p>
+    </div>
+  </div>
+
+</div>

@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <!-- Prevents xunit from capturing output and hiding exceptions -->
+    <IsTestProject>true</IsTestProject>
+    <!-- Required for WebApplicationFactory to find testhost.deps.json -->
+    <PreserveCompilationContext>true</PreserveCompilationContext>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Test framework -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk"          Version="17.9.0" />
+    <PackageReference Include="xunit"                           Version="2.7.0" />
+    <PackageReference Include="xunit.runner.visualstudio"       Version="2.5.7">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <!-- Spins the full ASP.NET Core app in-memory -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.11" />
+    <PackageReference Include="coverlet.collector"               Version="6.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NexusMD-Web\NexusMDWeb.Api.csproj" />
+  </ItemGroup>
+
+  <!-- Workaround for testhost.deps.json not being generated in .NET 8 -->
+  <Target Name="CopyDepsFileForTestHost" AfterTargets="Build">
+    <Copy SourceFiles="$(OutputPath)NexusMDWeb.Tests.deps.json" DestinationFiles="$(OutputPath)testhost.deps.json" />
+  </Target>
+
+</Project>

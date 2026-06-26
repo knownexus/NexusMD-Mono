@@ -1,0 +1,63 @@
+<h2>Where should the resize handle appear?</h2>
+<p class="subtitle">When hovering over a calendar event, how do you indicate it can be resized?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Bottom grip bar</h3>
+      <p>A small, visible grip bar appears at the bottom edge on hover. Dragging it extends or shrinks the event. Same pattern as Google Calendar.</p>
+      <div style="margin-top:12px;">
+        <div style="width:140px; border-radius:5px; background:#3b82f6; color:white; font-size:11px; overflow:hidden;">
+          <div style="padding:6px 8px 14px;">
+            <div style="font-weight:600;">Stand-up</div>
+            <div style="opacity:0.8;">9:00 – 9:30</div>
+          </div>
+          <div style="height:6px; background:rgba(0,0,0,0.25); display:flex; align-items:center; justify-content:center; cursor:s-resize;">
+            <div style="width:24px; height:2px; background:rgba(255,255,255,0.6); border-radius:2px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Bottom edge only — cursor change</h3>
+      <p>No visible grip. The cursor changes to <code>s-resize</code> when hovering near the bottom edge of an event. Cleaner look, but less discoverable.</p>
+      <div style="margin-top:12px;">
+        <div style="width:140px; border-radius:5px; background:#3b82f6; color:white; font-size:11px; overflow:hidden;">
+          <div style="padding:6px 8px 6px;">
+            <div style="font-weight:600;">Stand-up</div>
+            <div style="opacity:0.8;">9:00 – 9:30</div>
+          </div>
+          <div style="height:4px; background:transparent; border-bottom:2px dashed rgba(255,255,255,0.4);"></div>
+        </div>
+        <div style="margin-top:6px; font-size:10px; color:var(--text-muted);">↕ cursor appears on bottom 8px</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Top + bottom grips</h3>
+      <p>Grip bars at both top and bottom. Top drag moves the start time (shrinks/grows from top), bottom drag moves the end time. Most flexible.</p>
+      <div style="margin-top:12px;">
+        <div style="width:140px; border-radius:5px; background:#3b82f6; color:white; font-size:11px; overflow:hidden;">
+          <div style="height:6px; background:rgba(0,0,0,0.2); display:flex; align-items:center; justify-content:center; cursor:n-resize;">
+            <div style="width:24px; height:2px; background:rgba(255,255,255,0.6); border-radius:2px;"></div>
+          </div>
+          <div style="padding:6px 8px 6px;">
+            <div style="font-weight:600;">Stand-up</div>
+            <div style="opacity:0.8;">9:00 – 9:30</div>
+          </div>
+          <div style="height:6px; background:rgba(0,0,0,0.25); display:flex; align-items:center; justify-content:center; cursor:s-resize;">
+            <div style="width:24px; height:2px; background:rgba(255,255,255,0.6); border-radius:2px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

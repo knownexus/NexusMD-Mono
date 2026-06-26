@@ -1,0 +1,200 @@
+[
+  {
+    "id": "934",
+    "area": "Claims (FLI)",
+    "bucket": "Flesh out",
+    "priority": "High",
+    "suggestedOwner": "TBD",
+    "status": "In progress",
+    "nextAction": "Empty body \u2014 add repro steps and a sample BX import that reproduces it."
+  },
+  {
+    "id": "958",
+    "area": "Claims (FLI)",
+    "bucket": "Decision",
+    "priority": "High",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Has full background. Make the review decision, then assign. NB: likely duplicate of #1567."
+  },
+  {
+    "id": "1567",
+    "area": "Claims (FLI)",
+    "bucket": "Ready to assign",
+    "priority": "High",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Full background + data model present. Assign to a claims dev. NB: dedupe with #958."
+  },
+  {
+    "id": "1422",
+    "area": "Finance / Payments",
+    "bucket": "Ready to assign",
+    "priority": "High",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Mostly specced (threshold logic). Finish acceptance criteria, then assign."
+  },
+  {
+    "id": "848",
+    "area": "Invoicing (Cirrus)",
+    "bucket": "Decision",
+    "priority": "High",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Confirm the rule change (start/end date vs contract length); impacts Freemium products."
+  },
+  {
+    "id": "1557",
+    "area": "Supportis",
+    "bucket": "Ready to assign",
+    "priority": "High",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Spike complete and implementation described \u2014 assign to a Supportis dev now."
+  },
+  {
+    "id": "1494",
+    "area": "CRM",
+    "bucket": "Decision",
+    "priority": "Medium",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "On hold by request ('don't code yet'); await CRM/Cirrus wish list decision."
+  },
+  {
+    "id": "1546",
+    "area": "CRM",
+    "bucket": "Ready to assign",
+    "priority": "Medium",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Specced \u2014 assign to the area owner this week."
+  },
+  {
+    "id": "483",
+    "area": "Claims (FLI)",
+    "bucket": "Flesh out",
+    "priority": "Medium",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Body is just 'NEEDS MORE DETAILS' \u2014 spec with a claims handler before building."
+  },
+  {
+    "id": "951",
+    "area": "Claims (FLI)",
+    "bucket": "Flesh out",
+    "priority": "Medium",
+    "suggestedOwner": "TBD",
+    "status": "In progress",
+    "nextAction": "Empty body \u2014 add repro steps, expected vs actual."
+  },
+  {
+    "id": "952",
+    "area": "Claims (FLI)",
+    "bucket": "Flesh out",
+    "priority": "Medium",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Define the add-button flow and validation on the unmatched claims screen."
+  },
+  {
+    "id": "966",
+    "area": "Claims (FLI)",
+    "bucket": "Decision",
+    "priority": "Medium",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Resolve the deletion/DB-dependency approach before build."
+  },
+  {
+    "id": "485",
+    "area": "Finance / Payments",
+    "bucket": "Flesh out",
+    "priority": "Medium",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Define the IPT adjustment rules; currently 'NEEDS MORE DETAILS'."
+  },
+  {
+    "id": "1420",
+    "area": "Finance / Payments",
+    "bucket": "Flesh out",
+    "priority": "Medium",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Define the data gaps on Cirrus and the required instruction format."
+  },
+  {
+    "id": "862",
+    "area": "Invoicing (Cirrus)",
+    "bucket": "Decision",
+    "priority": "Medium",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Resolve the open question flagged in the title before speccing."
+  },
+  {
+    "id": "864",
+    "area": "Invoicing (Cirrus)",
+    "bucket": "Flesh out",
+    "priority": "Medium",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "This is raw meeting notes \u2014 split into discrete, actionable tickets."
+  },
+  {
+    "id": "1322",
+    "area": "Platform / Infra",
+    "bucket": "Flesh out",
+    "priority": "Medium",
+    "suggestedOwner": "Adrian Calvert",
+    "status": "Not started",
+    "nextAction": "Empty body \u2014 describe the auth defect and impact."
+  },
+  {
+    "id": "1550",
+    "area": "Platform / Infra",
+    "bucket": "Flesh out",
+    "priority": "Medium",
+    "suggestedOwner": "Adrian Calvert",
+    "status": "Not started",
+    "nextAction": "Empty body \u2014 add repro and the failing payload."
+  },
+  {
+    "id": "1433",
+    "area": "Supportis",
+    "bucket": "Flesh out",
+    "priority": "Medium",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Tagged FLESH OUT \u2014 book a 30-min spec session (pair with #1434)."
+  },
+  {
+    "id": "1434",
+    "area": "Supportis",
+    "bucket": "Flesh out",
+    "priority": "Medium",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Tagged FLESH OUT \u2014 spec alongside #1433."
+  },
+  {
+    "id": "804",
+    "area": "CRM",
+    "bucket": "Flesh out",
+    "priority": "Low",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Define UX for quick-add from the send-mail aside; add acceptance criteria."
+  },
+  {
+    "id": "1163",
+    "area": "Quoting (Dual Drive)",
+    "bucket": "Decision",
+    "priority": "Low",
+    "suggestedOwner": "TBD",
+    "status": "Not started",
+    "nextAction": "Scope changed (Dual Drive now uses DocuSign). Confirm whether still needed."
+  }
+]

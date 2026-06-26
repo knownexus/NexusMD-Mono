@@ -1,0 +1,57 @@
+<h2>How should the event behave while dragging?</h2>
+<p class="subtitle">When you grab a calendar event and drag it vertically, what do you see?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Live move — event follows cursor</h3>
+      <p>The event block moves with your cursor in real time. The original slot is left empty. A small tooltip shows the new time (e.g. "10:30 AM") as you drag.</p>
+      <div style="margin-top:12px; background:var(--surface-2); border-radius:8px; padding:12px; font-size:12px;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="height:18px; border-radius:3px; background:var(--border); opacity:0.4; width:100%;"></div>
+          <div style="height:32px; border-radius:4px; background:#3b82f6; opacity:0.95; padding:4px 8px; color:white; display:flex;align-items:center;justify-content:space-between; font-size:11px;">
+            <span>Stand-up ↕</span><span style="background:rgba(0,0,0,0.3);padding:1px 5px;border-radius:3px;">10:30</span>
+          </div>
+          <div style="height:18px; border-radius:3px; background:var(--border); opacity:0.4; width:100%;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Ghost + drop target</h3>
+      <p>A faded "ghost" stays at the original slot while a solid preview snaps to the nearest time slot as you hover. Drop to confirm. The ghost shows where it <em>was</em>, the preview shows where it'll <em>go</em>.</p>
+      <div style="margin-top:12px; background:var(--surface-2); border-radius:8px; padding:12px; font-size:12px;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="height:32px; border-radius:4px; background:#3b82f6; opacity:0.25; padding:4px 8px; color:white; display:flex;align-items:center; font-size:11px; border:1px dashed #3b82f6;">
+            <span>Stand-up (original)</span>
+          </div>
+          <div style="height:18px; border-radius:3px; background:var(--border); opacity:0.4; width:100%;"></div>
+          <div style="height:32px; border-radius:4px; background:#3b82f6; opacity:0.9; padding:4px 8px; color:white; display:flex;align-items:center; font-size:11px;">
+            <span>Stand-up → 10:30</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Simple — just move it</h3>
+      <p>No ghost, no live preview. Drag and the event snaps to the nearest slot on drop. Clean, no extra chrome. Works well if snap intervals are obvious (every 30 min).</p>
+      <div style="margin-top:12px; background:var(--surface-2); border-radius:8px; padding:12px; font-size:12px;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="height:18px; border-radius:3px; background:var(--border); opacity:0.4; width:100%;"></div>
+          <div style="height:18px; border-radius:3px; background:var(--border); opacity:0.4; width:100%;"></div>
+          <div style="height:32px; border-radius:4px; background:#3b82f6; opacity:0.9; padding:4px 8px; color:white; display:flex;align-items:center; font-size:11px;">
+            <span>Stand-up (dropped here)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
