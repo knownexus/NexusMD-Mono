@@ -1,0 +1,41 @@
+name: Release Desktop
+
+# Ported from the original NexusMD-Desktop workflow. The obsolete NexusMD-Web
+# sidecar checkout is removed (the desktop app no longer bundles the ASP.NET host —
+# data comes from @nexusmd/core adapters). electron-builder publishes to GitHub Releases.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            build_cmd: npm -w apps/desktop run build:win
+          - os: macos-latest
+            build_cmd: npm -w apps/desktop run build:mac
+          - os: ubuntu-latest
+            build_cmd: npm -w apps/desktop run build:linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # build:{win,mac,linux} build the Vite renderer then run electron-builder.
+      - name: Package + publish
+        run: ${{ matrix.build_cmd }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: dist/desktop/**
+          if-no-files-found: ignore

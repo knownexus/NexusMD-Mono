@@ -9,12 +9,14 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
+    "e2e": "vite build && playwright test",
     "start": "electron .",
     "icons": "node scripts/create-icons.js",
-    "build": "electron-builder",
-    "build:win": "powershell -File scripts/build-api.ps1 -TargetRid win-x64 && electron-builder --win",
-    "build:mac": "TARGET_RID=osx-x64 bash scripts/build-api.sh && electron-builder --mac",
-    "build:linux": "TARGET_RID=linux-x64 bash scripts/build-api.sh && electron-builder --linux"
+    "build:renderer": "vite build",
+    "build": "vite build && electron-builder",
+    "build:win": "vite build && electron-builder --win",
+    "build:mac": "vite build && electron-builder --mac",
+    "build:linux": "vite build && electron-builder --linux"
   },
   "dependencies": {
     "@nexusmd/core": "*",

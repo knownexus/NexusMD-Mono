@@ -33,4 +33,25 @@ describe('makeProfileKeys', () => {
     const { getProfileKey } = makeProfileKeys({ getActiveId: () => { throw new Error('x') } })
     expect(getProfileKey('k')).toBe('nexusmd.k')
   })
+
+  describe('bareWhenInactive (legacy App/Web parity)', () => {
+    it('returns the raw key unchanged when no profile is active', () => {
+      const { getProfileKey } = makeProfileKeys({ getActiveId: () => null, bareWhenInactive: true })
+      expect(getProfileKey('planner.sync')).toBe('planner.sync')
+      expect(getProfileKey('nexusmd.profile.photo')).toBe('nexusmd.profile.photo')
+    })
+
+    it('still scopes under an active profile (and fixes the slice(5) bug)', () => {
+      const { getProfileKey } = makeProfileKeys({ getActiveId: () => 'p1', bareWhenInactive: true })
+      // The old Web code produced nexusmd.p.p1.md.profile.photo — core strips the full prefix.
+      expect(getProfileKey('nexusmd.profile.photo')).toBe('nexusmd.p.p1.profile.photo')
+      expect(getProfileKey('planner.sync')).toBe('nexusmd.p.p1.planner.sync')
+    })
+
+    it('matches the App helm namespace exactly (slice(5) is correct for "helm.")', () => {
+      const { getProfileKey } = makeProfileKeys({ namespace: 'helm', getActiveId: () => 'a1', bareWhenInactive: true })
+      expect(getProfileKey('helm.android.org')).toBe('helm.p.a1.android.org')
+      expect(getProfileKey('helm.tweaks')).toBe('helm.p.a1.tweaks')
+    })
+  })
 })

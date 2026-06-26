@@ -1,13 +1,16 @@
+// IUpdateAdapter — backed by electron-updater via the preload `update` IPC bridge.
+// Falls back to a safe no-op when the bridge is absent (e.g. running the renderer
+// outside Electron, like the Playwright web harness).
+const api = (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.update) || null
+
 export const updateAdapter = {
   async checkForUpdate() {
-    // electron-updater is initialised in main via initUpdater(). No IPC handler
-    // for triggering a check is exposed yet — return not-available safely.
-    return { available: false };
+    return api ? api.check() : { available: false }
   },
   async installUpdate() {
-    // No-op until Phase 7 wires the full updater IPC
+    if (api) await api.install()
   },
-  onUpdateAvailable(_cb) {
-    return () => {};
+  onUpdateAvailable(cb) {
+    return api ? api.onAvailable(cb) : () => {}
   },
 }

@@ -121,4 +121,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Notification (renderer → main) ─────────────────────────────────────────
   showNotification: (title, body) => ipcRenderer.send('show-notification', { title, body }),
+
+  // ── Auto-update (IUpdateAdapter) ───────────────────────────────────────────
+  update: {
+    check:   () => ipcRenderer.invoke('updater:check'),
+    install: () => ipcRenderer.invoke('updater:install'),
+    onAvailable: (callback) => {
+      ipcRenderer.removeAllListeners('updater:available');
+      ipcRenderer.on('updater:available', (_event, info) => callback(info));
+      return () => ipcRenderer.removeAllListeners('updater:available');
+    },
+  },
 });

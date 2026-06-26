@@ -5,7 +5,7 @@ const path = require('path');
 
 const { createTray, updateTrayIcon } = require('./tray');
 const { initNotifications } = require('./notifications');
-const { initUpdater } = require('./updater');
+const { initUpdater, registerUpdaterIpc } = require('./updater');
 
 const fileIpc        = require('./ipc/file');
 const pickerIpc      = require('./ipc/picker');
@@ -202,8 +202,9 @@ app.whenReady().then(async () => {
   // Notifications — IPC handler only (no polling; ADO data comes from core adapters)
   initNotifications(mainWindow, ipcMain, null);
 
-  // Auto-updater
+  // Auto-updater (event wiring is packaged-only; the IPC contract is always registered)
   initUpdater(mainWindow);
+  registerUpdaterIpc();
 
   // Register Phase 6 IPC handlers
   fileIpc.register(ipcMain);

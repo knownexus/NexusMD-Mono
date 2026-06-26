@@ -18,6 +18,7 @@
     "test:e2e:desktop": "npm -w apps/desktop run e2e"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.0",
     "jsdom": "^25.0.0",
     "vitest": "^2.0.0"
   }

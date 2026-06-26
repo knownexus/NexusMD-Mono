@@ -14,9 +14,11 @@
  * @param {object}   opts
  * @param {string}   [opts.namespace='nexusmd']  Key prefix (without trailing dot).
  * @param {() => (string|null|undefined)} [opts.getActiveId]  Reads the active profile id.
+ * @param {boolean}  [opts.bareWhenInactive=false]  When true and no profile is active,
+ *   return the input key unchanged (legacy App/Web behaviour) instead of prefixing it.
  * @returns {{ getProfileKey: (key: string) => string, getActiveProfileId: () => string, namespace: string }}
  */
-export function makeProfileKeys({ namespace = 'nexusmd', getActiveId } = {}) {
+export function makeProfileKeys({ namespace = 'nexusmd', getActiveId, bareWhenInactive = false } = {}) {
   const prefix = `${namespace}.`
 
   function getActiveProfileId() {
@@ -29,14 +31,16 @@ export function makeProfileKeys({ namespace = 'nexusmd', getActiveId } = {}) {
 
   /**
    * Namespace a key under the active profile.
-   *   no active profile → `${namespace}.${key}`
    *   active profile     → `${namespace}.p.${id}.${key}`
+   *   no active profile  → `${namespace}.${key}` (default), or the raw key when
+   *                        bareWhenInactive is set.
    * A leading `${namespace}.` on the input is stripped so callers may pass either form.
    */
   function getProfileKey(key) {
     const bare = key.startsWith(prefix) ? key.slice(prefix.length) : key
     const id = getActiveProfileId()
-    return id ? `${prefix}p.${id}.${bare}` : `${prefix}${bare}`
+    if (id) return `${prefix}p.${id}.${bare}`
+    return bareWhenInactive ? key : `${prefix}${bare}`
   }
 
   return { getProfileKey, getActiveProfileId, namespace }

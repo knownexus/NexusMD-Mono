@@ -17,6 +17,29 @@
   localStorage.setItem('nexusmd.migration.v1', '1');
 })();
 
+// One-time fix for the historical slice(5) bug in the old local getProfileKey:
+// `nexusmd.`-prefixed keys (8 chars) were stored with a leaked "md." segment, e.g.
+// nexusmd.p.{id}.md.profile.photo. @nexusmd/core's makeProfileKeys strips the full
+// prefix, so rewrite any existing buggy keys to their correct names. The only keys
+// that can have a ".md." segment immediately after the profile id came from this bug
+// (no logical key is bare "md.*"), so this rewrite is deterministic and safe.
+(function fixProfileKeySlice5Bug() {
+  if (localStorage.getItem('nexusmd.migration.profileKeyFix.v1')) return;
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+  keys.forEach(key => {
+    const m = key && key.match(/^(nexusmd\.p\.[^.]+\.)md\.(.+)$/);
+    if (!m) return;
+    const correct = m[1] + m[2];
+    const v = localStorage.getItem(key);
+    if (v !== null && localStorage.getItem(correct) === null) {
+      localStorage.setItem(correct, v);
+    }
+    localStorage.removeItem(key);
+  });
+  localStorage.setItem('nexusmd.migration.profileKeyFix.v1', '1');
+})();
+
 export async function runProfileMigration() {
   try {
     const profiles = JSON.parse(localStorage.getItem('nexusmd.profiles') || '[]');

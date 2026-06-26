@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, master, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit + contract tests (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  dotnet:
+    name: Backend tests (xUnit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet test apps/web/NexusMDWeb.sln -c Release
+
+  build:
+    name: Build all workspaces
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspaces --if-present
+
+  e2e-web:
+    name: Web e2e (Playwright)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm -w apps/web run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-web
+          path: apps/web/playwright-report
+
+  e2e-desktop:
+    name: Desktop e2e (Electron + Playwright)
+    runs-on: ${{ matrix.os }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Linux needs a virtual display for Electron.
+      - name: Run desktop e2e (Linux/xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm -w apps/desktop run e2e
+      - name: Run desktop e2e
+        if: runner.os != 'Linux'
+        run: npm -w apps/desktop run e2e
