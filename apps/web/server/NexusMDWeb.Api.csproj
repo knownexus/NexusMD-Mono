@@ -7,12 +7,8 @@
     <RootNamespace>NexusMDWeb.Api</RootNamespace>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- SQLite for the audit log — no EF Core overhead needed -->
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
-  </ItemGroup>
-
+  <!-- Builds the Vite frontend into wwwroot/ on Release. The workspace root is two
+       levels up (apps/web), where `npm run build` is defined. -->
   <Target Name="BuildFrontend" BeforeTargets="Build"
           Condition="'$(Configuration)' == 'Release'">
     <Exec Command="npm run build"

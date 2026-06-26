@@ -28,7 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\NexusMD-Web\NexusMDWeb.Api.csproj" />
+    <ProjectReference Include="..\server\NexusMDWeb.Api.csproj" />
   </ItemGroup>
 
   <!-- Workaround for testhost.deps.json not being generated in .NET 8 -->

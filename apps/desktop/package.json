@@ -1,5 +1,6 @@
 {
-  "name": "nexusmd-desktop",
+  "name": "@nexusmd/desktop",
+  "private": true,
   "version": "1.0.0",
   "description": "NexusMD desktop app — Electron shell with renderer built by Vite",
   "type": "module",

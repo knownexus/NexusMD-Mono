@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   build: {
     // Output lands inside the ASP.NET project's wwwroot, served directly by the API.
-    outDir: './NexusMD-Web/wwwroot',
+    outDir: './server/wwwroot',
     emptyOutDir: true,
   },
   server: {

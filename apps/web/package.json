@@ -1,5 +1,5 @@
 {
-  "name": "nexusmd-web",
+  "name": "@nexusmd/web",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@nexusmd/core": "file:../../NexusMD/develop/packages/core",
+    "@nexusmd/core": "*",
     "@azure/msal-browser": "^3.28.0",
     "dompurify": "^3.2.6",
     "flatpickr": "^4.6.13",

@@ -30,3 +30,6 @@ app.UseStaticFiles();
 app.MapControllers();
 app.MapFallbackToFile("index.html");
 app.Run();
+
+// Exposed so the integration test project can spin up the host via WebApplicationFactory<Program>.
+public partial class Program { }
