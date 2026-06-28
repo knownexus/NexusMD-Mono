@@ -12,6 +12,11 @@ import { deepLinkAdapter }      from './adapters/deepLink.js'
 import { pickerAdapter }        from './adapters/picker.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 import { fileAdapter }          from './adapters/file.js'
+import { NexusDataProvider } from '@nexusmd/ui'
+import { NexusMDData, NexusMDApi } from './data.js'
+import { nexusMDPushPref } from './components.jsx'
+import { GoogleAuth } from './google-auth.js'
+import { PlannerSync } from './planner-sync.js'
 import App from './app.jsx'
 
 initCore({
@@ -31,8 +36,26 @@ initCore({
   file:          fileAdapter,
 })
 
+// Supplies the shared @nexusmd/ui views with web's data layer. getProfileKey is
+// identity because web's persisted keys are already fully namespaced; pushPref
+// debounces preference writes to the ASP.NET host (/api/prefs).
+const nexusDataValue = {
+  data:          NexusMDData,
+  api:           NexusMDApi,
+  storage:       window.localStorage,
+  getProfileKey: (k) => k,
+  pushPref:      nexusMDPushPref,
+  namespace:     'nexusmd',
+  googleAuth:    GoogleAuth,
+  // Web-only: after a planner week is saved, kick the Google-Drive sync engine
+  // (the shared saveWeekPlanner fires this via the planner runtime).
+  plannerOnWeekSaved: (year, week) => PlannerSync?.onWeekSaved(year, week),
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <NexusDataProvider value={nexusDataValue}>
+      <App />
+    </NexusDataProvider>
   </React.StrictMode>
 )

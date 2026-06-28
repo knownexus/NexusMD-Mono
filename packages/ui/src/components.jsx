@@ -77,6 +77,52 @@ export function Sparkline({ data, width = 64, height = 22, color = 'currentColor
   )
 }
 
+/** Mini progress ring (e.g. sprint card). */
+export function Ring({ value, max, size = 56, stroke = 6, color = 'var(--accent)', track = 'var(--surface-3)', label }) {
+  const r = (size - stroke) / 2
+  const c = 2 * Math.PI * r
+  const pct = Math.max(0, Math.min(1, value / max))
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke}/>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={`${(c * pct).toFixed(2)} ${c.toFixed(2)}`} transform={`rotate(-90 ${size / 2} ${size / 2})`}/>
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontFamily: 'var(--mono)', fontSize: size > 50 ? 13 : 11, fontWeight: 600 }}>
+        {label != null ? label : Math.round(pct * 100) + '%'}
+      </div>
+    </div>
+  )
+}
+
+/** Sortable table header cell. */
+export function SortHeader({ col, label, sort, setSort, align }) {
+  const active = sort.col === col
+  return (
+    <th className={active ? 'sorted' : ''} onClick={() => setSort((s) => ({ col, dir: s.col === col && s.dir === 'asc' ? 'desc' : 'asc' }))} style={align ? { textAlign: align } : null}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+        {label}
+        <span className="sort">{active && sort.dir === 'desc' ? '↓' : '↑'}</span>
+      </span>
+    </th>
+  )
+}
+
+/** Inline borderless status <select>. */
+export function StatusSelect({ value, onChange, options = ['', 'To Do', 'In Progress', 'Blocked', 'Done', 'Deferred'] }) {
+  return (
+    <select value={value || ''} onChange={(e) => onChange(e.target.value)} style={{
+      border: 0, background: 'transparent', font: 'inherit', cursor: 'pointer',
+      appearance: 'none', padding: '2px 14px 2px 6px', borderRadius: 4,
+      backgroundImage: 'url("data:image/svg+xml;utf8,<svg width=\'10\' height=\'10\' viewBox=\'0 0 10 10\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M2 4l3 3 3-3\' stroke=\'%238a857d\' fill=\'none\' stroke-width=\'1.5\'/></svg>")',
+      backgroundRepeat: 'no-repeat', backgroundPosition: 'right 2px center', backgroundSize: '10px',
+    }}>
+      {options.map((o) => <option key={o} value={o}>{o || '—'}</option>)}
+    </select>
+  )
+}
+
 /** Labelled stat tile with optional trend + sparkline. */
 export function Stat({ label, value, meta, trend, spark, sparkColor, accent, icon }) {
   return (

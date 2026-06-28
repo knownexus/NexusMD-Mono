@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@nexusmd/core": "*",
+    "@nexusmd/ui": "*",
     "@nexusmd/web-adapters": "*",
     "electron-updater": "^6.0.0"
   },
@@ -46,21 +47,46 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis",     "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/icon.ico"
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64"] },
-        { "target": "zip", "arch": ["x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/icon.icns"
     },
     "linux": {
       "target": [
-        { "target": "AppImage", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/icon.png"
     },

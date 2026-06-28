@@ -1,8 +1,20 @@
 import React from 'react';
 import { PrioChip } from './planner-ui.jsx';
 import JSZip from 'jszip';
-import { helmPushPref } from '../components.jsx';
-import { getProfileKey } from '../profile-keys.js';
+// Pure date math + planner group structure live in @nexusmd/core (identical to
+// web). Imported + re-exported here so this module's surface is unchanged; only
+// PLANNER_SECTIONS stays local (the app's meetSched uses a `datetime` col).
+import {
+  getIsoYearWeek, getYearWeekForOffset, getMondayOfDate, getIsoWeek,
+  fmtDateShort, weekKeyToOffset, PL_GROUPS, plSectionGroup,
+} from '@nexusmd/core';
+import {
+  hashPassword, encryptConfidentialForServer, decryptConfidentialFromServer,
+  loadConfidentialConfig, saveConfidentialConfig,
+  loadWeekPlanner, saveWeekPlanner, deleteWeekPlanner, getWeeksWithData,
+  isLegacyMigrationDone, markLegacyMigrationDone, checkConfidentialReminders,
+  loadVersions, saveVersions, describeSnapshot,
+} from '@nexusmd/ui';
 // view-planner.jsx — Weekly planner v2
 // Redesign: glance overview, grouped navigation (rail/scroll/tabs), three entry
 // styles (inline/quick-add/drawer), carry-over, multi-notes, week-agnostic notes.
@@ -164,93 +176,25 @@ async function plannerExportDocx(data, themes, dateLabel) {
   }
 }
 
-// ── Version helpers (unchanged) ───────────────────────────────
-function loadVersions() {
-  try { return JSON.parse(localStorage.getItem(getProfileKey('helm.planner.versions')) || '[]'); } catch { return []; }
-}
-function saveVersions(versions) {
-  const s = JSON.stringify(versions);
-  try { localStorage.setItem(getProfileKey('helm.planner.versions'), s); } catch (_) {}
-  helmPushPref?.('helm.planner.versions', s);
-}
-function describeSnapshot(data) {
-  const tasks = (data.tasks || []).length;
-  const meetings = (data.meetSched || []).length;
-  const oneOnOnes = (data.oneOnOnes || []).length;
-  const parts = [];
-  if (tasks) parts.push(`${tasks} task${tasks !== 1 ? 's' : ''}`);
-  if (meetings) parts.push(`${meetings} meeting${meetings !== 1 ? 's' : ''}`);
-  if (oneOnOnes) parts.push(`${oneOnOnes} 1:1${oneOnOnes !== 1 ? 's' : ''}`);
-  return parts.length ? parts.join(', ') : 'empty planner';
-}
+// Version helpers (loadVersions/saveVersions/describeSnapshot) now live in
+// @nexusmd/ui — imported above, re-exported below for view-planner-2.jsx.
 
-// ── Per-week storage helpers (unchanged) ──────────────────────
-function getIsoYearWeek(date) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const year = d.getUTCFullYear();
-  const yearStart = new Date(Date.UTC(year, 0, 1));
-  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-  return { year, week };
-}
-function getYearWeekForOffset(offset) {
-  const now = new Date();
-  const day = now.getDay() || 7;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - day + 1 + offset * 7);
-  return getIsoYearWeek(monday);
-}
-function getMondayOfDate(date) {
-  const d = new Date(date);
-  const day = d.getDay() || 7;
-  d.setDate(d.getDate() - day + 1);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+// Date helpers (getIsoYearWeek/getYearWeekForOffset/getMondayOfDate/getIsoWeek/
+// fmtDateShort/weekKeyToOffset) + PL_GROUPS/plSectionGroup now come from
+// @nexusmd/core — imported above, re-exported below.
+
+// weekStorageKey stays local: app per-week keys are `helm.planner.week.*` (the
+// app then profile-scopes them via getProfileKey). The storage helpers
+// (loadWeekPlanner/saveWeekPlanner/deleteWeekPlanner/getWeeksWithData,
+// is/markLegacyMigrationDone, checkConfidentialReminders) now live in
+// @nexusmd/ui — imported above, re-exported below for view-planner-2.jsx.
 function weekStorageKey(year, week) {
   return `helm.planner.week.${year}-W${String(week).padStart(2, '0')}`;
 }
-function loadWeekPlanner(year, week) {
-  try {
-    const raw = localStorage.getItem(getProfileKey(weekStorageKey(year, week)));
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return null;
-}
-function saveWeekPlanner(year, week, data, themes) {
-  const key = weekStorageKey(year, week);
-  const s = JSON.stringify({ data, themes });
-  try { localStorage.setItem(getProfileKey(key), s); } catch {}
-  helmPushPref?.(key, s);
-}
-function deleteWeekPlanner(year, week) {
-  const key = weekStorageKey(year, week);
-  try { localStorage.removeItem(getProfileKey(key)); } catch {}
-  helmPushPref?.(key, null);
-}
-function getWeeksWithData() {
-  const result = new Set();
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      const weekPrefix = getProfileKey('helm.planner.week.');
-      if (k && k.startsWith(weekPrefix)) {
-        result.add(k.replace(weekPrefix, ''));
-      }
-    }
-  } catch {}
-  return result;
-}
 
+// Kept only because it's still in the public re-export surface of this module.
 const PLANNER_MIGRATION_FLAG = 'helm.planner.legacyMigrated';
-function isLegacyMigrationDone() {
-  try { return localStorage.getItem(getProfileKey(PLANNER_MIGRATION_FLAG)) === '1'; } catch { return false; }
-}
-function markLegacyMigrationDone() {
-  try { localStorage.setItem(getProfileKey(PLANNER_MIGRATION_FLAG), '1'); } catch {}
-  helmPushPref?.(PLANNER_MIGRATION_FLAG, '1');
-}
+
 function hasMeaningfulPlannerData(data, themes) {
   if (!data) return false;
   for (const sec of PLANNER_SECTIONS) {
@@ -277,50 +221,11 @@ function buildEmptyPlannerData() {
   return e;
 }
 
-// ── Confidential helpers (unchanged) ──────────────────────────
-async function hashPassword(password) {
-  try {
-    const data = new TextEncoder().encode(password + ' helm-planner');
-    const buf  = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-  } catch {
-    return btoa(unescape(encodeURIComponent(password)));
-  }
-}
-async function encryptConfidentialForServer(cfg, passwordHash) {
-  const keyBytes = new Uint8Array(passwordHash.match(/.{2}/g).map(h => parseInt(h, 16)));
-  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt']);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const plaintext = new TextEncoder().encode(JSON.stringify(cfg));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
-  return {
-    iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
-    ciphertext: btoa(String.fromCharCode(...new Uint8Array(ciphertext))),
-  };
-}
-async function decryptConfidentialFromServer(encrypted, passwordHash) {
-  const keyBytes = new Uint8Array(passwordHash.match(/.{2}/g).map(h => parseInt(h, 16)));
-  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
-  const iv = new Uint8Array(encrypted.iv.match(/.{2}/g).map(h => parseInt(h, 16)));
-  const ct = Uint8Array.from(atob(encrypted.ciphertext), c => c.charCodeAt(0));
-  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
-  return JSON.parse(new TextDecoder().decode(decrypted));
-}
-function loadConfidentialConfig() {
-  try { return JSON.parse(localStorage.getItem(getProfileKey('helm.planner.confidential')) || '{"sections":[],"hash":null}'); }
-  catch { return { sections: [], hash: null }; }
-}
-function saveConfidentialConfig(cfg) {
-  try { localStorage.setItem(getProfileKey('helm.planner.confidential'), JSON.stringify(cfg)); } catch {}
-  if (cfg.hash) {
-    (async () => {
-      try {
-        const encrypted = await encryptConfidentialForServer(cfg, cfg.hash);
-        helmPushPref?.('helm.planner.confidential', JSON.stringify(encrypted));
-      } catch (_) {}
-    })();
-  }
-}
+// ── Confidential helpers ──────────────────────────────────────
+// hashPassword / encrypt / decryptConfidentialForServer (pure AES-GCM) now live
+// in @nexusmd/core; loadConfidentialConfig / saveConfidentialConfig (storage +
+// pref-sync, namespaced via the planner runtime) live in @nexusmd/ui. Both are
+// imported at the top of this file and re-exported below for view-planner-2.jsx.
 
 const { useState: useStatePL, useEffect: useEffectPL, useMemo: useMemoPL, useRef: useRefPL, useCallback: useCallbackPL } = React;
 
@@ -390,64 +295,9 @@ const PLANNER_SECTIONS = [
   { id:'eow', num:'12', title:'End-of-week review', icon:'check', type:'eow' },
 ];
 
-const PL_GROUPS = [
-  { id:'personal', label:'My week',   icon:'check-circle', ids:['tasks','reminders'] },
-  { id:'meetings', label:'Meetings',  icon:'planner', ids:['meetSched','meetNotes'] },
-  { id:'comms',    label:'Comms',     icon:'message', ids:['chatsIn','chatsOut','statusUpdates'] },
-  { id:'people',   label:'People',    icon:'team', ids:['oneOnOnes','teamNotes','themes','dailyLog','actionPlan'] },
-  { id:'work',     label:'Work items',icon:'work', ids:['workItemsPlan','teamTasks'] },
-  { id:'wrap',     label:'Wrap-up',   icon:'flag', ids:['notes','eow'] },
-];
-function plSectionGroup(sectionId) { return PL_GROUPS.find(g => g.ids.includes(sectionId)); }
-
-function getIsoWeek(d) {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const dayNum = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
-}
-function fmtDateShort(d) { return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
-
-// Converts a stored week key ('helm.planner.week.YYYY-Www') to a weekOffset
-// relative to the current week (0 = current, -1 = last week, +1 = next week).
-function weekKeyToOffset(weekKey) {
-  const match = weekKey.match(/(\d{4})-W(\d{2})$/);
-  if (!match) return 0;
-  const tYear = parseInt(match[1]), tWeek = parseInt(match[2]);
-  for (let offset = -52; offset <= 52; offset++) {
-    const { year, week } = getYearWeekForOffset(offset);
-    if (year === tYear && week === tWeek) return offset;
-  }
-  return 0;
-}
-
-// Scans all stored planner weeks for confidential rows whose _reminderDate is
-// today or in the past and that haven't been dismissed. Returns an array of
-// { rowId, sectionId, reminderDate, weekKey, weekOffset }.
-function checkConfidentialReminders() {
-  const today = new Date().toISOString().slice(0, 10);
-  const dismissed = new Set();
-  try { JSON.parse(localStorage.getItem(getProfileKey('helm.planner.reminderDismissed')) || '[]').forEach(k => dismissed.add(k)); } catch {}
-  const due = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (!k?.startsWith(getProfileKey('helm.planner.week.'))) continue;
-    try {
-      const saved = JSON.parse(localStorage.getItem(k) || 'null');
-      if (!saved?.data) continue;
-      for (const sec of PLANNER_SECTIONS) {
-        if (sec.type !== 'table') continue;
-        for (const row of (saved.data[sec.id] || [])) {
-          if (row._reminderDate && row._reminderDate <= today && !dismissed.has(row.id + ':' + row._reminderDate)) {
-            due.push({ rowId: row.id, sectionId: sec.id, reminderDate: row._reminderDate, weekKey: k, weekOffset: weekKeyToOffset(k) });
-          }
-        }
-      }
-    } catch {}
-  }
-  return due;
-}
+// PL_GROUPS / plSectionGroup / getIsoWeek / fmtDateShort / weekKeyToOffset now
+// come from @nexusmd/core (imported at top). checkConfidentialReminders lives in
+// @nexusmd/ui.
 
 export {
   useStatePL, useEffectPL, useMemoPL, useRefPL, useCallbackPL,

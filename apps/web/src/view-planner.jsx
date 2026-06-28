@@ -1,6 +1,4 @@
 import JSZip from 'jszip';
-import { nexusMDPushPref } from './components.jsx';
-import { weekKey, PlannerSync } from './planner-sync.js';
 // Pure planner schema + date helpers now live in @nexusmd/core (Phase 5).
 // Re-exported here so existing `./view-planner.jsx` importers keep working.
 import {
@@ -15,6 +13,14 @@ export {
   PLANNER_SECTIONS, PL_GROUPS, plSectionGroup,
   buildEmptyPlannerData, hasMeaningfulPlannerData,
 };
+// Per-week storage, versions, migration flag + confidential reminder scan now
+// live in @nexusmd/ui (planner runtime seam). Re-exported so existing importers
+// (view-planner-2.jsx, view-settings.jsx) keep working unchanged.
+export {
+  loadWeekPlanner, saveWeekPlanner, deleteWeekPlanner, getWeeksWithData,
+  isLegacyMigrationDone, markLegacyMigrationDone, checkConfidentialReminders,
+  loadVersions, saveVersions, describeSnapshot,
+} from '@nexusmd/ui';
 
 // view-planner.jsx — Weekly planner v2
 // Redesign: glance overview, grouped navigation (rail/scroll/tabs), three entry
@@ -175,94 +181,6 @@ export async function plannerExportDocx(data, themes, dateLabel) {
   } catch (err) {
     alert('Word export failed:\n' + err.message);
   }
-}
-
-// ── Version helpers (unchanged) ───────────────────────────────
-export function loadVersions() {
-  try { return JSON.parse(localStorage.getItem('nexusmd.planner.versions') || '[]'); } catch { return []; }
-}
-export function saveVersions(versions) {
-  const s = JSON.stringify(versions);
-  try { localStorage.setItem('nexusmd.planner.versions', s); } catch (_) {}
-  nexusMDPushPref?.('nexusmd.planner.versions', s);
-}
-export function describeSnapshot(data) {
-  const tasks = (data.tasks || []).length;
-  const meetings = (data.meetSched || []).length;
-  const oneOnOnes = (data.oneOnOnes || []).length;
-  const parts = [];
-  if (tasks) parts.push(`${tasks} task${tasks !== 1 ? 's' : ''}`);
-  if (meetings) parts.push(`${meetings} meeting${meetings !== 1 ? 's' : ''}`);
-  if (oneOnOnes) parts.push(`${oneOnOnes} 1:1${oneOnOnes !== 1 ? 's' : ''}`);
-  return parts.length ? parts.join(', ') : 'empty planner';
-}
-
-// ── Per-week storage helpers (unchanged) ──────────────────────
-export function loadWeekPlanner(year, week) {
-  try {
-    const raw = localStorage.getItem(weekStorageKey(year, week));
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return null;
-}
-export function saveWeekPlanner(year, week, data, themes) {
-  const key = weekStorageKey(year, week);
-  const s = JSON.stringify({ data, themes });
-  try { localStorage.setItem(key, s); } catch {}
-  nexusMDPushPref?.(key, s);
-  PlannerSync?.onWeekSaved(year, week);
-}
-export function deleteWeekPlanner(year, week) {
-  const key = weekStorageKey(year, week);
-  try { localStorage.removeItem(key); } catch {}
-  nexusMDPushPref?.(key, null);
-}
-export function getWeeksWithData() {
-  const result = new Set();
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith('nexusmd.planner.week.')) {
-        result.add(k.replace('nexusmd.planner.week.', ''));
-      }
-    }
-  } catch {}
-  return result;
-}
-
-const PLANNER_MIGRATION_FLAG = 'nexusmd.planner.legacyMigrated';
-export function isLegacyMigrationDone() {
-  try { return localStorage.getItem(PLANNER_MIGRATION_FLAG) === '1'; } catch { return false; }
-}
-export function markLegacyMigrationDone() {
-  try { localStorage.setItem(PLANNER_MIGRATION_FLAG, '1'); } catch {}
-  nexusMDPushPref?.(PLANNER_MIGRATION_FLAG, '1');
-}
-// Scans all stored planner weeks for confidential rows whose _reminderDate is
-// today or in the past and that haven't been dismissed. Returns an array of
-// { rowId, sectionId, reminderDate, weekKey, weekOffset }.
-export function checkConfidentialReminders() {
-  const today = new Date().toISOString().slice(0, 10);
-  const dismissed = new Set();
-  try { JSON.parse(localStorage.getItem('nexusmd.planner.reminderDismissed') || '[]').forEach(k => dismissed.add(k)); } catch {}
-  const due = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (!k?.startsWith('nexusmd.planner.week.')) continue;
-    try {
-      const saved = JSON.parse(localStorage.getItem(k) || 'null');
-      if (!saved?.data) continue;
-      for (const sec of PLANNER_SECTIONS) {
-        if (sec.type !== 'table') continue;
-        for (const row of (saved.data[sec.id] || [])) {
-          if (row._reminderDate && row._reminderDate <= today && !dismissed.has(row.id + ':' + row._reminderDate)) {
-            due.push({ rowId: row.id, sectionId: sec.id, reminderDate: row._reminderDate, weekKey: k, weekOffset: weekKeyToOffset(k) });
-          }
-        }
-      }
-    } catch {}
-  }
-  return due;
 }
 
 // Continued in view-planner-2.jsx (modals, calendar picker, PlannerView).

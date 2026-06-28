@@ -1,12 +1,15 @@
 // planner module — week/date helpers, section schema, and data-shape utilities.
 //
 // Pure, platform-agnostic logic extracted from the app layer (Phase 5). Storage
-// (localStorage / file adapter), DOCX export (DOM-bound), confidential crypto,
-// and the Google-Drive sync engine stay in the apps; everything here is plain
-// data + date math so every app shares one implementation.
+// (localStorage / file adapter), DOCX export (DOM-bound), and the Google-Drive
+// sync engine stay in the apps; everything here is plain data + date math (plus
+// the pure confidential AES-GCM crypto) so every app shares one implementation.
 
 // Planner v2 date/status helpers (PL_STATUSES, plParseYmd, plIsOverdueYmd, …).
 export * from './dates.js'
+
+// Confidential AES-GCM crypto (hashPassword, encrypt/decryptConfidentialForServer).
+export * from './confidential.js'
 
 // ── ISO week / date helpers ───────────────────────────────────────────────────
 

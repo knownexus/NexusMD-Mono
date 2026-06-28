@@ -25,6 +25,8 @@ export {
   // Planner v2 date/status helpers
   PL_STATUSES, PL_PRIOS, PL_OPEN,
   plTodayDate, plParseYmd, plFmtYmd, plIsOverdueYmd, plIsTodayYmd, qaParseDue,
+  // Confidential AES-GCM crypto
+  hashPassword, encryptConfidentialForServer, decryptConfidentialFromServer,
 } from './modules/planner/index.js'
 export { filterTriageItems, buildTriageCsv } from './modules/triage/index.js'
 export {

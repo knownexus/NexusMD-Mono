@@ -8,6 +8,8 @@ import { HelmData, HelmApi } from './data.jsx';
 import { useProfile, ProfileProvider } from './profile-context.jsx';
 import { useTweaks } from './tweaks-panel.jsx';
 import { getProfileKey } from './profile-keys.js';
+import { NexusDataProvider } from '@nexusmd/ui';
+import { adoWorkItemSource } from './work-item-source.js';
 import { DashboardView } from './views/view-dashboard.jsx';
 import { WorkItemsView } from './views/view-workitems.jsx';
 import { PRView } from './views/view-prs.jsx';
@@ -2966,9 +2968,23 @@ function HelmApp() {
 }
 
 // Server-side prefs sync removed — localStorage is the only persistence layer on Android.
+// Supplies the shared @nexusmd/ui components (Avatar/usePersisted/NotificationBanner/
+// MenuButton) with the app's data layer: profile-scoped keys via getProfileKey,
+// HelmData for team/me, and the no-op helmPushPref.
+const nexusDataValue = {
+  data:          HelmData,
+  api:           HelmApi,
+  storage:       window.localStorage,
+  getProfileKey,
+  pushPref:      helmPushPref,
+  namespace:     'helm',
+  workItemSource: adoWorkItemSource,
+};
 (async () => {
   ReactDOM.createRoot(document.getElementById('root')).render(
-    <React.Fragment><HelmApp/><ToastHost/></React.Fragment>
+    <NexusDataProvider value={nexusDataValue}>
+      <HelmApp/><ToastHost/>
+    </NexusDataProvider>
   );
 })();
 

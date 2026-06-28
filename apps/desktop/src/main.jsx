@@ -3,9 +3,14 @@ import ReactDOM from 'react-dom/client'
 import '@nexusmd/ui/styles.css'
 
 import {
-  initCore, createNoOpAdapters, core, buildDigest, loadCachedAdoData,
+  initCore, createNoOpAdapters, core, loadCachedAdoData, loadAdoData,
 } from '@nexusmd/core'
-import { Icon, CardFrame, Stat } from '@nexusmd/ui'
+import {
+  Icon, CardFrame,
+  NexusDataProvider, useNexusData, ToastHost,
+  PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
+  DashboardView, WorkItemsView, TriageView,
+} from '@nexusmd/ui'
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
@@ -46,32 +51,38 @@ const adapters = {
 // and re-renders on core's 'data:updated' events.
 initCore(adapters)
 
+// Manual refresh for the views' Refresh buttons (api.load). Pulls fresh ADO data
+// straight from the org via the desktop http adapter, then nudges the snapshot.
+async function refreshAdoData() {
+  try {
+    if (!isAdoConfigured()) return
+    await loadAdoData(getAdoConfig(), { http: createAdoHttpAdapter(), storage: localStorageAdapter }, { isRefresh: true })
+  } catch { /* offline / not configured — keep cached */ }
+  finally { core._emit?.('data:updated') }
+}
+
+const DASH_WIDGET_ORDER = ['sprint', 'review', 'blockers', 'team', 'triage', 'activity', 'resolvedme']
+
 const NAV = [
   { id: 'dashboard', label: 'Dashboard',     icon: 'dashboard' },
   { id: 'work',      label: 'Work Items',     icon: 'work' },
   { id: 'prs',       label: 'Pull Requests',  icon: 'pr' },
+  { id: 'builds',    label: 'Builds',         icon: 'build' },
+  { id: 'tests',     label: 'Tests',          icon: 'check' },
+  { id: 'team',      label: 'Team',           icon: 'team' },
+  { id: 'triage',    label: 'Triage',         icon: 'work' },
   { id: 'planner',   label: 'Planner',        icon: 'planner' },
   { id: 'settings',  label: 'Settings',       icon: 'settings' },
 ]
 
-const EMPTY_DIGEST = {
-  openCount: 0, blockedCount: 0, criticalCount: 0,
-  activePrCount: 0, failedBuildCount: 0, runningBuildCount: 0,
-  sprintName: null, sprintVelocity: null, teamMetrics: [],
-}
-
-function useDigest() {
-  const [digest, setDigest] = React.useState(EMPTY_DIGEST)
+// Cached ADO snapshot, shaped for the shared views, re-read on every data:updated.
+function useNexusSnapshot() {
+  const [snapshot, setSnapshot] = React.useState(EMPTY_NEXUS_DATA)
   const refresh = React.useCallback(() => {
     try {
       const cached = loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter })
-      setDigest(cached
-        ? buildDigest({
-            workItems: cached.WORK_ITEMS, prs: cached.PRS, builds: cached.BUILDS,
-            team: cached.TEAM, sprint: cached.SPRINT,
-          })
-        : EMPTY_DIGEST)
-    } catch { setDigest(EMPTY_DIGEST) }
+      setSnapshot(cached ? { ...EMPTY_NEXUS_DATA, ...cached } : EMPTY_NEXUS_DATA)
+    } catch { setSnapshot(EMPTY_NEXUS_DATA) }
   }, [])
 
   React.useEffect(() => {
@@ -81,36 +92,32 @@ function useDigest() {
     return () => core.off('data:updated', onData)
   }, [refresh])
 
-  return digest
+  return snapshot
 }
 
-function Dashboard() {
-  const digest = useDigest()
-  const configured = (() => { try { return isAdoConfigured() } catch { return false } })()
+// Simple localStorage-backed state for the per-view "acknowledged" sets and
+// PR criteria that the shared views expect their host to own.
+function usePersistedState(key, initial) {
+  const [value, setValue] = React.useState(() => {
+    try {
+      const raw = window.localStorage.getItem(key)
+      return raw === null ? initial : JSON.parse(raw)
+    } catch { return initial }
+  })
+  React.useEffect(() => {
+    try { window.localStorage.setItem(key, JSON.stringify(value)) } catch { /* ignore */ }
+  }, [key, value])
+  return [value, setValue]
+}
 
-  if (!configured) {
-    return (
-      <CardFrame title="Welcome to NexusMD" icon={<Icon name="dashboard" size={16} />}>
-        <p style={{ color: 'var(--text-muted)', maxWidth: 520 }}>
-          Connect your Azure DevOps organisation in <strong>Settings</strong> to populate your
-          dashboard with work items, pull requests, builds and sprint metrics.
-        </p>
-      </CardFrame>
-    )
-  }
-
+function NotConfigured() {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
-      <Stat label="Open items"     value={digest.openCount}        icon={<Icon name="work" size={14} />} />
-      <Stat label="Blocked"        value={digest.blockedCount}     accent="var(--danger)" />
-      <Stat label="Critical"       value={digest.criticalCount}    accent="var(--danger)" />
-      <Stat label="Active PRs"     value={digest.activePrCount}    icon={<Icon name="pr" size={14} />} />
-      <Stat label="Failed builds"  value={digest.failedBuildCount} accent="var(--danger)" />
-      <Stat label="Running builds" value={digest.runningBuildCount} />
-      {digest.sprintName && (
-        <Stat label="Sprint" value={digest.sprintName} meta={digest.sprintVelocity != null ? `velocity ${digest.sprintVelocity}` : null} />
-      )}
-    </div>
+    <CardFrame title="Welcome to NexusMD" icon={<Icon name="dashboard" size={16} />}>
+      <p style={{ color: 'var(--text-muted)', maxWidth: 520 }}>
+        Connect your Azure DevOps organisation in <strong>Settings</strong> to populate your
+        dashboard with work items, pull requests, builds and sprint metrics.
+      </p>
+    </CardFrame>
   )
 }
 
@@ -118,60 +125,130 @@ function Placeholder({ label }) {
   return (
     <CardFrame title={label}>
       <p style={{ color: 'var(--text-muted)' }}>
-        {label} renders the shared NexusMD view here. The shared views are being promoted into
-        <code> @nexusmd/ui</code> so desktop and web render the same UI.
+        {label} is platform-specific (it depends on the web host's APIs / Google) and is not
+        shared into <code>@nexusmd/ui</code> yet.
       </p>
     </CardFrame>
   )
 }
 
+// The view body — reads the snapshot from context and wires per-view host state.
+function ViewBody({ view }) {
+  const { data } = useNexusData()
+  const configured = (() => { try { return isAdoConfigured() } catch { return false } })()
+  const openExternal = (item) => { if (item?.url) window.open(item.url, '_blank', 'noopener') }
+
+  const [needsMeCriteria, setNeedsMeCriteria] = usePersistedState('nexusmd.pr.needsMeCriteria', { votes: [0], includeDrafts: false })
+  const [acknowledgedBuilds, setAcknowledgedBuilds] = usePersistedState('nexusmd.builds.acknowledged', [])
+  const [acknowledgedTests, setAcknowledgedTests]   = usePersistedState('nexusmd.tests.acknowledged', [])
+  const [widgetOrder, setWidgetOrder]   = usePersistedState('nexusmd.dash.widgetOrder', DASH_WIDGET_ORDER)
+  const [widgetWidths, setWidgetWidths] = usePersistedState('nexusmd.dash.widgetWidths', {})
+  const [widgetHeights, setWidgetHeights] = usePersistedState('nexusmd.dash.widgetHeights', {})
+
+  switch (view) {
+    case 'dashboard':
+      if (!configured) return <NotConfigured />
+      return (
+        <DashboardView
+          onOpenItem={openExternal} onOpenPR={openExternal}
+          widgetOrder={widgetOrder} setWidgetOrder={setWidgetOrder}
+          widgetWidths={widgetWidths} setWidgetWidths={setWidgetWidths}
+          widgetHeights={widgetHeights} setWidgetHeights={setWidgetHeights}
+          needsMeCriteria={needsMeCriteria} setPlannerData={() => {}}
+          quickLinks={[]}
+        />
+      )
+    case 'work':
+      return (
+        <WorkItemsView items={data.WORK_ITEMS || []} setItems={() => {}}
+          onOpen={openExternal} onCreate={() => {}} />
+      )
+    case 'prs':
+      return (
+        <PRView prs={data.PRS || []} onOpen={openExternal}
+          needsMeCriteria={needsMeCriteria} setNeedsMeCriteria={setNeedsMeCriteria} />
+      )
+    case 'builds':
+      return (
+        <BuildsView builds={data.BUILDS || []}
+          acknowledgedBuilds={acknowledgedBuilds} setAcknowledgedBuilds={setAcknowledgedBuilds} />
+      )
+    case 'tests':
+      return (
+        <TestsView tests={data.TESTS || []}
+          acknowledgedTests={acknowledgedTests} setAcknowledgedTests={setAcknowledgedTests} />
+      )
+    case 'team':
+      return (
+        <TeamView team={data.TEAM || []} workItems={data.WORK_ITEMS || []} prs={data.PRS || []}
+          onOpenItem={openExternal} onOpenPerson={() => {}} />
+      )
+    case 'triage':
+      return <TriageView />
+    default:
+      return <Placeholder label={(NAV.find(n => n.id === view) || NAV[0]).label} />
+  }
+}
+
 function App() {
   const [view, setView] = React.useState('dashboard')
   const active = NAV.find(n => n.id === view) || NAV[0]
+  const snapshot = useNexusSnapshot()
+
+  const nexusDataValue = React.useMemo(() => ({
+    data:          snapshot,
+    api:           { load: refreshAdoData },
+    storage:       window.localStorage,
+    getProfileKey: (k) => k,
+    pushPref:      () => {},
+  }), [snapshot])
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      <aside style={{
-        width: 220, flexShrink: 0, borderRight: '1px solid var(--border)',
-        padding: '14px 10px', display: 'flex', flexDirection: 'column', gap: 2,
-        background: 'var(--surface, transparent)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px 14px' }}>
-          <Icon name="dashboard" size={18} />
-          <strong style={{ fontSize: 14 }}>NexusMD</strong>
-        </div>
-        {NAV.map(item => (
-          <button
-            key={item.id}
-            onClick={() => setView(item.id)}
-            className={`nav-item ${view === item.id ? 'active' : ''}`}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
-              border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
-              background: view === item.id ? 'var(--accent-soft, rgba(127,127,127,0.12))' : 'transparent',
-              color: view === item.id ? 'var(--accent)' : 'var(--text-muted)',
-              font: 'inherit', fontSize: 13,
-            }}
-          >
-            <Icon name={item.icon} size={16} />
-            {item.label}
-          </button>
-        ))}
-      </aside>
-
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header className="topbar" style={{
-          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 18px',
-          borderBottom: '1px solid var(--border)',
+    <NexusDataProvider value={nexusDataValue}>
+      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        <aside style={{
+          width: 220, flexShrink: 0, borderRight: '1px solid var(--border)',
+          padding: '14px 10px', display: 'flex', flexDirection: 'column', gap: 2,
+          background: 'var(--surface, transparent)',
         }}>
-          <Icon name={active.icon} size={16} />
-          <h1 style={{ fontSize: 15, margin: 0 }}>{active.label}</h1>
-        </header>
-        <section style={{ flex: 1, overflow: 'auto', padding: 18 }}>
-          {view === 'dashboard' ? <Dashboard /> : <Placeholder label={active.label} />}
-        </section>
-      </main>
-    </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px 14px' }}>
+            <Icon name="dashboard" size={18} />
+            <strong style={{ fontSize: 14 }}>NexusMD</strong>
+          </div>
+          {NAV.map(item => (
+            <button
+              key={item.id}
+              onClick={() => setView(item.id)}
+              className={`nav-item ${view === item.id ? 'active' : ''}`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+                border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+                background: view === item.id ? 'var(--accent-soft, rgba(127,127,127,0.12))' : 'transparent',
+                color: view === item.id ? 'var(--accent)' : 'var(--text-muted)',
+                font: 'inherit', fontSize: 13,
+              }}
+            >
+              <Icon name={item.icon} size={16} />
+              {item.label}
+            </button>
+          ))}
+        </aside>
+
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <header className="topbar" style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: '10px 18px',
+            borderBottom: '1px solid var(--border)',
+          }}>
+            <Icon name={active.icon} size={16} />
+            <h1 style={{ fontSize: 15, margin: 0 }}>{active.label}</h1>
+          </header>
+          <section style={{ flex: 1, overflow: 'auto', padding: 18 }}>
+            <ViewBody view={view} />
+          </section>
+        </main>
+      </div>
+      <ToastHost />
+    </NexusDataProvider>
   )
 }
 

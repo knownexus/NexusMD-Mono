@@ -6,6 +6,9 @@ import { getProfileKey } from '../profile-keys.js';
 import { Icon } from '../icons.jsx';
 import { useProfile } from '../profile-context.jsx';
 import { marked } from 'marked';
+import {
+  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles,
+} from '@nexusmd/ui';
 // view-settings.jsx — Settings & profile page (planner-redesign port)
 // Works with the app's existing infrastructure:
 //   - tweaks / setTweak        → helm.tweaks (theme, density, sidebar, typeLabels)
@@ -34,156 +37,6 @@ function usePrefVS(key, fallback) {
   return [value, set];
 }
 
-function PlToggle({ checked, onChange }) {
-  return (
-    <label className="tgl">
-      <input type="checkbox" checked={!!checked} onChange={e => onChange(e.target.checked)} />
-      <span className="tr"></span>
-      <span className="th"></span>
-    </label>
-  );
-}
-
-function VsRow({ title, desc, children }) {
-  return (
-    <div className="set-row">
-      <div className="info">
-        <div className="t">{title}</div>
-        {desc && <div className="d">{desc}</div>}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function VsCard({ title, icon, children }) {
-  return (
-    <div className="card set-card">
-      <div className="card-head"><h3><span style={{ color: 'var(--text-subtle)', display: 'flex' }}><Icon name={icon} size={14}/></span>&nbsp;{title}</h3></div>
-      <div className="card-body flush">{children}</div>
-    </div>
-  );
-}
-
-function VsFullRow({ title, desc, children }) {
-  return (
-    <div className="set-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
-      <div className="info">
-        <div className="t">{title}</div>
-        {desc && <div className="d">{desc}</div>}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function ThemeChipPicker({ value, onChange }) {
-  const themes = window.HELM_THEMES || [];
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, width: '100%' }}>
-      {themes.map(t => {
-        const active = value === t.id;
-        return (
-          <button key={t.id} type="button" onClick={() => onChange(t.id)} style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-            padding: '7px 11px 6px', borderRadius: 8, cursor: 'pointer',
-            border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-            background: active ? 'var(--accent-soft)' : 'var(--surface-2)',
-            transition: 'border-color .12s, background .12s',
-          }}>
-            <div style={{ display: 'flex', gap: 3 }}>
-              {t.swatch.map((c, i) => (
-                <div key={i} style={{
-                  width: 13, height: 13, borderRadius: '50%',
-                  background: c, border: '1px solid rgba(0,0,0,.14)',
-                  flexShrink: 0,
-                }} />
-              ))}
-            </div>
-            <div style={{
-              fontSize: 11, fontWeight: active ? 600 : 500, lineHeight: 1,
-              color: active ? 'var(--accent)' : 'var(--text-muted)',
-            }}>
-              {t.label}
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function VsSeg({ value, options, onChange }) {
-  return (
-    <div className="pl-seg">
-      {options.map(([v, l, ic]) => (
-        <button key={v} className={value === v ? 'active' : ''} onClick={() => onChange(v)}>
-          {ic && <Icon name={ic} size={12}/>}{l}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ── Change-password modal (uses real hashing + re-encrypt) ────
-function VsPasswordModal({ open, onClose }) {
-  const [cur, setCur] = useStateVS('');
-  const [pw, setPw] = useStateVS('');
-  const [confirm, setConfirm] = useStateVS('');
-  const [err, setErr] = useStateVS('');
-  const [ok, setOk] = useStateVS('');
-  const [busy, setBusy] = useStateVS(false);
-  const cfg = window.helmConfidential?.loadConfidentialConfig?.() || { sections: [], hash: null };
-  const hasExisting = !!cfg.hash;
-  const handleClose = () => { setCur(''); setPw(''); setConfirm(''); setErr(''); setOk(''); onClose(); };
-
-  const save = async () => {
-    setErr(''); setOk('');
-    if (!pw) { setErr('Enter a new password.'); return; }
-    if (pw !== confirm) { setErr('New passwords do not match.'); return; }
-    setBusy(true);
-    try {
-      const hc = window.helmConfidential;
-      if (hasExisting) {
-        const curHash = await hc.hashPassword(cur);
-        if (curHash !== cfg.hash) { setErr('Current password is incorrect.'); setBusy(false); return; }
-      }
-      const newHash = await hc.hashPassword(pw);
-      hc.saveConfidentialConfig({ ...cfg, hash: newHash });
-      setOk(hasExisting ? 'Password changed.' : 'Password set.');
-      setTimeout(handleClose, 900);
-    } catch (e) {
-      setErr('Could not save password.');
-    } finally { setBusy(false); }
-  };
-
-  return (
-    <PlModal open={open} onClose={handleClose} icon="lock"
-      title={hasExisting ? 'Change confidential password' : 'Set confidential password'}
-      sub="Protects sections and rows marked confidential"
-      footer={(
-        <React.Fragment>
-          <button className="btn ghost" onClick={handleClose}>Cancel</button>
-          <button className="btn primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
-        </React.Fragment>
-      )}>
-      {hasExisting && (
-        <PlFld label="Current password">
-          <input type="password" value={cur} autoFocus onChange={e => { setCur(e.target.value); setErr(''); }}/>
-        </PlFld>
-      )}
-      <PlFld label="New password">
-        <input type="password" value={pw} autoFocus={!hasExisting} onChange={e => { setPw(e.target.value); setErr(''); }}/>
-      </PlFld>
-      <PlFld label="Confirm new password">
-        <input type="password" value={confirm} onChange={e => { setConfirm(e.target.value); setErr(''); }}
-          onKeyDown={e => { if (e.key === 'Enter') save(); }}/>
-      </PlFld>
-      {err && <div className="plm-callout err">{err}</div>}
-      {ok && <div className="plm-callout ok">{ok}</div>}
-    </PlModal>
-  );
-}
 
 // ── Time-zone options ─────────────────────────────────────────
 function vsTimeZones() {
@@ -200,136 +53,6 @@ function vsTimeZones() {
   return result;
 }
 
-// ── Profiles sub-page ─────────────────────────────────────────
-const PROFILE_COLORS = [
-  '#9a7e22', '#6c8ebf', '#7c7c7c', '#48b870',
-  '#e05a2b', '#8098e0', '#b86078', '#c09040',
-];
-
-function VsProfileEditor({ profile, onSave, onDelete, onExport, onClose }) {
-  const isNew = !profile;
-  const [name, setName]       = useStateVS(profile?.name     || '');
-  const [initials, setInit]   = useStateVS(profile?.initials || '');
-  const [type, setType]       = useStateVS(profile?.type     || 'ado');
-  const [color, setColor]     = useStateVS(profile?.color    || PROFILE_COLORS[0]);
-  const [confirmDel, setConf] = useStateVS(false);
-
-  const autoInit = name.trim().split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
-
-  const save = () => {
-    if (!name.trim()) { toast?.('Name is required.', 'error'); return; }
-    onSave({ name: name.trim(), initials: (initials.trim() || autoInit).toUpperCase().slice(0, 3), type, color });
-  };
-
-  return (
-    <PlModal open onClose={onClose} icon="more"
-      title={isNew ? 'New profile' : 'Edit profile'}
-      footer={
-        <React.Fragment>
-          {!isNew && (
-            <React.Fragment>
-              <button className="btn sm ghost" onClick={() => onExport(profile.id)}>Export…</button>
-              {confirmDel
-                ? <button className="btn sm danger" onClick={() => onDelete(profile.id)}>Confirm delete</button>
-                : <button className="btn sm ghost danger" onClick={() => setConf(true)}>Delete</button>}
-            </React.Fragment>
-          )}
-          <span style={{ flex: 1 }} />
-          <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn primary" onClick={save}>Save</button>
-        </React.Fragment>
-      }>
-      <PlFld label="Profile name">
-        <input value={name} autoFocus onChange={e => setName(e.target.value)} />
-      </PlFld>
-      <PlFld label="Initials (2–3 chars)">
-        <input value={initials} placeholder={autoInit} maxLength={3}
-          onChange={e => setInit(e.target.value.toUpperCase())} />
-      </PlFld>
-      <PlFld label="Type">
-        <div className="pl-seg">
-          {[['ado', 'Azure DevOps'], ['manual', 'Manual']].map(([v, l]) => (
-            <button key={v} className={type === v ? 'active' : ''} onClick={() => setType(v)}>{l}</button>
-          ))}
-        </div>
-      </PlFld>
-      <PlFld label="Colour">
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {PROFILE_COLORS.map(c => (
-            <button key={c} type="button" onClick={() => setColor(c)} style={{
-              width: 28, height: 28, borderRadius: '50%', background: c, border: 'none',
-              outline: color === c ? '2px solid var(--accent)' : '2px solid transparent',
-              outlineOffset: 2, cursor: 'pointer',
-            }} />
-          ))}
-        </div>
-      </PlFld>
-    </PlModal>
-  );
-}
-
-function VsProfiles() {
-  const { profiles, activeId, switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile } = useProfile();
-  const [editing, setEditing]   = useStateVS(null);
-  const importRef               = useRefVS(null);
-
-  const handleSave = (changes) => {
-    if (editing === 'new') {
-      createProfile(changes);
-    } else {
-      updateProfile(editing.id, changes);
-    }
-    setEditing(null);
-  };
-
-  const handleDelete = (id) => {
-    deleteProfile(id);
-    setEditing(null);
-  };
-
-  return (
-    <div className="card set-card">
-      <div className="card-head">
-        <h3><span style={{ color: 'var(--text-subtle)', display: 'flex' }}><Icon name="more" size={14}/></span>&nbsp;Profiles</h3>
-        <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => setEditing('new')}>+ New profile</button>
-      </div>
-      <div className="card-body flush">
-        {profiles.map(p => (
-          <div key={p.id} className="set-row">
-            <div style={{ width: 34, height: 34, borderRadius: '50%', background: p.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
-              {p.initials}
-            </div>
-            <div className="info">
-              <div className="t">{p.name}</div>
-              <div className="d">{p.type === 'ado' ? 'Azure DevOps' : 'Manual — no DevOps'}</div>
-            </div>
-            {p.id === activeId
-              ? <span className="pill success"><span className="dot"></span>Active</span>
-              : <button className="btn sm ghost" onClick={() => switchProfile(p.id)}>Switch</button>}
-            <button className="btn sm ghost" onClick={() => setEditing(p)}>Edit</button>
-          </div>
-        ))}
-        <div className="set-row" style={{ opacity: .6, cursor: 'pointer' }} onClick={() => importRef.current?.click()}>
-          <div style={{ width: 34, height: 34, borderRadius: '50%', border: '1.5px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>↑</div>
-          <div className="info"><div className="t">Import profile from file…</div></div>
-        </div>
-        <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }}
-          onChange={e => { const f = e.target.files?.[0]; if (f) importProfile(f); e.target.value = ''; }} />
-      </div>
-      {editing && (
-        <VsProfileEditor
-          profile={editing === 'new' ? null : editing}
-          onSave={handleSave}
-          onDelete={handleDelete}
-          onExport={exportProfile}
-          onClose={() => setEditing(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-// ── Settings page ─────────────────────────────────────────────
 function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, onGoPlanner }) {
   const [subPage, setSubPage] = useStateVS('profile');
   const [pwOpen, setPwOpen] = useStateVS(false);
@@ -605,7 +328,7 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
             </VsCard>
           )}
 
-          {subPage === 'profiles' && <VsProfiles />}
+          {subPage === 'profiles' && <VsProfiles profileApi={useProfile()} showOrgLabel={false} />}
 
           {subPage === 'privacy' && (
             <VsCard title="Confidential sections" icon="lock">
