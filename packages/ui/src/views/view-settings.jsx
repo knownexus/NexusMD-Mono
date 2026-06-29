@@ -503,8 +503,14 @@ function CloudSyncCard({ controller, providers, fileIO }) {
       const p = providers.find(p => p.id === selectedId) || null;
       setConnected(p ? p.isConnected() : false);
     };
+    // 'focus' covers OAuth-in-another-tab; 'nexusmd:cloud-auth-changed' covers
+    // async token (re)hydration where isConnected() is cache-backed (app).
     window.addEventListener('focus', refresh);
-    return () => window.removeEventListener('focus', refresh);
+    window.addEventListener('nexusmd:cloud-auth-changed', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('nexusmd:cloud-auth-changed', refresh);
+    };
   }, [selectedId]);
 
   const handleProviderChange = (id) => {

@@ -10,7 +10,7 @@ import { useTweaks } from './tweaks-panel.jsx';
 import { getProfileKey } from './profile-keys.js';
 import { NexusDataProvider } from '@nexusmd/ui';
 import { adoWorkItemSource } from './work-item-source.js';
-import { registerCloudDeepLink } from './cloud-auth.js';
+import { registerCloudDeepLink, hydrateCloudTokens } from './cloud-auth.js';
 import { startAppAutoSync } from './sync.js';
 import { DashboardView } from './views/view-dashboard.jsx';
 import { WorkItemsView } from './views/view-workitems.jsx';
@@ -3004,6 +3004,11 @@ const nexusDataValue = {
 };
 // Subscribe to nexusmd:// deep links so cloud OAuth one-time codes are redeemed.
 registerCloudDeepLink();
+
+// Decrypt stored cloud tokens into the in-memory cache before the settings card
+// reads connection state. A profile switch reloads the page (ui ProfileProvider),
+// so this also covers re-hydration for the newly-active profile.
+hydrateCloudTokens();
 
 // Start continuous cloud sync (no-op until a passphrase + provider are set).
 startAppAutoSync();

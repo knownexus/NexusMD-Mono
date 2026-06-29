@@ -5,6 +5,7 @@
 import { getProfileKey } from './profile-keys.js'
 import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/ui'
 import { deepLinkAdapter } from './adapters/deepLink.js'
+import { secureStorageAdapter } from './adapters/secureStorage.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'
 
@@ -14,15 +15,27 @@ const PROVIDERS = {
 }
 const BY_FROM = { gdrive: PROVIDERS.gdrive, onedrive: PROVIDERS.onedrive }
 
-function read(suffix) {
-  try { const k = getProfileKey('helm.' + suffix); return k ? JSON.parse(localStorage.getItem(k) || 'null') : null }
-  catch { return null }
+// tokenCache is keyed by the RESOLVED profile key so a profile switch can never
+// return another profile's tokens. isConnected() reads the cache synchronously;
+// the adapter (async, encrypted) is the durable store.
+const tokenCache = new Map()
+const resolveKey = (suffix) => getProfileKey('helm.' + suffix)
+
+function readAuth(suffix) {
+  const k = resolveKey(suffix)
+  return k ? (tokenCache.get(k) || null) : null
 }
-function write(suffix, auth) {
-  try { const k = getProfileKey('helm.' + suffix); if (k) localStorage.setItem(k, JSON.stringify(auth)) } catch {}
+async function writeAuth(suffix, auth) {
+  const k = resolveKey(suffix)
+  if (!k) return
+  tokenCache.set(k, auth)
+  await secureStorageAdapter.set(k, JSON.stringify(auth))
 }
-function clear(suffix) {
-  try { const k = getProfileKey('helm.' + suffix); if (k) localStorage.removeItem(k) } catch {}
+async function clearAuth(suffix) {
+  const k = resolveKey(suffix)
+  if (!k) return
+  tokenCache.delete(k)
+  await secureStorageAdapter.remove(k)
 }
 
 // Open the system browser. In a Capacitor WebView, target '_system' hands the
@@ -34,7 +47,7 @@ function openBrowser(url) {
 function makeBinding(key) {
   const cfg = PROVIDERS[key]
   return {
-    isConnected: () => Boolean(read(cfg.keySuffix)?.accessToken),
+    isConnected: () => Boolean(readAuth(cfg.keySuffix)?.accessToken),
     async connect() {
       try {
         const returnUri = `nexusmd://oauth/${cfg.from}`
@@ -44,9 +57,12 @@ function makeBinding(key) {
         openBrowser(url)
       } catch {}
     },
-    async disconnect() { clear(cfg.keySuffix) },
+    async disconnect() {
+      await clearAuth(cfg.keySuffix)
+      window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
+    },
     async getToken({ force } = {}) {
-      const auth = read(cfg.keySuffix)
+      const auth = readAuth(cfg.keySuffix)
       if (!auth?.accessToken) return null
       if (!force) return auth.accessToken
       try {
@@ -56,7 +72,7 @@ function makeBinding(key) {
         })
         if (!res.ok) return null
         const { accessToken } = await res.json()
-        write(cfg.keySuffix, { ...auth, accessToken })
+        await writeAuth(cfg.keySuffix, { ...auth, accessToken })
         return accessToken
       } catch { return null }
     },
@@ -77,13 +93,29 @@ async function redeem(url) {
     })
     if (!res.ok) return
     const { accessToken, refreshToken } = await res.json()
-    write(cfg.keySuffix, { accessToken, refreshToken })
+    await writeAuth(cfg.keySuffix, { accessToken, refreshToken })
+    window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
     window.location.reload()
   } catch {}
 }
 
 export function registerCloudDeepLink() {
   deepLinkAdapter.onLink(redeem)
+}
+
+// Decrypt each provider's stored auth into the in-memory cache. Called at startup
+// and after a profile switch; dispatches so the settings card re-reads state.
+export async function hydrateCloudTokens() {
+  for (const cfg of Object.values(PROVIDERS)) {
+    const k = resolveKey(cfg.keySuffix)
+    if (!k) continue
+    try {
+      const raw = await secureStorageAdapter.get(k)
+      if (raw) tokenCache.set(k, JSON.parse(raw))
+      else tokenCache.delete(k)
+    } catch { tokenCache.delete(k) }
+  }
+  window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
 }
 
 export const appCloudProviders = [
