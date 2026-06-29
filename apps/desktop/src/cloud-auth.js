@@ -1,15 +1,14 @@
-// cloud-auth.js — desktop OAuth bindings for profile cloud sync (Drive + OneDrive).
-// Desktop opens the system browser to the web backend's native-url; the backend
-// redirects back via the nexusmd:// custom protocol with a one-time code, which
-// the renderer redeems for tokens. Requires VITE_API_BASE to point at the host.
+// cloud-auth.js — desktop cloud sync auth bindings (Drive + OneDrive).
+// The Electron main process runs an in-app PKCE loopback OAuth flow and returns
+// tokens over IPC (window.electronAPI.oauth). No remote backend, no client
+// secret. Tokens are stored per-profile in localStorage, mirroring the prior
+// behaviour: nexusmd.p.<id>.gdrive.auth / .onedrive.auth = { accessToken, refreshToken, email }
 import { getProfileKey } from './profile-keys.js'
-import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/ui'
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'
+import { makeGoogleDriveProvider, makeOneDriveProvider, toast } from '@nexusmd/ui'
 
 const PROVIDERS = {
-  gdrive:   { keySuffix: 'gdrive.auth',   api: '/api/google/auth', from: 'gdrive' },
-  onedrive: { keySuffix: 'onedrive.auth', api: '/api/ms/auth',     from: 'onedrive' },
+  gdrive:   { keySuffix: 'gdrive.auth',   flow: 'google',    label: 'Google Drive' },
+  onedrive: { keySuffix: 'onedrive.auth', flow: 'microsoft', label: 'OneDrive' },
 }
 
 function read(suffix) {
@@ -29,58 +28,31 @@ function makeBinding(key) {
     isConnected: () => Boolean(read(cfg.keySuffix)?.accessToken),
     async connect() {
       try {
-        const returnUri = `nexusmd://oauth/${cfg.from}`
-        const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
-        if (!res.ok) return
-        const { url } = await res.json()
-        await window.electronAPI.openExternal(url)
-      } catch {}
+        const auth = await window.electronAPI.oauth.signIn(cfg.flow)
+        if (!auth?.accessToken) { toast?.(`${cfg.label} sign-in failed.`, 'error'); return }
+        write(cfg.keySuffix, auth)
+        window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
+        toast?.(`${cfg.label} connected.`, 'success')
+      } catch (e) {
+        toast?.(e?.message ? `${cfg.label}: ${e.message}` : `Could not sign in to ${cfg.label}.`, 'error')
+      }
     },
-    async disconnect() { clear(cfg.keySuffix) },
+    async disconnect() {
+      clear(cfg.keySuffix)
+      window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
+    },
     async getToken({ force } = {}) {
       const auth = read(cfg.keySuffix)
       if (!auth?.accessToken) return null
       if (!force) return auth.accessToken
       try {
-        const res = await fetch(`${API_BASE}${cfg.api}/refresh`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken: auth.refreshToken }),
-        })
-        if (!res.ok) return null
-        const { accessToken } = await res.json()
-        write(cfg.keySuffix, { ...auth, accessToken })
-        return accessToken
+        const t = await window.electronAPI.oauth.refresh(cfg.flow, auth.refreshToken)
+        if (!t?.accessToken) return null
+        write(cfg.keySuffix, { ...auth, accessToken: t.accessToken, refreshToken: t.refreshToken || auth.refreshToken })
+        return t.accessToken
       } catch { return null }
     },
   }
-}
-
-// Map provider marker (?provider=gdrive|onedrive) to its config + storage suffix.
-const BY_FROM = { gdrive: PROVIDERS.gdrive, onedrive: PROVIDERS.onedrive }
-
-// Redeem the one-time code delivered via the nexusmd:// deep link.
-async function redeem(url) {
-  let u
-  try { u = new URL(url) } catch { return }
-  const params = u.searchParams
-  const from = params.get('provider')
-  const otc = params.get('otc')
-  const cfg = from && BY_FROM[from]
-  if (!cfg || !otc) return
-  try {
-    const res = await fetch(`${API_BASE}${cfg.api}/exchange`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: otc }),
-    })
-    if (!res.ok) return
-    const { accessToken, refreshToken } = await res.json()
-    write(cfg.keySuffix, { accessToken, refreshToken })
-    window.location.reload()
-  } catch {}
-}
-
-export function registerCloudDeepLink() {
-  if (window.electronAPI?.onDeepLink) window.electronAPI.onDeepLink(redeem)
 }
 
 export const desktopCloudProviders = [
