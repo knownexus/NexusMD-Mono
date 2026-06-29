@@ -24,6 +24,12 @@ const webProfileStore = {
   })).ok,
   activate: async (id) => (await fetch(`/api/profiles/${id}/activate`, { method: 'POST' })).ok,
   remove: async (id) => (await fetch(`/api/profiles/${id}`, { method: 'DELETE' })).ok,
+  importProfiles: async (records, activeId) => {
+    await fetch('/api/profiles/import', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profiles: records, activeId }),
+    });
+  },
   activateOnImport: true,
 };
 

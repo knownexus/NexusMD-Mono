@@ -20,8 +20,9 @@ import { toast } from './toast.jsx'
 import { GoogleAuth } from './google-auth.js'
 import { GitHubClient } from './github-client.js'
 import {
-  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles,
+  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard,
 } from '@nexusmd/ui'
+import { webFileIO } from './file-io.js'
 
 // Local pref hook — persists to localStorage per-profile and pushes to server prefs.
 function usePrefVS(key, fallback) {
@@ -860,7 +861,12 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
             </VsCard>
           )}
 
-          {subPage === 'profiles' && <VsProfiles profileApi={useProfile()} />}
+          {subPage === 'profiles' && (
+            <>
+              <VsProfiles profileApi={useProfile()} />
+              <BackupRestoreCard fileIO={webFileIO} />
+            </>
+          )}
 
           {subPage === 'privacy' && (
             <VsCard title="Confidential sections" icon="lock">

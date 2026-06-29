@@ -1,5 +1,5 @@
 import React from 'react';
-import { ProfileProvider as UiProfileProvider, useProfile } from '@nexusmd/ui';
+import { ProfileProvider as UiProfileProvider, useProfile, localUpsertProfiles } from '@nexusmd/ui';
 
 // The app is local-only (no server): the shared ProfileProvider's localStorage
 // cache IS the source of truth, so this store only mints new profiles locally.
@@ -20,6 +20,9 @@ const appProfileStore = {
       createdAt: Date.now(),
     };
     return { profile: p, entry: p };
+  },
+  importProfiles: async (records, activeId) => {
+    localUpsertProfiles(window.localStorage, 'helm', records, activeId);
   },
   activateOnImport: false,
 };

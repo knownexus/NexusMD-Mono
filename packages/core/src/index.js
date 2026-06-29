@@ -28,6 +28,10 @@ export {
   // Confidential AES-GCM crypto
   hashPassword, encryptConfidentialForServer, decryptConfidentialFromServer,
 } from './modules/planner/index.js'
+export {
+  encodeBundle, decodeBundle, BUNDLE_FORMAT, BUNDLE_FORMAT_ENC, BUNDLE_VERSION, BUNDLE_EXT,
+} from './modules/profiles/bundle.js'
+export { planProfileScopeMigration } from './modules/profiles/migrate.js'
 export { filterTriageItems, buildTriageCsv } from './modules/triage/index.js'
 export {
   isAllDayEvent, getEventsForDay, sortEventsByTime,

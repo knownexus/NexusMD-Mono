@@ -65,6 +65,18 @@ public class ProfileService(ProfileRepository repo)
         return p;
     }
 
+    public void Import(IEnumerable<Profile> records, string? activeId)
+    {
+        foreach (var p in records) repo.Upsert(p);
+        if (!string.IsNullOrEmpty(activeId) && repo.GetById(activeId) is not null)
+            repo.SetActiveId(activeId);
+        else if (repo.GetActiveId() is null)
+        {
+            var all = repo.GetAll();
+            if (all.Count > 0) repo.SetActiveId(all[0].Id);
+        }
+    }
+
     public (Profile? profile, string? activeId) GetState()
     {
         var activeId = repo.GetActiveId();

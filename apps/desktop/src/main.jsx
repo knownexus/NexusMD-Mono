@@ -10,7 +10,11 @@ import {
   NexusDataProvider, useNexusData, ToastHost,
   PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
   DashboardView, WorkItemsView, TriageView,
+  VsProfiles, BackupRestoreCard,
 } from '@nexusmd/ui'
+import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
+import { getProfileKey } from './profile-keys.js'
+import { desktopFileIO } from './file-io.js'
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
@@ -46,6 +50,11 @@ const adapters = {
   update:        updateAdapter,
   secureStorage: secureStorageAdapter,
 }
+
+// Seed a default profile and fold any pre-registry flat `nexusmd.*` data into
+// its scope. Must run before initCore, which reads cached ADO data via the
+// (now profile-scoped) getProfileKey.
+ensureDefaultProfileAndMigrate()
 
 // Fire-and-forget: enables modules + inits adapters. The shell reads cached data
 // and re-renders on core's 'data:updated' events.
@@ -96,17 +105,19 @@ function useNexusSnapshot() {
 }
 
 // Simple localStorage-backed state for the per-view "acknowledged" sets and
-// PR criteria that the shared views expect their host to own.
+// PR criteria that the shared views expect their host to own. Keys are routed
+// through getProfileKey so this state is scoped to the active profile.
 function usePersistedState(key, initial) {
+  const sk = getProfileKey(key)
   const [value, setValue] = React.useState(() => {
     try {
-      const raw = window.localStorage.getItem(key)
+      const raw = window.localStorage.getItem(sk)
       return raw === null ? initial : JSON.parse(raw)
     } catch { return initial }
   })
   React.useEffect(() => {
-    try { window.localStorage.setItem(key, JSON.stringify(value)) } catch { /* ignore */ }
-  }, [key, value])
+    try { window.localStorage.setItem(sk, JSON.stringify(value)) } catch { /* ignore */ }
+  }, [sk, value])
   return [value, setValue]
 }
 
@@ -129,6 +140,18 @@ function Placeholder({ label }) {
         shared into <code>@nexusmd/ui</code> yet.
       </p>
     </CardFrame>
+  )
+}
+
+// Settings — profile registry (create / switch / edit / delete) plus encrypted
+// backup & restore. Both are driven by the shared ProfileProvider.
+function DesktopSettings() {
+  const profileApi = useProfile()
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 }}>
+      <VsProfiles profileApi={profileApi} />
+      <BackupRestoreCard fileIO={desktopFileIO} />
+    </div>
   )
 }
 
@@ -185,6 +208,8 @@ function ViewBody({ view }) {
       )
     case 'triage':
       return <TriageView />
+    case 'settings':
+      return <DesktopSettings />
     default:
       return <Placeholder label={(NAV.find(n => n.id === view) || NAV[0]).label} />
   }
@@ -199,7 +224,7 @@ function App() {
     data:          snapshot,
     api:           { load: refreshAdoData },
     storage:       window.localStorage,
-    getProfileKey: (k) => k,
+    getProfileKey,
     pushPref:      () => {},
   }), [snapshot])
 
@@ -254,6 +279,8 @@ function App() {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <ProfileProvider>
+      <App />
+    </ProfileProvider>
   </React.StrictMode>
 )

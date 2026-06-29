@@ -6,6 +6,8 @@ import * as core from '../src/index.js'
 // must be a deliberate major-version bump, not an accident. This snapshot makes
 // any change to the surface fail loudly in review.
 const EXPECTED = [
+  'BUNDLE_EXT', 'BUNDLE_FORMAT', 'BUNDLE_FORMAT_ENC', 'BUNDLE_VERSION',
+  'encodeBundle', 'decodeBundle', 'planProfileScopeMigration',
   'CURRENT_PROFILE_VERSION', 'IAuthAdapter', 'IBadgeAdapter', 'IClipboardAdapter',
   'IDeepLinkAdapter', 'IFileAdapter', 'IHttpAdapter', 'ILifecycleAdapter',
   'INavigationAdapter', 'INetworkAdapter', 'INotificationAdapter', 'IPickerAdapter',

@@ -95,4 +95,35 @@ public class ProfilesControllerTests
         Assert.DoesNotContain("Doomed", names);
         Assert.Contains("Keep", names);
     }
+
+    [Fact]
+    public async Task Import_upserts_by_id_and_sets_active()
+    {
+        using var factory = new TestFactory();
+        var client = factory.CreateClient();
+
+        // Seed one profile that the import will overwrite by id.
+        var seeded = await ReadJson(await client.PostAsJsonAsync("/api/profiles",
+            new { name = "Old", initials = "OL", type = "manual" }));
+        var existingId = seeded.GetProperty("id").GetString();
+
+        var body = new
+        {
+            profiles = new[]
+            {
+                new { id = existingId, name = "Renamed", initials = "RN", color = "#123", type = "manual", config = (string?)null, createdAt = 1L },
+                new { id = (string?)"imported-2", name = "Brand New", initials = "BN", color = "#456", type = "ado", config = (string?)"{\"org\":\"x\"}", createdAt = 2L },
+            },
+            activeId = "imported-2",
+        };
+        var res = await client.PostAsJsonAsync("/api/profiles/import", body);
+        Assert.Equal(System.Net.HttpStatusCode.OK, res.StatusCode);
+
+        var state = await ReadJson(await client.GetAsync("/api/profiles/active"));
+        Assert.Equal("imported-2", state.GetProperty("activeId").GetString());
+        var names = state.GetProperty("profiles").EnumerateArray().Select(e => e.GetProperty("name").GetString()).ToList();
+        Assert.Contains("Renamed", names);     // overwritten by id
+        Assert.Contains("Brand New", names);   // added
+        Assert.DoesNotContain("Old", names);   // replaced, not duplicated
+    }
 }

@@ -61,6 +61,19 @@ public class ProfilesController(ProfileService profiles) : ControllerBase
         var p = profiles.Activate(id);
         return p is null ? NotFound(new { error = "profile not found" }) : Ok(p);
     }
+
+    // POST /api/profiles/import → upsert by id + set active (restore-by-id)
+    [HttpPost("import")]
+    public IActionResult Import([FromBody] ImportRequest req)
+    {
+        if (req?.Profiles is null) return BadRequest(new { error = "profiles required" });
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var records = req.Profiles.Select(d => new NexusMDWeb.Api.Models.Profile(
+            Id: d.Id, Name: d.Name, Initials: d.Initials, Color: d.Color, Type: d.Type,
+            Config: d.Config, CreatedAt: d.CreatedAt == 0 ? now : d.CreatedAt));
+        profiles.Import(records, req.ActiveId);
+        return Ok(new { imported = req.Profiles.Count });
+    }
 }
 
 public record CreateProfileRequest(
@@ -68,3 +81,9 @@ public record CreateProfileRequest(
 
 public record UpdateProfileRequest(
     string? Name = null, string? Initials = null, string? Color = null, string? Type = null, string? Config = null);
+
+public record ImportProfileDto(
+    string Id, string Name, string Initials, string Color, string Type,
+    string? Config = null, long CreatedAt = 0);
+
+public record ImportRequest(System.Collections.Generic.List<ImportProfileDto> Profiles, string? ActiveId = null);

@@ -7,8 +7,9 @@ import { Icon } from '../icons.jsx';
 import { useProfile } from '../profile-context.jsx';
 import { marked } from 'marked';
 import {
-  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles,
+  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard,
 } from '@nexusmd/ui';
+import { appFileIO } from '../file-io.js';
 // view-settings.jsx — Settings & profile page (planner-redesign port)
 // Works with the app's existing infrastructure:
 //   - tweaks / setTweak        → helm.tweaks (theme, density, sidebar, typeLabels)
@@ -328,7 +329,12 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
             </VsCard>
           )}
 
-          {subPage === 'profiles' && <VsProfiles profileApi={useProfile()} showOrgLabel={false} />}
+          {subPage === 'profiles' && (
+            <>
+              <VsProfiles profileApi={useProfile()} showOrgLabel={false} />
+              <BackupRestoreCard fileIO={appFileIO} showExportSingle={true} />
+            </>
+          )}
 
           {subPage === 'privacy' && (
             <VsCard title="Confidential sections" icon="lock">

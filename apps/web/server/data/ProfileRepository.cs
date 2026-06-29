@@ -100,6 +100,21 @@ public class ProfileRepository
         cmd.ExecuteNonQuery();
     }
 
+    public void Upsert(Profile p)
+    {
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT OR REPLACE INTO Profiles (Id,Name,Initials,Color,Type,Config,CreatedAt) VALUES ($id,$na,$in,$co,$ty,$cf,$ca)";
+        cmd.Parameters.AddWithValue("$id", p.Id);
+        cmd.Parameters.AddWithValue("$na", p.Name);
+        cmd.Parameters.AddWithValue("$in", p.Initials);
+        cmd.Parameters.AddWithValue("$co", p.Color);
+        cmd.Parameters.AddWithValue("$ty", p.Type);
+        cmd.Parameters.AddWithValue("$cf", (object?)p.Config ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$ca", p.CreatedAt);
+        cmd.ExecuteNonQuery();
+    }
+
     public void Delete(string id)
     {
         using var conn = OpenConnection();

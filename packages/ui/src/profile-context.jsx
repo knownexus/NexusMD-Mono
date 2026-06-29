@@ -8,6 +8,7 @@
 // while `store` supplies only the platform-specific create/update/activate/
 // remove/load. Missing store ops are treated as local-only no-ops (ok=true).
 import React from 'react';
+import { encodeBundle, decodeBundle, BUNDLE_EXT } from '@nexusmd/core';
 import { toast } from './toast.jsx';
 
 const { useState, useCallback, useMemo, useEffect, createContext, useContext, createElement: h } = React;
@@ -141,12 +142,76 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
     }
   }, [createProfile, store, namespace]);
 
+  const collectScoped = (id) => {
+    const pfx = scopedPrefix(id);
+    const data = {};
+    try {
+      for (let i = 0; i < storage.length; i++) {
+        const k = storage.key(i);
+        if (k && k.startsWith(pfx)) data[k.slice(pfx.length)] = storage.getItem(k);
+      }
+    } catch (_) {}
+    return data;
+  };
+
+  const exportBundle = useCallback(async ({ scope, password }) => {
+    const picked = scope === 'all' ? profiles : profiles.filter(p => p.id === scope);
+    const out = picked.map(p => ({
+      id: p.id, name: p.name, initials: p.initials, color: p.color, type: p.type,
+      orgLabel: p.orgLabel, createdAt: p.createdAt ?? Date.now(), config: p.config ?? null,
+      data: collectScoped(p.id),
+    }));
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      exportedBy: namespace === 'helm' ? 'app' : 'web',
+      activeId: scope === 'all' ? (activeId || null) : null,
+      profiles: out,
+    };
+    const text = await encodeBundle(payload, password);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const slug = (picked[0]?.name || 'profile').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    const filename = scope === 'all'
+      ? `nexusmd-backup-${stamp}${BUNDLE_EXT}`
+      : `nexusmd-profile-${slug}${BUNDLE_EXT}`;
+    return { filename, text };
+  }, [profiles, activeId, namespace, storage]);
+
+  const importBundle = useCallback(async ({ text, password }) => {
+    const payload = await decodeBundle(text, password);
+    const records = payload.profiles.map(p => ({
+      id: p.id, name: p.name, initials: p.initials, color: p.color, type: p.type,
+      orgLabel: p.orgLabel, createdAt: p.createdAt, config: p.config ?? null,
+    }));
+    if (store.importProfiles) await store.importProfiles(records, payload.activeId ?? null);
+    else localUpsertProfiles(storage, namespace, records, payload.activeId ?? null);
+    for (const p of payload.profiles) {
+      const pfx = scopedPrefix(p.id);
+      for (const [k, v] of Object.entries(p.data || {})) {
+        try { storage.setItem(pfx + k, v); } catch (_) {}
+      }
+    }
+    return { imported: records.length, names: records.map(r => r.name) };
+  }, [store, storage, namespace]);
+
   const value = useMemo(() => ({
     profiles, activeProfile, activeId, loading,
     switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile,
-  }), [profiles, activeProfile, activeId, loading, switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile]);
+    exportBundle, importBundle,
+  }), [profiles, activeProfile, activeId, loading, switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile, exportBundle, importBundle]);
 
   return h(ProfileCtx.Provider, { value }, children);
+}
+
+// Local registry upsert for platforms without a server (app/desktop): merge
+// records into `${namespace}.profiles` by id (overwrite existing, add new).
+export function localUpsertProfiles(storage, namespace, records, activeId) {
+  const KEY = `${namespace}.profiles`;
+  let list;
+  try { list = JSON.parse(storage.getItem(KEY) || '[]'); } catch (_) { list = []; }
+  const byId = new Map(list.map(p => [p.id, p]));
+  for (const r of records) byId.set(r.id, { ...byId.get(r.id), ...r });
+  try { storage.setItem(KEY, JSON.stringify([...byId.values()])); } catch (_) {}
+  if (activeId) { try { storage.setItem(`${namespace}.activeProfileId`, activeId); } catch (_) {} }
 }
 
 export function useProfile() { return useContext(ProfileCtx); }

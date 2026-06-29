@@ -25,7 +25,23 @@ test.describe('desktop shell smoke', () => {
     await win.waitForLoadState('domcontentloaded')
 
     await win.getByText('Pull Requests').first().click()
-    await expect(win.getByRole('heading', { name: 'Pull Requests' })).toBeVisible()
+    // Both the topbar and the PR view render a "Pull Requests" heading; .first()
+    // keeps the locator unambiguous (strict mode) while still proving navigation.
+    await expect(win.getByRole('heading', { name: 'Pull Requests' }).first()).toBeVisible()
+
+    await app.close()
+  })
+
+  test('Settings shows the profile registry and Backup & Restore', async () => {
+    const app = await electron.launch({ args: [appDir] })
+    const win = await app.firstWindow()
+    await win.waitForLoadState('domcontentloaded')
+
+    await win.getByText('Settings').first().click()
+    // VsProfiles (the default profile seeded on first run) + the new backup card.
+    await expect(win.getByText('Default').first()).toBeVisible({ timeout: 15_000 })
+    await expect(win.getByText('Backup & Restore')).toBeVisible()
+    await expect(win.getByText('Back up all profiles')).toBeVisible()
 
     await app.close()
   })

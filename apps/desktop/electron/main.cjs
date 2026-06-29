@@ -3,15 +3,15 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme } = require('electron');
 const path = require('path');
 
-const { createTray, updateTrayIcon } = require('./tray');
-const { initNotifications } = require('./notifications');
-const { initUpdater, registerUpdaterIpc } = require('./updater');
+const { createTray, updateTrayIcon } = require('./tray.cjs');
+const { initNotifications } = require('./notifications.cjs');
+const { initUpdater, registerUpdaterIpc } = require('./updater.cjs');
 
-const fileIpc        = require('./ipc/file');
-const pickerIpc      = require('./ipc/picker');
-const badgeIpc       = require('./ipc/badge');
-const deepLinkIpc    = require('./ipc/deepLink');
-const trayIpc        = require('./ipc/tray-ipc');
+const fileIpc        = require('./ipc/file.cjs');
+const pickerIpc      = require('./ipc/picker.cjs');
+const badgeIpc       = require('./ipc/badge.cjs');
+const deepLinkIpc    = require('./ipc/deepLink.cjs');
+const trayIpc        = require('./ipc/tray-ipc.cjs');
 
 // ---------------------------------------------------------------------------
 // Single-instance lock
@@ -134,7 +134,7 @@ function createMainWindow() {
     titleBarStyle: 'hidden',
     titleBarOverlay: titlebarForTheme(isDark),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

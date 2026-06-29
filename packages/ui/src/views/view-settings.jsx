@@ -10,6 +10,7 @@ import { Icon } from '../icons.jsx';
 import { PlFld, PlModal } from '../planner-chips.jsx';
 import { toast } from '../toast.jsx';
 import { hashPassword, loadConfidentialConfig, saveConfidentialConfig } from '../planner/planner-confidential.js';
+import { useProfile } from '../profile-context.jsx';
 
 const { useState: useStateVS, useEffect: useEffectVS, useRef: useRefVS, useCallback: useCallbackVS } = React;
 
@@ -303,9 +304,117 @@ function VsProfiles({ profileApi, showOrgLabel = true }) {
   );
 }
 
+// ── Backup & Restore ──────────────────────────────────────────────
+// A password prompt — `confirm` shows a second field (export); single field for import.
+function BundlePasswordModal({ open, confirm, onClose, onSubmit }) {
+  // Uncontrolled inputs read via refs at submit time (rather than controlled
+  // state) so values are read straight off the DOM nodes.
+  const pwRef = useRefVS(null);
+  const pw2Ref = useRefVS(null);
+  const [err, setErr] = useStateVS('');
+  if (!open) return null;
+  const submit = () => {
+    const pw = pwRef.current?.value || '';
+    const pw2 = pw2Ref.current?.value || '';
+    if (!pw) { setErr('Enter a password.'); return; }
+    if (confirm && pw !== pw2) { setErr('Passwords do not match.'); return; }
+    setErr('');
+    onSubmit(pw);
+  };
+  const close = () => { setErr(''); onClose(); };
+  return (
+    <PlModal open onClose={close} icon="lock"
+      title={confirm ? 'Set a password for this file' : 'Enter the file password'}
+      sub="The file is encrypted with this password; you'll need it to import."
+      footer={(
+        <React.Fragment>
+          <button className="btn ghost" onClick={close}>Cancel</button>
+          <button className="btn primary" onClick={submit}>{confirm ? 'Export' : 'Import'}</button>
+        </React.Fragment>
+      )}>
+      <PlFld label="Password">
+        <input type="password" ref={pwRef} autoFocus onChange={() => setErr('')}
+          onKeyDown={e => { if (e.key === 'Enter' && !confirm) submit(); }} />
+      </PlFld>
+      {confirm && (
+        <PlFld label="Confirm password">
+          <input type="password" ref={pw2Ref} onChange={() => setErr('')}
+            onKeyDown={e => { if (e.key === 'Enter') submit(); }} />
+        </PlFld>
+      )}
+      {err && <div className="plm-callout err">{err}</div>}
+    </PlModal>
+  );
+}
+
+// fileIO: { saveFile(name, text) → Promise, pickFile() → Promise<string|null> }
+function BackupRestoreCard({ fileIO, showExportSingle = true }) {
+  const { profiles, activeProfile, exportBundle, importBundle } = useProfile();
+  const [mode, setMode] = useStateVS(null);     // 'export-all' | 'export-one' | 'import'
+  const [pendingText, setPendingText] = useStateVS(null);
+  const [busy, setBusy] = useStateVS(false);
+
+  const startExport = (scope) => { setMode(scope === 'all' ? 'export-all' : 'export-one'); setPendingText(scope); };
+  const startImport = async () => {
+    const text = await fileIO.pickFile();
+    if (!text) return;
+    setPendingText(text); setMode('import');
+  };
+  const onPassword = async (password) => {
+    setBusy(true);
+    try {
+      if (mode === 'import') {
+        const res = await importBundle({ text: pendingText, password });
+        toast?.(`Imported ${res.imported} profile${res.imported !== 1 ? 's' : ''}. Reloading…`, 'success');
+        setTimeout(() => window.location.reload(), 700);
+      } else {
+        const scope = mode === 'export-all' ? 'all' : (activeProfile?.id);
+        const { filename, text } = await exportBundle({ scope, password });
+        await fileIO.saveFile(filename, text);
+        toast?.('Profile file saved.', 'success');
+      }
+    } catch (e) {
+      toast?.(e?.message || 'Something went wrong.', 'error');
+    } finally { setBusy(false); setMode(null); setPendingText(null); }
+  };
+
+  return (
+    <div className="card set-card">
+      <div className="card-head">
+        <h3><span style={{ color: 'var(--text-subtle)', display: 'flex' }}><Icon name="send" size={14} /></span>&nbsp;Backup &amp; Restore</h3>
+      </div>
+      <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+          Export a password-encrypted <code>.nmdprofile</code> file you can keep as a backup or open in the other apps.
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {showExportSingle && activeProfile && (
+            <button className="btn sm" disabled={busy} onClick={() => startExport(activeProfile.id)}>
+              <Icon name="send" size={12} /> Export this profile
+            </button>
+          )}
+          <button className="btn sm" disabled={busy || profiles.length === 0} onClick={() => startExport('all')}>
+            <Icon name="send" size={12} /> Back up all profiles
+          </button>
+          <button className="btn sm ghost" disabled={busy} onClick={startImport}>
+            <Icon name="inbox" size={12} /> Import / Restore from file
+          </button>
+        </div>
+      </div>
+      <BundlePasswordModal
+        open={mode != null}
+        confirm={mode === 'export-all' || mode === 'export-one'}
+        onClose={() => { setMode(null); setPendingText(null); }}
+        onSubmit={onPassword}
+      />
+    </div>
+  );
+}
+
 // ── Shared exports ────────────────────────────────────────────────
 export {
   PROFILE_COLORS,
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
+  BundlePasswordModal, BackupRestoreCard,
 };
