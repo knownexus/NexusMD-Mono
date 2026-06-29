@@ -50,7 +50,10 @@ function makeBinding(key) {
         if (!t?.accessToken) return null
         write(cfg.keySuffix, { ...auth, accessToken: t.accessToken, refreshToken: t.refreshToken || auth.refreshToken })
         return t.accessToken
-      } catch { return null }
+      } catch (e) {
+        toast?.(e?.message ? `${cfg.label}: ${e.message}` : `Could not refresh ${cfg.label} sign-in.`, 'error')
+        return null
+      }
     },
   }
 }
