@@ -24,6 +24,10 @@ export {
   NexusDataProvider, useNexusData, useEffectiveNeedsMe, EMPTY_NEXUS_DATA,
 } from './data-context.jsx'
 
+// Profile registry (active profile, CRUD, export/import). Each app wraps this
+// with a platform `store` (web REST vs app local) in its own profile-context.
+export { ProfileProvider, useProfile } from './profile-context.jsx'
+
 // Global toast notifications.
 export { toast, ToastHost, NexusMDToastBus } from './toast.jsx'
 

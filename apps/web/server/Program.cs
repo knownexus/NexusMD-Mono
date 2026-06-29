@@ -9,6 +9,10 @@ builder.Configuration.AddJsonFile(
 builder.Services.AddControllers();
 builder.Services.AddMemoryCache();
 
+// Profile registry (SQLite-backed) consumed by /api/profiles.
+builder.Services.AddSingleton<NexusMDWeb.Api.Data.ProfileRepository>();
+builder.Services.AddSingleton<NexusMDWeb.Api.Services.ProfileService>();
+
 // Allow the Capacitor Android app to call the API.
 builder.Services.AddCors(options =>
 {

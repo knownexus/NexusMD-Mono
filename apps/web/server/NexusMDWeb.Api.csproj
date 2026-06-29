@@ -7,6 +7,11 @@
     <RootNamespace>NexusMDWeb.Api</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- SQLite store for the profile registry (ProfileRepository) -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
+  </ItemGroup>
+
   <!-- Builds the Vite frontend into wwwroot/ on Release. The workspace root is two
        levels up (apps/web), where `npm run build` is defined. -->
   <Target Name="BuildFrontend" BeforeTargets="Build"

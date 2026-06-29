@@ -40,6 +40,8 @@ public sealed class TestFactory : WebApplicationFactory<Program>
                 ["Ado:Projects:0"]     = TestProject,
                 ["Ado:TestProject"]    = TestProject,
                 ["App:RefreshSeconds"] = "30",
+                // Keep the profile SQLite db inside the throwaway content root.
+                ["Profiles:DbPath"]    = Path.Combine(ContentRoot, "profiles.db"),
             });
         });
     }
