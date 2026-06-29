@@ -72,6 +72,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   saveFile: (filename, content, folder) => ipcRenderer.invoke('save-file', { filename, content, folder }),
 
+  // ── Cloud OAuth IPC ─────────────────────────────────────────────────────────
+  // Open the system browser for cloud sign-in, and receive the nexusmd:// deep
+  // link the backend redirects back to (carries the one-time code).
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  onDeepLink: (cb) => {
+    const handler = (_e, url) => cb(url);
+    ipcRenderer.on('deepLink:url', handler);
+    return () => ipcRenderer.removeListener('deepLink:url', handler);
+  },
+
   // ── File adapter IPC ────────────────────────────────────────────────────────
   file: {
     read:              (filePath)        => ipcRenderer.invoke('file:read', filePath),

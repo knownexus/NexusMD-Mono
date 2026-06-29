@@ -10,6 +10,7 @@ import { useTweaks } from './tweaks-panel.jsx';
 import { getProfileKey } from './profile-keys.js';
 import { NexusDataProvider } from '@nexusmd/ui';
 import { adoWorkItemSource } from './work-item-source.js';
+import { registerCloudDeepLink } from './cloud-auth.js';
 import { DashboardView } from './views/view-dashboard.jsx';
 import { WorkItemsView } from './views/view-workitems.jsx';
 import { PRView } from './views/view-prs.jsx';
@@ -2980,6 +2981,9 @@ const nexusDataValue = {
   namespace:     'helm',
   workItemSource: adoWorkItemSource,
 };
+// Subscribe to nexusmd:// deep links so cloud OAuth one-time codes are redeemed.
+registerCloudDeepLink();
+
 (async () => {
   ReactDOM.createRoot(document.getElementById('root')).render(
     <NexusDataProvider value={nexusDataValue}>

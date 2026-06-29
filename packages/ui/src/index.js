@@ -28,6 +28,9 @@ export {
 // with a platform `store` (web REST vs app local) in its own profile-context.
 export { ProfileProvider, useProfile, localUpsertProfiles } from './profile-context.jsx'
 
+// Cloud-sync provider factories (Google Drive / OneDrive) for profile bundles.
+export { makeGoogleDriveProvider, makeOneDriveProvider } from './cloud/providers.js'
+
 // Global toast notifications.
 export { toast, ToastHost, NexusMDToastBus } from './toast.jsx'
 
@@ -56,7 +59,7 @@ export {
   PROFILE_COLORS,
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
-  BundlePasswordModal, BackupRestoreCard,
+  BundlePasswordModal, BackupRestoreCard, CloudPickerModal,
 } from './views/view-settings.jsx'
 
 // Shared triage controls + work-item detail panel (used by the views below).

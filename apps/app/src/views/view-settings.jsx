@@ -10,6 +10,7 @@ import {
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard,
 } from '@nexusmd/ui';
 import { appFileIO } from '../file-io.js';
+import { appCloudProviders } from '../cloud-auth.js';
 // view-settings.jsx — Settings & profile page (planner-redesign port)
 // Works with the app's existing infrastructure:
 //   - tweaks / setTweak        → helm.tweaks (theme, density, sidebar, typeLabels)
@@ -332,7 +333,7 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
           {subPage === 'profiles' && (
             <>
               <VsProfiles profileApi={useProfile()} showOrgLabel={false} />
-              <BackupRestoreCard fileIO={appFileIO} showExportSingle={true} />
+              <BackupRestoreCard fileIO={appFileIO} showExportSingle={true} cloudProviders={appCloudProviders} />
             </>
           )}
 

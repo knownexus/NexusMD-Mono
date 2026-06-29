@@ -42,6 +42,13 @@ public sealed class TestFactory : WebApplicationFactory<Program>
                 ["App:RefreshSeconds"] = "30",
                 // Keep the profile SQLite db inside the throwaway content root.
                 ["Profiles:DbPath"]    = Path.Combine(ContentRoot, "profiles.db"),
+                ["Google:ClientId"]      = "test-google-client",
+                ["Google:ClientSecret"]  = "test-google-secret",
+                ["Microsoft:ClientId"]   = "test-ms-client",
+                ["Microsoft:ClientSecret"] = "test-ms-secret",
+                ["Microsoft:Tenant"]     = "common",
+                ["OAuth:NativeReturnPrefixes:0"] = "nexusmd://",
+                ["OAuth:NativeReturnPrefixes:1"] = "http://127.0.0.1",
             });
         });
     }

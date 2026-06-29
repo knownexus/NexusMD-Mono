@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require('electron');
 const path = require('path');
 
 const { createTray, updateTrayIcon } = require('./tray.cjs');
@@ -264,6 +264,9 @@ ipcMain.handle('save-file', async (_e, { filename, content, folder }) => {
   fs.writeFileSync(filePath, content, 'utf8');
   return filePath;
 });
+
+// Open an external URL in the system browser (used for cloud OAuth sign-in).
+ipcMain.handle('open-external', async (_e, url) => { await shell.openExternal(url); });
 
 // ---------------------------------------------------------------------------
 // Login-item IPC handlers

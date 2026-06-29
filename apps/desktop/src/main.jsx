@@ -15,6 +15,7 @@ import {
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { desktopFileIO } from './file-io.js'
+import { desktopCloudProviders, registerCloudDeepLink } from './cloud-auth.js'
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
@@ -55,6 +56,9 @@ const adapters = {
 // its scope. Must run before initCore, which reads cached ADO data via the
 // (now profile-scoped) getProfileKey.
 ensureDefaultProfileAndMigrate()
+
+// Subscribe to nexusmd:// deep links so cloud OAuth one-time codes are redeemed.
+registerCloudDeepLink()
 
 // Fire-and-forget: enables modules + inits adapters. The shell reads cached data
 // and re-renders on core's 'data:updated' events.
@@ -150,7 +154,7 @@ function DesktopSettings() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 }}>
       <VsProfiles profileApi={profileApi} />
-      <BackupRestoreCard fileIO={desktopFileIO} />
+      <BackupRestoreCard fileIO={desktopFileIO} cloudProviders={desktopCloudProviders} />
     </div>
   )
 }

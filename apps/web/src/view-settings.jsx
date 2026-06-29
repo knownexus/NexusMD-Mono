@@ -23,6 +23,7 @@ import {
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard,
 } from '@nexusmd/ui'
 import { webFileIO } from './file-io.js'
+import { webCloudProviders } from './cloud-auth.js'
 
 // Local pref hook — persists to localStorage per-profile and pushes to server prefs.
 function usePrefVS(key, fallback) {
@@ -864,7 +865,7 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
           {subPage === 'profiles' && (
             <>
               <VsProfiles profileApi={useProfile()} />
-              <BackupRestoreCard fileIO={webFileIO} />
+              <BackupRestoreCard fileIO={webFileIO} cloudProviders={webCloudProviders} />
             </>
           )}
 

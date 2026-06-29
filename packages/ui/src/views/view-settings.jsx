@@ -347,12 +347,52 @@ function BundlePasswordModal({ open, confirm, onClose, onSubmit }) {
   );
 }
 
+// A small list modal for choosing a cloud backup to restore.
+function CloudPickerModal({ open, label, files, busy, onClose, onPick }) {
+  if (!open) return null;
+  return (
+    <PlModal open onClose={onClose} icon="inbox"
+      title={`Restore from ${label}`}
+      sub="Choose a backup file to download and import."
+      footer={<button className="btn ghost" onClick={onClose}>Cancel</button>}>
+      {busy && <div className="plm-callout">Loading…</div>}
+      {!busy && (!files || files.length === 0) && (
+        <div className="plm-callout">No backups found in {label}.</div>
+      )}
+      {!busy && files && files.map(f => (
+        <button key={f.id} className="btn sm" style={{ width: '100%', justifyContent: 'space-between', marginBottom: 6 }}
+          onClick={() => onPick(f)}>
+          <span>{f.name}</span>
+          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{(f.modifiedAt || '').slice(0, 10)}</span>
+        </button>
+      ))}
+    </PlModal>
+  );
+}
+
 // fileIO: { saveFile(name, text) → Promise, pickFile() → Promise<string|null> }
-function BackupRestoreCard({ fileIO, showExportSingle = true }) {
+function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [] }) {
   const { profiles, activeProfile, exportBundle, importBundle } = useProfile();
   const [mode, setMode] = useStateVS(null);     // 'export-all' | 'export-one' | 'import'
   const [pendingText, setPendingText] = useStateVS(null);
   const [busy, setBusy] = useStateVS(false);
+  const [cloudTarget, setCloudTarget] = useStateVS(null);     // provider for the active password flow
+  const [picker, setPicker] = useStateVS(null);               // { provider, files } | { provider, busy }
+
+  const startCloudExport = (provider) => { setMode('export-all'); setPendingText('all'); setCloudTarget(provider); };
+  const startCloudRestore = async (provider) => {
+    setPicker({ provider, busy: true, files: null });
+    try { const files = await provider.list(); setPicker({ provider, busy: false, files }); }
+    catch (e) { toast?.(e?.message || `Couldn't reach ${provider.label}.`, 'error'); setPicker(null); }
+  };
+  const onPickCloudFile = async (file) => {
+    const provider = picker.provider;
+    setPicker(null);
+    try {
+      const text = await provider.download(file.id);
+      setPendingText(text); setMode('import'); setCloudTarget(null);
+    } catch (e) { toast?.(e?.message || 'Download failed.', 'error'); }
+  };
 
   const startExport = (scope) => { setMode(scope === 'all' ? 'export-all' : 'export-one'); setPendingText(scope); };
   const startImport = async () => {
@@ -370,12 +410,12 @@ function BackupRestoreCard({ fileIO, showExportSingle = true }) {
       } else {
         const scope = mode === 'export-all' ? 'all' : (activeProfile?.id);
         const { filename, text } = await exportBundle({ scope, password });
-        await fileIO.saveFile(filename, text);
-        toast?.('Profile file saved.', 'success');
+        if (cloudTarget) { await cloudTarget.upload(filename, text); toast?.(`Backup saved to ${cloudTarget.label}.`, 'success'); }
+        else { await fileIO.saveFile(filename, text); toast?.('Profile file saved.', 'success'); }
       }
     } catch (e) {
       toast?.(e?.message || 'Something went wrong.', 'error');
-    } finally { setBusy(false); setMode(null); setPendingText(null); }
+    } finally { setBusy(false); setMode(null); setPendingText(null); setCloudTarget(null); }
   };
 
   return (
@@ -400,7 +440,36 @@ function BackupRestoreCard({ fileIO, showExportSingle = true }) {
             <Icon name="inbox" size={12} /> Import / Restore from file
           </button>
         </div>
+        {cloudProviders.map(p => (
+          <div key={p.id} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {p.isConnected() ? (
+              <>
+                <button className="btn sm" disabled={busy} onClick={() => startCloudExport(p)}>
+                  <Icon name="send" size={12} /> Save backup to {p.label}
+                </button>
+                <button className="btn sm ghost" disabled={busy} onClick={() => startCloudRestore(p)}>
+                  <Icon name="inbox" size={12} /> Restore from {p.label}
+                </button>
+                <button className="btn sm ghost" disabled={busy} onClick={() => p.disconnect()}>
+                  Disconnect
+                </button>
+              </>
+            ) : (
+              <button className="btn sm" disabled={busy} onClick={() => p.connect()}>
+                <Icon name="lock" size={12} /> Connect {p.label}
+              </button>
+            )}
+          </div>
+        ))}
       </div>
+      <CloudPickerModal
+        open={picker != null}
+        label={picker?.provider?.label || ''}
+        files={picker?.files}
+        busy={!!picker?.busy}
+        onClose={() => setPicker(null)}
+        onPick={onPickCloudFile}
+      />
       <BundlePasswordModal
         open={mode != null}
         confirm={mode === 'export-all' || mode === 'export-one'}
@@ -416,5 +485,5 @@ export {
   PROFILE_COLORS,
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
-  BundlePasswordModal, BackupRestoreCard,
+  BundlePasswordModal, BackupRestoreCard, CloudPickerModal,
 };

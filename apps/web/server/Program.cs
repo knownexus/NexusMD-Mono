@@ -8,6 +8,11 @@ builder.Configuration.AddJsonFile(
 
 builder.Services.AddControllers();
 builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<NexusMDWeb.Api.Services.OAuth.ITokenExchanger,
+                              NexusMDWeb.Api.Services.OAuth.HttpTokenExchanger>();
+builder.Services.AddSingleton<NexusMDWeb.Api.Services.OAuth.IOneTimeCodeStore,
+                              NexusMDWeb.Api.Services.OAuth.MemoryOneTimeCodeStore>();
 
 // Profile registry (SQLite-backed) consumed by /api/profiles.
 builder.Services.AddSingleton<NexusMDWeb.Api.Data.ProfileRepository>();
