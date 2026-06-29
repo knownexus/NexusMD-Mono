@@ -73,13 +73,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFile: (filename, content, folder) => ipcRenderer.invoke('save-file', { filename, content, folder }),
 
   // ── Cloud OAuth IPC ─────────────────────────────────────────────────────────
-  // Open the system browser for cloud sign-in, and receive the nexusmd:// deep
-  // link the backend redirects back to (carries the one-time code).
+  // In-app PKCE OAuth: the main process runs the loopback flow and returns tokens.
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
-  onDeepLink: (cb) => {
-    const handler = (_e, url) => cb(url);
-    ipcRenderer.on('deepLink:url', handler);
-    return () => ipcRenderer.removeListener('deepLink:url', handler);
+  oauth: {
+    signIn:  (provider)               => ipcRenderer.invoke('oauth:signIn', provider),
+    refresh: (provider, refreshToken) => ipcRenderer.invoke('oauth:refresh', { provider, refreshToken }),
   },
 
   // ── File adapter IPC ────────────────────────────────────────────────────────

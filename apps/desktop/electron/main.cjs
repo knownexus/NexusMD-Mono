@@ -12,6 +12,7 @@ const pickerIpc      = require('./ipc/picker.cjs');
 const badgeIpc       = require('./ipc/badge.cjs');
 const deepLinkIpc    = require('./ipc/deepLink.cjs');
 const trayIpc        = require('./ipc/tray-ipc.cjs');
+const oauthIpc       = require('./ipc/oauth.cjs');
 
 // ---------------------------------------------------------------------------
 // Single-instance lock
@@ -212,6 +213,7 @@ app.whenReady().then(async () => {
   badgeIpc.register(ipcMain);
   deepLinkIpc.register(ipcMain, () => mainWindow);
   trayIpc.register(ipcMain, () => mainWindow, () => tray);
+  oauthIpc.register(ipcMain);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
