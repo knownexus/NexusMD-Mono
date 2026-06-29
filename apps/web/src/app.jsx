@@ -271,6 +271,7 @@ function SettingsModal({ open, onClose, onSaved }) {
       let tweaks2 = {};
       try { tweaks2 = stored2 ? JSON.parse(stored2) : {}; } catch (_) {}
       localStorage.setItem('nexusmd.tweaks', JSON.stringify({ ...tweaks2, quickLinks }));
+      try { document.dispatchEvent(new CustomEvent('nexusmd:data-changed', { detail: { collId: 'tweaks' } })); } catch (_) {}
       setTimeout(onClose, 1200);
     } catch (e) {
       setStatus('Error: ' + e.message);
@@ -1439,6 +1440,7 @@ function App() {
   useEffect(() => {
     try { localStorage.setItem('nexusmd.tweaks', JSON.stringify(tweaks)); } catch (_) {}
     nexusMDPushPref?.('nexusmd.tweaks', JSON.stringify(tweaks));
+    try { document.dispatchEvent(new CustomEvent('nexusmd:data-changed', { detail: { collId: 'tweaks' } })); } catch (_) {}
   }, [tweaks]);
 
   const [view, setView] = useState(() => {
@@ -1523,6 +1525,27 @@ function App() {
     window.addEventListener('nexusMDdata:loaded', handler);
     return () => window.removeEventListener('nexusMDdata:loaded', handler);
   }, []);
+
+  // Re-hydrate open views after a cloud sync writes merged data to localStorage.
+  // Covers team roster (team-custom / team-removed) via the existing dataVersion lever,
+  // and tweaks by reading the fresh value and pushing it into React state.
+  // Planner / notes are handled inside PlannerView which listens to the same event.
+  useEffect(() => {
+    const handler = (e) => {
+      const collId = e.detail?.collId;
+      if (collId === 'team-custom' || collId === 'team-removed') {
+        setDataVersion(v => v + 1);
+      } else if (collId === 'tweaks') {
+        try {
+          const s = localStorage.getItem('nexusmd.tweaks');
+          const fresh = s ? { ...DEFAULT_TWEAKS, ...JSON.parse(s) } : DEFAULT_TWEAKS;
+          setTweak(fresh);
+        } catch (_) {}
+      }
+    };
+    document.addEventListener('nexusmd:sync-applied', handler);
+    return () => document.removeEventListener('nexusmd:sync-applied', handler);
+  }, [setTweak]);
 
   // Work items state (live editable)
   const [workItems, setWorkItems] = useState(() => NexusMDData.WORK_ITEMS);

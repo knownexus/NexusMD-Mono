@@ -32,6 +32,11 @@ export {
   encodeBundle, decodeBundle, BUNDLE_FORMAT, BUNDLE_FORMAT_ENC, BUNDLE_VERSION, BUNDLE_EXT,
 } from './modules/profiles/bundle.js'
 export { planProfileScopeMigration } from './modules/profiles/migrate.js'
+export { stableStringify, contentHash } from './modules/sync/hash.js'
+export {
+  mergeRows, mergeKeyVal, mergeText, mergeSet, mergePlannerWeek,
+} from './modules/sync/merge.js'
+export { reconcileItem } from './modules/sync/reconcile.js'
 export { filterTriageItems, buildTriageCsv } from './modules/triage/index.js'
 export {
   isAllDayEvent, getEventsForDay, sortEventsByTime,

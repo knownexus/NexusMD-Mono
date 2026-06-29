@@ -31,6 +31,15 @@ export { ProfileProvider, useProfile, localUpsertProfiles } from './profile-cont
 // Cloud-sync provider factories (Google Drive / OneDrive) for profile bundles.
 export { makeGoogleDriveProvider, makeOneDriveProvider } from './cloud/providers.js'
 
+// Continuous sync — runtime, collections, payload crypto.
+export { encryptSync, decryptSync } from './sync/crypto.js'
+export { plannerCollection, notesCollection, teamCustomCollection, teamRemovedCollection, tweaksCollection } from './sync/collections.js'
+export { createSyncRuntime } from './sync/runtime.js'
+export { startAutoSync } from './sync/auto.js'
+export { singleFlight } from './sync/single-flight.js'
+export { exportBundle, importBundle } from './sync/local-bundle.js'
+export { createSyncController, domDispatch, domSubscribeForeground, domSubscribeChange } from './sync/controller.js'
+
 // Global toast notifications.
 export { toast, ToastHost, NexusMDToastBus } from './toast.jsx'
 
@@ -59,7 +68,7 @@ export {
   PROFILE_COLORS,
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
-  BundlePasswordModal, BackupRestoreCard, CloudPickerModal,
+  BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,
 } from './views/view-settings.jsx'
 
 // Shared triage controls + work-item detail panel (used by the views below).

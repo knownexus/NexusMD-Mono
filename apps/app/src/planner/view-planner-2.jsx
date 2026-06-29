@@ -85,6 +85,10 @@ function PlannerView({ data, setData, themes, setThemes }) {
     return next;
   }), []);
 
+  // Bumped when a cloud sync writes new planner week data so the week-load
+  // effect re-runs and pulls the merged data from localStorage.
+  const [plannerSyncRev, setPlannerSyncRev] = useStatePL(0);
+
   const calendarRef = useRefPL(null);
   const isFirstLoad = useRefPL(true);
   const readyToSave = useRefPL(false);
@@ -139,6 +143,20 @@ function PlannerView({ data, setData, themes, setThemes }) {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [calendarOpen]);
 
+  // Re-hydrate planner / notes in-place when a cloud sync applies merged data.
+  useEffectPL(() => {
+    const handler = (e) => {
+      const collId = e.detail?.collId;
+      if (collId === 'planner') {
+        setPlannerSyncRev(r => r + 1); // re-runs the week-load effect below
+      } else if (collId === 'notes') {
+        setGNotesRaw(loadGlobalNotes()); // read fresh; don't re-save
+      }
+    };
+    document.addEventListener('nexusmd:sync-applied', handler);
+    return () => document.removeEventListener('nexusmd:sync-applied', handler);
+  }, []);
+
   // Load per-week data whenever the active week changes (v1 logic incl. migration)
   useEffectPL(() => {
     readyToSave.current = false;
@@ -181,7 +199,7 @@ function PlannerView({ data, setData, themes, setThemes }) {
     }
     setCarryDismissed(false);
     setTimeout(() => { readyToSave.current = true; }, 60);
-  }, [weekOffset]);
+  }, [weekOffset, plannerSyncRev]);
 
   // Auto-save per week — debounced 600ms so rapid edits don't block the main thread
   // with repeated synchronous localStorage writes on every keystroke.

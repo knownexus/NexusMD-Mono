@@ -11,7 +11,6 @@ import { NexusMDData, NexusMDApi } from './data.js';
 import { Drawer, nexusMDPushPref } from './components.jsx'
 import { Icon } from './icons.jsx'
 import { PlFld, PlModal } from './planner-ui.jsx'
-import { activeProfileId, updateSettings, weekKey, PlannerSync } from './planner-sync.js'
 import { displayName } from './MarkdownViewer.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { loadConfidentialConfig, saveConfidentialConfig, hashPassword } from './confidential.jsx'
@@ -20,10 +19,11 @@ import { toast } from './toast.jsx'
 import { GoogleAuth } from './google-auth.js'
 import { GitHubClient } from './github-client.js'
 import {
-  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard,
+  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard, CloudSyncCard,
 } from '@nexusmd/ui'
 import { webFileIO } from './file-io.js'
 import { webCloudProviders } from './cloud-auth.js'
+import { webSync } from './sync.js'
 
 // Local pref hook — persists to localStorage per-profile and pushes to server prefs.
 function usePrefVS(key, fallback) {
@@ -207,333 +207,6 @@ function GitHubConnectionTab({ activeProfile }) {
         <span style={{ flex: 1 }}/>
         <button className="btn sm primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
       </div>
-    </VsCard>
-  );
-}
-
-// ── Drive backup / restore card ────────────────────────────────
-function DriveSyncCard() {
-  const [files,     setFiles]     = useStateVS([]);
-  const [loading,   setLoading]   = useStateVS(false);
-  const [uploading, setUploading] = useStateVS(false);
-  const [error,     setError]     = useStateVS(null);
-
-  const getToken = () => GoogleAuth?.getAuth()?.accessToken ?? null;
-
-  const loadFiles = () => {
-    const token = getToken();
-    if (!token) return;
-    setLoading(true);
-    fetch(`/api/google/drive/files?token=${encodeURIComponent(token)}`, { signal: AbortSignal.timeout(12_000) })
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then(data => { setFiles(data); setLoading(false); })
-      .catch(err => { setError(String(err)); setLoading(false); });
-  };
-
-  useEffectVS(() => { loadFiles(); }, []);
-
-  const backup = async () => {
-    const token = getToken();
-    if (!token) { toast?.('Google not connected.', 'error'); return; }
-    setUploading(true);
-    try {
-      // Collect all profile-namespaced planner data + prefs
-      const activeId = localStorage.getItem('nexusmd.activeProfileId') || '';
-      const snap = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && (k.startsWith(`nexusmd.p.${activeId}`) || k.startsWith('nexusmd.profiles') || k === 'nexusmd.activeProfileId')) {
-          snap[k] = localStorage.getItem(k);
-        }
-      }
-      const data = JSON.stringify({ exportedAt: new Date().toISOString(), profileId: activeId, snap });
-      const res = await fetch('/api/google/drive/backup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, data }),
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (!res.ok) throw new Error(res.status);
-      toast?.('Backup saved to Google Drive.', 'success');
-      loadFiles();
-    } catch (err) {
-      toast?.(`Backup failed: ${err}`, 'error');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const restore = async (fileId) => {
-    const token = getToken();
-    if (!token) return;
-    const sure = window.confirm('Restore this backup? Your current local data will be overwritten.');
-    if (!sure) return;
-    try {
-      const res = await fetch(`/api/google/drive/restore/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`, { signal: AbortSignal.timeout(20_000) });
-      if (!res.ok) throw new Error(res.status);
-      const { snap } = await res.json();
-      Object.entries(snap || {}).forEach(([k, v]) => { try { localStorage.setItem(k, v); } catch {} });
-      toast?.('Backup restored. Reloading…', 'success');
-      setTimeout(() => window.location.reload(), 800);
-    } catch (err) {
-      toast?.(`Restore failed: ${err}`, 'error');
-    }
-  };
-
-  const deleteFile = async (fileId) => {
-    const token = getToken();
-    if (!token) return;
-    if (!window.confirm('Delete this backup from Google Drive?')) return;
-    try {
-      await fetch(`/api/google/drive/files/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`, { method: 'DELETE', signal: AbortSignal.timeout(10_000) });
-      setFiles(f => f.filter(x => x.id !== fileId));
-      toast?.('Backup deleted.', 'success');
-    } catch {
-      toast?.('Delete failed.', 'error');
-    }
-  };
-
-  if (!GoogleAuth?.isConnected()) return null;
-
-  return (
-    <VsCard title="Google Drive Backup" icon="inbox">
-      {error && <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--danger)' }}>{error}</div>}
-      <div className="set-row" style={{ gap: 8 }}>
-        <button className="btn sm ghost" onClick={loadFiles} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
-        <span style={{ flex: 1 }}/>
-        <button className="btn sm primary" onClick={backup} disabled={uploading}>{uploading ? 'Saving…' : 'Backup now'}</button>
-      </div>
-      {files.length === 0 && !loading && (
-        <div style={{ padding: '12px 14px', fontSize: 12.5, color: 'var(--text-subtle)' }}>No backups yet. Click "Backup now" to create one.</div>
-      )}
-      {files.map(f => {
-        const date = f.modifiedTime ? new Date(f.modifiedTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '';
-        const kb   = f.size ? Math.round(Number(f.size) / 1024) + ' KB' : '';
-        return (
-          <div key={f.id} className="set-row" style={{ gap: 8 }}>
-            <div className="info" style={{ flex: 1 }}>
-              <div className="t" style={{ fontSize: 12.5 }}>{f.name}</div>
-              <div className="d">{date}{kb ? ` · ${kb}` : ''}</div>
-            </div>
-            <button className="btn sm ghost" onClick={() => restore(f.id)}>Restore</button>
-            <button className="btn sm ghost danger" onClick={() => deleteFile(f.id)}>Delete</button>
-          </div>
-        );
-      })}
-    </VsCard>
-  );
-}
-
-// ── Planner Sync Card ─────────────────────────────────────────
-const FREQ_PRESETS = [
-  [15,  'Every 15 min'],
-  [60,  'Every hour'],
-  [360, 'Every 6 hours'],
-  [1440,'Daily'],
-];
-
-function PlannerConflictModal({ conflict, onKeepMine, onUseDrive, onCancel }) {
-  if (!conflict) return null;
-  const wkLabel = (() => {
-    const [yearStr, weekStr] = conflict.weekKey.split('-W');
-    const year = parseInt(yearStr, 10);
-    const week = parseInt(weekStr, 10);
-    const monday = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7));
-    monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() || 7) + 1);
-    const sunday = new Date(monday); sunday.setUTCDate(monday.getUTCDate() + 6);
-    const fmt = d => d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    return `Week ${week} — ${fmt(monday)}–${fmt(sunday)}`;
-  })();
-
-  return (
-    <PlModal open icon="alert"
-      title="Planner sync conflict"
-      sub={wkLabel}
-      onClose={onCancel}
-      footer={(
-        <React.Fragment>
-          <button className="btn ghost" onClick={onCancel}>Cancel</button>
-          <button className="btn ghost" onClick={onUseDrive}>Use Drive version</button>
-          <button className="btn primary" onClick={onKeepMine}>Keep mine</button>
-        </React.Fragment>
-      )}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, padding: '4px 0' }}>
-        {[
-          { label: 'This device', version: conflict.localVersion },
-          { label: 'Google Drive', version: conflict.driveVersion },
-        ].map(({ label, version }) => (
-          <div key={label} style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '10px 12px' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-subtle)', marginBottom: 6 }}>{label}</div>
-            <div style={{ fontSize: 12.5 }}>Version {version}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ fontSize: 12, color: 'var(--text-subtle)', padding: '4px 0' }}>
-        Both copies have unsynchronised changes. Choose which version to keep. The other will be overwritten.
-      </div>
-    </PlModal>
-  );
-}
-
-function PlannerSyncCard() {
-  const [settings, setSettingsState] = useStateVS(() => {
-    try {
-      const raw = localStorage.getItem(getProfileKey?.('planner.sync'));
-      return raw ? { localEnabled: false, localFolder: '', driveEnabled: false, intervalMinutes: 60, ...JSON.parse(raw) } : { localEnabled: false, localFolder: '', driveEnabled: false, intervalMinutes: 60 };
-    } catch { return { localEnabled: false, localFolder: '', driveEnabled: false, intervalMinutes: 60 }; }
-  });
-  const [status,     setStatus]     = useStateVS({ state: 'idle', lastSynced: null, conflicts: [] });
-  const [conflict,   setConflict]   = useStateVS(null);  // currently-shown conflict
-  const [customOpen, setCustomOpen] = useStateVS(settings.intervalMinutes > 0 && !FREQ_PRESETS.find(([m]) => m === settings.intervalMinutes));
-  const [customVal,  setCustomVal]  = useStateVS(String(settings.intervalMinutes));
-  const [bootstrapping, setBootstrapping] = useStateVS(false);
-
-  useEffectVS(() => {
-    const handler = e => {
-      setStatus(e.detail);
-      if (e.detail.bootstrapping === false) setBootstrapping(false);
-      if (e.detail.bootstrapping === true)  setBootstrapping(true);
-    };
-    document.addEventListener('nexusmd:planner-sync-status', handler);
-    return () => document.removeEventListener('nexusmd:planner-sync-status', handler);
-  }, []);
-
-  const applySettings = (next) => {
-    setSettingsState(next);
-    PlannerSync?.updateSettings(next);
-  };
-
-  const toggle = (field) => {
-    const next = { ...settings, [field]: !settings[field] };
-    applySettings(next);
-  };
-
-  const pickFolder = async () => {
-    const picked = await window.electronAPI?.pickOutputFolder();
-    if (picked) applySettings({ ...settings, localEnabled: true, localFolder: picked });
-  };
-
-  const setFreq = (minutes) => {
-    const isCustom = !FREQ_PRESETS.find(([m]) => m === minutes);
-    setCustomOpen(isCustom);
-    applySettings({ ...settings, intervalMinutes: minutes });
-  };
-
-  const applyCustomFreq = () => {
-    const v = parseInt(customVal, 10);
-    if (v > 0) applySettings({ ...settings, intervalMinutes: v });
-  };
-
-  const openConflict = (c) => setConflict(c);
-
-  const resolveConflict = async (choice) => {
-    if (!conflict) return;
-    setConflict(null);
-    await PlannerSync?.resolveConflict(conflict.weekKey, choice);
-  };
-
-  const statusText = () => {
-    const { state, lastSynced, conflicts } = status;
-    if (state === 'conflict') {
-      const c = (conflicts || [])[0];
-      return c ? (
-        <button className="btn sm ghost danger" onClick={() => openConflict(c)} style={{ fontWeight: 600 }}>
-          Conflict on {c.weekKey} — tap to resolve
-        </button>
-      ) : 'Conflict detected';
-    }
-    if (state === 'syncing')      return bootstrapping ? 'Importing from Drive…' : 'Syncing…';
-    if (state === 'offline')      return 'Offline — saving locally';
-    if (state === 'disconnected') return 'Google disconnected';
-    if (state === 'error')        return `Sync error — will retry`;
-    if (lastSynced) {
-      const d = new Date(lastSynced);
-      const now = new Date();
-      const isToday = d.toDateString() === now.toDateString();
-      const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      return `Last synced: ${isToday ? 'Today' : d.toLocaleDateString([], { dateStyle: 'short' })} at ${time}`;
-    }
-    return 'Never synced';
-  };
-
-  const isCustomFreq = !FREQ_PRESETS.find(([m]) => m === settings.intervalMinutes);
-  const googleConnected = !!GoogleAuth?.isConnected?.();
-
-  return (
-    <VsCard title="Planner Sync" icon="send">
-      {/* Local folder */}
-      <VsRow title="Save to local folder" desc={settings.localFolder || 'No folder selected'}>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {window.electronAPI && (
-            <button className="btn sm ghost" onClick={pickFolder}>Browse…</button>
-          )}
-          <PlToggle
-            checked={settings.localEnabled}
-            onChange={() => {
-              if (!settings.localEnabled && !settings.localFolder && window.electronAPI) {
-                pickFolder();
-              } else {
-                toggle('localEnabled');
-              }
-            }}
-          />
-        </div>
-      </VsRow>
-
-      {/* Google Drive */}
-      <VsRow
-        title="Save to Google Drive"
-        desc={googleConnected ? 'Syncs to your Google Drive app folder' : 'Connect Google to enable'}>
-        {googleConnected
-          ? <PlToggle checked={settings.driveEnabled} onChange={() => toggle('driveEnabled')} />
-          : <span className="pill muted">Not connected</span>
-        }
-      </VsRow>
-
-      {/* Sync frequency (only shown when either is enabled) */}
-      {(settings.localEnabled || settings.driveEnabled) && (
-        <VsFullRow title="Sync frequency" desc="How often to check for changes">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {FREQ_PRESETS.map(([minutes, label]) => (
-              <button
-                key={minutes}
-                className={`btn sm ${settings.intervalMinutes === minutes && !isCustomFreq ? 'primary' : 'ghost'}`}
-                onClick={() => setFreq(minutes)}>
-                {label}
-              </button>
-            ))}
-            <button
-              className={`btn sm ${isCustomFreq ? 'primary' : 'ghost'}`}
-              onClick={() => { setCustomOpen(true); }}>
-              Custom
-            </button>
-          </div>
-          {(customOpen || isCustomFreq) && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
-              <input
-                type="number" min="1" className="plf-input" style={{ width: 80 }}
-                value={customVal}
-                onChange={e => setCustomVal(e.target.value)}
-                onBlur={applyCustomFreq}
-                onKeyDown={e => { if (e.key === 'Enter') applyCustomFreq(); }}
-              />
-              <span style={{ fontSize: 12.5, color: 'var(--text-subtle)' }}>minutes</span>
-            </div>
-          )}
-        </VsFullRow>
-      )}
-
-      {/* Status line */}
-      <div style={{ padding: '8px 14px', fontSize: 12, color: 'var(--text-subtle)', borderTop: '1px solid var(--border)' }}>
-        {statusText()}
-      </div>
-
-      <PlannerConflictModal
-        conflict={conflict}
-        onKeepMine={() => resolveConflict('mine')}
-        onUseDrive={() => resolveConflict('drive')}
-        onCancel={() => setConflict(null)}
-      />
     </VsCard>
   );
 }
@@ -866,6 +539,7 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
             <>
               <VsProfiles profileApi={useProfile()} />
               <BackupRestoreCard fileIO={webFileIO} cloudProviders={webCloudProviders} />
+              <CloudSyncCard controller={webSync} providers={webCloudProviders} fileIO={webFileIO} />
             </>
           )}
 
@@ -911,8 +585,6 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
                 <button className="btn sm ghost danger" onClick={clearLocalData}>Clear local data</button>
               </VsRow>
             </VsCard>
-            <DriveSyncCard />
-            <PlannerSyncCard />
           </>)}
           {subPage === 'desktop' && window.electronAPI && (
             <VsCard title="Desktop app" icon="more">

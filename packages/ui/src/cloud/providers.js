@@ -91,6 +91,28 @@ export function makeGoogleDriveProvider(authBinding) {
         `https://www.googleapis.com/drive/v3/files/${id}?alt=media`)
       return r.text()
     },
+
+    // ── Object-store (by-name) API for the sync engine ──
+    async getText(name) {
+      const id = await findFileByName(name)
+      if (!id) return null
+      const r = await authedFetch(authBinding, `https://www.googleapis.com/drive/v3/files/${id}?alt=media`)
+      return r.text()
+    },
+    async listNames(prefix) {
+      const fid = await ensureFolder()
+      const q = encodeURIComponent(`'${fid}' in parents and trashed=false`)
+      const r = await (await authedFetch(authBinding,
+        `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`)).json()
+      return (r.files || [])
+        .filter(f => f.name.startsWith(prefix))
+        .map(f => ({ name: f.name, modifiedAt: f.modifiedTime }))
+    },
+    async remove(name) {
+      const id = await findFileByName(name)
+      if (!id) return
+      await authedFetch(authBinding, `https://www.googleapis.com/drive/v3/files/${id}`, { method: 'DELETE' })
+    },
   }
 }
 
@@ -133,6 +155,37 @@ export function makeOneDriveProvider(authBinding) {
     async download(id) {
       const r = await authedFetch(authBinding, `${GRAPH}/items/${id}/content`)
       return r.text()
+    },
+
+    // ── Object-store (by-name) API for the sync engine ──
+    async getText(name) {
+      try {
+        const r = await authedFetch(authBinding, `${GRAPH}/root:/${FOLDER}/${encodeURIComponent(name)}:/content`)
+        return r.text()
+      } catch (e) {
+        if (String(e.message).includes('(404)')) return null
+        throw e
+      }
+    },
+    async listNames(prefix) {
+      let res
+      try {
+        res = await authedFetch(authBinding, `${GRAPH}/root:/${FOLDER}:/children?$select=name,lastModifiedDateTime&$top=999`)
+      } catch (e) {
+        if (String(e.message).includes('(404)')) return []
+        throw e
+      }
+      const r = await res.json()
+      return (r.value || [])
+        .filter(f => f.name.startsWith(prefix))
+        .map(f => ({ name: f.name, modifiedAt: f.lastModifiedDateTime }))
+    },
+    async remove(name) {
+      try {
+        await authedFetch(authBinding, `${GRAPH}/root:/${FOLDER}/${encodeURIComponent(name)}:`, { method: 'DELETE' })
+      } catch (e) {
+        if (!String(e.message).includes('(404)')) throw e
+      }
     },
   }
 }

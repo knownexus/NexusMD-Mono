@@ -16,7 +16,7 @@ import { NexusDataProvider } from '@nexusmd/ui'
 import { NexusMDData, NexusMDApi } from './data.js'
 import { nexusMDPushPref } from './components.jsx'
 import { GoogleAuth } from './google-auth.js'
-import { PlannerSync } from './planner-sync.js'
+import { startWebAutoSync } from './sync.js'
 import App from './app.jsx'
 
 initCore({
@@ -47,9 +47,9 @@ const nexusDataValue = {
   pushPref:      nexusMDPushPref,
   namespace:     'nexusmd',
   googleAuth:    GoogleAuth,
-  // Web-only: after a planner week is saved, kick the Google-Drive sync engine
-  // (the shared saveWeekPlanner fires this via the planner runtime).
-  plannerOnWeekSaved: (year, week) => PlannerSync?.onWeekSaved(year, week),
+  // Web-only: after a planner week is saved, dispatch a DOM event so the new
+  // cloud-sync engine (Task 3) can subscribe to nexusmd:planner-changed.
+  plannerOnWeekSaved: (year, week) => document.dispatchEvent(new CustomEvent('nexusmd:planner-changed', { detail: { year, week } })),
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -59,3 +59,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </NexusDataProvider>
   </React.StrictMode>
 )
+
+// Start continuous cloud sync (guarded no-op until key + provider are configured).
+startWebAutoSync()

@@ -2,7 +2,6 @@
 // Fires two alerts per event: one N minutes before (configurable), one at start.
 // Tracks fired alerts in a session Set so they never repeat in the same tab.
 
-import { init as plannerSyncInit } from './planner-sync.js';
 import { GoogleAuth } from './google-auth.js';
 
 'use strict';
@@ -124,7 +123,6 @@ document.addEventListener('google:auth:changed', e => {
 
 // Start on load if already connected
 function _init() {
-  plannerSyncInit();
   if (GoogleAuth?.isConnected()) start();
 }
 if (document.readyState === 'loading') {

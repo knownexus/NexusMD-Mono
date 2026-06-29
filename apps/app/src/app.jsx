@@ -11,6 +11,7 @@ import { getProfileKey } from './profile-keys.js';
 import { NexusDataProvider } from '@nexusmd/ui';
 import { adoWorkItemSource } from './work-item-source.js';
 import { registerCloudDeepLink } from './cloud-auth.js';
+import { startAppAutoSync } from './sync.js';
 import { DashboardView } from './views/view-dashboard.jsx';
 import { WorkItemsView } from './views/view-workitems.jsx';
 import { PRView } from './views/view-prs.jsx';
@@ -1476,6 +1477,26 @@ function AppShell() {
     window.addEventListener('helmdata:loaded', handler);
     return () => window.removeEventListener('helmdata:loaded', handler);
   }, []);
+
+  // Re-hydrate open views after a cloud sync writes merged data to localStorage.
+  // Team uses the dataVersion lever; tweaks are re-read into useTweaks state.
+  // Planner / notes are handled inside the planner view (listens to the same event).
+  useEffect(() => {
+    const handler = (e) => {
+      const collId = e.detail?.collId;
+      if (collId === 'team-custom' || collId === 'team-removed') {
+        setDataVersion(v => v + 1);
+      } else if (collId === 'tweaks') {
+        try {
+          const s = localStorage.getItem(getProfileKey('helm.tweaks'));
+          const parsed = s ? JSON.parse(s) : {};
+          setTweak({ ...DEFAULT_TWEAKS, sidebar: detectDefaultSidebar(), ...parsed });
+        } catch (_) {}
+      }
+    };
+    document.addEventListener('nexusmd:sync-applied', handler);
+    return () => document.removeEventListener('nexusmd:sync-applied', handler);
+  }, [setTweak]);
 
   // Work items state (live editable)
   const [workItems, setWorkItems] = useState(() => HelmData.WORK_ITEMS);
@@ -2983,6 +3004,9 @@ const nexusDataValue = {
 };
 // Subscribe to nexusmd:// deep links so cloud OAuth one-time codes are redeemed.
 registerCloudDeepLink();
+
+// Start continuous cloud sync (no-op until a passphrase + provider are set).
+startAppAutoSync();
 
 (async () => {
   ReactDOM.createRoot(document.getElementById('root')).render(

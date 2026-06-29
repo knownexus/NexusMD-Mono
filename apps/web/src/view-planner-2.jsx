@@ -60,11 +60,33 @@ export function PlannerView({ data, setData, themes, setThemes }) {
     return next;
   }), []);
 
+  // Bumped when a cloud sync writes new planner week data so the week-load
+  // effect re-runs and pulls the merged data from localStorage.
+  const [plannerSyncRev, setPlannerSyncRev] = useStatePL(0);
+
   const calendarRef = useRefPL(null);
   const isFirstLoad = useRefPL(true);
   const readyToSave = useRefPL(false);
 
   const showFlash = (msg) => { setFlash(msg); setTimeout(() => setFlash(null), 2600); };
+
+  // Listen for nexusmd:sync-applied and re-hydrate planner / notes in-place.
+  useEffectPL(() => {
+    const handler = (e) => {
+      const collId = e.detail?.collId;
+      if (collId === 'planner') {
+        // Bump the sync revision counter — added to the week-load effect deps below,
+        // so the current week's data is re-read from localStorage without a page reload.
+        setPlannerSyncRev(r => r + 1);
+      } else if (collId === 'notes') {
+        // Direct state update: just read the fresh value; do not call setGNotes
+        // (which also saves back to localStorage and would trigger a redundant write).
+        setGNotesRaw(loadGlobalNotes());
+      }
+    };
+    document.addEventListener('nexusmd:sync-applied', handler);
+    return () => document.removeEventListener('nexusmd:sync-applied', handler);
+  }, []);
 
   // Consume pending navigation set by navigateToPlanner (Calendar "Open in Planner" etc.)
   useEffectPL(() => {
@@ -136,7 +158,7 @@ export function PlannerView({ data, setData, themes, setThemes }) {
     }
     setCarryDismissed(false);
     setTimeout(() => { readyToSave.current = true; }, 60);
-  }, [weekOffset]);
+  }, [weekOffset, plannerSyncRev]);
 
   // Auto-save per week
   useEffectPL(() => {

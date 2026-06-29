@@ -10,12 +10,13 @@ import {
   NexusDataProvider, useNexusData, ToastHost,
   PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
   DashboardView, WorkItemsView, TriageView,
-  VsProfiles, BackupRestoreCard,
+  VsProfiles, BackupRestoreCard, CloudSyncCard,
 } from '@nexusmd/ui'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { desktopFileIO } from './file-io.js'
 import { desktopCloudProviders, registerCloudDeepLink } from './cloud-auth.js'
+import { desktopSync, startDesktopAutoSync } from './sync.js'
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
@@ -155,6 +156,7 @@ function DesktopSettings() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 }}>
       <VsProfiles profileApi={profileApi} />
       <BackupRestoreCard fileIO={desktopFileIO} cloudProviders={desktopCloudProviders} />
+      <CloudSyncCard controller={desktopSync} providers={desktopCloudProviders} fileIO={desktopFileIO} />
     </div>
   )
 }
@@ -288,3 +290,5 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </ProfileProvider>
   </React.StrictMode>
 )
+
+startDesktopAutoSync()

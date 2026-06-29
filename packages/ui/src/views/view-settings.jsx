@@ -480,10 +480,135 @@ function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [
   );
 }
 
+// Cloud Sync card — continuous sync + encrypted local export/import. Driven by a
+// platform sync controller (createSyncController), the platform's cloud providers,
+// and its file I/O. Shared across web/desktop/app.
+function CloudSyncCard({ controller, providers, fileIO }) {
+  const [selectedId, setSelectedId] = React.useState(() => controller.getSyncProvider()?.id || '');
+  const [hasKey, setHasKey] = React.useState(false);
+  const [passphrase, setPassphrase] = React.useState('');
+  const [syncing, setSyncing] = React.useState(false);
+  const [lastResult, setLastResult] = React.useState(null);
+
+  const provider = providers.find(p => p.id === selectedId) || null;
+  const [connected, setConnected] = React.useState(false);
+
+  React.useEffect(() => { controller.hasSyncKey().then(setHasKey); }, []);
+  React.useEffect(() => {
+    const p = providers.find(p => p.id === selectedId) || null;
+    setConnected(p ? p.isConnected() : false);
+  }, [selectedId]);
+  React.useEffect(() => {
+    const refresh = () => {
+      const p = providers.find(p => p.id === selectedId) || null;
+      setConnected(p ? p.isConnected() : false);
+    };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [selectedId]);
+
+  const handleProviderChange = (id) => {
+    setSelectedId(id); controller.setSyncProvider(id);
+    const p = providers.find(pr => pr.id === id) || null;
+    setConnected(p ? p.isConnected() : false);
+  };
+  const handleConnect = async () => { if (!provider) return; await provider.connect(); setConnected(provider.isConnected()); };
+  const handleDisconnect = async () => { if (!provider) return; await provider.disconnect(); setConnected(false); toast?.(`${provider.label} disconnected.`, 'success'); };
+  const handleSavePassphrase = async () => { if (!passphrase) return; await controller.setSyncPassphrase(passphrase); setPassphrase(''); setHasKey(true); toast?.('Sync passphrase saved.', 'success'); };
+  const handleForgetPassphrase = async () => { await controller.clearSyncKey(); setHasKey(false); toast?.('Sync passphrase forgotten.', 'success'); };
+
+  const handleSyncNow = async () => {
+    setSyncing(true); setLastResult(null);
+    try {
+      const result = await controller.syncOnce();
+      setLastResult(result);
+      if (result.skipped === 'no-key') toast?.('Set a sync passphrase first.', 'info');
+      else if (result.skipped === 'no-provider') toast?.('Select a cloud provider first.', 'info');
+      else if (result.skipped === 'not-connected') toast?.('Connect your cloud provider first.', 'info');
+      else if (result.skipped === 'bad-passphrase') toast?.('Wrong passphrase — enter the correct passphrase and try again.', 'error');
+      else if (!result.skipped) toast?.(`Synced — pushed ${result.pushed}, pulled ${result.pulled}, merged ${result.merged}.`, 'success');
+    } catch (err) { toast?.('Sync failed: ' + (err?.message || 'unknown error'), 'error'); }
+    finally { setSyncing(false); }
+  };
+
+  const stamp = () => {
+    const d = new Date(); const p2 = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
+  };
+  const handleExport = async () => {
+    try {
+      const text = await controller.exportLocalBundle();
+      await fileIO.saveFile(`nexusmd-planner-${controller.getActiveProfileId() || 'default'}-${stamp()}.nmdplanner`, text);
+      toast?.('Exported encrypted planner bundle.', 'success');
+    } catch (err) { toast?.('Export failed: ' + (err?.message || 'unknown error'), 'error'); }
+  };
+  const handleImport = async () => {
+    try {
+      const text = await fileIO.pickFile();
+      if (!text) return;
+      const r = await controller.importLocalBundle(text);
+      toast?.(r.collections.length ? `Imported ${r.collections.join(', ')}.` : 'Nothing to import.', 'success');
+    } catch (err) { toast?.(err?.code === 'bad-passphrase' ? 'Wrong passphrase for this file.' : 'Import failed: ' + (err?.message || 'unknown error'), 'error'); }
+  };
+
+  const lastDesc = lastResult && !lastResult.skipped
+    ? `Last: pushed ${lastResult.pushed}, pulled ${lastResult.pulled}, merged ${lastResult.merged}`
+    : 'Push and pull encrypted changes with your cloud';
+
+  return (
+    <VsCard title="Cloud Sync" icon="inbox">
+      <VsFullRow title="Cloud provider" desc="Where encrypted sync files are stored">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {providers.map(p => (
+            <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13 }}>
+              <input type="radio" name="sync-provider" value={p.id} checked={selectedId === p.id} onChange={() => handleProviderChange(p.id)} style={{ accentColor: 'var(--accent)' }} />
+              {p.label}
+            </label>
+          ))}
+        </div>
+      </VsFullRow>
+      {provider && (
+        <VsRow title={provider.label} desc={connected ? `Connected to ${provider.label}` : `Not connected to ${provider.label}`}>
+          {connected ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="pill success"><span className="dot"></span>Connected</span>
+              <button className="btn sm ghost danger" onClick={handleDisconnect}>Disconnect</button>
+            </div>
+          ) : (
+            <button className="btn sm ghost" onClick={handleConnect}>Connect {provider.label}</button>
+          )}
+        </VsRow>
+      )}
+      <VsRow title="Sync passphrase" desc="AES-256 key for all synced data — hashed locally, never sent anywhere">
+        {hasKey ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="pill success"><span className="dot"></span>Remembered</span>
+            <button className="btn sm ghost danger" onClick={handleForgetPassphrase}>Forget</button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="password" value={passphrase} onChange={e => setPassphrase(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSavePassphrase(); }} placeholder="Enter passphrase…" style={{ width: 200, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }} />
+            <button className="btn sm" onClick={handleSavePassphrase} disabled={!passphrase}>Save</button>
+          </div>
+        )}
+      </VsRow>
+      <VsRow title="Sync now" desc={lastDesc}>
+        <button className="btn sm" onClick={handleSyncNow} disabled={syncing}>{syncing ? 'Syncing…' : 'Sync now'}</button>
+      </VsRow>
+      <VsRow title="Local file" desc={hasKey ? 'Export or import an encrypted planner bundle (.nmdplanner)' : 'Set a sync passphrase to encrypt local exports'}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn sm ghost" onClick={handleExport} disabled={!hasKey}>Export to file</button>
+          <button className="btn sm ghost" onClick={handleImport} disabled={!hasKey}>Import from file</button>
+        </div>
+      </VsRow>
+    </VsCard>
+  );
+}
+
 // ── Shared exports ────────────────────────────────────────────────
 export {
   PROFILE_COLORS,
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
-  BundlePasswordModal, BackupRestoreCard, CloudPickerModal,
+  BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,
 };

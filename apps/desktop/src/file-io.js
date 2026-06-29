@@ -8,7 +8,7 @@ export const desktopFileIO = {
     await pickerAdapter.saveFile(filename, text)
   },
   async pickFile() {
-    const picked = await pickerAdapter.pickFile({ ext: '.nmdprofile' })
+    const picked = await pickerAdapter.pickFile({ ext: '.nmdprofile,.nmdplanner' })
     return picked?.text ?? null
   },
 }

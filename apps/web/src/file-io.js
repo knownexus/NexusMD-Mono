@@ -9,7 +9,7 @@ export const webFileIO = {
   pickFile() {
     return new Promise((resolve) => {
       const input = document.createElement('input')
-      input.type = 'file'; input.accept = '.nmdprofile,application/json'
+      input.type = 'file'; input.accept = '.nmdprofile,.nmdplanner,application/json'
       input.onchange = () => {
         const f = input.files?.[0]
         if (!f) { resolve(null); return }

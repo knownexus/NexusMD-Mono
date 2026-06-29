@@ -227,6 +227,8 @@ export function saveGlobalNotes(notes) {
   const s = JSON.stringify(notes);
   try { storage.setItem(key, s); } catch {}
   pushPref?.(`${namespace}.planner.globalNotes`, s);
+  // Signal the cloud-sync change trigger (web). No-op where nothing listens.
+  try { if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('nexusmd:data-changed', { detail: { collId: 'notes' } })); } catch {}
 }
 function noteSnippet(body) {
   return (body || '').replace(/[#>*`\-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 110);

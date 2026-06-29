@@ -8,6 +8,8 @@ import * as core from '../src/index.js'
 const EXPECTED = [
   'BUNDLE_EXT', 'BUNDLE_FORMAT', 'BUNDLE_FORMAT_ENC', 'BUNDLE_VERSION',
   'encodeBundle', 'decodeBundle', 'planProfileScopeMigration',
+  'stableStringify', 'contentHash',
+  'mergeRows', 'mergeKeyVal', 'mergeText', 'mergeSet', 'mergePlannerWeek', 'reconcileItem',
   'CURRENT_PROFILE_VERSION', 'IAuthAdapter', 'IBadgeAdapter', 'IClipboardAdapter',
   'IDeepLinkAdapter', 'IFileAdapter', 'IHttpAdapter', 'ILifecycleAdapter',
   'INavigationAdapter', 'INetworkAdapter', 'INotificationAdapter', 'IPickerAdapter',
