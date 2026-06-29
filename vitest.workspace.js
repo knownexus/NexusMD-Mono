@@ -3,4 +3,5 @@ export default [
   'packages/core',
   'packages/web-adapters',
   'packages/ui',
+  'apps/desktop',
 ]
