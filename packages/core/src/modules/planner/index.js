@@ -89,7 +89,7 @@ export const PLANNER_SECTIONS = [
     { k:'due', l:'Due', t:'date', w:'14%' }, { k:'priority', l:'Priority', t:'prio', w:'18%' }, { k:'status', l:'Status', t:'status', w:'20%' },
   ]},
   { id:'meetSched', num:'2a', title:'Meetings - schedule', icon:'planner', type:'table', cols:[
-    { k:'dayTime', l:'Day / Time', t:'text', w:'12%' }, { k:'meeting', l:'Meeting', t:'text', w:'20%', main:true }, { k:'attendees', l:'Attendees', t:'text', w:'18%' },
+    { k:'dayTime', l:'Day / Time', t:'datetime', w:'14%' }, { k:'meeting', l:'Meeting', t:'text', w:'20%', main:true }, { k:'attendees', l:'Attendees', t:'text', w:'18%' },
     { k:'prep', l:'Prep needed', t:'text', w:'20%' }, { k:'owner', l:'Owner', t:'text', w:'14%' }, { k:'status', l:'Status', t:'status', w:'16%' },
   ]},
   { id:'meetNotes', num:'2b', title:'Meetings - notes & decisions', icon:'edit', type:'table', hasNotes: true, cols:[
