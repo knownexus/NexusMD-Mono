@@ -73,7 +73,10 @@ Each platform's `view-settings.jsx` constructs and passes the descriptor array.
 - Status pill: `pill success` "Connected" or plain "Disconnected".
 - "Connect" button: calls `connect()`. If credentials are missing (any `credFields` value empty), shows inline callout "Enter Client ID and Secret first" instead of calling `connect()`.
 - "Disconnect" button (ghost danger): calls `disconnect()`, visible only when connected.
-- `children` slot: rendered as additional `VsRow` entries below the connection row (e.g. repo list for GitHub, event reminders for ADO).
+- `children` slot: rendered as additional `VsRow` entries below the connection row. Concrete sub-settings per service:
+  - **ADO OAuth:** no sub-settings initially (org/projects already managed via ADO Connection card).
+  - **Microsoft/Entra ID:** no sub-settings initially.
+  - **GitHub OAuth App:** "Repositories" — same comma-separated `owner/repo` input and "Browse repos…" button as the existing `GitHubConnectionTab`; migrated into the children slot.
 
 ### Existing components unchanged
 
@@ -158,7 +161,7 @@ Three bindings (ADO, Microsoft, GitHub) per platform. Desktop's `saveCreds` for 
 | `apps/desktop/src/main.jsx` | Add `integrations` nav item; add three binding objects; render `IntegrationsView` in the settings panel |
 | `apps/app/src/views/view-settings.jsx` | Add `integrations` nav item; add three binding objects; render `IntegrationsView` |
 
-No new files. No backend changes in scope — this spec covers only the settings UI; backend OAuth routes (`/api/ado/auth/*`, `/api/ms/auth/*`, `/api/github/auth/*`) are assumed to exist or are a separate workstream.
+No new files. No backend changes in scope — this spec covers only the settings UI. Backend OAuth routes (`/api/ado/auth/*`, `/api/ms/auth/*`, `/api/github/auth/*`) are out of scope; the Connect button will surface a toast error if a route is missing, which is acceptable during incremental rollout.
 
 ---
 
