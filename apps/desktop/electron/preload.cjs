@@ -51,13 +51,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setCloseToTray: (enabled) => ipcRenderer.invoke('set-close-to-tray', enabled),
 
   /**
-   * Notify the main process that the user switched light/dark theme so the
-   * native title-bar overlay (Win11 window controls) updates its colours.
-   * @param {boolean} isDark
-   */
-  setTitlebarTheme: (isDark) => ipcRenderer.send('set-titlebar-theme', isDark),
-
-  /**
    * Open a native folder-picker dialog and return the chosen path (or null).
    * @returns {Promise<string|null>}
    */
@@ -128,6 +121,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── nativeTheme (used by theme adapter) ────────────────────────────────────
   // setTitlebarTheme already exists above — this adds the one-time read
   getNativeTheme: () => ipcRenderer.invoke('get-native-theme'),
+
+  // Platform identifier — lets the renderer show/hide custom window controls
+  // without an extra IPC round-trip.
+  platform: process.platform,
+
+  // Custom window controls (replaces native titleBarOverlay on Win/Linux).
+  window: {
+    minimize: () => ipcRenderer.send('window:minimize'),
+    maximize: () => ipcRenderer.send('window:maximize'),
+    close:    () => ipcRenderer.send('window:close'),
+  },
 
   // ── Notification (renderer → main) ─────────────────────────────────────────
   showNotification: (title, body) => ipcRenderer.send('show-notification', { title, body }),
