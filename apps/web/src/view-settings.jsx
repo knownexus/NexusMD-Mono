@@ -20,9 +20,10 @@ import { GoogleAuth } from './google-auth.js'
 import { GitHubClient } from './github-client.js'
 import {
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard, CloudSyncCard,
+  IntegrationsView,
 } from '@nexusmd/ui'
 import { webFileIO } from './file-io.js'
-import { webCloudProviders } from './cloud-auth.js'
+import { webCloudProviders, makeWebOAuthService } from './cloud-auth.js'
 import { webSync } from './sync.js'
 
 // Local pref hook — persists to localStorage per-profile and pushes to server prefs.
@@ -359,6 +360,98 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
     toast?.('Output folder cleared — using system Downloads.', 'success');
   };
 
+  // OAuth integration service descriptors — one per service, passed to IntegrationsView.
+  const adoOAuth = useStateVS(() => makeWebOAuthService('ado'))[0];
+  const msOAuth  = useStateVS(() => makeWebOAuthService('microsoft'))[0];
+  const ghOAuth  = useStateVS(() => ({
+    ...makeWebOAuthService('github'),
+  }))[0];
+
+  const [ghRepos, setGhRepos] = useStateVS(() => {
+    try { return JSON.parse(localStorage.getItem(`nexusmd.p.${localStorage.getItem('nexusmd.activeProfileId') || ''}.github.config`) || '{}').repos?.join(', ') || ''; }
+    catch (_) { return ''; }
+  });
+  const [ghRepoBrowse, setGhRepoBrowse] = useStateVS([]);
+
+  const saveGhRepos = () => {
+    const activeId = localStorage.getItem('nexusmd.activeProfileId') || '';
+    const key = `nexusmd.p.${activeId}.github.config`;
+    const existing = (() => { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; } })();
+    const repoList = ghRepos.split(',').map(s => s.trim()).filter(Boolean);
+    localStorage.setItem(key, JSON.stringify({ ...existing, repos: repoList }));
+    toast?.('GitHub repos saved.', 'success');
+  };
+
+  const browseGhRepos = async () => {
+    try { const list = await GitHubClient?.getRepos(); setGhRepoBrowse(list || []); }
+    catch (_) { toast?.('Could not fetch repos. Check your connection.', 'error'); }
+  };
+
+  const oauthServices = [
+    {
+      id: 'ado',
+      label: 'Azure DevOps',
+      icon: 'inbox',
+      desc: 'OAuth 2.0 — work items, PRs, pipelines',
+      ...adoOAuth,
+      credFields: [
+        { key: 'clientId', label: 'Client ID', hint: 'From your Azure DevOps OAuth application' },
+        { key: 'clientSecret', label: 'Client Secret', secret: true },
+      ],
+    },
+    {
+      id: 'microsoft',
+      label: 'Microsoft / Entra ID',
+      icon: 'mail',
+      desc: 'Sign in with Microsoft — OneDrive, Teams, Calendar',
+      ...msOAuth,
+      credFields: [
+        { key: 'clientId', label: 'Client ID (Application ID)', hint: 'From Azure portal → App registrations' },
+        { key: 'clientSecret', label: 'Client Secret', secret: true },
+      ],
+    },
+    {
+      id: 'github',
+      label: 'GitHub',
+      icon: 'pr',
+      desc: 'GitHub OAuth App — pull requests and repo access',
+      ...ghOAuth,
+      credFields: [
+        { key: 'clientId', label: 'Client ID', hint: 'From GitHub → Settings → Developer settings → OAuth Apps' },
+        { key: 'clientSecret', label: 'Client Secret', secret: true },
+      ],
+      children: (
+        <React.Fragment>
+          <VsRow title="Repositories" desc="owner/repo pairs, comma-separated">
+            <input
+              value={ghRepos}
+              onChange={e => setGhRepos(e.target.value)}
+              placeholder="myorg/backend, myorg/frontend"
+              style={{ width: 240, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
+            />
+          </VsRow>
+          {ghRepoBrowse.length > 0 && (
+            <VsRow title="Select from your repos" desc="">
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {ghRepoBrowse.map(r => (
+                  <button key={r} type="button" className="pill" style={{ cursor: 'pointer' }}
+                    onClick={() => setGhRepos(v => v.trim() ? v.trim() + ', ' + r : r)}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </VsRow>
+          )}
+          <div className="set-row" style={{ gap: 8 }}>
+            <button className="btn sm ghost" onClick={browseGhRepos}>Browse repos…</button>
+            <span style={{ flex: 1 }}/>
+            <button className="btn sm primary" onClick={saveGhRepos}>Save repos</button>
+          </div>
+        </React.Fragment>
+      ),
+    },
+  ];
+
   const NAV = [
     { id: 'profile', label: 'Profile', icon: 'team' },
     { id: 'appearance', label: 'Appearance', icon: 'sun' },
@@ -366,7 +459,7 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
     { id: 'profiles', label: 'Profiles', icon: 'more' },
     { id: 'privacy', label: 'Confidential', icon: 'lock' },
     { id: 'data', label: 'Data & sync', icon: 'inbox' },
-    ...(!isManual ? [{ id: 'connection', label: 'Connection', icon: 'inbox' }] : []),
+    { id: 'integrations', label: 'Integrations', icon: 'lock' },
     ...(window.electronAPI ? [{ id: 'desktop', label: 'Desktop app', icon: 'more' }] : []),
   ];
 
@@ -609,19 +702,12 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
             </VsCard>
           )}
 
-          {subPage === 'connection' && !isManual && (<>
-            {useProfile?.()?.activeProfile?.type === 'github'
-              ? <GitHubConnectionTab activeProfile={useProfile().activeProfile} />
-              : (
-                <VsCard title="Azure DevOps Connection" icon="inbox">
-                  <VsRow title="Connection settings" desc="Org, PAT, projects, and email digest">
-                    <button className="btn sm ghost" onClick={onOpenConnection}>Manage connection</button>
-                  </VsRow>
-                </VsCard>
-              )
-            }
-            <GoogleConnectionCard />
-          </>)}
+          {subPage === 'integrations' && (
+            <>
+              <IntegrationsView services={oauthServices} />
+              <GoogleConnectionCard />
+            </>
+          )}
         </div>
       </div>
       <VsPasswordModal open={pwOpen} onClose={() => setPwOpen(false)}/>

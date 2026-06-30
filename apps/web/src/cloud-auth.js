@@ -7,8 +7,11 @@ import { toast } from './toast.jsx'
 
 // provider config: storage key suffix, backend route base, redirect marker.
 const PROVIDERS = {
-  gdrive:   { keySuffix: 'gdrive.auth',   api: '/api/google/auth', from: 'gdrive' },
-  onedrive: { keySuffix: 'onedrive.auth', api: '/api/ms/auth',     from: 'onedrive' },
+  gdrive:    { keySuffix: 'gdrive.auth',    api: '/api/google/auth', from: 'gdrive' },
+  onedrive:  { keySuffix: 'onedrive.auth',  api: '/api/ms/auth',     from: 'onedrive' },
+  ado:       { keySuffix: 'ado.auth',       api: '/api/ado/auth',    from: 'ado' },
+  microsoft: { keySuffix: 'microsoft.auth', api: '/api/ms/auth',     from: 'microsoft' },
+  github:    { keySuffix: 'github.auth',    api: '/api/github/auth', from: 'github' },
 }
 
 function read(suffix) {
@@ -82,6 +85,34 @@ export const webCloudProviders = [
   makeGoogleDriveProvider(makeBinding('gdrive')),
   makeOneDriveProvider(makeBinding('onedrive')),
 ]
+
+export function makeWebOAuthService(from) {
+  const cfg = PROVIDERS[from]
+  return {
+    isConnected: () => Boolean(read(cfg.keySuffix)?.accessToken),
+    async connect() {
+      try {
+        const redirectUri = window.location.origin + '/?from=' + cfg.from
+        const res = await fetch(`${cfg.api}/url?redirectUri=${encodeURIComponent(redirectUri)}`,
+          { signal: AbortSignal.timeout(10_000) })
+        if (!res.ok) { toast?.(`${from} sign-in is not configured on the server.`, 'error'); return }
+        const { url } = await res.json()
+        window.location.href = url
+      } catch { toast?.(`Could not reach ${from} sign-in.`, 'error') }
+    },
+    async disconnect() {
+      clear(cfg.keySuffix)
+      document.dispatchEvent(new CustomEvent('nexusmd:cloud-auth-changed'))
+    },
+    loadCreds() {
+      try { const k = getProfileKey('nexusmd.' + from + '.oauthCreds'); return k ? JSON.parse(localStorage.getItem(k) || '{}') : {} }
+      catch { return {} }
+    },
+    saveCreds(c) {
+      try { const k = getProfileKey('nexusmd.' + from + '.oauthCreds'); if (k) localStorage.setItem(k, JSON.stringify(c)) } catch {}
+    },
+  }
+}
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', handleCloudOAuthCallback)
