@@ -11,6 +11,7 @@ import {
   PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
   DashboardView, WorkItemsView, TriageView,
   VsProfiles, BackupRestoreCard, CloudSyncCard,
+  PlannerView, MarkdownViewer,
 } from '@nexusmd/ui'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -86,6 +87,7 @@ const NAV = [
   { id: 'team',      label: 'Team',           icon: 'team' },
   { id: 'triage',    label: 'Triage',         icon: 'work' },
   { id: 'planner',   label: 'Planner',        icon: 'planner' },
+  { id: 'markdown',  label: 'Notes',          icon: 'pin' },
   { id: 'settings',  label: 'Settings',       icon: 'settings' },
 ]
 
@@ -216,6 +218,10 @@ function ViewBody({ view }) {
       )
     case 'triage':
       return <TriageView />
+    case 'planner':
+      return <PlannerView data={{}} setData={() => {}} themes={{}} setThemes={() => {}} />
+    case 'markdown':
+      return <MarkdownViewer />
     case 'settings':
       return <DesktopSettings />
     default:
