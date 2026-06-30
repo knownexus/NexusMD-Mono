@@ -8,7 +8,6 @@ import {
   buildEmptyPlannerData, hasMeaningfulPlannerData,
   PL_OPEN, plIsOverdueYmd,
 } from '@nexusmd/core'
-import { PlModal, PlFld } from '../planner-chips.jsx'
 import { plNewRow, plScrollToEl } from '../planner/primitives.jsx'
 import { WorkItemCtxLayer, GlobalNotesView, loadGlobalNotes, saveGlobalNotes } from '../planner/planner-notes.jsx'
 import { SectionCard } from '../planner/planner-editors.jsx'
@@ -19,13 +18,12 @@ import {
 } from '../planner/planner-storage.js'
 import { loadConfidentialConfig, saveConfidentialConfig } from '../planner/planner-confidential.js'
 import {
-  loadVersions, saveVersions, describeSnapshot,
   ImportModal, VersionsModal, ConfidentialSetPasswordModal, ConfidentialUnlockModal,
   WeekCalendarPicker, PlHeaderMenu, PlMenuItem, PlMenuRadio, DeleteWeekModal,
 } from '../planner/planner-modals.jsx'
 import { plannerExportDocx as _defaultExportDocx } from '../planner/docx.js'
 
-const { useState, useEffect, useMemo, useRef, useCallback, memo } = React
+const { useState, useEffect, useMemo, useRef, useCallback } = React
 
 function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
   const rt = getPlannerRuntime()
@@ -98,6 +96,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
       const { data: d, themes: t, weekOffset: wo } = latestRef.current
       const { year, week } = getYearWeekForOffset(wo)
       if (hasMeaningfulPlannerData(d, t)) saveWeekPlanner(year, week, d, t)
+      else deleteWeekPlanner(year, week)
     }
   }, [])
 
