@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
+import { render, cleanup, act } from '@testing-library/react'
 import React from 'react'
 import {
   NexusDataProvider, PlToggle, VsRow, VsSeg, VsProfileEditor, VsProfiles, PROFILE_COLORS,
@@ -80,9 +80,8 @@ describe('shared settings primitives (web + app)', () => {
     expect(container.textContent).toContain('Work')
     expect(container.textContent).toContain('Active')
   })
-})
 
-describe('OAuthServiceCard', () => {
+  describe('OAuthServiceCard', () => {
   function makeService(overrides = {}) {
     return {
       id: 'github',
@@ -135,7 +134,7 @@ describe('OAuthServiceCard', () => {
   it('clicking Connect with missing creds opens credentials form and shows error', () => {
     const { container } = render(<OAuthServiceCard service={makeService()} />)
     const connectBtn = [...container.querySelectorAll('button')].find(b => b.textContent === 'Connect GitHub')
-    connectBtn.click()
+    act(() => { connectBtn.click(); })
     expect(container.textContent).toContain('Enter Client ID and Secret first')
   })
 
@@ -167,19 +166,20 @@ describe('OAuthServiceCard', () => {
     const { container } = render(<OAuthServiceCard service={service} />)
     expect(container.textContent).toContain('custom-child')
   })
-})
+  })
 
-describe('IntegrationsView', () => {
-  it('renders one OAuthServiceCard per service', () => {
-    const makeS = (id, label) => ({
-      id, label, icon: 'pr', desc: '', isConnected: () => false,
-      connect: vi.fn(), disconnect: vi.fn(),
-      credFields: [], loadCreds: () => ({}), saveCreds: vi.fn(),
+  describe('IntegrationsView', () => {
+    it('renders one OAuthServiceCard per service', () => {
+      const makeS = (id, label) => ({
+        id, label, icon: 'pr', desc: '', isConnected: () => false,
+        connect: vi.fn(), disconnect: vi.fn(),
+        credFields: [], loadCreds: () => ({}), saveCreds: vi.fn(),
+      })
+      const { container } = render(
+        <IntegrationsView services={[makeS('ado', 'Azure DevOps'), makeS('github', 'GitHub')]} />,
+      )
+      expect(container.textContent).toContain('Azure DevOps')
+      expect(container.textContent).toContain('GitHub')
     })
-    const { container } = render(
-      <IntegrationsView services={[makeS('ado', 'Azure DevOps'), makeS('github', 'GitHub')]} />,
-    )
-    expect(container.textContent).toContain('Azure DevOps')
-    expect(container.textContent).toContain('GitHub')
   })
 })

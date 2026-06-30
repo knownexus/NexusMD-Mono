@@ -626,6 +626,7 @@ function OAuthServiceCard({ service }) {
   const [credsOpen, setCredsOpen] = React.useState(false);
   const [creds, setCreds] = React.useState({});
   const [saving, setSaving] = React.useState(false);
+  const [credErr, setCredErr] = React.useState('');
 
   React.useEffect(() => {
     const result = loadCreds();
@@ -650,6 +651,7 @@ function OAuthServiceCard({ service }) {
 
   const handleConnect = () => {
     if (!allCredsFilled) {
+      setCredErr('Enter Client ID and Secret first.');
       setCredsOpen(true);
       return;
     }
@@ -667,6 +669,7 @@ function OAuthServiceCard({ service }) {
     setSaving(true);
     Promise.resolve(saveCreds(creds)).then(() => {
       toast?.('Credentials saved.', 'success');
+      setCredErr('');
       setCredsOpen(false);
     }).catch(() => {
       toast?.('Could not save credentials.', 'error');
@@ -703,7 +706,7 @@ function OAuthServiceCard({ service }) {
               <input
                 type={f.secret ? 'password' : 'text'}
                 value={creds[f.key] || ''}
-                onChange={e => setCreds(c => ({ ...c, [f.key]: e.target.value }))}
+                onChange={e => { setCreds(c => ({ ...c, [f.key]: e.target.value })); setCredErr(''); }}
                 style={inputStyle}
               />
               {f.hint && <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{f.hint}</span>}
@@ -712,6 +715,7 @@ function OAuthServiceCard({ service }) {
           <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
             These credentials are shared across all users of this instance.
           </div>
+          {credErr && <div className="plm-callout err">{credErr}</div>}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button className="btn sm primary" onClick={handleSaveCreds} disabled={saving}>
               {saving ? 'Saving…' : 'Save credentials'}
@@ -728,14 +732,7 @@ function OAuthServiceCard({ service }) {
             <button className="btn sm ghost danger" onClick={handleDisconnect}>Disconnect</button>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-            {!allCredsFilled && credFields.length > 0 && (
-              <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
-                Enter Client ID and Secret first.
-              </span>
-            )}
-            <button className="btn sm ghost" onClick={handleConnect}>Connect {label}</button>
-          </div>
+          <button className="btn sm ghost" onClick={handleConnect}>Connect {label}</button>
         )}
       </VsRow>
       {children}
