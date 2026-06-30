@@ -117,3 +117,4 @@ export {
   loadWeekPlanner, saveWeekPlanner, deleteWeekPlanner, getWeeksWithData,
   isLegacyMigrationDone, markLegacyMigrationDone, checkConfidentialReminders,
 } from './planner/planner-storage.js'
+export { plannerExportDocx } from './planner/docx.js'
