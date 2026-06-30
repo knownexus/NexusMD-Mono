@@ -20,7 +20,7 @@ import {
   getIsoYearWeek, getMondayOfDate, getYearWeekForOffset,
   loadWeekPlanner, saveWeekPlanner,
 } from './view-planner.jsx';
-import { PlannerView } from './view-planner-2.jsx';
+import { PlannerView, plannerExportDocx } from './view-planner.jsx';
 import { TriageView } from './view-triage.jsx';
 import { SettingsView } from './view-settings.jsx';
 import { MarkdownViewer } from './MarkdownViewer.jsx';
@@ -2084,7 +2084,7 @@ function App() {
                 onScheduleOneOnOne={scheduleOneOnOne}/>
             )}
             {view==='planner' && (
-              <PlannerView data={plannerData} setData={setPlannerData} themes={themes} setThemes={setThemes}/>
+              <PlannerView data={plannerData} setData={setPlannerData} themes={themes} setThemes={setThemes} onExportDocx={plannerExportDocx}/>
             )}
             {view==='markdown' && <MarkdownViewer/>}
             {view==='settings' && (
