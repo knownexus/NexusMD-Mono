@@ -43,7 +43,7 @@
     "files": [
       "electron/**/*",
       "assets/**/*",
-      "dist/renderer/**/*"
+      "../../dist/desktop/renderer/**/*"
     ],
     "win": {
       "target": [
