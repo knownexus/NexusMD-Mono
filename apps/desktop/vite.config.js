@@ -7,7 +7,7 @@ export default defineConfig({
   // protocol (absolute "/assets/..." resolves to the filesystem root there).
   base: './',
   build: {
-    outDir: 'dist/renderer',
+    outDir: '../../dist/desktop/renderer',
     emptyOutDir: true,
   },
   server: {

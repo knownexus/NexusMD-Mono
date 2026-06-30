@@ -31,13 +31,6 @@ apps/app/android/local.properties
 *.apk
 *.aab
 
-# Electron
-apps/desktop/dist/
-apps/desktop/release/
-
-# Publish output (may contain secrets in appsettings files)
-publish/
-
 # Editor / OS
 .DS_Store
 Thumbs.db

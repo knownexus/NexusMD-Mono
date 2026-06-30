@@ -38,7 +38,7 @@
     "productName": "NexusMD",
     "icon": "assets/icon",
     "directories": {
-      "output": "../dist/desktop"
+      "output": "../../dist/desktop/release"
     },
     "files": [
       "electron/**/*",
