@@ -126,6 +126,31 @@ function usePersistedState(key, initial) {
   return [value, setValue]
 }
 
+function WindowControls() {
+  if (window.electronAPI?.platform === 'darwin') return null;
+  const win = window.electronAPI?.window;
+  return (
+    <div style={{ display: 'flex', alignSelf: 'stretch', marginLeft: 'auto', marginTop: -10, marginBottom: -10 }}>
+      <button className="wc-btn" onClick={() => win?.minimize()} title="Minimize">
+        <svg width="10" height="1" viewBox="0 0 10 1" aria-hidden="true">
+          <rect width="10" height="1" fill="currentColor" />
+        </svg>
+      </button>
+      <button className="wc-btn" onClick={() => win?.maximize()} title="Maximize">
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M0 0h10v10H0V0zm1 1v8h8V1H1z" fill="currentColor" />
+        </svg>
+      </button>
+      <button className="wc-btn wc-close" onClick={() => win?.close()} title="Close">
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" strokeWidth="1.2" />
+          <line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" strokeWidth="1.2" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 function NotConfigured() {
   return (
     <CardFrame title="Welcome to NexusMD" icon={<Icon name="dashboard" size={16} />}>
@@ -164,7 +189,8 @@ function DesktopSettings() {
 // The view body — reads the snapshot from context and wires per-view host state.
 function ViewBody({ view }) {
   const { data } = useNexusData()
-  const configured = (() => { try { return isAdoConfigured() } catch { return false } })()
+  const { activeProfile } = useProfile?.() || {}
+  const configured = activeProfile?.type === 'manual' || (() => { try { return isAdoConfigured() } catch { return false } })()
   const openExternal = (item) => { if (item?.url) window.open(item.url, '_blank', 'noopener') }
 
   const [needsMeCriteria, setNeedsMeCriteria] = usePersistedState('nexusmd.pr.needsMeCriteria', { votes: [0], includeDrafts: false })
@@ -242,7 +268,7 @@ function App() {
           padding: '14px 10px', display: 'flex', flexDirection: 'column', gap: 2,
           background: 'var(--surface, transparent)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px 14px' }}>
+          <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px 14px' }}>
             <Icon name="dashboard" size={18} />
             <strong style={{ fontSize: 14 }}>NexusMD</strong>
           </div>
@@ -267,11 +293,12 @@ function App() {
 
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <header className="topbar" style={{
-            display: 'flex', alignItems: 'center', gap: 10, padding: '10px 18px',
+            display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 10px 18px',
             borderBottom: '1px solid var(--border)',
           }}>
             <Icon name={active.icon} size={16} />
             <h1 style={{ fontSize: 15, margin: 0 }}>{active.label}</h1>
+            <WindowControls />
           </header>
           <section style={{ flex: 1, overflow: 'auto', padding: 18 }}>
             <ViewBody view={view} />
