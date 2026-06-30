@@ -11,7 +11,7 @@ import {
   PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
   DashboardView, WorkItemsView, TriageView,
   VsProfiles, BackupRestoreCard, CloudSyncCard,
-  PlannerView, MarkdownViewer,
+  PlannerView, MarkdownViewer, plannerExportDocx,
 } from '@nexusmd/ui'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -177,6 +177,8 @@ function ViewBody({ view }) {
   const [widgetOrder, setWidgetOrder]   = usePersistedState('nexusmd.dash.widgetOrder', DASH_WIDGET_ORDER)
   const [widgetWidths, setWidgetWidths] = usePersistedState('nexusmd.dash.widgetWidths', {})
   const [widgetHeights, setWidgetHeights] = usePersistedState('nexusmd.dash.widgetHeights', {})
+  const [plannerData, setPlannerData]     = React.useState({})
+  const [plannerThemes, setPlannerThemes] = React.useState({})
 
   switch (view) {
     case 'dashboard':
@@ -219,7 +221,7 @@ function ViewBody({ view }) {
     case 'triage':
       return <TriageView />
     case 'planner':
-      return <PlannerView data={{}} setData={() => {}} themes={{}} setThemes={() => {}} />
+      return <PlannerView data={plannerData} setData={setPlannerData} themes={plannerThemes} setThemes={setPlannerThemes} onExportDocx={plannerExportDocx} />
     case 'markdown':
       return <MarkdownViewer />
     case 'settings':

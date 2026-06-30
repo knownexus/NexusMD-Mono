@@ -19,12 +19,10 @@
     "build:linux": "vite build && electron-builder --linux"
   },
   "dependencies": {
-    "@capacitor/cli": "8.4.1",
     "@nexusmd/core": "*",
     "@nexusmd/ui": "*",
     "@nexusmd/web-adapters": "*",
-    "electron-updater": "^6.0.0",
-    "vitest": "4.1.9"
+    "electron-updater": "^6.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
@@ -33,7 +31,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sharp": "^0.35.1",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "vitest": "4.1.9"
   },
   "build": {
     "appId": "com.knownexus.nexusmd",
