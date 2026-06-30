@@ -136,7 +136,7 @@ function createMainWindow() {
   if (process.env.VITE_DEV_SERVER_URL) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    win.loadFile(path.join(__dirname, '..', '..', '..', 'dist', 'desktop', 'renderer', 'index.html'));
+    win.loadFile(path.join(process.resourcesPath, 'renderer', 'index.html'));
   }
 
   win.webContents.on('did-finish-load', () => {
