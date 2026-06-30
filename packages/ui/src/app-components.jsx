@@ -231,3 +231,42 @@ export function MenuButton({ items }) {
     </div>
   )
 }
+
+// ─── Sheet — mobile bottom sheet ─────────────────────────────────────────────
+export function Sheet({ open, onClose, icon, title, sub, children, footer, size }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = e => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  const labelId = title ? 'm-sheet-title' : undefined;
+  return (
+    <div className="m-sheet-veil"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="m-sheet" style={size === 'tall' ? { maxHeight: '92%' } : null}
+        role="dialog" aria-modal="true" aria-labelledby={labelId}
+        onClick={e => e.stopPropagation()}>
+        {(title || icon) && (
+          <div className="m-sheet-h">
+            {icon && (
+              <span className="ic">
+                <Icon name={icon} size={16}/>
+              </span>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h2 id={labelId}>{title}</h2>
+              {sub && <div className="sub">{sub}</div>}
+            </div>
+            <button className="m-iconbtn" onClick={onClose} aria-label="Close">
+              <Icon name="x" size={17}/>
+            </button>
+          </div>
+        )}
+        <div className="m-sheet-body">{children}</div>
+        {footer && <div className="m-sheet-foot">{footer}</div>}
+      </div>
+    </div>
+  );
+}

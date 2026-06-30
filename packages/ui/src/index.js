@@ -16,7 +16,7 @@ export {
 
 // Data-driven, app-coupled components (resolve team/storage via context).
 export {
-  Avatar, TypeIcon, NotificationBanner, MenuButton, usePersisted, ProjectChip, Drawer,
+  Avatar, TypeIcon, NotificationBanner, MenuButton, usePersisted, ProjectChip, Drawer, Sheet,
 } from './app-components.jsx'
 
 // Cross-platform data seam consumed by the shared views.
