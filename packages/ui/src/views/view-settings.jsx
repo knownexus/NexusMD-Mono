@@ -611,10 +611,151 @@ function CloudSyncCard({ controller, providers, fileIO }) {
   );
 }
 
+// ── OAuth integration card ────────────────────────────────────────
+// service: { id, label, icon, desc, isConnected, connect, disconnect,
+//            credFields, loadCreds, saveCreds, children? }
+function OAuthServiceCard({ service }) {
+  const {
+    label, icon, desc,
+    isConnected, connect, disconnect,
+    credFields, loadCreds, saveCreds,
+    children,
+  } = service;
+
+  const [connected, setConnected] = React.useState(() => isConnected());
+  const [credsOpen, setCredsOpen] = React.useState(false);
+  const [creds, setCreds] = React.useState({});
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    const result = loadCreds();
+    if (result != null && typeof result.then === 'function') {
+      result.then(c => setCreds(c || {}));
+    } else {
+      setCreds(result || {});
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const refresh = () => setConnected(isConnected());
+    window.addEventListener('focus', refresh);
+    window.addEventListener('nexusmd:cloud-auth-changed', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('nexusmd:cloud-auth-changed', refresh);
+    };
+  }, [isConnected]);
+
+  const allCredsFilled = credFields.every(f => (creds[f.key] || '').trim());
+
+  const handleConnect = () => {
+    if (!allCredsFilled) {
+      setCredsOpen(true);
+      return;
+    }
+    Promise.resolve(connect()).then(() => setConnected(isConnected())).catch(() => {});
+  };
+
+  const handleDisconnect = () => {
+    Promise.resolve(disconnect()).then(() => {
+      setConnected(false);
+      toast?.(`${label} disconnected.`, 'success');
+    }).catch(() => {});
+  };
+
+  const handleSaveCreds = () => {
+    setSaving(true);
+    Promise.resolve(saveCreds(creds)).then(() => {
+      toast?.('Credentials saved.', 'success');
+      setCredsOpen(false);
+    }).catch(() => {
+      toast?.('Could not save credentials.', 'error');
+    }).finally(() => setSaving(false));
+  };
+
+  const inputStyle = {
+    width: '100%', padding: '6px 10px', borderRadius: 8,
+    border: '1px solid var(--border)', background: 'var(--surface-2)',
+    font: 'inherit', fontSize: 13, color: 'var(--text)',
+  };
+
+  return (
+    <VsCard title={label} icon={icon}>
+      <div className="set-row" style={{ cursor: 'pointer' }} onClick={() => setCredsOpen(o => !o)}>
+        <div className="info">
+          <div className="t">App credentials</div>
+          <div className="d">{desc}</div>
+        </div>
+        {allCredsFilled
+          ? <span className="pill success"><span className="dot"></span>Configured</span>
+          : <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>Not configured</span>}
+        <button className="btn sm ghost" onClick={e => { e.stopPropagation(); setCredsOpen(o => !o); }}>
+          {credsOpen ? 'Hide' : 'Edit'}
+        </button>
+      </div>
+      {credsOpen && (
+        <div style={{ padding: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {credFields.map(f => (
+            <div key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)' }}>
+                {f.label}
+              </label>
+              <input
+                type={f.secret ? 'password' : 'text'}
+                value={creds[f.key] || ''}
+                onChange={e => setCreds(c => ({ ...c, [f.key]: e.target.value }))}
+                style={inputStyle}
+              />
+              {f.hint && <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{f.hint}</span>}
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
+            These credentials are shared across all users of this instance.
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn sm primary" onClick={handleSaveCreds} disabled={saving}>
+              {saving ? 'Saving…' : 'Save credentials'}
+            </button>
+          </div>
+        </div>
+      )}
+      <VsRow
+        title="Connection"
+        desc={connected ? `Connected to ${label}` : `Not connected to ${label}`}>
+        {connected ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="pill success"><span className="dot"></span>Connected</span>
+            <button className="btn sm ghost danger" onClick={handleDisconnect}>Disconnect</button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+            {!allCredsFilled && credFields.length > 0 && (
+              <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
+                Enter Client ID and Secret first.
+              </span>
+            )}
+            <button className="btn sm ghost" onClick={handleConnect}>Connect {label}</button>
+          </div>
+        )}
+      </VsRow>
+      {children}
+    </VsCard>
+  );
+}
+
+function IntegrationsView({ services }) {
+  return (
+    <React.Fragment>
+      {services.map(s => <OAuthServiceCard key={s.id} service={s} />)}
+    </React.Fragment>
+  );
+}
+
 // ── Shared exports ────────────────────────────────────────────────
 export {
   PROFILE_COLORS,
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
   BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,
+  OAuthServiceCard, IntegrationsView,
 };
