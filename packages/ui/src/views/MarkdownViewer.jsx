@@ -758,7 +758,7 @@ function MarkdownViewer() {
         if (ok) {
           setSaveStatus('saved');
           clearTimeout(saveStatusTimerRef.current);
-          saveStatusTimerRef.current = setTimeout(() => setSaveStatus(''), 2000);
+          saveStatusTimerRef.current = setTimeout(() => setSaveStatus(''), 4000);
         } else {
           setSaveStatus('error');
         }
@@ -783,11 +783,11 @@ function MarkdownViewer() {
         if (ok) {
           setSaveStatus('saved');
           clearTimeout(saveStatusTimerRef.current);
-          saveStatusTimerRef.current = setTimeout(() => setSaveStatus(''), 2000);
+          saveStatusTimerRef.current = setTimeout(() => setSaveStatus(''), 4000);
         } else {
           setSaveStatus('error');
         }
-      }, 1500);
+      }, 5000); // 5s instead of 1.5s to avoid accidental doc spam
     }
 
     return () => {
@@ -968,20 +968,61 @@ function MarkdownViewer() {
     if (view !== "split") setEditorWidth(null);
   }, [view]);
 
-  // Tab key in editor
   const onKeyDown = (e) => {
-    if (e.key !== "Tab") return;
-    e.preventDefault();
-    const s   = e.target.selectionStart;
-    const end = e.target.selectionEnd;
-    const val = markdown.substring(0, s) + "  " + markdown.substring(end);
-    setMarkdown(val);
-    requestAnimationFrame(() => {
-      if (editorRef.current) {
-        editorRef.current.selectionStart = s + 2;
-        editorRef.current.selectionEnd   = s + 2;
+    // 1. Tab key: insert 2 spaces
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const s   = e.target.selectionStart;
+      const end = e.target.selectionEnd;
+      const val = markdown.substring(0, s) + "  " + markdown.substring(end);
+      setMarkdown(val);
+      requestAnimationFrame(() => {
+        if (editorRef.current) {
+          editorRef.current.selectionStart = s + 2;
+          editorRef.current.selectionEnd   = s + 2;
+        }
+      });
+      return;
+    }
+
+    // 2. Ctrl+S: trigger immediate save (even though it's auto-saving)
+    if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      if (!currentDocId && markdown.trim()) {
+        // Force immediate doc creation
+        clearTimeout(createDocTimerRef.current);
+        const content = markdown;
+        const newDoc = {
+          id: generateId(), name: null,
+          autoName: extractAutoName(content), content,
+          createdAt: Date.now(), updatedAt: Date.now(),
+        };
+        setCurrentDocId(newDoc.id);
+        setDocs(prev => {
+          const next = [...prev, newDoc];
+          try { saveDocs(next); } catch { return prev; }
+          return next;
+        });
+        setSaveStatus('saved');
+        clearTimeout(saveStatusTimerRef.current);
+        saveStatusTimerRef.current = setTimeout(() => setSaveStatus(''), 4000);
+      } else if (currentDocId) {
+        // Force immediate update
+        clearTimeout(saveTimerRef.current);
+        const content = markdown;
+        setDocs(prev => {
+          const next = prev.map(d => d.id === currentDocId
+            ? { ...d, content, autoName: extractAutoName(content), updatedAt: Date.now() }
+            : d
+          );
+          try { saveDocs(next); } catch { return prev; }
+          return next;
+        });
+        setSaveStatus('saved');
+        clearTimeout(saveStatusTimerRef.current);
+        saveStatusTimerRef.current = setTimeout(() => setSaveStatus(''), 4000);
       }
-    });
+    }
   };
 
   const copyHtml = () => {
@@ -1171,7 +1212,7 @@ function MarkdownViewer() {
           alignItems: "center",
           gap:        10,
           padding:    "0 16px",
-          height:     44,
+          height:     48, // slightly taller
           background: "var(--surface)",
           borderBottom: "1px solid var(--border)",
           flexShrink: 0,
@@ -1182,22 +1223,23 @@ function MarkdownViewer() {
           </span>
 
           {/* View tabs */}
-          <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: 3, gap: 2 }}>
+          <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: 4, gap: 4 }}>
             {["editor", "split", "preview"].map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
                 style={{
-                  padding:       "4px 12px",
-                  borderRadius:  3,
+                  padding:       "5px 14px",
+                  borderRadius:  4,
                   border:        "none",
                   background:    view === v ? "var(--accent)" : "transparent",
                   color:         view === v ? "var(--accent-fg)" : "var(--text-muted)",
                   fontSize:      12,
-                  fontWeight:    500,
+                  fontWeight:    600,
                   cursor:        "pointer",
                   whiteSpace:    "nowrap",
                   textTransform: "capitalize",
+                  transition:    "all .15s ease",
                 }}
               >{v}</button>
             ))}

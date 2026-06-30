@@ -197,6 +197,8 @@ function SettingsModal({ open, onClose, onSaved }) {
   const [emailFrom, setEmailFrom] = useState('');
   const [emailTo, setEmailTo] = useState('');
   const [digestHour, setDigestHour] = useState('');
+  const [googleClientId, setGoogleClientId] = useState('');
+  const [msClientId, setMsClientId] = useState('');
   const [status, setStatus]   = useState('');
   const [saving, setSaving]   = useState(false);
   const [discovering, setDiscovering] = useState(false);
@@ -221,6 +223,8 @@ function SettingsModal({ open, onClose, onSaved }) {
       setEmailFrom(c.emailFrom || '');
       setEmailTo(c.emailTo || '');
       setDigestHour(c.digestHour || '');
+      setGoogleClientId(c.googleClientId || '');
+      setMsClientId(c.msClientId || '');
       setStatus('');
       const stored = localStorage.getItem('nexusmd.tweaks');
       let tweaks = {};
@@ -257,6 +261,8 @@ function SettingsModal({ open, onClose, onSaved }) {
         EmailFrom: emailFrom.trim() || undefined,
         EmailTo: emailTo.trim() || undefined,
         DigestHour: parseInt(digestHour, 10) || undefined,
+        GoogleClientId: googleClientId.trim() || undefined,
+        MsClientId: msClientId.trim() || undefined,
       };
       const r = await fetch('/api/config', {
         method: 'PUT',
@@ -297,6 +303,28 @@ function SettingsModal({ open, onClose, onSaved }) {
     }
   };
 
+  const props = {
+    open, onClose, onSaved,
+    org, setOrg, pat, setPat, projects, setProjects, interval, setInterval,
+    testProject, setTestProject, uatProject, setUatProject, uatPipelineId, setUatPipelineId, uatBranch, setUatBranch,
+    emailEnabled, setEmailEnabled, smtpHost, setSmtpHost, smtpPort, setSmtpPort,
+    smtpUser, setSmtpUser, smtpPass, setSmtpPass, emailFrom, setEmailFrom, emailTo, setEmailTo,
+    digestHour, setDigestHour, googleClientId, setGoogleClientId, msClientId, setMsClientId,
+    status, saving, discovering, discoverProjects, save, quickLinks, setQuickLinks,
+  };
+
+  return <SettingsModalInternal {...props} />;
+}
+
+function SettingsModalInternal({
+  open, onClose, onSaved,
+  org, setOrg, pat, setPat, projects, setProjects, interval, setInterval,
+  testProject, setTestProject, uatProject, setUatProject, uatPipelineId, setUatPipelineId, uatBranch, setUatBranch,
+  emailEnabled, setEmailEnabled, smtpHost, setSmtpHost, smtpPort, setSmtpPort,
+  smtpUser, setSmtpUser, smtpPass, setSmtpPass, emailFrom, setEmailFrom, emailTo, setEmailTo,
+  digestHour, setDigestHour, googleClientId, setGoogleClientId, msClientId, setMsClientId,
+  status, saving, discovering, discoverProjects, save, quickLinks, setQuickLinks,
+}) {
   if (!open) return null;
   return (
     <div id="modal-settings" style={{
@@ -2095,6 +2123,12 @@ function App() {
                 onOpenConnection={()=>setSettingsOpen(true)}
                 onOpenProjectAreas={()=>setProjectAreasOpen(true)}
                 onGoPlanner={()=>navigate('planner')}
+                googleClientId={googleClientId}
+                msClientId={msClientId}
+                onChangeGoogle={setGoogleClientId}
+                onChangeMs={setMsClientId}
+                onSaveOAuth={save}
+                savingOAuth={saving}
               />
             )}
             </ErrorBoundary>

@@ -35,6 +35,9 @@ public class ConfigController(IConfiguration config, IWebHostEnvironment env) : 
         var smtpPort      = int.TryParse(config["Email:SmtpPort"], out var ep) ? ep : 587;
         var digestHour    = int.TryParse(config["Email:DigestHour"], out var dh) ? dh : 8;
 
+        var googleClientId = config["Google:ClientId"] ?? "";
+        var msClientId     = config["Microsoft:ClientId"] ?? "";
+
         return Ok(new
         {
             org = config["Ado:Organisation"] ?? "",
@@ -51,6 +54,8 @@ public class ConfigController(IConfiguration config, IWebHostEnvironment env) : 
             smtpHost,
             smtpPort,
             digestHour,
+            googleClientId,
+            msClientId,
         });
     }
 
@@ -150,6 +155,21 @@ public class ConfigController(IConfiguration config, IWebHostEnvironment env) : 
             if (req.DigestHour.HasValue)   emailSection["DigestHour"] = req.DigestHour.Value;
         }
 
+        // OAuth client IDs
+        if (req.GoogleClientId != null || req.MsClientId != null)
+        {
+            if (req.GoogleClientId != null)
+            {
+                if (root["Google"] is not JsonObject googleSection) root["Google"] = googleSection = [];
+                googleSection["ClientId"] = req.GoogleClientId.Trim();
+            }
+            if (req.MsClientId != null)
+            {
+                if (root["Microsoft"] is not JsonObject msSection) root["Microsoft"] = msSection = [];
+                msSection["ClientId"] = req.MsClientId.Trim();
+            }
+        }
+
         System.IO.File.WriteAllText(userFile,
             JsonSerializer.Serialize(root, _jsonOut));
 
@@ -183,4 +203,6 @@ public record SaveConfigRequest(
     int?      SmtpPort      = null,
     string?   SmtpUser      = null,
     string?   SmtpPass      = null,
-    int?      DigestHour    = null);
+    int?      DigestHour    = null,
+    string?   GoogleClientId = null,
+    string?   MsClientId     = null);

@@ -6,7 +6,7 @@ consumes them.
 
 ## Layout
 
-```
+```text
 packages/
   core/          @nexusmd/core         headless domain logic + adapter contracts (no React/DOM)
   ui/            @nexusmd/ui           shared React components, CSS tokens, shared views
@@ -24,12 +24,12 @@ workspace so apps always pick up local changes.
 
 ## Prerequisites
 
-| Tool | Version | Needed for |
-|------|---------|------------|
-| Node.js | ≥ 20 | everything |
-| .NET SDK | 8.0 | web backend (`apps/web/server`) |
-| Android Studio + JDK 17 | latest | mobile release builds |
-| Electron build toolchain | — | desktop release (native: build on the target OS) |
+| Tool                     | Version | Needed for                                       |
+|--------------------------|---------|--------------------------------------------------|
+| Node.js                  | ≥ 20    | everything                                       |
+| .NET SDK                 | 8.0     | web backend (`apps/web/server`)                  |
+| Android Studio + JDK 17  | latest  | mobile release builds                            |
+| Electron build toolchain | —       | desktop release (native: build on the target OS) |
 
 ```bash
 npm install        # one install links all workspaces
@@ -67,8 +67,7 @@ npm -w apps/web run build                                   # SPA -> apps/web/se
 dotnet publish apps/web/server -c Release -o dist/web        # self-contained host -> dist/web
 ```
 
-Run the result with `dist/web/NexusMDWeb.Api` (`.exe` on Windows). Configuration
-lives in `apps/web/server/appsettings*.json`.
+Run the result with `dist/web/NexusMDWeb.Api` (`.exe` on Windows). Configuration lives in `apps/web/server/appsettings*.json`.
 
 ---
 
@@ -88,25 +87,21 @@ npm -w apps/desktop start        # launch Electron against the dev server
 
 ### Cloud sign-in (Google Drive / OneDrive)
 
-The desktop app signs in to Google Drive and OneDrive itself using the OAuth
-PKCE + loopback flow in the Electron main process — no backend and no client
-secret. You need public **client IDs** from each provider:
+The desktop app signs in to Google Drive and OneDrive itself using the OAuth PKCE + loopback flow in the Electron main process — no backend and no client secret. You need public **client IDs** from each provider:
 
-- **Google:** Google Cloud Console → APIs & Services → Credentials → Create
-  OAuth client ID → application type **Desktop app**. Loopback redirects are
-  allowed automatically (no redirect URI to register). Enable the Drive API and
-  add the `drive.file` / `email` / `openid` scopes on the OAuth consent screen
-  (add yourself as a test user if the app is in Testing).
-- **Microsoft (OneDrive):** Azure Portal → App registrations → New
-  registration. Under **Authentication** → Add a platform → **Mobile and desktop
-  applications**, add redirect URI `http://localhost`, and set **Allow public
-  client flows** to **Yes**. Supported account types must include **personal
-  Microsoft accounts**. Under **API permissions**, add delegated Microsoft Graph
-  `Files.ReadWrite`, `offline_access`, `openid`, `email`.
+- **Google:**
+  1. Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID → Application type **Desktop app**.
+  2. Loopback redirects are allowed automatically (no redirect URI to register).
+  3. Enable the Drive API and add the `drive.file`, `email`, and `openid` scopes on the OAuth consent screen.
+  4. Add yourself as a test user if the app is in Testing.
 
-Put the resulting client IDs in `apps/desktop/electron/ipc/oauth-config.cjs`
-(they are public, not secrets), or set the `NEXUSMD_GOOGLE_DESKTOP_CLIENT_ID`
-and `NEXUSMD_MS_DESKTOP_CLIENT_ID` environment variables before launching.
+- **Microsoft (OneDrive):**
+  1. Azure Portal → App registrations → New registration.
+  2. Under **Authentication** → Add a platform → **Mobile and desktop applications**, add redirect URI `http://localhost`, and set **Allow public client flows** to **Yes**.
+  3. Supported account types must include **Personal Microsoft accounts**.
+  4. Under **API permissions**, add delegated Microsoft Graph `Files.ReadWrite`, `offline_access`, `openid`, and `email`.
+
+Put the resulting client IDs in `apps/desktop/electron/ipc/oauth-config.cjs` (they are public, not secrets), or set the `NEXUSMD_GOOGLE_DESKTOP_CLIENT_ID` and `NEXUSMD_MS_DESKTOP_CLIENT_ID` environment variables before launching.
 
 ### Release build
 
@@ -144,7 +139,7 @@ npm -w apps/app run dev          # Vite dev server
 To run on a device/emulator, build and open the native project in Android Studio:
 
 ```bash
-npm -w apps/app run android      # vite build -> cap sync -> cap open android
+npm -w apps/app run android      # Vite build -> Cap sync -> Cap open Android
 ```
 
 Then Run ▶ from Android Studio (or `cd apps/app/android && ./gradlew installDebug`).
@@ -169,16 +164,16 @@ Then Run ▶ from Android Studio (or `cd apps/app/android && ./gradlew installDe
 ## Tests
 
 ```bash
-npm test                       # all vitest unit + adapter-contract tests
-npm run test:e2e:web           # Playwright (web)
-npm run test:e2e:desktop       # Playwright (desktop renderer)
-dotnet test apps/web/server-tests   # ASP.NET backend (xUnit)
+npm test                          # all Vitest unit + adapter-contract tests
+npm run test:e2e:web              # Playwright (web)
+npm run test:e2e:desktop          # Playwright (desktop renderer)
+dotnet test apps/web/server-tests # ASP.NET backend (xUnit)
 ```
 
 ## Build output reference
 
-| Platform | Command | Output |
-|----------|---------|--------|
-| Web | `npm -w apps/web run build` + `dotnet publish … -o dist/web` | `dist/web/` |
-| Desktop | `npm -w apps/desktop run build:<os>` | `dist/desktop/` |
-| Mobile | `./gradlew assembleRelease` / `bundleRelease` | `apps/app/android/app/build/outputs/` |
+| Platform | Command                                                       | Output                                  |
+|----------|---------------------------------------------------------------|-----------------------------------------|
+| Web      | `npm -w apps/web run build` + `dotnet publish … -o dist/web`  | `dist/web/`                             |
+| Desktop  | `npm -w apps/desktop run build:<os>`                          | `dist/desktop/`                         |
+| Mobile   | `./gradlew assembleRelease` / `bundleRelease`                 | `apps/app/android/app/build/outputs/`   |

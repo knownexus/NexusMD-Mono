@@ -12,7 +12,7 @@ import { getPlannerRuntime } from './runtime.js';
 // Bare (un-getProfileKey'd) namespaced key for a week's payload. Storage reads
 // scope it through getProfileKey; the pref-sync push uses the bare key — matching
 // each platform's original behaviour byte-for-byte.
-function weekKeyBare(year, week) {
+export function weekStorageKey(year, week) {
   const { namespace } = getPlannerRuntime();
   return `${namespace}.planner.week.${year}-W${String(week).padStart(2, '0')}`;
 }
@@ -20,7 +20,7 @@ function weekKeyBare(year, week) {
 export function loadWeekPlanner(year, week) {
   const { storage, getProfileKey } = getPlannerRuntime();
   try {
-    const raw = storage.getItem(getProfileKey(weekKeyBare(year, week)));
+    const raw = storage.getItem(getProfileKey(weekStorageKey(year, week)));
     if (raw) return JSON.parse(raw);
   } catch {}
   return null;
@@ -28,7 +28,7 @@ export function loadWeekPlanner(year, week) {
 
 export function saveWeekPlanner(year, week, data, themes) {
   const { storage, getProfileKey, pushPref, onWeekSaved } = getPlannerRuntime();
-  const bare = weekKeyBare(year, week);
+  const bare = weekStorageKey(year, week);
   const s = JSON.stringify({ data, themes });
   try { storage.setItem(getProfileKey(bare), s); } catch {}
   pushPref?.(bare, s);
@@ -37,7 +37,7 @@ export function saveWeekPlanner(year, week, data, themes) {
 
 export function deleteWeekPlanner(year, week) {
   const { storage, getProfileKey, pushPref } = getPlannerRuntime();
-  const bare = weekKeyBare(year, week);
+  const bare = weekStorageKey(year, week);
   try { storage.removeItem(getProfileKey(bare)); } catch {}
   pushPref?.(bare, null);
 }

@@ -19,7 +19,7 @@ import { toast } from './toast.jsx'
 import { GoogleAuth } from './google-auth.js'
 import { GitHubClient } from './github-client.js'
 import {
-  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard, CloudSyncCard,
+  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard, CloudSyncCard, OAuthCard,
 } from '@nexusmd/ui'
 import { webFileIO } from './file-io.js'
 import { webCloudProviders } from './cloud-auth.js'
@@ -212,7 +212,10 @@ function GitHubConnectionTab({ activeProfile }) {
 }
 
 // ── Settings page ─────────────────────────────────────────────
-function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, onGoPlanner }) {
+function SettingsView({
+  tweaks, setTweak, onOpenConnection, onOpenProjectAreas, onGoPlanner,
+  googleClientId, msClientId, onChangeGoogle, onChangeMs, onSaveOAuth, savingOAuth,
+}) {
   const [subPage, setSubPage] = useStateVS('profile');
   const [pwOpen, setPwOpen] = useStateVS(false);
   const isManual = useProfile?.()?.activeProfile?.type === 'manual';
@@ -620,6 +623,14 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
                 </VsCard>
               )
             }
+            <OAuthCard
+              googleClientId={googleClientId}
+              msClientId={msClientId}
+              onChangeGoogle={onChangeGoogle}
+              onChangeMs={onChangeMs}
+              onSave={onSaveOAuth}
+              saving={savingOAuth}
+            />
             <GoogleConnectionCard />
           </>)}
         </div>
