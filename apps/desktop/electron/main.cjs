@@ -101,16 +101,8 @@ function buildAppMenu(win) {
 }
 
 // ---------------------------------------------------------------------------
-// Title-bar overlay colours — read from a JSON payload sent over IPC
+// Window icon utility
 // ---------------------------------------------------------------------------
-const TITLEBAR_HEIGHT = 40;
-const TITLEBAR_LIGHT  = { color: '#fbf8ee', symbolColor: '#2c2618', height: TITLEBAR_HEIGHT };
-const TITLEBAR_DARK   = { color: '#16202c', symbolColor: '#d6dfe8', height: TITLEBAR_HEIGHT };
-
-function titlebarForTheme(isDark) {
-  return isDark ? TITLEBAR_DARK : TITLEBAR_LIGHT;
-}
-
 function windowIconPath(isDark) {
   const name = isDark ? 'icon-light.png' : 'icon.png';
   return path.join(__dirname, '..', 'assets', name);
@@ -129,10 +121,8 @@ function createMainWindow() {
     show: false,
     title: 'Management Dashboard',
     icon: windowIconPath(isDark),
-    // Hidden title bar + overlay keeps native Win11 window controls (Snap Layouts etc.)
-    // while letting web content fill the title bar region.
+    // Hidden title bar allows custom window controls to be rendered
     titleBarStyle: 'hidden',
-    titleBarOverlay: titlebarForTheme(isDark),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -149,22 +139,33 @@ function createMainWindow() {
     win.loadFile(path.join(__dirname, '..', 'dist', 'renderer', 'index.html'));
   }
 
-  // Inject draggable-region CSS so the topbar acts as the Electron drag handle.
-  // Interactive elements (buttons, inputs) are already pointer-event targets so
-  // they don't need explicit no-drag overrides — the drag region only triggers on
-  // the bare topbar background.
-  // On Windows/Linux the title-bar overlay sits on top of the web content,
-  // so push the whole app down by the overlay height to keep the topbar visible.
-  // On macOS (hiddenInset) the traffic-light buttons are inset within the window
-  // and the web content fills below them naturally, so no offset is needed.
-  const tbHeight = process.platform === 'darwin' ? 0 : TITLEBAR_HEIGHT;
-
   win.webContents.on('did-finish-load', () => {
     win.webContents.insertCSS(`
-      html { padding-top: ${tbHeight}px; box-sizing: border-box; }
-      .topbar { -webkit-app-region: drag; }
+      html { box-sizing: border-box; }
+      .topbar, .sidebar-brand { -webkit-app-region: drag; }
       .topbar button, .topbar input, .topbar a, .topbar select,
       .topbar [role="button"] { -webkit-app-region: no-drag; }
+
+      /* Win11-style custom window controls */
+      .wc-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 46px;
+        height: 100%;
+        background: transparent;
+        border: none;
+        cursor: default;
+        color: inherit;
+        -webkit-app-region: no-drag;
+        padding: 0;
+      }
+      .wc-btn:hover { background: rgba(0, 0, 0, 0.08); }
+      .wc-btn.wc-close:hover { background: #c42b1c; color: #fff; }
+      @media (prefers-color-scheme: dark) {
+        .wc-btn:hover { background: rgba(255, 255, 255, 0.08); }
+        .wc-btn.wc-close:hover { background: #c42b1c; color: #fff; }
+      }
     `);
   });
 
@@ -291,13 +292,21 @@ ipcMain.handle('set-close-to-tray', (_e, enabled) => {
 ipcMain.handle('get-native-theme', () => nativeTheme.shouldUseDarkColors);
 
 // ---------------------------------------------------------------------------
-// Title-bar overlay theme IPC — renderer calls this when the user switches
-// light/dark so the native Win11 window controls match the app theme.
+// Custom window controls — renderer calls these instead of native overlay
 // ---------------------------------------------------------------------------
-ipcMain.on('set-titlebar-theme', (_e, isDark) => {
+ipcMain.on('window:minimize', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+});
+
+ipcMain.on('window:maximize', () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setTitleBarOverlay(titlebarForTheme(isDark));
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
   }
+});
+
+ipcMain.on('window:close', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
 });
 
 // ---------------------------------------------------------------------------
