@@ -164,7 +164,8 @@ function DesktopSettings() {
 // The view body — reads the snapshot from context and wires per-view host state.
 function ViewBody({ view }) {
   const { data } = useNexusData()
-  const { activeProfile } = useProfile?.() || {}
+  const { activeProfile } = useProfile() || {}
+  // manual profiles don't require ADO config
   const configured = activeProfile?.type === 'manual' || (() => { try { return isAdoConfigured() } catch { return false } })()
   const openExternal = (item) => { if (item?.url) window.open(item.url, '_blank', 'noopener') }
 
