@@ -20,7 +20,7 @@ import { TestsView } from './views/view-tests.jsx';
 import { CalendarView } from './views/view-calendar.jsx';
 import { TriageView } from './views/view-triage.jsx';
 import { TeamView } from './views/view-team.jsx';
-import { PlannerView } from './planner/view-planner-2.jsx';
+import { PlannerView, plannerExportDocx } from './planner/view-planner.jsx';
 import { MarkdownViewer } from './MarkdownViewer.jsx';
 import { SettingsView } from './views/view-settings.jsx';
 import { ListsView } from './views/view-lists.jsx';
@@ -1724,7 +1724,7 @@ function AppShell() {
       };
     }
 
-    window.HelmNav = { pendingFilter: section || null, view: 'planner', notification };
+    window.NexusMDNav = { pendingFilter: section || null, view: 'planner', notification };
     navigate('planner');
   }, [navigate]);
 
@@ -1874,7 +1874,7 @@ function AppShell() {
     const h = (e) => {
       const target = e.detail?.view;
       if (!target) return;
-      window.HelmNav = { pendingFilter: e.detail.filter || null, view: target };
+      window.NexusMDNav = { pendingFilter: e.detail.filter || null, view: target };
       navigate(target);
     };
     window.addEventListener('helm:navigate', h);
@@ -1943,7 +1943,7 @@ function AppShell() {
         onTeamChange={setTeam} onAddNote={addTeamNote}
         onScheduleOneOnOne={scheduleOneOnOne} device={device}/>;
       case 'planner': return <PlannerView data={plannerData} setData={setPlannerData}
-        themes={themes} setThemes={setThemes} device={device} onFlash={showFlash}/>;
+        themes={themes} setThemes={setThemes} onExportDocx={plannerExportDocx} device={device} onFlash={showFlash}/>;
       case 'lists': return <ListsView />;
       case 'markdown': return <MarkdownViewer device={device}/>;
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
