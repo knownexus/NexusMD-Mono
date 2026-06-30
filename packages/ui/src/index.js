@@ -118,3 +118,4 @@ export {
   isLegacyMigrationDone, markLegacyMigrationDone, checkConfidentialReminders,
 } from './planner/planner-storage.js'
 export { plannerExportDocx } from './planner/docx.js'
+export { PlannerView } from './views/view-planner.jsx'
