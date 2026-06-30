@@ -119,7 +119,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // ── nativeTheme (used by theme adapter) ────────────────────────────────────
-  // setTitlebarTheme already exists above — this adds the one-time read
+  // One-time read of the native theme preference.
   getNativeTheme: () => ipcRenderer.invoke('get-native-theme'),
 
   // Platform identifier — lets the renderer show/hide custom window controls
