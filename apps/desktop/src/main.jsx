@@ -126,31 +126,6 @@ function usePersistedState(key, initial) {
   return [value, setValue]
 }
 
-function WindowControls() {
-  if (window.electronAPI?.platform === 'darwin') return null;
-  const win = window.electronAPI?.window;
-  return (
-    <div style={{ display: 'flex', alignSelf: 'stretch', marginLeft: 'auto', marginTop: -10, marginBottom: -10 }}>
-      <button className="wc-btn" onClick={() => win?.minimize()} title="Minimize">
-        <svg width="10" height="1" viewBox="0 0 10 1" aria-hidden="true">
-          <rect width="10" height="1" fill="currentColor" />
-        </svg>
-      </button>
-      <button className="wc-btn" onClick={() => win?.maximize()} title="Maximize">
-        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-          <path d="M0 0h10v10H0V0zm1 1v8h8V1H1z" fill="currentColor" />
-        </svg>
-      </button>
-      <button className="wc-btn wc-close" onClick={() => win?.close()} title="Close">
-        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-          <line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" strokeWidth="1.2" />
-          <line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" strokeWidth="1.2" />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
 function NotConfigured() {
   return (
     <CardFrame title="Welcome to NexusMD" icon={<Icon name="dashboard" size={16} />}>
@@ -245,6 +220,31 @@ function ViewBody({ view }) {
     default:
       return <Placeholder label={(NAV.find(n => n.id === view) || NAV[0]).label} />
   }
+}
+
+function WindowControls() {
+  if (window.electronAPI?.platform === 'darwin') return null;
+  const win = window.electronAPI?.window;
+  return (
+    <div style={{ display: 'flex', alignSelf: 'stretch', marginLeft: 'auto', marginTop: -10, marginBottom: -10 }}>
+      <button className="wc-btn" onClick={() => win?.minimize()} title="Minimize">
+        <svg width="10" height="1" viewBox="0 0 10 1" aria-hidden="true">
+          <rect width="10" height="1" fill="currentColor" />
+        </svg>
+      </button>
+      <button className="wc-btn" onClick={() => win?.maximize()} title="Maximize">
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M0 0h10v10H0V0zm1 1v8h8V1H1z" fill="currentColor" />
+        </svg>
+      </button>
+      <button className="wc-btn wc-close" onClick={() => win?.close()} title="Close">
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" strokeWidth="1.2" />
+          <line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" strokeWidth="1.2" />
+        </svg>
+      </button>
+    </div>
+  );
 }
 
 function App() {
