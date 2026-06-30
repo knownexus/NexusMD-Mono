@@ -1434,7 +1434,6 @@ function App() {
       ? (tweaks.darkTheme || 'cobalt')
       : (tweaks.lightTheme || 'parchment');
     document.body.dataset.theme = palette;
-    window.electronAPI?.setTitlebarTheme?.(tweaks.theme === 'dark');
   }, [tweaks.theme, tweaks.darkTheme, tweaks.lightTheme]);
 
   useEffect(() => {
