@@ -611,10 +611,51 @@ function CloudSyncCard({ controller, providers, fileIO }) {
   );
 }
 
+function OAuthCard({ googleClientId, googleClientSecret, msClientId, onChangeGoogle, onChangeGoogleSecret, onChangeMs, onSave, saving }) {
+  return (
+    <VsCard title="OAuth Configuration" icon="settings">
+      <VsFullRow title="Google Client ID" desc="Client ID for Google Drive sync">
+        <input
+          value={googleClientId || ''}
+          onChange={e => onChangeGoogle(e.target.value)}
+          placeholder="e.g. 12345-abcde.apps.googleusercontent.com"
+          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
+        />
+      </VsFullRow>
+      <VsFullRow title="Google Client Secret" desc="Only required if your Google client is registered as a Web application; leave blank for Desktop clients">
+        <input
+          type="password"
+          value={googleClientSecret || ''}
+          onChange={e => onChangeGoogleSecret(e.target.value)}
+          placeholder="Optional — paste the client secret if sign-in returns a 400"
+          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
+        />
+      </VsFullRow>
+      <VsFullRow title="Microsoft Client ID" desc="Public Client ID for OneDrive sync">
+        <input
+          value={msClientId || ''}
+          onChange={e => onChangeMs(e.target.value)}
+          placeholder="e.g. 00000000-0000-0000-0000-000000000000"
+          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
+        />
+      </VsFullRow>
+      <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10, alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 'auto' }}>
+          Desktop OAuth uses the PKCE + loopback flow. A client secret is usually
+          unnecessary; add the Google secret only if sign-in fails with a 400.
+        </span>
+        <button className="btn sm primary" onClick={onSave} disabled={saving}>
+          {saving ? 'Saving…' : 'Save OAuth config'}
+        </button>
+      </div>
+    </VsCard>
+  );
+}
+
 // ── Shared exports ────────────────────────────────────────────────
 export {
   PROFILE_COLORS,
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
-  BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,
+  BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard, OAuthCard,
 };

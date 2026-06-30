@@ -1,7 +1,6 @@
 'use strict';
 
 const crypto = require('crypto');
-const cfg = require('./oauth-config.cjs');
 
 function base64url(buf) {
   return Buffer.from(buf).toString('base64')
@@ -22,7 +21,14 @@ const PROVIDERS = {
   google: {
     authEndpoint:  'https://accounts.google.com/o/oauth2/v2/auth',
     tokenEndpoint: 'https://oauth2.googleapis.com/token',
-    clientId: process.env.NEXUSMD_GOOGLE_DESKTOP_CLIENT_ID || cfg.googleClientId || '',
+    get clientId() {
+      const main = require('../main.cjs');
+      return main.getOAuthClientId('google');
+    },
+    get clientSecret() {
+      const main = require('../main.cjs');
+      return main.getOAuthClientSecret('google');
+    },
     scope: 'openid email https://www.googleapis.com/auth/drive.file',
     redirectHost: '127.0.0.1',
     authParams: { access_type: 'offline', prompt: 'consent' },
@@ -30,7 +36,10 @@ const PROVIDERS = {
   microsoft: {
     authEndpoint:  'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
     tokenEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-    clientId: process.env.NEXUSMD_MS_DESKTOP_CLIENT_ID || cfg.msClientId || '',
+    get clientId() {
+      const main = require('../main.cjs');
+      return main.getOAuthClientId('microsoft');
+    },
     scope: 'openid email offline_access Files.ReadWrite',
     redirectHost: 'localhost',
     authParams: {},

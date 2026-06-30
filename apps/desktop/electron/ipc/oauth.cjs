@@ -45,35 +45,47 @@ async function runSignIn(provider) {
   await shell.openExternal(core.buildAuthUrl(p, { redirectUri, challenge, state }));
   const code = await codePromise;
 
+  const exchangeBody = {
+    client_id: p.clientId,
+    code,
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code',
+    code_verifier: verifier,
+  };
+  if (p.clientSecret) exchangeBody.client_secret = p.clientSecret;
+
   const resp = await fetch(p.tokenEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: p.clientId,
-      code,
-      redirect_uri: redirectUri,
-      grant_type: 'authorization_code',
-      code_verifier: verifier,
-    }),
+    body: new URLSearchParams(exchangeBody),
   });
-  if (!resp.ok) throw new Error(`token exchange failed (${resp.status})`);
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => '');
+    throw new Error(`token exchange failed (${resp.status})${detail ? `: ${detail}` : ''}`);
+  }
   return core.parseTokenResponse(await resp.json());
 }
 
 async function runRefresh(provider, refreshToken) {
   const p = core.PROVIDERS[provider];
   if (!p) throw new Error(`unknown provider: ${provider}`);
+  const refreshBody = {
+    client_id: p.clientId,
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token',
+    scope: p.scope,
+  };
+  if (p.clientSecret) refreshBody.client_secret = p.clientSecret;
+
   const resp = await fetch(p.tokenEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: p.clientId,
-      refresh_token: refreshToken,
-      grant_type: 'refresh_token',
-      scope: p.scope,
-    }),
+    body: new URLSearchParams(refreshBody),
   });
-  if (!resp.ok) throw new Error(`token refresh failed (${resp.status})`);
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => '');
+    throw new Error(`token refresh failed (${resp.status})${detail ? `: ${detail}` : ''}`);
+  }
   const t = core.parseTokenResponse(await resp.json());
   return { accessToken: t.accessToken, refreshToken: t.refreshToken };
 }

@@ -7,13 +7,52 @@ const { createTray, updateTrayIcon } = require('./tray.cjs');
 const { initNotifications } = require('./notifications.cjs');
 const { initUpdater, registerUpdaterIpc } = require('./updater.cjs');
 
+// ---------------------------------------------------------------------------
+// Persistent desktop prefs (userData/prefs.json)
+// ---------------------------------------------------------------------------
+const PREFS_PATH = path.join(app.getPath('userData'), 'prefs.json');
+
+const fs = require('fs');
+
+function loadPrefs() {
+  try {
+    return JSON.parse(fs.readFileSync(PREFS_PATH, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function savePrefs(data) {
+  const tmp = PREFS_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tmp, PREFS_PATH);
+}
+
+const prefs = loadPrefs();
+
+function getOAuthClientId(provider) {
+  if (provider === 'google') return prefs.googleClientId || process.env.NEXUSMD_GOOGLE_DESKTOP_CLIENT_ID || '';
+  if (provider === 'microsoft') return prefs.msClientId     || process.env.NEXUSMD_MS_DESKTOP_CLIENT_ID     || '';
+  return '';
+}
+
+// Optional. Google OAuth clients registered as "Web application" type require a
+// client_secret at the token endpoint; "Desktop app" clients do not. Microsoft
+// public clients must NOT send one. Returns '' when unset, in which case the
+// secret is omitted from the token request entirely.
+function getOAuthClientSecret(provider) {
+  if (provider === 'google') return prefs.googleClientSecret || process.env.NEXUSMD_GOOGLE_DESKTOP_CLIENT_SECRET || '';
+  return '';
+}
+
+module.exports = { getOAuthClientId, getOAuthClientSecret };
+
 const fileIpc        = require('./ipc/file.cjs');
 const pickerIpc      = require('./ipc/picker.cjs');
 const badgeIpc       = require('./ipc/badge.cjs');
 const deepLinkIpc    = require('./ipc/deepLink.cjs');
 const trayIpc        = require('./ipc/tray-ipc.cjs');
 const oauthIpc       = require('./ipc/oauth.cjs');
-
 // ---------------------------------------------------------------------------
 // Single-instance lock
 // ---------------------------------------------------------------------------
@@ -32,6 +71,35 @@ if (!gotLock) {
     }
   });
 }
+
+// ---------------------------------------------------------------------------
+// Output folder IPC — lets the renderer pick a directory and save files there
+// ---------------------------------------------------------------------------
+ipcMain.handle('pick-output-folder', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select output folder',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  return canceled ? null : filePaths[0];
+});
+
+ipcMain.handle('save-file', async (_e, { filename, content, folder }) => {
+  const targetDir = folder || app.getPath('downloads');
+  const filePath  = path.join(targetDir, filename);
+  fs.writeFileSync(filePath, content, 'utf8');
+  return filePath;
+});
+
+// Open an external URL in the system browser (used for cloud OAuth sign-in).
+ipcMain.handle('open-external', async (_e, url) => { await shell.openExternal(url); });
+
+// ---------------------------------------------------------------------------
+// Login-item IPC handlers
+// ---------------------------------------------------------------------------
+ipcMain.handle('get-login-item-enabled', () =>
+  app.getLoginItemSettings().openAtLogin);
+ipcMain.handle('set-login-item-enabled', (_e, enabled) =>
+  app.setLoginItemSettings({ openAtLogin: enabled }));
 
 // ---------------------------------------------------------------------------
 // State
@@ -101,17 +169,6 @@ function buildAppMenu(win) {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// ---------------------------------------------------------------------------
-// Title-bar overlay colours — read from a JSON payload sent over IPC
-// ---------------------------------------------------------------------------
-const TITLEBAR_HEIGHT = 40;
-const TITLEBAR_LIGHT  = { color: '#fbf8ee', symbolColor: '#2c2618', height: TITLEBAR_HEIGHT };
-const TITLEBAR_DARK   = { color: '#16202c', symbolColor: '#d6dfe8', height: TITLEBAR_HEIGHT };
-
-function titlebarForTheme(isDark) {
-  return isDark ? TITLEBAR_DARK : TITLEBAR_LIGHT;
-}
-
 function windowIconPath(isDark) {
   const name = isDark ? 'icon-light.png' : 'icon.png';
   return path.join(__dirname, '..', 'assets', name);
@@ -130,10 +187,10 @@ function createMainWindow() {
     show: false,
     title: 'Management Dashboard',
     icon: windowIconPath(isDark),
-    // Hidden title bar + overlay keeps native Win11 window controls (Snap Layouts etc.)
-    // while letting web content fill the title bar region.
-    titleBarStyle: 'hidden',
-    titleBarOverlay: titlebarForTheme(isDark),
+    // Frameless: no native title bar at all. The renderer's .topbar acts as the
+    // drag region and hosts custom min/max/close controls, so web content fills
+    // the entire window with no reserved title-bar strip.
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -150,19 +207,11 @@ function createMainWindow() {
     win.loadFile(path.join(__dirname, '..', 'dist', 'renderer', 'index.html'));
   }
 
-  // Inject draggable-region CSS so the topbar acts as the Electron drag handle.
-  // Interactive elements (buttons, inputs) are already pointer-event targets so
-  // they don't need explicit no-drag overrides — the drag region only triggers on
-  // the bare topbar background.
-  // On Windows/Linux the title-bar overlay sits on top of the web content,
-  // so push the whole app down by the overlay height to keep the topbar visible.
-  // On macOS (hiddenInset) the traffic-light buttons are inset within the window
-  // and the web content fills below them naturally, so no offset is needed.
-  const tbHeight = process.platform === 'darwin' ? 0 : TITLEBAR_HEIGHT;
-
+  // Frameless window: the .topbar acts as the Electron drag handle so the user
+  // can still move the window. Interactive elements inside it (buttons, inputs,
+  // the custom window controls) are marked no-drag so they remain clickable.
   win.webContents.on('did-finish-load', () => {
     win.webContents.insertCSS(`
-      html { padding-top: ${tbHeight}px; box-sizing: border-box; }
       .topbar { -webkit-app-region: drag; }
       .topbar button, .topbar input, .topbar a, .topbar select,
       .topbar [role="button"] { -webkit-app-region: no-drag; }
@@ -226,59 +275,6 @@ app.whenReady().then(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Output folder IPC — lets the renderer pick a directory and save files there
-// ---------------------------------------------------------------------------
-const fs = require('fs');
-
-// ---------------------------------------------------------------------------
-// Persistent desktop prefs (userData/prefs.json)
-// ---------------------------------------------------------------------------
-const PREFS_PATH = path.join(app.getPath('userData'), 'prefs.json');
-
-function loadPrefs() {
-  try {
-    return JSON.parse(fs.readFileSync(PREFS_PATH, 'utf8'));
-  } catch {
-    return {};
-  }
-}
-
-function savePrefs(data) {
-  const tmp = PREFS_PATH + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-  fs.renameSync(tmp, PREFS_PATH);
-}
-
-const prefs = loadPrefs();
-if (prefs.closeToTray === undefined) prefs.closeToTray = true;
-
-ipcMain.handle('pick-output-folder', async () => {
-  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-    title: 'Select output folder',
-    properties: ['openDirectory', 'createDirectory'],
-  });
-  return canceled ? null : filePaths[0];
-});
-
-ipcMain.handle('save-file', async (_e, { filename, content, folder }) => {
-  const targetDir = folder || app.getPath('downloads');
-  const filePath  = path.join(targetDir, filename);
-  fs.writeFileSync(filePath, content, 'utf8');
-  return filePath;
-});
-
-// Open an external URL in the system browser (used for cloud OAuth sign-in).
-ipcMain.handle('open-external', async (_e, url) => { await shell.openExternal(url); });
-
-// ---------------------------------------------------------------------------
-// Login-item IPC handlers
-// ---------------------------------------------------------------------------
-ipcMain.handle('get-login-item-enabled', () =>
-  app.getLoginItemSettings().openAtLogin);
-ipcMain.handle('set-login-item-enabled', (_e, enabled) =>
-  app.setLoginItemSettings({ openAtLogin: enabled }));
-
-// ---------------------------------------------------------------------------
 // Close-to-tray IPC
 // ---------------------------------------------------------------------------
 ipcMain.handle('get-close-to-tray', () => prefs.closeToTray);
@@ -288,18 +284,40 @@ ipcMain.handle('set-close-to-tray', (_e, enabled) => {
 });
 
 // ---------------------------------------------------------------------------
+// OAuth config IPC
+// ---------------------------------------------------------------------------
+ipcMain.handle('get-oauth-config', () => ({
+  googleClientId:     prefs.googleClientId     || process.env.NEXUSMD_GOOGLE_DESKTOP_CLIENT_ID     || '',
+  googleClientSecret: prefs.googleClientSecret || process.env.NEXUSMD_GOOGLE_DESKTOP_CLIENT_SECRET || '',
+  msClientId:         prefs.msClientId         || process.env.NEXUSMD_MS_DESKTOP_CLIENT_ID         || '',
+}));
+
+ipcMain.handle('set-oauth-config', (_e, { googleClientId, googleClientSecret, msClientId }) => {
+  if (googleClientId     !== undefined) prefs.googleClientId     = googleClientId;
+  if (googleClientSecret !== undefined) prefs.googleClientSecret = googleClientSecret;
+  if (msClientId         !== undefined) prefs.msClientId         = msClientId;
+  savePrefs(prefs);
+});
+
+// ---------------------------------------------------------------------------
 // Native theme read IPC
 // ---------------------------------------------------------------------------
 ipcMain.handle('get-native-theme', () => nativeTheme.shouldUseDarkColors);
 
 // ---------------------------------------------------------------------------
-// Title-bar overlay theme IPC — renderer calls this when the user switches
-// light/dark so the native Win11 window controls match the app theme.
+// Window-control IPC — drives the custom min/max/close buttons in the frameless
+// window's renderer topbar.
 // ---------------------------------------------------------------------------
-ipcMain.on('set-titlebar-theme', (_e, isDark) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setTitleBarOverlay(titlebarForTheme(isDark));
-  }
+ipcMain.on('window:minimize', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+});
+ipcMain.on('window:toggle-maximize', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+});
+ipcMain.on('window:close', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
 });
 
 // ---------------------------------------------------------------------------

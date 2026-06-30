@@ -51,11 +51,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setCloseToTray: (enabled) => ipcRenderer.invoke('set-close-to-tray', enabled),
 
   /**
-   * Notify the main process that the user switched light/dark theme so the
-   * native title-bar overlay (Win11 window controls) updates its colours.
-   * @param {boolean} isDark
+   * Custom window controls for the frameless window (min / maximize / close).
    */
-  setTitlebarTheme: (isDark) => ipcRenderer.send('set-titlebar-theme', isDark),
+  windowMinimize:       () => ipcRenderer.send('window:minimize'),
+  windowToggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
+  windowClose:          () => ipcRenderer.send('window:close'),
+
+  /**
+   * Get dynamic OAuth configuration (persisted in prefs.json or env).
+   * @returns {Promise<{ googleClientId: string, msClientId: string }>}
+   */
+  getOAuthConfig: () => ipcRenderer.invoke('get-oauth-config'),
+
+  /**
+   * Set dynamic OAuth configuration.
+   * @param {{ googleClientId?: string, msClientId?: string }} config
+   * @returns {Promise<void>}
+   */
+  setOAuthConfig: (config) => ipcRenderer.invoke('set-oauth-config', config),
 
   /**
    * Open a native folder-picker dialog and return the chosen path (or null).
@@ -124,7 +137,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // ── nativeTheme (used by theme adapter) ────────────────────────────────────
-  // setTitlebarTheme already exists above — this adds the one-time read
   getNativeTheme: () => ipcRenderer.invoke('get-native-theme'),
 
   // ── Notification (renderer → main) ─────────────────────────────────────────
