@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fetchCalendarEvents, createCalendarEvent } from './ms-graph-calendar.js'
+import { fetchCalendarEvents, createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
 
 beforeEach(() => {
   global.fetch = vi.fn()
@@ -69,5 +69,16 @@ describe('createCalendarEvent', () => {
   it('throws on a non-ok response', async () => {
     global.fetch.mockResolvedValue({ ok: false, status: 403 })
     await expect(createCalendarEvent('fake-token', { title: 'x', start: 'a', end: 'b' })).rejects.toThrow('Graph createEvent failed: 403')
+  })
+})
+
+describe('toLocalDateTimeString', () => {
+  it('formats a Date using its local components, not UTC', () => {
+    const d = new Date(2026, 6, 3, 9, 5, 0) // July 3, 2026, 09:05 local time (month is 0-indexed)
+    expect(toLocalDateTimeString(d)).toBe('2026-07-03T09:05')
+  })
+  it('pads single-digit month, day, hour, and minute', () => {
+    const d = new Date(2026, 0, 5, 8, 3, 0) // Jan 5, 2026, 08:03 local time
+    expect(toLocalDateTimeString(d)).toBe('2026-01-05T08:03')
   })
 })

@@ -27,7 +27,7 @@ import {
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { CalendarView } from './views/view-calendar.jsx'
-import { createCalendarEvent } from './ms-graph-calendar.js'
+import { createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
 import { navigationAdapter }    from './adapters/navigation.js'
 import { authAdapter }          from './adapters/auth.js'
@@ -459,8 +459,8 @@ function ViewBody({
         if (!token) return
         return createCalendarEvent(token, {
           title: `1:1 with ${dev.name}`,
-          start: start.toISOString().slice(0, 16),
-          end: end.toISOString().slice(0, 16),
+          start: toLocalDateTimeString(start),
+          end: toLocalDateTimeString(end),
         })
       }).catch(console.error)
     }

@@ -29,6 +29,15 @@ export async function fetchCalendarEvents(token, startISO, endISO) {
   }))
 }
 
+// Formats a Date using its local wall-clock components (not UTC). Used to build
+// Graph event start/end strings that pair correctly with the local IANA timeZone
+// createCalendarEvent attaches below — unlike `date.toISOString()`, which is
+// always UTC and would silently shift the event by the caller's UTC offset.
+export function toLocalDateTimeString(date) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 export async function createCalendarEvent(token, { title, start, end, description = '' }) {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const body = {
