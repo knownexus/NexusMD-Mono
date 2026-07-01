@@ -682,7 +682,7 @@ function IntegrationsPanel() {
 }
 
 // The view body — reads the snapshot from context and wires per-view host state.
-function ViewBody({ view, onOpenItem, onOpenPR, tweaks, setTweak }) {
+function ViewBody({ view, onOpenItem, onOpenPR, tweaks = DEFAULT_TWEAKS, setTweak = () => {} }) {
   const { data } = useNexusData()
   const { activeProfile } = useProfile() || {}
   // manual profiles don't require ADO config
@@ -790,12 +790,14 @@ function App() {
     })
   }, [])
 
-  window.nexusMDTypeLabels = tweaks.typeLabels || false
-
   React.useEffect(() => {
     const palette = tweaks.theme === 'dark' ? (tweaks.darkTheme || 'cobalt') : (tweaks.lightTheme || 'parchment')
     document.body.dataset.theme = palette
   }, [tweaks.theme, tweaks.darkTheme, tweaks.lightTheme])
+
+  React.useEffect(() => {
+    window.nexusMDTypeLabels = tweaks.typeLabels || false
+  }, [tweaks.typeLabels])
 
   const active = NAV.find(n => n.id === view) || NAV[0]
   const snapshot = useNexusSnapshot()
