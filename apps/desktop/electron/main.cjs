@@ -35,6 +35,7 @@ const deepLinkIpc    = require('./ipc/deepLink.cjs');
 const trayIpc        = require('./ipc/tray-ipc.cjs');
 const logsIpc        = require('./ipc/logs.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
+const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
 const { clampZoomFactor, nextZoom, ZOOM_DEFAULT } = require('./zoom.cjs')
 
 // ---------------------------------------------------------------------------
@@ -167,9 +168,13 @@ function createMainWindow() {
 
   buildAppMenu(win);
 
-  // Links are routed through the tabbed link window (see link-window/manager.cjs)
-  // via the renderer's electronAPI.openLink — deny any window.open() that bypasses it.
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Links are routed through the tabbed link window (see link-window/manager.cjs).
+  // <a target="_blank"> links (e.g. dashboard quick links) trigger window.open;
+  // route allowed http(s) URLs into the link window and deny the raw popup.
+  win.webContents.setWindowOpenHandler(createWindowOpenHandler({
+    isAllowedUrl: linkWindow.isAllowedUrl,
+    openLink:     linkWindow.openLink,
+  }));
 
   if (process.env.VITE_DEV_SERVER_URL) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
