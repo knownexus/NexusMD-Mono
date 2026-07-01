@@ -10,7 +10,7 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
 import { PlModal, PlFld } from '../planner-chips.jsx';
-import { getIsoWeek, getIsoYearWeek, getMondayOfDate, PLANNER_SECTIONS } from '@nexusmd/core';
+import { getIsoWeek, getIsoYearWeek, getMondayOfDate, getYearWeekForOffset, PLANNER_SECTIONS } from '@nexusmd/core';
 import { getPlannerRuntime } from './runtime.js';
 import {
   hashPassword, loadConfidentialConfig, saveConfidentialConfig, decryptConfidentialFromServer,
@@ -41,72 +41,118 @@ export function describeSnapshot(data) {
   return parts.length ? parts.join(', ') : 'empty planner';
 }
 
-// ── Import modal (v1 semantics: { data, themes } envelope, merge) ──
+// ── Import modal — multi-file ──────────────────────────────────────────────────
+function parseOneFile(file, callback) {
+  if (!file.name.endsWith('.json')) { callback({ ok: false, fileName: file.name, message: 'Not a .json file.' }); return; }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    let parsed;
+    try { parsed = JSON.parse(ev.target.result); }
+    catch (e) { callback({ ok: false, fileName: file.name, message: 'Invalid JSON: ' + e.message }); return; }
+    let data = null, themes = null;
+    if (parsed && typeof parsed.data === 'object' && parsed.data !== null) {
+      data = parsed.data; themes = parsed.themes || null;
+    } else if (parsed && typeof parsed === 'object') {
+      const knownKeys = PLANNER_SECTIONS.map(s => s.id);
+      if (Object.keys(parsed).some(k => knownKeys.includes(k))) data = parsed;
+      else { callback({ ok: false, fileName: file.name, message: "Doesn't look like a planner export." }); return; }
+    } else { callback({ ok: false, fileName: file.name, message: 'Unexpected format.' }); return; }
+    const tasks = (data.tasks || []).length, meetings = (data.meetSched || []).length, oneOnOnes = (data.oneOnOnes || []).length;
+    const exportedAt = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString() : null;
+    const weekYear = (typeof parsed.weekYear === 'number') ? parsed.weekYear : null;
+    const weekNumber = (typeof parsed.weekNumber === 'number') ? parsed.weekNumber : null;
+    callback({
+      ok: true, fileName: file.name, data, themes, weekYear, weekNumber, chosenOffset: 0,
+      detail: `${tasks} tasks, ${meetings} meetings, ${oneOnOnes} 1:1s${exportedAt ? ' · ' + exportedAt : ''}`,
+    });
+  };
+  reader.onerror = () => callback({ ok: false, fileName: file.name, message: 'Could not read the file.' });
+  reader.readAsText(file);
+}
+
+function ImportFileItem({ item, onRemove, onOffsetChange }) {
+  const needsPick = item.ok && !item.weekYear;
+  const { year: cy, week: cw } = getYearWeekForOffset(item.chosenOffset || 0);
+  const weekLabel = item.weekYear ? `W${item.weekNumber}, ${item.weekYear}` : `W${cw}, ${cy}`;
+  return (
+    <div style={{ padding: '9px 12px', background: 'var(--surface-2)', border: `1px solid ${item.ok ? 'var(--border)' : 'var(--border-strong)'}`, borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Icon name={item.ok ? 'check' : 'alert-circle'} size={13} style={{ color: item.ok ? 'var(--accent)' : 'var(--text-subtle)', flexShrink: 0 }}/>
+        <span style={{ fontSize: 12.5, fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.fileName}</span>
+        {item.ok && <span style={{ fontSize: 11.5, color: 'var(--text-subtle)', fontWeight: 600, flexShrink: 0 }}>{weekLabel}</span>}
+        <button className="btn icon ghost sm" style={{ flexShrink: 0 }} onClick={onRemove}><Icon name="x" size={11}/></button>
+      </div>
+      {item.detail && <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', paddingLeft: 21 }}>{item.detail}</div>}
+      {!item.ok && <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', paddingLeft: 21 }}>{item.message}</div>}
+      {needsPick && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 21 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-subtle)' }}>Import into:</span>
+          <button className="btn icon ghost sm" onClick={() => onOffsetChange((item.chosenOffset || 0) - 1)}><Icon name="chevron-left" size={11}/></button>
+          <span style={{ fontSize: 12, fontWeight: 600, minWidth: 90, textAlign: 'center' }}>W{cw}, {cy}</span>
+          <button className="btn icon ghost sm" onClick={() => onOffsetChange((item.chosenOffset || 0) + 1)}><Icon name="chevron-right" size={11}/></button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ImportModal({ open, onClose, onImport }) {
-  const [status, setStatus] = useState(null);
-  const [pending, setPending] = useState(null);
+  const [items, setItems] = useState([]);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef(null);
-  const handleClose = () => { setStatus(null); setPending(null); setDragOver(false); onClose(); };
+  const handleClose = () => { setItems([]); setDragOver(false); onClose(); };
 
-  const parseFile = (file) => {
-    if (!file) return;
-    if (!file.name.endsWith('.json')) { setStatus({ ok: false, message: 'Please choose a .json file.' }); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      let parsed;
-      try { parsed = JSON.parse(ev.target.result); }
-      catch (e) { setStatus({ ok: false, message: 'Invalid JSON: ' + e.message }); return; }
-
-      let data = null, themes = null;
-      if (parsed && typeof parsed.data === 'object' && parsed.data !== null) {
-        data = parsed.data; themes = parsed.themes || null;
-      } else if (parsed && typeof parsed === 'object') {
-        const knownKeys = PLANNER_SECTIONS.map(s => s.id);
-        if (Object.keys(parsed).filter(k => knownKeys.includes(k)).length > 0) data = parsed;
-        else { setStatus({ ok: false, message: "File doesn't look like a planner export. Expected { data, themes } or a planner data object." }); return; }
-      } else { setStatus({ ok: false, message: 'Unexpected file format.' }); return; }
-
-      const tasks = (data.tasks || []).length, meetings = (data.meetSched || []).length, oneOnOnes = (data.oneOnOnes || []).length;
-      const exportedAt = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString() : null;
-      setPending({ data, themes });
-      setStatus({ ok: true, message: 'Ready to import — merges into the current week.', detail: `${tasks} tasks, ${meetings} meetings, ${oneOnOnes} 1:1s${exportedAt ? ' · exported ' + exportedAt : ''}` });
-    };
-    reader.onerror = () => setStatus({ ok: false, message: 'Could not read the file.' });
-    reader.readAsText(file);
+  const addFiles = (fileList) => {
+    Array.from(fileList).forEach(file => {
+      const id = file.name + ':' + file.size;
+      parseOneFile(file, (result) => {
+        setItems(prev => prev.some(it => it.id === id) ? prev : [...prev, { id, ...result }]);
+      });
+    });
   };
+
+  const removeItem = (id) => setItems(prev => prev.filter(it => it.id !== id));
+  const setItemOffset = (id, offset) => setItems(prev => prev.map(it => it.id === id ? { ...it, chosenOffset: offset } : it));
+
+  const validItems = items.filter(it => it.ok);
+  const n = validItems.length;
 
   return (
     <PlModal open={open} onClose={handleClose} icon="inbox" title="Import planner"
-      sub="Merge a JSON export into this week"
+      sub="Restore JSON exports to their original weeks"
       footer={(
         <React.Fragment>
           <button className="btn ghost" onClick={handleClose}>Cancel</button>
-          <button className="btn primary" disabled={!pending} onClick={() => { onImport(pending.data, pending.themes); handleClose(); }}>Import</button>
+          <button className="btn primary" disabled={n === 0} onClick={() => {
+            onImport(validItems.map(it => {
+              const { year: wy, week: wn } = it.weekYear
+                ? { year: it.weekYear, week: it.weekNumber }
+                : getYearWeekForOffset(it.chosenOffset || 0);
+              return { data: it.data, themes: it.themes, weekYear: wy, weekNumber: wn };
+            }));
+            handleClose();
+          }}>Import{n > 1 ? ` ${n}` : ''}</button>
         </React.Fragment>
       )}>
       <div
         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={e => { e.preventDefault(); setDragOver(false); parseFile(e.dataTransfer.files?.[0]); }}
+        onDrop={e => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files); }}
         onClick={() => fileRef.current?.click()}
         style={{
           border: `1.5px dashed ${dragOver ? 'var(--accent)' : 'var(--border-strong)'}`,
-          borderRadius: 12, padding: '30px 20px', textAlign: 'center', cursor: 'pointer',
+          borderRadius: 12, padding: '24px 20px', textAlign: 'center', cursor: 'pointer',
           background: dragOver ? 'var(--accent-soft)' : 'var(--surface-2)', transition: 'all .15s',
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
         }}>
-        <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={e => { parseFile(e.target.files?.[0]); e.target.value = ''; }}/>
+        <input ref={fileRef} type="file" accept=".json" multiple style={{ display: 'none' }} onChange={e => { addFiles(e.target.files); e.target.value = ''; }}/>
         <Icon name="inbox" size={20} style={{ color: 'var(--text-subtle)' }}/>
-        <div style={{ fontSize: 13, fontWeight: 500 }}>Drop a .json export here, or click to browse</div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-subtle)' }}>Existing data is preserved unless the file has the same sections</div>
+        <div style={{ fontSize: 13, fontWeight: 500 }}>Drop .json exports here, or click to browse</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-subtle)' }}>Multiple files supported</div>
       </div>
-      {status && (
-        <div className={`plm-callout ${status.ok ? 'ok' : 'err'}`}>
-          <strong>{status.message}</strong>
-          {status.detail && <div style={{ marginTop: 3, opacity: .85 }}>Found: {status.detail}</div>}
-        </div>
-      )}
+      {items.map(item => (
+        <ImportFileItem key={item.id} item={item} onRemove={() => removeItem(item.id)} onOffsetChange={(o) => setItemOffset(item.id, o)}/>
+      ))}
     </PlModal>
   );
 }

@@ -270,18 +270,46 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
   const lockedCount = confCfg.sections.filter(id => !unlockedSections.has(id)).length + lockedRowCount
 
   const exportJson = () => {
-    const payload = { data, themes, exportedAt: new Date().toISOString() }
+    const payload = { data, themes, exportedAt: new Date().toISOString(), weekYear: cYear, weekNumber: cWeek }
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `planner-${new Date().toISOString().slice(0,10)}.json`
+    a.download = `planner-${cYear}-W${String(cWeek).padStart(2, '0')}.json`
     a.click(); URL.revokeObjectURL(a.href)
   }
-  const handleImport = (importedData, importedThemes) => {
-    if (importedData && typeof importedData === 'object') setData(d => ({ ...d, ...importedData }))
-    if (importedThemes && typeof importedThemes === 'object') setThemes(t => ({ ...t, ...importedThemes }))
-    if (isNewWeek) setIsNewWeek(false)
-    showFlash('Imported successfully.')
+  const handleImport = (importItems) => {
+    let firstWeekYear = null, firstWeekNumber = null
+    for (const { data: d, themes: t, weekYear, weekNumber } of importItems) {
+      saveWeekPlanner(weekYear, weekNumber, d || {}, t || {})
+      if (!firstWeekYear) { firstWeekYear = weekYear; firstWeekNumber = weekNumber }
+    }
+    setWeeksWithData(getWeeksWithData())
+    if (firstWeekYear) {
+      const now = new Date()
+      const day = now.getDay() || 7
+      const curMon = new Date(now)
+      curMon.setDate(now.getDate() - day + 1)
+      curMon.setHours(0, 0, 0, 0)
+      const jan4 = new Date(firstWeekYear, 0, 4)
+      const jan4Day = jan4.getDay() || 7
+      const week1Mon = new Date(firstWeekYear, 0, 4 - jan4Day + 1)
+      week1Mon.setHours(0, 0, 0, 0)
+      const targetMon = new Date(week1Mon)
+      targetMon.setDate(week1Mon.getDate() + (firstWeekNumber - 1) * 7)
+      const targetOffset = Math.round((targetMon - curMon) / (7 * 86400000))
+      if (targetOffset !== weekOffset) {
+        setWeekOffset(targetOffset)
+      } else {
+        const cur = importItems.find(i => i.weekYear === cYear && i.weekNumber === cWeek)
+        if (cur) {
+          if (cur.data) setData(d => ({ ...d, ...cur.data }))
+          if (cur.themes) setThemes(t => ({ ...t, ...cur.themes }))
+          if (isNewWeek) setIsNewWeek(false)
+        }
+      }
+    }
+    const n = importItems.length
+    showFlash(n === 1 ? `Imported into W${firstWeekNumber}.` : `Imported ${n} weeks.`)
   }
   const handleRestore = (restoredData, restoredThemes) => {
     if (restoredData && typeof restoredData === 'object') setData(d => ({ ...d, ...restoredData }))
