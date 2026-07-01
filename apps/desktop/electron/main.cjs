@@ -1,5 +1,28 @@
 'use strict';
 
+
+const log = require('electron-log');
+const path = require('path');
+
+// Configure electron-log
+log.transports.file.level = 'debug';
+log.transports.console.level = 'info';
+
+// Set log file path to {userData}/logs/{YYYY-MM-DD}.log
+const logsDir = path.join(app.getPath('userData'), 'logs');
+log.transports.file.resolvePathFn = () => {
+  const now = new Date();
+  const date = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  return path.join(logsDir, `${date}.log`);
+};
+
+// Patch console to use electron-log (all console.log → file + console)
+console.log = log.info;
+console.warn = log.warn;
+console.error = log.error;
+
+// Make log global for use in other modules
+global.log = log;
 const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require('electron');
 const path = require('path');
 
@@ -12,6 +35,7 @@ const pickerIpc      = require('./ipc/picker.cjs');
 const badgeIpc       = require('./ipc/badge.cjs');
 const deepLinkIpc    = require('./ipc/deepLink.cjs');
 const trayIpc        = require('./ipc/tray-ipc.cjs');
+const linkWindow     = require('./link-window/manager.cjs');
 
 // ---------------------------------------------------------------------------
 // Single-instance lock
@@ -133,6 +157,10 @@ function createMainWindow() {
 
   buildAppMenu(win);
 
+  // Links are routed through the tabbed link window (see link-window/manager.cjs)
+  // via the renderer's electronAPI.openLink — deny any window.open() that bypasses it.
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
   if (process.env.VITE_DEV_SERVER_URL) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
@@ -213,6 +241,7 @@ app.whenReady().then(async () => {
   badgeIpc.register(ipcMain);
   deepLinkIpc.register(ipcMain, () => mainWindow);
   trayIpc.register(ipcMain, () => mainWindow, () => tray);
+  linkWindow.register(ipcMain);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -268,6 +297,9 @@ ipcMain.handle('save-file', async (_e, { filename, content, folder }) => {
 
 // Open an external URL in the system browser (used for cloud OAuth sign-in).
 ipcMain.handle('open-external', async (_e, url) => { await shell.openExternal(url); });
+
+// Open a link (ADO work item, PR, etc.) as a tab in the shared link window.
+ipcMain.handle('link-window:open', (_e, url) => { linkWindow.openLink(url); });
 
 // ---------------------------------------------------------------------------
 // Login-item IPC handlers
