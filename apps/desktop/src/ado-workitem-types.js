@@ -1,6 +1,4 @@
-// ado-workitem-types.js — fetches, caches, and classifies ADO work item type
-// field/layout definitions for the desktop "Create Work Item" drawer.
-import { createAdoHttpAdapter } from './ado-client.js'
+// ado-workitem-types.js — caches ADO work item type definitions.
 import { getProfileKey } from './profile-keys.js'
 
 const rawStorage = {
