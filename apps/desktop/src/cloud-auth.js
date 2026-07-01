@@ -21,10 +21,12 @@ function read(suffix) {
   catch { return null }
 }
 function write(suffix, auth) {
-  try { const k = getProfileKey('nexusmd.' + suffix); if (k) localStorage.setItem(k, JSON.stringify(auth)) } catch {}
+  try { const k = getProfileKey('nexusmd.' + suffix); if (k) localStorage.setItem(k, JSON.stringify(auth)) }
+  catch (err) { console.warn(`[cloud-auth] failed to persist ${suffix}:`, err?.message || err) }
 }
 function clear(suffix) {
-  try { const k = getProfileKey('nexusmd.' + suffix); if (k) localStorage.removeItem(k) } catch {}
+  try { const k = getProfileKey('nexusmd.' + suffix); if (k) localStorage.removeItem(k) }
+  catch (err) { console.warn(`[cloud-auth] failed to clear ${suffix}:`, err?.message || err) }
 }
 
 function makeBinding(key) {

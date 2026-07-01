@@ -20,6 +20,16 @@ describe('startLoopback', () => {
     h.close()
   })
 
+  it('ignores stray requests with no code/error (e.g. favicon) and still resolves the real redirect', async () => {
+    const h = await startLoopback()
+    const p = h.waitForCode({ state: 'xyz', timeoutMs: 2000 })
+    const stray = await fetch(`http://127.0.0.1:${h.port}/favicon.ico`)
+    expect(stray.status).toBe(204)          // stray request ignored, not consumed
+    await fetch(`http://127.0.0.1:${h.port}/?code=abc&state=xyz`)
+    expect(await p).toBe('abc')             // real redirect still resolves
+    h.close()
+  })
+
   it('rejects when the provider returns an error', async () => {
     const h = await startLoopback()
     const p = h.waitForCode({ state: 'xyz', timeoutMs: 2000 })

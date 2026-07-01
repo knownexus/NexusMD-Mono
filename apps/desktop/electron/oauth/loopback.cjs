@@ -12,13 +12,18 @@ function startLoopback() {
 
     server.on('request', (req, res) => {
       const url = new URL(req.url, `http://127.0.0.1`);
+      const code = url.searchParams.get('code');
+      const error = url.searchParams.get('error');
+      // Ignore stray requests (browser preconnect, /favicon.ico, etc.) that
+      // carry neither a code nor an error — otherwise one could consume the
+      // single-shot settle before the real OAuth redirect arrives.
+      if (!code && !error) {
+        res.writeHead(204).end();
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(DONE_PAGE);
-      if (settle) settle({
-        code: url.searchParams.get('code'),
-        state: url.searchParams.get('state'),
-        error: url.searchParams.get('error'),
-      });
+      if (settle) settle({ code, state: url.searchParams.get('state'), error });
     });
 
     server.listen(0, '127.0.0.1', () => {
