@@ -110,7 +110,7 @@ async function refreshAdoData() {
     await loadAdoData(
       getAdoConfig(),
       { http: createAdoHttpAdapter(), storage: localStorageAdapter },
-      { isRefresh: !!priorData, priorData },
+      { isRefresh: !!priorData && (priorData.TEAM?.length ?? 0) > 0, priorData },
     )
   } catch {
     /* offline / not configured — keep cached */
@@ -1033,6 +1033,17 @@ function IntegrationsPanel() {
       ...makeDesktopOAuthService('microsoft'),
       credFields: [
         { key: 'clientId', label: 'Client ID (Application ID)', hint: 'From Azure portal → App registrations' },
+        { key: 'clientSecret', label: 'Client Secret', secret: true },
+      ],
+    },
+    {
+      id: 'gdrive',
+      label: 'Google',
+      icon: 'calendar',
+      desc: 'Google Calendar, Gmail, and Drive',
+      ...makeDesktopOAuthService('gdrive'),
+      credFields: [
+        { key: 'clientId', label: 'Client ID', hint: 'From Google Cloud Console → APIs & Services → Credentials' },
         { key: 'clientSecret', label: 'Client Secret', secret: true },
       ],
     },
