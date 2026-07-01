@@ -16,4 +16,14 @@ describe('oauth config', () => {
     expect(typeof g.clientId).toBe('string')
     expect(typeof g.clientSecret).toBe('string')
   })
+
+  it('defines the microsoft provider as a public client with Graph scopes', () => {
+    const m = config.microsoft
+    expect(m.authUrl).toBe('https://login.microsoftonline.com/common/oauth2/v2.0/authorize')
+    expect(m.tokenUrl).toBe('https://login.microsoftonline.com/common/oauth2/v2.0/token')
+    expect(m.scopes).toEqual(['offline_access', 'Files.ReadWrite', 'Calendars.ReadWrite', 'User.Read'])
+    expect(m.clientSecret).toBe('')          // public client — PKCE, no secret
+    expect(m.authParams).toEqual({})
+    expect(typeof m.clientId).toBe('string')
+  })
 })

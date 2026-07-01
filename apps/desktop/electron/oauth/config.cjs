@@ -17,4 +17,12 @@ module.exports = {
     // access_type=offline + prompt=consent guarantee a refresh_token is returned.
     authParams: { access_type: 'offline', prompt: 'consent' },
   },
+  microsoft: {
+    clientId:     process.env.MS_DESKTOP_CLIENT_ID || '<PASTE_ENTRA_CLIENT_ID>',
+    clientSecret: '',                                   // public client — PKCE, no secret
+    authUrl:  'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+    tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    scopes: ['offline_access', 'Files.ReadWrite', 'Calendars.ReadWrite', 'User.Read'],
+    authParams: {},
+  },
 };
