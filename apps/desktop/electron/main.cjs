@@ -331,14 +331,6 @@ ipcMain.handle('link-window:open', (_e, url) => {
 });
 
 // ---------------------------------------------------------------------------
-// Login-item IPC handlers
-// ---------------------------------------------------------------------------
-ipcMain.handle('get-login-item-enabled', () =>
-  app.getLoginItemSettings().openAtLogin);
-ipcMain.handle('set-login-item-enabled', (_e, enabled) =>
-  app.setLoginItemSettings({ openAtLogin: enabled }));
-
-// ---------------------------------------------------------------------------
 // Close-to-tray IPC
 // ---------------------------------------------------------------------------
 ipcMain.handle('get-close-to-tray', () => prefs.closeToTray);

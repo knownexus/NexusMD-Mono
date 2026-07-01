@@ -25,19 +25,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
-   * Get whether the app is set to open at login.
-   * @returns {Promise<boolean>}
-   */
-  getLoginItemEnabled: () => ipcRenderer.invoke('get-login-item-enabled'),
-
-  /**
-   * Set whether the app should open at login.
-   * @param {boolean} enabled
-   * @returns {Promise<void>}
-   */
-  setLoginItemEnabled: (enabled) => ipcRenderer.invoke('set-login-item-enabled', enabled),
-
-  /**
    * Get whether the app should hide to tray on close (vs. quit fully).
    * @returns {Promise<boolean>}
    */

@@ -43,9 +43,7 @@ let mockElectronAPI
 
 beforeEach(() => {
   mockElectronAPI = {
-    getLoginItemEnabled: vi.fn(() => Promise.resolve(false)),
     getCloseToTray: vi.fn(() => Promise.resolve(true)),
-    setLoginItemEnabled: vi.fn(() => Promise.resolve()),
     setCloseToTray: vi.fn(() => Promise.resolve()),
     pickOutputFolder: vi.fn(() => Promise.resolve(null)),
   }
@@ -57,25 +55,16 @@ afterEach(() => { cleanup(); localStorage.clear() })
 import { DesktopAppCard } from './desktop-settings.jsx'
 
 describe('DesktopAppCard', () => {
-  it('calls getLoginItemEnabled and getCloseToTray on mount', async () => {
+  it('calls getCloseToTray on mount', async () => {
     render(<DesktopAppCard />)
-    await waitFor(() => expect(mockElectronAPI.getLoginItemEnabled).toHaveBeenCalled())
-    expect(mockElectronAPI.getCloseToTray).toHaveBeenCalled()
-  })
-
-  it('calls setLoginItemEnabled(true) when start-on-login toggle is clicked', async () => {
-    render(<DesktopAppCard />)
-    await waitFor(() => expect(mockElectronAPI.getLoginItemEnabled).toHaveBeenCalled())
-    const toggles = screen.getAllByRole('switch')
-    fireEvent.click(toggles[0])
-    expect(mockElectronAPI.setLoginItemEnabled).toHaveBeenCalledWith(true)
+    await waitFor(() => expect(mockElectronAPI.getCloseToTray).toHaveBeenCalled())
   })
 
   it('calls setCloseToTray(false) when close-to-tray toggle is clicked', async () => {
     render(<DesktopAppCard />)
     await waitFor(() => expect(mockElectronAPI.getCloseToTray).toHaveBeenCalled())
     const toggles = screen.getAllByRole('switch')
-    fireEvent.click(toggles[1])
+    fireEvent.click(toggles[0])
     expect(mockElectronAPI.setCloseToTray).toHaveBeenCalledWith(false)
   })
 
