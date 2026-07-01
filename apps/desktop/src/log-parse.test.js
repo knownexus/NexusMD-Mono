@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { parseLog } from './log-parse.js'
+import { filterEntries } from './log-parse.js'
 
 describe('parseLog', () => {
   it('returns [] for empty or nullish input', () => {
@@ -63,5 +64,58 @@ describe('parseLog', () => {
     const entries = parseLog('[2026-07-01 13:18:08.111] [info]  [x] hi\n')
     expect(entries).toHaveLength(1)
     expect(entries[0].extraLines).toEqual([])
+  })
+})
+
+const SAMPLE = parseLog([
+  '[2026-07-01 10:00:00.000] [info]  [alpha] hello world',
+  '[2026-07-01 10:00:01.000] [warn]  [beta] goodbye moon',
+  '[2026-07-01 10:00:02.000] [error] no area here',
+  'continuation detail xyz',
+].join('\n'))
+
+describe('filterEntries', () => {
+  it('returns all entries when no options are given', () => {
+    expect(filterEntries(SAMPLE, {})).toHaveLength(3)
+  })
+
+  it('keeps only entries whose level is in the set', () => {
+    const out = filterEntries(SAMPLE, { levels: new Set(['warn']) })
+    expect(out.map(e => e.level)).toEqual(['warn'])
+  })
+
+  it('accepts levels as an array', () => {
+    const out = filterEntries(SAMPLE, { levels: ['info', 'error'] })
+    expect(out.map(e => e.level)).toEqual(['info', 'error'])
+  })
+
+  it('never hides unparsed (level "") entries via the level filter', () => {
+    const withUnparsed = parseLog('stray\n[2026-07-01 10:00:00.000] [info]  [a] x')
+    const out = filterEntries(withUnparsed, { levels: new Set(['info']) })
+    expect(out).toHaveLength(2) // unparsed kept even though "" not in set
+  })
+
+  it('filters by area, with NO_AREA matching null-area entries', () => {
+    expect(filterEntries(SAMPLE, { area: 'alpha' }).map(e => e.area)).toEqual(['alpha'])
+    expect(filterEntries(SAMPLE, { area: '(no area)' }).map(e => e.area)).toEqual([null])
+  })
+
+  it('search matches message, is case-insensitive', () => {
+    expect(filterEntries(SAMPLE, { search: 'HELLO' }).map(e => e.message)).toEqual(['hello world'])
+  })
+
+  it('search matches text inside continuation lines', () => {
+    const out = filterEntries(SAMPLE, { search: 'xyz' })
+    expect(out).toHaveLength(1)
+    expect(out[0].level).toBe('error')
+  })
+
+  it('search matches the area tag', () => {
+    expect(filterEntries(SAMPLE, { search: 'beta' }).map(e => e.area)).toEqual(['beta'])
+  })
+
+  it('combines level, area and search with AND', () => {
+    const out = filterEntries(SAMPLE, { levels: new Set(['info', 'warn']), area: 'alpha', search: 'hello' })
+    expect(out.map(e => e.area)).toEqual(['alpha'])
   })
 })

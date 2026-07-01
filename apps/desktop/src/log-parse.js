@@ -35,3 +35,22 @@ export function parseLog(text) {
   }
   return entries
 }
+
+export function filterEntries(entries, { levels, area, search } = {}) {
+  const levelSet = levels == null ? null : (levels instanceof Set ? levels : new Set(levels))
+  const areaSel = area || null
+  const q = (search || '').trim().toLowerCase()
+  return (entries || []).filter(e => {
+    // Level: unparsed entries (level "") are never hidden by the level filter.
+    if (levelSet && e.level !== '' && !levelSet.has(e.level)) return false
+    if (areaSel) {
+      const eArea = e.area == null ? NO_AREA : e.area
+      if (eArea !== areaSel) return false
+    }
+    if (q) {
+      const hay = [e.message, ...(e.extraLines || []), e.area || ''].join('\n').toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    return true
+  })
+}
