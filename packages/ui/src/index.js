@@ -58,8 +58,8 @@ export {
   getWeekDays, getMonthGrid, getMiniMonth, getYearMonths, getAgendaDays,
   eventTopPx, eventHeightPx, nowTopPx, fmt12, fmtDuration, isoDate, todayStr,
   snapTime, formatLocalISO, layoutDayEvents, MONTH_NAMES, MONTH_SHORT, DAY_SHORT,
-  MicrosoftLogo, EventDetailModal, OutlookSetupModal, OutlookBanner,
-  DayColumn, WeekGrid, MonthView, YearView, AgendaView,
+  MicrosoftLogo, EventDetailModal, OutlookBanner,
+  WeekGrid, MonthView, YearView, AgendaView,
 } from './views/view-calendar.jsx'
 
 // Shared Settings form/profile primitives (web + app). Each app keeps its own
@@ -74,7 +74,7 @@ export {
 
 // Shared triage controls + work-item detail panel (used by the views below).
 export { TriageEvents, TriageExportButton, TriageStatusLine, TriageExportModal } from './views/triage.jsx'
-export { WorkItemDetail, RawFieldsInspector } from './views/work-item-detail.jsx'
+export { WorkItemDetail } from './views/work-item-detail.jsx'
 export { MarkdownViewer, displayName } from './views/MarkdownViewer.jsx'
 
 // Shared, platform-agnostic views (data + actions via props / useNexusData).
