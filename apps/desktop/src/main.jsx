@@ -480,7 +480,7 @@ function CreateWorkItemModal({ open, title: initialTitle, onClose }) {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div style={{
-        background: 'var(--surface)', borderRadius: 10, padding: 24, width: 480,
+        background: 'var(--surface)', borderRadius: 10, padding: 24, width: 'min(480px, 92vw)',
         maxHeight: '90vh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: 14,
       }}>
@@ -795,7 +795,7 @@ function DesktopProjectAreasModal({ open, onClose }) {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div style={{
-        background: 'var(--surface)', borderRadius: 10, padding: 24, width: 520,
+        background: 'var(--surface)', borderRadius: 10, padding: 24, width: 'min(520px, 92vw)',
         maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 16,
         boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
       }}>
