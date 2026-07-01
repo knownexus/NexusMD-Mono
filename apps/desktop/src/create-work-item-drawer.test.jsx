@@ -1,7 +1,7 @@
 import React from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { FieldInput } from './create-work-item-drawer.jsx'
+import { FieldInput, MarkdownField } from './create-work-item-drawer.jsx'
 
 describe('FieldInput', () => {
   afterEach(() => {
@@ -43,5 +43,31 @@ describe('FieldInput', () => {
     const def = { referenceName: 'System.Title', name: 'Title', dataType: 'string', allowedValues: [], alwaysRequired: true }
     render(<FieldInput def={def} value="" onChange={() => {}} team={[]} paths={{ areas: [], iterations: [] }} />)
     expect(screen.getByText('Title *')).toBeTruthy()
+  })
+})
+
+describe('MarkdownField', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('renders a textarea in Write mode by default and calls onChange on input', () => {
+    const onChange = vi.fn()
+    render(<MarkdownField label="Description" value="" onChange={onChange} />)
+    const textarea = screen.getByLabelText('Description')
+    fireEvent.change(textarea, { target: { value: '**bold**' } })
+    expect(onChange).toHaveBeenCalledWith('**bold**')
+  })
+
+  it('switches to Preview mode and renders converted markdown as HTML', () => {
+    render(<MarkdownField label="Description" value="**bold**" onChange={() => {}} />)
+    fireEvent.click(screen.getByText('Preview'))
+    expect(document.querySelector('strong')).toBeTruthy()
+  })
+
+  it('shows a required marker in the label when required', () => {
+    render(<MarkdownField label="Description" value="" onChange={() => {}} required />)
+    expect(screen.getByText('Description *')).toBeTruthy()
   })
 })

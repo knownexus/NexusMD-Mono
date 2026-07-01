@@ -1,4 +1,5 @@
 import React from 'react'
+import { mdToHtml } from '@nexusmd/ui'
 import { fieldBucket } from './ado-workitem-types.js'
 import { settInputStyle } from './desktop-settings.jsx'
 
@@ -81,5 +82,43 @@ export function FieldInput({ def, value, onChange, team, paths }) {
       <FieldLabel def={def} />
       <input id={id} aria-label={def.name} type="text" value={value || ''} onChange={(e) => onChange(e.target.value)} style={settInputStyle} />
     </label>
+  )
+}
+
+const tabStyle = (active) => ({
+  fontSize: 11.5, padding: '2px 10px', borderRadius: 6, border: '1px solid var(--border)',
+  background: active ? 'var(--accent)' : 'transparent',
+  color: active ? '#fff' : 'var(--text-muted)',
+  cursor: 'pointer', lineHeight: '20px',
+})
+
+export function MarkdownField({ label, value, onChange, required, rows = 4 }) {
+  const [preview, setPreview] = React.useState(false)
+  const id = `wi-md-${label}`
+
+  return (
+    <div className="drawer-section">
+      <h4 style={{ marginBottom: 6 }}>{label}{required ? ' *' : ''}</h4>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+        <button type="button" style={tabStyle(!preview)} onClick={() => setPreview(false)}>Write</button>
+        <button type="button" style={tabStyle(preview)} onClick={() => setPreview(true)}>Preview</button>
+      </div>
+      {preview ? (
+        <div
+          className="wi-html-content"
+          style={{ minHeight: 72, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)', fontSize: 13, lineHeight: 1.6 }}
+          dangerouslySetInnerHTML={{ __html: value.trim() ? mdToHtml(value) : '<em>Nothing to preview</em>' }}
+        />
+      ) : (
+        <textarea
+          id={id}
+          aria-label={label}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={rows}
+          style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)', color: 'var(--text)', resize: 'vertical', boxSizing: 'border-box' }}
+        />
+      )}
+    </div>
   )
 }

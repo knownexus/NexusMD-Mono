@@ -75,7 +75,7 @@ export {
 // Shared triage controls + work-item detail panel (used by the views below).
 export { TriageEvents, TriageExportButton, TriageStatusLine, TriageExportModal } from './views/triage.jsx'
 export { WorkItemDetail } from './views/work-item-detail.jsx'
-export { renderContent } from './views/render-content.js'
+export { renderContent, mdToHtml } from './views/render-content.js'
 export { MarkdownViewer, displayName } from './views/MarkdownViewer.jsx'
 
 // Shared, platform-agnostic views (data + actions via props / useNexusData).
