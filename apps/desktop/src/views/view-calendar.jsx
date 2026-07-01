@@ -9,7 +9,9 @@ import {
   getWeekDays, getMonthGrid, getYearMonths, getAgendaDays,
   nowTopPx, todayStr, isoDate, MONTH_NAMES, MONTH_SHORT,
 } from '@nexusmd/ui'
-import { createGoogleCalendarEvent, isGoogleConnected } from '../google-calendar.js'
+import { createGoogleCalendarEvent, isGoogleConnected, fetchGoogleCalendarEvents, deleteGoogleCalendarEvent } from '../google-calendar.js'
+import { fetchCalendarEvents, createCalendarEvent } from '../ms-graph-calendar.js'
+import { makeDesktopOAuthService } from '../cloud-auth.js'
 
 export function MicrosoftCalendarBanner({ connected, syncing, error, onRefresh }) {
   if (!connected) return null
@@ -165,6 +167,23 @@ export function CalendarView({ calendarEvents, setCalendarEvents, onNavigatePlan
   const [nowPx, setNowPx] = React.useState(nowTopPx)
   const scrollRef = React.useRef(null)
 
+  const [msConnected, setMsConnected] = React.useState(false)
+  const [outlookEvents, setOutlookEvents] = React.useState([])
+  const [outlookSyncing, setOutlookSyncing] = React.useState(false)
+  const [outlookError, setOutlookError] = React.useState(null)
+  const [outlookTick, setOutlookTick] = React.useState(0)
+
+  const [googleEvents, setGoogleEvents] = React.useState([])
+  const [googleSyncing, setGoogleSyncing] = React.useState(false)
+  const [googleError, setGoogleError] = React.useState(null)
+  const [googleTick, setGoogleTick] = React.useState(0)
+
+  const [newGoogleOpen, setNewGoogleOpen] = React.useState(false)
+  const [newGoogleDate, setNewGoogleDate] = React.useState(null)
+  const [newGoogleTime, setNewGoogleTime] = React.useState(null)
+
+  const msAuth = React.useMemo(() => makeDesktopOAuthService('microsoft'), [])
+
   const today = todayStr()
 
   React.useEffect(() => {
@@ -177,6 +196,75 @@ export function CalendarView({ calendarEvents, setCalendarEvents, onNavigatePlan
     const px = nowTopPx()
     if (px !== null) scrollRef.current.scrollTop = Math.max(0, px - 120)
   }, [calView, offset])
+
+  const rangeForView = React.useCallback(() => {
+    let startD, endD
+    if (calView === 'month') {
+      const { days } = getMonthGrid(offset)
+      startD = days[0]; endD = new Date(days[days.length - 1].getTime() + 86400000)
+    } else if (calView === 'year') {
+      const y = new Date().getFullYear() + offset
+      startD = new Date(y, 0, 1); endD = new Date(y + 1, 0, 1)
+    } else if (calView === 'agenda') {
+      const ds = getAgendaDays(offset); startD = ds[0]; endD = new Date(ds[ds.length - 1].getTime() + 86400000)
+    } else {
+      const days = getWeekDays(offset, calView === 'workweek')
+      startD = days[0]; endD = new Date(days[days.length - 1].getTime() + 86400000)
+    }
+    return { startD, endD }
+  }, [calView, offset])
+
+  React.useEffect(() => {
+    setMsConnected(msAuth.isConnected())
+  }, [msAuth])
+
+  React.useEffect(() => {
+    if (!msConnected) return
+    let cancelled = false
+    setOutlookSyncing(true); setOutlookError(null)
+    const { startD, endD } = rangeForView()
+    msAuth.getToken({}).then((token) => {
+      if (!token) throw new Error('Not connected to Microsoft.')
+      return fetchCalendarEvents(token, startD.toISOString(), endD.toISOString())
+    }).then((evs) => { if (!cancelled) setOutlookEvents(evs) })
+      .catch((e) => { if (!cancelled) setOutlookError(e.message) })
+      .finally(() => { if (!cancelled) setOutlookSyncing(false) })
+    return () => { cancelled = true }
+  }, [msConnected, calView, offset, outlookTick]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    if (!isGoogleConnected()) return
+    let cancelled = false
+    setGoogleSyncing(true); setGoogleError(null)
+    const { startD, endD } = rangeForView()
+    fetchGoogleCalendarEvents(startD.toISOString(), endD.toISOString())
+      .then((evs) => { if (!cancelled) setGoogleEvents(evs) })
+      .catch((e) => { if (!cancelled) setGoogleError(e.message) })
+      .finally(() => { if (!cancelled) setGoogleSyncing(false) })
+    return () => { cancelled = true }
+  }, [calView, offset, googleTick]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openNewGoogleEvent = (date, time) => {
+    setNewGoogleDate(date || today)
+    setNewGoogleTime(time || null)
+    setNewGoogleOpen(true)
+  }
+
+  const handleDeleteEvent = async (id) => {
+    const sid = String(id)
+    if (sid.startsWith('google-')) {
+      try {
+        await deleteGoogleCalendarEvent(sid.slice(7))
+        setGoogleEvents((evs) => evs.filter((e) => e.id !== sid))
+        toast?.('Event deleted from Google Calendar.', 'success')
+      } catch {
+        toast?.('Failed to delete event.', 'error')
+      }
+    } else {
+      deleteLocalEvent(id)
+    }
+    setSelectedEvent(null)
+  }
 
   const updateLocalEvent = (id, patch) => {
     const oldEv = (calendarEvents || []).find((e) => String(e.id) === String(id))
@@ -208,7 +296,10 @@ export function CalendarView({ calendarEvents, setCalendarEvents, onNavigatePlan
     updateLocalEvent(id, { start: newStart, end: newEnd })
   }
 
-  const allEvents = React.useMemo(() => (calendarEvents || []).map((ev) => ({ source: 'local', ...ev })), [calendarEvents])
+  const allEvents = React.useMemo(() => {
+    const local = (calendarEvents || []).map((ev) => ({ source: 'local', ...ev }))
+    return [...local, ...outlookEvents, ...googleEvents]
+  }, [calendarEvents, outlookEvents, googleEvents])
 
   const viewDays = React.useMemo(() => {
     if (calView === 'week') return getWeekDays(offset, false)
@@ -264,8 +355,11 @@ export function CalendarView({ calendarEvents, setCalendarEvents, onNavigatePlan
     <div>
       {selectedEvent && (
         <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} onOpenPlanner={(ev) => onNavigatePlanner?.(ev)}
-          onUpdate={updateLocalEvent} onDelete={(id) => { deleteLocalEvent(id); setSelectedEvent(null) }} />
+          onUpdate={updateLocalEvent} onDelete={handleDeleteEvent} />
       )}
+
+      <NewGoogleEventModal open={newGoogleOpen} defaultDate={newGoogleDate} defaultTime={newGoogleTime}
+        onClose={() => setNewGoogleOpen(false)} onCreated={() => setGoogleTick((t) => t + 1)} />
 
       <div className="page-head">
         <div>
@@ -273,6 +367,14 @@ export function CalendarView({ calendarEvents, setCalendarEvents, onNavigatePlan
           <div className="sub">{headerTitle}</div>
         </div>
         <div className="page-head-actions" style={{ gap: 8 }}>
+          <MicrosoftCalendarBanner connected={msConnected} syncing={outlookSyncing} error={outlookError} onRefresh={() => setOutlookTick((t) => t + 1)} />
+          <GoogleCalendarBanner syncing={googleSyncing} error={googleError} onRefresh={() => setGoogleTick((t) => t + 1)} />
+          {isGoogleConnected() && (
+            <button className="btn sm ghost" onClick={() => openNewGoogleEvent(today, null)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12 }} title="New Google Calendar event">
+              <Icon name="plus" size={11} /> New event
+            </button>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', background: 'var(--surface-2)', borderRadius: 10, border: '1px solid var(--border)', padding: '3px 4px', gap: 2 }}>
             {VIEWS.map((v) => (
               <button key={v.id} className={`cal-view-btn${calView === v.id ? ' active' : ''}`} onClick={() => handleViewChange(v.id)}>
@@ -297,7 +399,8 @@ export function CalendarView({ calendarEvents, setCalendarEvents, onNavigatePlan
 
       {(calView === 'week' || calView === 'workweek') && weekDays && (
         <WeekGrid days={weekDays} eventsByDay={eventsByDay} today={today} isCurrentPeriod={isCurrentPeriod} nowPx={nowPx}
-          onEventClick={setSelectedEvent} scrollRef={scrollRef} onMoveEvent={moveLocalEvent} onUpdateEvent={updateLocalEvent} onNewGoogleEvent={null} />
+          onEventClick={setSelectedEvent} scrollRef={scrollRef} onMoveEvent={moveLocalEvent} onUpdateEvent={updateLocalEvent}
+          onNewGoogleEvent={isGoogleConnected() ? openNewGoogleEvent : null} />
       )}
       {calView === 'month' && monthGrid && (
         <MonthView eventsByDay={eventsByDay} monthGrid={monthGrid} today={today} onEventClick={setSelectedEvent} onMoveEvent={moveLocalEvent} />

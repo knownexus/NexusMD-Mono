@@ -116,3 +116,54 @@ describe('CalendarView (local events only)', () => {
     expect(setCalendarEvents).toHaveBeenCalled()
   })
 })
+
+vi.mock('../ms-graph-calendar.js', () => ({
+  fetchCalendarEvents: vi.fn(async () => []),
+  createCalendarEvent: vi.fn(),
+}))
+vi.mock('../cloud-auth.js', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    makeDesktopOAuthService: vi.fn(() => ({
+      isConnected: vi.fn(() => true),
+      getToken: vi.fn(async () => 'ms-token'),
+    })),
+  }
+})
+
+import * as msGraphCalendar from '../ms-graph-calendar.js'
+
+describe('CalendarView Outlook + Google wiring', () => {
+  it('fetches Outlook events on mount when Microsoft is connected', async () => {
+    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    await waitFor(() => expect(msGraphCalendar.fetchCalendarEvents).toHaveBeenCalled())
+    expect(msGraphCalendar.fetchCalendarEvents.mock.calls[0][0]).toBe('ms-token')
+  })
+
+  it('fetches Google events on mount when Google is connected', async () => {
+    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    await waitFor(() => expect(googleCalendar.fetchGoogleCalendarEvents).toHaveBeenCalled())
+  })
+
+  it('renders a merged Outlook event chip', async () => {
+    const todayIso = new Date().toISOString().slice(0, 10)
+    msGraphCalendar.fetchCalendarEvents.mockResolvedValueOnce([
+      { id: 'outlook-1', title: 'All-Hands', start: `${todayIso}T13:00:00.000Z`, end: `${todayIso}T14:00:00.000Z`, type: 'meeting', personId: null, personName: null, plannerSection: null, description: '', source: 'outlook' },
+    ])
+    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    expect(await screen.findByText('All-Hands')).toBeTruthy()
+  })
+
+  it('shows the New event button and opens the modal when Google is connected', async () => {
+    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    fireEvent.click(screen.getByTitle('New Google Calendar event'))
+    expect(screen.getByText('New Google Calendar event', { selector: 'div' })).toBeTruthy()
+  })
+
+  it('does not show the New event button when Google is not connected', () => {
+    googleCalendar.isGoogleConnected.mockReturnValue(false)
+    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    expect(screen.queryByTitle('New Google Calendar event')).toBe(null)
+  })
+})
