@@ -56,3 +56,20 @@ export async function fetchTypeFields(project, type, fieldTypeMap) {
     dataType: fieldTypeMap[f.referenceName] || 'string',
   }))
 }
+
+function flattenClassificationNode(node, prefix = '') {
+  const path = prefix ? `${prefix}\\${node.name}` : node.name
+  const children = (node.children || []).flatMap((c) => flattenClassificationNode(c, path))
+  return [path, ...children]
+}
+
+export async function fetchClassificationPaths(project) {
+  const [areas, iterations] = await Promise.all([
+    adoFetchJson(`${encodeURIComponent(project)}/_apis/wit/classificationnodes/areas?$depth=10&api-version=7.0`),
+    adoFetchJson(`${encodeURIComponent(project)}/_apis/wit/classificationnodes/iterations?$depth=10&api-version=7.0`),
+  ])
+  return {
+    areas: flattenClassificationNode(areas),
+    iterations: flattenClassificationNode(iterations),
+  }
+}

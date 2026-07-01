@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { getCachedDefs, setCachedDefs, fetchWorkItemTypes, fetchProjectFieldTypes, fetchTypeFields } from './ado-workitem-types.js'
+import { getCachedDefs, setCachedDefs, fetchWorkItemTypes, fetchProjectFieldTypes, fetchTypeFields, fetchClassificationPaths } from './ado-workitem-types.js'
 import { saveAdoConfig } from './ado-client.js'
 import { vi } from 'vitest'
 
@@ -85,5 +85,21 @@ describe('fetchTypeFields', () => {
     mockFetchOnce({ value: [{ referenceName: 'Custom.Unknown', name: 'Unknown', alwaysRequired: false, allowedValues: [] }] })
     const result = await fetchTypeFields('ProjectA', 'Bug', {})
     expect(result[0].dataType).toBe('string')
+  })
+})
+
+describe('fetchClassificationPaths', () => {
+  it('flattens the area and iteration trees into backslash-joined paths', async () => {
+    const areaTree = { name: 'ProjectA', children: [{ name: 'Team1', children: [{ name: 'SubTeam', children: [] }] }] }
+    const iterationTree = { name: 'ProjectA', children: [{ name: 'Sprint 1', children: [] }, { name: 'Sprint 2', children: [] }] }
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => areaTree })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => iterationTree })
+
+    const result = await fetchClassificationPaths('ProjectA')
+    expect(result).toEqual({
+      areas: ['ProjectA', 'ProjectA\\Team1', 'ProjectA\\Team1\\SubTeam'],
+      iterations: ['ProjectA', 'ProjectA\\Sprint 1', 'ProjectA\\Sprint 2'],
+    })
   })
 })
