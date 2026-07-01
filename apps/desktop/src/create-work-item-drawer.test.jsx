@@ -174,3 +174,39 @@ describe('CreateWorkItemDrawer submit', () => {
     expect(screen.getByText('notes.txt')).toBeTruthy()
   })
 })
+
+describe('CreateWorkItemDrawer links', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('stages a link and includes it in the onCreate payload', async () => {
+    stubDefs()
+    const onCreate = vi.fn().mockResolvedValue({ id: 1 })
+    render(<CreateWorkItemDrawer open={true} title="Has a parent" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={onCreate} />)
+    await screen.findByLabelText('Description')
+
+    fireEvent.change(screen.getByLabelText('Link type'), { target: { value: 'System.LinkTypes.Hierarchy-Reverse' } })
+    fireEvent.change(screen.getByLabelText('Linked work item ID'), { target: { value: '555' } })
+    fireEvent.click(screen.getByText('+ Add link'))
+
+    expect(screen.getByText('#555 (Parent)')).toBeTruthy()
+
+    fireEvent.click(screen.getByText('Create'))
+    await screen.findByText(/Created/)
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      links: [{ rel: 'System.LinkTypes.Hierarchy-Reverse', id: 555 }],
+    }))
+  })
+
+  it('removes a staged link', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="x" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={vi.fn().mockResolvedValue({ id: 1 })} />)
+    await screen.findByLabelText('Description')
+    fireEvent.change(screen.getByLabelText('Linked work item ID'), { target: { value: '555' } })
+    fireEvent.click(screen.getByText('+ Add link'))
+    fireEvent.click(screen.getByTitle('Remove link'))
+    expect(screen.queryByText('#555 (Parent)')).toBe(null)
+  })
+})

@@ -1,7 +1,7 @@
 import React from 'react'
 import { mdToHtml, Drawer, TypeIcon, Icon } from '@nexusmd/ui'
 import { adoTypeToHelm } from '@nexusmd/core'
-import { fieldBucket, fieldGroup } from './ado-workitem-types.js'
+import { fieldBucket, fieldGroup, LINK_TYPES } from './ado-workitem-types.js'
 import * as adoWorkItemTypesModule from './ado-workitem-types.js'
 import { SettField, settInputStyle } from './desktop-settings.jsx'
 
@@ -164,6 +164,9 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
   const setFieldValue = (refName, v) => setValues((prev) => ({ ...prev, [refName]: v }))
 
   const [attachmentFiles, setAttachmentFiles] = React.useState([])
+  const [links, setLinks] = React.useState([])
+  const [linkRel, setLinkRel] = React.useState(LINK_TYPES[0].rel)
+  const [linkId, setLinkId] = React.useState('')
   const [saving, setSaving] = React.useState(false)
   const [titleError, setTitleError] = React.useState('')
 
@@ -174,7 +177,7 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
     setStatus('Creating…')
     try {
       const fieldValues = { 'System.Title': wiTitle.trim(), ...values }
-      const result = await onCreate({ project, type: typeRef, fields: fieldValues, attachmentFiles })
+      const result = await onCreate({ project, type: typeRef, fields: fieldValues, attachmentFiles, links })
       setStatus(`Created #${result.id}.`)
     } catch (e) {
       setStatus('Error: ' + (e?.message || 'Failed to create'))
@@ -281,6 +284,44 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
                 {f.name}
                 <button type="button" className="btn icon ghost sm" style={{ marginLeft: 6 }}
                   onClick={() => setAttachmentFiles((prev) => prev.filter((_, idx) => idx !== i))}>
+                  <Icon name="x" size={10} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="drawer-section">
+        <h4>Links</h4>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)' }}>Link type</span>
+            <select aria-label="Link type" value={linkRel} onChange={(e) => setLinkRel(e.target.value)}>
+              {LINK_TYPES.map((lt) => <option key={lt.rel} value={lt.rel}>{lt.label}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)' }}>Linked work item ID</span>
+            <input aria-label="Linked work item ID" type="number" value={linkId} onChange={(e) => setLinkId(e.target.value)} />
+          </label>
+          <button type="button" className="btn sm"
+            onClick={() => {
+              const id = parseInt(linkId, 10)
+              if (!id) return
+              setLinks((prev) => [...prev, { rel: linkRel, id }])
+              setLinkId('')
+            }}>
+            + Add link
+          </button>
+        </div>
+        {links.length > 0 && (
+          <ul style={{ paddingLeft: 18 }}>
+            {links.map((l, i) => (
+              <li key={i} style={{ fontSize: 12.5 }}>
+                #{l.id} ({LINK_TYPES.find((lt) => lt.rel === l.rel)?.label})
+                <button type="button" className="btn icon ghost sm" title="Remove link" style={{ marginLeft: 6 }}
+                  onClick={() => setLinks((prev) => prev.filter((_, idx) => idx !== i))}>
                   <Icon name="x" size={10} />
                 </button>
               </li>
