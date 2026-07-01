@@ -840,7 +840,9 @@ function App() {
   const [localItems, setLocalItems] = React.useState(null)
   const [tweaks, setTweaksState] = React.useState(loadTweaks)
 
-  const [winWidth, setWinWidth] = React.useState(() => window.innerWidth)
+  // Fall back to clientWidth when innerWidth is 0 (e.g. jsdom in tests) so the
+  // sidebar doesn't spuriously start collapsed.
+  const [winWidth, setWinWidth] = React.useState(() => window.innerWidth || document.documentElement.clientWidth || 1280)
   React.useEffect(() => {
     const onResize = () => setWinWidth(window.innerWidth)
     window.addEventListener('resize', onResize)
