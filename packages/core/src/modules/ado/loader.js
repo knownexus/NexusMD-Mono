@@ -200,6 +200,18 @@ export async function loadAdoData(
         helmTeam.push({ id: slugify(n) || `wi-dev${helmTeam.length}`, name: n, displayName: n, role: 'Developer', initials, tz: 'UTC', focus: 'Working…' })
       }
     })
+    // Supplement with PR authors and reviewers not yet in the team
+    ;(prsRaw || []).forEach(pr => {
+      const names = [pr.author, ...(pr.reviewers || []).map(r => r.name)].filter(Boolean)
+      for (const n of names) {
+        if (!helmTeam.find(t => t.name === n)) {
+          const parts = n.trim().split(' ')
+          const first = parts[0] || '', last = parts[parts.length - 1] || ''
+          const initials = ((first[0] || '') + (last[0] || first[1] || '')).toUpperCase() || '?'
+          helmTeam.push({ id: slugify(n) || `pr-dev${helmTeam.length}`, name: n, displayName: n, role: 'Developer', initials, tz: 'UTC', focus: 'Working…' })
+        }
+      }
+    })
   } else {
     helmTeam = (priorData?.TEAM || []).map(t => ({ ...t }))
   }
