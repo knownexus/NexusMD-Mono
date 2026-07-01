@@ -7,6 +7,7 @@ import React from 'react';
 // Requires: icons.jsx (Icon), toast.jsx (toast), DOMPurify + marked (CDN).
 
 import DOMPurify from 'dompurify';
+import { renderContent, sanitizeHtml, mdToHtml } from './render-content.js';
 import { Icon } from '../icons.jsx';
 import { toast } from '../toast.jsx';
 import { timeAgo } from '@nexusmd/core';
@@ -31,20 +32,6 @@ async function prefetchWorkItem(id, project) {
     _wiPrefetch.set(key, { detail, comments, ts: Date.now() });
   } catch (_) {}
 }
-
-const sanitizeHtml = (html) =>
-  typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html || '') : (html || '');
-
-const mdToHtml = (text) => {
-  if (typeof marked === 'undefined') return `<p>${text}</p>`;
-  return sanitizeHtml(marked.parse(text || ''));
-};
-
-// Render content for view mode: if it contains HTML tags treat as HTML, otherwise parse as markdown.
-const renderContent = (value) => {
-  if (!value || !value.trim()) return '<em style="color:var(--text-subtle)">Not set</em>';
-  return /<[a-zA-Z][^>]*>/.test(value) ? sanitizeHtml(value) : mdToHtml(value);
-};
 
 // ── HtmlField ─────────────────────────────────────────────────────────────────
 // Renders a single HTML field with a view/edit toggle.
