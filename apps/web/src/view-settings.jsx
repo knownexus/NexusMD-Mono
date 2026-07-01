@@ -363,23 +363,25 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
   // OAuth integration service descriptors — one per service, passed to IntegrationsView.
   const adoOAuth = useStateVS(() => makeWebOAuthService('ado'))[0];
   const msOAuth  = useStateVS(() => makeWebOAuthService('microsoft'))[0];
-  const ghOAuth  = useStateVS(() => ({
-    ...makeWebOAuthService('github'),
-  }))[0];
+  const ghOAuth  = useStateVS(() => makeWebOAuthService('github'))[0];
 
   const [ghRepos, setGhRepos] = useStateVS(() => {
-    try { return JSON.parse(localStorage.getItem(`nexusmd.p.${localStorage.getItem('nexusmd.activeProfileId') || ''}.github.config`) || '{}').repos?.join(', ') || ''; }
-    catch (_) { return ''; }
+    try {
+      const k = getProfileKey('nexusmd.github.config');
+      return k ? (JSON.parse(localStorage.getItem(k) || '{}').repos?.join(', ') || '') : '';
+    } catch (_) { return ''; }
   });
   const [ghRepoBrowse, setGhRepoBrowse] = useStateVS([]);
 
   const saveGhRepos = () => {
-    const activeId = localStorage.getItem('nexusmd.activeProfileId') || '';
-    const key = `nexusmd.p.${activeId}.github.config`;
-    const existing = (() => { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; } })();
-    const repoList = ghRepos.split(',').map(s => s.trim()).filter(Boolean);
-    localStorage.setItem(key, JSON.stringify({ ...existing, repos: repoList }));
-    toast?.('GitHub repos saved.', 'success');
+    try {
+      const k = getProfileKey('nexusmd.github.config');
+      if (!k) return;
+      const existing = (() => { try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch { return {}; } })();
+      const repoList = ghRepos.split(',').map(s => s.trim()).filter(Boolean);
+      localStorage.setItem(k, JSON.stringify({ ...existing, repos: repoList }));
+      toast?.('GitHub repos saved.', 'success');
+    } catch (_) {}
   };
 
   const browseGhRepos = async () => {
