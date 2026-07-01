@@ -3,7 +3,7 @@
 // dark toggle. marked is imported from npm; highlight.js is still loaded on demand
 // via CDN. Self-contained — no app-local imports.
 import React from 'react';
-import { marked } from 'marked';
+import { marked, Marked } from 'marked';
 import DOMPurify from 'dompurify';
 const { useState: useStateMD, useEffect: useEffectMD, useRef: useRefMD, useCallback: useCallbackMD } = React;
 
@@ -128,7 +128,7 @@ function relativeTime(ts) {
 
 function parseMarkdownSafe(content) {
   try {
-    const raw = new marked.Marked({ gfm: true }).parse(content || '');
+    const raw = new Marked({ gfm: true }).parse(content || '');
     return DOMPurify ? DOMPurify.sanitize(raw) : raw;
   } catch { return ''; }
 }
@@ -722,7 +722,7 @@ function MarkdownViewer() {
     if (!markedReady || !hljsReady || !previewRef.current) return;
     const { hljs } = window;
     if (!hljs) return;
-    const md2html = new marked.Marked({ gfm: true });
+    const md2html = new Marked({ gfm: true });
     const raw = md2html.parse(markdown);
     previewRef.current.innerHTML = DOMPurify.sanitize(raw);
     previewRef.current.querySelectorAll('pre code[class*="language-"]').forEach(block => {
