@@ -175,6 +175,30 @@ const desktopWorkItemSource = {
     const data = await res.json()
     return data.fields || {}
   },
+  async createWorkItem({ project, type, title, assignedTo, state, priority, tags, description, acceptanceCriteria, reproSteps, systemInfo, storyPoints, remainingWork }) {
+    const adapter = createAdoHttpAdapter()
+    const ops = [{ op: 'add', path: '/fields/System.Title', value: title }]
+    if (assignedTo)            ops.push({ op: 'add', path: '/fields/System.AssignedTo',                            value: assignedTo })
+    if (state)                 ops.push({ op: 'add', path: '/fields/System.State',                                  value: state })
+    if (priority != null)      ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority',                value: priority })
+    if (tags)                  ops.push({ op: 'add', path: '/fields/System.Tags',                                   value: tags })
+    if (description)           ops.push({ op: 'add', path: '/fields/System.Description',                           value: description })
+    if (acceptanceCriteria)    ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Common.AcceptanceCriteria',      value: acceptanceCriteria })
+    if (reproSteps)            ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.TCM.ReproSteps',                 value: reproSteps })
+    if (systemInfo)            ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.TCM.SystemInfo',                 value: systemInfo })
+    if (storyPoints != null)   ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints',         value: storyPoints })
+    if (remainingWork != null) ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.RemainingWork',       value: remainingWork })
+    const res = await adapter.fetch(
+      `${encodeURIComponent(project)}/_apis/wit/workitems/$${encodeURIComponent(type)}?api-version=7.0`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json-patch+json' },
+        body: JSON.stringify(ops),
+      },
+    )
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  },
 }
 
 const NAV = [
@@ -671,7 +695,6 @@ function DesktopConfidentialCard() {
 }
 
 function DesktopAppCard() {
-  if (!window.electronAPI) return null
   const [loginItem, setLoginItem] = React.useState(false)
   const [closeToTray, setCloseToTray] = React.useState(true)
   const [outputPath, setOutputPath] = React.useState(() => {
@@ -679,16 +702,17 @@ function DesktopAppCard() {
   })
 
   React.useEffect(() => {
-    window.electronAPI.getLoginItemEnabled?.().then(setLoginItem).catch(() => {})
-    window.electronAPI.getCloseToTray?.().then(setCloseToTray).catch(() => {})
+    window.electronAPI?.getLoginItemEnabled?.().then(setLoginItem).catch(() => {})
+    window.electronAPI?.getCloseToTray?.().then(setCloseToTray).catch(() => {})
   }, [])
+
+  if (!window.electronAPI) return null
 
   const pickFolder = async () => {
     const picked = await window.electronAPI.pickOutputFolder?.()
     if (!picked) return
     setOutputPath(picked)
     try { localStorage.setItem('nexusmd.outputPath', picked) } catch {}
-    toast?.('Output folder updated.', 'success')
   }
 
   const clearFolder = () => {
