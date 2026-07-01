@@ -1,6 +1,6 @@
 import React from 'react';
 import { PL_OPEN, StatusChip, PrioChip, PlFld, ColInput, DueLabel, qaParse, plNewRow } from './primitives.jsx';
-import { RowNotesModal, NotesButton } from './planner-notes.jsx';
+import { RowNotesModal, NotesButton, plRowNotes, plOpenCtx } from './planner-notes.jsx';
 import { Icon } from '../icons.jsx';
 // planner-editors.jsx — Planner v2 section editors: three entry styles, row-level
 // confidential locks, multi-notes, drag reorder, row highlight, meeting select dropdown.
