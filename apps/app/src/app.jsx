@@ -2558,6 +2558,11 @@ function PRDetail({ pr, onClose }) {
   const [uatPushing, setUatPushing] = useState(false);
   const [uatStatus, setUatStatus] = useState('');
   const [threadState, setThreadState] = useState({ status: 'idle', threads: [], error: null });
+  const [replyOpen,    setReplyOpen]    = useState({});  // threadId → boolean
+  const [replyText,    setReplyText]    = useState({});  // threadId → string
+  const [replyPreview, setReplyPreview] = useState({});  // threadId → boolean
+  const [replyPosting, setReplyPosting] = useState({});  // threadId → boolean
+  const [resolving,    setResolving]    = useState({});  // threadId → boolean
 
   useEffect(() => {
     if (!pr.repoId || !pr.project) return;
@@ -2642,6 +2647,55 @@ function PRDetail({ pr, onClose }) {
       setTimeout(() => setCommentStatus(''), 2000);
     } catch(e) { setCommentStatus('✗ ' + e.message.slice(0,60)); }
     finally { setPosting(false); }
+  };
+
+  const resolveThread = async (threadId, currentStatus) => {
+    const newStatus = currentStatus === 'active' ? 'fixed' : 'active';
+    setResolving(r => ({ ...r, [threadId]: true }));
+    try {
+      await adoPatch(
+        `${encodeURIComponent(pr.project)}/_apis/git/repositories/${pr.repoId}/pullRequests/${pr.id}/threads/${threadId}?api-version=7.0`,
+        { status: newStatus }
+      );
+      setThreadState(prev => ({
+        ...prev,
+        threads: prev.threads.map(t => t.id === threadId ? { ...t, status: newStatus } : t),
+      }));
+    } catch (e) {
+      toast?.('Failed to update thread: ' + e.message, 'error');
+    } finally {
+      setResolving(r => ({ ...r, [threadId]: false }));
+    }
+  };
+
+  const postReply = async (threadId) => {
+    const text = (replyText[threadId] || '').trim();
+    if (!text) return;
+    const thread = threadState.threads.find(t => t.id === threadId);
+    const lastCommentId = Math.max(
+      ...(thread?.comments || []).filter(c => c.commentType === 1).map(c => c.id),
+      0
+    );
+    setReplyPosting(r => ({ ...r, [threadId]: true }));
+    try {
+      const data = await adoPost(
+        `${encodeURIComponent(pr.project)}/_apis/git/repositories/${pr.repoId}/pullRequests/${pr.id}/threads/${threadId}/comments?api-version=7.0`,
+        { parentCommentId: lastCommentId, content: text, commentType: 1 }
+      );
+      setThreadState(prev => ({
+        ...prev,
+        threads: prev.threads.map(t =>
+          t.id === threadId ? { ...t, comments: [...(t.comments || []), data] } : t
+        ),
+      }));
+      setReplyText(r => ({ ...r, [threadId]: '' }));
+      setReplyOpen(r => ({ ...r, [threadId]: false }));
+      setReplyPreview(r => ({ ...r, [threadId]: false }));
+    } catch (e) {
+      toast?.('Failed to post reply: ' + e.message, 'error');
+    } finally {
+      setReplyPosting(r => ({ ...r, [threadId]: false }));
+    }
   };
 
   // Author display name
@@ -2757,38 +2811,170 @@ function PRDetail({ pr, onClose }) {
           )}
 
           {/* Comment threads */}
-          {(pr.threads||[]).length > 0 && (
-            <div className="drawer-section">
-              <h4>Comments ({pr.comments}{pr.unresolvedComments > 0 ? ` · ${pr.unresolvedComments} unresolved` : ''})</h4>
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {(pr.threads||[]).map(t => {
-                  const isOpen = t.status === 'active';
-                  return (
-                    <div key={t.id} style={{
-                      padding:'8px 10px', background:'var(--surface-2)', borderRadius:6,
-                      borderLeft:`3px solid ${isOpen ? 'var(--warning)' : 'var(--border)'}`,
-                    }}>
-                      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
-                        <span style={{
-                          fontSize:10, padding:'1px 5px', borderRadius:3, fontWeight:600,
-                          background: isOpen ? 'rgba(234,179,8,0.15)' : 'var(--success-soft)',
-                          color: isOpen ? 'var(--warning)' : 'var(--success)',
-                        }}>{isOpen ? 'Open' : t.status}</span>
-                        {t.isCode && t.filePath
-                          ? <span className="mono muted truncate" style={{fontSize:10.5,flex:1}}>{t.filePath}</span>
-                          : <span className="muted" style={{fontSize:10.5}}>General</span>}
-                        {t.commentCount > 1 && <span className="muted" style={{fontSize:10.5,flexShrink:0}}>{t.commentCount} replies</span>}
-                      </div>
-                      <div style={{fontSize:12.5,color:'var(--text)',marginBottom:3}}>{t.firstComment}</div>
-                      <div className="muted" style={{fontSize:11}}>
-                        {t.firstCommentBy}{t.firstCommentDate ? ` · ${timeAgo(t.firstCommentDate)}` : ''}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          <div className="drawer-section">
+            {threadState.status === 'loading' && (
+              <div style={{ color: 'var(--text-subtle)', fontSize: 13 }}>Loading comments…</div>
+            )}
+            {threadState.status === 'error' && (
+              <div style={{ color: 'var(--danger)', fontSize: 13 }}>{threadState.error}</div>
+            )}
+            {threadState.status === 'ok' && (() => {
+              const openCount = threadState.threads.filter(t => t.status === 'active').length;
+              const threadTabStyle = (active) => ({
+                fontSize: 11.5, padding: '2px 10px', borderRadius: 6,
+                border: '1px solid var(--border)',
+                background: active ? 'var(--accent)' : 'transparent',
+                color: active ? '#fff' : 'var(--text-muted)',
+                cursor: 'pointer', lineHeight: '20px',
+              });
+              return (
+                <>
+                  <h4>
+                    Comments
+                    {threadState.threads.length > 0 && (
+                      <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text-muted)', marginLeft: 6 }}>
+                        ({threadState.threads.length}{openCount > 0 ? ` · ${openCount} open` : ''})
+                      </span>
+                    )}
+                  </h4>
+                  {threadState.threads.length === 0 && (
+                    <p style={{ fontSize: 12.5, color: 'var(--text-subtle)', margin: 0 }}>No comments yet.</p>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {threadState.threads.map(t => {
+                      const isOpen = t.status === 'active';
+                      const filePath = t.threadContext?.filePath;
+                      const visibleComments = (t.comments || []).filter(c => c.commentType === 1 && !c.isDeleted);
+                      const isReplying = replyOpen[t.id];
+                      return (
+                        <div key={t.id} style={{
+                          border: '1px solid var(--border)',
+                          borderLeft: `3px solid ${isOpen ? 'var(--warning)' : 'var(--border)'}`,
+                          borderRadius: 8,
+                          background: 'var(--surface-2)',
+                          overflow: 'hidden',
+                        }}>
+                          {/* Thread header */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+                            <span style={{
+                              fontSize: 10, padding: '1px 6px', borderRadius: 4, fontWeight: 600,
+                              background: isOpen ? 'rgba(234,179,8,0.15)' : 'var(--success-soft)',
+                              color: isOpen ? 'var(--warning)' : 'var(--success)',
+                            }}>{isOpen ? 'Open' : 'Resolved'}</span>
+                            {filePath
+                              ? <span className="mono muted truncate" style={{ fontSize: 10.5, flex: 1 }}>{filePath}</span>
+                              : <span className="muted" style={{ fontSize: 10.5, flex: 1 }}>General</span>}
+                            <button
+                              className="btn sm ghost"
+                              style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }}
+                              disabled={!!resolving[t.id]}
+                              onClick={() => resolveThread(t.id, t.status)}
+                            >
+                              {resolving[t.id] ? '…' : isOpen ? 'Resolve' : 'Re-open'}
+                            </button>
+                          </div>
+
+                          {/* All comments in thread */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                            {visibleComments.map((c, idx) => (
+                              <div key={c.id || idx} style={{
+                                padding: '10px 12px',
+                                borderBottom: idx < visibleComments.length - 1 ? '1px solid var(--border)' : 'none',
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, flexWrap: 'wrap', gap: 4 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                                    {c.author?.displayName || 'Unknown'}
+                                  </span>
+                                  <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
+                                    {c.publishedDate ? timeAgo(c.publishedDate) + ' ago' : ''}
+                                  </span>
+                                </div>
+                                <div
+                                  className="wi-html-content"
+                                  style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55, overflowWrap: 'break-word' }}
+                                  dangerouslySetInnerHTML={{ __html: renderContent(c.content || '') }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Reply area */}
+                          {pr.repoId && pr.project && (
+                            <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+                              {!isReplying ? (
+                                <button
+                                  className="btn sm ghost"
+                                  style={{ fontSize: 11.5 }}
+                                  onClick={() => setReplyOpen(r => ({ ...r, [t.id]: true }))}
+                                >
+                                  Reply
+                                </button>
+                              ) : (
+                                <div>
+                                  <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                                    <button style={threadTabStyle(!replyPreview[t.id])} onClick={() => setReplyPreview(r => ({ ...r, [t.id]: false }))}>Write</button>
+                                    <button style={threadTabStyle(!!replyPreview[t.id])} onClick={() => setReplyPreview(r => ({ ...r, [t.id]: true }))}>Preview</button>
+                                  </div>
+                                  {replyPreview[t.id] ? (
+                                    <div
+                                      className="wi-html-content"
+                                      style={{
+                                        minHeight: 56, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8,
+                                        background: 'var(--surface-2)', fontSize: 13, lineHeight: 1.6,
+                                        color: (replyText[t.id] || '').trim() ? 'var(--text)' : 'var(--text-subtle)',
+                                        overflowWrap: 'break-word',
+                                      }}
+                                      dangerouslySetInnerHTML={{
+                                        __html: (replyText[t.id] || '').trim()
+                                          ? renderContent(replyText[t.id])
+                                          : '<em>Nothing to preview</em>',
+                                      }}
+                                    />
+                                  ) : (
+                                    <textarea
+                                      value={replyText[t.id] || ''}
+                                      onChange={e => setReplyText(r => ({ ...r, [t.id]: e.target.value }))}
+                                      onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') postReply(t.id); }}
+                                      rows={3}
+                                      placeholder="Reply… (Markdown supported)"
+                                      style={{
+                                        width: '100%', padding: '8px 10px', border: '1px solid var(--border)',
+                                        borderRadius: 8, background: 'var(--surface-2)', color: 'var(--text)',
+                                        fontSize: 13, fontFamily: 'var(--mono)', resize: 'vertical',
+                                        boxSizing: 'border-box',
+                                      }}
+                                    />
+                                  )}
+                                  <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
+                                    <button
+                                      className="btn sm primary"
+                                      onClick={() => postReply(t.id)}
+                                      disabled={replyPosting[t.id] || !(replyText[t.id] || '').trim()}
+                                    >
+                                      {replyPosting[t.id] ? 'Posting…' : 'Post reply'}
+                                    </button>
+                                    <button
+                                      className="btn sm ghost"
+                                      onClick={() => {
+                                        setReplyOpen(r => ({ ...r, [t.id]: false }));
+                                        setReplyText(r => ({ ...r, [t.id]: '' }));
+                                        setReplyPreview(r => ({ ...r, [t.id]: false }));
+                                      }}
+                                    >Cancel</button>
+                                    <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>Ctrl+Enter to post</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
 
           {/* Push to UAT */}
           {pr.repoId && pr.project && uatBranch && pr.status !== 'abandoned' && pr.status !== 'merged' && (
