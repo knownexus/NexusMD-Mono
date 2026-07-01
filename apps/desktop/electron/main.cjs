@@ -5,9 +5,10 @@ const log = require('electron-log');
 const path = require('path');
 const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require('electron');
 
-// Configure electron-log
-log.transports.file.level = 'debug';
-log.transports.console.level = 'info';
+// Configure electron-log — 'silly' is the lowest (most verbose) level, so
+// every log/info/warn/error/debug/verbose/silly call is written to file.
+log.transports.file.level = 'silly';
+log.transports.console.level = 'silly';
 
 // Set log file path to {userData}/logs/{YYYY-MM-DD}.log
 const logsDir = path.join(app.getPath('userData'), 'logs');
@@ -24,6 +25,22 @@ console.error = log.error;
 
 // Make log global for use in other modules
 global.log = log;
+
+// Forward every renderer's console.* calls into the same log file. Renderer
+// windows run their own JS context (contextIsolation/sandbox), so the console
+// patch above only covers the main process — without this, errors like the
+// OAuth flow's console.error() in cloud-auth.js never reach the log file.
+// preload: false — the default preload injection would run in every window's
+// session, including the sandboxed link-window tabs that load arbitrary
+// external sites (ADO work items, PRs). spyRendererConsole alone listens for
+// console-message on all webContents from the main process, no injection needed.
+log.initialize({ preload: false, spyRendererConsole: true });
+
+// Catch anything that would otherwise bypass console.* entirely: uncaught
+// exceptions and unhandled promise rejections in the main process. Keeps the
+// native "A JavaScript error occurred" dialog (showDialog defaults to true)
+// so a fatal main-process crash is still visible, not just silently logged.
+log.errorHandler.startCatching();
 const { createTray, updateTrayIcon } = require('./tray.cjs');
 const { initNotifications } = require('./notifications.cjs');
 const { initUpdater, registerUpdaterIpc } = require('./updater.cjs');
@@ -34,6 +51,7 @@ const badgeIpc       = require('./ipc/badge.cjs');
 const deepLinkIpc    = require('./ipc/deepLink.cjs');
 const trayIpc        = require('./ipc/tray-ipc.cjs');
 const logsIpc        = require('./ipc/logs.cjs');
+const oauthIpc       = require('./ipc/oauth.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
 const { clampZoomFactor, nextZoom, ZOOM_DEFAULT } = require('./zoom.cjs')
@@ -239,6 +257,7 @@ function createMainWindow() {
 // App lifecycle
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
+  log.scope('lifecycle').info('app ready; creating main window');
   // Create renderer window (loads from Vite dev server or dist/renderer/)
   mainWindow = createMainWindow();
 
@@ -265,6 +284,7 @@ app.whenReady().then(async () => {
   deepLinkIpc.register(ipcMain, () => mainWindow);
   trayIpc.register(ipcMain, () => mainWindow, () => tray);
   logsIpc.register(ipcMain);
+  oauthIpc.register(ipcMain);
   linkWindow.register(ipcMain);
 
   app.on('activate', () => {
@@ -366,6 +386,7 @@ ipcMain.on('window:close', () => {
 // Clean shutdown
 // ---------------------------------------------------------------------------
 app.on('before-quit', () => {
+  log.scope('lifecycle').info('app quitting');
   forceQuit = true;
 });
 
