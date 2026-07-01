@@ -13,14 +13,14 @@ import { desktopCloudProviders, makeDesktopOAuthService } from './cloud-auth.js'
 import { desktopSync } from './sync.js'
 import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
 
-const settInputStyle = {
+export const settInputStyle = {
   width: '100%', padding: '7px 10px',
   border: '1px solid var(--border)', borderRadius: 6,
   background: 'var(--surface-2)', outline: 'none', fontSize: 13,
   color: 'var(--text)', boxSizing: 'border-box',
 }
 
-function SettField({ label, hint, children }) {
+export function SettField({ label, hint, children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)' }}>{label}</label>

@@ -16,7 +16,7 @@ import {
   OutlookService,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH } from './layout.js'
-import { DesktopSettings, IntegrationsPanel } from './desktop-settings.jsx'
+import { DesktopSettings, IntegrationsPanel, SettField, settInputStyle } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { desktopCloudProviders, registerCloudDeepLink, makeDesktopOAuthService } from './cloud-auth.js'
@@ -1152,11 +1152,46 @@ function App() {
   )
 }
 
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+  componentDidCatch(error, info) {
+    console.error('Uncaught render error:', error, info.componentStack)
+  }
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 14,
+        background: 'var(--surface, #1e1e1e)', color: 'var(--text, #eee)',
+        fontFamily: 'system-ui, sans-serif', textAlign: 'center', padding: 24,
+      }}>
+        <h2 style={{ margin: 0, fontSize: 18 }}>Something went wrong</h2>
+        <p style={{ margin: 0, maxWidth: 480, fontSize: 13, opacity: 0.8 }}>
+          {this.state.error?.message || 'The app hit an unexpected error and could not continue rendering.'}
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn" onClick={() => this.setState({ error: null })}>Try again</button>
+          <button className="btn primary" onClick={() => window.location.reload()}>Reload app</button>
+        </div>
+      </div>
+    )
+  }
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <ProfileProvider>
-      <App />
-    </ProfileProvider>
+    <AppErrorBoundary>
+      <ProfileProvider>
+        <App />
+      </ProfileProvider>
+    </AppErrorBoundary>
   </React.StrictMode>
 )
 
