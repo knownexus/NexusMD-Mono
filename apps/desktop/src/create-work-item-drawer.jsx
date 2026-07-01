@@ -163,6 +163,26 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
 
   const setFieldValue = (refName, v) => setValues((prev) => ({ ...prev, [refName]: v }))
 
+  const [attachmentFiles, setAttachmentFiles] = React.useState([])
+  const [saving, setSaving] = React.useState(false)
+  const [titleError, setTitleError] = React.useState('')
+
+  const submit = async () => {
+    if (!wiTitle.trim()) { setTitleError('Title is required.'); return }
+    setTitleError('')
+    setSaving(true)
+    setStatus('Creating…')
+    try {
+      const fieldValues = { 'System.Title': wiTitle.trim(), ...values }
+      const result = await onCreate({ project, type: typeRef, fields: fieldValues, attachmentFiles })
+      setStatus(`Created #${result.id}.`)
+    } catch (e) {
+      setStatus('Error: ' + (e?.message || 'Failed to create'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <Drawer
       open={open}
@@ -192,11 +212,18 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
       <SettField label="Title">
         <input aria-label="Title" value={wiTitle} onChange={(e) => setWiTitle(e.target.value)} autoFocus />
       </SettField>
+      {titleError && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4 }}>{titleError}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, marginTop: 14 }}>
         <div>
           {mainFields.map((f) => (
-            <div key={f.referenceName} className="drawer-section">{f.name}</div>
+            <MarkdownField
+              key={f.referenceName}
+              label={f.name}
+              required={f.alwaysRequired}
+              value={values[f.referenceName] || ''}
+              onChange={(v) => setFieldValue(f.referenceName, v)}
+            />
           ))}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -204,7 +231,14 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
             group.length > 0 && (
               <div key={i} className="drawer-section" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {group.map((f) => (
-                  <div key={f.referenceName}>{f.name}</div>
+                  <FieldInput
+                    key={f.referenceName}
+                    def={f}
+                    value={values[f.referenceName]}
+                    onChange={(v) => setFieldValue(f.referenceName, v)}
+                    team={team}
+                    paths={defs?.paths || { areas: [], iterations: [] }}
+                  />
                 ))}
               </div>
             )
@@ -212,15 +246,54 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
           {additionalFields.length > 0 && (
             <div className="drawer-section">
               <h4>Additional Fields</h4>
-              {additionalFields.map((f) => (
-                <div key={f.referenceName}>{f.name}</div>
-              ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {additionalFields.map((f) => (
+                  <FieldInput
+                    key={f.referenceName}
+                    def={f}
+                    value={values[f.referenceName]}
+                    onChange={(v) => setFieldValue(f.referenceName, v)}
+                    team={team}
+                    paths={defs?.paths || { areas: [], iterations: [] }}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {status && <div className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>{status}</div>}
+      <div className="drawer-section">
+        <h4>Attachments</h4>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)' }}>Attach files</span>
+          <input
+            aria-label="Attach files"
+            type="file"
+            multiple
+            onChange={(e) => setAttachmentFiles((prev) => [...prev, ...Array.from(e.target.files)])}
+          />
+        </label>
+        {attachmentFiles.length > 0 && (
+          <ul style={{ marginTop: 8, paddingLeft: 18 }}>
+            {attachmentFiles.map((f, i) => (
+              <li key={i} style={{ fontSize: 12.5 }}>
+                {f.name}
+                <button type="button" className="btn icon ghost sm" style={{ marginLeft: 6 }}
+                  onClick={() => setAttachmentFiles((prev) => prev.filter((_, idx) => idx !== i))}>
+                  <Icon name="x" size={10} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div style={{ position: 'sticky', bottom: 0, background: 'var(--surface)', paddingTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button className="btn primary" onClick={submit} disabled={saving}>{saving ? 'Creating…' : 'Create'}</button>
+        <button className="btn ghost" onClick={onClose} disabled={saving}>Cancel</button>
+        {status && <span style={{ fontSize: 12.5, color: status.startsWith('Error') ? 'var(--danger)' : 'var(--text-muted)' }}>{status}</span>}
+      </div>
     </Drawer>
   )
 }

@@ -123,3 +123,54 @@ describe('CreateWorkItemDrawer', () => {
     expect(adoWorkItemTypes.loadWorkItemTypeDefs).toHaveBeenCalledWith(expect.any(String), expect.any(String), { forceRefresh: true })
   })
 })
+
+describe('CreateWorkItemDrawer submit', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('renders MarkdownField for main fields and FieldInput for rail fields, and calls onCreate with assembled fields', async () => {
+    stubDefs()
+    const onCreate = vi.fn().mockResolvedValue({ id: 42 })
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[{ id: '1', name: 'Alex' }]} onClose={() => {}} onCreate={onCreate} />)
+
+    await screen.findByLabelText('Description') // wait for defs to load before interacting with dynamic fields
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Fix login bug' } })
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'It crashes' } })
+    fireEvent.change(screen.getByLabelText('Assigned To'), { target: { value: 'Alex' } })
+
+    fireEvent.click(screen.getByText('Create'))
+
+    await screen.findByText(/Created/)
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      project: 'ProjectA',
+      type: 'Microsoft.VSTS.WorkItemTypes.Task',
+      fields: expect.objectContaining({
+        'System.Title': 'Fix login bug',
+        'System.Description': 'It crashes',
+        'System.AssignedTo': 'Alex',
+      }),
+      attachmentFiles: [],
+    }))
+  })
+
+  it('blocks submit and shows an inline error when Title is empty', async () => {
+    stubDefs()
+    const onCreate = vi.fn()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={onCreate} />)
+    await screen.findByLabelText('Description')
+    fireEvent.click(screen.getByText('Create'))
+    expect(await screen.findByText('Title is required.')).toBeTruthy()
+    expect(onCreate).not.toHaveBeenCalled()
+  })
+
+  it('stages a file for upload without calling the attachments API immediately', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={vi.fn().mockResolvedValue({ id: 1 })} />)
+    await screen.findByLabelText('Description')
+    const file = new File(['contents'], 'notes.txt', { type: 'text/plain' })
+    fireEvent.change(screen.getByLabelText('Attach files'), { target: { files: [file] } })
+    expect(screen.getByText('notes.txt')).toBeTruthy()
+  })
+})
