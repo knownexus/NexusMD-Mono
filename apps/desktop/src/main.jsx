@@ -682,7 +682,13 @@ function IntegrationsPanel() {
 }
 
 // The view body — reads the snapshot from context and wires per-view host state.
-function ViewBody({ view, onOpenItem, onOpenPR, tweaks = DEFAULT_TWEAKS, setTweak = () => {} }) {
+function ViewBody({
+  view, onOpenItem, onOpenPR,
+  tweaks = DEFAULT_TWEAKS, setTweak = () => {},
+  newItemIds = { work: new Set(), pr: new Set(), builds: new Set(), tests: new Set() },
+  plannerData = {}, setPlannerData = () => {},
+  plannerThemes = {}, setPlannerThemes = () => {},
+}) {
   const { data } = useNexusData()
   const { activeProfile } = useProfile() || {}
   // manual profiles don't require ADO config
@@ -694,41 +700,55 @@ function ViewBody({ view, onOpenItem, onOpenPR, tweaks = DEFAULT_TWEAKS, setTwea
   const [acknowledgedTests, setAcknowledgedTests]   = usePersistedState('nexusmd.tests.acknowledged', [])
   const [widgetWidths, setWidgetWidths] = usePersistedState('nexusmd.dash.widgetWidths', {})
   const [widgetHeights, setWidgetHeights] = usePersistedState('nexusmd.dash.widgetHeights', {})
-  const [plannerData, setPlannerData]     = React.useState({})
-  const [plannerThemes, setPlannerThemes] = React.useState({})
+  const [localItems, setLocalItems] = React.useState(null)
+  const items = localItems ?? (data.WORK_ITEMS || [])
 
   switch (view) {
-    case 'dashboard':
+    case 'dashboard': {
       if (!configured) return <NotConfigured />
+      const acknowledgedSet = new Set([...acknowledgedBuilds, ...acknowledgedTests])
       return (
         <DashboardView
           onOpenItem={onOpenItem} onOpenPR={onOpenPR}
           widgetOrder={tweaks.widgetOrder || DASH_WIDGET_ORDER} setWidgetOrder={arr => setTweak('widgetOrder', arr)}
           widgetWidths={widgetWidths} setWidgetWidths={setWidgetWidths}
           widgetHeights={widgetHeights} setWidgetHeights={setWidgetHeights}
-          needsMeCriteria={needsMeCriteria} setPlannerData={() => {}}
-          quickLinks={[]}
+          needsMeCriteria={needsMeCriteria} setPlannerData={setPlannerData}
+          quickLinks={tweaks.quickLinks || []}
+          density={tweaks.density}
+          team={data.TEAM || []}
+          acknowledgedSet={acknowledgedSet}
         />
       )
+    }
     case 'work':
       return (
-        <WorkItemsView items={data.WORK_ITEMS || []} setItems={() => {}}
-          onOpen={onOpenItem} onCreate={() => {}} />
+        <WorkItemsView
+          items={items}
+          setItems={setLocalItems}
+          onOpen={onOpenItem}
+          onCreate={() => { window.dispatchEvent(new CustomEvent('nexusmd:create-wi', { detail: {} })) }}
+          team={data.TEAM || []}
+          newItemIds={newItemIds.work}
+        />
       )
     case 'prs':
       return (
         <PRView prs={data.PRS || []} onOpen={onOpenPR}
-          needsMeCriteria={needsMeCriteria} setNeedsMeCriteria={setNeedsMeCriteria} />
+          needsMeCriteria={needsMeCriteria} setNeedsMeCriteria={setNeedsMeCriteria}
+          newItemIds={newItemIds.pr} />
       )
     case 'builds':
       return (
         <BuildsView builds={data.BUILDS || []}
-          acknowledgedBuilds={acknowledgedBuilds} setAcknowledgedBuilds={setAcknowledgedBuilds} />
+          acknowledgedBuilds={acknowledgedBuilds} setAcknowledgedBuilds={setAcknowledgedBuilds}
+          newItemIds={newItemIds.builds} />
       )
     case 'tests':
       return (
         <TestsView tests={data.TESTS || []}
-          acknowledgedTests={acknowledgedTests} setAcknowledgedTests={setAcknowledgedTests} />
+          acknowledgedTests={acknowledgedTests} setAcknowledgedTests={setAcknowledgedTests}
+          newItemIds={newItemIds.tests} />
       )
     case 'team':
       return (
@@ -799,8 +819,61 @@ function App() {
     window.nexusMDTypeLabels = tweaks.typeLabels || false
   }, [tweaks.typeLabels])
 
+  const [plannerData, setPlannerData]     = React.useState({})
+  const [plannerThemes, setPlannerThemes] = React.useState({})
+
+  const prevSnapshotIdsRef = React.useRef(null)
+  const [newItemIds, setNewItemIds] = React.useState({
+    work: new Set(), pr: new Set(), builds: new Set(), tests: new Set(),
+  })
+  const [changeBadges, setChangeBadges] = React.useState({ work: 0, prs: 0, builds: 0, tests: 0 })
+
   const active = NAV.find(n => n.id === view) || NAV[0]
   const snapshot = useNexusSnapshot()
+
+  React.useEffect(() => {
+    const toIds = arr => new Set((arr || []).map(i => i.id))
+    const cur = {
+      work:   toIds(snapshot.WORK_ITEMS),
+      pr:     toIds(snapshot.PRS),
+      builds: toIds(snapshot.BUILDS),
+      tests:  toIds(snapshot.TESTS),
+    }
+    if (prevSnapshotIdsRef.current === null) {
+      prevSnapshotIdsRef.current = cur
+      return
+    }
+    const prev = prevSnapshotIdsRef.current
+    setNewItemIds(n => ({
+      work:   new Set([...n.work,   ...[...cur.work].filter(id => !prev.work.has(id))]),
+      pr:     new Set([...n.pr,     ...[...cur.pr].filter(id => !prev.pr.has(id))]),
+      builds: new Set([...n.builds, ...[...cur.builds].filter(id => !prev.builds.has(id))]),
+      tests:  new Set([...n.tests,  ...[...cur.tests].filter(id => !prev.tests.has(id))]),
+    }))
+    const changed = (curSet, prevSet) => [...curSet].filter(id => !prevSet.has(id)).length
+    setChangeBadges(b => ({
+      work:   b.work   + changed(cur.work,   prev.work),
+      prs:    b.prs    + changed(cur.pr,     prev.pr),
+      builds: b.builds + changed(cur.builds, prev.builds),
+      tests:  b.tests  + changed(cur.tests,  prev.tests),
+    }))
+    prevSnapshotIdsRef.current = cur
+  }, [snapshot])
+
+  React.useEffect(() => {
+    const keyMap = { work: 'work', prs: 'prs', builds: 'builds', tests: 'tests' }
+    const wiKey = keyMap[view]
+    if (wiKey) {
+      setNewItemIds(n => ({ ...n, [wiKey === 'prs' ? 'pr' : wiKey]: new Set() }))
+      setChangeBadges(b => ({ ...b, [wiKey]: 0 }))
+    }
+  }, [view])
+
+  React.useEffect(() => {
+    const handler = e => setView(e.detail)
+    window.addEventListener('nexusmd:navigate', handler)
+    return () => window.removeEventListener('nexusmd:navigate', handler)
+  }, [])
 
   React.useEffect(() => {
     const handler = (e) => setCreateWI(e.detail || {})
@@ -845,6 +918,17 @@ function App() {
             >
               <Icon name={item.icon} size={16} />
               {item.label}
+              {changeBadges[item.id] > 0 && (
+                <span style={{
+                  marginLeft: 'auto', minWidth: 18, height: 18,
+                  background: 'var(--accent)', color: 'var(--on-accent)',
+                  borderRadius: 9, fontSize: 11, fontWeight: 700,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '0 5px',
+                }}>
+                  {changeBadges[item.id] > 99 ? '99+' : changeBadges[item.id]}
+                </span>
+              )}
             </button>
           ))}
         </aside>
@@ -865,7 +949,13 @@ function App() {
             overflow: view === 'markdown' ? 'hidden' : 'auto',
             padding: view === 'markdown' ? 0 : 18,
           }}>
-            <ViewBody view={view} onOpenItem={setOpenedItem} onOpenPR={setOpenedPR} tweaks={tweaks} setTweak={setTweak} />
+            <ViewBody
+              view={view} onOpenItem={setOpenedItem} onOpenPR={setOpenedPR}
+              tweaks={tweaks} setTweak={setTweak}
+              newItemIds={newItemIds}
+              plannerData={plannerData} setPlannerData={setPlannerData}
+              plannerThemes={plannerThemes} setPlannerThemes={setPlannerThemes}
+            />
           </section>
         </main>
       </div>
