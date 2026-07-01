@@ -505,40 +505,54 @@ function CreateWorkItemModal({ open, title: initialTitle, onClose }) {
   const cfg = getAdoConfig()
   const projects = cfg.projects || []
   const types = ['Task', 'Bug', 'User Story', 'Feature']
+  const { data } = useNexusData()
+  const teamMembers = data?.TEAM || []
 
-  const [project, setProject] = React.useState('')
-  const [type, setType]       = React.useState('Task')
-  const [title, setTitle]     = React.useState('')
-  const [status, setStatus]   = React.useState('')
-  const [saving, setSaving]   = React.useState(false)
+  const [form, setForm]     = React.useState({})
+  const [status, setStatus] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
     if (open) {
-      setTitle(initialTitle || '')
-      setProject(projects[0] || '')
-      setType('Task')
+      setForm({
+        title:    initialTitle || '',
+        project:  projects[0] || '',
+        type:     'Task',
+        assignee: '',
+        state:    'Active',
+        priority: '2',
+        tags:     '',
+        description: '',
+      })
       setStatus('')
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null
 
+  const upd = field => e => setForm(f => ({ ...f, [field]: e.target.value }))
+
   const create = async () => {
-    if (!project) { setStatus('Select a project.'); return }
-    if (!title.trim()) { setStatus('Enter a title.'); return }
+    if (!form.project) { setStatus('Select a project.'); return }
+    if (!form.title?.trim()) { setStatus('Enter a title.'); return }
     setSaving(true)
     setStatus('Creating…')
     try {
-      const adapter = createAdoHttpAdapter()
-      const res = await adapter.fetch(
-        `${encodeURIComponent(project)}/_apis/wit/workitems/$${encodeURIComponent(type)}?api-version=7.0`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json-patch+json' },
-          body: JSON.stringify([{ op: 'add', path: '/fields/System.Title', value: title.trim() }]),
-        },
-      )
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await desktopWorkItemSource.createWorkItem({
+        project:            form.project,
+        type:               form.type,
+        title:              form.title.trim(),
+        assignedTo:         form.assignee || undefined,
+        state:              form.state,
+        priority:           form.priority ? parseInt(form.priority) : undefined,
+        tags:               form.tags || undefined,
+        description:        form.description || undefined,
+        acceptanceCriteria: form.acceptanceCriteria || undefined,
+        reproSteps:         form.reproSteps || undefined,
+        systemInfo:         form.systemInfo || undefined,
+        storyPoints:        form.storyPoints ? parseFloat(form.storyPoints) : undefined,
+        remainingWork:      form.remainingWork ? parseFloat(form.remainingWork) : undefined,
+      })
       setStatus('Created!')
       setTimeout(() => onClose(), 1200)
     } catch (e) {
@@ -548,7 +562,11 @@ function CreateWorkItemModal({ open, title: initialTitle, onClose }) {
     }
   }
 
-  const isError = status.startsWith('Error')
+  const isError     = status.startsWith('Error')
+  const isBug       = form.type === 'Bug'
+  const isUserStory = form.type === 'User Story'
+  const isFeature   = form.type === 'Feature'
+  const textareaStyle = { ...settInputStyle, resize: 'vertical', paddingTop: 8, paddingBottom: 8 }
 
   return (
     <div
@@ -559,25 +577,75 @@ function CreateWorkItemModal({ open, title: initialTitle, onClose }) {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div style={{
-        background: 'var(--surface)', borderRadius: 10, padding: 24, width: 440,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: 16,
+        background: 'var(--surface)', borderRadius: 10, padding: 24, width: 480,
+        maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: 14,
       }}>
         <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Create Work Item</h2>
         <SettField label="Title">
-          <input value={title} onChange={e => setTitle(e.target.value)}
+          <input value={form.title || ''} onChange={upd('title')}
             placeholder="Work item title" style={settInputStyle} autoFocus />
         </SettField>
         <SettField label="Project">
-          <select value={project} onChange={e => setProject(e.target.value)} style={settInputStyle}>
+          <select value={form.project || ''} onChange={upd('project')} style={settInputStyle}>
             {projects.length === 0 && <option value="">No projects configured</option>}
             {projects.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </SettField>
         <SettField label="Type">
-          <select value={type} onChange={e => setType(e.target.value)} style={settInputStyle}>
+          <select value={form.type || 'Task'} onChange={upd('type')} style={settInputStyle}>
             {types.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </SettField>
+        <SettField label="Assignee">
+          <select value={form.assignee || ''} onChange={upd('assignee')} style={settInputStyle}>
+            <option value="">Unassigned</option>
+            {teamMembers.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+          </select>
+        </SettField>
+        <SettField label="State">
+          <select value={form.state || 'Active'} onChange={upd('state')} style={settInputStyle}>
+            {['New', 'Active', 'Resolved', 'Closed'].map(s => <option key={s}>{s}</option>)}
+          </select>
+        </SettField>
+        <SettField label="Priority">
+          <select value={form.priority || '2'} onChange={upd('priority')} style={settInputStyle}>
+            {[['1', 'Critical'], ['2', 'High'], ['3', 'Medium'], ['4', 'Low']].map(([v, l]) =>
+              <option key={v} value={v}>{l}</option>
+            )}
+          </select>
+        </SettField>
+        <SettField label="Tags (comma-separated)">
+          <input value={form.tags || ''} onChange={upd('tags')} style={settInputStyle} />
+        </SettField>
+        <SettField label="Description">
+          <textarea rows={4} value={form.description || ''} onChange={upd('description')} style={textareaStyle} />
+        </SettField>
+        {(isUserStory || isFeature) && (
+          <SettField label="Acceptance criteria">
+            <textarea rows={3} value={form.acceptanceCriteria || ''} onChange={upd('acceptanceCriteria')} style={textareaStyle} />
+          </SettField>
+        )}
+        {isBug && (
+          <>
+            <SettField label="Repro steps">
+              <textarea rows={3} value={form.reproSteps || ''} onChange={upd('reproSteps')} style={textareaStyle} />
+            </SettField>
+            <SettField label="System info">
+              <input value={form.systemInfo || ''} onChange={upd('systemInfo')} style={settInputStyle} />
+            </SettField>
+          </>
+        )}
+        {isUserStory && (
+          <SettField label="Story points">
+            <input type="number" min={0} value={form.storyPoints || ''} onChange={upd('storyPoints')} style={settInputStyle} />
+          </SettField>
+        )}
+        {form.type === 'Task' && (
+          <SettField label="Remaining work (hours)">
+            <input type="number" min={0} step={0.5} value={form.remainingWork || ''} onChange={upd('remainingWork')} style={settInputStyle} />
+          </SettField>
+        )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn primary" onClick={create} disabled={saving || !projects.length}>
             {saving ? 'Creating…' : 'Create'}
