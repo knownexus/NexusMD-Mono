@@ -9,6 +9,11 @@ vi.mock('@nexusmd/ui', () => ({
   Icon: () => null,
 }))
 
+const TWO_ENTRIES = [
+  '[2026-07-01 10:00:00.000] [info]  [alpha] hello world',
+  '[2026-07-01 10:00:01.000] [warn]  [beta] goodbye moon',
+].join('\n')
+
 let mockLogs
 
 beforeEach(() => {
@@ -44,18 +49,42 @@ describe('LogsCard', () => {
 
   it('calls logs.read when a different date is selected', async () => {
     render(<LogsCard />)
-    await waitFor(() => screen.getByRole('combobox'))
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '2026-06-30' } })
+    await waitFor(() => screen.getByRole('combobox', { name: /select date/i }))
+    fireEvent.change(screen.getByRole('combobox', { name: /select date/i }), { target: { value: '2026-06-30' } })
     await waitFor(() => expect(mockLogs.read).toHaveBeenCalledWith('2026-06-30'))
   })
 
-  it('displays log content in a read-only textarea', async () => {
+  it('displays parsed log content as entries', async () => {
     render(<LogsCard />)
-    await waitFor(() => expect(mockLogs.read).toHaveBeenCalled())
-    await waitFor(() => {
-      const textarea = screen.getByRole('textbox')
-      expect(textarea.value).toBe('Log line 1\nLog line 2')
-    })
+    await waitFor(() => expect(screen.getByText(/Log line 1/)).toBeTruthy())
+  })
+
+  it('filters visible entries by search text', async () => {
+    mockLogs.read = vi.fn(() => Promise.resolve(TWO_ENTRIES))
+    render(<LogsCard />)
+    await waitFor(() => expect(screen.getByText(/hello world/)).toBeTruthy())
+    expect(screen.getByText(/goodbye moon/)).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: /search/i }), { target: { value: 'hello' } })
+    await waitFor(() => expect(screen.queryByText(/goodbye moon/)).toBeNull())
+    expect(screen.getByText(/hello world/)).toBeTruthy()
+  })
+
+  it('hides a level when its chip is toggled off', async () => {
+    mockLogs.read = vi.fn(() => Promise.resolve(TWO_ENTRIES))
+    render(<LogsCard />)
+    await waitFor(() => expect(screen.getByText(/goodbye moon/)).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /^warn$/i }))
+    await waitFor(() => expect(screen.queryByText(/goodbye moon/)).toBeNull())
+    expect(screen.getByText(/hello world/)).toBeTruthy()
+  })
+
+  it('filters visible entries by area', async () => {
+    mockLogs.read = vi.fn(() => Promise.resolve(TWO_ENTRIES))
+    render(<LogsCard />)
+    await waitFor(() => expect(screen.getByText(/goodbye moon/)).toBeTruthy())
+    fireEvent.change(screen.getByRole('combobox', { name: /filter by area/i }), { target: { value: 'alpha' } })
+    await waitFor(() => expect(screen.queryByText(/goodbye moon/)).toBeNull())
+    expect(screen.getByText(/hello world/)).toBeTruthy()
   })
 
   it('calls logs.delete and refreshes list when Delete log is clicked', async () => {
