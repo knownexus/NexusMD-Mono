@@ -11,7 +11,7 @@ import {
   PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
   DashboardView, WorkItemsView, TriageView,
   VsProfiles, BackupRestoreCard, CloudSyncCard,
-  IntegrationsView, VsRow,
+  IntegrationsView, VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker,
   PlannerView, MarkdownViewer, plannerExportDocx,
   WorkItemDetail,
 } from '@nexusmd/ui'
@@ -54,6 +54,23 @@ const adapters = {
   deepLink:      deepLinkAdapter,
   update:        updateAdapter,
   secureStorage: secureStorageAdapter,
+}
+
+const NEXUSMD_THEMES = [
+  { id: 'parchment', label: 'Parchment', swatch: ['#f4f1e8', '#ebe5d4', '#9a7e22'] },
+  { id: 'dusk',      label: 'Dusk',      swatch: ['#e4e0d2', '#dbd5c2', '#9a7e22'] },
+  { id: 'paper',     label: 'Paper',     swatch: ['#f5f5f5', '#e8e8e8', '#1d6fcc'] },
+  { id: 'cobalt',    label: 'Cobalt',    swatch: ['#0d1620', '#1f2c3b', '#4a9eff'] },
+  { id: 'noir',      label: 'Noir',      swatch: ['#171410', '#282420', '#e8a020'] },
+  { id: 'slate',     label: 'Slate',     swatch: ['#1a1c20', '#2a2e38', '#8098e0'] },
+  { id: 'forest',    label: 'Forest',    swatch: ['#0e1812', '#1c2a20', '#48b870'] },
+]
+window.NEXUSMD_THEMES = NEXUSMD_THEMES
+
+const DEFAULT_TWEAKS = { theme: 'light', lightTheme: 'parchment', darkTheme: 'cobalt' }
+
+function loadTweaks() {
+  try { const s = localStorage.getItem('nexusmd.tweaks'); return s ? { ...DEFAULT_TWEAKS, ...JSON.parse(s) } : DEFAULT_TWEAKS } catch { return DEFAULT_TWEAKS }
 }
 
 // Seed a default profile and fold any pre-registry flat `nexusmd.*` data into
@@ -563,10 +580,23 @@ function CreateWorkItemModal({ open, title: initialTitle, onClose }) {
 }
 
 // Settings — ADO connection, profile registry, backup & restore, cloud sync.
-function DesktopSettings() {
+function DesktopSettings({ tweaks, setTweak }) {
   const profileApi = useProfile()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 }}>
+      <VsCard title="Appearance" icon="sun">
+        <VsRow title="Mode" desc="Toggle between your assigned light and dark themes">
+          <VsSeg value={tweaks.theme}
+            options={[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon']]}
+            onChange={v => setTweak('theme', v)} />
+        </VsRow>
+        <VsFullRow title="Light mode theme" desc="Palette used when light mode is active">
+          <ThemeChipPicker value={tweaks.lightTheme || 'parchment'} onChange={v => setTweak('lightTheme', v)} />
+        </VsFullRow>
+        <VsFullRow title="Dark mode theme" desc="Palette used when dark mode is active">
+          <ThemeChipPicker value={tweaks.darkTheme || 'cobalt'} onChange={v => setTweak('darkTheme', v)} />
+        </VsFullRow>
+      </VsCard>
       <AdoConnectionCard />
       <VsProfiles profileApi={profileApi} />
       <BackupRestoreCard fileIO={desktopFileIO} cloudProviders={desktopCloudProviders} />
@@ -647,7 +677,7 @@ function IntegrationsPanel() {
 }
 
 // The view body — reads the snapshot from context and wires per-view host state.
-function ViewBody({ view, onOpenItem, onOpenPR }) {
+function ViewBody({ view, onOpenItem, onOpenPR, tweaks, setTweak }) {
   const { data } = useNexusData()
   const { activeProfile } = useProfile() || {}
   // manual profiles don't require ADO config
@@ -710,7 +740,7 @@ function ViewBody({ view, onOpenItem, onOpenPR }) {
     case 'integrations':
       return <IntegrationsPanel />
     case 'settings':
-      return <DesktopSettings />
+      return <DesktopSettings tweaks={tweaks} setTweak={setTweak} />
     default:
       return <Placeholder label={(NAV.find(n => n.id === view) || NAV[0]).label} />
   }
@@ -746,6 +776,21 @@ function App() {
   const [createWI, setCreateWI] = React.useState(null)
   const [openedItem, setOpenedItem] = React.useState(null)
   const [openedPR, setOpenedPR]     = React.useState(null)
+  const [tweaks, setTweaksState] = React.useState(loadTweaks)
+
+  const setTweak = React.useCallback((key, value) => {
+    setTweaksState(prev => {
+      const next = { ...prev, [key]: value }
+      try { localStorage.setItem('nexusmd.tweaks', JSON.stringify(next)) } catch (_) {}
+      return next
+    })
+  }, [])
+
+  React.useEffect(() => {
+    const palette = tweaks.theme === 'dark' ? (tweaks.darkTheme || 'cobalt') : (tweaks.lightTheme || 'parchment')
+    document.body.dataset.theme = palette
+  }, [tweaks.theme, tweaks.darkTheme, tweaks.lightTheme])
+
   const active = NAV.find(n => n.id === view) || NAV[0]
   const snapshot = useNexusSnapshot()
 
@@ -811,7 +856,7 @@ function App() {
             overflow: view === 'markdown' ? 'hidden' : 'auto',
             padding: view === 'markdown' ? 0 : 18,
           }}>
-            <ViewBody view={view} onOpenItem={setOpenedItem} onOpenPR={setOpenedPR} />
+            <ViewBody view={view} onOpenItem={setOpenedItem} onOpenPR={setOpenedPR} tweaks={tweaks} setTweak={setTweak} />
           </section>
         </main>
       </div>
