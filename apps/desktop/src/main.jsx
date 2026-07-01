@@ -13,7 +13,8 @@ import {
   VsProfiles, BackupRestoreCard, CloudSyncCard,
   IntegrationsView, VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker,
   PlannerView, MarkdownViewer, plannerExportDocx,
-  WorkItemDetail,
+  WorkItemDetail, Drawer, PlToggle,
+  TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
 } from '@nexusmd/ui'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -67,7 +68,13 @@ const NEXUSMD_THEMES = [
 ]
 window.NEXUSMD_THEMES = NEXUSMD_THEMES
 
-const DEFAULT_TWEAKS = { theme: 'light', lightTheme: 'parchment', darkTheme: 'cobalt' }
+const DASH_WIDGET_ORDER = ['sprint', 'review', 'blockers', 'team', 'triage', 'activity', 'resolvedme']
+
+const DEFAULT_TWEAKS = {
+  theme: 'light', lightTheme: 'parchment', darkTheme: 'cobalt',
+  density: 'balanced', sidebar: 'labels', typeLabels: false,
+  widgetOrder: DASH_WIDGET_ORDER,
+}
 
 function loadTweaks() {
   try { const s = localStorage.getItem('nexusmd.tweaks'); return s ? { ...DEFAULT_TWEAKS, ...JSON.parse(s) } : DEFAULT_TWEAKS } catch { return DEFAULT_TWEAKS }
@@ -168,8 +175,6 @@ const desktopWorkItemSource = {
     return data.fields || {}
   },
 }
-
-const DASH_WIDGET_ORDER = ['sprint', 'review', 'blockers', 'team', 'triage', 'activity', 'resolvedme']
 
 const NAV = [
   { id: 'dashboard',     label: 'Dashboard',     icon: 'dashboard' },
@@ -687,7 +692,6 @@ function ViewBody({ view, onOpenItem, onOpenPR, tweaks, setTweak }) {
   const [needsMeCriteria, setNeedsMeCriteria] = usePersistedState('nexusmd.pr.needsMeCriteria', { votes: [0], includeDrafts: false })
   const [acknowledgedBuilds, setAcknowledgedBuilds] = usePersistedState('nexusmd.builds.acknowledged', [])
   const [acknowledgedTests, setAcknowledgedTests]   = usePersistedState('nexusmd.tests.acknowledged', [])
-  const [widgetOrder, setWidgetOrder]   = usePersistedState('nexusmd.dash.widgetOrder', DASH_WIDGET_ORDER)
   const [widgetWidths, setWidgetWidths] = usePersistedState('nexusmd.dash.widgetWidths', {})
   const [widgetHeights, setWidgetHeights] = usePersistedState('nexusmd.dash.widgetHeights', {})
   const [plannerData, setPlannerData]     = React.useState({})
@@ -699,7 +703,7 @@ function ViewBody({ view, onOpenItem, onOpenPR, tweaks, setTweak }) {
       return (
         <DashboardView
           onOpenItem={onOpenItem} onOpenPR={onOpenPR}
-          widgetOrder={widgetOrder} setWidgetOrder={setWidgetOrder}
+          widgetOrder={tweaks.widgetOrder || DASH_WIDGET_ORDER} setWidgetOrder={arr => setTweak('widgetOrder', arr)}
           widgetWidths={widgetWidths} setWidgetWidths={setWidgetWidths}
           widgetHeights={widgetHeights} setWidgetHeights={setWidgetHeights}
           needsMeCriteria={needsMeCriteria} setPlannerData={() => {}}
@@ -786,6 +790,8 @@ function App() {
     })
   }, [])
 
+  window.nexusMDTypeLabels = tweaks.typeLabels || false
+
   React.useEffect(() => {
     const palette = tweaks.theme === 'dark' ? (tweaks.darkTheme || 'cobalt') : (tweaks.lightTheme || 'parchment')
     document.body.dataset.theme = palette
@@ -811,7 +817,8 @@ function App() {
 
   return (
     <NexusDataProvider value={nexusDataValue}>
-      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      <div data-density={tweaks.density} data-sidebar={tweaks.sidebar}
+        style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
         <aside style={{
           width: 220, flexShrink: 0, borderRight: '1px solid var(--border)',
           padding: '14px 10px', display: 'flex', flexDirection: 'column', gap: 2,
@@ -861,6 +868,25 @@ function App() {
         </main>
       </div>
       <ToastHost />
+      <TweaksPanel title="Display">
+        <TweakSection title="Appearance">
+          <TweakRadio label="Theme" value={tweaks.theme}
+            onChange={v => setTweak('theme', v)}
+            options={[{label:'Light',value:'light'},{label:'Dark',value:'dark'}]}/>
+          <TweakRadio label="Density" value={tweaks.density}
+            onChange={v => setTweak('density', v)}
+            options={[{label:'Compact',value:'compact'},{label:'Balanced',value:'balanced'},{label:'Cozy',value:'cozy'}]}/>
+          <TweakRadio label="Sidebar" value={tweaks.sidebar}
+            onChange={v => setTweak('sidebar', v)}
+            options={[{label:'Labels',value:'labels'},{label:'Icons',value:'icons'}]}/>
+          <TweakToggle label="Show type labels" value={tweaks.typeLabels || false}
+            onChange={v => setTweak('typeLabels', v)}/>
+        </TweakSection>
+        <TweakSection title="Dashboard">
+          <TweakButton label="Reset widget order"
+            onClick={() => setTweak('widgetOrder', DASH_WIDGET_ORDER)}/>
+        </TweakSection>
+      </TweaksPanel>
       <ItemDetailModal item={openedItem} onClose={() => setOpenedItem(null)} />
       <PRDetailModal pr={openedPR} onClose={() => setOpenedPR(null)} />
       <CreateWorkItemModal open={!!createWI} title={createWI?.title} onClose={() => setCreateWI(null)} />
