@@ -5,8 +5,8 @@
 // client credentials below (or provide them via env at build time).
 module.exports = {
   google: {
-    clientId:     process.env.GOOGLE_DESKTOP_CLIENT_ID     || '<PASTE_DESKTOP_CLIENT_ID>',
-    clientSecret: process.env.GOOGLE_DESKTOP_CLIENT_SECRET || '<PASTE_DESKTOP_CLIENT_SECRET>',
+    clientId:     process.env.GOOGLE_DESKTOP_CLIENT_ID     || '918435351944-snmogfnth3overdlg4irkml41c8qm1d5.apps.googleusercontent.com',
+    clientSecret: process.env.GOOGLE_DESKTOP_CLIENT_SECRET || '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',
     authUrl:  'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
     scopes: [
