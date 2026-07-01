@@ -2640,11 +2640,15 @@ function PRDetail({ pr, onClose }) {
     if (!pr.repoId || !pr.project) { window.alert('Cannot comment: missing PR details.'); return; }
     setPosting(true); setCommentStatus('Posting…');
     try {
-      await adoPost(
+      const data = await adoPost(
         `${encodeURIComponent(pr.project)}/_apis/git/repositories/${pr.repoId}/pullRequests/${pr.id}/threads?api-version=7.0`,
         { comments: [{ parentCommentId: 0, content: comment.trim(), commentType: 1 }], status: 1 }
       );
       setComment(''); setCommentStatus('Posted!');
+      setThreadState(prev => ({
+        ...prev,
+        threads: [...prev.threads, data],
+      }));
       setTimeout(() => setCommentStatus(''), 2000);
     } catch(e) { setCommentStatus('✗ ' + e.message.slice(0,60)); }
     finally { setPosting(false); }
