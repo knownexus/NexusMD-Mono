@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { getCachedDefs, setCachedDefs, fetchWorkItemTypes, fetchProjectFieldTypes, fetchTypeFields, fetchClassificationPaths } from './ado-workitem-types.js'
+import { getCachedDefs, setCachedDefs, fetchWorkItemTypes, fetchProjectFieldTypes, fetchTypeFields, fetchClassificationPaths, loadWorkItemTypeDefs } from './ado-workitem-types.js'
 import { saveAdoConfig } from './ado-client.js'
 import { vi } from 'vitest'
 
@@ -101,5 +101,47 @@ describe('fetchClassificationPaths', () => {
       areas: ['ProjectA', 'ProjectA\\Team1', 'ProjectA\\Team1\\SubTeam'],
       iterations: ['ProjectA', 'ProjectA\\Sprint 1', 'ProjectA\\Sprint 2'],
     })
+  })
+})
+
+describe('loadWorkItemTypeDefs', () => {
+  it('returns the cached value without calling fetch when a cache exists', async () => {
+    const cached = { fields: [{ referenceName: 'System.Title' }], paths: { areas: [], iterations: [] }, types: [], fetchedAt: 1 }
+    setCachedDefs('ProjectA', 'Bug', cached)
+    global.fetch = vi.fn()
+    const result = await loadWorkItemTypeDefs('ProjectA', 'Bug')
+    expect(result).toEqual(cached)
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('fetches and caches when nothing is cached yet', async () => {
+    global.fetch = vi.fn((url) => {
+      if (url.includes('/_apis/wit/fields?')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ value: [{ referenceName: 'System.Title', type: 'string' }] }) })
+      if (url.includes('/workitemtypes/Bug/fields')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ value: [{ referenceName: 'System.Title', name: 'Title', alwaysRequired: true, allowedValues: [] }] }) })
+      if (url.includes('/classificationnodes/areas')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ name: 'ProjectA', children: [] }) })
+      if (url.includes('/classificationnodes/iterations')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ name: 'ProjectA', children: [] }) })
+      if (url.includes('/_apis/wit/workitemtypes?')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ value: [{ name: 'Bug', referenceName: 'Microsoft.VSTS.WorkItemTypes.Bug', icon: {}, color: '' }] }) })
+      return Promise.reject(new Error('unexpected url: ' + url))
+    })
+
+    const result = await loadWorkItemTypeDefs('ProjectA', 'Bug')
+    expect(result.fields).toEqual([{ referenceName: 'System.Title', name: 'Title', alwaysRequired: true, defaultValue: null, allowedValues: [], dataType: 'string' }])
+    expect(result.paths).toEqual({ areas: ['ProjectA'], iterations: ['ProjectA'] })
+    expect(result.types).toEqual([{ name: 'Bug', referenceName: 'Microsoft.VSTS.WorkItemTypes.Bug', icon: '', color: '' }])
+    expect(getCachedDefs('ProjectA', 'Bug')).toEqual(result)
+  })
+
+  it('refetches when forceRefresh is true even if a cache exists', async () => {
+    setCachedDefs('ProjectA', 'Bug', { fields: [], paths: { areas: [], iterations: [] }, types: [], fetchedAt: 1 })
+    global.fetch = vi.fn((url) => {
+      if (url.includes('/_apis/wit/fields?')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ value: [] }) })
+      if (url.includes('/workitemtypes/Bug/fields')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ value: [] }) })
+      if (url.includes('/classificationnodes/areas')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ name: 'ProjectA', children: [] }) })
+      if (url.includes('/classificationnodes/iterations')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ name: 'ProjectA', children: [] }) })
+      if (url.includes('/_apis/wit/workitemtypes?')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ value: [] }) })
+      return Promise.reject(new Error('unexpected url: ' + url))
+    })
+    await loadWorkItemTypeDefs('ProjectA', 'Bug', { forceRefresh: true })
+    expect(global.fetch).toHaveBeenCalled()
   })
 })

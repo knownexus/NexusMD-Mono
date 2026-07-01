@@ -73,3 +73,19 @@ export async function fetchClassificationPaths(project) {
     iterations: flattenClassificationNode(iterations),
   }
 }
+
+export async function loadWorkItemTypeDefs(project, type, { forceRefresh = false } = {}) {
+  if (!forceRefresh) {
+    const cached = getCachedDefs(project, type)
+    if (cached) return cached
+  }
+  const fieldTypeMap = await fetchProjectFieldTypes(project)
+  const [fields, paths, types] = await Promise.all([
+    fetchTypeFields(project, type, fieldTypeMap),
+    fetchClassificationPaths(project),
+    fetchWorkItemTypes(project),
+  ])
+  const defs = { fields, paths, types, fetchedAt: Date.now() }
+  setCachedDefs(project, type, defs)
+  return defs
+}
