@@ -112,7 +112,10 @@ async function refreshAdoData() {
       { http: createAdoHttpAdapter(), storage: localStorageAdapter },
       { isRefresh: !!priorData, priorData },
     )
-  } catch { /* offline / not configured — keep cached */ }
+  } catch (e) {
+    if (e?.status === 401 || e?.message?.includes('401')) window.dispatchEvent(new CustomEvent('nexusmd:github-401'))
+    /* offline / not configured — keep cached */
+  }
   finally { core._emit?.('data:updated') }
 }
 
@@ -1327,6 +1330,8 @@ function App() {
     return () => window.removeEventListener('nexusmd:openProjectAreas', handler)
   }, [])
 
+  const [githubExpired, setGithubExpired] = React.useState(false)
+
   const [plannerData, setPlannerData]     = React.useState({})
   const [plannerThemes, setPlannerThemes] = React.useState({})
 
@@ -1383,6 +1388,12 @@ function App() {
       setChangeBadges(b => ({ ...b, [wiKey]: 0 }))
     }
   }, [view])
+
+  React.useEffect(() => {
+    const handler = () => setGithubExpired(true)
+    window.addEventListener('nexusmd:github-401', handler)
+    return () => window.removeEventListener('nexusmd:github-401', handler)
+  }, [])
 
   React.useEffect(() => {
     const handler = e => setView(e.detail)
@@ -1501,6 +1512,23 @@ function App() {
             </button>
             <WindowControls />
           </header>
+          {githubExpired && (
+            <div style={{
+              background: 'var(--warning-soft)', borderBottom: '1px solid var(--warning-border)',
+              padding: '8px 18px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13,
+              flexShrink: 0,
+            }}>
+              <Icon name="alert" size={14} style={{ color: 'var(--warning)', flexShrink: 0 }}/>
+              <span style={{ flex: 1, color: 'var(--warning-text)' }}>GitHub token expired — re-connect to restore PR and build data.</span>
+              <button className="btn sm ghost" onClick={() => {
+                window.electronAPI?.openExternal?.('nexusmd://github-oauth')
+                setGithubExpired(false)
+              }}>Re-connect</button>
+              <button className="btn sm ghost" onClick={() => setGithubExpired(false)}>
+                <Icon name="x" size={12}/>
+              </button>
+            </div>
+          )}
           <section style={{
             flex: 1,
             display: 'flex',
