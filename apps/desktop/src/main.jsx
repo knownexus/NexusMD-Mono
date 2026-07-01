@@ -15,6 +15,7 @@ import {
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
   OutlookService,
 } from '@nexusmd/ui'
+import { effectiveSidebar, ICON_RAIL_WIDTH } from './layout.js'
 import { DesktopSettings, IntegrationsPanel } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -839,6 +840,15 @@ function App() {
   const [localItems, setLocalItems] = React.useState(null)
   const [tweaks, setTweaksState] = React.useState(loadTweaks)
 
+  const [winWidth, setWinWidth] = React.useState(() => window.innerWidth)
+  React.useEffect(() => {
+    const onResize = () => setWinWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  const effSidebar = effectiveSidebar(winWidth, tweaks.sidebar)
+  const iconsOnly  = effSidebar === 'icons'
+
   const setTweak = React.useCallback((key, value) => {
     setTweaksState(prev => {
       const next = { ...prev, [key]: value }
@@ -983,68 +993,82 @@ function App() {
 
   return (
     <NexusDataProvider value={nexusDataValue}>
-      <div data-density={tweaks.density} data-sidebar={tweaks.sidebar}
+      <div data-density={tweaks.density} data-sidebar={effSidebar}
         style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
         <aside style={{
-          width: sidebarWidth, minWidth: sidebarWidth, flexShrink: 0, borderRight: '1px solid var(--border)',
+          width: iconsOnly ? ICON_RAIL_WIDTH : sidebarWidth,
+          minWidth: iconsOnly ? ICON_RAIL_WIDTH : sidebarWidth,
+          flexShrink: 0, borderRight: '1px solid var(--border)',
           padding: '14px 10px', display: 'flex', flexDirection: 'column', gap: 2,
           background: 'var(--surface, transparent)', position: 'relative',
         }}>
           <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px 14px' }}>
             <Icon name="dashboard" size={18} />
-            <strong style={{ fontSize: 14 }}>NexusMD</strong>
+            {!iconsOnly && <strong style={{ fontSize: 14 }}>NexusMD</strong>}
           </div>
           {NAV.map((item, idx) => (
             <button
               key={item.id}
               onClick={() => setView(item.id)}
               className={`nav-item ${view === item.id ? 'active' : ''}`}
+              title={iconsOnly ? item.label : undefined}
               style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+                display: 'flex', alignItems: 'center',
+                justifyContent: iconsOnly ? 'center' : 'flex-start',
+                gap: 10, padding: iconsOnly ? '8px' : '8px 10px',
                 border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
                 background: view === item.id ? 'var(--accent-soft, rgba(127,127,127,0.12))' : 'transparent',
                 color: view === item.id ? 'var(--accent)' : 'var(--text-muted)',
-                font: 'inherit', fontSize: 13,
+                font: 'inherit', fontSize: 13, position: 'relative',
               }}
             >
               <Icon name={item.icon} size={16} />
-              {item.label}
+              {!iconsOnly && item.label}
               {changeBadges[item.id] > 0 && (
-                <span style={{
-                  marginLeft: 'auto', minWidth: 18, height: 18,
-                  background: 'var(--accent)', color: 'var(--on-accent)',
-                  borderRadius: 9, fontSize: 11, fontWeight: 700,
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  padding: '0 5px',
-                }}>
-                  {changeBadges[item.id] > 99 ? '99+' : changeBadges[item.id]}
-                </span>
+                iconsOnly ? (
+                  <span style={{
+                    position: 'absolute', top: 4, right: 4, width: 8, height: 8,
+                    background: 'var(--accent)', borderRadius: '50%',
+                  }} />
+                ) : (
+                  <span style={{
+                    marginLeft: 'auto', minWidth: 18, height: 18,
+                    background: 'var(--accent)', color: 'var(--on-accent)',
+                    borderRadius: 9, fontSize: 11, fontWeight: 700,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '0 5px',
+                  }}>
+                    {changeBadges[item.id] > 99 ? '99+' : changeBadges[item.id]}
+                  </span>
+                )
               )}
-              {tweaks.sidebar === 'labels' && idx < 9 && !changeBadges[item.id] && (
+              {!iconsOnly && tweaks.sidebar === 'labels' && idx < 9 && !changeBadges[item.id] && (
                 <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-subtle)', opacity: 0.5 }}>
                   {idx + 1}
                 </span>
               )}
             </button>
           ))}
-          <div
-            style={{ position: 'absolute', top: 0, right: -3, width: 6, height: '100%', cursor: 'col-resize', zIndex: 10 }}
-            onMouseDown={e => {
-              e.preventDefault()
-              const startX = e.clientX
-              const startW = sidebarWidth
-              const onMove = (me) => {
-                const next = Math.max(160, Math.min(320, startW + me.clientX - startX))
-                setSidebarWidth(next)
-              }
-              const onUp = () => {
-                window.removeEventListener('mousemove', onMove)
-                window.removeEventListener('mouseup', onUp)
-              }
-              window.addEventListener('mousemove', onMove)
-              window.addEventListener('mouseup', onUp)
-            }}
-          />
+          {!iconsOnly && (
+            <div
+              style={{ position: 'absolute', top: 0, right: -3, width: 6, height: '100%', cursor: 'col-resize', zIndex: 10 }}
+              onMouseDown={e => {
+                e.preventDefault()
+                const startX = e.clientX
+                const startW = sidebarWidth
+                const onMove = (me) => {
+                  const next = Math.max(160, Math.min(320, startW + me.clientX - startX))
+                  setSidebarWidth(next)
+                }
+                const onUp = () => {
+                  window.removeEventListener('mousemove', onMove)
+                  window.removeEventListener('mouseup', onUp)
+                }
+                window.addEventListener('mousemove', onMove)
+                window.addEventListener('mouseup', onUp)
+              }}
+            />
+          )}
         </aside>
 
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
