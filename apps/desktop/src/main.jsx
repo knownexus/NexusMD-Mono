@@ -15,6 +15,7 @@ import {
   PlannerView, MarkdownViewer, plannerExportDocx,
   WorkItemDetail, Drawer, PlToggle, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
+  VsPasswordModal, loadConfidentialConfig,
 } from '@nexusmd/ui'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -569,6 +570,158 @@ function CreateWorkItemModal({ open, title: initialTitle, onClose }) {
   )
 }
 
+function DesktopProfileCard() {
+  const pk = k => { try { return getProfileKey(k) } catch { return k } }
+  const readPref = (key, def) => { try { return localStorage.getItem(pk(key)) || def } catch { return def } }
+  const savePref = (key, val) => { try { localStorage.setItem(pk(key), val) } catch {} }
+
+  const [displayName, setDisplayName] = React.useState(() => readPref('nexusmd.profile.displayName', ''))
+  const [role, setRole]               = React.useState(() => readPref('nexusmd.profile.role', 'Engineering Manager'))
+  const [team, setTeam]               = React.useState(() => readPref('nexusmd.profile.team', ''))
+  const [tz, setTz]                   = React.useState(() => readPref('nexusmd.profile.timeZone', (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return 'UTC' } })()))
+
+  const inp = { width: 200, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }
+
+  return (
+    <VsCard title="Profile" icon="more">
+      <VsRow title="Display name" desc="How your name appears in the app">
+        <input value={displayName} style={inp}
+          onChange={e => { setDisplayName(e.target.value); savePref('nexusmd.profile.displayName', e.target.value) }} />
+      </VsRow>
+      <VsRow title="Role" desc="Your role or job title">
+        <input value={role} style={inp}
+          onChange={e => { setRole(e.target.value); savePref('nexusmd.profile.role', e.target.value) }} />
+      </VsRow>
+      <VsRow title="Team" desc="Your team name">
+        <input value={team} style={inp}
+          onChange={e => { setTeam(e.target.value); savePref('nexusmd.profile.team', e.target.value) }} />
+      </VsRow>
+      <VsRow title="Timezone" desc="Used for calendar and scheduling">
+        <input value={tz} style={inp}
+          onChange={e => { setTz(e.target.value); savePref('nexusmd.profile.timeZone', e.target.value) }} />
+      </VsRow>
+    </VsCard>
+  )
+}
+
+function DesktopPlannerPrefsCard() {
+  const pk = k => { try { return getProfileKey(k) } catch { return k } }
+  const readPref = (key, def) => { try { return localStorage.getItem(pk(key)) || def } catch { return def } }
+  const savePref = (key, val) => { try { localStorage.setItem(pk(key), val) } catch {} }
+
+  const [landing, setLanding] = React.useState(() => readPref('nexusmd.planner.landing', 'glance'))
+  const [nav,     setNav]     = React.useState(() => readPref('nexusmd.planner.nav', 'rail'))
+  const [entry,   setEntry]   = React.useState(() => readPref('nexusmd.planner.entry', 'inline'))
+  const [carry,   setCarry]   = React.useState(() => readPref('nexusmd.planner.carryPrompt', '1'))
+
+  return (
+    <VsCard title="Planner" icon="planner">
+      <VsRow title="Landing view" desc="First view when opening the Planner">
+        <VsSeg value={landing}
+          options={[['glance','Glance'],['week','Week'],['month','Month']]}
+          onChange={v => { setLanding(v); savePref('nexusmd.planner.landing', v) }} />
+      </VsRow>
+      <VsRow title="Navigation style" desc="How the planner nav is displayed">
+        <VsSeg value={nav}
+          options={[['rail','Rail'],['tabs','Tabs']]}
+          onChange={v => { setNav(v); savePref('nexusmd.planner.nav', v) }} />
+      </VsRow>
+      <VsRow title="Entry style" desc="How new planner entries are created">
+        <VsSeg value={entry}
+          options={[['inline','Inline'],['modal','Modal']]}
+          onChange={v => { setEntry(v); savePref('nexusmd.planner.entry', v) }} />
+      </VsRow>
+      <VsRow title="Carry-over prompt" desc="Prompt to carry unfinished tasks forward each week">
+        <PlToggle checked={carry === '1'}
+          onChange={v => { const s = v ? '1' : '0'; setCarry(s); savePref('nexusmd.planner.carryPrompt', s) }} />
+      </VsRow>
+    </VsCard>
+  )
+}
+
+function DesktopConfidentialCard() {
+  const [pwOpen, setPwOpen] = React.useState(false)
+  const [autoRelock, setAutoRelock] = React.useState(() => {
+    try { return localStorage.getItem('nexusmd.confidential.autoRelock') || '0' } catch { return '0' }
+  })
+  const cfg = loadConfidentialConfig() || { sections: [], hash: null }
+  const lockedCount = (cfg.sections || []).filter(s => s.locked).length
+
+  return (
+    <VsCard title="Confidential" icon="lock">
+      <VsRow title="Password" desc={cfg.hash ? 'A password is set for confidential sections' : 'No password set — anyone can view confidential rows'}>
+        <button className="btn sm ghost" onClick={() => setPwOpen(true)}>
+          {cfg.hash ? 'Change password' : 'Set password'}
+        </button>
+      </VsRow>
+      <VsRow title="Auto re-lock" desc="Re-lock confidential sections when the app loses focus">
+        <PlToggle checked={autoRelock === '1'} onChange={v => {
+          const s = v ? '1' : '0'; setAutoRelock(s)
+          try { localStorage.setItem('nexusmd.confidential.autoRelock', s) } catch {}
+        }} />
+      </VsRow>
+      {lockedCount > 0 && (
+        <VsRow title="Locked sections" desc={`${lockedCount} section${lockedCount !== 1 ? 's' : ''} currently locked in the planner`}>
+          <span className="pill">{lockedCount}</span>
+        </VsRow>
+      )}
+      <VsPasswordModal open={pwOpen} onClose={() => setPwOpen(false)} />
+    </VsCard>
+  )
+}
+
+function DesktopAppCard() {
+  if (!window.electronAPI) return null
+  const [loginItem, setLoginItem] = React.useState(false)
+  const [closeToTray, setCloseToTray] = React.useState(true)
+  const [outputPath, setOutputPath] = React.useState(() => {
+    try { return localStorage.getItem('nexusmd.outputPath') || '' } catch { return '' }
+  })
+
+  React.useEffect(() => {
+    window.electronAPI.getLoginItemEnabled?.().then(setLoginItem).catch(() => {})
+    window.electronAPI.getCloseToTray?.().then(setCloseToTray).catch(() => {})
+  }, [])
+
+  const pickFolder = async () => {
+    const picked = await window.electronAPI.pickOutputFolder?.()
+    if (!picked) return
+    setOutputPath(picked)
+    try { localStorage.setItem('nexusmd.outputPath', picked) } catch {}
+    toast?.('Output folder updated.', 'success')
+  }
+
+  const clearFolder = () => {
+    setOutputPath('')
+    try { localStorage.removeItem('nexusmd.outputPath') } catch {}
+  }
+
+  return (
+    <VsCard title="Desktop app" icon="dashboard">
+      <VsRow title="Start on login" desc="Launch NexusMD automatically when you log in">
+        <PlToggle checked={loginItem} onChange={v => {
+          setLoginItem(v)
+          window.electronAPI.setLoginItemEnabled?.(v).catch(() => {})
+        }} />
+      </VsRow>
+      <VsRow title="Close to tray" desc="Minimise to the system tray instead of quitting when the window is closed">
+        <PlToggle checked={closeToTray} onChange={v => {
+          setCloseToTray(v)
+          window.electronAPI.setCloseToTray?.(v).catch(() => {})
+        }} />
+      </VsRow>
+      <VsRow title="Output folder" desc={outputPath || 'Default download location'}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn sm ghost" onClick={pickFolder}>Change…</button>
+          {outputPath && (
+            <button className="btn sm ghost danger" onClick={clearFolder}>Clear</button>
+          )}
+        </div>
+      </VsRow>
+    </VsCard>
+  )
+}
+
 // Settings — ADO connection, profile registry, backup & restore, cloud sync.
 function DesktopSettings({ tweaks, setTweak }) {
   const profileApi = useProfile()
@@ -587,6 +740,10 @@ function DesktopSettings({ tweaks, setTweak }) {
           <ThemeChipPicker value={tweaks.darkTheme || 'cobalt'} onChange={v => setTweak('darkTheme', v)} />
         </VsFullRow>
       </VsCard>
+      <DesktopProfileCard />
+      <DesktopPlannerPrefsCard />
+      <DesktopConfidentialCard />
+      <DesktopAppCard />
       <AdoConnectionCard />
       <VsProfiles profileApi={profileApi} />
       <BackupRestoreCard fileIO={desktopFileIO} cloudProviders={desktopCloudProviders} />
@@ -742,8 +899,29 @@ function ViewBody({
       )
     case 'triage':
       return <TriageView />
-    case 'planner':
-      return <PlannerView data={plannerData} setData={setPlannerData} themes={plannerThemes} setThemes={setPlannerThemes} onExportDocx={plannerExportDocx} />
+    case 'planner': {
+      const pk = k => { try { return getProfileKey(k) } catch { return k } }
+      const readPref = (key, def) => { try { return localStorage.getItem(pk(key)) || def } catch { return def } }
+      const plannerPrefs = {
+        landing:     readPref('nexusmd.planner.landing', 'glance'),
+        nav:         readPref('nexusmd.planner.nav', 'rail'),
+        entry:       readPref('nexusmd.planner.entry', 'inline'),
+        carryPrompt: readPref('nexusmd.planner.carryPrompt', '1') === '1',
+      }
+      return (
+        <PlannerView
+          data={plannerData}
+          setData={setPlannerData}
+          themes={plannerThemes}
+          setThemes={setPlannerThemes}
+          onExportDocx={plannerExportDocx}
+          landing={plannerPrefs.landing}
+          navStyle={plannerPrefs.nav}
+          entryStyle={plannerPrefs.entry}
+          carryPrompt={plannerPrefs.carryPrompt}
+        />
+      )
+    }
     case 'markdown':
       return <MarkdownViewer />
     case 'integrations':
