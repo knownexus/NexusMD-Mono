@@ -21,6 +21,7 @@ import {
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { desktopFileIO } from './file-io.js'
+import LogsCard from './logs-card.jsx'
 import { desktopCloudProviders, registerCloudDeepLink, makeDesktopOAuthService } from './cloud-auth.js'
 import { desktopSync, startDesktopAutoSync } from './sync.js'
 import {
@@ -504,7 +505,7 @@ function DesktopDetailDrawer({ drawer, onClose, setItems }) {
             </button>
           )}
           {adoUrl && (
-            <button className="btn sm ghost" onClick={() => window.open(adoUrl, '_blank', 'noopener')}>
+            <button className="btn sm ghost" onClick={() => window.electronAPI.openLink(adoUrl)}>
               <Icon name="link" size={12}/> Open in {kind === 'wi' ? 'ADO' : 'browser'}
             </button>
           )}
@@ -963,6 +964,7 @@ function DesktopSettings({ tweaks, setTweak, refreshInterval, onRefreshIntervalC
       <BackupRestoreCard fileIO={desktopFileIO} cloudProviders={desktopCloudProviders} />
       <CloudSyncCard controller={desktopSync} providers={desktopCloudProviders} fileIO={desktopFileIO} />
       <DesktopDataSyncCard refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange} />
+      <LogsCard />
       <VsCard title="Project areas" icon="work">
         <VsRow title="Manage areas" desc="Define project area categories used in triage and work-item classification">
           <button className="btn sm ghost" onClick={() => window.dispatchEvent(new CustomEvent('nexusmd:openProjectAreas'))}>Open editor</button>
@@ -1098,7 +1100,7 @@ function ViewBody({
   const { activeProfile } = useProfile() || {}
   // manual profiles don't require ADO config
   const configured = activeProfile?.type === 'manual' || (() => { try { return isAdoConfigured() } catch { return false } })()
-  const openExternal = (item) => { if (item?.url) window.open(item.url, '_blank', 'noopener') }
+  const openExternal = (item) => { if (item?.url) window.electronAPI.openLink(item.url) }
 
   const [needsMeCriteria, setNeedsMeCriteria] = usePersistedState('nexusmd.pr.needsMeCriteria', { votes: [0], includeDrafts: false })
   const [acknowledgedBuilds, setAcknowledgedBuilds] = usePersistedState('nexusmd.builds.acknowledged', [])
