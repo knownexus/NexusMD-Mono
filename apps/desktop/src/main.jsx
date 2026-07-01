@@ -16,7 +16,7 @@ import {
   OutlookService,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH } from './layout.js'
-import { DesktopSettings, IntegrationsPanel, SettField, settInputStyle } from './desktop-settings.jsx'
+import { DesktopSettings, IntegrationsPanel } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { desktopCloudProviders, registerCloudDeepLink, makeDesktopOAuthService } from './cloud-auth.js'

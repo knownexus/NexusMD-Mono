@@ -14,10 +14,11 @@ export function FieldInput({ def, value, onChange, team, paths }) {
   const id = `wi-field-${def.referenceName}`
 
   if (bucket === 'picklist') {
+    const isNumeric = typeof def.allowedValues[0] === 'number'
     return (
       <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         <FieldLabel def={def} />
-        <select id={id} aria-label={def.name} value={value || ''} onChange={(e) => onChange(e.target.value)} style={settInputStyle}>
+        <select id={id} aria-label={def.name} value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? '' : (isNumeric ? Number(e.target.value) : e.target.value))} style={settInputStyle}>
           <option value="" />
           {def.allowedValues.map((v) => <option key={v} value={v}>{v}</option>)}
         </select>
@@ -74,7 +75,7 @@ export function FieldInput({ def, value, onChange, team, paths }) {
     return (
       <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         <FieldLabel def={def} />
-        <input id={id} aria-label={def.name} type="number" value={value ?? ''} onChange={(e) => onChange(e.target.value)} style={settInputStyle} />
+        <input id={id} aria-label={def.name} type="number" value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))} style={settInputStyle} />
       </label>
     )
   }
@@ -134,12 +135,14 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
   const [wiTitle, setWiTitle] = React.useState('')
   const [values, setValues] = React.useState({})
   const [status, setStatus] = React.useState('')
+  const [loadError, setLoadError] = React.useState('')
 
   const load = React.useCallback((proj, type, opts = {}) => {
+    setLoadError('')
     adoWorkItemTypesModule.loadWorkItemTypeDefs(proj, type, opts).then((d) => {
       setDefs(d)
       setValues({})
-    })
+    }).catch((e) => setLoadError(e?.message || 'Failed to load fields.'))
   }, [])
 
   React.useEffect(() => {
@@ -203,6 +206,12 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
         </button>
       )}
     >
+      {loadError && (
+        <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>
+          {loadError} — click Refresh to retry.
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
         <SettField label="Project">
           <select aria-label="Project" value={project} onChange={(e) => { setProject(e.target.value); load(e.target.value, typeRef) }}>

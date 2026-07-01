@@ -122,6 +122,25 @@ describe('CreateWorkItemDrawer', () => {
     fireEvent.click(screen.getByTitle('Refresh field definitions'))
     expect(adoWorkItemTypes.loadWorkItemTypeDefs).toHaveBeenCalledWith(expect.any(String), expect.any(String), { forceRefresh: true })
   })
+
+  it('shows an inline error when loading field definitions fails, and clears it on a successful retry', async () => {
+    const spy = vi.spyOn(adoWorkItemTypes, 'loadWorkItemTypeDefs').mockRejectedValueOnce(new Error('network down'))
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+
+    expect(await screen.findByText(/network down/)).toBeTruthy()
+    expect(screen.getByText(/click Refresh to retry/)).toBeTruthy()
+
+    spy.mockResolvedValueOnce({
+      fields: [{ referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false }],
+      paths: { areas: [], iterations: [] },
+      types: [{ name: 'Task', referenceName: 'Microsoft.VSTS.WorkItemTypes.Task', icon: '', color: '' }],
+      fetchedAt: Date.now(),
+    })
+    fireEvent.click(screen.getByTitle('Refresh field definitions'))
+
+    await screen.findByText('Description')
+    expect(screen.queryByText(/network down/)).toBe(null)
+  })
 })
 
 describe('CreateWorkItemDrawer submit', () => {
