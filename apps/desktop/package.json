@@ -22,7 +22,8 @@
     "@nexusmd/core": "*",
     "@nexusmd/ui": "*",
     "@nexusmd/web-adapters": "*",
-    "electron-updater": "^6.0.0"
+    "electron-updater": "^6.0.0",
+    "electron-log": "^5.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
