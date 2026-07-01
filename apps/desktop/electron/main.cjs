@@ -24,8 +24,6 @@ console.error = log.error;
 // Make log global for use in other modules
 global.log = log;
 const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require('electron');
-const path = require('path');
-
 const { createTray, updateTrayIcon } = require('./tray.cjs');
 const { initNotifications } = require('./notifications.cjs');
 const { initUpdater, registerUpdaterIpc } = require('./updater.cjs');
@@ -35,6 +33,7 @@ const pickerIpc      = require('./ipc/picker.cjs');
 const badgeIpc       = require('./ipc/badge.cjs');
 const deepLinkIpc    = require('./ipc/deepLink.cjs');
 const trayIpc        = require('./ipc/tray-ipc.cjs');
+const logsIpc        = require('./ipc/logs.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 
 // ---------------------------------------------------------------------------
@@ -241,6 +240,7 @@ app.whenReady().then(async () => {
   badgeIpc.register(ipcMain);
   deepLinkIpc.register(ipcMain, () => mainWindow);
   trayIpc.register(ipcMain, () => mainWindow, () => tray);
+  logsIpc.register(ipcMain);
   linkWindow.register(ipcMain);
 
   app.on('activate', () => {
