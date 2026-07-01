@@ -8,9 +8,10 @@ import { useProfile } from '../profile-context.jsx';
 import { marked } from 'marked';
 import {
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard, CloudSyncCard,
+  IntegrationsView,
 } from '@nexusmd/ui';
 import { appFileIO } from '../file-io.js';
-import { appCloudProviders } from '../cloud-auth.js';
+import { appCloudProviders, makeAppOAuthService } from '../cloud-auth.js';
 import { appSync } from '../sync.js';
 // view-settings.jsx — Settings & profile page (planner-redesign port)
 // Works with the app's existing infrastructure:
@@ -99,6 +100,42 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
   const [autoRelock, setAutoRelock] = usePrefVS('helm.confidential.autoRelock', '0');
   const confCfg = window.helmConfidential?.loadConfidentialConfig?.() || { sections: [], hash: null };
 
+  const [appOAuthServices] = useStateVS(() => [
+    {
+      id: 'ado',
+      label: 'Azure DevOps',
+      icon: 'inbox',
+      desc: 'OAuth 2.0 — work items, PRs, pipelines',
+      ...makeAppOAuthService('ado'),
+      credFields: [
+        { key: 'clientId', label: 'Client ID', hint: 'From your Azure DevOps OAuth application' },
+        { key: 'clientSecret', label: 'Client Secret', secret: true },
+      ],
+    },
+    {
+      id: 'microsoft',
+      label: 'Microsoft / Entra ID',
+      icon: 'mail',
+      desc: 'Sign in with Microsoft — OneDrive, Teams, Calendar',
+      ...makeAppOAuthService('microsoft'),
+      credFields: [
+        { key: 'clientId', label: 'Client ID (Application ID)', hint: 'From Azure portal → App registrations' },
+        { key: 'clientSecret', label: 'Client Secret', secret: true },
+      ],
+    },
+    {
+      id: 'github',
+      label: 'GitHub',
+      icon: 'pr',
+      desc: 'GitHub OAuth App — pull requests and repo access',
+      ...makeAppOAuthService('github'),
+      credFields: [
+        { key: 'clientId', label: 'Client ID', hint: 'From GitHub → Settings → Developer settings → OAuth Apps' },
+        { key: 'clientSecret', label: 'Client Secret', secret: true },
+      ],
+    },
+  ]);
+
   const [storageBump, setStorageBump] = useStateVS(0);
   const storage = useMemoVS(() => {
     let weeks = 0, bytes = 0, versions = 0, gNotes = 0;
@@ -155,12 +192,13 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
   };
 
   const NAV = [
-    { id: 'profile', label: 'Profile', icon: 'team' },
-    { id: 'appearance', label: 'Appearance', icon: 'sun' },
-    { id: 'planner', label: 'Planner', icon: 'planner' },
-    { id: 'profiles', label: 'Profiles', icon: 'more' },
-    { id: 'privacy', label: 'Confidential', icon: 'lock' },
-    { id: 'data', label: 'Data & sync', icon: 'inbox' },
+    { id: 'profile',      label: 'Profile',      icon: 'team' },
+    { id: 'appearance',   label: 'Appearance',   icon: 'sun' },
+    { id: 'planner',      label: 'Planner',      icon: 'planner' },
+    { id: 'profiles',     label: 'Profiles',     icon: 'more' },
+    { id: 'privacy',      label: 'Confidential', icon: 'lock' },
+    { id: 'data',         label: 'Data & sync',  icon: 'inbox' },
+    { id: 'integrations', label: 'Integrations', icon: 'lock' },
   ];
 
   const shownName = displayName || me.name || '—';
@@ -381,6 +419,10 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
                 <button className="btn sm ghost danger" onClick={clearLocalData}>Clear local data</button>
               </VsRow>
             </VsCard>
+          )}
+
+          {subPage === 'integrations' && (
+            <IntegrationsView services={appOAuthServices} />
           )}
         </div>
       </div>

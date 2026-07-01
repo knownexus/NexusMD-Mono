@@ -10,10 +10,19 @@ import { secureStorageAdapter } from './adapters/secureStorage.js'
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'
 
 const PROVIDERS = {
-  gdrive:   { keySuffix: 'gdrive.auth',   api: '/api/google/auth', from: 'gdrive' },
-  onedrive: { keySuffix: 'onedrive.auth', api: '/api/ms/auth',     from: 'onedrive' },
+  gdrive:    { keySuffix: 'gdrive.auth',    api: '/api/google/auth', from: 'gdrive' },
+  onedrive:  { keySuffix: 'onedrive.auth',  api: '/api/ms/auth',     from: 'onedrive' },
+  ado:       { keySuffix: 'ado.auth',       api: '/api/ado/auth',    from: 'ado' },
+  microsoft: { keySuffix: 'microsoft.auth', api: '/api/ms/auth',     from: 'microsoft' },
+  github:    { keySuffix: 'github.auth',    api: '/api/github/auth', from: 'github' },
 }
-const BY_FROM = { gdrive: PROVIDERS.gdrive, onedrive: PROVIDERS.onedrive }
+const BY_FROM = {
+  gdrive:    PROVIDERS.gdrive,
+  onedrive:  PROVIDERS.onedrive,
+  ado:       PROVIDERS.ado,
+  microsoft: PROVIDERS.microsoft,
+  github:    PROVIDERS.github,
+}
 
 // tokenCache is keyed by the RESOLVED profile key so a profile switch can never
 // return another profile's tokens. isConnected() reads the cache synchronously;
@@ -122,3 +131,37 @@ export const appCloudProviders = [
   makeGoogleDriveProvider(makeBinding('gdrive')),
   makeOneDriveProvider(makeBinding('onedrive')),
 ]
+
+export function makeAppOAuthService(from) {
+  const cfg = PROVIDERS[from]
+  return {
+    isConnected: () => Boolean(readAuth(cfg.keySuffix)?.accessToken),
+    async connect() {
+      try {
+        const returnUri = `nexusmd://oauth/${cfg.from}`
+        const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
+        if (!res.ok) return
+        const { url } = await res.json()
+        openBrowser(url)
+      } catch {}
+    },
+    async disconnect() {
+      await clearAuth(cfg.keySuffix)
+      window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
+    },
+    async loadCreds() {
+      try {
+        const k = resolveKey(from + '.oauthCreds')
+        if (!k) return {}
+        const raw = await secureStorageAdapter.get(k)
+        return raw ? JSON.parse(raw) : {}
+      } catch { return {} }
+    },
+    async saveCreds(c) {
+      try {
+        const k = resolveKey(from + '.oauthCreds')
+        if (k) await secureStorageAdapter.set(k, JSON.stringify(c))
+      } catch {}
+    },
+  }
+}
