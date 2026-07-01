@@ -872,8 +872,58 @@ function DesktopQuickLinksCard({ links, onChange }) {
   )
 }
 
+function DesktopDataSyncCard({ refreshInterval, onRefreshIntervalChange }) {
+  const [kbUsed, setKbUsed] = React.useState(0)
+
+  React.useEffect(() => {
+    try {
+      let bytes = 0
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        bytes += (localStorage.getItem(k) || '').length * 2
+      }
+      setKbUsed(Math.round(bytes / 1024))
+    } catch {}
+  }, [])
+
+  const clearLocal = () => {
+    if (!window.confirm('Clear all local NexusMD data? This cannot be undone.')) return
+    try {
+      const toRemove = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith('nexusmd.')) toRemove.push(k)
+      }
+      toRemove.forEach(k => localStorage.removeItem(k))
+      window.location.reload()
+    } catch {}
+  }
+
+  return (
+    <VsCard title="Data & sync" icon="dashboard">
+      <VsRow title="Local storage used" desc="Approximate size of all NexusMD data in this profile">
+        <span style={{ fontSize: 13, fontFamily: 'var(--mono)' }}>{kbUsed} KB</span>
+      </VsRow>
+      <VsRow title="Auto-refresh interval" desc="Seconds between automatic ADO data refreshes (10–3600)">
+        <input type="number" min={10} max={3600} step={10}
+          value={refreshInterval}
+          style={{ width: 80, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
+          onChange={e => {
+            const v = Math.max(10, Math.min(3600, parseInt(e.target.value, 10) || 300))
+            onRefreshIntervalChange(v)
+            try { localStorage.setItem('nexusmd.refreshInterval', String(v)) } catch {}
+          }}
+        />
+      </VsRow>
+      <VsRow title="Clear local data" desc="Remove all locally stored NexusMD data and reload">
+        <button className="btn sm ghost danger" onClick={clearLocal}>Clear data…</button>
+      </VsRow>
+    </VsCard>
+  )
+}
+
 // Settings — ADO connection, profile registry, backup & restore, cloud sync.
-function DesktopSettings({ tweaks, setTweak }) {
+function DesktopSettings({ tweaks, setTweak, refreshInterval, onRefreshIntervalChange }) {
   const profileApi = useProfile()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 }}>
@@ -902,6 +952,7 @@ function DesktopSettings({ tweaks, setTweak }) {
       <VsProfiles profileApi={profileApi} />
       <BackupRestoreCard fileIO={desktopFileIO} cloudProviders={desktopCloudProviders} />
       <CloudSyncCard controller={desktopSync} providers={desktopCloudProviders} fileIO={desktopFileIO} />
+      <DesktopDataSyncCard refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange} />
     </div>
   )
 }
@@ -1142,7 +1193,8 @@ function ViewBody({
     case 'integrations':
       return <IntegrationsPanel />
     case 'settings':
-      return <DesktopSettings tweaks={tweaks} setTweak={setTweak} />
+      return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
+        refreshInterval={refreshInterval} onRefreshIntervalChange={setRefreshInterval} />
     default:
       return <Placeholder label={(NAV.find(n => n.id === view) || NAV[0]).label} />
   }
