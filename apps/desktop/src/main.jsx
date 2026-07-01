@@ -13,7 +13,7 @@ import {
   VsProfiles, BackupRestoreCard, CloudSyncCard,
   IntegrationsView, VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker,
   PlannerView, MarkdownViewer, plannerExportDocx,
-  WorkItemDetail, Drawer, PlToggle,
+  WorkItemDetail, Drawer, PlToggle, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
 } from '@nexusmd/ui'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
@@ -359,135 +359,120 @@ function AdoConnectionCard() {
   )
 }
 
-const overlayStyle = {
-  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
-  display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-  zIndex: 900, padding: '32px 16px', overflowY: 'auto',
-}
-
-function ItemDetailModal({ item, onClose }) {
-  if (!item) return null
-  const { org } = getAdoConfig()
-  const projectRaw = (item.project || '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-  const adoUrl = org
-    ? `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(projectRaw)}/_workitems/edit/${item.id}`
-    : null
+function DesktopPRDetail({ pr }) {
   return (
-    <div style={overlayStyle} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{
-        background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 800,
-        boxShadow: '0 8px 40px rgba(0,0,0,0.28)', display: 'flex', flexDirection: 'column',
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, padding: '14px 20px',
-          borderBottom: '1px solid var(--border)', flexShrink: 0,
-        }}>
-          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>#{item.id}</span>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</h2>
-          {adoUrl && (
-            <button className="btn sm ghost" onClick={() => window.open(adoUrl, '_blank', 'noopener')}>
-              <Icon name="link" size={12}/> Open in browser
-            </button>
-          )}
-          <button className="btn sm ghost" style={{ padding: '4px 8px' }} onClick={onClose}>
-            <Icon name="x" size={14}/>
-          </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '4px 0' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <span className={`pill ${pr.status}`} style={{ textTransform: 'capitalize' }}>{pr.status}</span>
+        {pr.draft && <span className="pill">Draft</span>}
+        {pr.hasConflicts && <span className="pill danger"><Icon name="alert" size={9}/> Conflicts</span>}
+        {pr.ciStatus === 'success' && <span className="pill success">CI passing</span>}
+        {pr.ciStatus === 'failed'  && <span className="pill danger">CI failing</span>}
+        {pr.ciStatus === 'running' && <span className="pill info">CI running</span>}
+        {pr.ciStatus === 'partial' && <span className="pill warning">CI partial</span>}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <Icon name="git-branch" size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }}/>
+          <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', fontSize: 12 }}>{pr.branch}</span>
         </div>
-        <div style={{ padding: '4px 20px 24px', overflowY: 'auto' }}>
-          <WorkItemDetail id={item.id} project={item.project} />
+        <div style={{ color: 'var(--text-muted)' }}>
+          <strong>Author:</strong> {pr.authorName || pr.author}
+          {' · '}<strong>Opened:</strong> {pr.age} ago
+          {pr.repo && <>{' · '}<strong>Repo:</strong> {pr.repo}</>}
+        </div>
+        <div>
+          <span style={{ color: 'var(--success)', fontWeight: 500 }}>+{pr.additions}</span>
+          {' '}
+          <span style={{ color: 'var(--danger)', fontWeight: 500 }}>−{pr.deletions}</span>
+          {pr.comments > 0 && (
+            <span style={{ color: 'var(--text-muted)', marginLeft: 10 }}>
+              <Icon name="comment" size={11}/> {pr.comments} comment{pr.comments !== 1 ? 's' : ''}
+              {pr.unresolvedComments > 0 && ` (${pr.unresolvedComments} unresolved)`}
+            </span>
+          )}
         </div>
       </div>
+      {(pr.reviewerDetails || []).length > 0 && (
+        <div>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Reviewers</div>
+          {pr.reviewerDetails.map((r, i) => {
+            const v = r.vote
+            const label = v === 10 || v === 5 ? 'Approved' : v === -10 ? 'Rejected' : v === -5 ? 'Waiting for author' : 'Pending'
+            const color = v === 10 || v === 5 ? 'var(--success)' : v === -10 ? 'var(--danger)' : v === -5 ? 'var(--warning)' : 'var(--text-subtle)'
+            return (
+              <div key={`${r.id}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                <span style={{ flex: 1 }}>{r.name || r.id}</span>
+                <span style={{ fontSize: 12, color, fontWeight: 500 }}>{label}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {(pr.linkedWorkItems || []).length > 0 && (
+        <div>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Linked Work Items</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {pr.linkedWorkItems.map(wi => (
+              <span key={wi.id} className="pill" style={{ fontSize: 11, color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)' }}>#{wi.id}</span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function PRDetailModal({ pr, onClose }) {
-  if (!pr) return null
+function DesktopDetailDrawer({ drawer, onClose, setItems }) {
+  const open = drawer != null
+  const kind = drawer?.kind
+  const d    = drawer?.data
+
+  const title = !d ? '' : kind === 'wi' ? d.title : kind === 'pr' ? d.title : ''
+
+  const { org } = getAdoConfig()
+  const adoUrl = kind === 'wi' && d?.project && org
+    ? `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent((d.project || '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}/_workitems/edit/${d.id}`
+    : kind === 'pr' ? d?.url : null
+
+  const markDone = async () => {
+    try {
+      await desktopWorkItemSource.saveField(d.id, 'System.State', 'Done')
+      setItems?.(arr => arr.map(w => w.id === d.id ? { ...w, state: 'Done' } : w))
+      toast?.('Marked done', 'success')
+      onClose()
+    } catch (e) {
+      toast?.('Could not update: ' + (e?.message || 'unknown error'), 'error')
+    }
+  }
+
   return (
-    <div style={overlayStyle} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{
-        background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 680,
-        boxShadow: '0 8px 40px rgba(0,0,0,0.28)',
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, padding: '14px 20px',
-          borderBottom: '1px solid var(--border)',
-        }}>
-          <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>#{pr.id}</span>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pr.title}</h2>
-          {pr.url && (
-            <button className="btn sm ghost" onClick={() => window.open(pr.url, '_blank', 'noopener')}>
-              <Icon name="link" size={12}/> Open in browser
+    <Drawer open={open} onClose={onClose} title={title}
+      badges={kind === 'wi' && d ? (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>#{d.id}</span>
+          <TypeIcon type={d.type}/><Prio p={d.priority}/>
+        </span>
+      ) : kind === 'pr' && d ? (
+        <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>#{d.id}</span>
+      ) : null}
+      actions={(
+        <React.Fragment>
+          {kind === 'wi' && d && (
+            <button className="btn sm" onClick={markDone}>
+              <Icon name="check" size={13}/> Mark done
             </button>
           )}
-          <button className="btn sm ghost" style={{ padding: '4px 8px' }} onClick={onClose}>
-            <Icon name="x" size={14}/>
-          </button>
-        </div>
-        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            <span className={`pill ${pr.status}`} style={{ textTransform: 'capitalize' }}>{pr.status}</span>
-            {pr.draft && <span className="pill">Draft</span>}
-            {pr.hasConflicts && <span className="pill danger"><Icon name="alert" size={9}/> Conflicts</span>}
-            {pr.ciStatus === 'success' && <span className="pill success">CI passing</span>}
-            {pr.ciStatus === 'failed'  && <span className="pill danger">CI failing</span>}
-            {pr.ciStatus === 'running' && <span className="pill info">CI running</span>}
-            {pr.ciStatus === 'partial' && <span className="pill warning">CI partial</span>}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <Icon name="git-branch" size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }}/>
-              <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', fontSize: 12 }}>{pr.branch}</span>
-            </div>
-            <div style={{ color: 'var(--text-muted)' }}>
-              <strong>Author:</strong> {pr.authorName || pr.author}
-              {' · '}
-              <strong>Opened:</strong> {pr.age} ago
-              {pr.repo && <>{' · '}<strong>Repo:</strong> {pr.repo}</>}
-            </div>
-            <div>
-              <span style={{ color: 'var(--success)', fontWeight: 500 }}>+{pr.additions}</span>
-              {' '}
-              <span style={{ color: 'var(--danger)', fontWeight: 500 }}>−{pr.deletions}</span>
-              {pr.comments > 0 && (
-                <span style={{ color: 'var(--text-muted)', marginLeft: 10 }}>
-                  <Icon name="comment" size={11}/> {pr.comments} comment{pr.comments !== 1 ? 's' : ''}
-                  {pr.unresolvedComments > 0 && ` (${pr.unresolvedComments} unresolved)`}
-                </span>
-              )}
-            </div>
-          </div>
-          {(pr.reviewerDetails || []).length > 0 && (
-            <div>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Reviewers</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                {pr.reviewerDetails.map((r, i) => {
-                  const v = r.vote
-                  const label = v === 10 || v === 5 ? 'Approved' : v === -10 ? 'Rejected' : v === -5 ? 'Waiting for author' : 'Pending'
-                  const color = v === 10 || v === 5 ? 'var(--success)' : v === -10 ? 'var(--danger)' : v === -5 ? 'var(--warning)' : 'var(--text-subtle)'
-                  return (
-                    <div key={`${r.id}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                      <span style={{ flex: 1, color: 'var(--text)' }}>{r.name || r.id}</span>
-                      <span style={{ fontSize: 12, color, fontWeight: 500 }}>{label}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+          {adoUrl && (
+            <button className="btn sm ghost" onClick={() => window.open(adoUrl, '_blank', 'noopener')}>
+              <Icon name="link" size={12}/> Open in {kind === 'wi' ? 'ADO' : 'browser'}
+            </button>
           )}
-          {(pr.linkedWorkItems || []).length > 0 && (
-            <div>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Linked Work Items</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {pr.linkedWorkItems.map(wi => (
-                  <span key={wi.id} className="pill" style={{ fontSize: 11, color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)' }}>#{wi.id}</span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+        </React.Fragment>
+      )}>
+      {kind === 'wi' && d && <WorkItemDetail id={d.id} project={d.project} />}
+      {kind === 'pr' && d && <DesktopPRDetail pr={d} />}
+    </Drawer>
   )
 }
 
@@ -798,8 +783,9 @@ function WindowControls() {
 function App() {
   const [view, setView]         = React.useState('dashboard')
   const [createWI, setCreateWI] = React.useState(null)
-  const [openedItem, setOpenedItem] = React.useState(null)
-  const [openedPR, setOpenedPR]     = React.useState(null)
+  const [drawer, setDrawer] = React.useState(null)
+  const openItem = item => setDrawer({ kind: 'wi', data: item })
+  const openPR   = pr   => setDrawer({ kind: 'pr', data: pr })
   const [tweaks, setTweaksState] = React.useState(loadTweaks)
 
   const setTweak = React.useCallback((key, value) => {
@@ -950,7 +936,7 @@ function App() {
             padding: view === 'markdown' ? 0 : 18,
           }}>
             <ViewBody
-              view={view} onOpenItem={setOpenedItem} onOpenPR={setOpenedPR}
+              view={view} onOpenItem={openItem} onOpenPR={openPR}
               tweaks={tweaks} setTweak={setTweak}
               newItemIds={newItemIds}
               plannerData={plannerData} setPlannerData={setPlannerData}
@@ -979,8 +965,7 @@ function App() {
             onClick={() => setTweak('widgetOrder', DASH_WIDGET_ORDER)}/>
         </TweakSection>
       </TweaksPanel>
-      <ItemDetailModal item={openedItem} onClose={() => setOpenedItem(null)} />
-      <PRDetailModal pr={openedPR} onClose={() => setOpenedPR(null)} />
+      <DesktopDetailDrawer drawer={drawer} onClose={() => setDrawer(null)} />
       <CreateWorkItemModal open={!!createWI} title={createWI?.title} onClose={() => setCreateWI(null)} />
     </NexusDataProvider>
   )
