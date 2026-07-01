@@ -110,22 +110,22 @@ export function registerCloudDeepLink() {
   if (window.electronAPI?.onDeepLink) window.electronAPI.onDeepLink(redeem)
 }
 
-// Native desktop Google connection: tokens come from the Electron main process
-// (PKCE loopback flow) — no backend. One connection grants Drive + Gmail + Calendar.
-export function makeNativeGoogleBinding() {
-  const suffix = 'google.auth'
+// Native desktop OAuth binding for any provider whose flow runs in the Electron
+// main process (PKCE loopback). `provider` is passed to the IPC bridge; tokens are
+// stored under localStorage `suffix`. Handles providers that rotate refresh tokens.
+export function makeNativeBinding({ provider, suffix }) {
   return {
     isConnected: () => Boolean(read(suffix)?.accessToken),
     async connect() {
       try {
-        console.info('[cloud-auth] Initiating google OAuth connection (native)')
-        const tokens = await window.electronAPI.oauth.start()
+        console.info(`[cloud-auth] Initiating ${provider} OAuth connection (native)`)
+        const tokens = await window.electronAPI.oauth.start(provider)
         write(suffix, tokens)
-        console.info('[cloud-auth] google OAuth connected')
+        console.info(`[cloud-auth] ${provider} OAuth connected`)
         window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
       } catch (err) {
-        console.error('[cloud-auth] Failed to connect google:', err?.stack || err)
-        toast?.('Google sign-in failed. Please try again.', 'error')
+        console.error(`[cloud-auth] Failed to connect ${provider}:`, err?.stack || err)
+        toast?.('Sign-in failed. Please try again.', 'error')
       }
     },
     async disconnect() { clear(suffix) },
@@ -135,21 +135,28 @@ export function makeNativeGoogleBinding() {
       const expired = auth.expiresAt && Date.now() > auth.expiresAt - 60_000
       if (!force && !expired) return auth.accessToken
       try {
-        const next = await window.electronAPI.oauth.refresh(auth.refreshToken)
+        const next = await window.electronAPI.oauth.refresh(auth.refreshToken, provider)
         if (!next?.accessToken) return force ? null : auth.accessToken
-        write(suffix, { ...auth, ...next })
+        write(suffix, { ...auth, ...next })   // ...next carries a rotated refreshToken when present
         return next.accessToken
       } catch (err) {
-        console.error('[cloud-auth] google token refresh failed:', err?.stack || err)
+        console.error(`[cloud-auth] ${provider} token refresh failed:`, err?.stack || err)
         return force ? null : auth.accessToken
       }
     },
   }
 }
 
+export function makeNativeGoogleBinding() {
+  return makeNativeBinding({ provider: 'google', suffix: 'google.auth' })
+}
+export function makeNativeMicrosoftBinding() {
+  return makeNativeBinding({ provider: 'microsoft', suffix: 'microsoft.auth' })
+}
+
 export const desktopCloudProviders = [
   makeGoogleDriveProvider(makeNativeGoogleBinding()),
-  makeOneDriveProvider(makeBinding('onedrive')),
+  makeOneDriveProvider(makeNativeMicrosoftBinding()),
 ]
 
 export function makeDesktopOAuthService(from) {
