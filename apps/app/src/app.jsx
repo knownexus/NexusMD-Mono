@@ -2552,6 +2552,7 @@ function PRDetail({ pr, onClose }) {
   const { TEAM, ME } = HelmData;
   const [tab, setTab] = useState('overview');
   const [comment, setComment] = useState('');
+  const [commentPreview, setCommentPreview] = useState(false);
   const [voting, setVoting] = useState(false);
   const [commentStatus, setCommentStatus] = useState('');
   const [posting, setPosting] = useState(false);
@@ -3024,14 +3025,58 @@ function PRDetail({ pr, onClose }) {
           {pr.repoId && pr.project && (
             <div className="drawer-section">
               <h4>Add comment</h4>
-              <textarea value={comment} onChange={e=>setComment(e.target.value)} rows={3} placeholder="Write a comment…"
-                style={{...settInputStyle, resize:'vertical'}}/>
-              <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8}}>
-                <button className="btn sm primary" onClick={postComment} disabled={posting||!comment.trim()}>
-                  {posting?'Posting…':'Post comment'}
-                </button>
-                {commentStatus && <span style={{fontSize:12,color:commentStatus.startsWith('✗')?'var(--danger)':'var(--success)'}}>{commentStatus}</span>}
-              </div>
+              {(() => {
+                const tabStyle = (active) => ({
+                  fontSize: 11.5, padding: '2px 10px', borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: active ? 'var(--accent)' : 'transparent',
+                  color: active ? '#fff' : 'var(--text-muted)',
+                  cursor: 'pointer', lineHeight: '20px',
+                });
+                return (
+                  <>
+                    <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                      <button style={tabStyle(!commentPreview)} onClick={() => setCommentPreview(false)}>Write</button>
+                      <button style={tabStyle(commentPreview)} onClick={() => setCommentPreview(true)}>Preview</button>
+                      <span style={{ marginLeft: 4, fontSize: 11, color: 'var(--text-subtle)', alignSelf: 'center' }}>
+                        Markdown supported · Ctrl+Enter to post
+                      </span>
+                    </div>
+                    {commentPreview ? (
+                      <div
+                        className="wi-html-content"
+                        style={{
+                          minHeight: 72, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8,
+                          background: 'var(--surface-2)', fontSize: 13, lineHeight: 1.6,
+                          color: comment.trim() ? 'var(--text)' : 'var(--text-subtle)', overflowWrap: 'break-word',
+                        }}
+                        dangerouslySetInnerHTML={{
+                          __html: comment.trim() ? renderContent(comment) : '<em>Nothing to preview</em>',
+                        }}
+                      />
+                    ) : (
+                      <textarea
+                        value={comment}
+                        onChange={e => setComment(e.target.value)}
+                        onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') postComment(); }}
+                        rows={3}
+                        placeholder="Write a comment… (Markdown supported)"
+                        style={{ ...settInputStyle, resize: 'vertical', fontFamily: 'var(--mono)', fontSize: 13 }}
+                      />
+                    )}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+                      <button className="btn sm primary" onClick={postComment} disabled={posting || !comment.trim()}>
+                        {posting ? 'Posting…' : 'Post comment'}
+                      </button>
+                      {commentStatus && (
+                        <span style={{ fontSize: 12, color: commentStatus.startsWith('✗') ? 'var(--danger)' : 'var(--success)' }}>
+                          {commentStatus}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
         </div>
