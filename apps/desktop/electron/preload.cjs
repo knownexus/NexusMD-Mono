@@ -69,6 +69,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open the system browser for cloud sign-in, and receive the nexusmd:// deep
   // link the backend redirects back to (carries the one-time code).
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  // Open a link as a tab in the shared link window (replaces window.open for
+  // ADO/PR/etc. links so they don't spawn one native window per link).
+  openLink: (url) => ipcRenderer.invoke('link-window:open', url),
   onDeepLink: (cb) => {
     const handler = (_e, url) => cb(url);
     ipcRenderer.on('deepLink:url', handler);
@@ -145,5 +149,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('updater:available', (_event, info) => callback(info));
       return () => ipcRenderer.removeAllListeners('updater:available');
     },
+
+  // ── Logs viewer IPC ────────────────────────────────────────────────────────
+  logs: {
+    list:   () => ipcRenderer.invoke('logs:list'),
+    read:   (date) => ipcRenderer.invoke('logs:read', { date }),
+    delete: (date) => ipcRenderer.invoke('logs:delete', { date }),
+  },
   },
 });
