@@ -16,6 +16,7 @@ import {
   WorkItemDetail, Drawer, PlToggle, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
   VsPasswordModal, loadConfidentialConfig,
+  OutlookService,
 } from '@nexusmd/ui'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -75,6 +76,11 @@ const DEFAULT_TWEAKS = {
   theme: 'light', lightTheme: 'parchment', darkTheme: 'cobalt',
   density: 'balanced', sidebar: 'labels', typeLabels: false,
   widgetOrder: DASH_WIDGET_ORDER,
+  quickLinks: [
+    { label: 'UAT Testing', url: 'https://cirrus.uat.msl.co.uk/', color: 'var(--info)' },
+    { label: 'Dev Testing', url: 'https://cirrus.dev.msl.co.uk/', color: 'var(--success)' },
+    { label: 'Cirrus HR',   url: 'https://cirrushr.co.uk',        color: 'var(--violet)' },
+  ],
 }
 
 function loadTweaks() {
@@ -814,6 +820,58 @@ function DesktopAppCard() {
   )
 }
 
+function DesktopQuickLinksCard({ links, onChange }) {
+  const [editing, setEditing] = React.useState(null)
+  const [form, setForm] = React.useState({ label: '', url: '', color: 'var(--accent)' })
+
+  const open = (idx) => {
+    if (idx === 'new') {
+      setForm({ label: '', url: '', color: 'var(--accent)' })
+    } else {
+      setForm({ ...links[idx] })
+    }
+    setEditing(idx)
+  }
+  const save = () => {
+    if (!form.label || !form.url) return
+    const next = editing === 'new'
+      ? [...links, form]
+      : links.map((l, i) => i === editing ? form : l)
+    onChange(next)
+    setEditing(null)
+  }
+  const remove = (idx) => onChange(links.filter((_, i) => i !== idx))
+
+  const inp = { width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }
+
+  return (
+    <VsCard title="Quick links" icon="link">
+      {links.map((l, i) => (
+        <VsRow key={i} title={l.label} desc={l.url}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn sm ghost" onClick={() => open(i)}>Edit</button>
+            <button className="btn sm ghost danger" onClick={() => remove(i)}>Remove</button>
+          </div>
+        </VsRow>
+      ))}
+      <div style={{ padding: '8px 16px' }}>
+        <button className="btn sm" onClick={() => open('new')}>+ Add link</button>
+      </div>
+      {editing !== null && (
+        <div style={{ padding: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input placeholder="Label" value={form.label} style={inp} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} />
+          <input placeholder="URL" value={form.url} style={inp} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} />
+          <input placeholder="Colour (CSS var or hex)" value={form.color} style={inp} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
+            <button className="btn sm primary" onClick={save} disabled={!form.label || !form.url}>Save</button>
+          </div>
+        </div>
+      )}
+    </VsCard>
+  )
+}
+
 // Settings — ADO connection, profile registry, backup & restore, cloud sync.
 function DesktopSettings({ tweaks, setTweak }) {
   const profileApi = useProfile()
@@ -836,6 +894,10 @@ function DesktopSettings({ tweaks, setTweak }) {
       <DesktopPlannerPrefsCard />
       <DesktopConfidentialCard />
       <DesktopAppCard />
+      <DesktopQuickLinksCard
+        links={tweaks.quickLinks || []}
+        onChange={links => setTweak('quickLinks', links)}
+      />
       <AdoConnectionCard />
       <VsProfiles profileApi={profileApi} />
       <BackupRestoreCard fileIO={desktopFileIO} cloudProviders={desktopCloudProviders} />
@@ -937,6 +999,59 @@ function ViewBody({
   const [localItems, setLocalItems] = React.useState(null)
   const items = localItems ?? (data.WORK_ITEMS || [])
 
+  const [customTeam, setCustomTeam] = React.useState(() => {
+    try {
+      const k = getProfileKey('nexusmd.team.custom')
+      return JSON.parse(localStorage.getItem(k) || '[]')
+    } catch { return [] }
+  })
+  const [removedIds, setRemovedIds] = React.useState(() => {
+    try {
+      const k = getProfileKey('nexusmd.team.removed')
+      return JSON.parse(localStorage.getItem(k) || '[]')
+    } catch { return [] }
+  })
+
+  const effectiveTeam = React.useMemo(() => {
+    const base = (data.TEAM || []).filter(m => !removedIds.includes(m.id))
+    const existingIds = new Set(base.map(m => m.id))
+    return [...base, ...customTeam.filter(m => !existingIds.has(m.id))]
+  }, [data.TEAM, customTeam, removedIds])
+
+  const handleTeamChange = (newTeam) => {
+    const baseIds = new Set((data.TEAM || []).map(m => m.id))
+    const newCustom = newTeam.filter(m => !baseIds.has(m.id))
+    const newRemoved = (data.TEAM || []).filter(m => !newTeam.find(t => t.id === m.id)).map(m => m.id)
+    setCustomTeam(newCustom)
+    setRemovedIds(newRemoved)
+    try {
+      localStorage.setItem(getProfileKey('nexusmd.team.custom'), JSON.stringify(newCustom))
+      localStorage.setItem(getProfileKey('nexusmd.team.removed'), JSON.stringify(newRemoved))
+    } catch {}
+  }
+
+  const handleAddNote = (devId, note) => {
+    setPlannerData(prev => {
+      const notes = prev.globalNotes || []
+      return { ...prev, globalNotes: [...notes, { devId, note, date: new Date().toISOString() }] }
+    })
+  }
+
+  const handleScheduleOneOnOne = (dev) => {
+    const start = new Date()
+    start.setHours(10, 0, 0, 0)
+    start.setDate(start.getDate() + 1)
+    const end = new Date(start.getTime() + 60 * 60000)
+    if (OutlookService?.isConnected?.()) {
+      OutlookService.createEvent({
+        title: `1:1 with ${dev.name}`,
+        start: start.toISOString().slice(0, 16),
+        end:   end.toISOString().slice(0, 16),
+      }).catch(console.error)
+    }
+    window.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: 'planner' }))
+  }
+
   switch (view) {
     case 'dashboard': {
       if (!configured) return <NotConfigured />
@@ -986,8 +1101,16 @@ function ViewBody({
       )
     case 'team':
       return (
-        <TeamView team={data.TEAM || []} workItems={data.WORK_ITEMS || []} prs={data.PRS || []}
-          onOpenItem={openExternal} onOpenPerson={() => {}} />
+        <TeamView
+          team={effectiveTeam}
+          workItems={data.WORK_ITEMS || []}
+          prs={data.PRS || []}
+          onOpenItem={onOpenItem}
+          onOpenPerson={() => {}}
+          onTeamChange={handleTeamChange}
+          onAddNote={handleAddNote}
+          onScheduleOneOnOne={handleScheduleOneOnOne}
+        />
       )
     case 'triage':
       return <TriageView />
