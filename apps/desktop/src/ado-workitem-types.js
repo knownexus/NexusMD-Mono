@@ -159,3 +159,54 @@ export function buildLinkRelationOps(links) {
     value: { rel, url: `vstfs:///WorkItemTracking/WorkItem/${id}` },
   }))
 }
+
+export async function submitNewWorkItem({ project, type, fields, attachmentFiles = [], links = [] }) {
+  const adapter = createAdoHttpAdapter()
+  const proj = encodeURIComponent(project)
+  const ops = buildFieldPatchOps(fields)
+  const createRes = await adapter.fetch(
+    `${proj}/_apis/wit/workitems/$${encodeURIComponent(type)}?api-version=7.0`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json-patch+json' }, body: JSON.stringify(ops) },
+  )
+  if (!createRes.ok) throw new Error(`HTTP ${createRes.status}`)
+  const created = await createRes.json()
+  const warnings = []
+
+  const attachmentUrls = []
+  for (const file of attachmentFiles) {
+    try {
+      const uploadRes = await adapter.fetch(
+        `${proj}/_apis/wit/attachments?fileName=${encodeURIComponent(file.name)}&api-version=7.0`,
+        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file },
+      )
+      if (!uploadRes.ok) throw new Error(`HTTP ${uploadRes.status}`)
+      const uploaded = await uploadRes.json()
+      attachmentUrls.push(uploaded.url)
+    } catch (e) {
+      warnings.push(`attachment "${file.name}" failed: ${e.message}`)
+    }
+  }
+
+  const attachmentOps = buildAttachmentRelationOps(attachmentUrls)
+  const linkOps = buildLinkRelationOps(links)
+  const relationOps = [...attachmentOps, ...linkOps]
+  if (relationOps.length > 0) {
+    try {
+      const patchRes = await adapter.fetch(
+        `_apis/wit/workitems/${created.id}?api-version=7.0`,
+        { method: 'PATCH', headers: { 'Content-Type': 'application/json-patch+json' }, body: JSON.stringify(relationOps) },
+      )
+      if (!patchRes.ok) throw new Error(`HTTP ${patchRes.status}`)
+    } catch (e) {
+      if (attachmentOps.length > 0 && linkOps.length > 0) {
+        warnings.push(`${attachmentOps.length} attachment(s) and ${linkOps.length} link(s) relation update failed: ${e.message}`)
+      } else if (attachmentOps.length > 0) {
+        warnings.push(`${attachmentOps.length} attachment relation(s) failed: ${e.message}`)
+      } else {
+        warnings.push(`${linkOps.length} link relation(s) failed: ${e.message}`)
+      }
+    }
+  }
+
+  return { id: created.id, warnings }
+}

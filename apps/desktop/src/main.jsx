@@ -27,7 +27,7 @@ import {
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
-import { buildFieldPatchOps, buildAttachmentRelationOps, buildLinkRelationOps } from './ado-workitem-types.js'
+import { submitNewWorkItem } from './ado-workitem-types.js'
 import { navigationAdapter }    from './adapters/navigation.js'
 import { authAdapter }          from './adapters/auth.js'
 import { fileAdapter }          from './adapters/file.js'
@@ -190,50 +190,8 @@ const desktopWorkItemSource = {
     const data = await res.json()
     return data.fields || {}
   },
-  async createWorkItem({ project, type, fields, attachmentFiles = [], links = [] }) {
-    const adapter = createAdoHttpAdapter()
-    const proj = encodeURIComponent(project)
-    const ops = buildFieldPatchOps(fields)
-    const createRes = await adapter.fetch(
-      `${proj}/_apis/wit/workitems/$${encodeURIComponent(type)}?api-version=7.0`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json-patch+json' }, body: JSON.stringify(ops) },
-    )
-    if (!createRes.ok) throw new Error(`HTTP ${createRes.status}`)
-    const created = await createRes.json()
-    const warnings = []
-
-    const attachmentUrls = []
-    for (const file of attachmentFiles) {
-      try {
-        const uploadRes = await adapter.fetch(
-          `${proj}/_apis/wit/attachments?fileName=${encodeURIComponent(file.name)}&api-version=7.0`,
-          { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file },
-        )
-        if (!uploadRes.ok) throw new Error(`HTTP ${uploadRes.status}`)
-        const uploaded = await uploadRes.json()
-        attachmentUrls.push(uploaded.url)
-      } catch (e) {
-        warnings.push(`attachment "${file.name}" failed: ${e.message}`)
-      }
-    }
-
-    const relationOps = [
-      ...buildAttachmentRelationOps(attachmentUrls),
-      ...buildLinkRelationOps(links),
-    ]
-    if (relationOps.length > 0) {
-      try {
-        const patchRes = await adapter.fetch(
-          `_apis/wit/workitems/${created.id}?api-version=7.0`,
-          { method: 'PATCH', headers: { 'Content-Type': 'application/json-patch+json' }, body: JSON.stringify(relationOps) },
-        )
-        if (!patchRes.ok) throw new Error(`HTTP ${patchRes.status}`)
-      } catch (e) {
-        warnings.push(`${relationOps.length} link/attachment relation(s) failed: ${e.message}`)
-      }
-    }
-
-    return { id: created.id, warnings }
+  async createWorkItem(payload) {
+    return submitNewWorkItem(payload)
   },
 }
 

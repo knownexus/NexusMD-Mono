@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { getCachedDefs, setCachedDefs, fetchWorkItemTypes, fetchProjectFieldTypes, fetchTypeFields, fetchClassificationPaths, loadWorkItemTypeDefs, fieldBucket, fieldGroup, LINK_TYPES, buildFieldPatchOps, buildAttachmentRelationOps, buildLinkRelationOps } from './ado-workitem-types.js'
+import { getCachedDefs, setCachedDefs, fetchWorkItemTypes, fetchProjectFieldTypes, fetchTypeFields, fetchClassificationPaths, loadWorkItemTypeDefs, fieldBucket, fieldGroup, LINK_TYPES, buildFieldPatchOps, buildAttachmentRelationOps, buildLinkRelationOps, submitNewWorkItem } from './ado-workitem-types.js'
 import { saveAdoConfig } from './ado-client.js'
 import { vi } from 'vitest'
 
@@ -210,5 +210,118 @@ describe('buildLinkRelationOps', () => {
     expect(buildLinkRelationOps([{ rel: 'System.LinkTypes.Related', id: 1234 }])).toEqual([
       { op: 'add', path: '/relations/-', value: { rel: 'System.LinkTypes.Related', url: 'vstfs:///WorkItemTracking/WorkItem/1234' } },
     ])
+  })
+})
+
+describe('submitNewWorkItem', () => {
+  function jsonRes(status, body) {
+    return { ok: status >= 200 && status < 300, status, json: async () => body }
+  }
+
+  it('creates the work item and returns { id, warnings: [] } when there are no attachments or links', async () => {
+    global.fetch = vi.fn((url, opts) => {
+      if (opts?.method === 'POST' && url.includes('/_apis/wit/workitems/$')) {
+        return Promise.resolve(jsonRes(200, { id: 101 }))
+      }
+      return Promise.reject(new Error('unexpected url: ' + url))
+    })
+
+    const result = await submitNewWorkItem({ project: 'ProjectA', type: 'Task', fields: { 'System.Title': 'Fix bug' } })
+    expect(result).toEqual({ id: 101, warnings: [] })
+  })
+
+  it('returns the created id with a warning naming the failed attachment when an attachment upload fails, and still applies no-op relations patch', async () => {
+    global.fetch = vi.fn((url, opts) => {
+      if (opts?.method === 'POST' && url.includes('/_apis/wit/workitems/$')) {
+        return Promise.resolve(jsonRes(200, { id: 202 }))
+      }
+      if (opts?.method === 'POST' && url.includes('/_apis/wit/attachments')) {
+        return Promise.resolve(jsonRes(500, {}))
+      }
+      return Promise.reject(new Error('unexpected url: ' + url))
+    })
+
+    const file = { name: 'notes.txt' }
+    const result = await submitNewWorkItem({ project: 'ProjectA', type: 'Task', fields: {}, attachmentFiles: [file] })
+    expect(result.id).toBe(202)
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]).toContain('notes.txt')
+  })
+
+  it('returns the created id with a warning when the relations PATCH fails', async () => {
+    global.fetch = vi.fn((url, opts) => {
+      if (opts?.method === 'POST' && url.includes('/_apis/wit/workitems/$')) {
+        return Promise.resolve(jsonRes(200, { id: 303 }))
+      }
+      if (opts?.method === 'POST' && url.includes('/_apis/wit/attachments')) {
+        return Promise.resolve(jsonRes(200, { url: 'https://x/attachments/1' }))
+      }
+      if (opts?.method === 'PATCH') {
+        return Promise.resolve(jsonRes(500, {}))
+      }
+      return Promise.reject(new Error('unexpected url: ' + url))
+    })
+
+    const file = { name: 'notes.txt' }
+    const result = await submitNewWorkItem({
+      project: 'ProjectA', type: 'Task', fields: {},
+      attachmentFiles: [file],
+      links: [{ rel: 'System.LinkTypes.Related', id: 5 }],
+    })
+    expect(result.id).toBe(303)
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]).toContain('1 attachment(s) and 1 link(s)')
+  })
+
+  it('names only attachments in the warning when only attachment relations are present and the PATCH fails', async () => {
+    global.fetch = vi.fn((url, opts) => {
+      if (opts?.method === 'POST' && url.includes('/_apis/wit/workitems/$')) {
+        return Promise.resolve(jsonRes(200, { id: 404 }))
+      }
+      if (opts?.method === 'POST' && url.includes('/_apis/wit/attachments')) {
+        return Promise.resolve(jsonRes(200, { url: 'https://x/attachments/1' }))
+      }
+      if (opts?.method === 'PATCH') {
+        return Promise.resolve(jsonRes(500, {}))
+      }
+      return Promise.reject(new Error('unexpected url: ' + url))
+    })
+
+    const file = { name: 'notes.txt' }
+    const result = await submitNewWorkItem({ project: 'ProjectA', type: 'Task', fields: {}, attachmentFiles: [file] })
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]).toContain('1 attachment relation(s)')
+    expect(result.warnings[0]).not.toContain('link(s)')
+  })
+
+  it('names only links in the warning when only link relations are present and the PATCH fails', async () => {
+    global.fetch = vi.fn((url, opts) => {
+      if (opts?.method === 'POST' && url.includes('/_apis/wit/workitems/$')) {
+        return Promise.resolve(jsonRes(200, { id: 505 }))
+      }
+      if (opts?.method === 'PATCH') {
+        return Promise.resolve(jsonRes(500, {}))
+      }
+      return Promise.reject(new Error('unexpected url: ' + url))
+    })
+
+    const result = await submitNewWorkItem({
+      project: 'ProjectA', type: 'Task', fields: {},
+      links: [{ rel: 'System.LinkTypes.Related', id: 5 }],
+    })
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]).toContain('1 link relation(s)')
+    expect(result.warnings[0]).not.toContain('attachment(s)')
+  })
+
+  it('throws when the base create POST fails', async () => {
+    global.fetch = vi.fn((url, opts) => {
+      if (opts?.method === 'POST' && url.includes('/_apis/wit/workitems/$')) {
+        return Promise.resolve(jsonRes(400, {}))
+      }
+      return Promise.reject(new Error('unexpected url: ' + url))
+    })
+
+    await expect(submitNewWorkItem({ project: 'ProjectA', type: 'Task', fields: {} })).rejects.toThrow('HTTP 400')
   })
 })
