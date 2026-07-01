@@ -136,6 +136,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('updater:available', (_event, info) => callback(info));
       return () => ipcRenderer.removeAllListeners('updater:available');
     },
+  },
 
   // ── Logs viewer IPC ────────────────────────────────────────────────────────
   logs: {
@@ -143,5 +144,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     read:   (date) => ipcRenderer.invoke('logs:read', { date }),
     delete: (date) => ipcRenderer.invoke('logs:delete', { date }),
   },
+
+  // ── OAuth (native desktop flow) ────────────────────────────────────────────
+  oauth: {
+    start:   (provider = 'google') => ipcRenderer.invoke('oauth:start', { provider }),
+    refresh: (refreshToken, provider = 'google') => ipcRenderer.invoke('oauth:refresh', { provider, refreshToken }),
   },
 });
