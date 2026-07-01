@@ -7,3 +7,7 @@ export {
   PROJECT_COLORS, STATES,
 } from './helpers.js'
 export { makeAdoConfig } from './config.js'
+export {
+  syncBoardColumns, getActiveLanes, removeAutoAdded, resetToDetected,
+  reorderColumns, toggleColumnHidden, addManualColumn,
+} from './board-columns.js'
