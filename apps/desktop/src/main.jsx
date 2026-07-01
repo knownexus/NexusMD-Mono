@@ -11,7 +11,7 @@ import {
   PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
   DashboardView, WorkItemsView, TriageView,
   VsProfiles, BackupRestoreCard, CloudSyncCard,
-  IntegrationsView, VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker,
+  IntegrationsView, VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker, BoardColumnsCard,
   PlannerView, MarkdownViewer, plannerExportDocx,
   WorkItemDetail, Drawer, PlToggle, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
@@ -968,6 +968,7 @@ function DesktopSettings({ tweaks, setTweak, refreshInterval, onRefreshIntervalC
           <button className="btn sm ghost" onClick={() => window.dispatchEvent(new CustomEvent('nexusmd:openProjectAreas'))}>Open editor</button>
         </VsRow>
       </VsCard>
+      <BoardColumnsCard />
     </div>
   )
 }

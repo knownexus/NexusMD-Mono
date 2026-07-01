@@ -69,7 +69,7 @@ export {
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
   BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,
-  OAuthServiceCard, IntegrationsView,
+  OAuthServiceCard, IntegrationsView, BoardColumnsCard,
 } from './views/view-settings.jsx'
 
 // Shared triage controls + work-item detail panel (used by the views below).
