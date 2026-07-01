@@ -63,7 +63,7 @@ function makeBinding(key) {
         const { accessToken } = await res.json()
         write(cfg.keySuffix, { ...auth, accessToken })
         return accessToken
-      } catch { return null }
+      } catch (err) { console.warn('[cloud-auth] token refresh failed:', err?.message || err); return null }
     },
   }
 }
@@ -101,15 +101,52 @@ async function redeem(url) {
     console.info(`[cloud-auth] OAuth successful, saved tokens`)
     write(cfg.keySuffix, { accessToken, refreshToken })
     window.location.reload()
-  } catch {}
+  } catch (err) { console.error('[cloud-auth] OAuth redeem failed:', err?.stack || err) }
 }
 
 export function registerCloudDeepLink() {
   if (window.electronAPI?.onDeepLink) window.electronAPI.onDeepLink(redeem)
 }
 
+// Native desktop Google connection: tokens come from the Electron main process
+// (PKCE loopback flow) — no backend. One connection grants Drive + Gmail + Calendar.
+export function makeNativeGoogleBinding() {
+  const suffix = 'google.auth'
+  return {
+    isConnected: () => Boolean(read(suffix)?.accessToken),
+    async connect() {
+      try {
+        console.info('[cloud-auth] Initiating google OAuth connection (native)')
+        const tokens = await window.electronAPI.oauth.start()
+        write(suffix, tokens)
+        console.info('[cloud-auth] google OAuth connected')
+        window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
+      } catch (err) {
+        console.error('[cloud-auth] Failed to connect google:', err?.stack || err)
+        toast?.('Google sign-in failed. Please try again.', 'error')
+      }
+    },
+    async disconnect() { clear(suffix) },
+    async getToken({ force } = {}) {
+      const auth = read(suffix)
+      if (!auth?.accessToken) return null
+      const expired = auth.expiresAt && Date.now() > auth.expiresAt - 60_000
+      if (!force && !expired) return auth.accessToken
+      try {
+        const next = await window.electronAPI.oauth.refresh(auth.refreshToken)
+        if (!next?.accessToken) return force ? null : auth.accessToken
+        write(suffix, { ...auth, ...next })
+        return next.accessToken
+      } catch (err) {
+        console.error('[cloud-auth] google token refresh failed:', err?.stack || err)
+        return force ? null : auth.accessToken
+      }
+    },
+  }
+}
+
 export const desktopCloudProviders = [
-  makeGoogleDriveProvider(makeBinding('gdrive')),
+  makeGoogleDriveProvider(makeNativeGoogleBinding()),
   makeOneDriveProvider(makeBinding('onedrive')),
 ]
 
@@ -160,7 +197,7 @@ export function makeDesktopOAuthService(from) {
         const { accessToken } = await res.json()
         write(cfg.keySuffix, { ...auth, accessToken })
         return accessToken
-      } catch { return null }
+      } catch (err) { console.warn('[cloud-auth] token refresh failed:', err?.message || err); return null }
     },
     async loadCreds() {
       try {
@@ -168,13 +205,13 @@ export function makeDesktopOAuthService(from) {
         if (!k) return {}
         const raw = await secureStorageAdapter.get(k)
         return raw ? JSON.parse(raw) : {}
-      } catch { return {} }
+      } catch (err) { console.warn('[cloud-auth] loadCreds failed:', err?.message || err); return {} }
     },
     async saveCreds(c) {
       try {
         const k = getProfileKey('nexusmd.' + from + '.oauthCreds')
         if (k) await secureStorageAdapter.set(k, JSON.stringify(c))
-      } catch {}
+      } catch (err) { console.warn('[cloud-auth] saveCreds failed:', err?.message || err) }
     },
   }
 }
