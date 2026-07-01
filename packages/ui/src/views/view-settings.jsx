@@ -635,7 +635,7 @@ function OAuthServiceCard({ service }) {
     } else {
       setCreds(result || {});
     }
-  }, []);
+  }, [loadCreds]);
 
   React.useEffect(() => {
     const refresh = () => setConnected(isConnected());

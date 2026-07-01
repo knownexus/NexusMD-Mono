@@ -4,6 +4,7 @@
 // then redeemed for tokens. Tokens stored per-profile under the `helm` namespace.
 import { getProfileKey } from './profile-keys.js'
 import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/ui'
+import { toast } from './toast.jsx'
 import { deepLinkAdapter } from './adapters/deepLink.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 
@@ -140,10 +141,10 @@ export function makeAppOAuthService(from) {
       try {
         const returnUri = `nexusmd://oauth/${cfg.from}`
         const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
-        if (!res.ok) return
+        if (!res.ok) { toast?.(`${from} sign-in is not configured on the server.`, 'error'); return }
         const { url } = await res.json()
         openBrowser(url)
-      } catch {}
+      } catch { toast?.('Sign-in failed. Please try again.', 'error') }
     },
     async disconnect() {
       await clearAuth(cfg.keySuffix)

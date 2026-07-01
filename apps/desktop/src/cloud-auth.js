@@ -3,7 +3,8 @@
 // redirects back via the nexusmd:// custom protocol with a one-time code, which
 // the renderer redeems for tokens. Requires VITE_API_BASE to point at the host.
 import { getProfileKey } from './profile-keys.js'
-import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/ui'
+import { makeGoogleDriveProvider, makeOneDriveProvider, toast } from '@nexusmd/ui'
+import { secureStorageAdapter } from './adapters/secureStorage.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'
 
@@ -105,21 +106,28 @@ export function makeDesktopOAuthService(from) {
       try {
         const returnUri = `nexusmd://oauth/${cfg.from}`
         const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
-        if (!res.ok) { return }
+        if (!res.ok) { toast?.(`${from} sign-in is not configured on the server.`, 'error'); return }
         const { url } = await res.json()
         await window.electronAPI.openExternal(url)
-      } catch {}
+      } catch { toast?.('Sign-in failed. Please try again.', 'error') }
     },
     async disconnect() {
       clear(cfg.keySuffix)
       window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
     },
-    loadCreds() {
-      try { const k = getProfileKey('nexusmd.' + from + '.oauthCreds'); return k ? JSON.parse(localStorage.getItem(k) || '{}') : {} }
-      catch { return {} }
+    async loadCreds() {
+      try {
+        const k = getProfileKey('nexusmd.' + from + '.oauthCreds')
+        if (!k) return {}
+        const raw = await secureStorageAdapter.get(k)
+        return raw ? JSON.parse(raw) : {}
+      } catch { return {} }
     },
-    saveCreds(c) {
-      try { const k = getProfileKey('nexusmd.' + from + '.oauthCreds'); if (k) localStorage.setItem(k, JSON.stringify(c)) } catch {}
+    async saveCreds(c) {
+      try {
+        const k = getProfileKey('nexusmd.' + from + '.oauthCreds')
+        if (k) await secureStorageAdapter.set(k, JSON.stringify(c))
+      } catch {}
     },
   }
 }
