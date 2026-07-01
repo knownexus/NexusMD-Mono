@@ -33,12 +33,21 @@ function makeBinding(key) {
     isConnected: () => Boolean(read(cfg.keySuffix)?.accessToken),
     async connect() {
       try {
+        console.info(`[cloud-auth] Initiating ${key} OAuth connection`)
         const returnUri = `nexusmd://oauth/${cfg.from}`
         const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
-        if (!res.ok) return
+        if (!res.ok) { 
+          console.warn(`[cloud-auth] ${key} sign-in not configured on server`)
+          toast?.(`${key} sign-in is not configured on the server.`, 'error')
+          return 
+        }
         const { url } = await res.json()
+        console.info(`[cloud-auth] Redirecting to ${key} OAuth provider`)
         await window.electronAPI.openExternal(url)
-      } catch {}
+      } catch (err) { 
+        console.error(`[cloud-auth] Failed to initiate ${key} connection:`, err.message)
+        toast?.('Sign-in failed. Please try again.', 'error') 
+      }
     },
     async disconnect() { clear(cfg.keySuffix) },
     async getToken({ force } = {}) {
@@ -72,6 +81,7 @@ const BY_FROM = {
 async function redeem(url) {
   let u
   try { u = new URL(url) } catch { return }
+  console.info('[cloud-auth] Redeeming OAuth code')
   const params = u.searchParams
   const from = params.get('provider')
   const otc = params.get('otc')
@@ -82,8 +92,13 @@ async function redeem(url) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: otc }),
     })
-    if (!res.ok) return
+    if (!res.ok) {
+      const errText = await res.text()
+      console.error(`[cloud-auth] OAuth exchange failed: HTTP ${res.status} - ${errText}`)
+      return
+    }
     const { accessToken, refreshToken } = await res.json()
+    console.info(`[cloud-auth] OAuth successful, saved tokens`)
     write(cfg.keySuffix, { accessToken, refreshToken })
     window.location.reload()
   } catch {}
@@ -104,12 +119,21 @@ export function makeDesktopOAuthService(from) {
     isConnected: () => Boolean(read(cfg.keySuffix)?.accessToken),
     async connect() {
       try {
+        console.info(`[cloud-auth] Initiating ${from} OAuth connection`)
         const returnUri = `nexusmd://oauth/${cfg.from}`
         const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
-        if (!res.ok) { toast?.(`${from} sign-in is not configured on the server.`, 'error'); return }
+        if (!res.ok) { 
+          console.warn(`[cloud-auth] ${from} sign-in not configured on server`)
+          toast?.(`${from} sign-in is not configured on the server.`, 'error')
+          return 
+        }
         const { url } = await res.json()
+        console.info(`[cloud-auth] Redirecting to ${from} OAuth provider`)
         await window.electronAPI.openExternal(url)
-      } catch { toast?.('Sign-in failed. Please try again.', 'error') }
+      } catch (err) { 
+        console.error(`[cloud-auth] Failed to initiate ${from} connection:`, err.message)
+        toast?.('Sign-in failed. Please try again.', 'error') 
+      }
     },
     async disconnect() {
       clear(cfg.keySuffix)
