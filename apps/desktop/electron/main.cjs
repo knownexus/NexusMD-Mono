@@ -3,6 +3,7 @@
 
 const log = require('electron-log');
 const path = require('path');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require('electron');
 
 // Configure electron-log
 log.transports.file.level = 'debug';
@@ -23,7 +24,6 @@ console.error = log.error;
 
 // Make log global for use in other modules
 global.log = log;
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require('electron');
 const { createTray, updateTrayIcon } = require('./tray.cjs');
 const { initNotifications } = require('./notifications.cjs');
 const { initUpdater, registerUpdaterIpc } = require('./updater.cjs');
@@ -314,7 +314,12 @@ ipcMain.handle('save-file', async (_e, { filename, content, folder }) => {
 ipcMain.handle('open-external', async (_e, url) => { await shell.openExternal(url); });
 
 // Open a link (ADO work item, PR, etc.) as a tab in the shared link window.
-ipcMain.handle('link-window:open', (_e, url) => { linkWindow.openLink(url); });
+// Scheme is validated here and again in manager.cjs (defense in depth) so a
+// compromised renderer can't pass through file:/javascript: URLs.
+ipcMain.handle('link-window:open', (_e, url) => {
+  if (!linkWindow.isAllowedUrl(url)) return;
+  linkWindow.openLink(url);
+});
 
 // ---------------------------------------------------------------------------
 // Login-item IPC handlers
