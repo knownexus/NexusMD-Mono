@@ -1207,6 +1207,13 @@ function App() {
   })
   const [changeBadges, setChangeBadges] = React.useState({ work: 0, prs: 0, builds: 0, tests: 0 })
 
+  const [refreshInterval, setRefreshInterval] = React.useState(() => {
+    try { return parseInt(localStorage.getItem('nexusmd.refreshInterval') || '300', 10) } catch { return 300 }
+  })
+  const [refreshPaused, setRefreshPaused] = React.useState(false)
+  const [refreshLeft, setRefreshLeft] = React.useState(refreshInterval)
+  const refreshLeftRef = React.useRef(refreshInterval)
+
   const active = NAV.find(n => n.id === view) || NAV[0]
   const snapshot = useNexusSnapshot()
 
@@ -1259,6 +1266,25 @@ function App() {
     window.addEventListener('nexusmd:create-wi', handler)
     return () => window.removeEventListener('nexusmd:create-wi', handler)
   }, [])
+
+  React.useEffect(() => {
+    refreshLeftRef.current = refreshInterval
+    setRefreshLeft(refreshInterval)
+  }, [refreshInterval])
+
+  React.useEffect(() => {
+    if (refreshPaused) return
+    const tick = setInterval(() => {
+      refreshLeftRef.current -= 1
+      setRefreshLeft(refreshLeftRef.current)
+      if (refreshLeftRef.current <= 0) {
+        refreshAdoData()
+        refreshLeftRef.current = refreshInterval
+        setRefreshLeft(refreshInterval)
+      }
+    }, 1000)
+    return () => clearInterval(tick)
+  }, [refreshPaused, refreshInterval])
 
   const nexusDataValue = React.useMemo(() => ({
     data:           snapshot,
@@ -1319,6 +1345,13 @@ function App() {
           }}>
             <Icon name={active.icon} size={16} />
             <h1 style={{ fontSize: 15, margin: 0 }}>{active.label}</h1>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
+              {refreshPaused ? 'paused' : `${refreshLeft}s`}
+            </span>
+            <button className="btn sm ghost" title={refreshPaused ? 'Resume auto-refresh' : 'Pause auto-refresh'}
+              onClick={() => setRefreshPaused(p => !p)}>
+              <Icon name={refreshPaused ? 'play' : 'pause'} size={12}/>
+            </button>
             <WindowControls />
           </header>
           <section style={{
