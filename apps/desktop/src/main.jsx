@@ -24,7 +24,7 @@ import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
 } from '@nexusmd/web-adapters'
-import { createAdoHttpAdapter, getAdoConfig, saveAdoConfig, isAdoConfigured } from './ado-client.js'
+import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
 import { navigationAdapter }    from './adapters/navigation.js'
 import { authAdapter }          from './adapters/auth.js'
 import { fileAdapter }          from './adapters/file.js'
