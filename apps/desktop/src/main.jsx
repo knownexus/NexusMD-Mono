@@ -971,19 +971,45 @@ function DesktopSettings({ tweaks, setTweak, refreshInterval, onRefreshIntervalC
   )
 }
 
+function DesktopGitHubPATRow() {
+  const [pat, setPat] = React.useState(() => {
+    try { return localStorage.getItem('nexusmd.github.pat') || '' } catch { return '' }
+  })
+  const [valid, setValid] = React.useState(true)
+  const validate = (v) => /^gh[ps]_/.test(v) || /^github_pat_/.test(v) || v === ''
+
+  const save = () => {
+    if (!validate(pat)) { setValid(false); return }
+    setValid(true)
+    try { localStorage.setItem('nexusmd.github.pat', pat) } catch {}
+    toast?.('GitHub PAT saved.', 'success')
+  }
+
+  return (
+    <VsRow title="Personal access token" desc="Alternative to OAuth — must start with ghp_, ghs_, or github_pat_">
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          type="password"
+          value={pat}
+          style={{ width: 260, padding: '5px 10px', borderRadius: 8, border: `1px solid ${valid ? 'var(--border)' : 'var(--danger)'}`, background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
+          onChange={e => { setPat(e.target.value); setValid(true) }}
+          placeholder="ghp_…"
+        />
+        <button className="btn sm" onClick={save}>Save</button>
+        {pat && <button className="btn sm ghost danger" onClick={() => { setPat(''); try { localStorage.removeItem('nexusmd.github.pat') } catch {} }}>Clear</button>}
+      </div>
+      {!valid && <span style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4, display: 'block' }}>Invalid PAT format</span>}
+    </VsRow>
+  )
+}
+
 function IntegrationsPanel() {
   const [ghRepos, setGhRepos] = React.useState(() => {
-    try {
-      const k = getProfileKey('nexusmd.github.repos')
-      return k ? (localStorage.getItem(k) || '') : ''
-    } catch { return '' }
+    try { return localStorage.getItem('nexusmd.github.repos') || '' } catch { return '' }
   })
 
   const saveGhRepos = () => {
-    try {
-      const k = getProfileKey('nexusmd.github.repos')
-      if (k) localStorage.setItem(k, ghRepos)
-    } catch {}
+    try { localStorage.setItem('nexusmd.github.repos', ghRepos) } catch {}
   }
 
   const oauthServices = React.useMemo(() => [
@@ -1020,17 +1046,20 @@ function IntegrationsPanel() {
         { key: 'clientSecret', label: 'Client Secret', secret: true },
       ],
       children: (
-        <VsRow title="Repositories" desc="owner/repo pairs, comma-separated">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              value={ghRepos}
-              onChange={e => setGhRepos(e.target.value)}
-              placeholder="myorg/backend, myorg/frontend"
-              style={{ width: 200, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
-            />
-            <button className="btn sm" onClick={saveGhRepos}>Save</button>
-          </div>
-        </VsRow>
+        <React.Fragment>
+          <DesktopGitHubPATRow />
+          <VsRow title="Repositories" desc="owner/repo pairs, comma-separated">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                value={ghRepos}
+                onChange={e => setGhRepos(e.target.value)}
+                placeholder="myorg/backend, myorg/frontend"
+                style={{ width: 200, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
+              />
+              <button className="btn sm" onClick={saveGhRepos}>Save</button>
+            </div>
+          </VsRow>
+        </React.Fragment>
       ),
     },
   ], [ghRepos])
