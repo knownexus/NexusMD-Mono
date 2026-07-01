@@ -10,7 +10,7 @@ vi.mock('../google-calendar.js', () => ({
 }))
 
 import * as googleCalendar from '../google-calendar.js'
-import { MicrosoftCalendarBanner, GoogleCalendarBanner, NewGoogleEventModal } from './view-calendar.jsx'
+import { MicrosoftCalendarBanner, GoogleCalendarBanner, NewGoogleEventModal, CalendarView } from './view-calendar.jsx'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 // vi.clearAllMocks() resets call history but NOT mockReturnValue/mockImplementation
@@ -80,5 +80,39 @@ describe('NewGoogleEventModal', () => {
   it('does not submit with an empty title', () => {
     render(<NewGoogleEventModal open={true} onClose={() => {}} onCreated={() => {}} />)
     expect(screen.getByText('Create event').closest('button').disabled).toBe(true)
+  })
+})
+
+describe('CalendarView (local events only)', () => {
+  it('defaults to week view and shows a Today button', () => {
+    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    expect(screen.getByText('Today')).toBeTruthy()
+  })
+
+  it('switches to month view when the Month button is clicked', () => {
+    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    fireEvent.click(screen.getByText('Month'))
+    expect(document.querySelector('.cal-view-btn.active').textContent).toBe('Month')
+  })
+
+  it('renders a local event chip and opens the detail modal on click', () => {
+    const events = [{ id: 'local-1', title: 'Retro', start: `${new Date().toISOString().slice(0, 10)}T14:00:00.000Z`, end: `${new Date().toISOString().slice(0, 10)}T15:00:00.000Z`, source: 'local' }]
+    render(<CalendarView calendarEvents={events} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    fireEvent.click(screen.getByText('Retro'))
+    // EventDetailModal's root has id="modal-event-detail" — check for it directly rather than
+    // re-querying the event title text, which now appears twice (chip + modal) and would throw.
+    expect(document.getElementById('modal-event-detail')).toBeTruthy()
+  })
+
+  it('deletes a local event via the detail modal and updates calendarEvents', () => {
+    const setCalendarEvents = vi.fn()
+    const events = [{ id: 'local-1', title: 'Retro', start: `${new Date().toISOString().slice(0, 10)}T14:00:00.000Z`, end: `${new Date().toISOString().slice(0, 10)}T15:00:00.000Z`, source: 'local' }]
+    render(<CalendarView calendarEvents={events} setCalendarEvents={setCalendarEvents} onNavigatePlanner={() => {}} />)
+    fireEvent.click(screen.getByText('Retro'))
+    // The modal's Delete button requires a two-step confirm: first click reveals
+    // "Delete this event?" with a second Delete button; only the second click deletes.
+    fireEvent.click(screen.getByText('Delete'))
+    fireEvent.click(screen.getByText('Delete'))
+    expect(setCalendarEvents).toHaveBeenCalled()
   })
 })

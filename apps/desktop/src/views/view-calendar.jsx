@@ -3,7 +3,12 @@
 // (../ms-graph-calendar.js, ../google-calendar.js) instead of the shared
 // OutlookService (MSAL) or web's server-proxied Google fetch.
 import React from 'react'
-import { Icon, toast } from '@nexusmd/ui'
+import {
+  Icon, toast,
+  WeekGrid, MonthView, YearView, AgendaView, EventDetailModal,
+  getWeekDays, getMonthGrid, getYearMonths, getAgendaDays,
+  nowTopPx, todayStr, isoDate, MONTH_NAMES, MONTH_SHORT,
+} from '@nexusmd/ui'
 import { createGoogleCalendarEvent, isGoogleConnected } from '../google-calendar.js'
 
 export function MicrosoftCalendarBanner({ connected, syncing, error, onRefresh }) {
@@ -141,6 +146,174 @@ export function NewGoogleEventModal({ open, defaultDate, defaultTime, onClose, o
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+const VIEWS = [
+  { id: 'year', label: 'Year' },
+  { id: 'month', label: 'Month' },
+  { id: 'week', label: 'Week' },
+  { id: 'workweek', label: 'Work Week' },
+  { id: 'agenda', label: 'Agenda' },
+]
+
+export function CalendarView({ calendarEvents, setCalendarEvents, onNavigatePlanner }) {
+  const [calView, setCalView] = React.useState('week')
+  const [offset, setOffset] = React.useState(0)
+  const [selectedEvent, setSelectedEvent] = React.useState(null)
+  const [nowPx, setNowPx] = React.useState(nowTopPx)
+  const scrollRef = React.useRef(null)
+
+  const today = todayStr()
+
+  React.useEffect(() => {
+    const id = setInterval(() => setNowPx(nowTopPx()), 60000)
+    return () => clearInterval(id)
+  }, [])
+
+  React.useEffect(() => {
+    if ((calView !== 'week' && calView !== 'workweek') || offset !== 0 || !scrollRef.current) return
+    const px = nowTopPx()
+    if (px !== null) scrollRef.current.scrollTop = Math.max(0, px - 120)
+  }, [calView, offset])
+
+  const updateLocalEvent = (id, patch) => {
+    const oldEv = (calendarEvents || []).find((e) => String(e.id) === String(id))
+    if (!oldEv || oldEv.source !== 'local') return
+    setCalendarEvents((prev) => prev.map((e) => (String(e.id) === String(id) ? { ...e, ...patch } : e)))
+    toast?.('Calendar entry updated', 'success')
+  }
+
+  const deleteLocalEvent = (id) => {
+    const oldEv = (calendarEvents || []).find((e) => String(e.id) === String(id))
+    if (!oldEv || oldEv.source !== 'local') return
+    setCalendarEvents((prev) => prev.filter((e) => String(e.id) !== String(id)))
+    toast?.('Calendar entry deleted', 'success')
+  }
+
+  const moveLocalEvent = (id, newDateStr) => {
+    const ev = (calendarEvents || []).find((e) => String(e.id) === String(id))
+    if (!ev || !newDateStr || ev.source !== 'local') return
+    if (ev.start && ev.start.slice(0, 10) === newDateStr) return
+    const pad = (n) => String(n).padStart(2, '0')
+    const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    const time = ev.start ? ev.start.slice(11) : '09:00'
+    const newStart = `${newDateStr}T${time || '09:00'}`
+    let newEnd = ev.end
+    if (ev.start && ev.end) {
+      const durMs = new Date(ev.end) - new Date(ev.start)
+      newEnd = fmt(new Date(new Date(newStart).getTime() + durMs))
+    }
+    updateLocalEvent(id, { start: newStart, end: newEnd })
+  }
+
+  const allEvents = React.useMemo(() => (calendarEvents || []).map((ev) => ({ source: 'local', ...ev })), [calendarEvents])
+
+  const viewDays = React.useMemo(() => {
+    if (calView === 'week') return getWeekDays(offset, false)
+    if (calView === 'workweek') return getWeekDays(offset, true)
+    if (calView === 'month') return getMonthGrid(offset).days
+    if (calView === 'agenda') return getAgendaDays(offset)
+    return []
+  }, [calView, offset])
+
+  const eventsByDay = React.useMemo(() => {
+    const map = {}
+    viewDays.forEach((d) => { map[isoDate(d)] = [] })
+    allEvents.forEach((ev) => {
+      if (!ev.start) return
+      const k = ev.start.length === 10 ? ev.start : isoDate(new Date(ev.start))
+      if (map[k]) map[k].push(ev)
+    })
+    return map
+  }, [allEvents, viewDays])
+
+  const headerTitle = React.useMemo(() => {
+    if (calView === 'week') {
+      const days = getWeekDays(offset, false)
+      const opts = { month: 'short', day: 'numeric' }
+      return `${days[0].toLocaleDateString([], opts)} – ${days[6].toLocaleDateString([], { ...opts, year: 'numeric' })}`
+    }
+    if (calView === 'workweek') {
+      const days = getWeekDays(offset, true)
+      const opts = { month: 'short', day: 'numeric' }
+      return `${days[0].toLocaleDateString([], opts)} – ${days[4].toLocaleDateString([], { ...opts, year: 'numeric' })}`
+    }
+    if (calView === 'month') {
+      const { year, month } = getMonthGrid(offset)
+      return `${MONTH_NAMES[month]} ${year}`
+    }
+    if (calView === 'year') return `${new Date().getFullYear() + offset}`
+    if (calView === 'agenda') {
+      const ds = getAgendaDays(offset)
+      return `${MONTH_SHORT[ds[0].getMonth()]} – ${MONTH_SHORT[ds[ds.length - 1].getMonth()]} ${ds[ds.length - 1].getFullYear()}`
+    }
+    return ''
+  }, [calView, offset])
+
+  const isCurrentPeriod = offset === 0
+  const monthGrid = React.useMemo(() => (calView === 'month' ? getMonthGrid(offset) : null), [calView, offset])
+  const yearMonths = React.useMemo(() => (calView === 'year' ? getYearMonths(offset) : null), [calView, offset])
+  const agendaDays = React.useMemo(() => (calView === 'agenda' ? getAgendaDays(offset) : null), [calView, offset])
+  const weekDays = React.useMemo(() => ((calView === 'week' || calView === 'workweek') ? getWeekDays(offset, calView === 'workweek') : null), [calView, offset])
+
+  const handleViewChange = (v) => { setCalView(v); setOffset(0) }
+
+  return (
+    <div>
+      {selectedEvent && (
+        <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} onOpenPlanner={(ev) => onNavigatePlanner?.(ev)}
+          onUpdate={updateLocalEvent} onDelete={(id) => { deleteLocalEvent(id); setSelectedEvent(null) }} />
+      )}
+
+      <div className="page-head">
+        <div>
+          <h1>Calendar</h1>
+          <div className="sub">{headerTitle}</div>
+        </div>
+        <div className="page-head-actions" style={{ gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', background: 'var(--surface-2)', borderRadius: 10, border: '1px solid var(--border)', padding: '3px 4px', gap: 2 }}>
+            {VIEWS.map((v) => (
+              <button key={v.id} className={`cal-view-btn${calView === v.id ? ' active' : ''}`} onClick={() => handleViewChange(v.id)}>
+                {v.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '3px 4px', background: 'var(--surface-2)', borderRadius: 10, border: '1px solid var(--border)' }}>
+            <button className="cal-nav-btn" onClick={() => setOffset((v) => v - 1)} title="Previous">
+              <Icon name="chevron-left" size={14} />
+            </button>
+            <button onClick={() => setOffset(0)}
+              style={{ height: 28, padding: '0 12px', borderRadius: 7, border: 'none', cursor: 'pointer', background: isCurrentPeriod ? 'var(--accent)' : 'transparent', color: isCurrentPeriod ? 'var(--accent-fg)' : 'var(--text-muted)', fontSize: 12.5, fontWeight: 600 }}>
+              Today
+            </button>
+            <button className="cal-nav-btn" onClick={() => setOffset((v) => v + 1)} title="Next">
+              <Icon name="chevron-right" size={14} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {(calView === 'week' || calView === 'workweek') && weekDays && (
+        <WeekGrid days={weekDays} eventsByDay={eventsByDay} today={today} isCurrentPeriod={isCurrentPeriod} nowPx={nowPx}
+          onEventClick={setSelectedEvent} scrollRef={scrollRef} onMoveEvent={moveLocalEvent} onUpdateEvent={updateLocalEvent} onNewGoogleEvent={null} />
+      )}
+      {calView === 'month' && monthGrid && (
+        <MonthView eventsByDay={eventsByDay} monthGrid={monthGrid} today={today} onEventClick={setSelectedEvent} onMoveEvent={moveLocalEvent} />
+      )}
+      {calView === 'year' && (
+        <YearView year={new Date().getFullYear() + offset} allEvents={allEvents} today={today}
+          onDayClick={(key) => {
+            const d = new Date(key)
+            const now = new Date()
+            const diffMonths = (d.getFullYear() - now.getFullYear()) * 12 + (d.getMonth() - now.getMonth())
+            handleViewChange('month'); setOffset(diffMonths)
+          }} />
+      )}
+      {calView === 'agenda' && agendaDays && (
+        <AgendaView agendaDays={agendaDays} eventsByDay={eventsByDay} today={today} onEventClick={setSelectedEvent} />
+      )}
     </div>
   )
 }
