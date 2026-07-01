@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from 'vitest'
-import { buildAuthUrl, exchangeCode, refreshAccessToken } from './google.cjs'
+import { buildAuthUrl, exchangeCode, refreshAccessToken } from './endpoints.cjs'
 
 const cfg = {
   clientId: 'cid', clientSecret: 'secret',
@@ -56,5 +56,38 @@ describe('refreshAccessToken', () => {
     expect(body.get('grant_type')).toBe('refresh_token')
     expect(body.get('refresh_token')).toBe('RT')
     expect(out.accessToken).toBe('AT2')
+  })
+})
+
+describe('public client (no secret)', () => {
+  it('omits client_secret when cfg.clientSecret is empty', async () => {
+    const publicCfg = { ...cfg, clientSecret: '' }
+    const fetchImpl = vi.fn(async () => ({ ok: true, json: async () => ({ access_token: 'AT', refresh_token: 'RT', expires_in: 3600 }) }))
+    await exchangeCode(publicCfg, { code: 'C', verifier: 'V', redirectUri: 'x' }, fetchImpl)
+    const body = fetchImpl.mock.calls[0][1].body
+    expect(body.has('client_secret')).toBe(false)
+    expect(body.get('client_id')).toBe('cid')
+  })
+
+  it('includes client_secret when set', async () => {
+    const fetchImpl = vi.fn(async () => ({ ok: true, json: async () => ({ access_token: 'AT', expires_in: 3600 }) }))
+    await exchangeCode(cfg, { code: 'C', verifier: 'V', redirectUri: 'x' }, fetchImpl)
+    expect(fetchImpl.mock.calls[0][1].body.get('client_secret')).toBe('secret')
+  })
+})
+
+describe('refreshAccessToken rotation', () => {
+  it('returns a rotated refreshToken when the response includes one', async () => {
+    const fetchImpl = vi.fn(async () => ({ ok: true, json: async () => ({ access_token: 'AT2', refresh_token: 'RT2', expires_in: 3600 }) }))
+    const out = await refreshAccessToken(cfg, 'RT', fetchImpl)
+    expect(out.accessToken).toBe('AT2')
+    expect(out.refreshToken).toBe('RT2')
+  })
+
+  it('omits refreshToken when the response has none', async () => {
+    const fetchImpl = vi.fn(async () => ({ ok: true, json: async () => ({ access_token: 'AT2', expires_in: 3600 }) }))
+    const out = await refreshAccessToken(cfg, 'RT', fetchImpl)
+    expect(out.accessToken).toBe('AT2')
+    expect('refreshToken' in out).toBe(false)
   })
 })

@@ -4,7 +4,7 @@ const defaultLog = require('electron-log');
 const defaultConfig = require('../oauth/config.cjs');
 const pkce = require('../oauth/pkce.cjs');
 const loopback = require('../oauth/loopback.cjs');
-const google = require('../oauth/google.cjs');
+const google = require('../oauth/endpoints.cjs');
 const { withLogging } = require('./withLogging.cjs');
 
 function register(ipcMain, deps = {}) {
