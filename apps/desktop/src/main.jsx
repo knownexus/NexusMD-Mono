@@ -1320,6 +1320,19 @@ function App() {
   }, [])
 
   React.useEffect(() => {
+    const handler = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return
+      const idx = parseInt(e.key, 10)
+      if (idx >= 1 && idx <= 9) {
+        const target = NAV[idx - 1]
+        if (target) setView(target.id)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  React.useEffect(() => {
     refreshLeftRef.current = refreshInterval
     setRefreshLeft(refreshInterval)
   }, [refreshInterval])
@@ -1360,7 +1373,7 @@ function App() {
             <Icon name="dashboard" size={18} />
             <strong style={{ fontSize: 14 }}>NexusMD</strong>
           </div>
-          {NAV.map(item => (
+          {NAV.map((item, idx) => (
             <button
               key={item.id}
               onClick={() => setView(item.id)}
@@ -1384,6 +1397,11 @@ function App() {
                   padding: '0 5px',
                 }}>
                   {changeBadges[item.id] > 99 ? '99+' : changeBadges[item.id]}
+                </span>
+              )}
+              {tweaks.sidebar === 'labels' && idx < 9 && !changeBadges[item.id] && (
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-subtle)', opacity: 0.5 }}>
+                  {idx + 1}
                 </span>
               )}
             </button>
