@@ -8,8 +8,11 @@ import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/ui'
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'
 
 const PROVIDERS = {
-  gdrive:   { keySuffix: 'gdrive.auth',   api: '/api/google/auth', from: 'gdrive' },
-  onedrive: { keySuffix: 'onedrive.auth', api: '/api/ms/auth',     from: 'onedrive' },
+  gdrive:    { keySuffix: 'gdrive.auth',    api: '/api/google/auth', from: 'gdrive' },
+  onedrive:  { keySuffix: 'onedrive.auth',  api: '/api/ms/auth',     from: 'onedrive' },
+  ado:       { keySuffix: 'ado.auth',       api: '/api/ado/auth',    from: 'ado' },
+  microsoft: { keySuffix: 'microsoft.auth', api: '/api/ms/auth',     from: 'microsoft' },
+  github:    { keySuffix: 'github.auth',    api: '/api/github/auth', from: 'github' },
 }
 
 function read(suffix) {
@@ -55,8 +58,14 @@ function makeBinding(key) {
   }
 }
 
-// Map provider marker (?provider=gdrive|onedrive) to its config + storage suffix.
-const BY_FROM = { gdrive: PROVIDERS.gdrive, onedrive: PROVIDERS.onedrive }
+// Map provider marker (?provider=gdrive|onedrive|ado|microsoft|github) to its config + storage suffix.
+const BY_FROM = {
+  gdrive:    PROVIDERS.gdrive,
+  onedrive:  PROVIDERS.onedrive,
+  ado:       PROVIDERS.ado,
+  microsoft: PROVIDERS.microsoft,
+  github:    PROVIDERS.github,
+}
 
 // Redeem the one-time code delivered via the nexusmd:// deep link.
 async function redeem(url) {
@@ -87,3 +96,30 @@ export const desktopCloudProviders = [
   makeGoogleDriveProvider(makeBinding('gdrive')),
   makeOneDriveProvider(makeBinding('onedrive')),
 ]
+
+export function makeDesktopOAuthService(from) {
+  const cfg = PROVIDERS[from]
+  return {
+    isConnected: () => Boolean(read(cfg.keySuffix)?.accessToken),
+    async connect() {
+      try {
+        const returnUri = `nexusmd://oauth/${cfg.from}`
+        const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
+        if (!res.ok) { return }
+        const { url } = await res.json()
+        await window.electronAPI.openExternal(url)
+      } catch {}
+    },
+    async disconnect() {
+      clear(cfg.keySuffix)
+      window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
+    },
+    loadCreds() {
+      try { const k = getProfileKey('nexusmd.' + from + '.oauthCreds'); return k ? JSON.parse(localStorage.getItem(k) || '{}') : {} }
+      catch { return {} }
+    },
+    saveCreds(c) {
+      try { const k = getProfileKey('nexusmd.' + from + '.oauthCreds'); if (k) localStorage.setItem(k, JSON.stringify(c)) } catch {}
+    },
+  }
+}
