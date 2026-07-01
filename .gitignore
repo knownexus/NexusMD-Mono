@@ -45,3 +45,5 @@ npm-debug.log*
 
 # ASP.NET runtime stores (FilesController file store + SQLite profile registry)
 apps/web/server/data/profiles/
+
+.superpowers/

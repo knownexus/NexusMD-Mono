@@ -1,0 +1,231 @@
+import React from 'react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { FieldInput, MarkdownField, CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
+import * as adoWorkItemTypes from './ado-workitem-types.js'
+
+describe('FieldInput', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('renders a select with allowedValues for a picklist field', () => {
+    const def = { referenceName: 'Microsoft.VSTS.Common.Priority', name: 'Priority', dataType: 'integer', allowedValues: [1, 2, 3, 4], alwaysRequired: false }
+    render(<FieldInput def={def} value="" onChange={() => {}} team={[]} paths={{ areas: [], iterations: [] }} />)
+    const select = screen.getByLabelText('Priority')
+    expect(select.tagName).toBe('SELECT')
+    expect(screen.getAllByRole('option')).toHaveLength(5) // 4 values + blank
+  })
+
+  it('renders a team select for an identity field', () => {
+    const def = { referenceName: 'System.AssignedTo', name: 'Assigned To', dataType: 'string', allowedValues: [], alwaysRequired: false }
+    render(<FieldInput def={def} value="" onChange={() => {}} team={[{ id: '1', name: 'Alex' }]} paths={{ areas: [], iterations: [] }} />)
+    expect(screen.getByLabelText('Assigned To').tagName).toBe('SELECT')
+    expect(screen.getByText('Alex')).toBeTruthy()
+  })
+
+  it('renders a datalist-backed input for a treePath field', () => {
+    const def = { referenceName: 'System.AreaPath', name: 'Area Path', dataType: 'treePath', allowedValues: [], alwaysRequired: false }
+    render(<FieldInput def={def} value="" onChange={() => {}} team={[]} paths={{ areas: ['ProjectA\\Team1'], iterations: [] }} />)
+    const input = screen.getByLabelText('Area Path')
+    expect(input.getAttribute('list')).toBeTruthy()
+  })
+
+  it('calls onChange with the new value for a text field', () => {
+    const def = { referenceName: 'Custom.Notes', name: 'Notes', dataType: 'string', allowedValues: [], alwaysRequired: false }
+    const onChange = vi.fn()
+    render(<FieldInput def={def} value="" onChange={onChange} team={[]} paths={{ areas: [], iterations: [] }} />)
+    fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'hello' } })
+    expect(onChange).toHaveBeenCalledWith('hello')
+  })
+
+  it('shows a required marker when alwaysRequired is true', () => {
+    const def = { referenceName: 'System.Title', name: 'Title', dataType: 'string', allowedValues: [], alwaysRequired: true }
+    render(<FieldInput def={def} value="" onChange={() => {}} team={[]} paths={{ areas: [], iterations: [] }} />)
+    expect(screen.getByText('Title *')).toBeTruthy()
+  })
+})
+
+describe('MarkdownField', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('renders a textarea in Write mode by default and calls onChange on input', () => {
+    const onChange = vi.fn()
+    render(<MarkdownField label="Description" value="" onChange={onChange} />)
+    const textarea = screen.getByLabelText('Description')
+    fireEvent.change(textarea, { target: { value: '**bold**' } })
+    expect(onChange).toHaveBeenCalledWith('**bold**')
+  })
+
+  it('switches to Preview mode and renders converted markdown as HTML', () => {
+    render(<MarkdownField label="Description" value="**bold**" onChange={() => {}} />)
+    fireEvent.click(screen.getByText('Preview'))
+    expect(document.querySelector('strong')).toBeTruthy()
+  })
+
+  it('shows a required marker in the label when required', () => {
+    render(<MarkdownField label="Description" value="" onChange={() => {}} required />)
+    expect(screen.getByText('Description *')).toBeTruthy()
+  })
+})
+
+function stubDefs() {
+  vi.spyOn(adoWorkItemTypes, 'loadWorkItemTypeDefs').mockResolvedValue({
+    fields: [
+      { referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'System.AssignedTo', name: 'Assigned To', dataType: 'string', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'Custom.RiskLevel', name: 'Risk Level', dataType: 'string', allowedValues: ['Low', 'High'], alwaysRequired: false },
+    ],
+    paths: { areas: ['ProjectA'], iterations: ['ProjectA'] },
+    types: [{ name: 'Bug', referenceName: 'Microsoft.VSTS.WorkItemTypes.Bug', icon: '', color: '' }, { name: 'Task', referenceName: 'Microsoft.VSTS.WorkItemTypes.Task', icon: '', color: '' }],
+    fetchedAt: Date.now(),
+  })
+}
+
+describe('CreateWorkItemDrawer', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('renders nothing when closed', () => {
+    const { container } = render(<CreateWorkItemDrawer open={false} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    expect(container.querySelector('.drawer.open')).toBe(null)
+  })
+
+  it('loads type definitions on open and renders known + additional fields', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    expect(await screen.findByText('Description')).toBeTruthy()
+    expect(screen.getByText('Assigned To')).toBeTruthy()
+    expect(screen.getByText('Risk Level')).toBeTruthy()
+  })
+
+  it('reloads definitions when the Type selector changes', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    await screen.findByText('Description')
+    adoWorkItemTypes.loadWorkItemTypeDefs.mockClear()
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'Microsoft.VSTS.WorkItemTypes.Task' } })
+    expect(adoWorkItemTypes.loadWorkItemTypeDefs).toHaveBeenCalledWith('ProjectA', 'Microsoft.VSTS.WorkItemTypes.Task', expect.anything())
+  })
+
+  it('force-refreshes definitions when the refresh button is clicked', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    await screen.findByText('Description')
+    adoWorkItemTypes.loadWorkItemTypeDefs.mockClear()
+    fireEvent.click(screen.getByTitle('Refresh field definitions'))
+    expect(adoWorkItemTypes.loadWorkItemTypeDefs).toHaveBeenCalledWith(expect.any(String), expect.any(String), { forceRefresh: true })
+  })
+
+  it('shows an inline error when loading field definitions fails, and clears it on a successful retry', async () => {
+    const spy = vi.spyOn(adoWorkItemTypes, 'loadWorkItemTypeDefs').mockRejectedValueOnce(new Error('network down'))
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+
+    expect(await screen.findByText(/network down/)).toBeTruthy()
+    expect(screen.getByText(/click Refresh to retry/)).toBeTruthy()
+
+    spy.mockResolvedValueOnce({
+      fields: [{ referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false }],
+      paths: { areas: [], iterations: [] },
+      types: [{ name: 'Task', referenceName: 'Microsoft.VSTS.WorkItemTypes.Task', icon: '', color: '' }],
+      fetchedAt: Date.now(),
+    })
+    fireEvent.click(screen.getByTitle('Refresh field definitions'))
+
+    await screen.findByText('Description')
+    expect(screen.queryByText(/network down/)).toBe(null)
+  })
+})
+
+describe('CreateWorkItemDrawer submit', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('renders MarkdownField for main fields and FieldInput for rail fields, and calls onCreate with assembled fields', async () => {
+    stubDefs()
+    const onCreate = vi.fn().mockResolvedValue({ id: 42 })
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[{ id: '1', name: 'Alex' }]} onClose={() => {}} onCreate={onCreate} />)
+
+    await screen.findByLabelText('Description') // wait for defs to load before interacting with dynamic fields
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Fix login bug' } })
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'It crashes' } })
+    fireEvent.change(screen.getByLabelText('Assigned To'), { target: { value: 'Alex' } })
+
+    fireEvent.click(screen.getByText('Create'))
+
+    await screen.findByText(/Created/)
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      project: 'ProjectA',
+      type: 'Microsoft.VSTS.WorkItemTypes.Task',
+      fields: expect.objectContaining({
+        'System.Title': 'Fix login bug',
+        'System.Description': 'It crashes',
+        'System.AssignedTo': 'Alex',
+      }),
+      attachmentFiles: [],
+    }))
+  })
+
+  it('blocks submit and shows an inline error when Title is empty', async () => {
+    stubDefs()
+    const onCreate = vi.fn()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={onCreate} />)
+    await screen.findByLabelText('Description')
+    fireEvent.click(screen.getByText('Create'))
+    expect(await screen.findByText('Title is required.')).toBeTruthy()
+    expect(onCreate).not.toHaveBeenCalled()
+  })
+
+  it('stages a file for upload without calling the attachments API immediately', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={vi.fn().mockResolvedValue({ id: 1 })} />)
+    await screen.findByLabelText('Description')
+    const file = new File(['contents'], 'notes.txt', { type: 'text/plain' })
+    fireEvent.change(screen.getByLabelText('Attach files'), { target: { files: [file] } })
+    expect(screen.getByText('notes.txt')).toBeTruthy()
+  })
+})
+
+describe('CreateWorkItemDrawer links', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('stages a link and includes it in the onCreate payload', async () => {
+    stubDefs()
+    const onCreate = vi.fn().mockResolvedValue({ id: 1 })
+    render(<CreateWorkItemDrawer open={true} title="Has a parent" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={onCreate} />)
+    await screen.findByLabelText('Description')
+
+    fireEvent.change(screen.getByLabelText('Link type'), { target: { value: 'System.LinkTypes.Hierarchy-Reverse' } })
+    fireEvent.change(screen.getByLabelText('Linked work item ID'), { target: { value: '555' } })
+    fireEvent.click(screen.getByText('+ Add link'))
+
+    expect(screen.getByText('#555 (Parent)')).toBeTruthy()
+
+    fireEvent.click(screen.getByText('Create'))
+    await screen.findByText(/Created/)
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      links: [{ rel: 'System.LinkTypes.Hierarchy-Reverse', id: 555 }],
+    }))
+  })
+
+  it('removes a staged link', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="x" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={vi.fn().mockResolvedValue({ id: 1 })} />)
+    await screen.findByLabelText('Description')
+    fireEvent.change(screen.getByLabelText('Linked work item ID'), { target: { value: '555' } })
+    fireEvent.click(screen.getByText('+ Add link'))
+    fireEvent.click(screen.getByTitle('Remove link'))
+    expect(screen.queryByText('#555 (Parent)')).toBe(null)
+  })
+})

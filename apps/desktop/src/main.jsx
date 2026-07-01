@@ -16,7 +16,7 @@ import {
   OutlookService,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH } from './layout.js'
-import { DesktopSettings, SettField, settInputStyle } from './desktop-settings.jsx'
+import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { desktopCloudProviders, registerCloudDeepLink, makeDesktopOAuthService } from './cloud-auth.js'
@@ -26,6 +26,8 @@ import {
   clipboardAdapter, shareAdapter, notificationAdapter,
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
+import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
+import { submitNewWorkItem } from './ado-workitem-types.js'
 import { navigationAdapter }    from './adapters/navigation.js'
 import { authAdapter }          from './adapters/auth.js'
 import { fileAdapter }          from './adapters/file.js'
@@ -188,29 +190,8 @@ const desktopWorkItemSource = {
     const data = await res.json()
     return data.fields || {}
   },
-  async createWorkItem({ project, type, title, assignedTo, state, priority, tags, description, acceptanceCriteria, reproSteps, systemInfo, storyPoints, remainingWork }) {
-    const adapter = createAdoHttpAdapter()
-    const ops = [{ op: 'add', path: '/fields/System.Title', value: title }]
-    if (assignedTo)            ops.push({ op: 'add', path: '/fields/System.AssignedTo',                            value: assignedTo })
-    if (state)                 ops.push({ op: 'add', path: '/fields/System.State',                                  value: state })
-    if (priority != null)      ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority',                value: priority })
-    if (tags)                  ops.push({ op: 'add', path: '/fields/System.Tags',                                   value: tags })
-    if (description)           ops.push({ op: 'add', path: '/fields/System.Description',                           value: description })
-    if (acceptanceCriteria)    ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Common.AcceptanceCriteria',      value: acceptanceCriteria })
-    if (reproSteps)            ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.TCM.ReproSteps',                 value: reproSteps })
-    if (systemInfo)            ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.TCM.SystemInfo',                 value: systemInfo })
-    if (storyPoints != null)   ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints',         value: storyPoints })
-    if (remainingWork != null) ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.RemainingWork',       value: remainingWork })
-    const res = await adapter.fetch(
-      `${encodeURIComponent(project)}/_apis/wit/workitems/$${encodeURIComponent(type)}?api-version=7.0`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json-patch+json' },
-        body: JSON.stringify(ops),
-      },
-    )
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return res.json()
+  async createWorkItem(payload) {
+    return submitNewWorkItem(payload)
   },
 }
 
@@ -400,167 +381,6 @@ function DesktopDetailDrawer({ drawer, onClose, setItems }) {
       {kind === 'wi' && d && <WorkItemDetail id={d.id} project={d.project} />}
       {kind === 'pr' && d && <DesktopPRDetail pr={d} />}
     </Drawer>
-  )
-}
-
-function CreateWorkItemModal({ open, title: initialTitle, onClose }) {
-  const cfg = getAdoConfig()
-  const projects = cfg.projects || []
-  const types = ['Task', 'Bug', 'User Story', 'Feature']
-  const { data } = useNexusData()
-  const teamMembers = data?.TEAM || []
-
-  const [form, setForm]     = React.useState({})
-  const [status, setStatus] = React.useState('')
-  const [saving, setSaving] = React.useState(false)
-
-  React.useEffect(() => {
-    if (open) {
-      setForm({
-        title:    initialTitle || '',
-        project:  projects[0] || '',
-        type:     'Task',
-        assignee: '',
-        state:    'Active',
-        priority: '2',
-        tags:     '',
-        description: '',
-      })
-      setStatus('')
-    }
-  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (!open) return null
-
-  const upd = field => e => setForm(f => ({ ...f, [field]: e.target.value }))
-
-  const create = async () => {
-    if (!form.project) { setStatus('Select a project.'); return }
-    if (!form.title?.trim()) { setStatus('Enter a title.'); return }
-    setSaving(true)
-    setStatus('Creating…')
-    try {
-      await desktopWorkItemSource.createWorkItem({
-        project:            form.project,
-        type:               form.type,
-        title:              form.title.trim(),
-        assignedTo:         form.assignee || undefined,
-        state:              form.state,
-        priority:           form.priority ? parseInt(form.priority) : undefined,
-        tags:               form.tags || undefined,
-        description:        form.description || undefined,
-        acceptanceCriteria: form.acceptanceCriteria || undefined,
-        reproSteps:         form.reproSteps || undefined,
-        systemInfo:         form.systemInfo || undefined,
-        storyPoints:        form.storyPoints ? parseFloat(form.storyPoints) : undefined,
-        remainingWork:      form.remainingWork ? parseFloat(form.remainingWork) : undefined,
-      })
-      setStatus('Created!')
-      setTimeout(() => onClose(), 1200)
-    } catch (e) {
-      setStatus('Error: ' + e.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const isError     = status.startsWith('Error')
-  const isBug       = form.type === 'Bug'
-  const isUserStory = form.type === 'User Story'
-  const isFeature   = form.type === 'Feature'
-  const textareaStyle = { ...settInputStyle, resize: 'vertical', paddingTop: 8, paddingBottom: 8 }
-
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-      }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div style={{
-        background: 'var(--surface)', borderRadius: 10, padding: 24, width: 'min(480px, 92vw)',
-        maxHeight: '90vh', overflowY: 'auto',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: 14,
-      }}>
-        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Create Work Item</h2>
-        <SettField label="Title">
-          <input value={form.title || ''} onChange={upd('title')}
-            placeholder="Work item title" style={settInputStyle} autoFocus />
-        </SettField>
-        <SettField label="Project">
-          <select value={form.project || ''} onChange={upd('project')} style={settInputStyle}>
-            {projects.length === 0 && <option value="">No projects configured</option>}
-            {projects.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </SettField>
-        <SettField label="Type">
-          <select value={form.type || 'Task'} onChange={upd('type')} style={settInputStyle}>
-            {types.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </SettField>
-        <SettField label="Assignee">
-          <select value={form.assignee || ''} onChange={upd('assignee')} style={settInputStyle}>
-            <option value="">Unassigned</option>
-            {teamMembers.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-          </select>
-        </SettField>
-        <SettField label="State">
-          <select value={form.state || 'Active'} onChange={upd('state')} style={settInputStyle}>
-            {['New', 'Active', 'Resolved', 'Closed'].map(s => <option key={s}>{s}</option>)}
-          </select>
-        </SettField>
-        <SettField label="Priority">
-          <select value={form.priority || '2'} onChange={upd('priority')} style={settInputStyle}>
-            {[['1', 'Critical'], ['2', 'High'], ['3', 'Medium'], ['4', 'Low']].map(([v, l]) =>
-              <option key={v} value={v}>{l}</option>
-            )}
-          </select>
-        </SettField>
-        <SettField label="Tags (comma-separated)">
-          <input value={form.tags || ''} onChange={upd('tags')} style={settInputStyle} />
-        </SettField>
-        <SettField label="Description">
-          <textarea rows={4} value={form.description || ''} onChange={upd('description')} style={textareaStyle} />
-        </SettField>
-        {(isUserStory || isFeature) && (
-          <SettField label="Acceptance criteria">
-            <textarea rows={3} value={form.acceptanceCriteria || ''} onChange={upd('acceptanceCriteria')} style={textareaStyle} />
-          </SettField>
-        )}
-        {isBug && (
-          <>
-            <SettField label="Repro steps">
-              <textarea rows={3} value={form.reproSteps || ''} onChange={upd('reproSteps')} style={textareaStyle} />
-            </SettField>
-            <SettField label="System info">
-              <input value={form.systemInfo || ''} onChange={upd('systemInfo')} style={settInputStyle} />
-            </SettField>
-          </>
-        )}
-        {isUserStory && (
-          <SettField label="Story points">
-            <input type="number" min={0} value={form.storyPoints || ''} onChange={upd('storyPoints')} style={settInputStyle} />
-          </SettField>
-        )}
-        {form.type === 'Task' && (
-          <SettField label="Remaining work (hours)">
-            <input type="number" min={0} step={0.5} value={form.remainingWork || ''} onChange={upd('remainingWork')} style={settInputStyle} />
-          </SettField>
-        )}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="btn primary" onClick={create} disabled={saving || !projects.length}>
-            {saving ? 'Creating…' : 'Create'}
-          </button>
-          <button className="btn sm ghost" onClick={onClose} disabled={saving}>Cancel</button>
-          {status && (
-            <span style={{ fontSize: 12.5, color: isError ? 'var(--danger)' : 'var(--success)' }}>
-              {status}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -1143,7 +963,20 @@ function App() {
         </TweakSection>
       </TweaksPanel>
       <DesktopDetailDrawer drawer={drawer} onClose={() => setDrawer(null)} setItems={setLocalItems} />
-      <CreateWorkItemModal open={!!createWI} title={createWI?.title} onClose={() => setCreateWI(null)} />
+      <CreateWorkItemDrawer
+        open={!!createWI}
+        title={createWI?.title}
+        project={getAdoConfig().projects || []}
+        team={snapshot.TEAM || []}
+        onClose={() => setCreateWI(null)}
+        onCreate={async (payload) => {
+          const result = await desktopWorkItemSource.createWorkItem(payload)
+          if (result.warnings.length === 0) {
+            setTimeout(() => setCreateWI(null), 600)
+          }
+          return result
+        }}
+      />
       <DesktopProjectAreasModal open={areasOpen} onClose={() => setAreasOpen(false)} />
     </NexusDataProvider>
   )
