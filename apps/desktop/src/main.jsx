@@ -808,13 +808,13 @@ function DesktopAppCard() {
       <VsRow title="Start on login" desc="Launch NexusMD automatically when you log in">
         <PlToggle checked={loginItem} onChange={v => {
           setLoginItem(v)
-          window.electronAPI.setLoginItemEnabled?.(v).catch(() => {})
+          window.electronAPI.setLoginItemEnabled?.(v)?.catch(() => {})
         }} />
       </VsRow>
       <VsRow title="Close to tray" desc="Minimise to the system tray instead of quitting when the window is closed">
         <PlToggle checked={closeToTray} onChange={v => {
           setCloseToTray(v)
-          window.electronAPI.setCloseToTray?.(v).catch(() => {})
+          window.electronAPI.setCloseToTray?.(v)?.catch(() => {})
         }} />
       </VsRow>
       <VsRow title="Output folder" desc={outputPath || 'Default download location'}>
@@ -843,6 +843,7 @@ function DesktopQuickLinksCard({ links, onChange }) {
   }
   const save = () => {
     if (!form.label || !form.url) return
+    if (!/^https?:\/\//i.test(form.url)) return
     const next = editing === 'new'
       ? [...links, form]
       : links.map((l, i) => i === editing ? form : l)
@@ -973,7 +974,7 @@ function DesktopSettings({ tweaks, setTweak, refreshInterval, onRefreshIntervalC
 
 function DesktopGitHubPATRow() {
   const [pat, setPat] = React.useState(() => {
-    try { return localStorage.getItem('nexusmd.github.pat') || '' } catch { return '' }
+    try { return localStorage.getItem(getProfileKey('nexusmd.github.pat')) || '' } catch { return '' }
   })
   const [valid, setValid] = React.useState(true)
   const validate = (v) => /^gh[ps]_/.test(v) || /^github_pat_/.test(v) || v === ''
@@ -981,7 +982,7 @@ function DesktopGitHubPATRow() {
   const save = () => {
     if (!validate(pat)) { setValid(false); return }
     setValid(true)
-    try { localStorage.setItem('nexusmd.github.pat', pat) } catch {}
+    try { localStorage.setItem(getProfileKey('nexusmd.github.pat'), pat) } catch {}
     toast?.('GitHub PAT saved.', 'success')
   }
 
@@ -996,7 +997,7 @@ function DesktopGitHubPATRow() {
           placeholder="ghp_…"
         />
         <button className="btn sm" onClick={save}>Save</button>
-        {pat && <button className="btn sm ghost danger" onClick={() => { setPat(''); try { localStorage.removeItem('nexusmd.github.pat') } catch {} }}>Clear</button>}
+        {pat && <button className="btn sm ghost danger" onClick={() => { setPat(''); try { localStorage.removeItem(getProfileKey('nexusmd.github.pat')) } catch {} }}>Clear</button>}
       </div>
       {!valid && <span style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4, display: 'block' }}>Invalid PAT format</span>}
     </VsRow>
@@ -1005,11 +1006,11 @@ function DesktopGitHubPATRow() {
 
 function IntegrationsPanel() {
   const [ghRepos, setGhRepos] = React.useState(() => {
-    try { return localStorage.getItem('nexusmd.github.repos') || '' } catch { return '' }
+    try { return localStorage.getItem(getProfileKey('nexusmd.github.repos')) || '' } catch { return '' }
   })
 
   const saveGhRepos = () => {
-    try { localStorage.setItem('nexusmd.github.repos', ghRepos) } catch {}
+    try { localStorage.setItem(getProfileKey('nexusmd.github.repos'), ghRepos) } catch {}
   }
 
   const oauthServices = React.useMemo(() => [
@@ -1078,6 +1079,8 @@ function ViewBody({
   newItemIds = { work: new Set(), pr: new Set(), builds: new Set(), tests: new Set() },
   plannerData = {}, setPlannerData = () => {},
   plannerThemes = {}, setPlannerThemes = () => {},
+  refreshInterval = 300, onRefreshIntervalChange = () => {},
+  localItems = null, setLocalItems = () => {},
 }) {
   const { data } = useNexusData()
   const { activeProfile } = useProfile() || {}
@@ -1090,7 +1093,6 @@ function ViewBody({
   const [acknowledgedTests, setAcknowledgedTests]   = usePersistedState('nexusmd.tests.acknowledged', [])
   const [widgetWidths, setWidgetWidths] = usePersistedState('nexusmd.dash.widgetWidths', {})
   const [widgetHeights, setWidgetHeights] = usePersistedState('nexusmd.dash.widgetHeights', {})
-  const [localItems, setLocalItems] = React.useState(null)
   const items = localItems ?? (data.WORK_ITEMS || [])
 
   const [customTeam, setCustomTeam] = React.useState(() => {
@@ -1237,7 +1239,7 @@ function ViewBody({
       return <IntegrationsPanel />
     case 'settings':
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
-        refreshInterval={refreshInterval} onRefreshIntervalChange={setRefreshInterval} />
+        refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange} />
     default:
       return <Placeholder label={(NAV.find(n => n.id === view) || NAV[0]).label} />
   }
@@ -1341,6 +1343,7 @@ function App() {
   const [sidebarWidth, setSidebarWidth] = usePersistedState('nexusmd.sidebar.width', 220)
   const openItem = item => setDrawer({ kind: 'wi', data: item })
   const openPR   = pr   => setDrawer({ kind: 'pr', data: pr })
+  const [localItems, setLocalItems] = React.useState(null)
   const [tweaks, setTweaksState] = React.useState(loadTweaks)
 
   const setTweak = React.useCallback((key, value) => {
@@ -1446,6 +1449,7 @@ function App() {
   React.useEffect(() => {
     const handler = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
       const idx = parseInt(e.key, 10)
       if (idx >= 1 && idx <= 9) {
         const target = NAV[idx - 1]
@@ -1596,6 +1600,8 @@ function App() {
               newItemIds={newItemIds}
               plannerData={plannerData} setPlannerData={setPlannerData}
               plannerThemes={plannerThemes} setPlannerThemes={setPlannerThemes}
+              refreshInterval={refreshInterval} onRefreshIntervalChange={setRefreshInterval}
+              localItems={localItems} setLocalItems={setLocalItems}
             />
           </section>
         </main>
@@ -1620,7 +1626,7 @@ function App() {
             onClick={() => setTweak('widgetOrder', DASH_WIDGET_ORDER)}/>
         </TweakSection>
       </TweaksPanel>
-      <DesktopDetailDrawer drawer={drawer} onClose={() => setDrawer(null)} />
+      <DesktopDetailDrawer drawer={drawer} onClose={() => setDrawer(null)} setItems={setLocalItems} />
       <CreateWorkItemModal open={!!createWI} title={createWI?.title} onClose={() => setCreateWI(null)} />
       <DesktopProjectAreasModal open={areasOpen} onClose={() => setAreasOpen(false)} />
     </NexusDataProvider>
