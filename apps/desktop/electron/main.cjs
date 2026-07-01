@@ -150,6 +150,8 @@ function createMainWindow() {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
+    minWidth: 900,
+    minHeight: 600,
     show: false,
     title: 'Management Dashboard',
     icon: windowIconPath(isDark),
