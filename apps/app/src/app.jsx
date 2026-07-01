@@ -2886,7 +2886,7 @@ function PRDetail({ pr, onClose }) {
                                     {c.author?.displayName || 'Unknown'}
                                   </span>
                                   <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
-                                    {c.publishedDate ? timeAgo(c.publishedDate) + ' ago' : ''}
+                                    {c.publishedDate ? timeAgo(c.publishedDate) : ''}
                                   </span>
                                 </div>
                                 <div
