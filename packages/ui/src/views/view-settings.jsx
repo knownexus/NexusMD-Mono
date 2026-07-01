@@ -733,7 +733,7 @@ function OAuthServiceCard({ service }) {
       )}
       <VsRow
         title="Connection"
-        desc={desc || (connected ? `Connected to ${label}` : `Not connected to ${label}`)}>
+        desc={credFields.length ? (connected ? `Connected to ${label}` : `Not connected to ${label}`) : desc}>
         {connected ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="pill success"><span className="dot"></span>Connected</span>

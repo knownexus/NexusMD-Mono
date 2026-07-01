@@ -9,7 +9,7 @@ import { useProfile } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { desktopFileIO } from './file-io.js'
 import LogsCard from './logs-card.jsx'
-import { desktopCloudProviders, makeDesktopOAuthService, makeNativeGoogleBinding, makeNativeMicrosoftBinding } from './cloud-auth.js'
+import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBinding } from './cloud-auth.js'
 import { desktopSync } from './sync.js'
 import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
 
