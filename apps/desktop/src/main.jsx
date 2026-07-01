@@ -1338,6 +1338,7 @@ function App() {
   const [createWI, setCreateWI] = React.useState(null)
   const [areasOpen, setAreasOpen] = React.useState(false)
   const [drawer, setDrawer] = React.useState(null)
+  const [sidebarWidth, setSidebarWidth] = usePersistedState('nexusmd.sidebar.width', 220)
   const openItem = item => setDrawer({ kind: 'wi', data: item })
   const openPR   = pr   => setDrawer({ kind: 'pr', data: pr })
   const [tweaks, setTweaksState] = React.useState(loadTweaks)
@@ -1488,9 +1489,9 @@ function App() {
       <div data-density={tweaks.density} data-sidebar={tweaks.sidebar}
         style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
         <aside style={{
-          width: 220, flexShrink: 0, borderRight: '1px solid var(--border)',
+          width: sidebarWidth, minWidth: sidebarWidth, flexShrink: 0, borderRight: '1px solid var(--border)',
           padding: '14px 10px', display: 'flex', flexDirection: 'column', gap: 2,
-          background: 'var(--surface, transparent)',
+          background: 'var(--surface, transparent)', position: 'relative',
         }}>
           <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px 14px' }}>
             <Icon name="dashboard" size={18} />
@@ -1529,6 +1530,24 @@ function App() {
               )}
             </button>
           ))}
+          <div
+            style={{ position: 'absolute', top: 0, right: -3, width: 6, height: '100%', cursor: 'col-resize', zIndex: 10 }}
+            onMouseDown={e => {
+              e.preventDefault()
+              const startX = e.clientX
+              const startW = sidebarWidth
+              const onMove = (me) => {
+                const next = Math.max(160, Math.min(320, startW + me.clientX - startX))
+                setSidebarWidth(next)
+              }
+              const onUp = () => {
+                window.removeEventListener('mousemove', onMove)
+                window.removeEventListener('mouseup', onUp)
+              }
+              window.addEventListener('mousemove', onMove)
+              window.addEventListener('mouseup', onUp)
+            }}
+          />
         </aside>
 
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
