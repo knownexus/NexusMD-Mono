@@ -153,6 +153,13 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
     load(projectsList[0] || '', DEFAULT_TYPE_REF)
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [attachmentFiles, setAttachmentFiles] = React.useState([])
+  const [links, setLinks] = React.useState([])
+  const [linkRel, setLinkRel] = React.useState(LINK_TYPES[0].rel)
+  const [linkId, setLinkId] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
+  const [titleError, setTitleError] = React.useState('')
+
   if (!open) return null
 
   const typeName = (defs?.types || []).find((t) => t.referenceName === typeRef)?.name || 'Work Item'
@@ -165,13 +172,6 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
   const additionalFields = fields.filter((f) => fieldGroup(f) === 'additional')
 
   const setFieldValue = (refName, v) => setValues((prev) => ({ ...prev, [refName]: v }))
-
-  const [attachmentFiles, setAttachmentFiles] = React.useState([])
-  const [links, setLinks] = React.useState([])
-  const [linkRel, setLinkRel] = React.useState(LINK_TYPES[0].rel)
-  const [linkId, setLinkId] = React.useState('')
-  const [saving, setSaving] = React.useState(false)
-  const [titleError, setTitleError] = React.useState('')
 
   const submit = async () => {
     if (!wiTitle.trim()) { setTitleError('Title is required.'); return }
