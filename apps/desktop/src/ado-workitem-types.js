@@ -89,3 +89,73 @@ export async function loadWorkItemTypeDefs(project, type, { forceRefresh = false
   setCachedDefs(project, type, defs)
   return defs
 }
+
+const HTML_FIELDS = new Set([
+  'System.Description',
+  'Microsoft.VSTS.Common.AcceptanceCriteria',
+  'Microsoft.VSTS.TCM.ReproSteps',
+  'Microsoft.VSTS.TCM.SystemInfo',
+])
+
+const KNOWN_FIELD_GROUPS = {
+  'System.AssignedTo': 'status',
+  'System.State': 'status',
+  'System.Reason': 'status',
+  'System.AreaPath': 'classification',
+  'System.IterationPath': 'classification',
+  'Microsoft.VSTS.Common.Priority': 'classification',
+  'Microsoft.VSTS.Common.Severity': 'classification',
+  'System.Tags': 'tags',
+}
+
+export function fieldBucket(field) {
+  if (HTML_FIELDS.has(field.referenceName) || field.dataType === 'html') return 'html'
+  if (field.referenceName === 'System.AreaPath' || field.referenceName === 'System.IterationPath' || field.dataType === 'treePath') return 'treePath'
+  if (field.referenceName === 'System.AssignedTo' || field.dataType === 'identity') return 'identity'
+  if (field.allowedValues && field.allowedValues.length > 0) return 'picklist'
+  if (field.dataType === 'dateTime') return 'dateTime'
+  if (field.dataType === 'boolean') return 'boolean'
+  if (field.dataType === 'integer' || field.dataType === 'double') return 'number'
+  return 'text'
+}
+
+export function fieldGroup(field) {
+  if (KNOWN_FIELD_GROUPS[field.referenceName]) return KNOWN_FIELD_GROUPS[field.referenceName]
+  if (field.referenceName.startsWith('Microsoft.VSTS.Scheduling.')) return 'planning'
+  if (fieldBucket(field) === 'html') return 'main'
+  return 'additional'
+}
+
+export const LINK_TYPES = [
+  { label: 'Parent', rel: 'System.LinkTypes.Hierarchy-Reverse' },
+  { label: 'Child', rel: 'System.LinkTypes.Hierarchy-Forward' },
+  { label: 'Related', rel: 'System.LinkTypes.Related' },
+  { label: 'Predecessor', rel: 'System.LinkTypes.Dependency-Reverse' },
+  { label: 'Successor', rel: 'System.LinkTypes.Dependency-Forward' },
+  { label: 'Duplicate', rel: 'System.LinkTypes.Duplicate-Forward' },
+  { label: 'Duplicate Of', rel: 'System.LinkTypes.Duplicate-Reverse' },
+]
+
+export function buildFieldPatchOps(fields) {
+  return Object.entries(fields).map(([referenceName, value]) => ({
+    op: 'add',
+    path: `/fields/${referenceName}`,
+    value,
+  }))
+}
+
+export function buildAttachmentRelationOps(attachmentUrls) {
+  return attachmentUrls.map((url) => ({
+    op: 'add',
+    path: '/relations/-',
+    value: { rel: 'AttachedFile', url },
+  }))
+}
+
+export function buildLinkRelationOps(links) {
+  return links.map(({ rel, id }) => ({
+    op: 'add',
+    path: '/relations/-',
+    value: { rel, url: `vstfs:///WorkItemTracking/WorkItem/${id}` },
+  }))
+}

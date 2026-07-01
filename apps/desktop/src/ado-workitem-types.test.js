@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { getCachedDefs, setCachedDefs, fetchWorkItemTypes, fetchProjectFieldTypes, fetchTypeFields, fetchClassificationPaths, loadWorkItemTypeDefs } from './ado-workitem-types.js'
+import { getCachedDefs, setCachedDefs, fetchWorkItemTypes, fetchProjectFieldTypes, fetchTypeFields, fetchClassificationPaths, loadWorkItemTypeDefs, fieldBucket, fieldGroup, LINK_TYPES, buildFieldPatchOps, buildAttachmentRelationOps, buildLinkRelationOps } from './ado-workitem-types.js'
 import { saveAdoConfig } from './ado-client.js'
 import { vi } from 'vitest'
 
@@ -143,5 +143,72 @@ describe('loadWorkItemTypeDefs', () => {
     })
     await loadWorkItemTypeDefs('ProjectA', 'Bug', { forceRefresh: true })
     expect(global.fetch).toHaveBeenCalled()
+  })
+})
+
+describe('fieldBucket', () => {
+  it('classifies known html fields', () => {
+    expect(fieldBucket({ referenceName: 'System.Description', dataType: 'html', allowedValues: [] })).toBe('html')
+  })
+  it('classifies area/iteration path fields as treePath', () => {
+    expect(fieldBucket({ referenceName: 'System.AreaPath', dataType: 'treePath', allowedValues: [] })).toBe('treePath')
+  })
+  it('classifies AssignedTo as identity', () => {
+    expect(fieldBucket({ referenceName: 'System.AssignedTo', dataType: 'string', allowedValues: [] })).toBe('identity')
+  })
+  it('classifies fields with allowedValues as picklist', () => {
+    expect(fieldBucket({ referenceName: 'Custom.Env', dataType: 'string', allowedValues: ['Dev', 'Prod'] })).toBe('picklist')
+  })
+  it('classifies integer/double as number, dateTime, boolean, and falls back to text', () => {
+    expect(fieldBucket({ referenceName: 'Microsoft.VSTS.Scheduling.RemainingWork', dataType: 'double', allowedValues: [] })).toBe('number')
+    expect(fieldBucket({ referenceName: 'Microsoft.VSTS.Scheduling.TargetDate', dataType: 'dateTime', allowedValues: [] })).toBe('dateTime')
+    expect(fieldBucket({ referenceName: 'Custom.Flag', dataType: 'boolean', allowedValues: [] })).toBe('boolean')
+    expect(fieldBucket({ referenceName: 'Custom.Notes', dataType: 'string', allowedValues: [] })).toBe('text')
+  })
+})
+
+describe('fieldGroup', () => {
+  it('groups known status/classification/planning/tags fields', () => {
+    expect(fieldGroup({ referenceName: 'System.AssignedTo', dataType: 'string', allowedValues: [] })).toBe('status')
+    expect(fieldGroup({ referenceName: 'System.AreaPath', dataType: 'treePath', allowedValues: [] })).toBe('classification')
+    expect(fieldGroup({ referenceName: 'Microsoft.VSTS.Scheduling.StoryPoints', dataType: 'double', allowedValues: [] })).toBe('planning')
+    expect(fieldGroup({ referenceName: 'System.Tags', dataType: 'string', allowedValues: [] })).toBe('tags')
+  })
+  it('groups html fields as main and everything unrecognized as additional', () => {
+    expect(fieldGroup({ referenceName: 'System.Description', dataType: 'html', allowedValues: [] })).toBe('main')
+    expect(fieldGroup({ referenceName: 'Custom.Whatever', dataType: 'string', allowedValues: [] })).toBe('additional')
+  })
+})
+
+describe('LINK_TYPES', () => {
+  it('exposes the seven ADO relation types with rel URNs', () => {
+    expect(LINK_TYPES).toHaveLength(7)
+    expect(LINK_TYPES.find((l) => l.label === 'Parent').rel).toBe('System.LinkTypes.Hierarchy-Reverse')
+    expect(LINK_TYPES.find((l) => l.label === 'Related').rel).toBe('System.LinkTypes.Related')
+  })
+})
+
+describe('buildFieldPatchOps', () => {
+  it('builds one add op per populated field', () => {
+    expect(buildFieldPatchOps({ 'System.Title': 'Fix bug', 'Microsoft.VSTS.Common.Priority': 2 })).toEqual([
+      { op: 'add', path: '/fields/System.Title', value: 'Fix bug' },
+      { op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: 2 },
+    ])
+  })
+})
+
+describe('buildAttachmentRelationOps', () => {
+  it('builds one AttachedFile relation op per url', () => {
+    expect(buildAttachmentRelationOps(['https://x/attachments/1'])).toEqual([
+      { op: 'add', path: '/relations/-', value: { rel: 'AttachedFile', url: 'https://x/attachments/1' } },
+    ])
+  })
+})
+
+describe('buildLinkRelationOps', () => {
+  it('builds one relation op per link with the vstfs URL format', () => {
+    expect(buildLinkRelationOps([{ rel: 'System.LinkTypes.Related', id: 1234 }])).toEqual([
+      { op: 'add', path: '/relations/-', value: { rel: 'System.LinkTypes.Related', url: 'vstfs:///WorkItemTracking/WorkItem/1234' } },
+    ])
   })
 })
