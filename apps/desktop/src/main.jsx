@@ -16,7 +16,7 @@ import {
   OutlookService,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH } from './layout.js'
-import { DesktopSettings, IntegrationsPanel, SettField, settInputStyle } from './desktop-settings.jsx'
+import { DesktopSettings, SettField, settInputStyle } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { desktopCloudProviders, registerCloudDeepLink, makeDesktopOAuthService } from './cloud-auth.js'
@@ -224,7 +224,6 @@ const NAV = [
   { id: 'triage',        label: 'Triage',         icon: 'work' },
   { id: 'planner',       label: 'Planner',        icon: 'planner' },
   { id: 'markdown',      label: 'Notes',          icon: 'pin' },
-  { id: 'integrations',  label: 'Integrations',   icon: 'lock' },
   { id: 'settings',      label: 'Settings',       icon: 'settings' },
 ]
 
@@ -728,8 +727,6 @@ function ViewBody({
     }
     case 'markdown':
       return <MarkdownViewer />
-    case 'integrations':
-      return <IntegrationsPanel />
     case 'settings':
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
         refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange}
