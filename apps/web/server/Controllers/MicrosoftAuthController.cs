@@ -11,7 +11,7 @@ namespace NexusMDWeb.Api.Controllers;
 [Route("api/ms/auth")]
 public class MicrosoftAuthController(IConfiguration config, ITokenExchanger exchanger, IOneTimeCodeStore otc) : ControllerBase
 {
-    private const string Scope = "openid email offline_access Files.ReadWrite";
+    private const string Scope = "openid email offline_access Files.ReadWrite Calendars.ReadWrite";
 
     private string Tenant => string.IsNullOrWhiteSpace(config["Microsoft:Tenant"]) ? "common" : config["Microsoft:Tenant"]!;
     private string AuthEndpoint  => $"https://login.microsoftonline.com/{Tenant}/oauth2/v2.0/authorize";

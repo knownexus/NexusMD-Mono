@@ -13,7 +13,6 @@ import {
   PlannerView, MarkdownViewer, plannerExportDocx,
   WorkItemDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
-  OutlookService,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH } from './layout.js'
 import { DesktopSettings } from './desktop-settings.jsx'
@@ -27,6 +26,8 @@ import {
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
+import { CalendarView } from './views/view-calendar.jsx'
+import { createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
 import { navigationAdapter }    from './adapters/navigation.js'
 import { authAdapter }          from './adapters/auth.js'
@@ -197,6 +198,7 @@ const desktopWorkItemSource = {
 
 const NAV = [
   { id: 'dashboard',     label: 'Dashboard',     icon: 'dashboard' },
+  { id: 'calendar',      label: 'Calendar',      icon: 'clock' },
   { id: 'work',          label: 'Work Items',     icon: 'work' },
   { id: 'prs',           label: 'Pull Requests',  icon: 'pr' },
   { id: 'builds',        label: 'Builds',         icon: 'build' },
@@ -405,6 +407,7 @@ function ViewBody({
   const [acknowledgedTests, setAcknowledgedTests]   = usePersistedState('nexusmd.tests.acknowledged', [])
   const [widgetWidths, setWidgetWidths] = usePersistedState('nexusmd.dash.widgetWidths', {})
   const [widgetHeights, setWidgetHeights] = usePersistedState('nexusmd.dash.widgetHeights', {})
+  const [calendarEvents, setCalendarEvents] = usePersistedState('nexusmd.calendar.events', [])
   const items = localItems ?? (data.WORK_ITEMS || [])
 
   const [customTeam, setCustomTeam] = React.useState(() => {
@@ -450,11 +453,15 @@ function ViewBody({
     start.setHours(10, 0, 0, 0)
     start.setDate(start.getDate() + 1)
     const end = new Date(start.getTime() + 60 * 60000)
-    if (OutlookService?.isConnected?.()) {
-      OutlookService.createEvent({
-        title: `1:1 with ${dev.name}`,
-        start: start.toISOString().slice(0, 16),
-        end:   end.toISOString().slice(0, 16),
+    const msAuth = makeDesktopOAuthService('microsoft')
+    if (msAuth.isConnected()) {
+      msAuth.getToken({}).then((token) => {
+        if (!token) return
+        return createCalendarEvent(token, {
+          title: `1:1 with ${dev.name}`,
+          start: toLocalDateTimeString(start),
+          end: toLocalDateTimeString(end),
+        })
       }).catch(console.error)
     }
     window.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: 'planner' }))
@@ -478,6 +485,14 @@ function ViewBody({
         />
       )
     }
+    case 'calendar':
+      return (
+        <CalendarView
+          calendarEvents={calendarEvents}
+          setCalendarEvents={setCalendarEvents}
+          onNavigatePlanner={() => window.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: 'planner' }))}
+        />
+      )
     case 'work':
       return (
         <WorkItemsView
