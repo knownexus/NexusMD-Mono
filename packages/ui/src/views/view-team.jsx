@@ -22,6 +22,8 @@ function getInitials(name) {
 
 function AddMemberModal({ open, onClose, onAdd }) {
   const { data: NexusMDData } = useNexusData()
+  const [search, setSearch] = useStateT('')
+  const [added, setAdded] = useStateT(new Set())
   const [name, setName] = useStateT('')
   const [role, setRole] = useStateT('Developer')
   const [tz, setTz] = useStateT('UTC')
@@ -33,29 +35,47 @@ function AddMemberModal({ open, onClose, onAdd }) {
     color: 'var(--text)', boxSizing: 'border-box',
   }
 
-  const reset = () => { setName(''); setRole('Developer'); setTz('UTC'); setError('') }
+  // Build contributor pool from PR authors + reviewers
+  const contributors = React.useMemo(() => {
+    const seen = new Set()
+    const teamNames = new Set((NexusMDData.TEAM || []).map(t => t.name))
+    const people = []
+    ;(NexusMDData.PRS || []).forEach(pr => {
+      const names = [
+        pr.authorName,
+        ...(pr.reviewerDetails || []).map(r => r.name),
+      ].filter(Boolean)
+      for (const n of names) {
+        if (!seen.has(n)) { seen.add(n); people.push({ name: n, onTeam: teamNames.has(n) }) }
+      }
+    })
+    return people.sort((a, b) => a.name.localeCompare(b.name))
+  }, [NexusMDData.TEAM, NexusMDData.PRS])
 
-  const handleAdd = () => {
+  const filtered = search
+    ? contributors.filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
+    : contributors
+
+  const reset = () => { setSearch(''); setAdded(new Set()); setName(''); setRole('Developer'); setTz('UTC'); setError('') }
+  const handleClose = () => { reset(); onClose() }
+
+  const addFromList = (contributor) => {
+    const id = slugifyLocal(contributor.name)
+    onAdd({ id, name: contributor.name, displayName: contributor.name, role: 'Developer',
+      initials: getInitials(contributor.name), tz: 'UTC', status: 'online', focus: 'Working…', isCustom: true })
+    setAdded(prev => new Set([...prev, contributor.name]))
+  }
+
+  const handleManualAdd = () => {
     const trimmed = name.trim()
     if (!trimmed) { setError('Name is required'); return }
     const id = slugifyLocal(trimmed)
     if ((NexusMDData.TEAM || []).find(t => t.id === id)) { setError(`"${trimmed}" is already in the team`); return }
-    onAdd({
-      id,
-      name: trimmed,
-      displayName: trimmed,
-      role: role.trim() || 'Developer',
-      initials: getInitials(trimmed),
-      tz: tz.trim() || 'UTC',
-      status: 'online',
-      focus: 'Working…',
-      isCustom: true,
-    })
-    reset()
+    onAdd({ id, name: trimmed, displayName: trimmed, role: role.trim() || 'Developer',
+      initials: getInitials(trimmed), tz: tz.trim() || 'UTC', status: 'online', focus: 'Working…', isCustom: true })
+    setName(''); setRole('Developer'); setTz('UTC'); setError('')
     onClose()
   }
-
-  const handleClose = () => { reset(); onClose() }
 
   if (!open) return null
   return (
@@ -65,19 +85,72 @@ function AddMemberModal({ open, onClose, onAdd }) {
     }} onClick={e => { if (e.target === e.currentTarget) handleClose() }}>
       <div style={{
         background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16,
-        boxShadow: 'var(--shadow-pop)', padding: 28, width: 400, maxWidth: '90vw',
-        display: 'flex', flexDirection: 'column', gap: 16,
+        boxShadow: 'var(--shadow-pop)', padding: 28, width: 480, maxWidth: '92vw',
+        display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '85vh', overflow: 'hidden',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em', flex: 1 }}>
             Add Team Member
           </h2>
           <button className="btn icon ghost sm" onClick={handleClose}><Icon name="x" size={14}/></button>
         </div>
 
-        <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-muted)', marginTop: -8 }}>
-          This member will only appear in your local dashboard and won't affect Azure DevOps.
-        </p>
+        {contributors.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                From Azure DevOps
+              </span>
+              <span style={{ fontSize: 11.5, color: 'var(--text-subtle)' }}>{contributors.length} contributors</span>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <Icon name="search" size={12} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)', pointerEvents: 'none' }}/>
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Filter contributors…"
+                style={{ ...inputStyle, paddingLeft: 28, background: 'var(--surface-2)' }}
+                autoFocus/>
+            </div>
+            <div style={{ overflowY: 'auto', maxHeight: 220, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)' }}>
+              {filtered.length === 0 && (
+                <div style={{ padding: '12px 14px', fontSize: 12.5, color: 'var(--text-subtle)' }}>No matches</div>
+              )}
+              {filtered.map(c => {
+                const isAdded = added.has(c.name)
+                const isOnTeam = c.onTeam
+                return (
+                  <div key={c.name} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                    borderBottom: '1px solid var(--border)', opacity: isOnTeam ? 0.5 : 1,
+                  }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: '50%', background: 'var(--accent-soft)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, fontWeight: 600, color: 'var(--accent)', flexShrink: 0,
+                    }}>{getInitials(c.name)}</div>
+                    <span style={{ flex: 1, fontSize: 13, color: 'var(--text)' }}>{c.name}</span>
+                    {isOnTeam ? (
+                      <span style={{ fontSize: 11.5, color: 'var(--text-subtle)' }}>On team</span>
+                    ) : isAdded ? (
+                      <span style={{ fontSize: 11.5, color: 'var(--success)' }}>Added</span>
+                    ) : (
+                      <button className="btn sm" onClick={() => addFromList(c)} style={{ flexShrink: 0 }}>
+                        + Add
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }}/>
+          <span style={{ fontSize: 11.5, color: 'var(--text-subtle)', whiteSpace: 'nowrap' }}>
+            {contributors.length > 0 ? 'Or add manually' : 'Add team member'}
+          </span>
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }}/>
+        </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -86,18 +159,19 @@ function AddMemberModal({ open, onClose, onAdd }) {
             </label>
             <input value={name} onChange={e => { setName(e.target.value); setError('') }}
               placeholder="Jane Smith" style={inputStyle}
-              onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
-              autoFocus/>
+              onKeyDown={e => { if (e.key === 'Enter') handleManualAdd() }}/>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Role</label>
-            <input value={role} onChange={e => setRole(e.target.value)}
-              placeholder="Developer" style={inputStyle}/>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Timezone</label>
-            <input value={tz} onChange={e => setTz(e.target.value)}
-              placeholder="UTC" style={inputStyle}/>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Role</label>
+              <input value={role} onChange={e => setRole(e.target.value)}
+                placeholder="Developer" style={inputStyle}/>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Timezone</label>
+              <input value={tz} onChange={e => setTz(e.target.value)}
+                placeholder="UTC" style={inputStyle}/>
+            </div>
           </div>
         </div>
 
@@ -107,9 +181,9 @@ function AddMemberModal({ open, onClose, onAdd }) {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-          <button className="btn ghost" onClick={handleClose}>Cancel</button>
-          <button className="btn primary" onClick={handleAdd}>Add member</button>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn ghost" onClick={handleClose}>{added.size > 0 ? 'Done' : 'Cancel'}</button>
+          <button className="btn primary" onClick={handleManualAdd} disabled={!name.trim()}>Add manually</button>
         </div>
       </div>
     </div>
