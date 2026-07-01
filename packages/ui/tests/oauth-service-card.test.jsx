@@ -18,5 +18,7 @@ describe('OAuthServiceCard without credFields', () => {
     expect(screen.getByRole('button', { name: /connect/i })).toBeTruthy()
     // No credential textboxes rendered
     expect(screen.queryByRole('textbox')).toBeNull()
+    // The service desc stays visible on the Connection row even without credFields
+    expect(screen.getByText('Google stuff')).toBeTruthy()
   })
 })

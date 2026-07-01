@@ -9,7 +9,7 @@ import { useProfile } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { desktopFileIO } from './file-io.js'
 import LogsCard from './logs-card.jsx'
-import { desktopCloudProviders, makeDesktopOAuthService } from './cloud-auth.js'
+import { desktopCloudProviders, makeDesktopOAuthService, makeNativeGoogleBinding, makeNativeMicrosoftBinding } from './cloud-auth.js'
 import { desktopSync } from './sync.js'
 import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
 
@@ -412,70 +412,38 @@ export function IntegrationsPanel() {
 
   const oauthServices = React.useMemo(() => [
     {
-      id: 'ado',
-      label: 'Azure DevOps',
-      icon: 'inbox',
-      desc: 'OAuth 2.0 — work items, PRs, pipelines',
-      ...makeDesktopOAuthService('ado'),
-      credFields: [
-        { key: 'clientId', label: 'Client ID', hint: 'From your Azure DevOps OAuth application' },
-        { key: 'clientSecret', label: 'Client Secret', secret: true },
-      ],
+      id: 'google',
+      label: 'Google',
+      icon: 'calendar',
+      desc: 'Google Calendar, Gmail, and Drive',
+      ...makeNativeGoogleBinding(),
     },
     {
       id: 'microsoft',
       label: 'Microsoft / Entra ID',
       icon: 'mail',
       desc: 'Sign in with Microsoft — OneDrive, Teams, Calendar',
-      ...makeDesktopOAuthService('microsoft'),
-      credFields: [
-        { key: 'clientId', label: 'Client ID (Application ID)', hint: 'From Azure portal → App registrations' },
-        { key: 'clientSecret', label: 'Client Secret', secret: true },
-      ],
+      ...makeNativeMicrosoftBinding(),
     },
-    {
-      id: 'gdrive',
-      label: 'Google',
-      icon: 'calendar',
-      desc: 'Google Calendar, Gmail, and Drive',
-      ...makeDesktopOAuthService('gdrive'),
-      credFields: [
-        { key: 'clientId', label: 'Client ID', hint: 'From Google Cloud Console → APIs & Services → Credentials' },
-        { key: 'clientSecret', label: 'Client Secret', secret: true },
-      ],
-    },
-    {
-      id: 'github',
-      label: 'GitHub',
-      icon: 'pr',
-      desc: 'GitHub OAuth App — pull requests and repo access',
-      ...makeDesktopOAuthService('github'),
-      credFields: [
-        { key: 'clientId', label: 'Client ID', hint: 'From GitHub → Settings → Developer settings → OAuth Apps' },
-        { key: 'clientSecret', label: 'Client Secret', secret: true },
-      ],
-      children: (
-        <React.Fragment>
-          <DesktopGitHubPATRow />
-          <VsRow title="Repositories" desc="owner/repo pairs, comma-separated">
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input
-                value={ghRepos}
-                onChange={e => setGhRepos(e.target.value)}
-                placeholder="myorg/backend, myorg/frontend"
-                style={{ width: 200, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
-              />
-              <button className="btn sm" onClick={saveGhRepos}>Save</button>
-            </div>
-          </VsRow>
-        </React.Fragment>
-      ),
-    },
-  ], [ghRepos])
+  ], [])
 
   return (
     <div style={{ padding: '24px 0' }}>
       <IntegrationsView services={oauthServices} />
+      <VsCard title="GitHub" icon="pr">
+        <DesktopGitHubPATRow />
+        <VsRow title="Repositories" desc="owner/repo pairs, comma-separated">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              value={ghRepos}
+              onChange={e => setGhRepos(e.target.value)}
+              placeholder="myorg/backend, myorg/frontend"
+              style={{ width: 200, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
+            />
+            <button className="btn sm" onClick={saveGhRepos}>Save</button>
+          </div>
+        </VsRow>
+      </VsCard>
     </div>
   )
 }

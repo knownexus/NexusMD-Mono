@@ -7,6 +7,8 @@ vi.mock('./profile-context.jsx', () => ({ useProfile: () => ({}) }))
 vi.mock('./cloud-auth.js', () => ({
   desktopCloudProviders: [],
   makeDesktopOAuthService: () => ({ isConnected: false, connect: vi.fn(), disconnect: vi.fn() }),
+  makeNativeGoogleBinding: () => ({ isConnected: () => false, connect: vi.fn(), disconnect: vi.fn() }),
+  makeNativeMicrosoftBinding: () => ({ isConnected: () => false, connect: vi.fn(), disconnect: vi.fn() }),
 }))
 vi.mock('./sync.js', () => ({ desktopSync: {} }))
 vi.mock('./file-io.js', () => ({ desktopFileIO: {} }))
