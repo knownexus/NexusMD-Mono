@@ -2557,6 +2557,23 @@ function PRDetail({ pr, onClose }) {
   const [posting, setPosting] = useState(false);
   const [uatPushing, setUatPushing] = useState(false);
   const [uatStatus, setUatStatus] = useState('');
+  const [threadState, setThreadState] = useState({ status: 'idle', threads: [], error: null });
+
+  useEffect(() => {
+    if (!pr.repoId || !pr.project) return;
+    setThreadState({ status: 'loading', threads: [], error: null });
+    adoGet(
+      `${encodeURIComponent(pr.project)}/_apis/git/repositories/${pr.repoId}/pullRequests/${pr.id}/threads?api-version=7.0`
+    )
+      .then(data => {
+        const threads = (data.value || []).filter(t =>
+          !t.isDeleted &&
+          (t.comments || []).some(c => c.commentType === 1 && !c.isDeleted)
+        );
+        setThreadState({ status: 'ok', threads, error: null });
+      })
+      .catch(e => setThreadState({ status: 'error', threads: [], error: e.message }));
+  }, [pr.id, pr.repoId, pr.project]);
 
   const isActive = pr.status === 'active' && !pr.draft;
   const canVote  = isActive && pr.repoId && pr.project && ME?.adoId;
