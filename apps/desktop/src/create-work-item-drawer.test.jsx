@@ -1,7 +1,8 @@
 import React from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { FieldInput, MarkdownField } from './create-work-item-drawer.jsx'
+import { FieldInput, MarkdownField, CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
+import * as adoWorkItemTypes from './ado-workitem-types.js'
 
 describe('FieldInput', () => {
   afterEach(() => {
@@ -69,5 +70,56 @@ describe('MarkdownField', () => {
   it('shows a required marker in the label when required', () => {
     render(<MarkdownField label="Description" value="" onChange={() => {}} required />)
     expect(screen.getByText('Description *')).toBeTruthy()
+  })
+})
+
+function stubDefs() {
+  vi.spyOn(adoWorkItemTypes, 'loadWorkItemTypeDefs').mockResolvedValue({
+    fields: [
+      { referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'System.AssignedTo', name: 'Assigned To', dataType: 'string', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'Custom.RiskLevel', name: 'Risk Level', dataType: 'string', allowedValues: ['Low', 'High'], alwaysRequired: false },
+    ],
+    paths: { areas: ['ProjectA'], iterations: ['ProjectA'] },
+    types: [{ name: 'Bug', referenceName: 'Microsoft.VSTS.WorkItemTypes.Bug', icon: '', color: '' }, { name: 'Task', referenceName: 'Microsoft.VSTS.WorkItemTypes.Task', icon: '', color: '' }],
+    fetchedAt: Date.now(),
+  })
+}
+
+describe('CreateWorkItemDrawer', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('renders nothing when closed', () => {
+    const { container } = render(<CreateWorkItemDrawer open={false} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    expect(container.querySelector('.drawer.open')).toBe(null)
+  })
+
+  it('loads type definitions on open and renders known + additional fields', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    expect(await screen.findByText('Description')).toBeTruthy()
+    expect(screen.getByText('Assigned To')).toBeTruthy()
+    expect(screen.getByText('Risk Level')).toBeTruthy()
+  })
+
+  it('reloads definitions when the Type selector changes', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    await screen.findByText('Description')
+    adoWorkItemTypes.loadWorkItemTypeDefs.mockClear()
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'Microsoft.VSTS.WorkItemTypes.Task' } })
+    expect(adoWorkItemTypes.loadWorkItemTypeDefs).toHaveBeenCalledWith('ProjectA', 'Microsoft.VSTS.WorkItemTypes.Task', expect.anything())
+  })
+
+  it('force-refreshes definitions when the refresh button is clicked', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    await screen.findByText('Description')
+    adoWorkItemTypes.loadWorkItemTypeDefs.mockClear()
+    fireEvent.click(screen.getByTitle('Refresh field definitions'))
+    expect(adoWorkItemTypes.loadWorkItemTypeDefs).toHaveBeenCalledWith(expect.any(String), expect.any(String), { forceRefresh: true })
   })
 })
