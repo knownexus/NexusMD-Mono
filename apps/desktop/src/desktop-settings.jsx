@@ -224,14 +224,12 @@ export function DesktopConfidentialCard() {
 }
 
 export function DesktopAppCard() {
-  const [loginItem, setLoginItem] = React.useState(false)
   const [closeToTray, setCloseToTray] = React.useState(true)
   const [outputPath, setOutputPath] = React.useState(() => {
     try { return localStorage.getItem('nexusmd.outputPath') || '' } catch { return '' }
   })
 
   React.useEffect(() => {
-    window.electronAPI?.getLoginItemEnabled?.().then(setLoginItem).catch(() => {})
     window.electronAPI?.getCloseToTray?.().then(setCloseToTray).catch(() => {})
   }, [])
 
@@ -251,12 +249,6 @@ export function DesktopAppCard() {
 
   return (
     <VsCard title="Desktop app" icon="dashboard">
-      <VsRow title="Start on login" desc="Launch NexusMD automatically when you log in">
-        <PlToggle checked={loginItem} onChange={v => {
-          setLoginItem(v)
-          window.electronAPI.setLoginItemEnabled?.(v)?.catch(() => {})
-        }} />
-      </VsRow>
       <VsRow title="Close to tray" desc="Minimise to the system tray instead of quitting when the window is closed">
         <PlToggle checked={closeToTray} onChange={v => {
           setCloseToTray(v)
