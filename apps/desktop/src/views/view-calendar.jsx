@@ -10,7 +10,7 @@ import {
   nowTopPx, todayStr, isoDate, MONTH_NAMES, MONTH_SHORT,
 } from '@nexusmd/ui'
 import { createGoogleCalendarEvent, isGoogleConnected, fetchGoogleCalendarEvents, deleteGoogleCalendarEvent } from '../google-calendar.js'
-import { fetchCalendarEvents, createCalendarEvent } from '../ms-graph-calendar.js'
+import { fetchCalendarEvents } from '../ms-graph-calendar.js'
 import { makeDesktopOAuthService } from '../cloud-auth.js'
 
 export function MicrosoftCalendarBanner({ connected, syncing, error, onRefresh }) {
