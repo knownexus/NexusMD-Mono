@@ -35,6 +35,7 @@ const deepLinkIpc    = require('./ipc/deepLink.cjs');
 const trayIpc        = require('./ipc/tray-ipc.cjs');
 const logsIpc        = require('./ipc/logs.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
+const { clampZoomFactor, nextZoom, ZOOM_DEFAULT } = require('./zoom.cjs')
 
 // ---------------------------------------------------------------------------
 // Single-instance lock
@@ -97,9 +98,9 @@ function buildAppMenu(win) {
     {
       label: 'View',
       submenu: [
-        { role: 'resetZoom' },
-        { role: 'zoomIn', accelerator: 'Ctrl+=' },
-        { role: 'zoomOut' },
+        { label: 'Reset Zoom', accelerator: 'CmdOrCtrl+0', click: () => applyZoom(win, ZOOM_DEFAULT) },
+        { label: 'Zoom In',    accelerator: 'CmdOrCtrl+=', click: () => applyZoom(win, nextZoom(win.webContents.getZoomFactor(), 'in')) },
+        { label: 'Zoom Out',   accelerator: 'CmdOrCtrl+-', click: () => applyZoom(win, nextZoom(win.webContents.getZoomFactor(), 'out')) },
         { type: 'separator' },
         { role: 'togglefullscreen' },
         ...(!app.isPackaged ? [{ type: 'separator' }, { role: 'toggleDevTools' }] : []),
@@ -135,6 +136,14 @@ function updateWindowIcon(win, isDark) {
   if (win && !win.isDestroyed()) win.setIcon(windowIconPath(isDark));
 }
 
+// Apply and persist a zoom factor for the given window.
+function applyZoom(win, factor) {
+  const f = clampZoomFactor(factor)
+  win.webContents.setZoomFactor(f)
+  prefs.zoomFactor = f
+  try { savePrefs(prefs) } catch { /* best-effort */ }
+}
+
 function createMainWindow() {
   const isDark = nativeTheme.shouldUseDarkColors;
 
@@ -167,6 +176,7 @@ function createMainWindow() {
   }
 
   win.webContents.on('did-finish-load', () => {
+    win.webContents.setZoomFactor(clampZoomFactor(prefs.zoomFactor ?? ZOOM_DEFAULT))
     win.webContents.insertCSS(`
       html { box-sizing: border-box; }
       .topbar, .sidebar-brand { -webkit-app-region: drag; }
@@ -195,6 +205,11 @@ function createMainWindow() {
       }
     `);
   });
+
+  // Ctrl+mouse-wheel zoom — step our own tracked factor so it stays clamped and persisted.
+  win.webContents.on('zoom-changed', (_e, direction) => {
+    applyZoom(win, nextZoom(win.webContents.getZoomFactor(), direction))
+  })
 
   win.once('ready-to-show', () => {
     win.show();
