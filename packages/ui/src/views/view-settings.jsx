@@ -11,6 +11,9 @@ import { PlFld, PlModal } from '../planner-chips.jsx';
 import { toast } from '../toast.jsx';
 import { hashPassword, loadConfidentialConfig, saveConfidentialConfig } from '../planner/planner-confidential.js';
 import { useProfile } from '../profile-context.jsx';
+import { useNexusData } from '../data-context.jsx';
+import { usePersisted } from '../app-components.jsx';
+import { reorderColumns, toggleColumnHidden, addManualColumn, removeAutoAdded, resetToDetected } from '@nexusmd/core';
 
 const { useState: useStateVS, useEffect: useEffectVS, useRef: useRefVS, useCallback: useCallbackVS } = React;
 
@@ -748,6 +751,171 @@ function IntegrationsView({ services }) {
   );
 }
 
+// ── Board Columns settings card ───────────────────────────────────
+// Self-contained: owns its own boardColumnConfig state (usePersisted) and
+// reads projects from useNexusData(). wiTypeStates comes from the cache key
+// written by the work-items view after it fetches ADO state lists.
+function BoardColumnsCard() {
+  const { data: { PROJECTS = [] } } = useNexusData();
+  const [boardColumnConfig, setBoardColumnConfig] = usePersisted('nexusmd.wi.boardColumns', {});
+  const wiTypeStates = React.useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('nexusmd.wi.wiTypeStates.cache') || '{}'); }
+    catch { return {}; }
+  }, []);
+
+  const useGlobal = PROJECTS.length <= 1;
+  const [selectedProject, setSelectedProject] = useStateVS(() => useGlobal ? '__global__' : (PROJECTS[0]?.id || '__global__'));
+  const [newColName, setNewColName] = useStateVS('');
+  const [dragIdx, setDragIdx] = useStateVS(null);
+  const [overIdx, setOverIdx] = useStateVS(null);
+
+  const projectKey = useGlobal ? '__global__' : selectedProject;
+  const entry = boardColumnConfig[projectKey] || { columns: [], autoAdded: [], hidden: [] };
+
+  const update = (fn) => setBoardColumnConfig(prev => fn(prev));
+
+  const onDragStart = (idx) => setDragIdx(idx);
+  const onDragOver = (e, idx) => { e.preventDefault(); setOverIdx(idx); };
+  const onDrop = (e, dropIdx) => {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === dropIdx) { setDragIdx(null); setOverIdx(null); return; }
+    const newOrder = [...entry.columns];
+    const [moved] = newOrder.splice(dragIdx, 1);
+    newOrder.splice(dropIdx, 0, moved);
+    update(c => reorderColumns(c, projectKey, newOrder));
+    setDragIdx(null); setOverIdx(null);
+  };
+  const onDragEnd = () => { setDragIdx(null); setOverIdx(null); };
+
+  const detectedStates = [...new Set(Object.values(wiTypeStates).flat())];
+
+  return (
+    <VsCard title="Board columns" icon="board">
+      {!useGlobal && PROJECTS.length > 1 && (
+        <VsRow title="Project" desc="Configure columns per project">
+          <select
+            value={selectedProject}
+            onChange={e => setSelectedProject(e.target.value)}
+            style={{ height: 30, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 13, color: 'var(--text)', cursor: 'pointer' }}
+          >
+            {PROJECTS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </VsRow>
+      )}
+
+      <VsFullRow
+        title="Columns"
+        desc="Drag to reorder · toggle to show/hide · ✕ to undo auto-detected columns"
+      >
+        {entry.columns.length === 0 && (
+          <p style={{ fontSize: 12.5, color: 'var(--text-subtle)', margin: 0 }}>
+            No columns configured yet — columns appear automatically after the board loads ADO states.
+          </p>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+          {entry.columns.map((col, idx) => {
+            const isHidden    = (entry.hidden || []).includes(col);
+            const isAutoAdded = (entry.autoAdded || []).includes(col);
+            const isDragging  = dragIdx === idx;
+            const isOver      = overIdx === idx && dragIdx !== null && dragIdx !== idx;
+            return (
+              <div
+                key={col}
+                draggable
+                onDragStart={() => onDragStart(idx)}
+                onDragOver={e => onDragOver(e, idx)}
+                onDrop={e => onDrop(e, idx)}
+                onDragEnd={onDragEnd}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                  borderRadius: 8, border: `1px solid ${isOver ? 'var(--accent-border)' : 'var(--border)'}`,
+                  background: isOver ? 'var(--accent-soft)' : isDragging ? 'var(--surface-2)' : 'var(--surface)',
+                  opacity: isDragging ? 0.5 : 1,
+                  transition: 'border-color .1s, background .1s',
+                  cursor: 'grab',
+                  userSelect: 'none',
+                }}
+              >
+                {/* Drag handle */}
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2, color: 'var(--text-subtle)', flexShrink: 0 }}>
+                  {[0,1].map(i => (
+                    <span key={i} style={{ display: 'flex', gap: 2 }}>
+                      <span style={{ width: 2.5, height: 2.5, borderRadius: '50%', background: 'currentColor' }}/>
+                      <span style={{ width: 2.5, height: 2.5, borderRadius: '50%', background: 'currentColor' }}/>
+                    </span>
+                  ))}
+                </span>
+
+                {/* Show/hide checkbox */}
+                <input
+                  type="checkbox"
+                  checked={!isHidden}
+                  onChange={e => update(c => toggleColumnHidden(c, projectKey, col, !e.target.checked))}
+                  style={{ cursor: 'pointer', accentColor: 'var(--accent)', flexShrink: 0 }}
+                  onClick={e => e.stopPropagation()}
+                />
+
+                {/* Column name */}
+                <span style={{ flex: 1, fontSize: 13, color: isHidden ? 'var(--text-subtle)' : 'var(--text)', textDecoration: isHidden ? 'line-through' : 'none' }}>
+                  {col}
+                </span>
+
+                {/* Auto badge + undo */}
+                {isAutoAdded && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    fontSize: 10.5, fontWeight: 600, color: 'var(--text-subtle)',
+                    background: 'var(--surface-2)', border: '1px solid var(--border)',
+                    borderRadius: 4, padding: '1px 6px',
+                  }}>
+                    Auto
+                    <button
+                      onClick={e => { e.stopPropagation(); update(c => removeAutoAdded(c, projectKey, col)); }}
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', lineHeight: 1 }}
+                      title="Undo auto-added (hides this column)"
+                    >✕</button>
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Add column input */}
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            const name = newColName.trim();
+            if (!name) return;
+            update(c => addManualColumn(c, projectKey, name));
+            setNewColName('');
+          }}
+          style={{ display: 'flex', gap: 6, marginTop: 4, width: '100%' }}
+        >
+          <input
+            value={newColName}
+            onChange={e => setNewColName(e.target.value)}
+            placeholder="Add column…"
+            style={{ flex: 1, padding: '5px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 13, color: 'var(--text)', fontFamily: 'var(--sans)' }}
+          />
+          <button type="submit" className="btn sm" disabled={!newColName.trim()}>Add</button>
+        </form>
+
+        {/* Reset link */}
+        {detectedStates.length > 0 && (
+          <button
+            type="button"
+            onClick={() => update(c => resetToDetected(c, projectKey, detectedStates))}
+            style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', fontSize: 12, cursor: 'pointer', padding: 0, textDecoration: 'underline', alignSelf: 'flex-start', marginTop: 2 }}
+          >
+            Reset to detected ADO states
+          </button>
+        )}
+      </VsFullRow>
+    </VsCard>
+  );
+}
+
 // ── Shared exports ────────────────────────────────────────────────
 export {
   PROFILE_COLORS,
@@ -755,4 +923,5 @@ export {
   VsPasswordModal, VsProfileEditor, VsProfiles,
   BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,
   OAuthServiceCard, IntegrationsView,
+  BoardColumnsCard,
 };
