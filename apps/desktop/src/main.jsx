@@ -116,6 +116,13 @@ async function refreshAdoData() {
     /* offline / not configured — keep cached */
   }
   finally { core._emit?.('data:updated') }
+  // Check GitHub token health — fires nexusmd:github-401 event if expired
+  try {
+    const ghService = makeDesktopOAuthService('github')
+    if (ghService?.getToken) {
+      await ghService.getToken({ force: true }).catch(() => {})
+    }
+  } catch {}
 }
 
 // Direct-to-ADO work item source for the desktop (no ASP.NET proxy available).
