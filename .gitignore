@@ -7,6 +7,7 @@ build/
 out/
 **/wwwroot/
 apps/web/server/wwwroot/
+publish/
 
 # .NET
 bin/
