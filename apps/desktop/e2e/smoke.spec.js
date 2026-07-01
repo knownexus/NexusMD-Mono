@@ -45,4 +45,39 @@ test.describe('desktop shell smoke', () => {
 
     await app.close()
   })
+
+  test('opens links as tabs in a shared link window', async () => {
+    const app = await electron.launch({ args: [appDir] })
+    const win = await app.firstWindow()
+    await win.waitForLoadState('domcontentloaded')
+
+    // Drive the link-window manager directly (same singleton main.cjs wires up
+    // to IPC) rather than depending on live ADO data being loaded in the UI.
+    const managerPath = resolve(appDir, 'electron/link-window/manager.cjs')
+    const openTab = (title) => app.evaluate((_electron, { path, title }) => {
+      require(path).openLink(`data:text/html,<title>${title}</title><body>${title}</body>`)
+    }, { path: managerPath, title })
+
+    await openTab('Tab One')
+    const tabStrip = await app.waitForEvent('window', {
+      predicate: (page) => page.url().endsWith('tab-strip.html'),
+    })
+    await tabStrip.waitForLoadState('domcontentloaded')
+    await expect(tabStrip.locator('.tab')).toHaveCount(1)
+
+    await openTab('Tab Two')
+    await expect(tabStrip.locator('.tab')).toHaveCount(2)
+
+    // Closing the active tab (Tab Two) falls back to the remaining tab.
+    await tabStrip.locator('.tab', { hasText: 'Tab Two' }).locator('.tab-close').click()
+    await expect(tabStrip.locator('.tab')).toHaveCount(1)
+    await expect(tabStrip.locator('.tab')).toContainText('Tab One')
+
+    // Closing the last tab closes the link window entirely.
+    const linkWindowClosed = tabStrip.waitForEvent('close')
+    await tabStrip.locator('.tab-close').click()
+    await linkWindowClosed
+
+    await app.close()
+  })
 })
