@@ -1,5 +1,6 @@
 // ado-workitem-types.js — caches ADO work item type definitions.
 import { getProfileKey } from './profile-keys.js'
+import { createAdoHttpAdapter } from './ado-client.js'
 
 const rawStorage = {
   get: (k) => localStorage.getItem(k),
@@ -21,4 +22,37 @@ export function getCachedDefs(project, type) {
 
 export function setCachedDefs(project, type, defs) {
   rawStorage.set(cacheKey(project, type), JSON.stringify(defs))
+}
+
+async function adoFetchJson(path) {
+  const adapter = createAdoHttpAdapter()
+  const res = await adapter.fetch(path)
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${path}`)
+  return res.json()
+}
+
+export async function fetchWorkItemTypes(project) {
+  const data = await adoFetchJson(`${encodeURIComponent(project)}/_apis/wit/workitemtypes?api-version=7.0`)
+  return (data.value || [])
+    .filter((t) => !t.isDisabled)
+    .map((t) => ({ name: t.name, referenceName: t.referenceName, icon: t.icon?.id || '', color: t.color || '' }))
+}
+
+export async function fetchProjectFieldTypes(project) {
+  const data = await adoFetchJson(`${encodeURIComponent(project)}/_apis/wit/fields?api-version=7.0`)
+  const map = {}
+  for (const f of data.value || []) map[f.referenceName] = f.type
+  return map
+}
+
+export async function fetchTypeFields(project, type, fieldTypeMap) {
+  const data = await adoFetchJson(`${encodeURIComponent(project)}/_apis/wit/workitemtypes/${encodeURIComponent(type)}/fields?api-version=7.0`)
+  return (data.value || []).map((f) => ({
+    referenceName: f.referenceName,
+    name: f.name,
+    alwaysRequired: !!f.alwaysRequired,
+    defaultValue: f.defaultValue ?? null,
+    allowedValues: f.allowedValues || [],
+    dataType: fieldTypeMap[f.referenceName] || 'string',
+  }))
 }
