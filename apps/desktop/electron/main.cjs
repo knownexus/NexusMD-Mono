@@ -208,9 +208,11 @@ function createMainWindow() {
     `);
   });
 
-  // Ctrl+mouse-wheel zoom — step our own tracked factor so it stays clamped and persisted.
+  // Ctrl+mouse-wheel zoom — step our own tracked factor (not getZoomFactor())
+  // so a single notch is exactly one step even if Electron has already applied
+  // its own wheel zoom before this fires, and so it stays clamped and persisted.
   win.webContents.on('zoom-changed', (_e, direction) => {
-    applyZoom(win, nextZoom(win.webContents.getZoomFactor(), direction))
+    applyZoom(win, nextZoom(prefs.zoomFactor ?? ZOOM_DEFAULT, direction))
   })
 
   win.once('ready-to-show', () => {
