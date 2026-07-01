@@ -18,12 +18,14 @@ builder.Services.AddSingleton<NexusMDWeb.Api.Services.OAuth.IOneTimeCodeStore,
 builder.Services.AddSingleton<NexusMDWeb.Api.Data.ProfileRepository>();
 builder.Services.AddSingleton<NexusMDWeb.Api.Services.ProfileService>();
 
-// Allow the Capacitor Android app to call the API.
+// Allow the Capacitor Android app to call the API. "nexus.app" is the
+// WebView's virtual hostname (capacitor.config.json); "nexusmd.app" is the
+// deployed API/web origin used as the desktop/app VITE_API_BASE default.
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("CapacitorApp", policy =>
     {
-        policy.WithOrigins("https://nexusmd.app")
+        policy.WithOrigins("https://nexusmd.app", "https://nexus.app")
               .WithHeaders("Content-Type", "Authorization", "X-Requested-With")
               .WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS");
     });
