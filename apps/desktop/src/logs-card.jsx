@@ -144,6 +144,7 @@ export default function LogsCard() {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                     {availableLevels.map(l => (
                       <button key={l} className="btn sm" onClick={() => toggleLevel(l)}
+                        aria-pressed={activeLevels.has(l)}
                         style={{
                           textTransform: 'uppercase', fontSize: 10, fontWeight: 700,
                           borderColor: LEVEL_COLOR[l], color: LEVEL_COLOR[l],

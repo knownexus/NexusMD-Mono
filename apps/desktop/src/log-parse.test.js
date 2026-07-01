@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseLog } from './log-parse.js'
-import { filterEntries } from './log-parse.js'
+import { parseLog, filterEntries } from './log-parse.js'
 
 describe('parseLog', () => {
   it('returns [] for empty or nullish input', () => {
