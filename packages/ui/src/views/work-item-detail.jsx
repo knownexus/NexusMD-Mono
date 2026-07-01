@@ -4,9 +4,8 @@ import React from 'react';
 // Renders Description, Acceptance Criteria, Repro Steps (HTML view + textarea edit)
 // and the ADO Discussion thread (read + reply).
 // Used by WIDetail in app.jsx and by TriageRow in view-triage.jsx.
-// Requires: icons.jsx (Icon), toast.jsx (toast), DOMPurify + marked (CDN).
+// Requires: icons.jsx (Icon), toast.jsx (toast), render-content.js (renderContent).
 
-import DOMPurify from 'dompurify';
 import { renderContent, sanitizeHtml, mdToHtml } from './render-content.js';
 import { Icon } from '../icons.jsx';
 import { toast } from '../toast.jsx';

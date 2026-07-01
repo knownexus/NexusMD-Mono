@@ -107,15 +107,14 @@ describe('renderContent', () => {
   it('returns HTML string for plain text (markdown path)', () => {
     // marked IS available as an npm dep in the test env
     const html = renderContent('**bold**')
-    expect(typeof html).toBe('string')
-    expect(html.length).toBeGreaterThan(0)
+    expect(html).toContain('<strong>')
   })
 
   it('strips structural wrappers and parses as markdown for div/p wrapped content', () => {
     const html = renderContent('<div><p>**bold**</p></div>')
     // Should go through the markdown path, not preserve the div/p
     expect(html).not.toContain('<div>')
-    expect(html).not.toContain('<p>**bold**</p>')
+    expect(html).toContain('<strong>')
   })
 
   it('preserves real HTML formatting (sanitized HTML path)', () => {
