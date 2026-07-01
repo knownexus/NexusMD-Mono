@@ -112,8 +112,7 @@ async function refreshAdoData() {
       { http: createAdoHttpAdapter(), storage: localStorageAdapter },
       { isRefresh: !!priorData, priorData },
     )
-  } catch (e) {
-    if (e?.status === 401 || e?.message?.includes('401')) window.dispatchEvent(new CustomEvent('nexusmd:github-401'))
+  } catch {
     /* offline / not configured — keep cached */
   }
   finally { core._emit?.('data:updated') }

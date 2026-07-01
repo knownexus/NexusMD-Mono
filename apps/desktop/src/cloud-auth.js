@@ -115,6 +115,29 @@ export function makeDesktopOAuthService(from) {
       clear(cfg.keySuffix)
       window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
     },
+    // Retrieve the stored access token, refreshing it via the backend if force=true.
+    // For the GitHub provider a 401 on refresh means the token is fully expired/revoked —
+    // fire nexusmd:github-401 so the App shell can show the re-auth banner.
+    async getToken({ force } = {}) {
+      const auth = read(cfg.keySuffix)
+      if (!auth?.accessToken) return null
+      if (!force) return auth.accessToken
+      try {
+        const res = await fetch(`${API_BASE}${cfg.api}/refresh`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: auth.refreshToken }),
+        })
+        if (!res.ok) {
+          if (cfg.from === 'github' && res.status === 401) {
+            window.dispatchEvent(new CustomEvent('nexusmd:github-401'))
+          }
+          return null
+        }
+        const { accessToken } = await res.json()
+        write(cfg.keySuffix, { ...auth, accessToken })
+        return accessToken
+      } catch { return null }
+    },
     async loadCreds() {
       try {
         const k = getProfileKey('nexusmd.' + from + '.oauthCreds')
