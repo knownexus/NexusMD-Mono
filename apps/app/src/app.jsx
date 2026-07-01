@@ -8,7 +8,7 @@ import { HelmData, HelmApi } from './data.jsx';
 import { useProfile, ProfileProvider } from './profile-context.jsx';
 import { useTweaks } from './tweaks-panel.jsx';
 import { getProfileKey } from './profile-keys.js';
-import { NexusDataProvider } from '@nexusmd/ui';
+import { NexusDataProvider, renderContent } from '@nexusmd/ui';
 import { adoWorkItemSource } from './work-item-source.js';
 import { registerCloudDeepLink, hydrateCloudTokens } from './cloud-auth.js';
 import { startAppAutoSync } from './sync.js';
@@ -2692,6 +2692,17 @@ function PRDetail({ pr, onClose }) {
       {/* ── Overview tab ─── */}
       {tab === 'overview' && (
         <div>
+          {/* Description */}
+          {pr.description && (
+            <div className="drawer-section">
+              <h4>Description</h4>
+              <div
+                className="wi-html-content"
+                style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)', overflowWrap: 'break-word' }}
+                dangerouslySetInnerHTML={{ __html: renderContent(pr.description) }}
+              />
+            </div>
+          )}
           {/* Reviewers with vote status */}
           {(pr.reviewerDetails||[]).length > 0 && (
             <div className="drawer-section">
