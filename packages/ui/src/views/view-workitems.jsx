@@ -7,7 +7,7 @@ import { Avatar, MenuButton, NotificationBanner, ProjectChip, TypeIcon, usePersi
 import { Icon } from '../icons.jsx';
 import { TriageExportButton, TriageStatusLine } from './triage.jsx';
 import { WorkItemDetail } from './work-item-detail.jsx';
-import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo } from '@nexusmd/core';
+import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 
 // Local aliases matching legacy global names used in this file
@@ -250,6 +250,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   const [excludedTags,       setExcludedTags]       = usePersisted('nexusmd.wi.tags.exc',           new Set());
   const [noTagsOnly,         setNoTagsOnly]         = usePersisted('nexusmd.wi.noTagsOnly',         false);
   const [showEmptyAssignees, setShowEmptyAssignees] = usePersisted('nexusmd.wi.showEmptyAssignees', false);
+  const [boardColumnConfig,  setBoardColumnConfig]  = usePersisted('nexusmd.wi.boardColumns',       {});
 
   const { PROJECTS, STATES } = NexusMDData;
   const TEAM = teamProp || NexusMDData.TEAM || [];
@@ -356,11 +357,35 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   const [wiTypeStates, setWiTypeStates] = useStateW({});
 
   React.useEffect(() => {
+    const cached = localStorage.getItem('nexusmd.wi.wiTypeStates.cache');
+    if (cached) { try { setWiTypeStates(JSON.parse(cached)); } catch (_) {} }
     fetch('/api/workitems/states')
       .then(r => r.ok ? r.json() : {})
-      .then(data => setWiTypeStates(data))
+      .then(data => { setWiTypeStates(data); localStorage.setItem('nexusmd.wi.wiTypeStates.cache', JSON.stringify(data)); })
       .catch(() => {});
   }, []);
+
+  React.useEffect(() => {
+    if (Object.keys(wiTypeStates).length === 0) return;
+    // Union all states from all work item types
+    const detectedStates = [...new Set(Object.values(wiTypeStates).flat())];
+    if (detectedStates.length === 0) return;
+
+    setBoardColumnConfig(prev => {
+      const useGlobal = PROJECTS.length <= 1;
+      if (useGlobal) {
+        return syncBoardColumns(prev, '__global__', detectedStates);
+      }
+      let next = prev;
+      PROJECTS.forEach(p => {
+        // Per-project: states from items in that project + global detected states
+        const projectItemStates = [...new Set(allItems.filter(w => w.project === p.id).map(w => w.state).filter(Boolean))];
+        const combined = [...new Set([...projectItemStates, ...detectedStates])];
+        next = syncBoardColumns(next, p.id, combined);
+      });
+      return next;
+    });
+  }, [wiTypeStates, PROJECTS, allItems]);
 
   const availableStates = useMemoW(() => {
     const itemStates = new Set(allItems.map(w => w.state).filter(Boolean));
@@ -451,10 +476,11 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   // items exist (or we haven't checked yet), kick off a load automatically.
   React.useEffect(() => {
     if (loadingMore) return;
+    if (loadMoreErr) return;
     if (filtered.length >= 300) return;
     if (totalMatched !== null && allItems.length >= totalMatched) return;
     doLoad();
-  }, [filtered.length, loadingMore, totalMatched, allItems.length, doLoad]);
+  }, [filtered.length, loadingMore, loadMoreErr, totalMatched, allItems.length, doLoad]);
 
   // Stats for chips
   const stateCounts = useMemoW(() => {
@@ -756,7 +782,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
                    updateItem={updateItem} onOpen={onOpen} team={TEAM}/>
         : <WIBoard items={filtered} updateItem={updateItem} moveState={moveState}
                    onOpen={onOpen} grouping={boardGrouping} team={TEAM} showEmptyAssignees={showEmptyAssignees}
-                   lanes={boardLanesFor(activeStates, STATES)}/>
+                   lanes={getActiveLanes(boardColumnConfig, activeProject, PROJECTS, BOARD_LANES)}/>
       }
 
       {view === 'table' && grouping !== 'none' && (
@@ -1251,18 +1277,8 @@ const BOARD_LANE_COLORS = {
 };
 const laneColor = (state) => BOARD_LANE_COLORS[state] || 'var(--text-muted)';
 
+// Fallback lane list used when no persisted board column config exists yet.
 const BOARD_LANES = ['Backlog', 'To Do', 'In Progress', 'In Review', 'Blocked', 'Done'];
-
-// Board swimlanes follow the State filter: when the user enables one or more states,
-// show exactly those lanes (ordered by the canonical state list); otherwise fall back
-// to the standard board lanes.
-function boardLanesFor(activeStates, allStates) {
-  if (!activeStates || activeStates.size === 0) return BOARD_LANES;
-  const ALL = allStates || [];
-  const ordered = ALL.filter(s => activeStates.has(s));
-  activeStates.forEach(s => { if (!ordered.includes(s)) ordered.push(s); });
-  return ordered;
-}
 
 const PRIORITY_LABELS = { 1: 'Critical', 2: 'High', 3: 'Medium', 4: 'Low' };
 
