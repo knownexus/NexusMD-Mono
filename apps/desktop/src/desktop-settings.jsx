@@ -488,43 +488,122 @@ export function IntegrationsPanel() {
   )
 }
 
+const SETTINGS_TABS = [
+  { id: 'profile',      label: 'Profile',      icon: 'team'      },
+  { id: 'appearance',   label: 'Appearance',   icon: 'sun'       },
+  { id: 'planner',      label: 'Planner',      icon: 'planner'   },
+  { id: 'profiles',     label: 'Profiles',     icon: 'more'      },
+  { id: 'confidential', label: 'Confidential', icon: 'lock'      },
+  { id: 'data',         label: 'Data & sync',  icon: 'inbox'     },
+  { id: 'integrations', label: 'Integrations', icon: 'lock'      },
+  { id: 'desktop',      label: 'Desktop',      icon: 'dashboard' },
+]
+
 export function DesktopSettings({ tweaks, setTweak, refreshInterval, onRefreshIntervalChange, onRefreshData }) {
   const profileApi = useProfile()
+  const [tab, setTab] = React.useState('profile')
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 }}>
-      <VsCard title="Appearance" icon="sun">
-        <VsRow title="Mode" desc="Toggle between your assigned light and dark themes">
-          <VsSeg value={tweaks.theme}
-            options={[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon']]}
-            onChange={v => setTweak('theme', v)} />
-        </VsRow>
-        <VsFullRow title="Light mode theme" desc="Palette used when light mode is active">
-          <ThemeChipPicker value={tweaks.lightTheme || 'parchment'} onChange={v => setTweak('lightTheme', v)} />
-        </VsFullRow>
-        <VsFullRow title="Dark mode theme" desc="Palette used when dark mode is active">
-          <ThemeChipPicker value={tweaks.darkTheme || 'cobalt'} onChange={v => setTweak('darkTheme', v)} />
-        </VsFullRow>
-      </VsCard>
-      <DesktopProfileCard />
-      <DesktopPlannerPrefsCard />
-      <DesktopConfidentialCard />
-      <DesktopAppCard />
-      <DesktopQuickLinksCard
-        links={tweaks.quickLinks || []}
-        onChange={links => setTweak('quickLinks', links)}
-      />
-      <AdoConnectionCard onRefreshData={onRefreshData} />
-      <VsProfiles profileApi={profileApi} />
-      <BackupRestoreCard fileIO={desktopFileIO} cloudProviders={desktopCloudProviders} />
-      <CloudSyncCard controller={desktopSync} providers={desktopCloudProviders} fileIO={desktopFileIO} />
-      <DesktopDataSyncCard refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange} />
-      <LogsCard />
-      <VsCard title="Project areas" icon="work">
-        <VsRow title="Manage areas" desc="Define project area categories used in triage and work-item classification">
-          <button className="btn sm ghost" onClick={() => window.dispatchEvent(new CustomEvent('nexusmd:openProjectAreas'))}>Open editor</button>
-        </VsRow>
-      </VsCard>
-      <BoardColumnsCard />
+    <div style={{ display: 'flex', height: '100%' }}>
+      <nav style={{
+        width: 160, flexShrink: 0,
+        display: 'flex', flexDirection: 'column', gap: 2,
+        padding: '16px 8px',
+        borderRight: '1px solid var(--border)',
+      }}>
+        {SETTINGS_TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 10px', borderRadius: 6, border: 'none',
+              background: tab === t.id ? 'var(--accent-soft)' : 'transparent',
+              color: tab === t.id ? 'var(--accent)' : 'var(--text)',
+              cursor: 'pointer', fontSize: 13,
+              fontWeight: tab === t.id ? 600 : 400,
+              textAlign: 'left', width: '100%',
+            }}
+          >
+            <Icon name={t.icon} size={14} />
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 }}>
+
+          {tab === 'profile' && (
+            <>
+              <DesktopProfileCard />
+              <VsCard title="Project areas" icon="work">
+                <VsRow title="Manage areas" desc="Define project area categories used in triage and work-item classification">
+                  <button className="btn sm ghost" onClick={() => window.dispatchEvent(new CustomEvent('nexusmd:openProjectAreas'))}>Open editor</button>
+                </VsRow>
+              </VsCard>
+            </>
+          )}
+
+          {tab === 'appearance' && (
+            <VsCard title="Appearance" icon="sun">
+              <VsRow title="Mode" desc="Toggle between your assigned light and dark themes">
+                <VsSeg value={tweaks.theme}
+                  options={[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon']]}
+                  onChange={v => setTweak('theme', v)} />
+              </VsRow>
+              <VsFullRow title="Light mode theme" desc="Palette used when light mode is active">
+                <ThemeChipPicker value={tweaks.lightTheme || 'parchment'} onChange={v => setTweak('lightTheme', v)} />
+              </VsFullRow>
+              <VsFullRow title="Dark mode theme" desc="Palette used when dark mode is active">
+                <ThemeChipPicker value={tweaks.darkTheme || 'cobalt'} onChange={v => setTweak('darkTheme', v)} />
+              </VsFullRow>
+            </VsCard>
+          )}
+
+          {tab === 'planner' && (
+            <>
+              <DesktopPlannerPrefsCard />
+              <BoardColumnsCard />
+            </>
+          )}
+
+          {tab === 'profiles' && (
+            <>
+              <VsProfiles profileApi={profileApi} />
+              <BackupRestoreCard fileIO={desktopFileIO} cloudProviders={desktopCloudProviders} />
+              <CloudSyncCard controller={desktopSync} providers={desktopCloudProviders} fileIO={desktopFileIO} />
+            </>
+          )}
+
+          {tab === 'confidential' && <DesktopConfidentialCard />}
+
+          {tab === 'data' && (
+            <>
+              <DesktopDataSyncCard refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange} />
+              <LogsCard />
+            </>
+          )}
+
+          {tab === 'integrations' && (
+            <>
+              <AdoConnectionCard onRefreshData={onRefreshData} />
+              <IntegrationsPanel />
+            </>
+          )}
+
+          {tab === 'desktop' && (
+            <>
+              <DesktopAppCard />
+              <DesktopQuickLinksCard
+                links={tweaks.quickLinks || []}
+                onChange={links => setTweak('quickLinks', links)}
+              />
+            </>
+          )}
+
+        </div>
+      </div>
     </div>
   )
 }
