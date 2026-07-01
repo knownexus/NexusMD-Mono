@@ -178,7 +178,11 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
     try {
       const fieldValues = { 'System.Title': wiTitle.trim(), ...values }
       const result = await onCreate({ project, type: typeRef, fields: fieldValues, attachmentFiles, links })
-      setStatus(`Created #${result.id}.`)
+      if (result.warnings && result.warnings.length > 0) {
+        setStatus(`Created #${result.id} — ${result.warnings.length} attachment(s)/link(s) failed: ${result.warnings.join('; ')}`)
+      } else {
+        setStatus(`Created #${result.id}.`)
+      }
     } catch (e) {
       setStatus('Error: ' + (e?.message || 'Failed to create'))
     } finally {
