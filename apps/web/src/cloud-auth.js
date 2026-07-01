@@ -31,13 +31,22 @@ function makeBinding(key) {
     isConnected: () => Boolean(read(cfg.keySuffix)?.accessToken),
     async connect() {
       try {
+        console.info(`[cloud-auth] Initiating ${key} OAuth connection`)
         const redirectUri = window.location.origin + '/?from=' + cfg.from
         const res = await fetch(`${cfg.api}/url?redirectUri=${encodeURIComponent(redirectUri)}`,
           { signal: AbortSignal.timeout(10_000) })
-        if (!res.ok) { toast?.(`${key} sign-in is not configured on the server.`, 'error'); return }
+        if (!res.ok) { 
+          console.warn(`[cloud-auth] ${key} sign-in not configured on server`)
+          toast?.(`${key} sign-in is not configured on the server.`, 'error')
+          return 
+        }
         const { url } = await res.json()
+        console.info(`[cloud-auth] Redirecting to ${key} OAuth provider`)
         window.location.href = url
-      } catch { toast?.(`Could not reach ${key} sign-in.`, 'error') }
+      } catch (err) { 
+        console.error(`[cloud-auth] Failed to initiate ${key} connection:`, err.message)
+        toast?.(`Could not reach ${key} sign-in.`, 'error') 
+      }
     },
     async disconnect() { clear(cfg.keySuffix) },
     async getToken({ force } = {}) {
@@ -60,6 +69,7 @@ function makeBinding(key) {
 
 // Exchange the ?from=<provider>&code=… redirect for tokens (runs on load).
 export async function handleCloudOAuthCallback() {
+  console.info('[cloud-auth] Handling OAuth callback')
   const params = new URLSearchParams(window.location.search)
   const from = params.get('from')
   const cfg = from && PROVIDERS[from]
@@ -73,12 +83,21 @@ export async function handleCloudOAuthCallback() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, redirectUri }), signal: AbortSignal.timeout(15_000),
     })
-    if (!res.ok) { toast?.(`${from} sign-in failed.`, 'error'); return }
+    if (!res.ok) { 
+      const errText = await res.text()
+      console.error(`[cloud-auth] ${from} callback failed: HTTP ${res.status} - ${errText}`)
+      toast?.(`${from} sign-in failed.`, 'error')
+      return 
+    }
     const { accessToken, refreshToken, email } = await res.json()
+    console.info(`[cloud-auth] ${from} OAuth successful, saved tokens`)
     write(cfg.keySuffix, { accessToken, refreshToken, ...(email ? { email } : {}) })
     toast?.(`${from === 'gdrive' ? 'Google Drive' : 'OneDrive'} connected.`, 'success')
     document.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: { view: 'settings', tab: 'profiles' } }))
-  } catch { toast?.(`${from} sign-in failed.`, 'error') }
+  } catch (err) { 
+    console.error(`[cloud-auth] OAuth exchange failed for ${from}:`, err.message)
+    toast?.(`${from} sign-in failed.`, 'error') 
+  }
 }
 
 export const webCloudProviders = [
@@ -92,13 +111,22 @@ export function makeWebOAuthService(from) {
     isConnected: () => Boolean(read(cfg.keySuffix)?.accessToken),
     async connect() {
       try {
+        console.info(`[cloud-auth] Initiating ${from} OAuth connection`)
         const redirectUri = window.location.origin + '/?from=' + cfg.from
         const res = await fetch(`${cfg.api}/url?redirectUri=${encodeURIComponent(redirectUri)}`,
           { signal: AbortSignal.timeout(10_000) })
-        if (!res.ok) { toast?.(`${from} sign-in is not configured on the server.`, 'error'); return }
+        if (!res.ok) { 
+          console.warn(`[cloud-auth] ${from} sign-in not configured on server`)
+          toast?.(`${from} sign-in is not configured on the server.`, 'error')
+          return 
+        }
         const { url } = await res.json()
+        console.info(`[cloud-auth] Redirecting to ${from} OAuth provider`)
         window.location.href = url
-      } catch { toast?.(`Could not reach ${from} sign-in.`, 'error') }
+      } catch (err) { 
+        console.error(`[cloud-auth] Failed to initiate ${from} connection:`, err.message)
+        toast?.(`Could not reach ${from} sign-in.`, 'error') 
+      }
     },
     async disconnect() {
       clear(cfg.keySuffix)

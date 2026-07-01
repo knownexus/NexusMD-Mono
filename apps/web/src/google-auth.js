@@ -55,6 +55,7 @@ async function getGoogleToken() {
 
 async function startGoogleOAuth() {
   try {
+    console.info('[google-auth] Exchanging Google OAuth code')
     const redirectUri = window.location.origin + '/?from=google';
     const res = await fetch(`/api/google/auth/url?redirectUri=${encodeURIComponent(redirectUri)}`, {
       signal: AbortSignal.timeout(10_000),
@@ -72,6 +73,7 @@ async function startGoogleOAuth() {
 
 // Called on page load — exchanges the OAuth code if present in the URL.
 async function handleGoogleOAuthCallback() {
+  console.info('[google-auth] Handling Google OAuth callback')
   const params = new URLSearchParams(window.location.search);
   if (params.get('from') !== 'google') return;
   const code = params.get('code');
@@ -89,10 +91,13 @@ async function handleGoogleOAuthCallback() {
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
+      const errText = await res.text();
+      console.error('[google-auth] Callback failed: HTTP', res.status, '-', errText);
       toast?.('Google sign-in failed. Please try again.', 'error');
       return;
     }
     const { accessToken, refreshToken } = await res.json();
+    console.info('[google-auth] Google OAuth successful, saved tokens')
     saveGoogleAuth({ accessToken, refreshToken });
     document.dispatchEvent(new CustomEvent('google:auth:changed', { detail: { connected: true } }));
     toast?.('Google account connected.', 'success');
