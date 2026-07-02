@@ -324,7 +324,7 @@ describe('CreateWorkItemDrawer tabs', () => {
     render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
     await screen.findByLabelText('Description')
 
-    fireEvent.click(screen.getByText('Links'))
+    fireEvent.click(screen.getByRole('button', { name: 'Links' }))
 
     expect(screen.getByLabelText('Link type').closest('[hidden]')).toBeNull()
     expect(screen.getByLabelText('Description').closest('[hidden]')).not.toBeNull()
