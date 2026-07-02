@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { effectiveSidebar, SIDEBAR_BREAKPOINT } from './layout.js'
+import { effectiveSidebar, SIDEBAR_BREAKPOINT, orderedNav } from './layout.js'
 
 describe('effectiveSidebar', () => {
   it('forces icons below the breakpoint regardless of preference', () => {
@@ -13,5 +13,23 @@ describe('effectiveSidebar', () => {
   })
   it('defaults to labels when preference is missing', () => {
     expect(effectiveSidebar(1400, undefined)).toBe('labels')
+  })
+})
+
+describe('orderedNav', () => {
+  const NAV = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+
+  it('orders items by navOrder', () => {
+    expect(orderedNav(['c', 'a', 'b'], NAV).map(i => i.id)).toEqual(['c', 'a', 'b'])
+  })
+  it('appends nav items missing from a stored order', () => {
+    expect(orderedNav(['b'], NAV).map(i => i.id)).toEqual(['b', 'a', 'c'])
+  })
+  it('drops stale ids not present in nav', () => {
+    expect(orderedNav(['gone', 'a', 'b', 'c'], NAV).map(i => i.id)).toEqual(['a', 'b', 'c'])
+  })
+  it('falls back to full nav order when navOrder is missing', () => {
+    expect(orderedNav(undefined, NAV).map(i => i.id)).toEqual(['a', 'b', 'c'])
+    expect(orderedNav([], NAV).map(i => i.id)).toEqual(['a', 'b', 'c'])
   })
 })
