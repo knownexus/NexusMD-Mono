@@ -72,7 +72,7 @@ export function Avatar({ who, size = 'sm', title }) {
  * getProfileKey (web: bare nexusmd key; app: profile-scoped helm key). On
  * viewports ≤600px the drawer goes full-width (the width style is dropped).
  */
-export function Drawer({ open, onClose, title, badges, children, actions }) {
+export function Drawer({ open, onClose, title, badges, children, actions, headerContent, defaultWidth = 560 }) {
   const { storage, getProfileKey, namespace } = useNexusData()
   const widthKey = getProfileKey(`${namespace}.ui.drawerWidth`)
   const DRAWER_MIN = 280
@@ -80,7 +80,7 @@ export function Drawer({ open, onClose, title, badges, children, actions }) {
   const drawerRef = useRef(null)
   const draggedW = useRef(null)
   const [drawerWidth, setDrawerWidth] = useState(() => {
-    const stored = parseInt(storage.getItem(widthKey) || '560', 10)
+    const stored = parseInt(storage.getItem(widthKey) || String(defaultWidth), 10)
     return Math.min(DRAWER_MAX, Math.max(DRAWER_MIN, stored))
   })
 
@@ -131,8 +131,7 @@ export function Drawer({ open, onClose, title, badges, children, actions }) {
       <div className={`drawer ${open ? 'open' : ''}`} ref={drawerRef} style={isPhone ? undefined : { width: drawerWidth }}>
         <div className="drawer-resize-handle" onMouseDown={onResizeStart}/>
         <div className="drawer-head">
-          <h2 className="truncate">{title}</h2>
-          {badges}
+          {headerContent || (<><h2 className="truncate">{title}</h2>{badges}</>)}
           <div className="spacer"/>
           {actions}
           <button className="btn icon ghost sm" onClick={onClose} title="Close (Esc)"><Icon name="x" size={14}/></button>

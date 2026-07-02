@@ -154,4 +154,25 @@ describe('pure presentational components', () => {
     )
     expect(container.querySelector('.drawer.open').style.width).toBe('2000px')
   })
+
+  it('Drawer renders headerContent instead of title/badges when provided', () => {
+    const value = { data: {}, storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} }, getProfileKey: (k) => k, namespace: 'nexusmd' }
+    const { container } = render(
+      <NexusDataProvider value={value}>
+        <Drawer open title="Should not show" headerContent={<span>Custom header</span>}><p>body</p></Drawer>
+      </NexusDataProvider>,
+    )
+    expect(container.textContent).toContain('Custom header')
+    expect(container.textContent).not.toContain('Should not show')
+  })
+
+  it('Drawer uses defaultWidth as the initial width when nothing is stored', () => {
+    const value = { data: {}, storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} }, getProfileKey: (k) => k, namespace: 'nexusmd' }
+    const { container } = render(
+      <NexusDataProvider value={value}>
+        <Drawer open title="X" defaultWidth={820} />
+      </NexusDataProvider>,
+    )
+    expect(container.querySelector('.drawer.open').style.width).toBe('820px')
+  })
 })
