@@ -1,7 +1,7 @@
 import React from 'react'
 import { mdToHtml, Drawer, TypeIcon, Icon } from '@nexusmd/ui'
 import { adoTypeToHelm } from '@nexusmd/core'
-import { fieldBucket, fieldGroup, LINK_TYPES } from './ado-workitem-types.js'
+import { fieldBucket, fieldGroup, LINK_TYPES, resolveTypeLayout } from './ado-workitem-types.js'
 import * as adoWorkItemTypesModule from './ado-workitem-types.js'
 import { SettField, settInputStyle } from './desktop-settings.jsx'
 
@@ -172,6 +172,7 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
   const tagsFields = fields.filter((f) => fieldGroup(f) === 'tags')
   const additionalFields = fields.filter((f) => fieldGroup(f) === 'additional')
   const stateField = fields.find((f) => f.referenceName === 'System.State')
+  const typeLayout = resolveTypeLayout(typeName, fields)
 
   const setFieldValue = (refName, v) => setValues((prev) => ({ ...prev, [refName]: v }))
 
@@ -260,23 +261,31 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
           </SettField>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, marginTop: 14 }}>
-          <div>
-            {mainFields.map((f) => (
-              <MarkdownField
-                key={f.referenceName}
-                label={f.name}
-                required={f.alwaysRequired}
-                value={values[f.referenceName] || ''}
-                onChange={(v) => setFieldValue(f.referenceName, v)}
-              />
-            ))}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {[statusFields, classificationFields, planningFields, tagsFields].map((group, i) => (
-              group.length > 0 && (
-                <div key={i} className="drawer-section" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {group.map((f) => (
+        {typeLayout ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginTop: 14 }}>
+            <div>
+              {typeLayout.left.map((f) => (
+                <MarkdownField
+                  key={f.referenceName}
+                  label={f.name}
+                  required={f.alwaysRequired}
+                  value={values[f.referenceName] || ''}
+                  onChange={(v) => setFieldValue(f.referenceName, v)}
+                />
+              ))}
+            </div>
+            <div>
+              {typeLayout.middleTop && (
+                <MarkdownField
+                  label={typeLayout.middleTop.name}
+                  required={typeLayout.middleTop.alwaysRequired}
+                  value={values[typeLayout.middleTop.referenceName] || ''}
+                  onChange={(v) => setFieldValue(typeLayout.middleTop.referenceName, v)}
+                />
+              )}
+              {typeLayout.planning.length > 0 && (
+                <div className="drawer-section" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {typeLayout.planning.map((f) => (
                     <FieldInput
                       key={f.referenceName}
                       def={f}
@@ -287,27 +296,76 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
                     />
                   ))}
                 </div>
-              )
-            ))}
-            {additionalFields.length > 0 && (
-              <div className="drawer-section">
-                <h4>Additional Fields</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {additionalFields.map((f) => (
-                    <FieldInput
-                      key={f.referenceName}
-                      def={f}
-                      value={values[f.referenceName]}
-                      onChange={(v) => setFieldValue(f.referenceName, v)}
-                      team={team}
-                      paths={defs?.paths || { areas: [], iterations: [] }}
-                    />
-                  ))}
+              )}
+              {typeLayout.additional.length > 0 && (
+                <div className="drawer-section">
+                  <h4>Additional Fields</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {typeLayout.additional.map((f) => (
+                      <FieldInput
+                        key={f.referenceName}
+                        def={f}
+                        value={values[f.referenceName]}
+                        onChange={(v) => setFieldValue(f.referenceName, v)}
+                        team={team}
+                        paths={defs?.paths || { areas: [], iterations: [] }}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, marginTop: 14 }}>
+            <div>
+              {mainFields.map((f) => (
+                <MarkdownField
+                  key={f.referenceName}
+                  label={f.name}
+                  required={f.alwaysRequired}
+                  value={values[f.referenceName] || ''}
+                  onChange={(v) => setFieldValue(f.referenceName, v)}
+                />
+              ))}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {[statusFields, classificationFields, planningFields, tagsFields].map((group, i) => (
+                group.length > 0 && (
+                  <div key={i} className="drawer-section" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {group.map((f) => (
+                      <FieldInput
+                        key={f.referenceName}
+                        def={f}
+                        value={values[f.referenceName]}
+                        onChange={(v) => setFieldValue(f.referenceName, v)}
+                        team={team}
+                        paths={defs?.paths || { areas: [], iterations: [] }}
+                      />
+                    ))}
+                  </div>
+                )
+              ))}
+              {additionalFields.length > 0 && (
+                <div className="drawer-section">
+                  <h4>Additional Fields</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {additionalFields.map((f) => (
+                      <FieldInput
+                        key={f.referenceName}
+                        def={f}
+                        value={values[f.referenceName]}
+                        onChange={(v) => setFieldValue(f.referenceName, v)}
+                        team={team}
+                        paths={defs?.paths || { areas: [], iterations: [] }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div hidden={tab !== 'attachments'} className="drawer-section">

@@ -99,6 +99,22 @@ function stubDefsWithState() {
   })
 }
 
+function stubDefsForBug() {
+  vi.spyOn(adoWorkItemTypes, 'loadWorkItemTypeDefs').mockResolvedValue({
+    fields: [
+      { referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'Microsoft.VSTS.TCM.ReproSteps', name: 'Repro Steps', dataType: 'html', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'Microsoft.VSTS.Common.AcceptanceCriteria', name: 'Acceptance Criteria', dataType: 'html', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'System.AreaPath', name: 'Area', dataType: 'treePath', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'Microsoft.VSTS.Common.Priority', name: 'Priority', dataType: 'integer', allowedValues: [1, 2, 3, 4], alwaysRequired: false },
+      { referenceName: 'System.AssignedTo', name: 'Assigned To', dataType: 'string', allowedValues: [], alwaysRequired: false },
+    ],
+    paths: { areas: [], iterations: [] },
+    types: [{ name: 'Bug', referenceName: 'Microsoft.VSTS.WorkItemTypes.Bug', icon: '', color: '' }],
+    fetchedAt: Date.now(),
+  })
+}
+
 describe('CreateWorkItemDrawer', () => {
   afterEach(() => {
     cleanup()
@@ -323,5 +339,52 @@ describe('CreateWorkItemDrawer tabs', () => {
 
     expect(screen.getByText('Discussion').closest('button').disabled).toBe(true)
     expect(screen.getByText('History').closest('button').disabled).toBe(true)
+  })
+})
+
+describe('CreateWorkItemDrawer per-type layout', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('renders a two-column Left/Middle layout for a known type (Bug), in config order', async () => {
+    stubDefsForBug()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    fireEvent.change(await screen.findByLabelText('Type'), { target: { value: 'Microsoft.VSTS.WorkItemTypes.Bug' } })
+    await screen.findByLabelText('Description')
+
+    // Left column: Description then Repro Steps (System Info absent from this fixture — skipped, not blank)
+    const description = screen.getByLabelText('Description')
+    const reproSteps = screen.getByLabelText('Repro Steps')
+    expect(description.compareDocumentPosition(reproSteps) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    // Middle column: Acceptance Criteria present, then Planning fields (Area, Priority) — Resolved Reason/Story Points absent from fixture, skipped
+    expect(screen.getByLabelText('Acceptance Criteria')).toBeTruthy()
+    expect(screen.getByLabelText('Area')).toBeTruthy()
+    expect(screen.getByLabelText('Priority')).toBeTruthy()
+
+    // Additional Fields: Assigned To isn't in Bug's left/middleTop/planning config
+    expect(screen.getByText('Additional Fields')).toBeTruthy()
+    expect(screen.getByLabelText('Assigned To')).toBeTruthy()
+  })
+
+  it('falls back to the generic grouped layout for an unrecognized type', async () => {
+    vi.spyOn(adoWorkItemTypes, 'loadWorkItemTypeDefs').mockResolvedValue({
+      fields: [
+        { referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false },
+        { referenceName: 'Custom.Whatever', name: 'Whatever', dataType: 'string', allowedValues: [], alwaysRequired: false },
+      ],
+      paths: { areas: [], iterations: [] },
+      types: [{ name: 'CustomThing', referenceName: 'Custom.WorkItemTypes.CustomThing', icon: '', color: '' }],
+      fetchedAt: Date.now(),
+    })
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    fireEvent.change(await screen.findByLabelText('Type'), { target: { value: 'Custom.WorkItemTypes.CustomThing' } })
+    await screen.findByLabelText('Description')
+
+    // Falls into Additional Fields exactly as today's generic path does for unrecognized reference names
+    expect(screen.getByText('Additional Fields')).toBeTruthy()
+    expect(screen.getByLabelText('Whatever')).toBeTruthy()
   })
 })
