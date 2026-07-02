@@ -25,7 +25,7 @@ describe('NavOrderEditor', () => {
   it('reorders on drop and calls onChange with new id order', () => {
     const onChange = vi.fn()
     render(<NavOrderEditor nav={NAV} order={['dashboard', 'calendar', 'work']} onChange={onChange} />)
-    const rows = screen.getAllByTestId('nav-order-item')
+    const rows = screen.getAllByTestId('nav-order-row')
     const dt = makeDataTransfer()
     // drag 'work' (index 2) onto 'dashboard' (index 0)
     fireEvent.dragStart(rows[2], { dataTransfer: dt })

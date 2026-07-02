@@ -10,7 +10,7 @@ export function NavOrderEditor({ nav, order, onChange }) {
   const [dragId, setDragId] = React.useState(null)
 
   const onDragStart = id => e => { setDragId(id); e.dataTransfer.effectAllowed = 'move' }
-  const onDragOver = () => e => { e.preventDefault() }
+  const onDragOver = e => { e.preventDefault() }
   const onDrop = id => e => {
     e.preventDefault()
     if (!dragId || dragId === id) { setDragId(null); return }
@@ -28,9 +28,10 @@ export function NavOrderEditor({ nav, order, onChange }) {
       {items.map(item => (
         <div
           key={item.id}
+          data-testid="nav-order-row"
           draggable
           onDragStart={onDragStart(item.id)}
-          onDragOver={onDragOver()}
+          onDragOver={onDragOver}
           onDrop={onDrop(item.id)}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
