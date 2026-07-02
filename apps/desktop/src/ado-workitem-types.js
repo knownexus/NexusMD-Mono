@@ -126,6 +126,49 @@ export function fieldGroup(field) {
   return 'additional'
 }
 
+export const TYPE_LAYOUTS = {
+  Bug: {
+    left: ['Description', 'Repro Steps', 'System Info'],
+    middleTop: 'Acceptance Criteria',
+    planning: ['Area', 'Resolved Reason', 'Story Points', 'Priority'],
+  },
+  Epic: {
+    left: ['Description', 'Stages'],
+    middleTop: 'Acceptance Criteria',
+    planning: ['Area', 'Priority', 'Risk', 'Effort'],
+  },
+  Feature: {
+    left: ['Description', 'System Info'],
+    middleTop: 'Acceptance Criteria',
+    planning: ['Area', 'Priority', 'Risk'],
+  },
+  Issue: {
+    left: ['Description'],
+    middleTop: null,
+    planning: ['Area', 'Stack Rank', 'Priority', 'Due Date'],
+  },
+  Task: {
+    left: ['Description', 'System Info'],
+    middleTop: 'Acceptance Criteria',
+    planning: ['Area', 'Priority', 'Activity'],
+  },
+}
+
+export function resolveTypeLayout(typeName, fields) {
+  const layout = TYPE_LAYOUTS[typeName]
+  if (!layout) return null
+
+  const byName = (name) => fields.find((f) => f.name === name)
+  const left = layout.left.map(byName).filter(Boolean)
+  const middleTop = layout.middleTop ? (byName(layout.middleTop) || null) : null
+  const planning = layout.planning.map(byName).filter(Boolean)
+
+  const selectedRefNames = new Set([...left, ...(middleTop ? [middleTop] : []), ...planning].map((f) => f.referenceName))
+  const additional = fields.filter((f) => !selectedRefNames.has(f.referenceName) && f.referenceName !== 'System.State')
+
+  return { left, middleTop, planning, additional }
+}
+
 export const LINK_TYPES = [
   { label: 'Parent', rel: 'System.LinkTypes.Hierarchy-Reverse' },
   { label: 'Child', rel: 'System.LinkTypes.Hierarchy-Forward' },

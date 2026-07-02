@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { getCachedDefs, setCachedDefs, fetchWorkItemTypes, fetchProjectFieldTypes, fetchTypeFields, fetchClassificationPaths, loadWorkItemTypeDefs, fieldBucket, fieldGroup, LINK_TYPES, buildFieldPatchOps, buildAttachmentRelationOps, buildLinkRelationOps, submitNewWorkItem } from './ado-workitem-types.js'
+import { getCachedDefs, setCachedDefs, fetchWorkItemTypes, fetchProjectFieldTypes, fetchTypeFields, fetchClassificationPaths, loadWorkItemTypeDefs, fieldBucket, fieldGroup, TYPE_LAYOUTS, resolveTypeLayout, LINK_TYPES, buildFieldPatchOps, buildAttachmentRelationOps, buildLinkRelationOps, submitNewWorkItem } from './ado-workitem-types.js'
 import { saveAdoConfig } from './ado-client.js'
 import { vi } from 'vitest'
 
@@ -177,6 +177,51 @@ describe('fieldGroup', () => {
   it('groups html fields as main and everything unrecognized as additional', () => {
     expect(fieldGroup({ referenceName: 'System.Description', dataType: 'html', allowedValues: [] })).toBe('main')
     expect(fieldGroup({ referenceName: 'Custom.Whatever', dataType: 'string', allowedValues: [] })).toBe('additional')
+  })
+})
+
+describe('TYPE_LAYOUTS / resolveTypeLayout', () => {
+  it('returns null for a type with no configured layout', () => {
+    expect(resolveTypeLayout('CustomThing', [])).toBe(null)
+  })
+
+  it('resolves Bug fields into left, middleTop, planning, and additional, in config order', () => {
+    const fields = [
+      { referenceName: 'System.AssignedTo', name: 'Assigned To', dataType: 'string', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'Microsoft.VSTS.TCM.ReproSteps', name: 'Repro Steps', dataType: 'html', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'Microsoft.VSTS.Common.AcceptanceCriteria', name: 'Acceptance Criteria', dataType: 'html', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'Microsoft.VSTS.Common.Priority', name: 'Priority', dataType: 'integer', allowedValues: [1, 2, 3, 4], alwaysRequired: false },
+      { referenceName: 'System.AreaPath', name: 'Area', dataType: 'treePath', allowedValues: [], alwaysRequired: false },
+    ]
+    const layout = resolveTypeLayout('Bug', fields)
+    expect(layout.left.map((f) => f.name)).toEqual(['Description', 'Repro Steps'])
+    expect(layout.middleTop.name).toBe('Acceptance Criteria')
+    expect(layout.planning.map((f) => f.name)).toEqual(['Area', 'Priority'])
+    expect(layout.additional.map((f) => f.name)).toEqual(['Assigned To'])
+  })
+
+  it('skips config field names that have no matching field, without throwing', () => {
+    const fields = [{ referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false }]
+    const layout = resolveTypeLayout('Bug', fields)
+    expect(layout.left.map((f) => f.name)).toEqual(['Description'])
+    expect(layout.middleTop).toBe(null)
+    expect(layout.planning).toEqual([])
+    expect(layout.additional).toEqual([])
+  })
+
+  it('excludes System.State from additional even when unmatched by the layout', () => {
+    const fields = [
+      { referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'System.State', name: 'State', dataType: 'string', allowedValues: ['New'], alwaysRequired: false },
+    ]
+    const layout = resolveTypeLayout('Bug', fields)
+    expect(layout.additional).toEqual([])
+  })
+
+  it('returns null middleTop for Issue, which has no Acceptance Criteria in its layout', () => {
+    const layout = resolveTypeLayout('Issue', [{ referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false }])
+    expect(layout.middleTop).toBe(null)
   })
 })
 
