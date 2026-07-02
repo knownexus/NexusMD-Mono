@@ -16,6 +16,7 @@ import {
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav } from './layout.js'
 import { NavOrderEditor } from './nav-order-editor.jsx'
+import { ZoomSlider } from './zoom-slider.jsx'
 import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -971,6 +972,7 @@ function App() {
           <TweakRadio label="Sidebar" value={tweaks.sidebar}
             onChange={v => setTweak('sidebar', v)}
             options={[{label:'Labels',value:'labels'},{label:'Icons',value:'icons'}]}/>
+          <ZoomSlider />
           <TweakToggle label="Show type labels" value={tweaks.typeLabels || false}
             onChange={v => setTweak('typeLabels', v)}/>
           <NavOrderEditor nav={NAV} order={tweaks.navOrder}
