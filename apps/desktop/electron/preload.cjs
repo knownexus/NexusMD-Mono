@@ -66,6 +66,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('deepLink:url', handler);
   },
 
+  // ── Zoom IPC ────────────────────────────────────────────────────────────────
+  // Drive the native whole-app zoom engine from the Appearance settings slider.
+  getZoomFactor: () => ipcRenderer.invoke('get-zoom-factor'),
+  setZoomFactor: (factor) => ipcRenderer.invoke('set-zoom-factor', factor),
+  onZoomChanged: (cb) => {
+    const handler = (_e, factor) => cb(factor);
+    ipcRenderer.on('zoom:changed', handler);
+    return () => ipcRenderer.removeListener('zoom:changed', handler);
+  },
+
   // ── File adapter IPC ────────────────────────────────────────────────────────
   file: {
     read:              (filePath)        => ipcRenderer.invoke('file:read', filePath),

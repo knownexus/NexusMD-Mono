@@ -161,6 +161,7 @@ function applyZoom(win, factor) {
   win.webContents.setZoomFactor(f)
   prefs.zoomFactor = f
   try { savePrefs(prefs) } catch { /* best-effort */ }
+  try { win.webContents.send('zoom:changed', f) } catch { /* best-effort */ }
 }
 
 function createMainWindow() {
@@ -357,6 +358,14 @@ ipcMain.handle('get-close-to-tray', () => prefs.closeToTray);
 ipcMain.handle('set-close-to-tray', (_e, enabled) => {
   prefs.closeToTray = !!enabled;
   savePrefs(prefs);
+});
+
+// ---------------------------------------------------------------------------
+// Zoom IPC — lets the Appearance settings slider drive the native zoom engine
+// ---------------------------------------------------------------------------
+ipcMain.handle('get-zoom-factor', () => clampZoomFactor(prefs.zoomFactor ?? ZOOM_DEFAULT));
+ipcMain.handle('set-zoom-factor', (_e, factor) => {
+  if (mainWindow && !mainWindow.isDestroyed()) applyZoom(mainWindow, factor);
 });
 
 // ---------------------------------------------------------------------------
