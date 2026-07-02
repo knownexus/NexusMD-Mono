@@ -14,7 +14,8 @@ import {
   WorkItemDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
 } from '@nexusmd/ui'
-import { effectiveSidebar, ICON_RAIL_WIDTH } from './layout.js'
+import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav } from './layout.js'
+import { NavOrderEditor } from './nav-order-editor.jsx'
 import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -77,6 +78,7 @@ const DEFAULT_TWEAKS = {
   theme: 'light', lightTheme: 'parchment', darkTheme: 'cobalt',
   density: 'balanced', sidebar: 'labels', typeLabels: false,
   widgetOrder: DASH_WIDGET_ORDER,
+  navOrder: ['dashboard', 'calendar', 'work', 'prs', 'builds', 'tests', 'team', 'triage', 'planner', 'markdown', 'settings'],
   quickLinks: [
     { label: 'UAT Testing', url: 'https://cirrus.uat.msl.co.uk/', color: 'var(--info)' },
     { label: 'Dev Testing', url: 'https://cirrus.dev.msl.co.uk/', color: 'var(--success)' },
@@ -840,7 +842,7 @@ function App() {
             <Icon name="dashboard" size={18} />
             {!iconsOnly && <strong style={{ fontSize: 14 }}>NexusMD</strong>}
           </div>
-          {NAV.map((item, idx) => (
+          {orderedNav(tweaks.navOrder, NAV).map((item, idx) => (
             <button
               key={item.id}
               onClick={() => setView(item.id)}
@@ -971,6 +973,10 @@ function App() {
             options={[{label:'Labels',value:'labels'},{label:'Icons',value:'icons'}]}/>
           <TweakToggle label="Show type labels" value={tweaks.typeLabels || false}
             onChange={v => setTweak('typeLabels', v)}/>
+          <NavOrderEditor nav={NAV} order={tweaks.navOrder}
+            onChange={ids => setTweak('navOrder', ids)} />
+          <TweakButton label="Reset nav order"
+            onClick={() => setTweak('navOrder', DEFAULT_TWEAKS.navOrder)} />
         </TweakSection>
         <TweakSection title="Dashboard">
           <TweakButton label="Reset widget order"
