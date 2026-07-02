@@ -1171,6 +1171,30 @@ body.resizing-drawer .drawer { transition: none; }
 .kv dt { color: var(--text-subtle); font-size: 12px; }
 .kv dd { margin: 0; }
 
+.wi-drawer-header { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.wi-title-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  padding: 2px 4px;
+}
+.wi-title-input:focus { outline: none; background: var(--surface-2); border-radius: 6px; }
+.wi-state-pill {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
 /* ---------- Work item rich content (description, AC, repro steps, comments) ---------- */
 .wi-html-content h1, .wi-html-content h2, .wi-html-content h3,
 .wi-html-content h4, .wi-html-content h5, .wi-html-content h6 {

@@ -165,11 +165,12 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
   const typeName = (defs?.types || []).find((t) => t.referenceName === typeRef)?.name || 'Work Item'
   const fields = defs?.fields || []
   const mainFields = fields.filter((f) => fieldGroup(f) === 'main')
-  const statusFields = fields.filter((f) => fieldGroup(f) === 'status')
+  const statusFields = fields.filter((f) => fieldGroup(f) === 'status' && f.referenceName !== 'System.State')
   const classificationFields = fields.filter((f) => fieldGroup(f) === 'classification')
   const planningFields = fields.filter((f) => fieldGroup(f) === 'planning')
   const tagsFields = fields.filter((f) => fieldGroup(f) === 'tags')
   const additionalFields = fields.filter((f) => fieldGroup(f) === 'additional')
+  const stateField = fields.find((f) => f.referenceName === 'System.State')
 
   const setFieldValue = (refName, v) => setValues((prev) => ({ ...prev, [refName]: v }))
 
@@ -197,8 +198,30 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
     <Drawer
       open={open}
       onClose={onClose}
-      title={`New ${typeName}`}
-      badges={<TypeIcon type={adoTypeToHelm(typeName)} />}
+      defaultWidth={820}
+      headerContent={(
+        <div className="wi-drawer-header">
+          <TypeIcon type={adoTypeToHelm(typeName)} />
+          <input
+            aria-label="Title"
+            className="wi-title-input"
+            value={wiTitle}
+            onChange={(e) => setWiTitle(e.target.value)}
+            autoFocus
+          />
+          {stateField && (
+            <select
+              aria-label={stateField.name}
+              className="wi-state-pill"
+              value={values[stateField.referenceName] ?? ''}
+              onChange={(e) => setFieldValue(stateField.referenceName, e.target.value)}
+            >
+              <option value="" />
+              {stateField.allowedValues.map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          )}
+        </div>
+      )}
       actions={(
         <button className="btn icon ghost sm" title="Refresh field definitions"
           onClick={() => load(project, typeRef, { forceRefresh: true })}>
@@ -225,9 +248,6 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
         </SettField>
       </div>
 
-      <SettField label="Title">
-        <input aria-label="Title" value={wiTitle} onChange={(e) => setWiTitle(e.target.value)} autoFocus />
-      </SettField>
       {titleError && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4 }}>{titleError}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, marginTop: 14 }}>

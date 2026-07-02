@@ -86,6 +86,19 @@ function stubDefs() {
   })
 }
 
+function stubDefsWithState() {
+  vi.spyOn(adoWorkItemTypes, 'loadWorkItemTypeDefs').mockResolvedValue({
+    fields: [
+      { referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false },
+      { referenceName: 'System.State', name: 'State', dataType: 'string', allowedValues: ['New', 'Active', 'Closed'], alwaysRequired: false },
+      { referenceName: 'System.Reason', name: 'Reason', dataType: 'string', allowedValues: ['New'], alwaysRequired: false },
+    ],
+    paths: { areas: [], iterations: [] },
+    types: [{ name: 'Task', referenceName: 'Microsoft.VSTS.WorkItemTypes.Task', icon: '', color: '' }],
+    fetchedAt: Date.now(),
+  })
+}
+
 describe('CreateWorkItemDrawer', () => {
   afterEach(() => {
     cleanup()
@@ -227,5 +240,38 @@ describe('CreateWorkItemDrawer links', () => {
     fireEvent.click(screen.getByText('+ Add link'))
     fireEvent.click(screen.getByTitle('Remove link'))
     expect(screen.queryByText('#555 (Parent)')).toBe(null)
+  })
+})
+
+describe('CreateWorkItemDrawer header', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('renders the State field once, in the header, not duplicated in the status rail', async () => {
+    stubDefsWithState()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    await screen.findByLabelText('Description')
+
+    const stateSelect = screen.getByLabelText('State')
+    expect(stateSelect.tagName).toBe('SELECT')
+    expect(screen.getByText('Reason')).toBeTruthy() // other status field still in the rail
+  })
+
+  it('includes the State value in the onCreate payload when set via the header pill', async () => {
+    stubDefsWithState()
+    const onCreate = vi.fn().mockResolvedValue({ id: 7 })
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={onCreate} />)
+    await screen.findByLabelText('Description')
+
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Header state test' } })
+    fireEvent.change(screen.getByLabelText('State'), { target: { value: 'Active' } })
+    fireEvent.click(screen.getByText('Create'))
+
+    await screen.findByText(/Created/)
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      fields: expect.objectContaining({ 'System.State': 'Active' }),
+    }))
   })
 })
