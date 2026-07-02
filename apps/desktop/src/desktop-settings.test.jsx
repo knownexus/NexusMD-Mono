@@ -44,13 +44,24 @@ vi.mock('@nexusmd/ui', () => ({
 vi.stubGlobal('electronAPI', {
   getCloseToTray: vi.fn(() => Promise.resolve(true)),
   setCloseToTray: vi.fn(),
+  getZoomFactor: vi.fn(() => Promise.resolve(1.0)),
+  setZoomFactor: vi.fn(),
+  onZoomChanged: vi.fn(() => () => {}),
 })
 
 afterEach(() => { cleanup(); localStorage.clear() })
 
+const NAV = [
+  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+  { id: 'calendar', label: 'Calendar', icon: 'clock' },
+  { id: 'work', label: 'Work Items', icon: 'work' },
+]
+
 const defaultProps = {
-  tweaks: { theme: 'dark', lightTheme: 'parchment', darkTheme: 'cobalt', quickLinks: [] },
+  tweaks: { theme: 'dark', lightTheme: 'parchment', darkTheme: 'cobalt', quickLinks: [], navOrder: ['dashboard', 'calendar', 'work'] },
   setTweak: vi.fn(),
+  nav: NAV,
+  defaultNavOrder: ['dashboard', 'calendar', 'work'],
   refreshInterval: 300,
   onRefreshIntervalChange: vi.fn(),
   onRefreshData: vi.fn(),
@@ -70,6 +81,14 @@ describe('DesktopSettings tab navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Appearance' }))
     expect(screen.getAllByTestId('theme-chip-picker').length).toBeGreaterThan(0)
     expect(screen.queryByTestId('vs-card-profile')).toBeNull()
+  })
+
+  it('shows the zoom control and nav order editor in the Appearance tab', () => {
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }))
+    expect(screen.getByLabelText('Zoom')).toBeTruthy()
+    expect(screen.getAllByTestId('nav-order-row').length).toBe(3)
+    expect(screen.getByRole('button', { name: 'Reset order' })).toBeTruthy()
   })
 
   it('shows Planner tab content when clicked', () => {

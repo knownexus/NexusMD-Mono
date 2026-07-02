@@ -1,11 +1,14 @@
 import React from 'react'
-import { TweakSlider } from '@nexusmd/ui'
 
 // Appearance-settings control for the native whole-app zoom. Zoom is owned by
 // the Electron main process (persisted as prefs.zoomFactor), so this holds the
 // value in local state — initialized from getZoomFactor, synced via
 // onZoomChanged (menu / Ctrl± / wheel), and written back with setZoomFactor.
 // Renders nothing outside Electron (web build / tests without electronAPI).
+//
+// Self-contained: renders its own range input + percent readout rather than the
+// shared TweakSlider, whose CSS only ships inside the floating tweaks panel and
+// is absent in the Settings view.
 export function ZoomSlider() {
   const api = typeof window !== 'undefined' ? window.electronAPI : undefined
   const [percent, setPercent] = React.useState(100)
@@ -30,7 +33,19 @@ export function ZoomSlider() {
   }
 
   return (
-    <TweakSlider label="Zoom" value={percent} min={50} max={200} step={10}
-      unit="%" onChange={onChange} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <input
+        type="range" min={50} max={200} step={10} value={percent}
+        aria-label="Zoom"
+        onChange={e => onChange(Number(e.target.value))}
+        style={{ width: 150 }}
+      />
+      <span style={{
+        minWidth: 42, textAlign: 'right', fontSize: 13,
+        color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums',
+      }}>
+        {percent}%
+      </span>
+    </div>
   )
 }

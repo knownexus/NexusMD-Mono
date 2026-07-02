@@ -2,21 +2,12 @@ import React from 'react'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-vi.mock('@nexusmd/ui', () => ({
-  TweakSlider: ({ label, value, min, max, step, unit, onChange }) => (
-    <div data-testid="zoom-tweakslider">
-      <span>{label}</span>
-      <span data-testid="zoom-value">{value}{unit}</span>
-      <input type="range" aria-label={label} min={min} max={max} step={step}
-             value={value} onChange={e => onChange(Number(e.target.value))} />
-    </div>
-  ),
-}))
-
 import { ZoomSlider } from './zoom-slider.jsx'
 
 afterEach(() => { cleanup(); delete window.electronAPI })
 
+// The readout is the sibling <span> after the range input; assert on the input's
+// value (percent) and the visible "%" text directly rather than a mock testid.
 describe('ZoomSlider', () => {
   it('renders nothing without electronAPI', () => {
     const { container } = render(<ZoomSlider />)
@@ -30,7 +21,8 @@ describe('ZoomSlider', () => {
       onZoomChanged: vi.fn(() => () => {}),
     }
     render(<ZoomSlider />)
-    await waitFor(() => expect(screen.getByTestId('zoom-value').textContent).toBe('150%'))
+    await waitFor(() => expect(screen.getByLabelText('Zoom').value).toBe('150'))
+    expect(screen.getByText('150%')).toBeTruthy()
   })
 
   it('writes back the factor when the slider changes', async () => {
@@ -41,7 +33,7 @@ describe('ZoomSlider', () => {
       onZoomChanged: vi.fn(() => () => {}),
     }
     render(<ZoomSlider />)
-    await waitFor(() => expect(screen.getByTestId('zoom-value').textContent).toBe('100%'))
+    await waitFor(() => expect(screen.getByLabelText('Zoom').value).toBe('100'))
     fireEvent.change(screen.getByLabelText('Zoom'), { target: { value: '130' } })
     expect(setZoomFactor).toHaveBeenCalledWith(1.3)
   })
@@ -54,8 +46,8 @@ describe('ZoomSlider', () => {
       onZoomChanged: vi.fn(cb => { cbRef = cb; return () => {} }),
     }
     render(<ZoomSlider />)
-    await waitFor(() => expect(screen.getByTestId('zoom-value').textContent).toBe('100%'))
+    await waitFor(() => expect(screen.getByLabelText('Zoom').value).toBe('100'))
     cbRef(0.8)
-    await waitFor(() => expect(screen.getByTestId('zoom-value').textContent).toBe('80%'))
+    await waitFor(() => expect(screen.getByLabelText('Zoom').value).toBe('80'))
   })
 })

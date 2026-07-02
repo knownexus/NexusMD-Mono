@@ -7,6 +7,8 @@ import {
 } from '@nexusmd/ui'
 import { useProfile } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
+import { NavOrderEditor } from './nav-order-editor.jsx'
+import { ZoomSlider } from './zoom-slider.jsx'
 import { desktopFileIO } from './file-io.js'
 import LogsCard from './logs-card.jsx'
 import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBinding } from './cloud-auth.js'
@@ -459,7 +461,7 @@ const SETTINGS_TABS = [
   { id: 'desktop',      label: 'Desktop',      icon: 'dashboard' },
 ]
 
-export function DesktopSettings({ tweaks, setTweak, refreshInterval, onRefreshIntervalChange, onRefreshData }) {
+export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refreshInterval, onRefreshIntervalChange, onRefreshData }) {
   const profileApi = useProfile()
   const [tab, setTab] = React.useState('profile')
 
@@ -518,6 +520,17 @@ export function DesktopSettings({ tweaks, setTweak, refreshInterval, onRefreshIn
               <VsFullRow title="Dark mode theme" desc="Palette used when dark mode is active">
                 <ThemeChipPicker value={tweaks.darkTheme || 'cobalt'} onChange={v => setTweak('darkTheme', v)} />
               </VsFullRow>
+              <VsRow title="Zoom" desc="Scale the entire app interface">
+                <ZoomSlider />
+              </VsRow>
+              {nav && (
+                <VsFullRow title="Sidebar order" desc="Drag to reorder the navigation sidebar">
+                  <NavOrderEditor nav={nav} order={tweaks.navOrder}
+                    onChange={ids => setTweak('navOrder', ids)} />
+                  <button className="btn sm ghost"
+                    onClick={() => setTweak('navOrder', defaultNavOrder)}>Reset order</button>
+                </VsFullRow>
+              )}
             </VsCard>
           )}
 
