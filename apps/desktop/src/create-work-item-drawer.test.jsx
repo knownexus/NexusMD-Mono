@@ -197,6 +197,19 @@ describe('CreateWorkItemDrawer submit', () => {
     expect(onCreate).not.toHaveBeenCalled()
   })
 
+  it('shows the title-required error even when a non-Details tab is active', async () => {
+    stubDefs()
+    const onCreate = vi.fn()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={onCreate} />)
+    await screen.findByLabelText('Description')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Links' }))
+    fireEvent.click(screen.getByText('Create'))
+
+    expect(await screen.findByText('Title is required.')).toBeTruthy()
+    expect(onCreate).not.toHaveBeenCalled()
+  })
+
   it('stages a file for upload without calling the attachments API immediately', async () => {
     stubDefs()
     render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={vi.fn().mockResolvedValue({ id: 1 })} />)

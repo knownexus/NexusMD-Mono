@@ -244,6 +244,8 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
         <button type="button" className="wi-tab" disabled title="Available after the item is created">History</button>
       </div>
 
+      {titleError && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4 }}>{titleError}</div>}
+
       <div hidden={tab !== 'details'}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
           <SettField label="Project">
@@ -257,8 +259,6 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
             </select>
           </SettField>
         </div>
-
-        {titleError && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4 }}>{titleError}</div>}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, marginTop: 14 }}>
           <div>
