@@ -1194,6 +1194,20 @@ body.resizing-drawer .drawer { transition: none; }
   background: var(--surface-2);
   color: var(--text);
 }
+.wi-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.wi-tab {
+  border: none;
+  background: transparent;
+  padding: 8px 4px;
+  margin-right: 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.wi-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.wi-tab:disabled { color: var(--text-subtle); opacity: 0.5; cursor: default; }
 
 /* ---------- Work item rich content (description, AC, repro steps, comments) ---------- */
 .wi-html-content h1, .wi-html-content h2, .wi-html-content h3,

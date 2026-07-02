@@ -153,6 +153,7 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
     load(projectsList[0] || '', DEFAULT_TYPE_REF)
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [tab, setTab] = React.useState('details')
   const [attachmentFiles, setAttachmentFiles] = React.useState([])
   const [links, setLinks] = React.useState([])
   const [linkRel, setLinkRel] = React.useState(LINK_TYPES[0].rel)
@@ -235,71 +236,81 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-        <SettField label="Project">
-          <select aria-label="Project" value={project} onChange={(e) => { setProject(e.target.value); load(e.target.value, typeRef) }}>
-            {projectsList.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </SettField>
-        <SettField label="Type">
-          <select aria-label="Type" value={typeRef} onChange={(e) => { setTypeRef(e.target.value); load(project, e.target.value) }}>
-            {(defs?.types || []).map((t) => <option key={t.referenceName} value={t.referenceName}>{t.name}</option>)}
-          </select>
-        </SettField>
+      <div className="wi-tabs" role="tablist">
+        <button type="button" className={`wi-tab${tab === 'details' ? ' active' : ''}`} onClick={() => setTab('details')}>Details</button>
+        <button type="button" className="wi-tab" disabled title="Available after the item is created">Discussion</button>
+        <button type="button" className={`wi-tab${tab === 'links' ? ' active' : ''}`} onClick={() => setTab('links')}>Links</button>
+        <button type="button" className={`wi-tab${tab === 'attachments' ? ' active' : ''}`} onClick={() => setTab('attachments')}>Attachments</button>
+        <button type="button" className="wi-tab" disabled title="Available after the item is created">History</button>
       </div>
 
-      {titleError && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4 }}>{titleError}</div>}
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, marginTop: 14 }}>
-        <div>
-          {mainFields.map((f) => (
-            <MarkdownField
-              key={f.referenceName}
-              label={f.name}
-              required={f.alwaysRequired}
-              value={values[f.referenceName] || ''}
-              onChange={(v) => setFieldValue(f.referenceName, v)}
-            />
-          ))}
+      <div hidden={tab !== 'details'}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+          <SettField label="Project">
+            <select aria-label="Project" value={project} onChange={(e) => { setProject(e.target.value); load(e.target.value, typeRef) }}>
+              {projectsList.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </SettField>
+          <SettField label="Type">
+            <select aria-label="Type" value={typeRef} onChange={(e) => { setTypeRef(e.target.value); load(project, e.target.value) }}>
+              {(defs?.types || []).map((t) => <option key={t.referenceName} value={t.referenceName}>{t.name}</option>)}
+            </select>
+          </SettField>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {[statusFields, classificationFields, planningFields, tagsFields].map((group, i) => (
-            group.length > 0 && (
-              <div key={i} className="drawer-section" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {group.map((f) => (
-                  <FieldInput
-                    key={f.referenceName}
-                    def={f}
-                    value={values[f.referenceName]}
-                    onChange={(v) => setFieldValue(f.referenceName, v)}
-                    team={team}
-                    paths={defs?.paths || { areas: [], iterations: [] }}
-                  />
-                ))}
+
+        {titleError && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4 }}>{titleError}</div>}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, marginTop: 14 }}>
+          <div>
+            {mainFields.map((f) => (
+              <MarkdownField
+                key={f.referenceName}
+                label={f.name}
+                required={f.alwaysRequired}
+                value={values[f.referenceName] || ''}
+                onChange={(v) => setFieldValue(f.referenceName, v)}
+              />
+            ))}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {[statusFields, classificationFields, planningFields, tagsFields].map((group, i) => (
+              group.length > 0 && (
+                <div key={i} className="drawer-section" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {group.map((f) => (
+                    <FieldInput
+                      key={f.referenceName}
+                      def={f}
+                      value={values[f.referenceName]}
+                      onChange={(v) => setFieldValue(f.referenceName, v)}
+                      team={team}
+                      paths={defs?.paths || { areas: [], iterations: [] }}
+                    />
+                  ))}
+                </div>
+              )
+            ))}
+            {additionalFields.length > 0 && (
+              <div className="drawer-section">
+                <h4>Additional Fields</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {additionalFields.map((f) => (
+                    <FieldInput
+                      key={f.referenceName}
+                      def={f}
+                      value={values[f.referenceName]}
+                      onChange={(v) => setFieldValue(f.referenceName, v)}
+                      team={team}
+                      paths={defs?.paths || { areas: [], iterations: [] }}
+                    />
+                  ))}
+                </div>
               </div>
-            )
-          ))}
-          {additionalFields.length > 0 && (
-            <div className="drawer-section">
-              <h4>Additional Fields</h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {additionalFields.map((f) => (
-                  <FieldInput
-                    key={f.referenceName}
-                    def={f}
-                    value={values[f.referenceName]}
-                    onChange={(v) => setFieldValue(f.referenceName, v)}
-                    team={team}
-                    paths={defs?.paths || { areas: [], iterations: [] }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="drawer-section">
+      <div hidden={tab !== 'attachments'} className="drawer-section">
         <h4>Attachments</h4>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)' }}>Attach files</span>
@@ -325,7 +336,7 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
         )}
       </div>
 
-      <div className="drawer-section">
+      <div hidden={tab !== 'links'} className="drawer-section">
         <h4>Links</h4>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>

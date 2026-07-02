@@ -275,3 +275,40 @@ describe('CreateWorkItemDrawer header', () => {
     }))
   })
 })
+
+describe('CreateWorkItemDrawer tabs', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('shows the Details panel by default and hides Links/Attachments', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    await screen.findByLabelText('Description')
+
+    expect(screen.getByLabelText('Description').closest('[hidden]')).toBeNull()
+    expect(screen.getByLabelText('Attach files').closest('[hidden]')).not.toBeNull()
+    expect(screen.getByLabelText('Link type').closest('[hidden]')).not.toBeNull()
+  })
+
+  it('switches to the Links panel and hides Details when the Links tab is clicked', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    await screen.findByLabelText('Description')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Links' }))
+
+    expect(screen.getByLabelText('Link type').closest('[hidden]')).toBeNull()
+    expect(screen.getByLabelText('Description').closest('[hidden]')).not.toBeNull()
+  })
+
+  it('renders Discussion and History as disabled tabs', async () => {
+    stubDefs()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    await screen.findByLabelText('Description')
+
+    expect(screen.getByText('Discussion').closest('button').disabled).toBe(true)
+    expect(screen.getByText('History').closest('button').disabled).toBe(true)
+  })
+})
