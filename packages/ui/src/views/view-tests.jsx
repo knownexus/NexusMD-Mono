@@ -7,7 +7,7 @@ import { FilterChip, Stat } from '../components.jsx'
 import { NotificationBanner, usePersisted } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
 import { useNexusData } from '../data-context.jsx'
-import { formatDateTime } from '@nexusmd/core'
+import { formatDateTime, resolveFields, TESTS_TABLE_COLUMNS } from '@nexusmd/core'
 
 const { useState: useStateT, useMemo: useMemoT } = React
 
@@ -21,6 +21,9 @@ export function TestsView({ tests, acknowledgedTests, setAcknowledgedTests, newI
   const [expandedRun, setExpandedRun] = useStateT(null)
   const [page,        setPage]        = useStateT(1)
   const [pageSize,    setPageSize]    = usePersisted('nexusmd.tests.pageSize', 25)
+  const [testsCfg]    = usePersisted('nexusmd.fields.testsTable', [])
+  const visibleTestCols = resolveFields(TESTS_TABLE_COLUMNS, testsCfg).filter(f => f.visible)
+  const testsGrid = visibleTestCols.map(c => c.width).join(' ')
 
   const acknowledgedSet = useMemoT(() => new Set(acknowledgedTests || []), [acknowledgedTests])
   const toggleAck = (id) => setAcknowledgedTests(prev =>
@@ -95,6 +98,75 @@ export function TestsView({ tests, acknowledgedTests, setAcknowledgedTests, newI
     }
     const cls = map[r] || ''
     return <span className={`pill ${cls}`}>{r}</span>
+  }
+
+  const testCell = (key, run, g) => {
+    switch (key) {
+      case 'result':
+        return (
+          <div key="result" style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {pillForResult(dispResult(run), run.id)}
+          </div>
+        )
+      case 'run':
+        return (
+          <div key="run" style={{ minWidth: 0 }}>
+            <div className="build-title" style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+              {NexusMDData.ORG && run.project
+                ? <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(run.project)}/_build/results?buildId=${run.id}&view=ms.vss-test-web.build-test-results-tab`} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{color:'var(--accent)',textDecoration:'none'}}>#{run.id}</a>
+                : <span>#{run.id}</span>}
+              {newItemIds.has(run.id) && <span style={{ fontSize:9, fontWeight:700, background:'var(--accent)', color:'var(--accent-fg)', padding:'1px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:'0.05em' }}>New</span>}
+              <span style={{ color:'var(--text-muted)', fontWeight:400 }}>· {run.branch || 'main'}</span>
+            </div>
+            <div className="build-meta" style={{ color: dispResult(run) === 'acknowledged' ? 'var(--warning)' : undefined }}>
+              {run.totalTests != null
+                ? `${run.passedTests || 0} passed · ${run.failedTests || 0} failed · ${run.totalTests} total`
+                : 'No test run totals'}
+            </div>
+          </div>
+        )
+      case 'duration':
+        return <div key="duration" className="build-meta">{run.duration || '-'}</div>
+      case 'date':
+        return (
+          <div key="date" className="build-meta mono" title={run.startTime ? new Date(run.startTime).toLocaleString() : ''}>
+            {formatDateTime(run.startTime)}
+          </div>
+        )
+      case 'actions':
+        return (
+          <div key="actions" style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', alignItems: 'center' }}>
+            {run.result === 'failed' && (
+              acknowledgedSet.has(run.id)
+                ? <button className="btn sm ghost" title="Remove acknowledgement"
+                    style={{ color:'var(--warning)', borderColor:'var(--warning)' }}
+                    onClick={() => toggleAck(run.id)}>
+                    <Icon name="x" size={12}/> Unack
+                  </button>
+                : <button className="btn sm ghost" title="Acknowledge this failure"
+                    onClick={() => toggleAck(run.id)}>
+                    <Icon name="check" size={12}/> Ack
+                  </button>
+            )}
+            <button className="btn sm ghost" onClick={() => setExpandedRun(expandedRun === run.id ? null : run.id)}>
+              <Icon name={expandedRun === run.id ? 'chevron-up' : 'chevron-down'} size={12}/> Details
+            </button>
+            <button className="btn sm ghost" onClick={() => {
+              window.dispatchEvent(new CustomEvent('nexusmd:create-wi', {
+                detail: {
+                  type: 'Bug',
+                  title: `Test failure: ${g.name}`,
+                  description: `Run #${run.id}\nPipeline: ${g.name}\nBranch: ${run.branch || 'main'}\nFailed tests: ${run.failedTests || 0}/${run.totalTests || 0}`,
+                  project: (NexusMDData.CONFIG_PROJECTS || [])[0] || '',
+                  tags: 'test;qa',
+                }
+              }))
+            }}><Icon name="plus" size={12}/> Bug</button>
+          </div>
+        )
+      default:
+        return null
+    }
   }
 
   return (
@@ -182,58 +254,10 @@ export function TestsView({ tests, acknowledgedTests, setAcknowledgedTests, newI
               const isNew = newItemIds.has(run.id)
               return (
               <React.Fragment key={`${g.name}-${run.id}`}>
-              <div className="build-row" style={{ gridTemplateColumns: 'auto 1fr 80px 116px auto',
+              <div className="build-row" style={{ gridTemplateColumns: testsGrid,
                 ...(isNew ? { background: 'color-mix(in srgb, var(--accent) 7%, var(--surface))', boxShadow: 'inset 3px 0 0 var(--accent)' } : {}),
               }}>
-                <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {pillForResult(dispResult(run), run.id)}
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div className="build-title" style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-                    {NexusMDData.ORG && run.project
-                      ? <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(run.project)}/_build/results?buildId=${run.id}&view=ms.vss-test-web.build-test-results-tab`} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{color:'var(--accent)',textDecoration:'none'}}>#{run.id}</a>
-                      : <span>#{run.id}</span>}
-                    {isNew && <span style={{ fontSize:9, fontWeight:700, background:'var(--accent)', color:'var(--accent-fg)', padding:'1px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:'0.05em' }}>New</span>}
-                    <span style={{ color:'var(--text-muted)', fontWeight:400 }}>· {run.branch || 'main'}</span>
-                  </div>
-                  <div className="build-meta" style={{ color: dispResult(run) === 'acknowledged' ? 'var(--warning)' : undefined }}>
-                    {run.totalTests != null
-                      ? `${run.passedTests || 0} passed · ${run.failedTests || 0} failed · ${run.totalTests} total`
-                      : 'No test run totals'}
-                  </div>
-                </div>
-                <div className="build-meta">{run.duration || '-'}</div>
-                <div className="build-meta mono" title={run.startTime ? new Date(run.startTime).toLocaleString() : ''}>
-                  {formatDateTime(run.startTime)}
-                </div>
-                <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', alignItems: 'center' }}>
-                  {run.result === 'failed' && (
-                    acknowledgedSet.has(run.id)
-                      ? <button className="btn sm ghost" title="Remove acknowledgement"
-                          style={{ color:'var(--warning)', borderColor:'var(--warning)' }}
-                          onClick={() => toggleAck(run.id)}>
-                          <Icon name="x" size={12}/> Unack
-                        </button>
-                      : <button className="btn sm ghost" title="Acknowledge this failure"
-                          onClick={() => toggleAck(run.id)}>
-                          <Icon name="check" size={12}/> Ack
-                        </button>
-                  )}
-                  <button className="btn sm ghost" onClick={() => setExpandedRun(expandedRun === run.id ? null : run.id)}>
-                    <Icon name={expandedRun === run.id ? 'chevron-up' : 'chevron-down'} size={12}/> Details
-                  </button>
-                  <button className="btn sm ghost" onClick={() => {
-                    window.dispatchEvent(new CustomEvent('nexusmd:create-wi', {
-                      detail: {
-                        type: 'Bug',
-                        title: `Test failure: ${g.name}`,
-                        description: `Run #${run.id}\nPipeline: ${g.name}\nBranch: ${run.branch || 'main'}\nFailed tests: ${run.failedTests || 0}/${run.totalTests || 0}`,
-                        project: (NexusMDData.CONFIG_PROJECTS || [])[0] || '',
-                        tags: 'test;qa',
-                      }
-                    }))
-                  }}><Icon name="plus" size={12}/> Bug</button>
-                </div>
+                {visibleTestCols.map(f => testCell(f.key, run, g))}
               </div>
               {expandedRun === run.id && (
                 <div style={{ padding: '8px 14px 12px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
