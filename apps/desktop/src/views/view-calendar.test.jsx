@@ -138,7 +138,9 @@ describe('CalendarView Outlook + Google wiring', () => {
   it('fetches Outlook events on mount when Microsoft is connected', async () => {
     render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
     await waitFor(() => expect(msGraphCalendar.fetchCalendarEvents).toHaveBeenCalled())
-    expect(msGraphCalendar.fetchCalendarEvents.mock.calls[0][0]).toBe('ms-token')
+    const passedGetToken = msGraphCalendar.fetchCalendarEvents.mock.calls[0][0]
+    expect(typeof passedGetToken).toBe('function')
+    await expect(passedGetToken()).resolves.toBe('ms-token')
   })
 
   it('fetches Google events on mount when Google is connected', async () => {

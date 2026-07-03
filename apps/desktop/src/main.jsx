@@ -456,13 +456,10 @@ function ViewBody({
     const end = new Date(start.getTime() + 60 * 60000)
     const msAuth = makeDesktopOAuthService('microsoft')
     if (msAuth.isConnected()) {
-      msAuth.getToken({}).then((token) => {
-        if (!token) return
-        return createCalendarEvent(token, {
-          title: `1:1 with ${dev.name}`,
-          start: toLocalDateTimeString(start),
-          end: toLocalDateTimeString(end),
-        })
+      createCalendarEvent(msAuth.getToken, {
+        title: `1:1 with ${dev.name}`,
+        start: toLocalDateTimeString(start),
+        end: toLocalDateTimeString(end),
       }).catch(console.error)
     }
     window.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: 'planner' }))

@@ -223,10 +223,8 @@ export function CalendarView({ calendarEvents, setCalendarEvents, onNavigatePlan
     let cancelled = false
     setOutlookSyncing(true); setOutlookError(null)
     const { startD, endD } = rangeForView()
-    msAuth.getToken({}).then((token) => {
-      if (!token) throw new Error('Not connected to Microsoft.')
-      return fetchCalendarEvents(token, startD.toISOString(), endD.toISOString())
-    }).then((evs) => { if (!cancelled) setOutlookEvents(evs) })
+    fetchCalendarEvents(msAuth.getToken, startD.toISOString(), endD.toISOString())
+      .then((evs) => { if (!cancelled) setOutlookEvents(evs) })
       .catch((e) => { if (!cancelled) setOutlookError(e.message) })
       .finally(() => { if (!cancelled) setOutlookSyncing(false) })
     return () => { cancelled = true }
