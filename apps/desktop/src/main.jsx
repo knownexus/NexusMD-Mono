@@ -496,6 +496,7 @@ function ViewBody({
     case 'prs':
       return (
         <PRView prs={data.PRS || []} onOpen={onOpenPR}
+          onOpenLink={(u) => window.electronAPI.openLink(u)}
           needsMeCriteria={needsMeCriteria} setNeedsMeCriteria={setNeedsMeCriteria}
           newItemIds={newItemIds.pr} />
       )

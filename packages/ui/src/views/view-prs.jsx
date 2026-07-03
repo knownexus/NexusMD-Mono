@@ -80,7 +80,7 @@ function NeedsMeCriteriaPopover({ criteria, onChange, onClose }) {
   )
 }
 
-export function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds = new Set() }) {
+export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCriteria, newItemIds = new Set() }) {
   const { data: NexusMDData, api: NexusMDApi } = useNexusData()
   const effectiveNeedsMe = useEffectiveNeedsMe()
   const [initialNewCount] = useStatePR(() => newItemIds.size)
@@ -250,7 +250,7 @@ export function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newIt
                 <span className="muted mono" style={{ fontSize: 10.5, fontWeight: 500 }}>{g.items.length}</span>
               </div>
             )}
-            {!collapsed[g.key] && g.items.map(p => <PRRow key={p.id} pr={p} onOpen={onOpen}/>)}
+            {!collapsed[g.key] && g.items.map(p => <PRRow key={p.id} pr={p} onOpen={onOpen} onOpenLink={onOpenLink}/>)}
           </React.Fragment>
         ))}
         {filtered.length === 0 && <div className="empty">No pull requests match.</div>}
@@ -275,7 +275,7 @@ function reviewerVoteDisplay(vote) {
   return { label: 'Pending', glyph: '…', color: 'var(--text-subtle)' }
 }
 
-function PRRow({ pr, onOpen }) {
+function PRRow({ pr, onOpen, onOpenLink }) {
   const { data: NexusMDData } = useNexusData()
   // Use reviewerDetails so each avatar reflects that person's actual vote,
   // rather than marking the first N reviewers approved by list position.
@@ -336,6 +336,22 @@ function PRRow({ pr, onOpen }) {
         </div>
       </div>
       <div className="pr-meta">
+        {pr.url && (
+          <button
+            type="button"
+            data-testid="pr-open-link"
+            className="btn sm ghost"
+            title="Open pull request in Azure DevOps"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (onOpenLink) onOpenLink(pr.url)
+              else window.open(pr.url, '_blank', 'noopener')
+            }}
+            style={{ flexShrink: 0 }}
+          >
+            <Icon name="link" size={12} />
+          </button>
+        )}
         {metaKeys.map(k => metaFrag[k]())}
       </div>
     </div>
