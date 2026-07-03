@@ -16,7 +16,8 @@ describe('fetchCalendarEvents', () => {
         ],
       }),
     })
-    const result = await fetchCalendarEvents('fake-token', '2026-07-01T00:00:00.000Z', '2026-07-08T00:00:00.000Z')
+    const getToken = vi.fn(async () => 'fake-token')
+    const result = await fetchCalendarEvents(getToken, '2026-07-01T00:00:00.000Z', '2026-07-08T00:00:00.000Z')
     expect(result).toEqual([
       {
         id: 'outlook-abc123', title: 'Sprint Planning',
@@ -32,29 +33,43 @@ describe('fetchCalendarEvents', () => {
       ok: true, status: 200,
       json: async () => ({ value: [{ id: 'x', start: { dateTime: '2026-07-02T09:00:00' }, end: { dateTime: '2026-07-02T10:00:00' } }] }),
     })
-    const result = await fetchCalendarEvents('fake-token', 'a', 'b')
+    const getToken = vi.fn(async () => 'fake-token')
+    const result = await fetchCalendarEvents(getToken, 'a', 'b')
     expect(result[0].title).toBe('(No title)')
   })
 
-  it('sends the Bearer token and date range in the request', async () => {
+  it('sends the Bearer token from getToken and the date range in the request', async () => {
     global.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ value: [] }) })
-    await fetchCalendarEvents('fake-token', '2026-07-01T00:00:00.000Z', '2026-07-08T00:00:00.000Z')
+    const getToken = vi.fn(async () => 'fake-token')
+    await fetchCalendarEvents(getToken, '2026-07-01T00:00:00.000Z', '2026-07-08T00:00:00.000Z')
     const [url, options] = global.fetch.mock.calls[0]
     expect(url).toContain('calendarView')
     expect(url).toContain(encodeURIComponent('2026-07-01T00:00:00.000Z'))
     expect(options.headers.Authorization).toBe('Bearer fake-token')
   })
 
+  it('retries once via a forced token refresh on 401', async () => {
+    global.fetch
+      .mockResolvedValueOnce({ ok: false, status: 401 })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ value: [] }) })
+    const getToken = vi.fn(async ({ force } = {}) => (force ? 'fresh-token' : 'stale-token'))
+    await fetchCalendarEvents(getToken, 'a', 'b')
+    expect(getToken).toHaveBeenCalledTimes(2)
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+  })
+
   it('throws on a non-ok response', async () => {
-    global.fetch.mockResolvedValue({ ok: false, status: 401 })
-    await expect(fetchCalendarEvents('fake-token', 'a', 'b')).rejects.toThrow('Graph calendarView failed: 401')
+    global.fetch.mockResolvedValue({ ok: false, status: 403 })
+    const getToken = vi.fn(async () => 'fake-token')
+    await expect(fetchCalendarEvents(getToken, 'a', 'b')).rejects.toThrow(/Graph request failed \(403\)/)
   })
 })
 
 describe('createCalendarEvent', () => {
   it('POSTs the event to Graph and returns the response body', async () => {
     global.fetch.mockResolvedValue({ ok: true, status: 201, json: async () => ({ id: 'new-event-id' }) })
-    const result = await createCalendarEvent('fake-token', { title: '1:1 with Alex', start: '2026-07-02T10:00Z', end: '2026-07-02T11:00Z', description: 'Weekly sync' })
+    const getToken = vi.fn(async () => 'fake-token')
+    const result = await createCalendarEvent(getToken, { title: '1:1 with Alex', start: '2026-07-02T10:00Z', end: '2026-07-02T11:00Z', description: 'Weekly sync' })
     expect(result).toEqual({ id: 'new-event-id' })
     const [url, options] = global.fetch.mock.calls[0]
     expect(url).toBe('https://graph.microsoft.com/v1.0/me/events')
@@ -68,7 +83,8 @@ describe('createCalendarEvent', () => {
 
   it('throws on a non-ok response', async () => {
     global.fetch.mockResolvedValue({ ok: false, status: 403 })
-    await expect(createCalendarEvent('fake-token', { title: 'x', start: 'a', end: 'b' })).rejects.toThrow('Graph createEvent failed: 403')
+    const getToken = vi.fn(async () => 'fake-token')
+    await expect(createCalendarEvent(getToken, { title: 'x', start: 'a', end: 'b' })).rejects.toThrow(/Graph request failed \(403\)/)
   })
 })
 

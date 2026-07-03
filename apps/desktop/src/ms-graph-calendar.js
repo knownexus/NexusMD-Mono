@@ -1,19 +1,18 @@
-// ms-graph-calendar.js — desktop Outlook Calendar client. Takes a caller-supplied
-// Bearer token (from makeDesktopOAuthService('microsoft')) rather than managing its
-// own auth — unlike the shared @nexusmd/ui OutlookService, which is MSAL-only.
+// ms-graph-calendar.js — desktop Outlook Calendar client. Calls through the
+// shared @nexusmd/ui graph-client, so it gets 401-retry-once for free — unlike
+// before this refactor, when it hand-rolled fetch with no retry.
+import { graphJSON, graphFetch } from '@nexusmd/ui'
 
-export async function fetchCalendarEvents(token, startISO, endISO) {
-  const url = [
-    'https://graph.microsoft.com/v1.0/me/calendarView',
+export async function fetchCalendarEvents(getToken, startISO, endISO) {
+  const path = [
+    '/me/calendarView',
     `?startDateTime=${encodeURIComponent(startISO)}`,
     `&endDateTime=${encodeURIComponent(endISO)}`,
     '&$select=id,subject,start,end,location,body',
     '&$top=100',
     '&$orderby=start/dateTime',
   ].join('')
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="UTC"' } })
-  if (!res.ok) throw new Error(`Graph calendarView failed: ${res.status}`)
-  const data = await res.json()
+  const data = await graphJSON(getToken, path, { headers: { Prefer: 'outlook.timezone="UTC"' } })
   const toISO = (s) => (s && !s.endsWith('Z') ? s + 'Z' : s)
   return (data.value || []).map((ev) => ({
     id: `outlook-${ev.id}`,
@@ -38,7 +37,7 @@ export function toLocalDateTimeString(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-export async function createCalendarEvent(token, { title, start, end, description = '' }) {
+export async function createCalendarEvent(getToken, { title, start, end, description = '' }) {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const body = {
     subject: title,
@@ -46,11 +45,10 @@ export async function createCalendarEvent(token, { title, start, end, descriptio
     end: { dateTime: end.replace('Z', ''), timeZone: tz },
     body: { contentType: 'text', content: description },
   }
-  const res = await fetch('https://graph.microsoft.com/v1.0/me/events', {
+  const res = await graphFetch(getToken, '/me/events', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`Graph createEvent failed: ${res.status}`)
   return res.json()
 }
