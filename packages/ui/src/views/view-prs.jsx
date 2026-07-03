@@ -90,6 +90,14 @@ export function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newIt
   const [grouping, setGrouping] = usePersisted('nexusmd.pr.grouping', 'author')
   const [collapsed, setCollapsed] = useStatePR({})
   const [showCriteriaPopover, setShowCriteriaPopover] = useStatePR(false)
+  const [focusedWI, setFocusedWI] = useStatePR(null)
+  React.useEffect(() => {
+    const nav = window.NexusMDNav
+    if (nav?.pendingFilter?.workItemId != null) {
+      setFocusedWI(nav.pendingFilter.workItemId)
+      window.NexusMDNav = null   // consume, like the planner view does
+    }
+  }, [])
   const criteria = needsMeCriteria || { votes: [0], includeDrafts: false }
   const { TEAM } = NexusMDData
 
@@ -116,6 +124,9 @@ export function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newIt
   }
 
   const filtered = useMemoPR(() => {
+    if (focusedWI != null) {
+      return prs.filter(p => (p.linkedWorkItems || []).some(w => w.id === focusedWI))
+    }
     let out = prs
     if (filter === 'needsMe') out = out.filter(p => effectiveNeedsMe(p, criteria))
     else if (filter === 'active') out = out.filter(p => p.status === 'active')
@@ -128,7 +139,7 @@ export function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newIt
       out = out.filter(p => p.title.toLowerCase().includes(q) || p.branch.toLowerCase().includes(q) || String(p.id).includes(q))
     }
     return out
-  }, [prs, filter, search, criteria])
+  }, [prs, filter, search, criteria, focusedWI])
 
   // Group
   const grouped = useMemoPR(() => {
@@ -157,6 +168,14 @@ export function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newIt
           <button className="btn sm" onClick={() => NexusMDApi?.load().catch(() => {})}><Icon name="refresh" size={13}/> Refresh</button>
         </div>
       </div>
+
+      {focusedWI != null && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 10, borderRadius: 8, background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', fontSize: 13 }}>
+          <Icon name="pr" size={13} />
+          <span>Showing pull requests for work item <strong>#{focusedWI}</strong></span>
+          <button className="btn sm ghost" style={{ marginLeft: 'auto' }} onClick={() => setFocusedWI(null)}>Clear</button>
+        </div>
+      )}
 
       {initialNewCount > 0 && !bannerDismissed && (
         <NotificationBanner
