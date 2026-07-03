@@ -31,6 +31,9 @@ export { ProfileProvider, useProfile, localUpsertProfiles } from './profile-cont
 // Cloud-sync provider factories (Google Drive / OneDrive) for profile bundles.
 export { makeGoogleDriveProvider, makeOneDriveProvider } from './cloud/providers.js'
 
+// Shared, token-agnostic Microsoft Graph client (desktop + web call through this).
+export { graphFetch, graphJSON, graphList } from './graph/graph-client.js'
+
 // Continuous sync — runtime, collections, payload crypto.
 export { encryptSync, decryptSync } from './sync/crypto.js'
 export { plannerCollection, notesCollection, teamCustomCollection, teamRemovedCollection, tweaksCollection } from './sync/collections.js'
