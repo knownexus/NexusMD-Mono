@@ -117,6 +117,17 @@ export async function loadAdoData(
         }))
       } catch (_) {}
     }))
+    // Populate PR↔work-item links (one lightweight call per active PR).
+    await Promise.all(all.map(async pr => {
+      try {
+        const w = await get(`${encodeURIComponent(pr.project)}/_apis/git/repositories/${pr.repoId}/pullRequests/${pr.id}/workitems?api-version=7.0`)
+        pr.linkedWorkItems = (w.value || [])
+          .map(x => ({ id: Number(x.id) }))
+          .filter(x => Number.isFinite(x.id))
+      } catch (_) {
+        pr.linkedWorkItems = []
+      }
+    }))
     return all
   })()
 

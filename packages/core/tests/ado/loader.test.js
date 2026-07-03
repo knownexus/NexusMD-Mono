@@ -149,3 +149,32 @@ describe('loadAdoData — resilience', () => {
     expect(result.PRS).toEqual([])
   })
 })
+
+describe('loadAdoData — PR work-item links', () => {
+  it('populates PR linkedWorkItems from the PR workitems endpoint', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const http = makeHttp({
+      '/_apis/git/repositories?': { value: [{ id: 'repo1', name: 'Repo One' }] },
+      '/pullrequests?': { value: [{ pullRequestId: 55, title: 'Fix', createdBy: { displayName: 'Al' }, status: 'active', reviewers: [] }] },
+      '/pullRequests/55/workitems': { value: [{ id: '7' }, { id: '9' }] },
+    })
+    const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
+    const pr = result.PRS.find(p => p.id === 55)
+    expect(pr).toBeTruthy()
+    expect(pr.linkedWorkItems.map(w => w.id)).toEqual([7, 9])
+  })
+
+  it('degrades to empty links when the workitems endpoint fails', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const http = {
+      fetch: vi.fn(async (path) => {
+        if (path.includes('/pullRequests/55/workitems')) return { ok: false, status: 500, json: async () => ({}) }
+        if (path.includes('/_apis/git/repositories?')) return { ok: true, status: 200, json: async () => ({ value: [{ id: 'repo1', name: 'Repo One' }] }) }
+        if (path.includes('/pullrequests?')) return { ok: true, status: 200, json: async () => ({ value: [{ pullRequestId: 55, title: 'Fix', createdBy: { displayName: 'Al' }, status: 'active', reviewers: [] }] }) }
+        return { ok: true, status: 200, json: async () => ({ value: [] }) }
+      }),
+    }
+    const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
+    expect(result.PRS.find(p => p.id === 55).linkedWorkItems).toEqual([])
+  })
+})
