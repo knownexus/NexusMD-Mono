@@ -8,12 +8,16 @@ import { Avatar, MenuButton, NotificationBanner, ProjectChip, TypeIcon, usePersi
 import { Icon } from '../icons.jsx';
 import { TriageExportButton, TriageStatusLine } from './triage.jsx';
 import { WorkItemDetail } from './work-item-detail.jsx';
-import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS, WI_TABLE_COLUMNS } from '@nexusmd/core';
+import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS, WI_TABLE_COLUMNS, indexPRsByWorkItem } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 
 // Local aliases matching legacy global names used in this file
 const adoTypeToNexusMD  = adoTypeToHelm;
 const adoStateToNexusMD = adoStateToHelm;
+
+function navigateToPRs(workItemId) {
+  window.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: { view: 'prs', filter: { workItemId } } }));
+}
 
 const { useState: useStateW, useMemo: useMemoW } = React;
 
@@ -256,11 +260,15 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   const { PROJECTS, STATES } = NexusMDData;
   const TEAM = teamProp || NexusMDData.TEAM || [];
 
-  // Merged view: prop items (initial load + background refresh) + any extra pages loaded
+  const prIndex = useMemoW(() => indexPRsByWorkItem(NexusMDData.PRS || []), [NexusMDData.PRS]);
+
+  // Merged view: prop items (initial load + background refresh) + any extra pages loaded,
+  // each annotated with its real linked-PR count.
   const allItems = useMemoW(() => {
     const seen = new Set(items.map(i => i.id));
-    return [...items, ...extraItems.filter(i => !seen.has(i.id))];
-  }, [items, extraItems]);
+    const merged = [...items, ...extraItems.filter(i => !seen.has(i.id))];
+    return merged.map(i => ({ ...i, prs: prIndex.get(i.id)?.length ?? 0 }));
+  }, [items, extraItems, prIndex]);
 
   // Map a flat WorkItemSearchResultDto (camelCase) to the internal shape
   const mapDto = useMemoW(() => {
@@ -1168,7 +1176,15 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
         <td key="title" className="title">
           <span className="truncate" style={{ display: 'inline-block', maxWidth: titleColWidth, verticalAlign: 'middle' }}>{w.title}</span>
           {w.comments > 0 && <span className="muted mono" style={{ fontSize: 10.5, marginLeft: 8 }}><Icon name="comment" size={10}/> {w.comments}</span>}
-          {w.prs > 0 && <span className="muted mono" style={{ fontSize: 10.5, marginLeft: 6 }}><Icon name="pr" size={10}/> {w.prs}</span>}
+          {w.prs > 0 && (
+            <button
+              type="button"
+              className="mono"
+              title="View linked pull requests"
+              onClick={e => { e.stopPropagation(); navigateToPRs(w.id); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 6, fontSize: 10.5, border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)' }}
+            ><Icon name="pr" size={10}/> {w.prs}</button>
+          )}
         </td>);
       case 'project': return <td key="project"><ProjectChip id={w.project}/></td>;
       case 'state': return <td key="state"><StateDot state={w.state} withLabel/></td>;
@@ -1485,7 +1501,16 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
     ),
     points: () => <span key="points" className="muted mono" style={{ fontSize: 10.5 }}>{w.points} pts</span>,
     comments: () => (w.comments > 0 ? <span key="comments" className="muted mono" style={{ fontSize: 10.5 }}><Icon name="comment" size={10}/> {w.comments}</span> : null),
-    prs: () => (w.prs > 0 ? <span key="prs" className="muted mono" style={{ fontSize: 10.5 }}><Icon name="pr" size={10}/> {w.prs}</span> : null),
+    prs: () => (w.prs > 0 ? (
+      <button
+        key="prs"
+        type="button"
+        className="mono"
+        title="View linked pull requests"
+        onClick={e => { e.stopPropagation(); navigateToPRs(w.id); }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)' }}
+      ><Icon name="pr" size={10}/> {w.prs}</button>
+    ) : null),
   };
   const detailKeys = ['assignee', 'tags', 'points'];
   const countKeys = ['comments', 'prs'];
