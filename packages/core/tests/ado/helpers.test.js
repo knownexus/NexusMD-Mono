@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  slugify, timeAgo, adoTypeToHelm, adoStateToHelm,
+  slugify, timeAgo, formatDateTime, adoTypeToHelm, adoStateToHelm,
   isTerminalState, isActiveState, isReviewState, isBlockedState, stateCategory,
   PROJECT_COLORS, STATES,
 } from '../../src/modules/ado/helpers.js'
@@ -41,6 +41,23 @@ describe('timeAgo', () => {
   it('returns days for timestamps >= 24h ago', () => {
     const d = new Date(Date.now() - 2 * 86_400_000).toISOString()
     expect(timeAgo(d)).toBe('2d')
+  })
+})
+
+describe('formatDateTime', () => {
+  it('returns "—" for null/undefined', () => {
+    expect(formatDateTime(null)).toBe('—')
+    expect(formatDateTime(undefined)).toBe('—')
+  })
+  it('returns "—" for an unparseable value', () => {
+    expect(formatDateTime('not a date')).toBe('—')
+  })
+  it('formats as HH:MM DD/MM/YY in local time', () => {
+    // No timezone suffix → parsed as local time, matching the local getters used.
+    expect(formatDateTime('2026-07-03T14:05:00')).toBe('14:05 03/07/26')
+  })
+  it('zero-pads single-digit hours, minutes, day, and month', () => {
+    expect(formatDateTime('2026-01-09T09:07:00')).toBe('09:07 09/01/26')
   })
 })
 

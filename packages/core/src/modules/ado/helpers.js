@@ -23,6 +23,16 @@ export function timeAgo(dateStr) {
   return d + 'd'
 }
 
+// Absolute timestamp formatted as "HH:MM DD/MM/YY" (24-hour, local time).
+// Returns an em-dash for null/unparseable input, matching timeAgo's placeholder.
+export function formatDateTime(dateStr) {
+  if (!dateStr) return '—'
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return '—'
+  const p = (n) => String(n).padStart(2, '0')
+  return `${p(d.getHours())}:${p(d.getMinutes())} ${p(d.getDate())}/${p(d.getMonth() + 1)}/${p(d.getFullYear() % 100)}`
+}
+
 export function adoTypeToHelm(t) {
   const s = (t || '').toLowerCase()
   if (s === 'bug')        return 'bug'

@@ -7,6 +7,7 @@ import { FilterChip, Stat } from '../components.jsx'
 import { NotificationBanner, usePersisted } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
 import { useNexusData } from '../data-context.jsx'
+import { formatDateTime } from '@nexusmd/core'
 
 const { useState: useStateT, useMemo: useMemoT } = React
 
@@ -181,7 +182,7 @@ export function TestsView({ tests, acknowledgedTests, setAcknowledgedTests, newI
               const isNew = newItemIds.has(run.id)
               return (
               <React.Fragment key={`${g.name}-${run.id}`}>
-              <div className="build-row" style={{ gridTemplateColumns: 'auto 1fr 80px auto',
+              <div className="build-row" style={{ gridTemplateColumns: 'auto 1fr 80px 116px auto',
                 ...(isNew ? { background: 'color-mix(in srgb, var(--accent) 7%, var(--surface))', boxShadow: 'inset 3px 0 0 var(--accent)' } : {}),
               }}>
                 <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -202,6 +203,9 @@ export function TestsView({ tests, acknowledgedTests, setAcknowledgedTests, newI
                   </div>
                 </div>
                 <div className="build-meta">{run.duration || '-'}</div>
+                <div className="build-meta mono" title={run.startTime ? new Date(run.startTime).toLocaleString() : ''}>
+                  {formatDateTime(run.startTime)}
+                </div>
                 <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', alignItems: 'center' }}>
                   {run.result === 'failed' && (
                     acknowledgedSet.has(run.id)
@@ -229,7 +233,6 @@ export function TestsView({ tests, acknowledgedTests, setAcknowledgedTests, newI
                       }
                     }))
                   }}><Icon name="plus" size={12}/> Bug</button>
-                  <div className="build-meta" style={{ textAlign: 'right' }}>{run.when || '-'}</div>
                 </div>
               </div>
               {expandedRun === run.id && (

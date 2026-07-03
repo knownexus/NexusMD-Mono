@@ -8,6 +8,7 @@ import { Avatar, NotificationBanner, usePersisted } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
 import { toast } from '../toast.jsx'
 import { useNexusData } from '../data-context.jsx'
+import { formatDateTime } from '@nexusmd/core'
 
 // Grid template shared between header and every build row
 const BUILD_GRID = '28px 68px 1fr 160px 72px 80px 72px 148px 140px'
@@ -431,8 +432,8 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
                     <div className="build-meta">{b.duration}</div>
 
                     {/* Date */}
-                    <div className="build-meta" title={b.finishTime ? new Date(b.finishTime).toLocaleString() : ''}>
-                      {b.when}
+                    <div className="build-meta mono" title={b.finishTime ? new Date(b.finishTime).toLocaleString() : ''}>
+                      {formatDateTime(b.finishTime)}
                     </div>
 
                     {/* Actions */}
