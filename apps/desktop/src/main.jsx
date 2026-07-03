@@ -774,7 +774,13 @@ function App() {
   }, [])
 
   React.useEffect(() => {
-    const handler = e => setView(e.detail)
+    const handler = e => {
+      const detail = e.detail
+      // Accept both the string payload (desktop-internal dispatches) and the
+      // { view, filter } object payload used by shared @nexusmd/ui components.
+      const next = typeof detail === 'string' ? detail : detail?.view
+      if (next) setView(next)
+    }
     window.addEventListener('nexusmd:navigate', handler)
     return () => window.removeEventListener('nexusmd:navigate', handler)
   }, [])
