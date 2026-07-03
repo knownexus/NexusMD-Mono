@@ -34,6 +34,11 @@ const EXPECTED = [
   'plParseYmd', 'plSectionGroup', 'plTodayDate', 'qaParseDue', 'readAuditLog',
   'registerModule', 'slugify', 'sortEventsByTime', 'stateCategory', 'timeAgo',
   'validateProfile', 'weekKeyToOffset', 'weekStorageKey',
+  // Absolute date/time formatter (builds/tests date column)
+  'formatDateTime',
+  // Field/column visibility catalogs + resolver (configurable cards & tables)
+  'WI_CARD_FIELDS', 'WI_TABLE_COLUMNS', 'PR_CARD_FIELDS', 'BUILDS_TABLE_COLUMNS', 'TESTS_TABLE_COLUMNS',
+  'defaultConfig', 'resolveFields', 'reorderField', 'toggleField',
 ].sort()
 
 describe('public API surface', () => {
