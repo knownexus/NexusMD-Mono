@@ -11,3 +11,8 @@ export {
   syncBoardColumns, getActiveLanes, removeAutoAdded, resetToDetected,
   reorderColumns, toggleColumnHidden, addManualColumn,
 } from './board-columns.js'
+export {
+  WI_CARD_FIELDS, WI_TABLE_COLUMNS, PR_CARD_FIELDS,
+  BUILDS_TABLE_COLUMNS, TESTS_TABLE_COLUMNS,
+  defaultConfig, resolveFields, reorderField, toggleField,
+} from './field-visibility.js'
