@@ -7,7 +7,7 @@ import { Avatar, MenuButton, NotificationBanner, ProjectChip, TypeIcon, usePersi
 import { Icon } from '../icons.jsx';
 import { TriageExportButton, TriageStatusLine } from './triage.jsx';
 import { WorkItemDetail } from './work-item-detail.jsx';
-import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS } from '@nexusmd/core';
+import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS, WI_TABLE_COLUMNS } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 
 // Local aliases matching legacy global names used in this file
@@ -1021,6 +1021,8 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
   const { data: NexusMDData } = useNexusData();
   const TEAM = team || NexusMDData.TEAM || [];
   const [tableDragId, setTableDragId] = useStateW(null);
+  const [tableCfg] = usePersisted('nexusmd.fields.wiTable', []);
+  const visibleCols = resolveFields(WI_TABLE_COLUMNS, tableCfg).filter(f => f.visible);
 
   const patchWI = (id, ops) =>
     fetch(`/api/workitems/${id}`, {
@@ -1087,6 +1089,50 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
     else setSelection(new Set(items.map(w => w.id)));
   };
 
+  const headFor = (key) => {
+    switch (key) {
+      case 'id':       return <SortHeader key="id" col="id" label="ID" sort={sort} setSort={setSort}/>;
+      case 'type':     return <th key="type">Type</th>;
+      case 'title':    return <SortHeader key="title" col="title" label="Title" sort={sort} setSort={setSort}/>;
+      case 'project':  return <th key="project">Project</th>;
+      case 'state':    return <th key="state">State</th>;
+      case 'assignee': return <th key="assignee">Assignee</th>;
+      case 'priority': return <SortHeader key="priority" col="priority" label="P" sort={sort} setSort={setSort}/>;
+      case 'tags':     return <th key="tags">Tags</th>;
+      case 'updated':  return <SortHeader key="updated" col="updated" label="Updated" sort={sort} setSort={setSort}/>;
+      default:         return null;
+    }
+  };
+
+  const cellFor = (key, w) => {
+    switch (key) {
+      case 'id': return (
+        <td key="id" className="id" onClick={e=>e.stopPropagation()}>
+          <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(w.project.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase()))}/_workitems/edit/${w.id}`} target="_blank" rel="noopener" style={{color:'var(--accent)',textDecoration:'none',fontFamily:'var(--mono)',fontSize:12}}>#{w.id}</a>
+        </td>);
+      case 'type': return <td key="type"><TypeIcon type={w.type}/></td>;
+      case 'title': return (
+        <td key="title" className="title">
+          <span className="truncate" style={{ display: 'inline-block', maxWidth: titleColWidth, verticalAlign: 'middle' }}>{w.title}</span>
+          {w.comments > 0 && <span className="muted mono" style={{ fontSize: 10.5, marginLeft: 8 }}><Icon name="comment" size={10}/> {w.comments}</span>}
+          {w.prs > 0 && <span className="muted mono" style={{ fontSize: 10.5, marginLeft: 6 }}><Icon name="pr" size={10}/> {w.prs}</span>}
+        </td>);
+      case 'project': return <td key="project"><ProjectChip id={w.project}/></td>;
+      case 'state': return <td key="state"><StateDot state={w.state} withLabel/></td>;
+      case 'assignee': return (
+        <td key="assignee" onClick={e => e.stopPropagation()}>
+          <InlineAssigneeCell assigneeId={w.assignee} team={TEAM} onAssign={async (assigneeId) => { const member = TEAM.find(t => t.id === assigneeId); updateItem(w.id, { assignee: assigneeId || null }); await patchWI(w.id, [['/fields/System.AssignedTo', member?.name || null]]); }} />
+        </td>);
+      case 'priority': return <td key="priority"><Prio p={w.priority}/></td>;
+      case 'tags': return (
+        <td key="tags" onClick={e => e.stopPropagation()}>
+          <InlineTagsCell tags={w.tags || []} onTagsChange={async newTags => { updateItem(w.id, { tags: newTags }); await patchWI(w.id, [['/fields/System.Tags', newTags.join('; ')]]); }} />
+        </td>);
+      case 'updated': return <td key="updated" className="muted mono" style={{ fontSize: 11 }}>{w.updated} ago</td>;
+      default: return null;
+    }
+  };
+
   return (
     <React.Fragment>
     <div className="card">
@@ -1098,15 +1144,7 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
             <th style={{ width: 28, paddingRight: 4 }} onClick={(e) => e.stopPropagation()}>
               <input type="checkbox" checked={allChecked} onChange={headerSelToggle} style={{ cursor: 'pointer' }}/>
             </th>
-            <SortHeader col="id" label="ID" sort={sort} setSort={setSort}/>
-            <th>Type</th>
-            <SortHeader col="title" label="Title" sort={sort} setSort={setSort}/>
-            <th>Project</th>
-            <th>State</th>
-            <th>Assignee</th>
-            <SortHeader col="priority" label="P" sort={sort} setSort={setSort}/>
-            <th>Tags</th>
-            <SortHeader col="updated" label="Updated" sort={sort} setSort={setSort}/>
+            {visibleCols.map(f => headFor(f.key))}
             <th style={{ width: 32 }}/>
           </tr>
         </thead>
@@ -1115,7 +1153,7 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
             <React.Fragment key={g.key}>
               {g.label !== null && (
                 <tr style={{ background: 'var(--surface-2)' }} onClick={() => setCollapsed(c => ({ ...c, [g.key]: !c[g.key] }))}>
-                  <td colSpan={13} style={{ height: 32, fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none' }}>
+                  <td colSpan={2 + visibleCols.length + 1} style={{ height: 32, fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <Icon name={collapsed[g.key] ? 'chevron-right' : 'chevron-down'} size={11}/>
                       {grouping === 'assignee' && g.key !== 'unassigned' && <Avatar who={g.key} size="xs"/>}
@@ -1143,40 +1181,7 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
                   <td onClick={(e) => { e.stopPropagation(); toggleSel(w.id); }} style={{ paddingRight: 4 }}>
                     <input type="checkbox" checked={selection.has(w.id)} onChange={()=>{}} style={{ cursor: 'pointer' }}/>
                   </td>
-                  <td className="id" onClick={e=>e.stopPropagation()}>
-                     <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(w.project.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase()))}/_workitems/edit/${w.id}`} target="_blank" rel="noopener" style={{color:'var(--accent)',textDecoration:'none',fontFamily:'var(--mono)',fontSize:12}}>#{w.id}</a>
-
-                  </td>
-                  <td><TypeIcon type={w.type}/></td>
-                  <td className="title">
-                    <span className="truncate" style={{ display: 'inline-block', maxWidth: titleColWidth, verticalAlign: 'middle' }}>{w.title}</span>
-                    {w.comments > 0 && <span className="muted mono" style={{ fontSize: 10.5, marginLeft: 8 }}><Icon name="comment" size={10}/> {w.comments}</span>}
-                    {w.prs > 0 && <span className="muted mono" style={{ fontSize: 10.5, marginLeft: 6 }}><Icon name="pr" size={10}/> {w.prs}</span>}
-                  </td>
-                  <td><ProjectChip id={w.project}/></td>
-                  <td><StateDot state={w.state} withLabel/></td>
-                  <td onClick={e => e.stopPropagation()}>
-                    <InlineAssigneeCell
-                      assigneeId={w.assignee}
-                      team={TEAM}
-                      onAssign={async (assigneeId) => {
-                        const member = TEAM.find(t => t.id === assigneeId);
-                        updateItem(w.id, { assignee: assigneeId || null });
-                        await patchWI(w.id, [['/fields/System.AssignedTo', member?.name || null]]);
-                      }}
-                    />
-                  </td>
-                  <td><Prio p={w.priority}/></td>
-                  <td onClick={e => e.stopPropagation()}>
-                    <InlineTagsCell
-                      tags={w.tags || []}
-                      onTagsChange={async newTags => {
-                        updateItem(w.id, { tags: newTags });
-                        await patchWI(w.id, [['/fields/System.Tags', newTags.join('; ')]]);
-                      }}
-                    />
-                  </td>
-                  <td className="muted mono" style={{ fontSize: 11 }}>{w.updated} ago</td>
+                  {visibleCols.map(f => cellFor(f.key, w))}
                   <td className="row-actions" onClick={(e) => e.stopPropagation()}>
                     <MenuButton items={[
                       { label: 'Open detail', icon: <Icon name="eye" size={12}/>, onClick: () => onOpen(w) },
