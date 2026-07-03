@@ -968,7 +968,6 @@ function FieldVisibilityCard({ title, catalog, config, onChange }) {
                   checked={f.visible}
                   disabled={f.locked}
                   onChange={() => onChange(toggleField(config, catalog, f.key))}
-                  onClick={e => e.stopPropagation()}
                   style={{ cursor: f.locked ? 'not-allowed' : 'pointer', accentColor: 'var(--accent)', flexShrink: 0 }}
                 />
                 <span style={{ flex: 1, fontSize: 13, color: f.visible ? 'var(--text)' : 'var(--text-subtle)', textDecoration: f.visible ? 'none' : 'line-through' }}>

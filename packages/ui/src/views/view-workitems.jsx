@@ -1419,7 +1419,6 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
   const [cfg] = usePersisted('nexusmd.fields.wiCard', []);
   const resolved = resolveFields(WI_CARD_FIELDS, cfg).filter(f => f.visible);
   const visible = new Set(resolved.map(f => f.key));
-  const metaKeys = ['assignee', 'tags', 'points', 'comments', 'prs'];
   const metaFrag = {
     assignee: () => (
       <div key="assignee" onClick={e => e.stopPropagation()}>
@@ -1435,7 +1434,10 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
     comments: () => (w.comments > 0 ? <span key="comments" className="muted mono" style={{ fontSize: 10.5 }}><Icon name="comment" size={10}/> {w.comments}</span> : null),
     prs: () => (w.prs > 0 ? <span key="prs" className="muted mono" style={{ fontSize: 10.5 }}><Icon name="pr" size={10}/> {w.prs}</span> : null),
   };
-  const metaFields = resolved.filter(f => metaKeys.includes(f.key));
+  const detailKeys = ['assignee', 'tags', 'points'];
+  const countKeys = ['comments', 'prs'];
+  const detailFields = resolved.filter(f => detailKeys.includes(f.key));
+  const countFields = resolved.filter(f => countKeys.includes(f.key));
   const isDragging = dragId === w.id;
   return (
     <div
@@ -1470,8 +1472,9 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
       </div>
       <div className="board-card-title">{w.title}</div>
       <div className="board-card-meta">
-        {metaFields.map(f => metaFrag[f.key]())}
+        {detailFields.map(f => metaFrag[f.key]())}
         <span className="spacer"/>
+        {countFields.map(f => metaFrag[f.key]())}
       </div>
       {visible.has('updated') && w.updated && w.updated !== '—' && (
         <div style={{ fontSize: 10, color: 'var(--text-subtle)', marginTop: 5 }}
