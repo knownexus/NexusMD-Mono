@@ -779,7 +779,13 @@ function App() {
       // Accept both the string payload (desktop-internal dispatches) and the
       // { view, filter } object payload used by shared @nexusmd/ui components.
       const next = typeof detail === 'string' ? detail : detail?.view
-      if (next) setView(next)
+      const filter = (detail && typeof detail === 'object') ? (detail.filter || null) : null
+      if (next) {
+        // Stash the filter so views (e.g. PRView's focused work item) can consume it,
+        // mirroring the web host's window.NexusMDNav mechanism.
+        window.NexusMDNav = { pendingFilter: filter, view: next }
+        setView(next)
+      }
     }
     window.addEventListener('nexusmd:navigate', handler)
     return () => window.removeEventListener('nexusmd:navigate', handler)
