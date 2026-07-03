@@ -1,5 +1,5 @@
-import { it, expect, afterEach } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
+import { it, expect, afterEach, vi } from 'vitest'
+import { render, cleanup, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { NexusDataProvider, WorkItemsView } from '../src/index.js'
 
@@ -55,4 +55,27 @@ it('right-aligns the count group (comments/prs) after the spacer on the board ca
   const spacerIndex = Array.from(meta.children).indexOf(spacer)
   const countIndex = Array.from(meta.children).indexOf(countSpan)
   expect(spacerIndex).toBeLessThan(countIndex)
+})
+
+it('portals the tags dropdown outside the scrollable board container and does not open the card', () => {
+  const storage = memStorage({ 'nexusmd.wi.view': JSON.stringify('board') })
+  const onOpen = vi.fn()
+  const item = { ...ITEM, tags: [] } // empty tags → trigger button shows the "Tags" label
+  const { container } = render(
+    <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {}, data: { ORG: 'o', TEAM: [], PROJECTS: [], WORK_ITEMS: [] } }}>
+      <WorkItemsView items={[item]} setItems={() => {}} onOpen={onOpen} team={[]} />
+    </NexusDataProvider>
+  )
+  // Card renders inside the .board scroll container (control).
+  const card = container.querySelector('.board .board-card')
+  expect(card).toBeTruthy()
+
+  const tagsBtn = Array.from(card.querySelectorAll('button')).find(b => b.textContent.includes('Tags'))
+  expect(tagsBtn).toBeTruthy()
+  fireEvent.click(tagsBtn)
+
+  const input = document.body.querySelector('input[placeholder="Add tag…"]')
+  expect(input).toBeTruthy()                    // dropdown opened
+  expect(input.closest('.board')).toBeNull()    // portaled OUTSIDE the overflow container that would clip it
+  expect(onOpen).not.toHaveBeenCalled()         // opening tags didn't bubble to the card's open handler
 })

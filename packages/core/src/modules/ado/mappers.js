@@ -27,7 +27,8 @@ export function mapWorkItem(wi, nameToId = {}) {
     points: Math.round(parseFloat(f['Microsoft.VSTS.Scheduling.StoryPoints'] || 0) || 0),
     tags, updated: timeAgo(changed), changedMs: changed ? new Date(changed).getTime() : null,
     sprint: isSprint, iterationPath: iterPath, areaPath, area,
-    comments: 0, prs: 0, isNew,
+    comments: parseInt(f['System.CommentCount'] ?? f.commentCount ?? 0, 10) || 0,
+    prs: 0, isNew,
   }
 }
 

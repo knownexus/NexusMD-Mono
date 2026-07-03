@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 // view-workitems.jsx — Work Items: table + board, filters, drag-to-move. Shared web + desktop.
 // Bulk data arrives via props; PROJECTS/TEAM/STATES/ORG come from useNexusData().
 
@@ -288,7 +289,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
         sprint:        iterPath.toLowerCase().includes('sprint') || iterPath.toLowerCase().includes('iteration'),
         iterationPath: iterPath,
         areaPath, area: wi.area || '',
-        comments: 0, prs: 0, isNew: false,
+        comments: wi.commentCount || 0, prs: 0, isNew: false,
       };
     };
   }, [TEAM]);
@@ -831,14 +832,34 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
 // ─────────────────────────────────────────────────────────
 function InlineAssigneeCell({ assigneeId, team, onAssign }) {
   const [open, setOpen] = useStateW(false);
+  const [pos, setPos] = useStateW(null);
   const ref = React.useRef(null);
+  const btnRef = React.useRef(null);
+  const popRef = React.useRef(null);
+
+  const reposition = React.useCallback(() => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 178)) });
+  }, []);
 
   React.useEffect(() => {
     if (!open) return;
-    const handler = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+    reposition();
+    // Popover is portaled to <body>; close only when a click misses BOTH the trigger and the popover.
+    const onDown = (e) => {
+      if (!ref.current?.contains(e.target) && !popRef.current?.contains(e.target)) setOpen(false);
+    };
+    const onScroll = () => reposition();
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [open, reposition]);
 
   const member = team.find(t => t.id === assigneeId);
 
@@ -850,8 +871,9 @@ function InlineAssigneeCell({ assigneeId, team, onAssign }) {
   };
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={ref} style={{ display: 'inline-block' }}>
       <button
+        ref={btnRef}
         onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
         onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
         onMouseLeave={e => { if (!open) e.currentTarget.style.background = 'none'; }}
@@ -867,9 +889,9 @@ function InlineAssigneeCell({ assigneeId, team, onAssign }) {
         }
         <Icon name="chevron-down" size={9} style={{ color: 'var(--text-subtle)', flexShrink: 0 }} />
       </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 200,
+      {open && pos && createPortal(
+        <div ref={popRef} onClick={e => e.stopPropagation()} style={{
+          position: 'fixed', top: pos.top, left: pos.left, zIndex: 2000,
           background: 'var(--surface)', border: '1px solid var(--border)',
           borderRadius: 10, boxShadow: 'var(--shadow-pop)',
           minWidth: 170, maxHeight: 260, overflowY: 'auto', padding: 4,
@@ -899,7 +921,8 @@ function InlineAssigneeCell({ assigneeId, team, onAssign }) {
               {t.id === assigneeId && <Icon name="check" size={10} style={{ marginLeft: 'auto', color: 'var(--accent)' }}/>}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -912,14 +935,42 @@ function InlineTagsCell({ tags = [], onTagsChange }) {
   const { data: NexusMDData } = useNexusData();
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
+  const [pos, setPos] = React.useState(null);
   const ref = React.useRef(null);
+  const btnRef = React.useRef(null);
+  const popRef = React.useRef(null);
+
+  // Position the portaled popover under the trigger, clamped to the viewport.
+  const reposition = React.useCallback(() => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    setPos({
+      top: r.bottom + 4,
+      left: Math.max(8, Math.min(r.left, window.innerWidth - 218)),
+    });
+  }, []);
 
   React.useEffect(() => {
     if (!open) return;
-    const handler = e => { if (!ref.current?.contains(e.target)) { setOpen(false); setQuery(''); } };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+    reposition();
+    // The popover is portaled to <body>, so a click inside it is outside `ref`;
+    // close only when the click misses BOTH the trigger and the popover.
+    const onDown = e => {
+      if (!ref.current?.contains(e.target) && !popRef.current?.contains(e.target)) {
+        setOpen(false); setQuery('');
+      }
+    };
+    // Keep the fixed-position popover glued to the trigger as ancestors scroll.
+    const onScroll = () => reposition();
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [open, reposition]);
 
   const knownTags = React.useMemo(() => {
     const s = new Set();
@@ -933,8 +984,9 @@ function InlineTagsCell({ tags = [], onTagsChange }) {
   const removeTag = tag => onTagsChange(tags.filter(t => t !== tag));
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
+    <div ref={ref} style={{ display: 'inline-flex' }}>
       <button
+        ref={btnRef}
         onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap',
@@ -955,9 +1007,9 @@ function InlineTagsCell({ tags = [], onTagsChange }) {
         <Icon name="chevron-down" size={9} style={{ color: 'var(--text-subtle)', flexShrink: 0, marginLeft: 1 }}/>
       </button>
 
-      {open && (
-        <div onClick={e => e.stopPropagation()} style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 200,
+      {open && pos && createPortal(
+        <div ref={popRef} onClick={e => e.stopPropagation()} style={{
+          position: 'fixed', top: pos.top, left: pos.left, zIndex: 2000,
           background: 'var(--surface)', border: '1px solid var(--border)',
           borderRadius: 10, boxShadow: 'var(--shadow-pop)',
           minWidth: 210, maxHeight: 300, display: 'flex', flexDirection: 'column', padding: 8, gap: 6,
@@ -1008,7 +1060,8 @@ function InlineTagsCell({ tags = [], onTagsChange }) {
               )}
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

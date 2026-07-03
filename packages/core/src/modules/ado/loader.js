@@ -74,7 +74,7 @@ export async function loadAdoData(
         })
         const ids = (wiql.workItems || []).slice(0, 300).map(w => w.id)
         if (!ids.length) return
-        const fields = 'System.Id,System.Title,System.WorkItemType,System.State,System.AssignedTo,System.ChangedDate,System.CreatedDate,System.Tags,System.IterationPath,System.AreaPath,Custom.Area,Microsoft.VSTS.Common.Priority,Microsoft.VSTS.Scheduling.StoryPoints'
+        const fields = 'System.Id,System.Title,System.WorkItemType,System.State,System.AssignedTo,System.ChangedDate,System.CreatedDate,System.Tags,System.IterationPath,System.AreaPath,Custom.Area,Microsoft.VSTS.Common.Priority,Microsoft.VSTS.Scheduling.StoryPoints,System.CommentCount'
         const batches = []
         for (let i = 0; i < ids.length; i += 200) batches.push(ids.slice(i, i + 200))
         await Promise.all(batches.map(async batch => {

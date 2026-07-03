@@ -52,6 +52,13 @@ describe('mapWorkItem', () => {
   it('splits tags by semicolon', () => {
     expect(mapWorkItem(rawWI, {}).tags).toEqual(['auth', 'security'])
   })
+  it('maps System.CommentCount to comments', () => {
+    const withComments = { ...rawWI, fields: { ...rawWI.fields, 'System.CommentCount': 4 } }
+    expect(mapWorkItem(withComments, {}).comments).toBe(4)
+  })
+  it('defaults comments to 0 when CommentCount is absent', () => {
+    expect(mapWorkItem(rawWI, {}).comments).toBe(0)
+  })
   it('marks sprint=true when iterationPath contains "sprint"', () => {
     expect(mapWorkItem(rawWI, {}).sprint).toBe(true)
   })
