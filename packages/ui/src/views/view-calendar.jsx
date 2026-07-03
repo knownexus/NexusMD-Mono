@@ -11,11 +11,30 @@ import React from 'react';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { Avatar } from '../app-components.jsx';
 import { Icon } from '../icons.jsx';
+import { graphJSON, graphFetch } from '../graph/graph-client.js';
 
-// ── OutlookService — MSAL + Graph wrapper ───────────────────────
+// ── OutlookService — MSAL + shared Graph client ─────────────────
 const OutlookService = (() => {
   const SCOPES = ['Calendars.ReadWrite'];
   let _app = null, _account = null;
+
+  // getToken({force}) — matches the shape graphFetch/graphJSON expect. Tries
+  // silent acquisition first; falls back to (or is forced into) an interactive
+  // popup, same behavior as before this refactor.
+  async function getToken({ force = false } = {}) {
+    if (!_app) throw new Error('OutlookService not initialised');
+    if (!force) {
+      try {
+        const r = await _app.acquireTokenSilent({ scopes: SCOPES, account: _account });
+        return r.accessToken;
+      } catch (_) { /* fall through to popup */ }
+    }
+    const r = await _app.acquireTokenPopup({ scopes: SCOPES });
+    _account = r.account;
+    _app.setActiveAccount(_account);
+    return r.accessToken;
+  }
+
   return {
     async init(clientId, tenantId = 'common', redirectUri = window.location.origin) {
       if (_app) return; if (!clientId) return;
@@ -41,19 +60,11 @@ const OutlookService = (() => {
     },
     isConnected() { return _account != null; },
     getDisplayName() { return _account?.name || _account?.username || null; },
-    async _getToken() {
-      if (!_app || !_account) throw new Error('Not signed in');
-      try { const r = await _app.acquireTokenSilent({ scopes: SCOPES, account: _account }); return r.accessToken; }
-      catch (_) { const r = await _app.acquireTokenPopup({ scopes: SCOPES }); _account = r.account; return r.accessToken; }
-    },
     async fetchWeekEvents(startISO, endISO) {
-      const token = await this._getToken();
-      const url = ['https://graph.microsoft.com/v1.0/me/calendarView',
+      const path = ['/me/calendarView',
         `?startDateTime=${encodeURIComponent(startISO)}`,`&endDateTime=${encodeURIComponent(endISO)}`,
         '&$select=id,subject,start,end,location,body','&$top=100','&$orderby=start/dateTime'].join('');
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="UTC"' } });
-      if (!res.ok) throw new Error(`Graph calendarView failed: ${res.status}`);
-      const data = await res.json();
+      const data = await graphJSON(getToken, path, { headers: { Prefer: 'outlook.timezone="UTC"' } });
       const toISO = s => (s && !s.endsWith('Z') ? s + 'Z' : s);
       return (data.value || []).map(ev => ({
         id: `outlook-${ev.id}`, title: ev.subject || '(No title)',
@@ -63,17 +74,14 @@ const OutlookService = (() => {
       }));
     },
     async createEvent({ title, start, end, description = '' }) {
-      const token = await this._getToken();
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const body = { subject: title,
         start: { dateTime: start.replace('Z',''), timeZone: tz },
         end:   { dateTime: end.replace('Z',''),   timeZone: tz },
         body:  { contentType:'text', content: description } };
-      const res = await fetch('https://graph.microsoft.com/v1.0/me/events', {
-        method:'POST', headers: { Authorization:`Bearer ${token}`, 'Content-Type':'application/json' },
-        body: JSON.stringify(body),
+      const res = await graphFetch(getToken, '/me/events', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(`Graph createEvent failed: ${res.status}`);
       return res.json();
     },
   };
