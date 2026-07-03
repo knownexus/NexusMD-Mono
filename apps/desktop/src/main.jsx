@@ -20,6 +20,7 @@ import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './p
 import { getProfileKey } from './profile-keys.js'
 import { desktopCloudProviders, registerCloudDeepLink, makeDesktopOAuthService } from './cloud-auth.js'
 import { startDesktopAutoSync } from './sync.js'
+import { NAV, SETTINGS_NAV, ALL_NAV, DEFAULT_NAV_ORDER } from './nav-config.js'
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
@@ -77,7 +78,7 @@ const DEFAULT_TWEAKS = {
   theme: 'light', lightTheme: 'parchment', darkTheme: 'cobalt',
   density: 'balanced', sidebar: 'labels', typeLabels: false,
   widgetOrder: DASH_WIDGET_ORDER,
-  navOrder: ['dashboard', 'calendar', 'work', 'prs', 'builds', 'tests', 'team', 'triage', 'planner', 'markdown', 'settings'],
+  navOrder: DEFAULT_NAV_ORDER,
   quickLinks: [
     { label: 'UAT Testing', url: 'https://cirrus.uat.msl.co.uk/', color: 'var(--info)' },
     { label: 'Dev Testing', url: 'https://cirrus.dev.msl.co.uk/', color: 'var(--success)' },
@@ -196,20 +197,6 @@ const desktopWorkItemSource = {
     return submitNewWorkItem(payload)
   },
 }
-
-const NAV = [
-  { id: 'dashboard',     label: 'Dashboard',     icon: 'dashboard' },
-  { id: 'calendar',      label: 'Calendar',      icon: 'clock' },
-  { id: 'work',          label: 'Work Items',     icon: 'work' },
-  { id: 'prs',           label: 'Pull Requests',  icon: 'pr' },
-  { id: 'builds',        label: 'Builds',         icon: 'build' },
-  { id: 'tests',         label: 'Tests',          icon: 'check' },
-  { id: 'team',          label: 'Team',           icon: 'team' },
-  { id: 'triage',        label: 'Triage',         icon: 'work' },
-  { id: 'planner',       label: 'Planner',        icon: 'planner' },
-  { id: 'markdown',      label: 'Notes',          icon: 'pin' },
-  { id: 'settings',      label: 'Settings',       icon: 'settings' },
-]
 
 // Cached ADO snapshot, shaped for the shared views, re-read on every data:updated.
 function useNexusSnapshot() {
@@ -569,7 +556,7 @@ function ViewBody({
         refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange}
         onRefreshData={refreshAdoData} />
     default:
-      return <Placeholder label={(NAV.find(n => n.id === view) || NAV[0]).label} />
+      return <Placeholder label={(ALL_NAV.find(n => n.id === view) || ALL_NAV[0]).label} />
   }
 }
 
@@ -726,7 +713,7 @@ function App() {
   const [refreshLeft, setRefreshLeft] = React.useState(refreshInterval)
   const refreshLeftRef = React.useRef(refreshInterval)
 
-  const active = NAV.find(n => n.id === view) || NAV[0]
+  const active = ALL_NAV.find(n => n.id === view) || ALL_NAV[0]
   const snapshot = useNexusSnapshot()
 
   React.useEffect(() => {
@@ -897,6 +884,25 @@ function App() {
               )}
             </button>
           ))}
+          <div style={{ marginTop: 'auto' }} />
+          <button
+            key={SETTINGS_NAV.id}
+            onClick={() => setView(SETTINGS_NAV.id)}
+            className={`nav-item ${view === SETTINGS_NAV.id ? 'active' : ''}`}
+            title={iconsOnly ? SETTINGS_NAV.label : undefined}
+            style={{
+              display: 'flex', alignItems: 'center',
+              justifyContent: iconsOnly ? 'center' : 'flex-start',
+              gap: 10, padding: iconsOnly ? '8px' : '8px 10px',
+              border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+              background: view === SETTINGS_NAV.id ? 'var(--accent-soft, rgba(127,127,127,0.12))' : 'transparent',
+              color: view === SETTINGS_NAV.id ? 'var(--accent)' : 'var(--text-muted)',
+              font: 'inherit', fontSize: 13, position: 'relative',
+            }}
+          >
+            <Icon name={SETTINGS_NAV.icon} size={16} />
+            {!iconsOnly && SETTINGS_NAV.label}
+          </button>
           {!iconsOnly && (
             <div
               style={{ position: 'absolute', top: 0, right: -3, width: 6, height: '100%', cursor: 'col-resize', zIndex: 10 }}
