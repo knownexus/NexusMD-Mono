@@ -16,3 +16,4 @@ export {
   BUILDS_TABLE_COLUMNS, TESTS_TABLE_COLUMNS,
   defaultConfig, resolveFields, reorderField, toggleField,
 } from './field-visibility.js'
+export { indexPRsByWorkItem } from './pr-links.js'

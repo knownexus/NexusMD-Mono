@@ -29,7 +29,7 @@ const EXPECTED = [
   'isAllDayEvent', 'isBlockedState', 'isReviewState', 'isTerminalState',
   'listProfiles', 'loadAdoData', 'loadCachedAdoData', 'makeAdoConfig',
   'removeAutoAdded', 'resetToDetected', 'reorderColumns', 'syncBoardColumns', 'toggleColumnHidden',
-  'makeProfileKeys', 'mapBuild', 'mapPR', 'mapTestBuild', 'mapWorkItem',
+  'indexPRsByWorkItem', 'makeProfileKeys', 'mapBuild', 'mapPR', 'mapTestBuild', 'mapWorkItem',
   'mergeTeamRoster', 'pendingAlerts', 'plFmtYmd', 'plIsOverdueYmd', 'plIsTodayYmd',
   'plParseYmd', 'plSectionGroup', 'plTodayDate', 'qaParseDue', 'readAuditLog',
   'registerModule', 'slugify', 'sortEventsByTime', 'stateCategory', 'timeAgo',
