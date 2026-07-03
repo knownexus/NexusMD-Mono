@@ -19,4 +19,14 @@ describe('nav-config', () => {
     expect(DEFAULT_NAV_ORDER).toEqual(NAV.map(n => n.id))
     expect(DEFAULT_NAV_ORDER).not.toContain('settings')
   })
+
+  it('renames the markdown item to Documents', () => {
+    expect(NAV.find(n => n.id === 'markdown').label).toBe('Documents')
+  })
+
+  it('adds a top-level Notes item after planner', () => {
+    const ids = NAV.map(n => n.id)
+    expect(ids).toContain('notes')
+    expect(ids.indexOf('notes')).toBe(ids.indexOf('planner') + 1)
+  })
 })

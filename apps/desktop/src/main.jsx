@@ -27,6 +27,7 @@ import {
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
+import DesktopNotesView from './desktop-notes-view.jsx'
 import { CalendarView } from './views/view-calendar.jsx'
 import { createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
@@ -545,9 +546,12 @@ function ViewBody({
           navStyle={plannerPrefs.nav}
           entryStyle={plannerPrefs.entry}
           carryPrompt={plannerPrefs.carryPrompt}
+          showGlobalNotesTab={false}
         />
       )
     }
+    case 'notes':
+      return <DesktopNotesView />
     case 'markdown':
       return <MarkdownViewer />
     case 'settings':

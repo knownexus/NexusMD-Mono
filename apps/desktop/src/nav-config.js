@@ -11,7 +11,8 @@ export const NAV = [
   { id: 'team',      label: 'Team',          icon: 'team' },
   { id: 'triage',    label: 'Triage',        icon: 'work' },
   { id: 'planner',   label: 'Planner',       icon: 'planner' },
-  { id: 'markdown',  label: 'Notes',         icon: 'pin' },
+  { id: 'notes',     label: 'Notes',         icon: 'pin' },
+  { id: 'markdown',  label: 'Documents',     icon: 'pin' },
 ]
 
 export const SETTINGS_NAV = { id: 'settings', label: 'Settings', icon: 'settings' }

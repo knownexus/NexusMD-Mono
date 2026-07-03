@@ -25,7 +25,7 @@ import { plannerExportDocx as _defaultExportDocx } from '../planner/docx.js'
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React
 
-function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
+function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGlobalNotesTab = true }) {
   const rt = getPlannerRuntime()
   const ns = rt.namespace
 
@@ -448,7 +448,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
   const openNotesCount = gNotes.filter(n => n.status !== 'done').length
   const navGroups = [
     { id: 'overview', label: 'Overview', icon: 'dashboard' },
-    { id: 'mynotes', label: 'Notes', icon: 'pin' },
+    ...(showGlobalNotesTab ? [{ id: 'mynotes', label: 'Notes', icon: 'pin' }] : []),
     ...PL_GROUPS,
   ]
 
@@ -660,7 +660,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
           </nav>
           <div style={{ minWidth: 0 }}>
             {activeGroup === 'overview' ? glance
-              : activeGroup === 'mynotes' ? notesView
+              : (showGlobalNotesTab && activeGroup === 'mynotes') ? notesView
               : (PL_GROUPS.find(g => g.id === activeGroup) || PL_GROUPS[0]).ids.map(id => renderSection(PLANNER_SECTIONS.find(s => s.id === id)))}
           </div>
         </div>
@@ -675,8 +675,12 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
               {g.ids.map(id => renderSection(PLANNER_SECTIONS.find(s => s.id === id)))}
             </React.Fragment>
           ))}
-          {groupHeader({ id: 'mynotes', label: 'Notes (week-agnostic)', icon: 'pin' })}
-          {notesView}
+          {showGlobalNotesTab && (
+            <React.Fragment>
+              {groupHeader({ id: 'mynotes', label: 'Notes (week-agnostic)', icon: 'pin' })}
+              {notesView}
+            </React.Fragment>
+          )}
         </div>
       )}
 
@@ -692,7 +696,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
             </div>
           </div>
           {activeGroup === 'overview' ? glance
-            : activeGroup === 'mynotes' ? notesView
+            : (showGlobalNotesTab && activeGroup === 'mynotes') ? notesView
             : (PL_GROUPS.find(g => g.id === activeGroup) || PL_GROUPS[0]).ids.map(id => renderSection(PLANNER_SECTIONS.find(s => s.id === id)))}
         </div>
       )}
