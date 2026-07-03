@@ -13,7 +13,7 @@ import { hashPassword, loadConfidentialConfig, saveConfidentialConfig } from '..
 import { useProfile } from '../profile-context.jsx';
 import { useNexusData } from '../data-context.jsx';
 import { usePersisted } from '../app-components.jsx';
-import { reorderColumns, toggleColumnHidden, addManualColumn, removeAutoAdded, resetToDetected } from '@nexusmd/core';
+import { reorderColumns, toggleColumnHidden, addManualColumn, removeAutoAdded, resetToDetected, resolveFields, reorderField, toggleField, defaultConfig } from '@nexusmd/core';
 
 const { useState: useStateVS, useEffect: useEffectVS, useRef: useRefVS, useCallback: useCallbackVS } = React;
 
@@ -921,6 +921,75 @@ function BoardColumnsCard() {
   );
 }
 
+function FieldVisibilityCard({ title, catalog, config, onChange }) {
+  const [dragIdx, setDragIdx] = useStateVS(null)
+  const [overIdx, setOverIdx] = useStateVS(null)
+  const rows = resolveFields(catalog, config)
+
+  const onDrop = (dropIdx) => {
+    if (dragIdx === null || dragIdx === dropIdx) { setDragIdx(null); setOverIdx(null); return }
+    onChange(reorderField(config, catalog, rows[dragIdx].key, rows[dropIdx].key))
+    setDragIdx(null); setOverIdx(null)
+  }
+
+  return (
+    <VsCard title={title} icon="board">
+      <VsFullRow title="Fields" desc="Drag to reorder · toggle to show/hide">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+          {rows.map((f, idx) => {
+            const isOver = overIdx === idx && dragIdx !== null && dragIdx !== idx
+            const isDragging = dragIdx === idx
+            return (
+              <div
+                key={f.key}
+                draggable
+                onDragStart={() => setDragIdx(idx)}
+                onDragOver={e => { e.preventDefault(); setOverIdx(idx) }}
+                onDrop={e => { e.preventDefault(); onDrop(idx) }}
+                onDragEnd={() => { setDragIdx(null); setOverIdx(null) }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                  borderRadius: 8, border: `1px solid ${isOver ? 'var(--accent-border)' : 'var(--border)'}`,
+                  background: isOver ? 'var(--accent-soft)' : isDragging ? 'var(--surface-2)' : 'var(--surface)',
+                  opacity: isDragging ? 0.5 : 1, cursor: 'grab', userSelect: 'none',
+                }}
+              >
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2, color: 'var(--text-subtle)', flexShrink: 0 }}>
+                  {[0,1].map(i => (
+                    <span key={i} style={{ display: 'flex', gap: 2 }}>
+                      <span style={{ width: 2.5, height: 2.5, borderRadius: '50%', background: 'currentColor' }}/>
+                      <span style={{ width: 2.5, height: 2.5, borderRadius: '50%', background: 'currentColor' }}/>
+                    </span>
+                  ))}
+                </span>
+                <input
+                  type="checkbox"
+                  aria-label={f.label}
+                  checked={f.visible}
+                  disabled={f.locked}
+                  onChange={() => onChange(toggleField(config, catalog, f.key))}
+                  onClick={e => e.stopPropagation()}
+                  style={{ cursor: f.locked ? 'not-allowed' : 'pointer', accentColor: 'var(--accent)', flexShrink: 0 }}
+                />
+                <span style={{ flex: 1, fontSize: 13, color: f.visible ? 'var(--text)' : 'var(--text-subtle)', textDecoration: f.visible ? 'none' : 'line-through' }}>
+                  {f.label}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange(defaultConfig(catalog))}
+          style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', fontSize: 12, cursor: 'pointer', padding: 0, textDecoration: 'underline', alignSelf: 'flex-start', marginTop: 6 }}
+        >
+          Reset to defaults
+        </button>
+      </VsFullRow>
+    </VsCard>
+  )
+}
+
 // ── Shared exports ────────────────────────────────────────────────
 export {
   PROFILE_COLORS,
@@ -929,4 +998,5 @@ export {
   BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,
   OAuthServiceCard, IntegrationsView,
   BoardColumnsCard,
+  FieldVisibilityCard,
 };
