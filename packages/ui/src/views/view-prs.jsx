@@ -6,6 +6,7 @@ import { FilterChip } from '../components.jsx'
 import { Avatar, NotificationBanner, usePersisted } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
 import { useNexusData, useEffectiveNeedsMe } from '../data-context.jsx'
+import { resolveFields, PR_CARD_FIELDS } from '@nexusmd/core'
 
 const { useState: useStatePR, useMemo: useMemoPR } = React
 
@@ -259,8 +260,41 @@ function PRRow({ pr, onOpen }) {
   const { data: NexusMDData } = useNexusData()
   // Use reviewerDetails so each avatar reflects that person's actual vote,
   // rather than marking the first N reviewers approved by list position.
+  const [cfg] = usePersisted('nexusmd.fields.prCard', [])
+  const order = resolveFields(PR_CARD_FIELDS, cfg).filter(f => f.visible).map(f => f.key)
   const reviewers = (pr.reviewerDetails || []).slice(0, 4)
   const wiList = (pr.linkedWorkItems || []).map(wi => wi.id)
+
+  const subFrag = {
+    author: () => (<React.Fragment key="author"><Avatar who={pr.author} size="xs"/><span style={{ fontWeight: 500 }}>{pr.authorName || NexusMDData.TEAM.find(t=>t.id===pr.author)?.name?.split(' ')[0] || pr.author}</span></React.Fragment>),
+    branch: () => (<React.Fragment key="branch"><Icon name="git-branch" size={10}/><span>{pr.branch}</span></React.Fragment>),
+    age: () => (<span key="age">opened {pr.age} ago</span>),
+    linkedWorkItems: () => (wiList.length ? <React.Fragment key="wi">{wiList.map(wiId => <span key={wiId} className="pill" style={{ fontSize: 10, color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', cursor: 'pointer' }}>#{wiId}</span>)}</React.Fragment> : null),
+  }
+  const metaFrag = {
+    changes: () => (<span key="changes" className="pr-checks" title={`+${pr.additions} −${pr.deletions}`}><span style={{ color: 'var(--success)' }}>+{pr.additions}</span><span style={{ color: 'var(--danger)' }}>−{pr.deletions}</span></span>),
+    comments: () => ((pr.comments > 0 || pr.unresolvedComments > 0) ? (
+      <span key="comments" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: pr.unresolvedComments > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>
+        <Icon name="comment" size={11}/>{pr.comments}
+        {pr.unresolvedComments > 0 && <span title={`${pr.unresolvedComments} unresolved`} style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--warning)', flexShrink: 0 }}/>}
+      </span>) : null),
+    ci: () => {
+      const map = { success: 'success', failed: 'danger', running: 'info', partial: 'warning' }
+      return map[pr.ciStatus] ? <span key="ci" className={`pill ${map[pr.ciStatus]}`} style={{ fontSize: 10 }}>CI</span> : null
+    },
+    reviewers: () => (
+      <div key="reviewers" className="pr-reviewers" style={{ gap: 4 }}>
+        {reviewers.map((r, i) => { const display = reviewerVoteDisplay(r.vote); const name = NexusMDData.TEAM.find(t => t.id === r.id)?.name || r.name || r.id; return (
+          <span key={`${r.id}-${i}`} style={{ position: 'relative', display: 'inline-flex' }} title={`${name}: ${display.label}`}>
+            <Avatar who={r.id} size="xs"/>
+            <span style={{ position: 'absolute', bottom: -2, right: -2, width: 10, height: 10, borderRadius: '50%', border: '1.5px solid var(--surface)', background: display.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 6, color: 'white' }}>{display.glyph}</span>
+          </span>) })}
+      </div>),
+  }
+
+  const subKeys = order.filter(k => subFrag[k])
+  const metaKeys = order.filter(k => metaFrag[k])
+
   return (
     <div className="pr-row" onClick={() => onOpen(pr)}>
       <div className={`pr-status ${pr.status}`}>
@@ -276,64 +310,11 @@ function PRRow({ pr, onOpen }) {
         </div>
         <div className="pr-sub">
           <span>#{pr.id}</span>
-          <span>·</span>
-          <Avatar who={pr.author} size="xs"/>
-          <span style={{ fontWeight: 500 }}>{pr.authorName || NexusMDData.TEAM.find(t=>t.id===pr.author)?.name?.split(' ')[0] || pr.author}</span>
-          <span>·</span>
-          <Icon name="git-branch" size={10}/>
-          <span>{pr.branch}</span>
-          <span>·</span>
-          <span>opened {pr.age} ago</span>
-          {wiList.length > 0 && wiList.map(wiId => (
-            <React.Fragment key={wiId}>
-              <span>·</span>
-              <span className="pill" style={{ fontSize: 10, color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', cursor: 'pointer' }}>#{wiId}</span>
-            </React.Fragment>
-          ))}
+          {subKeys.map(k => (<React.Fragment key={`sep-${k}`}><span>·</span>{subFrag[k]()}</React.Fragment>))}
         </div>
       </div>
       <div className="pr-meta">
-        <span className="pr-checks" title={`+${pr.additions} −${pr.deletions}`}>
-          <span style={{ color: 'var(--success)' }}>+{pr.additions}</span>
-          <span style={{ color: 'var(--danger)' }}>−{pr.deletions}</span>
-        </span>
-        {(pr.comments > 0 || pr.unresolvedComments > 0) && (
-          <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3,
-            color: pr.unresolvedComments > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>
-            <Icon name="comment" size={11}/>
-            {pr.comments}
-            {pr.unresolvedComments > 0 && (
-              <span title={`${pr.unresolvedComments} unresolved`} style={{
-                width: 6, height: 6, borderRadius: '50%', background: 'var(--warning)', flexShrink: 0
-              }}/>
-            )}
-          </span>
-        )}
-        {pr.ciStatus === 'success' && <span className="pill success" style={{ fontSize: 10 }}>CI</span>}
-        {pr.ciStatus === 'failed' && <span className="pill danger" style={{ fontSize: 10 }}>CI</span>}
-        {pr.ciStatus === 'running' && <span className="pill info" style={{ fontSize: 10 }}>CI</span>}
-        {pr.ciStatus === 'partial' && <span className="pill warning" style={{ fontSize: 10 }}>CI</span>}
-        {/* Reviewers with per-person vote status */}
-        <div className="pr-reviewers" style={{ gap: 4 }}>
-          {reviewers.map((r, i) => {
-            const display = reviewerVoteDisplay(r.vote)
-            const name = NexusMDData.TEAM.find(t => t.id === r.id)?.name || r.name || r.id
-            return (
-              <span key={`${r.id}-${i}`} style={{ position: 'relative', display: 'inline-flex' }}
-                title={`${name}: ${display.label}`}>
-                <Avatar who={r.id} size="xs"/>
-                <span style={{
-                  position: 'absolute', bottom: -2, right: -2,
-                  width: 10, height: 10, borderRadius: '50%',
-                  border: '1.5px solid var(--surface)',
-                  background: display.color,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 6, color: 'white',
-                }}>{display.glyph}</span>
-              </span>
-            )
-          })}
-        </div>
+        {metaKeys.map(k => metaFrag[k]())}
       </div>
     </div>
   )
