@@ -20,7 +20,7 @@ import { GoogleAuth } from './google-auth.js'
 import { GitHubClient } from './github-client.js'
 import {
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard, CloudSyncCard,
-  IntegrationsView,
+  IntegrationsView, CardsAndTablesSettings,
 } from '@nexusmd/ui'
 import { webFileIO } from './file-io.js'
 import { webCloudProviders, makeWebOAuthService } from './cloud-auth.js'
@@ -458,6 +458,7 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
     { id: 'profile', label: 'Profile', icon: 'team' },
     { id: 'appearance', label: 'Appearance', icon: 'sun' },
     { id: 'planner', label: 'Planner', icon: 'planner' },
+    { id: 'cards', label: 'Cards & Tables', icon: 'board' },
     { id: 'profiles', label: 'Profiles', icon: 'more' },
     { id: 'privacy', label: 'Confidential', icon: 'lock' },
     { id: 'data', label: 'Data & sync', icon: 'inbox' },
@@ -629,6 +630,8 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
               </div>
             </VsCard>
           )}
+
+          {subPage === 'cards' && <CardsAndTablesSettings />}
 
           {subPage === 'profiles' && (
             <>

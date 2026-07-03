@@ -13,7 +13,7 @@ import { hashPassword, loadConfidentialConfig, saveConfidentialConfig } from '..
 import { useProfile } from '../profile-context.jsx';
 import { useNexusData } from '../data-context.jsx';
 import { usePersisted } from '../app-components.jsx';
-import { reorderColumns, toggleColumnHidden, addManualColumn, removeAutoAdded, resetToDetected, resolveFields, reorderField, toggleField, defaultConfig } from '@nexusmd/core';
+import { reorderColumns, toggleColumnHidden, addManualColumn, removeAutoAdded, resetToDetected, resolveFields, reorderField, toggleField, defaultConfig, WI_CARD_FIELDS, WI_TABLE_COLUMNS, PR_CARD_FIELDS, BUILDS_TABLE_COLUMNS, TESTS_TABLE_COLUMNS } from '@nexusmd/core';
 
 const { useState: useStateVS, useEffect: useEffectVS, useRef: useRefVS, useCallback: useCallbackVS } = React;
 
@@ -990,6 +990,23 @@ function FieldVisibilityCard({ title, catalog, config, onChange }) {
   )
 }
 
+function CardsAndTablesSettings() {
+  const [wiCard,      setWiCard]      = usePersisted('nexusmd.fields.wiCard',      [], { sync: true })
+  const [wiTable,     setWiTable]     = usePersisted('nexusmd.fields.wiTable',     [], { sync: true })
+  const [prCard,      setPrCard]      = usePersisted('nexusmd.fields.prCard',      [], { sync: true })
+  const [buildsTable, setBuildsTable] = usePersisted('nexusmd.fields.buildsTable', [], { sync: true })
+  const [testsTable,  setTestsTable]  = usePersisted('nexusmd.fields.testsTable',  [], { sync: true })
+  return (
+    <>
+      <FieldVisibilityCard title="Work item cards" catalog={WI_CARD_FIELDS}       config={wiCard}      onChange={setWiCard} />
+      <FieldVisibilityCard title="Work item table" catalog={WI_TABLE_COLUMNS}     config={wiTable}     onChange={setWiTable} />
+      <FieldVisibilityCard title="Pull request cards" catalog={PR_CARD_FIELDS}    config={prCard}      onChange={setPrCard} />
+      <FieldVisibilityCard title="Builds table" catalog={BUILDS_TABLE_COLUMNS}    config={buildsTable} onChange={setBuildsTable} />
+      <FieldVisibilityCard title="Tests table" catalog={TESTS_TABLE_COLUMNS}      config={testsTable}  onChange={setTestsTable} />
+    </>
+  )
+}
+
 // ── Shared exports ────────────────────────────────────────────────
 export {
   PROFILE_COLORS,
@@ -999,4 +1016,5 @@ export {
   OAuthServiceCard, IntegrationsView,
   BoardColumnsCard,
   FieldVisibilityCard,
+  CardsAndTablesSettings,
 };

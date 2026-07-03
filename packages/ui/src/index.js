@@ -70,6 +70,7 @@ export {
   VsPasswordModal, VsProfileEditor, VsProfiles,
   BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,
   OAuthServiceCard, IntegrationsView, BoardColumnsCard, FieldVisibilityCard,
+  CardsAndTablesSettings,
 } from './views/view-settings.jsx'
 
 // Shared triage controls + work-item detail panel (used by the views below).

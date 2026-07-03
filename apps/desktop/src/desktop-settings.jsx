@@ -4,6 +4,7 @@ import {
   VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker, BoardColumnsCard,
   VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView,
   PlToggle, VsPasswordModal, loadConfidentialConfig,
+  CardsAndTablesSettings,
 } from '@nexusmd/ui'
 import { useProfile } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -454,6 +455,7 @@ const SETTINGS_TABS = [
   { id: 'profile',      label: 'Profile',      icon: 'team'      },
   { id: 'appearance',   label: 'Appearance',   icon: 'sun'       },
   { id: 'planner',      label: 'Planner',      icon: 'planner'   },
+  { id: 'cards',        label: 'Cards & Tables', icon: 'board'   },
   { id: 'profiles',     label: 'Profiles',     icon: 'more'      },
   { id: 'confidential', label: 'Confidential', icon: 'lock'      },
   { id: 'data',         label: 'Data & sync',  icon: 'inbox'     },
@@ -540,6 +542,8 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
               <BoardColumnsCard />
             </>
           )}
+
+          {tab === 'cards' && <CardsAndTablesSettings />}
 
           {tab === 'profiles' && (
             <>
