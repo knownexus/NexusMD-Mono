@@ -7,7 +7,7 @@ import { Avatar, MenuButton, NotificationBanner, ProjectChip, TypeIcon, usePersi
 import { Icon } from '../icons.jsx';
 import { TriageExportButton, TriageStatusLine } from './triage.jsx';
 import { WorkItemDetail } from './work-item-detail.jsx';
-import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes } from '@nexusmd/core';
+import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 
 // Local aliases matching legacy global names used in this file
@@ -1411,6 +1411,26 @@ function DragContextBar({ visible, team, onDropState, onDropAssignee, lanes = BO
 
 function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAssign, onTagsChange }) {
   const { data: NexusMDData } = useNexusData();
+  const [cfg] = usePersisted('nexusmd.fields.wiCard', []);
+  const resolved = resolveFields(WI_CARD_FIELDS, cfg).filter(f => f.visible);
+  const visible = new Set(resolved.map(f => f.key));
+  const metaKeys = ['assignee', 'tags', 'points', 'comments', 'prs'];
+  const metaFrag = {
+    assignee: () => (
+      <div key="assignee" onClick={e => e.stopPropagation()}>
+        <InlineAssigneeCell assigneeId={w.assignee} team={team} onAssign={onAssign} />
+      </div>
+    ),
+    tags: () => (
+      <div key="tags" onClick={e => e.stopPropagation()}>
+        <InlineTagsCell tags={w.tags || []} onTagsChange={onTagsChange} />
+      </div>
+    ),
+    points: () => <span key="points" className="muted mono" style={{ fontSize: 10.5 }}>{w.points} pts</span>,
+    comments: () => (w.comments > 0 ? <span key="comments" className="muted mono" style={{ fontSize: 10.5 }}><Icon name="comment" size={10}/> {w.comments}</span> : null),
+    prs: () => (w.prs > 0 ? <span key="prs" className="muted mono" style={{ fontSize: 10.5 }}><Icon name="pr" size={10}/> {w.prs}</span> : null),
+  };
+  const metaFields = resolved.filter(f => metaKeys.includes(f.key));
   const isDragging = dragId === w.id;
   return (
     <div
@@ -1430,7 +1450,7 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
               style={{color:'var(--accent)',textDecoration:'none',fontSize:11.5,fontFamily:'var(--mono)'}}>#{w.id}</a>
 
         <span className="spacer"/>
-        <Prio p={w.priority}/>
+        {visible.has('priority') && <Prio p={w.priority}/>}
         <span style={{
           display: 'flex', flexDirection: 'column', gap: 2, padding: '0 2px',
           color: 'var(--text-subtle)', opacity: 0, transition: 'opacity 0.15s',
@@ -1445,18 +1465,10 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
       </div>
       <div className="board-card-title">{w.title}</div>
       <div className="board-card-meta">
-        <div onClick={e => e.stopPropagation()}>
-          <InlineAssigneeCell assigneeId={w.assignee} team={team} onAssign={onAssign} />
-        </div>
-        <div onClick={e => e.stopPropagation()}>
-          <InlineTagsCell tags={w.tags || []} onTagsChange={onTagsChange} />
-        </div>
-        <span className="muted mono" style={{ fontSize: 10.5 }}>{w.points} pts</span>
+        {metaFields.map(f => metaFrag[f.key]())}
         <span className="spacer"/>
-        {w.comments > 0 && <span className="muted mono" style={{ fontSize: 10.5 }}><Icon name="comment" size={10}/> {w.comments}</span>}
-        {w.prs > 0 && <span className="muted mono" style={{ fontSize: 10.5 }}><Icon name="pr" size={10}/> {w.prs}</span>}
       </div>
-      {w.updated && w.updated !== '—' && (
+      {visible.has('updated') && w.updated && w.updated !== '—' && (
         <div style={{ fontSize: 10, color: 'var(--text-subtle)', marginTop: 5 }}
              title={w.changedMs ? new Date(w.changedMs).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}>
           Updated {w.updated} ago
