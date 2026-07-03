@@ -1,7 +1,7 @@
 import React from 'react'
 import { mdToHtml, Drawer, TypeIcon, Icon } from '@nexusmd/ui'
 import { adoTypeToHelm } from '@nexusmd/core'
-import { fieldBucket, fieldGroup, LINK_TYPES, resolveTypeLayout } from './ado-workitem-types.js'
+import { fieldBucket, fieldGroup, LINK_TYPES, resolveTypeLayout, TYPE_LAYOUTS } from './ado-workitem-types.js'
 import * as adoWorkItemTypesModule from './ado-workitem-types.js'
 import { SettField, settInputStyle } from './desktop-settings.jsx'
 
@@ -163,7 +163,12 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
 
   if (!open) return null
 
-  const typeName = (defs?.types || []).find((t) => t.referenceName === typeRef)?.name || 'Work Item'
+  const allTypes = defs?.types || []
+  // Restrict the Type picker to the types we have a layout for. If none match
+  // (a project on a different process template), fall back to all ADO types.
+  const layoutTypes = allTypes.filter((t) => TYPE_LAYOUTS[t.name])
+  const selectableTypes = layoutTypes.length > 0 ? layoutTypes : allTypes
+  const typeName = allTypes.find((t) => t.referenceName === typeRef)?.name || 'Work Item'
   const fields = defs?.fields || []
   const mainFields = fields.filter((f) => fieldGroup(f) === 'main')
   const statusFields = fields.filter((f) => fieldGroup(f) === 'status' && f.referenceName !== 'System.State')
@@ -173,6 +178,10 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
   const additionalFields = fields.filter((f) => fieldGroup(f) === 'additional')
   const stateField = fields.find((f) => f.referenceName === 'System.State')
   const typeLayout = resolveTypeLayout(typeName, fields)
+  // For configured types, surface only the fields in the per-type layout. Any
+  // non-listed field that ADO marks alwaysRequired is still shown so creation
+  // can't silently fail on a missing required value.
+  const requiredExtraFields = typeLayout ? typeLayout.additional.filter((f) => f.alwaysRequired) : []
 
   const setFieldValue = (refName, v) => setValues((prev) => ({ ...prev, [refName]: v }))
 
@@ -256,7 +265,7 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
           </SettField>
           <SettField label="Type">
             <select aria-label="Type" value={typeRef} onChange={(e) => { setTypeRef(e.target.value); load(project, e.target.value) }}>
-              {(defs?.types || []).map((t) => <option key={t.referenceName} value={t.referenceName}>{t.name}</option>)}
+              {selectableTypes.map((t) => <option key={t.referenceName} value={t.referenceName}>{t.name}</option>)}
             </select>
           </SettField>
         </div>
@@ -297,11 +306,11 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
                   ))}
                 </div>
               )}
-              {typeLayout.additional.length > 0 && (
+              {requiredExtraFields.length > 0 && (
                 <div className="drawer-section">
-                  <h4>Additional Fields</h4>
+                  <h4>Required Fields</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {typeLayout.additional.map((f) => (
+                    {requiredExtraFields.map((f) => (
                       <FieldInput
                         key={f.referenceName}
                         def={f}

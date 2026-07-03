@@ -81,7 +81,8 @@ function stubDefs() {
       { referenceName: 'Custom.RiskLevel', name: 'Risk Level', dataType: 'string', allowedValues: ['Low', 'High'], alwaysRequired: false },
     ],
     paths: { areas: ['ProjectA'], iterations: ['ProjectA'] },
-    types: [{ name: 'Bug', referenceName: 'Microsoft.VSTS.WorkItemTypes.Bug', icon: '', color: '' }, { name: 'Task', referenceName: 'Microsoft.VSTS.WorkItemTypes.Task', icon: '', color: '' }],
+    // Non-template types (not in TYPE_LAYOUTS) → generic grouped fallback path.
+    types: [{ name: 'Ticket', referenceName: 'Microsoft.VSTS.WorkItemTypes.Task', icon: '', color: '' }, { name: 'Incident', referenceName: 'Custom.WorkItemTypes.Incident', icon: '', color: '' }],
     fetchedAt: Date.now(),
   })
 }
@@ -94,7 +95,8 @@ function stubDefsWithState() {
       { referenceName: 'System.Reason', name: 'Reason', dataType: 'string', allowedValues: ['New'], alwaysRequired: false },
     ],
     paths: { areas: [], iterations: [] },
-    types: [{ name: 'Task', referenceName: 'Microsoft.VSTS.WorkItemTypes.Task', icon: '', color: '' }],
+    // Non-template type (not in TYPE_LAYOUTS) → generic grouped fallback path.
+    types: [{ name: 'Ticket', referenceName: 'Microsoft.VSTS.WorkItemTypes.Task', icon: '', color: '' }],
     fetchedAt: Date.now(),
   })
 }
@@ -364,9 +366,52 @@ describe('CreateWorkItemDrawer per-type layout', () => {
     expect(screen.getByLabelText('Area')).toBeTruthy()
     expect(screen.getByLabelText('Priority')).toBeTruthy()
 
-    // Additional Fields: Assigned To isn't in Bug's left/middleTop/planning config
-    expect(screen.getByText('Additional Fields')).toBeTruthy()
-    expect(screen.getByLabelText('Assigned To')).toBeTruthy()
+    // Non-listed, non-required fields are hidden: Assigned To isn't in Bug's
+    // layout and isn't alwaysRequired, so it must not render.
+    expect(screen.queryByLabelText('Assigned To')).toBeNull()
+    expect(screen.queryByText('Required Fields')).toBeNull()
+    expect(screen.queryByText('Additional Fields')).toBeNull()
+  })
+
+  it('surfaces a non-listed alwaysRequired field under "Required Fields"', async () => {
+    vi.spyOn(adoWorkItemTypes, 'loadWorkItemTypeDefs').mockResolvedValue({
+      fields: [
+        { referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false },
+        { referenceName: 'Custom.Compliance', name: 'Compliance', dataType: 'string', allowedValues: [], alwaysRequired: true },
+        { referenceName: 'System.AssignedTo', name: 'Assigned To', dataType: 'string', allowedValues: [], alwaysRequired: false },
+      ],
+      paths: { areas: [], iterations: [] },
+      types: [{ name: 'Bug', referenceName: 'Microsoft.VSTS.WorkItemTypes.Bug', icon: '', color: '' }],
+      fetchedAt: Date.now(),
+    })
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    fireEvent.change(await screen.findByLabelText('Type'), { target: { value: 'Microsoft.VSTS.WorkItemTypes.Bug' } })
+    await screen.findByLabelText('Description')
+
+    // Required extra shows; non-required extra (Assigned To) stays hidden.
+    expect(screen.getByText('Required Fields')).toBeTruthy()
+    expect(screen.getByLabelText('Compliance')).toBeTruthy()
+    expect(screen.queryByLabelText('Assigned To')).toBeNull()
+  })
+
+  it('restricts the Type picker to configured types when the project is on that process', async () => {
+    vi.spyOn(adoWorkItemTypes, 'loadWorkItemTypeDefs').mockResolvedValue({
+      fields: [{ referenceName: 'System.Description', name: 'Description', dataType: 'html', allowedValues: [], alwaysRequired: false }],
+      paths: { areas: [], iterations: [] },
+      types: [
+        { name: 'Bug', referenceName: 'Microsoft.VSTS.WorkItemTypes.Bug', icon: '', color: '' },
+        { name: 'Task', referenceName: 'Microsoft.VSTS.WorkItemTypes.Task', icon: '', color: '' },
+        { name: 'Test Case', referenceName: 'Microsoft.VSTS.WorkItemTypes.TestCase', icon: '', color: '' },
+      ],
+      fetchedAt: Date.now(),
+    })
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} onClose={() => {}} onCreate={() => {}} />)
+    await screen.findByLabelText('Description')
+
+    const options = Array.from(screen.getByLabelText('Type').querySelectorAll('option')).map((o) => o.textContent)
+    expect(options).toContain('Bug')
+    expect(options).toContain('Task')
+    expect(options).not.toContain('Test Case')
   })
 
   it('falls back to the generic grouped layout for an unrecognized type', async () => {
