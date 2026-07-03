@@ -25,7 +25,7 @@ import { plannerExportDocx as _defaultExportDocx } from '../planner/docx.js'
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React
 
-function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGlobalNotesTab = true }) {
+function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGlobalNotesTab = true, onCloudSync }) {
   const rt = getPlannerRuntime()
   const ns = rt.namespace
 
@@ -80,6 +80,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGloba
     return next
   }), [])
   const [plannerSyncRev, setPlannerSyncRev] = useState(0)
+  const [cloudSyncing, setCloudSyncing] = useState(false)
 
   const calendarRef = useRef(null)
   const isFirstLoad = useRef(true)
@@ -524,6 +525,18 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGloba
         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{weekLabel.full}</div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+        {onCloudSync && (
+          <button type="button" className="btn sm ghost" title="Back up / sync planner to cloud"
+            disabled={cloudSyncing}
+            onClick={async () => {
+              setCloudSyncing(true)
+              try { await onCloudSync() } finally { setCloudSyncing(false) }
+            }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
+            <Icon name="refresh" size={14} />
+            {cloudSyncing ? 'Syncing…' : 'Sync'}
+          </button>
+        )}
         <div style={{ display:'flex', alignItems:'center', gap:2, position:'relative' }} ref={calendarRef}>
           <button type="button" className="m-iconbtn" onClick={() => setWeekOffset(w => w - 1)} title="Previous week">
             <Icon name="chevron-left" size={16}/>

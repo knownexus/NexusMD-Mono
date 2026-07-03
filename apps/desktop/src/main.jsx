@@ -7,7 +7,7 @@ import {
 } from '@nexusmd/core'
 import {
   Icon, CardFrame,
-  NexusDataProvider, useNexusData, ToastHost,
+  NexusDataProvider, useNexusData, ToastHost, toast,
   PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
   DashboardView, WorkItemsView, TriageView,
   PlannerView, MarkdownViewer, plannerExportDocx,
@@ -19,7 +19,7 @@ import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { desktopCloudProviders, registerCloudDeepLink, makeDesktopOAuthService } from './cloud-auth.js'
-import { startDesktopAutoSync } from './sync.js'
+import { startDesktopAutoSync, desktopSync } from './sync.js'
 import { NAV, SETTINGS_NAV, ALL_NAV, DEFAULT_NAV_ORDER } from './nav-config.js'
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
@@ -536,6 +536,16 @@ function ViewBody({
         entry:       readPref('nexusmd.planner.entry', 'inline'),
         carryPrompt: readPref('nexusmd.planner.carryPrompt', '1') === '1',
       }
+      const handlePlannerCloudSync = async () => {
+        try {
+          const r = await desktopSync.syncOnce()
+          if (r.skipped === 'no-key') toast?.('Set a sync passphrase in Settings first.', 'info')
+          else if (r.skipped === 'no-provider') toast?.('Select a cloud provider in Settings first.', 'info')
+          else if (r.skipped === 'not-connected') toast?.('Connect your cloud provider in Settings first.', 'info')
+          else if (r.skipped === 'bad-passphrase') toast?.('Wrong passphrase — fix it in Settings.', 'error')
+          else if (!r.skipped) toast?.(`Backed up — pushed ${r.pushed}, pulled ${r.pulled}, merged ${r.merged}.`, 'success')
+        } catch (err) { toast?.('Cloud sync failed: ' + (err?.message || 'unknown error'), 'error') }
+      }
       return (
         <PlannerView
           data={plannerData}
@@ -548,6 +558,7 @@ function ViewBody({
           entryStyle={plannerPrefs.entry}
           carryPrompt={plannerPrefs.carryPrompt}
           showGlobalNotesTab={false}
+          onCloudSync={handlePlannerCloudSync}
         />
       )
     }
