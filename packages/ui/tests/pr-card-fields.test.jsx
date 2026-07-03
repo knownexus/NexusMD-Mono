@@ -30,3 +30,14 @@ it('shows the branch on a PR card by default (positive control)', () => {
   )
   expect(container.textContent).toContain('fix/x')
 })
+
+it('does not render an orphaned trailing separator when a sub-field renders nothing (no linked work items)', () => {
+  const storage = memStorage({ 'nexusmd.pr.filter': JSON.stringify('all'), 'nexusmd.fields.prCard': JSON.stringify([]) })
+  const { container } = render(
+    <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {}, data: { ORG: 'o', TEAM: [] } }}>
+      <PRView prs={[PR]} onOpen={() => {}} needsMeCriteria={{ votes: [0] }} setNeedsMeCriteria={() => {}} />
+    </NexusDataProvider>
+  )
+  const sub = container.querySelector('.pr-sub')
+  expect(sub.textContent.trim().endsWith('·')).toBe(false)
+})

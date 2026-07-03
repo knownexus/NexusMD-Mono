@@ -294,6 +294,9 @@ function PRRow({ pr, onOpen }) {
 
   const subKeys = order.filter(k => subFrag[k])
   const metaKeys = order.filter(k => metaFrag[k])
+  const subEls = subKeys
+    .map(k => ({ k, el: subFrag[k]() }))
+    .filter(x => x.el)
 
   return (
     <div className="pr-row" onClick={() => onOpen(pr)}>
@@ -310,7 +313,7 @@ function PRRow({ pr, onOpen }) {
         </div>
         <div className="pr-sub">
           <span>#{pr.id}</span>
-          {subKeys.map(k => (<React.Fragment key={`sep-${k}`}><span>·</span>{subFrag[k]()}</React.Fragment>))}
+          {subEls.map(({ k, el }) => (<React.Fragment key={`sep-${k}`}><span>·</span>{el}</React.Fragment>))}
         </div>
       </div>
       <div className="pr-meta">
