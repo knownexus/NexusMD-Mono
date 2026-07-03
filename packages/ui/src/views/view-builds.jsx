@@ -8,13 +8,13 @@ import { Avatar, NotificationBanner, usePersisted } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
 import { toast } from '../toast.jsx'
 import { useNexusData } from '../data-context.jsx'
-import { formatDateTime } from '@nexusmd/core'
-
-// Grid template shared between header and every build row
-const BUILD_GRID = '28px 68px 1fr 160px 72px 80px 72px 148px 140px'
+import { formatDateTime, resolveFields, BUILDS_TABLE_COLUMNS } from '@nexusmd/core'
 
 export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItemIds = new Set() }) {
   const { data: NexusMDData } = useNexusData()
+  const [buildsCfg] = usePersisted('nexusmd.fields.buildsTable', [])
+  const visibleBuildCols = resolveFields(BUILDS_TABLE_COLUMNS, buildsCfg).filter(f => f.visible)
+  const buildGrid = visibleBuildCols.map(c => c.width).join(' ')
   const [initialNewCount] = React.useState(() => newItemIds.size)
   const [bannerDismissed, setBannerDismissed] = React.useState(false)
   const [collapsed,        setCollapsed]        = React.useState({})
@@ -182,6 +182,134 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
   const sparkColor = { success: 'var(--success)', failed: 'var(--danger)', partial: 'var(--warning)', running: 'var(--info)', acknowledged: 'var(--warning)', cancelled: 'var(--text-muted)' }
   const reasonLabel = { manual: 'Manual', batchedCI: 'CI', individualCI: 'CI', schedule: 'Scheduled', pullRequest: 'PR', buildCompletion: 'Trigger' }
 
+  const buildHead = (key) => {
+    switch (key) {
+      case 'status':      return <div key="status"/>;
+      case 'build':       return <ColHead key="build">Build</ColHead>;
+      case 'triggeredBy': return <ColHead key="triggeredBy">Triggered by</ColHead>;
+      case 'branch':      return <ColHead key="branch"><Icon name="git-branch" size={11} style={{ marginRight:3, opacity:0.7 }}/>Branch</ColHead>;
+      case 'commit':      return <ColHead key="commit">Commit</ColHead>;
+      case 'reason':      return <ColHead key="reason">Reason</ColHead>;
+      case 'duration':    return <ColHead key="duration">Duration</ColHead>;
+      case 'date':        return <ColHead key="date" sortable sortDir={sortDir} onSort={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}>Date</ColHead>;
+      case 'actions':     return <div key="actions"/>;
+      default:            return null;
+    }
+  };
+
+  const buildCell = (key, b) => {
+    switch (key) {
+      case 'status':
+        return (
+          <div key="status" style={{ display:'flex', justifyContent:'center' }}>
+            <div className={`build-dot ${dotClass[dispStatus(b)]}`}/>
+          </div>
+        );
+      case 'build':
+        return (
+          <div key="build" className="mono" style={{ fontSize:12, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', display:'flex', alignItems:'center', gap:5 }}>
+            {NexusMDData.ORG && b.project
+              ? <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(b.project)}/_build/results?buildId=${b.id}`}
+                  target="_blank" rel="noopener" onClick={e => e.stopPropagation()}
+                  style={{ color:'var(--accent)', textDecoration:'none' }}>#{b.id}</a>
+              : <span>#{b.id}</span>
+            }
+            {newItemIds.has(b.id) && <span style={{ fontSize:9, fontWeight:700, background:'var(--accent)', color:'var(--accent-fg)', padding:'1px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:'0.05em', flexShrink:0 }}>New</span>}
+          </div>
+        );
+      case 'triggeredBy':
+        return (
+          <div key="triggeredBy" style={{ minWidth:0 }}>
+            {b.failureReason
+              ? <span style={{ fontSize:12.5, color: dispStatus(b) === 'acknowledged' ? 'var(--warning)' : 'var(--danger)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'block' }}
+                  title={b.failureReason}>{b.failureReason}</span>
+              : <span style={{ display:'flex', alignItems:'center', gap:5, overflow:'hidden' }}>
+                  <Avatar who={b.actor} size="xs"/>
+                  <span style={{ fontSize:12.5, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.actor}</span>
+                </span>
+            }
+          </div>
+        );
+      case 'branch':
+        return (
+          <div key="branch" style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            <span style={{
+              display:'inline-flex', alignItems:'center', gap:4,
+              fontSize:11.5, padding:'2px 7px', borderRadius:4,
+              background:'var(--surface-2)', border:'1px solid var(--border)',
+              maxWidth:'100%', overflow:'hidden', textOverflow:'ellipsis',
+              fontFamily:'var(--mono)',
+            }} title={b.branch}>{b.branch}</span>
+          </div>
+        );
+      case 'commit':      return <div key="commit" className="mono muted" style={{ fontSize:11.5 }}>{b.commit}</div>;
+      case 'reason':
+        return (
+          <div key="reason">
+            {b.reason
+              ? <span className="pill" style={{ fontSize:10.5, textTransform:'capitalize' }}>
+                  {reasonLabel[b.reason] || b.reason}
+                </span>
+              : <span className="muted" style={{ fontSize:11.5 }}>—</span>
+            }
+          </div>
+        );
+      case 'duration':    return <div key="duration" className="build-meta">{b.duration}</div>;
+      case 'date':        return <div key="date" className="build-meta mono" title={b.finishTime ? new Date(b.finishTime).toLocaleString() : ''}>{formatDateTime(b.finishTime)}</div>;
+      case 'actions':
+        return (
+          <div key="actions" style={{ display:'flex', justifyContent:'flex-end', gap:4 }}>
+            {/* Cancel — running builds only */}
+            {b.status === 'running' && (
+              <button className="btn sm ghost" title="Cancel this build"
+                style={{ color:'var(--danger)' }}
+                disabled={actioning.has(b.id)}
+                onClick={e => { e.stopPropagation(); cancelBuild(b) }}>
+                <Icon name="x" size={12}/> {actioning.has(b.id) ? '…' : 'Cancel'}
+              </button>
+            )}
+            {/* Rerun — completed builds */}
+            {b.status !== 'running' && b.definitionId > 0 && (
+              <button className="btn sm ghost" title="Re-run this pipeline"
+                disabled={actioning.has(b.id)}
+                onClick={e => { e.stopPropagation(); rerunBuild(b) }}>
+                <Icon name="refresh" size={12}/> {actioning.has(b.id) ? '…' : 'Rerun'}
+              </button>
+            )}
+            {/* Ack / Unack — failed builds */}
+            {b.status === 'failed' && (
+              acknowledgedSet.has(b.id)
+                ? <button className="btn sm ghost" title="Remove acknowledgement"
+                    style={{ color:'var(--warning)', borderColor:'var(--warning)' }}
+                    onClick={e => { e.stopPropagation(); toggleAck(b.id) }}>
+                    <Icon name="x" size={12}/> Unack
+                  </button>
+                : <button className="btn sm ghost" title="Acknowledge this failure"
+                    onClick={e => { e.stopPropagation(); toggleAck(b.id) }}>
+                    <Icon name="check" size={12}/> Ack
+                  </button>
+            )}
+            {/* Bug — failed and cancelled only */}
+            {(b.status === 'failed' || b.status === 'cancelled') && (
+              <button className="btn sm ghost" onClick={e => {
+                e.stopPropagation()
+                window.dispatchEvent(new CustomEvent('nexusmd:create-wi', {
+                  detail: {
+                    type: 'Bug',
+                    title: `Build ${b.status}: ${b.pipeline}`,
+                    description: `Build #${b.id}\nBranch: ${b.branch}\nReason: ${b.failureReason || b.status}`,
+                    project: (NexusMDData.CONFIG_PROJECTS || [])[0] || '',
+                    tags: 'build;ci',
+                  }
+                }))
+              }}><Icon name="plus" size={12}/> Bug</button>
+            )}
+          </div>
+        );
+      default:            return null;
+    }
+  };
+
   return (
     <div>
       {/* ── Page header ── */}
@@ -308,34 +436,13 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
 
         {/* ── Column headers ── */}
         <div style={{
-          display:'grid', gridTemplateColumns: BUILD_GRID,
+          display:'grid', gridTemplateColumns: buildGrid,
           padding:'0 14px', gap:8,
           borderBottom:'2px solid var(--border)',
           background:'var(--surface-2)',
           position:'sticky', top:0, zIndex:10,
         }}>
-          {/* Status */}
-          <div/>
-          {/* Build # */}
-          <ColHead>Build</ColHead>
-          {/* Triggered by */}
-          <ColHead>Triggered by</ColHead>
-          {/* Branch */}
-          <ColHead><Icon name="git-branch" size={11} style={{ marginRight:3, opacity:0.7 }}/>Branch</ColHead>
-          {/* Commit */}
-          <ColHead>Commit</ColHead>
-          {/* Reason */}
-          <ColHead>Reason</ColHead>
-          {/* Duration */}
-          <ColHead>Duration</ColHead>
-          {/* Date — sortable */}
-          <ColHead
-            sortable
-            sortDir={sortDir}
-            onSort={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
-          >Date</ColHead>
-          {/* Actions */}
-          <div/>
+          {visibleBuildCols.map(f => buildHead(f.key))}
         </div>
 
         {/* ── Pipeline groups ── */}
@@ -372,119 +479,10 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
                   return (
                   <div key={`${g.name}-${b.id}`}
                     className="build-row"
-                    style={{ display:'grid', gridTemplateColumns: BUILD_GRID, alignItems:'center', gap:8, padding:'0 14px', cursor:'pointer',
+                    style={{ display:'grid', gridTemplateColumns: buildGrid, alignItems:'center', gap:8, padding:'0 14px', cursor:'pointer',
                       ...(isNew ? { background: 'color-mix(in srgb, var(--accent) 7%, var(--surface))', boxShadow: 'inset 3px 0 0 var(--accent)' } : {}),
                     }}>
-
-                    {/* Status dot */}
-                    <div style={{ display:'flex', justifyContent:'center' }}>
-                      <div className={`build-dot ${dotClass[dispStatus(b)]}`}/>
-                    </div>
-
-                    {/* Build # */}
-                    <div className="mono" style={{ fontSize:12, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', display:'flex', alignItems:'center', gap:5 }}>
-                      {NexusMDData.ORG && b.project
-                        ? <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(b.project)}/_build/results?buildId=${b.id}`}
-                            target="_blank" rel="noopener" onClick={e => e.stopPropagation()}
-                            style={{ color:'var(--accent)', textDecoration:'none' }}>#{b.id}</a>
-                        : <span>#{b.id}</span>
-                      }
-                      {isNew && <span style={{ fontSize:9, fontWeight:700, background:'var(--accent)', color:'var(--accent-fg)', padding:'1px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:'0.05em', flexShrink:0 }}>New</span>}
-                    </div>
-
-                    {/* Triggered by / failure reason */}
-                    <div style={{ minWidth:0 }}>
-                      {b.failureReason
-                        ? <span style={{ fontSize:12.5, color: dispStatus(b) === 'acknowledged' ? 'var(--warning)' : 'var(--danger)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'block' }}
-                            title={b.failureReason}>{b.failureReason}</span>
-                        : <span style={{ display:'flex', alignItems:'center', gap:5, overflow:'hidden' }}>
-                            <Avatar who={b.actor} size="xs"/>
-                            <span style={{ fontSize:12.5, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.actor}</span>
-                          </span>
-                      }
-                    </div>
-
-                    {/* Branch */}
-                    <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                      <span style={{
-                        display:'inline-flex', alignItems:'center', gap:4,
-                        fontSize:11.5, padding:'2px 7px', borderRadius:4,
-                        background:'var(--surface-2)', border:'1px solid var(--border)',
-                        maxWidth:'100%', overflow:'hidden', textOverflow:'ellipsis',
-                        fontFamily:'var(--mono)',
-                      }} title={b.branch}>{b.branch}</span>
-                    </div>
-
-                    {/* Commit */}
-                    <div className="mono muted" style={{ fontSize:11.5 }}>{b.commit}</div>
-
-                    {/* Reason */}
-                    <div>
-                      {b.reason
-                        ? <span className="pill" style={{ fontSize:10.5, textTransform:'capitalize' }}>
-                            {reasonLabel[b.reason] || b.reason}
-                          </span>
-                        : <span className="muted" style={{ fontSize:11.5 }}>—</span>
-                      }
-                    </div>
-
-                    {/* Duration */}
-                    <div className="build-meta">{b.duration}</div>
-
-                    {/* Date */}
-                    <div className="build-meta mono" title={b.finishTime ? new Date(b.finishTime).toLocaleString() : ''}>
-                      {formatDateTime(b.finishTime)}
-                    </div>
-
-                    {/* Actions */}
-                    <div style={{ display:'flex', justifyContent:'flex-end', gap:4 }}>
-                      {/* Cancel — running builds only */}
-                      {b.status === 'running' && (
-                        <button className="btn sm ghost" title="Cancel this build"
-                          style={{ color:'var(--danger)' }}
-                          disabled={actioning.has(b.id)}
-                          onClick={e => { e.stopPropagation(); cancelBuild(b) }}>
-                          <Icon name="x" size={12}/> {actioning.has(b.id) ? '…' : 'Cancel'}
-                        </button>
-                      )}
-                      {/* Rerun — completed builds */}
-                      {b.status !== 'running' && b.definitionId > 0 && (
-                        <button className="btn sm ghost" title="Re-run this pipeline"
-                          disabled={actioning.has(b.id)}
-                          onClick={e => { e.stopPropagation(); rerunBuild(b) }}>
-                          <Icon name="refresh" size={12}/> {actioning.has(b.id) ? '…' : 'Rerun'}
-                        </button>
-                      )}
-                      {/* Ack / Unack — failed builds */}
-                      {b.status === 'failed' && (
-                        acknowledgedSet.has(b.id)
-                          ? <button className="btn sm ghost" title="Remove acknowledgement"
-                              style={{ color:'var(--warning)', borderColor:'var(--warning)' }}
-                              onClick={e => { e.stopPropagation(); toggleAck(b.id) }}>
-                              <Icon name="x" size={12}/> Unack
-                            </button>
-                          : <button className="btn sm ghost" title="Acknowledge this failure"
-                              onClick={e => { e.stopPropagation(); toggleAck(b.id) }}>
-                              <Icon name="check" size={12}/> Ack
-                            </button>
-                      )}
-                      {/* Bug — failed and cancelled only */}
-                      {(b.status === 'failed' || b.status === 'cancelled') && (
-                        <button className="btn sm ghost" onClick={e => {
-                          e.stopPropagation()
-                          window.dispatchEvent(new CustomEvent('nexusmd:create-wi', {
-                            detail: {
-                              type: 'Bug',
-                              title: `Build ${b.status}: ${b.pipeline}`,
-                              description: `Build #${b.id}\nBranch: ${b.branch}\nReason: ${b.failureReason || b.status}`,
-                              project: (NexusMDData.CONFIG_PROJECTS || [])[0] || '',
-                              tags: 'build;ci',
-                            }
-                          }))
-                        }}><Icon name="plus" size={12}/> Bug</button>
-                      )}
-                    </div>
-
+                    {visibleBuildCols.map(f => buildCell(f.key, b))}
                   </div>
                   )
                 })}
