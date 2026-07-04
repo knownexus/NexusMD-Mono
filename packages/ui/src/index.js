@@ -107,6 +107,7 @@ export {
 export {
   glanceCollect, GlanceStat, GlanceView, collectCarryItems, CarryOverModal,
 } from './planner/planner-glance.jsx'
+export { collectRowNotes, promoteRowNoteToLibrary, PlannerNotesPanel } from './planner/planner-notes-overview.jsx'
 export {
   hashPassword, encryptConfidentialForServer, decryptConfidentialFromServer,
   loadConfidentialConfig, saveConfidentialConfig,

@@ -12,6 +12,7 @@ import { plNewRow, plScrollToEl } from '../planner/primitives.jsx'
 import { WorkItemCtxLayer, GlobalNotesView, loadGlobalNotes, saveGlobalNotes } from '../planner/planner-notes.jsx'
 import { SectionCard } from '../planner/planner-editors.jsx'
 import { GlanceView, CarryOverModal, collectCarryItems } from '../planner/planner-glance.jsx'
+import { PlannerNotesPanel } from '../planner/planner-notes-overview.jsx'
 import {
   loadWeekPlanner, saveWeekPlanner, deleteWeekPlanner, getWeeksWithData,
   isLegacyMigrationDone, markLegacyMigrationDone, checkConfidentialReminders,
@@ -476,9 +477,14 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGloba
   }, [data, confCfg, unlockedSections, rowVisible])
 
   const glance = (
-    <GlanceView data={data} themes={themes} sections={PLANNER_SECTIONS} groups={PL_GROUPS}
-      onOpenGroup={openGroup} onOpenSection={openSection} rowVisible={rowVisible}
-      carryCount={showCarryBanner ? carryItems.length : 0} onOpenCarry={() => setModal('carry')}/>
+    <React.Fragment>
+      <GlanceView data={data} themes={themes} sections={PLANNER_SECTIONS} groups={PL_GROUPS}
+        onOpenGroup={openGroup} onOpenSection={openSection} rowVisible={rowVisible}
+        carryCount={showCarryBanner ? carryItems.length : 0} onOpenCarry={() => setModal('carry')}/>
+      <div style={{ marginTop: 12 }}>
+        <PlannerNotesPanel data={data} setData={setData} sections={PLANNER_SECTIONS} />
+      </div>
+    </React.Fragment>
   )
   const notesView = (
     <GlobalNotesView notes={gNotes} setNotes={setGNotes} weekLabel={weekLabel.short} onAddTask={addTaskFromNote}/>
