@@ -13,6 +13,7 @@
     "e2e": "vite build && playwright test",
     "start": "electron .",
     "icons": "node scripts/create-icons.js",
+    "graph:smoke": "node scripts/graph-smoke-test.js",
     "build:renderer": "vite build",
     "build": "vite build && electron-builder",
     "build:win": "vite build && electron-builder --win",
