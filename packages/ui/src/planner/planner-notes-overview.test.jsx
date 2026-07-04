@@ -47,6 +47,26 @@ describe('collectRowNotes', () => {
     const out = collectRowNotes({ tasks: [{ id: 'r1', task: '', _notesList: [{ id: 'n', title: 't', body: '' }] }] }, SECTIONS)
     expect(out[0].rowLabel).toBe('(untitled)')
   })
+
+  it('excludes rows hidden by an optional rowVisible predicate (confidential/locked rows)', () => {
+    const data = {
+      tasks: [
+        { id: 'r1', task: 'Open task', _notesList: [{ id: 'n1', title: 'Plan', body: 'do' }] },
+        { id: 'r2', task: 'Secret task', _confidential: true, _notesList: [{ id: 'n2', title: 'Secret', body: 'shh' }] },
+      ],
+    }
+    const rowVisible = (sec, row) => !row._confidential
+
+    const filtered = collectRowNotes(data, SECTIONS, rowVisible)
+    expect(filtered).toHaveLength(1)
+    expect(filtered[0]).toMatchObject({ rowId: 'r1' })
+    expect(filtered.find(e => e.rowId === 'r2')).toBeUndefined()
+
+    // No predicate (2-arg call): behavior unchanged, confidential row still included.
+    const unfiltered = collectRowNotes(data, SECTIONS)
+    expect(unfiltered).toHaveLength(2)
+    expect(unfiltered.find(e => e.rowId === 'r2')).toBeDefined()
+  })
 })
 
 describe('promoteRowNoteToLibrary', () => {

@@ -5,12 +5,13 @@ import { plRowNotes, loadGlobalNotes, saveGlobalNotes, RowNotesModal } from './p
 
 // Aggregate every table row (in a hasNotes section) that has at least one note,
 // for the Planner overview "Planner notes" list. Pure — unit-tested independently.
-export function collectRowNotes(data, sections) {
+export function collectRowNotes(data, sections, rowVisible) {
   const out = [];
   sections.forEach(sec => {
     if (sec.type !== 'table' || !sec.hasNotes) return;
     const mainCol = (sec.cols || []).find(c => c.main) || (sec.cols || [])[0];
     (data[sec.id] || []).forEach(row => {
+      if (rowVisible && !rowVisible(sec, row)) return;
       const notes = plRowNotes(row);
       if (!notes.length) return;
       out.push({
@@ -49,9 +50,9 @@ export function promoteRowNoteToLibrary(note) {
   return entry;
 }
 
-export function PlannerNotesPanel({ data, setData, sections }) {
+export function PlannerNotesPanel({ data, setData, sections, rowVisible }) {
   const [editing, setEditing] = React.useState(null); // { sectionId, rowId }
-  const entries = collectRowNotes(data, sections);
+  const entries = collectRowNotes(data, sections, rowVisible);
 
   const updateRowNotes = (sectionId, rowId, notesArr) => {
     setData(prev => ({

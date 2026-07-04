@@ -482,7 +482,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGloba
         onOpenGroup={openGroup} onOpenSection={openSection} rowVisible={rowVisible}
         carryCount={showCarryBanner ? carryItems.length : 0} onOpenCarry={() => setModal('carry')}/>
       <div style={{ marginTop: 12 }}>
-        <PlannerNotesPanel data={data} setData={setData} sections={PLANNER_SECTIONS} />
+        <PlannerNotesPanel data={data} setData={setData} sections={PLANNER_SECTIONS} rowVisible={rowVisible} />
       </div>
     </React.Fragment>
   )
