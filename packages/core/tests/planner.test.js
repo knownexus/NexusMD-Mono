@@ -161,3 +161,19 @@ describe('hasMeaningfulPlannerData', () => {
     expect(hasMeaningfulPlannerData(d, { morale: '  ' })).toBe(false)
   })
 })
+
+describe('PLANNER_SECTIONS row-notes coverage', () => {
+  const withNotes = new Set([
+    'tasks', 'reminders', 'chatsIn', 'chatsOut', 'statusUpdates',
+    'workItemsPlan', 'teamTasks', 'teamNotes', 'meetNotes', 'dailyLog',
+  ])
+  it('enables hasNotes on exactly the expected sections', () => {
+    const actual = new Set(PLANNER_SECTIONS.filter(s => s.hasNotes).map(s => s.id))
+    expect(actual).toEqual(withNotes)
+  })
+  it('note-enabled sections are all tables', () => {
+    PLANNER_SECTIONS.filter(s => s.hasNotes).forEach(s => {
+      expect(s.type).toBe('table')
+    })
+  })
+})

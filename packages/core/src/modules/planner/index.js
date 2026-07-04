@@ -84,7 +84,7 @@ export function weekKeyToOffset(weekKey) {
 // plain strings.
 
 export const PLANNER_SECTIONS = [
-  { id:'tasks', num:'1', title:'My tasks', icon:'check-circle', type:'table', cols:[
+  { id:'tasks', num:'1', title:'My tasks', icon:'check-circle', type:'table', hasNotes: true, cols:[
     { k:'task', l:'Task', t:'text', w:'34%', main:true }, { k:'category', l:'Category', t:'sel', w:'14%', o:['','Admin','Architecture','Delivery','HR / People','Infrastructure','Process','Strategy','Technical'] },
     { k:'due', l:'Due', t:'date', w:'14%' }, { k:'priority', l:'Priority', t:'prio', w:'18%' }, { k:'status', l:'Status', t:'status', w:'20%' },
   ]},
@@ -96,15 +96,15 @@ export const PLANNER_SECTIONS = [
     { k:'meeting', l:'Meeting', t:'text', w:'16%', main:true }, { k:'decisions', l:'Key decisions', t:'text', w:'26%' }, { k:'actions', l:'Action items', t:'text', w:'24%' },
     { k:'followBy', l:'Follow-up by', t:'text', w:'14%' }, { k:'status', l:'Status', t:'status', w:'16%' },
   ]},
-  { id:'chatsIn', num:'3a', title:'Chats - needs my response', icon:'inbox', type:'table', cols:[
+  { id:'chatsIn', num:'3a', title:'Chats - needs my response', icon:'inbox', type:'table', hasNotes: true, cols:[
     { k:'from', l:'From', t:'text', w:'14%' }, { k:'topic', l:'Topic', t:'text', w:'24%', main:true }, { k:'needed', l:'What is needed', t:'text', w:'26%' },
     { k:'due', l:'Due', t:'date', w:'14%' }, { k:'status', l:'Status', t:'status', w:'16%' },
   ]},
-  { id:'chatsOut', num:'3b', title:'Chats I need to start', icon:'message', type:'table', cols:[
+  { id:'chatsOut', num:'3b', title:'Chats I need to start', icon:'message', type:'table', hasNotes: true, cols:[
     { k:'who', l:'Who', t:'text', w:'14%' }, { k:'topic', l:'Topic', t:'text', w:'24%', main:true }, { k:'why', l:'Why / goal', t:'text', w:'24%' },
     { k:'channel', l:'Channel', t:'text', w:'14%' }, { k:'status', l:'Status', t:'status', w:'16%' },
   ]},
-  { id:'statusUpdates', num:'3c', title:'Status updates to send', icon:'send', type:'table', cols:[
+  { id:'statusUpdates', num:'3c', title:'Status updates to send', icon:'send', type:'table', hasNotes: true, cols:[
     { k:'audience', l:'Audience', t:'text', w:'16%', main:true }, { k:'cadence', l:'Cadence', t:'text', w:'14%' }, { k:'content', l:'Content / link', t:'text', w:'32%' },
     { k:'due', l:'Due', t:'date', w:'14%' }, { k:'status', l:'Status', t:'status', w:'16%' },
   ]},
@@ -112,7 +112,7 @@ export const PLANNER_SECTIONS = [
     { k:'person', l:'Direct report', t:'text', w:'14%', main:true }, { k:'date', l:'Date', t:'date', w:'12%' }, { k:'points', l:'Talking points', t:'text', w:'22%' },
     { k:'theirAsks', l:'Their asks', t:'text', w:'18%' }, { k:'actions', l:'Actions / owner', t:'text', w:'18%' }, { k:'status', l:'Status', t:'status', w:'14%' },
   ]},
-  { id:'teamNotes', num:'4c', title:'Team notes', icon:'lock', type:'table', defaultConfidential: true, cols:[
+  { id:'teamNotes', num:'4c', title:'Team notes', icon:'lock', type:'table', hasNotes: true, defaultConfidential: true, cols:[
     { k:'person', l:'Person', t:'text', w:'16%', main:true },
     { k:'note', l:'Note', t:'text', w:'52%' },
     { k:'date', l:'Date', t:'date', w:'16%' },
@@ -130,16 +130,16 @@ export const PLANNER_SECTIONS = [
     { k:'person', l:'Person', t:'text', w:'13%', main:true }, { k:'tried', l:'What I have tried', t:'text', w:'26%' }, { k:'next', l:'Next step / owner', t:'text', w:'24%' },
     { k:'reviewBy', l:'Review by', t:'date', w:'12%' }, { k:'status', l:'Status', t:'status', w:'14%' },
   ]},
-  { id:'workItemsPlan', num:'7', title:'Work item creation queue', icon:'work', type:'table', cols:[
+  { id:'workItemsPlan', num:'7', title:'Work item creation queue', icon:'work', type:'table', hasNotes: true, cols:[
     { k:'title', l:'Title / summary', t:'text', w:'28%', main:true }, { k:'type', l:'Type', t:'sel', w:'12%', o:['','Bug','Task','User Story','Feature','Epic','Spike'] },
     { k:'area', l:'Area / iteration', t:'text', w:'16%' }, { k:'source', l:'Source / requester', t:'text', w:'14%' }, { k:'priority', l:'Priority', t:'prio', w:'14%' },
     { k:'adoNum', l:'ADO #', t:'text', w:'8%' }, { k:'status', l:'Status', t:'status', w:'14%' },
   ]},
-  { id:'teamTasks', num:'9', title:'Tasks for team / devs', icon:'team', type:'table', cols:[
+  { id:'teamTasks', num:'9', title:'Tasks for team / devs', icon:'team', type:'table', hasNotes: true, cols:[
     { k:'task', l:'Task', t:'text', w:'28%', main:true }, { k:'assignedTo', l:'Assigned to', t:'text', w:'14%' }, { k:'context', l:'Context / link', t:'text', w:'26%' },
     { k:'due', l:'Due', t:'date', w:'12%' }, { k:'status', l:'Status', t:'status', w:'16%' },
   ]},
-  { id:'reminders', num:'10', title:'Reminders', icon:'bell', type:'table', cols:[
+  { id:'reminders', num:'10', title:'Reminders', icon:'bell', type:'table', hasNotes: true, cols:[
     { k:'reminder', l:'Reminder', t:'text', w:'38%', main:true }, { k:'trigDate', l:'Trigger date', t:'date', w:'14%' }, { k:'why', l:'Why', t:'text', w:'30%' }, { k:'status', l:'Status', t:'status', w:'14%' },
   ]},
   { id:'notes', num:'11', title:'Notes & parking lot', icon:'edit', type:'textarea' },
