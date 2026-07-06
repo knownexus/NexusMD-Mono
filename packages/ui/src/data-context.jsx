@@ -53,7 +53,6 @@ const DEFAULTS = {
   namespace: 'nexusmd',      // storage-key prefix for shared UI state (web 'nexusmd', app 'helm')
   googleAuth: null,          // optional Google OAuth client (web only); null → widgets show "connect"
   workItemSource: apiWorkItemSource, // data ops for WorkItemDetail (web/desktop: /api; app: ado-client)
-  prSource: null,            // optional: platform's PR http adapter passthrough (desktop only for now)
   plannerOnWeekSaved: null,  // web only: fired after a planner week is saved (Google-Drive sync); null → no-op
 }
 

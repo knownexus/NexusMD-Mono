@@ -263,6 +263,7 @@ function DesktopDetailDrawer({ drawer, onClose, setItems }) {
   const open = drawer != null
   const kind = drawer?.kind
   const d    = drawer?.data
+  const http = React.useMemo(() => createAdoHttpAdapter(), [])
 
   const title = !d ? '' : kind === 'wi' ? d.title : kind === 'pr' ? d.title : ''
 
@@ -312,7 +313,7 @@ function DesktopDetailDrawer({ drawer, onClose, setItems }) {
           <WorkItemDetail id={d.id} project={d.project} />
         </React.Fragment>
       )}
-      {kind === 'pr' && d && <PRTabs pr={d} http={createAdoHttpAdapter()} />}
+      {kind === 'pr' && d && <PRTabs key={d.id} pr={d} http={http} />}
     </Drawer>
   )
 }
