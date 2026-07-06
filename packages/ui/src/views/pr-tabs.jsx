@@ -1,5 +1,7 @@
 import React from 'react';
-import { fetchPRCommits, fetchPRFileChanges, fetchFileContent, timeAgo } from '@nexusmd/core';
+import { fetchPRCommits, fetchPRFileChanges, fetchFileContent, fetchPRThreads, postPRThread, postPRReply, setPRThreadStatus, updatePRDescription, timeAgo } from '@nexusmd/core';
+import { renderContent, mdToHtml } from './render-content.js';
+import { toast } from '../toast.jsx';
 import { Icon } from '../icons.jsx';
 
 const { useState, useEffect } = React;
@@ -224,6 +226,327 @@ export function PRFilesTab({ pr, http }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ── PRDescriptionField ────────────────────────────────────────────────────────
+// Write/Preview/Save editor for a PR description, mirroring HtmlField's shape
+// in work-item-detail.jsx but backed by updatePRDescription instead of a
+// work-item field PATCH.
+function PRDescriptionField({ pr, http, description, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(description || '');
+  const [preview, setPreview] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState('');
+
+  useEffect(() => { setText(description || ''); }, [description]);
+
+  const save = async () => {
+    setSaving(true); setStatus('Saving…');
+    try {
+      await updatePRDescription(http, { project: pr.project, repoId: pr.repoId, prId: pr.id, description: text });
+      onSaved?.(text);
+      setStatus('✓ Saved');
+      toast?.('Description updated', 'success');
+      setTimeout(() => { setEditing(false); setPreview(false); setStatus(''); }, 1200);
+    } catch (e) {
+      setStatus('✗ ' + (e.message || 'Save failed'));
+    } finally { setSaving(false); }
+  };
+
+  const statusColor = status.startsWith('✓') ? 'var(--success)' : status.startsWith('✗') ? 'var(--danger)' : 'var(--text-muted)';
+  const tabStyle = (active) => ({
+    fontSize: 11.5, padding: '2px 10px', borderRadius: 6, border: '1px solid var(--border)',
+    background: active ? 'var(--accent)' : 'transparent',
+    color: active ? '#fff' : 'var(--text-muted)', cursor: 'pointer', lineHeight: '20px',
+  });
+
+  return (
+    <div className="drawer-section">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <h4 style={{ margin: 0 }}>Description</h4>
+        {!editing && (
+          <button className="btn sm ghost" style={{ fontSize: 11.5 }}
+            onClick={() => { setText(description || ''); setPreview(false); setStatus(''); setEditing(true); }}>
+            <Icon name="edit" size={11}/> Edit
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <div>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+            <button style={tabStyle(!preview)} onClick={() => setPreview(false)}>Write</button>
+            <button style={tabStyle(preview)} onClick={() => setPreview(true)}>Preview</button>
+          </div>
+          {preview ? (
+            <div className="wi-html-content" style={{
+              minHeight: 100, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8,
+              background: 'var(--surface-2)', fontSize: 13, lineHeight: 1.6,
+              color: text.trim() ? 'var(--text)' : 'var(--text-subtle)', overflowWrap: 'break-word',
+            }} dangerouslySetInnerHTML={{ __html: text.trim() ? mdToHtml(text) : '<em>Nothing to preview</em>' }} />
+          ) : (
+            <textarea value={text} onChange={e => setText(e.target.value)} rows={8}
+              style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: 12, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)', color: 'var(--text)', resize: 'vertical', lineHeight: 1.5, boxSizing: 'border-box' }} />
+          )}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+            <button className="btn sm primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+            <button className="btn sm ghost" onClick={() => { setEditing(false); setPreview(false); setStatus(''); }}>Cancel</button>
+            {status && <span style={{ fontSize: 12, color: statusColor }}>{status}</span>}
+          </div>
+        </div>
+      ) : (
+        <div className="wi-html-content" style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)', overflowWrap: 'break-word' }}
+          dangerouslySetInnerHTML={{ __html: renderContent(description) }} />
+      )}
+    </div>
+  );
+}
+
+// ── PRThreadsPanel ────────────────────────────────────────────────────────────
+// Comment thread list: add top-level comment, reply, resolve/reopen.
+// Ported from PRDetail's thread state/handlers in apps/app/src/app.jsx:2561-2704.
+function PRThreadsPanel({ pr, http }) {
+  const [threadState, setThreadState] = useState({ status: 'idle', threads: [], error: null });
+  const [comment, setComment] = useState('');
+  const [posting, setPosting] = useState(false);
+  const [replyOpen, setReplyOpen] = useState({});
+  const [replyText, setReplyText] = useState({});
+  const [replyPosting, setReplyPosting] = useState({});
+  const [resolving, setResolving] = useState({});
+
+  useEffect(() => {
+    if (!pr.repoId || !pr.project) return;
+    setThreadState({ status: 'loading', threads: [], error: null });
+    fetchPRThreads(http, { project: pr.project, repoId: pr.repoId, prId: pr.id })
+      .then(threads => setThreadState({ status: 'ok', threads, error: null }))
+      .catch(e => setThreadState({ status: 'error', threads: [], error: e.message }));
+  }, [pr.id, pr.repoId, pr.project, http]);
+
+  const postComment = async () => {
+    const content = comment.trim();
+    if (!content) return;
+    setPosting(true);
+    // Optimistic update: snapshot, apply immediately, call the API, roll back on failure.
+    const prevThreads = threadState.threads;
+    const tempId = `temp-${Date.now()}`;
+    const optimisticThread = {
+      id: tempId, status: 'active',
+      comments: [{ id: tempId, commentType: 1, content, author: { displayName: 'You' } }],
+    };
+    setThreadState(prev => ({ ...prev, status: 'ok', threads: [...prev.threads, optimisticThread] }));
+    setComment('');
+    try {
+      const data = await postPRThread(http, { project: pr.project, repoId: pr.repoId, prId: pr.id, content });
+      if (data && data.id != null) {
+        setThreadState(prev => ({ ...prev, threads: prev.threads.map(t => t.id === tempId ? data : t) }));
+      }
+      toast?.('Comment posted', 'success');
+    } catch (e) {
+      setThreadState(prev => ({ ...prev, threads: prevThreads }));
+      setComment(content);
+      toast?.('Failed to post comment: ' + e.message, 'error');
+    } finally { setPosting(false); }
+  };
+
+  const resolveThread = async (threadId, currentStatus) => {
+    const newStatus = currentStatus === 'active' ? 'fixed' : 'active';
+    setResolving(r => ({ ...r, [threadId]: true }));
+    try {
+      await setPRThreadStatus(http, { project: pr.project, repoId: pr.repoId, prId: pr.id, threadId, status: newStatus });
+      setThreadState(prev => ({ ...prev, threads: prev.threads.map(t => t.id === threadId ? { ...t, status: newStatus } : t) }));
+    } catch (e) {
+      toast?.('Failed to update thread: ' + e.message, 'error');
+    } finally {
+      setResolving(r => ({ ...r, [threadId]: false }));
+    }
+  };
+
+  const postReply = async (threadId) => {
+    const text = (replyText[threadId] || '').trim();
+    if (!text) return;
+    const thread = threadState.threads.find(t => t.id === threadId);
+    const parentCommentId = Math.max(...(thread?.comments || []).filter(c => c.commentType === 1).map(c => c.id), 0);
+    setReplyPosting(r => ({ ...r, [threadId]: true }));
+    try {
+      const data = await postPRReply(http, { project: pr.project, repoId: pr.repoId, prId: pr.id, threadId, parentCommentId, content: text });
+      setThreadState(prev => ({ ...prev, threads: prev.threads.map(t => t.id === threadId ? { ...t, comments: [...(t.comments || []), data] } : t) }));
+      setReplyText(r => ({ ...r, [threadId]: '' }));
+      setReplyOpen(r => ({ ...r, [threadId]: false }));
+    } catch (e) {
+      toast?.('Failed to post reply: ' + e.message, 'error');
+    } finally {
+      setReplyPosting(r => ({ ...r, [threadId]: false }));
+    }
+  };
+
+  const openCount = threadState.threads.filter(t => t.status === 'active').length;
+
+  return (
+    <div className="drawer-section">
+      <h4>
+        Comments
+        {threadState.threads.length > 0 && (
+          <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text-muted)', marginLeft: 6 }}>
+            ({threadState.threads.length}{openCount > 0 ? ` · ${openCount} open` : ''})
+          </span>
+        )}
+      </h4>
+      {threadState.status === 'loading' && (
+        <p style={{ fontSize: 12.5, color: 'var(--text-subtle)', margin: 0 }}>Loading comments…</p>
+      )}
+      {threadState.status === 'error' && (
+        <p style={{ fontSize: 12.5, color: 'var(--danger)', margin: 0 }}>{threadState.error}</p>
+      )}
+      {threadState.status === 'ok' && threadState.threads.length === 0 && (
+        <p style={{ fontSize: 12.5, color: 'var(--text-subtle)', margin: 0 }}>No comments yet.</p>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+        {threadState.threads.map(t => {
+          const isOpen = t.status === 'active';
+          const filePath = t.threadContext?.filePath;
+          const visibleComments = (t.comments || []).filter(c => c.commentType === 1 && !c.isDeleted);
+          const isReplying = replyOpen[t.id];
+          return (
+            <div key={t.id} style={{
+              border: '1px solid var(--border)', borderLeft: `3px solid ${isOpen ? 'var(--warning)' : 'var(--border)'}`,
+              borderRadius: 8, background: 'var(--surface-2)', overflow: 'hidden',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, fontWeight: 600, background: isOpen ? 'rgba(234,179,8,0.15)' : 'var(--success-soft)', color: isOpen ? 'var(--warning)' : 'var(--success)' }}>
+                  {isOpen ? 'Open' : 'Resolved'}
+                </span>
+                {filePath
+                  ? <span className="mono muted truncate" style={{ fontSize: 10.5, flex: 1 }}>{filePath}</span>
+                  : <span className="muted" style={{ fontSize: 10.5, flex: 1 }}>General</span>}
+                <button className="btn sm ghost" style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }}
+                  disabled={!!resolving[t.id]} onClick={() => resolveThread(t.id, t.status)}>
+                  {resolving[t.id] ? '…' : isOpen ? 'Resolve' : 'Re-open'}
+                </button>
+              </div>
+              <div>
+                {visibleComments.map((c, idx) => (
+                  <div key={c.id || idx} style={{ padding: '10px 12px', borderBottom: idx < visibleComments.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, flexWrap: 'wrap', gap: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{c.author?.displayName || 'Unknown'}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{c.publishedDate ? timeAgo(c.publishedDate) + ' ago' : ''}</span>
+                    </div>
+                    <div className="wi-html-content" style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55, overflowWrap: 'break-word' }}
+                      dangerouslySetInnerHTML={{ __html: renderContent(c.content || '') }} />
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+                {!isReplying ? (
+                  <button className="btn sm ghost" style={{ fontSize: 11.5 }} onClick={() => setReplyOpen(r => ({ ...r, [t.id]: true }))}>Reply</button>
+                ) : (
+                  <div>
+                    <textarea
+                      value={replyText[t.id] || ''}
+                      onChange={e => setReplyText(r => ({ ...r, [t.id]: e.target.value }))}
+                      rows={2}
+                      placeholder="Write a reply…"
+                      style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12.5, resize: 'vertical', boxSizing: 'border-box', marginBottom: 6 }}
+                    />
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn sm primary" disabled={replyPosting[t.id]} onClick={() => postReply(t.id)}>
+                        {replyPosting[t.id] ? 'Posting…' : 'Post reply'}
+                      </button>
+                      <button className="btn sm ghost" onClick={() => setReplyOpen(r => ({ ...r, [t.id]: false }))}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div>
+        <textarea
+          value={comment}
+          onChange={e => setComment(e.target.value)}
+          rows={3}
+          placeholder="Add a comment…"
+          aria-label="Add a comment"
+          style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)', color: 'var(--text)', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
+        />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+          <button className="btn sm primary" onClick={postComment} disabled={posting || !comment.trim()}>
+            {posting ? 'Posting…' : 'Post comment'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PRTabs ────────────────────────────────────────────────────────────────────
+// Top-level tabbed PR view: Overview (description, reviewers, linked work
+// items, comment threads), Commits, Files. Replaces desktop's read-only
+// DesktopPRDetail. Ported/composed from apps/app/src/app.jsx's PRDetail
+// (2551-2930-ish), backed by the shared pr-collab.js functions.
+export function PRTabs({ pr, http }) {
+  const [tab, setTab] = useState('overview');
+  const [description, setDescription] = useState(pr.description || '');
+
+  const tabBtnStyle = (active) => ({
+    fontSize: 12, fontWeight: active ? 600 : 500, padding: '5px 12px', borderRadius: 6,
+    border: 'none', cursor: 'pointer',
+    background: active ? 'var(--accent)' : 'transparent',
+    color: active ? 'var(--accent-fg, #fff)' : 'var(--text-muted)',
+  });
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 2, padding: '0 0 8px', borderBottom: '1px solid var(--border)', marginBottom: 8 }}>
+        {[['overview', 'Overview'], ['commits', 'Commits'], ['files', 'Files']].map(([id, label]) => (
+          <button key={id} style={tabBtnStyle(tab === id)} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'overview' && (
+        <div>
+          <PRDescriptionField pr={pr} http={http} description={description} onSaved={setDescription} />
+
+          {(pr.reviewerDetails || []).length > 0 && (
+            <div className="drawer-section">
+              <h4>Reviewers</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {pr.reviewerDetails.map((r, i) => {
+                  const label = r.vote === 10 || r.vote === 5 ? 'Approved' : r.vote === -10 ? 'Rejected' : r.vote === -5 ? 'Waiting for author' : 'Pending';
+                  const color = r.vote === 10 || r.vote === 5 ? 'var(--success)' : r.vote === -10 ? 'var(--danger)' : r.vote === -5 ? 'var(--warning)' : 'var(--text-subtle)';
+                  return (
+                    <div key={`${r.id}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 6, fontSize: 13 }}>
+                      <span style={{ flex: 1 }}>{r.name || r.id}</span>
+                      <span style={{ fontSize: 12, color, fontWeight: 500 }}>{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {(pr.linkedWorkItems || []).length > 0 && (
+            <div className="drawer-section">
+              <h4>Linked work items</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {pr.linkedWorkItems.map(wi => (
+                  <div key={wi.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--surface-2)', borderRadius: 6, fontSize: 12.5 }}>
+                    <span className="mono muted" style={{ fontSize: 11 }}>#{wi.id}</span>
+                    <span style={{ flex: 1, minWidth: 0 }} className="truncate">{wi.title || `Work Item #${wi.id}`}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <PRThreadsPanel pr={pr} http={http} />
+        </div>
+      )}
+
+      {tab === 'commits' && <PRCommitsTab pr={pr} http={http} />}
+      {tab === 'files' && <PRFilesTab pr={pr} http={http} />}
     </div>
   );
 }

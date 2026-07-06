@@ -1,7 +1,7 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { PRCommitsTab, PRFilesTab } from './pr-tabs.jsx'
+import { PRCommitsTab, PRFilesTab, PRTabs } from './pr-tabs.jsx'
 
 afterEach(cleanup)
 
@@ -55,5 +55,60 @@ describe('PRFilesTab', () => {
     ])
     render(<PRFilesTab pr={pr} http={http} />)
     await waitFor(() => expect(screen.getByText('No file changes found.')).toBeTruthy())
+  })
+})
+
+describe('PRTabs', () => {
+  const pr = {
+    id: 5, repoId: 'r1', project: 'Proj', org: 'myorg', repo: 'myrepo',
+    title: 'Add feature', status: 'active', draft: false,
+    description: 'Some description', reviewerDetails: [], linkedWorkItems: [], url: 'https://x',
+  }
+
+  it('renders the description and switches to the Files tab', async () => {
+    const http = makeHttp([
+      { match: '/threads?api-version', json: { value: [] } },
+    ])
+    render(<PRTabs pr={pr} http={http} />)
+    expect(screen.getByText('Some description')).toBeTruthy()
+    fireEvent.click(screen.getByText('Files'))
+    expect(screen.getByText('Loading files…')).toBeTruthy()
+  })
+
+  it('lets the user edit and save the description', async () => {
+    const http = makeHttp([
+      { match: '/threads?api-version', json: { value: [] } },
+      { match: 'pullRequests/5?api-version', json: { id: 5, description: 'Updated text' } },
+    ])
+    render(<PRTabs pr={pr} http={http} />)
+    fireEvent.click(screen.getByText('Edit'))
+    const textarea = screen.getByRole('textbox', { name: '' }) || screen.getAllByRole('textbox')[0]
+    fireEvent.change(textarea, { target: { value: 'Updated text' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(screen.getByText(/Saved/)).toBeTruthy())
+  })
+
+  it('posts a new top-level comment', async () => {
+    const http = makeHttp([
+      { match: '/threads?api-version', json: { value: [] } },
+    ])
+    render(<PRTabs pr={pr} http={http} />)
+    const box = screen.getByPlaceholderText('Add a comment…')
+    fireEvent.change(box, { target: { value: 'Looks good' } })
+    fireEvent.click(screen.getByText('Post comment'))
+    await waitFor(() => expect(screen.getByText('Looks good')).toBeTruthy())
+  })
+
+  it('resolves an open thread', async () => {
+    const http = makeHttp([
+      { match: '/threads?api-version', json: { value: [
+        { id: 1, status: 'active', comments: [{ id: 10, commentType: 1, content: 'A comment', author: { displayName: 'Alex' } }] },
+      ] } },
+      { match: '/threads/1?api-version', json: { id: 1, status: 'fixed' } },
+    ])
+    render(<PRTabs pr={pr} http={http} />)
+    await waitFor(() => expect(screen.getByText('Resolve')).toBeTruthy())
+    fireEvent.click(screen.getByText('Resolve'))
+    await waitFor(() => expect(screen.getByText('Re-open')).toBeTruthy())
   })
 })
