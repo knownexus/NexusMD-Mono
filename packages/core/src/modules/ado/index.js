@@ -17,3 +17,7 @@ export {
   defaultConfig, resolveFields, reorderField, toggleField,
 } from './field-visibility.js'
 export { indexPRsByWorkItem } from './pr-links.js'
+export {
+  fetchPRThreads, postPRThread, postPRReply, setPRThreadStatus,
+  fetchPRCommits, fetchPRFileChanges, fetchFileContent, updatePRDescription,
+} from './pr-collab.js'
