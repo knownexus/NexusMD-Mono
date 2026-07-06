@@ -12,6 +12,8 @@ import { toast } from '../toast.jsx';
 import { timeAgo } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 import { getWorkItemSource } from './work-item-source.js';
+import { useProjectAreas } from '../project-areas.js';
+import { TagInput, AreaTreePicker } from './wi-field-pickers.jsx';
 
 // Prefetch cache: keyed by `${id}:${project||''}`, TTL 30s.
 // WorkItemDetail checks this before fetching; prefetchWorkItem populates it on hover.
@@ -431,6 +433,110 @@ export function RawFieldsInspector({ id }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── WorkItemFieldsEditor ──────────────────────────────────────────────────────
+// State/Assignee/Priority/Area/Tags editor block. Ported from WIDetail's
+// details section in apps/app/src/app.jsx:2229-2305, generalised to read
+// STATES/TEAM/WORK_ITEMS from useNexusData() instead of the HelmData global,
+// and to use the shared TagInput/AreaTreePicker from wi-field-pickers.jsx.
+
+export function WorkItemFieldsEditor({ item, onItemUpdated }) {
+  const { data, storage, getProfileKey, workItemSource } = useNexusData();
+  const STATES = data.STATES || [];
+  const TEAM = data.TEAM || [];
+  const [areas] = useProjectAreas({ storage, getProfileKey });
+
+  const [local, setLocal] = React.useState(item);
+  React.useEffect(() => { setLocal(item); }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const knownTags = React.useMemo(() => {
+    const s = new Set();
+    (data.WORK_ITEMS || []).forEach(wi => {
+      (wi.tags || []).forEach(t => { if (t) s.add(t); });
+    });
+    return [...s].sort((a, b) => a.localeCompare(b));
+  }, [data.WORK_ITEMS]);
+
+  const patch = async (field, adoValue, localPatch) => {
+    const prev = local;
+    setLocal(l => ({ ...l, ...localPatch }));
+    try {
+      await workItemSource.saveField(item.id, field, adoValue);
+      onItemUpdated?.(localPatch);
+      toast?.('Saved', 'success');
+    } catch (e) {
+      setLocal(prev);
+      toast?.('✗ ' + (e.message || 'Save failed'), 'error');
+    }
+  };
+
+  const assignee = TEAM.find(t => t.id === local.assignee);
+
+  const sel = {
+    background: 'transparent', border: '1px solid transparent', borderRadius: 5,
+    padding: '1px 18px 1px 3px', fontSize: 13, color: 'var(--text)',
+    cursor: 'pointer', appearance: 'none', outline: 'none',
+    fontFamily: 'var(--sans)', maxWidth: '100%',
+  };
+
+  return (
+    <div className="drawer-section">
+      <h4>Details</h4>
+      <dl className="kv">
+        <dt>State</dt>
+        <dd>
+          <select value={local.state || ''} style={sel}
+            onChange={e => { const v = e.target.value; patch('System.State', v, { state: v }); }}>
+            {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </dd>
+
+        <dt>Assignee</dt>
+        <dd>
+          <select value={assignee?.name || ''} style={sel}
+            onChange={e => {
+              const name = e.target.value;
+              const member = TEAM.find(t => t.name === name);
+              patch('System.AssignedTo', name || '', { assignee: member?.id || null });
+            }}>
+            <option value="">Unassigned</option>
+            {TEAM.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+          </select>
+        </dd>
+
+        <dt>Priority</dt>
+        <dd>
+          <select value={String(local.priority || 3)} style={sel}
+            onChange={e => { const v = parseInt(e.target.value, 10); patch('Microsoft.VSTS.Common.Priority', v, { priority: v }); }}>
+            <option value="1">1 – Critical</option>
+            <option value="2">2 – High</option>
+            <option value="3">3 – Medium</option>
+            <option value="4">4 – Low</option>
+          </select>
+        </dd>
+
+        <dt>Area</dt>
+        <dd>
+          <AreaTreePicker compact areas={areas} value={local.area || ''}
+            onChange={val => patch('Custom.Area', val, { area: val })}/>
+        </dd>
+
+        <dt>Tags</dt>
+        <dd>
+          <TagInput
+            value={(local.tags || []).join('; ')}
+            knownTags={knownTags}
+            onChange={str => {
+              const tags = str.split(';').map(t => t.trim()).filter(Boolean);
+              patch('System.Tags', str.trim(), { tags });
+            }}
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, minHeight: 28, padding: '1px 6px' }}
+          />
+        </dd>
+      </dl>
     </div>
   );
 }
