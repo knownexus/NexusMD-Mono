@@ -320,8 +320,8 @@ function PRThreadsPanel({ pr, http }) {
     if (!pr.repoId || !pr.project) return;
     setThreadState({ status: 'loading', threads: [], error: null });
     fetchPRThreads(http, { project: pr.project, repoId: pr.repoId, prId: pr.id })
-      .then(threads => setThreadState({ status: 'ok', threads, error: null }))
-      .catch(e => setThreadState({ status: 'error', threads: [], error: e.message }));
+      .then(threads => setThreadState(prev => prev.status === 'loading' ? { status: 'ok', threads, error: null } : prev))
+      .catch(e => setThreadState(prev => prev.status === 'loading' ? { status: 'error', threads: [], error: e.message } : prev));
   }, [pr.id, pr.repoId, pr.project, http]);
 
   const postComment = async () => {

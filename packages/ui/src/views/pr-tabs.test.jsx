@@ -111,4 +111,42 @@ describe('PRTabs', () => {
     fireEvent.click(screen.getByText('Resolve'))
     await waitFor(() => expect(screen.getByText('Re-open')).toBeTruthy())
   })
+
+  it('does not clobber an optimistically-posted comment when the slow initial thread fetch resolves afterward', async () => {
+    // Regression test: the initial GET /threads is deliberately held open (via a
+    // manually-resolved promise) so it resolves *after* the user posts a comment.
+    // POST /threads (same path, different method) resolves immediately. Before the
+    // fix, the late GET's `.then` unconditionally replaced threadState wholesale,
+    // wiping out the optimistic/confirmed comment even though it succeeded server-side.
+    let resolveInitialFetch
+    const initialFetchGate = new Promise(resolve => { resolveInitialFetch = resolve })
+    const http = {
+      fetch: vi.fn(async (path, options) => {
+        if (path.includes('/threads?api-version') && options && options.method === 'POST') {
+          return {
+            ok: true, status: 200,
+            json: async () => ({
+              id: 99, status: 'active',
+              comments: [{ id: 100, commentType: 1, content: 'Race comment', author: { displayName: 'You' } }],
+            }),
+            text: async () => '',
+          }
+        }
+        if (path.includes('/threads?api-version')) {
+          await initialFetchGate
+          return { ok: true, status: 200, json: async () => ({ value: [] }), text: async () => '' }
+        }
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '' }
+      }),
+    }
+    render(<PRTabs pr={pr} http={http} />)
+    const box = screen.getByPlaceholderText('Add a comment…')
+    fireEvent.change(box, { target: { value: 'Race comment' } })
+    fireEvent.click(screen.getByText('Post comment'))
+    await waitFor(() => expect(screen.getByText('Race comment')).toBeTruthy())
+
+    // Now let the delayed initial fetch resolve — it must not wipe the comment out.
+    resolveInitialFetch()
+    await waitFor(() => expect(screen.getByText('Race comment')).toBeTruthy())
+  })
 })
