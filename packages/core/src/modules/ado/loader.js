@@ -111,7 +111,10 @@ export async function loadAdoData(
               commentCount: pr.commentCount || 0,
               hasConflicts: pr.mergeStatus === 'conflicts',
               description: pr.description || '',
-              url: pr._links?.web?.href || '',
+              // ADO's PR *list* endpoint often omits _links, so fall back to a
+              // deterministic web URL built from org/project/repo/id.
+              url: pr._links?.web?.href
+                || `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(proj)}/_git/${encodeURIComponent(repo.name)}/pullrequest/${pr.pullRequestId}`,
             }))
           } catch (_) {}
         }))

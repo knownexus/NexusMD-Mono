@@ -178,3 +178,27 @@ describe('loadAdoData — PR work-item links', () => {
     expect(result.PRS.find(p => p.id === 55).linkedWorkItems).toEqual([])
   })
 })
+
+describe('loadAdoData — PR web url', () => {
+  it('builds a DevOps PR web url from org/project/repo/id when _links is absent', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const http = makeHttp({
+      '/_apis/git/repositories?': { value: [{ id: 'repo1', name: 'Repo One' }] },
+      '/pullrequests?': { value: [{ pullRequestId: 55, title: 'Fix', createdBy: { displayName: 'Al' }, status: 'active', reviewers: [] }] },
+    })
+    const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
+    expect(result.PRS.find(p => p.id === 55).url)
+      .toBe('https://dev.azure.com/myorg/proj-a/_git/Repo%20One/pullrequest/55')
+  })
+
+  it('prefers the ADO-provided _links.web.href when present', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const http = makeHttp({
+      '/_apis/git/repositories?': { value: [{ id: 'repo1', name: 'Repo One' }] },
+      '/pullrequests?': { value: [{ pullRequestId: 55, title: 'Fix', createdBy: { displayName: 'Al' }, status: 'active', reviewers: [], _links: { web: { href: 'https://dev.azure.com/x/y/_git/z/pullrequest/55' } } }] },
+    })
+    const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
+    expect(result.PRS.find(p => p.id === 55).url)
+      .toBe('https://dev.azure.com/x/y/_git/z/pullrequest/55')
+  })
+})
