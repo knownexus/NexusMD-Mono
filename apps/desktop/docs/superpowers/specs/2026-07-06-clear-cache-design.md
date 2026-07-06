@@ -59,6 +59,15 @@ stay put.
 
 ### Wiring
 
+> **As shipped (reconciled during planning):** `DesktopDataSyncCard` turned out
+> to be a desktop-owned component (`apps/desktop/src/desktop-settings.jsx`), not
+> a shared one, and it already performs its own `localStorage` clearing for the
+> adjacent "Clear local data" row. So the removal lives *in the card* (mirroring
+> that existing pattern) and the card gates on the **existing `onRefreshData`
+> prop** rather than a new `onClearCache` prop / a `clearAdoCache()` in
+> `main.jsx`. `main.jsx` is untouched. The bullets below describe the original
+> proposal; the shipped shape is simpler and equivalent.
+
 `DesktopDataSyncCard` is a shared component but `refreshAdoData()` lives in the
 desktop's `apps/desktop/src/main.jsx`. To keep the shared component
 platform-agnostic:
