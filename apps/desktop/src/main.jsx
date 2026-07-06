@@ -13,6 +13,7 @@ import {
   PlannerView, MarkdownViewer, plannerExportDocx,
   WorkItemDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
+  WorkItemFieldsEditor, PRTabs,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav } from './layout.js'
 import { DesktopSettings } from './desktop-settings.jsx'
@@ -258,70 +259,6 @@ function Placeholder({ label }) {
   )
 }
 
-function DesktopPRDetail({ pr }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '4px 0' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        <span className={`pill ${pr.status}`} style={{ textTransform: 'capitalize' }}>{pr.status}</span>
-        {pr.draft && <span className="pill">Draft</span>}
-        {pr.hasConflicts && <span className="pill danger"><Icon name="alert" size={9}/> Conflicts</span>}
-        {pr.ciStatus === 'success' && <span className="pill success">CI passing</span>}
-        {pr.ciStatus === 'failed'  && <span className="pill danger">CI failing</span>}
-        {pr.ciStatus === 'running' && <span className="pill info">CI running</span>}
-        {pr.ciStatus === 'partial' && <span className="pill warning">CI partial</span>}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <Icon name="git-branch" size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }}/>
-          <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', fontSize: 12 }}>{pr.branch}</span>
-        </div>
-        <div style={{ color: 'var(--text-muted)' }}>
-          <strong>Author:</strong> {pr.authorName || pr.author}
-          {' · '}<strong>Opened:</strong> {pr.age} ago
-          {pr.repo && <>{' · '}<strong>Repo:</strong> {pr.repo}</>}
-        </div>
-        <div>
-          <span style={{ color: 'var(--success)', fontWeight: 500 }}>+{pr.additions}</span>
-          {' '}
-          <span style={{ color: 'var(--danger)', fontWeight: 500 }}>−{pr.deletions}</span>
-          {pr.comments > 0 && (
-            <span style={{ color: 'var(--text-muted)', marginLeft: 10 }}>
-              <Icon name="comment" size={11}/> {pr.comments} comment{pr.comments !== 1 ? 's' : ''}
-              {pr.unresolvedComments > 0 && ` (${pr.unresolvedComments} unresolved)`}
-            </span>
-          )}
-        </div>
-      </div>
-      {(pr.reviewerDetails || []).length > 0 && (
-        <div>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Reviewers</div>
-          {pr.reviewerDetails.map((r, i) => {
-            const v = r.vote
-            const label = v === 10 || v === 5 ? 'Approved' : v === -10 ? 'Rejected' : v === -5 ? 'Waiting for author' : 'Pending'
-            const color = v === 10 || v === 5 ? 'var(--success)' : v === -10 ? 'var(--danger)' : v === -5 ? 'var(--warning)' : 'var(--text-subtle)'
-            return (
-              <div key={`${r.id}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                <span style={{ flex: 1 }}>{r.name || r.id}</span>
-                <span style={{ fontSize: 12, color, fontWeight: 500 }}>{label}</span>
-              </div>
-            )
-          })}
-        </div>
-      )}
-      {(pr.linkedWorkItems || []).length > 0 && (
-        <div>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Linked Work Items</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {pr.linkedWorkItems.map(wi => (
-              <span key={wi.id} className="pill" style={{ fontSize: 11, color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)' }}>#{wi.id}</span>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 function DesktopDetailDrawer({ drawer, onClose, setItems }) {
   const open = drawer != null
   const kind = drawer?.kind
@@ -369,8 +306,13 @@ function DesktopDetailDrawer({ drawer, onClose, setItems }) {
           )}
         </React.Fragment>
       )}>
-      {kind === 'wi' && d && <WorkItemDetail id={d.id} project={d.project} />}
-      {kind === 'pr' && d && <DesktopPRDetail pr={d} />}
+      {kind === 'wi' && d && (
+        <React.Fragment>
+          <WorkItemFieldsEditor item={d} onItemUpdated={patch => setItems?.(arr => arr.map(w => w.id === d.id ? { ...w, ...patch } : w))} />
+          <WorkItemDetail id={d.id} project={d.project} />
+        </React.Fragment>
+      )}
+      {kind === 'pr' && d && <PRTabs pr={d} http={createAdoHttpAdapter()} />}
     </Drawer>
   )
 }
