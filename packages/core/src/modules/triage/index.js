@@ -1,7 +1,6 @@
 import { registerModule } from '../../features/module-registry.js'
 import { slugify } from '../ado/helpers.js'
-
-const ADO_CACHE_KEY = 'nexusmd.ado.cache.v1'
+import { ADO_CACHE_KEY } from '../ado/loader.js'
 
 /**
  * Filter mapped ADO work items for a triage session.

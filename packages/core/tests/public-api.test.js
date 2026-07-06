@@ -27,7 +27,7 @@ const EXPECTED = [
   'getIsoYearWeek', 'getMondayOfDate', 'getYearWeekForOffset',
   'hasMeaningfulPlannerData', 'hashPassword', 'importProfile', 'initCore', 'isActiveState',
   'isAllDayEvent', 'isBlockedState', 'isReviewState', 'isTerminalState',
-  'listProfiles', 'loadAdoData', 'loadCachedAdoData', 'makeAdoConfig',
+  'listProfiles', 'loadAdoData', 'loadCachedAdoData', 'makeAdoConfig', 'ADO_CACHE_KEY',
   'removeAutoAdded', 'resetToDetected', 'reorderColumns', 'syncBoardColumns', 'toggleColumnHidden',
   'indexPRsByWorkItem', 'makeProfileKeys', 'mapBuild', 'mapPR', 'mapTestBuild', 'mapWorkItem',
   'mergeTeamRoster', 'pendingAlerts', 'plFmtYmd', 'plIsOverdueYmd', 'plIsTodayYmd',

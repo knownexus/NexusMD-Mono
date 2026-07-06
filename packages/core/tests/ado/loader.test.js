@@ -202,3 +202,11 @@ describe('loadAdoData — PR web url', () => {
       .toBe('https://dev.azure.com/x/y/_git/z/pullrequest/55')
   })
 })
+
+import { ADO_CACHE_KEY } from '../../src/index.js'
+
+describe('ADO_CACHE_KEY', () => {
+  it('is the shared ADO snapshot storage key', () => {
+    expect(ADO_CACHE_KEY).toBe('nexusmd.ado.cache.v1')
+  })
+})

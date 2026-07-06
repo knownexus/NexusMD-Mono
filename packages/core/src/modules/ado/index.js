@@ -1,4 +1,4 @@
-export { loadAdoData, loadCachedAdoData } from './loader.js'
+export { loadAdoData, loadCachedAdoData, ADO_CACHE_KEY } from './loader.js'
 export { mapWorkItem, mapPR, mapBuild, mapTestBuild } from './mappers.js'
 export { deriveProjects, deriveSprint, deriveActivity, derivePrSparkline } from './derive.js'
 export {

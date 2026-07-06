@@ -3,11 +3,11 @@ import { slugify, timeAgo, isTerminalState, STATES } from './helpers.js'
 import { mapWorkItem, mapPR, mapBuild, mapTestBuild } from './mappers.js'
 import { deriveProjects, deriveSprint, deriveActivity, derivePrSparkline } from './derive.js'
 
-const CACHE_KEY = 'nexusmd.ado.cache.v1'
+export const ADO_CACHE_KEY = 'nexusmd.ado.cache.v1'
 
 export function loadCachedAdoData(config, { storage }) {
   try {
-    const raw = storage.get(CACHE_KEY)
+    const raw = storage.get(ADO_CACHE_KEY)
     if (!raw) return null
     const c = typeof raw === 'string' ? JSON.parse(raw) : raw
     if (!c || !Array.isArray(c.WORK_ITEMS)) return null
@@ -335,7 +335,7 @@ export async function loadAdoData(
   }
 
   if (storage) {
-    try { storage.set(CACHE_KEY, data) } catch (_) {}
+    try { storage.set(ADO_CACHE_KEY, data) } catch (_) {}
   }
 
   core._emit(isRefresh ? 'ado:updated' : 'ado:loaded', data)
