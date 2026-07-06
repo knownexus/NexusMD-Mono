@@ -17,6 +17,7 @@ vi.mock('./ado-client.js', () => ({
   isAdoConfigured: () => false,
 }))
 vi.mock('./logs-card.jsx', () => ({ default: () => <div>LogsCard</div> }))
+vi.mock('@nexusmd/core', () => ({ ADO_CACHE_KEY: 'nexusmd.ado.cache.v1' }))
 vi.mock('@nexusmd/ui', () => ({
   VsCard: ({ children }) => <div>{children}</div>,
   VsRow: ({ title, children }) => <div><span>{title}</span><div>{children}</div></div>,
@@ -37,6 +38,8 @@ vi.mock('@nexusmd/ui', () => ({
   loadConfidentialConfig: vi.fn(() => ({ sections: [], hash: null })),
   CardFrame: ({ children }) => <div>{children}</div>,
   Icon: () => null,
+  toast: vi.fn(),
+  WI_TYPE_STATES_CACHE_KEY: 'nexusmd.wi.wiTypeStates.cache',
 }))
 
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
@@ -95,5 +98,36 @@ describe('DesktopDataSyncCard', () => {
     render(<DesktopDataSyncCard refreshInterval={300} onRefreshIntervalChange={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Clear data…' }))
     expect(localStorage.getItem('nexusmd.profile.displayName')).toBe('Alice')
+  })
+
+  it('does not render Clear cache when onRefreshData is absent', () => {
+    render(<DesktopDataSyncCard refreshInterval={300} onRefreshIntervalChange={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Clear cache' })).toBeNull()
+  })
+
+  it('clears only the two cache keys and re-fetches when Clear cache is clicked', async () => {
+    const onRefreshData = vi.fn().mockResolvedValue()
+    localStorage.setItem('nexusmd.ado.cache.v1', '{"WORK_ITEMS":[]}')
+    localStorage.setItem('nexusmd.wi.wiTypeStates.cache', '{}')
+    localStorage.setItem('nexusmd.ado.org', 'acme')
+    localStorage.setItem('nexusmd.planner.week.2026-W27', 'notes')
+
+    render(<DesktopDataSyncCard refreshInterval={300} onRefreshIntervalChange={vi.fn()} onRefreshData={onRefreshData} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Clear cache' }))
+
+    expect(localStorage.getItem('nexusmd.ado.cache.v1')).toBeNull()
+    expect(localStorage.getItem('nexusmd.wi.wiTypeStates.cache')).toBeNull()
+    expect(localStorage.getItem('nexusmd.ado.org')).toBe('acme')
+    expect(localStorage.getItem('nexusmd.planner.week.2026-W27')).toBe('notes')
+    expect(onRefreshData).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not call window.confirm or reload for Clear cache', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const onRefreshData = vi.fn().mockResolvedValue()
+    render(<DesktopDataSyncCard refreshInterval={300} onRefreshIntervalChange={vi.fn()} onRefreshData={onRefreshData} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Clear cache' }))
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(onRefreshData).toHaveBeenCalledTimes(1)
   })
 })

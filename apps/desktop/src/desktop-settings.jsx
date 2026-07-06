@@ -4,8 +4,9 @@ import {
   VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker, BoardColumnsCard,
   VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView,
   PlToggle, VsPasswordModal, loadConfidentialConfig,
-  CardsAndTablesSettings,
+  CardsAndTablesSettings, toast, WI_TYPE_STATES_CACHE_KEY,
 } from '@nexusmd/ui'
+import { ADO_CACHE_KEY } from '@nexusmd/core'
 import { useProfile } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { NavOrderEditor } from './nav-order-editor.jsx'
@@ -323,7 +324,7 @@ export function DesktopQuickLinksCard({ links, onChange }) {
   )
 }
 
-export function DesktopDataSyncCard({ refreshInterval, onRefreshIntervalChange }) {
+export function DesktopDataSyncCard({ refreshInterval, onRefreshIntervalChange, onRefreshData }) {
   const [kbUsed, setKbUsed] = React.useState(0)
 
   React.useEffect(() => {
@@ -350,6 +351,15 @@ export function DesktopDataSyncCard({ refreshInterval, onRefreshIntervalChange }
     } catch {}
   }
 
+  const clearCache = () => {
+    try {
+      localStorage.removeItem(ADO_CACHE_KEY)
+      localStorage.removeItem(WI_TYPE_STATES_CACHE_KEY)
+    } catch {}
+    toast?.('Cache cleared — refreshing…', 'success')
+    onRefreshData?.().catch(() => {})
+  }
+
   return (
     <VsCard title="Data & sync" icon="dashboard">
       <VsRow title="Local storage used" desc="Approximate size of all NexusMD data in this profile">
@@ -366,6 +376,11 @@ export function DesktopDataSyncCard({ refreshInterval, onRefreshIntervalChange }
           }}
         />
       </VsRow>
+      {onRefreshData && (
+        <VsRow title="Clear cache" desc="Drop the cached ADO data and re-fetch — keeps profiles, settings, and planner notes">
+          <button className="btn sm ghost" onClick={clearCache}>Clear cache</button>
+        </VsRow>
+      )}
       <VsRow title="Clear local data" desc="Remove all locally stored NexusMD data and reload">
         <button className="btn sm ghost danger" onClick={clearLocal}>Clear data…</button>
       </VsRow>
@@ -557,7 +572,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
 
           {tab === 'data' && (
             <>
-              <DesktopDataSyncCard refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange} />
+              <DesktopDataSyncCard refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange} onRefreshData={onRefreshData} />
               <LogsCard />
             </>
           )}
