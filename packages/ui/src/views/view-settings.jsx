@@ -14,6 +14,7 @@ import { useProfile } from '../profile-context.jsx';
 import { useNexusData } from '../data-context.jsx';
 import { usePersisted } from '../app-components.jsx';
 import { reorderColumns, toggleColumnHidden, addManualColumn, removeAutoAdded, resetToDetected, resolveFields, reorderField, toggleField, defaultConfig, WI_CARD_FIELDS, WI_TABLE_COLUMNS, PR_CARD_FIELDS, BUILDS_TABLE_COLUMNS, TESTS_TABLE_COLUMNS } from '@nexusmd/core';
+import { WI_TYPE_STATES_CACHE_KEY } from './view-workitems.jsx';
 
 const { useState: useStateVS, useEffect: useEffectVS, useRef: useRefVS, useCallback: useCallbackVS } = React;
 
@@ -764,7 +765,7 @@ function BoardColumnsCard() {
   const { data: { PROJECTS = [] } } = useNexusData();
   const [boardColumnConfig, setBoardColumnConfig] = usePersisted('nexusmd.wi.boardColumns', {});
   const wiTypeStates = React.useMemo(() => {
-    try { return JSON.parse(localStorage.getItem('nexusmd.wi.wiTypeStates.cache') || '{}'); }
+    try { return JSON.parse(localStorage.getItem(WI_TYPE_STATES_CACHE_KEY) || '{}'); }
     catch { return {}; }
   }, []);
 

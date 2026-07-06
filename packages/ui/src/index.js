@@ -88,7 +88,7 @@ export { TestsView } from './views/view-tests.jsx'
 export { BuildsView } from './views/view-builds.jsx'
 export { TeamView } from './views/view-team.jsx'
 export { TriageView, TriageRow } from './views/view-triage.jsx'
-export { WorkItemsView } from './views/view-workitems.jsx'
+export { WorkItemsView, WI_TYPE_STATES_CACHE_KEY } from './views/view-workitems.jsx'
 export { DashboardView } from './views/view-dashboard.jsx'
 
 // Planner v2 subsystem (shared web + app). Chips (StatusChip/PrioChip/PlModal/

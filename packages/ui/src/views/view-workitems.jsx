@@ -11,6 +11,8 @@ import { WorkItemDetail } from './work-item-detail.jsx';
 import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS, WI_TABLE_COLUMNS, indexPRsByWorkItem } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 
+export const WI_TYPE_STATES_CACHE_KEY = 'nexusmd.wi.wiTypeStates.cache';
+
 // Local aliases matching legacy global names used in this file
 const adoTypeToNexusMD  = adoTypeToHelm;
 const adoStateToNexusMD = adoStateToHelm;
@@ -366,11 +368,11 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   const [wiTypeStates, setWiTypeStates] = useStateW({});
 
   React.useEffect(() => {
-    const cached = localStorage.getItem('nexusmd.wi.wiTypeStates.cache');
+    const cached = localStorage.getItem(WI_TYPE_STATES_CACHE_KEY);
     if (cached) { try { setWiTypeStates(JSON.parse(cached)); } catch (_) {} }
     fetch('/api/workitems/states')
       .then(r => r.ok ? r.json() : {})
-      .then(data => { setWiTypeStates(data); localStorage.setItem('nexusmd.wi.wiTypeStates.cache', JSON.stringify(data)); })
+      .then(data => { setWiTypeStates(data); localStorage.setItem(WI_TYPE_STATES_CACHE_KEY, JSON.stringify(data)); })
       .catch(() => {});
   }, []);
 
