@@ -39,22 +39,24 @@ Pure functions taking an injected `http` adapter (`{ fetch(path, opts) }`), foll
 
 No change needed — `STATES` is already exported as a static constant; desktop imports it directly instead of hardcoding a duplicate list.
 
-### `packages/core/src/modules/ado/wi-collab.js` (new, small)
+### `packages/ui/src/project-areas.js` (new)
 
-- `fetchAreaPaths(http, { project })` — ports the ad hoc area-path fetch currently only in `apps/app/src/app.jsx` (used by `AreaTreePicker`), so desktop's Area editor has data to work with. No shared cache/loader integration — a simple on-demand fetch is sufficient.
+Correction from initial research: `PROJECT_AREAS` is **not** fetched from ADO. It's a hardcoded, company-specific constant (`DEFAULT_PROJECT_AREAS` in `apps/app/src/app.jsx:78-...`) describing the org's module/service tree, optionally overridden via a JSON blob in `localStorage` under a profile-scoped key (`app.jsx:1427-1440`, key `helm.projectAreas.v3`). No network call is involved. This module exports:
+- `DEFAULT_PROJECT_AREAS` — the constant tree, ported verbatim.
+- `useProjectAreas({ getProfileKey, storage })` — a hook that loads/persists the tree from `localStorage`, mirroring `app.jsx:1427-1440` exactly but taking `getProfileKey`/`storage` as params (both already available from `useNexusData()`) instead of reading module globals.
 
 ### `packages/ui` additions
 
-- `AreaTreePicker` and `TagInput`, ported from `apps/app/src/app.jsx:1163` and `:789` into `packages/ui/src/app-components.jsx`. Mobile keeps its local copies untouched; desktop imports the shared versions.
+- `AreaTreePicker` and `TagInput`, ported from `apps/app/src/app.jsx:1163` and `:789` into a new `packages/ui/src/views/wi-field-pickers.jsx`. The mobile versions read `HelmData.PROJECT_AREAS`/`HelmData.WORK_ITEMS` (module globals) directly; the shared versions instead take `areas`/`knownTags` as explicit props, with the caller (desktop's `WorkItemFieldsEditor`) sourcing them from `useProjectAreas()` and `useNexusData().data.WORK_ITEMS` respectively. Mobile keeps its local copies untouched; desktop imports the shared versions.
 - `WorkItemFieldsEditor` — new component in `packages/ui/src/views/work-item-detail.jsx` rendering the State/Assignee/Priority/Area/Tags block (the `<dl className="kv">` section of mobile's `WIDetail`), using the optimistic-patch pattern below. Desktop renders `<WorkItemFieldsEditor>` followed by the existing `<WorkItemDetail>`, mirroring how mobile's `WIDetail` composes its own fields block with the shared `WorkItemDetail`.
-- `PRTabs` — new component replacing `DesktopPRDetail`, providing the Overview/Commits/Files tab shell, description view/edit, reviewer/linked-work-item display, and the comment-thread panel (list, resolve/reopen toggle, reply box, top-level add-comment box). Ported UI structure from `apps/app/src/app.jsx:2551` (`PRDetail`), `:2339` (`PRCommitsTab`), `:2387` (`PRFilesTab`), built on `pr-collab.js` instead of inline `adoGet/adoPost/adoPut/adoPatch` calls.
+- `PRTabs` — new component replacing `DesktopPRDetail`, providing the Overview/Commits/Files tab shell, description view/edit, reviewer/linked-work-item display, and the comment-thread panel (list, resolve/reopen toggle, reply box, top-level add-comment box). Ported UI structure from `apps/app/src/app.jsx:2551` (`PRDetail`), `:2339` (`PRCommitsTab`), `:2387` (`PRFilesTab`), built on `pr-collab.js` instead of inline `adoGet/adoPost/adoPut/adoPatch` calls. `PRTabs` takes the ADO `http` adapter directly as a prop (rather than a `desktopPRSource` wrapper object) — every `pr-collab.js` call already takes `http`, so an intermediary source object on desktop would be pure pass-through boilerplate.
 
 ### `apps/desktop/src/main.jsx`
 
 - No changes needed to `desktopWorkItemSource.saveField` — State/Assignee/Priority/Area/Tags edits all go through the existing generic field-PATCH method (ADO field paths are uniform JSON-patch operations).
-- Add `desktopPRSource`: `loadThreads`, `postThread`, `postReply`, `setThreadStatus`, `loadCommits`, `loadFileChanges`, `loadFileContent`, `updateDescription` — thin wrappers calling `pr-collab.js` functions with `createAdoHttpAdapter()`, same shape/placement as `desktopWorkItemSource` (`main.jsx:134-200`).
-- Add `desktopWorkItemSource.loadAreaPaths(project)` wrapping `wi-collab.js`'s `fetchAreaPaths`.
-- Update `DesktopDetailDrawer` (`main.jsx:325-376`): pass `desktopPRSource` and the area-paths loader down; render `<WorkItemFieldsEditor>` + `<WorkItemDetail>` for `kind === 'wi'`, and `<PRTabs>` (instead of `<DesktopPRDetail>`) for `kind === 'pr'`.
+- No new PR-source wrapper needed — `DesktopDetailDrawer` passes `createAdoHttpAdapter()` straight to `<PRTabs http={...}>`.
+- No area-path fetching needed on the ADO client side (see `project-areas.js` above) — desktop's `WorkItemFieldsEditor` uses `useProjectAreas()` directly, same as mobile's local state.
+- Update `DesktopDetailDrawer` (`main.jsx:325-376`): render `<WorkItemFieldsEditor>` + `<WorkItemDetail>` for `kind === 'wi'`, and `<PRTabs pr={d} http={createAdoHttpAdapter()}>` (instead of `<DesktopPRDetail>`) for `kind === 'pr'`.
 
 ## Data flow / optimistic updates
 
@@ -70,5 +72,5 @@ No new patterns: `toast()` (`packages/ui/src/toast.jsx`) for success/failure fee
 
 Run from each package's own directory per this repo's test-runner setup (workspace/jsdom gap when run from repo root):
 
-- `packages/core`: unit tests for every `pr-collab.js` and `wi-collab.js` function — mock `http.fetch`, assert request method/URL/body shape for each endpoint, including the new `updatePRDescription`.
+- `packages/core`: unit tests for every `pr-collab.js` function — mock `http.fetch`, assert request method/URL/body shape for each endpoint, including the new `updatePRDescription`.
 - `packages/ui`: component tests for `WorkItemFieldsEditor` (field edit → optimistic update → rollback on PATCH failure) and `PRTabs` (thread resolve/reopen toggle, reply posting, top-level comment posting, description edit save/cancel, tab switching, file-diff expand).
