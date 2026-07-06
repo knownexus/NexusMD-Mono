@@ -12,6 +12,7 @@ import { plNewRow, plScrollToEl } from '../planner/primitives.jsx'
 import { WorkItemCtxLayer, GlobalNotesView, loadGlobalNotes, saveGlobalNotes } from '../planner/planner-notes.jsx'
 import { SectionCard } from '../planner/planner-editors.jsx'
 import { GlanceView, CarryOverModal, collectCarryItems } from '../planner/planner-glance.jsx'
+import { PlannerNotesPanel } from '../planner/planner-notes-overview.jsx'
 import {
   loadWeekPlanner, saveWeekPlanner, deleteWeekPlanner, getWeeksWithData,
   isLegacyMigrationDone, markLegacyMigrationDone, checkConfidentialReminders,
@@ -25,7 +26,7 @@ import { plannerExportDocx as _defaultExportDocx } from '../planner/docx.js'
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React
 
-function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
+function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGlobalNotesTab = true, onCloudSync }) {
   const rt = getPlannerRuntime()
   const ns = rt.namespace
 
@@ -80,6 +81,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
     return next
   }), [])
   const [plannerSyncRev, setPlannerSyncRev] = useState(0)
+  const [cloudSyncing, setCloudSyncing] = useState(false)
 
   const calendarRef = useRef(null)
   const isFirstLoad = useRef(true)
@@ -448,7 +450,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
   const openNotesCount = gNotes.filter(n => n.status !== 'done').length
   const navGroups = [
     { id: 'overview', label: 'Overview', icon: 'dashboard' },
-    { id: 'mynotes', label: 'Notes', icon: 'pin' },
+    ...(showGlobalNotesTab ? [{ id: 'mynotes', label: 'Notes', icon: 'pin' }] : []),
     ...PL_GROUPS,
   ]
 
@@ -475,9 +477,14 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
   }, [data, confCfg, unlockedSections, rowVisible])
 
   const glance = (
-    <GlanceView data={data} themes={themes} sections={PLANNER_SECTIONS} groups={PL_GROUPS}
-      onOpenGroup={openGroup} onOpenSection={openSection} rowVisible={rowVisible}
-      carryCount={showCarryBanner ? carryItems.length : 0} onOpenCarry={() => setModal('carry')}/>
+    <React.Fragment>
+      <GlanceView data={data} themes={themes} sections={PLANNER_SECTIONS} groups={PL_GROUPS}
+        onOpenGroup={openGroup} onOpenSection={openSection} rowVisible={rowVisible}
+        carryCount={showCarryBanner ? carryItems.length : 0} onOpenCarry={() => setModal('carry')}/>
+      <div style={{ marginTop: 12 }}>
+        <PlannerNotesPanel data={data} setData={setData} sections={PLANNER_SECTIONS} rowVisible={rowVisible} />
+      </div>
+    </React.Fragment>
   )
   const notesView = (
     <GlobalNotesView notes={gNotes} setNotes={setGNotes} weekLabel={weekLabel.short} onAddTask={addTaskFromNote}/>
@@ -524,6 +531,18 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{weekLabel.full}</div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+        {onCloudSync && (
+          <button type="button" className="btn sm ghost" title="Back up / sync planner to cloud"
+            disabled={cloudSyncing}
+            onClick={async () => {
+              setCloudSyncing(true)
+              try { await onCloudSync() } finally { setCloudSyncing(false) }
+            }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
+            <Icon name="refresh" size={14} />
+            {cloudSyncing ? 'Syncing…' : 'Sync'}
+          </button>
+        )}
         <div style={{ display:'flex', alignItems:'center', gap:2, position:'relative' }} ref={calendarRef}>
           <button type="button" className="m-iconbtn" onClick={() => setWeekOffset(w => w - 1)} title="Previous week">
             <Icon name="chevron-left" size={16}/>
@@ -660,7 +679,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
           </nav>
           <div style={{ minWidth: 0 }}>
             {activeGroup === 'overview' ? glance
-              : activeGroup === 'mynotes' ? notesView
+              : (showGlobalNotesTab && activeGroup === 'mynotes') ? notesView
               : (PL_GROUPS.find(g => g.id === activeGroup) || PL_GROUPS[0]).ids.map(id => renderSection(PLANNER_SECTIONS.find(s => s.id === id)))}
           </div>
         </div>
@@ -675,8 +694,12 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
               {g.ids.map(id => renderSection(PLANNER_SECTIONS.find(s => s.id === id)))}
             </React.Fragment>
           ))}
-          {groupHeader({ id: 'mynotes', label: 'Notes (week-agnostic)', icon: 'pin' })}
-          {notesView}
+          {showGlobalNotesTab && (
+            <React.Fragment>
+              {groupHeader({ id: 'mynotes', label: 'Notes (week-agnostic)', icon: 'pin' })}
+              {notesView}
+            </React.Fragment>
+          )}
         </div>
       )}
 
@@ -692,7 +715,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx }) {
             </div>
           </div>
           {activeGroup === 'overview' ? glance
-            : activeGroup === 'mynotes' ? notesView
+            : (showGlobalNotesTab && activeGroup === 'mynotes') ? notesView
             : (PL_GROUPS.find(g => g.id === activeGroup) || PL_GROUPS[0]).ids.map(id => renderSection(PLANNER_SECTIONS.find(s => s.id === id)))}
         </div>
       )}

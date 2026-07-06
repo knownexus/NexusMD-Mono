@@ -47,3 +47,4 @@ npm-debug.log*
 apps/web/server/data/profiles/
 
 .superpowers/
+.worktrees/
