@@ -28,7 +28,7 @@ This design replaces both with one shared implementation.
 
 ## Data model
 
-Per category, persisted state is a map of `{ [itemId]: lastSeenFingerprint }`, stored via `usePersisted('helm_seen_<category>', {})` (same key naming as today's web implementation, so existing web users' seen state carries over without a migration).
+Per category, persisted state is a map of `{ [itemId]: lastSeenFingerprint }`, stored under the same key naming as today's web implementation (`helm_seen_<category>`) so existing web users' seen state carries over without a migration.
 
 Fingerprints (unchanged from today's web logic):
 ```js
@@ -47,16 +47,17 @@ On every diff, ids no longer present in the current dataset are pruned from the 
 `packages/ui/src/app-components.jsx` (next to `usePersisted`):
 
 ```js
-const { unseenIds, unseenCounts, markSeen } = useSeenTracking(categories, dataLoaded)
+const { unseenIds, unseenCounts, markSeen } = useSeenTracking(categories, dataLoaded, { storage, getProfileKey })
 ```
 
 - `categories`: `{ [key]: { items: Array, fingerprint: (item) => string } }`
 - `dataLoaded`: `boolean`. While `false`, the hook performs no reads, writes, or diffing — this is the loading-race fix. The first diff only ever runs once real data has genuinely loaded, so a placeholder/empty dataset can never be recorded as the "previous" baseline, and can never overwrite a real persisted baseline with an empty one.
+- `storage`/`getProfileKey`: passed explicitly by the caller (e.g. `window.localStorage` and each app's own `getProfileKey`) rather than read from `useNexusData()` context. Desktop's `App()` component calls its own hooks *before* it renders `<NexusDataProvider>` as a child, so a context-based read there would silently miss the real profile-scoped storage. Explicit params work the same regardless of where in the component tree the hook is called.
 - `unseenIds`: `{ [key]: Set<id> }` — for row highlighting (same shape both apps already consume).
 - `unseenCounts`: `{ [key]: number }` — for nav badges.
 - `markSeen(key)`: writes current fingerprints for every currently-loaded item in that category into the persisted map, and clears that category's entries from `unseenIds`/`unseenCounts`. Called when the user switches to that category's tab.
 
-Internally, `useSeenTracking` calls `usePersisted` once per category to get the map + setter, then a single `useEffect` (gated on `dataLoaded` and the items arrays) does the diff/prune/update per category.
+Internally, `useSeenTracking` reads/writes each category's map directly via the supplied `storage`/`getProfileKey`, then a single `useEffect` (gated on `dataLoaded` and the items arrays) does the diff/prune/update per category.
 
 ## Integration
 
