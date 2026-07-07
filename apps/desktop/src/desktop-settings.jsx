@@ -5,6 +5,7 @@ import {
   VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView,
   PlToggle, VsPasswordModal, loadConfidentialConfig,
   CardsAndTablesSettings, toast, WI_TYPE_STATES_CACHE_KEY,
+  graphJSON,
 } from '@nexusmd/ui'
 import { ADO_CACHE_KEY } from '@nexusmd/core'
 import { useProfile } from './profile-context.jsx'
@@ -13,7 +14,7 @@ import { NavOrderEditor } from './nav-order-editor.jsx'
 import { ZoomSlider } from './zoom-slider.jsx'
 import { desktopFileIO } from './file-io.js'
 import LogsCard from './logs-card.jsx'
-import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBinding } from './cloud-auth.js'
+import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken } from './cloud-auth.js'
 import { desktopSync } from './sync.js'
 import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
 
@@ -419,6 +420,117 @@ function DesktopGitHubPATRow() {
   )
 }
 
+// Read-only presets exercising scopes the Microsoft connection already has
+// (User.Read / Calendars.ReadWrite / Files.ReadWrite) — no new consent needed.
+const GRAPH_TEST_PRESETS = [
+  {
+    id: 'me',
+    label: 'My profile',
+    help: 'Lowest-permission call — confirms the Microsoft connection works at all.',
+    path: '/me',
+  },
+  {
+    id: 'calendar',
+    label: 'Calendar (next 7 days)',
+    help: 'Same call the Outlook Calendar view uses.',
+    path: () => {
+      const start = new Date()
+      const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
+      return [
+        '/me/calendarView',
+        `?startDateTime=${encodeURIComponent(start.toISOString())}`,
+        `&endDateTime=${encodeURIComponent(end.toISOString())}`,
+        '&$select=id,subject,start,end',
+        '&$top=10',
+      ].join('')
+    },
+  },
+  {
+    id: 'onedrive',
+    label: 'OneDrive: NexusMD folder',
+    help: 'Same call the OneDrive cloud-sync provider uses to list backups.',
+    path: '/me/drive/root:/NexusMD:/children?$select=id,name,lastModifiedDateTime',
+  },
+]
+
+// Lets you paste a Microsoft Graph access token directly (e.g. from
+// `az account get-access-token --resource https://graph.microsoft.com` or Graph
+// Explorer) when the interactive Entra sign-in is blocked. The token is stored
+// in the same slot the OAuth flow uses, so the Graph features below work with it.
+function GraphManualTokenCard() {
+  const [token, setToken] = React.useState('')
+
+  const save = () => {
+    if (!token.trim()) return
+    setManualMicrosoftToken(token)
+    setToken('')
+    toast?.('Microsoft Graph token saved.', 'success')
+  }
+
+  return (
+    <VsCard title="Paste Microsoft Graph token" icon="lock">
+      <VsFullRow
+        title="Access token"
+        desc="Bypass Entra sign-in for testing. Get one via `az account get-access-token --resource https://graph.microsoft.com` or Graph Explorer. Expires when the token does; no auto-refresh."
+      >
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <textarea
+            value={token}
+            onChange={e => setToken(e.target.value)}
+            placeholder="eyJ0eXAiOiJKV1Qi…"
+            rows={3}
+            style={{ ...settInputStyle, fontFamily: 'var(--mono)', fontSize: 11.5, resize: 'vertical' }}
+          />
+          <button className="btn sm" onClick={save} disabled={!token.trim()}>Save</button>
+        </div>
+      </VsFullRow>
+    </VsCard>
+  )
+}
+
+function GraphApiTestCard() {
+  const { getToken } = React.useMemo(() => makeNativeMicrosoftBinding(), [])
+  const [results, setResults] = React.useState({})
+
+  const run = async (preset) => {
+    setResults(r => ({ ...r, [preset.id]: { loading: true } }))
+    try {
+      const path = typeof preset.path === 'function' ? preset.path() : preset.path
+      const data = await graphJSON(getToken, path)
+      setResults(r => ({ ...r, [preset.id]: { data } }))
+    } catch (e) {
+      setResults(r => ({ ...r, [preset.id]: { error: e.message || 'Request failed' } }))
+    }
+  }
+
+  return (
+    <VsCard title="Graph API Test" icon="build">
+      {GRAPH_TEST_PRESETS.map(preset => {
+        const result = results[preset.id]
+        return (
+          <VsFullRow key={preset.id} title={preset.label} desc={preset.help}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button className="btn sm" onClick={() => run(preset)} disabled={result?.loading}>
+                <Icon name="play" size={11} /> {result?.loading ? 'Running…' : 'Run'}
+              </button>
+            </div>
+            {result && !result.loading && (
+              <pre style={{
+                marginTop: 8, padding: '8px 10px', borderRadius: 8,
+                background: 'var(--surface-2)', border: '1px solid var(--border)',
+                fontSize: 11.5, lineHeight: 1.5, overflowX: 'auto', maxHeight: 240,
+                color: result.error ? 'var(--danger)' : 'var(--text)',
+              }}>
+                {result.error || JSON.stringify(result.data, null, 2)}
+              </pre>
+            )}
+          </VsFullRow>
+        )
+      })}
+    </VsCard>
+  )
+}
+
 export function IntegrationsPanel() {
   const [ghRepos, setGhRepos] = React.useState(() => {
     try { return localStorage.getItem(getProfileKey('nexusmd.github.repos')) || '' } catch { return '' }
@@ -448,6 +560,8 @@ export function IntegrationsPanel() {
   return (
     <div style={{ padding: '24px 0' }}>
       <IntegrationsView services={oauthServices} />
+      <GraphManualTokenCard />
+      <GraphApiTestCard />
       <VsCard title="GitHub" icon="pr">
         <DesktopGitHubPATRow />
         <VsRow title="Repositories" desc="owner/repo pairs, comma-separated">

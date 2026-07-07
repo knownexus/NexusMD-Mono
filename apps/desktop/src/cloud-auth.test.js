@@ -7,7 +7,11 @@ vi.mock('@nexusmd/ui', () => ({
 vi.mock('./profile-keys.js', () => ({ getProfileKey: (k) => k }))
 vi.mock('./adapters/secureStorage.js', () => ({ secureStorageAdapter: { get: async () => null, set: async () => {} } }))
 
-import { makeNativeGoogleBinding, makeNativeMicrosoftBinding } from './cloud-auth.js'
+import { makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken } from './cloud-auth.js'
+
+// Build a minimal JWT (header.payload.signature) with the given exp claim.
+const b64url = (obj) => btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+const jwtWithExp = (expSeconds) => `eyJhbGciOiJub25lIn0.${b64url({ exp: expSeconds })}.sig`
 
 const KEY = 'nexusmd.google.auth'
 
@@ -65,5 +69,34 @@ describe('makeNativeMicrosoftBinding', () => {
     expect(window.electronAPI.oauth.refresh).toHaveBeenCalledWith('RT1', 'microsoft')
     expect(tok).toBe('new')
     expect(JSON.parse(localStorage.getItem(KEY)).refreshToken).toBe('RT2')
+  })
+})
+
+describe('setManualMicrosoftToken', () => {
+  const KEY = 'nexusmd.microsoft.auth'
+  beforeEach(() => { localStorage.clear() })
+
+  it('stores a pasted token so getToken serves it', async () => {
+    setManualMicrosoftToken('  paste-me  ')
+    expect(JSON.parse(localStorage.getItem(KEY)).accessToken).toBe('paste-me')
+    expect(await makeNativeMicrosoftBinding().getToken()).toBe('paste-me')
+  })
+
+  it('derives expiresAt from the JWT exp claim', () => {
+    const exp = Math.floor(Date.now() / 1000) + 1800
+    setManualMicrosoftToken(jwtWithExp(exp))
+    expect(JSON.parse(localStorage.getItem(KEY)).expiresAt).toBe(exp * 1000)
+  })
+
+  it('falls back to a 1h TTL for non-JWT tokens', () => {
+    const before = Date.now()
+    setManualMicrosoftToken('opaque-token')
+    const { expiresAt } = JSON.parse(localStorage.getItem(KEY))
+    expect(expiresAt).toBeGreaterThanOrEqual(before + 60 * 60 * 1000)
+  })
+
+  it('ignores empty input', () => {
+    setManualMicrosoftToken('   ')
+    expect(localStorage.getItem(KEY)).toBeNull()
   })
 })

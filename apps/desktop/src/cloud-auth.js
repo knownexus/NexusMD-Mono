@@ -154,6 +154,30 @@ export function makeNativeMicrosoftBinding() {
   return makeNativeBinding({ provider: 'microsoft', suffix: 'microsoft.auth' })
 }
 
+// Best-effort read of a JWT's `exp` (seconds since epoch) so a pasted token
+// expires locally when Graph would actually reject it. Returns null if the
+// token isn't a decodable JWT (getToken then falls back to a short TTL).
+function jwtExpiryMs(token) {
+  try {
+    const payload = token.split('.')[1]
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
+    const { exp } = JSON.parse(json)
+    return Number.isFinite(exp) ? exp * 1000 : null
+  } catch { return null }
+}
+
+// Store a manually-pasted Microsoft Graph access token (e.g. from
+// `az account get-access-token --resource https://graph.microsoft.com` or Graph
+// Explorer) so the Graph features work without the interactive Entra sign-in.
+// There's no refresh token, so getToken() serves it until it expires.
+export function setManualMicrosoftToken(accessToken) {
+  const token = (accessToken || '').trim()
+  if (!token) return
+  const expiresAt = jwtExpiryMs(token) ?? Date.now() + 60 * 60 * 1000
+  write('microsoft.auth', { accessToken: token, expiresAt })
+  window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
+}
+
 export const desktopCloudProviders = [
   makeGoogleDriveProvider(makeNativeGoogleBinding()),
   makeOneDriveProvider(makeNativeMicrosoftBinding()),
