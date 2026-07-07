@@ -3,7 +3,7 @@
 
 const log = require('electron-log');
 const path = require('path');
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeTheme, shell } = require('electron');
 
 // Configure electron-log — 'silly' is the lowest (most verbose) level, so
 // every log/info/warn/error/debug/verbose/silly call is written to file.
@@ -54,6 +54,7 @@ const logsIpc        = require('./ipc/logs.cjs');
 const oauthIpc       = require('./ipc/oauth.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
+const { buildLinkMenuTemplate } = require('./link-window/link-context-menu.cjs');
 const { clampZoomFactor, nextZoom, ZOOM_DEFAULT } = require('./zoom.cjs')
 
 // ---------------------------------------------------------------------------
@@ -194,6 +195,27 @@ function createMainWindow() {
     isAllowedUrl: linkWindow.isAllowedUrl,
     openLink:     linkWindow.openLink,
   }));
+
+  // Right-click a link to choose where it opens: in-app (default left-click
+  // behavior), the system browser, or copy the address. Handled centrally here
+  // via params.linkURL so it covers every <a> in every view.
+  win.webContents.on('context-menu', (_event, params) => {
+    const template = buildLinkMenuTemplate({
+      linkURL: params.linkURL,
+      isAllowedUrl: linkWindow.isAllowedUrl,
+    });
+    if (!template) return;
+
+    const actions = {
+      open:         () => linkWindow.openLink(params.linkURL),
+      openExternal: () => shell.openExternal(params.linkURL),
+      copy:         () => clipboard.writeText(params.linkURL),
+    };
+    const menu = Menu.buildFromTemplate(
+      template.map(({ label, action }) => ({ label, click: actions[action] }))
+    );
+    menu.popup({ window: win });
+  });
 
   if (process.env.VITE_DEV_SERVER_URL) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
