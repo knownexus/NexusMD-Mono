@@ -19,6 +19,9 @@ export {
   Avatar, TypeIcon, NotificationBanner, MenuButton, usePersisted, ProjectChip, Drawer, Sheet,
 } from './app-components.jsx'
 
+// Timer / stopwatch — hook + standalone widget (built on @nexusmd/core timer).
+export { useTimer } from './use-timer.js'
+
 // Cross-platform data seam consumed by the shared views.
 export {
   NexusDataProvider, useNexusData, useEffectiveNeedsMe, EMPTY_NEXUS_DATA,
