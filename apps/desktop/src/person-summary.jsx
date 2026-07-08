@@ -1,7 +1,31 @@
 import React from 'react'
-import { Icon, TypeIcon, Avatar } from '@nexusmd/ui'
+import { Icon, TypeIcon, Avatar, useNexusData } from '@nexusmd/ui'
+
+function readTeamNotes(storage, devId) {
+  let all = []
+  try { all = JSON.parse(storage.getItem('nexusmd.team.notes') || '[]') } catch { all = [] }
+  return all.filter(n => n.devId === devId)
+}
+
+function formatNoteDate(iso) {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
 
 export function PersonSummary({ dev, onOpenItem, onOpenPR }) {
+  const { storage } = useNexusData()
+  const [notes, setNotes] = React.useState(() => readTeamNotes(storage, dev.id))
+
+  React.useEffect(() => {
+    setNotes(readTeamNotes(storage, dev.id))
+    const onChanged = () => setNotes(readTeamNotes(storage, dev.id))
+    window.addEventListener('nexusmd:team-notes-changed', onChanged)
+    return () => window.removeEventListener('nexusmd:team-notes-changed', onChanged)
+  }, [storage, dev.id])
+
+  const deleteNote = (noteId) => {
+    window.dispatchEvent(new CustomEvent('nexusmd:team-delete-note', { detail: { noteId } }))
+  }
+
   return (
     <div>
       <div className="drawer-section" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -64,6 +88,23 @@ export function PersonSummary({ dev, onOpenItem, onOpenPR }) {
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
               <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-muted)', fontSize: 11.5 }}>#{p.id}</span>
               <span>{p.title}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="drawer-section">
+        <h4>Notes ({notes.length})</h4>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {notes.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>No notes yet.</div>}
+          {notes.map(n => (
+            <div key={n.id} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12.5 }}>
+              <span style={{ flex: 1, minWidth: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{n.note}</span>
+              <span className="muted" style={{ fontSize: 10.5, flexShrink: 0, marginTop: 1 }}>{formatNoteDate(n.date)}</span>
+              <button className="btn icon ghost sm" title="Delete note" style={{ height: 18, padding: 0, flexShrink: 0 }}
+                onClick={() => deleteNote(n.id)}>
+                <Icon name="trash" size={11}/>
+              </button>
             </div>
           ))}
         </div>
