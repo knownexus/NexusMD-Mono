@@ -16,6 +16,7 @@ import {
   WorkItemFieldsEditor, PRTabs,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav } from './layout.js'
+import { resolveItemsUpdate } from './items-state.js'
 import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -672,6 +673,14 @@ function App() {
   const active = ALL_NAV.find(n => n.id === view) || ALL_NAV[0]
   const snapshot = useNexusSnapshot()
 
+  // localItems starts as null (sentinel: mirror snapshot.WORK_ITEMS). Shared
+  // views update via setItems(arr => arr.map(...)); resolve the sentinel to the
+  // current snapshot so the first edit doesn't call .map on null.
+  const setItemsResolved = React.useCallback(
+    updater => setLocalItems(prev => resolveItemsUpdate(prev, updater, snapshot.WORK_ITEMS)),
+    [snapshot.WORK_ITEMS],
+  )
+
   React.useEffect(() => {
     const toIds = arr => new Set((arr || []).map(i => i.id))
     const cur = {
@@ -928,7 +937,7 @@ function App() {
               plannerData={plannerData} setPlannerData={setPlannerData}
               plannerThemes={plannerThemes} setPlannerThemes={setPlannerThemes}
               refreshInterval={refreshInterval} onRefreshIntervalChange={setRefreshInterval}
-              localItems={localItems} setLocalItems={setLocalItems}
+              localItems={localItems} setLocalItems={setItemsResolved}
             />
           </section>
         </main>
@@ -953,7 +962,7 @@ function App() {
             onClick={() => setTweak('widgetOrder', DASH_WIDGET_ORDER)}/>
         </TweakSection>
       </TweaksPanel>
-      <DesktopDetailDrawer drawer={drawer} onClose={() => setDrawer(null)} setItems={setLocalItems} />
+      <DesktopDetailDrawer drawer={drawer} onClose={() => setDrawer(null)} setItems={setItemsResolved} />
       <CreateWorkItemDrawer
         open={!!createWI}
         title={createWI?.title}
