@@ -10,6 +10,28 @@ import { TriageExportButton, TriageStatusLine } from './triage.jsx';
 import { WorkItemDetail } from './work-item-detail.jsx';
 import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS, WI_TABLE_COLUMNS, indexPRsByWorkItem } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
+import { toast } from '../toast.jsx';
+
+// Persist work-item field changes. Desktop hosts inject workItemSource (writes
+// straight to ADO); legacy web hosts hit /api/workitems/:id. `ops` is a list of
+// [ '/fields/<Field>', value ] pairs. Surfacing save failures via toast (rather
+// than swallowing them) keeps optimistic edits from silently not persisting.
+export async function patchWorkItem(workItemSource, id, ops) {
+  if (workItemSource?.saveField) {
+    try {
+      for (const [path, value] of ops) {
+        await workItemSource.saveField(id, path.replace('/fields/', ''), value ?? '');
+      }
+    } catch (e) {
+      toast?.('✗ ' + (e?.message || 'Save failed'), 'error');
+    }
+    return;
+  }
+  return fetch(`/api/workitems/${id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(ops.map(([path, value]) => ({ op: 'add', path, value }))),
+  }).catch(() => {});
+}
 
 export const WI_TYPE_STATES_CACHE_KEY = 'nexusmd.wi.wiTypeStates.cache';
 
@@ -1089,17 +1111,13 @@ function InlineTagsCell({ tags = [], onTagsChange }) {
 // Table view (with grouping)
 // ─────────────────────────────────────────────────────────
 function WITable({ items, grouping, sort, setSort, selection, setSelection, collapsed, setCollapsed, updateItem, onOpen, team }) {
-  const { data: NexusMDData } = useNexusData();
+  const { data: NexusMDData, workItemSource } = useNexusData();
   const TEAM = team || NexusMDData.TEAM || [];
   const [tableDragId, setTableDragId] = useStateW(null);
   const [tableCfg] = usePersisted('nexusmd.fields.wiTable', []);
   const visibleCols = resolveFields(WI_TABLE_COLUMNS, tableCfg).filter(f => f.visible);
 
-  const patchWI = (id, ops) =>
-    fetch(`/api/workitems/${id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(ops.map(([path, value]) => ({ op: 'add', path, value }))),
-    }).catch(() => {});
+  const patchWI = (id, ops) => patchWorkItem(workItemSource, id, ops);
 
   const onDropState = async (state) => {
     if (!tableDragId) return;
@@ -1288,10 +1306,7 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
             selectedIds.forEach(id => updateItem(id, { assignee: assigneeId||null }));
             setSelection(new Set());
             await Promise.all(selectedIds.map(id =>
-              fetch(`/api/workitems/${id}`, {
-                method:'PATCH', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify([{ op:'add', path:'/fields/System.AssignedTo', value: assigneeName||null }]),
-              }).catch(()=>{})
+              patchWI(id, [['/fields/System.AssignedTo', assigneeName || null]])
             ));
           }}
           onMarkDone={async () => {
@@ -1299,10 +1314,7 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
             selectedIds.forEach(id => updateItem(id, { state:'Done' }));
             setSelection(new Set());
             await Promise.all(selectedIds.map(id =>
-              fetch(`/api/workitems/${id}`, {
-                method:'PATCH', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify([{ op:'add', path:'/fields/System.State', value:'Done' }]),
-              }).catch(()=>{})
+              patchWI(id, [['/fields/System.State', 'Done']])
             ));
           }}
         />
@@ -1628,18 +1640,14 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
 }
 
 function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team = [], showEmptyAssignees = false, lanes = BOARD_LANES }) {
-  const { data: NexusMDData } = useNexusData();
+  const { data: NexusMDData, workItemSource } = useNexusData();
   const [dragId,    setDragId]    = useStateW(null);
   const [overKey,   setOverKey]   = useStateW(null);
   const [collapsed, setCollapsed] = useStateW({});
 
   const PROJECTS = NexusMDData.PROJECTS || [];
 
-  const patchWI = (id, ops) =>
-    fetch(`/api/workitems/${id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(ops.map(([path, value]) => ({ op: 'add', path, value }))),
-    }).catch(() => {});
+  const patchWI = (id, ops) => patchWorkItem(workItemSource, id, ops);
 
   const groups = useMemoW(() => {
     if (grouping === 'none') return [{ key: '__all__', label: null, icon: null, items }];
