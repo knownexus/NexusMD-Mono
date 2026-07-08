@@ -44,3 +44,8 @@ export {
 } from './modules/calendar/index.js'
 export { buildDigest } from './modules/digest/index.js'
 export { appendAuditEntry, readAuditLog } from './modules/audit/index.js'
+export {
+  createTimer, elapsedMs, start as startTimer, pause as pauseTimer,
+  resume as resumeTimer, stop as stopTimer, reset as resetTimer, lap as lapTimer,
+  remainingMs, isExpired, formatDuration, formatClock,
+} from './modules/timer/index.js'
