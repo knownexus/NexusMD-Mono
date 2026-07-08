@@ -62,3 +62,55 @@ describe('timer engine — stopwatch', () => {
     expect(elapsedMs(rehydrated, 11000)).toBe(10000)
   })
 })
+
+import { lap, remainingMs, isExpired, formatDuration, formatClock } from './index.js'
+
+describe('timer engine — laps', () => {
+  it('lap records current elapsed while running', () => {
+    let t = start(createTimer(), 1000)
+    t = lap(t, 3000)   // 2000
+    t = lap(t, 6000)   // 5000
+    expect(t.laps).toEqual([2000, 5000])
+  })
+
+  it('lap is a no-op when not running', () => {
+    const t = lap(createTimer(), 3000)
+    expect(t.laps).toEqual([])
+  })
+})
+
+describe('timer engine — countdown', () => {
+  it('remainingMs counts down and clamps at zero', () => {
+    let t = createTimer({ mode: 'countdown', durationMs: 5000 })
+    t = start(t, 1000)
+    expect(remainingMs(t, 3000)).toBe(3000)   // 5000 - 2000
+    expect(remainingMs(t, 20000)).toBe(0)     // clamped
+  })
+
+  it('remainingMs is 0 for a stopwatch', () => {
+    const t = start(createTimer(), 1000)
+    expect(remainingMs(t, 4000)).toBe(0)
+  })
+
+  it('isExpired is true once elapsed reaches the duration', () => {
+    let t = createTimer({ mode: 'countdown', durationMs: 5000 })
+    t = start(t, 1000)
+    expect(isExpired(t, 5000)).toBe(false)   // 4000 elapsed
+    expect(isExpired(t, 6000)).toBe(true)    // 5000 elapsed
+  })
+})
+
+describe('timer engine — formatting', () => {
+  it('formatDuration shows h/m/s, dropping leading empty units', () => {
+    expect(formatDuration(0)).toBe('0s')
+    expect(formatDuration(45_000)).toBe('45s')
+    expect(formatDuration(83_000)).toBe('1m 23s')
+    expect(formatDuration(3_661_000)).toBe('1h 1m 1s')
+  })
+
+  it('formatClock pads and drops the hour when zero', () => {
+    expect(formatClock(0)).toBe('00:00')
+    expect(formatClock(83_000)).toBe('01:23')
+    expect(formatClock(3_661_000)).toBe('1:01:01')
+  })
+})
