@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import '@nexusmd/ui/styles.css'
 
 import {
-  initCore, createNoOpAdapters, core, loadCachedAdoData, loadAdoData,
+  initCore, createNoOpAdapters, core, loadCachedAdoData, loadAdoData, isTerminalState,
 } from '@nexusmd/core'
 import {
   Icon, CardFrame,
@@ -11,7 +11,7 @@ import {
   PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
   DashboardView, WorkItemsView, TriageView,
   PlannerView, MarkdownViewer, plannerExportDocx,
-  WorkItemDetail, Drawer, TypeIcon, Prio,
+  WorkItemDetail, Drawer, TypeIcon, Prio, Avatar,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
   WorkItemFieldsEditor, PRTabs,
 } from '@nexusmd/ui'
@@ -265,8 +265,9 @@ function DesktopDetailDrawer({ drawer, onClose, setItems }) {
   const kind = drawer?.kind
   const d    = drawer?.data
   const http = React.useMemo(() => createAdoHttpAdapter(), [])
+  const { data } = useNexusData()
 
-  const title = !d ? '' : kind === 'wi' ? d.title : kind === 'pr' ? d.title : ''
+  const title = !d ? '' : kind === 'wi' ? d.title : kind === 'pr' ? d.title : kind === 'person' ? d.name : ''
 
   const { org } = getAdoConfig()
   const adoUrl = kind === 'wi' && d?.project && org
@@ -315,13 +316,56 @@ function DesktopDetailDrawer({ drawer, onClose, setItems }) {
         </React.Fragment>
       )}
       {kind === 'pr' && d && <PRTabs key={d.id} pr={d} http={http} />}
+      {kind === 'person' && d && <PersonSummary dev={d} workItems={data.WORK_ITEMS || []} prs={data.PRS || []} />}
     </Drawer>
+  )
+}
+
+function PersonSummary({ dev, workItems, prs }) {
+  const myWIs = workItems.filter(w => w.assignee === dev.id && !isTerminalState(w.state))
+  const myPRs = prs.filter(p => p.author === dev.id)
+
+  return (
+    <div>
+      <div className="drawer-section" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <Avatar who={dev.id} size="lg"/>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 16 }}>{dev.name}</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>{dev.role}{dev.tz ? ` · ${dev.tz}` : ''}</div>
+          {dev.focus && <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>{dev.focus}</div>}
+        </div>
+      </div>
+      <div className="drawer-section">
+        <h4>Active work ({myWIs.length})</h4>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {myWIs.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>No active work items.</div>}
+          {myWIs.map(w => (
+            <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+              <TypeIcon type={w.type}/><span style={{ fontFamily: 'var(--mono)', color: 'var(--text-muted)', fontSize: 11.5 }}>#{w.id}</span>
+              <span>{w.title}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="drawer-section">
+        <h4>Open PRs ({myPRs.length})</h4>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {myPRs.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>No open pull requests.</div>}
+          {myPRs.map(p => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+              <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-muted)', fontSize: 11.5 }}>#{p.id}</span>
+              <span>{p.title}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 
 // The view body — reads the snapshot from context and wires per-view host state.
 function ViewBody({
-  view, onOpenItem, onOpenPR,
+  view, onOpenItem, onOpenPR, onOpenPerson = () => {},
   tweaks = DEFAULT_TWEAKS, setTweak = () => {},
   newItemIds = { work: new Set(), pr: new Set(), builds: new Set(), tests: new Set() },
   plannerData = {}, setPlannerData = () => {},
@@ -372,13 +416,6 @@ function ViewBody({
       localStorage.setItem(getProfileKey('nexusmd.team.custom'), JSON.stringify(newCustom))
       localStorage.setItem(getProfileKey('nexusmd.team.removed'), JSON.stringify(newRemoved))
     } catch {}
-  }
-
-  const handleAddNote = (devId, note) => {
-    setPlannerData(prev => {
-      const notes = prev.globalNotes || []
-      return { ...prev, globalNotes: [...notes, { devId, note, date: new Date().toISOString() }] }
-    })
   }
 
   const handleScheduleOneOnOne = (dev) => {
@@ -460,9 +497,8 @@ function ViewBody({
           workItems={data.WORK_ITEMS || []}
           prs={data.PRS || []}
           onOpenItem={onOpenItem}
-          onOpenPerson={() => {}}
+          onOpenPerson={onOpenPerson}
           onTeamChange={handleTeamChange}
-          onAddNote={handleAddNote}
           onScheduleOneOnOne={handleScheduleOneOnOne}
         />
       )
@@ -613,8 +649,9 @@ function App() {
   const [areasOpen, setAreasOpen] = React.useState(false)
   const [drawer, setDrawer] = React.useState(null)
   const [sidebarWidth, setSidebarWidth] = usePersistedState('nexusmd.sidebar.width', 220)
-  const openItem = item => setDrawer({ kind: 'wi', data: item })
-  const openPR   = pr   => setDrawer({ kind: 'pr', data: pr })
+  const openItem   = item => setDrawer({ kind: 'wi', data: item })
+  const openPR     = pr   => setDrawer({ kind: 'pr', data: pr })
+  const openPerson = dev  => setDrawer({ kind: 'person', data: dev })
   const [localItems, setLocalItems] = React.useState(null)
   const [tweaks, setTweaksState] = React.useState(loadTweaks)
 
@@ -931,7 +968,7 @@ function App() {
             padding: view === 'markdown' ? 0 : 18,
           }}>
             <ViewBody
-              view={view} onOpenItem={openItem} onOpenPR={openPR}
+              view={view} onOpenItem={openItem} onOpenPR={openPR} onOpenPerson={openPerson}
               tweaks={tweaks} setTweak={setTweak}
               newItemIds={newItemIds}
               plannerData={plannerData} setPlannerData={setPlannerData}

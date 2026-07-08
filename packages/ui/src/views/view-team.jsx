@@ -314,6 +314,25 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
   const [showAddModal, setShowAddModal] = useStateT(false)
   const [noteTarget, setNoteTarget] = useStateT(null)
   const [scheduleTarget, setScheduleTarget] = useStateT(null)
+  const [teamNotes, setTeamNotes] = useStateT(() => {
+    try { return JSON.parse(storage.getItem('nexusmd.team.notes') || '[]') } catch { return [] }
+  })
+
+  const persistNotes = (next) => {
+    setTeamNotes(next)
+    const s = JSON.stringify(next)
+    storage.setItem('nexusmd.team.notes', s)
+    pushPref?.('nexusmd.team.notes', s)
+  }
+  const addNote = (dev, text) => {
+    persistNotes([
+      { id: 'tn' + Date.now(), devId: dev.id, person: dev.name, note: text, date: new Date().toISOString() },
+      ...teamNotes,
+    ])
+    onAddNote?.(dev, text)   // let the host observe too (optional)
+  }
+  const deleteNote = (id) => persistNotes(teamNotes.filter(n => n.id !== id))
+  const notesFor = (id) => teamNotes.filter(n => n.devId === id)
 
   const removeAzureMember = (id) => {
     const next = [...removedIds, id]
@@ -374,7 +393,7 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
         open={noteTarget !== null}
         dev={noteTarget}
         onClose={() => setNoteTarget(null)}
-        onSave={onAddNote}
+        onSave={addNote}
       />
       <ScheduleOneOnOneModal
         open={scheduleTarget !== null}
@@ -416,7 +435,9 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
           <DevCard key={t.id} dev={t} onOpenItem={onOpenItem} onOpenPerson={onOpenPerson}
             onRemove={t.isCustom ? null : removeAzureMember}
             onDelete={t.isCustom ? removeCustomMember : null}
-            onAddNote={onAddNote ? () => setNoteTarget(t) : null}
+            notes={notesFor(t.id)}
+            onDeleteNote={deleteNote}
+            onAddNote={() => setNoteTarget(t)}
             onScheduleOneOnOne={onScheduleOneOnOne ? () => setScheduleTarget(t) : null}
           />
         ))}
@@ -444,7 +465,7 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
   )
 }
 
-function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote, onScheduleOneOnOne }) {
+function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote, onScheduleOneOnOne, notes = [], onDeleteNote }) {
   const statusColor = {
     online: 'var(--success)', meeting: 'var(--warning)', away: 'var(--text-subtle)', pto: 'var(--text-subtle)'
   }
@@ -523,6 +544,34 @@ function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote,
           <Icon name="alert" size={12}/>
           <span style={{ fontWeight: 500 }}>{dev.blocked.length} blocker{dev.blocked.length !== 1 ? 's' : ''}</span>
           <span className="truncate" style={{ opacity: 0.8 }}>· {dev.blocked[0].title}</span>
+        </div>
+      )}
+
+      {notes.length > 0 && (
+        <div style={{ display:'flex', flexDirection:'column', gap:6, borderTop:'1px solid var(--border)', paddingTop:10, marginTop:2 }}
+          onClick={e => e.stopPropagation()}>
+          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, fontWeight:600, color:'var(--text-subtle)', textTransform:'uppercase', letterSpacing:'0.04em' }}>
+            <Icon name="message" size={11}/> Notes
+            <span className="spacer" style={{ flex:1 }}/>
+            <span>{notes.length}</span>
+          </div>
+          {notes.slice(0, 3).map(n => (
+            <div key={n.id} style={{ display:'flex', gap:6, alignItems:'flex-start', fontSize:12 }}>
+              <span style={{ flex:1, minWidth:0, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{n.note}</span>
+              <span className="muted" style={{ fontSize:10.5, flexShrink:0, marginTop:1 }}>
+                {new Date(n.date).toLocaleDateString('en-US', { month:'short', day:'numeric' })}
+              </span>
+              {onDeleteNote && (
+                <button className="btn icon ghost sm" title="Delete note" style={{ height:18, padding:0, flexShrink:0 }}
+                  onClick={() => onDeleteNote(n.id)}>
+                  <Icon name="trash" size={11}/>
+                </button>
+              )}
+            </div>
+          ))}
+          {notes.length > 3 && (
+            <span className="muted" style={{ fontSize:11 }}>+{notes.length - 3} more</span>
+          )}
         </div>
       )}
 
