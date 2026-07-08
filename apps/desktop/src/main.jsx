@@ -29,7 +29,7 @@ import {
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
-import { PersonSummary } from './person-summary.jsx'
+import { PersonSummary, PersonActions } from './person-summary.jsx'
 import DesktopNotesView from './desktop-notes-view.jsx'
 import { CalendarView } from './views/view-calendar.jsx'
 import { createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
@@ -302,6 +302,7 @@ function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
               <Icon name="check" size={13}/> Mark done
             </button>
           )}
+          {kind === 'person' && d && <PersonActions dev={d} />}
           {adoUrl && (
             <button className="btn sm ghost" onClick={() => window.electronAPI.openLink(adoUrl)}>
               <Icon name="link" size={12}/> Open in {kind === 'wi' ? 'ADO' : 'browser'}

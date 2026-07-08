@@ -2,7 +2,7 @@ import React from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { NexusDataProvider } from '@nexusmd/ui'
-import { PersonSummary } from './person-summary.jsx'
+import { PersonSummary, PersonActions } from './person-summary.jsx'
 
 function memStorage(seed = {}) {
   const m = new Map(Object.entries(seed))
@@ -114,5 +114,32 @@ describe('PersonSummary', () => {
     expect(onDelete).toHaveBeenCalledTimes(1)
     expect(onDelete.mock.calls[0][0].detail).toEqual({ noteId: 'tn1' })
     window.removeEventListener('nexusmd:team-delete-note', onDelete)
+  })
+})
+
+describe('PersonActions', () => {
+  afterEach(cleanup)
+  const dev = { id: 'alice', name: 'Alice Ng' }
+
+  it('dispatches nexusmd:team-schedule-1on1 with the person id/name when Schedule 1:1 is clicked', () => {
+    render(<PersonActions dev={dev} />)
+    const onSchedule = vi.fn()
+    window.addEventListener('nexusmd:team-schedule-1on1', onSchedule)
+
+    fireEvent.click(screen.getByText('Schedule 1:1'))
+
+    expect(onSchedule.mock.calls[0][0].detail).toEqual({ id: 'alice', name: 'Alice Ng' })
+    window.removeEventListener('nexusmd:team-schedule-1on1', onSchedule)
+  })
+
+  it('dispatches nexusmd:team-add-note with the person id/name when Add note is clicked', () => {
+    render(<PersonActions dev={dev} />)
+    const onAdd = vi.fn()
+    window.addEventListener('nexusmd:team-add-note', onAdd)
+
+    fireEvent.click(screen.getByText('Add note'))
+
+    expect(onAdd.mock.calls[0][0].detail).toEqual({ id: 'alice', name: 'Alice Ng' })
+    window.removeEventListener('nexusmd:team-add-note', onAdd)
   })
 })

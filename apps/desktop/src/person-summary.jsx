@@ -112,3 +112,18 @@ export function PersonSummary({ dev, onOpenItem, onOpenPR }) {
     </div>
   )
 }
+
+export function PersonActions({ dev }) {
+  const scheduleOneOnOne = () => window.dispatchEvent(
+    new CustomEvent('nexusmd:team-schedule-1on1', { detail: { id: dev.id, name: dev.name } })
+  )
+  const addNote = () => window.dispatchEvent(
+    new CustomEvent('nexusmd:team-add-note', { detail: { id: dev.id, name: dev.name } })
+  )
+  return (
+    <React.Fragment>
+      <button className="btn sm ghost" onClick={scheduleOneOnOne}><Icon name="clock" size={12}/> Schedule 1:1</button>
+      <button className="btn sm ghost" onClick={addNote}><Icon name="message" size={12}/> Add note</button>
+    </React.Fragment>
+  )
+}
