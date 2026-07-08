@@ -20,7 +20,7 @@ export {
 } from './app-components.jsx'
 
 // Timer / stopwatch — hook + standalone widget (built on @nexusmd/core timer).
-export { useTimer } from './use-timer.js'
+export { useTimer, useStopwatch } from './use-timer.js'
 export { TimerWidget } from './timer-widget.jsx'
 
 // Cross-platform data seam consumed by the shared views.

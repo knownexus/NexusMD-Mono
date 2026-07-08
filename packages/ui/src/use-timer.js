@@ -62,3 +62,34 @@ export function useTimer({ mode = 'stopwatch', durationMs = null, persistKey = n
     start, pause, resume, stop, reset, lap,
   }
 }
+
+/**
+ * useTimer plus first-start tracking and a stop() that returns the elapsed
+ * time and a { firstStartedAt, stoppedAt } meta object. Shared by TimerWidget
+ * and the team-member stopwatch so the stop-contract lives in one place.
+ *
+ * @param {object} [opts]
+ */
+export function useStopwatch(opts = {}) {
+  const timer = useTimer(opts)
+  const firstStartedAt = useRef(null)
+
+  const start = useCallback(() => {
+    if (firstStartedAt.current == null) firstStartedAt.current = Date.now()
+    timer.start()
+  }, [timer])
+
+  const stop = useCallback(() => {
+    const elapsed = timer.elapsedMs
+    const meta = { firstStartedAt: firstStartedAt.current, stoppedAt: Date.now() }
+    timer.stop()
+    return { elapsedMs: elapsed, meta }
+  }, [timer])
+
+  const reset = useCallback(() => {
+    firstStartedAt.current = null
+    timer.reset()
+  }, [timer])
+
+  return { ...timer, start, stop, reset, firstStartedAt }
+}

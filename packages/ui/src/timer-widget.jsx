@@ -1,9 +1,7 @@
 import React from 'react'
 import { formatClock } from '@nexusmd/core'
-import { useTimer } from './use-timer.js'
+import { useStopwatch } from './use-timer.js'
 import { Icon } from './icons.jsx'
-
-const { useRef } = React
 
 /**
  * Standalone stopwatch / countdown widget built on useTimer.
@@ -13,25 +11,17 @@ const { useRef } = React
  *           onStop?: (elapsedMs: number, meta: { firstStartedAt: number|null, stoppedAt: number }) => void }} props
  */
 export function TimerWidget({ mode = 'stopwatch', durationMs = null, persistKey = null, compact = false, onExpire, onStop }) {
-  const t = useTimer({ mode, durationMs, persistKey, onExpire })
-  const firstStartedAt = useRef(null)
+  const t = useStopwatch({ mode, durationMs, persistKey, onExpire })
 
   const display = mode === 'countdown' ? t.remainingMs : t.elapsedMs
   const idle = t.state.status === 'idle'
   const running = t.state.status === 'running'
   const paused = t.state.status === 'paused'
 
-  const handleStart = () => {
-    if (firstStartedAt.current == null) firstStartedAt.current = Date.now()
-    t.start()
-  }
   const handleStop = () => {
-    const elapsed = t.elapsedMs
-    const meta = { firstStartedAt: firstStartedAt.current, stoppedAt: Date.now() }
-    t.stop()
-    onStop?.(elapsed, meta)
+    const { elapsedMs, meta } = t.stop()
+    onStop?.(elapsedMs, meta)
   }
-  const handleReset = () => { firstStartedAt.current = null; t.reset() }
 
   const wrap = {
     display: 'inline-flex', flexDirection: 'column', gap: 10,
@@ -49,7 +39,7 @@ export function TimerWidget({ mode = 'stopwatch', durationMs = null, persistKey 
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {(idle || paused) && (
-          <button className="btn primary sm" onClick={handleStart}>
+          <button className="btn primary sm" onClick={t.start}>
             <Icon name="play" size={12}/> {paused ? 'Resume' : 'Start'}
           </button>
         )}
@@ -69,7 +59,7 @@ export function TimerWidget({ mode = 'stopwatch', durationMs = null, persistKey 
           </button>
         )}
         {(paused || t.state.status === 'done') && (
-          <button className="btn ghost sm" onClick={handleReset}>
+          <button className="btn ghost sm" onClick={t.reset}>
             <Icon name="refresh" size={12}/> Reset
           </button>
         )}
