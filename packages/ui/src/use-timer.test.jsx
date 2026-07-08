@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useTimer } from './use-timer.js'
+import { useTimer, useStopwatch } from './use-timer.js'
 import { NexusDataProvider } from './data-context.jsx'
 
 describe('useTimer', () => {
@@ -62,5 +62,62 @@ describe('useTimer', () => {
     const { result } = renderHook(() => useTimer({ persistKey: 'nexusmd.timer.test' }), { wrapper })
     act(() => { result.current.start() })
     expect(setItem).toHaveBeenCalled()
+  })
+})
+
+describe('useStopwatch', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('captures firstStartedAt on first start and keeps it across pause/resume', () => {
+    const { result } = renderHook(() => useStopwatch())
+
+    let firstStart
+    act(() => { firstStart = Date.now(); result.current.start() })
+    act(() => { vi.advanceTimersByTime(1000) })
+    act(() => { result.current.pause() })
+    act(() => { vi.advanceTimersByTime(2000) })
+    act(() => { result.current.start() }) // resume
+    act(() => { vi.advanceTimersByTime(500) })
+
+    let stopResult
+    act(() => { stopResult = result.current.stop() })
+
+    expect(stopResult.meta.firstStartedAt).toBe(firstStart)
+    expect(stopResult.elapsedMs).toBeGreaterThan(0)
+  })
+
+  it('stop() returns elapsedMs and meta with firstStartedAt/stoppedAt', () => {
+    const { result } = renderHook(() => useStopwatch())
+
+    act(() => { result.current.start() })
+    act(() => { vi.advanceTimersByTime(1500) })
+
+    let stopResult
+    act(() => { stopResult = result.current.stop() })
+
+    expect(stopResult.elapsedMs).toBeGreaterThan(0)
+    expect(typeof stopResult.meta.firstStartedAt).toBe('number')
+    expect(typeof stopResult.meta.stoppedAt).toBe('number')
+    expect(stopResult.meta.firstStartedAt).toBeLessThanOrEqual(stopResult.meta.stoppedAt)
+  })
+
+  it('reset() clears firstStartedAt so the next start captures a fresh value', () => {
+    const { result } = renderHook(() => useStopwatch())
+
+    act(() => { result.current.start() })
+    act(() => { vi.advanceTimersByTime(1000) })
+    act(() => { result.current.stop() })
+    act(() => { result.current.reset() })
+
+    act(() => { vi.advanceTimersByTime(5000) })
+    let secondStart
+    act(() => { secondStart = Date.now(); result.current.start() })
+    act(() => { vi.advanceTimersByTime(200) })
+
+    let stopResult
+    act(() => { stopResult = result.current.stop() })
+
+    expect(stopResult.meta.firstStartedAt).toBe(secondStart)
   })
 })

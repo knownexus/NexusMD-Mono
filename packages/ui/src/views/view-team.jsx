@@ -3,7 +3,7 @@ import { Avatar, MenuButton, TypeIcon } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
 import { enrichTeamMember, formatDuration, formatClock } from '@nexusmd/core'
 import { useNexusData } from '../data-context.jsx'
-import { useTimer } from '../use-timer.js'
+import { useStopwatch } from '../use-timer.js'
 
 // view-team.jsx — Team / People view. Shared across web + desktop.
 // team/workItems/prs arrive via props; the live team singleton + pref sync come
@@ -514,8 +514,7 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
 }
 
 function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote, onStopTimer, onScheduleOneOnOne, notes = [] }) {
-  const timer = useTimer({ persistKey: `nexusmd.timer.team.${dev.id}` })
-  const firstStartedAt = React.useRef(null)
+  const timer = useStopwatch({ persistKey: `nexusmd.timer.team.${dev.id}` })
 
   const statusColor = {
     online: 'var(--success)', meeting: 'var(--warning)', away: 'var(--text-subtle)', pto: 'var(--text-subtle)'
@@ -621,18 +620,16 @@ function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote,
         </button>
         {timer.state.status === 'idle' || timer.state.status === 'done' ? (
           <button className="btn ghost sm" style={{ height:22, padding:'0 6px', fontSize:11 }} title="Start stopwatch"
-            onClick={e => { e.stopPropagation(); firstStartedAt.current = Date.now(); timer.start() }}>
+            onClick={e => { e.stopPropagation(); timer.firstStartedAt.current = Date.now(); timer.start() }}>
             <Icon name="clock" size={10}/> Timer
           </button>
         ) : (
           <button className="btn primary sm" style={{ height:22, padding:'0 6px', fontSize:11 }} title="Stop & save as note"
             onClick={e => {
               e.stopPropagation()
-              const elapsed = timer.elapsedMs
-              const meta = { firstStartedAt: firstStartedAt.current, stoppedAt: Date.now() }
-              timer.stop()
-              firstStartedAt.current = null
-              onStopTimer?.(dev, elapsed, meta)
+              const { elapsedMs, meta } = timer.stop()
+              timer.firstStartedAt.current = null
+              onStopTimer?.(dev, elapsedMs, meta)
             }}>
             <span style={{ fontVariantNumeric:'tabular-nums' }}>{formatClock(timer.elapsedMs)}</span> · Stop
           </button>
