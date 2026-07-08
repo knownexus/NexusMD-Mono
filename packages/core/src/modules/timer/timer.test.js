@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   createTimer, elapsedMs, start, pause, resume, stop, reset,
+  lap, remainingMs, isExpired, formatDuration, formatClock,
 } from './index.js'
 
 describe('timer engine — stopwatch', () => {
@@ -62,8 +63,6 @@ describe('timer engine — stopwatch', () => {
     expect(elapsedMs(rehydrated, 11000)).toBe(10000)
   })
 })
-
-import { lap, remainingMs, isExpired, formatDuration, formatClock } from './index.js'
 
 describe('timer engine — laps', () => {
   it('lap records current elapsed while running', () => {

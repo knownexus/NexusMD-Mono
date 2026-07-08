@@ -1,5 +1,5 @@
 import React from 'react'
-import { formatClock, formatDuration } from '@nexusmd/core'
+import { formatClock } from '@nexusmd/core'
 import { useTimer } from './use-timer.js'
 import { Icon } from './icons.jsx'
 
