@@ -261,12 +261,11 @@ function Placeholder({ label }) {
   )
 }
 
-function DesktopDetailDrawer({ drawer, onClose, setItems }) {
+function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }) {
   const open = drawer != null
   const kind = drawer?.kind
   const d    = drawer?.data
   const http = React.useMemo(() => createAdoHttpAdapter(), [])
-  const { data } = useNexusData()
 
   const title = !d ? '' : kind === 'wi' ? d.title : kind === 'pr' ? d.title : kind === 'person' ? d.name : ''
 
@@ -317,7 +316,7 @@ function DesktopDetailDrawer({ drawer, onClose, setItems }) {
         </React.Fragment>
       )}
       {kind === 'pr' && d && <PRTabs key={d.id} pr={d} http={http} />}
-      {kind === 'person' && d && <PersonSummary dev={d} workItems={data.WORK_ITEMS || []} prs={data.PRS || []} />}
+      {kind === 'person' && d && <PersonSummary dev={d} onOpenItem={onOpenItem} onOpenPR={onOpenPR} />}
     </Drawer>
   )
 }
@@ -958,7 +957,8 @@ function App() {
             onClick={() => setTweak('widgetOrder', DASH_WIDGET_ORDER)}/>
         </TweakSection>
       </TweaksPanel>
-      <DesktopDetailDrawer drawer={drawer} onClose={() => setDrawer(null)} setItems={setItemsResolved} />
+      <DesktopDetailDrawer drawer={drawer} onClose={() => setDrawer(null)} setItems={setItemsResolved}
+        onOpenItem={openItem} onOpenPR={openPR} />
       <CreateWorkItemDrawer
         open={!!createWI}
         title={createWI?.title}

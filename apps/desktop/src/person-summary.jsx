@@ -1,11 +1,7 @@
 import React from 'react'
 import { Icon, TypeIcon, Avatar } from '@nexusmd/ui'
-import { isTerminalState } from '@nexusmd/core'
 
-export function PersonSummary({ dev, workItems, prs }) {
-  const myWIs = workItems.filter(w => w.assignee === dev.id && !isTerminalState(w.state))
-  const myPRs = prs.filter(p => p.author === dev.id)
-
+export function PersonSummary({ dev, onOpenItem, onOpenPR }) {
   return (
     <div>
       <div className="drawer-section" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -16,24 +12,56 @@ export function PersonSummary({ dev, workItems, prs }) {
           {dev.focus && <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>{dev.focus}</div>}
         </div>
       </div>
+
       <div className="drawer-section">
-        <h4>Active work ({myWIs.length})</h4>
+        <div className="dev-card-stats">
+          <div className="dev-stat">
+            <div className="dev-stat-label">Active</div>
+            <div className="dev-stat-value">{dev.active.length}</div>
+          </div>
+          <div className="dev-stat">
+            <div className="dev-stat-label">Open PRs</div>
+            <div className="dev-stat-value">{dev.myPRs.length}</div>
+          </div>
+          <div className="dev-stat">
+            <div className="dev-stat-label">Sprint pts</div>
+            <div className="dev-stat-value">{dev.points}</div>
+          </div>
+        </div>
+      </div>
+
+      {dev.blocked.length > 0 && (
+        <div className="drawer-section" style={{
+          background: 'var(--danger-soft)', color: 'var(--danger)', padding: '6px 10px', borderRadius: 6,
+          fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <Icon name="alert" size={12}/>
+          <span style={{ fontWeight: 500 }}>{dev.blocked.length} blocker{dev.blocked.length !== 1 ? 's' : ''}</span>
+          <span className="truncate" style={{ opacity: 0.8 }}>· {dev.blocked[0].title}</span>
+        </div>
+      )}
+
+      <div className="drawer-section">
+        <h4>Active work ({dev.active.length})</h4>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {myWIs.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>No active work items.</div>}
-          {myWIs.map(w => (
-            <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          {dev.active.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>No active work items.</div>}
+          {dev.active.map(w => (
+            <div key={w.id} onClick={() => onOpenItem(w)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
               <TypeIcon type={w.type}/><span style={{ fontFamily: 'var(--mono)', color: 'var(--text-muted)', fontSize: 11.5 }}>#{w.id}</span>
               <span>{w.title}</span>
             </div>
           ))}
         </div>
       </div>
+
       <div className="drawer-section">
-        <h4>Open PRs ({myPRs.length})</h4>
+        <h4>Open PRs ({dev.myPRs.length})</h4>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {myPRs.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>No open pull requests.</div>}
-          {myPRs.map(p => (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          {dev.myPRs.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>No open pull requests.</div>}
+          {dev.myPRs.map(p => (
+            <div key={p.id} onClick={() => onOpenPR(p)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
               <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-muted)', fontSize: 11.5 }}>#{p.id}</span>
               <span>{p.title}</span>
             </div>
