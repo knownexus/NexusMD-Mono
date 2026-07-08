@@ -229,7 +229,7 @@ const groupBySelectStyle = {
     fontFamily: 'var(--sans)',
 };
 
-export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamProp, newItemIds = new Set() }) {
+export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamProp, newItemIds = new Set(), serverSearch }) {
   const { data: NexusMDData } = useNexusData();
   const [initialNewCount] = useStateW(() => newItemIds.size);
   const [bannerDismissed, setBannerDismissed] = useStateW(false);
@@ -311,19 +311,28 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   const extraItemsRef      = React.useRef(extraItems);
   const mapDtoRef          = React.useRef(mapDto);
   const loadingRef         = React.useRef(false);
+  const serverSearchRef    = React.useRef(serverSearch);
   React.useEffect(() => { itemsRef.current      = items;    }, [items]);
   React.useEffect(() => { extraItemsRef.current = extraItems; }, [extraItems]);
   React.useEffect(() => { mapDtoRef.current     = mapDto;   }, [mapDto]);
+  React.useEffect(() => { serverSearchRef.current = serverSearch; }, [serverSearch]);
+
+  // Server-side pagination is opt-in: hosts with a work-item search backend pass
+  // a serverSearch fetcher. Without it (e.g. the desktop, whose cached ADO
+  // snapshot is the full set), the load-more UI and auto-fill loop stay off so
+  // there's no doomed fetch to a nonexistent endpoint.
+  const paginated = typeof serverSearch === 'function';
 
   // Core load loop. untilAll=true ignores the filtered-count threshold.
   const doLoad = React.useCallback(async (untilAll = false) => {
     if (loadingRef.current) return;
+    const search = serverSearchRef.current;
+    if (typeof search !== 'function') return;
     loadingRef.current = true;
     setLoadingMore(true); setLoadMoreErr('');
     try {
       const PAGE   = 300;
-      const params = (NexusMDData.PROJECTS || [])
-        .map(p => `project=${encodeURIComponent(p.id)}`).join('&');
+      const projectIds = (NexusMDData.PROJECTS || []).map(p => p.id);
       const pred   = filterPredicateRef.current;
 
       const seenIds = new Set([...itemsRef.current, ...extraItemsRef.current].map(i => i.id));
@@ -332,9 +341,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
       let accumulated    = [];
 
       while (untilAll || filteredGained < PAGE) {
-        const r = await fetch(`/api/workitems/search?top=${PAGE}&skip=${skip}${params ? '&' + params : ''}`);
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const data = await r.json();
+        const data = await search({ top: PAGE, skip, projectIds });
         setTotalMatched(data.totalMatched ?? null);
 
         const mapped    = (data.workItems || []).map(mapDtoRef.current);
@@ -486,12 +493,13 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   // Auto-fill: whenever filtered results drop below the page size and more
   // items exist (or we haven't checked yet), kick off a load automatically.
   React.useEffect(() => {
+    if (!paginated) return;
     if (loadingMore) return;
     if (loadMoreErr) return;
     if (filtered.length >= 300) return;
     if (totalMatched !== null && allItems.length >= totalMatched) return;
     doLoad();
-  }, [filtered.length, loadingMore, loadMoreErr, totalMatched, allItems.length, doLoad]);
+  }, [paginated, filtered.length, loadingMore, loadMoreErr, totalMatched, allItems.length, doLoad]);
 
   // Stats for chips
   const stateCounts = useMemoW(() => {
@@ -815,7 +823,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
       )}
 
       {/* Load more bar */}
-      {(totalMatched === null || allItems.length < totalMatched) && (
+      {paginated && (totalMatched === null || allItems.length < totalMatched) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, padding: '10px 14px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10 }}>
           <span style={{ fontSize: 12.5, color: 'var(--text-muted)', flex: 1 }}>
             {totalMatched !== null
