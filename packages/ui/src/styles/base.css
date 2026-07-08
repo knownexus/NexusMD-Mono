@@ -1543,6 +1543,14 @@ button:focus-visible, .filter-chip:focus-visible { outline-offset: -1px; }
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
+/* StatWithHoverList: fill the (stretched) grid cell so the hover list, which is
+   positioned at top:100% of this wrapper, anchors flush to the card's bottom
+   instead of floating below the empty space when a taller sibling stretches the
+   row. */
+.stat-hoverlist { position: relative; height: 100%; }
+.stat-hoverlist > .stat-clickable,
+.stat-hoverlist > .stat-clickable > .stat { height: 100%; }
+
 .stat-segments {
   display: flex;
   gap: 4px;

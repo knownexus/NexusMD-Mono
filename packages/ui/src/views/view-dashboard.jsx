@@ -3,7 +3,7 @@ import React from 'react';
 // Data + refresh come from useNexusData(); Google integration (Gmail widget) is
 // injected via context (web supplies GoogleAuth, desktop passes null → "connect").
 
-import { CardFrame, Prio, Ring, Stat } from '../components.jsx';
+import { CardFrame, Prio, Stat } from '../components.jsx';
 import { Avatar, TypeIcon } from '../app-components.jsx';
 import { Icon } from '../icons.jsx';
 import { TriageExportButton, TriageStatusLine } from './triage.jsx';
@@ -12,9 +12,8 @@ import { useNexusData, useEffectiveNeedsMe } from '../data-context.jsx';
 
 const { useState: useStateD, useMemo: useMemoD, useEffect: useEffectD } = React;
 
-const ALL_WIDGET_IDS = ['sprint', 'review', 'blockers', 'team', 'triage', 'activity', 'resolvedme', 'inbox'];
+const ALL_WIDGET_IDS = ['review', 'blockers', 'team', 'triage', 'activity', 'resolvedme', 'inbox'];
 const WIDGET_LABELS = {
-  sprint:     'Sprint progress',
   review:     'Needs your review',
   blockers:   'Blockers & risks',
   team:       'Team — working on now',
@@ -277,12 +276,9 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
   const failingPRs = PRS.filter(p => p.status === 'active' && p.ciStatus === 'failed');
   const draftPRs   = PRS.filter(p => p.status === 'draft');
 
-  // Sprint
-  const sprintPct      = SPRINT.totalPoints > 0 ? Math.round((SPRINT.donePoints / SPRINT.totalPoints) * 100) : 0;
-  const sprintItems    = WORK_ITEMS.filter(w => w.sprint);
-  const sprintInProg   = sprintItems.filter(w => isActiveState(w.state)).length;
-  const sprintReview   = sprintItems.filter(w => isReviewState(w.state)).length;
-  const sprintBlocked  = sprintItems.filter(w => isBlockedState(w.state)).length;
+  // Work item headline counts (team-wide)
+  const activeWorkItems = WORK_ITEMS.filter(w => isActiveState(w.state));
+  const reviewWorkItems = WORK_ITEMS.filter(w => isReviewState(w.state));
 
   // Blocker urgency
   const criticalBlockers = blockers.filter(b => b.priority === 1).length;
@@ -290,7 +286,6 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
 
   // ── Widget registry
   const widgets = {
-    sprint:     { title: 'Current sprint',        render: () => <SprintWidget sprint={SPRINT} workItems={WORK_ITEMS} team={TEAM}/>, span: 2 },
     review:     { title: 'Needs your review',     render: () => <NeedsReviewWidget prs={needsMyReview} onOpen={onOpenPR}/>, span: 1 },
     blockers:   { title: 'Blockers & risks',      render: () => <BlockersWidget items={blockers} builds={failingBuilds} onOpen={onOpenItem}/>, span: 1 },
     team:       { title: 'Team — working on now', render: () => <TeamNowWidget team={TEAM} workItems={WORK_ITEMS} onOpen={onOpenItem}/>, span: 2 },
@@ -391,37 +386,31 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
           );
         })()}
 
-        {/* ── Sprint ── */}
-        {(() => {
-          const startISO = SPRINT.startISO, endISO = SPRINT.endISO;
-          let sprintHealth = null;
-          if (startISO && endISO && SPRINT.totalPoints > 0) {
-            const spanMs = new Date(endISO) - new Date(startISO);
-            if (spanMs > 0) {
-              const elapsed = (Date.now() - new Date(startISO)) / spanMs * 100;
-              const donePct = (SPRINT.donePoints / SPRINT.totalPoints) * 100;
-              sprintHealth = donePct >= elapsed ? { label: 'On track', color: 'var(--success)' }
-                : donePct >= elapsed - 15       ? { label: 'At risk',  color: 'var(--warning)' }
-                :                                 { label: 'Behind',   color: 'var(--danger)'  };
-            }
-          }
-          return (
-            <ActionableStat
-              label="Sprint progress"
-              value={`${sprintPct}%`}
-              meta={`${SPRINT.donePoints}/${SPRINT.totalPoints} pts · ${SPRINT.daysLeft}d left`}
-              trend={sprintHealth ? { dir: 'flat', value: sprintHealth.label, color: sprintHealth.color } : null}
-              spark={SPRINT.burndown.length ? SPRINT.burndown : null} sparkColor="var(--success)"
-              onClick={() => navigateTo('work', { sprint: 'current' })}
-              title="Open current-sprint work items"
-              segments={[
-                { label: 'In progress', value: sprintInProg,  color: 'var(--accent)',  onClick: () => navigateTo('work', { state: 'In Progress' }), title: 'Sprint items in progress' },
-                { label: 'In review',   value: sprintReview,  color: 'var(--violet)',  onClick: () => navigateTo('work', { state: 'In Review' }),   title: 'Sprint items in review' },
-                { label: 'Blocked',     value: sprintBlocked, color: 'var(--danger)',  onClick: () => navigateTo('work', { state: 'Blocked' }),     title: 'Blocked sprint items' },
-              ]}
-            />
-          );
-        })()}
+        {/* ── Active work items ── */}
+        <StatWithHoverList
+          label="Active work items"
+          value={activeWorkItems.length}
+          meta="In progress, team-wide"
+          accent={activeWorkItems.length ? 'var(--accent)' : null}
+          onClick={() => navigateTo('work', { stateCategory: 'active' })}
+          title="Open active work items"
+          items={activeWorkItems}
+          team={TEAM}
+          onOpenItem={onOpenItem}
+        />
+
+        {/* ── Needs review ── */}
+        <StatWithHoverList
+          label="Needs review"
+          value={reviewWorkItems.length}
+          meta="Awaiting review, team-wide"
+          accent={reviewWorkItems.length ? 'var(--violet)' : null}
+          onClick={() => navigateTo('work', { stateCategory: 'review' })}
+          title="Open work items in review"
+          items={reviewWorkItems}
+          team={TEAM}
+          onOpenItem={onOpenItem}
+        />
 
         {/* ── Blockers ── */}
         <ActionableStat
@@ -520,6 +509,51 @@ function ActionableStat({ onClick, segments, title, ...statProps }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────
+// StatWithHoverList — ActionableStat that shows a floating list of the
+// underlying work items on hover; clicking a row opens that item.
+// ─────────────────────────────────────────────────────────
+function StatWithHoverList({ items, team, onOpenItem, ...statProps }) {
+  const [hovered, setHovered] = useStateD(false);
+  const MAX_ROWS = 8;
+  const visible = items.slice(0, MAX_ROWS);
+  const extra = items.length - visible.length;
+  const nameFor = (id) => (team || []).find(t => t.id === id)?.name || id || 'Unassigned';
+
+  return (
+    <div className="stat-hoverlist" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+      <ActionableStat {...statProps}/>
+      {hovered && items.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 20,
+          background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 8,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.18)', padding: 6,
+          maxHeight: 260, overflowY: 'auto',
+        }}>
+          {visible.map(w => (
+            <div
+              key={w.id}
+              onClick={onOpenItem ? (e) => { e.stopPropagation(); onOpenItem(w); } : undefined}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              style={{
+                display: 'flex', gap: 8, alignItems: 'baseline', padding: '5px 8px',
+                borderRadius: 6, cursor: onOpenItem ? 'pointer' : 'default', fontSize: 12,
+              }}
+            >
+              <span className="mono muted" style={{ flexShrink: 0 }}>#{w.id}</span>
+              <span className="truncate" style={{ flex: 1, minWidth: 0 }}>{w.title}</span>
+              <span className="muted" style={{ flexShrink: 0 }}>{w.state}</span>
+              <span className="muted" style={{ flexShrink: 0 }}>{nameFor(w.assignee)}</span>
+            </div>
+          ))}
+          {extra > 0 && <div style={{ padding: '5px 8px', fontSize: 11.5, color: 'var(--text-subtle)' }}>+{extra} more</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DraggableWidget({ id, widget, onDragStart, onDragOver, onDrop, dragId, dropId, onHide, isWide, onToggleWidth, storedHeight, onSetHeight }) {
   const cardRef = React.useRef(null);
   const liveH = React.useRef(storedHeight || null);
@@ -583,82 +617,6 @@ function DraggableWidget({ id, widget, onDragStart, onDragOver, onDrop, dragId, 
       </CardFrame>
       <div className="widget-resize-h" onMouseDown={onResizeStart} title="Drag to resize height"/>
     </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────
-// Widget: Sprint
-// ─────────────────────────────────────────────────────────
-function SprintWidget({ sprint, workItems, team }) {
-  const { data: NexusMDData } = useNexusData();
-  const done = sprint.donePoints, prog = sprint.inProgPoints, review = sprint.reviewPoints;
-  const total = sprint.totalPoints;
-  const remaining = total - done - prog - review;
-  const pct = (n) => `${(n / total) * 100}%`;
-
-  // Per-assignee progress
-  const byAssignee = {};
-  workItems.filter(w => w.sprint).forEach(w => {
-    const a = w.assignee || 'unassigned';
-    if (!byAssignee[a]) byAssignee[a] = { done: 0, total: 0 };
-    byAssignee[a].total += w.points;
-    if (isTerminalState(w.state)) byAssignee[a].done += w.points;
-  });
-
-  const rows = (team || NexusMDData.TEAM).map(t => ({ ...t, ...(byAssignee[t.id] || { done: 0, total: 0 }) }))
-    .filter(r => r.total > 0)
-    .sort((a,b) => b.total - a.total);
-
-  return (
-    <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <Ring value={done + prog + review} max={total} size={64} stroke={6} color="var(--accent)" label={`${Math.round(((done+prog+review)/total)*100)}%`}/>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
-            <span style={{ fontWeight: 600, fontSize: 14 }}>{sprint.name}</span>
-            <span className="muted" style={{ fontSize: 12 }}>{sprint.start} → {sprint.end}</span>
-            <span className="pill success" style={{ marginLeft: 'auto' }}>On track</span>
-          </div>
-          <div className="sprint-progress" style={{ marginBottom: 6 }}>
-            <div className="seg done"   style={{ width: pct(done) }}/>
-            <div className="seg review" style={{ width: pct(review) }}/>
-            <div className="seg prog"   style={{ width: pct(prog) }}/>
-          </div>
-          <div style={{ display: 'flex', gap: 14, fontSize: 11.5, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-            <Legend dot="var(--success)" label={`${done} done`}/>
-            <Legend dot="var(--violet)"  label={`${review} review`}/>
-            <Legend dot="var(--accent)"  label={`${prog} in progress`}/>
-            <Legend dot="var(--surface-3)" label={`${remaining} remaining`}/>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-        <div className="muted" style={{ fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Per developer</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {rows.map(r => (
-            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
-              <Avatar who={r.id} size="xs"/>
-              <span style={{ flex: 1, minWidth: 0 }} className="truncate">{r.name}</span>
-              <div style={{ width: 60, height: 4, borderRadius: 2, background: 'var(--surface-3)', overflow: 'hidden' }}>
-                <div style={{ width: `${(r.done/r.total)*100}%`, height: '100%', background: 'var(--success)' }}/>
-              </div>
-              <span className="mono muted" style={{ fontSize: 10.5, minWidth: 36, textAlign: 'right' }}>{r.done}/{r.total}</span>
-            </div>
-          ))}
-          {rows.length === 0 && <div className="empty">No assignments yet</div>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Legend({ dot, label }) {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-      <span style={{ width: 7, height: 7, borderRadius: 2, background: dot }}/>
-      {label}
-    </span>
   );
 }
 
