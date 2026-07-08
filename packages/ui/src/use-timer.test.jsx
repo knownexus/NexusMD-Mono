@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useTimer } from './use-timer.js'
+import { NexusDataProvider } from './data-context.jsx'
 
 describe('useTimer', () => {
   beforeEach(() => { vi.useFakeTimers() })
@@ -38,5 +39,28 @@ describe('useTimer', () => {
     act(() => { vi.advanceTimersByTime(1500) })
     expect(onExpire).toHaveBeenCalledTimes(1)
     expect(result.current.remainingMs).toBe(0)
+  })
+
+  it('does not write to storage when persistKey is null (in-memory)', () => {
+    const setItem = vi.fn()
+    const storage = { getItem: () => null, setItem, removeItem: vi.fn() }
+    const wrapper = ({ children }) => (
+      <NexusDataProvider value={{ storage }}>{children}</NexusDataProvider>
+    )
+    const { result } = renderHook(() => useTimer(), { wrapper })
+    act(() => { result.current.start() })
+    act(() => { vi.advanceTimersByTime(500) })
+    expect(setItem).not.toHaveBeenCalled()
+  })
+
+  it('writes to storage when a persistKey is given', () => {
+    const setItem = vi.fn()
+    const storage = { getItem: () => null, setItem, removeItem: vi.fn() }
+    const wrapper = ({ children }) => (
+      <NexusDataProvider value={{ storage }}>{children}</NexusDataProvider>
+    )
+    const { result } = renderHook(() => useTimer({ persistKey: 'nexusmd.timer.test' }), { wrapper })
+    act(() => { result.current.start() })
+    expect(setItem).toHaveBeenCalled()
   })
 })

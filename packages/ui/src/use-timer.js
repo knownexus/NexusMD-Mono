@@ -17,10 +17,11 @@ const { useState, useEffect, useRef, useCallback, useMemo } = React
 export function useTimer({ mode = 'stopwatch', durationMs = null, persistKey = null, onExpire } = {}) {
   const seed = useMemo(() => createTimer({ mode, durationMs }), [mode, durationMs])
 
-  // Persisted branch and in-memory branch are chosen once per persistKey.
-  const persisted = usePersisted(persistKey || '__timer_unused__', seed)
-  const memory = useState(seed)
-  const [state, setState] = persistKey ? persisted : memory
+  const [state, setState] = usePersisted(
+    persistKey || 'nexusmd.timer.__ephemeral__',
+    seed,
+    { enabled: !!persistKey },
+  )
 
   const [, forceTick] = useState(0)
   const expiredRef = useRef(false)

@@ -15,13 +15,14 @@ const { useState, useEffect, useRef } = React
  * by default). Keys pass through getProfileKey, so the host decides scoping —
  * web supplies identity (already-namespaced keys), desktop can profile-scope.
  */
-export function usePersisted(key, initial, { sync = false } = {}) {
+export function usePersisted(key, initial, { sync = false, enabled = true } = {}) {
   const { storage, getProfileKey, pushPref } = useNexusData()
   const k = getProfileKey(key)
   const seed = typeof initial === 'function' ? initial() : initial
   const isSet = seed instanceof Set
 
   const [value, setValue] = useState(() => {
+    if (!enabled) return seed
     try {
       const raw = storage.getItem(k)
       if (raw === null || raw === undefined) return seed
@@ -33,17 +34,18 @@ export function usePersisted(key, initial, { sync = false } = {}) {
   })
 
   useEffect(() => {
+    if (!enabled) return
     try {
       storage.setItem(k, JSON.stringify(value instanceof Set ? [...value] : value))
     } catch { /* quota / private mode */ }
-  }, [k, value])
+  }, [k, value, enabled])
 
   useEffect(() => {
-    if (!sync) return
+    if (!sync || !enabled) return
     const serialised = storage.getItem(k)
     if (serialised === null || serialised === undefined) return
     pushPref(key, serialised)
-  }, [k, value, sync])
+  }, [k, value, sync, enabled])
 
   return [value, setValue]
 }
