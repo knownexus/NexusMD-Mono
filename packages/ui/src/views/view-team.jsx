@@ -323,6 +323,7 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
     const s = JSON.stringify(next)
     storage.setItem('nexusmd.team.notes', s)
     pushPref?.('nexusmd.team.notes', s)
+    window.dispatchEvent(new CustomEvent('nexusmd:team-notes-changed', { detail: next }))
   }
   const addNote = (dev, text) => {
     persistNotes([
@@ -333,6 +334,23 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
   }
   const deleteNote = (id) => persistNotes(teamNotes.filter(n => n.id !== id))
   const notesFor = (id) => teamNotes.filter(n => n.devId === id)
+
+  // Bridge for a desktop-side drawer (Tasks 3-5) to trigger these modals/actions
+  // without new props crossing the TeamView boundary.
+  React.useEffect(() => {
+    const onAddNoteEvent = (e) => setNoteTarget(e.detail)
+    const onScheduleEvent = (e) => setScheduleTarget(e.detail)
+    const onDeleteNoteEvent = (e) => deleteNote(e.detail.noteId)
+    window.addEventListener('nexusmd:team-add-note', onAddNoteEvent)
+    window.addEventListener('nexusmd:team-schedule-1on1', onScheduleEvent)
+    window.addEventListener('nexusmd:team-delete-note', onDeleteNoteEvent)
+    return () => {
+      window.removeEventListener('nexusmd:team-add-note', onAddNoteEvent)
+      window.removeEventListener('nexusmd:team-schedule-1on1', onScheduleEvent)
+      window.removeEventListener('nexusmd:team-delete-note', onDeleteNoteEvent)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamNotes])
 
   const removeAzureMember = (id) => {
     const next = [...removedIds, id]
