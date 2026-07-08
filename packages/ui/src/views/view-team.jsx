@@ -1,8 +1,9 @@
 import React from 'react'
 import { Avatar, MenuButton, TypeIcon } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
-import { enrichTeamMember } from '@nexusmd/core'
+import { enrichTeamMember, formatDuration, formatClock } from '@nexusmd/core'
 import { useNexusData } from '../data-context.jsx'
+import { useTimer } from '../use-timer.js'
 
 // view-team.jsx — Team / People view. Shared across web + desktop.
 // team/workItems/prs arrive via props; the live team singleton + pref sync come
@@ -18,6 +19,28 @@ function getInitials(name) {
   const parts = (name || '').trim().split(' ')
   const first = parts[0] || '', last = parts[parts.length - 1] || ''
   return ((first[0] || '') + (last[0] || first[1] || '')).toUpperCase() || '?'
+}
+
+/** Two-digit local clock "HH:MM" for a wall-clock ms timestamp. */
+function clockHM(ms) {
+  const d = new Date(ms)
+  const pad = n => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/**
+ * Build a team-note string from a stopwatch result:
+ *   "⏱ 1h 23m 0s (09:15–10:38) — label"
+ * The clock range is omitted when firstStartedAt is null; the label suffix
+ * is omitted when empty.
+ * @param {{ elapsedMs: number, firstStartedAt: number|null, stoppedAt: number, label?: string }} r
+ */
+export function composeTimerNote({ elapsedMs, firstStartedAt, stoppedAt, label }) {
+  let text = `⏱ ${formatDuration(elapsedMs)}`
+  if (typeof firstStartedAt === 'number') text += ` (${clockHM(firstStartedAt)}–${clockHM(stoppedAt)})`
+  const trimmed = (label || '').trim()
+  if (trimmed) text += ` — ${trimmed}`
+  return text
 }
 
 function AddMemberModal({ open, onClose, onAdd }) {
@@ -190,11 +213,11 @@ function AddMemberModal({ open, onClose, onAdd }) {
   )
 }
 
-function NoteModal({ open, dev, onClose, onSave }) {
+function NoteModal({ open, dev, prefill = '', onClose, onSave }) {
   const [text, setText] = React.useState('')
   const [saving, setSaving] = React.useState(false)
 
-  React.useEffect(() => { if (open) setText('') }, [open])
+  React.useEffect(() => { if (open) setText(prefill) }, [open, prefill])
 
   const handleSave = async () => {
     if (!text.trim()) return
@@ -313,6 +336,7 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
   const [showRemoved, setShowRemoved] = useStateT(false)
   const [showAddModal, setShowAddModal] = useStateT(false)
   const [noteTarget, setNoteTarget] = useStateT(null)
+  const [timerNotePrefill, setTimerNotePrefill] = useStateT('')
   const [scheduleTarget, setScheduleTarget] = useStateT(null)
   const [teamNotes, setTeamNotes] = useStateT(() => {
     try { return JSON.parse(storage.getItem('nexusmd.team.notes') || '[]') } catch { return [] }
@@ -333,6 +357,11 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
   }
   const deleteNote = (id) => persistNotes(teamNotes.filter(n => n.id !== id))
   const notesFor = (id) => teamNotes.filter(n => n.devId === id)
+
+  const handleStopTimer = (dev, elapsedMs, meta) => {
+    setTimerNotePrefill(composeTimerNote({ elapsedMs, ...meta, label: '' }))
+    setNoteTarget(dev)
+  }
 
   const removeAzureMember = (id) => {
     const next = [...removedIds, id]
@@ -392,7 +421,8 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
       <NoteModal
         open={noteTarget !== null}
         dev={noteTarget}
-        onClose={() => setNoteTarget(null)}
+        prefill={timerNotePrefill}
+        onClose={() => { setNoteTarget(null); setTimerNotePrefill('') }}
         onSave={addNote}
       />
       <ScheduleOneOnOneModal
@@ -438,6 +468,7 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
             notes={notesFor(t.id)}
             onDeleteNote={deleteNote}
             onAddNote={() => setNoteTarget(t)}
+            onStopTimer={handleStopTimer}
             onScheduleOneOnOne={onScheduleOneOnOne ? () => setScheduleTarget(t) : null}
           />
         ))}
@@ -465,7 +496,10 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
   )
 }
 
-function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote, onScheduleOneOnOne, notes = [], onDeleteNote }) {
+function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote, onStopTimer, onScheduleOneOnOne, notes = [], onDeleteNote }) {
+  const timer = useTimer({ persistKey: `nexusmd.timer.team.${dev.id}` })
+  const firstStartedAt = React.useRef(null)
+
   const statusColor = {
     online: 'var(--success)', meeting: 'var(--warning)', away: 'var(--text-subtle)', pto: 'var(--text-subtle)'
   }
@@ -587,6 +621,24 @@ function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote,
           onClick={e => { e.stopPropagation(); onAddNote?.() }}>
           <Icon name="plus" size={10}/> Note
         </button>
+        {timer.state.status === 'idle' || timer.state.status === 'done' ? (
+          <button className="btn ghost sm" style={{ height:22, padding:'0 6px', fontSize:11 }} title="Start stopwatch"
+            onClick={e => { e.stopPropagation(); firstStartedAt.current = Date.now(); timer.start() }}>
+            <Icon name="clock" size={10}/> Timer
+          </button>
+        ) : (
+          <button className="btn primary sm" style={{ height:22, padding:'0 6px', fontSize:11 }} title="Stop & save as note"
+            onClick={e => {
+              e.stopPropagation()
+              const elapsed = timer.elapsedMs
+              const meta = { firstStartedAt: firstStartedAt.current, stoppedAt: Date.now() }
+              timer.stop()
+              firstStartedAt.current = null
+              onStopTimer?.(dev, elapsed, meta)
+            }}>
+            <span style={{ fontVariantNumeric:'tabular-nums' }}>{formatClock(timer.elapsedMs)}</span> · Stop
+          </button>
+        )}
       </div>
     </div>
   )
