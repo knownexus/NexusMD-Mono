@@ -138,6 +138,29 @@ describe('loadAdoData — return shape', () => {
     )
     expect(result.TEAM[0].name).toBe('Alice')
   })
+
+  it('supplements the team with new work-item assignees on refresh', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const priorTeam = [{ id: 'alice', name: 'Alice', role: 'Dev', initials: 'A', tz: 'UTC' }]
+    const priorData = { TEAM: priorTeam, ME: { id: 'me', name: 'Me', role: 'EM', initials: 'ME', org: 'myorg' }, _iterMeta: null }
+    const http = makeHttp({
+      'wiql': { workItems: [{ id: 1 }] },
+      'wit/workitems?ids=': { value: [{ id: 1, fields: {
+        'System.WorkItemType': 'Bug', 'System.State': 'New', 'System.Title': 'x',
+        'System.AssignedTo': { displayName: 'Louis Baker' },
+      } }] },
+    })
+    const result = await loadAdoData(
+      { org: 'myorg', projects: ['proj-a'] },
+      { http, storage: makeStorage() },
+      { isRefresh: true, priorData },
+    )
+    // Louis wasn't in priorData.TEAM but is now, and his item resolves to him
+    // (not Unassigned) rather than collapsing to a null assignee.
+    const louis = result.TEAM.find(t => t.name === 'Louis Baker')
+    expect(louis).toBeTruthy()
+    expect(result.WORK_ITEMS.find(w => w.id === 1)?.assignee).toBe(louis.id)
+  })
 })
 
 describe('loadAdoData — resilience', () => {

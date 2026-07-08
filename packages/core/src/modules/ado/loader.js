@@ -195,40 +195,33 @@ export async function loadAdoData(
     await Promise.all([teamP, meP, wiP, sprintP, prsP, buildsP, testBuildsP, testRunsP, summaryP])
 
   // ── Team ──────────────────────────────────────────────────────────────────
-  let helmTeam
-  if (!isRefresh) {
-    helmTeam = (teamNames || []).filter(Boolean).map((name, i) => {
-      const parts = name.trim().split(' ')
-      const first = parts[0] || '', last = parts[parts.length - 1] || ''
-      const initials = ((first[0] || '') + (last[0] || first[1] || '')).toUpperCase() || '?'
-      return { id: slugify(name) || `dev${i}`, name, displayName: name, role: 'Developer', initials, tz: 'UTC', focus: 'Working…' }
-    })
-    // Supplement with assignees from work items not found in the teams API
-    ;(wiRaw || []).forEach(wi => {
-      const a = (wi.fields || wi)['System.AssignedTo']
-      const n = typeof a === 'string' ? a : (a?.displayName || null)
-      if (n && !helmTeam.find(t => t.name === n)) {
-        const parts = n.trim().split(' ')
-        const first = parts[0] || '', last = parts[parts.length - 1] || ''
-        const initials = ((first[0] || '') + (last[0] || first[1] || '')).toUpperCase() || '?'
-        helmTeam.push({ id: slugify(n) || `wi-dev${helmTeam.length}`, name: n, displayName: n, role: 'Developer', initials, tz: 'UTC', focus: 'Working…' })
-      }
-    })
-    // Supplement with PR authors and reviewers not yet in the team
-    ;(prsRaw || []).forEach(pr => {
-      const names = [pr.author, ...(pr.reviewers || []).map(r => r.name)].filter(Boolean)
-      for (const n of names) {
-        if (!helmTeam.find(t => t.name === n)) {
-          const parts = n.trim().split(' ')
-          const first = parts[0] || '', last = parts[parts.length - 1] || ''
-          const initials = ((first[0] || '') + (last[0] || first[1] || '')).toUpperCase() || '?'
-          helmTeam.push({ id: slugify(n) || `pr-dev${helmTeam.length}`, name: n, displayName: n, role: 'Developer', initials, tz: 'UTC', focus: 'Working…' })
-        }
-      }
-    })
-  } else {
-    helmTeam = (priorData?.TEAM || []).map(t => ({ ...t }))
+  const makeMember = (name, prefix, i) => {
+    const parts = name.trim().split(' ')
+    const first = parts[0] || '', last = parts[parts.length - 1] || ''
+    const initials = ((first[0] || '') + (last[0] || first[1] || '')).toUpperCase() || '?'
+    return { id: slugify(name) || `${prefix}${i}`, name, displayName: name, role: 'Developer', initials, tz: 'UTC', focus: 'Working…' }
   }
+
+  const helmTeam = !isRefresh
+    ? (teamNames || []).filter(Boolean).map((name, i) => makeMember(name, 'dev', i))
+    : (priorData?.TEAM || []).map(t => ({ ...t }))
+
+  // Supplement with assignees / PR participants present in the current data that
+  // aren't in the team yet. Runs on refresh too, so someone newly assigned after
+  // the last full load still resolves to a real member (mappers.js maps by name)
+  // instead of collapsing to Unassigned.
+  const addMember = (n, prefix) => {
+    if (!n || helmTeam.find(t => t.name === n)) return
+    helmTeam.push(makeMember(n, prefix, helmTeam.length))
+  }
+  ;(wiRaw || []).forEach(wi => {
+    const a = (wi.fields || wi)['System.AssignedTo']
+    addMember(typeof a === 'string' ? a : (a?.displayName || null), 'wi-dev')
+  })
+  ;(prsRaw || []).forEach(pr => {
+    addMember(pr.author, 'pr-dev')
+    ;(pr.reviewers || []).forEach(r => addMember(r.name, 'pr-dev'))
+  })
 
   const nameToId = {}
   helmTeam.forEach(t => { nameToId[t.name] = t.id })
