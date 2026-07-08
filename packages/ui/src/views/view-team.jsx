@@ -454,7 +454,6 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
             onRemove={t.isCustom ? null : removeAzureMember}
             onDelete={t.isCustom ? removeCustomMember : null}
             notes={notesFor(t.id)}
-            onDeleteNote={deleteNote}
             onAddNote={() => setNoteTarget(t)}
             onScheduleOneOnOne={onScheduleOneOnOne ? () => setScheduleTarget(t) : null}
           />
@@ -483,7 +482,7 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
   )
 }
 
-function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote, onScheduleOneOnOne, notes = [], onDeleteNote }) {
+function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote, onScheduleOneOnOne, notes = [] }) {
   const statusColor = {
     online: 'var(--success)', meeting: 'var(--warning)', away: 'var(--text-subtle)', pto: 'var(--text-subtle)'
   }
@@ -566,30 +565,11 @@ function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote,
       )}
 
       {notes.length > 0 && (
-        <div style={{ display:'flex', flexDirection:'column', gap:6, borderTop:'1px solid var(--border)', paddingTop:10, marginTop:2 }}
-          onClick={e => e.stopPropagation()}>
-          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, fontWeight:600, color:'var(--text-subtle)', textTransform:'uppercase', letterSpacing:'0.04em' }}>
-            <Icon name="message" size={11}/> Notes
-            <span className="spacer" style={{ flex:1 }}/>
-            <span>{notes.length}</span>
-          </div>
-          {notes.slice(0, 3).map(n => (
-            <div key={n.id} style={{ display:'flex', gap:6, alignItems:'flex-start', fontSize:12 }}>
-              <span style={{ flex:1, minWidth:0, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{n.note}</span>
-              <span className="muted" style={{ fontSize:10.5, flexShrink:0, marginTop:1 }}>
-                {new Date(n.date).toLocaleDateString('en-US', { month:'short', day:'numeric' })}
-              </span>
-              {onDeleteNote && (
-                <button className="btn icon ghost sm" title="Delete note" style={{ height:18, padding:0, flexShrink:0 }}
-                  onClick={() => onDeleteNote(n.id)}>
-                  <Icon name="trash" size={11}/>
-                </button>
-              )}
-            </div>
-          ))}
-          {notes.length > 3 && (
-            <span className="muted" style={{ fontSize:11 }}>+{notes.length - 3} more</span>
-          )}
+        <div className="dev-card-notes-count"
+          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-subtle)', borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 2, cursor: 'pointer' }}
+          onClick={e => { e.stopPropagation(); onOpenPerson(dev) }}>
+          <Icon name="message" size={11}/>
+          <span>{notes.length} note{notes.length !== 1 ? 's' : ''}</span>
         </div>
       )}
 
