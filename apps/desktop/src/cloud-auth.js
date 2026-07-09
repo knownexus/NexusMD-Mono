@@ -154,16 +154,22 @@ export function makeNativeMicrosoftBinding() {
   return makeNativeBinding({ provider: 'microsoft', suffix: 'microsoft.auth' })
 }
 
+// Best-effort decode of a JWT's payload claims. Returns null if the token
+// isn't a decodable JWT.
+export function decodeJwtClaims(token) {
+  try {
+    const payload = token.split('.')[1]
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
+    return JSON.parse(json)
+  } catch { return null }
+}
+
 // Best-effort read of a JWT's `exp` (seconds since epoch) so a pasted token
 // expires locally when Graph would actually reject it. Returns null if the
 // token isn't a decodable JWT (getToken then falls back to a short TTL).
 function jwtExpiryMs(token) {
-  try {
-    const payload = token.split('.')[1]
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
-    const { exp } = JSON.parse(json)
-    return Number.isFinite(exp) ? exp * 1000 : null
-  } catch { return null }
+  const claims = decodeJwtClaims(token)
+  return Number.isFinite(claims?.exp) ? claims.exp * 1000 : null
 }
 
 // Store a manually-pasted Microsoft Graph access token (e.g. from

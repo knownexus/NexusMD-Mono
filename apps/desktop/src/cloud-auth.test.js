@@ -7,11 +7,12 @@ vi.mock('@nexusmd/ui', () => ({
 vi.mock('./profile-keys.js', () => ({ getProfileKey: (k) => k }))
 vi.mock('./adapters/secureStorage.js', () => ({ secureStorageAdapter: { get: async () => null, set: async () => {} } }))
 
-import { makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken } from './cloud-auth.js'
+import { makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken, decodeJwtClaims } from './cloud-auth.js'
 
 // Build a minimal JWT (header.payload.signature) with the given exp claim.
 const b64url = (obj) => btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 const jwtWithExp = (expSeconds) => `eyJhbGciOiJub25lIn0.${b64url({ exp: expSeconds })}.sig`
+const jwtWithClaims = (claims) => `eyJhbGciOiJub25lIn0.${b64url(claims)}.sig`
 
 const KEY = 'nexusmd.google.auth'
 
@@ -98,5 +99,20 @@ describe('setManualMicrosoftToken', () => {
   it('ignores empty input', () => {
     setManualMicrosoftToken('   ')
     expect(localStorage.getItem(KEY)).toBeNull()
+  })
+})
+
+describe('decodeJwtClaims', () => {
+  it('decodes claims from a valid JWT', () => {
+    const token = jwtWithClaims({ scp: 'User.Read Calendars.ReadWrite', exp: 123 })
+    expect(decodeJwtClaims(token)).toEqual({ scp: 'User.Read Calendars.ReadWrite', exp: 123 })
+  })
+
+  it('returns null for a malformed token', () => {
+    expect(decodeJwtClaims('not-a-jwt')).toBeNull()
+  })
+
+  it('returns null for empty input', () => {
+    expect(decodeJwtClaims('')).toBeNull()
   })
 })
