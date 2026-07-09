@@ -18,7 +18,7 @@ module.exports = {
     authParams: { access_type: 'offline', prompt: 'consent' },
   },
   microsoft: {
-    clientId:     process.env.MS_DESKTOP_CLIENT_ID || '<PASTE_ENTRA_CLIENT_ID>',
+    clientId:     process.env.MS_DESKTOP_CLIENT_ID || 'c44b4083-3bb0-49c1-b47d-974e53cbdf3c',
     clientSecret: '',                                   // public client — PKCE, no secret
     authUrl:  'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
     tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
