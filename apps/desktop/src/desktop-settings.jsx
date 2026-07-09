@@ -14,7 +14,7 @@ import { NavOrderEditor } from './nav-order-editor.jsx'
 import { ZoomSlider } from './zoom-slider.jsx'
 import { desktopFileIO } from './file-io.js'
 import LogsCard from './logs-card.jsx'
-import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken } from './cloud-auth.js'
+import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken, decodeJwtClaims } from './cloud-auth.js'
 import { desktopSync } from './sync.js'
 import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
 
@@ -453,6 +453,62 @@ const GRAPH_TEST_PRESETS = [
   },
 ]
 
+// Maps each Graph scope the desktop app actually requests (see
+// apps/desktop/electron/oauth/config.cjs) to the GRAPH_TEST_PRESETS entry
+// that exercises it. offline_access is excluded — it isn't a resource scope
+// and has no corresponding Graph call to probe.
+const GRAPH_SCOPE_CHECKS = [
+  { scope: 'User.Read', label: 'Sign-in / profile', presetId: 'me' },
+  { scope: 'Calendars.ReadWrite', label: 'Calendar', presetId: 'calendar' },
+  { scope: 'Files.ReadWrite', label: 'OneDrive', presetId: 'onedrive' },
+]
+
+// Cross-references the token's granted scopes (from decodeJwtClaims) against
+// a live call to each resource, so a 403 can be attributed to "scope never
+// granted" vs. "scope granted but still forbidden" (admin consent, licensing,
+// conditional access, etc).
+function GraphPermissionsCard() {
+  const { getToken } = React.useMemo(() => makeNativeMicrosoftBinding(), [])
+  const { results, run } = useGraphPresetRunner(getToken)
+  const [grantedScopes, setGrantedScopes] = React.useState(null) // null = not checked yet
+  const [refreshing, setRefreshing] = React.useState(false)
+
+  const diagnose = React.useCallback(async () => {
+    setRefreshing(true)
+    const token = await getToken()
+    const claims = token ? decodeJwtClaims(token) : null
+    setGrantedScopes(claims?.scp ? claims.scp.split(' ') : [])
+    await Promise.all(GRAPH_TEST_PRESETS.map(p => run(p)))
+    setRefreshing(false)
+  }, [getToken])
+
+  React.useEffect(() => { diagnose() }, [diagnose])
+
+  return (
+    <VsCard title="Permissions" icon="lock">
+      <VsRow title="Diagnosis" desc="Checks the granted token scopes against a live call to each resource">
+        <button className="btn sm ghost" onClick={diagnose} disabled={refreshing}>
+          {refreshing ? 'Checking…' : 'Refresh'}
+        </button>
+      </VsRow>
+      {GRAPH_SCOPE_CHECKS.map(({ scope, label, presetId }) => {
+        const granted = grantedScopes?.includes(scope)
+        const live = results[presetId]
+        const liveStatus = live?.loading ? 'Checking…' : live?.error ? 'Failed' : live?.data ? 'OK' : '—'
+        return (
+          <VsFullRow key={scope} title={label} desc={scope}>
+            <div style={{ display: 'flex', gap: 16, fontSize: 12.5 }}>
+              <span>Granted in token: <b style={{ color: granted ? 'var(--success)' : 'var(--danger)' }}>{grantedScopes === null ? '—' : granted ? 'Yes' : 'No'}</b></span>
+              <span>Live check: <b style={{ color: liveStatus === 'OK' ? 'var(--success)' : liveStatus === 'Failed' ? 'var(--danger)' : 'var(--text-muted)' }}>{liveStatus}</b></span>
+            </div>
+            {live?.error && <div style={{ marginTop: 4, fontSize: 11.5, color: 'var(--danger)' }}>{live.error}</div>}
+          </VsFullRow>
+        )
+      })}
+    </VsCard>
+  )
+}
+
 // Lets you paste a Microsoft Graph access token directly (e.g. from
 // `az account get-access-token --resource https://graph.microsoft.com` or Graph
 // Explorer) when the interactive Entra sign-in is blocked. The token is stored
@@ -565,6 +621,7 @@ export function IntegrationsPanel() {
     <div style={{ padding: '24px 0' }}>
       <IntegrationsView services={oauthServices} />
       <GraphManualTokenCard />
+      <GraphPermissionsCard />
       <GraphApiTestCard />
       <VsCard title="GitHub" icon="pr">
         <DesktopGitHubPATRow />

@@ -8,7 +8,8 @@ vi.mock('./cloud-auth.js', () => ({
   desktopCloudProviders: [],
   makeDesktopOAuthService: () => ({ isConnected: false, connect: vi.fn(), disconnect: vi.fn() }),
   makeNativeGoogleBinding: () => ({ isConnected: () => false, connect: vi.fn(), disconnect: vi.fn() }),
-  makeNativeMicrosoftBinding: () => ({ isConnected: () => false, connect: vi.fn(), disconnect: vi.fn() }),
+  makeNativeMicrosoftBinding: () => ({ isConnected: () => false, connect: vi.fn(), disconnect: vi.fn(), getToken: vi.fn(() => Promise.resolve('fake.token.value')) }),
+  decodeJwtClaims: vi.fn(),
 }))
 vi.mock('./sync.js', () => ({ desktopSync: {} }))
 vi.mock('./file-io.js', () => ({ desktopFileIO: {} }))
@@ -152,5 +153,45 @@ describe('GraphApiTestCard (Integrations tab)', () => {
     const runButtons = screen.getAllByRole('button', { name: /Run/i })
     fireEvent.click(runButtons[0])
     expect(await screen.findByText(/Graph request failed \(403\)/)).toBeTruthy()
+  })
+})
+
+describe('GraphPermissionsCard', () => {
+  it('shows granted/not-granted per scope from the decoded token, and live check results', async () => {
+    const { graphJSON } = await import('@nexusmd/ui')
+    const { decodeJwtClaims } = await import('./cloud-auth.js')
+    decodeJwtClaims.mockReturnValue({ scp: 'User.Read Calendars.ReadWrite' })
+    graphJSON.mockImplementation((getToken, path) => {
+      if (path.includes('/me/drive')) return Promise.reject(new Error('Graph request failed (403): /me/drive'))
+      return Promise.resolve({ ok: true })
+    })
+
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Integrations' }))
+
+    // User.Read and Calendars.ReadWrite are granted; Files.ReadWrite is not.
+    expect(await screen.findAllByText('Yes')).toHaveLength(2)
+    expect(screen.getAllByText('No')).toHaveLength(1)
+
+    // Live check: me + calendar succeed, onedrive fails with the 403 message surfaced.
+    expect(await screen.findAllByText('OK')).toHaveLength(2)
+    expect(screen.getByText('Failed')).toBeTruthy()
+    expect(screen.getByText(/Graph request failed \(403\): \/me\/drive/)).toBeTruthy()
+  })
+
+  it('re-runs the diagnosis when Refresh is clicked', async () => {
+    const { graphJSON } = await import('@nexusmd/ui')
+    const { decodeJwtClaims } = await import('./cloud-auth.js')
+    decodeJwtClaims.mockReturnValue({ scp: '' })
+    graphJSON.mockResolvedValue({ ok: true })
+
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Integrations' }))
+    await screen.findAllByText('No') // initial auto-run completes
+
+    const callsBefore = graphJSON.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await screen.findAllByText('OK')
+    expect(graphJSON.mock.calls.length).toBeGreaterThan(callsBefore)
   })
 })
