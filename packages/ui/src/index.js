@@ -16,7 +16,7 @@ export {
 
 // Data-driven, app-coupled components (resolve team/storage via context).
 export {
-  Avatar, TypeIcon, NotificationBanner, MenuButton, usePersisted, ProjectChip, Drawer, Sheet,
+  Avatar, TypeIcon, NotificationBanner, MenuButton, usePersisted, useSeenTracking, ProjectChip, Drawer, Sheet,
 } from './app-components.jsx'
 
 // Timer / stopwatch — hook + standalone widget (built on @nexusmd/core timer).

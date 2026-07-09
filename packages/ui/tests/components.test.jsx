@@ -3,6 +3,7 @@ import { render, cleanup, fireEvent } from '@testing-library/react'
 import {
   StateDot, Prio, FilterChip, CardFrame, Sparkline, Stat,
   Ring, SortHeader, StatusSelect, ProjectChip, Drawer, NexusDataProvider,
+  useSeenTracking,
 } from '../src/index.js'
 
 afterEach(cleanup)
@@ -174,5 +175,121 @@ describe('pure presentational components', () => {
       </NexusDataProvider>,
     )
     expect(container.querySelector('.drawer.open').style.width).toBe('820px')
+  })
+})
+
+describe('useSeenTracking', () => {
+  // Harness: renders the hook and exposes its return value via a callback,
+  // since there's no renderHook helper wired up in this repo's test setup.
+  function Harness({ categories, dataLoaded, deps, onResult }) {
+    const result = useSeenTracking(categories, dataLoaded, deps)
+    onResult(result)
+    return null
+  }
+
+  function makeStorage(seed = {}) {
+    const store = { ...seed }
+    return {
+      getItem: (k) => (k in store ? store[k] : null),
+      setItem: (k, v) => { store[k] = String(v) },
+      removeItem: (k) => { delete store[k] },
+    }
+  }
+
+  const identityDeps = (storage) => ({ storage, getProfileKey: (k) => k })
+
+  const workCategory = (items) => ({
+    work:   { items, fingerprint: (x) => `${x.id}|${x.state}` },
+    pr:     { items: [], fingerprint: (x) => `${x.id}|${x.status}` },
+    builds: { items: [], fingerprint: (x) => `${x.id}|${x.status}` },
+    tests:  { items: [], fingerprint: (x) => `${x.id}|${x.result}` },
+  })
+
+  function renderTracking({ categories, dataLoaded, storage }) {
+    let captured
+    render(<Harness categories={categories} dataLoaded={dataLoaded} deps={identityDeps(storage)} onResult={(r) => { captured = r }} />)
+    return captured
+  }
+
+  it('marks a brand-new item as unseen', () => {
+    const storage = makeStorage()
+    const result = renderTracking({ categories: workCategory([{ id: '1', state: 'Active' }]), dataLoaded: true, storage })
+    expect(result.unseenIds.work.has('1')).toBe(true)
+    expect(result.unseenCounts.work).toBe(1)
+  })
+
+  it('does not flag an item whose fingerprint is unchanged from the persisted seen map', () => {
+    const storage = makeStorage({ helm_seen_work: JSON.stringify({ '1': '1|Active' }) })
+    const result = renderTracking({ categories: workCategory([{ id: '1', state: 'Active' }]), dataLoaded: true, storage })
+    expect(result.unseenIds.work.has('1')).toBe(false)
+    expect(result.unseenCounts.work).toBe(0)
+  })
+
+  it('flags an item as unseen again when its tracked field changes', () => {
+    const storage = makeStorage({ helm_seen_work: JSON.stringify({ '1': '1|Active' }) })
+    const result = renderTracking({ categories: workCategory([{ id: '1', state: 'Done' }]), dataLoaded: true, storage })
+    expect(result.unseenIds.work.has('1')).toBe(true)
+    expect(result.unseenCounts.work).toBe(1)
+  })
+
+  it('does nothing while dataLoaded is false, even with items present', () => {
+    const storage = makeStorage()
+    const result = renderTracking({ categories: workCategory([{ id: '1', state: 'Active' }]), dataLoaded: false, storage })
+    expect(result.unseenIds.work.size).toBe(0)
+    expect(result.unseenCounts.work).toBe(0)
+    expect(storage.getItem('helm_seen_work')).toBeNull()
+  })
+
+  it('does not resurrect false positives when data loads empty before loading for real (the race)', () => {
+    const storage = makeStorage({ helm_seen_work: JSON.stringify({ '1': '1|Active', '2': '2|Active' }) })
+    // First render: not loaded yet, items happen to be empty (placeholder state).
+    const { rerender } = render(
+      <Harness categories={workCategory([])} dataLoaded={false} deps={identityDeps(storage)} onResult={() => {}} />,
+    )
+    // Second render: real data has now loaded, matching the persisted seen map.
+    let result
+    rerender(
+      <Harness
+        categories={workCategory([{ id: '1', state: 'Active' }, { id: '2', state: 'Active' }])}
+        dataLoaded
+        deps={identityDeps(storage)}
+        onResult={(r) => { result = r }}
+      />,
+    )
+    expect(result.unseenCounts.work).toBe(0)
+  })
+
+  it('prunes ids no longer present in the current dataset from the persisted map', () => {
+    const storage = makeStorage({ helm_seen_work: JSON.stringify({ '1': '1|Active', '2': '2|Active' }) })
+    renderTracking({ categories: workCategory([{ id: '1', state: 'Active' }]), dataLoaded: true, storage })
+    expect(JSON.parse(storage.getItem('helm_seen_work'))).toEqual({ '1': '1|Active' })
+  })
+
+  it('markSeen persists current fingerprints and clears unseen state for that category', () => {
+    const storage = makeStorage()
+    let result
+    const categories = workCategory([{ id: '1', state: 'Active' }])
+    const deps = identityDeps(storage)
+    const { rerender } = render(<Harness categories={categories} dataLoaded deps={deps} onResult={(r) => { result = r }} />)
+    expect(result.unseenCounts.work).toBe(1)
+    result.markSeen('work')
+    rerender(<Harness categories={categories} dataLoaded deps={deps} onResult={(r) => { result = r }} />)
+    expect(result.unseenCounts.work).toBe(0)
+    expect(JSON.parse(storage.getItem('helm_seen_work'))).toEqual({ '1': '1|Active' })
+  })
+
+  it('scopes persisted keys through the supplied getProfileKey', () => {
+    const storage = makeStorage()
+    renderTracking({
+      categories: workCategory([{ id: '1', state: 'Active' }]),
+      dataLoaded: true,
+      storage,
+    })
+    // identityDeps uses (k) => k, so the raw key is used; assert the raw key was written.
+    expect(storage.getItem('helm_seen_work')).toBeNull() // no markSeen call yet, only diffed
+    let result
+    render(<Harness categories={workCategory([{ id: '1', state: 'Active' }])} dataLoaded deps={{ storage, getProfileKey: (k) => `profileA.${k}` }} onResult={(r) => { result = r }} />)
+    result.markSeen('work')
+    expect(storage.getItem('profileA.helm_seen_work')).toBeTruthy()
   })
 })

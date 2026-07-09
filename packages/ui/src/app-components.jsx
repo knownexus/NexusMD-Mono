@@ -50,6 +50,99 @@ export function usePersisted(key, initial, { sync = false, enabled = true } = {}
   return [value, setValue]
 }
 
+const SEEN_CATEGORY_KEYS = ['work', 'pr', 'builds', 'tests']
+const SEEN_STORAGE_KEYS = { work: 'helm_seen_work', pr: 'helm_seen_pr', builds: 'helm_seen_builds', tests: 'helm_seen_tests' }
+
+function readSeenMap(storage, key) {
+  try {
+    const raw = storage.getItem(key)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+function writeSeenMap(storage, key, map) {
+  try { storage.setItem(key, JSON.stringify(map)) } catch { /* quota / private mode */ }
+}
+
+function diffUnseen(items, fingerprint, seenMap) {
+  const unseen = new Set()
+  items.forEach((item) => {
+    const id = String(item.id)
+    if (seenMap[id] !== fingerprint(item)) unseen.add(id)
+  })
+  return unseen
+}
+
+function pruneSeenMap(items, seenMap) {
+  const ids = new Set(items.map((item) => String(item.id)))
+  const pruned = {}
+  let changed = false
+  Object.keys(seenMap).forEach((id) => {
+    if (ids.has(id)) pruned[id] = seenMap[id]
+    else changed = true
+  })
+  return changed ? pruned : seenMap
+}
+
+/**
+ * Per-item seen/unseen tracking for four fixed categories (work/pr/builds/tests).
+ * Each category's persisted state is a { [itemId]: lastSeenFingerprint } map, so
+ * every item owns its own seen state rather than a single tab-level timestamp.
+ * Diffing/persisting is skipped entirely while dataLoaded is false, so a
+ * placeholder/empty dataset can never be recorded as (or overwrite) a real baseline.
+ *
+ * Takes storage/getProfileKey as explicit params (not via useNexusData()) so it
+ * works identically whether called inside or outside a NexusDataProvider subtree.
+ */
+export function useSeenTracking(categories, dataLoaded, { storage, getProfileKey }) {
+  const [seenMaps, setSeenMapsState] = useState(() => {
+    const initial = {}
+    SEEN_CATEGORY_KEYS.forEach((key) => {
+      initial[key] = readSeenMap(storage, getProfileKey(SEEN_STORAGE_KEYS[key]))
+    })
+    return initial
+  })
+  const [unseenIds, setUnseenIds] = useState({ work: new Set(), pr: new Set(), builds: new Set(), tests: new Set() })
+
+  const setCategorySeenMap = (key, map) => {
+    setSeenMapsState((prev) => ({ ...prev, [key]: map }))
+    writeSeenMap(storage, getProfileKey(SEEN_STORAGE_KEYS[key]), map)
+  }
+
+  useEffect(() => {
+    if (!dataLoaded) return
+    const nextUnseen = {}
+    SEEN_CATEGORY_KEYS.forEach((key) => {
+      const cat = categories[key]
+      const items = cat ? cat.items : []
+      const fingerprint = cat ? cat.fingerprint : () => ''
+      nextUnseen[key] = diffUnseen(items, fingerprint, seenMaps[key])
+      const pruned = pruneSeenMap(items, seenMaps[key])
+      if (pruned !== seenMaps[key]) setCategorySeenMap(key, pruned)
+    })
+    setUnseenIds(nextUnseen)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataLoaded, categories.work.items, categories.pr.items, categories.builds.items, categories.tests.items])
+
+  const markSeen = (key) => {
+    const cat = categories[key]
+    if (!cat) return
+    const nextMap = {}
+    cat.items.forEach((item) => { nextMap[String(item.id)] = cat.fingerprint(item) })
+    setCategorySeenMap(key, nextMap)
+    setUnseenIds((prev) => ({ ...prev, [key]: new Set() }))
+  }
+
+  const unseenCounts = {
+    work: unseenIds.work.size,
+    pr: unseenIds.pr.size,
+    builds: unseenIds.builds.size,
+    tests: unseenIds.tests.size,
+  }
+
+  return { unseenIds, unseenCounts, markSeen }
+}
+
 /** Coloured initials avatar. Resolves team/me from context. */
 export function Avatar({ who, size = 'sm', title }) {
   const { data } = useNexusData()
