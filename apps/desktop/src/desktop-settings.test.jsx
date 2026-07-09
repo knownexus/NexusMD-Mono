@@ -1,6 +1,8 @@
 import React from 'react'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+
+const { getToken } = vi.hoisted(() => ({ getToken: vi.fn() }))
 
 vi.mock('./profile-keys.js', () => ({ getProfileKey: k => k }))
 vi.mock('./profile-context.jsx', () => ({ useProfile: () => ({}) }))
@@ -8,7 +10,7 @@ vi.mock('./cloud-auth.js', () => ({
   desktopCloudProviders: [],
   makeDesktopOAuthService: () => ({ isConnected: false, connect: vi.fn(), disconnect: vi.fn() }),
   makeNativeGoogleBinding: () => ({ isConnected: () => false, connect: vi.fn(), disconnect: vi.fn() }),
-  makeNativeMicrosoftBinding: () => ({ isConnected: () => false, connect: vi.fn(), disconnect: vi.fn(), getToken: vi.fn(() => Promise.resolve('fake.token.value')) }),
+  makeNativeMicrosoftBinding: () => ({ isConnected: () => false, connect: vi.fn(), disconnect: vi.fn(), getToken }),
   decodeJwtClaims: vi.fn(),
 }))
 vi.mock('./sync.js', () => ({ desktopSync: {} }))
@@ -51,6 +53,7 @@ vi.stubGlobal('electronAPI', {
   onZoomChanged: vi.fn(() => () => {}),
 })
 
+beforeEach(() => { getToken.mockReset(); getToken.mockResolvedValue('fake.token.value') })
 afterEach(() => { cleanup(); localStorage.clear() })
 
 const NAV = [
@@ -193,5 +196,24 @@ describe('GraphPermissionsCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     await screen.findAllByText('OK')
     expect(graphJSON.mock.calls.length).toBeGreaterThan(callsBefore)
+  })
+
+  it('treats a getToken rejection as no granted scopes, and unsticks the Refresh button', async () => {
+    const { graphJSON } = await import('@nexusmd/ui')
+    const { decodeJwtClaims } = await import('./cloud-auth.js')
+    decodeJwtClaims.mockReturnValue({ scp: 'User.Read Calendars.ReadWrite' })
+    graphJSON.mockResolvedValue({ ok: true })
+    getToken.mockRejectedValue(new Error('no signed-in account'))
+
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Integrations' }))
+
+    // Scopes should settle to "No" (not stuck at "—") even though getToken rejected.
+    expect(await screen.findAllByText('No')).toHaveLength(3)
+    expect(screen.queryByText('—')).toBeNull()
+
+    // Refresh button must not be stuck showing "Checking…".
+    expect(await screen.findByRole('button', { name: 'Refresh' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Checking…' })).toBeNull()
   })
 })

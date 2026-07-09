@@ -475,11 +475,18 @@ function GraphPermissionsCard() {
 
   const diagnose = React.useCallback(async () => {
     setRefreshing(true)
-    const token = await getToken()
-    const claims = token ? decodeJwtClaims(token) : null
-    setGrantedScopes(claims?.scp ? claims.scp.split(' ') : [])
-    await Promise.all(GRAPH_TEST_PRESETS.map(p => run(p)))
-    setRefreshing(false)
+    try {
+      try {
+        const token = await getToken()
+        const claims = token ? decodeJwtClaims(token) : null
+        setGrantedScopes(claims?.scp ? claims.scp.split(' ') : [])
+      } catch {
+        setGrantedScopes([])
+      }
+      await Promise.all(GRAPH_TEST_PRESETS.map(p => run(p)))
+    } finally {
+      setRefreshing(false)
+    }
   }, [getToken])
 
   React.useEffect(() => { diagnose() }, [diagnose])
