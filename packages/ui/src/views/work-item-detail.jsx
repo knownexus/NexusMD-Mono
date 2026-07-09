@@ -214,7 +214,7 @@ function Discussion({ id, project, initialComments }) {
               <div
                 className="wi-html-content"
                 style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55, overflowWrap: 'break-word' }}
-                dangerouslySetInnerHTML={{ __html: sanitizeHtml(c.text) }}
+                dangerouslySetInnerHTML={{ __html: renderContent(c.text) }}
               />
             </div>
           ))}
