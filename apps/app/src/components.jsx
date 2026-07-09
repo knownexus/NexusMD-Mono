@@ -4,7 +4,7 @@ import { HelmData } from './data.jsx';
 import { effectiveNeedsMe as coreEffectiveNeedsMe } from '@nexusmd/core';
 import {
   StateDot, Prio, FilterChip, CardFrame, Sparkline, Stat,
-  Avatar, usePersisted, NotificationBanner, MenuButton,
+  Avatar, usePersisted, useSeenTracking, NotificationBanner, MenuButton,
   Ring, SortHeader, StatusSelect, ProjectChip, Drawer,
 } from '@nexusmd/ui';
 // components.jsx — shared bits: Avatar, Pill, TypeIcon, FilterChip, EmptyState, Drawer
@@ -52,7 +52,7 @@ function TypeIcon({ type }) {
 // above) and are re-exposed on window below. MenuButton likewise. ProjectChip
 // resolves PROJECTS from the NexusDataProvider (data = HelmData).
 
-Object.assign(window, { Avatar, TypeIcon, StateDot, Prio, FilterChip, CardFrame, Sparkline, Stat, Drawer, Ring, MenuButton, SortHeader, StatusSelect, ProjectChip, usePersisted });
+Object.assign(window, { Avatar, TypeIcon, StateDot, Prio, FilterChip, CardFrame, Sparkline, Stat, Drawer, Ring, MenuButton, SortHeader, StatusSelect, ProjectChip, usePersisted, useSeenTracking });
 
 // NotificationBanner comes from @nexusmd/ui (imported above) and is re-exported
 // so existing app importers keep working unchanged.

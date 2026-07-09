@@ -1443,7 +1443,6 @@ function AppShell() {
   const [createPrefill, setCreatePrefill] = useState(null);
   const [dataVersion, setDataVersion]   = useState(0);   // bump to force re-render after data load
   const [dataLoaded, setDataLoaded]     = useState(HelmData.loaded);
-  const [changeBadges, setChangeBadges] = useState({ work: 0, pr: 0, builds: 0, tests: 0 });
   const [autoRefreshPaused, setAutoRefreshPaused] = useState(false);
   const [autoRefreshLeft, setAutoRefreshLeft] = useState(HelmData.REFRESH_SECS || 30);
 
@@ -1507,7 +1506,6 @@ function AppShell() {
   const [acknowledgedTests, setAcknowledgedTests] = usePersisted('helm.tests.acknowledged', [], { sync: true });
   const acknowledgedTestsSet = useMemo(() => new Set(acknowledgedTests), [acknowledgedTests]);
   const [needsMeCriteria, setNeedsMeCriteria] = usePersisted('helm.pr.needsMeCriteria', { votes: [0], includeDrafts: false }, { sync: true });
-  const [newItemIds, setNewItemIds] = useState({ builds: new Set(), tests: new Set(), pr: new Set(), work: new Set() });
 
   // Team state — kept in sync with TeamView mutations and data reloads.
   // applyTeamPrefs filters out hidden members and merges custom members from
@@ -1530,60 +1528,22 @@ function AppShell() {
     setTeam(filtered);
   }, [dataVersion]);
 
-  useEffect(() => {
-    const keyMap = { work: 'helm_seen_work', pr: 'helm_seen_pr', builds: 'helm_seen_builds', tests: 'helm_seen_tests' };
-    const dataMap = {
-      work:   HelmData.WORK_ITEMS || [],
-      pr:     HelmData.PRS || [],
-      builds: HelmData.BUILDS || [],
-      tests:  HelmData.TESTS || [],
-    };
-    // Stable fingerprints — no relative-time strings that change every refresh
-    const fp = {
-      work:   x => `${x.id}|${x.state}`,
-      pr:     x => `${x.id}|${x.status}`,
-      builds: x => `${x.id}|${x.status}`,
-      tests:  x => `${x.id}|${x.result}|${x.failedTests || 0}`,
-    };
-    const next      = { work: 0, pr: 0, builds: 0, tests: 0 };
-    const newBuilds = new Set();
-    const newTests  = new Set();
-    const newPrs  = new Set();
-    const newWork = new Set();
-    Object.keys(dataMap).forEach(k => {
-      const cur = {};
-      dataMap[k].forEach(i => { cur[i.id] = fp[k](i); });
-      const old = JSON.parse(localStorage.getItem(getProfileKey(keyMap[k])) || '{}');
-      let changed = 0;
-      dataMap[k].forEach(i => {
-        if (!old[i.id] || old[i.id] !== cur[i.id]) {
-          changed++;
-          if (k === 'builds') newBuilds.add(i.id);
-          if (k === 'tests')  newTests.add(i.id);
-          if (k === 'pr')   newPrs.add(i.id);
-          if (k === 'work') newWork.add(i.id);
-        }
-      });
-      next[k] = changed;
-      if (view === k) localStorage.setItem(getProfileKey(keyMap[k]), JSON.stringify(cur));
-    });
-    setChangeBadges(view === 'work' || view === 'pr' || view === 'builds' || view === 'tests' ? { ...next, [view]: 0 } : next);
-    // Preserve existing highlights when there are no new items; clear when tab is active
-    setNewItemIds(prev => ({
-      builds: view === 'builds' ? new Set() : (newBuilds.size ? newBuilds : prev.builds),
-      tests:  view === 'tests'  ? new Set() : (newTests.size  ? newTests  : prev.tests),
-      pr:     view === 'pr'     ? new Set() : (newPrs.size    ? newPrs    : prev.pr),
-      work:   view === 'work'   ? new Set() : (newWork.size   ? newWork   : prev.work),
-    }));
-  }, [dataVersion, view, workItems]);
+  const seenCategories = {
+    work:   { items: HelmData.WORK_ITEMS || [], fingerprint: (x) => `${x.id}|${x.state}` },
+    pr:     { items: HelmData.PRS || [],        fingerprint: (x) => `${x.id}|${x.status}` },
+    builds: { items: HelmData.BUILDS || [],     fingerprint: (x) => `${x.id}|${x.status}` },
+    tests:  { items: HelmData.TESTS || [],      fingerprint: (x) => `${x.id}|${x.result}|${x.failedTests || 0}` },
+  };
+  const { unseenIds: newItemIds, unseenCounts: changeBadges, markSeen } = useSeenTracking(
+    seenCategories, dataLoaded, { storage: window.localStorage, getProfileKey },
+  );
 
-  // Clear row highlights the moment the user opens the relevant tab
+  // Mark the active tab's items seen the moment the user opens it (and keep marking
+  // it seen as new data arrives while that tab stays active, matching prior behavior
+  // of zeroing the active tab's badge on every refresh).
   useEffect(() => {
-    if (view === 'builds') setNewItemIds(prev => ({ ...prev, builds: new Set() }));
-    if (view === 'tests')  setNewItemIds(prev => ({ ...prev, tests:  new Set() }));
-    if (view === 'pr')     setNewItemIds(prev => ({ ...prev, pr:     new Set() }));
-    if (view === 'work')   setNewItemIds(prev => ({ ...prev, work:   new Set() }));
-  }, [view]);
+    if (['work', 'pr', 'builds', 'tests'].includes(view)) markSeen(view);
+  }, [view, dataVersion]);
 
   useEffect(() => { setAutoRefreshLeft(HelmData.REFRESH_SECS || 30); }, [dataVersion]);
   useEffect(() => {
