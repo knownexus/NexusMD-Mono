@@ -8,7 +8,7 @@ import { HelmData, HelmApi } from './data.jsx';
 import { useProfile, ProfileProvider } from './profile-context.jsx';
 import { useTweaks } from './tweaks-panel.jsx';
 import { getProfileKey } from './profile-keys.js';
-import { NexusDataProvider, renderContent } from '@nexusmd/ui';
+import { NexusDataProvider, renderContent, SEEN_FINGERPRINTS } from '@nexusmd/ui';
 import { adoWorkItemSource } from './work-item-source.js';
 import { registerCloudDeepLink, hydrateCloudTokens } from './cloud-auth.js';
 import { startAppAutoSync } from './sync.js';
@@ -1529,10 +1529,10 @@ function AppShell() {
   }, [dataVersion]);
 
   const seenCategories = {
-    work:   { items: HelmData.WORK_ITEMS || [], fingerprint: (x) => `${x.id}|${x.state}` },
-    pr:     { items: HelmData.PRS || [],        fingerprint: (x) => `${x.id}|${x.status}` },
-    builds: { items: HelmData.BUILDS || [],     fingerprint: (x) => `${x.id}|${x.status}` },
-    tests:  { items: HelmData.TESTS || [],      fingerprint: (x) => `${x.id}|${x.result}|${x.failedTests || 0}` },
+    work:   { items: HelmData.WORK_ITEMS || [], fingerprint: SEEN_FINGERPRINTS.work },
+    pr:     { items: HelmData.PRS || [],        fingerprint: SEEN_FINGERPRINTS.pr },
+    builds: { items: HelmData.BUILDS || [],     fingerprint: SEEN_FINGERPRINTS.builds },
+    tests:  { items: HelmData.TESTS || [],      fingerprint: SEEN_FINGERPRINTS.tests },
   };
   const { unseenIds: newItemIds, unseenCounts: changeBadges, markSeen } = useSeenTracking(
     seenCategories, dataLoaded, { storage: window.localStorage, getProfileKey },

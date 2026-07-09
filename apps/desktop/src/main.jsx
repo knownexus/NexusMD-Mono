@@ -13,7 +13,7 @@ import {
   PlannerView, MarkdownViewer, plannerExportDocx,
   WorkItemDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
-  WorkItemFieldsEditor, PRTabs, useSeenTracking,
+  WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav } from './layout.js'
 import { resolveItemsUpdate } from './items-state.js'
@@ -681,10 +681,10 @@ function App() {
   )
 
   const seenCategories = {
-    work:   { items: snapshot.WORK_ITEMS || [], fingerprint: (x) => `${x.id}|${x.state}` },
-    pr:     { items: snapshot.PRS || [],        fingerprint: (x) => `${x.id}|${x.status}` },
-    builds: { items: snapshot.BUILDS || [],     fingerprint: (x) => `${x.id}|${x.status}` },
-    tests:  { items: snapshot.TESTS || [],      fingerprint: (x) => `${x.id}|${x.result}|${x.failedTests || 0}` },
+    work:   { items: snapshot.WORK_ITEMS || [], fingerprint: SEEN_FINGERPRINTS.work },
+    pr:     { items: snapshot.PRS || [],        fingerprint: SEEN_FINGERPRINTS.pr },
+    builds: { items: snapshot.BUILDS || [],     fingerprint: SEEN_FINGERPRINTS.builds },
+    tests:  { items: snapshot.TESTS || [],      fingerprint: SEEN_FINGERPRINTS.tests },
   }
   const { unseenIds: newItemIds, unseenCounts, markSeen } = useSeenTracking(
     seenCategories, dataLoaded, { storage: window.localStorage, getProfileKey },

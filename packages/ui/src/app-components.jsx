@@ -85,6 +85,20 @@ function pruneSeenMap(items, seenMap) {
 }
 
 /**
+ * Default fingerprint builders for the four fixed seen-tracking categories.
+ * This is a binding cross-app contract: web (apps/app) and desktop (apps/desktop)
+ * must use byte-identical fingerprints so persisted seen-state is portable between
+ * them and storage keys never orphan. Both apps import this instead of re-declaring
+ * the strings — changing a formula here changes it for both apps at once.
+ */
+export const SEEN_FINGERPRINTS = {
+  work:   (x) => `${x.id}|${x.state}`,
+  pr:     (x) => `${x.id}|${x.status}`,
+  builds: (x) => `${x.id}|${x.status}`,
+  tests:  (x) => `${x.id}|${x.result}|${x.failedTests || 0}`,
+}
+
+/**
  * Per-item seen/unseen tracking for four fixed categories (work/pr/builds/tests).
  * Each category's persisted state is a { [itemId]: lastSeenFingerprint } map, so
  * every item owns its own seen state rather than a single tab-level timestamp.
