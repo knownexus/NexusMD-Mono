@@ -26,6 +26,15 @@ console.error = log.error;
 // Make log global for use in other modules
 global.log = log;
 
+// Disable GPU hardware acceleration. On some Windows GPU/driver combinations
+// (and in remote/virtualised sessions) Chromium's GPU compositor fails to
+// paint the packaged window, leaving it blank white while the renderer has
+// actually loaded and executed fine. Launching with `--disable-gpu` renders
+// correctly, so we disable acceleration up-front for reliability across
+// machines. Must be called before app 'ready'. This dashboard is not
+// GPU-bound, so the rendering-smoothness cost is negligible.
+app.disableHardwareAcceleration();
+
 // Forward every renderer's console.* calls into the same log file. Renderer
 // windows run their own JS context (contextIsolation/sandbox), so the console
 // patch above only covers the main process — without this, errors like the
