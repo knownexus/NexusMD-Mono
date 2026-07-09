@@ -15,6 +15,16 @@ function render(tabs) {
     title.textContent = tab.title || tab.url;
     el.appendChild(title);
 
+    const refresh = document.createElement('button');
+    refresh.className = 'tab-refresh';
+    refresh.title = 'Refresh';
+    refresh.textContent = '⟳';
+    refresh.onclick = (e) => {
+      e.stopPropagation();
+      window.linkWindowAPI.refreshTab(tab.id);
+    };
+    el.appendChild(refresh);
+
     const close = document.createElement('button');
     close.className = 'tab-close';
     close.textContent = '×';

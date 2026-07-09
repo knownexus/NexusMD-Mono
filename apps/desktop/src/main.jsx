@@ -132,6 +132,13 @@ async function refreshAdoData() {
   } catch {}
 }
 
+// F5 (main process menu accelerator) sends 'refresh-data' instead of reloading
+// the window, so it triggers the same data refresh as the in-app Refresh
+// button rather than resetting navigation state back to the dashboard.
+if (window.electronAPI?.onRefreshData) {
+  window.electronAPI.onRefreshData(() => { refreshAdoData() })
+}
+
 // Direct-to-ADO work item source for the desktop (no ASP.NET proxy available).
 // Mirrors the shape expected by the shared WorkItemDetail component.
 const desktopWorkItemSource = {

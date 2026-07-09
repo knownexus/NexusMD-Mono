@@ -137,6 +137,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Notification (renderer → main) ─────────────────────────────────────────
   showNotification: (title, body) => ipcRenderer.send('show-notification', { title, body }),
 
+  // ── Refresh (F5 menu accelerator → renderer) ────────────────────────────────
+  // F5 sends this instead of reloading the window, so it triggers the same
+  // data refresh as the in-app Refresh button rather than resetting navigation
+  // state back to the dashboard.
+  onRefreshData: (callback) => {
+    ipcRenderer.removeAllListeners('refresh-data');
+    ipcRenderer.on('refresh-data', () => callback());
+  },
+
   // ── Auto-update (IUpdateAdapter) ───────────────────────────────────────────
   update: {
     check:   () => ipcRenderer.invoke('updater:check'),

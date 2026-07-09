@@ -4,12 +4,14 @@ import Module from 'module'
 import path from 'path'
 
 let exposed
+let ipcRenderer
 const origRequire = Module.prototype.require
 
 beforeAll(() => {
+  ipcRenderer = { invoke: vi.fn(), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn() }
   const fakeElectron = {
     contextBridge: { exposeInMainWorld: (_name, obj) => { exposed = obj } },
-    ipcRenderer: { invoke: vi.fn(), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn() },
+    ipcRenderer,
   }
   Module.prototype.require = function (id) {
     if (id === 'electron') return fakeElectron
@@ -38,5 +40,14 @@ describe('preload bridge', () => {
     // (invoke is a vi.fn on the fake electron; grab it from the closure via a fresh call.)
     expect(() => exposed.oauth.start()).not.toThrow()
     expect(() => exposed.oauth.refresh('RT')).not.toThrow()
+  })
+
+  it('onRefreshData listens on the refresh-data channel and forwards to the callback', () => {
+    const callback = vi.fn()
+    exposed.onRefreshData(callback)
+    const [channel, handler] = ipcRenderer.on.mock.calls.at(-1)
+    expect(channel).toBe('refresh-data')
+    handler()
+    expect(callback).toHaveBeenCalled()
   })
 })

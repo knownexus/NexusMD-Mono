@@ -167,9 +167,15 @@ function switchTab(id) {
   activateTab(id);
 }
 
+function refreshTab(id) {
+  const tab = tabs.find(t => t.id === id);
+  if (tab && !tab.view.webContents.isDestroyed()) tab.view.webContents.reload();
+}
+
 function register(ipc = ipcMain) {
   ipc.on('link-window:switchTab', (_event, id) => switchTab(id));
   ipc.on('link-window:closeTab', (_event, id) => closeTab(id));
+  ipc.on('link-window:refreshTab', (_event, id) => refreshTab(id));
 }
 
-module.exports = { openLink, closeTab, switchTab, register, isAllowedUrl };
+module.exports = { openLink, closeTab, switchTab, refreshTab, register, isAllowedUrl };

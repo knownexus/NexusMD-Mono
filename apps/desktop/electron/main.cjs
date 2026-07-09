@@ -106,7 +106,7 @@ function buildAppMenu(win) {
     {
       label: 'File',
       submenu: [
-        { label: 'Refresh data', accelerator: 'F5', click: () => win.webContents.reload() },
+        { label: 'Refresh data', accelerator: 'F5', click: () => win.webContents.send('refresh-data') },
         { type: 'separator' },
         { label: 'Hide to tray', click: () => win.hide() },
         { label: 'Quit', accelerator: isMac ? 'Cmd+Q' : 'Alt+F4', click: () => app.quit() },
