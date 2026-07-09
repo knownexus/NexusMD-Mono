@@ -39,6 +39,7 @@ function createLinkWindow() {
     width: 1200,
     height: 800,
     title: 'Links',
+    show: false,
   });
 
   tabStripView = new WebContentsView({
