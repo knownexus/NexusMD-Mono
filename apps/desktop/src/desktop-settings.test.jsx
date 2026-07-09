@@ -39,6 +39,7 @@ vi.mock('@nexusmd/ui', () => ({
   loadConfidentialConfig: vi.fn(() => ({ sections: [], hash: null })),
   CardFrame: ({ title, children }) => <div><span>{title}</span>{children}</div>,
   Icon: () => null,
+  graphJSON: vi.fn(),
 }))
 
 vi.stubGlobal('electronAPI', {
@@ -129,5 +130,27 @@ describe('DesktopSettings tab navigation', () => {
     render(<DesktopSettings {...defaultProps} />)
     fireEvent.click(screen.getByRole('button', { name: 'Desktop' }))
     expect(screen.getByTestId('vs-card-desktop-app')).toBeTruthy()
+  })
+})
+
+describe('GraphApiTestCard (Integrations tab)', () => {
+  it('runs a preset and shows the JSON result', async () => {
+    const { graphJSON } = await import('@nexusmd/ui')
+    graphJSON.mockResolvedValueOnce({ displayName: 'Test User' })
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Integrations' }))
+    const runButtons = screen.getAllByRole('button', { name: /Run/i })
+    fireEvent.click(runButtons[0])
+    expect(await screen.findByText(/Test User/)).toBeTruthy()
+  })
+
+  it('shows an error message when the preset call fails', async () => {
+    const { graphJSON } = await import('@nexusmd/ui')
+    graphJSON.mockRejectedValueOnce(new Error('Graph request failed (403): /me'))
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Integrations' }))
+    const runButtons = screen.getAllByRole('button', { name: /Run/i })
+    fireEvent.click(runButtons[0])
+    expect(await screen.findByText(/Graph request failed \(403\)/)).toBeTruthy()
   })
 })

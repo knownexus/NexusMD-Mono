@@ -488,10 +488,8 @@ function GraphManualTokenCard() {
   )
 }
 
-function GraphApiTestCard() {
-  const { getToken } = React.useMemo(() => makeNativeMicrosoftBinding(), [])
+function useGraphPresetRunner(getToken) {
   const [results, setResults] = React.useState({})
-
   const run = async (preset) => {
     setResults(r => ({ ...r, [preset.id]: { loading: true } }))
     try {
@@ -502,6 +500,12 @@ function GraphApiTestCard() {
       setResults(r => ({ ...r, [preset.id]: { error: e.message || 'Request failed' } }))
     }
   }
+  return { results, run }
+}
+
+function GraphApiTestCard() {
+  const { getToken } = React.useMemo(() => makeNativeMicrosoftBinding(), [])
+  const { results, run } = useGraphPresetRunner(getToken)
 
   return (
     <VsCard title="Graph API Test" icon="build">
