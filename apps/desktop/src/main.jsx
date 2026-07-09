@@ -13,7 +13,7 @@ import {
   PlannerView, MarkdownViewer, plannerExportDocx,
   WorkItemDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
-  WorkItemFieldsEditor, PRTabs,
+  WorkItemFieldsEditor, PRTabs, useSeenTracking,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav } from './layout.js'
 import { resolveItemsUpdate } from './items-state.js'
@@ -205,11 +205,13 @@ const desktopWorkItemSource = {
 // Cached ADO snapshot, shaped for the shared views, re-read on every data:updated.
 function useNexusSnapshot() {
   const [snapshot, setSnapshot] = React.useState(EMPTY_NEXUS_DATA)
+  const [loaded, setLoaded] = React.useState(false)
   const refresh = React.useCallback(() => {
     try {
       const cached = loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter })
       setSnapshot(cached ? { ...EMPTY_NEXUS_DATA, ...cached } : EMPTY_NEXUS_DATA)
     } catch { setSnapshot(EMPTY_NEXUS_DATA) }
+    setLoaded(true)
   }, [])
 
   React.useEffect(() => {
@@ -219,7 +221,7 @@ function useNexusSnapshot() {
     return () => core.off('data:updated', onData)
   }, [refresh])
 
-  return snapshot
+  return { snapshot, loaded }
 }
 
 // Simple localStorage-backed state for the per-view "acknowledged" sets and
@@ -653,12 +655,6 @@ function App() {
   const [plannerData, setPlannerData]     = React.useState({})
   const [plannerThemes, setPlannerThemes] = React.useState({})
 
-  const prevSnapshotIdsRef = React.useRef(null)
-  const [newItemIds, setNewItemIds] = React.useState({
-    work: new Set(), pr: new Set(), builds: new Set(), tests: new Set(),
-  })
-  const [changeBadges, setChangeBadges] = React.useState({ work: 0, prs: 0, builds: 0, tests: 0 })
-
   const [refreshInterval, setRefreshInterval] = React.useState(() => {
     try { return parseInt(localStorage.getItem('nexusmd.refreshInterval') || '300', 10) } catch { return 300 }
   })
@@ -667,7 +663,7 @@ function App() {
   const refreshLeftRef = React.useRef(refreshInterval)
 
   const active = ALL_NAV.find(n => n.id === view) || ALL_NAV[0]
-  const snapshot = useNexusSnapshot()
+  const { snapshot, loaded: dataLoaded } = useNexusSnapshot()
 
   // localItems starts as null (sentinel: mirror snapshot.WORK_ITEMS). Shared
   // views update via setItems(arr => arr.map(...)); resolve the sentinel to the
@@ -677,43 +673,23 @@ function App() {
     [snapshot.WORK_ITEMS],
   )
 
-  React.useEffect(() => {
-    const toIds = arr => new Set((arr || []).map(i => i.id))
-    const cur = {
-      work:   toIds(snapshot.WORK_ITEMS),
-      pr:     toIds(snapshot.PRS),
-      builds: toIds(snapshot.BUILDS),
-      tests:  toIds(snapshot.TESTS),
-    }
-    if (prevSnapshotIdsRef.current === null) {
-      prevSnapshotIdsRef.current = cur
-      return
-    }
-    const prev = prevSnapshotIdsRef.current
-    setNewItemIds(n => ({
-      work:   new Set([...n.work,   ...[...cur.work].filter(id => !prev.work.has(id))]),
-      pr:     new Set([...n.pr,     ...[...cur.pr].filter(id => !prev.pr.has(id))]),
-      builds: new Set([...n.builds, ...[...cur.builds].filter(id => !prev.builds.has(id))]),
-      tests:  new Set([...n.tests,  ...[...cur.tests].filter(id => !prev.tests.has(id))]),
-    }))
-    const changed = (curSet, prevSet) => [...curSet].filter(id => !prevSet.has(id)).length
-    setChangeBadges(b => ({
-      work:   b.work   + changed(cur.work,   prev.work),
-      prs:    b.prs    + changed(cur.pr,     prev.pr),
-      builds: b.builds + changed(cur.builds, prev.builds),
-      tests:  b.tests  + changed(cur.tests,  prev.tests),
-    }))
-    prevSnapshotIdsRef.current = cur
-  }, [snapshot])
+  const seenCategories = {
+    work:   { items: snapshot.WORK_ITEMS || [], fingerprint: (x) => `${x.id}|${x.state}` },
+    pr:     { items: snapshot.PRS || [],        fingerprint: (x) => `${x.id}|${x.status}` },
+    builds: { items: snapshot.BUILDS || [],     fingerprint: (x) => `${x.id}|${x.status}` },
+    tests:  { items: snapshot.TESTS || [],      fingerprint: (x) => `${x.id}|${x.result}|${x.failedTests || 0}` },
+  }
+  const { unseenIds: newItemIds, unseenCounts, markSeen } = useSeenTracking(
+    seenCategories, dataLoaded, { storage: window.localStorage, getProfileKey },
+  )
+  // Sidebar badges are keyed by nav id; 'prs' (nav-config.js) maps to the 'pr' category.
+  const changeBadges = { work: unseenCounts.work, prs: unseenCounts.pr, builds: unseenCounts.builds, tests: unseenCounts.tests }
 
   React.useEffect(() => {
-    const keyMap = { work: 'work', prs: 'prs', builds: 'builds', tests: 'tests' }
-    const wiKey = keyMap[view]
-    if (wiKey) {
-      setNewItemIds(n => ({ ...n, [wiKey === 'prs' ? 'pr' : wiKey]: new Set() }))
-      setChangeBadges(b => ({ ...b, [wiKey]: 0 }))
-    }
-  }, [view])
+    const viewToCategory = { work: 'work', prs: 'pr', builds: 'builds', tests: 'tests' }
+    const key = viewToCategory[view]
+    if (key) markSeen(key)
+  }, [view, snapshot])
 
   React.useEffect(() => {
     const handler = () => setGithubExpired(true)
