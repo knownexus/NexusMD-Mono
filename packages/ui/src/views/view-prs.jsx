@@ -138,7 +138,7 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
   const [grouping, setGrouping] = usePersisted('nexusmd.pr.grouping', 'author')
   const [collapsed, setCollapsed] = useStatePR({})
   const [showCriteriaPopover, setShowCriteriaPopover] = useStatePR(false)
-  const [teamActivityCriteria, setTeamActivityCriteria] = usePersisted('nexusmd.pr.teamActivityCriteria', {})
+  const [teamActivityCriteria, setTeamActivityCriteria] = usePersisted('nexusmd.pr.teamActivityCriteria', { onlyActive: true })
   const [showTeamActivityPopover, setShowTeamActivityPopover] = useStatePR(false)
   const [focusedWI, setFocusedWI] = useStatePR(null)
   React.useEffect(() => {
