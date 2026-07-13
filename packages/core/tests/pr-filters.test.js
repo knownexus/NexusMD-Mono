@@ -61,10 +61,10 @@ describe('effectiveTeamActivity', () => {
     expect(effectiveTeamActivity(pr, { includeDrafts: true }, me)).toBe(true)
   })
 
-  it('onlyActive filters out non-active PRs', () => {
+  it('onlyActive filters out non-active PRs and passes active ones', () => {
     const pr = { author: 'jamie-lee', status: 'completed' }
     expect(effectiveTeamActivity(pr, { onlyActive: true }, me)).toBe(false)
-    expect(effectiveTeamActivity(pr, { onlyActive: true }, me)).toBe(false)
+    expect(effectiveTeamActivity({ ...pr, status: 'active' }, { onlyActive: true }, me)).toBe(true)
   })
 
   it('excludeConflicts filters out conflicted PRs', () => {
