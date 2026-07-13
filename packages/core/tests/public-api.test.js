@@ -20,7 +20,7 @@ const EXPECTED = [
   'buildDigest', 'buildEmptyPlannerData', 'buildProfile', 'buildTriageCsv', 'core',
   'createNoOpAdapters', 'createProfile', 'createTimer', 'decryptConfidentialFromServer',
   'deleteProfile', 'deriveActivity',
-  'derivePrSparkline', 'deriveProjects', 'deriveSprint', 'effectiveNeedsMe',
+  'derivePrSparkline', 'deriveProjects', 'deriveSprint', 'effectiveNeedsMe', 'effectiveTeamActivity',
   'elapsedMs', 'encryptConfidentialForServer',
   'enrichTeam', 'enrichTeamMember', 'exportProfile', 'filterTriageItems',
   'fmtDateShort', 'formatClock', 'formatDateTime', 'formatDuration', 'generateProfileId', 'getActiveLanes', 'getEventsForDay', 'getIsoWeek',

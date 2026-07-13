@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { effectiveNeedsMe } from '../src/index.js'
+import { effectiveNeedsMe, effectiveTeamActivity } from '../src/index.js'
 
 const me = { name: 'Alex Doe' }
 
@@ -41,5 +41,46 @@ describe('effectiveNeedsMe', () => {
   it('falls back to pr.needsMe when no current user is known', () => {
     expect(effectiveNeedsMe({ needsMe: true }, {}, null)).toBe(true)
     expect(effectiveNeedsMe({ needsMe: false }, {}, null)).toBe(false)
+  })
+})
+
+describe('effectiveTeamActivity', () => {
+  it('excludes PRs authored by me', () => {
+    const pr = { author: 'alex-doe' }
+    expect(effectiveTeamActivity(pr, {}, me)).toBe(false)
+  })
+
+  it('includes PRs authored by someone else, with no reviewer requirement', () => {
+    const pr = { author: 'jamie-lee', reviewerDetails: [] }
+    expect(effectiveTeamActivity(pr, {}, me)).toBe(true)
+  })
+
+  it('excludes drafts unless includeDrafts is set', () => {
+    const pr = { author: 'jamie-lee', draft: true }
+    expect(effectiveTeamActivity(pr, {}, me)).toBe(false)
+    expect(effectiveTeamActivity(pr, { includeDrafts: true }, me)).toBe(true)
+  })
+
+  it('onlyActive filters out non-active PRs', () => {
+    const pr = { author: 'jamie-lee', status: 'completed' }
+    expect(effectiveTeamActivity(pr, { onlyActive: true }, me)).toBe(false)
+    expect(effectiveTeamActivity(pr, { onlyActive: true }, me)).toBe(false)
+  })
+
+  it('excludeConflicts filters out conflicted PRs', () => {
+    const pr = { author: 'jamie-lee', hasConflicts: true }
+    expect(effectiveTeamActivity(pr, { excludeConflicts: true }, me)).toBe(false)
+  })
+
+  it('minAgeDays requires the PR to be old enough', () => {
+    const young = { author: 'jamie-lee', age: '3h' }
+    const old   = { author: 'jamie-lee', age: '5d' }
+    expect(effectiveTeamActivity(young, { minAgeDays: 2 }, me)).toBe(false)
+    expect(effectiveTeamActivity(old,   { minAgeDays: 2 }, me)).toBe(true)
+  })
+
+  it('with no known user, nothing is "mine" so everything not otherwise filtered passes', () => {
+    const pr = { author: 'jamie-lee' }
+    expect(effectiveTeamActivity(pr, {}, null)).toBe(true)
   })
 })
