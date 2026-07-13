@@ -5,7 +5,7 @@ import React from 'react'
 import { FilterChip } from '../components.jsx'
 import { Avatar, NotificationBanner, usePersisted } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
-import { useNexusData, useEffectiveNeedsMe } from '../data-context.jsx'
+import { useNexusData, useEffectiveNeedsMe, useEffectiveTeamActivity } from '../data-context.jsx'
 import { resolveFields, PR_CARD_FIELDS } from '@nexusmd/core'
 
 const { useState: useStatePR, useMemo: useMemoPR } = React
@@ -80,9 +80,57 @@ function NeedsMeCriteriaPopover({ criteria, onChange, onClose }) {
   )
 }
 
+function TeamActivityCriteriaPopover({ criteria, onChange, onClose }) {
+  const ref = React.useRef(null)
+  React.useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose() }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [onClose])
+
+  return (
+    <div ref={ref} style={{
+      position: 'absolute', top: '100%', left: 0, zIndex: 100, marginTop: 4,
+      background: 'var(--surface)', border: '1px solid var(--border)',
+      borderRadius: 8, boxShadow: 'var(--shadow-pop)', padding: '10px 12px', width: 252,
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        Team activity filters
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, cursor: 'pointer', padding: '3px 0' }}>
+        <input type="checkbox" checked={!!criteria.includeDrafts}
+          onChange={() => onChange({ ...criteria, includeDrafts: !criteria.includeDrafts })} style={{ margin: 0 }}/>
+        Include drafts
+      </label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, cursor: 'pointer', padding: '3px 0' }}>
+        <input type="checkbox" checked={!!criteria.excludeConflicts}
+          onChange={() => onChange({ ...criteria, excludeConflicts: !criteria.excludeConflicts })} style={{ margin: 0 }}/>
+        Exclude PRs with merge conflicts
+      </label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, cursor: 'pointer', padding: '3px 0' }}>
+        <input type="checkbox" checked={!!criteria.onlyActive}
+          onChange={() => onChange({ ...criteria, onlyActive: !criteria.onlyActive })} style={{ margin: 0 }}/>
+        Only active PRs
+      </label>
+      <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5, padding: '5px 0 2px' }}>
+        <span>Minimum age</span>
+        <select value={criteria.minAgeDays || 0}
+          onChange={(e) => onChange({ ...criteria, minAgeDays: parseInt(e.target.value, 10) || 0 })}
+          style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', cursor: 'pointer' }}>
+          <option value={0}>Any</option>
+          <option value={1}>&ge; 1 day</option>
+          <option value={3}>&ge; 3 days</option>
+          <option value={7}>&ge; 7 days</option>
+        </select>
+      </label>
+    </div>
+  )
+}
+
 export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCriteria, newItemIds = new Set() }) {
   const { data: NexusMDData, api: NexusMDApi } = useNexusData()
   const effectiveNeedsMe = useEffectiveNeedsMe()
+  const effectiveTeamActivity = useEffectiveTeamActivity()
   const [initialNewCount] = useStatePR(() => newItemIds.size)
   const [bannerDismissed, setBannerDismissed] = useStatePR(false)
   const [filter,   setFilter]   = usePersisted('nexusmd.pr.filter',   'needsMe')
@@ -90,6 +138,8 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
   const [grouping, setGrouping] = usePersisted('nexusmd.pr.grouping', 'author')
   const [collapsed, setCollapsed] = useStatePR({})
   const [showCriteriaPopover, setShowCriteriaPopover] = useStatePR(false)
+  const [teamActivityCriteria, setTeamActivityCriteria] = usePersisted('nexusmd.pr.teamActivityCriteria', {})
+  const [showTeamActivityPopover, setShowTeamActivityPopover] = useStatePR(false)
   const [focusedWI, setFocusedWI] = useStatePR(null)
   React.useEffect(() => {
     const nav = window.NexusMDNav
@@ -115,6 +165,7 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
   const counts = {
     all:       prs.length,
     needsMe:   prs.filter(p => effectiveNeedsMe(p, criteria)).length,
+    teamActivity: prs.filter(p => effectiveTeamActivity(p, teamActivityCriteria)).length,
     active:    prs.filter(p => p.status === 'active').length,
     drafts:    prs.filter(p => p.status === 'draft').length,
     merged:    prs.filter(p => p.status === 'merged').length,
@@ -129,6 +180,7 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
     }
     let out = prs
     if (filter === 'needsMe') out = out.filter(p => effectiveNeedsMe(p, criteria))
+    else if (filter === 'teamActivity') out = out.filter(p => effectiveTeamActivity(p, teamActivityCriteria))
     else if (filter === 'active') out = out.filter(p => p.status === 'active')
     else if (filter === 'drafts') out = out.filter(p => p.status === 'draft')
     else if (filter === 'merged') out = out.filter(p => p.status === 'merged')
@@ -139,7 +191,7 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
       out = out.filter(p => p.title.toLowerCase().includes(q) || p.branch.toLowerCase().includes(q) || String(p.id).includes(q))
     }
     return out
-  }, [prs, filter, search, criteria, focusedWI])
+  }, [prs, filter, search, criteria, teamActivityCriteria, focusedWI])
 
   // Group
   const grouped = useMemoPR(() => {
@@ -202,6 +254,18 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
           </button>
           {showCriteriaPopover && setNeedsMeCriteria && (
             <NeedsMeCriteriaPopover criteria={criteria} onChange={setNeedsMeCriteria} onClose={() => setShowCriteriaPopover(false)}/>
+          )}
+        </div>
+        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+          <FilterChip active={filter === 'teamActivity'} count={counts.teamActivity} onClick={() => setFilter('teamActivity')}
+            icon={<Icon name="team" size={11}/>}>Team activity</FilterChip>
+          <button className="btn icon ghost sm" title="Customise criteria"
+            style={{ height: 24, width: 24, padding: 0, flexShrink: 0 }}
+            onClick={e => { e.stopPropagation(); setShowTeamActivityPopover(v => !v) }}>
+            <Icon name="settings" size={11}/>
+          </button>
+          {showTeamActivityPopover && (
+            <TeamActivityCriteriaPopover criteria={teamActivityCriteria} onChange={setTeamActivityCriteria} onClose={() => setShowTeamActivityPopover(false)}/>
           )}
         </div>
         <FilterChip active={filter === 'active'} count={counts.active} onClick={() => setFilter('active')}>Active</FilterChip>
