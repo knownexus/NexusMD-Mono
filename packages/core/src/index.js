@@ -5,7 +5,7 @@ export {
   INotificationAdapter, IPickerAdapter, IAuthAdapter, IClipboardAdapter,
   ISecureStorageAdapter, INetworkAdapter, ILifecycleAdapter, IShareAdapter,
   ITrayAdapter, INavigationAdapter, IThemeAdapter, IUpdateAdapter,
-  IBadgeAdapter, IDeepLinkAdapter,
+  IBadgeAdapter, IDeepLinkAdapter, IScriptRunnerAdapter, IRawHttpAdapter,
 } from './adapters/index.js'
 export { createNoOpAdapters } from './adapters/defaults.js'
 export {
@@ -44,6 +44,19 @@ export {
 } from './modules/calendar/index.js'
 export { buildDigest } from './modules/digest/index.js'
 export { appendAuditEntry, readAuditLog } from './modules/audit/index.js'
+export {
+  getApiClientAdapters,
+  createCollection, readCollectionMeta, writeCollectionMeta,
+  listRequestIds, readRequest, writeRequest, deleteRequest,
+  listEnvironmentNames, readEnvironment, writeEnvironment, deleteEnvironment,
+  loadCollection, addTreeNode, removeTreeNode, findTreeNode, flattenRequestRefs,
+  resolveVars, resolveObjectVars, resolveEnvironment,
+  secretStorageKey, setSecretVar, removeSecretVar,
+  buildRequest, executeRequest,
+  buildRunEntries, runCollection,
+  importPostmanCollection,
+  appendHistoryEntry, readHistory, clearHistory,
+} from './modules/api-client/index.js'
 export {
   createTimer, elapsedMs, start as startTimer, pause as pauseTimer,
   resume as resumeTimer, stop as stopTimer, reset as resetTimer, lap as lapTimer,

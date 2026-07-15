@@ -14,7 +14,8 @@ const EXPECTED = [
   'IDeepLinkAdapter', 'IFileAdapter', 'IHttpAdapter', 'ILifecycleAdapter',
   'INavigationAdapter', 'INetworkAdapter', 'INotificationAdapter', 'IPickerAdapter',
   'ISecureStorageAdapter', 'IShareAdapter', 'IStorageAdapter', 'IThemeAdapter',
-  'ITrayAdapter', 'IUpdateAdapter', 'PLANNER_SECTIONS', 'PL_GROUPS', 'PL_OPEN',
+  'ITrayAdapter', 'IUpdateAdapter', 'IScriptRunnerAdapter', 'IRawHttpAdapter',
+  'PLANNER_SECTIONS', 'PL_GROUPS', 'PL_OPEN',
   'PL_PRIOS', 'PL_STATUSES', 'PROJECT_COLORS', 'STATES', 'activateProfile',
   'addManualColumn', 'adoStateToHelm', 'adoTypeToHelm', 'appendAuditEntry', 'buildAlertKey',
   'buildDigest', 'buildEmptyPlannerData', 'buildProfile', 'buildTriageCsv', 'core',
@@ -40,6 +41,18 @@ const EXPECTED = [
   // Shared PR REST helpers (threads/comments/resolve/reopen/commits/file changes/description)
   'fetchPRThreads', 'postPRThread', 'postPRReply', 'setPRThreadStatus',
   'fetchPRCommits', 'fetchPRFileChanges', 'fetchFileContent', 'updatePRDescription',
+  // API client module (collections/requests/environments + var resolution)
+  'getApiClientAdapters',
+  'createCollection', 'readCollectionMeta', 'writeCollectionMeta',
+  'listRequestIds', 'readRequest', 'writeRequest', 'deleteRequest',
+  'listEnvironmentNames', 'readEnvironment', 'writeEnvironment', 'deleteEnvironment',
+  'loadCollection', 'addTreeNode', 'removeTreeNode', 'findTreeNode', 'flattenRequestRefs',
+  'resolveVars', 'resolveObjectVars', 'resolveEnvironment',
+  'secretStorageKey', 'setSecretVar', 'removeSecretVar',
+  'buildRequest', 'executeRequest',
+  'buildRunEntries', 'runCollection',
+  'importPostmanCollection',
+  'appendHistoryEntry', 'readHistory', 'clearHistory',
 ].sort()
 
 describe('public API surface', () => {
