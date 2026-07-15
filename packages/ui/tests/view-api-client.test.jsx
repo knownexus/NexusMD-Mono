@@ -39,18 +39,19 @@ function renderApiClient({ file, apiHttp, scriptRunner } = {}) {
   )
 }
 
-// The sidebar's "Import Postman collection" textarea is always present once a
-// collection is open, so a bare `querySelector('textarea')` would match it
-// instead of the request-editor's Body-tab textarea. That import textarea is
-// the only one with a placeholder; the body textarea has none.
+// The sidebar's "Import Postman collection" textarea is in the DOM once a
+// collection is open (inside a native <details>, collapsed but not removed),
+// so a bare `querySelector('textarea')` would match it instead of the
+// request-editor's Body-tab textarea. That import textarea is the only one
+// with a placeholder; the body textarea has none.
 function bodyTextarea(container) {
   return [...container.querySelectorAll('textarea')].find(t => !t.placeholder)
 }
 
 async function openCollectionAndCreateRequest(rr) {
-  const { getByPlaceholderText, getByText, getByTitle } = rr
+  const { getByPlaceholderText, getByTitle, getByText } = rr
   fireEvent.change(getByPlaceholderText('Collection folder path'), { target: { value: '/col' } })
-  fireEvent.click(getByText('Open'))
+  fireEvent.click(getByTitle('Load collection'))
   await waitFor(() => getByTitle('New request'))
   fireEvent.click(getByTitle('New request'))
   await waitFor(() => getByText('Save'))
@@ -70,13 +71,13 @@ it('does not attempt to open/mkdir an empty path — shows a guidance error inst
   const mkdir = vi.spyOn(file, 'mkdir')
   const adapters = { file, scriptRunner: fakeScriptRunner(), secureStorage: { get: async () => null }, apiHttp: { fetch: async () => ({}) } }
 
-  const { container, getByText } = render(
+  const { container, getByTitle } = render(
     <ApiClientProvider adapters={adapters}>
       <ApiClientView />
     </ApiClientProvider>
   )
 
-  fireEvent.click(getByText('Open'))
+  fireEvent.click(getByTitle('Load collection'))
 
   await waitFor(() => expect(container.textContent).toContain('Choose a collection folder first'))
   expect(mkdir).not.toHaveBeenCalled()
@@ -104,7 +105,7 @@ it('lets the user open (and auto-create) a collection folder, then shows it in t
   const file = memFile()
   const adapters = { file, scriptRunner: fakeScriptRunner(), secureStorage: { get: async () => null }, apiHttp: { fetch: async () => ({}) } }
 
-  const { container, getByPlaceholderText, getByText } = render(
+  const { container, getByPlaceholderText, getByTitle } = render(
     <ApiClientProvider adapters={adapters}>
       <ApiClientView />
     </ApiClientProvider>
@@ -112,7 +113,7 @@ it('lets the user open (and auto-create) a collection folder, then shows it in t
 
   const input = getByPlaceholderText('Collection folder path')
   fireEvent.change(input, { target: { value: '/collections/demo' } })
-  fireEvent.click(getByText('Open'))
+  fireEvent.click(getByTitle('Load collection'))
 
   await waitFor(() => expect(container.textContent).toContain('/collections/demo'))
 })
@@ -128,7 +129,7 @@ it('creates a new request (via the + button) and lists it in the sidebar tree', 
   )
 
   fireEvent.change(getByPlaceholderText('Collection folder path'), { target: { value: '/collections/demo' } })
-  fireEvent.click(getByText('Open'))
+  fireEvent.click(getByTitle('Load collection'))
   await waitFor(() => getByTitle('New request'))
 
   fireEvent.click(getByTitle('New request'))
@@ -150,7 +151,7 @@ it('sends a request and renders the response status', async () => {
   )
 
   fireEvent.change(getByPlaceholderText('Collection folder path'), { target: { value: '/collections/demo' } })
-  fireEvent.click(getByText('Open'))
+  fireEvent.click(getByTitle('Load collection'))
   await waitFor(() => getByTitle('New request'))
   fireEvent.click(getByTitle('New request'))
   await waitFor(() => getByPlaceholderText('https://api.example.com/{{path}}'))
@@ -206,9 +207,9 @@ it('loading a legacy saved request (no bodyType field) with a body defaults to R
   })
 
   const rr = renderApiClient({ file })
-  const { getByPlaceholderText, getByText, container } = rr
+  const { getByPlaceholderText, getByTitle, getByText, container } = rr
   fireEvent.change(getByPlaceholderText('Collection folder path'), { target: { value: '/col' } })
-  fireEvent.click(getByText('Open'))
+  fireEvent.click(getByTitle('Load collection'))
   await waitFor(() => getByText('Legacy'))
   fireEvent.click(getByText('Legacy'))
 

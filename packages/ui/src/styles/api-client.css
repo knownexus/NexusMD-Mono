@@ -1,0 +1,168 @@
+/* api-client.css — API Client view additions on top of base.css.
+   All selectors are new (ac-*) and reuse base.css tokens/buttons/pills;
+   nothing here overrides existing rules. */
+
+/* ---------- Shell ---------- */
+.ac-shell { display: flex; height: 100%; }
+
+.ac-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+.ac-sidebar-head { padding: 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ac-add-row { display: flex; gap: 6px; }
+.ac-add-row input { flex: 1; min-width: 0; }
+
+.ac-collections { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+
+.ac-main { flex: 1; min-width: 0; overflow-y: auto; padding: 18px 20px; }
+.ac-empty { color: var(--text-muted); font-size: 13px; padding: 60px 0; text-align: center; }
+.ac-empty-note { color: var(--text-muted); font-size: 12px; padding: 6px 0; }
+.ac-error-text { color: var(--danger); font-size: 12px; }
+
+.ac-unavailable {
+  padding: 40px 24px; color: var(--text-muted); font-size: 13px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+}
+
+/* ---------- Inputs / selects (view-scoped sizing) ---------- */
+.ac-input {
+  height: 30px; padding: 0 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  font-size: 12.5px;
+}
+.ac-select {
+  height: 30px; padding: 0 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  font-size: 12.5px;
+}
+.ac-select.block { width: 100%; }
+
+/* Method color-coding — a quick-scan convention shared by every real API
+   client (Postman/Insomnia/Bruno); applied via data-method so no per-call JS
+   color lookup is needed. */
+.ac-method-select[data-method="GET"]  { color: var(--success); border-color: var(--success); font-weight: 600; }
+.ac-method-select[data-method="POST"] { color: var(--accent);  border-color: var(--accent);  font-weight: 600; }
+.ac-method-select[data-method="PUT"],
+.ac-method-select[data-method="PATCH"] { color: var(--warning); border-color: var(--warning); font-weight: 600; }
+.ac-method-select[data-method="DELETE"] { color: var(--danger); border-color: var(--danger); font-weight: 600; }
+.ac-method-select[data-method="HEAD"] { color: var(--text-muted); font-weight: 600; }
+
+.ac-method-tag { font-family: var(--mono); font-size: 9.5px; font-weight: 700; width: 36px; flex-shrink: 0; }
+.ac-method-tag[data-method="GET"]  { color: var(--success); }
+.ac-method-tag[data-method="POST"] { color: var(--accent); }
+.ac-method-tag[data-method="PUT"],
+.ac-method-tag[data-method="PATCH"] { color: var(--warning); }
+.ac-method-tag[data-method="DELETE"] { color: var(--danger); }
+.ac-method-tag[data-method="HEAD"] { color: var(--text-muted); }
+
+.ac-add-link { font-size: 12px; font-weight: 500; border: none; background: none; color: var(--accent); cursor: pointer; padding: 4px 0; }
+
+/* ---------- Collection accordion ---------- */
+.ac-collection { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.ac-collection-head {
+  display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+  cursor: pointer; user-select: none;
+}
+.ac-collection-head:hover { background: var(--surface-2); }
+.ac-collection-head .chev { flex-shrink: 0; display: flex; color: var(--text-muted); }
+.ac-collection-name {
+  font-size: 13px; font-weight: 600; flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ac-collection-name.ac-loading { opacity: 0.55; font-weight: 500; font-family: var(--mono); font-size: 11.5px; }
+.ac-collection-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.ac-collection-body {
+  padding: 10px; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.ac-collection-error { display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: var(--danger); font-size: 12px; }
+.ac-collection-error .ac-collection-name { color: var(--danger); font-family: var(--mono); font-size: 11.5px; font-weight: 500; }
+
+/* ---------- Request tree ---------- */
+.ac-tree { display: flex; flex-direction: column; gap: 1px; }
+.ac-tree-folder {
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
+  padding: 6px 0 3px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.ac-tree-item {
+  display: flex; align-items: center; gap: 7px; padding: 5px 8px;
+  border-radius: var(--radius-sm); font-size: 12.5px; cursor: pointer;
+}
+.ac-tree-item:hover { background: var(--surface-2); }
+.ac-tree-item.active { background: var(--accent-soft); }
+.ac-tree-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-tree-item.active .ac-tree-item-name { font-weight: 600; }
+
+/* Import disclosure — native <details>, custom marker to match type scale */
+.ac-import { border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 2px; }
+.ac-import summary {
+  cursor: pointer; font-size: 11.5px; font-weight: 600; color: var(--text-muted);
+  list-style: none; display: flex; align-items: center; gap: 5px; padding: 2px 0;
+}
+.ac-import summary::-webkit-details-marker { display: none; }
+.ac-import summary::before { content: '▸'; font-size: 9px; transition: transform 0.12s; }
+.ac-import[open] summary::before { transform: rotate(90deg); }
+.ac-import textarea { width: 100%; margin: 8px 0; }
+
+/* ---------- Request editor ---------- */
+.ac-request-bar { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; flex-wrap: wrap; }
+.ac-method-select { min-width: 92px; }
+.ac-url-input { flex: 1 1 240px; min-width: 0; }
+.ac-request-actions { display: flex; gap: 8px; flex-shrink: 0; margin-left: auto; }
+
+.ac-tabs {
+  display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 12px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.ac-tabs::-webkit-scrollbar { display: none; }
+.ac-tab {
+  flex-shrink: 0; padding: 7px 12px; border: none; background: none; cursor: pointer;
+  font-size: 12.5px; font-weight: 500; color: var(--text-muted);
+  border-bottom: 2px solid transparent; white-space: nowrap;
+}
+.ac-tab:hover { color: var(--text); }
+.ac-tab.active { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+.ac-tabs.sm .ac-tab { padding: 5px 10px; font-size: 12px; }
+
+.ac-kv-row { display: flex; gap: 6px; margin-bottom: 6px; }
+.ac-kv-row .ac-input { flex: 1; min-width: 0; }
+
+.ac-body-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+
+.ac-code {
+  width: 100%; font-family: var(--mono); font-size: 12.5px; padding: 8px 10px;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); resize: vertical;
+}
+
+.ac-field-label { font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+
+/* ---------- History ---------- */
+.ac-history-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.ac-history-count { font-size: 12px; color: var(--text-muted); }
+.ac-history-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid transparent;
+  background: var(--surface-2); margin-bottom: 4px; cursor: pointer; font-size: 12.5px;
+}
+.ac-history-row:hover { border-color: var(--border); }
+.ac-history-row.active { background: var(--accent-soft); border-color: var(--accent-border); }
+.ac-history-time { margin-left: auto; color: var(--text-subtle); font-family: var(--mono); font-size: 11px; }
+.ac-history-preview { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+
+/* ---------- Response ---------- */
+.ac-response { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
+.ac-response-status { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.ac-response-meta { color: var(--text-muted); font-size: 12.5px; }
+.ac-tests { margin-bottom: 10px; display: flex; flex-direction: column; gap: 2px; }
+.ac-test-row { font-size: 12.5px; }
+.ac-test-row.pass { color: var(--success); }
+.ac-test-row.fail { color: var(--danger); }
+.ac-headers-list { display: flex; flex-direction: column; }
+.ac-header-row { display: flex; gap: 8px; font-size: 12.5px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.ac-header-row strong { min-width: 160px; font-weight: 600; }
