@@ -246,3 +246,38 @@ it('falls back to a <pre> block for a non-JSON response body', async () => {
   await waitFor(() => container.querySelector('pre'))
   expect(container.querySelector('pre').textContent).toBe('<xml/>')
 })
+
+it('records a sent request in history and lets you reload it as a read-only preview', async () => {
+  const apiHttp = { fetch: async () => ({ status: 200, statusText: 'OK', headers: {}, text: async () => JSON.stringify({ n: 1 }) }) }
+  const rr = renderApiClient({ apiHttp })
+  await openCollectionAndCreateRequest(rr)
+  const { getByText, getAllByRole, container } = rr
+
+  fireEvent.click(getByText('Send'))
+  await waitFor(() => getByText('passed'))
+
+  fireEvent.click(getByText('History'))
+  await waitFor(() => expect(container.textContent).toContain('1 sent'))
+
+  const historyRows = getAllByRole('button', { name: /passed/ })
+  expect(historyRows).toHaveLength(1)
+  fireEvent.click(historyRows[0])
+
+  expect(container.textContent).toContain('n')
+})
+
+it('clear history empties the list', async () => {
+  const apiHttp = { fetch: async () => ({ status: 200, statusText: 'OK', headers: {}, text: async () => '{}' }) }
+  const rr = renderApiClient({ apiHttp })
+  await openCollectionAndCreateRequest(rr)
+  const { getByText, container } = rr
+
+  fireEvent.click(getByText('Send'))
+  await waitFor(() => getByText('passed'))
+  fireEvent.click(getByText('History'))
+  await waitFor(() => expect(container.textContent).toContain('1 sent'))
+
+  fireEvent.click(getByText('Clear history'))
+  await waitFor(() => expect(container.textContent).toContain('0 sent'))
+  expect(container.textContent).toContain('No requests sent yet.')
+})

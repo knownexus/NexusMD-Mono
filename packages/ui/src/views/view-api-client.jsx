@@ -12,9 +12,10 @@ import {
   loadCollection, createCollection, writeCollectionMeta, writeRequest,
   addTreeNode, buildRunEntries,
   resolveEnvironment, executeRequest, runCollection, importPostmanCollection,
+  appendHistoryEntry, readHistory, clearHistory,
 } from '@nexusmd/core'
 
-const TABS = ['Params', 'Headers', 'Body', 'Auth', 'Scripts', 'Tests']
+const TABS = ['Params', 'Headers', 'Body', 'Auth', 'Scripts', 'Tests', 'History']
 
 const EMPTY_REQUEST = {
   method: 'GET', url: '', params: {}, headers: {}, body: '',
@@ -126,6 +127,8 @@ export function ApiClientView() {
   const [runReport, setRunReport] = React.useState(null)
   const [running, setRunning] = React.useState(false)
   const [importText, setImportText] = React.useState('')
+  const [history, setHistory] = React.useState([])
+  const [historyPreview, setHistoryPreview] = React.useState(null)
 
   const openCollection = async (dir) => {
     if (!dir) { setOpenError('Choose a collection folder first.'); return }
@@ -156,6 +159,8 @@ export function ApiClientView() {
     setSelectedRefId(refId)
     setDraft(hydrateRequest(collection.requests[refId]))
     setResponse(null)
+    setHistoryPreview(null)
+    readHistory(adapters.file, dirInput, refId).then(setHistory)
   }
 
   const newRequest = async () => {
@@ -191,9 +196,27 @@ export function ApiClientView() {
       const vars = await resolvedVars()
       const result = await executeRequest(draft, { vars, adapters })
       setResponse(result)
+      if (selectedRefId) {
+        const entry = {
+          sentAt: Date.now(),
+          status: result.status,
+          request: { method: draft.method, url: draft.url },
+          response: result.response,
+          error: result.error,
+        }
+        const nextHistory = await appendHistoryEntry(adapters.file, dirInput, selectedRefId, entry)
+        setHistory(nextHistory)
+      }
     } finally {
       setSending(false)
     }
+  }
+
+  const clearRequestHistory = async () => {
+    if (!selectedRefId) return
+    await clearHistory(adapters.file, dirInput, selectedRefId)
+    setHistory([])
+    setHistoryPreview(null)
   }
 
   const runFolder = async (nodes) => {
@@ -421,6 +444,37 @@ export function ApiClientView() {
               <textarea value={draft.tests || ''} onChange={e => setDraft({ ...draft, tests: e.target.value })} rows={10}
                 placeholder="context.tests.push({ name: 'status is 200', passed: context.response.status === 200 })"
                 style={{ width: '100%', fontFamily: 'monospace', fontSize: 12.5, padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)' }}/>
+            )}
+            {activeTab === 'History' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{history.length} sent</span>
+                  <button onClick={clearRequestHistory} disabled={!history.length}
+                    style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer' }}>
+                    Clear history
+                  </button>
+                </div>
+                {history.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>No requests sent yet.</div>}
+                {[...history].reverse().map((entry, i) => (
+                  <button key={i} type="button" onClick={() => setHistoryPreview(entry)}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', borderRadius: 6, cursor: 'pointer',
+                      fontSize: 12.5, marginBottom: 4, border: 'none', color: 'var(--text)',
+                      background: historyPreview === entry ? 'var(--surface-3, rgba(29,111,204,0.12))' : 'var(--surface-2)',
+                    }}>
+                    {entry.status} · {entry.request?.method} · {new Date(entry.sentAt).toLocaleTimeString()}
+                    {entry.response && ` · ${entry.response.durationMs}ms`}
+                  </button>
+                ))}
+                {historyPreview && (
+                  <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{historyPreview.request?.method} {historyPreview.request?.url}</div>
+                    {historyPreview.response
+                      ? <JsonPretty text={historyPreview.response.body}/>
+                      : <div style={{ color: 'var(--danger, #d33)', fontSize: 12.5 }}>{historyPreview.error}</div>}
+                  </div>
+                )}
+              </div>
             )}
 
             {response && (
