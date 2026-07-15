@@ -174,6 +174,9 @@ export function ApiClientView() {
     setCollection({ ...collection, meta: nextMeta, requests: { ...collection.requests, [refId]: requestDef } })
     setSelectedRefId(refId)
     setDraft({ ...requestDef })
+    setResponse(null)
+    setHistory([])
+    setHistoryPreview(null)
   }
 
   const saveDraft = async () => {

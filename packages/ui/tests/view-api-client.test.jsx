@@ -281,3 +281,23 @@ it('clear history empties the list', async () => {
   await waitFor(() => expect(container.textContent).toContain('0 sent'))
   expect(container.textContent).toContain('No requests sent yet.')
 })
+
+it('creating a new request clears the previous request\'s history, preview, and response from view', async () => {
+  const apiHttp = { fetch: async () => ({ status: 200, statusText: 'OK', headers: {}, text: async () => '{}' }) }
+  const rr = renderApiClient({ apiHttp })
+  await openCollectionAndCreateRequest(rr)
+  const { getByText, getByTitle, container } = rr
+
+  fireEvent.click(getByText('Send'))
+  await waitFor(() => getByText('passed'))
+  fireEvent.click(getByText('History'))
+  await waitFor(() => expect(container.textContent).toContain('1 sent'))
+
+  fireEvent.click(getByTitle('New request'))
+  await waitFor(() => getByText('Save'))
+
+  expect(container.textContent).not.toContain('passed')
+  fireEvent.click(getByText('History'))
+  expect(container.textContent).toContain('0 sent')
+  expect(container.textContent).toContain('No requests sent yet.')
+})
