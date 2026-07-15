@@ -128,4 +128,9 @@ describe('body serialization', () => {
     expect(request.body).toBeUndefined()
     expect(request.headers['Content-Type']).toBeUndefined()
   })
+
+  it('a request with no body at all sends body: undefined, not an empty string (GET/HEAD compatibility)', async () => {
+    const { request } = await buildRequest({ url: '/x' }, {})
+    expect(request.body).toBeUndefined()
+  })
 })

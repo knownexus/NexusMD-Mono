@@ -67,7 +67,7 @@ function autoContentType(bodyType, bodyLanguage) {
 function serializeBody(bodyType, body) {
   switch (bodyType) {
     case 'raw':
-      return typeof body === 'string' ? body : ''
+      return typeof body === 'string' ? body : undefined
     case 'urlencoded':
       return (Array.isArray(body) ? body : [])
         .filter(p => p.key)
