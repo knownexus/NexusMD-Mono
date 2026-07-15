@@ -15,6 +15,12 @@ describe('createNoOpAdapters', () => {
     }
   })
 
+  it('does NOT include scriptRunner/apiHttp — their absence is what gates the api-client module to desktop-only', () => {
+    const a = createNoOpAdapters()
+    expect(a.scriptRunner).toBeUndefined()
+    expect(a.apiHttp).toBeUndefined()
+  })
+
   it('required file adapter rejects by default (apps must implement)', async () => {
     const { file } = createNoOpAdapters()
     await expect(file.read('/any')).rejects.toThrow('IFileAdapter.read not implemented')

@@ -105,3 +105,25 @@ export const IDeepLinkAdapter = {
   onLink:      (cb) => () => {},
   isAvailable: () => false,
 }
+
+// Runs a JS snippet (pre-request/post-response scripts, test assertions).
+// context: plain data the script can read/mutate (e.g. { vars, request }),
+// returned as `context` reflecting any mutations; `logs` is reserved for
+// captured console output (the desktop implementation currently always
+// returns [] — see api-client-script.cjs for why); `error` is set (and
+// `context` is null) if the script threw.
+//
+// SECURITY: this is meant for scripts the user themselves authored (the same
+// trust model as Postman/Bruno's own request scripts), not as a boundary
+// against untrusted/third-party code — Node's `vm` module (the desktop
+// implementation) is explicitly documented as NOT a security mechanism.
+export const IScriptRunnerAdapter = {
+  run: async (script, context) => Promise.reject(new Error('IScriptRunnerAdapter.run not implemented')),
+}
+
+// A plain, unscoped HTTP client for the api-client module — unlike IHttpAdapter,
+// which apps may wire to a specific backend (e.g. ADO) with forced auth/URL
+// scoping, this must send exactly the request it's given, to any host.
+export const IRawHttpAdapter = {
+  fetch: async (url, options) => Promise.reject(new Error('IRawHttpAdapter.fetch not implemented')),
+}

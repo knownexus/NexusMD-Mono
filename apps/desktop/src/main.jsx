@@ -14,6 +14,7 @@ import {
   WorkItemDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
   WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
+  ApiClientProvider, ApiClientView,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav } from './layout.js'
 import { resolveItemsUpdate } from './items-state.js'
@@ -43,6 +44,8 @@ import { trayAdapter }          from './adapters/tray.js'
 import { deepLinkAdapter }      from './adapters/deepLink.js'
 import { updateAdapter }        from './adapters/update.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
+import { scriptRunnerAdapter }  from './adapters/scriptRunner.js'
+import { rawHttpAdapter }       from './adapters/rawHttp.js'
 
 const adapters = {
   ...createNoOpAdapters(),
@@ -63,6 +66,10 @@ const adapters = {
   deepLink:      deepLinkAdapter,
   update:        updateAdapter,
   secureStorage: secureStorageAdapter,
+  // Desktop-only — their absence on web/app is what keeps the api-client
+  // module from registering there (see module-registry.js hasRequiredAdapters).
+  scriptRunner:  scriptRunnerAdapter,
+  apiHttp:       rawHttpAdapter,
 }
 
 const NEXUSMD_THEMES = [
@@ -511,6 +518,12 @@ function ViewBody({
       return <DesktopNotesView />
     case 'markdown':
       return <MarkdownViewer />
+    case 'api-client':
+      return (
+        <ApiClientProvider adapters={adapters}>
+          <ApiClientView />
+        </ApiClientProvider>
+      )
     case 'settings':
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
         nav={NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder}

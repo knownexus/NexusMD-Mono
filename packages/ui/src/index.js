@@ -29,6 +29,10 @@ export {
   NexusDataProvider, useNexusData, useEffectiveNeedsMe, EMPTY_NEXUS_DATA,
 } from './data-context.jsx'
 
+// API client module seam (file/scriptRunner/secureStorage/apiHttp adapters) + view.
+export { ApiClientProvider, useApiClient } from './api-client-context.jsx'
+export { ApiClientView } from './views/view-api-client.jsx'
+
 // Profile registry (active profile, CRUD, export/import). Each app wraps this
 // with a platform `store` (web REST vs app local) in its own profile-context.
 export { ProfileProvider, useProfile, localUpsertProfiles } from './profile-context.jsx'

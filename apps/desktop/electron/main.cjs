@@ -61,6 +61,7 @@ const deepLinkIpc    = require('./ipc/deepLink.cjs');
 const trayIpc        = require('./ipc/tray-ipc.cjs');
 const logsIpc        = require('./ipc/logs.cjs');
 const oauthIpc       = require('./ipc/oauth.cjs');
+const apiClientScriptIpc = require('./ipc/api-client-script.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
 const { buildLinkMenuTemplate } = require('./link-window/link-context-menu.cjs');
@@ -317,6 +318,7 @@ app.whenReady().then(async () => {
   trayIpc.register(ipcMain, () => mainWindow, () => tray);
   logsIpc.register(ipcMain);
   oauthIpc.register(ipcMain);
+  apiClientScriptIpc.register(ipcMain);
   linkWindow.register(ipcMain);
 
   app.on('activate', () => {

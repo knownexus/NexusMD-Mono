@@ -13,6 +13,7 @@ export const NAV = [
   { id: 'planner',   label: 'Planner',       icon: 'planner' },
   { id: 'notes',     label: 'Notes',         icon: 'pin' },
   { id: 'markdown',  label: 'Documents',     icon: 'pin' },
+  { id: 'api-client', label: 'API Client',   icon: 'link' },
 ]
 
 export const SETTINGS_NAV = { id: 'settings', label: 'Settings', icon: 'settings' }

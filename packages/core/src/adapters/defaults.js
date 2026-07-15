@@ -13,6 +13,14 @@ import {
 //     file: myFileAdapter,
 //     storage: myStorageAdapter,
 //   }
+//
+// IScriptRunnerAdapter/IRawHttpAdapter are deliberately NOT included here: the
+// api-client module's requiredAdapters gate (packages/core/src/features/module-registry.js
+// hasRequiredAdapters) only works if a platform that doesn't implement scriptRunner
+// truly has no `scriptRunner` key on its adapters object. Every app spreads
+// createNoOpAdapters() as the base of its adapters object, so giving these two a
+// no-op entry here would make them "present" (if rejecting) everywhere, defeating
+// the desktop-only gating. Desktop adds real implementations explicitly instead.
 export function createNoOpAdapters() {
   return {
     file:          { ...IFileAdapter },

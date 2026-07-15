@@ -169,4 +169,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     start:   (provider = 'google') => ipcRenderer.invoke('oauth:start', { provider }),
     refresh: (refreshToken, provider = 'google') => ipcRenderer.invoke('oauth:refresh', { provider, refreshToken }),
   },
+
+  // ── API client module (scriptRunner adapter) ───────────────────────────────
+  apiClient: {
+    script: {
+      run: (script, context) => ipcRenderer.invoke('api-client:script:run', script, context),
+    },
+  },
 });
