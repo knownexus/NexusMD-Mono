@@ -122,6 +122,7 @@ export function ApiClientView() {
   const [activeTab, setActiveTab] = React.useState('Params')
   const [sending, setSending] = React.useState(false)
   const [response, setResponse] = React.useState(null)
+  const [responseTab, setResponseTab] = React.useState('Body')
   const [runReport, setRunReport] = React.useState(null)
   const [running, setRunning] = React.useState(false)
   const [importText, setImportText] = React.useState('')
@@ -185,6 +186,7 @@ export function ApiClientView() {
     if (!draft) return
     setSending(true)
     setResponse(null)
+    setResponseTab('Body')
     try {
       const vars = await resolvedVars()
       const result = await executeRequest(draft, { vars, adapters })
@@ -438,9 +440,30 @@ export function ApiClientView() {
                   </div>
                 )}
                 {response.response && (
-                  <pre style={{ background: 'var(--surface-2)', padding: 10, borderRadius: 6, fontSize: 12, overflow: 'auto', maxHeight: 300 }}>
-                    {response.response.body}
-                  </pre>
+                  <>
+                    <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                      {['Body', 'Headers'].map(tab => (
+                        <button key={tab} onClick={() => setResponseTab(tab)}
+                          style={{
+                            padding: '4px 10px', border: 'none', background: 'none', cursor: 'pointer',
+                            borderBottom: responseTab === tab ? '2px solid var(--accent, #1d6fcc)' : '2px solid transparent',
+                            fontWeight: responseTab === tab ? 600 : 400,
+                          }}>
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
+                    {responseTab === 'Body' && <JsonPretty text={response.response.body}/>}
+                    {responseTab === 'Headers' && (
+                      <div>
+                        {Object.entries(response.response.headers || {}).map(([k, v]) => (
+                          <div key={k} style={{ display: 'flex', gap: 6, fontSize: 12.5, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+                            <strong style={{ minWidth: 160 }}>{k}</strong><span>{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

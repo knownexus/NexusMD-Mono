@@ -159,7 +159,8 @@ it('sends a request and renders the response status', async () => {
   fireEvent.click(getByText('Send'))
 
   await waitFor(() => expect(container.textContent).toContain('200 OK'))
-  expect(container.textContent).toContain('{"ok":true}')
+  expect(container.textContent).toContain('ok')
+  expect(container.textContent).toContain('true')
 })
 
 it('starts with no body and shows "This request has no body."', async () => {
@@ -213,4 +214,35 @@ it('loading a legacy saved request (no bodyType field) with a body defaults to R
 
   fireEvent.click(getByText('Body'))
   expect(bodyTextarea(container).value).toBe('legacy body text')
+})
+
+it('renders a pretty JSON tree for a JSON response body, with a Headers tab', async () => {
+  const apiHttp = { fetch: async () => ({ status: 200, statusText: 'OK', headers: { 'X-Test': '1' }, text: async () => JSON.stringify({ ok: true }) }) }
+  const rr = renderApiClient({ apiHttp })
+  await openCollectionAndCreateRequest(rr)
+  const { getByText, getAllByText, container } = rr
+
+  fireEvent.click(getByText('Send'))
+  await waitFor(() => getByText('passed'))
+
+  expect(container.querySelector('pre')).toBeNull()
+  expect(container.textContent).toContain('ok')
+  expect(container.textContent).toContain('true')
+
+  // Two "Headers" labels are on screen at once: the request editor's own
+  // Headers tab (Params/Headers/Body/...) and the response viewer's Headers
+  // tab added by this task — the response one renders later in the DOM.
+  fireEvent.click(getAllByText('Headers').pop())
+  expect(getByText('X-Test')).toBeTruthy()
+})
+
+it('falls back to a <pre> block for a non-JSON response body', async () => {
+  const apiHttp = { fetch: async () => ({ status: 200, statusText: 'OK', headers: {}, text: async () => '<xml/>' }) }
+  const rr = renderApiClient({ apiHttp })
+  await openCollectionAndCreateRequest(rr)
+  const { getByText, container } = rr
+
+  fireEvent.click(getByText('Send'))
+  await waitFor(() => container.querySelector('pre'))
+  expect(container.querySelector('pre').textContent).toBe('<xml/>')
 })
