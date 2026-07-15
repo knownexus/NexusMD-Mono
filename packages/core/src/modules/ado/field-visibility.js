@@ -44,6 +44,7 @@ export const PR_CARD_FIELDS = [
 export const BUILDS_TABLE_COLUMNS = [
   { key: 'status',      label: 'Status',       width: '28px',  locked: true },
   { key: 'build',       label: 'Build #',      width: '68px',  locked: true },
+  { key: 'project',     label: 'Project',      width: '120px' },
   { key: 'triggeredBy', label: 'Triggered by', width: '1fr' },
   { key: 'branch',      label: 'Branch',       width: '160px' },
   { key: 'commit',      label: 'Commit',       width: '72px' },
@@ -56,6 +57,7 @@ export const BUILDS_TABLE_COLUMNS = [
 export const TESTS_TABLE_COLUMNS = [
   { key: 'result',   label: 'Result',   width: 'auto', locked: true },
   { key: 'run',      label: 'Run',      width: '1fr',  locked: true },
+  { key: 'project',  label: 'Project',  width: '120px' },
   { key: 'duration', label: 'Duration', width: '80px' },
   { key: 'date',     label: 'Date',     width: '116px' },
   { key: 'actions',  label: 'Actions',  width: 'auto', locked: true },

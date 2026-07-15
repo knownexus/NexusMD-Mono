@@ -4,7 +4,7 @@ import React from 'react'
 // (for deep links + bug creation) comes from useNexusData().
 
 import { FilterChip, Stat } from '../components.jsx'
-import { NotificationBanner, usePersisted } from '../app-components.jsx'
+import { NotificationBanner, ProjectChip, usePersisted } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
 import { useNexusData } from '../data-context.jsx'
 import { formatDateTime, resolveFields, TESTS_TABLE_COLUMNS } from '@nexusmd/core'
@@ -125,6 +125,8 @@ export function TestsView({ tests, acknowledgedTests, setAcknowledgedTests, newI
             </div>
           </div>
         )
+      case 'project':
+        return <div key="project" style={{ overflow:'hidden' }}><ProjectChip id={run.project}/></div>
       case 'duration':
         return <div key="duration" className="build-meta">{run.duration || '-'}</div>
       case 'date':

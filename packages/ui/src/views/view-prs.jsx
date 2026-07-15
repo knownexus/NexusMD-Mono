@@ -314,7 +314,7 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
                 <span className="muted mono" style={{ fontSize: 10.5, fontWeight: 500 }}>{g.items.length}</span>
               </div>
             )}
-            {!collapsed[g.key] && g.items.map(p => <PRRow key={p.id} pr={p} onOpen={onOpen} onOpenLink={onOpenLink}/>)}
+            {!collapsed[g.key] && g.items.map(p => <PRRow key={p.id} pr={p} onOpen={onOpen} onOpenLink={onOpenLink} isNew={newItemIds.has(p.id)}/>)}
           </React.Fragment>
         ))}
         {filtered.length === 0 && <div className="empty">No pull requests match.</div>}
@@ -339,7 +339,7 @@ function reviewerVoteDisplay(vote) {
   return { label: 'Pending', glyph: '…', color: 'var(--text-subtle)' }
 }
 
-function PRRow({ pr, onOpen, onOpenLink }) {
+function PRRow({ pr, onOpen, onOpenLink, isNew = false }) {
   const { data: NexusMDData } = useNexusData()
   // Use reviewerDetails so each avatar reflects that person's actual vote,
   // rather than marking the first N reviewers approved by list position.
@@ -382,7 +382,8 @@ function PRRow({ pr, onOpen, onOpenLink }) {
     .filter(x => x.el)
 
   return (
-    <div className="pr-row" onClick={() => onOpen(pr)}>
+    <div className="pr-row" onClick={() => onOpen(pr)}
+      style={isNew ? { background: 'color-mix(in srgb, var(--accent) 7%, var(--surface))', boxShadow: 'inset 3px 0 0 var(--accent)' } : undefined}>
       <div className={`pr-status ${pr.status}`}>
         {pr.status === 'merged' ? <Icon name="merge" size={14}/> : <Icon name="pr" size={14}/>}
       </div>
@@ -393,6 +394,7 @@ function PRRow({ pr, onOpen, onOpenLink }) {
             : <span className="pr-title truncate">{pr.title}</span>}
           {pr.draft && <span className="pill" style={{ fontSize: 10 }}>DRAFT</span>}
           {pr.hasConflicts && <span className="pill danger" style={{ fontSize: 10 }}><Icon name="alert" size={9}/> Conflicts</span>}
+          {isNew && <span style={{ fontSize:9, fontWeight:700, background:'var(--accent)', color:'var(--accent-fg)', padding:'1px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:'0.05em', flexShrink:0 }}>New</span>}
         </div>
         <div className="pr-sub">
           <span>#{pr.id}</span>

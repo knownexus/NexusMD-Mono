@@ -30,3 +30,25 @@ it('shows the Commit column by default', () => {
   )
   expect(queryAllByText('Commit').length).toBeGreaterThanOrEqual(1)
 })
+
+it('shows the build\'s project as a ProjectChip by default', () => {
+  const storage = memStorage({})
+  const projects = [{ id: 'Proj', name: 'Cirrus', color: '#123456' }]
+  const { getByText } = render(
+    <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {}, data: { ORG: 'o', PROJECTS: projects } }}>
+      <BuildsView builds={[BUILD]} acknowledgedBuilds={[]} setAcknowledgedBuilds={() => {}} />
+    </NexusDataProvider>
+  )
+  expect(getByText('Cirrus')).toBeTruthy()
+})
+
+it('omits the Project column when hidden by config', () => {
+  const storage = memStorage({ 'nexusmd.fields.buildsTable': JSON.stringify([{ key: 'project', visible: false }]) })
+  const projects = [{ id: 'Proj', name: 'Cirrus', color: '#123456' }]
+  const { queryByText } = render(
+    <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {}, data: { ORG: 'o', PROJECTS: projects } }}>
+      <BuildsView builds={[BUILD]} acknowledgedBuilds={[]} setAcknowledgedBuilds={() => {}} />
+    </NexusDataProvider>
+  )
+  expect(queryByText('Cirrus')).toBeNull()
+})

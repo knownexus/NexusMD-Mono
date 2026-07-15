@@ -64,4 +64,17 @@ describe('promoted views render through the data-context seam', () => {
     const { container } = renderWithData(<TriageView />)
     expect(container.querySelector('.page-head h1')?.textContent).toBe('Triage')
   })
+
+  it('TriageView shows the ADO-connection message for an HTTP error response', async () => {
+    const { container, findByText } = renderWithData(<TriageView />)
+    await findByText(/Check the Azure DevOps connection/)
+    expect(container.textContent).not.toContain('isn’t available here')
+  })
+
+  it('TriageView shows a "not available" message (not an ADO-connection prompt) when the API is unreachable', async () => {
+    globalThis.fetch = vi.fn(() => Promise.reject(new TypeError('Failed to fetch')))
+    const { findByText, queryByText } = renderWithData(<TriageView />)
+    await findByText(/isn’t available here/)
+    expect(queryByText(/Check the Azure DevOps connection/)).toBeNull()
+  })
 })

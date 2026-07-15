@@ -57,6 +57,36 @@ it('right-aligns the count group (comments/prs) after the spacer on the board ca
   expect(spacerIndex).toBeLessThan(countIndex)
 })
 
+it('accents the board card by project color', () => {
+  const storage = memStorage({ 'nexusmd.wi.view': JSON.stringify('board') })
+  const projects = [{ id: 'proj', name: 'Cirrus', color: 'rgb(1, 2, 3)' }]
+  const { container } = render(
+    <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {}, data: { ORG: 'o', TEAM: [], PROJECTS: projects } }}>
+      <WorkItemsView items={[ITEM]} setItems={() => {}} onOpen={() => {}} team={[]} />
+    </NexusDataProvider>
+  )
+  const card = container.querySelector('.board-card')
+  expect(card.style.boxShadow).toContain('rgb(1, 2, 3)')
+})
+
+it('accents the board card by assignee color instead of project when grouped by project', () => {
+  const storage = memStorage({
+    'nexusmd.wi.view': JSON.stringify('board'),
+    'nexusmd.wi.boardGrouping': JSON.stringify('project'),
+  })
+  const projects = [{ id: 'proj', name: 'Cirrus', color: 'rgb(1, 2, 3)' }]
+  const team = [{ id: 'u1', name: 'Alex', initials: 'AL' }]
+  const item = { ...ITEM, assignee: 'u1' }
+  const { container } = render(
+    <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {}, data: { ORG: 'o', TEAM: team, PROJECTS: projects } }}>
+      <WorkItemsView items={[item]} setItems={() => {}} onOpen={() => {}} team={team} />
+    </NexusDataProvider>
+  )
+  const card = container.querySelector('.board-card')
+  expect(card.style.boxShadow).not.toContain('rgb(1, 2, 3)')
+  expect(card.style.boxShadow).toContain('oklch')
+})
+
 it('portals the tags dropdown outside the scrollable board container and does not open the card', () => {
   const storage = memStorage({ 'nexusmd.wi.view': JSON.stringify('board') })
   const onOpen = vi.fn()

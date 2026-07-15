@@ -243,6 +243,7 @@ export function TriageView() {
   const [data, setData]       = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError]     = React.useState(null);
+  const [unreachable, setUnreachable] = React.useState(false);
   const [bucketFilter, setBucketFilter]   = React.useState('all');
   const [areaFilter, setAreaFilter]       = usePersisted('nexusmd.triage.area', 'all');
   const [groupBy, setGroupBy]             = usePersisted('nexusmd.triage.groupBy', 'bucket');
@@ -251,14 +252,22 @@ export function TriageView() {
   const [collapsed, setCollapsed]       = React.useState({});
 
   const load = React.useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setUnreachable(false);
     try {
       const tags = excludeTags.split(',').map(t => t.trim()).filter(Boolean);
       const qs   = tags.map(t => `excludeTags=${encodeURIComponent(t)}`).join('&');
       const r    = await fetch(`/api/triage/items${qs ? '?' + qs : ''}`);
       if (!r.ok) throw new Error(`Failed to load (${r.status})`);
       setData(await r.json());
-    } catch (e) { setError(e.message || 'Failed to load'); }
+    } catch (e) {
+      // A TypeError from fetch() itself (as opposed to the Error thrown above
+      // for a non-ok HTTP response) means the request never reached a server —
+      // there's no Triage backend to talk to, not an Azure DevOps auth/API
+      // problem, so it needs a different message (desktop has no local host
+      // for /api/triage/*; see the file-level comment).
+      setUnreachable(e instanceof TypeError);
+      setError(e.message || 'Failed to load');
+    }
     finally { setLoading(false); }
   }, [excludeTags]);
 
@@ -351,7 +360,9 @@ export function TriageView() {
       {loading && !data && <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-subtle)', fontSize: 13 }}>Loading triage items…</div>}
       {error && (
         <div className="card" style={{ padding: 16, color: 'var(--danger)', fontSize: 13 }}>
-          {error}. Check the Azure DevOps connection in Settings, then Refresh.
+          {unreachable
+            ? 'Triage isn’t available here — it requires the NexusMD web app’s backend, which the desktop app can’t reach.'
+            : <>{error}. Check the Azure DevOps connection in Settings, then Refresh.</>}
         </div>
       )}
       {!loading && !error && filtered.length === 0 && (

@@ -4,7 +4,7 @@ import React from 'react'
 // useNexusData(). The /api/builds/* action endpoints are served by the web host;
 // on desktop they degrade gracefully (the buttons surface an error toast).
 import { FilterChip, Stat } from '../components.jsx'
-import { Avatar, NotificationBanner, usePersisted } from '../app-components.jsx'
+import { Avatar, NotificationBanner, ProjectChip, usePersisted } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
 import { toast } from '../toast.jsx'
 import { useNexusData } from '../data-context.jsx'
@@ -186,6 +186,7 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
     switch (key) {
       case 'status':      return <div key="status"/>;
       case 'build':       return <ColHead key="build">Build</ColHead>;
+      case 'project':     return <ColHead key="project">Project</ColHead>;
       case 'triggeredBy': return <ColHead key="triggeredBy">Triggered by</ColHead>;
       case 'branch':      return <ColHead key="branch"><Icon name="git-branch" size={11} style={{ marginRight:3, opacity:0.7 }}/>Branch</ColHead>;
       case 'commit':      return <ColHead key="commit">Commit</ColHead>;
@@ -217,6 +218,8 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
             {newItemIds.has(b.id) && <span style={{ fontSize:9, fontWeight:700, background:'var(--accent)', color:'var(--accent-fg)', padding:'1px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:'0.05em', flexShrink:0 }}>New</span>}
           </div>
         );
+      case 'project':
+        return <div key="project" style={{ overflow:'hidden' }}><ProjectChip id={b.project}/></div>;
       case 'triggeredBy':
         return (
           <div key="triggeredBy" style={{ minWidth:0 }}>

@@ -820,10 +820,10 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
         ? <WITable items={filtered} grouping={grouping} sort={sort} setSort={setSort}
                    selection={selection} setSelection={setSelection}
                    collapsed={collapsed} setCollapsed={setCollapsed}
-                   updateItem={updateItem} onOpen={onOpen} team={TEAM}/>
+                   updateItem={updateItem} onOpen={onOpen} team={TEAM} newItemIds={newItemIds}/>
         : <WIBoard items={filtered} updateItem={updateItem} moveState={moveState}
                    onOpen={onOpen} grouping={boardGrouping} team={TEAM} showEmptyAssignees={showEmptyAssignees}
-                   lanes={getActiveLanes(boardColumnConfig, activeProject, PROJECTS, BOARD_LANES)}/>
+                   lanes={getActiveLanes(boardColumnConfig, activeProject, PROJECTS, BOARD_LANES)} newItemIds={newItemIds}/>
       }
 
       {view === 'table' && grouping !== 'none' && (
@@ -1110,7 +1110,7 @@ function InlineTagsCell({ tags = [], onTagsChange }) {
 // ─────────────────────────────────────────────────────────
 // Table view (with grouping)
 // ─────────────────────────────────────────────────────────
-function WITable({ items, grouping, sort, setSort, selection, setSelection, collapsed, setCollapsed, updateItem, onOpen, team }) {
+function WITable({ items, grouping, sort, setSort, selection, setSelection, collapsed, setCollapsed, updateItem, onOpen, team, newItemIds = new Set() }) {
   const { data: NexusMDData, workItemSource } = useNexusData();
   const TEAM = team || NexusMDData.TEAM || [];
   const [tableDragId, setTableDragId] = useStateW(null);
@@ -1198,6 +1198,7 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
       case 'id': return (
         <td key="id" className="id" onClick={e=>e.stopPropagation()}>
           <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(w.project.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase()))}/_workitems/edit/${w.id}`} target="_blank" rel="noopener" style={{color:'var(--accent)',textDecoration:'none',fontFamily:'var(--mono)',fontSize:12}}>#{w.id}</a>
+          {newItemIds.has(w.id) && <span style={{ fontSize:9, fontWeight:700, background:'var(--accent)', color:'var(--accent-fg)', padding:'1px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:'0.05em', marginLeft:6 }}>New</span>}
         </td>);
       case 'type': return <td key="type"><TypeIcon type={w.type}/></td>;
       case 'title': return (
@@ -1269,7 +1270,8 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
                     onDragEnd={() => setTableDragId(null)}
                     onClick={() => onOpen(w)}
                     onMouseEnter={() => { clearTimeout(_wiHoverTimer); _wiHoverTimer = setTimeout(() => WorkItemDetail.prefetch(w.id, w.project), 100); }}
-                    onMouseLeave={() => clearTimeout(_wiHoverTimer)}>
+                    onMouseLeave={() => clearTimeout(_wiHoverTimer)}
+                    style={newItemIds.has(w.id) ? { background: 'color-mix(in srgb, var(--accent) 7%, var(--surface))', boxShadow: 'inset 3px 0 0 var(--accent)' } : undefined}>
                   <td style={{ width: 16, paddingRight: 0, paddingLeft: 6, cursor: 'grab' }}>
                     <span className="drag-handle" style={{ display: 'flex', flexDirection: 'column', gap: 2, color: 'var(--text-subtle)', opacity: 0, transition: 'opacity 0.15s' }}>
                       {[0,1].map(i => (<span key={i} style={{ display: 'flex', gap: 2 }}><span style={{ width: 2, height: 2, borderRadius: '50%', background: 'currentColor' }}/><span style={{ width: 2, height: 2, borderRadius: '50%', background: 'currentColor' }}/></span>))}
@@ -1505,7 +1507,15 @@ function DragContextBar({ visible, team, onDropState, onDropAssignee, lanes = BO
   );
 }
 
-function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAssign, onTagsChange }) {
+// Same hue formula as Avatar (app-components.jsx), so a person's card accent
+// matches their avatar color.
+function personColor(id) {
+  const hueSeed = (id || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const hue = (hueSeed * 47) % 360;
+  return `oklch(0.75 0.1 ${hue})`;
+}
+
+function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], isNew = false }) {
   const { data: NexusMDData } = useNexusData();
   const [cfg] = usePersisted('nexusmd.fields.wiCard', []);
   const resolved = resolveFields(WI_CARD_FIELDS, cfg).filter(f => f.visible);
@@ -1539,6 +1549,12 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
   const detailFields = resolved.filter(f => detailKeys.includes(f.key));
   const countFields = resolved.filter(f => countKeys.includes(f.key));
   const isDragging = dragId === w.id;
+  // Cards are accented by project, except when the board is already grouped
+  // by project — the group header covers that, so accent by assignee instead
+  // to add a dimension rather than repeat the grouping.
+  const accentColor = grouping === 'project'
+    ? (w.assignee ? personColor(w.assignee) : null)
+    : (projects.find(p => p.id === w.project)?.color || null);
   return (
     <div
       className={`board-card ${isDragging ? 'dragging' : ''}`}
@@ -1548,13 +1564,18 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
       onClick={() => onOpen(w)}
       onMouseEnter={() => { clearTimeout(_wiHoverTimer); _wiHoverTimer = setTimeout(() => WorkItemDetail.prefetch(w.id, w.project), 100); }}
       onMouseLeave={() => clearTimeout(_wiHoverTimer)}
-      style={isDragging ? { opacity: 0.45, transform: 'rotate(1.5deg) scale(0.97)' } : undefined}
+      style={{
+        boxShadow: isNew ? 'inset 3px 0 0 var(--accent)' : (accentColor ? `inset 3px 0 0 ${accentColor}` : undefined),
+        background: isNew ? 'color-mix(in srgb, var(--accent) 7%, var(--surface))' : undefined,
+        ...(isDragging ? { opacity: 0.45, transform: 'rotate(1.5deg) scale(0.97)' } : {}),
+      }}
     >
       <div className="board-card-head">
         <TypeIcon type={w.type}/>
         <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(w.project.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase()))}/_workitems/edit/${w.id}`}
               target="_blank" rel="noopener" onClick={e=>e.stopPropagation()}
               style={{color:'var(--accent)',textDecoration:'none',fontSize:11.5,fontFamily:'var(--mono)'}}>#{w.id}</a>
+        {isNew && <span style={{ fontSize:9, fontWeight:700, background:'var(--accent)', color:'var(--accent-fg)', padding:'1px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:'0.05em', flexShrink:0 }}>New</span>}
 
         <span className="spacer"/>
         {visible.has('priority') && <Prio p={w.priority}/>}
@@ -1586,7 +1607,7 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
   );
 }
 
-function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes = BOARD_LANES, team = [], onAssign, onTagsChange }) {
+function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes = BOARD_LANES, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], newItemIds = new Set() }) {
   return (
     <div className="board">
       {lanes.map(state => {
@@ -1618,6 +1639,9 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
                   team={team}
                   onAssign={assigneeId => onAssign?.(w.id, assigneeId)}
                   onTagsChange={newTags => onTagsChange?.(w.id, newTags)}
+                  grouping={grouping}
+                  projects={projects}
+                  isNew={newItemIds.has(w.id)}
                 />
               ))}
               {laneItems.length === 0 && (
@@ -1639,7 +1663,7 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
   );
 }
 
-function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team = [], showEmptyAssignees = false, lanes = BOARD_LANES }) {
+function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team = [], showEmptyAssignees = false, lanes = BOARD_LANES, newItemIds = new Set() }) {
   const { data: NexusMDData, workItemSource } = useNexusData();
   const [dragId,    setDragId]    = useStateW(null);
   const [overKey,   setOverKey]   = useStateW(null);
@@ -1733,7 +1757,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
     await patchWI(id, [['/fields/System.Tags', newTags.join('; ')]]);
   };
 
-  const laneProps = { dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes, team, onAssign: onAssignCard, onTagsChange: onTagsCard };
+  const laneProps = { dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes, team, onAssign: onAssignCard, onTagsChange: onTagsCard, grouping, projects: PROJECTS, newItemIds };
 
   const boardContent = grouping === 'none' ? (
     <BoardLanes items={items} groupKey="__all__" {...laneProps} />
