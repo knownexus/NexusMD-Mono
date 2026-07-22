@@ -1,5 +1,5 @@
 export { loadAdoData, loadCachedAdoData, ADO_CACHE_KEY } from './loader.js'
-export { mapWorkItem, mapPR, mapBuild, mapTestBuild } from './mappers.js'
+export { mapWorkItem, mapPR, mapBuild, mapTestBuild, mapBuildTimeline } from './mappers.js'
 export { deriveProjects, deriveSprint, deriveActivity, derivePrSparkline } from './derive.js'
 export {
   slugify, timeAgo, formatDateTime, adoTypeToHelm, adoStateToHelm,

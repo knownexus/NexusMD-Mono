@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mapWorkItem, mapPR, mapBuild, mapTestBuild } from '../../src/modules/ado/mappers.js'
+import { mapWorkItem, mapPR, mapBuild, mapTestBuild, mapBuildTimeline } from '../../src/modules/ado/mappers.js'
 
 // ── mapWorkItem ───────────────────────────────────────────────────────────────
 
@@ -165,6 +165,39 @@ describe('mapBuild', () => {
     expect(mapBuild(rawBuild, '').failureReason).toBe('Step "test" failed')
     const ok = mapBuild({ ...rawBuild, result: 'succeeded' }, '')
     expect(ok.failureReason).toBeNull()
+  })
+})
+
+// ── mapBuildTimeline ────────────────────────────────────────────────────────
+
+const rawTimeline = {
+  records: [
+    { id: 'a', name: 'Build', type: 'Stage', result: 'failed', issues: [{ type: 'error', message: 'Package restore failed' }] },
+    { id: 'b', name: 'Run tests', type: 'Task', result: 'failed', issues: [{ type: 'error', message: 'Test suite exited with code 1' }, { type: 'error', message: '2 tests failed' }] },
+    { id: 'c', name: 'Checkout', type: 'Task', result: 'succeeded', issues: [] },
+    { id: 'd', name: 'Some checkpoint', type: 'Checkpoint', result: 'failed', issues: [{ type: 'error', message: 'ignored type' }] },
+    { id: 'e', name: 'No issues array', type: 'Task', result: 'failed' },
+  ],
+}
+
+describe('mapBuildTimeline', () => {
+  it('keeps only failed records of known types (Stage/Phase/Job/Task)', () => {
+    const { failedRecords } = mapBuildTimeline(rawTimeline)
+    expect(failedRecords.map(r => r.name)).toEqual(['Build', 'Run tests', 'No issues array'])
+  })
+  it('maps each record\'s issues to a flat messages array', () => {
+    const { failedRecords } = mapBuildTimeline(rawTimeline)
+    expect(failedRecords.find(r => r.name === 'Run tests').messages).toEqual([
+      'Test suite exited with code 1', '2 tests failed',
+    ])
+  })
+  it('defaults messages to an empty array when issues is missing', () => {
+    const { failedRecords } = mapBuildTimeline(rawTimeline)
+    expect(failedRecords.find(r => r.name === 'No issues array').messages).toEqual([])
+  })
+  it('returns an empty failedRecords array for an empty/missing records list', () => {
+    expect(mapBuildTimeline({ records: [] })).toEqual({ failedRecords: [] })
+    expect(mapBuildTimeline({})).toEqual({ failedRecords: [] })
   })
 })
 

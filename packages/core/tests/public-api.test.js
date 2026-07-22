@@ -30,7 +30,7 @@ const EXPECTED = [
   'isAllDayEvent', 'isBlockedState', 'isExpired', 'isReviewState', 'isTerminalState',
   'lapTimer', 'listProfiles', 'loadAdoData', 'loadCachedAdoData', 'makeAdoConfig', 'ADO_CACHE_KEY',
   'removeAutoAdded', 'resetToDetected', 'resetTimer', 'reorderColumns', 'syncBoardColumns', 'toggleColumnHidden',
-  'indexPRsByWorkItem', 'makeProfileKeys', 'mapBuild', 'mapPR', 'mapTestBuild', 'mapWorkItem',
+  'indexPRsByWorkItem', 'makeProfileKeys', 'mapBuild', 'mapBuildTimeline', 'mapPR', 'mapTestBuild', 'mapWorkItem',
   'mergeTeamRoster', 'pauseTimer', 'pendingAlerts', 'plFmtYmd', 'plIsOverdueYmd', 'plIsTodayYmd',
   'plParseYmd', 'plSectionGroup', 'plTodayDate', 'qaParseDue', 'readAuditLog',
   'registerModule', 'remainingMs', 'resumeTimer', 'slugify', 'sortEventsByTime', 'startTimer', 'stateCategory', 'stopTimer', 'timeAgo',
