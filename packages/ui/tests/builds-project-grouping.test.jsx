@@ -36,6 +36,24 @@ it('groups builds by project, then by pipeline within each project', () => {
   expect(getByText('Web')).toBeTruthy()
 })
 
+it('toggles pipeline visibility independently for two projects sharing a pipeline name', () => {
+  const sharedNameBuilds = [
+    { id: 1, pipeline: 'API', status: 'success', branch: 'main', project: 'proj-a', definitionId: 5, commit: 'aaa1111', reason: 'manual', duration: '1m', when: 'now', finishTime: '2026-01-02T10:00:00' },
+    { id: 2, pipeline: 'API', status: 'success', branch: 'main', project: 'proj-b', definitionId: 6, commit: 'bbb2222', reason: 'manual', duration: '2m', when: 'now', finishTime: '2026-01-02T11:00:00' },
+  ]
+  const { getByText, queryByText, container } = render(
+    <NexusDataProvider value={{ storage: memStorage(), getProfileKey: k => k, pushPref: () => {}, data: { ORG: 'o', PROJECTS } }}>
+      <BuildsView builds={sharedNameBuilds} acknowledgedBuilds={[]} setAcknowledgedBuilds={() => {}} />
+    </NexusDataProvider>,
+  )
+  fireEvent.click(getByText('Pipelines'))
+  const checkboxes = container.querySelectorAll('input[type="checkbox"]')
+  expect(checkboxes.length).toBe(2)
+  fireEvent.click(checkboxes[0])
+  expect(queryByText('aaa1111')).toBeNull()
+  expect(getByText('bbb2222')).toBeTruthy()
+})
+
 it('calls onOpenBuild with the clicked build', () => {
   const onOpenBuild = vi.fn()
   const { getByText } = renderBuilds({ onOpenBuild })

@@ -119,22 +119,22 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
     cancelled:    cancelled,
   }
 
-  // ── All unique pipeline names ───────────────────────────────
-  const allPipelines = React.useMemo(() => {
+  // ── All unique "<project>::<pipeline>" combos ───────────────
+  const allPipelineKeys = React.useMemo(() => {
     const seen = new Set()
-    builds.forEach(b => seen.add(b.pipeline || 'Pipeline'))
+    builds.forEach(b => seen.add(`${b.project || 'Unknown'}::${b.pipeline || 'Pipeline'}`))
     return Array.from(seen).sort()
   }, [builds])
 
   const hiddenSet = React.useMemo(() => new Set(hiddenPipelines), [hiddenPipelines])
 
-  const togglePipeline = name =>
+  const togglePipeline = key =>
     setHiddenPipelines(prev =>
-      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
     )
   const showAllPipelines  = () => setHiddenPipelines([])
-  const hideAllPipelines  = () => setHiddenPipelines([...allPipelines])
-  const visibleCount = allPipelines.length - hiddenPipelines.length
+  const hideAllPipelines  = () => setHiddenPipelines([...allPipelineKeys])
+  const visibleCount = allPipelineKeys.length - hiddenPipelines.length
 
   // ── Filter + sort ───────────────────────────────────────────
   const filteredBuilds = React.useMemo(() => {
@@ -148,7 +148,7 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
     } else {
       list = builds.filter(b => b.status === resultFilter)
     }
-    list = list.filter(b => !hiddenSet.has(b.pipeline || 'Pipeline'))
+    list = list.filter(b => !hiddenSet.has(`${b.project || 'Unknown'}::${b.pipeline || 'Pipeline'}`))
     return [...list].sort((a, b) => {
       const da = a.finishTime ? new Date(a.finishTime).getTime() : 0
       const db = b.finishTime ? new Date(b.finishTime).getTime() : 0
@@ -411,7 +411,7 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
                 marginLeft:4, fontSize:10.5, fontWeight:600,
                 color: hiddenPipelines.length > 0 ? 'var(--accent)' : 'var(--text-subtle)',
               }}>
-                {visibleCount}/{allPipelines.length}
+                {visibleCount}/{allPipelineKeys.length}
               </span>
               <Icon name="arrow-right" size={10} style={{ transform:'rotate(90deg)', opacity:0.5, marginLeft:2 }}/>
             </button>
@@ -439,17 +439,18 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
                       {project}
                     </div>
                     {pipelines.map(name => {
-                      const visible = !hiddenSet.has(name)
-                      const hist = (pipelineHistory.get(`${project}::${name}`) || []).slice(0, 5)
+                      const key = `${project}::${name}`
+                      const visible = !hiddenSet.has(key)
+                      const hist = (pipelineHistory.get(key) || []).slice(0, 5)
                       return (
-                        <label key={`${project}::${name}`} style={{
+                        <label key={key} style={{
                           display: 'flex', alignItems: 'center', gap: 8,
                           padding: '6px 12px', cursor: 'pointer', userSelect: 'none',
                           opacity: visible ? 1 : 0.45,
                         }}
                           onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                          <input type="checkbox" checked={visible} onChange={() => togglePipeline(name)}
+                          <input type="checkbox" checked={visible} onChange={() => togglePipeline(key)}
                             style={{ cursor: 'pointer', accentColor: 'var(--accent)', flexShrink: 0 }}/>
                           <span style={{ flex: 1, fontSize: 12.5, fontWeight: 500, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {name}
