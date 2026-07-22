@@ -11,7 +11,7 @@ import {
   PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
   DashboardView, WorkItemsView, TriageView,
   PlannerView, MarkdownViewer, plannerExportDocx,
-  WorkItemDetail, Drawer, TypeIcon, Prio,
+  WorkItemDetail, BuildDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
   WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
   ApiClientProvider, ApiClientView,
@@ -29,6 +29,7 @@ import {
   clipboardAdapter, shareAdapter, notificationAdapter,
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
+import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
 import DesktopNotesView from './desktop-notes-view.jsx'
@@ -283,12 +284,15 @@ function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
   const d    = drawer?.data
   const http = React.useMemo(() => createAdoHttpAdapter(), [])
 
-  const title = !d ? '' : kind === 'wi' ? d.title : kind === 'pr' ? d.title : kind === 'person' ? d.name : ''
+  const title = !d ? '' : kind === 'wi' ? d.title : kind === 'pr' ? d.title : kind === 'person' ? d.name : kind === 'build' ? d.pipeline : ''
 
   const { org } = getAdoConfig()
   const adoUrl = kind === 'wi' && d?.project && org
     ? `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent((d.project || '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}/_workitems/edit/${d.id}`
-    : kind === 'pr' ? d?.url : null
+    : kind === 'pr' ? d?.url
+    : kind === 'build' && d?.project && org
+      ? `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(d.project)}/_build/results?buildId=${d.id}`
+      : null
 
   const markDone = async () => {
     try {
@@ -310,6 +314,11 @@ function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
         </span>
       ) : kind === 'pr' && d ? (
         <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>#{d.id}</span>
+      ) : kind === 'build' && d ? (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>#{d.id}</span>
+          <span className={`build-dot ${d.status}`}/>
+        </span>
       ) : null}
       actions={(
         <React.Fragment>
@@ -321,7 +330,7 @@ function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
           {kind === 'person' && d && <PersonActions dev={d} />}
           {adoUrl && (
             <button className="btn sm ghost" onClick={() => window.electronAPI.openLink(adoUrl)}>
-              <Icon name="link" size={12}/> Open in {kind === 'wi' ? 'ADO' : 'browser'}
+              <Icon name="link" size={12}/> Open in {kind === 'wi' || kind === 'build' ? 'ADO' : 'browser'}
             </button>
           )}
         </React.Fragment>
@@ -334,13 +343,14 @@ function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
       )}
       {kind === 'pr' && d && <PRTabs key={d.id} pr={d} http={http} />}
       {kind === 'person' && d && <PersonSummary dev={d} onOpenItem={onOpenItem} onOpenPR={onOpenPR} />}
+      {kind === 'build' && d && <BuildDetail build={d} />}
     </Drawer>
   )
 }
 
 // The view body — reads the snapshot from context and wires per-view host state.
 function ViewBody({
-  view, onOpenItem, onOpenPR, onOpenPerson = () => {},
+  view, onOpenItem, onOpenPR, onOpenPerson = () => {}, onOpenBuild = () => {},
   tweaks = DEFAULT_TWEAKS, setTweak = () => {},
   newItemIds = { work: new Set(), pr: new Set(), builds: new Set(), tests: new Set() },
   plannerData = {}, setPlannerData = () => {},
@@ -457,7 +467,8 @@ function ViewBody({
       return (
         <BuildsView builds={data.BUILDS || []}
           acknowledgedBuilds={acknowledgedBuilds} setAcknowledgedBuilds={setAcknowledgedBuilds}
-          newItemIds={newItemIds.builds} />
+          newItemIds={newItemIds.builds} onOpenBuild={onOpenBuild}
+        />
       )
     case 'tests':
       return (
@@ -633,6 +644,7 @@ function App() {
   const openItem   = item => setDrawer({ kind: 'wi', data: item })
   const openPR     = pr   => setDrawer({ kind: 'pr', data: pr })
   const openPerson = dev  => setDrawer({ kind: 'person', data: dev })
+  const openBuild  = b    => setDrawer({ kind: 'build', data: b })
   const [localItems, setLocalItems] = React.useState(null)
   const [tweaks, setTweaksState] = React.useState(loadTweaks)
 
@@ -781,6 +793,7 @@ function App() {
     getProfileKey,
     pushPref:       () => {},
     workItemSource: desktopWorkItemSource,
+    buildSource:    desktopBuildSource,
   }), [snapshot])
 
   return (
@@ -923,7 +936,7 @@ function App() {
             padding: view === 'markdown' ? 0 : 18,
           }}>
             <ViewBody
-              view={view} onOpenItem={openItem} onOpenPR={openPR} onOpenPerson={openPerson}
+              view={view} onOpenItem={openItem} onOpenPR={openPR} onOpenPerson={openPerson} onOpenBuild={openBuild}
               tweaks={tweaks} setTweak={setTweak}
               newItemIds={newItemIds}
               plannerData={plannerData} setPlannerData={setPlannerData}

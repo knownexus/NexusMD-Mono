@@ -44,8 +44,8 @@ export const PR_CARD_FIELDS = [
 export const BUILDS_TABLE_COLUMNS = [
   { key: 'status',      label: 'Status',       width: '28px',  locked: true },
   { key: 'build',       label: 'Build #',      width: '68px',  locked: true },
-  { key: 'project',     label: 'Project',      width: '120px' },
   { key: 'triggeredBy', label: 'Triggered by', width: '1fr' },
+  { key: 'project',     label: 'Project',      width: '120px' },
   { key: 'branch',      label: 'Branch',       width: '160px' },
   { key: 'commit',      label: 'Commit',       width: '72px' },
   { key: 'reason',      label: 'Reason',       width: '80px' },

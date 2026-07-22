@@ -98,6 +98,20 @@ export function mapBuild(b, proj = '') {
   }
 }
 
+const TIMELINE_RECORD_TYPES = ['Stage', 'Phase', 'Job', 'Task']
+
+export function mapBuildTimeline(raw) {
+  const records = raw?.records || []
+  const failedRecords = records
+    .filter(r => r.result === 'failed' && TIMELINE_RECORD_TYPES.includes(r.type))
+    .map(r => ({
+      name: r.name || 'Unnamed',
+      type: r.type,
+      messages: (r.issues || []).map(i => i.message).filter(Boolean),
+    }))
+  return { failedRecords }
+}
+
 export function mapTestBuild(b, proj = '') {
   return {
     id: b.id, project: proj,

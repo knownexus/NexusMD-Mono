@@ -10,7 +10,7 @@ import { toast } from '../toast.jsx'
 import { useNexusData } from '../data-context.jsx'
 import { formatDateTime, resolveFields, BUILDS_TABLE_COLUMNS } from '@nexusmd/core'
 
-export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItemIds = new Set() }) {
+export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItemIds = new Set(), onOpenBuild }) {
   const { data: NexusMDData } = useNexusData()
   const [buildsCfg] = usePersisted('nexusmd.fields.buildsTable', [])
   const visibleBuildCols = resolveFields(BUILDS_TABLE_COLUMNS, buildsCfg).filter(f => f.visible)
@@ -119,22 +119,22 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
     cancelled:    cancelled,
   }
 
-  // ── All unique pipeline names ───────────────────────────────
-  const allPipelines = React.useMemo(() => {
+  // ── All unique "<project>::<pipeline>" combos ───────────────
+  const allPipelineKeys = React.useMemo(() => {
     const seen = new Set()
-    builds.forEach(b => seen.add(b.pipeline || 'Pipeline'))
+    builds.forEach(b => seen.add(`${b.project || 'Unknown'}::${b.pipeline || 'Pipeline'}`))
     return Array.from(seen).sort()
   }, [builds])
 
   const hiddenSet = React.useMemo(() => new Set(hiddenPipelines), [hiddenPipelines])
 
-  const togglePipeline = name =>
+  const togglePipeline = key =>
     setHiddenPipelines(prev =>
-      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
     )
   const showAllPipelines  = () => setHiddenPipelines([])
-  const hideAllPipelines  = () => setHiddenPipelines([...allPipelines])
-  const visibleCount = allPipelines.length - hiddenPipelines.length
+  const hideAllPipelines  = () => setHiddenPipelines([...allPipelineKeys])
+  const visibleCount = allPipelineKeys.length - hiddenPipelines.length
 
   // ── Filter + sort ───────────────────────────────────────────
   const filteredBuilds = React.useMemo(() => {
@@ -148,7 +148,7 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
     } else {
       list = builds.filter(b => b.status === resultFilter)
     }
-    list = list.filter(b => !hiddenSet.has(b.pipeline || 'Pipeline'))
+    list = list.filter(b => !hiddenSet.has(`${b.project || 'Unknown'}::${b.pipeline || 'Pipeline'}`))
     return [...list].sort((a, b) => {
       const da = a.finishTime ? new Date(a.finishTime).getTime() : 0
       const db = b.finishTime ? new Date(b.finishTime).getTime() : 0
@@ -156,27 +156,59 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
     })
   }, [builds, resultFilter, hiddenSet, sortDir, acknowledgedSet])
 
-  // ── Group by pipeline ───────────────────────────────────────
+  // ── Group by project, then pipeline ──────────────────────────
   const grouped = React.useMemo(() => {
-    const map = new Map()
+    const projectMap = new Map()
     filteredBuilds.forEach(b => {
-      const k = b.pipeline || 'Pipeline'
-      if (!map.has(k)) map.set(k, [])
-      map.get(k).push(b)
+      const projKey = b.project || 'Unknown'
+      if (!projectMap.has(projKey)) projectMap.set(projKey, new Map())
+      const pipelineMap = projectMap.get(projKey)
+      const pipeKey = b.pipeline || 'Pipeline'
+      if (!pipelineMap.has(pipeKey)) pipelineMap.set(pipeKey, [])
+      pipelineMap.get(pipeKey).push(b)
     })
-    return Array.from(map.entries()).map(([name, runs]) => ({ name, runs }))
+    return Array.from(projectMap.entries()).map(([project, pipelineMap]) => ({
+      project,
+      pipelines: Array.from(pipelineMap.entries()).map(([name, runs]) => ({ name, runs })),
+      runCount: Array.from(pipelineMap.values()).reduce((n, runs) => n + runs.length, 0),
+    }))
   }, [filteredBuilds])
 
-  // Full history for sparklines (unfiltered)
-  const pipelineHistory = React.useMemo(() => {
+  // Full history for the project-level sparkline (unfiltered), keyed by project.
+  const projectHistory = React.useMemo(() => {
     const map = new Map()
     builds.forEach(b => {
-      const k = b.pipeline || 'Pipeline'
+      const k = b.project || 'Unknown'
       if (!map.has(k)) map.set(k, [])
       map.get(k).push(dispStatus(b))
     })
     return map
   }, [builds, acknowledgedSet])
+
+  // Full history for pipeline sparklines (unfiltered), keyed by "<project>::<pipeline>"
+  // so two projects that happen to share a pipeline name don't bleed into each other.
+  const pipelineHistory = React.useMemo(() => {
+    const map = new Map()
+    builds.forEach(b => {
+      const k = `${b.project || 'Unknown'}::${b.pipeline || 'Pipeline'}`
+      if (!map.has(k)) map.set(k, [])
+      map.get(k).push(dispStatus(b))
+    })
+    return map
+  }, [builds, acknowledgedSet])
+
+  // Project → pipeline names, for the visibility filter dropdown's sub-headings.
+  const projectPipelines = React.useMemo(() => {
+    const map = new Map()
+    builds.forEach(b => {
+      const proj = b.project || 'Unknown'
+      if (!map.has(proj)) map.set(proj, new Set())
+      map.get(proj).add(b.pipeline || 'Pipeline')
+    })
+    return Array.from(map.entries())
+      .map(([project, names]) => ({ project, pipelines: Array.from(names).sort() }))
+      .sort((a, b) => a.project.localeCompare(b.project))
+  }, [builds])
 
   const dotClass   = { success: 'success', failed: 'failed', partial: 'partial', running: 'running', acknowledged: 'partial', cancelled: 'cancelled' }
   const sparkColor = { success: 'var(--success)', failed: 'var(--danger)', partial: 'var(--warning)', running: 'var(--info)', acknowledged: 'var(--warning)', cancelled: 'var(--text-muted)' }
@@ -379,7 +411,7 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
                 marginLeft:4, fontSize:10.5, fontWeight:600,
                 color: hiddenPipelines.length > 0 ? 'var(--accent)' : 'var(--text-subtle)',
               }}>
-                {visibleCount}/{allPipelines.length}
+                {visibleCount}/{allPipelineKeys.length}
               </span>
               <Icon name="arrow-right" size={10} style={{ transform:'rotate(90deg)', opacity:0.5, marginLeft:2 }}/>
             </button>
@@ -398,41 +430,56 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
                   <button className="btn sm ghost" style={{ flex:1, fontSize:11 }} onClick={showAllPipelines}>Show all</button>
                   <button className="btn sm ghost" style={{ flex:1, fontSize:11 }} onClick={hideAllPipelines}>Hide all</button>
                 </div>
-                {allPipelines.map(name => {
-                  const visible = !hiddenSet.has(name)
-                  const hist = (pipelineHistory.get(name) || []).slice(0, 5)
-                  return (
-                    <label key={name} style={{
-                      display:'flex', alignItems:'center', gap:8,
-                      padding:'6px 12px', cursor:'pointer', userSelect:'none',
-                      opacity: visible ? 1 : 0.45,
-                    }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                      <input type="checkbox" checked={visible} onChange={() => togglePipeline(name)}
-                        style={{ cursor:'pointer', accentColor:'var(--accent)', flexShrink:0 }}/>
-                      <span style={{ flex:1, fontSize:12.5, fontWeight:500, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                        {name}
-                      </span>
-                      {/* Mini sparkline */}
-                      <div style={{ display:'flex', gap:2, flexShrink:0 }}>
-                        {hist.map((s, i) => (
-                          <span key={i} style={{
-                            width:6, height:6, borderRadius:2, flexShrink:0,
-                            background: sparkColor[s] || 'var(--text-subtle)', opacity:0.8,
-                          }}/>
-                        ))}
-                      </div>
-                    </label>
-                  )
-                })}
+                {projectPipelines.map(({ project, pipelines }) => (
+                  <React.Fragment key={project}>
+                    <div style={{
+                      padding: '6px 12px 2px', fontSize: 10, fontWeight: 700,
+                      color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em',
+                    }}>
+                      {project}
+                    </div>
+                    {pipelines.map(name => {
+                      const key = `${project}::${name}`
+                      const visible = !hiddenSet.has(key)
+                      const hist = (pipelineHistory.get(key) || []).slice(0, 5)
+                      return (
+                        <label key={key} style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '6px 12px', cursor: 'pointer', userSelect: 'none',
+                          opacity: visible ? 1 : 0.45,
+                        }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                          <input type="checkbox" checked={visible} onChange={() => togglePipeline(key)}
+                            style={{ cursor: 'pointer', accentColor: 'var(--accent)', flexShrink: 0 }}/>
+                          <span style={{ flex: 1, fontSize: 12.5, fontWeight: 500, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {name}
+                          </span>
+                          <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                            {hist.map((s, i) => (
+                              <span key={i} style={{
+                                width: 6, height: 6, borderRadius: 2, flexShrink: 0,
+                                background: sparkColor[s] || 'var(--text-subtle)', opacity: 0.8,
+                              }}/>
+                            ))}
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </React.Fragment>
+                ))}
               </div>
             )}
           </div>
 
           <div style={{ width:1, height:16, background:'var(--border)', margin:'0 2px' }}/>
           <button className="btn sm ghost" onClick={() => {
-            const n = {}; grouped.forEach(g => { n[g.name] = true }); setCollapsed(n)
+            const n = {}
+            grouped.forEach(pg => {
+              n[pg.project] = true
+              pg.pipelines.forEach(g => { n[`${pg.project}::${g.name}`] = true })
+            })
+            setCollapsed(n)
           }}><Icon name="chevron-right" size={12}/> Collapse all</button>
           <button className="btn sm ghost" onClick={() => setCollapsed({})}><Icon name="chevron-down" size={12}/> Expand all</button>
         </div>
@@ -448,45 +495,75 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
           {visibleBuildCols.map(f => buildHead(f.key))}
         </div>
 
-        {/* ── Pipeline groups ── */}
+        {/* ── Project / pipeline groups ── */}
         <div className="card-body flush">
-          {grouped.map(g => {
-            const history = (pipelineHistory.get(g.name) || []).slice(0, 10)
+          {grouped.map(pg => {
+            const projHistory = (projectHistory.get(pg.project) || []).slice(0, 10)
+            const projCollapsed = collapsed[pg.project]
             return (
-              <React.Fragment key={g.name}>
-                {/* Group header */}
+              <React.Fragment key={pg.project}>
+                {/* Project header */}
                 <div
                   style={{
-                    padding:'7px 14px', background:'var(--surface-2)',
-                    borderBottom:'1px solid var(--border)',
-                    display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                    padding: '8px 14px', background: 'var(--surface-2)',
+                    borderBottom: '1px solid var(--border)',
+                    display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 700,
                   }}
-                  onClick={() => setCollapsed(c => ({ ...c, [g.name]: !c[g.name] }))}>
-                  <Icon name={collapsed[g.name] ? 'chevron-right' : 'chevron-down'} size={11}/>
-                  <span style={{ fontSize:12, fontWeight:600, color:'var(--text)' }}>{g.name}</span>
-                  <span className="muted mono" style={{ fontSize:10.5 }}>{g.runs.length} run{g.runs.length !== 1 ? 's' : ''}</span>
-                  {/* Sparkline */}
-                  <div style={{ display:'flex', gap:3, marginLeft:4 }} title="Last 10 build results (newest first)">
-                    {history.map((status, i) => (
+                  onClick={() => setCollapsed(c => ({ ...c, [pg.project]: !c[pg.project] }))}>
+                  <Icon name={projCollapsed ? 'chevron-right' : 'chevron-down'} size={12}/>
+                  {visibleBuildCols.some(f => f.key === 'project') && <ProjectChip id={pg.project}/>}
+                  <span className="muted mono" style={{ fontSize: 10.5 }}>{pg.runCount} run{pg.runCount !== 1 ? 's' : ''}</span>
+                  <div style={{ display: 'flex', gap: 3, marginLeft: 4 }} title="Last 10 build results across this project (newest first)">
+                    {projHistory.map((status, i) => (
                       <span key={i} style={{
-                        width:8, height:8, borderRadius:2, flexShrink:0,
-                        background: sparkColor[status] || 'var(--text-subtle)', opacity:0.85,
+                        width: 8, height: 8, borderRadius: 2, flexShrink: 0,
+                        background: sparkColor[status] || 'var(--text-subtle)', opacity: 0.85,
                       }}/>
                     ))}
                   </div>
                 </div>
 
-                {/* Build rows */}
-                {!collapsed[g.name] && g.runs.map(b => {
-                  const isNew = newItemIds.has(b.id)
+                {!projCollapsed && pg.pipelines.map(g => {
+                  const key = `${pg.project}::${g.name}`
+                  const history = (pipelineHistory.get(key) || []).slice(0, 10)
                   return (
-                  <div key={`${g.name}-${b.id}`}
-                    className="build-row"
-                    style={{ display:'grid', gridTemplateColumns: buildGrid, alignItems:'center', gap:8, padding:'0 14px', cursor:'pointer',
-                      ...(isNew ? { background: 'color-mix(in srgb, var(--accent) 7%, var(--surface))', boxShadow: 'inset 3px 0 0 var(--accent)' } : {}),
-                    }}>
-                    {visibleBuildCols.map(f => buildCell(f.key, b))}
-                  </div>
+                    <React.Fragment key={key}>
+                      {/* Pipeline header */}
+                      <div
+                        style={{
+                          padding: '7px 14px 7px 30px', background: 'var(--surface-2)',
+                          borderBottom: '1px solid var(--border)',
+                          display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+                        }}
+                        onClick={() => setCollapsed(c => ({ ...c, [key]: !c[key] }))}>
+                        <Icon name={collapsed[key] ? 'chevron-right' : 'chevron-down'} size={11}/>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{g.name}</span>
+                        <span className="muted mono" style={{ fontSize: 10.5 }}>{g.runs.length} run{g.runs.length !== 1 ? 's' : ''}</span>
+                        <div style={{ display: 'flex', gap: 3, marginLeft: 4 }} title="Last 10 build results (newest first)">
+                          {history.map((status, i) => (
+                            <span key={i} style={{
+                              width: 8, height: 8, borderRadius: 2, flexShrink: 0,
+                              background: sparkColor[status] || 'var(--text-subtle)', opacity: 0.85,
+                            }}/>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Build rows */}
+                      {!collapsed[key] && g.runs.map(b => {
+                        const isNew = newItemIds.has(b.id)
+                        return (
+                          <div key={`${key}-${b.id}`}
+                            className="build-row"
+                            style={{ display: 'grid', gridTemplateColumns: buildGrid, alignItems: 'center', gap: 8, padding: '0 14px', cursor: 'pointer',
+                              ...(isNew ? { background: 'color-mix(in srgb, var(--accent) 7%, var(--surface))', boxShadow: 'inset 3px 0 0 var(--accent)' } : {}),
+                            }}
+                            onClick={() => onOpenBuild?.(b)}>
+                            {visibleBuildCols.map(f => buildCell(f.key, b))}
+                          </div>
+                        )
+                      })}
+                    </React.Fragment>
                   )
                 })}
               </React.Fragment>

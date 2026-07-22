@@ -18,6 +18,10 @@ describe('catalogs', () => {
       for (const f of cat) { expect(typeof f.key).toBe('string'); expect(typeof f.label).toBe('string') }
     }
   })
+  it('BUILDS_TABLE_COLUMNS puts project immediately before branch', () => {
+    const keys = BUILDS_TABLE_COLUMNS.map(f => f.key)
+    expect(keys.indexOf('project')).toBe(keys.indexOf('branch') - 1)
+  })
 })
 
 describe('defaultConfig', () => {
