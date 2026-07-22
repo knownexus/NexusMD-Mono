@@ -39,7 +39,7 @@ it('shows the build\'s project as a ProjectChip by default', () => {
       <BuildsView builds={[BUILD]} acknowledgedBuilds={[]} setAcknowledgedBuilds={() => {}} />
     </NexusDataProvider>
   )
-  expect(getAllByText('Cirrus').length).toBeGreaterThanOrEqual(1)
+  expect(getAllByText('Cirrus').length).toBe(2)
 })
 
 it('omits the Project column when hidden by config', () => {

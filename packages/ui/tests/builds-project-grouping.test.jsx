@@ -30,8 +30,8 @@ function renderBuilds(props = {}) {
 
 it('groups builds by project, then by pipeline within each project', () => {
   const { getAllByText, getByText } = renderBuilds()
-  expect(getAllByText('Project A').length).toBeGreaterThanOrEqual(1)
-  expect(getAllByText('Project B').length).toBeGreaterThanOrEqual(1)
+  expect(getAllByText('Project A').length).toBe(2)
+  expect(getAllByText('Project B').length).toBe(2)
   expect(getByText('API')).toBeTruthy()
   expect(getByText('Web')).toBeTruthy()
 })
