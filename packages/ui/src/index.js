@@ -88,6 +88,7 @@ export {
 // Shared triage controls + work-item detail panel (used by the views below).
 export { TriageEvents, TriageExportButton, TriageStatusLine, TriageExportModal } from './views/triage.jsx'
 export { WorkItemDetail, WorkItemFieldsEditor } from './views/work-item-detail.jsx'
+export { apiBuildSource } from './views/build-source.js'
 export { TagInput, AreaTreePicker } from './views/wi-field-pickers.jsx'
 export { PRTabs, PRCommitsTab, PRFilesTab } from './views/pr-tabs.jsx'
 export { DEFAULT_PROJECT_AREAS, useProjectAreas } from './project-areas.js'

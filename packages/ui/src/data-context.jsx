@@ -13,6 +13,7 @@ import {
 } from '@nexusmd/core'
 import { setPlannerRuntime } from './planner/runtime.js'
 import { apiWorkItemSource, setWorkItemSource } from './views/work-item-source.js'
+import { apiBuildSource } from './views/build-source.js'
 
 // Shape every consumer can rely on even before data has loaded.
 export const EMPTY_NEXUS_DATA = {
@@ -56,6 +57,7 @@ const DEFAULTS = {
   namespace: 'nexusmd',      // storage-key prefix for shared UI state (web 'nexusmd', app 'helm')
   googleAuth: null,          // optional Google OAuth client (web only); null → widgets show "connect"
   workItemSource: apiWorkItemSource, // data ops for WorkItemDetail (web/desktop: /api; app: ado-client)
+  buildSource: apiBuildSource,       // data ops for BuildDetail's failure timeline (web/desktop: /api; desktop: ado-client)
   plannerOnWeekSaved: null,  // web only: fired after a planner week is saved (Google-Drive sync); null → no-op
 }
 
