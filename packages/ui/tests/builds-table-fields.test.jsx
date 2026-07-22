@@ -34,12 +34,12 @@ it('shows the Commit column by default', () => {
 it('shows the build\'s project as a ProjectChip by default', () => {
   const storage = memStorage({})
   const projects = [{ id: 'Proj', name: 'Cirrus', color: '#123456' }]
-  const { getByText } = render(
+  const { getAllByText } = render(
     <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {}, data: { ORG: 'o', PROJECTS: projects } }}>
       <BuildsView builds={[BUILD]} acknowledgedBuilds={[]} setAcknowledgedBuilds={() => {}} />
     </NexusDataProvider>
   )
-  expect(getByText('Cirrus')).toBeTruthy()
+  expect(getAllByText('Cirrus').length).toBeGreaterThanOrEqual(1)
 })
 
 it('omits the Project column when hidden by config', () => {

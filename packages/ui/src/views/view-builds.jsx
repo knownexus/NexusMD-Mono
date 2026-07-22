@@ -251,9 +251,7 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
           </div>
         );
       case 'project':
-        // The project is already shown once, in the project group header above these
-        // rows — repeating it per-row here would duplicate the ProjectChip in the DOM.
-        return <div key="project"/>;
+        return <div key="project" style={{ overflow:'hidden' }}><ProjectChip id={b.project}/></div>;
       case 'triggeredBy':
         return (
           <div key="triggeredBy" style={{ minWidth:0 }}>

@@ -29,9 +29,9 @@ function renderBuilds(props = {}) {
 }
 
 it('groups builds by project, then by pipeline within each project', () => {
-  const { getByText } = renderBuilds()
-  expect(getByText('Project A')).toBeTruthy()
-  expect(getByText('Project B')).toBeTruthy()
+  const { getAllByText, getByText } = renderBuilds()
+  expect(getAllByText('Project A').length).toBeGreaterThanOrEqual(1)
+  expect(getAllByText('Project B').length).toBeGreaterThanOrEqual(1)
   expect(getByText('API')).toBeTruthy()
   expect(getByText('Web')).toBeTruthy()
 })
@@ -45,8 +45,8 @@ it('calls onOpenBuild with the clicked build', () => {
 })
 
 it('collapsing a project group hides its pipeline groups and build rows', () => {
-  const { getByText, queryByText } = renderBuilds()
-  fireEvent.click(getByText('Project A'))
+  const { getAllByText, getByText, queryByText } = renderBuilds()
+  fireEvent.click(getAllByText('Project A')[0])
   expect(queryByText('API')).toBeNull()
   expect(queryByText('abc1234')).toBeNull()
   expect(getByText('Web')).toBeTruthy()
