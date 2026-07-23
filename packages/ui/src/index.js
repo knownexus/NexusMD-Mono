@@ -94,6 +94,7 @@ export { DEFAULT_PROJECT_AREAS, useProjectAreas } from './project-areas.js'
 export { renderContent, mdToHtml } from './views/render-content.js'
 export { MarkdownViewer, displayName } from './views/MarkdownViewer.jsx'
 export { JsonEditorView } from './views/view-json-editor.jsx'
+export { DocumentsView } from './views/view-documents.jsx'
 
 // Shared, platform-agnostic views (data + actions via props / useNexusData).
 export { PRView } from './views/view-prs.jsx'
