@@ -170,19 +170,17 @@ export function JsonEditorView() {
   }
   function closeModal() { setModal(null) }
   function submitModal() {
-    setModal(m => {
-      if (!m) return m
-      const val = coerceVal(m.type, m.value)
-      if (m.mode === 'add') {
-        const key = m.containerType === 'array' ? null : m.key.trim()
-        if (m.containerType !== 'array' && !key) return null
-        commit(addFieldAtPath(data, m.path, key, val))
-      } else {
-        const isArrayIndex = m.path.length > 0 && typeof m.path[m.path.length - 1] === 'number'
-        commit(replaceAtPath(data, m.path, isArrayIndex ? undefined : m.key.trim(), val))
-      }
-      return null
-    })
+    if (!modal) return
+    const val = coerceVal(modal.type, modal.value)
+    if (modal.mode === 'add') {
+      const key = modal.containerType === 'array' ? null : modal.key.trim()
+      if (modal.containerType !== 'array' && !key) { setModal(null); return }
+      commit(addFieldAtPath(data, modal.path, key, val))
+    } else {
+      const isArrayIndex = modal.path.length > 0 && typeof modal.path[modal.path.length - 1] === 'number'
+      commit(replaceAtPath(data, modal.path, isArrayIndex ? undefined : modal.key.trim(), val))
+    }
+    setModal(null)
   }
 
   // Keyboard shortcuts — read the latest handlers via a ref so this effect

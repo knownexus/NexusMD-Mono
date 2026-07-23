@@ -59,6 +59,26 @@ describe('JsonEditorView — undo/redo', () => {
     fireEvent.click(getByTitle('Ctrl+Y'))
     expect(textarea.value).toBe('{"greeting":"hi"}')
   })
+
+  it('undoes a field added via the modal, disabling correctly at the history boundary (StrictMode)', () => {
+    const { getByTitle, getByPlaceholderText, getByText, queryByText } = render(
+      <React.StrictMode>
+        <NexusDataProvider value={{ storage: memStorage(), getProfileKey: k => k, pushPref: () => {} }}>
+          <JsonEditorView/>
+        </NexusDataProvider>
+      </React.StrictMode>
+    )
+
+    fireEvent.click(getByTitle('Add field'))
+    fireEvent.change(getByPlaceholderText('e.g. username'), { target: { value: 'nickname' } })
+    fireEvent.change(getByPlaceholderText('Enter text…'), { target: { value: 'Ally' } })
+    fireEvent.click(getByTitle('Save field'))
+    expect(getByText('nickname')).toBeTruthy()
+
+    fireEvent.click(getByTitle('Ctrl+Z'))
+    expect(queryByText('nickname')).toBeNull()
+    expect(getByTitle('Ctrl+Z').disabled).toBe(true)
+  })
 })
 
 describe('JsonEditorView — inline edit and delete', () => {
