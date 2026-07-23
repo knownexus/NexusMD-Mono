@@ -10,7 +10,7 @@ import {
   NexusDataProvider, useNexusData, ToastHost, toast,
   PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
   DashboardView, WorkItemsView, TriageView,
-  PlannerView, MarkdownViewer, plannerExportDocx,
+  PlannerView, DocumentsView, plannerExportDocx,
   WorkItemDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
   WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
@@ -517,7 +517,7 @@ function ViewBody({
     case 'notes':
       return <DesktopNotesView />
     case 'markdown':
-      return <MarkdownViewer />
+      return <DocumentsView />
     case 'api-client':
       return (
         <ApiClientProvider adapters={adapters}>
