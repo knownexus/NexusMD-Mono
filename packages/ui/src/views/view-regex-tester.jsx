@@ -113,7 +113,10 @@ export function RegexTesterView() {
   function toggleFlag(f) { patch({ flags: { ...state.flags, [f]: !state.flags[f] } }) }
   function navMatch(dir) {
     if (!matches.length) return
-    setSelIdx(prev => ((prev < 0 ? 0 : prev) + dir + matches.length) % matches.length)
+    setSelIdx(prev => {
+      if (prev < 0) return dir > 0 ? 0 : matches.length - 1
+      return (prev + dir + matches.length) % matches.length
+    })
   }
   function selectMatch(i) { setSelIdx(prev => prev === i ? -1 : i) }
   function insertToken(tok) { patch({ pattern: state.pattern + tok }) }

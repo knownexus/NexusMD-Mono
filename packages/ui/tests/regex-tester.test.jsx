@@ -37,6 +37,12 @@ describe('RegexTesterView — matching', () => {
     fireEvent.click(getByTitle('Global — find all matches'))
     expect(getAllByText('1 match').length).toBeGreaterThan(0)
   })
+
+  it('clicking Next from no selection lands on the first match, not the second', () => {
+    const { getByTitle, getByText } = renderRegexTester()
+    fireEvent.click(getByTitle('Next'))
+    expect(getByText('1/3')).toBeTruthy()
+  })
 })
 
 describe('RegexTesterView — test cases', () => {
