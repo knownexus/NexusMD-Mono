@@ -9,7 +9,7 @@ import {
   findMatches, buildOverlaySegments, splitMatchByGroups, runUnitTests, genCode, REFERENCE_DATA,
 } from './regex-tester-helpers.js'
 
-const { useState, useEffect, useMemo } = React
+const { useState, useEffect, useMemo, useRef } = React
 
 const FLAG_INFO = [
   ['g', 'Global — find all matches'],
@@ -54,6 +54,7 @@ export function RegexTesterView() {
   const [bottomTab, setBottomTab] = useState('code')
   const [codeLang, setCodeLang] = useState('JS')
   const [refFilter, setRefFilter] = useState('')
+  const overlayRef = useRef(null)
 
   // Debounced persistence — mirrors JsonEditorView's pattern.
   useEffect(() => {
@@ -205,7 +206,7 @@ export function RegexTesterView() {
           <button className="rt-btn" onClick={addTestCase} title="New test case" style={{ marginLeft: 4 }}><Icon name="plus" size={12}/></button>
         </div>
         <div style={{ position: 'relative', height: 190 }}>
-          <div aria-hidden="true" style={{
+          <div aria-hidden="true" ref={overlayRef} style={{
             position: 'absolute', inset: 0, pointerEvents: 'none', fontFamily: 'var(--mono)', fontSize: 13, lineHeight: 1.75,
             padding: '10px 13px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden',
           }}>
@@ -223,6 +224,12 @@ export function RegexTesterView() {
           </div>
           <textarea
             value={testStr} onChange={e => setTestContent(e.target.value)}
+            onScroll={e => {
+              if (overlayRef.current) {
+                overlayRef.current.scrollTop = e.target.scrollTop
+                overlayRef.current.scrollLeft = e.target.scrollLeft
+              }
+            }}
             placeholder="Enter test string…" spellCheck={false}
             style={{
               position: 'absolute', inset: 0, width: '100%', height: '100%', background: 'transparent', border: 'none', outline: 'none',

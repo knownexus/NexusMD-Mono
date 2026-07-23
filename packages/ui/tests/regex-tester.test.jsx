@@ -85,6 +85,17 @@ describe('RegexTesterView — bottom tabs', () => {
   })
 })
 
+describe('RegexTesterView — highlight overlay scroll sync', () => {
+  it('syncs the overlay scrollTop to the textarea on scroll', () => {
+    const { container } = renderRegexTester()
+    const textarea = container.querySelector('textarea')
+    const overlay = container.querySelector('[aria-hidden="true"]')
+    expect(overlay.scrollTop).toBe(0)
+    fireEvent.scroll(textarea, { target: { scrollTop: 42 } })
+    expect(overlay.scrollTop).toBe(42)
+  })
+})
+
 describe('RegexTesterView — persistence', () => {
   it('persists the pattern (debounced) and restores it on remount', () => {
     vi.useFakeTimers()
