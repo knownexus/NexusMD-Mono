@@ -35,4 +35,10 @@ describe('DocumentsView', () => {
     const { getByText: getByText2 } = renderDocuments(storage)
     expect(getByText2('Alice Johnson')).toBeTruthy()
   })
+
+  it('shows a third Regex Tester tab and switches to it', () => {
+    const { getByText } = renderDocuments()
+    fireEvent.click(getByText('Regex Tester'))
+    expect(getByText('Expression')).toBeTruthy()
+  })
 })

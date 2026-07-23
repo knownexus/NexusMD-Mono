@@ -5,10 +5,12 @@ import React from 'react'
 import { usePersisted } from '../app-components.jsx'
 import { MarkdownViewer } from './MarkdownViewer.jsx'
 import { JsonEditorView } from './view-json-editor.jsx'
+import { RegexTesterView } from './view-regex-tester.jsx'
 
 const TABS = [
   { id: 'markdown', label: 'Markdown' },
   { id: 'json', label: 'JSON Editor' },
+  { id: 'regex', label: 'Regex Tester' },
 ]
 const STORAGE_KEY = 'documents_active_tab'
 
@@ -33,7 +35,7 @@ export function DocumentsView() {
         ))}
       </div>
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {tab === 'markdown' ? <MarkdownViewer/> : <JsonEditorView/>}
+        {tab === 'markdown' ? <MarkdownViewer/> : tab === 'json' ? <JsonEditorView/> : <RegexTesterView/>}
       </div>
     </div>
   )
