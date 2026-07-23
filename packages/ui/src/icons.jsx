@@ -63,6 +63,14 @@ export const Icon = ({ name, size = 16, stroke = 1.6, className = '', style = {}
     case 'refresh':   return (<svg {...props}><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 4v4h-4M21 12a9 9 0 0 1-15 6.7L3 16M3 20v-4h4"/></svg>);
     case 'doc':       return (<svg {...props}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>);
     case 'folder':    return (<svg {...props}><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>);
+    case 'undo':      return (<svg {...props}><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-2"/></svg>);
+    case 'redo':      return (<svg {...props}><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h2"/></svg>);
+    case 'expand':    return (<svg {...props}><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>);
+    case 'collapse':  return (<svg {...props}><path d="M3 8h5V3M21 8h-5V3M3 16h5v5M21 16h-5v5"/></svg>);
+    case 'upload':    return (<svg {...props}><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/></svg>);
+    case 'copy':      return (<svg {...props}><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>);
+    case 'download':  return (<svg {...props}><path d="M12 3v12M7 10l5 5 5-5M4 19h16"/></svg>);
+    case 'wand':      return (<svg {...props}><path d="M4 20 18 6"/><path d="m17 3 1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/></svg>);
     case 'logo':      return (<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" opacity=".25"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>);
     default: return null;
   }
