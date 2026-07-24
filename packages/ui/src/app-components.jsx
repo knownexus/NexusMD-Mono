@@ -6,6 +6,7 @@
 import React from 'react'
 import { Icon } from './icons.jsx'
 import { useNexusData } from './data-context.jsx'
+import { slugify } from '@nexusmd/core'
 
 const { useState, useEffect, useRef } = React
 
@@ -251,10 +252,13 @@ export function Drawer({ open, onClose, title, badges, children, actions, header
   )
 }
 
-/** Coloured project pill. Resolves the project (id → name/color) from context. */
+/** Coloured project pill. Resolves the project (id → name/color) from context.
+ *  Normalises the incoming id with slugify so raw ADO project names (cached before
+ *  the mapBuild slugify change) still resolve correctly against slugified PROJECTS ids. */
 export function ProjectChip({ id }) {
   const { data } = useNexusData()
-  const p = (data.PROJECTS || []).find((x) => x.id === id)
+  const normId = slugify(id || '')
+  const p = (data.PROJECTS || []).find((x) => x.id === normId)
   if (!p) return null
   return (
     <span className="pill" style={{ background: 'transparent', borderColor: 'var(--border)' }}>

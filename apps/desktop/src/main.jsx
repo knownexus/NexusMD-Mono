@@ -290,8 +290,8 @@ function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
   const adoUrl = kind === 'wi' && d?.project && org
     ? `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent((d.project || '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}/_workitems/edit/${d.id}`
     : kind === 'pr' ? d?.url
-    : kind === 'build' && d?.project && org
-      ? `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(d.project)}/_build/results?buildId=${d.id}`
+    : kind === 'build' && (d?.projectName || d?.project) && org
+      ? `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(d.projectName || d.project)}/_build/results?buildId=${d.id}`
       : null
 
   const markDone = async () => {
