@@ -3,11 +3,12 @@
 // instead of the original's own hardcoded light palette.
 import React from 'react'
 import { Icon } from '../icons.jsx'
-import { usePersisted } from '../app-components.jsx'
 import {
   typeOf, setValueAtPath, deleteAtPath, replaceAtPath, addFieldAtPath,
   coerceVal, allContainerPaths, highlightSegments,
 } from './json-editor-helpers.js'
+import { useDocumentAutosave, relativeTime } from './document-store.js'
+import { DocumentsModal } from './documents-modal.jsx'
 
 const { useState, useEffect, useRef, useCallback } = React
 
@@ -21,7 +22,8 @@ const SAMPLE = {
   score: 94.5,
 }
 const SAMPLE_TEXT = JSON.stringify(SAMPLE, null, 2)
-const STORAGE_KEY = 'json_editor_content'
+const EMPTY_TEXT = '{}'
+const DOCS_STORAGE_KEY = 'json_editor_documents'
 const TYPE_OPTIONS = [
   ['string', 'Text (string)'],
   ['number', 'Number'],
@@ -31,17 +33,40 @@ const TYPE_OPTIONS = [
   ['array', 'List (array [ ])'],
 ]
 
+// A saved doc's display name: prefer a top-level "name"/"title" string field
+// if the JSON has one, otherwise a truncated one-line snippet of the text.
+function jsonAutoName(text) {
+  try {
+    const parsed = JSON.parse(text)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const nameField = parsed.name ?? parsed.title
+      if (typeof nameField === 'string' && nameField.trim()) return nameField.trim().slice(0, 80)
+    }
+  } catch { /* fall through to raw-text snippet */ }
+  const snippet = text.trim().replace(/\s+/g, ' ')
+  return snippet ? snippet.slice(0, 60) : 'Untitled'
+}
+
 function parseOr(text, fallback) {
   try { return JSON.parse(text) } catch { return fallback }
 }
 
 export function JsonEditorView() {
-  const [persistedText, setPersistedText] = usePersisted(STORAGE_KEY, SAMPLE_TEXT)
+  const {
+    content: rawText, setContent: setRawText, docs, currentDocId, hasUnsavedContent,
+    openDoc, newDoc, deleteDoc, renameDoc,
+  } = useDocumentAutosave({
+    storageKey: DOCS_STORAGE_KEY,
+    initialContent: SAMPLE_TEXT,
+    emptyContent: EMPTY_TEXT,
+    isEmpty: t => !t.trim(),
+    extractAutoName: jsonAutoName,
+  })
 
-  const [data, setData] = useState(() => parseOr(persistedText, SAMPLE))
-  const [rawText, setRawText] = useState(persistedText)
+  const [showDocsModal, setShowDocsModal] = useState(false)
+  const [data, setData] = useState(() => parseOr(rawText, SAMPLE))
   const [rawError, setRawError] = useState(null)
-  const [history, setHistory] = useState(() => [persistedText])
+  const [history, setHistory] = useState(() => [rawText])
   const [histIdx, setHistIdx] = useState(0)
   const [collapsed, setCollapsed] = useState(() => new Set())
   const [selectedPath, setSelectedPath] = useState([])
@@ -56,12 +81,20 @@ export function JsonEditorView() {
   const workspaceRef = useRef(null)
   const draggingRef = useRef(false)
 
-  // Debounced persistence — write to storage 400ms after the raw text
-  // settles, so every keystroke doesn't hit storage.
+  // Derives the tree (`data`) and error state from `rawText` — the single
+  // source of truth for content, whether it changed via typing, undo/redo,
+  // a tree edit (commit), or the document system (open/new/delete). Only
+  // updates `data` on a successful parse, so the tree keeps showing the last
+  // valid value while `rawText` is transiently invalid (e.g. mid-edit).
   useEffect(() => {
-    const t = setTimeout(() => setPersistedText(rawText), 400)
-    return () => clearTimeout(t)
-  }, [rawText, setPersistedText])
+    try {
+      const parsed = JSON.parse(rawText)
+      setData(parsed)
+      setRawError(null)
+    } catch (err) {
+      setRawError(err.message)
+    }
+  }, [rawText])
 
   const pushHistory = useCallback((text) => {
     setHistory(prev => [...prev.slice(0, histIdx + 1), text])
@@ -69,13 +102,13 @@ export function JsonEditorView() {
   }, [histIdx])
 
   // Applies a new tree, keeping the raw pane and history in sync with it.
+  // (data/rawError update via the effect above, once rawText's new value
+  // is parsed.)
   const commit = useCallback((nextData) => {
-    setData(nextData)
     const text = JSON.stringify(nextData, null, 2)
     setRawText(text)
-    setRawError(null)
     pushHistory(text)
-  }, [pushHistory])
+  }, [pushHistory, setRawText])
 
   function showToast(msg) {
     clearTimeout(toastTimerRef.current)
@@ -87,10 +120,7 @@ export function JsonEditorView() {
     setHistIdx(idx => {
       if (idx === 0) return idx
       const nextIdx = idx - 1
-      const text = history[nextIdx]
-      setRawText(text)
-      setData(parseOr(text, data))
-      setRawError(null)
+      setRawText(history[nextIdx])
       return nextIdx
     })
   }
@@ -98,25 +128,48 @@ export function JsonEditorView() {
     setHistIdx(idx => {
       if (idx === history.length - 1) return idx
       const nextIdx = idx + 1
-      const text = history[nextIdx]
-      setRawText(text)
-      setData(parseOr(text, data))
-      setRawError(null)
+      setRawText(history[nextIdx])
       return nextIdx
     })
+  }
+
+  // The undo/redo history stack (and tree UI state like collapsed/selected
+  // paths) is JSON-Editor-specific state the shared useDocumentAutosave hook
+  // has no knowledge of — it only tracks `content`. Without resetting it
+  // here, opening/creating/deleting a document leaves stale snapshots from
+  // the *previous* document's editing session in `history`, so undo/redo
+  // can pull in — and the debounced autosave can silently persist — another
+  // document's content into whichever document is now open. These wrappers
+  // reset history to a single entry (mirroring the initial-mount seeding
+  // `useState(() => [rawText])` / `histIdx = 0`) whenever the buffer's
+  // content is programmatically replaced by the document system.
+  function resetEditorState(text) {
+    setHistory([text])
+    setHistIdx(0)
+    setCollapsed(new Set())
+    setSelectedPath([])
+  }
+  function handleOpenDoc(id) {
+    const doc = docs.find(d => d.id === id)
+    openDoc(id)
+    if (doc) resetEditorState(doc.content)
+  }
+  function handleNewDoc() {
+    newDoc()
+    resetEditorState(EMPTY_TEXT)
+  }
+  function handleDeleteDoc(id) {
+    deleteDoc(id)
+    if (currentDocId === id) resetEditorState(EMPTY_TEXT)
   }
 
   function onRawChange(e) {
     const text = e.target.value
     setRawText(text)
     try {
-      const parsed = JSON.parse(text)
-      setData(parsed)
-      setRawError(null)
+      JSON.parse(text)
       pushHistory(text)
-    } catch (err) {
-      setRawError(err.message)
-    }
+    } catch { /* data/rawError update via the rawText-driven effect above */ }
   }
 
   function formatRaw() {
@@ -275,6 +328,11 @@ export function JsonEditorView() {
           style={{ padding: '5px 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg)', color: 'var(--text)', fontSize: 12, outline: 'none', width: 140 }}
         />
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="je-btn" onClick={handleNewDoc}><Icon name="plus" size={13}/> New</button>
+          <button className="je-btn" onClick={() => setShowDocsModal(true)}>
+            <Icon name="doc" size={13}/> Documents{docs.length > 0 ? ` (${docs.length})` : ''}
+          </button>
+          <div className="je-sep"/>
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 99, fontSize: 11.5, fontWeight: 600,
             background: rawError === null ? 'var(--success-soft)' : 'var(--danger-soft)',
@@ -347,6 +405,28 @@ export function JsonEditorView() {
           onChange={patch => setModal(m => ({ ...m, ...patch }))}
           onSubmit={submitModal}
           onCancel={closeModal}
+        />
+      )}
+
+      {showDocsModal && (
+        <DocumentsModal
+          docs={docs}
+          currentDocId={currentDocId}
+          hasUnsavedContent={hasUnsavedContent}
+          onOpen={id => { handleOpenDoc(id); setShowDocsModal(false) }}
+          onNew={() => { handleNewDoc(); setShowDocsModal(false) }}
+          onDelete={handleDeleteDoc}
+          onRename={renameDoc}
+          onClose={() => setShowDocsModal(false)}
+          renderPreview={doc => (
+            <pre style={{
+              margin: 0, padding: '10px 12px', fontFamily: 'var(--mono)', fontSize: 10.5, lineHeight: 1.5,
+              color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden', height: '100%',
+            }}>
+              {doc.content || <span style={{ color: 'var(--text-subtle)', fontStyle: 'italic' }}>Empty document</span>}
+            </pre>
+          )}
+          metaText={doc => `${doc.content.length.toLocaleString()} chars · ${relativeTime(doc.updatedAt)}`}
         />
       )}
 

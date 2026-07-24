@@ -97,16 +97,67 @@ describe('RegexTesterView — highlight overlay scroll sync', () => {
 })
 
 describe('RegexTesterView — persistence', () => {
-  it('persists the pattern (debounced) and restores it on remount', () => {
+  it('persists the pattern (debounced) as a document and shows it after remount', () => {
     vi.useFakeTimers()
     const storage = memStorage()
     const { getByDisplayValue, unmount } = renderRegexTester(storage)
     fireEvent.change(getByDisplayValue('(\\w+)@([\\w.-]+\\.[a-z]{2,})'), { target: { value: '\\d+' } })
-    act(() => { vi.advanceTimersByTime(500) })
+    act(() => { vi.advanceTimersByTime(1500) })
     unmount()
     vi.useRealTimers()
 
-    const { getByDisplayValue: getByDisplayValue2 } = renderRegexTester(storage)
-    expect(getByDisplayValue2('\\d+')).toBeTruthy()
+    const { getByText } = renderRegexTester(storage)
+    fireEvent.click(getByText(/^Documents/))
+    expect(getByText('Documents (1)')).toBeTruthy()
+  })
+})
+
+describe('RegexTesterView — documents', () => {
+  it('shows a Documents button that opens the modal, and a New button', () => {
+    const { getByText } = renderRegexTester()
+    expect(getByText('New')).toBeTruthy()
+    fireEvent.click(getByText('Documents'))
+    expect(getByText('No saved documents yet.')).toBeTruthy()
+  })
+
+  it('autosaves a typed pattern into a new document and shows it in the modal', () => {
+    vi.useFakeTimers()
+    const { getByDisplayValue, getByText, getAllByText } = renderRegexTester()
+    fireEvent.change(getByDisplayValue('(\\w+)@([\\w.-]+\\.[a-z]{2,})'), { target: { value: '\\d+' } })
+    act(() => { vi.advanceTimersByTime(1500) })
+    fireEvent.click(getByText(/^Documents/))
+    expect(getByText('Documents (1)')).toBeTruthy()
+    // Both the preview and the card's auto-generated title render the
+    // pattern string, so more than one match is expected.
+    expect(getAllByText('/\\d+/g').length).toBeGreaterThan(0)
+    vi.useRealTimers()
+  })
+
+  it('opening a saved pattern loads it back into the pattern input', () => {
+    vi.useFakeTimers()
+    const { getByDisplayValue, getByText, getAllByText } = renderRegexTester()
+    fireEvent.change(getByDisplayValue('(\\w+)@([\\w.-]+\\.[a-z]{2,})'), { target: { value: '\\d+' } })
+    act(() => { vi.advanceTimersByTime(1500) })
+
+    fireEvent.click(getByText('New'))
+    fireEvent.change(getByDisplayValue(''), { target: { value: '[a-z]+' } })
+    act(() => { vi.advanceTimersByTime(1500) })
+
+    fireEvent.click(getByText(/^Documents/))
+    fireEvent.click(getAllByText('/\\d+/g')[0])
+    expect(getByDisplayValue('\\d+')).toBeTruthy()
+    vi.useRealTimers()
+  })
+
+  it('New resets the pattern but keeps the canned test cases', () => {
+    vi.useFakeTimers()
+    const { getByDisplayValue, getByText } = renderRegexTester()
+    fireEvent.change(getByDisplayValue('(\\w+)@([\\w.-]+\\.[a-z]{2,})'), { target: { value: '\\d+' } })
+    act(() => { vi.advanceTimersByTime(1500) })
+
+    fireEvent.click(getByText('New'))
+    expect(getByDisplayValue('')).toBeTruthy()
+    expect(getByText('URL')).toBeTruthy()
+    vi.useRealTimers()
   })
 })

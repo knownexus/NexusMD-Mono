@@ -4,10 +4,11 @@
 // design spec for why). Styled with the app's theme tokens.
 import React from 'react'
 import { Icon } from '../icons.jsx'
-import { usePersisted } from '../app-components.jsx'
 import {
   findMatches, buildOverlaySegments, splitMatchByGroups, runUnitTests, genCode, REFERENCE_DATA,
 } from './regex-tester-helpers.js'
+import { useDocumentAutosave, relativeTime } from './document-store.js'
+import { DocumentsModal } from './documents-modal.jsx'
 
 const { useState, useEffect, useMemo, useRef } = React
 
@@ -23,7 +24,7 @@ const LANGS = ['JS', 'Python', 'PHP', 'Go', 'Java', 'C#', 'Ruby']
 // palette (group N needs a stable, distinguishable color, not a semantic
 // theme color).
 const GROUP_COLORS = ['#818cf8', '#60a5fa', '#34d399', '#fb923c', '#c084fc', '#f472b6']
-const STORAGE_KEY = 'regex_tester_state'
+const DOCS_STORAGE_KEY = 'regex_tester_documents'
 
 const DEFAULT_STATE = {
   pattern: '(\\w+)@([\\w.-]+\\.[a-z]{2,})',
@@ -47,20 +48,29 @@ function flagsToString(flags) {
   return Object.keys(flags).filter(f => flags[f]).join('')
 }
 
+// A saved doc's display name: the pattern itself, since that's the natural
+// identifier for a saved regex.
+function regexAutoName(state) {
+  return state.pattern ? `/${state.pattern}/${flagsToString(state.flags)}`.slice(0, 80) : 'Untitled'
+}
+
 export function RegexTesterView() {
-  const [persisted, setPersisted] = usePersisted(STORAGE_KEY, DEFAULT_STATE)
-  const [state, setState] = useState(persisted)
+  const {
+    content: state, setContent: setState, docs, currentDocId, hasUnsavedContent,
+    openDoc, newDoc, deleteDoc, renameDoc,
+  } = useDocumentAutosave({
+    storageKey: DOCS_STORAGE_KEY,
+    initialContent: DEFAULT_STATE,
+    emptyContent: { ...DEFAULT_STATE, pattern: '' },
+    isEmpty: s => !s.pattern,
+    extractAutoName: regexAutoName,
+  })
+  const [showDocsModal, setShowDocsModal] = useState(false)
   const [selIdx, setSelIdx] = useState(-1)
   const [bottomTab, setBottomTab] = useState('code')
   const [codeLang, setCodeLang] = useState('JS')
   const [refFilter, setRefFilter] = useState('')
   const overlayRef = useRef(null)
-
-  // Debounced persistence — mirrors JsonEditorView's pattern.
-  useEffect(() => {
-    const t = setTimeout(() => setPersisted(state), 400)
-    return () => clearTimeout(t)
-  }, [state, setPersisted])
 
   function patch(p) { setState(prev => ({ ...prev, ...p })) }
 
@@ -171,6 +181,10 @@ export function RegexTesterView() {
           <button className={`rt-btn${state.mode === 'match' ? ' on' : ''}`} onClick={() => patch({ mode: 'match' })}>Match</button>
           <button className={`rt-btn${state.mode === 'sub' ? ' on' : ''}`} onClick={() => patch({ mode: 'sub' })}>Substitution</button>
         </div>
+        <button className="rt-btn" onClick={newDoc}><Icon name="plus" size={12}/> New</button>
+        <button className="rt-btn" onClick={() => setShowDocsModal(true)}>
+          <Icon name="doc" size={12}/> Documents{docs.length > 0 ? ` (${docs.length})` : ''}
+        </button>
       </div>
 
       {/* Expression panel */}
@@ -340,6 +354,38 @@ export function RegexTesterView() {
           )}
         </div>
       </div>
+
+      {showDocsModal && (
+        <DocumentsModal
+          docs={docs}
+          currentDocId={currentDocId}
+          hasUnsavedContent={hasUnsavedContent}
+          onOpen={id => { openDoc(id); setShowDocsModal(false) }}
+          onNew={() => { newDoc(); setShowDocsModal(false) }}
+          onDelete={deleteDoc}
+          onRename={renameDoc}
+          onClose={() => setShowDocsModal(false)}
+          renderPreview={doc => {
+            const activeCase = doc.content.testCases?.[doc.content.tcIndex]
+            const firstLine = (activeCase?.content || '').split('\n')[0]
+            return (
+              <div style={{ padding: '14px 12px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 6 }}>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--accent)', wordBreak: 'break-all' }}>
+                  {doc.content.pattern
+                    ? `/${doc.content.pattern}/${flagsToString(doc.content.flags)}`
+                    : <span style={{ color: 'var(--text-subtle)', fontStyle: 'italic' }}>Empty pattern</span>}
+                </div>
+                {firstLine && (
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-subtle)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {firstLine}
+                  </div>
+                )}
+              </div>
+            )
+          }}
+          metaText={doc => relativeTime(doc.updatedAt)}
+        />
+      )}
     </div>
   )
 }

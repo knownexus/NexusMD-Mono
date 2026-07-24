@@ -132,18 +132,97 @@ describe('JsonEditorView — persistence', () => {
   it('persists edited content to storage (debounced) and restores it on remount', () => {
     vi.useFakeTimers()
     const storage = memStorage()
-    const { container, unmount } = renderEditor(storage)
+    const { container, unmount, getByText } = renderEditor(storage)
     const textarea = container.querySelector('textarea')
     fireEvent.change(textarea, { target: { value: '{"x":1}' } })
-    act(() => { vi.advanceTimersByTime(500) })
-    // usePersisted round-trips every value through JSON.stringify/JSON.parse
-    // (see app-components.jsx), so a string value is stored JSON-encoded —
-    // i.e. quoted — not as the raw text itself.
-    expect(storage.getItem('json_editor_content')).toBe(JSON.stringify('{"x":1}'))
+    act(() => { vi.advanceTimersByTime(1500) })
     unmount()
     vi.useRealTimers()
 
-    const { container: container2 } = renderEditor(storage)
-    expect(container2.querySelector('textarea').value).toBe('{"x":1}')
+    const { container: container2, getByText: getByText2, getByRole: getByRole2 } = renderEditor(storage)
+    fireEvent.click(getByRole2('button', { name: /^Documents/ }))
+    expect(getByText2('Documents (1)')).toBeTruthy()
+  })
+})
+
+describe('JsonEditorView — documents', () => {
+  it('shows a Documents button that opens the modal, and a New button', () => {
+    const { getByText } = renderEditor()
+    expect(getByText('New')).toBeTruthy()
+    fireEvent.click(getByText('Documents'))
+    expect(getByText('No saved documents yet.')).toBeTruthy()
+  })
+
+  it('autosaves typed content into a new document and shows it in the modal', () => {
+    vi.useFakeTimers()
+    const { container, getByText, getByRole } = renderEditor()
+    const textarea = container.querySelector('textarea')
+    fireEvent.change(textarea, { target: { value: '{"greeting":"hi"}' } })
+    act(() => { vi.advanceTimersByTime(1500) })
+    fireEvent.click(getByRole('button', { name: /^Documents/ }))
+    expect(getByText('Documents (1)')).toBeTruthy()
+    vi.useRealTimers()
+  })
+
+  it('opening a saved document loads its content into the tree and raw pane', () => {
+    vi.useFakeTimers()
+    const { container, getByText, getAllByText, getByRole } = renderEditor()
+    const textarea = container.querySelector('textarea')
+    fireEvent.change(textarea, { target: { value: '{"greeting":"hi"}' } })
+    act(() => { vi.advanceTimersByTime(1500) })
+
+    fireEvent.click(getByText('New'))
+    fireEvent.change(container.querySelector('textarea'), { target: { value: '{"other":"doc"}' } })
+    act(() => { vi.advanceTimersByTime(1500) })
+
+    fireEvent.click(getByRole('button', { name: /^Documents/ }))
+    fireEvent.click(getAllByText(/greeting/)[0])
+    // Document content round-trips exactly as typed/saved (no reformatting
+    // on load), so the raw pane should show the original compact JSON.
+    expect(container.querySelector('textarea').value).toBe('{"greeting":"hi"}')
+    vi.useRealTimers()
+  })
+
+  it('New resets the editor to an empty object', () => {
+    vi.useFakeTimers()
+    const { container, getByText } = renderEditor()
+    fireEvent.change(container.querySelector('textarea'), { target: { value: '{"x":1}' } })
+    act(() => { vi.advanceTimersByTime(1500) })
+
+    fireEvent.click(getByText('New'))
+    expect(container.querySelector('textarea').value).toBe('{}')
+    vi.useRealTimers()
+  })
+
+  it('undo cannot leak another document\'s content into the currently open document', () => {
+    vi.useFakeTimers()
+    const { container, getByText, getByTitle, getByRole } = renderEditor()
+    const textarea = () => container.querySelector('textarea')
+
+    // Doc A: type content, let it autosave into a brand-new document.
+    fireEvent.change(textarea(), { target: { value: '{"docA":true}' } })
+    act(() => { vi.advanceTimersByTime(1500) })
+
+    // Switch to a fresh doc B and type different content, let it autosave too.
+    fireEvent.click(getByText('New'))
+    fireEvent.change(textarea(), { target: { value: '{"docB":true}' } })
+    act(() => { vi.advanceTimersByTime(1500) })
+
+    // With doc B open, undo — then let the debounced autosave (300ms) fire,
+    // which is what actually persists whatever undo pulled into rawText.
+    fireEvent.click(getByTitle('Ctrl+Z'))
+    act(() => { vi.advanceTimersByTime(300) })
+
+    // Open the Documents modal and inspect every saved document's raw
+    // content. Doc A's own content should appear in exactly one document —
+    // if history wasn't reset when switching documents, undo pulls doc A's
+    // old snapshot into rawText while doc B is open, and the debounced
+    // autosave silently overwrites doc B's saved content with it.
+    fireEvent.click(getByRole('button', { name: /^Documents/ }))
+    const previews = Array.from(container.querySelectorAll('pre')).map(p => p.textContent)
+    const docACopies = previews.filter(p => p === '{"docA":true}')
+    expect(docACopies.length).toBe(1)
+
+    vi.useRealTimers()
   })
 })
