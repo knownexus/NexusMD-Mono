@@ -191,6 +191,48 @@ function makeHandlers(drivers) {
     throw new Error(`Unknown database type: ${type}`)
   }
 
+  async function handleGetColumns(_e, { type, config, table }) {
+    validateIdentifier(table)
+
+    if (type === 'sqlserver') {
+      const pool = await getSqlPool(config, drivers)
+      const result = await pool.request()
+        .input('table', table)
+        .query(`
+          SELECT c.COLUMN_NAME AS name, c.DATA_TYPE AS dataType,
+                 CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS isPrimaryKey
+          FROM INFORMATION_SCHEMA.COLUMNS c
+          LEFT JOIN (
+            SELECT ku.COLUMN_NAME, ku.TABLE_NAME
+            FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+            JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+              ON tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+             AND tc.TABLE_NAME = ku.TABLE_NAME
+            WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
+          ) pk ON pk.COLUMN_NAME = c.COLUMN_NAME AND pk.TABLE_NAME = c.TABLE_NAME
+          WHERE c.TABLE_NAME = @table
+          ORDER BY c.ORDINAL_POSITION
+        `)
+      return {
+        ok: true,
+        columns: result.recordset.map(r => ({
+          name: r.name, dataType: r.dataType, isPrimaryKey: !!r.isPrimaryKey,
+        })),
+      }
+    }
+
+    if (type === 'sqlite') {
+      const db = getSqliteDb(config.filePath, drivers)
+      const rows = db.prepare(`PRAGMA table_info("${table}")`).all()
+      return {
+        ok: true,
+        columns: rows.map(r => ({ name: r.name, dataType: r.type, isPrimaryKey: r.pk > 0 })),
+      }
+    }
+
+    throw new Error(`Unknown database type: ${type}`)
+  }
+
   async function handleRunQuery(_e, { type, config, sql }) {
     const trimmed = sql.trimStart().toUpperCase()
     const ALLOWED = ['SELECT', 'WITH', 'DELETE']
@@ -221,7 +263,7 @@ function makeHandlers(drivers) {
     throw new Error(`Unknown database type: ${type}`)
   }
 
-  return { handleConnect, handleGetRows, handleDeleteRows, handleUpdateCell, handleRunQuery }
+  return { handleConnect, handleGetRows, handleDeleteRows, handleUpdateCell, handleGetColumns, handleRunQuery }
 }
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
@@ -255,6 +297,7 @@ function register(ipcMain, opts = {}) {
   handle('db-manager:get-rows',   handlers.handleGetRows)
   handle('db-manager:delete-rows', handlers.handleDeleteRows)
   handle('db-manager:update-cell', handlers.handleUpdateCell)
+  handle('db-manager:get-columns', handlers.handleGetColumns)
   handle('db-manager:run-query',  handlers.handleRunQuery)
 
   // Hook into Electron's quit lifecycle so connections are cleanly closed.

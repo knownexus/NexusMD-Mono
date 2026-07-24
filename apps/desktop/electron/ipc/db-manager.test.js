@@ -130,6 +130,27 @@ describe('db-manager IPC — SQLite', () => {
     })
     expect(result.affected).toBe(2)
   })
+
+  it('get-columns returns column metadata', async () => {
+    mockSqliteStmt.all.mockReturnValueOnce([
+      { cid: 0, name: 'id',   type: 'INTEGER', notnull: 1, dflt_value: null, pk: 1 },
+      { cid: 1, name: 'name', type: 'TEXT',    notnull: 0, dflt_value: null, pk: 0 },
+    ])
+    const result = await ipc._invoke('db-manager:get-columns', { ...cfg, table: 'users' })
+    expect(result.ok).toBe(true)
+    expect(result.columns).toEqual([
+      { name: 'id',   dataType: 'INTEGER', isPrimaryKey: true },
+      { name: 'name', dataType: 'TEXT',    isPrimaryKey: false },
+    ])
+    const sql = mockSqliteDb.prepare.mock.calls.at(-1)?.[0] ?? ''
+    expect(sql).toMatch(/PRAGMA table_info\("users"\)/)
+  })
+
+  it('get-columns rejects invalid table identifier', async () => {
+    await expect(
+      ipc._invoke('db-manager:get-columns', { ...cfg, table: 'users; DROP TABLE users--' }),
+    ).rejects.toThrow('Invalid identifier')
+  })
 })
 
 describe('identifier validation', () => {
