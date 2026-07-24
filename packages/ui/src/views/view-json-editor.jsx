@@ -133,6 +133,36 @@ export function JsonEditorView() {
     })
   }
 
+  // The undo/redo history stack (and tree UI state like collapsed/selected
+  // paths) is JSON-Editor-specific state the shared useDocumentAutosave hook
+  // has no knowledge of — it only tracks `content`. Without resetting it
+  // here, opening/creating/deleting a document leaves stale snapshots from
+  // the *previous* document's editing session in `history`, so undo/redo
+  // can pull in — and the debounced autosave can silently persist — another
+  // document's content into whichever document is now open. These wrappers
+  // reset history to a single entry (mirroring the initial-mount seeding
+  // `useState(() => [rawText])` / `histIdx = 0`) whenever the buffer's
+  // content is programmatically replaced by the document system.
+  function resetEditorState(text) {
+    setHistory([text])
+    setHistIdx(0)
+    setCollapsed(new Set())
+    setSelectedPath([])
+  }
+  function handleOpenDoc(id) {
+    const doc = docs.find(d => d.id === id)
+    openDoc(id)
+    if (doc) resetEditorState(doc.content)
+  }
+  function handleNewDoc() {
+    newDoc()
+    resetEditorState(EMPTY_TEXT)
+  }
+  function handleDeleteDoc(id) {
+    deleteDoc(id)
+    if (currentDocId === id) resetEditorState(EMPTY_TEXT)
+  }
+
   function onRawChange(e) {
     const text = e.target.value
     setRawText(text)
@@ -298,7 +328,7 @@ export function JsonEditorView() {
           style={{ padding: '5px 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg)', color: 'var(--text)', fontSize: 12, outline: 'none', width: 140 }}
         />
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="je-btn" onClick={newDoc}><Icon name="plus" size={13}/> New</button>
+          <button className="je-btn" onClick={handleNewDoc}><Icon name="plus" size={13}/> New</button>
           <button className="je-btn" onClick={() => setShowDocsModal(true)}>
             <Icon name="doc" size={13}/> Documents{docs.length > 0 ? ` (${docs.length})` : ''}
           </button>
@@ -383,9 +413,9 @@ export function JsonEditorView() {
           docs={docs}
           currentDocId={currentDocId}
           hasUnsavedContent={hasUnsavedContent}
-          onOpen={id => { openDoc(id); setShowDocsModal(false) }}
-          onNew={() => { newDoc(); setShowDocsModal(false) }}
-          onDelete={deleteDoc}
+          onOpen={id => { handleOpenDoc(id); setShowDocsModal(false) }}
+          onNew={() => { handleNewDoc(); setShowDocsModal(false) }}
+          onDelete={handleDeleteDoc}
           onRename={renameDoc}
           onClose={() => setShowDocsModal(false)}
           renderPreview={doc => (

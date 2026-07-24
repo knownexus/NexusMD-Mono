@@ -193,4 +193,36 @@ describe('JsonEditorView — documents', () => {
     expect(container.querySelector('textarea').value).toBe('{}')
     vi.useRealTimers()
   })
+
+  it('undo cannot leak another document\'s content into the currently open document', () => {
+    vi.useFakeTimers()
+    const { container, getByText, getByTitle, getByRole } = renderEditor()
+    const textarea = () => container.querySelector('textarea')
+
+    // Doc A: type content, let it autosave into a brand-new document.
+    fireEvent.change(textarea(), { target: { value: '{"docA":true}' } })
+    act(() => { vi.advanceTimersByTime(1500) })
+
+    // Switch to a fresh doc B and type different content, let it autosave too.
+    fireEvent.click(getByText('New'))
+    fireEvent.change(textarea(), { target: { value: '{"docB":true}' } })
+    act(() => { vi.advanceTimersByTime(1500) })
+
+    // With doc B open, undo — then let the debounced autosave (300ms) fire,
+    // which is what actually persists whatever undo pulled into rawText.
+    fireEvent.click(getByTitle('Ctrl+Z'))
+    act(() => { vi.advanceTimersByTime(300) })
+
+    // Open the Documents modal and inspect every saved document's raw
+    // content. Doc A's own content should appear in exactly one document —
+    // if history wasn't reset when switching documents, undo pulls doc A's
+    // old snapshot into rawText while doc B is open, and the debounced
+    // autosave silently overwrites doc B's saved content with it.
+    fireEvent.click(getByRole('button', { name: /^Documents/ }))
+    const previews = Array.from(container.querySelectorAll('pre')).map(p => p.textContent)
+    const docACopies = previews.filter(p => p === '{"docA":true}')
+    expect(docACopies.length).toBe(1)
+
+    vi.useRealTimers()
+  })
 })
