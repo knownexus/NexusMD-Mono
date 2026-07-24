@@ -58,6 +58,9 @@ const EXPECTED = [
   'resolveConnectionParams', 'buildConnectionString', 'createInitialState', 'applyConnected', 'applyDisconnected',
   'applyTableSelected', 'applyTableLoaded', 'applyRowsDeleted', 'applyCellUpdated', 'applyError',
   'generateConnectionId', 'upsertConnection', 'removeConnection',
+  'formatSqlValue', 'formatCondition',
+  'buildSearchQuery', 'buildInsertQuery', 'buildUpdateQuery', 'buildDeleteQuery',
+  'buildJoinQuery', 'buildAggregateQuery',
 ].sort()
 
 describe('public API surface', () => {

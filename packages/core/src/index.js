@@ -69,3 +69,8 @@ export {
   applyTableSelected, applyTableLoaded, applyRowsDeleted, applyCellUpdated, applyError,
   generateConnectionId, upsertConnection, removeConnection,
 } from './modules/db-manager/index.js'
+export {
+  formatSqlValue, formatCondition,
+  buildSearchQuery, buildInsertQuery, buildUpdateQuery, buildDeleteQuery,
+  buildJoinQuery, buildAggregateQuery,
+} from './modules/db-manager/query-builders.js'
