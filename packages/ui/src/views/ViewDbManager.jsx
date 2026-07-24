@@ -88,7 +88,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
   const [queryResult, setQueryResult] = useState(null)
   const [tableColumns, setTableColumns] = useState({})   // { [table]: Column[] }
   const [columnsLoading, setColumnsLoading] = useState(false)
-  const [activeBuilder, setActiveBuilder] = useState(null)   // 'search' | 'delete' | null
+  const [activeBuilder, setActiveBuilder] = useState(null)   // 'search' | 'insert' | 'update' | 'delete' | 'join' | 'aggregate' | null
   const [toast, setToast]             = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showConnectDialog, setShowConnectDialog] = useState(false)
@@ -106,9 +106,22 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
 
   // ── Connect ────────────────────────────────────────────────────────────────
 
+  // Column metadata, the in-progress query, and any open builder are all
+  // scoped to a single connection's set of tables. Switching connections (or
+  // disconnecting) must wipe them — otherwise a table name that happens to
+  // exist in both DB A and DB B shows DB A's stale columns while querying B.
+  const resetQueryState = useCallback(() => {
+    setTableColumns({})
+    setQueryTable(null)
+    setSqlQuery('')
+    setActiveBuilder(null)
+    setColumnsLoading(false)
+  }, [])
+
   const handleConnect = useCallback(async (connType, connFields) => {
     if (connType === 'demo') {
       demoData.current = structuredClone(DEMO.data)
+      resetQueryState()
       setDbState(s => applyConnected(s, { type: 'demo', config: {}, tables: DEMO.tables }))
       setShowConnectDialog(false)
       notify('Demo database loaded')
@@ -119,6 +132,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
     try {
       const config = resolveConnectionParams(connType, connFields)
       const result = await db.connect(connType, config)
+      resetQueryState()
       setDbState(s => applyConnected(s, { type: connType, config, tables: result.tables }))
       setShowConnectDialog(false)
       notify(`Connected — ${result.tables.length} tables`)
@@ -126,7 +140,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
       setDbState(s => applyError(s, err.message))
       notify(err.message, 'error')
     }
-  }, [db, notify])
+  }, [db, notify, resetQueryState])
 
   // One-click connect using a connection saved elsewhere (e.g. desktop Settings).
   // Its secret (password or connection string) is resolved on demand via
@@ -139,6 +153,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
         ? resolveConnectionParams(entry.type, { connectionString: secret })
         : buildConfig(entry.type, { ...entry, password: secret })
       const result = await db.connect(entry.type, config)
+      resetQueryState()
       setDbState(s => applyConnected(s, {
         type: entry.type, config, tables: result.tables,
         connectionId: entry.id, name: entry.name,
@@ -149,7 +164,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
       setDbState(s => applyError(s, err.message))
       notify(err.message, 'error')
     }
-  }, [db, notify, onResolveSecret])
+  }, [db, notify, onResolveSecret, resetQueryState])
 
   // ── Load table ─────────────────────────────────────────────────────────────
 
@@ -268,6 +283,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
       setTableColumns(prev => ({ ...prev, [table]: result.columns }))
     } catch (err) {
       notify(err.message, 'error')
+      setActiveBuilder(null)
     } finally {
       setColumnsLoading(false)
     }
@@ -385,7 +401,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
             <footer className="db-sidebar__footer">
               <button
                 className="db-btn db-btn--ghost db-btn--sm"
-                onClick={() => { setDbState(applyDisconnected); demoData.current = null }}
+                onClick={() => { setDbState(applyDisconnected); demoData.current = null; resetQueryState() }}
               >
                 <span className="db-icon db-icon--disconnect" aria-hidden="true" />
                 Disconnect
@@ -1288,7 +1304,11 @@ function QueryBuilderPanel({
   allTables, allColumns, onLoadColumnsFor,
 }) {
   if (!activeBuilder) return null
-  if (columnsLoading) return <p className="db-hint">Loading columns…</p>
+  // Only gate on the loading spinner while the PRIMARY table's columns are
+  // still missing. A secondary in-panel load (e.g. JoinBuilder fetching the
+  // right-hand table's columns) also flips `columnsLoading` true, but must
+  // not unmount the already-open builder and discard its local state.
+  if (columnsLoading && columns.length === 0) return <p className="db-hint">Loading columns…</p>
 
   const props = { table, columns, onBuild, onCancel }
   if (activeBuilder === 'search') return <SearchBuilder {...props} />

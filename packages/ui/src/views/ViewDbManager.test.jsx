@@ -389,6 +389,44 @@ describe('ViewDbManager — query command builders', () => {
     expect(screen.getByLabelText('Column')).toBeTruthy()
   })
 
+  it('keeps the JOIN builder mounted while loading the right table columns on a real connection', async () => {
+    render(<ViewDbManager adapters={adapters} />)
+    fireEvent.click(screen.getByText(/Connect to database/i))
+    fireEvent.click(screen.getByText('SQLite'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Connection string' }))
+    fireEvent.change(screen.getByLabelText(/connection string/i), {
+      target: { value: 'sqlite:///test/data.db' },
+    })
+    fireEvent.click(screen.getByText('Connect'))
+    await waitFor(() => screen.getByText('patients'))
+    fireEvent.change(screen.getByLabelText('Tables'), { target: { value: 'patients' } })
+    await waitFor(() => screen.getByRole('table'))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Query' }))
+    const tableSelects = screen.getAllByLabelText('Tables')
+    fireEvent.change(tableSelects[tableSelects.length - 1], { target: { value: 'patients' } })
+    fireEvent.click(screen.getByText('Join'))
+    await waitFor(() => screen.getByLabelText('Join table'))
+
+    fireEvent.change(screen.getByLabelText('Join table'), { target: { value: 'staff' } })
+
+    // The right table's columns are fetched asynchronously through the
+    // adapter — the builder (and its already-chosen left/right state) must
+    // stay mounted through that await, not get unmounted by the panel-level
+    // "Loading columns…" gate.
+    await waitFor(() => expect(screen.getByLabelText('Right column')).toBeTruthy())
+    expect(screen.getByLabelText('Join table').value).toBe('staff')
+
+    fireEvent.change(screen.getByLabelText('Join type'), { target: { value: 'LEFT' } })
+    fireEvent.change(screen.getByLabelText('Left column'), { target: { value: 'id' } })
+    fireEvent.change(screen.getByLabelText('Right column'), { target: { value: 'name' } })
+    fireEvent.click(screen.getByText('Build'))
+
+    expect(screen.getByLabelText('SQL query').value).toBe(
+      'SELECT * FROM patients\nLEFT JOIN staff ON patients.id = staff.name',
+    )
+  })
+
   it('builds a DELETE query from a condition row', async () => {
     await openQueryTabForPatients()
 
@@ -462,6 +500,48 @@ describe('ViewDbManager — query command builders', () => {
     fireEvent.click(screen.getByText('Build'))
 
     expect(screen.getByLabelText('SQL query').value).toBe('SELECT COUNT(id), status FROM patients\nGROUP BY status')
+  })
+
+  it('clears cached columns and the in-progress query when switching connections', async () => {
+    await openQueryTabForPatients()
+
+    fireEvent.click(screen.getByText('Search'))
+    await waitFor(() => screen.getByLabelText('Column'))
+    // Demo 'patients' columns include 'dob' (see DEMO.data.patients.columns).
+    expect(screen.getByRole('option', { name: 'dob' })).toBeTruthy()
+    fireEvent.click(screen.getByText('Cancel'))
+
+    // Disconnect, then connect to a real (SQLite) DB whose 'patients' table
+    // has a different column set (no 'dob') per the adapter mock.
+    fireEvent.click(screen.getByText('Disconnect'))
+    await waitFor(() => screen.getByText(/Connect to database/i))
+
+    fireEvent.click(screen.getByText(/Connect to database/i))
+    fireEvent.click(screen.getByText('SQLite'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Connection string' }))
+    fireEvent.change(screen.getByLabelText(/connection string/i), {
+      target: { value: 'sqlite:///test/data.db' },
+    })
+    fireEvent.click(screen.getByText('Connect'))
+    await waitFor(() => screen.getByText('patients'))
+    fireEvent.change(screen.getByLabelText('Tables'), { target: { value: 'patients' } })
+    await waitFor(() => screen.getByRole('table'))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Query' }))
+    // The query textarea should have been reset, not still showing whatever
+    // was left over from the previous connection's builder session.
+    expect(screen.getByLabelText('SQL query').value).toBe('')
+
+    const tableSelects = screen.getAllByLabelText('Tables')
+    fireEvent.change(tableSelects[tableSelects.length - 1], { target: { value: 'patients' } })
+    fireEvent.click(screen.getByText('Search'))
+
+    await waitFor(() => expect(adapters.dbManager.getColumns).toHaveBeenCalledWith(
+      'sqlite', expect.objectContaining({ filePath: 'test/data.db' }), 'patients',
+    ))
+    await waitFor(() => screen.getByLabelText('Column'))
+    expect(screen.queryByRole('option', { name: 'dob' })).not.toBeTruthy()
+    expect(screen.getByRole('option', { name: 'status' })).toBeTruthy()
   })
 
   it('closes the builder panel when its command button is clicked again', async () => {
