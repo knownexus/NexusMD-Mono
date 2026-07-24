@@ -33,6 +33,7 @@ import {
   buildDeleteQuery,
   buildInsertQuery,
   buildUpdateQuery,
+  buildJoinQuery,
 } from '@nexusmd/core'
 import { PlModal } from '../planner-chips.jsx'
 
@@ -467,6 +468,8 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
                     columns={tableColumns[queryTable ?? dbState.selectedTable] ?? []}
                     columnsLoading={columnsLoading}
                     onBuildSql={applyBuiltSql}
+                    allColumns={tableColumns}
+                    onLoadColumnsFor={ensureColumnsLoaded}
                   />
                 )}
               </>
@@ -826,6 +829,7 @@ function BrowsePanel({
 function QueryPanel({
   tables, queryTable, onSelectTable, sqlQuery, onSqlChange, queryResult, onRun,
   activeBuilder, onToggleBuilder, columns, columnsLoading, onBuildSql,
+  allColumns, onLoadColumnsFor,
 }) {
   return (
     <div className="db-query">
@@ -851,6 +855,9 @@ function QueryPanel({
           columnsLoading={columnsLoading}
           onBuild={onBuildSql}
           onCancel={() => onToggleBuilder(activeBuilder)}
+          allTables={tables}
+          allColumns={allColumns}
+          onLoadColumnsFor={onLoadColumnsFor}
         />
         <textarea
           className="db-textarea db-textarea--mono db-textarea--query"
@@ -1169,7 +1176,68 @@ function UpdateBuilder({ table, columns, onBuild, onCancel }) {
   )
 }
 
-function QueryBuilderPanel({ activeBuilder, table, columns, columnsLoading, onBuild, onCancel }) {
+function JoinBuilder({ table, columns, allTables, allColumns, onLoadColumnsFor, onBuild, onCancel }) {
+  const [rightTable, setRightTable] = useState('')
+  const [joinType, setJoinType] = useState('INNER')
+  const [leftColumn, setLeftColumn] = useState('')
+  const [rightColumn, setRightColumn] = useState('')
+
+  const rightColumns = allColumns[rightTable] ?? []
+  const valid = rightTable && leftColumn && rightColumn
+
+  const selectRightTable = async (name) => {
+    setRightTable(name)
+    setRightColumn('')
+    await onLoadColumnsFor(name)
+  }
+
+  return (
+    <div className="db-builder">
+      <div className="db-condition-row">
+        <label className="db-label" htmlFor="db-join-table">Join table</label>
+        <TableSelect
+          id="db-join-table"
+          tables={allTables.filter(t => t !== table)}
+          value={rightTable}
+          onChange={selectRightTable}
+        />
+      </div>
+      <div className="db-condition-row">
+        <label className="db-label" htmlFor="db-join-type">Join type</label>
+        <select id="db-join-type" aria-label="Join type" className="db-input" value={joinType}
+          onChange={e => setJoinType(e.target.value)}>
+          <option value="INNER">INNER</option>
+          <option value="LEFT">LEFT</option>
+          <option value="RIGHT">RIGHT</option>
+        </select>
+      </div>
+      {rightTable && (
+        <div className="db-condition-row">
+          <select aria-label="Left column" className="db-input" value={leftColumn}
+            onChange={e => setLeftColumn(e.target.value)}>
+            <option value="" disabled>Left column…</option>
+            {columns.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+          </select>
+          <select aria-label="Right column" className="db-input" value={rightColumn}
+            onChange={e => setRightColumn(e.target.value)}>
+            <option value="" disabled>Right column…</option>
+            {rightColumns.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+          </select>
+        </div>
+      )}
+      <BuilderFooter
+        buildDisabled={!valid}
+        onCancel={onCancel}
+        onBuild={() => onBuild(buildJoinQuery(table, rightTable, joinType, leftColumn, rightColumn))}
+      />
+    </div>
+  )
+}
+
+function QueryBuilderPanel({
+  activeBuilder, table, columns, columnsLoading, onBuild, onCancel,
+  allTables, allColumns, onLoadColumnsFor,
+}) {
   if (!activeBuilder) return null
   if (columnsLoading) return <p className="db-hint">Loading columns…</p>
 
@@ -1178,6 +1246,19 @@ function QueryBuilderPanel({ activeBuilder, table, columns, columnsLoading, onBu
   if (activeBuilder === 'delete') return <DeleteBuilder {...props} />
   if (activeBuilder === 'insert') return <InsertBuilder {...props} />
   if (activeBuilder === 'update') return <UpdateBuilder {...props} />
+  if (activeBuilder === 'join') {
+    return (
+      <JoinBuilder
+        table={table}
+        columns={columns}
+        allTables={allTables}
+        allColumns={allColumns}
+        onLoadColumnsFor={onLoadColumnsFor}
+        onBuild={onBuild}
+        onCancel={onCancel}
+      />
+    )
+  }
   return null
 }
 

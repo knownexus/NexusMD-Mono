@@ -432,6 +432,24 @@ describe('ViewDbManager — query command builders', () => {
     expect(screen.getByLabelText('SQL query').value).toBe("UPDATE patients SET status = 'inactive'\nWHERE id = 1")
   })
 
+  it('builds a JOIN query across two tables', async () => {
+    await openQueryTabForPatients()
+
+    fireEvent.click(screen.getByText('Join'))
+    await waitFor(() => screen.getByLabelText('Join table'))
+
+    fireEvent.change(screen.getByLabelText('Join table'), { target: { value: 'staff' } })
+    await waitFor(() => screen.getByLabelText('Left column'))
+    fireEvent.change(screen.getByLabelText('Join type'), { target: { value: 'LEFT' } })
+    fireEvent.change(screen.getByLabelText('Left column'), { target: { value: 'id' } })
+    fireEvent.change(screen.getByLabelText('Right column'), { target: { value: 'name' } })
+    fireEvent.click(screen.getByText('Build'))
+
+    expect(screen.getByLabelText('SQL query').value).toBe(
+      'SELECT * FROM patients\nLEFT JOIN staff ON patients.id = staff.name',
+    )
+  })
+
   it('closes the builder panel when its command button is clicked again', async () => {
     await openQueryTabForPatients()
 
