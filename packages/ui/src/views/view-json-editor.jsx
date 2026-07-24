@@ -294,12 +294,35 @@ export function JsonEditorView() {
 
       {/* Workspace */}
       <div ref={workspaceRef} style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div style={{ ...leftStyle, display: panelHidden.left ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--surface)' }}>
+        <div style={{ ...leftStyle, display: panelHidden.left ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ height: 32, display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Raw JSON</span>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+              <button className="je-btn" title="Validate the raw JSON and re-indent it" onClick={formatRaw}><Icon name="wand" size={13}/> Validate & Format</button>
+              <button className="je-icon-btn" title="Hide panel" onClick={() => togglePanel('left')}><Icon name="chevron-left" size={13}/></button>
+            </div>
+          </div>
+          <textarea
+            value={rawText} onChange={onRawChange} spellCheck={false}
+            style={{ flex: 1, resize: 'none', border: 'none', outline: 'none', padding: '14px 18px', fontFamily: 'var(--mono)', fontSize: 12.5, lineHeight: 1.65, background: 'var(--surface)', color: 'var(--text)' }}
+          />
+          {rawError && (
+            <div style={{ padding: '7px 14px', fontSize: 11.5, color: 'var(--danger)', background: 'var(--danger-soft)', borderTop: '1px solid var(--border)', fontFamily: 'var(--mono)' }}>
+              ⚠ {rawError}
+            </div>
+          )}
+        </div>
+
+        {!panelHidden.left && !panelHidden.right && (
+          <div onMouseDown={onResizerMouseDown} style={{ width: 5, flexShrink: 0, background: 'var(--border)', cursor: 'col-resize' }}/>
+        )}
+
+        <div style={{ ...rightStyle, display: panelHidden.right ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--surface)' }}>
           <div style={{ height: 32, display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
             <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Visual editor</span>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
               <button className="je-icon-btn" title="Add field" onClick={() => openAddModal([], typeOf(data) === 'array' ? 'array' : 'object')}><Icon name="plus" size={13}/></button>
-              <button className="je-icon-btn" title="Hide panel" onClick={() => togglePanel('left')}><Icon name="chevron-left" size={13}/></button>
+              <button className="je-icon-btn" title="Hide panel" onClick={() => togglePanel('right')}><Icon name="chevron-right" size={13}/></button>
             </div>
           </div>
           <div style={{ padding: '4px 12px', fontSize: 10.5, color: 'var(--text-subtle)', fontFamily: 'var(--mono)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -315,29 +338,6 @@ export function JsonEditorView() {
               onDelete={(path) => commit(deleteAtPath(data, path))}
             />
           </div>
-        </div>
-
-        {!panelHidden.left && !panelHidden.right && (
-          <div onMouseDown={onResizerMouseDown} style={{ width: 5, flexShrink: 0, background: 'var(--border)', cursor: 'col-resize' }}/>
-        )}
-
-        <div style={{ ...rightStyle, display: panelHidden.right ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ height: 32, display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Raw JSON</span>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-              <button className="je-icon-btn" title="Format JSON" onClick={formatRaw}><Icon name="wand" size={13}/></button>
-              <button className="je-icon-btn" title="Hide panel" onClick={() => togglePanel('right')}><Icon name="chevron-right" size={13}/></button>
-            </div>
-          </div>
-          <textarea
-            value={rawText} onChange={onRawChange} spellCheck={false}
-            style={{ flex: 1, resize: 'none', border: 'none', outline: 'none', padding: '14px 18px', fontFamily: 'var(--mono)', fontSize: 12.5, lineHeight: 1.65, background: 'var(--surface)', color: 'var(--text)' }}
-          />
-          {rawError && (
-            <div style={{ padding: '7px 14px', fontSize: 11.5, color: 'var(--danger)', background: 'var(--danger-soft)', borderTop: '1px solid var(--border)', fontFamily: 'var(--mono)' }}>
-              ⚠ {rawError}
-            </div>
-          )}
         </div>
       </div>
 
