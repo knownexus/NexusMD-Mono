@@ -118,9 +118,23 @@ describe('db-manager IPC — SQLite', () => {
     expect(result.columns).toEqual(['id'])
   })
 
-  it('run-query blocks INSERT', async () => {
+  it('run-query allows INSERT', async () => {
+    const result = await ipc._invoke('db-manager:run-query', {
+      ...cfg, sql: "INSERT INTO users (id, name) VALUES (99, 'x')",
+    })
+    expect(result.affected).toBe(2)
+  })
+
+  it('run-query allows UPDATE', async () => {
+    const result = await ipc._invoke('db-manager:run-query', {
+      ...cfg, sql: "UPDATE users SET name = 'y' WHERE id = 1",
+    })
+    expect(result.affected).toBe(2)
+  })
+
+  it('run-query blocks unrelated statements', async () => {
     await expect(
-      ipc._invoke('db-manager:run-query', { ...cfg, sql: "INSERT INTO users VALUES (99, 'x')" }),
+      ipc._invoke('db-manager:run-query', { ...cfg, sql: 'DROP TABLE users' }),
     ).rejects.toThrow('Only SELECT')
   })
 

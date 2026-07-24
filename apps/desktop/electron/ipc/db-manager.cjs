@@ -235,9 +235,9 @@ function makeHandlers(drivers) {
 
   async function handleRunQuery(_e, { type, config, sql }) {
     const trimmed = sql.trimStart().toUpperCase()
-    const ALLOWED = ['SELECT', 'WITH', 'DELETE']
+    const ALLOWED = ['SELECT', 'WITH', 'DELETE', 'INSERT', 'UPDATE']
     if (!ALLOWED.some(p => trimmed.startsWith(p))) {
-      throw new Error('Only SELECT, WITH (CTE), and DELETE statements are permitted.')
+      throw new Error('Only SELECT, WITH (CTE), DELETE, INSERT, and UPDATE statements are permitted.')
     }
 
     if (type === 'sqlserver') {
