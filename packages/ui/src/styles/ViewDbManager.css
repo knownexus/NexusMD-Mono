@@ -1,0 +1,767 @@
+/*
+ * packages/ui/src/views/ViewDbManager.css
+ *
+ * All selectors are scoped under .view-db-manager to avoid leaking into
+ * the rest of the NexusMD shell. Uses the same CSS custom property names
+ * as the existing @nexusmd/ui token system — no new tokens introduced.
+ *
+ * Import alongside the component:
+ *   import './ViewDbManager.css'   (in ViewDbManager.jsx or ui/src/index.js)
+ */
+
+/* ─── Layout ──────────────────────────────────────────────────────────────── */
+
+.view-db-manager {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  font-size: var(--font-size-sm, 13px);
+  color: var(--color-text-primary);
+}
+
+.db-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ─── Sidebar ─────────────────────────────────────────────────────────────── */
+
+.db-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface-raised, var(--color-surface));
+}
+
+.db-sidebar__header {
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.db-sidebar__status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 2px;
+}
+
+.db-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.db-status-dot--connected { background: var(--color-success, #3b8a3e); }
+
+.db-sidebar__db-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.db-sidebar__meta {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.db-sidebar__tables {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 6px;
+}
+
+.db-sidebar__section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  padding: 0 8px 5px;
+  margin: 0;
+}
+
+.db-sidebar__footer {
+  padding: 10px;
+  border-top: 1px solid var(--color-border);
+}
+
+/* ─── Collapsible sidebar sections (Databases / Tables) ──────────────────── */
+
+.db-sidebar__section {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--color-border);
+}
+.db-sidebar__section--fill {
+  flex: 1;
+  min-height: 0;
+  border-bottom: none;
+}
+
+.db-sidebar__section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 8px 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: var(--color-text-tertiary);
+}
+.db-sidebar__section-toggle:hover { color: var(--color-text-secondary); }
+.db-sidebar__section-toggle .db-sidebar__section-label { padding: 0; margin: 0; }
+
+.db-sidebar__databases {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 6px 8px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+/* ─── Database buttons (sidebar) ──────────────────────────────────────────── */
+
+.db-database-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  text-align: left;
+  transition: background 0.1s, color 0.1s;
+}
+.db-database-btn:hover {
+  background: var(--color-hover, rgba(0,0,0,0.05));
+  color: var(--color-text-primary);
+}
+.db-database-btn--active {
+  background: var(--color-surface, #fff);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+.db-database-btn__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Table buttons (sidebar) ─────────────────────────────────────────────── */
+
+.db-table-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  text-align: left;
+  transition: background 0.1s, color 0.1s;
+}
+.db-table-btn:hover {
+  background: var(--color-hover, rgba(0,0,0,0.05));
+  color: var(--color-text-primary);
+}
+.db-table-btn--active {
+  background: var(--color-surface, #fff);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+.db-table-btn__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Main panel ──────────────────────────────────────────────────────────── */
+
+.db-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.db-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.db-panel-header__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.db-panel-header__meta {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+/* ─── Tab group ───────────────────────────────────────────────────────────── */
+
+.db-tab-group {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 4px);
+  overflow: hidden;
+  margin-left: auto;
+}
+
+.db-tab-group--sm { margin-left: 0; margin-bottom: 12px; }
+
+.db-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 400;
+  white-space: nowrap;
+}
+.db-tab--active {
+  background: var(--color-surface, #fff);
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+.db-tab--sm { padding: 4px 10px; font-size: 11px; }
+
+/* ─── Browse panel ────────────────────────────────────────────────────────── */
+
+.db-browse {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.db-browse__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.db-search-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.db-search-wrap .db-icon {
+  position: absolute;
+  left: 9px;
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+}
+
+.db-search-wrap__input {
+  padding-left: 30px !important;
+}
+
+.db-row-count {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.db-browse__hint {
+  padding: 7px 18px;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+/* ─── Table ───────────────────────────────────────────────────────────────── */
+
+.db-table-wrap {
+  flex: 1;
+  overflow: auto;
+}
+
+.db-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.db-th {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  background: var(--color-surface-raised, var(--color-surface));
+}
+
+.db-th--check,
+.db-td--check {
+  width: 36px;
+  text-align: center;
+}
+
+.db-th--actions,
+.db-td--actions {
+  width: 40px;
+  text-align: right;
+}
+
+.db-tr {
+  border-bottom: 1px solid var(--color-border);
+  transition: background 0.08s;
+}
+.db-tr:hover { background: var(--color-hover, rgba(0,0,0,0.03)); }
+.db-tr--selected { background: var(--color-selection, rgba(var(--color-accent-rgb, 59,107,221), 0.08)); }
+.db-tr--selected:hover { background: var(--color-selection-hover, rgba(var(--color-accent-rgb, 59,107,221), 0.12)); }
+
+.db-td {
+  padding: 8px 12px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-td--empty {
+  text-align: center;
+  padding: 32px;
+  color: var(--color-text-tertiary);
+}
+
+.db-cell--null {
+  color: var(--color-text-tertiary);
+  font-style: italic;
+}
+
+.db-cell-input {
+  width: 100%;
+  padding: 2px 5px;
+  font-size: 12px;
+  border: 1.5px solid var(--color-accent, #3b6bdd);
+  border-radius: var(--radius-xs, 3px);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+/* ─── Query panel ─────────────────────────────────────────────────────────── */
+
+.db-query {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.db-query__editor {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.db-query__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.db-query__results {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 18px;
+}
+
+/* ─── Form elements ───────────────────────────────────────────────────────── */
+
+.db-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.db-input:focus { border-color: var(--color-accent, #3b6bdd); }
+
+.db-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  box-sizing: border-box;
+  resize: vertical;
+  line-height: 1.6;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.db-textarea:focus { border-color: var(--color-accent, #3b6bdd); }
+.db-textarea--mono { font-family: var(--font-mono, monospace); font-size: 12px; }
+.db-textarea--query { min-height: 110px; }
+
+.db-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 5px;
+  letter-spacing: 0.02em;
+}
+
+.db-field { margin-bottom: 12px; }
+.db-field--span2 { grid-column: span 2; }
+.db-field--row { display: flex; align-items: center; gap: 20px; }
+
+.db-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.db-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.db-hint {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin: 0 0 8px;
+}
+.db-hint--mono { font-family: var(--font-mono, monospace); }
+
+/* ─── Buttons ─────────────────────────────────────────────────────────────── */
+
+.db-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s;
+}
+.db-btn:hover { background: var(--color-hover, rgba(0,0,0,0.05)); }
+.db-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.db-btn--primary {
+  background: var(--color-accent, #3b6bdd);
+  border-color: var(--color-accent, #3b6bdd);
+  color: #fff;
+}
+.db-btn--primary:hover { background: var(--color-accent-hover, #2f5bc7); }
+
+.db-btn--danger {
+  background: var(--color-danger-surface, #fef2f2);
+  border-color: var(--color-danger-border, #fca5a5);
+  color: var(--color-danger, #dc2626);
+}
+.db-btn--danger:hover { background: var(--color-danger-surface-hover, #fee2e2); }
+
+.db-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+}
+.db-btn--ghost:hover { background: var(--color-hover, rgba(0,0,0,0.05)); }
+
+.db-btn--icon {
+  padding: 5px;
+  border: none;
+  background: transparent;
+}
+.db-btn--icon:hover { background: var(--color-hover, rgba(0,0,0,0.06)); }
+
+.db-btn--muted { color: var(--color-text-tertiary); }
+.db-btn--sm { padding: 4px 10px; font-size: 11px; }
+
+/* ─── Callouts ────────────────────────────────────────────────────────────── */
+
+.db-callout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 12px;
+}
+.db-callout--error {
+  background: var(--color-danger-surface, #fef2f2);
+  color: var(--color-danger, #dc2626);
+  border: 1px solid var(--color-danger-border, #fca5a5);
+}
+.db-callout--success {
+  background: var(--color-success-surface, #f0fdf4);
+  color: var(--color-success, #16a34a);
+  border: 1px solid var(--color-success-border, #86efac);
+}
+
+/* ─── Toast ───────────────────────────────────────────────────────────────── */
+
+.db-toast {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.db-toast--success {
+  background: var(--color-success-surface, #f0fdf4);
+  color: var(--color-success, #16a34a);
+  border-bottom: 1px solid var(--color-success-border, #86efac);
+}
+.db-toast--error {
+  background: var(--color-danger-surface, #fef2f2);
+  color: var(--color-danger, #dc2626);
+  border-bottom: 1px solid var(--color-danger-border, #fca5a5);
+}
+.db-toast--info {
+  background: var(--color-info-surface, #eff6ff);
+  color: var(--color-info, #2563eb);
+  border-bottom: 1px solid var(--color-info-border, #93c5fd);
+}
+
+/* ─── Dialog ──────────────────────────────────────────────────────────────── */
+
+.db-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.db-dialog {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  width: 480px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.db-dialog--sm { width: 360px; }
+
+.db-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.db-dialog__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.db-dialog__body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.db-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+/* ─── Saved connections ───────────────────────────────────────────────────── */
+
+.db-saved-connections {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.db-saved-connection-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised, var(--color-surface));
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
+  text-align: left;
+  transition: border-color 0.1s, background 0.1s;
+}
+.db-saved-connection-btn:hover { background: var(--color-hover, rgba(0,0,0,0.04)); }
+.db-saved-connection-btn:disabled { cursor: default; opacity: 0.6; }
+.db-saved-connection-btn__name { flex: 1; font-weight: 500; color: var(--color-text); }
+.db-saved-connection-btn__type { font-size: 11px; color: var(--color-text-secondary); }
+
+/* ─── Type selector ───────────────────────────────────────────────────────── */
+
+.db-type-selector {
+  display: flex;
+  gap: 8px;
+}
+
+.db-type-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised, var(--color-surface));
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  transition: border-color 0.1s, background 0.1s;
+}
+.db-type-btn:hover { background: var(--color-hover, rgba(0,0,0,0.04)); }
+.db-type-btn--active {
+  border-color: var(--color-accent, #3b6bdd);
+  background: var(--color-accent-surface, rgba(59,107,221,0.06));
+  color: var(--color-accent, #3b6bdd);
+}
+
+/* ─── Welcome / empty states ──────────────────────────────────────────────── */
+
+.db-welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px;
+  text-align: center;
+}
+
+.db-welcome__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.db-welcome__body {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  max-width: 340px;
+}
+
+.db-welcome__warning {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-warning, #b45309);
+  background: var(--color-warning-surface, #fffbeb);
+  border: 1px solid var(--color-warning-border, #fcd34d);
+  border-radius: var(--radius-sm, 4px);
+  padding: 8px 12px;
+  max-width: 360px;
+}
+
+.db-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--color-text-tertiary);
+}
+
+/* ─── Utility ─────────────────────────────────────────────────────────────── */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Icon placeholders — replace with your existing icon system */
+.db-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; }
+.db-icon--lg { width: 20px; height: 20px; }
+.db-icon--xl { width: 40px; height: 40px; opacity: 0.25; }

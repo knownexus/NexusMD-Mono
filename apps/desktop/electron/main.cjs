@@ -62,6 +62,7 @@ const trayIpc        = require('./ipc/tray-ipc.cjs');
 const logsIpc        = require('./ipc/logs.cjs');
 const oauthIpc       = require('./ipc/oauth.cjs');
 const apiClientScriptIpc = require('./ipc/api-client-script.cjs');
+const dbManagerIpc   = require('./ipc/db-manager.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
 const { buildLinkMenuTemplate } = require('./link-window/link-context-menu.cjs');
@@ -319,6 +320,7 @@ app.whenReady().then(async () => {
   logsIpc.register(ipcMain);
   oauthIpc.register(ipcMain);
   apiClientScriptIpc.register(ipcMain);
+  dbManagerIpc.register(ipcMain);
   linkWindow.register(ipcMain);
 
   app.on('activate', () => {
@@ -430,6 +432,7 @@ ipcMain.on('window:close', () => {
 app.on('before-quit', () => {
   log.scope('lifecycle').info('app quitting');
   forceQuit = true;
+  dbManagerIpc.closeAll().catch(err => log.scope('lifecycle').error('db-manager closeAll failed', err));
 });
 
 // On macOS it is common to keep the app running even with no windows

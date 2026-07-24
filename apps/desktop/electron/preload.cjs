@@ -119,6 +119,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
 
+  // ── Database Manager adapter IPC ───────────────────────────────────────────
+  dbManager: {
+    connect:    (type, config) =>
+      ipcRenderer.invoke('db-manager:connect',    { type, config }),
+    getRows:    (type, config, table, limit, offset) =>
+      ipcRenderer.invoke('db-manager:get-rows',   { type, config, table, limit, offset }),
+    deleteRows: (type, config, table, primaryKey, values) =>
+      ipcRenderer.invoke('db-manager:delete-rows', { type, config, table, primaryKey, values }),
+    updateCell: (type, config, table, primaryKey, primaryValue, column, value) =>
+      ipcRenderer.invoke('db-manager:update-cell', { type, config, table, primaryKey, primaryValue, column, value }),
+    runQuery:   (type, config, sql) =>
+      ipcRenderer.invoke('db-manager:run-query',  { type, config, sql }),
+  },
+
   // ── nativeTheme (used by theme adapter) ────────────────────────────────────
   // One-time read of the native theme preference.
   getNativeTheme: () => ipcRenderer.invoke('get-native-theme'),

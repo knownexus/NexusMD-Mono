@@ -14,7 +14,7 @@ import {
   WorkItemDetail, BuildDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
   WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
-  ApiClientProvider, ApiClientView,
+  ApiClientProvider, ApiClientView, ViewDbManager,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav } from './layout.js'
 import { resolveItemsUpdate } from './items-state.js'
@@ -47,6 +47,8 @@ import { updateAdapter }        from './adapters/update.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 import { scriptRunnerAdapter }  from './adapters/scriptRunner.js'
 import { rawHttpAdapter }       from './adapters/rawHttp.js'
+import { dbManagerAdapter }     from './adapters/db-manager.js'
+import { listSavedConnections, getConnectionSecret } from './db-manager-config.js'
 
 const adapters = {
   ...createNoOpAdapters(),
@@ -71,6 +73,9 @@ const adapters = {
   // module from registering there (see module-registry.js hasRequiredAdapters).
   scriptRunner:  scriptRunnerAdapter,
   apiHttp:       rawHttpAdapter,
+  // Desktop-only — its absence on web/app is what keeps the db-manager
+  // module from registering there.
+  dbManager:     dbManagerAdapter,
 }
 
 const NEXUSMD_THEMES = [
@@ -534,6 +539,14 @@ function ViewBody({
         <ApiClientProvider adapters={adapters}>
           <ApiClientView />
         </ApiClientProvider>
+      )
+    case 'db-manager':
+      return (
+        <ViewDbManager
+          adapters={adapters}
+          savedConnections={listSavedConnections()}
+          onResolveSecret={id => getConnectionSecret(secureStorageAdapter, id)}
+        />
       )
     case 'settings':
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}

@@ -47,6 +47,7 @@ export const Icon = ({ name, size = 16, stroke = 1.6, className = '', style = {}
     case 'star':      return (<svg {...props}><path d="m12 2 3 7 7 .5-5.5 4.5 2 7-6.5-4-6.5 4 2-7L2 9.5 9 9z"/></svg>);
     case 'flag':      return (<svg {...props}><path d="M4 21V4M4 4h13l-2 5 2 5H4"/></svg>);
     case 'link':      return (<svg {...props}><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 1 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 1 0 7 7l1-1"/></svg>);
+    case 'database':  return (<svg {...props}><path d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4-3.58-4-8-4Z"/><path d="M4 7v5c0 2.21 3.58 4 8 4s8-1.79 8-4V7"/><path d="M4 12v5c0 2.21 3.58 4 8 4s8-1.79 8-4v-5"/></svg>);
     case 'sun':       return (<svg {...props}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>);
     case 'moon':      return (<svg {...props}><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>);
     case 'sunset':    return (<svg {...props}><path d="M12 3v3M5.6 5.6l2.1 2.1M3 12h3M18.4 5.6l-2.1 2.1M21 12h-3"/><path d="M6 18a6 6 0 1 1 12 0"/><line x1="3" y1="18" x2="21" y2="18"/></svg>);

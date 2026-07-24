@@ -24,10 +24,12 @@
     "@nexusmd/core": "*",
     "@nexusmd/ui": "*",
     "@nexusmd/web-adapters": "*",
+    "electron-log": "^5.0.0",
     "electron-updater": "^6.0.0",
-    "electron-log": "^5.0.0"
+    "mssql": "^12.7.0"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "43.0.0",
     "electron-builder": "^26.15.3",
@@ -35,7 +37,6 @@
     "react-dom": "^18.3.1",
     "sharp": "^0.35.1",
     "vite": "^8.1.1",
-    "@testing-library/react": "^16.0.0",
     "vitest": "4.1.9"
   },
   "build": {

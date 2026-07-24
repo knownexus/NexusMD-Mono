@@ -6,6 +6,7 @@ export {
   ISecureStorageAdapter, INetworkAdapter, ILifecycleAdapter, IShareAdapter,
   ITrayAdapter, INavigationAdapter, IThemeAdapter, IUpdateAdapter,
   IBadgeAdapter, IDeepLinkAdapter, IScriptRunnerAdapter, IRawHttpAdapter,
+  IDbManagerAdapter,
 } from './adapters/index.js'
 export { createNoOpAdapters } from './adapters/defaults.js'
 export {
@@ -62,3 +63,9 @@ export {
   resume as resumeTimer, stop as stopTimer, reset as resetTimer, lap as lapTimer,
   remainingMs, isExpired, formatDuration, formatClock,
 } from './modules/timer/index.js'
+export {
+  getDbManagerAdapter, parseConnectionString, buildConfig, resolveConnectionParams, buildConnectionString,
+  createInitialState, applyConnected, applyDisconnected,
+  applyTableSelected, applyTableLoaded, applyRowsDeleted, applyCellUpdated, applyError,
+  generateConnectionId, upsertConnection, removeConnection,
+} from './modules/db-manager/index.js'

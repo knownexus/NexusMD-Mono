@@ -32,6 +32,7 @@ export {
 // API client module seam (file/scriptRunner/secureStorage/apiHttp adapters) + view.
 export { ApiClientProvider, useApiClient } from './api-client-context.jsx'
 export { ApiClientView } from './views/view-api-client.jsx'
+export { ViewDbManager } from './views/ViewDbManager.jsx'
 
 // Profile registry (active profile, CRUD, export/import). Each app wraps this
 // with a platform `store` (web REST vs app local) in its own profile-context.

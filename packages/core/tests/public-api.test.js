@@ -53,6 +53,11 @@ const EXPECTED = [
   'buildRunEntries', 'runCollection',
   'importPostmanCollection',
   'appendHistoryEntry', 'readHistory', 'clearHistory',
+  // Database Manager module (desktop-only: requires the `dbManager` adapter)
+  'IDbManagerAdapter', 'getDbManagerAdapter', 'parseConnectionString', 'buildConfig',
+  'resolveConnectionParams', 'buildConnectionString', 'createInitialState', 'applyConnected', 'applyDisconnected',
+  'applyTableSelected', 'applyTableLoaded', 'applyRowsDeleted', 'applyCellUpdated', 'applyError',
+  'generateConnectionId', 'upsertConnection', 'removeConnection',
 ].sort()
 
 describe('public API surface', () => {

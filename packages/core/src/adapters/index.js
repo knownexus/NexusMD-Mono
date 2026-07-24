@@ -127,3 +127,15 @@ export const IScriptRunnerAdapter = {
 export const IRawHttpAdapter = {
   fetch: async (url, options) => Promise.reject(new Error('IRawHttpAdapter.fetch not implemented')),
 }
+
+// Database Manager — desktop-only (real drivers run in the Electron main
+// process). Absence from createNoOpAdapters() gates the db-manager module to
+// platforms that explicitly supply it.
+export const IDbManagerAdapter = {
+  isAvailable: () => false,
+  connect:     async (type, config) => Promise.reject(new Error('IDbManagerAdapter.connect not implemented')),
+  getRows:     async (type, config, table, limit, offset) => Promise.reject(new Error('IDbManagerAdapter.getRows not implemented')),
+  deleteRows:  async (type, config, table, primaryKey, values) => Promise.reject(new Error('IDbManagerAdapter.deleteRows not implemented')),
+  updateCell:  async (type, config, table, primaryKey, primaryValue, column, value) => Promise.reject(new Error('IDbManagerAdapter.updateCell not implemented')),
+  runQuery:    async (type, config, sql) => Promise.reject(new Error('IDbManagerAdapter.runQuery not implemented')),
+}
