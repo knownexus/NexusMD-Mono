@@ -98,7 +98,7 @@ describe('ViewDbManager', () => {
     fireEvent.click(screen.getByText('Load demo'))
     await waitFor(() => expect(screen.getByText('patients')).toBeTruthy())
 
-    fireEvent.click(screen.getByText('patients'))
+    fireEvent.change(screen.getByLabelText('Tables'), { target: { value: 'patients' } })
     await waitFor(() => expect(screen.getByRole('table')).toBeTruthy())
   })
 
@@ -107,7 +107,7 @@ describe('ViewDbManager', () => {
     fireEvent.click(screen.getByText(/Connect to database/i))
     fireEvent.click(screen.getByText('Load demo'))
     await waitFor(() => screen.getByText('patients'))
-    fireEvent.click(screen.getByText('patients'))
+    fireEvent.change(screen.getByLabelText('Tables'), { target: { value: 'patients' } })
     await waitFor(() => screen.getByRole('table'))
 
     fireEvent.change(screen.getByPlaceholderText('Search rows…'), { target: { value: 'Alice' } })
@@ -120,7 +120,7 @@ describe('ViewDbManager', () => {
     fireEvent.click(screen.getByText(/Connect to database/i))
     fireEvent.click(screen.getByText('Load demo'))
     await waitFor(() => screen.getByText('patients'))
-    fireEvent.click(screen.getByText('patients'))
+    fireEvent.change(screen.getByLabelText('Tables'), { target: { value: 'patients' } })
     await waitFor(() => screen.getByRole('table'))
 
     const checkboxes = screen.getAllByRole('checkbox')
@@ -133,7 +133,7 @@ describe('ViewDbManager', () => {
     fireEvent.click(screen.getByText(/Connect to database/i))
     fireEvent.click(screen.getByText('Load demo'))
     await waitFor(() => screen.getByText('patients'))
-    fireEvent.click(screen.getByText('patients'))
+    fireEvent.change(screen.getByLabelText('Tables'), { target: { value: 'patients' } })
     await waitFor(() => screen.getByRole('table'))
 
     fireEvent.click(screen.getAllByRole('checkbox')[1])
@@ -157,7 +157,7 @@ describe('ViewDbManager', () => {
     fireEvent.click(screen.getByText(/Connect to database/i))
     fireEvent.click(screen.getByText('Load demo'))
     await waitFor(() => screen.getByText('patients'))
-    fireEvent.click(screen.getByText('patients'))
+    fireEvent.change(screen.getByLabelText('Tables'), { target: { value: 'patients' } })
     await waitFor(() => screen.getByRole('table'))
 
     fireEvent.click(screen.getByRole('tab', { name: 'Query' }))
@@ -259,16 +259,17 @@ describe('ViewDbManager — collapsible sidebar sections', () => {
     await waitFor(() => screen.getByText('patients'))
   }
 
-  it('the Tables section is expanded by default and can be collapsed', async () => {
+  it('lists tables in a dropdown and selects one on change', async () => {
     render(<ViewDbManager adapters={adapters} />)
     await connectDemo()
-    expect(screen.getByText('patients')).toBeTruthy()
 
-    fireEvent.click(screen.getByText('Tables'))
-    expect(screen.queryByText('patients')).not.toBeTruthy()
+    const select = screen.getByLabelText('Tables')
+    expect(select.tagName).toBe('SELECT')
+    expect(screen.getByText('patients').tagName).toBe('OPTION')
 
-    fireEvent.click(screen.getByText('Tables'))
-    expect(screen.getByText('patients')).toBeTruthy()
+    fireEvent.change(select, { target: { value: 'staff' } })
+    await waitFor(() => expect(screen.getByRole('table')).toBeTruthy())
+    expect(select.value).toBe('staff')
   })
 
   it('does not show a Databases section when no connections are saved', async () => {

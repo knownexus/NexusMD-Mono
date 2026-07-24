@@ -83,7 +83,6 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showConnectDialog, setShowConnectDialog] = useState(false)
   const [databasesExpanded, setDatabasesExpanded] = useState(true)
-  const [tablesExpanded, setTablesExpanded]       = useState(true)
   const demoData = useRef(null)
 
   const db = adapters?.dbManager
@@ -321,29 +320,13 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
             )}
 
             <div className="db-sidebar__section db-sidebar__section--fill">
-              <button
-                className="db-sidebar__section-toggle"
-                onClick={() => setTablesExpanded(v => !v)}
-                aria-expanded={tablesExpanded}
-              >
-                <span className={`db-icon db-icon--chevron-${tablesExpanded ? 'down' : 'right'}`} aria-hidden="true" />
-                <span className="db-sidebar__section-label">Tables</span>
-              </button>
-              {tablesExpanded && (
-                <nav className="db-sidebar__tables" aria-label="Tables">
-                  {session.tables.map(t => (
-                    <button
-                      key={t}
-                      className={`db-table-btn${dbState.selectedTable === t ? ' db-table-btn--active' : ''}`}
-                      onClick={() => loadTable(t)}
-                      aria-current={dbState.selectedTable === t ? 'page' : undefined}
-                    >
-                      <span className="db-icon db-icon--table" aria-hidden="true" />
-                      <span className="db-table-btn__label">{t}</span>
-                    </button>
-                  ))}
-                </nav>
-              )}
+              <label className="db-sidebar__section-label" htmlFor="db-sidebar-table-select">Tables</label>
+              <TableSelect
+                id="db-sidebar-table-select"
+                tables={session.tables}
+                value={dbState.selectedTable ?? ''}
+                onChange={loadTable}
+              />
             </div>
 
             <footer className="db-sidebar__footer">
@@ -852,6 +835,25 @@ function CellValue({ value }) {
     return <span className="db-cell--null">null</span>
   }
   return <span>{String(value)}</span>
+}
+
+// ─── Table select (shared: sidebar + Query tab) ───────────────────────────────
+
+function TableSelect({ id, tables, value, onChange, placeholder = 'Select a table…' }) {
+  return (
+    <select
+      id={id}
+      aria-label="Tables"
+      className="db-input db-table-select"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+    >
+      <option value="" disabled>{placeholder}</option>
+      {tables.map(t => (
+        <option key={t} value={t}>{t}</option>
+      ))}
+    </select>
+  )
 }
 
 function ConfirmDialog({ title, body, confirmLabel, confirmVariant, onConfirm, onCancel }) {

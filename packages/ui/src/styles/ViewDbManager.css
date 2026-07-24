@@ -77,6 +77,10 @@
   padding: 8px 6px;
 }
 
+.db-table-select {
+  width: 100%;
+}
+
 .db-sidebar__section-label {
   font-size: 10px;
   font-weight: 600;
