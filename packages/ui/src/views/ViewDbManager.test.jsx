@@ -416,6 +416,22 @@ describe('ViewDbManager — query command builders', () => {
     expect(screen.getByLabelText('SQL query').value).toBe("INSERT INTO patients (name) VALUES ('Alice')")
   })
 
+  it('builds an UPDATE query with SET and WHERE clauses', async () => {
+    await openQueryTabForPatients()
+
+    fireEvent.click(screen.getByText('Update'))
+    await waitFor(() => screen.getByLabelText('Include status'))
+
+    fireEvent.click(screen.getByLabelText('Include status'))
+    fireEvent.change(screen.getByLabelText('Value for status'), { target: { value: 'inactive' } })
+    fireEvent.change(screen.getByLabelText('Column'), { target: { value: 'id' } })
+    fireEvent.change(screen.getByLabelText('Operator'), { target: { value: '=' } })
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: '1' } })
+    fireEvent.click(screen.getByText('Build'))
+
+    expect(screen.getByLabelText('SQL query').value).toBe("UPDATE patients SET status = 'inactive'\nWHERE id = 1")
+  })
+
   it('closes the builder panel when its command button is clicked again', async () => {
     await openQueryTabForPatients()
 

@@ -32,6 +32,7 @@ import {
   buildSearchQuery,
   buildDeleteQuery,
   buildInsertQuery,
+  buildUpdateQuery,
 } from '@nexusmd/core'
 import { PlModal } from '../planner-chips.jsx'
 
@@ -1106,6 +1107,68 @@ function InsertBuilder({ table, columns, onBuild, onCancel }) {
   )
 }
 
+function UpdateBuilder({ table, columns, onBuild, onCancel }) {
+  const [values, setValues] = useState({})
+  const [included, setIncluded] = useState(() => new Set())
+  const [conditions, setConditions] = useState([{ column: '', operator: '=', value: '' }])
+  const updateCondition = (i, next) => setConditions(cs => cs.map((c, idx) => idx === i ? next : c))
+
+  const toggle = (name) => setIncluded(prev => {
+    const next = new Set(prev)
+    next.has(name) ? next.delete(name) : next.add(name)
+    return next
+  })
+
+  const validSet = included.size > 0
+  const validConditions = conditions.length > 0
+    && conditions.every(c => c.column && (c.operator === 'IS NULL' || c.value !== ''))
+
+  return (
+    <div className="db-builder">
+      <p className="db-hint">Set</p>
+      {columns.map(col => (
+        <div key={col.name} className="db-condition-row">
+          <label className="db-checkbox-label">
+            <input
+              type="checkbox"
+              aria-label={`Include ${col.name}`}
+              checked={included.has(col.name)}
+              onChange={() => toggle(col.name)}
+            />
+            {col.name}
+          </label>
+          {included.has(col.name) && (
+            <input
+              aria-label={`Value for ${col.name}`}
+              className="db-input"
+              type="text"
+              value={values[col.name] ?? ''}
+              onChange={e => setValues(v => ({ ...v, [col.name]: e.target.value }))}
+            />
+          )}
+        </div>
+      ))}
+      <p className="db-hint">Where</p>
+      {conditions.map((c, i) => (
+        <ConditionRow key={i} columns={columns} condition={c} onChange={next => updateCondition(i, next)} />
+      ))}
+      <button type="button" className="db-btn db-btn--ghost db-btn--sm"
+        onClick={() => setConditions(cs => [...cs, { column: '', operator: '=', value: '' }])}>
+        + Add condition
+      </button>
+      <BuilderFooter
+        buildDisabled={!validSet || !validConditions}
+        onCancel={onCancel}
+        onBuild={() => onBuild(buildUpdateQuery(
+          table,
+          columns.filter(c => included.has(c.name)).map(c => ({ name: c.name, value: values[c.name] })),
+          conditions.filter(c => c.column),
+        ))}
+      />
+    </div>
+  )
+}
+
 function QueryBuilderPanel({ activeBuilder, table, columns, columnsLoading, onBuild, onCancel }) {
   if (!activeBuilder) return null
   if (columnsLoading) return <p className="db-hint">Loading columns…</p>
@@ -1114,6 +1177,7 @@ function QueryBuilderPanel({ activeBuilder, table, columns, columnsLoading, onBu
   if (activeBuilder === 'search') return <SearchBuilder {...props} />
   if (activeBuilder === 'delete') return <DeleteBuilder {...props} />
   if (activeBuilder === 'insert') return <InsertBuilder {...props} />
+  if (activeBuilder === 'update') return <UpdateBuilder {...props} />
   return null
 }
 
