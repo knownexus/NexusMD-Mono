@@ -131,6 +131,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('db-manager:update-cell', { type, config, table, primaryKey, primaryValue, column, value }),
     runQuery:   (type, config, sql) =>
       ipcRenderer.invoke('db-manager:run-query',  { type, config, sql }),
+    getColumns: (type, config, table) =>
+      ipcRenderer.invoke('db-manager:get-columns', { type, config, table }),
   },
 
   // ── nativeTheme (used by theme adapter) ────────────────────────────────────

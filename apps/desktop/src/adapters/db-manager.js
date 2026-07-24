@@ -83,4 +83,15 @@ export const dbManagerAdapter = {
   runQuery(type, config, sql) {
     return api().runQuery(type, config, sql)
   },
+
+  /**
+   * Fetch column metadata for a table.
+   * @param {'sqlserver'|'sqlite'} type
+   * @param {object} config
+   * @param {string} table
+   * @returns {Promise<{ ok: boolean, columns: { name: string, dataType: string, isPrimaryKey: boolean }[] }>}
+   */
+  getColumns(type, config, table) {
+    return api().getColumns(type, config, table)
+  },
 }
