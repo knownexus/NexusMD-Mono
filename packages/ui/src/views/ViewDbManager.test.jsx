@@ -152,6 +152,22 @@ describe('ViewDbManager', () => {
     expect(screen.getByText('Database Manager')).toBeTruthy()
   })
 
+  it('auto-populates SELECT * FROM <table> when a table is chosen in the Query tab', async () => {
+    render(<ViewDbManager adapters={adapters} />)
+    fireEvent.click(screen.getByText(/Connect to database/i))
+    fireEvent.click(screen.getByText('Load demo'))
+    await waitFor(() => screen.getByText('patients'))
+    fireEvent.change(screen.getByLabelText('Tables'), { target: { value: 'patients' } })
+    await waitFor(() => screen.getByRole('table'))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Query' }))
+    const tableSelects = screen.getAllByLabelText('Tables')
+    const queryTableSelect = tableSelects[tableSelects.length - 1]
+    fireEvent.change(queryTableSelect, { target: { value: 'staff' } })
+
+    expect(screen.getByLabelText('SQL query').value).toBe('SELECT * FROM staff')
+  })
+
   it('switches to query tab and runs a query', async () => {
     render(<ViewDbManager adapters={adapters} />)
     fireEvent.click(screen.getByText(/Connect to database/i))

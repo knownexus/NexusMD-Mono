@@ -78,6 +78,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
   const [editingCell, setEditingCell] = useState(null)   // { ri, ci } | null
   const [editValue, setEditValue]     = useState('')
   const [sqlQuery, setSqlQuery]       = useState('')
+  const [queryTable, setQueryTable]   = useState(null)
   const [queryResult, setQueryResult] = useState(null)
   const [toast, setToast]             = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -233,6 +234,11 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
   }, [db, dbState, editingCell, editValue, notify])
 
   // ── Query ──────────────────────────────────────────────────────────────────
+
+  const handleQueryTableSelect = useCallback((name) => {
+    setQueryTable(name)
+    setSqlQuery(`SELECT * FROM ${name}`)
+  }, [])
 
   const runQuery = useCallback(async () => {
     setQueryResult(null)
@@ -405,6 +411,8 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
                 {activeTab === 'query' && (
                   <QueryPanel
                     tables={session.tables}
+                    queryTable={queryTable ?? dbState.selectedTable}
+                    onSelectTable={handleQueryTableSelect}
                     sqlQuery={sqlQuery}
                     onSqlChange={setSqlQuery}
                     queryResult={queryResult}
@@ -765,11 +773,19 @@ function BrowsePanel({
 
 // ─── Query panel ──────────────────────────────────────────────────────────────
 
-function QueryPanel({ tables, sqlQuery, onSqlChange, queryResult, onRun }) {
+function QueryPanel({ tables, queryTable, onSelectTable, sqlQuery, onSqlChange, queryResult, onRun }) {
   return (
     <div className="db-query">
       <div className="db-query__editor">
-        <p className="db-hint db-hint--mono">Tables: {tables.join(', ')}</p>
+        <div className="db-field">
+          <label className="db-label" htmlFor="db-query-table-select">Table</label>
+          <TableSelect
+            id="db-query-table-select"
+            tables={tables}
+            value={queryTable ?? ''}
+            onChange={onSelectTable}
+          />
+        </div>
         <textarea
           className="db-textarea db-textarea--mono db-textarea--query"
           value={sqlQuery}
@@ -781,7 +797,7 @@ function QueryPanel({ tables, sqlQuery, onSqlChange, queryResult, onRun }) {
           spellCheck={false}
         />
         <div className="db-query__toolbar">
-          <span className="db-hint">Ctrl+Enter to run · SELECT and DELETE only</span>
+          <span className="db-hint">Ctrl+Enter to run</span>
           <button className="db-btn db-btn--primary" onClick={onRun}>
             <span className="db-icon db-icon--play" aria-hidden="true" />
             Run query
