@@ -34,6 +34,7 @@ import {
   buildInsertQuery,
   buildUpdateQuery,
   buildJoinQuery,
+  buildAggregateQuery,
 } from '@nexusmd/core'
 import { PlModal } from '../planner-chips.jsx'
 
@@ -1234,6 +1235,54 @@ function JoinBuilder({ table, columns, allTables, allColumns, onLoadColumnsFor, 
   )
 }
 
+const AGGREGATE_FUNCTIONS = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX']
+
+function AggregateBuilder({ table, columns, onBuild, onCancel }) {
+  const [fn, setFn] = useState('COUNT')
+  const [column, setColumn] = useState('')
+  const [groupBy, setGroupBy] = useState(() => new Set())
+
+  const toggleGroupBy = (name) => setGroupBy(prev => {
+    const next = new Set(prev)
+    next.has(name) ? next.delete(name) : next.add(name)
+    return next
+  })
+
+  const valid = !!column
+
+  return (
+    <div className="db-builder">
+      <div className="db-condition-row">
+        <select aria-label="Function" className="db-input" value={fn} onChange={e => setFn(e.target.value)}>
+          {AGGREGATE_FUNCTIONS.map(f => <option key={f} value={f}>{f}</option>)}
+        </select>
+        <select aria-label="Aggregate column" className="db-input" value={column}
+          onChange={e => setColumn(e.target.value)}>
+          <option value="" disabled>Column…</option>
+          {columns.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+        </select>
+      </div>
+      <p className="db-hint">Group by</p>
+      {columns.map(col => (
+        <label key={col.name} className="db-checkbox-label">
+          <input
+            type="checkbox"
+            aria-label={`Group by ${col.name}`}
+            checked={groupBy.has(col.name)}
+            onChange={() => toggleGroupBy(col.name)}
+          />
+          {col.name}
+        </label>
+      ))}
+      <BuilderFooter
+        buildDisabled={!valid}
+        onCancel={onCancel}
+        onBuild={() => onBuild(buildAggregateQuery(table, [{ fn, column }], [...groupBy]))}
+      />
+    </div>
+  )
+}
+
 function QueryBuilderPanel({
   activeBuilder, table, columns, columnsLoading, onBuild, onCancel,
   allTables, allColumns, onLoadColumnsFor,
@@ -1246,6 +1295,7 @@ function QueryBuilderPanel({
   if (activeBuilder === 'delete') return <DeleteBuilder {...props} />
   if (activeBuilder === 'insert') return <InsertBuilder {...props} />
   if (activeBuilder === 'update') return <UpdateBuilder {...props} />
+  if (activeBuilder === 'aggregate') return <AggregateBuilder {...props} />
   if (activeBuilder === 'join') {
     return (
       <JoinBuilder

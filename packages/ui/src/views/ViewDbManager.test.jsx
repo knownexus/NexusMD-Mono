@@ -450,6 +450,20 @@ describe('ViewDbManager — query command builders', () => {
     )
   })
 
+  it('builds an AGGREGATE query with a function, column, and GROUP BY', async () => {
+    await openQueryTabForPatients()
+
+    fireEvent.click(screen.getByText('Aggregate'))
+    await waitFor(() => screen.getByLabelText('Function'))
+
+    fireEvent.change(screen.getByLabelText('Function'), { target: { value: 'COUNT' } })
+    fireEvent.change(screen.getByLabelText('Aggregate column'), { target: { value: 'id' } })
+    fireEvent.click(screen.getByLabelText('Group by status'))
+    fireEvent.click(screen.getByText('Build'))
+
+    expect(screen.getByLabelText('SQL query').value).toBe('SELECT COUNT(id), status FROM patients\nGROUP BY status')
+  })
+
   it('closes the builder panel when its command button is clicked again', async () => {
     await openQueryTabForPatients()
 
