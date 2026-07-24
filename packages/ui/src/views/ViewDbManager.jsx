@@ -29,6 +29,8 @@ import {
   applyRowsDeleted,
   applyCellUpdated,
   applyError,
+  buildSearchQuery,
+  buildDeleteQuery,
 } from '@nexusmd/core'
 import { PlModal } from '../planner-chips.jsx'
 
@@ -80,6 +82,9 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
   const [sqlQuery, setSqlQuery]       = useState('')
   const [queryTable, setQueryTable]   = useState(null)
   const [queryResult, setQueryResult] = useState(null)
+  const [tableColumns, setTableColumns] = useState({})   // { [table]: Column[] }
+  const [columnsLoading, setColumnsLoading] = useState(false)
+  const [activeBuilder, setActiveBuilder] = useState(null)   // 'search' | 'delete' | null
   const [toast, setToast]             = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showConnectDialog, setShowConnectDialog] = useState(false)
@@ -238,6 +243,44 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
   const handleQueryTableSelect = useCallback((name) => {
     setQueryTable(name)
     setSqlQuery(`SELECT * FROM ${name}`)
+  }, [])
+
+  const ensureColumnsLoaded = useCallback(async (table) => {
+    if (!table || tableColumns[table]) return
+    setColumnsLoading(true)
+    try {
+      if (dbState.session?.type === 'demo') {
+        // DEMO.data[table] already has a `columns` array (see lines 43, 52, 61) —
+        // treat its first entry as the primary key, matching the real-DB
+        // getColumns() shape closely enough for the builders to consume.
+        const demoCols = (demoData.current[table]?.columns ?? []).map((name, i) => ({
+          name, dataType: 'TEXT', isPrimaryKey: i === 0,
+        }))
+        setTableColumns(prev => ({ ...prev, [table]: demoCols }))
+        return
+      }
+      const { type, config } = dbState.session
+      const result = await db.getColumns(type, config, table)
+      setTableColumns(prev => ({ ...prev, [table]: result.columns }))
+    } catch (err) {
+      notify(err.message, 'error')
+    } finally {
+      setColumnsLoading(false)
+    }
+  }, [db, dbState.session, tableColumns, notify])
+
+  const toggleBuilder = useCallback(async (name) => {
+    setActiveBuilder(prev => (prev === name ? null : name))
+    // Mirrors the same `queryTable ?? dbState.selectedTable` fallback QueryPanel
+    // displays — without it, opening a builder before ever touching the Query
+    // tab's own dropdown would try to load columns for `null`.
+    const target = queryTable ?? dbState.selectedTable
+    if (activeBuilder !== name) await ensureColumnsLoaded(target)
+  }, [activeBuilder, ensureColumnsLoaded, queryTable, dbState.selectedTable])
+
+  const applyBuiltSql = useCallback((sql) => {
+    setSqlQuery(sql)
+    setActiveBuilder(null)
   }, [])
 
   const runQuery = useCallback(async () => {
@@ -417,6 +460,11 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
                     onSqlChange={setSqlQuery}
                     queryResult={queryResult}
                     onRun={runQuery}
+                    activeBuilder={activeBuilder}
+                    onToggleBuilder={toggleBuilder}
+                    columns={tableColumns[queryTable ?? dbState.selectedTable] ?? []}
+                    columnsLoading={columnsLoading}
+                    onBuildSql={applyBuiltSql}
                   />
                 )}
               </>
@@ -773,7 +821,10 @@ function BrowsePanel({
 
 // ─── Query panel ──────────────────────────────────────────────────────────────
 
-function QueryPanel({ tables, queryTable, onSelectTable, sqlQuery, onSqlChange, queryResult, onRun }) {
+function QueryPanel({
+  tables, queryTable, onSelectTable, sqlQuery, onSqlChange, queryResult, onRun,
+  activeBuilder, onToggleBuilder, columns, columnsLoading, onBuildSql,
+}) {
   return (
     <div className="db-query">
       <div className="db-query__editor">
@@ -786,6 +837,19 @@ function QueryPanel({ tables, queryTable, onSelectTable, sqlQuery, onSqlChange, 
             onChange={onSelectTable}
           />
         </div>
+        <QueryCommandToolbar
+          activeBuilder={activeBuilder}
+          onToggle={onToggleBuilder}
+          disabled={!queryTable}
+        />
+        <QueryBuilderPanel
+          activeBuilder={activeBuilder}
+          table={queryTable}
+          columns={columns}
+          columnsLoading={columnsLoading}
+          onBuild={onBuildSql}
+          onCancel={() => onToggleBuilder(activeBuilder)}
+        />
         <textarea
           className="db-textarea db-textarea--mono db-textarea--query"
           value={sqlQuery}
@@ -870,6 +934,137 @@ function TableSelect({ id, tables, value, onChange, placeholder = 'Select a tabl
       ))}
     </select>
   )
+}
+
+// ─── Query command toolbar + builder panel ─────────────────────────────────────
+
+const COMMANDS = [
+  ['search', 'Search'], ['insert', 'Insert'], ['update', 'Update'],
+  ['delete', 'Delete'], ['join', 'Join'], ['aggregate', 'Aggregate'],
+]
+
+function QueryCommandToolbar({ activeBuilder, onToggle, disabled }) {
+  return (
+    <div className="db-query__toolbar db-query__command-toolbar" role="group" aria-label="Query commands">
+      {COMMANDS.map(([id, label]) => (
+        <button
+          key={id}
+          type="button"
+          className={`db-btn db-btn--sm${activeBuilder === id ? ' db-btn--active' : ''}`}
+          onClick={() => onToggle(id)}
+          disabled={disabled}
+          title={disabled ? 'Select a table first' : undefined}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+const OPERATORS = ['=', '!=', '>', '<', 'LIKE', 'IS NULL']
+
+function ConditionRow({ columns, condition, onChange }) {
+  return (
+    <div className="db-condition-row">
+      <select
+        aria-label="Column"
+        className="db-input"
+        value={condition.column}
+        onChange={e => onChange({ ...condition, column: e.target.value })}
+      >
+        <option value="" disabled>Column…</option>
+        {columns.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+      </select>
+      <select
+        aria-label="Operator"
+        className="db-input"
+        value={condition.operator}
+        onChange={e => onChange({ ...condition, operator: e.target.value })}
+      >
+        {OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
+      </select>
+      {condition.operator !== 'IS NULL' && (
+        <input
+          aria-label="Value"
+          className="db-input"
+          type="text"
+          value={condition.value}
+          onChange={e => onChange({ ...condition, value: e.target.value })}
+        />
+      )}
+    </div>
+  )
+}
+
+function BuilderFooter({ onBuild, onCancel, buildDisabled }) {
+  return (
+    <div className="db-builder__footer">
+      <button type="button" className="db-btn db-btn--ghost" onClick={onCancel}>Cancel</button>
+      <button type="button" className="db-btn db-btn--primary" onClick={onBuild} disabled={buildDisabled}>
+        Build
+      </button>
+    </div>
+  )
+}
+
+function SearchBuilder({ table, columns, onBuild, onCancel }) {
+  const [conditions, setConditions] = useState([{ column: '', operator: '=', value: '' }])
+  const updateCondition = (i, next) => setConditions(cs => cs.map((c, idx) => idx === i ? next : c))
+
+  const valid = conditions.every(c => c.column && (c.operator === 'IS NULL' || c.value !== ''))
+
+  return (
+    <div className="db-builder">
+      {conditions.map((c, i) => (
+        <ConditionRow key={i} columns={columns} condition={c} onChange={next => updateCondition(i, next)} />
+      ))}
+      <button type="button" className="db-btn db-btn--ghost db-btn--sm"
+        onClick={() => setConditions(cs => [...cs, { column: '', operator: '=', value: '' }])}>
+        + Add condition
+      </button>
+      <BuilderFooter
+        buildDisabled={!valid}
+        onCancel={onCancel}
+        onBuild={() => onBuild(buildSearchQuery(table, conditions.filter(c => c.column)))}
+      />
+    </div>
+  )
+}
+
+function DeleteBuilder({ table, columns, onBuild, onCancel }) {
+  const [conditions, setConditions] = useState([{ column: '', operator: '=', value: '' }])
+  const updateCondition = (i, next) => setConditions(cs => cs.map((c, idx) => idx === i ? next : c))
+
+  const valid = conditions.length > 0
+    && conditions.every(c => c.column && (c.operator === 'IS NULL' || c.value !== ''))
+
+  return (
+    <div className="db-builder">
+      {conditions.map((c, i) => (
+        <ConditionRow key={i} columns={columns} condition={c} onChange={next => updateCondition(i, next)} />
+      ))}
+      <button type="button" className="db-btn db-btn--ghost db-btn--sm"
+        onClick={() => setConditions(cs => [...cs, { column: '', operator: '=', value: '' }])}>
+        + Add condition
+      </button>
+      <BuilderFooter
+        buildDisabled={!valid}
+        onCancel={onCancel}
+        onBuild={() => onBuild(buildDeleteQuery(table, conditions.filter(c => c.column)))}
+      />
+    </div>
+  )
+}
+
+function QueryBuilderPanel({ activeBuilder, table, columns, columnsLoading, onBuild, onCancel }) {
+  if (!activeBuilder) return null
+  if (columnsLoading) return <p className="db-hint">Loading columns…</p>
+
+  const props = { table, columns, onBuild, onCancel }
+  if (activeBuilder === 'search') return <SearchBuilder {...props} />
+  if (activeBuilder === 'delete') return <DeleteBuilder {...props} />
+  return null
 }
 
 function ConfirmDialog({ title, body, confirmLabel, confirmVariant, onConfirm, onCancel }) {

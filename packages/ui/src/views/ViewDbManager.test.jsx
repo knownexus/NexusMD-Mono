@@ -16,6 +16,14 @@ function makeAdapter(overrides = {}) {
     deleteRows: vi.fn().mockResolvedValue({ ok: true, affected: 1 }),
     updateCell: vi.fn().mockResolvedValue({ ok: true, affected: 1 }),
     runQuery:   vi.fn().mockResolvedValue({ columns: ['id'], rows: [[1]], affected: null }),
+    getColumns: vi.fn().mockResolvedValue({
+      ok: true,
+      columns: [
+        { name: 'id', dataType: 'INTEGER', isPrimaryKey: true },
+        { name: 'name', dataType: 'TEXT', isPrimaryKey: false },
+        { name: 'status', dataType: 'TEXT', isPrimaryKey: false },
+      ],
+    }),
     ...overrides,
   }
 }
@@ -319,5 +327,100 @@ describe('ViewDbManager — collapsible sidebar sections', () => {
     fireEvent.click(screen.getByText('UAT'))
     await waitFor(() => expect(document.querySelector('.db-sidebar__db-name').textContent).toBe('UAT'))
     expect(screen.getByText('orders')).toBeTruthy()
+  })
+})
+
+describe('ViewDbManager — query command builders', () => {
+  let adapters
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter() }
+  })
+
+  afterEach(() => { cleanup() })
+
+  const openQueryTabForPatients = async () => {
+    render(<ViewDbManager adapters={adapters} />)
+    fireEvent.click(screen.getByText(/Connect to database/i))
+    fireEvent.click(screen.getByText('Load demo'))
+    await waitFor(() => screen.getByText('patients'))
+    fireEvent.change(screen.getByLabelText('Tables'), { target: { value: 'patients' } })
+    await waitFor(() => screen.getByRole('table'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Query' }))
+    const tableSelects = screen.getAllByLabelText('Tables')
+    fireEvent.change(tableSelects[tableSelects.length - 1], { target: { value: 'patients' } })
+  }
+
+  it('builds a SEARCH query from a condition row', async () => {
+    await openQueryTabForPatients()
+
+    fireEvent.click(screen.getByText('Search'))
+    await waitFor(() => screen.getByLabelText('Column'))
+
+    fireEvent.change(screen.getByLabelText('Column'), { target: { value: 'status' } })
+    fireEvent.change(screen.getByLabelText('Operator'), { target: { value: '=' } })
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'active' } })
+    fireEvent.click(screen.getByText('Build'))
+
+    expect(screen.getByLabelText('SQL query').value).toBe("SELECT * FROM patients\nWHERE status = 'active'")
+  })
+
+  it('fetches column metadata through the adapter for a real (non-demo) connection', async () => {
+    render(<ViewDbManager adapters={adapters} />)
+    fireEvent.click(screen.getByText(/Connect to database/i))
+    fireEvent.click(screen.getByText('SQLite'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Connection string' }))
+    fireEvent.change(screen.getByLabelText(/connection string/i), {
+      target: { value: 'sqlite:///test/data.db' },
+    })
+    fireEvent.click(screen.getByText('Connect'))
+    await waitFor(() => screen.getByText('patients'))
+    fireEvent.change(screen.getByLabelText('Tables'), { target: { value: 'patients' } })
+    await waitFor(() => screen.getByRole('table'))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Query' }))
+    const tableSelects = screen.getAllByLabelText('Tables')
+    fireEvent.change(tableSelects[tableSelects.length - 1], { target: { value: 'patients' } })
+    fireEvent.click(screen.getByText('Search'))
+
+    await waitFor(() => expect(adapters.dbManager.getColumns).toHaveBeenCalledWith(
+      'sqlite', expect.objectContaining({ filePath: 'test/data.db' }), 'patients',
+    ))
+    expect(screen.getByLabelText('Column')).toBeTruthy()
+  })
+
+  it('builds a DELETE query from a condition row', async () => {
+    await openQueryTabForPatients()
+
+    fireEvent.click(screen.getByText('Delete'))
+    await waitFor(() => screen.getByLabelText('Column'))
+
+    fireEvent.change(screen.getByLabelText('Column'), { target: { value: 'id' } })
+    fireEvent.change(screen.getByLabelText('Operator'), { target: { value: '=' } })
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: '1' } })
+    fireEvent.click(screen.getByText('Build'))
+
+    expect(screen.getByLabelText('SQL query').value).toBe('DELETE FROM patients\nWHERE id = 1')
+  })
+
+  it('closes the builder panel when its command button is clicked again', async () => {
+    await openQueryTabForPatients()
+
+    fireEvent.click(screen.getByText('Search'))
+    await waitFor(() => screen.getByLabelText('Column'))
+    fireEvent.click(screen.getByText('Search'))
+    expect(screen.queryByLabelText('Column')).not.toBeTruthy()
+  })
+
+  it('cancel closes the panel without changing the textarea', async () => {
+    await openQueryTabForPatients()
+    const before = screen.getByLabelText('SQL query').value
+
+    fireEvent.click(screen.getByText('Search'))
+    await waitFor(() => screen.getByLabelText('Column'))
+    fireEvent.click(screen.getByText('Cancel'))
+
+    expect(screen.queryByLabelText('Column')).not.toBeTruthy()
+    expect(screen.getByLabelText('SQL query').value).toBe(before)
   })
 })

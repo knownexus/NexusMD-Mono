@@ -81,6 +81,35 @@
   width: 100%;
 }
 
+.db-query__command-toolbar {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.db-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border, #ccc);
+  border-radius: 6px;
+}
+
+.db-condition-row {
+  display: flex;
+  gap: 8px;
+}
+
+.db-condition-row > * {
+  flex: 1;
+}
+
+.db-builder__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .db-sidebar__section-label {
   font-size: 10px;
   font-weight: 600;
