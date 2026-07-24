@@ -403,6 +403,19 @@ describe('ViewDbManager — query command builders', () => {
     expect(screen.getByLabelText('SQL query').value).toBe('DELETE FROM patients\nWHERE id = 1')
   })
 
+  it('builds an INSERT query from checked columns', async () => {
+    await openQueryTabForPatients()
+
+    fireEvent.click(screen.getByText('Insert'))
+    await waitFor(() => screen.getByLabelText('Include name'))
+
+    fireEvent.click(screen.getByLabelText('Include name'))
+    fireEvent.change(screen.getByLabelText('Value for name'), { target: { value: 'Alice' } })
+    fireEvent.click(screen.getByText('Build'))
+
+    expect(screen.getByLabelText('SQL query').value).toBe("INSERT INTO patients (name) VALUES ('Alice')")
+  })
+
   it('closes the builder panel when its command button is clicked again', async () => {
     await openQueryTabForPatients()
 

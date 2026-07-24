@@ -31,6 +31,7 @@ import {
   applyError,
   buildSearchQuery,
   buildDeleteQuery,
+  buildInsertQuery,
 } from '@nexusmd/core'
 import { PlModal } from '../planner-chips.jsx'
 
@@ -1057,6 +1058,54 @@ function DeleteBuilder({ table, columns, onBuild, onCancel }) {
   )
 }
 
+function InsertBuilder({ table, columns, onBuild, onCancel }) {
+  const [values, setValues] = useState({})   // { [colName]: string }
+  const [included, setIncluded] = useState(() => new Set())
+
+  const toggle = (name) => setIncluded(prev => {
+    const next = new Set(prev)
+    next.has(name) ? next.delete(name) : next.add(name)
+    return next
+  })
+
+  const valid = included.size > 0
+
+  return (
+    <div className="db-builder">
+      {columns.map(col => (
+        <div key={col.name} className="db-condition-row">
+          <label className="db-checkbox-label">
+            <input
+              type="checkbox"
+              aria-label={`Include ${col.name}`}
+              checked={included.has(col.name)}
+              onChange={() => toggle(col.name)}
+            />
+            {col.name}
+          </label>
+          {included.has(col.name) && (
+            <input
+              aria-label={`Value for ${col.name}`}
+              className="db-input"
+              type="text"
+              value={values[col.name] ?? ''}
+              onChange={e => setValues(v => ({ ...v, [col.name]: e.target.value }))}
+            />
+          )}
+        </div>
+      ))}
+      <BuilderFooter
+        buildDisabled={!valid}
+        onCancel={onCancel}
+        onBuild={() => onBuild(buildInsertQuery(
+          table,
+          columns.filter(c => included.has(c.name)).map(c => ({ name: c.name, value: values[c.name] })),
+        ))}
+      />
+    </div>
+  )
+}
+
 function QueryBuilderPanel({ activeBuilder, table, columns, columnsLoading, onBuild, onCancel }) {
   if (!activeBuilder) return null
   if (columnsLoading) return <p className="db-hint">Loading columns…</p>
@@ -1064,6 +1113,7 @@ function QueryBuilderPanel({ activeBuilder, table, columns, columnsLoading, onBu
   const props = { table, columns, onBuild, onCancel }
   if (activeBuilder === 'search') return <SearchBuilder {...props} />
   if (activeBuilder === 'delete') return <DeleteBuilder {...props} />
+  if (activeBuilder === 'insert') return <InsertBuilder {...props} />
   return null
 }
 
