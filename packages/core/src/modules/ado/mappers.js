@@ -83,7 +83,11 @@ export function mapBuild(b, proj = '') {
   else if (result === 'canceled' || b.status === 'cancelling') status = 'cancelled'
   else if (b.status === 'inProgress' || b.status === 'notStarted') status = 'running'
   return {
-    id: b.id, project: proj,
+    id: b.id,
+    // project is the slugified id — matches deriveProjects/ProjectChip lookup.
+    // projectName is the raw ADO name needed for external URLs and API calls.
+    project: slugify(proj),
+    projectName: proj,
     pipeline: b.definition?.name || 'Pipeline',
     definitionId: b.definition?.id || 0,
     status,

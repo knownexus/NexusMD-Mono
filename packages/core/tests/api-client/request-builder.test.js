@@ -40,6 +40,30 @@ describe('buildRequest', () => {
     expect(query.request.url).toBe('/x?api_key=k1')
   })
 
+  it('resolves {{vars}} inside the auth block (bearer token from an environment variable)', async () => {
+    const { request } = await buildRequest(
+      { url: '/x', auth: { type: 'bearer', token: '{{accessToken}}' } },
+      { vars: { accessToken: 'minted-token' } },
+    )
+    expect(request.headers.Authorization).toBe('Bearer minted-token')
+  })
+
+  it('resolves {{vars}} inside basic auth username/password', async () => {
+    const { request } = await buildRequest(
+      { url: '/x', auth: { type: 'basic', username: '{{user}}', password: '{{pass}}' } },
+      { vars: { user: 'u', pass: 'p' } },
+    )
+    expect(request.headers.Authorization).toBe(`Basic ${Buffer.from('u:p').toString('base64')}`)
+  })
+
+  it('resolves {{vars}} inside apikey auth value', async () => {
+    const { request } = await buildRequest(
+      { url: '/x', auth: { type: 'apikey', key: 'X-Api-Key', value: '{{apiKey}}' } },
+      { vars: { apiKey: 'secret-key' } },
+    )
+    expect(request.headers['X-Api-Key']).toBe('secret-key')
+  })
+
   it('runs the pre-request script and carries forward mutated vars/request', async () => {
     const requestDef = { url: '{{baseUrl}}/x', preRequestScript: 'context.vars.token = "minted"' }
     const scriptRunner = fakeScriptRunner((script, context) => ({

@@ -32,6 +32,7 @@ import { GitHubClient } from './github-client.js';
 import { loadConfidentialConfig, hashPassword } from './confidential.jsx';
 import { loadStoredPlanner, loadStoredThemes, NexusMDData, NexusMDApi } from './data.js';
 import { isTerminalState, adoTypeToHelm, timeAgo, mergeTeamRoster } from '@nexusmd/core';
+import { BuildDetail } from '@nexusmd/ui';
 import './styles/nexusmd.css';
 import './styles/nexusmd-planner-v2.css';
 
@@ -2060,7 +2061,7 @@ function App() {
               <PRView prs={prs} onOpen={openPR} needsMeCriteria={needsMeCriteria} setNeedsMeCriteria={setNeedsMeCriteria} newItemIds={newItemIds.pr}/>
             )}
             {view==='builds' && (
-              <BuildsView builds={NexusMDData.BUILDS||[]} acknowledgedBuilds={acknowledgedBuilds} setAcknowledgedBuilds={setAcknowledgedBuilds} newItemIds={newItemIds.builds}/>
+              <BuildsView builds={NexusMDData.BUILDS||[]} acknowledgedBuilds={acknowledgedBuilds} setAcknowledgedBuilds={setAcknowledgedBuilds} newItemIds={newItemIds.builds} onOpenBuild={b => setDrawer({ kind: 'build', data: b })}/>
             )}
             {view==='tests' && (
               <TestsView tests={NexusMDData.TESTS||[]} acknowledgedTests={acknowledgedTests} setAcknowledgedTests={setAcknowledgedTests} newItemIds={newItemIds.tests}/>
@@ -2335,7 +2336,7 @@ function DetailDrawer({ drawer, onClose, setWorkItems, team: teamProp, plannerDa
   const d    = drawer?.data;
   const TEAM = teamProp || NexusMDData.TEAM || [];
 
-  const title = !d?'': kind==='wi'?d.title: kind==='pr'?d.title: kind==='person'?d.name:'';
+  const title = !d?'': kind==='wi'?d.title: kind==='pr'?d.title: kind==='person'?d.name: kind==='build'?`${d.pipeline} #${d.id}`:'';
 
   return (
     <Drawer open={open} onClose={onClose} title={title}
@@ -2362,6 +2363,7 @@ function DetailDrawer({ drawer, onClose, setWorkItems, team: teamProp, plannerDa
       {kind==='wi'&&d&&<WIDetail item={d} setWorkItems={setWorkItems} team={TEAM}/>}
       {kind==='pr'&&d&&<PRDetail pr={d} onClose={onClose}/>}
       {kind==='person'&&d&&<PersonDetail dev={d} plannerData={plannerData}/>}
+      {kind==='build'&&d&&<BuildDetail build={d}/>}
     </Drawer>
   );
 }

@@ -104,11 +104,12 @@ export async function buildRequest(requestDef, { vars = {}, adapters = {} } = {}
       params:  requestDef.params || {},
       headers: requestDef.headers || {},
       body:    requestDef.body,
+      auth:    requestDef.auth,
     },
     vars,
   )
 
-  const { headers, params } = applyAuth(resolved.headers, resolved.params, requestDef.auth)
+  const { headers, params } = applyAuth(resolved.headers, resolved.params, resolved.auth)
 
   const finalHeaders = { ...headers }
   const contentType = autoContentType(bodyType, bodyLanguage)

@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LINQ → SQL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0e0f11;--bg2:#16181c;--bg3:#1e2128;
+  --border:#2a2d35;--border2:#363b45;
+  --text:#e8eaf0;--text2:#8b909e;--text3:#555b6a;
+  --accent:#4ade80;--accent-dim:#1a3a26;--accent-text:#86efac;
+  --amber:#fbbf24;--amber-dim:#2d1f00;--amber-text:#fcd34d;
+  --blue:#7dd3fc;--purple:#c4b5fd;--red:#f87171;
+  --mono:'JetBrains Mono',monospace;--sans:'DM Sans',sans-serif;
+  --r:8px;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans)}
+body{display:flex;flex-direction:column;min-height:100vh}
+
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 22px;border-bottom:1px solid var(--border);background:var(--bg);position:sticky;top:0;z-index:10}
+.logo{font-family:var(--mono);font-size:15px;font-weight:600;letter-spacing:-.02em;display:flex;align-items:center;gap:10px}
+.logo-arrow{color:var(--accent);font-size:18px}
+.badge{font-family:var(--mono);font-size:11px;padding:3px 9px;border-radius:99px;border:1px solid var(--border2);color:var(--text3)}
+
+/* 3-column layout: input | sql | annotations */
+main{flex:1;display:grid;grid-template-columns:1fr 1fr 340px;grid-template-rows:1fr auto;height:calc(100vh - 53px);overflow:hidden}
+
+.panel{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
+.panel:last-child{border-right:none}
+.panel-header{display:flex;align-items:center;justify-content:space-between;padding:9px 15px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+.panel-title{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
+.panel-actions{display:flex;gap:6px;align-items:center}
+
+.btn{font-family:var(--sans);font-size:12px;padding:4px 11px;border-radius:var(--r);border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;transition:all .15s}
+.btn:hover{background:var(--bg3);color:var(--text)}
+.btn:active{transform:scale(.97)}
+
+.examples-bar{padding:7px 15px;border-bottom:1px solid var(--border);background:var(--bg2);display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0;align-items:center}
+.ex-label{font-size:11px;color:var(--text3);font-family:var(--mono);margin-right:2px;flex-shrink:0}
+.chip{font-family:var(--mono);font-size:11px;padding:3px 9px;border-radius:99px;border:1px solid var(--border);background:var(--bg3);color:var(--text3);cursor:pointer;transition:all .15s;white-space:nowrap}
+.chip:hover{border-color:var(--border2);color:var(--text2)}
+
+.hint{font-size:11px;color:var(--text3);font-family:var(--mono);padding:5px 15px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0}
+
+.editor-wrap{flex:1;overflow:hidden}
+textarea{width:100%;height:100%;padding:16px;font-family:var(--mono);font-size:12.5px;line-height:1.75;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;tab-size:2}
+textarea::placeholder{color:var(--text3)}
+
+.output-scroll{flex:1;overflow-y:auto}
+.output-empty{padding:40px 20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:100%;text-align:center;color:var(--text3);font-size:13px}
+.output-empty .big{font-size:26px;color:var(--border2);font-family:var(--mono)}
+
+.output-sql{padding:16px;font-family:var(--mono);font-size:12.5px;line-height:1.8;white-space:pre;overflow-x:auto}
+.kw{color:var(--blue)}.str{color:var(--accent-text)}.param{color:var(--amber)}.num{color:var(--purple)}
+
+.notes-section{border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0;max-height:150px;overflow-y:auto}
+.notes-header{padding:7px 15px 3px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)}
+.notes-list{padding:0 15px 10px;list-style:none;display:flex;flex-direction:column;gap:3px}
+.notes-list li{font-size:12px;color:var(--text2);line-height:1.5;display:flex;gap:8px}
+.notes-list li::before{content:'→';color:var(--text3);flex-shrink:0;font-family:var(--mono)}
+
+/* C# annotations panel */
+.annotations-panel{display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+.ann-scroll{flex:1;overflow-y:auto;padding:14px}
+.ann-empty{padding:30px 14px;color:var(--text3);font-size:13px;text-align:center}
+
+.ann-group{margin-bottom:18px}
+.ann-group-title{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:8px}
+
+.ann-item{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+  padding:10px 12px;margin-bottom:6px;
+}
+.ann-item.warn{border-color:#3a3010;background:#1a1700}
+.ann-code{font-family:var(--mono);font-size:11.5px;color:var(--amber-text);margin-bottom:5px;word-break:break-all}
+.ann-item.info .ann-code{color:var(--accent-text)}
+.ann-desc{font-size:12px;color:var(--text2);line-height:1.5}
+.ann-tag{display:inline-block;font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:4px;margin-bottom:5px}
+.ann-tag.csharp{background:#1a1f3a;color:#7dd3fc;border:1px solid #2a3060}
+.ann-tag.runtime{background:#2a1a1a;color:#f87171;border:1px solid #5a2020}
+.ann-tag.nullable{background:#2a2010;color:var(--amber-text);border:1px solid #5a4010}
+
+.convert-bar{padding:9px 15px;border-top:1px solid var(--border);background:var(--bg2);display:flex;gap:8px;align-items:center;flex-shrink:0;grid-column:1/4}
+.btn-convert{flex:1;padding:9px;font-family:var(--sans);font-size:13px;font-weight:500;border-radius:var(--r);border:1px solid #2d6644;background:var(--accent-dim);color:var(--accent-text);cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-convert:hover{background:#1f4d32;border-color:#3a7a52;color:var(--accent)}
+.btn-convert:active{transform:scale(.99)}
+.btn-clear{padding:9px 16px;font-family:var(--sans);font-size:13px;border-radius:var(--r);border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;transition:all .15s}
+.btn-clear:hover{background:var(--bg3);color:var(--text2)}
+.err-block{padding:16px;font-family:var(--sans);font-size:13px;color:var(--red);line-height:1.6}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fade-up{animation:fadeUp .2s ease both}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">LINQ <span class="logo-arrow">⟶</span> SQL</div>
+  <span class="badge">rule-based · no AI · offline</span>
+</header>
+<main>
+  <!-- COL 1: INPUT -->
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">C# / LINQ input</span></div>
+    <div class="examples-bar"><span class="ex-label">examples →</span></div>
+    <div class="hint">Ctrl+Enter to convert</div>
+    <div class="editor-wrap">
+      <textarea id="linq-input" spellcheck="false" placeholder="// Paste any C# LINQ / EF Core query&#10;var blogs = await context.Blogs&#10;    .Where(b => b.Url.Contains(&quot;dotnet&quot;))&#10;    .ToListAsync();"></textarea>
+    </div>
+  </div>
+
+  <!-- COL 2: SQL OUTPUT -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">SQL output</span>
+      <div class="panel-actions"><button class="btn" id="copy-btn" onclick="copySQL()" style="display:none">copy</button></div>
+    </div>
+    <div class="output-scroll">
+      <div class="output-empty" id="out-empty"><div class="big">⟵</div><div>Paste a query and hit Convert</div></div>
+      <div id="out-sql" class="output-sql" style="display:none"></div>
+      <div id="out-err" class="err-block" style="display:none"></div>
+    </div>
+    <div class="notes-section" id="notes-section" style="display:none">
+      <div class="notes-header">Translation notes</div>
+      <ul class="notes-list" id="notes-list"></ul>
+    </div>
+  </div>
+
+  <!-- COL 3: C# ANNOTATIONS -->
+  <div class="panel annotations-panel">
+    <div class="panel-header"><span class="panel-title">C# only — not in SQL</span></div>
+    <div class="ann-scroll" id="ann-scroll">
+      <div class="ann-empty" id="ann-empty">C# behaviours that have no SQL equivalent will appear here.</div>
+    </div>
+  </div>
+
+  <div class="convert-bar">
+    <button class="btn-convert" onclick="convert()">⟶&nbsp;&nbsp;Convert to SQL</button>
+    <button class="btn-clear" onclick="clearAll()">Clear</button>
+  </div>
+</main>
+<script>
+const EXAMPLES=[
+  {label:'.Where().ToList()',code:'var blogs = await context.Blogs\n    .Where(b => b.Url.Contains("dotnet"))\n    .ToListAsync();'},
+  {label:'.FindWhere().Single()',code:'UnitOfWork.Contacts\n    .FindWhere(f => f.UserId == userId && f.Id == selectedMainContact)\n    .Single();'},
+  {label:'.Select().FirstOrDefault()',code:'filterValue = criteria.FilteringCriteria.Filters\n    .Where(w => w.FilterProperty.Name == "CompanySearch")\n    .Select(s => s.FilterValue.ToString())\n    .FirstOrDefault()?.ToLower() ?? "";'},
+  {label:'.OrderBy().Skip().Take()',code:'var users = context.Users\n    .Where(u => u.IsActive)\n    .OrderBy(u => u.LastName)\n    .ThenBy(u => u.FirstName)\n    .Skip(10).Take(5)\n    .ToList();'},
+  {label:'.Include().Where()',code:'var orders = context.Orders\n    .Include(o => o.Customer)\n    .Include(o => o.Items)\n    .Where(o => o.Total > 100 && o.Status == "Pending")\n    .ToList();'},
+  {label:'.GroupBy().Select()',code:'var summary = context.Orders\n    .GroupBy(g => g.CustomerId)\n    .Select(g => new { CustomerId = g.Key, Total = g.Sum(o => o.Amount), Count = g.Count() })\n    .ToList();'},
+  {label:'.Join()',code:'var result = context.Orders\n    .Join(context.Customers, o => o.CustomerId, c => c.Id, (o, c) => new { o.Id, c.Name, o.Total })\n    .ToList();'},
+  {label:'.Any() / .Count()',code:'var hasActive = context.Users.Any(u => u.IsActive && u.Role == "Admin");\nvar total = context.Products.Count(p => p.Stock > 0);'},
+  {label:'.Max() / .Min()',code:'var latest = context.Orders.Max(o => o.CreatedAt);\nvar cheapest = context.Products.Min(p => p.Price);'},
+];
+
+const exBar=document.querySelector('.examples-bar');
+EXAMPLES.forEach(ex=>{
+  const c=document.createElement('button');c.className='chip';c.textContent=ex.label;
+  c.onclick=()=>{document.getElementById('linq-input').value=ex.code;};
+  exBar.appendChild(c);
+});
+document.getElementById('linq-input').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')convert();});
+
+/* ── parser utilities ─────────────────────────────────── */
+function stripComments(s){return s.replace(/\/\/[^\n]*/g,'').replace(/\/\*[\s\S]*?\*\//g,'');}
+function collapse(s){return s.replace(/\s+/g,' ').trim();}
+
+function extractParen(s,start){
+  let depth=0,i=start,out='';
+  while(i<s.length){
+    if(s[i]==='('){depth++;if(depth>1)out+=s[i];}
+    else if(s[i]===')'){depth--;if(depth===0)return{content:out,end:i};out+=s[i];}
+    else if(depth>0)out+=s[i];
+    i++;
+  }
+  return{content:out,end:i};
+}
+
+// advance past . or ?. or whitespace+. after a closing paren
+function advanceChain(s){
+  s=s.trimStart();
+  if(s.startsWith('?.'))return s.slice(2);
+  if(s.startsWith('.'))return s.slice(1);
+  return s;
+}
+
+function splitCondition(expr){
+  const parts=[],ops=[];
+  let depth=0,inStr=false,strChar='',cur='';
+  for(let i=0;i<expr.length;i++){
+    const ch=expr[i];
+    if(inStr){cur+=ch;if(ch===strChar&&expr[i-1]!=='\\')inStr=false;continue;}
+    if(ch==='"'||ch==="'"){inStr=true;strChar=ch;cur+=ch;continue;}
+    if(ch==='('){depth++;cur+=ch;continue;}
+    if(ch===')'){depth--;cur+=ch;continue;}
+    if(depth===0&&expr.slice(i,i+2)==='&&'){parts.push(cur.trim());ops.push('AND');cur='';i++;continue;}
+    if(depth===0&&expr.slice(i,i+2)==='||'){parts.push(cur.trim());ops.push('OR');cur='';i++;continue;}
+    cur+=ch;
+  }
+  if(cur.trim())parts.push(cur.trim());
+  return{parts,ops};
+}
+
+function stripQ(s){s=s.trim();if((s.startsWith('"')&&s.endsWith('"'))||(s.startsWith("'")&&s.endsWith("'")))return s.slice(1,-1);return s;}
+
+function formatValue(v){
+  v=v.trim().replace(/;$/,'');
+  if(v==='true')return '1';if(v==='false')return '0';if(v==='null')return 'NULL';
+  if(/^".*"$/.test(v)||/^'.*'$/.test(v))return "N'"+stripQ(v)+"'";
+  if(/^\d+(\.\d+)?$/.test(v))return v;
+  if(/^\$"/.test(v))return '@param';
+  return '@'+v.replace(/[^a-zA-Z0-9_]/g,'');
+}
+
+function colRef(s,param,ta){
+  s=s.replace(new RegExp('^'+param+'\\.'),'');
+  const first=s.split('.')[0];
+  return ta?'['+ta+'].['+first+']':'['+first+']';
+}
+
+function likeWrap(val,pre,suf){return "N'"+(pre)+stripQ(val)+(suf)+"'";}
+
+function parseOnePredicate(param,expr,ta){
+  expr=expr.trim();
+  const c=s=>colRef(s,param,ta);
+  if(/^!/.test(expr))return c(expr.slice(1).trim())+' = 0';
+  let m=expr.match(/^(.+?)\.Contains\((.+?)\)$/);if(m)return c(m[1])+' LIKE '+likeWrap(m[2],'%','%');
+  m=expr.match(/^(.+?)\.StartsWith\((.+?)\)$/);if(m)return c(m[1])+' LIKE '+likeWrap(m[2],'','%');
+  m=expr.match(/^(.+?)\.EndsWith\((.+?)\)$/);if(m)return c(m[1])+' LIKE '+likeWrap(m[2],'%','');
+  // strip case-conversion before comparison
+  m=expr.match(/^(.+?)\.(?:ToLower|ToUpper)\(\)\s*(==|!=)\s*(.+)$/);
+  if(m){expr=m[1].trim()+' '+m[2]+' '+m[3].trim();}
+  m=expr.match(/^(.+?)\s*(==|!=)\s*null$/);if(m)return c(m[1])+(m[2]==='=='?' IS NULL':' IS NOT NULL');
+  m=expr.match(/^null\s*(==|!=)\s*(.+)$/);if(m)return c(m[2])+(m[1]==='=='?' IS NULL':' IS NOT NULL');
+  m=expr.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
+  if(m){const op=m[2]==='=='?'=':m[2]==='!='?'<>':m[2];return c(m[1])+' '+op+' '+formatValue(m[3].trim());}
+  if(/^[\w.]+$/.test(expr))return c(expr)+' = 1';
+  return expr;
+}
+
+function parseLambdaCondition(param,body,ta){
+  const{parts,ops}=splitCondition(body.trim());
+  const sqlParts=parts.map(p=>parseOnePredicate(param,p.trim(),ta));
+  if(sqlParts.length===1)return sqlParts[0];
+  let out=sqlParts[0];
+  for(let i=1;i<sqlParts.length;i++)out+=' '+ops[i-1]+' '+sqlParts[i];
+  return out;
+}
+
+function parseLambda(s){
+  s=s.trim();
+  const m=s.match(/^\(?(\w+)\)?\s*=>\s*([\s\S]+)$/);
+  if(!m)return{param:'x',body:s};
+  return{param:m[1],body:m[2].trim()};
+}
+
+function lambdaProperty(s){
+  const{param,body}=parseLambda(s);
+  return body.replace(new RegExp('^'+param+'\\.'),'').split('.')[0];
+}
+
+function parseSelectExpr(expr){
+  expr=expr.trim();
+  let m=expr.match(/(\w+)\.(Sum|Count|Avg|Average|Min|Max)\((.+?)\)$/i);
+  if(m){
+    const fn={sum:'SUM',count:'COUNT',avg:'AVG',average:'AVG',min:'MIN',max:'MAX'}[m[2].toLowerCase()];
+    if(m[2].toLowerCase()==='count'&&(!m[3]||!m[3].trim()))return 'COUNT(*)';
+    const{param,body}=parseLambda(m[3]);
+    const c2=body.replace(new RegExp('^'+param+'\\.'),'').split('.')[0];
+    return fn+'(['+c2+'])';
+  }
+  if(/\.Key$/.test(expr))return '[Key]';
+  return '['+expr.split('.').pop()+']';
+}
+
+function parseNewProjection(s){
+  s=s.replace(/^new\s*\{/,'').replace(/\}\s*$/,'').trim();
+  return s.split(',').map(part=>{
+    part=part.trim();
+    const alias=part.match(/^(\w+)\s*=/);
+    if(alias){const rhs=part.slice(alias[0].length).trim();return parseSelectExpr(rhs)+' AS ['+alias[1]+']';}
+    const prop=part.split('.').pop();
+    return '['+prop+']';
+  }).join(', ');
+}
+
+function splitJoinArgs(s){
+  const parts=[];let depth=0,cur='',inStr=false,sc='';
+  for(let i=0;i<s.length;i++){
+    const ch=s[i];
+    if(inStr){cur+=ch;if(ch===sc)inStr=false;continue;}
+    if(ch==='"'||ch==="'"){inStr=true;sc=ch;cur+=ch;continue;}
+    if(ch==='('){depth++;cur+=ch;continue;}
+    if(ch===')'){depth--;cur+=ch;continue;}
+    if(ch===','&&depth===0){parts.push(cur.trim());cur='';continue;}
+    cur+=ch;
+  }
+  if(cur.trim())parts.push(cur.trim());
+  return parts;
+}
+
+function extractTableName(s){return s.trim().split('.').pop().trim();}
+function formatParam(v){v=v.trim();if(/^\d+$/.test(v))return v;return '@'+v.replace(/[^a-zA-Z0-9_]/g,'');}
+
+/* ── annotation collector ─────────────────────────────── */
+// Each annotation: { code, tag, tagClass, desc }
+function collectAnnotations(raw){
+  const anns=[];
+  const src=raw;
+
+  // await
+  if(/\bawait\b/.test(src))
+    anns.push({code:'await',tag:'C# async',tagClass:'csharp',desc:'Tells C# to resume execution once the database returns results. The database itself has no concept of async — this is purely a .NET threading concern.'});
+
+  // var declaration
+  if(/\bvar\s+\w+\s*=/.test(src))
+    anns.push({code:'var x = ...',tag:'C# syntax',tagClass:'csharp',desc:'Variable declaration and type inference. SQL returns a result set; assigning it to a variable is a C# runtime concern, not part of the query.'});
+
+  // ToList / ToListAsync / ToArray / ToArrayAsync
+  const termMatch=src.match(/\.(ToList(?:Async)?|ToArray(?:Async)?)\(\)/);
+  if(termMatch)
+    anns.push({code:'.'+termMatch[1]+'()',tag:'C# execution',tagClass:'csharp',desc:'This is what actually sends the query to the database ("materialises" it). Without this, LINQ builds an expression tree but nothing runs. SQL has no equivalent — the query always executes when sent.'});
+
+  // AsNoTracking
+  if(/\.AsNoTracking\(\)/.test(src))
+    anns.push({code:'.AsNoTracking()',tag:'EF Core only',tagClass:'csharp',desc:'Disables Entity Framework change tracking for the returned objects. Improves performance for read-only queries. Generates identical SQL — purely a .NET/EF concern.'});
+
+  // AsQueryable
+  if(/\.AsQueryable\(\)/.test(src))
+    anns.push({code:'.AsQueryable()',tag:'EF Core only',tagClass:'csharp',desc:'Converts a collection to IQueryable so further LINQ operators can be appended. No SQL equivalent — it\'s about how EF builds the query expression tree.'});
+
+  // safe navigation ?.
+  const safeNavMatches=[...src.matchAll(/\?\.\s*(\w+)/g)];
+  safeNavMatches.forEach(m=>{
+    anns.push({code:'?.'+m[1]+'...',tag:'null safety',tagClass:'nullable',desc:'The ?. (null-conditional) operator short-circuits to null if the left side is null, preventing a NullReferenceException. In SQL, NULL propagates automatically through expressions — no special syntax needed.'});
+  });
+
+  // null coalescing ??
+  const nullCoalMatch=src.match(/\?\?\s*(.{0,20})/);
+  if(nullCoalMatch)
+    anns.push({code:'?? '+nullCoalMatch[1].replace(/;$/,'').trim(),tag:'null safety',tagClass:'nullable',desc:'The ?? operator returns the right-hand value if the left is null. The SQL equivalent is COALESCE(expr, fallback), but since this appears after query execution it\'s applied to the C# result, not in the SQL itself.'});
+
+  // .ToString()
+  if(/\.ToString\(\)/.test(src))
+    anns.push({code:'.ToString()',tag:'C# runtime',tagClass:'runtime',desc:'Converts a value to its string representation in C#. Inside a LINQ query EF Core may translate this to a CAST or CONVERT in SQL, but when chained after execution (e.g. after FirstOrDefault()) it runs in C# on the returned value.'});
+
+  // .ToLower() / .ToUpper() standalone (not inside a Where comparison)
+  const caseMatches=[...src.matchAll(/\.(ToLower|ToUpper)\(\)/g)];
+  caseMatches.forEach(m=>{
+    // only annotate if NOT inside a Where predicate comparison (those are handled in SQL as case-insensitive collation)
+    // check if followed by == or != — if so it's used in a comparison (→ SQL handles it)
+    const idx=src.indexOf('.'+m[1]+'()');
+    const after=src.slice(idx+m[1].length+3).trim();
+    if(!/^(==|!=)/.test(after)){
+      anns.push({code:'.'+m[1]+'()',tag:'C# runtime',tagClass:'runtime',desc:'.'+m[1]+'() is applied in C# after the query returns data. In SQL, case-sensitivity is controlled by the column\'s collation (e.g. SQL_Latin1_General_CP1_CI_AS is case-insensitive by default). Use LOWER()/UPPER() in SQL only when forcing case conversion explicitly.'});
+    }
+  });
+
+  // .FirstOrDefault() / .SingleOrDefault() — null return
+  if(/\.(FirstOrDefault|SingleOrDefault|LastOrDefault)\(\s*\)/.test(src)){
+    const m2=src.match(/\.(FirstOrDefault|SingleOrDefault|LastOrDefault)\(/);
+    anns.push({code:'.'+m2[1]+'()',tag:'C# null safety',tagClass:'nullable',desc:'The OrDefault suffix means C# returns null (or default(T)) if no row is found, rather than throwing. In SQL there\'s no equivalent — a query with TOP 1 that matches nothing simply returns zero rows. The null-handling is a C# concern.'});
+  }
+
+  // .Single() / .First() — exception behaviour
+  if(/\b(Single|First|Last)\s*\(/.test(src)&&!/OrDefault/.test(src)){
+    const m3=src.match(/\b(Single|First|Last)\s*\(/);
+    anns.push({code:'.'+m3[1]+'()',tag:'C# runtime',tagClass:'runtime',desc:'.'+m3[1]+'() throws an InvalidOperationException in C# if the result is empty'+(m3[1]==='Single'?' or contains more than one row':'')+'. The SQL query itself just returns rows — the exception logic lives entirely in EF Core.'});
+  }
+
+  // LINQ deferred execution (any chainable query)
+  if(/\.(Where|Select|OrderBy|GroupBy|Include|Skip|Take)\s*\(/.test(src))
+    anns.push({code:'IQueryable<T> chain',tag:'LINQ concept',tagClass:'csharp',desc:'Each LINQ operator (Where, Select, OrderBy…) doesn\'t run a query — it builds an expression tree. The database is only hit when you call a terminal operator like ToList(), First(), Count(), etc. This is called deferred execution.'});
+
+  // lambda expressions
+  if(/=>\s*/.test(src))
+    anns.push({code:'x => x.Property',tag:'C# lambda',tagClass:'csharp',desc:'Lambda expressions define the query predicates and projections. EF Core\'s query provider analyses the expression tree at runtime and translates it to SQL. They have no direct SQL equivalent — they\'re the bridge between C# and SQL.'});
+
+  return anns;
+}
+
+/* ── main parser ──────────────────────────────────────── */
+function parseChain(raw){
+  const notes=[];
+  let src=collapse(stripComments(raw));
+
+  // strip leading assignment: "var x = await", "x = await", "x =", etc.
+  src=src.replace(/^(?:[\w.[\]]+\s*=\s*)?(?:await\s+)?/,'');
+  // strip trailing ?? "fallback"
+  src=src.replace(/\s*\?\?\s*["'][\s\S]*?["']\s*;?$/,'');
+  src=src.replace(/;$/,'');
+
+  const chainMethods=['Where','FindWhere','Select','OrderBy','OrderByDescending','ThenBy','ThenByDescending','Skip','Take','Include','GroupBy','Join','First','FirstOrDefault','Last','LastOrDefault','Single','SingleOrDefault','ToList','ToListAsync','ToArray','ToArrayAsync','Count','Any','Sum','Max','Min','Average','Distinct','AsNoTracking','AsQueryable'];
+  const methodRe=new RegExp('\\.(?:'+chainMethods.join('|')+')\\s*[(<]');
+  const mIdx=src.search(methodRe);
+
+  let tableName='Table',tableAlias='t',chainStr=src;
+  if(mIdx>0){
+    const sp=src.slice(0,mIdx);
+    chainStr=src.slice(mIdx);
+    const segs=sp.split('.');
+    tableName=segs[segs.length-1].trim();
+    tableAlias=tableName[0].toLowerCase();
+  }
+
+  // tokenise method chain — KEY FIX: use advanceChain() which handles whitespace + ?. 
+  const calls=[];
+  let remaining=advanceChain(chainStr);
+  while(remaining.length){
+    const mm=remaining.match(/^(\w+)\s*\(/);if(!mm)break;
+    const name=mm[1];
+    const pi=remaining.indexOf('(');
+    const{content,end}=extractParen(remaining,pi);
+    calls.push({name,args:content.trim()});
+    remaining=advanceChain(remaining.slice(end+1));
+  }
+
+  let selectCols='*';
+  const whereClauses=[],orderCols=[],joins=[],groupByCols=[];
+  let skipN=null,takeN=null,isCount=false,isAny=false,aggregate=null,topOne=false,distinct=false;
+
+  for(const{name,args}of calls){
+    const lname=name.toLowerCase();
+
+    if(lname==='where'||lname==='findwhere'){
+      const{param,body}=parseLambda(args);
+      whereClauses.push(parseLambdaCondition(param,body,tableAlias));
+      continue;
+    }
+    if(lname==='select'){
+      const{param,body}=parseLambda(args);const b=body.trim();
+      if(/^new\s*[\{\w]/.test(b)){selectCols=parseNewProjection(b.replace(/^new\s*\w*\s*\{/,'{'));}
+      else{
+        const m2=b.match(/^(.+?)\.ToString\(\)$/);
+        const expr=m2?m2[1]:b;
+        const prop=expr.replace(new RegExp('^'+param+'\\.'),'').split('.')[0];
+        selectCols='['+prop+']';
+      }
+      continue;
+    }
+    if(lname==='include'){
+      const{param,body}=parseLambda(args);
+      const nav=body.replace(new RegExp('^'+param+'\\.'),'').split('.')[0];
+      joins.push('LEFT JOIN ['+nav+'] ON ['+nav+'].['+tableName+'Id] = ['+tableAlias+'].[Id]');
+      notes.push('Include('+nav+') → LEFT JOIN — adjust the ON clause to match your FK column names.');
+      continue;
+    }
+    if(lname==='join'){
+      const parts=splitJoinArgs(args);
+      if(parts.length>=4){
+        const ot=extractTableName(parts[0]);const oa=ot[0].toLowerCase();
+        const ok=lambdaProperty(parts[1]);const ik=lambdaProperty(parts[2]);
+        joins.push('INNER JOIN ['+ot+'] AS ['+oa+'] ON ['+tableAlias+'].['+ok+'] = ['+oa+'].['+ik+']');
+        const{param:p,body:b}=parseLambda(parts[3]);
+        if(/new\s*[\{\w]/.test(b)){selectCols=parseNewProjection(b.replace(/^new\s*\w*\s*\{/,'{'));}
+        notes.push('JOIN inferred — verify ON clause and table aliases match your schema.');
+      }
+      continue;
+    }
+    if(lname==='orderby'){orderCols.push(lambdaProperty(args)+' ASC');continue;}
+    if(lname==='orderbydescending'){orderCols.push(lambdaProperty(args)+' DESC');continue;}
+    if(lname==='thenby'){orderCols.push(lambdaProperty(args)+' ASC');continue;}
+    if(lname==='thenbydescending'){orderCols.push(lambdaProperty(args)+' DESC');continue;}
+    if(lname==='skip'){skipN=args.trim();continue;}
+    if(lname==='take'){takeN=args.trim();continue;}
+    if(lname==='groupby'){
+      const{param,body}=parseLambda(args);
+      const prop=body.replace(new RegExp('^'+param+'\\.'),'').split('.')[0];
+      groupByCols.push('['+prop+']');
+      continue;
+    }
+    if(lname==='count'){
+      isCount=true;
+      if(args.trim()){const{param,body}=parseLambda(args);whereClauses.push(parseLambdaCondition(param,body,tableAlias));}
+      continue;
+    }
+    if(lname==='any'){
+      isAny=true;
+      if(args.trim()){const{param,body}=parseLambda(args);whereClauses.push(parseLambdaCondition(param,body,tableAlias));}
+      continue;
+    }
+    if(['sum','min','max','average','avg'].includes(lname)){
+      const fn={sum:'SUM',min:'MIN',max:'MAX',average:'AVG',avg:'AVG'}[lname];
+      const{param,body}=parseLambda(args);
+      const c2=body.replace(new RegExp('^'+param+'\\.'),'').split('.')[0];
+      aggregate={fn,col:c2};
+      continue;
+    }
+    if(['first','firstordefault','single','singleordefault','last','lastordefault'].includes(lname)){
+      topOne=true;
+      if(['last','lastordefault'].includes(lname))notes.push('Last() → TOP 1 with reversed ORDER BY — add an explicit ORDER BY … DESC.');
+      if(args.trim()){const{param,body}=parseLambda(args);whereClauses.push(parseLambdaCondition(param,body,tableAlias));}
+      continue;
+    }
+    if(lname==='distinct'){distinct=true;continue;}
+    if(lname==='asnotracking'){notes.push('AsNoTracking() — no SQL equivalent, disables EF change-tracking.');continue;}
+    // tolower, toupper, tostring, tolist, tolistasync etc. — C# only, silently consumed
+  }
+
+  // build SELECT
+  let selectExpr=selectCols;
+  if(isCount)selectExpr='COUNT(*)';
+  else if(isAny)selectExpr='TOP 1 1';
+  else if(aggregate)selectExpr=aggregate.fn+'(['+aggregate.col+'])';
+  else if(distinct)selectExpr='DISTINCT '+selectCols;
+  else if(topOne&&!skipN)selectExpr='TOP 1 '+selectCols;
+  else if(takeN&&!skipN)selectExpr='TOP ('+takeN+') '+selectCols;
+
+  const lines=[];
+  lines.push('SELECT '+selectExpr);
+  lines.push('FROM ['+tableName+'] AS ['+tableAlias+']');
+  joins.forEach(j=>lines.push(j));
+  if(whereClauses.length)lines.push('WHERE '+whereClauses.join('\n  AND '));
+  if(groupByCols.length)lines.push('GROUP BY '+groupByCols.join(', '));
+  if(orderCols.length)lines.push('ORDER BY '+orderCols.join(', '));
+  if(skipN!==null&&takeN!==null){
+    lines.push('OFFSET '+formatParam(skipN)+' ROWS');
+    lines.push('FETCH NEXT '+formatParam(takeN)+' ROWS ONLY');
+  } else if(skipN!==null){
+    lines.push('OFFSET '+formatParam(skipN)+' ROWS');
+    notes.push('Skip() without Take() — OFFSET without FETCH is unusual; consider adding Take().');
+  }
+
+  // auto notes
+  if(selectCols==='*'&&!isCount&&!aggregate&&!isAny)notes.push('No Select() clause — all mapped columns returned (SELECT *).');
+  if(whereClauses.some(w=>w.includes('LIKE')))notes.push('LIKE with a leading % cannot use a B-tree index — consider full-text search on large tables.');
+  if(topOne)notes.push('First/Single → TOP 1. Single() also throws in EF if more than one row matches.');
+  if(skipN!==null||takeN!==null)notes.push('OFFSET…FETCH requires SQL Server 2012+. Use LIMIT…OFFSET for MySQL / PostgreSQL.');
+  if(aggregate)notes.push(aggregate.fn+'() returns a scalar value — EF executes this as a separate query.');
+
+  return{sql:lines.join('\n'),notes};
+}
+
+/* ── highlight ────────────────────────────────────────── */
+function highlightSQL(sql){
+  const KWS=['SELECT','FROM','WHERE','JOIN','LEFT','RIGHT','INNER','OUTER','ON','AND','OR','NOT','IN','LIKE','IS','NULL','ORDER','BY','GROUP','HAVING','OFFSET','FETCH','NEXT','ROWS','ONLY','TOP','DISTINCT','AS','COUNT','SUM','AVG','MIN','MAX','CASE','WHEN','THEN','ELSE','END','EXISTS','UNION','ALL','ASC','DESC','WITH','CROSS'];
+  let out=sql.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  out=out.replace(/(N?'[^']*')/g,'<span class="str">$1</span>');
+  out=out.replace(/(@\w+)/g,'<span class="param">$1</span>');
+  out=out.replace(/\b(\d+)\b/g,'<span class="num">$1</span>');
+  KWS.forEach(k=>{out=out.replace(new RegExp('\\b('+k+')\\b','g'),'<span class="kw">$1</span>');});
+  return out;
+}
+
+/* ── render annotations ───────────────────────────────── */
+function renderAnnotations(anns){
+  const scroll=document.getElementById('ann-scroll');
+  const empty=document.getElementById('ann-empty');
+  if(!anns.length){empty.style.display='block';return;}
+  empty.style.display='none';
+
+  // group by tagClass
+  const groups={csharp:[],nullable:[],runtime:[]};
+  const groupNames={csharp:'C# language features',nullable:'Null handling',runtime:'Runtime / EF behaviours'};
+  anns.forEach(a=>{
+    const g=a.tagClass||'csharp';
+    if(!groups[g])groups[g]=[];
+    groups[g].push(a);
+  });
+
+  // clear previous
+  [...scroll.querySelectorAll('.ann-group')].forEach(el=>el.remove());
+
+  Object.entries(groups).forEach(([key,items])=>{
+    if(!items.length)return;
+    const grp=document.createElement('div');grp.className='ann-group';
+    const title=document.createElement('div');title.className='ann-group-title';title.textContent=groupNames[key]||key;
+    grp.appendChild(title);
+    items.forEach(a=>{
+      const item=document.createElement('div');
+      item.className='ann-item '+(a.tagClass==='nullable'?'warn':'');
+      item.innerHTML='<div class="ann-tag '+a.tagClass+'">'+a.tag+'</div>'
+        +'<div class="ann-code">'+escHtml(a.code)+'</div>'
+        +'<div class="ann-desc">'+escHtml(a.desc)+'</div>';
+      grp.appendChild(item);
+    });
+    scroll.appendChild(grp);
+  });
+}
+
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+/* ── split statements ─────────────────────────────────── */
+function splitStatements(raw){
+  const bySemi=raw.split(';').map(s=>s.trim()).filter(s=>s.length>10);
+  return bySemi.length?bySemi:[raw];
+}
+
+/* ── convert ──────────────────────────────────────────── */
+let lastSQL='';
+function convert(){
+  const raw=document.getElementById('linq-input').value.trim();
+  if(!raw)return;
+
+  document.getElementById('out-empty').style.display='none';
+  document.getElementById('out-sql').style.display='none';
+  document.getElementById('out-err').style.display='none';
+  document.getElementById('notes-section').style.display='none';
+  document.getElementById('notes-list').innerHTML='';
+  document.getElementById('copy-btn').style.display='none';
+
+  try{
+    const stmts=splitStatements(raw);
+    const results=stmts.map(s=>parseChain(s)).filter(r=>r.sql.includes('FROM'));
+    if(!results.length)throw new Error('Could not detect a recognisable LINQ chain. Make sure the query includes a DbSet/repository source (e.g. context.TableName or repo.FindWhere(...)).');
+
+    const combinedSQL=results.map(r=>r.sql).join('\n\n-- next statement\n\n');
+    const combinedNotes=[...new Set(results.flatMap(r=>r.notes))];
+    lastSQL=combinedSQL;
+
+    const el=document.getElementById('out-sql');
+    el.innerHTML=highlightSQL(combinedSQL);el.className='output-sql fade-up';el.style.display='block';
+    document.getElementById('copy-btn').style.display='';
+
+    if(combinedNotes.length){
+      const nl=document.getElementById('notes-list');
+      combinedNotes.forEach(n=>{const li=document.createElement('li');li.textContent=n;nl.appendChild(li);});
+      document.getElementById('notes-section').style.display='block';
+    }
+
+    // annotations
+    const anns=collectAnnotations(raw);
+    renderAnnotations(anns);
+
+  }catch(e){
+    const el=document.getElementById('out-err');
+    el.textContent='⚠ '+e.message;el.style.display='block';
+    renderAnnotations([]);
+  }
+}
+
+function copySQL(){
+  if(!lastSQL)return;
+  navigator.clipboard.writeText(lastSQL).then(()=>{
+    const b=document.getElementById('copy-btn');
+    b.textContent='copied!';setTimeout(()=>b.textContent='copy',1600);
+  });
+}
+
+function clearAll(){
+  document.getElementById('linq-input').value='';
+  document.getElementById('out-sql').style.display='none';
+  document.getElementById('out-err').style.display='none';
+  document.getElementById('out-empty').style.display='flex';
+  document.getElementById('notes-section').style.display='none';
+  document.getElementById('notes-list').innerHTML='';
+  document.getElementById('copy-btn').style.display='none';
+  document.getElementById('ann-empty').style.display='block';
+  [...document.querySelectorAll('.ann-group')].forEach(el=>el.remove());
+  lastSQL='';
+}
+</script>
+</body>
+</html>

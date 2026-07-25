@@ -275,11 +275,16 @@ export async function loadAdoData(
   })
 
   // ── Builds ────────────────────────────────────────────────────────────────
-  const ORDER = { running: 0, failed: 1, partial: 2, cancelled: 3, success: 4 }
+  // Sort newest-first so the view always shows the latest runs regardless of
+  // status. No cap is applied; all builds returned by ADO are kept so the UI
+  // can filter and group without losing data.
   const helmBuilds = (buildsRaw || [])
     .map(b => mapBuild(b, b._project || ''))
-    .sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9))
-    .slice(0, 20)
+    .sort((a, b) => {
+      const ta = a.finishTime ? new Date(a.finishTime).getTime() : 0
+      const tb = b.finishTime ? new Date(b.finishTime).getTime() : 0
+      return tb - ta
+    })
 
   // ── Tests ─────────────────────────────────────────────────────────────────
   let helmTests = []

@@ -73,7 +73,7 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
       const r = await fetch(`/api/builds/${b.id}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project: b.project }),
+        body: JSON.stringify({ project: b.projectName || b.project }),
       })
       if (!r.ok) throw new Error(await r.text())
       toast?.(`Build #${b.id} cancelled`, 'success')
@@ -89,7 +89,7 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          project:    b.project,
+          project:    b.projectName || b.project,
           pipelineId: b.definitionId,
           branch:     b.branch.startsWith('refs/') ? b.branch : `refs/heads/${b.branch}`,
           reason:     `Manual re-run of build #${b.id} from NexusMD dashboard`,
@@ -242,7 +242,7 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
         return (
           <div key="build" className="mono" style={{ fontSize:12, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', display:'flex', alignItems:'center', gap:5 }}>
             {NexusMDData.ORG && b.project
-              ? <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(b.project)}/_build/results?buildId=${b.id}`}
+              ? <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(b.projectName || b.project)}/_build/results?buildId=${b.id}`}
                   target="_blank" rel="noopener" onClick={e => e.stopPropagation()}
                   style={{ color:'var(--accent)', textDecoration:'none' }}>#{b.id}</a>
               : <span>#{b.id}</span>
@@ -502,16 +502,20 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
             const projCollapsed = collapsed[pg.project]
             return (
               <React.Fragment key={pg.project}>
-                {/* Project header */}
+                {/* Project header — heaviest row in the hierarchy: this is the project grouping. */}
                 <div
                   style={{
-                    padding: '8px 14px', background: 'var(--surface-2)',
-                    borderBottom: '1px solid var(--border)',
+                    padding: '10px 14px', background: 'var(--surface-3)',
+                    borderBottom: '2px solid var(--border-strong)',
+                    borderLeft: '3px solid var(--accent)',
                     display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 700,
                   }}
                   onClick={() => setCollapsed(c => ({ ...c, [pg.project]: !c[pg.project] }))}>
-                  <Icon name={projCollapsed ? 'chevron-right' : 'chevron-down'} size={12}/>
-                  {visibleBuildCols.some(f => f.key === 'project') && <ProjectChip id={pg.project}/>}
+                  <Icon name={projCollapsed ? 'chevron-right' : 'chevron-down'} size={13}/>
+                  <Icon name="folder" size={13} style={{ opacity: 0.6, flexShrink: 0 }}/>
+                  {visibleBuildCols.some(f => f.key === 'project')
+                    ? <ProjectChip id={pg.project}/>
+                    : <span style={{ fontSize: 13 }}>{pg.project}</span>}
                   <span className="muted mono" style={{ fontSize: 10.5 }}>{pg.runCount} run{pg.runCount !== 1 ? 's' : ''}</span>
                   <div style={{ display: 'flex', gap: 3, marginLeft: 4 }} title="Last 10 build results across this project (newest first)">
                     {projHistory.map((status, i) => (
@@ -528,16 +532,16 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
                   const history = (pipelineHistory.get(key) || []).slice(0, 10)
                   return (
                     <React.Fragment key={key}>
-                      {/* Pipeline header */}
+                      {/* Pipeline header — one level down from the project row: lighter weight, no left accent. */}
                       <div
                         style={{
-                          padding: '7px 14px 7px 30px', background: 'var(--surface-2)',
+                          padding: '6px 14px 6px 34px', background: 'var(--surface)',
                           borderBottom: '1px solid var(--border)',
                           display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
                         }}
                         onClick={() => setCollapsed(c => ({ ...c, [key]: !c[key] }))}>
-                        <Icon name={collapsed[key] ? 'chevron-right' : 'chevron-down'} size={11}/>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{g.name}</span>
+                        <Icon name={collapsed[key] ? 'chevron-right' : 'chevron-down'} size={11} style={{ opacity: 0.7 }}/>
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)' }}>{g.name}</span>
                         <span className="muted mono" style={{ fontSize: 10.5 }}>{g.runs.length} run{g.runs.length !== 1 ? 's' : ''}</span>
                         <div style={{ display: 'flex', gap: 3, marginLeft: 4 }} title="Last 10 build results (newest first)">
                           {history.map((status, i) => (
