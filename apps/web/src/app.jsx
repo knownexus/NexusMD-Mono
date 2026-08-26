@@ -37,6 +37,9 @@ import './styles/nexusmd.css';
 import './styles/nexusmd-planner-v2.css';
 
 const adoTypeToNexusMD = adoTypeToHelm;
+const DEFAULT_WI_TYPES = ['Bug', 'Task', 'User Story', 'Feature', 'Epic'];
+const DEFAULT_PRIORITIES = [1, 2, 3, 4];
+const PRIORITY_LABELS = { 1: 'Critical', 2: 'High', 3: 'Medium', 4: 'Low' };
 
 // Shared file-download helper.  When running inside the Electron desktop app
 // with an output folder configured it writes directly to disk via IPC; otherwise
@@ -870,6 +873,8 @@ function CreateWIModal({ open, onClose, onCreated, prefill, team: teamProp }) {
 
   const team     = teamProp || NexusMDData.TEAM || [];
   const STATES   = NexusMDData.STATES || [];
+  const TYPES    = NexusMDData.TYPES?.length ? NexusMDData.TYPES : DEFAULT_WI_TYPES;
+  const PRIORITIES = NexusMDData.PRIORITIES?.length ? NexusMDData.PRIORITIES : DEFAULT_PRIORITIES;
   const projects = ((NexusMDData.CONFIG_PROJECTS || []).length
     ? NexusMDData.CONFIG_PROJECTS.map(p => ({ id: p, name: p }))
     : (NexusMDData.PROJECTS || []).map(p => ({ id: p.id, name: p.name }))
@@ -968,7 +973,7 @@ function CreateWIModal({ open, onClose, onCreated, prefill, team: teamProp }) {
             </SettField>
             <SettField label="Type">
               <select value={type} onChange={e => setType(e.target.value)} style={settInputStyle}>
-                {['Bug', 'Task', 'User Story', 'Feature', 'Epic'].map(t => <option key={t} value={t}>{t}</option>)}
+                {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </SettField>
           </div>
@@ -1006,10 +1011,9 @@ function CreateWIModal({ open, onClose, onCreated, prefill, team: teamProp }) {
             <SettField label="Priority">
               <select value={priority} onChange={e => setPriority(e.target.value)} style={settInputStyle}>
                 <option value="">None</option>
-                <option value="1">1 – Critical</option>
-                <option value="2">2 – High</option>
-                <option value="3">3 – Medium</option>
-                <option value="4">4 – Low</option>
+                {PRIORITIES.map(p => (
+                  <option key={p} value={p}>{p}{PRIORITY_LABELS[p] ? ` – ${PRIORITY_LABELS[p]}` : ''}</option>
+                ))}
               </select>
             </SettField>
             <SettField label="Tags">
@@ -2369,7 +2373,8 @@ function DetailDrawer({ drawer, onClose, setWorkItems, team: teamProp, plannerDa
 }
 
 function WIDetail({ item, setWorkItems, team: teamProp }) {
-  const { STATES } = NexusMDData;
+  const { STATES, PRIORITIES: PRIORITIES_RAW } = NexusMDData;
+  const PRIORITIES = PRIORITIES_RAW?.length ? PRIORITIES_RAW : DEFAULT_PRIORITIES;
   const TEAM = teamProp || NexusMDData.TEAM || [];
 
   // Local copy for optimistic updates — resets only when a different item is opened
@@ -2456,10 +2461,9 @@ function WIDetail({ item, setWorkItems, team: teamProp }) {
           <dd>
             <select value={String(local.priority||3)} style={sel}
               onChange={e => { const v=parseInt(e.target.value,10); patch([['/fields/Microsoft.VSTS.Common.Priority',v]],{priority:v}); }}>
-              <option value="1">1 – Critical</option>
-              <option value="2">2 – High</option>
-              <option value="3">3 – Medium</option>
-              <option value="4">4 – Low</option>
+              {PRIORITIES.map(p => (
+                <option key={p} value={p}>{p}{PRIORITY_LABELS[p] ? ` – ${PRIORITY_LABELS[p]}` : ''}</option>
+              ))}
             </select>
           </dd>
 
