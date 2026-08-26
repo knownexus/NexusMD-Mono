@@ -294,6 +294,19 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
     return merged.map(i => ({ ...i, prs: prIndex.get(i.id)?.length ?? 0 }));
   }, [items, extraItems, prIndex]);
 
+  const KNOWN_TYPES = ['bug', 'feature', 'task', 'story', 'spike', 'epic'];
+  const typeFilterOptions = useMemoW(() => {
+    const extra = new Set();
+    allItems.forEach(w => { if (w.type && !KNOWN_TYPES.includes(w.type)) extra.add(w.type); });
+    return [...KNOWN_TYPES, ...Array.from(extra).sort()];
+  }, [allItems]);
+
+  const priorityFilterOptions = useMemoW(() => {
+    const base = new Set(NexusMDData.PRIORITIES?.length ? NexusMDData.PRIORITIES : [1, 2, 3, 4]);
+    allItems.forEach(w => { if (Number.isFinite(w.priority)) base.add(w.priority); });
+    return Array.from(base).sort((a, b) => a - b);
+  }, [allItems, NexusMDData.PRIORITIES]);
+
   // Map a flat WorkItemSearchResultDto (camelCase) to the internal shape
   const mapDto = useMemoW(() => {
     const nameToId = {};
@@ -313,7 +326,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
         project:       projSlug,
         state:         wi.state || '',
         assignee:      assigneeId,
-        priority:      Math.min(4, Math.max(1, wi.priority || 3)),
+        priority:      Number.isFinite(wi.priority) ? wi.priority : 3,
         points:        0,
         tags,
         updated:       timeAgo(changed),
@@ -396,14 +409,22 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
 
   const [wiTypeStates, setWiTypeStates] = useStateW({});
 
+  // Seed instantly from the last load's cache so board columns/state filters
+  // aren't empty on first paint, then overwrite with the current load's real
+  // per-project data as soon as it's in NexusMDData (populated by loadAdoData —
+  // there is no /api/workitems/states backend; this used to fetch that route,
+  // which 404s everywhere, silently forcing the hardcoded STATES fallback below).
   React.useEffect(() => {
     const cached = localStorage.getItem(WI_TYPE_STATES_CACHE_KEY);
     if (cached) { try { setWiTypeStates(JSON.parse(cached)); } catch (_) {} }
-    fetch('/api/workitems/states')
-      .then(r => r.ok ? r.json() : {})
-      .then(data => { setWiTypeStates(data); localStorage.setItem(WI_TYPE_STATES_CACHE_KEY, JSON.stringify(data)); })
-      .catch(() => {});
   }, []);
+
+  React.useEffect(() => {
+    const live = NexusMDData.WI_TYPE_STATES;
+    if (!live || Object.keys(live).length === 0) return;
+    setWiTypeStates(live);
+    try { localStorage.setItem(WI_TYPE_STATES_CACHE_KEY, JSON.stringify(live)); } catch (_) {}
+  }, [NexusMDData.WI_TYPE_STATES]);
 
   React.useEffect(() => {
     if (Object.keys(wiTypeStates).length === 0) return;
@@ -644,7 +665,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
           {/* Type */}
           <FilterDropdown label="Type" activeCount={activeTypes.size + negatedTypes.size} width={260}>
             <FilterSection title="Type">
-              {['bug', 'feature', 'task', 'story', 'spike', 'epic'].map(t => (
+              {typeFilterOptions.map(t => (
                 <FilterOption key={t} active={activeTypes.has(t)} negated={negatedTypes.has(t)}
                   label={t[0].toUpperCase() + t.slice(1)} icon={<TypeIcon type={t}/>}
                   count={allItems.filter(w => w.type === t).length}
@@ -684,7 +705,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
           {/* Priority */}
           <FilterDropdown label="Priority" activeCount={activePrios.size + negatedPrios.size} width={240}>
             <FilterSection title="Priority">
-              {[1, 2, 3, 4].map(p => (
+              {priorityFilterOptions.map(p => (
                 <FilterOption key={p} active={activePrios.has(p)} negated={negatedPrios.has(p)}
                   label={`P${p}`} icon={<Prio p={p}/>}
                   count={allItems.filter(w => w.priority === p).length}
