@@ -23,7 +23,7 @@ const EXPECTED = [
   'deleteProfile', 'deriveActivity',
   'derivePrSparkline', 'deriveProjects', 'deriveSprint', 'effectiveNeedsMe', 'effectiveTeamActivity',
   'elapsedMs', 'encryptConfidentialForServer',
-  'enrichTeam', 'enrichTeamMember', 'exportProfile', 'filterTriageItems',
+  'enrichTeam', 'enrichTeamMember', 'exportProfile', 'fetchAdoProcessMetadata', 'filterTriageItems',
   'fmtDateShort', 'formatClock', 'formatDateTime', 'formatDuration', 'generateProfileId', 'getActiveLanes', 'getEventsForDay', 'getIsoWeek',
   'getIsoYearWeek', 'getMondayOfDate', 'getYearWeekForOffset',
   'hasMeaningfulPlannerData', 'hashPassword', 'importProfile', 'initCore', 'isActiveState',
