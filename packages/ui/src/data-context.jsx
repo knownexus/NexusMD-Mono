@@ -31,6 +31,9 @@ export const EMPTY_NEXUS_DATA = {
   AVG_RESOLUTION_DAYS: null,
   PR_SPARKLINE: [],
   STATES: [],
+  TYPES: [],
+  PRIORITIES: [],
+  WI_TYPE_STATES: {},
   // DashboardView dereferences SPRINT.* unguarded, so always provide a shape.
   SPRINT: { name: 'Current Sprint', start: '—', end: '—', daysLeft: 0, totalPoints: 1, donePoints: 0, inProgPoints: 0, reviewPoints: 0, burndown: [] },
 }
