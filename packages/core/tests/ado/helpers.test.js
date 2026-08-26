@@ -68,7 +68,10 @@ describe('adoTypeToHelm', () => {
   ])('maps "%s" → "%s"', (input, expected) => {
     expect(adoTypeToHelm(input)).toBe(expected)
   })
-  it('maps unknown types to "task"', () => expect(adoTypeToHelm('Requirement')).toBe('task'))
+  it('slugifies unknown/custom types instead of collapsing them to "task"', () => {
+    expect(adoTypeToHelm('Requirement')).toBe('requirement')
+    expect(adoTypeToHelm('Product Backlog Item')).toBe('product-backlog-item')
+  })
   it('handles null', () => expect(adoTypeToHelm(null)).toBe('task'))
 })
 
@@ -118,6 +121,36 @@ describe('state classifiers', () => {
     expect(stateCategory('Blocked')).toBe('blocked')
     expect(stateCategory('To Do')).toBe('todo')
     expect(stateCategory('')).toBe('todo')
+  })
+})
+
+describe('isTerminalState with an ADO category override', () => {
+  it('treats Resolved/Completed/Removed categories as terminal regardless of the state name', () => {
+    expect(isTerminalState('Verified', 'Resolved')).toBe(true)
+    expect(isTerminalState('Shipped', 'Completed')).toBe(true)
+    expect(isTerminalState('Deprecated', 'Removed')).toBe(true)
+  })
+  it('treats Proposed/InProgress categories as not terminal even if the name looks terminal-ish', () => {
+    expect(isTerminalState('Done-ish Review', 'InProgress')).toBe(false)
+  })
+  it('falls back to the name regex when no category is given', () => {
+    expect(isTerminalState('Done')).toBe(true)
+    expect(isTerminalState('Active')).toBe(false)
+  })
+})
+
+describe('stateCategory with an ADO category override', () => {
+  it('buckets Resolved/Completed/Removed as done', () => {
+    expect(stateCategory('Verified', 'Resolved')).toBe('done')
+    expect(stateCategory('Shipped', 'Completed')).toBe('done')
+    expect(stateCategory('Deprecated', 'Removed')).toBe('done')
+  })
+  it('buckets InProgress as active and Proposed as todo', () => {
+    expect(stateCategory('Doing Stuff', 'InProgress')).toBe('active')
+    expect(stateCategory('Backlog Item', 'Proposed')).toBe('todo')
+  })
+  it('falls back to the name regex when no category is given', () => {
+    expect(stateCategory('Blocked')).toBe('blocked')
   })
 })
 

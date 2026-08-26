@@ -41,7 +41,7 @@ export function adoTypeToHelm(t) {
   if (s === 'feature')    return 'feature'
   if (s === 'epic')       return 'epic'
   if (s === 'spike')      return 'spike'
-  return 'task'
+  return (t && slugify(t)) || 'task'
 }
 
 export function adoStateToHelm(s) {
@@ -55,11 +55,17 @@ export function adoStateToHelm(s) {
   return s || 'To Do'
 }
 
-export const isTerminalState = s => /^(done|closed|resolved|completed|removed)$/i.test(s || '')
+export const isTerminalState = (s, adoCategory) => {
+  if (adoCategory) return adoCategory === 'Resolved' || adoCategory === 'Completed' || adoCategory === 'Removed'
+  return /^(done|closed|resolved|completed|removed)$/i.test(s || '')
+}
 export const isActiveState   = s => /^(active|in progress|in testing|specced|assigned)$/i.test(s || '')
 export const isReviewState   = s => /^(in review|needs review|review|pull request|pr)$/i.test(s || '')
 export const isBlockedState  = s => /^(blocked)$/i.test(s || '')
-export const stateCategory   = s => {
+export const stateCategory   = (s, adoCategory) => {
+  if (adoCategory === 'Completed' || adoCategory === 'Resolved' || adoCategory === 'Removed') return 'done'
+  if (adoCategory === 'InProgress') return 'active'
+  if (adoCategory === 'Proposed')   return 'todo'
   if (isTerminalState(s)) return 'done'
   if (isActiveState(s))   return 'active'
   if (isReviewState(s))   return 'review'
