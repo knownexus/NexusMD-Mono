@@ -136,6 +136,34 @@ describe('loadAdoData — dynamic WIQL from real ADO state metadata', () => {
     expect(activeQuery).toContain("'Closed'")
   })
 
+  it('escapes a single quote in a live ADO state name so the WIQL query stays valid (not just the hardcoded list)', async () => {
+    const http = makeHttp({
+      'workitemtypes?api-version': { value: [{ name: 'Bug', isDisabled: false }] },
+      'workitemtypes/Bug/states': {
+        value: [
+          { name: 'New', category: 'Proposed' },
+          { name: "Won't Fix", category: 'Resolved' },
+        ],
+      },
+      'workitemtypes/Bug/fields': { value: [] },
+      '_apis/wit/wiql': { workItems: [] },
+    })
+    await loadAdoData({ org: 'myorg', projects: ['Proj'] }, { http, storage: makeStorage() })
+
+    const wiqlCalls = http.fetch.mock.calls.filter(([path]) => path.includes('_apis/wit/wiql'))
+    const bodies = wiqlCalls.map(([, opts]) => JSON.parse(opts.body).query)
+
+    const activeQuery   = bodies.find(q => q.includes('NOT IN'))
+    const resolvedQuery = bodies.find(q => q.includes(' IN ('))
+
+    // Correctly escaped: single quote doubled ('Won''t Fix'), not the broken
+    // unescaped form that would corrupt the WIQL query.
+    expect(activeQuery).toContain("'Won''t Fix'")
+    expect(resolvedQuery).toContain("'Won''t Fix'")
+    expect(activeQuery).not.toContain("'Won't Fix'")
+    expect(resolvedQuery).not.toContain("'Won't Fix'")
+  })
+
   it('publishes TYPES, PRIORITIES, and WI_TYPE_STATES on the returned data', async () => {
     const http = makeHttp({
       'workitemtypes?api-version': { value: [{ name: 'Bug', isDisabled: false }] },
