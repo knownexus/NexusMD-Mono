@@ -1,12 +1,13 @@
 import { slugify, timeAgo, adoTypeToHelm } from './helpers.js'
 
-export function mapWorkItem(wi, nameToId = {}) {
+export function mapWorkItem(wi, nameToId = {}, stateCategoryByName = {}) {
   const f = wi.fields || wi
   const id        = wi.id || f['System.Id']
   const title     = f['System.Title']              || f.title      || ''
   const wiType    = f['System.WorkItemType']        || f.type       || 'Task'
   const state     = f['System.State']              || f.state      || ''
-  const priority  = parseInt(f['Microsoft.VSTS.Common.Priority'] ?? f.priority ?? 3, 10)
+  const priorityRaw = parseInt(f['Microsoft.VSTS.Common.Priority'] ?? f.priority, 10)
+  const priority  = Number.isFinite(priorityRaw) ? priorityRaw : 3
   const assignedTo = f['System.AssignedTo'] || f.assignedTo
   const tags      = (f['System.Tags'] || f.tags || '').split(';').map(t => t.trim()).filter(Boolean)
   const changed   = f['System.ChangedDate'] || f.changedDate || ''
@@ -22,8 +23,9 @@ export function mapWorkItem(wi, nameToId = {}) {
   const isSprint = iterPath.toLowerCase().includes('sprint') || iterPath.toLowerCase().includes('iteration')
   return {
     id, type: adoTypeToHelm(wiType), title, project: projSlug,
-    state, assignee: assigneeId,
-    priority: Math.min(4, Math.max(1, priority)),
+    state, adoStateCategory: stateCategoryByName[state] || null,
+    assignee: assigneeId,
+    priority,
     points: Math.round(parseFloat(f['Microsoft.VSTS.Scheduling.StoryPoints'] || 0) || 0),
     tags, updated: timeAgo(changed), changedMs: changed ? new Date(changed).getTime() : null,
     sprint: isSprint, iterationPath: iterPath, areaPath, area,

@@ -43,11 +43,24 @@ describe('mapWorkItem', () => {
   it('extracts story points', () => {
     expect(mapWorkItem(rawWI, {}).points).toBe(3)
   })
-  it('clamps priority between 1 and 4', () => {
-    const hi = { ...rawWI, fields: { ...rawWI.fields, 'Microsoft.VSTS.Common.Priority': '0' } }
-    expect(mapWorkItem(hi, {}).priority).toBe(1)
-    const lo = { ...rawWI, fields: { ...rawWI.fields, 'Microsoft.VSTS.Common.Priority': '9' } }
-    expect(mapWorkItem(lo, {}).priority).toBe(4)
+  it('preserves out-of-range priority values instead of clamping them (custom process templates use non-1-4 ranges)', () => {
+    const zero = { ...rawWI, fields: { ...rawWI.fields, 'Microsoft.VSTS.Common.Priority': '0' } }
+    expect(mapWorkItem(zero, {}).priority).toBe(0)
+    const nine = { ...rawWI, fields: { ...rawWI.fields, 'Microsoft.VSTS.Common.Priority': '9' } }
+    expect(mapWorkItem(nine, {}).priority).toBe(9)
+  })
+  it('defaults priority to 3 when missing or unparseable', () => {
+    const missing = { ...rawWI, fields: { ...rawWI.fields, 'Microsoft.VSTS.Common.Priority': undefined } }
+    expect(mapWorkItem(missing, {}).priority).toBe(3)
+    const garbage = { ...rawWI, fields: { ...rawWI.fields, 'Microsoft.VSTS.Common.Priority': 'n/a' } }
+    expect(mapWorkItem(garbage, {}).priority).toBe(3)
+  })
+  it('sets adoStateCategory from the 3rd param when the item state is a known category', () => {
+    const wi = mapWorkItem(rawWI, {}, { Active: 'InProgress' })
+    expect(wi.adoStateCategory).toBe('InProgress')
+  })
+  it('sets adoStateCategory to null when the state is not in the map', () => {
+    expect(mapWorkItem(rawWI, {}).adoStateCategory).toBeNull()
   })
   it('splits tags by semicolon', () => {
     expect(mapWorkItem(rawWI, {}).tags).toEqual(['auth', 'security'])
