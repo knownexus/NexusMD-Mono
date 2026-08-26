@@ -2,6 +2,7 @@ import { core } from '../../core.js'
 import { slugify, timeAgo, isTerminalState, STATES } from './helpers.js'
 import { mapWorkItem, mapPR, mapBuild, mapTestBuild } from './mappers.js'
 import { deriveProjects, deriveSprint, deriveActivity, derivePrSparkline } from './derive.js'
+import { fetchAdoProcessMetadata } from './process-metadata.js'
 
 export const ADO_CACHE_KEY = 'nexusmd.ado.cache.v1'
 
@@ -65,12 +66,22 @@ export async function loadAdoData(
       })()
     : Promise.resolve(null)
 
-  const wiP = (async () => {
+  const metaP = !isRefresh
+    ? fetchAdoProcessMetadata(get, cfgProjects).catch(() => null)
+    : Promise.resolve(priorData?._adoMeta || null)
+
+  const FALLBACK_TERMINAL_STATES = ['Done', 'Closed', 'Resolved', 'Completed', 'Removed']
+  const FALLBACK_DONE_STATES = ['Done', 'Closed', 'Resolved', 'Completed']
+  const wiqlStateList = (names) => names.map(s => `'${String(s).replace(/'/g, "''")}'`).join(',')
+
+  const wiP = metaP.then(async (meta) => {
+    const terminalNames = meta?.terminalStateNames?.length ? meta.terminalStateNames : FALLBACK_TERMINAL_STATES
+    const notInClause = wiqlStateList(terminalNames)
     const all = []
     await Promise.all(cfgProjects.map(async proj => {
       try {
         const wiql = await post(`${encodeURIComponent(proj)}/_apis/wit/wiql?api-version=7.0&$top=300`, {
-          query: `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.State] NOT IN ('Done','Closed','Resolved','Completed','Removed') ORDER BY [System.ChangedDate] DESC`,
+          query: `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.State] NOT IN (${notInClause}) ORDER BY [System.ChangedDate] DESC`,
         })
         const ids = (wiql.workItems || []).slice(0, 300).map(w => w.id)
         if (!ids.length) return
@@ -86,7 +97,7 @@ export async function loadAdoData(
       } catch (_) {}
     }))
     return all
-  })()
+  })
 
   const sprintP = !isRefresh && cfgProjects.length
     ? get(`${encodeURIComponent(cfgProjects[0])}/_apis/work/teamsettings/iterations?$timeframe=current&api-version=7.0`).catch(() => null)
@@ -155,14 +166,16 @@ export async function loadAdoData(
     return get(`${encodeURIComponent(testProj)}/_apis/test/runs?buildIds=${encodeURIComponent(ids)}&api-version=7.0&includeRunDetails=true`).catch(() => null)
   })
 
-  const summaryP = (async () => {
+  const summaryP = metaP.then(async (meta) => {
     try {
+      const doneNames = meta?.doneStateNames?.length ? meta.doneStateNames : FALLBACK_DONE_STATES
+      const inClause = wiqlStateList(doneNames)
       const cutoff = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)
       const all = []
       await Promise.all(cfgProjects.map(async proj => {
         try {
           const wiql = await post(`${encodeURIComponent(proj)}/_apis/wit/wiql?api-version=7.0`, {
-            query: `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.State] IN ('Done','Closed','Resolved','Completed') AND [System.ChangedDate] >= '${cutoff}' ORDER BY [System.ChangedDate] DESC`,
+            query: `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.State] IN (${inClause}) AND [System.ChangedDate] >= '${cutoff}' ORDER BY [System.ChangedDate] DESC`,
           })
           const ids = (wiql.workItems || []).slice(0, 100).map(w => w.id)
           if (!ids.length) return
@@ -188,11 +201,11 @@ export async function loadAdoData(
           : null,
       }
     } catch (_) { return null }
-  })()
+  })
 
   // ── Await ──────────────────────────────────────────────────────────────────
-  const [teamNames, meData, wiRaw, sprintResult, prsRaw, buildsRaw, testBuildsResult, testRunsResult, summaryResult] =
-    await Promise.all([teamP, meP, wiP, sprintP, prsP, buildsP, testBuildsP, testRunsP, summaryP])
+  const [teamNames, meData, wiRaw, sprintResult, prsRaw, buildsRaw, testBuildsResult, testRunsResult, summaryResult, meta] =
+    await Promise.all([teamP, meP, wiP, sprintP, prsP, buildsP, testBuildsP, testRunsP, summaryP, metaP])
 
   // ── Team ──────────────────────────────────────────────────────────────────
   const makeMember = (name, prefix, i) => {
@@ -246,10 +259,10 @@ export async function loadAdoData(
 
   // ── Work items ────────────────────────────────────────────────────────────
   const helmWIs = []
-  ;(wiRaw || []).forEach(wi => { try { helmWIs.push(mapWorkItem(wi, nameToId)) } catch (_) {} })
+  ;(wiRaw || []).forEach(wi => { try { helmWIs.push(mapWorkItem(wi, nameToId, meta?.stateCategoryByName)) } catch (_) {} })
 
   helmTeam.forEach(member => {
-    const assigned = helmWIs.filter(w => w.assignee === member.id && !isTerminalState(w.state))
+    const assigned = helmWIs.filter(w => w.assignee === member.id && !isTerminalState(w.state, w.adoStateCategory))
     member.assignedCount = assigned.length
     const latest = assigned.reduce((best, w) => (!best || (w.changedMs && w.changedMs > (best.changedMs || 0))) ? w : best, null)
     member.lastActiveAgo = (latest?.changedMs) ? timeAgo(new Date(latest.changedMs).toISOString()) : '—'
@@ -314,7 +327,10 @@ export async function loadAdoData(
     ME: me,
     PROJECTS: deriveProjects(helmWIs, cfgProjects),
     CONFIG_PROJECTS: cfgProjects.slice(),
-    STATES,
+    STATES: meta?.states?.length ? meta.states : STATES,
+    TYPES: meta?.types || [],
+    PRIORITIES: meta?.priorities || [],
+    WI_TYPE_STATES: meta?.typeStates || {},
     WORK_ITEMS: helmWIs,
     PRS: helmPRs,
     BUILDS: helmBuilds,
@@ -330,6 +346,7 @@ export async function loadAdoData(
     configured: true,
     _iterMeta: iterMeta,
     _testProject: testProj,
+    _adoMeta: meta || null,
   }
 
   if (storage) {

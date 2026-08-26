@@ -96,6 +96,80 @@ describe('loadAdoData — events', () => {
   })
 })
 
+describe('loadAdoData — dynamic WIQL from real ADO state metadata', () => {
+  it('excludes a custom terminal state ("Verified") from the active-items query, and includes it in the resolved-items query — not just the hardcoded Done/Closed/Resolved/Completed/Removed names', async () => {
+    const http = makeHttp({
+      'workitemtypes?api-version': { value: [{ name: 'Bug', isDisabled: false }] },
+      'workitemtypes/Bug/states': {
+        value: [
+          { name: 'New', category: 'Proposed' },
+          { name: 'Active', category: 'InProgress' },
+          { name: 'Verified', category: 'Resolved' },
+        ],
+      },
+      'workitemtypes/Bug/fields': { value: [] },
+      '_apis/wit/wiql': { workItems: [] },
+    })
+    await loadAdoData({ org: 'myorg', projects: ['Proj'] }, { http, storage: makeStorage() })
+
+    const wiqlCalls = http.fetch.mock.calls.filter(([path]) => path.includes('_apis/wit/wiql'))
+    const bodies = wiqlCalls.map(([, opts]) => JSON.parse(opts.body).query)
+
+    const activeQuery   = bodies.find(q => q.includes('NOT IN'))
+    const resolvedQuery = bodies.find(q => q.includes(' IN ('))
+
+    expect(activeQuery).toContain("'Verified'")
+    expect(resolvedQuery).toContain("'Verified'")
+    // Proposed/InProgress states must never appear as "resolved"
+    expect(resolvedQuery).not.toContain("'New'")
+    expect(resolvedQuery).not.toContain("'Active'")
+  })
+
+  it('falls back to the hardcoded terminal-state list when the metadata fetch returns nothing (e.g. all calls failed)', async () => {
+    const http = makeHttp({ '_apis/wit/wiql': { workItems: [] } }) // workitemtypes falls through to { value: [] }
+    await loadAdoData({ org: 'myorg', projects: ['Proj'] }, { http, storage: makeStorage() })
+
+    const wiqlCalls = http.fetch.mock.calls.filter(([path]) => path.includes('_apis/wit/wiql'))
+    const bodies = wiqlCalls.map(([, opts]) => JSON.parse(opts.body).query)
+    const activeQuery = bodies.find(q => q.includes('NOT IN'))
+    expect(activeQuery).toContain("'Done'")
+    expect(activeQuery).toContain("'Closed'")
+  })
+
+  it('publishes TYPES, PRIORITIES, and WI_TYPE_STATES on the returned data', async () => {
+    const http = makeHttp({
+      'workitemtypes?api-version': { value: [{ name: 'Bug', isDisabled: false }] },
+      'workitemtypes/Bug/states': { value: [{ name: 'New', category: 'Proposed' }] },
+      'workitemtypes/Bug/fields': {
+        value: [{ referenceName: 'Microsoft.VSTS.Common.Priority', allowedValues: [1, 2, 3] }],
+      },
+    })
+    const data = await loadAdoData({ org: 'myorg', projects: ['Proj'] }, { http, storage: makeStorage() })
+
+    expect(data.TYPES).toEqual(['Bug'])
+    expect(data.PRIORITIES).toEqual([1, 2, 3])
+    expect(data.WI_TYPE_STATES).toEqual({ Bug: ['New'] })
+    expect(data.STATES).toEqual(['New'])
+  })
+
+  it('reuses the prior full load\'s metadata on a refresh instead of refetching it', async () => {
+    const http = makeHttp({})
+    const priorData = {
+      TEAM: [], ME: { id: 'me', name: 'Test', role: 'EM', initials: 'T', org: 'myorg' },
+      _iterMeta: null,
+      _adoMeta: { types: ['CustomType'], typeStates: {}, stateCategoryByName: {}, states: [], terminalStateNames: ['Shipped'], doneStateNames: ['Shipped'], priorities: [] },
+    }
+    const data = await loadAdoData(
+      { org: 'myorg', projects: ['Proj'] },
+      { http, storage: makeStorage() },
+      { isRefresh: true, priorData },
+    )
+    expect(data.TYPES).toEqual(['CustomType'])
+    // No workitemtypes call should have been made on refresh.
+    expect(http.fetch.mock.calls.some(([path]) => path.includes('workitemtypes'))).toBe(false)
+  })
+})
+
 describe('loadAdoData — cache', () => {
   it('writes result to storage under CACHE_KEY', async () => {
     vi.spyOn(core, '_emit').mockImplementation(() => {})
