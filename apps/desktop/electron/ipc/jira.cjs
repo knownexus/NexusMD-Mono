@@ -32,6 +32,7 @@ function register(ipcMain, { fetchImpl = (...args) => globalThis.fetch(...args) 
       const res = await fetchImpl(req.url, {
         method: req.method || 'GET',
         headers,
+        redirect: 'error',
         ...(body !== undefined ? { body } : {}),
       });
       return {

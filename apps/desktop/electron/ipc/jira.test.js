@@ -38,7 +38,7 @@ describe('jira:request', () => {
       headers: { Authorization: 'Basic x', 'Content-Type': 'application/json' }, body: '{}',
     })
     expect(fetchImpl).toHaveBeenCalledWith('https://acme.atlassian.net/rest/api/3/search/jql', {
-      method: 'POST', headers: { Authorization: 'Basic x', 'Content-Type': 'application/json' }, body: '{}',
+      method: 'POST', headers: { Authorization: 'Basic x', 'Content-Type': 'application/json' }, redirect: 'error', body: '{}',
     })
     expect(out).toEqual({ ok: false, status: 429, headers: { 'retry-after': '3' }, body: '{"x":1}' })
   })
@@ -65,6 +65,17 @@ describe('jira:request', () => {
     expect(opts.headers).toEqual({ 'X-Atlassian-Token': 'no-check' })
     expect(opts.body).toBeInstanceOf(FormData)
     expect(opts.body.get('file').name).toBe('a.txt')
+    expect(opts.redirect).toBe('error')
+  })
+
+  it('rejects redirects instead of following them', async () => {
+    const ipc = makeFakeIpcMain()
+    register(ipc, { fetchImpl: async () => { throw new Error('redirect') } })
+    const out = await ipc.invoke('jira:request', {
+      url: 'https://acme.atlassian.net/rest/api/3/myself', method: 'GET',
+      headers: { Authorization: 'Bearer x' },
+    })
+    expect(out).toEqual({ ok: false, status: 0, headers: {}, body: '', error: 'redirect' })
   })
 
   it('returns network errors instead of throwing across IPC', async () => {
