@@ -6,6 +6,7 @@ import {
   loadJiraDetail, loadJiraComments, addJiraComment, loadJiraRawFields,
   jiraPatchFromAdoField, transitionJiraIssue, updateJiraIssue, listJiraTransitions,
   fetchJiraCreateTypes, fetchJiraCreateFields, fetchJiraLinkTypes, createJiraIssue,
+  transitionJiraIssueToAny, fetchJiraBoards,
 } from '@nexusmd/core'
 import { localStorageAdapter } from '@nexusmd/web-adapters'
 import { getProfileKey } from './profile-keys.js'
@@ -74,6 +75,8 @@ export function createJiraWorkItemSource({
       await updateJiraIssue(client, keyOf(id), t.patch, meta)
     },
     moveToCategory: (id, category, item) => transitionJiraIssue(client, keyOf(id), { category }, { currentState: item?.state }),
+    moveToStatuses: (id, statuses, item) => transitionJiraIssueToAny(client, keyOf(id), statuses, { currentState: item?.state }),
+    getBoards: (projectKeys) => fetchJiraBoards(client, projectKeys),
     async availableTargetStates(id) {
       return (await listJiraTransitions(client, keyOf(id))).map(t => t.toName)
     },

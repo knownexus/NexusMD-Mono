@@ -1,7 +1,7 @@
 // apps/desktop/src/jira-settings.jsx — Jira Cloud connection + work-item display settings.
 import React from 'react'
 import { CardFrame, Icon } from '@nexusmd/ui'
-import { makeJiraClient, JIRA_CACHE_KEY } from '@nexusmd/core'
+import { makeJiraClient, fetchJiraBoards, JIRA_CACHE_KEY } from '@nexusmd/core'
 import { SettField, settInputStyle } from './desktop-settings.jsx'
 import { getJiraConfig, saveJiraConfig, createJiraHttpAdapter } from './jira-client.js'
 import { getProfileKey } from './profile-keys.js'
@@ -19,6 +19,9 @@ export function JiraConnectionCard({ onRefreshData }) {
   const [available, setAvailable] = React.useState([])
   const [status, setStatus]     = React.useState('')
   const [busy, setBusy]         = React.useState(false)
+  const [boardId, setBoardId]   = React.useState('')
+  const [boards, setBoards]     = React.useState([])
+  const [boardHint, setBoardHint] = React.useState('')
 
   React.useEffect(() => {
     const c = getJiraConfig()
@@ -27,6 +30,7 @@ export function JiraConnectionCard({ onRefreshData }) {
     setKeys((c.projectKeys || []).join(', '))
     setJql(c.jql || '')
     setEnabled(c.enabled !== false)
+    setBoardId(c.boardId || '')
   }, [])
 
   const connectionValues = () => ({
@@ -43,6 +47,10 @@ export function JiraConnectionCard({ onRefreshData }) {
       setStatus(`Connected as ${me?.displayName || 'unknown user'}`)
       const projects = await client.get('rest/api/3/project/search?maxResults=100&orderBy=name').catch(() => null)
       setAvailable((projects?.values || []).map(p => ({ key: p.key, name: p.name })))
+      const keyList = splitKeys(keys).map(k => k.toUpperCase())
+      const found = keyList.length ? await fetchJiraBoards(client, keyList).catch(() => []) : []
+      setBoards(found)
+      setBoardHint(keyList.length && !found.length ? "Couldn't load boards" : '')
     } catch (e) {
       setStatus('Error: ' + (e?.message || 'connection failed'))
     } finally {
@@ -57,7 +65,7 @@ export function JiraConnectionCard({ onRefreshData }) {
   }
 
   const save = () => {
-    saveJiraConfig({ ...connectionValues(), projectKeys: splitKeys(keys), jql: jql.trim(), enabled })
+    saveJiraConfig({ ...connectionValues(), projectKeys: splitKeys(keys), jql: jql.trim(), enabled, boardId })
     setToken('')
     setStatus('Saved! Loading data…')
     // Drop the cache so the refresh refetches metadata for the new settings.
@@ -103,6 +111,13 @@ export function JiraConnectionCard({ onRefreshData }) {
             ))}
           </div>
         )}
+        <SettField label="Board" hint={boardHint || 'Columns for the Jira tab on the Work Items board. Test the connection to list boards.'}>
+          <select aria-label="Board" value={boardId} onChange={e => setBoardId(e.target.value)} style={settInputStyle}>
+            <option value="">Status columns (default)</option>
+            {boardId && !boards.some(b => b.id === boardId) && <option value={boardId}>Board {boardId}</option>}
+            {boards.map(b => <option key={b.id} value={b.id}>{`${b.name} (${b.projectKey}, ${b.type})`}</option>)}
+          </select>
+        </SettField>
         <details>
           <summary style={{ fontSize: 12.5, cursor: 'pointer' }}>Advanced</summary>
           <SettField label="Extra JQL filter" hint="ANDed with the project filter, e.g. assignee in membersOf(&quot;my-team&quot;)">

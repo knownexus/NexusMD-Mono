@@ -48,6 +48,25 @@ describe('createJiraHttpAdapter', () => {
 })
 
 describe('createJiraWorkItemSource', () => {
+  it('moves into the first reachable status of a column', async () => {
+    const { invoke, source } = makeSource({
+      'GET https://acme.atlassian.net/rest/api/3/issue/ABC-1/transitions': ipcReply(200, { transitions: [
+        { id: '21', to: { name: 'Code Review', statusCategory: { key: 'indeterminate' } } },
+      ] }),
+    })
+    expect(await source.moveToStatuses('jira:ABC-1', ['In Progress', 'Code Review'], { state: 'To Do' }))
+      .toEqual({ state: 'Code Review', stateCategory: 'InProgress' })
+    const post = invoke.mock.calls.find(([r]) => r.method === 'POST')[0]
+    expect(JSON.parse(post.body)).toEqual({ transition: { id: '21' } })
+  })
+
+  it('lists boards for project keys', async () => {
+    const { source } = makeSource({
+      'GET https://acme.atlassian.net/rest/agile/1.0/board?projectKeyOrId=ABC': ipcReply(200, { values: [{ id: 7, name: 'Team board', type: 'scrum', location: { projectKey: 'ABC' } }] }),
+    })
+    expect(await source.getBoards(['ABC'])).toEqual([{ id: '7', name: 'Team board', type: 'scrum', projectKey: 'ABC' }])
+  })
+
   const meta = { priorities: [{ id: '2', name: 'High', rank: 2 }], fieldIds: {} }
   const people = [{ accountId: 'u1', displayName: 'Alex Doe' }]
 

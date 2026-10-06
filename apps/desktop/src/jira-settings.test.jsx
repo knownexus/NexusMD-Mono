@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 
 vi.mock('./profile-keys.js', async (importOriginal) => ({ ...(await importOriginal()), getProfileKey: k => k }))
 const jira = vi.hoisted(() => ({
-  config: { site: '', email: '', apiToken: '', projectKeys: [], jql: '', enabled: true },
+  config: { site: '', email: '', apiToken: '', projectKeys: [], jql: '', enabled: true, boardId: '' },
   save: vi.fn(),
   routes: {},
 }))
@@ -56,9 +56,35 @@ describe('JiraConnectionCard', () => {
     fireEvent.change(screen.getByLabelText('Project keys'), { target: { value: 'abc, def' } })
     fireEvent.click(screen.getByText('Save & connect'))
     expect(jira.save).toHaveBeenLastCalledWith({
-      site: 'acme', email: 'me@acme.io', projectKeys: ['abc', 'def'], jql: '', enabled: true,
+      site: 'acme', email: 'me@acme.io', projectKeys: ['abc', 'def'], jql: '', enabled: true, boardId: '',
     })
     expect(onRefreshData).toHaveBeenCalled()
+  })
+
+  it('offers the boards for the entered projects after Test connection and saves the choice', async () => {
+    jira.routes = {
+      'rest/api/3/myself': { displayName: 'Me Person' },
+      'rest/api/3/project/search': { values: [{ key: 'ABC', name: 'Alpha' }] },
+      'rest/agile/1.0/board?projectKeyOrId=ABC': { values: [{ id: 7, name: 'Team board', type: 'scrum', location: { projectKey: 'ABC' } }] },
+    }
+    render(<JiraConnectionCard />)
+    fireEvent.change(screen.getByLabelText('Site'), { target: { value: 'acme' } })
+    fireEvent.change(screen.getByLabelText('Project keys'), { target: { value: 'ABC' } })
+    fireEvent.click(screen.getByText('Test connection'))
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Team board (ABC, scrum)' })).toBeTruthy())
+    expect(screen.getByRole('option', { name: 'Status columns (default)' })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Board'), { target: { value: '7' } })
+    fireEvent.click(screen.getByText('Save & connect'))
+    expect(jira.save).toHaveBeenLastCalledWith(expect.objectContaining({ boardId: '7' }))
+  })
+
+  it('explains when boards could not be loaded', async () => {
+    jira.routes = { 'rest/api/3/myself': { displayName: 'Me Person' }, 'rest/api/3/project/search': { values: [] } }
+    render(<JiraConnectionCard />)
+    fireEvent.change(screen.getByLabelText('Site'), { target: { value: 'acme' } })
+    fireEvent.change(screen.getByLabelText('Project keys'), { target: { value: 'ABC' } })
+    fireEvent.click(screen.getByText('Test connection'))
+    await waitFor(() => expect(screen.getByText("Couldn't load boards")).toBeTruthy())
   })
 
   it('drops the Jira cache before refreshing so metadata is refetched', () => {
