@@ -14,7 +14,13 @@ function isAllowedJiraUrl(raw) {
   }
 }
 
-function register(ipcMain, { fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
+// Electron's net.fetch goes through Chromium's network stack, so it honours the
+// system proxy/PAC settings and the OS certificate store (Node's fetch does not).
+// Required lazily so tests that inject fetchImpl don't need Electron.
+const electronFetch = (...args) => require('electron').net.fetch(...args);
+const REQUEST_TIMEOUT_MS = 30000;
+
+function register(ipcMain, { fetchImpl = electronFetch } = {}) {
   ipcMain.handle('jira:request', async (_e, req = {}) => {
     if (!isAllowedJiraUrl(req.url)) {
       return { ok: false, status: 0, headers: {}, body: '', error: 'Blocked: not a Jira Cloud REST URL' };
@@ -33,6 +39,7 @@ function register(ipcMain, { fetchImpl = (...args) => globalThis.fetch(...args) 
         method: req.method || 'GET',
         headers,
         redirect: 'error',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         ...(body !== undefined ? { body } : {}),
       });
       return {

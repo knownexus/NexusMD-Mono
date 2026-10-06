@@ -39,7 +39,11 @@ describe('jira:request', () => {
     })
     expect(fetchImpl).toHaveBeenCalledWith('https://acme.atlassian.net/rest/api/3/search/jql', {
       method: 'POST', headers: { Authorization: 'Basic x', 'Content-Type': 'application/json' }, redirect: 'error', body: '{}',
+      signal: expect.any(AbortSignal),
     })
+    const [, opts] = fetchImpl.mock.calls[0]
+    expect(Object.keys(opts).sort()).toEqual(['body', 'headers', 'method', 'redirect', 'signal'])
+    expect(opts.signal.aborted).toBe(false)
     expect(out).toEqual({ ok: false, status: 429, headers: { 'retry-after': '3' }, body: '{"x":1}' })
   })
 
@@ -66,6 +70,23 @@ describe('jira:request', () => {
     expect(opts.body).toBeInstanceOf(FormData)
     expect(opts.body.get('file').name).toBe('a.txt')
     expect(opts.redirect).toBe('error')
+    expect(opts.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('defaults to Electron net.fetch so the system proxy and OS certificates apply', async () => {
+    const netFetch = vi.fn(async () => fakeResponse(200, '{}'))
+    const electronPath = require.resolve('electron')
+    const saved = require.cache[electronPath]
+    require.cache[electronPath] = { id: electronPath, filename: electronPath, loaded: true, exports: { net: { fetch: netFetch } } }
+    try {
+      const ipc = makeFakeIpcMain()
+      register(ipc)
+      const out = await ipc.invoke('jira:request', { url: 'https://acme.atlassian.net/rest/api/3/myself' })
+      expect(netFetch).toHaveBeenCalledWith('https://acme.atlassian.net/rest/api/3/myself', expect.objectContaining({ redirect: 'error', signal: expect.any(AbortSignal) }))
+      expect(out).toMatchObject({ ok: true, status: 200, body: '{}' })
+    } finally {
+      if (saved) require.cache[electronPath] = saved; else delete require.cache[electronPath]
+    }
   })
 
   it('rejects redirects instead of following them', async () => {
