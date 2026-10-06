@@ -1,7 +1,7 @@
 import React from 'react'
 import { Avatar, MenuButton, TypeIcon } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
-import { enrichTeamMember, formatDuration, formatClock } from '@nexusmd/core'
+import { enrichTeamMember, formatDuration, formatClock, displayIdOf } from '@nexusmd/core'
 import { useNexusData } from '../data-context.jsx'
 import { useStopwatch } from '../use-timer.js'
 
@@ -563,7 +563,7 @@ function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote,
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}
             onClick={(e) => { e.stopPropagation(); onOpenItem(dev.current) }}>
             <TypeIcon type={dev.current.type}/>
-            <span className="mono muted" style={{ fontSize: 11 }}>#{dev.current.id}</span>
+            <span className="mono muted" style={{ fontSize: 11 }}>{displayIdOf(dev.current)}</span>
             <span className="truncate" style={{ fontSize: 12.5 }}>{dev.current.title}</span>
           </span>
         ) : (

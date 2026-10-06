@@ -1,5 +1,6 @@
 import React from 'react'
 import { Icon, TypeIcon, Avatar, useNexusData } from '@nexusmd/ui'
+import { displayIdOf } from '@nexusmd/core'
 
 function readTeamNotes(storage, devId) {
   let all = []
@@ -72,7 +73,7 @@ export function PersonSummary({ dev, onOpenItem, onOpenPR }) {
           {dev.active.map(w => (
             <div key={w.id} onClick={() => onOpenItem(w)}
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-              <TypeIcon type={w.type}/><span style={{ fontFamily: 'var(--mono)', color: 'var(--text-muted)', fontSize: 11.5 }}>#{w.id}</span>
+              <TypeIcon type={w.type}/><span style={{ fontFamily: 'var(--mono)', color: 'var(--text-muted)', fontSize: 11.5 }}>{displayIdOf(w)}</span>
               <span>{w.title}</span>
             </div>
           ))}

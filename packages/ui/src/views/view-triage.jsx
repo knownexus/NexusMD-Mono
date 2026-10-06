@@ -12,6 +12,7 @@ import { WorkItemDetail } from './work-item-detail.jsx';
 import { usePersisted } from '../app-components.jsx';
 import { toast } from '../toast.jsx';
 import { useNexusData } from '../data-context.jsx';
+import { displayIdOf } from '@nexusmd/core';
 
 const BUCKET_META = {
   'Decision':        { color: 'var(--danger)',  label: 'Needs decision' },
@@ -142,7 +143,7 @@ export function TriageRow({ it, onUpdate }) {
             <a href={it.url} target="_blank" rel="noopener"
               onClick={e => e.stopPropagation()}
               style={{ fontSize: 11.5, fontFamily: 'var(--mono)', color: 'var(--accent)', textDecoration: 'none', flexShrink: 0 }}>
-              #{it.id}
+              {displayIdOf(it)}
             </a>
             <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{it.title}</span>
           </div>

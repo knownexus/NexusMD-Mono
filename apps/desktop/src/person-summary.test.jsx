@@ -115,6 +115,21 @@ describe('PersonSummary', () => {
     expect(onDelete.mock.calls[0][0].detail).toEqual({ noteId: 'tn1' })
     window.removeEventListener('nexusmd:team-delete-note', onDelete)
   })
+
+  it('shows ADO ids as #123 and Jira items by their key', () => {
+    renderPerson({
+      ...baseDev,
+      active: [
+        { id: 123, type: 'bug', title: 'ADO bug' },
+        { id: 'jira:ABC-12', type: 'story', title: 'Jira story' },
+        { id: 'jira:ABC-13', displayId: 'ABC-13', type: 'story', title: 'Merged Jira story' },
+      ],
+    })
+    expect(screen.getByText('#123')).toBeTruthy()
+    expect(screen.getByText('ABC-12')).toBeTruthy()
+    expect(screen.getByText('ABC-13')).toBeTruthy()
+    expect(screen.queryByText(/#jira:/)).toBeNull()
+  })
 })
 
 describe('PersonActions', () => {

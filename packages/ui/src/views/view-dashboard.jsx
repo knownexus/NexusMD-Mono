@@ -7,7 +7,7 @@ import { CardFrame, Prio, Stat } from '../components.jsx';
 import { Avatar, TypeIcon } from '../app-components.jsx';
 import { Icon } from '../icons.jsx';
 import { TriageExportButton, TriageStatusLine } from './triage.jsx';
-import { isActiveState, isBlockedState, isReviewState, isTerminalState } from '@nexusmd/core';
+import { isActiveState, isBlockedState, isReviewState, isTerminalState, displayIdOf } from '@nexusmd/core';
 import { useNexusData, useEffectiveNeedsMe } from '../data-context.jsx';
 
 const { useState: useStateD, useMemo: useMemoD, useEffect: useEffectD } = React;
@@ -541,7 +541,7 @@ function StatWithHoverList({ items, team, onOpenItem, ...statProps }) {
                 borderRadius: 6, cursor: onOpenItem ? 'pointer' : 'default', fontSize: 12,
               }}
             >
-              <span className="mono muted" style={{ flexShrink: 0 }}>#{w.id}</span>
+              <span className="mono muted" style={{ flexShrink: 0 }}>{displayIdOf(w)}</span>
               <span className="truncate" style={{ flex: 1, minWidth: 0 }}>{w.title}</span>
               <span className="muted" style={{ flexShrink: 0 }}>{w.state}</span>
               <span className="muted" style={{ flexShrink: 0 }}>{nameFor(w.assignee)}</span>
@@ -753,7 +753,7 @@ function TeamNowWidget({ team, workItems, onOpen }) {
             {d.current ? (
               <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <TypeIcon type={d.current.type}/>
-                <span className="mono muted" style={{ fontSize: 11 }}>#{d.current.id}</span>
+                <span className="mono muted" style={{ fontSize: 11 }}>{displayIdOf(d.current)}</span>
                 <span className="truncate" style={{ fontSize: 12.5 }}>{d.current.title}</span>
               </div>
             ) : (
@@ -792,7 +792,7 @@ function TriageWidget({ items, onOpen }) {
           <TypeIcon type={w.type}/>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12.5, fontWeight: 500 }} className="truncate">{w.title}</div>
-            <div className="muted" style={{ fontSize: 11.5, fontFamily: 'var(--mono)' }}>#{w.id} · {w.updated} ago</div>
+            <div className="muted" style={{ fontSize: 11.5, fontFamily: 'var(--mono)' }}>{displayIdOf(w)} · {w.updated} ago</div>
           </div>
           {w.isNew && <span className="pill accent" style={{ fontSize: 10 }}>NEW</span>}
           <Prio p={w.priority}/>
@@ -862,8 +862,8 @@ function ResolvedByMeWidget({ items, avgDays }) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {org && wi.project
-                ? <a href={`https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(wi.project)}/_workitems/edit/${wi.id}`} target="_blank" rel="noopener" style={{ color: 'var(--accent)', textDecoration: 'none', fontFamily: 'var(--mono)', fontSize: 12, marginRight: 6 }}>#{wi.id}</a>
-                : <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-muted)', marginRight: 6 }}>#{wi.id}</span>}
+                ? <a href={`https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(wi.project)}/_workitems/edit/${wi.id}`} target="_blank" rel="noopener" style={{ color: 'var(--accent)', textDecoration: 'none', fontFamily: 'var(--mono)', fontSize: 12, marginRight: 6 }}>{displayIdOf(wi)}</a>
+                : <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-muted)', marginRight: 6 }}>{displayIdOf(wi)}</span>}
               {wi.title}
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>{wi.state}</div>
