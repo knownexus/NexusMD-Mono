@@ -54,6 +54,24 @@ describe('makeJiraClient', () => {
     expect(err.message).toBe('Bad JQL; summary: required')
   })
 
+  it('keeps a plain-text error body as the message (e.g. Jira\'s "XSRF check failed")', async () => {
+    const http = { fetch: vi.fn(async () => ({
+      ok: false, status: 403, headers: { get: () => null },
+      text: async () => 'XSRF check failed', json: async () => { throw new SyntaxError('not json') },
+    })) }
+    const err = await makeJiraClient(http).post('rest/api/3/search/jql', {}).catch(e => e)
+    expect(err).toMatchObject({ status: 403, message: 'XSRF check failed' })
+  })
+
+  it('ignores an HTML error page and falls back to the status explanation', async () => {
+    const http = { fetch: vi.fn(async () => ({
+      ok: false, status: 403, headers: { get: () => null },
+      text: async () => '<html><body>Forbidden</body></html>', json: async () => { throw new SyntaxError('not json') },
+    })) }
+    const err = await makeJiraClient(http).get('x').catch(e => e)
+    expect(err.message).toMatch(/permission/)
+  })
+
   it('requires an http adapter', () => {
     expect(() => makeJiraClient(null)).toThrow('makeJiraClient: http adapter is required')
   })

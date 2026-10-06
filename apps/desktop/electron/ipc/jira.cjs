@@ -25,7 +25,11 @@ function register(ipcMain, { fetchImpl = electronFetch } = {}) {
     if (!isAllowedJiraUrl(req.url)) {
       return { ok: false, status: 0, headers: {}, body: '', error: 'Blocked: not a Jira Cloud REST URL' };
     }
-    const headers = { ...(req.headers || {}) };
+    // Link windows share the default session, so signing in to Atlassian there
+    // leaves Jira cookies that net.fetch would otherwise send. Cookie-authenticated
+    // POSTs trip Jira's XSRF check (403 "XSRF check failed"); the no-check header
+    // opts REST calls out of it, and credentials:'omit' keeps auth to the token.
+    const headers = { ...(req.headers || {}), 'X-Atlassian-Token': 'no-check' };
     let body = req.body;
     if (req.attachment) {
       const form = new FormData();
@@ -39,6 +43,7 @@ function register(ipcMain, { fetchImpl = electronFetch } = {}) {
         method: req.method || 'GET',
         headers,
         redirect: 'error',
+        credentials: 'omit',
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         ...(body !== undefined ? { body } : {}),
       });

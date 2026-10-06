@@ -38,13 +38,25 @@ describe('jira:request', () => {
       headers: { Authorization: 'Basic x', 'Content-Type': 'application/json' }, body: '{}',
     })
     expect(fetchImpl).toHaveBeenCalledWith('https://acme.atlassian.net/rest/api/3/search/jql', {
-      method: 'POST', headers: { Authorization: 'Basic x', 'Content-Type': 'application/json' }, redirect: 'error', body: '{}',
+      method: 'POST',
+      headers: { Authorization: 'Basic x', 'Content-Type': 'application/json', 'X-Atlassian-Token': 'no-check' },
+      redirect: 'error', credentials: 'omit', body: '{}',
       signal: expect.any(AbortSignal),
     })
     const [, opts] = fetchImpl.mock.calls[0]
-    expect(Object.keys(opts).sort()).toEqual(['body', 'headers', 'method', 'redirect', 'signal'])
+    expect(Object.keys(opts).sort()).toEqual(['body', 'credentials', 'headers', 'method', 'redirect', 'signal'])
     expect(opts.signal.aborted).toBe(false)
     expect(out).toEqual({ ok: false, status: 429, headers: { 'retry-after': '3' }, body: '{"x":1}' })
+  })
+
+  it('opts out of Jira XSRF checks and never sends session cookies, so POSTs work after signing in to Atlassian in a link window', async () => {
+    const fetchImpl = vi.fn(async () => fakeResponse(200, '{}'))
+    const ipc = makeFakeIpcMain()
+    register(ipc, { fetchImpl })
+    await ipc.invoke('jira:request', { url: 'https://acme.atlassian.net/rest/api/3/myself', headers: { Authorization: 'Basic x' } })
+    const [, opts] = fetchImpl.mock.calls[0]
+    expect(opts.headers['X-Atlassian-Token']).toBe('no-check')
+    expect(opts.credentials).toBe('omit')
   })
 
   it('blocks non-Jira URLs without fetching', async () => {

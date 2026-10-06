@@ -10,7 +10,7 @@ describe('provider status', () => {
     recordProviderStatus(st, 'jira', { ok: false, error: Object.assign(new Error('x'), { status: 401 }) })
     const all = readProviderStatus(st)
     expect(all.ado.status).toBe('ok')
-    expect(all.jira).toMatchObject({ status: 'error', error: 'auth failed — check settings' })
+    expect(all.jira).toMatchObject({ status: 'error', error: 'auth failed — check settings (x)' })
     expect(st._s[WORK_ITEM_STATUS_KEY]).toBe(all)
   })
   it('reads an empty object when nothing is stored or it is malformed', () => {
@@ -21,6 +21,7 @@ describe('provider status', () => {
   })
   it('describes errors', () => {
     expect(describeProviderError({ status: 403 })).toBe('auth failed — check settings')
+    expect(describeProviderError({ status: 403, message: 'XSRF check failed' })).toBe('auth failed — check settings (XSRF check failed)')
     expect(describeProviderError(new Error('Not found in Jira (404)'))).toBe('Not found in Jira (404)')
     expect(describeProviderError(null)).toBe('load failed')
   })

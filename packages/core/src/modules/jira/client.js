@@ -33,9 +33,14 @@ export function makeJiraClient(http, { sleep = defaultSleep } = {}) {
       res = await http.fetch(path, opts)
     }
     if (!res.ok) {
+      let text = ''
+      try { text = await res.text() } catch { /* unreadable body */ }
       let body = null
-      try { body = await res.json() } catch { /* non-JSON error body */ }
-      throw new JiraError(jiraErrorMessage(res.status, body), { status: res.status, path })
+      try { body = JSON.parse(text) } catch { /* non-JSON error body */ }
+      // Plain-text bodies (e.g. "XSRF check failed") explain more than the status
+      // alone; HTML error pages don't, so they fall back to the status message.
+      const plain = !body && text.trim() && !text.trim().startsWith('<') ? text.trim().slice(0, 200) : ''
+      throw new JiraError(plain || jiraErrorMessage(res.status, body), { status: res.status, path })
     }
     if (res.status === 204) return null
     const text = await res.text()

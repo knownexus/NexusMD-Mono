@@ -45,7 +45,7 @@ describe('refreshProviders', () => {
     expect(ado).toHaveBeenCalled()
     expect(jira).toHaveBeenCalled()
     expect(skipped).not.toHaveBeenCalled()
-    expect(st._s[WORK_ITEM_STATUS_KEY]).toMatchObject({ ado: { status: 'ok' }, jira: { status: 'error', error: 'auth failed — check settings' } })
+    expect(st._s[WORK_ITEM_STATUS_KEY]).toMatchObject({ ado: { status: 'ok' }, jira: { status: 'error', error: 'auth failed — check settings (nope)' } })
   })
 })
 

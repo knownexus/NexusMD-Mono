@@ -2,7 +2,10 @@ export const WORK_ITEM_STATUS_KEY = 'nexusmd.workitems.status.v1'
 
 export function describeProviderError(err) {
   const s = err?.status
-  if (s === 401 || s === 403) return 'auth failed — check settings'
+  if (s === 401 || s === 403) {
+    const detail = String(err?.message || '').trim()
+    return detail ? `auth failed — check settings (${detail.slice(0, 160)})` : 'auth failed — check settings'
+  }
   return String(err?.message || err || 'load failed').slice(0, 200)
 }
 
