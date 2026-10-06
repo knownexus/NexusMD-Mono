@@ -8,7 +8,8 @@ const MARKS = { strong: 'strong', b: 'strong', em: 'em', i: 'em', u: 'underline'
 const BLOCK = new Set(['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'pre', 'blockquote', 'table', 'hr'])
 const LIST_CHILD_TYPES = new Set(['paragraph', 'bulletList', 'orderedList', 'codeBlock'])
 const QUOTE_CHILD_TYPES = new Set([...LIST_CHILD_TYPES, 'heading'])
-const KNOWN_TAG = /<\/?(p|div|h[1-6]|ul|ol|li|pre|blockquote|table|tr|td|th|hr|br|strong|b|em|i|u|s|strike|del|code|a|span|img)\b/i
+const CELL_CHILD_TYPES = new Set([...QUOTE_CHILD_TYPES, 'blockquote', 'rule'])
+const KNOWN_TAG = /<\/?(p|div|h[1-6]|ul|ol|li|pre|blockquote|table|thead|tbody|tfoot|tr|td|th|hr|br|strong|b|em|i|u|s|strike|del|code|a|span|img)\b/i
 
 function decode(s) {
   return s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e) => {
@@ -122,6 +123,24 @@ function list(n) {
   return items.length ? { type: n.tag === 'ol' ? 'orderedList' : 'bulletList', content: items } : null
 }
 
+// <table> → ADF table. thead/tbody/tfoot are flattened into their rows; th → tableHeader,
+// td → tableCell. Every cell holds at least one paragraph; a nested table is flattened to text.
+function table(n) {
+  const rows = []
+  for (const c of n.children) {
+    if (c.tag === 'tr') rows.push(c)
+    else if (c.tag === 'thead' || c.tag === 'tbody' || c.tag === 'tfoot') rows.push(...c.children.filter(r => r.tag === 'tr'))
+  }
+  const content = rows.map(tr => {
+    const cells = tr.children.filter(c => c.tag === 'td' || c.tag === 'th').map(c => {
+      const inner = restrict(blocks(c.children), CELL_CHILD_TYPES)
+      return { type: c.tag === 'th' ? 'tableHeader' : 'tableCell', content: inner.length ? inner : [{ type: 'paragraph' }] }
+    })
+    return cells.length ? { type: 'tableRow', content: cells } : null
+  }).filter(Boolean)
+  return content.length ? { type: 'table', content } : null
+}
+
 function block(n) {
   switch (n.tag) {
     case 'p': return paragraph(tidy(inline(n.children)))
@@ -141,6 +160,7 @@ function block(n) {
       return inner.length ? [{ type: 'blockquote', content: inner }] : []
     }
     case 'hr': return [{ type: 'rule' }]
+    case 'table': { const tb = table(n); return tb ? [tb] : [] }
     default: return paragraph(tidy(inline([{ text: textOf(n) }])))
   }
 }

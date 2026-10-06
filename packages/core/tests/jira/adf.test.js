@@ -66,8 +66,48 @@ describe('htmlToAdf', () => {
   })
 
   it('reduces unsupported elements to their text', () => {
-    expect(htmlToAdf('<p><span style="color:red">red</span> <img src="x"></p><table><tr><td>cell</td></tr></table>'))
-      .toEqual(doc(p(t('red')), p(t('cell'))))
+    expect(htmlToAdf('<p><span style="color:red">red</span> <img src="x"></p>'))
+      .toEqual(doc(p(t('red'))))
+  })
+
+  const cell = (...content) => ({ type: 'tableCell', content })
+  const header = (...content) => ({ type: 'tableHeader', content })
+  const row = (...content) => ({ type: 'tableRow', content })
+  const table = (...content) => ({ type: 'table', content })
+
+  it('converts a table into ADF table rows with header and data cells', () => {
+    expect(htmlToAdf('<table><tr><th>Name</th><th>Qty</th></tr><tr><td>Apple</td><td><b>2</b></td></tr></table>'))
+      .toEqual(doc(table(
+        row(header(p(t('Name'))), header(p(t('Qty')))),
+        row(cell(p(t('Apple'))), cell(p(t('2', [{ type: 'strong' }])))),
+      )))
+  })
+
+  it('flattens thead/tbody/tfoot wrappers into the table rows in order', () => {
+    const html = '<table>\n  <thead><tr><th>H</th></tr></thead>\n  <tbody><tr><td>B1</td></tr><tr><td>B2</td></tr></tbody>\n  <tfoot><tr><td>F</td></tr></tfoot>\n</table>'
+    expect(htmlToAdf(html)).toEqual(doc(table(
+      row(header(p(t('H')))),
+      row(cell(p(t('B1')))),
+      row(cell(p(t('B2')))),
+      row(cell(p(t('F')))),
+    )))
+  })
+
+  it('gives an empty cell one empty paragraph and keeps block content inside cells', () => {
+    expect(htmlToAdf('<table><tr><td></td><td><p>a</p><ul><li>b</li></ul></td></tr></table>'))
+      .toEqual(doc(table(row(
+        cell({ type: 'paragraph' }),
+        cell(p(t('a')), { type: 'bulletList', content: [{ type: 'listItem', content: [p(t('b'))] }] }),
+      ))))
+  })
+
+  it('flattens a nested table inside a cell to text', () => {
+    expect(htmlToAdf('<table><tr><td><table><tr><td>x</td><td>y</td></tr></table></td></tr></table>'))
+      .toEqual(doc(table(row(cell(p(t('x'), { type: 'hardBreak' }, t('y')))))))
+  })
+
+  it('drops a table with no rows', () => {
+    expect(htmlToAdf('<p>a</p><table></table>')).toEqual(doc(p(t('a'))))
   })
 
   it('wraps loose text in a paragraph', () => {
