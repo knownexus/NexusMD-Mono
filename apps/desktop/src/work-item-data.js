@@ -41,3 +41,9 @@ export function defaultCreateProvider({ readJson, adoAvailable, jiraAvailable })
   if (adoAvailable) return 'ado'
   return jiraAvailable ? 'jira' : 'ado'
 }
+
+export function adoWorkItemUrl(org, item) {
+  if (!org || !item?.project) return null
+  const proj = String(item.project).replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(proj)}/_workitems/edit/${item.id}`
+}

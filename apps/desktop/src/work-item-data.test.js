@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { JIRA_CACHE_KEY, ADO_CACHE_KEY, WORK_ITEM_STATUS_KEY } from '@nexusmd/core'
-import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider } from './work-item-data.js'
+import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider, adoWorkItemUrl } from './work-item-data.js'
 
 function storage(seed = {}) {
   const s = { ...seed }
@@ -43,6 +43,7 @@ describe('refreshProviders', () => {
       other: { configured: false, run: skipped },
     } })
     expect(ado).toHaveBeenCalled()
+    expect(jira).toHaveBeenCalled()
     expect(skipped).not.toHaveBeenCalled()
     expect(st._s[WORK_ITEM_STATUS_KEY]).toMatchObject({ ado: { status: 'ok' }, jira: { status: 'error', error: 'auth failed — check settings' } })
   })
@@ -76,5 +77,16 @@ describe('defaultCreateProvider', () => {
   it('falls back to whichever provider is available', () => {
     expect(defaultCreateProvider({ readJson: reader({ 'nexusmd.wi.createProvider': 'ado' }), adoAvailable: false, jiraAvailable: true })).toBe('jira')
     expect(defaultCreateProvider({ readJson: reader({ 'nexusmd.wi.createProvider': 'jira' }), adoAvailable: true, jiraAvailable: false })).toBe('ado')
+  })
+})
+
+describe('adoWorkItemUrl', () => {
+  it('title-cases the project and encodes it', () => {
+    expect(adoWorkItemUrl('org', { id: 1, project: 'my-proj-web' })).toBe('https://dev.azure.com/org/My%20Proj%20Web/_workitems/edit/1')
+  })
+  it('returns null without org or project', () => {
+    expect(adoWorkItemUrl('', { id: 1, project: 'p' })).toBeNull()
+    expect(adoWorkItemUrl('org', { id: 1 })).toBeNull()
+    expect(adoWorkItemUrl('org', null)).toBeNull()
   })
 })

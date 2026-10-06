@@ -31,7 +31,7 @@ import {
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraHttpAdapter, createJiraWorkItemSource } from './jira-client.js'
-import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider } from './work-item-data.js'
+import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider, adoWorkItemUrl } from './work-item-data.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
@@ -243,10 +243,7 @@ const desktopWorkItemSource = {
     return adoMoveToCategory({ item, category, meta, saveState: (state) => this.saveField(id, 'System.State', state) })
   },
   webUrl(item) {
-    const { org } = getAdoConfig()
-    if (!org || !item?.project) return null
-    const proj = String(item.project).replace(/-/g, ' ').replace(/w/g, c => c.toUpperCase())
-    return `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(proj)}/_workitems/edit/${item.id}`
+    return adoWorkItemUrl(getAdoConfig().org, item)
   },
 }
 
