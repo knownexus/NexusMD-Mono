@@ -29,7 +29,9 @@ function register(ipcMain, { fetchImpl = electronFetch } = {}) {
     // leaves Jira cookies that net.fetch would otherwise send. Cookie-authenticated
     // POSTs trip Jira's XSRF check (403 "XSRF check failed"); the no-check header
     // opts REST calls out of it, and credentials:'omit' keeps auth to the token.
-    const headers = { ...(req.headers || {}), 'X-Atlassian-Token': 'no-check' };
+    // net.fetch also sends Chromium's browser User-Agent, which makes Jira apply
+    // the XSRF check regardless, so identify as a non-browser client.
+    const headers = { ...(req.headers || {}), 'X-Atlassian-Token': 'no-check', 'User-Agent': 'NexusMD-Desktop' };
     let body = req.body;
     if (req.attachment) {
       const form = new FormData();

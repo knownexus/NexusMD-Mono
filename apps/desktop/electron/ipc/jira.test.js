@@ -39,7 +39,7 @@ describe('jira:request', () => {
     })
     expect(fetchImpl).toHaveBeenCalledWith('https://acme.atlassian.net/rest/api/3/search/jql', {
       method: 'POST',
-      headers: { Authorization: 'Basic x', 'Content-Type': 'application/json', 'X-Atlassian-Token': 'no-check' },
+      headers: { Authorization: 'Basic x', 'Content-Type': 'application/json', 'X-Atlassian-Token': 'no-check', 'User-Agent': 'NexusMD-Desktop' },
       redirect: 'error', credentials: 'omit', body: '{}',
       signal: expect.any(AbortSignal),
     })
@@ -57,6 +57,9 @@ describe('jira:request', () => {
     const [, opts] = fetchImpl.mock.calls[0]
     expect(opts.headers['X-Atlassian-Token']).toBe('no-check')
     expect(opts.credentials).toBe('omit')
+    // A browser-like User-Agent makes Jira apply its XSRF check to REST POSTs
+    // even with the no-check header; identify as a non-browser client instead.
+    expect(opts.headers['User-Agent']).toBe('NexusMD-Desktop')
   })
 
   it('blocks non-Jira URLs without fetching', async () => {
@@ -78,7 +81,7 @@ describe('jira:request', () => {
       attachment: { name: 'a.txt', type: 'text/plain', data: new TextEncoder().encode('hi').buffer },
     })
     const [, opts] = fetchImpl.mock.calls[0]
-    expect(opts.headers).toEqual({ 'X-Atlassian-Token': 'no-check' })
+    expect(opts.headers).toEqual({ 'X-Atlassian-Token': 'no-check', 'User-Agent': 'NexusMD-Desktop' })
     expect(opts.body).toBeInstanceOf(FormData)
     expect(opts.body.get('file').name).toBe('a.txt')
     expect(opts.redirect).toBe('error')
