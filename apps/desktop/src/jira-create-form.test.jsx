@@ -64,6 +64,18 @@ describe('JiraCreateForm', () => {
     expect(screen.queryByText('Create issue')).toBeNull()
   })
 
+  it('keeps entered values when re-rendered with the same source and new unrelated props', async () => {
+    const source = makeSource(FIELDS)
+    const { rerender } = render(<JiraCreateForm source={source} projectKeys={['ABC']} people={PEOPLE} site="s" onCreated={() => {}} />)
+    await waitFor(() => expect(source.getCreateFields).toHaveBeenCalledTimes(1))
+    fireEvent.change(screen.getByLabelText('Team *'), { target: { value: '7' } })
+    rerender(<JiraCreateForm source={source} projectKeys={['ABC']} people={[...PEOPLE, { accountId: 'u2', displayName: 'Sam Roe' }]} site="s" onCreated={() => {}} />)
+    await new Promise(r => setTimeout(r, 20))
+    expect(screen.getByLabelText('Team *').value).toBe('7')
+    expect(source.getCreateFields).toHaveBeenCalledTimes(1)
+    expect(source.getCreateTypes).toHaveBeenCalledTimes(1)
+  })
+
   it('reloads fields when the type changes', async () => {
     const source = makeSource(FIELDS)
     render(<JiraCreateForm source={source} projectKeys={['ABC']} people={[]} site="s" onCreated={() => {}} />)

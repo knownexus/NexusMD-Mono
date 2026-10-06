@@ -827,6 +827,11 @@ function App() {
     return () => clearInterval(tick)
   }, [refreshPaused, refreshInterval])
 
+  // One Jira source per Jira-active state: a new identity on every snapshot
+  // would make JiraCreateForm re-fetch create-meta and wipe the user's input.
+  const jiraActive = isJiraActive()
+  const jiraSource = React.useMemo(() => (jiraActive ? createJiraWorkItemSource() : null), [jiraActive])
+
   const nexusDataValue = React.useMemo(() => ({
     data:           snapshot,
     api:            { load: refreshAllData },
@@ -835,10 +840,10 @@ function App() {
     pushPref:       () => {},
     workItemSource: createRoutedWorkItemSource({
       ado: desktopWorkItemSource,
-      jira: isJiraActive() ? createJiraWorkItemSource() : null,
+      jira: jiraSource,
     }),
     buildSource:    desktopBuildSource,
-  }), [snapshot])
+  }), [snapshot, jiraSource])
 
   return (
     <NexusDataProvider value={nexusDataValue}>
@@ -1019,8 +1024,8 @@ function App() {
         project={getAdoConfig().projects || []}
         team={snapshot.TEAM || []}
         adoAvailable={isAdoConfigured()}
-        jira={isJiraActive() ? {
-          source: nexusDataValue.workItemSource.jira,
+        jira={jiraActive ? {
+          source: jiraSource,
           projectKeys: getJiraConfig().projectKeys,
           people: snapshot.JIRA_PEOPLE || [],
           site: getJiraConfig().site,
@@ -1028,7 +1033,7 @@ function App() {
         defaultProvider={defaultCreateProvider({
           readJson: (k, d) => { try { const v = localStorage.getItem(getProfileKey(k)); return v == null ? d : JSON.parse(v) } catch { return d } },
           adoAvailable: isAdoConfigured(),
-          jiraAvailable: isJiraActive(),
+          jiraAvailable: jiraActive,
         })}
         onProviderChange={(p) => { try { localStorage.setItem(getProfileKey('nexusmd.wi.createProvider'), JSON.stringify(p)) } catch {} }}
         onJiraCreated={(result) => {

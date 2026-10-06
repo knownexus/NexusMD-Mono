@@ -150,7 +150,7 @@ export function CreateWorkItemDrawer({
   }, [])
 
   React.useEffect(() => {
-    if (!open || !adoAvailable) return
+    if (!open || (!adoAvailable && jira)) return
     setWiTitle(initialTitle || '')
     setProject(projectsList[0] || '')
     setTypeRef(DEFAULT_TYPE_REF)
