@@ -829,6 +829,23 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
                   <option value="priority">Priority</option>
                   <option value="type">Type</option>
                 </select>
+                {grouping !== 'none' && (
+                  <>
+                    <button className="btn sm ghost" onClick={() => setCollapsed(c => {
+                      const n = { ...c };
+                      const keys = new Set(filtered.map(w =>
+                        grouping === 'assignee' ? (w.assignee || 'unassigned') :
+                        grouping === 'state'    ? w.state :
+                        grouping === 'project'  ? w.project :
+                        grouping === 'type'     ? (w.type || 'unknown') :
+                        `p${w.priority}`
+                      ));
+                      keys.forEach(k => { n[k] = true; });
+                      return n;
+                    })}><Icon name="chevron-right" size={12}/> Collapse all</button>
+                    <button className="btn sm ghost" onClick={() => setCollapsed({})}><Icon name="chevron-down" size={12}/> Expand all</button>
+                  </>
+                )}
               </div>
             )}
             {view === 'board' && (
@@ -936,24 +953,6 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
                      : getActiveLanes(boardColumnConfig, activeProject, PROJECTS, BOARD_LANES)}
                    newItemIds={newItemIds}/>
       }
-
-      {view === 'table' && grouping !== 'none' && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <button className="btn sm ghost" onClick={() => setCollapsed(c => {
-            const n = { ...c };
-            const keys = new Set(filtered.map(w =>
-              grouping === 'assignee' ? (w.assignee || 'unassigned') :
-              grouping === 'state'    ? w.state :
-              grouping === 'project'  ? w.project :
-              grouping === 'type'     ? (w.type || 'unknown') :
-              `p${w.priority}`
-            ));
-            keys.forEach(k => { n[k] = true; });
-            return n;
-          })}><Icon name="chevron-right" size={12}/> Collapse all</button>
-          <button className="btn sm ghost" onClick={() => setCollapsed({})}><Icon name="chevron-down" size={12}/> Expand all</button>
-        </div>
-      )}
 
       {/* Load more bar */}
       {paginated && (totalMatched === null || allItems.length < totalMatched) && (
