@@ -76,6 +76,11 @@ export function createRoutedWorkItemSource({ ado, jira = null }) {
     if (!s.moveToCategory) throw new Error('Moving between categories is not supported for this item')
     return s.moveToCategory(id, category, item)
   }
+  routed.moveToStatuses = async (id, statuses, item) => {
+    const s = pick(id)
+    if (!s.moveToStatuses) throw new Error('Moving between columns is not supported for this item')
+    return s.moveToStatuses(id, statuses, item)
+  }
   routed.availableTargetStates = async (id) => {
     const s = pick(id)
     return s.availableTargetStates ? s.availableTargetStates(id) : null

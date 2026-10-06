@@ -174,3 +174,8 @@ it('sets stateCategory to null when the new state has no known category', async 
   const [next] = setItems.mock.calls[0][0]([JIRA_ITEM])
   expect(next).toMatchObject({ state: 'In Progress', stateCategory: null })
 })
+
+it('shows a provider warning pill when the Jira board is unavailable', () => {
+  renderView({ providers: [{ id: 'ado', label: 'Azure DevOps', status: 'ok', error: null, warning: null }, { id: 'jira', label: 'Jira', status: 'ok', error: null, warning: 'Jira board unavailable — using status columns' }] })
+  expect(screen.getByText('Jira: Jira board unavailable — using status columns')).toBeTruthy()
+})

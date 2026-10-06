@@ -44,4 +44,13 @@ describe('createRoutedWorkItemSource', () => {
     expect(s.webUrl({ id: 7 })).toBeNull()
     expect(await s.availableTargetStates(7)).toBeNull()
   })
+
+  it('routes moveToStatuses to the item\'s provider and rejects when unsupported', async () => {
+    const jira = { ...fakeSource('jira'), moveToStatuses: vi.fn(async () => ({ state: 'Code Review', stateCategory: 'InProgress' })) }
+    const s = createRoutedWorkItemSource({ ado: fakeSource('ado'), jira })
+    expect(await s.moveToStatuses('jira:A-1', ['In Progress', 'Code Review'], { state: 'To Do' }))
+      .toEqual({ state: 'Code Review', stateCategory: 'InProgress' })
+    expect(jira.moveToStatuses).toHaveBeenCalledWith('jira:A-1', ['In Progress', 'Code Review'], { state: 'To Do' })
+    await expect(s.moveToStatuses(7, ['Done'], {})).rejects.toThrow('Moving between columns is not supported for this item')
+  })
 })

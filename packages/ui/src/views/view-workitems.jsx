@@ -264,12 +264,26 @@ export function WorkItemIdLink({ w, fontSize = 12 }) {
 }
 
 function ProviderStatusPills({ providers = [] }) {
-  return providers.filter(p => p.status === 'error' || p.status === 'stale').map(p => (
-    <span key={p.id} role="status" title={p.error || ''}
-      style={{ fontSize: 11.5, padding: '2px 8px', borderRadius: 999, border: '1px solid var(--danger)', color: 'var(--danger)', whiteSpace: 'nowrap' }}>
-      {p.label}: {p.error || 'load failed'}{p.status === 'stale' ? ' (showing cached)' : ''}
-    </span>
-  ));
+  const pills = [];
+  providers.forEach(p => {
+    if (p.status === 'error' || p.status === 'stale') {
+      pills.push(
+        <span key={`${p.id}:err`} role="status" title={p.error || ''}
+          style={{ fontSize: 11.5, padding: '2px 8px', borderRadius: 999, border: '1px solid var(--danger)', color: 'var(--danger)', whiteSpace: 'nowrap' }}>
+          {p.label}: {p.error || 'load failed'}{p.status === 'stale' ? ' (showing cached)' : ''}
+        </span>
+      );
+    }
+    if (p.warning) {
+      pills.push(
+        <span key={`${p.id}:warn`} role="status" title={p.warning}
+          style={{ fontSize: 11.5, padding: '2px 8px', borderRadius: 999, border: '1px solid var(--warning, var(--border))', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+          {p.label}: {p.warning}
+        </span>
+      );
+    }
+  });
+  return pills;
 }
 
 // ─── Shared select style for Group by controls ────────────────────────────────
