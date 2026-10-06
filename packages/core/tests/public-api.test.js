@@ -61,6 +61,21 @@ const EXPECTED = [
   'formatSqlValue', 'formatCondition',
   'buildSearchQuery', 'buildInsertQuery', 'buildUpdateQuery', 'buildDeleteQuery',
   'buildJoinQuery', 'buildAggregateQuery',
+  // Work items module (ADO + Jira merged)
+  'JIRA_ID_PREFIX', 'isJiraId', 'toJiraId', 'jiraKeyFromId', 'sourceOfId', 'displayIdOf',
+  'CATEGORY_LANES', 'CATEGORY_LABELS', 'itemCategory', 'adoStateForCategory',
+  'WORK_ITEM_STATUS_KEY', 'readProviderStatus', 'recordProviderStatus', 'describeProviderError',
+  'PROVIDER_LABELS', 'mergeTeam', 'mergeWorkItemData',
+  // Jira module
+  'normaliseSite', 'makeJiraConfig', 'makeJiraClient', 'JiraError', 'jiraErrorMessage',
+  'htmlToAdf',
+  'JIRA_CATEGORY_MAP', 'categoryOfJiraStatus', 'discoverFieldIds', 'fetchJiraMetadata', 'fillMetadataFromIssues', 'emptyJiraMeta',
+  'mapJiraIssue', 'mapResolvedJiraIssue', 'pickSprint',
+  'JIRA_CACHE_KEY', 'JIRA_BASE_FIELDS', 'buildActiveJql', 'buildResolvedJql', 'searchAllIssues', 'loadJiraData', 'loadCachedJiraData',
+  'loadJiraDetail', 'loadJiraComments', 'addJiraComment', 'loadJiraRawFields', 'buildJiraFieldsPayload',
+  'updateJiraIssue', 'listJiraTransitions', 'pickTransition', 'transitionJiraIssue', 'jiraPatchFromAdoField',
+  'classifyJiraField', 'normaliseCreateFields', 'layoutCreateFields', 'buildJiraCreatePayload',
+  'fetchJiraCreateTypes', 'fetchJiraCreateFields', 'fetchJiraLinkTypes', 'createJiraIssue',
 ].sort()
 
 describe('public API surface', () => {

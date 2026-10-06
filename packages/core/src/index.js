@@ -16,6 +16,8 @@ export {
 export { validateProfile, buildProfile, generateProfileId, CURRENT_PROFILE_VERSION } from './profiles/profile-schema.js'
 export { makeProfileKeys } from './profiles/profile-keys.js'
 export * from './modules/ado/index.js'
+export * from './modules/workitems/index.js'
+export * from './modules/jira/index.js'
 export { effectiveNeedsMe, effectiveTeamActivity } from './modules/pr/index.js'
 export { mergeTeamRoster, enrichTeamMember, enrichTeam } from './modules/team/index.js'
 export {
