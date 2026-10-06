@@ -8,7 +8,7 @@ import { Avatar, MenuButton, NotificationBanner, ProjectChip, TypeIcon, usePersi
 import { Icon } from '../icons.jsx';
 import { TriageExportButton, TriageStatusLine } from './triage.jsx';
 import { WorkItemDetail } from './work-item-detail.jsx';
-import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS, WI_TABLE_COLUMNS, indexPRsByWorkItem } from '@nexusmd/core';
+import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS, WI_TABLE_COLUMNS, indexPRsByWorkItem, CATEGORY_LANES, CATEGORY_LABELS, itemCategory, displayIdOf, isJiraId } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 import { toast } from '../toast.jsx';
 
@@ -239,6 +239,39 @@ function ActiveFilterChip({ label, onRemove, negated = false, icon }) {
     );
 }
 
+const SOURCE_LABELS = { ado: 'ADO', jira: 'Jira' };
+
+const adoItemUrl = (org, w) =>
+  `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(String(w.project || '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}/_workitems/edit/${w.id}`;
+
+// Id link for a work item: "#123" for ADO, "ABC-12" for Jira, with a source badge
+// when more than one provider is connected.
+export function WorkItemIdLink({ w, fontSize = 12 }) {
+  const { data: NexusMDData, workItemSource } = useNexusData();
+  const multi = (NexusMDData.WORK_ITEM_PROVIDERS || []).length > 1;
+  const url = workItemSource?.webUrl?.(w) || adoItemUrl(NexusMDData.ORG, w);
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      {multi && (
+        <span data-source={w.source || 'ado'} style={{ fontSize: 9.5, padding: '0 5px', borderRadius: 3, border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+          {SOURCE_LABELS[w.source || 'ado']}
+        </span>
+      )}
+      <a href={url} target="_blank" rel="noopener" onClick={e => e.stopPropagation()}
+        style={{ color: 'var(--accent)', textDecoration: 'none', fontFamily: 'var(--mono)', fontSize }}>{displayIdOf(w)}</a>
+    </span>
+  );
+}
+
+function ProviderStatusPills({ providers = [] }) {
+  return providers.filter(p => p.status === 'error' || p.status === 'stale').map(p => (
+    <span key={p.id} role="status" title={p.error || ''}
+      style={{ fontSize: 11.5, padding: '2px 8px', borderRadius: 999, border: '1px solid var(--danger)', color: 'var(--danger)', whiteSpace: 'nowrap' }}>
+      {p.label}: {p.error || 'load failed'}{p.status === 'stale' ? ' (showing cached)' : ''}
+    </span>
+  ));
+}
+
 // ─── Shared select style for Group by controls ────────────────────────────────
 const groupBySelectStyle = {
     height: 30,
@@ -286,19 +319,35 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   const [noTagsOnly,         setNoTagsOnly]         = usePersisted('nexusmd.wi.noTagsOnly',         false);
   const [showEmptyAssignees, setShowEmptyAssignees] = usePersisted('nexusmd.wi.showEmptyAssignees', false);
   const [boardColumnConfig,  setBoardColumnConfig]  = usePersisted('nexusmd.wi.boardColumns',       {});
+  const [displayMode, setDisplayMode] = usePersisted('nexusmd.wi.displayMode', 'merged');
+  const [sourceTab,   setSourceTab]   = usePersisted('nexusmd.wi.sourceTab',   'ado');
 
   const { PROJECTS, STATES } = NexusMDData;
   const TEAM = teamProp || NexusMDData.TEAM || [];
 
   const prIndex = useMemoW(() => indexPRsByWorkItem(NexusMDData.PRS || []), [NexusMDData.PRS]);
 
+  const providers = NexusMDData.WORK_ITEM_PROVIDERS || [];
+  const multiProvider = providers.length > 1;
+  const separate = multiProvider && displayMode === 'separate';
+  const activeSource = separate ? (providers.some(p => p.id === sourceTab) ? sourceTab : providers[0].id) : null;
+  const laneMode = multiProvider && !separate ? 'category' : 'state';
+  const sourceItems = useMemoW(
+    () => (activeSource ? items.filter(i => (i.source || 'ado') === activeSource) : items),
+    [items, activeSource],
+  );
+  const jiraLanes = useMemoW(() => {
+    const fromMeta = [...new Set(Object.values(NexusMDData.WI_TYPE_STATES_BY_SOURCE?.jira || {}).flat())];
+    return fromMeta.length ? fromMeta : [...new Set(sourceItems.map(w => w.state).filter(Boolean))];
+  }, [NexusMDData.WI_TYPE_STATES_BY_SOURCE, sourceItems]);
+
   // Merged view: prop items (initial load + background refresh) + any extra pages loaded,
-  // each annotated with its real linked-PR count.
+  // each annotated with its real linked-PR count. In separate mode, only the active source.
   const allItems = useMemoW(() => {
-    const seen = new Set(items.map(i => i.id));
-    const merged = [...items, ...extraItems.filter(i => !seen.has(i.id))];
+    const seen = new Set(sourceItems.map(i => i.id));
+    const merged = [...sourceItems, ...extraItems.filter(i => !seen.has(i.id))];
     return merged.map(i => ({ ...i, prs: prIndex.get(i.id)?.length ?? 0 }));
-  }, [items, extraItems, prIndex]);
+  }, [sourceItems, extraItems, prIndex]);
 
   const KNOWN_TYPES = ['bug', 'feature', 'task', 'story', 'spike', 'epic'];
   const typeFilterOptions = useMemoW(() => {
@@ -603,6 +652,15 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
           </div>
         </div>
         <div className="page-head-actions">
+          {multiProvider && (
+            <div role="group" aria-label="Display mode" style={{ display: 'flex', background: 'var(--surface-2)', borderRadius: 6, padding: 2 }}>
+              {[['merged', 'Merged'], ['separate', 'Separate']].map(([v, l]) => (
+                <button key={v} className="btn sm ghost" aria-pressed={displayMode === v} onClick={() => setDisplayMode(v)}
+                  style={displayMode === v ? { background: 'var(--surface)', boxShadow: 'var(--shadow-sm)' } : null}>{l}</button>
+              ))}
+            </div>
+          )}
+          <ProviderStatusPills providers={providers} />
           <div style={{ display: 'flex', background: 'var(--surface-2)', borderRadius: 6, padding: 2 }}>
             <button className="btn sm ghost" onClick={() => setView('table')} style={view === 'table' ? { background: 'var(--surface)', boxShadow: 'var(--shadow-sm)' } : null}><Icon name="list" size={14}/> Table</button>
             <button className="btn sm ghost" onClick={() => setView('board')} style={view === 'board' ? { background: 'var(--surface)', boxShadow: 'var(--shadow-sm)' } : null}><Icon name="board" size={14}/> Board</button>
@@ -612,6 +670,18 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
           <button className="btn sm primary" onClick={onCreate}><Icon name="plus" size={13}/> New work item</button>
         </div>
       </div>
+
+      {separate && (
+        <div role="tablist" aria-label="Work item source" style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+          {providers.map(p => (
+            <button key={p.id} role="tab" aria-selected={activeSource === p.id} className="btn sm ghost"
+              onClick={() => setSourceTab(p.id)}
+              style={activeSource === p.id ? { background: 'var(--accent-soft)', color: 'var(--accent)' } : null}>
+              {p.label} <span className="muted mono" style={{ fontSize: 11 }}>{items.filter(i => (i.source || 'ado') === p.id).length}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {initialNewCount > 0 && !bannerDismissed && (
         <NotificationBanner
@@ -850,7 +920,11 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
                    updateItem={updateItem} onOpen={onOpen} team={TEAM} newItemIds={newItemIds}/>
         : <WIBoard items={filtered} updateItem={updateItem} moveState={moveState}
                    onOpen={onOpen} grouping={boardGrouping} team={TEAM} showEmptyAssignees={showEmptyAssignees}
-                   lanes={getActiveLanes(boardColumnConfig, activeProject, PROJECTS, BOARD_LANES)} newItemIds={newItemIds}/>
+                   laneMode={laneMode}
+                   lanes={laneMode === 'category' ? CATEGORY_LANES
+                     : activeSource === 'jira' ? jiraLanes
+                     : getActiveLanes(boardColumnConfig, activeProject, PROJECTS, BOARD_LANES)}
+                   newItemIds={newItemIds}/>
       }
 
       {view === 'table' && grouping !== 'none' && (
@@ -1148,9 +1222,11 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
 
   const onDropState = async (state) => {
     if (!tableDragId) return;
-    updateItem(tableDragId, { state });
-    await patchWI(tableDragId, [['/fields/System.State', state]]);
+    const id = tableDragId;
+    const prev = items.find(w => w.id === id);
     setTableDragId(null);
+    updateItem(id, { state });
+    if (!(await patchWI(id, [['/fields/System.State', state]])) && prev) updateItem(id, { state: prev.state });
   };
 
   const onDropAssignee = async (assigneeId) => {
@@ -1224,7 +1300,7 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
     switch (key) {
       case 'id': return (
         <td key="id" className="id" onClick={e=>e.stopPropagation()}>
-          <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(w.project.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase()))}/_workitems/edit/${w.id}`} target="_blank" rel="noopener" style={{color:'var(--accent)',textDecoration:'none',fontFamily:'var(--mono)',fontSize:12}}>#{w.id}</a>
+          <WorkItemIdLink w={w} />
           {newItemIds.has(w.id) && <span style={{ fontSize:9, fontWeight:700, background:'var(--accent)', color:'var(--accent-fg)', padding:'1px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:'0.05em', marginLeft:6 }}>New</span>}
         </td>);
       case 'type': return <td key="type"><TypeIcon type={w.type}/></td>;
@@ -1339,12 +1415,23 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
             ));
           }}
           onMarkDone={async () => {
-            const selectedIds = Array.from(selection);
-            selectedIds.forEach(id => updateItem(id, { state:'Done' }));
+            const selected = items.filter(w => selection.has(w.id));
             setSelection(new Set());
-            await Promise.all(selectedIds.map(id =>
-              patchWI(id, [['/fields/System.State', 'Done']])
-            ));
+            const failures = [];
+            await Promise.all(selected.map(async w => {
+              try {
+                if (workItemSource?.moveToCategory) {
+                  const r = await workItemSource.moveToCategory(w.id, 'Completed', w);
+                  updateItem(w.id, { state: r.state, stateCategory: r.stateCategory });
+                } else {
+                  updateItem(w.id, { state: 'Done' });
+                  if (!(await patchWI(w.id, [['/fields/System.State', 'Done']]))) failures.push(`${displayIdOf(w)}: save failed`);
+                }
+              } catch (e) {
+                failures.push(`${displayIdOf(w)}: ${e?.message || 'failed'}`);
+              }
+            }));
+            if (failures.length) toast?.(`✗ ${failures.length} of ${selected.length} not marked done — ${failures.join('; ')}`, 'error');
           }}
         />
       )}
@@ -1399,6 +1486,9 @@ const BOARD_LANE_COLORS = {
   'Resolved':    'var(--success)',
   'Done':        'var(--success)',
   'Closed':      'var(--text-subtle)',
+  'Proposed':    'var(--text-muted)',
+  'InProgress':  'var(--info)',
+  'Completed':   'var(--success)',
 };
 const laneColor = (state) => BOARD_LANE_COLORS[state] || 'var(--text-muted)';
 
@@ -1410,7 +1500,7 @@ const PRIORITY_LABELS = { 1: 'Critical', 2: 'High', 3: 'Medium', 4: 'Low' };
 // ── DragContextBar ─────────────────────────────────────────
 // Springs up from the bottom when a card is being dragged.
 // Drop on a state pill → change state. Drop on an avatar → reassign.
-function DragContextBar({ visible, team, onDropState, onDropAssignee, lanes = BOARD_LANES }) {
+function DragContextBar({ visible, team, onDropState, onDropAssignee, lanes = BOARD_LANES, laneLabel = (s) => s }) {
   const [hovered, setHovered] = React.useState(null);
 
   React.useEffect(() => { if (!visible) setHovered(null); }, [visible]);
@@ -1465,7 +1555,7 @@ function DragContextBar({ visible, team, onDropState, onDropAssignee, lanes = BO
             }}
           >
             <span style={{ width: 5, height: 5, borderRadius: '50%', background: col, flexShrink: 0 }} />
-            {state}
+            {laneLabel(state)}
           </div>
         );
       })}
@@ -1542,7 +1632,7 @@ function personColor(id) {
   return `oklch(0.75 0.1 ${hue})`;
 }
 
-function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], isNew = false }) {
+function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], isNew = false, showState = false }) {
   const { data: NexusMDData } = useNexusData();
   const [cfg] = usePersisted('nexusmd.fields.wiCard', []);
   const resolved = resolveFields(WI_CARD_FIELDS, cfg).filter(f => f.visible);
@@ -1599,9 +1689,8 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
     >
       <div className="board-card-head">
         <TypeIcon type={w.type}/>
-        <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(w.project.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase()))}/_workitems/edit/${w.id}`}
-              target="_blank" rel="noopener" onClick={e=>e.stopPropagation()}
-              style={{color:'var(--accent)',textDecoration:'none',fontSize:11.5,fontFamily:'var(--mono)'}}>#{w.id}</a>
+        <WorkItemIdLink w={w} fontSize={11.5} />
+        {showState && <span className="muted" style={{ fontSize: 10.5 }}>{w.state}</span>}
         {isNew && <span style={{ fontSize:9, fontWeight:700, background:'var(--accent)', color:'var(--accent-fg)', padding:'1px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:'0.05em', flexShrink:0 }}>New</span>}
 
         <span className="spacer"/>
@@ -1634,11 +1723,15 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
   );
 }
 
-function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes = BOARD_LANES, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], newItemIds = new Set() }) {
+function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes = BOARD_LANES, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], newItemIds = new Set(), laneMode = 'state', reachable = null }) {
   return (
     <div className="board">
       {lanes.map(state => {
-        const laneItems = items.filter(w => w.state === state || adoStateToNexusMD(w.state) === state);
+        const laneItems = laneMode === 'category'
+          ? items.filter(w => itemCategory(w) === state)
+          : items.filter(w => w.state === state || adoStateToNexusMD(w.state) === state);
+        const laneLabel = laneMode === 'category' ? CATEGORY_LABELS[state] : state;
+        const dimmed = !!reachable && !reachable.has(state);
         const isOver = overKey === `${groupKey}::${state}`;
         return (
           <div
@@ -1646,11 +1739,14 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
             className="lane"
             onDragOver={e => { e.preventDefault(); onLaneOver(`${groupKey}::${state}`); }}
             onDrop={e => { e.preventDefault(); onLaneDrop(state, groupKey); }}
-            style={isOver ? { background: 'var(--accent-soft)', borderColor: 'var(--accent-border)' } : null}
+            style={{
+              ...(isOver ? { background: 'var(--accent-soft)', borderColor: 'var(--accent-border)' } : {}),
+              ...(dimmed ? { opacity: 0.4 } : {}),
+            }}
           >
             <div className="lane-head">
               <span className="lane-dot" style={{ background: laneColor(state) }}/>
-              <h4>{state}</h4>
+              <h4>{laneLabel}</h4>
               <span className="count">{laneItems.length}</span>
               <span className="add" title="Add item"><Icon name="plus" size={12}/></span>
             </div>
@@ -1669,6 +1765,7 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
                   grouping={grouping}
                   projects={projects}
                   isNew={newItemIds.has(w.id)}
+                  showState={laneMode === 'category'}
                 />
               ))}
               {laneItems.length === 0 && (
@@ -1690,7 +1787,7 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
   );
 }
 
-function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team = [], showEmptyAssignees = false, lanes = BOARD_LANES, newItemIds = new Set() }) {
+function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team = [], showEmptyAssignees = false, lanes = BOARD_LANES, newItemIds = new Set(), laneMode = 'state' }) {
   const { data: NexusMDData, workItemSource } = useNexusData();
   const [dragId,    setDragId]    = useStateW(null);
   const [overKey,   setOverKey]   = useStateW(null);
@@ -1734,32 +1831,73 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
     return arr;
   }, [items, grouping, team, PROJECTS, showEmptyAssignees]);
 
-  const onDragStart = (id) => setDragId(id);
-  const onDragEnd   = () => { setDragId(null); setOverKey(null); };
+  const [reachable, setReachable] = useStateW(null);
+  const dragRef = React.useRef(null);
+
+  // On a state-lane board, dim columns a Jira item's workflow can't reach.
+  const onDragStart = (id) => {
+    setDragId(id);
+    dragRef.current = id;
+    setReachable(null);
+    if (laneMode === 'state' && isJiraId(id) && workItemSource?.availableTargetStates) {
+      const current = items.find(w => w.id === id)?.state;
+      workItemSource.availableTargetStates(id)
+        .then(states => { if (states && dragRef.current === id) setReachable(new Set([...states, current])); })
+        .catch(() => {});
+    }
+  };
+  const endDrag = () => { setDragId(null); setOverKey(null); setReachable(null); dragRef.current = null; };
+  const onDragEnd = endDrag;
   const onLaneOver  = (key) => setOverKey(key);
+
+  const moveToCategory = async (id, category) => {
+    const item = items.find(w => w.id === id);
+    if (!item || itemCategory(item) === category) return;
+    if (!workItemSource?.moveToCategory) { toast?.('✗ Moving between categories is not supported here', 'error'); return; }
+    try {
+      const r = await workItemSource.moveToCategory(id, category, item);
+      updateItem(id, { state: r.state, stateCategory: r.stateCategory });
+    } catch (e) {
+      toast?.('✗ ' + (e?.message || 'Move failed'), 'error');
+    }
+  };
 
   // Drop on a lane column — also updates grouping field when card crosses swimlanes
   const onLaneDrop = async (state, groupKey) => {
     if (dragId == null) return;
+    const id = dragId;
+    const prev = items.find(w => w.id === id);
+    endDrag();
+    const assigneeChange = grouping === 'assignee' && groupKey && groupKey !== '__all__';
+    const assigneeId = assigneeChange ? (groupKey === 'unassigned' ? null : groupKey) : undefined;
+    const member = assigneeChange ? team.find(t => t.id === assigneeId) : null;
+    if (laneMode === 'category') {
+      await moveToCategory(id, state);
+      if (assigneeChange && prev?.assignee !== assigneeId) {
+        updateItem(id, { assignee: assigneeId });
+        if (!(await patchWI(id, [['/fields/System.AssignedTo', member?.name || null]]))) updateItem(id, { assignee: prev?.assignee ?? null });
+      }
+      return;
+    }
     const patches = [['/fields/System.State', state]];
     const updates = { state };
-    if (grouping === 'assignee' && groupKey && groupKey !== '__all__') {
-      const assigneeId = groupKey === 'unassigned' ? null : groupKey;
-      const member = team.find(t => t.id === assigneeId);
+    if (assigneeChange) {
       patches.push(['/fields/System.AssignedTo', member?.name || null]);
       updates.assignee = assigneeId;
     }
-    updateItem(dragId, updates);
-    await patchWI(dragId, patches);
-    setDragId(null); setOverKey(null);
+    updateItem(id, updates);
+    if (!(await patchWI(id, patches)) && prev) updateItem(id, { state: prev.state, assignee: prev.assignee });
   };
 
   // Drop on the context bar — state target
   const onDropState = async (state) => {
     if (dragId == null) return;
-    moveState(dragId, state);
-    await patchWI(dragId, [['/fields/System.State', state]]);
-    setDragId(null); setOverKey(null);
+    const id = dragId;
+    const prev = items.find(w => w.id === id);
+    endDrag();
+    if (laneMode === 'category') { await moveToCategory(id, state); return; }
+    moveState(id, state);
+    if (!(await patchWI(id, [['/fields/System.State', state]])) && prev) updateItem(id, { state: prev.state });
   };
 
   // Drop on the context bar — assignee target
@@ -1768,7 +1906,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
     const member = team.find(t => t.id === assigneeId);
     updateItem(dragId, { assignee: assigneeId || null });
     await patchWI(dragId, [['/fields/System.AssignedTo', member?.name || null]]);
-    setDragId(null); setOverKey(null);
+    endDrag();
   };
 
   const toggleCollapsed = (key) => setCollapsed(c => ({ ...c, [key]: !c[key] }));
@@ -1784,7 +1922,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
     await patchWI(id, [['/fields/System.Tags', newTags.join('; ')]]);
   };
 
-  const laneProps = { dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes, team, onAssign: onAssignCard, onTagsChange: onTagsCard, grouping, projects: PROJECTS, newItemIds };
+  const laneProps = { dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes, team, onAssign: onAssignCard, onTagsChange: onTagsCard, grouping, projects: PROJECTS, newItemIds, laneMode, reachable };
 
   const boardContent = grouping === 'none' ? (
     <BoardLanes items={items} groupKey="__all__" {...laneProps} />
@@ -1843,6 +1981,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
         visible={dragId != null}
         team={team}
         lanes={lanes}
+        laneLabel={laneMode === 'category' ? (s => CATEGORY_LABELS[s]) : undefined}
         onDropState={onDropState}
         onDropAssignee={onDropAssignee}
       />
