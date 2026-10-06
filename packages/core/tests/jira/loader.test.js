@@ -92,12 +92,55 @@ describe('loadJiraData', () => {
     expect(data.RESOLVED_WI).toEqual([expect.objectContaining({ id: 'jira:ABC-9', closedDate: 'r' })])
   })
 
+  const PRIOR_META = {
+    types: ['Epic'], typeStates: {}, stateCategoryByName: {}, states: [],
+    priorities: [{ id: '1', name: 'High', rank: 1 }], fieldIds: {}, me: null,
+    people: [{ id: 'p1', accountId: 'p1', name: 'Pat' }],
+  }
+  const fetchedMeta = (http) => http.fetch.mock.calls.some(([p]) => p.includes('/statuses'))
+
   it('reuses prior metadata on refresh', async () => {
     const http = makeHttp()
-    const priorMeta = { types: ['Epic'], typeStates: {}, stateCategoryByName: {}, states: [], priorities: [], fieldIds: {}, me: null, people: [] }
-    const data = await loadJiraData(CONFIG, { http, storage: makeStorage() }, { isRefresh: true, priorData: { _jiraMeta: priorMeta } })
+    const data = await loadJiraData(CONFIG, { http, storage: makeStorage() }, { isRefresh: true, priorData: { PROJECT_KEYS: ['ABC'], _jiraMeta: PRIOR_META } })
     expect(data.TYPES).toEqual(['Epic'])
-    expect(http.fetch.mock.calls.some(([p]) => p.includes('/statuses'))).toBe(false)
+    expect(fetchedMeta(http)).toBe(false)
+  })
+
+  it('stores a sorted copy of the configured project keys', async () => {
+    const config = { ...CONFIG, projectKeys: ['ZED', 'ABC'] }
+    const data = await loadJiraData(config, { http: makeHttp(), storage: makeStorage() })
+    expect(data.PROJECT_KEYS).toEqual(['ABC', 'ZED'])
+    expect(config.projectKeys).toEqual(['ZED', 'ABC'])
+  })
+
+  it('refetches metadata on refresh when the configured project keys changed', async () => {
+    const http = makeHttp()
+    const data = await loadJiraData({ ...CONFIG, projectKeys: ['ABC', 'DEF'] }, { http, storage: makeStorage() },
+      { isRefresh: true, priorData: { PROJECT_KEYS: ['ABC'], _jiraMeta: PRIOR_META } })
+    expect(fetchedMeta(http)).toBe(true)
+    expect(data.TYPES).toEqual(['Story'])
+  })
+
+  it('refetches metadata on refresh when the prior data has no PROJECT_KEYS', async () => {
+    const http = makeHttp()
+    await loadJiraData(CONFIG, { http, storage: makeStorage() }, { isRefresh: true, priorData: { _jiraMeta: PRIOR_META } })
+    expect(fetchedMeta(http)).toBe(true)
+  })
+
+  it('treats project keys in a different order as unchanged', async () => {
+    const http = makeHttp()
+    await loadJiraData({ ...CONFIG, projectKeys: ['DEF', 'ABC'] }, { http, storage: makeStorage() },
+      { isRefresh: true, priorData: { PROJECT_KEYS: ['ABC', 'DEF'], _jiraMeta: PRIOR_META } })
+    expect(fetchedMeta(http)).toBe(false)
+  })
+
+  it('refetches metadata on refresh when prior people or priorities are empty', async () => {
+    for (const patch of [{ people: [] }, { priorities: [] }, { people: undefined }]) {
+      const http = makeHttp()
+      await loadJiraData(CONFIG, { http, storage: makeStorage() },
+        { isRefresh: true, priorData: { PROJECT_KEYS: ['ABC'], _jiraMeta: { ...PRIOR_META, ...patch } } })
+      expect(fetchedMeta(http)).toBe(true)
+    }
   })
 
   it('throws when the active search fails so the caller can keep the cache', async () => {

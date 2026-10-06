@@ -58,14 +58,26 @@ function deriveJiraProjects(items) {
   }))
 }
 
+// A refresh reuses the cached metadata only while it still describes the configured
+// projects and is complete; otherwise new projects, people or priorities would never
+// be picked up. `projectKeys` is already sorted.
+function canReuseMeta(isRefresh, priorData, projectKeys) {
+  const meta = priorData?._jiraMeta
+  if (!isRefresh || !meta) return false
+  const prior = Array.isArray(priorData.PROJECT_KEYS) ? [...priorData.PROJECT_KEYS].sort() : null
+  if (!prior || prior.length !== projectKeys.length || prior.some((k, i) => k !== projectKeys[i])) return false
+  return !!(meta.people?.length && meta.priorities?.length)
+}
+
 export async function loadJiraData(config, { http, storage, sleep } = {}, { isRefresh = false, priorData = null } = {}) {
   if (!config?.site) throw new Error('loadJiraData: config.site is required')
   if (!http) throw new Error('loadJiraData: http adapter is required')
 
   const client = makeJiraClient(http, sleep ? { sleep } : undefined)
   const keys = config.projectKeys || []
+  const projectKeys = [...keys].sort()
 
-  let meta = isRefresh && priorData?._jiraMeta ? priorData._jiraMeta : await fetchJiraMetadata(client, keys)
+  let meta = canReuseMeta(isRefresh, priorData, projectKeys) ? priorData._jiraMeta : await fetchJiraMetadata(client, keys)
   const fields = [...JIRA_BASE_FIELDS, ...Object.values(meta.fieldIds || {}).filter(Boolean)]
 
   const [active, resolved] = await Promise.all([
@@ -79,6 +91,7 @@ export async function loadJiraData(config, { http, storage, sleep } = {}, { isRe
 
   const data = {
     SITE: config.site,
+    PROJECT_KEYS: projectKeys,
     WORK_ITEMS: items,
     PROJECTS: deriveJiraProjects(items),
     TYPES: meta.types,
