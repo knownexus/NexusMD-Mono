@@ -329,6 +329,8 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
 
   const providers = NexusMDData.WORK_ITEM_PROVIDERS || [];
   const multiProvider = providers.length > 1;
+  // Jira-only profiles need the pills too, or a failed load is invisible; ADO-only sees none.
+  const showProviderPills = providers.some(p => p.id === 'jira');
   const separate = multiProvider && displayMode === 'separate';
   const activeSource = separate ? (providers.some(p => p.id === sourceTab) ? sourceTab : providers[0].id) : null;
   const laneMode = multiProvider && !separate ? 'category' : 'state';
@@ -616,7 +618,11 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   }, [allItems]);
 
   // ─ change handlers
-  const updateItem = (id, patch) => setItems(arr => arr.map(w => w.id === id ? { ...w, ...patch } : w));
+  // A state change without an explicit category keeps stateCategory in step with it.
+  const withStateCategory = (w, patch) => (('state' in patch) && !('stateCategory' in patch)
+    ? { ...patch, stateCategory: NexusMDData.STATE_CATEGORIES_BY_SOURCE?.[w.source || 'ado']?.[patch.state] ?? null }
+    : patch);
+  const updateItem = (id, patch) => setItems(arr => arr.map(w => w.id === id ? { ...w, ...withStateCategory(w, patch) } : w));
   const moveState = (id, newState) => updateItem(id, { state: newState });
   const cycleTag = (tag) => {
     setNoTagsOnly(false);
@@ -664,7 +670,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
               ))}
             </div>
           )}
-          {multiProvider && <ProviderStatusPills providers={providers} />}
+          {showProviderPills && <ProviderStatusPills providers={providers} />}
           <div style={{ display: 'flex', background: 'var(--surface-2)', borderRadius: 6, padding: 2 }}>
             <button className="btn sm ghost" onClick={() => setView('table')} style={view === 'table' ? { background: 'var(--surface)', boxShadow: 'var(--shadow-sm)' } : null}><Icon name="list" size={14}/> Table</button>
             <button className="btn sm ghost" onClick={() => setView('board')} style={view === 'board' ? { background: 'var(--surface)', boxShadow: 'var(--shadow-sm)' } : null}><Icon name="board" size={14}/> Board</button>

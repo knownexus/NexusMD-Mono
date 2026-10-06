@@ -136,3 +136,41 @@ it('does not sync Jira states or projects into ADO board columns when multiple p
   expect(JSON.stringify(cfg)).not.toContain('Selected for Development')
   expect(cfg.abc).toBeUndefined()
 })
+
+it('shows the provider status pill for a Jira-only profile whose load failed', () => {
+  renderView({ items: [], providers: [{ id: 'jira', label: 'Jira', status: 'error', error: 'auth failed — check settings' }] })
+  expect(screen.getByRole('status').textContent).toBe('Jira: auth failed — check settings')
+})
+
+it('recomputes stateCategory when a state-lane drop changes an item\'s state', async () => {
+  const setItems = vi.fn()
+  renderView({
+    setItems,
+    seed: { 'nexusmd.wi.displayMode': '"separate"', 'nexusmd.wi.sourceTab': '"jira"' },
+    data: { STATE_CATEGORIES_BY_SOURCE: { ado: {}, jira: { 'To Do': 'Proposed', 'In Progress': 'InProgress', Done: 'Completed' } } },
+  })
+  const card = screen.getByText('Jira story').closest('.board-card')
+  const lane = screen.getAllByText('In Progress').map(n => n.closest('.lane')).find(Boolean)
+  fireEvent.dragStart(card, { dataTransfer: { setData: () => {} } })
+  fireEvent.drop(lane, { dataTransfer: {} })
+  await waitFor(() => expect(setItems).toHaveBeenCalled())
+  const updater = setItems.mock.calls[0][0]
+  const [next] = updater([JIRA_ITEM])
+  expect(next).toMatchObject({ state: 'In Progress', stateCategory: 'InProgress' })
+})
+
+it('sets stateCategory to null when the new state has no known category', async () => {
+  const setItems = vi.fn()
+  renderView({
+    setItems,
+    seed: { 'nexusmd.wi.displayMode': '"separate"', 'nexusmd.wi.sourceTab': '"jira"' },
+    data: { STATE_CATEGORIES_BY_SOURCE: { ado: {}, jira: {} } },
+  })
+  const card = screen.getByText('Jira story').closest('.board-card')
+  const lane = screen.getAllByText('In Progress').map(n => n.closest('.lane')).find(Boolean)
+  fireEvent.dragStart(card, { dataTransfer: { setData: () => {} } })
+  fireEvent.drop(lane, { dataTransfer: {} })
+  await waitFor(() => expect(setItems).toHaveBeenCalled())
+  const [next] = setItems.mock.calls[0][0]([JIRA_ITEM])
+  expect(next).toMatchObject({ state: 'In Progress', stateCategory: null })
+})
