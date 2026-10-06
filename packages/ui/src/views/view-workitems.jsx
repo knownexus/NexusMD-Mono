@@ -13,24 +13,30 @@ import { useNexusData } from '../data-context.jsx';
 import { toast } from '../toast.jsx';
 
 // Persist work-item field changes. Desktop hosts inject workItemSource (writes
-// straight to ADO); legacy web hosts hit /api/workitems/:id. `ops` is a list of
-// [ '/fields/<Field>', value ] pairs. Surfacing save failures via toast (rather
-// than swallowing them) keeps optimistic edits from silently not persisting.
+// straight to ADO or Jira, routed by id); legacy web hosts hit /api/workitems/:id.
+// `ops` is a list of [ '/fields/<Field>', value ] pairs. Failures are toasted and
+// reported as `false` so callers can roll back their optimistic edit.
 export async function patchWorkItem(workItemSource, id, ops) {
   if (workItemSource?.saveField) {
     try {
       for (const [path, value] of ops) {
         await workItemSource.saveField(id, path.replace('/fields/', ''), value ?? '');
       }
+      return true;
     } catch (e) {
       toast?.('✗ ' + (e?.message || 'Save failed'), 'error');
+      return false;
     }
-    return;
   }
-  return fetch(`/api/workitems/${id}`, {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(ops.map(([path, value]) => ({ op: 'add', path, value }))),
-  }).catch(() => {});
+  try {
+    await fetch(`/api/workitems/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ops.map(([path, value]) => ({ op: 'add', path, value }))),
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export const WI_TYPE_STATES_CACHE_KEY = 'nexusmd.wi.wiTypeStates.cache';

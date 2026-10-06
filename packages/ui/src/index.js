@@ -89,6 +89,7 @@ export {
 // Shared triage controls + work-item detail panel (used by the views below).
 export { TriageEvents, TriageExportButton, TriageStatusLine, TriageExportModal } from './views/triage.jsx'
 export { WorkItemDetail, WorkItemFieldsEditor } from './views/work-item-detail.jsx'
+export { createRoutedWorkItemSource } from './views/work-item-source.js'
 export { apiBuildSource } from './views/build-source.js'
 export { BuildDetail } from './views/build-detail.jsx'
 export { TagInput, AreaTreePicker } from './views/wi-field-pickers.jsx'

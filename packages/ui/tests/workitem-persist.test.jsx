@@ -39,3 +39,8 @@ it('falls back to the /api/workitems web endpoint when no workItemSource is inje
   await patchWorkItem(undefined, 7, [['/fields/System.State', 'Done']])
   expect(fetchSpy).toHaveBeenCalledWith('/api/workitems/7', expect.objectContaining({ method: 'PATCH' }))
 })
+
+it('returns true on success and false after a failure', async () => {
+  expect(await patchWorkItem({ saveField: vi.fn().mockResolvedValue() }, 7, [['/fields/System.State', 'Done']])).toBe(true)
+  expect(await patchWorkItem({ saveField: vi.fn().mockRejectedValue(new Error('nope')) }, 7, [['/fields/System.State', 'Done']])).toBe(false)
+})
