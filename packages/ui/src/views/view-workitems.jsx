@@ -8,7 +8,7 @@ import { Avatar, MenuButton, NotificationBanner, ProjectChip, TypeIcon, usePersi
 import { Icon } from '../icons.jsx';
 import { TriageExportButton, TriageStatusLine } from './triage.jsx';
 import { WorkItemDetail } from './work-item-detail.jsx';
-import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS, WI_TABLE_COLUMNS, indexPRsByWorkItem, CATEGORY_LANES, CATEGORY_LABELS, itemCategory, displayIdOf, isJiraId } from '@nexusmd/core';
+import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS, WI_TABLE_COLUMNS, indexPRsByWorkItem, CATEGORY_LANES, CATEGORY_LABELS, itemCategory, displayIdOf, isJiraId, jiraColumnForStatus } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 import { toast } from '../toast.jsx';
 
@@ -347,7 +347,11 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   const showProviderPills = providers.some(p => p.id === 'jira');
   const separate = multiProvider && displayMode === 'separate';
   const activeSource = separate ? (providers.some(p => p.id === sourceTab) ? sourceTab : providers[0].id) : null;
-  const laneMode = multiProvider && !separate ? 'category' : 'state';
+  const boardColumns = Array.isArray(NexusMDData.JIRA_BOARD_COLUMNS) && NexusMDData.JIRA_BOARD_COLUMNS.length
+    ? NexusMDData.JIRA_BOARD_COLUMNS : null;
+  const jiraOnly = providers.length === 1 && providers[0].id === 'jira';
+  const jiraTab = activeSource === 'jira' || jiraOnly;
+  const laneMode = jiraTab && boardColumns ? 'jira-columns' : (multiProvider && !separate ? 'category' : 'state');
   const sourceItems = useMemoW(
     () => (activeSource ? items.filter(i => (i.source || 'ado') === activeSource) : items),
     [items, activeSource],
@@ -356,6 +360,12 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
     const fromMeta = [...new Set(Object.values(NexusMDData.WI_TYPE_STATES_BY_SOURCE?.jira || {}).flat())];
     return fromMeta.length ? fromMeta : [...new Set(sourceItems.map(w => w.state).filter(Boolean))];
   }, [NexusMDData.WI_TYPE_STATES_BY_SOURCE, sourceItems]);
+  const jiraColumnLanes = useMemoW(() => {
+    if (!boardColumns) return [];
+    const names = boardColumns.map(c => c.name);
+    const hasOther = sourceItems.some(w => !jiraColumnForStatus(boardColumns, w.state));
+    return hasOther ? [...names, '__other__'] : names;
+  }, [boardColumns, sourceItems]);
 
   // Merged view: prop items (initial load + background refresh) + any extra pages loaded,
   // each annotated with its real linked-PR count. In separate mode, only the active source.
@@ -962,7 +972,9 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
         : <WIBoard items={filtered} updateItem={updateItem} moveState={moveState}
                    onOpen={onOpen} grouping={boardGrouping} team={TEAM} showEmptyAssignees={showEmptyAssignees}
                    laneMode={laneMode}
-                   lanes={laneMode === 'category' ? CATEGORY_LANES
+                   boardColumns={boardColumns}
+                   lanes={laneMode === 'jira-columns' ? jiraColumnLanes
+                     : laneMode === 'category' ? CATEGORY_LANES
                      : activeSource === 'jira' ? jiraLanes
                      : getActiveLanes(boardColumnConfig, activeProject, PROJECTS, BOARD_LANES)}
                    newItemIds={newItemIds}/>
@@ -1747,14 +1759,16 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
   );
 }
 
-function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes = BOARD_LANES, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], newItemIds = new Set(), laneMode = 'state', reachable = null }) {
+function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes = BOARD_LANES, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], newItemIds = new Set(), laneMode = 'state', reachable = null, boardColumns = null }) {
   return (
     <div className="board">
       {lanes.map(state => {
         const laneItems = laneMode === 'category'
           ? items.filter(w => itemCategory(w) === state)
-          : items.filter(w => w.state === state || adoStateToNexusMD(w.state) === state);
-        const laneLabel = laneMode === 'category' ? CATEGORY_LABELS[state] : state;
+          : laneMode === 'jira-columns'
+            ? items.filter(w => (jiraColumnForStatus(boardColumns, w.state)?.name ?? '__other__') === state)
+            : items.filter(w => w.state === state || adoStateToNexusMD(w.state) === state);
+        const laneLabel = laneMode === 'category' ? CATEGORY_LABELS[state] : state === '__other__' ? 'Other' : state;
         const dimmed = !!reachable && !reachable.has(state);
         const isOver = overKey === `${groupKey}::${state}`;
         return (
@@ -1789,7 +1803,7 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
                   grouping={grouping}
                   projects={projects}
                   isNew={newItemIds.has(w.id)}
-                  showState={laneMode === 'category'}
+                  showState={laneMode === 'category' || laneMode === 'jira-columns'}
                 />
               ))}
               {laneItems.length === 0 && (
@@ -1811,7 +1825,7 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
   );
 }
 
-function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team = [], showEmptyAssignees = false, lanes = BOARD_LANES, newItemIds = new Set(), laneMode = 'state' }) {
+function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team = [], showEmptyAssignees = false, lanes = BOARD_LANES, newItemIds = new Set(), laneMode = 'state', boardColumns = null }) {
   const { data: NexusMDData, workItemSource } = useNexusData();
   const [dragId,    setDragId]    = useStateW(null);
   const [overKey,   setOverKey]   = useStateW(null);
@@ -1858,15 +1872,23 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
   const [reachable, setReachable] = useStateW(null);
   const dragRef = React.useRef(null);
 
-  // On a state-lane board, dim columns a Jira item's workflow can't reach.
+  // On a state- or column-lane board, dim lanes a Jira item's workflow can't reach.
   const onDragStart = (id) => {
     setDragId(id);
     dragRef.current = id;
     setReachable(null);
-    if (laneMode === 'state' && isJiraId(id) && workItemSource?.availableTargetStates) {
+    if ((laneMode === 'state' || laneMode === 'jira-columns') && isJiraId(id) && workItemSource?.availableTargetStates) {
       const current = items.find(w => w.id === id)?.state;
       workItemSource.availableTargetStates(id)
-        .then(states => { if (states && dragRef.current === id) setReachable(new Set([...states, current])); })
+        .then(states => {
+          if (!states || dragRef.current !== id) return;
+          if (laneMode === 'jira-columns') {
+            const ok = new Set([...states, current].map(s => String(s || '').toLowerCase()));
+            setReachable(new Set(boardColumns.filter(c => c.statuses.some(s => ok.has(s.toLowerCase()))).map(c => c.name)));
+          } else {
+            setReachable(new Set([...states, current]));
+          }
+        })
         .catch(() => {});
     }
   };
@@ -1880,6 +1902,20 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
     if (!workItemSource?.moveToCategory) { toast?.('✗ Moving between categories is not supported here', 'error'); return; }
     try {
       const r = await workItemSource.moveToCategory(id, category, item);
+      updateItem(id, { state: r.state, stateCategory: r.stateCategory });
+    } catch (e) {
+      toast?.('✗ ' + (e?.message || 'Move failed'), 'error');
+    }
+  };
+
+  const moveToColumn = async (id, laneKey) => {
+    const item = items.find(w => w.id === id);
+    const column = boardColumns?.find(c => c.name === laneKey);
+    if (!item || !column) return; // "Other" isn't a drop target
+    if (jiraColumnForStatus([column], item.state)) return; // already in this column
+    if (!workItemSource?.moveToStatuses) { toast?.('✗ Moving between columns is not supported here', 'error'); return; }
+    try {
+      const r = await workItemSource.moveToStatuses(id, column.statuses, item);
       updateItem(id, { state: r.state, stateCategory: r.stateCategory });
     } catch (e) {
       toast?.('✗ ' + (e?.message || 'Move failed'), 'error');
@@ -1903,6 +1939,14 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
       }
       return;
     }
+    if (laneMode === 'jira-columns') {
+      await moveToColumn(id, state);
+      if (assigneeChange && prev?.assignee !== assigneeId) {
+        updateItem(id, { assignee: assigneeId });
+        if (!(await patchWI(id, [['/fields/System.AssignedTo', member?.name || null]]))) updateItem(id, { assignee: prev?.assignee ?? null });
+      }
+      return;
+    }
     const patches = [['/fields/System.State', state]];
     const updates = { state };
     if (assigneeChange) {
@@ -1920,6 +1964,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
     const prev = items.find(w => w.id === id);
     endDrag();
     if (laneMode === 'category') { await moveToCategory(id, state); return; }
+    if (laneMode === 'jira-columns') { await moveToColumn(id, state); return; }
     moveState(id, state);
     if (!(await patchWI(id, [['/fields/System.State', state]])) && prev) updateItem(id, { state: prev.state });
   };
@@ -1946,7 +1991,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
     await patchWI(id, [['/fields/System.Tags', newTags.join('; ')]]);
   };
 
-  const laneProps = { dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes, team, onAssign: onAssignCard, onTagsChange: onTagsCard, grouping, projects: PROJECTS, newItemIds, laneMode, reachable };
+  const laneProps = { dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes, team, onAssign: onAssignCard, onTagsChange: onTagsCard, grouping, projects: PROJECTS, newItemIds, laneMode, reachable, boardColumns };
 
   const boardContent = grouping === 'none' ? (
     <BoardLanes items={items} groupKey="__all__" {...laneProps} />
@@ -2004,7 +2049,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
       <DragContextBar
         visible={dragId != null}
         team={team}
-        lanes={lanes}
+        lanes={laneMode === 'jira-columns' ? lanes.filter(l => l !== '__other__') : lanes}
         laneLabel={laneMode === 'category' ? (s => CATEGORY_LABELS[s]) : undefined}
         onDropState={onDropState}
         onDropAssignee={onDropAssignee}
