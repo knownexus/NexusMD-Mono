@@ -56,8 +56,8 @@ describe('mergeWorkItemData', () => {
       status: { jira: { status: 'error', error: 'auth failed — check settings' } },
     })
     expect(m.WORK_ITEM_PROVIDERS).toEqual([
-      { id: 'ado', label: 'Azure DevOps', status: 'ok', error: null },
-      { id: 'jira', label: 'Jira', status: 'stale', error: 'auth failed — check settings' },
+      { id: 'ado', label: 'Azure DevOps', status: 'ok', error: null, warning: null },
+      { id: 'jira', label: 'Jira', status: 'stale', error: 'auth failed — check settings', warning: null },
     ])
     const noCache = mergeWorkItemData({ ado: ADO, jira: null, configured: { ado: true, jira: true }, status: { jira: { status: 'error', error: 'e' } } })
     expect(noCache.WORK_ITEM_PROVIDERS[1].status).toBe('error')
@@ -67,6 +67,24 @@ describe('mergeWorkItemData', () => {
     const m = mergeWorkItemData({ ado: null, jira: null, configured: {} })
     expect(m.WORK_ITEMS).toEqual([])
     expect(m.WORK_ITEM_PROVIDERS).toEqual([])
+  })
+})
+
+describe('board layout passthrough', () => {
+  it('passes Jira board columns and error through, with a provider warning', () => {
+    const cols = [{ name: 'Todo', statuses: ['To Do'] }]
+    const ok = mergeWorkItemData({ ado: null, jira: { ...JIRA, BOARD_COLUMNS: cols, BOARD_ERROR: null }, configured: { jira: true } })
+    expect(ok.JIRA_BOARD_COLUMNS).toEqual(cols)
+    expect(ok.WORK_ITEM_PROVIDERS[0].warning).toBeNull()
+    const bad = mergeWorkItemData({ ado: null, jira: { ...JIRA, BOARD_COLUMNS: null, BOARD_ERROR: 'Not found in Jira (404)' }, configured: { jira: true } })
+    expect(bad.JIRA_BOARD_COLUMNS).toBeNull()
+    expect(bad.JIRA_BOARD_ERROR).toBe('Not found in Jira (404)')
+    expect(bad.WORK_ITEM_PROVIDERS[0].warning).toBe('Jira board unavailable — using status columns')
+  })
+  it('defaults to null when Jira has no board data', () => {
+    const m = mergeWorkItemData({ ado: null, jira: null, configured: {} })
+    expect(m.JIRA_BOARD_COLUMNS).toBeNull()
+    expect(m.JIRA_BOARD_ERROR).toBeNull()
   })
 })
 

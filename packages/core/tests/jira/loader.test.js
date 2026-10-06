@@ -18,7 +18,7 @@ const ISSUE = (key, status = 'To Do', cat = 'new') => ({
   key, fields: { summary: key, issuetype: { name: 'Story' }, status: { name: status, statusCategory: { key: cat } }, project: { key: 'ABC', name: 'Alpha' } },
 })
 
-function makeHttp({ searchPages = [[ISSUE('ABC-1')]], resolved = [] } = {}) {
+function makeHttp({ searchPages = [[ISSUE('ABC-1')]], resolved = [], board = null } = {}) {
   let page = 0
   return {
     fetch: vi.fn(async (path, opts) => {
@@ -29,11 +29,15 @@ function makeHttp({ searchPages = [[ISSUE('ABC-1')]], resolved = [] } = {}) {
         page += 1
         return res({ issues, ...(page < searchPages.length ? { nextPageToken: `t${page}` } : {}) })
       }
-      if (path.includes('/statuses')) return res([{ name: 'Story', statuses: [{ name: 'To Do', statusCategory: { key: 'new' } }] }])
+      if (path.includes('/statuses')) return res([{ name: 'Story', statuses: [{ id: '1', name: 'To Do', statusCategory: { key: 'new' } }] }])
       if (path.includes('rest/api/3/priority')) return res([{ id: '3', name: 'Medium' }])
       if (path.includes('rest/api/3/field')) return res([])
       if (path.includes('myself')) return res({ accountId: 'me', displayName: 'Me' })
       if (path.includes('multiProjectSearch')) return res([])
+      if (path.includes('rest/agile/1.0/board/')) {
+        if (board instanceof Error) return { ok: false, status: 404, headers: { get: () => null }, text: async () => '', json: async () => ({}) }
+        return res(board || { columnConfig: { columns: [] } })
+      }
       throw new Error(`unexpected ${path}`)
     }),
   }
@@ -168,5 +172,33 @@ describe('loadCachedJiraData', () => {
     expect(loadCachedJiraData(CONFIG, { storage })).toBeNull()
     storage._store[JIRA_CACHE_KEY] = '{bad'
     expect(loadCachedJiraData(CONFIG, { storage })).toBeNull()
+  })
+})
+
+describe('loadJiraData board layout', () => {
+  it('publishes the chosen board\'s columns', async () => {
+    const http = makeHttp({ board: { columnConfig: { columns: [{ name: 'Todo', statuses: [{ id: '1' }] }] } } })
+    const data = await loadJiraData({ ...CONFIG, boardId: '7' }, { http, storage: makeStorage() })
+    expect(data.BOARD_ID).toBe('7')
+    expect(data.BOARD_COLUMNS).toEqual([{ name: 'Todo', statuses: ['To Do'] }])
+    expect(data.BOARD_ERROR).toBeNull()
+  })
+  it('keeps loading items when the board cannot be read', async () => {
+    const data = await loadJiraData({ ...CONFIG, boardId: '7' }, { http: makeHttp({ board: new Error('gone') }), storage: makeStorage() })
+    expect(data.WORK_ITEMS).toHaveLength(1)
+    expect(data.BOARD_COLUMNS).toBeNull()
+    expect(data.BOARD_ERROR).toMatch(/404/)
+  })
+  it('makes no Agile call when no board is chosen', async () => {
+    const http = makeHttp()
+    const data = await loadJiraData(CONFIG, { http, storage: makeStorage() })
+    expect(data.BOARD_COLUMNS).toBeNull()
+    expect(http.fetch.mock.calls.some(([p]) => p.includes('rest/agile'))).toBe(false)
+  })
+  it('refetches metadata on refresh when a board is chosen but cached meta lacks status ids', async () => {
+    const http = makeHttp({ board: { columnConfig: { columns: [] } } })
+    const priorMeta = { types: ['Story'], typeStates: {}, stateCategoryByName: {}, states: [], priorities: [{ id: '3', name: 'Medium', rank: 1 }], fieldIds: {}, me: null, people: [{ accountId: 'a', displayName: 'A', avatarUrl: '' }] }
+    await loadJiraData({ ...CONFIG, boardId: '7' }, { http, storage: makeStorage() }, { isRefresh: true, priorData: { _jiraMeta: priorMeta, PROJECT_KEYS: ['ABC'] } })
+    expect(http.fetch.mock.calls.some(([p]) => p.includes('/statuses'))).toBe(true)
   })
 })

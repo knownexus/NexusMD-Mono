@@ -1,6 +1,7 @@
 import { core } from '../../core.js'
 import { PROJECT_COLORS } from '../ado/helpers.js'
 import { makeJiraClient } from './client.js'
+import { fetchJiraBoardColumns } from './boards.js'
 import { fetchJiraMetadata, fillMetadataFromIssues } from './metadata.js'
 import { mapJiraIssue, mapResolvedJiraIssue } from './mappers.js'
 
@@ -61,11 +62,12 @@ function deriveJiraProjects(items) {
 // A refresh reuses the cached metadata only while it still describes the configured
 // projects and is complete; otherwise new projects, people or priorities would never
 // be picked up. `projectKeys` is already sorted.
-function canReuseMeta(isRefresh, priorData, projectKeys) {
+function canReuseMeta(isRefresh, priorData, projectKeys, boardId) {
   const meta = priorData?._jiraMeta
   if (!isRefresh || !meta) return false
   const prior = Array.isArray(priorData.PROJECT_KEYS) ? [...priorData.PROJECT_KEYS].sort() : null
   if (!prior || prior.length !== projectKeys.length || prior.some((k, i) => k !== projectKeys[i])) return false
+  if (boardId && !meta.statusNameById) return false
   return !!(meta.people?.length && meta.priorities?.length)
 }
 
@@ -77,7 +79,7 @@ export async function loadJiraData(config, { http, storage, sleep } = {}, { isRe
   const keys = config.projectKeys || []
   const projectKeys = [...keys].sort()
 
-  let meta = canReuseMeta(isRefresh, priorData, projectKeys) ? priorData._jiraMeta : await fetchJiraMetadata(client, keys)
+  let meta = canReuseMeta(isRefresh, priorData, projectKeys, config.boardId) ? priorData._jiraMeta : await fetchJiraMetadata(client, keys)
   const fields = [...JIRA_BASE_FIELDS, ...Object.values(meta.fieldIds || {}).filter(Boolean)]
 
   const [active, resolved] = await Promise.all([
@@ -86,12 +88,21 @@ export async function loadJiraData(config, { http, storage, sleep } = {}, { isRe
   ])
 
   meta = fillMetadataFromIssues(meta, active)
+  let boardColumns = null
+  let boardError = null
+  if (config.boardId) {
+    try { boardColumns = await fetchJiraBoardColumns(client, config.boardId, meta.statusNameById || {}) }
+    catch (e) { boardError = String(e?.message || e || 'board unavailable').slice(0, 200) }
+  }
   const items = []
   active.forEach(issue => { try { items.push(mapJiraIssue(issue, { meta })) } catch (_) {} })
 
   const data = {
     SITE: config.site,
     PROJECT_KEYS: projectKeys,
+    BOARD_ID: config.boardId || '',
+    BOARD_COLUMNS: boardColumns,
+    BOARD_ERROR: boardError,
     WORK_ITEMS: items,
     PROJECTS: deriveJiraProjects(items),
     TYPES: meta.types,

@@ -55,7 +55,8 @@ export function mergeWorkItemData({ ado = null, jira = null, status = {}, config
     const s = status[id] || {}
     const hasData = id === 'ado' ? !!ado : !!jira
     const state = s.status === 'error' ? (hasData ? 'stale' : 'error') : (hasData ? 'ok' : 'loading')
-    return { id, label: PROVIDER_LABELS[id], status: state, error: s.status === 'error' ? (s.error || null) : null }
+    const warning = id === 'jira' && jira?.BOARD_ERROR ? 'Jira board unavailable — using status columns' : null
+    return { id, label: PROVIDER_LABELS[id], status: state, error: s.status === 'error' ? (s.error || null) : null, warning }
   })
 
   return {
@@ -81,5 +82,7 @@ export function mergeWorkItemData({ ado = null, jira = null, status = {}, config
     WORK_ITEM_PROVIDERS: providers,
     JIRA_SITE: jira?.SITE || '',
     JIRA_PEOPLE: jira?.PEOPLE || [],
+    JIRA_BOARD_COLUMNS: jira?.BOARD_COLUMNS || null,
+    JIRA_BOARD_ERROR: jira?.BOARD_ERROR || null,
   }
 }
