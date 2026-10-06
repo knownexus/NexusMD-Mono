@@ -4,6 +4,7 @@ import '@nexusmd/ui/styles.css'
 
 import {
   initCore, createNoOpAdapters, core, loadCachedAdoData, loadAdoData,
+  loadCachedJiraData, loadJiraData, displayIdOf,
 } from '@nexusmd/core'
 import {
   Icon, CardFrame,
@@ -14,7 +15,7 @@ import {
   WorkItemDetail, BuildDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
   WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
-  ApiClientProvider, ApiClientView, ViewDbManager,
+  ApiClientProvider, ApiClientView, ViewDbManager, createRoutedWorkItemSource,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav } from './layout.js'
 import { resolveItemsUpdate } from './items-state.js'
@@ -29,6 +30,8 @@ import {
   clipboardAdapter, shareAdapter, notificationAdapter,
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
+import { getJiraConfig, isJiraActive, createJiraHttpAdapter, createJiraWorkItemSource } from './jira-client.js'
+import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider } from './work-item-data.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
@@ -119,23 +122,38 @@ registerCloudDeepLink()
 // and re-renders on core's 'data:updated' events.
 initCore(adapters)
 
-// Manual refresh for the views' Refresh buttons (api.load). Does a full load on
-// first run (no cache) so team members are fetched from the ADO teams API. On
-// subsequent calls, passes the cached team as priorData so isRefresh=true skips
-// the expensive team API and reuses it.
-async function refreshAdoData() {
+// Manual + timed refresh for every work-item provider. ADO also loads PRs/builds/
+// tests. Each provider records its own outcome; a failure keeps its cached data.
+async function refreshAllData() {
   try {
-    if (!isAdoConfigured()) return
-    const priorData = loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter })
-    await loadAdoData(
-      getAdoConfig(),
-      { http: createAdoHttpAdapter(), storage: localStorageAdapter },
-      { isRefresh: !!priorData && (priorData.TEAM?.length ?? 0) > 0, priorData },
-    )
-  } catch {
-    /* offline / not configured — keep cached */
-  }
-  finally { core._emit?.('data:updated') }
+    await refreshProviders({
+      storage: localStorageAdapter,
+      providers: {
+        ado: {
+          configured: isAdoConfigured(),
+          run: () => {
+            const priorData = loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter })
+            return loadAdoData(
+              getAdoConfig(),
+              { http: createAdoHttpAdapter(), storage: localStorageAdapter },
+              { isRefresh: !!priorData && (priorData.TEAM?.length ?? 0) > 0, priorData },
+            )
+          },
+        },
+        jira: {
+          configured: isJiraActive(),
+          run: () => {
+            const priorData = loadCachedJiraData(getJiraConfig(), { storage: localStorageAdapter })
+            return loadJiraData(
+              getJiraConfig(),
+              { http: createJiraHttpAdapter(), storage: localStorageAdapter },
+              { isRefresh: !!priorData?._jiraMeta, priorData },
+            )
+          },
+        },
+      },
+    })
+  } finally { core._emit?.('data:updated') }
   // Check GitHub token health — fires nexusmd:github-401 event if expired
   try {
     const ghService = makeDesktopOAuthService('github')
@@ -149,7 +167,7 @@ async function refreshAdoData() {
 // the window, so it triggers the same data refresh as the in-app Refresh
 // button rather than resetting navigation state back to the dashboard.
 if (window.electronAPI?.onRefreshData) {
-  window.electronAPI.onRefreshData(() => { refreshAdoData() })
+  window.electronAPI.onRefreshData(() => { refreshAllData() })
 }
 
 // Direct-to-ADO work item source for the desktop (no ASP.NET proxy available).
@@ -220,6 +238,16 @@ const desktopWorkItemSource = {
   async createWorkItem(payload) {
     return submitNewWorkItem(payload)
   },
+  async moveToCategory(id, category, item) {
+    const meta = loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter })?._adoMeta
+    return adoMoveToCategory({ item, category, meta, saveState: (state) => this.saveField(id, 'System.State', state) })
+  },
+  webUrl(item) {
+    const { org } = getAdoConfig()
+    if (!org || !item?.project) return null
+    const proj = String(item.project).replace(/-/g, ' ').replace(/w/g, c => c.toUpperCase())
+    return `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(proj)}/_workitems/edit/${item.id}`
+  },
 }
 
 // Cached ADO snapshot, shaped for the shared views, re-read on every data:updated.
@@ -228,8 +256,11 @@ function useNexusSnapshot() {
   const [loaded, setLoaded] = React.useState(false)
   const refresh = React.useCallback(() => {
     try {
-      const cached = loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter })
-      setSnapshot(cached ? { ...EMPTY_NEXUS_DATA, ...cached } : EMPTY_NEXUS_DATA)
+      setSnapshot(buildSnapshot({
+        adoConfig: getAdoConfig(), adoConfigured: isAdoConfigured(),
+        jiraConfig: getJiraConfig(), jiraActive: isJiraActive(),
+        storage: localStorageAdapter, empty: EMPTY_NEXUS_DATA,
+      }))
     } catch { setSnapshot(EMPTY_NEXUS_DATA) }
     setLoaded(true)
   }, [])
@@ -288,12 +319,12 @@ function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
   const kind = drawer?.kind
   const d    = drawer?.data
   const http = React.useMemo(() => createAdoHttpAdapter(), [])
+  const { workItemSource } = useNexusData()
 
   const title = !d ? '' : kind === 'wi' ? d.title : kind === 'pr' ? d.title : kind === 'person' ? d.name : kind === 'build' ? d.pipeline : ''
 
   const { org } = getAdoConfig()
-  const adoUrl = kind === 'wi' && d?.project && org
-    ? `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent((d.project || '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}/_workitems/edit/${d.id}`
+  const adoUrl = kind === 'wi' ? workItemSource.webUrl(d)
     : kind === 'pr' ? d?.url
     : kind === 'build' && (d?.projectName || d?.project) && org
       ? `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(d.projectName || d.project)}/_build/results?buildId=${d.id}`
@@ -301,8 +332,8 @@ function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
 
   const markDone = async () => {
     try {
-      await desktopWorkItemSource.saveField(d.id, 'System.State', 'Done')
-      setItems?.(arr => arr.map(w => w.id === d.id ? { ...w, state: 'Done' } : w))
+      const r = await workItemSource.moveToCategory(d.id, 'Completed', d)
+      setItems?.(arr => arr.map(w => w.id === d.id ? { ...w, state: r.state, stateCategory: r.stateCategory } : w))
       toast?.('Marked done', 'success')
       onClose()
     } catch (e) {
@@ -314,7 +345,7 @@ function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
     <Drawer open={open} onClose={onClose} title={title}
       badges={kind === 'wi' && d ? (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>#{d.id}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>{displayIdOf(d)}</span>
           <TypeIcon type={d.type}/><Prio p={d.priority}/>
         </span>
       ) : kind === 'pr' && d ? (
@@ -335,7 +366,7 @@ function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
           {kind === 'person' && d && <PersonActions dev={d} />}
           {adoUrl && (
             <button className="btn sm ghost" onClick={() => window.electronAPI.openLink(adoUrl)}>
-              <Icon name="link" size={12}/> Open in {kind === 'wi' || kind === 'build' ? 'ADO' : 'browser'}
+              <Icon name="link" size={12}/> Open in {kind === 'wi' ? (d?.source === 'jira' ? 'Jira' : 'ADO') : kind === 'build' ? 'ADO' : 'browser'}
             </button>
           )}
         </React.Fragment>
@@ -366,7 +397,7 @@ function ViewBody({
   const { data } = useNexusData()
   const { activeProfile } = useProfile() || {}
   // manual profiles don't require ADO config
-  const configured = activeProfile?.type === 'manual' || (() => { try { return isAdoConfigured() } catch { return false } })()
+  const configured = activeProfile?.type === 'manual' || (() => { try { return isAdoConfigured() || isJiraActive() } catch { return false } })()
   const openExternal = (item) => { if (item?.url) window.electronAPI.openLink(item.url) }
 
   const [needsMeCriteria, setNeedsMeCriteria] = usePersistedState('nexusmd.pr.needsMeCriteria', { votes: [0], includeDrafts: false })
@@ -552,7 +583,7 @@ function ViewBody({
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
         nav={NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder}
         refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange}
-        onRefreshData={refreshAdoData} />
+        onRefreshData={refreshAllData} />
     default:
       return <Placeholder label={(ALL_NAV.find(n => n.id === view) || ALL_NAV[0]).label} />
   }
@@ -791,7 +822,7 @@ function App() {
       refreshLeftRef.current -= 1
       setRefreshLeft(refreshLeftRef.current)
       if (refreshLeftRef.current <= 0) {
-        refreshAdoData()
+        refreshAllData()
         refreshLeftRef.current = refreshInterval
         setRefreshLeft(refreshInterval)
       }
@@ -801,11 +832,14 @@ function App() {
 
   const nexusDataValue = React.useMemo(() => ({
     data:           snapshot,
-    api:            { load: refreshAdoData },
+    api:            { load: refreshAllData },
     storage:        window.localStorage,
     getProfileKey,
     pushPref:       () => {},
-    workItemSource: desktopWorkItemSource,
+    workItemSource: createRoutedWorkItemSource({
+      ado: desktopWorkItemSource,
+      jira: isJiraActive() ? createJiraWorkItemSource() : null,
+    }),
     buildSource:    desktopBuildSource,
   }), [snapshot])
 
