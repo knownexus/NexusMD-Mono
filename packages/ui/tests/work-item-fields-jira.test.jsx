@@ -14,7 +14,7 @@ const DATA = {
   STATES: ['New', 'Active', 'Closed', 'To Do', 'In Progress', 'Done'],
   TEAM: [{ id: 'alex-doe', name: 'Alex Doe' }, { id: 'ado-only', name: 'Ado Only' }],
   WORK_ITEMS: [],
-  WI_TYPE_STATES_BY_SOURCE: { jira: { story: ['To Do', 'In Progress', 'Done'] } },
+  WI_TYPE_STATES_BY_SOURCE: { jira: { story: ['To Do', 'In Progress', 'Done'] }, ado: { bug: ['New', 'Closed'] } },
   PRIORITIES_BY_SOURCE: { jira: [{ id: '1', name: 'Highest', rank: 1 }, { id: '2', name: 'High', rank: 2 }] },
   JIRA_PEOPLE: [{ accountId: 'a1', displayName: 'Alex Doe' }, { accountId: 'j1', displayName: 'Jira Person' }],
 }
@@ -59,4 +59,10 @@ it('leaves ADO items as they were', () => {
   renderEditor({ id: 7, source: 'ado', type: 'bug', state: 'Active', priority: 2, assignee: null, tags: [] })
   expect(screen.getByText('Area')).toBeTruthy()
   expect(screen.getByRole('option', { name: '2 – High' })).toBeTruthy()
+})
+
+it('gives ADO items exactly the global STATES (no per-type list, no prepend)', () => {
+  renderEditor({ id: 8, source: 'ado', type: 'bug', state: 'Resolved', priority: 2, assignee: null, tags: [] })
+  const stateOpts = Array.from(screen.getAllByRole('combobox')[0].options).map(o => o.value)
+  expect(stateOpts).toEqual(DATA.STATES)
 })

@@ -447,8 +447,8 @@ export function WorkItemFieldsEditor({ item, onItemUpdated }) {
   const { data, storage, getProfileKey, workItemSource } = useNexusData();
   const TEAM = data.TEAM || [];
   const isJira = item.source === 'jira';
-  const typeStates = data.WI_TYPE_STATES_BY_SOURCE?.[item.source || 'ado']?.[item.type];
-  const STATES = (() => {
+  const typeStates = isJira ? data.WI_TYPE_STATES_BY_SOURCE?.jira?.[item.type] : null;
+  const STATES = !isJira ? (data.STATES || []) : (() => {
     const base = typeStates?.length ? typeStates : (data.STATES || []);
     return item.state && !base.includes(item.state) ? [item.state, ...base] : base;
   })();
