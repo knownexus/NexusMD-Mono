@@ -87,6 +87,10 @@ export function JiraCreateForm({ source, projectKeys = [], people = [], site = '
   const [error, setError] = React.useState('')
   const [status, setStatus] = React.useState('')
   const [saving, setSaving] = React.useState(false)
+  const [fieldsLoading, setFieldsLoading] = React.useState(false)
+  // Set after a successful create; any later change to the form clears it, so the
+  // same issue can't be submitted twice by accident.
+  const [created, setCreated] = React.useState(false)
 
   React.useEffect(() => {
     if (!projectKey) return
@@ -98,11 +102,18 @@ export function JiraCreateForm({ source, projectKeys = [], people = [], site = '
 
   React.useEffect(() => {
     if (!projectKey || !typeId) return
+    let cancelled = false
     setValues({})
+    setFields([])
+    setFieldsLoading(true)
     source.getCreateFields(projectKey, typeId)
-      .then(setFields)
-      .catch(e => setError(e?.message || 'Could not load fields'))
+      .then(f => { if (!cancelled) { setFields(f); setError('') } })
+      .catch(e => { if (!cancelled) setError(e?.message || 'Could not load fields') })
+      .finally(() => { if (!cancelled) setFieldsLoading(false) })
+    return () => { cancelled = true }
   }, [projectKey, typeId, source])
+
+  React.useEffect(() => { setCreated(false) }, [projectKey, typeId, summary, values, links, files])
 
   React.useEffect(() => {
     source.getLinkTypes()
@@ -115,6 +126,7 @@ export function JiraCreateForm({ source, projectKeys = [], people = [], site = '
   const renderField = (f) => <JiraFieldInput key={f.key} field={f} value={values[f.key]} onChange={v => setValue(f.key, v)} people={people} />
 
   const submit = async () => {
+    if (saving || fieldsLoading || created) return
     if (!summary.trim()) { setError('Summary is required.'); return }
     const missing = [...layout.core, ...layout.required].filter(f => f.required && (values[f.key] === undefined || values[f.key] === '' || (Array.isArray(values[f.key]) && !values[f.key].length)))
     if (missing.length) { setError(`Fill in: ${missing.map(f => f.name).join(', ')}`); return }
@@ -129,6 +141,7 @@ export function JiraCreateForm({ source, projectKeys = [], people = [], site = '
         { attachments: files, links },
       )
       setStatus(result.warnings?.length ? `Created ${result.key} — ${result.warnings.join('; ')}` : `Created ${result.key}.`)
+      setCreated(true)
       onCreated?.(result)
     } catch (e) {
       setStatus('')
@@ -199,7 +212,7 @@ export function JiraCreateForm({ source, projectKeys = [], people = [], site = '
           </div>
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button className="btn primary" onClick={submit} disabled={saving}>{saving ? 'Creating…' : 'Create issue'}</button>
+            <button className="btn primary" onClick={submit} disabled={saving || fieldsLoading || created}>{saving ? 'Creating…' : 'Create issue'}</button>
             {status && <span style={{ fontSize: 12.5, color: 'var(--success)' }}>{status}</span>}
           </div>
         </>

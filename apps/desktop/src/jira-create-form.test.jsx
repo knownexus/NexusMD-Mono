@@ -83,4 +83,58 @@ describe('JiraCreateForm', () => {
     fireEvent.change(screen.getByLabelText('Issue type'), { target: { value: '10002' } })
     await waitFor(() => expect(source.getCreateFields).toHaveBeenLastCalledWith('ABC', '10002'))
   })
+
+  async function createOnce(source) {
+    render(<JiraCreateForm source={source} projectKeys={['ABC']} people={PEOPLE} site='s' initialTitle='T' onCreated={() => {}} />)
+    await waitFor(() => expect(screen.getByLabelText('Team *')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('Team *'), { target: { value: '7' } })
+    fireEvent.click(screen.getByText('Create issue'))
+    await waitFor(() => expect(screen.getByText('Created ABC-9.')).toBeTruthy())
+  }
+
+  it('disables Create issue after a successful create so it cannot be submitted twice', async () => {
+    const source = makeSource(FIELDS)
+    await createOnce(source)
+    const btn = screen.getByText('Create issue')
+    expect(btn.disabled).toBe(true)
+    fireEvent.click(btn)
+    await new Promise(r => setTimeout(r, 20))
+    expect(source.createIssue).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-enables Create issue once the form is changed after a create', async () => {
+    const source = makeSource(FIELDS)
+    await createOnce(source)
+    fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'Another' } })
+    await waitFor(() => expect(screen.getByText('Create issue').disabled).toBe(false))
+    fireEvent.click(screen.getByText('Create issue'))
+    await waitFor(() => expect(source.createIssue).toHaveBeenCalledTimes(2))
+  })
+
+  it('clears the old fields and blocks submit while the new type fields load', async () => {
+    const source = makeSource(FIELDS)
+    render(<JiraCreateForm source={source} projectKeys={['ABC']} people={PEOPLE} site='s' initialTitle='T' onCreated={() => {}} />)
+    await waitFor(() => expect(screen.getByLabelText('Team *')).toBeTruthy())
+    let resolveBug
+    source.getCreateFields.mockImplementationOnce(() => new Promise(r => { resolveBug = r }))
+    fireEvent.change(screen.getByLabelText('Issue type'), { target: { value: '10002' } })
+    await waitFor(() => expect(source.getCreateFields).toHaveBeenLastCalledWith('ABC', '10002'))
+    expect(screen.queryByLabelText('Team *')).toBeNull()
+    expect(screen.getByText('Create issue').disabled).toBe(true)
+    fireEvent.click(screen.getByText('Create issue'))
+    expect(source.createIssue).not.toHaveBeenCalled()
+    resolveBug([FIELDS[0]])
+    await waitFor(() => expect(screen.getByText('Create issue').disabled).toBe(false))
+    expect(screen.getByLabelText('Description')).toBeTruthy()
+  })
+
+  it('clears a field-load error when a later load succeeds', async () => {
+    const source = makeSource(FIELDS)
+    source.getCreateFields.mockRejectedValueOnce(new Error('Boom fields'))
+    render(<JiraCreateForm source={source} projectKeys={['ABC']} people={PEOPLE} site='s' onCreated={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Boom fields')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('Issue type'), { target: { value: '10002' } })
+    await waitFor(() => expect(screen.getByLabelText('Team *')).toBeTruthy())
+    expect(screen.queryByText('Boom fields')).toBeNull()
+  })
 })
