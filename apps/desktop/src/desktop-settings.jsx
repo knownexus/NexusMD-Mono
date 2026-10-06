@@ -17,6 +17,7 @@ import LogsCard from './logs-card.jsx'
 import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken, decodeJwtClaims } from './cloud-auth.js'
 import { desktopSync } from './sync.js'
 import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
+import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
 import { dbManagerAdapter } from './adapters/db-manager.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 import {
@@ -1085,6 +1086,8 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
           {tab === 'integrations' && (
             <>
               <AdoConnectionCard onRefreshData={onRefreshData} />
+              <JiraConnectionCard onRefreshData={onRefreshData} />
+              <WorkItemsDisplayCard />
               <DatabaseConnectionCard />
               <IntegrationsPanel />
             </>

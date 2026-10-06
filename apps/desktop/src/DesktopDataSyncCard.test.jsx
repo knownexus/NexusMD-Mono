@@ -3,6 +3,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
 vi.mock('./profile-keys.js', () => ({ getProfileKey: k => k }))
+vi.mock('./jira-settings.jsx', () => ({ JiraConnectionCard: () => null, WorkItemsDisplayCard: () => null }))
 vi.mock('./profile-context.jsx', () => ({ useProfile: () => ({}) }))
 vi.mock('./cloud-auth.js', () => ({
   desktopCloudProviders: [],
