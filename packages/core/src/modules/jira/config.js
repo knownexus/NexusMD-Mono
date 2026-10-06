@@ -26,6 +26,7 @@ export function makeJiraConfig({ storage, key }) {
       apiToken:    get('apiToken') || '',
       projectKeys: Array.isArray(projectKeys) ? projectKeys : [],
       jql:         get('jql')      || '',
+      boardId:     get('boardId')  || '',
       enabled:     get('enabled') !== '0',
       refreshSecs: parseInt(get('refreshSecs') || '60', 10),
     }
@@ -38,6 +39,7 @@ export function makeJiraConfig({ storage, key }) {
     if (values.apiToken    !== undefined) set('apiToken',    values.apiToken)
     if (values.projectKeys !== undefined) set('projectKeys', JSON.stringify(normaliseKeys(values.projectKeys)))
     if (values.jql         !== undefined) set('jql',         values.jql)
+    if (values.boardId     !== undefined) set('boardId',     String(values.boardId))
     if (values.enabled     !== undefined) set('enabled',     values.enabled ? '1' : '0')
     if (values.refreshSecs !== undefined) set('refreshSecs', String(values.refreshSecs))
   }

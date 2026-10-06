@@ -19,13 +19,13 @@ function makeClient(routes) {
 
 const STATUSES = [
   { id: '1', name: 'Story', statuses: [
-    { name: 'To Do', statusCategory: { key: 'new' } },
-    { name: 'In Progress', statusCategory: { key: 'indeterminate' } },
-    { name: 'Done', statusCategory: { key: 'done' } },
+    { id: '1', name: 'To Do', statusCategory: { key: 'new' } },
+    { id: '3', name: 'In Progress', statusCategory: { key: 'indeterminate' } },
+    { id: '10001', name: 'Done', statusCategory: { key: 'done' } },
   ] },
   { id: '2', name: 'Bug', statuses: [
-    { name: 'Open', statusCategory: { key: 'new' } },
-    { name: 'Done', statusCategory: { key: 'done' } },
+    { id: '4', name: 'Open', statusCategory: { key: 'new' } },
+    { id: '10001', name: 'Done', statusCategory: { key: 'done' } },
   ] },
 ]
 const FIELDS = [
@@ -92,6 +92,26 @@ describe('fetchJiraMetadata', () => {
   it('accepts a paged priority response', async () => {
     const meta = await fetchJiraMetadata(makeClient({ ...routes, 'rest/api/3/priority': { values: [{ id: '9', name: 'Only' }] } }), ['ABC'])
     expect(meta.priorities).toEqual([{ id: '9', name: 'Only', rank: 1 }])
+  })
+})
+
+describe('statusNameById', () => {
+  it('maps status ids to names from project statuses', async () => {
+    const meta = await fetchJiraMetadata(makeClient({
+      'project/ABC/statuses': [{ name: 'Story', statuses: [
+        { id: '1', name: 'To Do', statusCategory: { key: 'new' } },
+        { id: '3', name: 'In Progress', statusCategory: { key: 'indeterminate' } },
+      ] }],
+      'rest/api/3/priority': [], 'rest/api/3/field': [], 'rest/api/3/myself': null, 'multiProjectSearch': [],
+    }), ['ABC'])
+    expect(meta.statusNameById).toEqual({ 1: 'To Do', 3: 'In Progress' })
+  })
+  it('is empty in emptyJiraMeta and filled from issues when status metadata failed', () => {
+    expect(emptyJiraMeta().statusNameById).toEqual({})
+    const meta = fillMetadataFromIssues(emptyJiraMeta(), [
+      { fields: { issuetype: { name: 'Task' }, status: { id: '7', name: 'Doing', statusCategory: { key: 'indeterminate' } } } },
+    ])
+    expect(meta.statusNameById).toEqual({ 7: 'Doing' })
   })
 })
 

@@ -27,7 +27,7 @@ describe('makeJiraConfig', () => {
     expect(storage._m.get('p1.jira.site')).toBe('https://acme.atlassian.net')
     expect(cfg.getJiraConfig()).toEqual({
       site: 'https://acme.atlassian.net', email: 'me@acme.io', apiToken: 'tok',
-      projectKeys: ['ABC'], jql: 'labels = x', enabled: true, refreshSecs: 60,
+      projectKeys: ['ABC'], jql: 'labels = x', boardId: '', enabled: true, refreshSecs: 60,
     })
   })
 
@@ -35,6 +35,13 @@ describe('makeJiraConfig', () => {
     const cfg = makeJiraConfig({ storage: memStorage(), key: n => n })
     cfg.saveJiraConfig({ projectKeys: [' abc ', '', 'Def'] })
     expect(cfg.getJiraConfig().projectKeys).toEqual(['ABC', 'DEF'])
+  })
+
+  it('stores the chosen board id as a string', () => {
+    const cfg = makeJiraConfig({ storage: memStorage(), key: n => n })
+    expect(cfg.getJiraConfig().boardId).toBe('')
+    cfg.saveJiraConfig({ boardId: 42 })
+    expect(cfg.getJiraConfig().boardId).toBe('42')
   })
 
   it('reports configured only with site, email, token and a project', () => {

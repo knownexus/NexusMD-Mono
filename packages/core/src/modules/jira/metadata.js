@@ -32,7 +32,7 @@ export function discoverFieldIds(fields = []) {
 export const emptyJiraMeta = () => ({
   types: [], typeStates: {}, stateCategoryByName: {}, states: [], priorities: [],
   fieldIds: { storyPoints: null, sprint: null, acceptanceCriteria: null, reproSteps: null },
-  me: null, people: [],
+  me: null, people: [], statusNameById: {},
 })
 
 export async function fetchJiraMetadata(client, projectKeys = []) {
@@ -47,6 +47,7 @@ export async function fetchJiraMetadata(client, projectKeys = []) {
       const names = []
       for (const s of t.statuses || []) {
         names.push(s.name)
+        if (s.id != null) meta.statusNameById[String(s.id)] = s.name
         if (!meta.stateCategoryByName[s.name]) meta.stateCategoryByName[s.name] = categoryOfJiraStatus(s)
       }
       meta.typeStates[t.name] = Array.from(new Set([...(meta.typeStates[t.name] || []), ...names]))
@@ -78,7 +79,7 @@ export async function fetchJiraMetadata(client, projectKeys = []) {
 // When status metadata failed, derive types/statuses from the issues themselves.
 export function fillMetadataFromIssues(meta, issues = []) {
   if (meta.types.length) return meta
-  const next = { ...meta, typeStates: {}, stateCategoryByName: { ...meta.stateCategoryByName } }
+  const next = { ...meta, typeStates: {}, stateCategoryByName: { ...meta.stateCategoryByName }, statusNameById: { ...(meta.statusNameById || {}) } }
   const typeNames = new Set()
   for (const issue of issues) {
     const type = issue.fields?.issuetype?.name
@@ -87,6 +88,7 @@ export function fillMetadataFromIssues(meta, issues = []) {
     typeNames.add(type)
     next.typeStates[type] = Array.from(new Set([...(next.typeStates[type] || []), status.name]))
     if (!next.stateCategoryByName[status.name]) next.stateCategoryByName[status.name] = categoryOfJiraStatus(status)
+    if (status.id != null) next.statusNameById[String(status.id)] = status.name
   }
   next.types = Array.from(typeNames).sort()
   next.states = Object.keys(next.stateCategoryByName).sort()
