@@ -1,7 +1,7 @@
 // apps/desktop/src/jira-settings.jsx — Jira Cloud connection + work-item display settings.
 import React from 'react'
 import { CardFrame, Icon } from '@nexusmd/ui'
-import { makeJiraClient } from '@nexusmd/core'
+import { makeJiraClient, JIRA_CACHE_KEY } from '@nexusmd/core'
 import { SettField, settInputStyle } from './desktop-settings.jsx'
 import { getJiraConfig, saveJiraConfig, createJiraHttpAdapter } from './jira-client.js'
 import { getProfileKey } from './profile-keys.js'
@@ -60,6 +60,8 @@ export function JiraConnectionCard({ onRefreshData }) {
     saveJiraConfig({ ...connectionValues(), projectKeys: splitKeys(keys), jql: jql.trim(), enabled })
     setToken('')
     setStatus('Saved! Loading data…')
+    // Drop the cache so the refresh refetches metadata for the new settings.
+    try { localStorage.removeItem(JIRA_CACHE_KEY) } catch {}
     onRefreshData?.().catch(() => {})
     setTimeout(() => setStatus(''), 3000)
   }

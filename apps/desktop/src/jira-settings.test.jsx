@@ -20,6 +20,7 @@ vi.mock('./jira-client.js', () => ({
   }),
 }))
 
+import { JIRA_CACHE_KEY } from '@nexusmd/core'
 import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
 
 afterEach(() => { cleanup(); jira.save.mockReset(); jira.routes = {}; localStorage.clear() })
@@ -58,6 +59,17 @@ describe('JiraConnectionCard', () => {
       site: 'acme', email: 'me@acme.io', projectKeys: ['abc', 'def'], jql: '', enabled: true,
     })
     expect(onRefreshData).toHaveBeenCalled()
+  })
+
+  it('drops the Jira cache before refreshing so metadata is refetched', () => {
+    localStorage.setItem(JIRA_CACHE_KEY, '{"WORK_ITEMS":[]}')
+    localStorage.setItem('nexusmd.ado.cache.v1', '{"WORK_ITEMS":[]}')
+    let cacheAtRefresh = 'not called'
+    const onRefreshData = vi.fn(() => { cacheAtRefresh = localStorage.getItem(JIRA_CACHE_KEY); return Promise.resolve() })
+    render(<JiraConnectionCard onRefreshData={onRefreshData} />)
+    fireEvent.click(screen.getByText('Save & connect'))
+    expect(cacheAtRefresh).toBeNull()
+    expect(localStorage.getItem('nexusmd.ado.cache.v1')).toBe('{"WORK_ITEMS":[]}')
   })
 })
 

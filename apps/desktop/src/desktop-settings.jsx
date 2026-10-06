@@ -7,7 +7,7 @@ import {
   CardsAndTablesSettings, toast, WI_TYPE_STATES_CACHE_KEY,
   graphJSON,
 } from '@nexusmd/ui'
-import { ADO_CACHE_KEY, buildConfig, resolveConnectionParams, buildConnectionString } from '@nexusmd/core'
+import { ADO_CACHE_KEY, JIRA_CACHE_KEY, buildConfig, resolveConnectionParams, buildConnectionString } from '@nexusmd/core'
 import { useProfile } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { NavOrderEditor } from './nav-order-editor.jsx'
@@ -679,6 +679,7 @@ export function DesktopDataSyncCard({ refreshInterval, onRefreshIntervalChange, 
   const clearCache = () => {
     try {
       localStorage.removeItem(ADO_CACHE_KEY)
+      localStorage.removeItem(JIRA_CACHE_KEY)
       localStorage.removeItem(WI_TYPE_STATES_CACHE_KEY)
     } catch {}
     toast?.('Cache cleared — refreshing…', 'success')
@@ -702,7 +703,7 @@ export function DesktopDataSyncCard({ refreshInterval, onRefreshIntervalChange, 
         />
       </VsRow>
       {onRefreshData && (
-        <VsRow title="Clear cache" desc="Drop the cached ADO data and re-fetch — keeps profiles, settings, and planner notes">
+        <VsRow title="Clear cache" desc="Drop the cached ADO and Jira data and re-fetch — keeps profiles, settings, and planner notes">
           <button className="btn sm ghost" onClick={clearCache}>Clear cache</button>
         </VsRow>
       )}

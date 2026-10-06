@@ -18,7 +18,7 @@ vi.mock('./ado-client.js', () => ({
   isAdoConfigured: () => false,
 }))
 vi.mock('./logs-card.jsx', () => ({ default: () => <div>LogsCard</div> }))
-vi.mock('@nexusmd/core', () => ({ ADO_CACHE_KEY: 'nexusmd.ado.cache.v1' }))
+vi.mock('@nexusmd/core', () => ({ ADO_CACHE_KEY: 'nexusmd.ado.cache.v1', JIRA_CACHE_KEY: 'nexusmd.jira.cache.v1' }))
 vi.mock('@nexusmd/ui', () => ({
   VsCard: ({ children }) => <div>{children}</div>,
   VsRow: ({ title, children }) => <div><span>{title}</span><div>{children}</div></div>,
@@ -106,10 +106,11 @@ describe('DesktopDataSyncCard', () => {
     expect(screen.queryByRole('button', { name: 'Clear cache' })).toBeNull()
   })
 
-  it('clears only the two cache keys and re-fetches when Clear cache is clicked', async () => {
+  it('clears only the cache keys (ADO, Jira, type states) and re-fetches when Clear cache is clicked', async () => {
     const onRefreshData = vi.fn().mockResolvedValue()
     localStorage.setItem('nexusmd.ado.cache.v1', '{"WORK_ITEMS":[]}')
     localStorage.setItem('nexusmd.wi.wiTypeStates.cache', '{}')
+    localStorage.setItem('nexusmd.jira.cache.v1', '{"WORK_ITEMS":[]}')
     localStorage.setItem('nexusmd.ado.org', 'acme')
     localStorage.setItem('nexusmd.planner.week.2026-W27', 'notes')
 
@@ -118,6 +119,7 @@ describe('DesktopDataSyncCard', () => {
 
     expect(localStorage.getItem('nexusmd.ado.cache.v1')).toBeNull()
     expect(localStorage.getItem('nexusmd.wi.wiTypeStates.cache')).toBeNull()
+    expect(localStorage.getItem('nexusmd.jira.cache.v1')).toBeNull()
     expect(localStorage.getItem('nexusmd.ado.org')).toBe('acme')
     expect(localStorage.getItem('nexusmd.planner.week.2026-W27')).toBe('notes')
     expect(onRefreshData).toHaveBeenCalledTimes(1)
