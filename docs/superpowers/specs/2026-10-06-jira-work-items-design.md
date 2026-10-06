@@ -36,6 +36,25 @@ Phases 2 and 3 each get their own short spec and plan.
 - Jira-specific views (backlog ranking, epic roadmap)
 - Webhooks / real-time updates (polling at `refreshSecs`, as with ADO)
 
+## Amendments made during Phase 1 planning
+
+These override the sections below where they conflict.
+
+1. **ADO ids stay unprefixed.** ADO work items keep their numeric `id`. Seen-tracking, acknowledged sets, PR links and planner state are all keyed by it, and prefixing would silently reset them. Only Jira ids are prefixed (`jira:ABC-12`). Numbers and `jira:` strings never collide.
+2. **Provider contract as an id-routed source.** Phase 1 routes the existing `workItemSource` interface (`loadDetail`, `loadComments`, `addComment`, `saveField`, `loadRawFields`, `createWorkItem`) by item id, and adds the optional methods `moveToCategory`, `availableTargetStates` and `webUrl`, plus the Jira create methods.
+   - Jira logic lives in core as normalised functions.
+   - The desktop Jira source turns the ADO field names the views already send into those functions' patches.
+   - There is no core ADO provider wrapper in Phase 1.
+   - `modules/workitems/` holds ids, categories, merge and status.
+3. **Desktop Jira traffic goes through the Electron main process.** Jira Cloud sends no CORS headers, so the sandboxed renderer can't call it the way it calls dev.azure.com. A `jira:request` IPC handler forwards requests, and only allows `https://*.atlassian.net/rest/…`.
+4. **Create:** the ADO drawer content is unchanged. The normalised create-meta and generic form are used for Jira only. Sprint can't be set at create time in v1; if a project makes sprint required, the drawer offers Open in Jira.
+5. **Counts:** Jira `comments` is `0` in v1, because requesting `comment` in search returns every comment body. `prs` is `0`, the same placeholder ADO uses.
+6. **No Agile API calls.** Sprint name and active state come from the sprint field. The SPRINT widget stays ADO-only.
+7. **Enable toggle for Jira only.** ADO stays on whenever it's configured.
+8. **Jira board columns** in separate mode follow Jira's status list and can't be customised through BoardColumnsCard in v1.
+9. **Display mode** is stored per profile under the Work Items view's own key (`nexusmd.wi.displayMode`). The settings card writes the same key.
+10. **Jira `project`** on items is `slugify(projectKey)` so it fits `PROJECTS`. The real key is kept as `projectKey`.
+
 ## 1. Architecture
 
 ### 1.1 `packages/core/src/modules/workitems/`
