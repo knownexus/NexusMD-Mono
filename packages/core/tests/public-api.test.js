@@ -65,7 +65,7 @@ const EXPECTED = [
   'JIRA_ID_PREFIX', 'isJiraId', 'toJiraId', 'jiraKeyFromId', 'sourceOfId', 'displayIdOf',
   'CATEGORY_LANES', 'CATEGORY_LABELS', 'itemCategory', 'adoStateForCategory',
   'WORK_ITEM_STATUS_KEY', 'readProviderStatus', 'recordProviderStatus', 'describeProviderError',
-  'PROVIDER_LABELS', 'mergeTeam', 'mergeWorkItemData',
+  'PROVIDER_LABELS', 'mergeTeam', 'mergeWorkItemData', 'applyHiddenPeople',
   // Jira module
   'normaliseSite', 'makeJiraConfig', 'makeJiraClient', 'JiraError', 'jiraErrorMessage',
   'htmlToAdf',

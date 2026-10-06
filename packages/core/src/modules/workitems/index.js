@@ -4,3 +4,4 @@ export {
 export { CATEGORY_LANES, CATEGORY_LABELS, itemCategory, adoStateForCategory } from './categories.js'
 export { WORK_ITEM_STATUS_KEY, readProviderStatus, recordProviderStatus, describeProviderError } from './status.js'
 export { PROVIDER_LABELS, mergeTeam, mergeWorkItemData } from './merge.js'
+export { applyHiddenPeople } from './people.js'
