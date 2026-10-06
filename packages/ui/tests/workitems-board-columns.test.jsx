@@ -20,11 +20,11 @@ const COLUMNS = [
 ]
 const JIRA_ONLY = [{ id: 'jira', label: 'Jira', status: 'ok', error: null, warning: null }]
 
-function renderBoard({ items, columns = COLUMNS, source = {} } = {}) {
+function renderBoard({ items, columns = COLUMNS, source = {}, storageSeed = {} } = {}) {
   const workItemSource = { saveField: vi.fn(async () => {}), ...source }
   render(
     <NexusDataProvider value={{
-      storage: memStorage({ 'nexusmd.wi.view': JSON.stringify('board') }), getProfileKey: k => k, pushPref: () => {}, workItemSource,
+      storage: memStorage({ 'nexusmd.wi.view': JSON.stringify('board'), ...storageSeed }), getProfileKey: k => k, pushPref: () => {}, workItemSource,
       data: { ORG: 'o', TEAM: [], PROJECTS: [], WORK_ITEMS: items, WORK_ITEM_PROVIDERS: JIRA_ONLY, JIRA_BOARD_COLUMNS: columns, WI_TYPE_STATES_BY_SOURCE: { jira: {} } },
     }}>
       <WorkItemsView items={items} setItems={() => {}} onOpen={() => {}} team={[]} />
@@ -51,6 +51,13 @@ it('adds an Other lane only for statuses not on the board', () => {
   cleanup()
   renderBoard({ items: [item('A-2', 'Done')] })
   expect(laneHeads()).not.toContain('Other')
+})
+
+it('leaves out the Other lane when filters hide every unmapped card', () => {
+  const blocked = { ...item('A-1', 'Blocked'), priority: 1 }
+  renderBoard({ items: [blocked, item('A-2', 'Done')], storageSeed: { 'nexusmd.wi.prios.neg': JSON.stringify([1]) } })
+  expect(screen.queryByText('T A-1')).toBeNull()
+  expect(laneHeads()).toEqual(['To Do', 'In Progress', 'Done'])
 })
 
 it('falls back to status lanes when the board has no columns', () => {

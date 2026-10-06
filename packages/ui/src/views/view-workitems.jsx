@@ -360,12 +360,6 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
     const fromMeta = [...new Set(Object.values(NexusMDData.WI_TYPE_STATES_BY_SOURCE?.jira || {}).flat())];
     return fromMeta.length ? fromMeta : [...new Set(sourceItems.map(w => w.state).filter(Boolean))];
   }, [NexusMDData.WI_TYPE_STATES_BY_SOURCE, sourceItems]);
-  const jiraColumnLanes = useMemoW(() => {
-    if (!boardColumns) return [];
-    const names = boardColumns.map(c => c.name);
-    const hasOther = sourceItems.some(w => !jiraColumnForStatus(boardColumns, w.state));
-    return hasOther ? [...names, '__other__'] : names;
-  }, [boardColumns, sourceItems]);
 
   // Merged view: prop items (initial load + background refresh) + any extra pages loaded,
   // each annotated with its real linked-PR count. In separate mode, only the active source.
@@ -617,6 +611,13 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   React.useEffect(() => { filterPredicateRef.current = filterPredicate; }, [filterPredicate]);
 
   const filtered = useMemoW(() => allItems.filter(filterPredicate), [allItems, filterPredicate]);
+  // Jira board columns always show; "Other" only when a rendered card maps to no column.
+  const jiraColumnLanes = useMemoW(() => {
+    if (!boardColumns) return [];
+    const names = boardColumns.map(c => c.name);
+    const hasOther = filtered.some(w => !jiraColumnForStatus(boardColumns, w.state));
+    return hasOther ? [...names, '__other__'] : names;
+  }, [boardColumns, filtered]);
 
   // Auto-fill: whenever filtered results drop below the page size and more
   // items exist (or we haven't checked yet), kick off a load automatically.
