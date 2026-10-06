@@ -483,17 +483,21 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
 
   React.useEffect(() => {
     if (Object.keys(wiTypeStates).length === 0) return;
-    // Union all states from all work item types
-    const detectedStates = [...new Set(Object.values(wiTypeStates).flat())];
+    // Union all states from all work item types. With several providers connected,
+    // board columns are ADO-only: Jira states and projects must not leak in.
+    const detectedStates = multiProvider
+      ? [...new Set(Object.values(NexusMDData.WI_TYPE_STATES_BY_SOURCE?.ado || {}).flat())]
+      : [...new Set(Object.values(wiTypeStates).flat())];
     if (detectedStates.length === 0) return;
+    const boardProjects = multiProvider ? PROJECTS.filter(p => p.source !== 'jira') : PROJECTS;
 
     setBoardColumnConfig(prev => {
-      const useGlobal = PROJECTS.length <= 1;
+      const useGlobal = boardProjects.length <= 1;
       if (useGlobal) {
         return syncBoardColumns(prev, '__global__', detectedStates);
       }
       let next = prev;
-      PROJECTS.forEach(p => {
+      boardProjects.forEach(p => {
         // Per-project: states from items in that project + global detected states
         const projectItemStates = [...new Set(allItems.filter(w => w.project === p.id).map(w => w.state).filter(Boolean))];
         const combined = [...new Set([...projectItemStates, ...detectedStates])];
@@ -501,7 +505,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
       });
       return next;
     });
-  }, [wiTypeStates, PROJECTS, allItems]);
+  }, [wiTypeStates, PROJECTS, allItems, multiProvider, NexusMDData.WI_TYPE_STATES_BY_SOURCE]);
 
   const availableStates = useMemoW(() => {
     const itemStates = new Set(allItems.map(w => w.state).filter(Boolean));
@@ -660,7 +664,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
               ))}
             </div>
           )}
-          <ProviderStatusPills providers={providers} />
+          {multiProvider && <ProviderStatusPills providers={providers} />}
           <div style={{ display: 'flex', background: 'var(--surface-2)', borderRadius: 6, padding: 2 }}>
             <button className="btn sm ghost" onClick={() => setView('table')} style={view === 'table' ? { background: 'var(--surface)', boxShadow: 'var(--shadow-sm)' } : null}><Icon name="list" size={14}/> Table</button>
             <button className="btn sm ghost" onClick={() => setView('board')} style={view === 'board' ? { background: 'var(--surface)', boxShadow: 'var(--shadow-sm)' } : null}><Icon name="board" size={14}/> Board</button>
@@ -1419,6 +1423,7 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
             setSelection(new Set());
             const failures = [];
             await Promise.all(selected.map(async w => {
+              if (itemCategory(w) === 'Completed') return;
               try {
                 if (workItemSource?.moveToCategory) {
                   const r = await workItemSource.moveToCategory(w.id, 'Completed', w);

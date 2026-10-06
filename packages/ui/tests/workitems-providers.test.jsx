@@ -18,8 +18,8 @@ const PROVIDERS = [
   { id: 'jira', label: 'Jira', status: 'stale', error: 'auth failed — check settings' },
 ]
 
-function renderView({ seed = {}, source = {}, items = [ADO_ITEM, JIRA_ITEM], providers = PROVIDERS, setItems = () => {} } = {}) {
-  const storage = memStorage({ 'nexusmd.wi.view': JSON.stringify('board'), ...seed })
+function renderView({ seed = {}, source = {}, items = [ADO_ITEM, JIRA_ITEM], providers = PROVIDERS, setItems = () => {}, data = {}, view = 'board' } = {}) {
+  const storage = memStorage({ 'nexusmd.wi.view': JSON.stringify(view), ...seed })
   const workItemSource = { saveField: vi.fn(async () => {}), webUrl: (w) => (w.source === 'jira' ? `https://a.atlassian.net/browse/${w.displayId}` : null), ...source }
   render(
     <NexusDataProvider value={{
@@ -27,6 +27,7 @@ function renderView({ seed = {}, source = {}, items = [ADO_ITEM, JIRA_ITEM], pro
       data: {
         ORG: 'o', TEAM: [], PROJECTS: [], WORK_ITEMS: items, WORK_ITEM_PROVIDERS: providers,
         WI_TYPE_STATES_BY_SOURCE: { jira: { story: ['To Do', 'In Progress', 'Done'] } },
+        ...data,
       },
     }}>
       <WorkItemsView items={items} setItems={setItems} onOpen={() => {}} team={[]} />
@@ -100,4 +101,38 @@ it('renders Jira keys and links via the source', () => {
   const link = screen.getByText('ABC-1')
   expect(link.getAttribute('href')).toBe('https://a.atlassian.net/browse/ABC-1')
   expect(screen.getByText('Jira')).toBeTruthy()
+})
+
+it('shows no provider status pill when only one provider is connected, even if it is stale', () => {
+  renderView({ items: [ADO_ITEM], providers: [{ id: 'ado', label: 'Azure DevOps', status: 'stale', error: 'network down' }] })
+  expect(screen.queryByRole('status')).toBeNull()
+  expect(screen.queryByText(/showing cached/)).toBeNull()
+})
+
+it('bulk mark-done skips items already in the Completed category', async () => {
+  const DONE_JIRA = { ...JIRA_ITEM, id: 'jira:ABC-2', displayId: 'ABC-2', title: 'Done story', state: 'Done', stateCategory: 'Completed' }
+  const moveToCategory = vi.fn(async () => ({ state: 'Done', stateCategory: 'Completed' }))
+  renderView({ view: 'table', items: [JIRA_ITEM, DONE_JIRA], source: { moveToCategory }, seed: { 'nexusmd.wi.grouping': '"none"' } })
+  for (const title of ['Jira story', 'Done story']) {
+    fireEvent.click(screen.getByText(title).closest('tr').querySelector('input[type="checkbox"]').closest('td'))
+  }
+  fireEvent.click(screen.getByRole('button', { name: /Mark done/ }))
+  await waitFor(() => expect(moveToCategory).toHaveBeenCalledTimes(1))
+  expect(moveToCategory).toHaveBeenCalledWith('jira:ABC-1', 'Completed', expect.objectContaining({ id: 'jira:ABC-1' }))
+  expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('not marked done'), 'error')
+})
+
+it('does not sync Jira states or projects into ADO board columns when multiple providers are connected', async () => {
+  const { storage } = renderView({
+    seed: { 'nexusmd.wi.displayMode': '"separate"', 'nexusmd.wi.sourceTab': '"ado"' },
+    data: {
+      PROJECTS: [{ id: 'web', name: 'Web', source: 'ado' }, { id: 'abc', name: 'ABC', source: 'jira' }],
+      WI_TYPE_STATES: { Bug: ['New', 'Active', 'Resolved'], story: ['Selected for Development'] },
+      WI_TYPE_STATES_BY_SOURCE: { ado: { Bug: ['New', 'Active', 'Resolved'] }, jira: { story: ['Selected for Development'] } },
+    },
+  })
+  await waitFor(() => expect(storage.getItem('nexusmd.wi.boardColumns')).toContain('Active'))
+  const cfg = JSON.parse(storage.getItem('nexusmd.wi.boardColumns'))
+  expect(JSON.stringify(cfg)).not.toContain('Selected for Development')
+  expect(cfg.abc).toBeUndefined()
 })
