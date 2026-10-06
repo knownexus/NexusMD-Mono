@@ -138,3 +138,21 @@ describe('JiraCreateForm', () => {
     expect(screen.queryByText('Boom fields')).toBeNull()
   })
 })
+
+describe('JiraCreateForm date inputs', () => {
+  it('renders datetime fields as datetime-local and date fields as date', async () => {
+    const source = makeSource([
+      { key: 'customfield_9', name: 'Start', required: true, kind: 'datetime', role: null, allowedValues: [] },
+      { key: 'duedate', name: 'Due', required: true, kind: 'date', role: null, allowedValues: [] },
+    ])
+    render(<JiraCreateForm source={source} projectKeys={['ABC']} people={[]} site="s" initialTitle="T" onCreated={() => {}} />)
+    await waitFor(() => expect(screen.getByLabelText('Start *')).toBeTruthy())
+    expect(screen.getByLabelText('Start *').getAttribute('type')).toBe('datetime-local')
+    expect(screen.getByLabelText('Due *').getAttribute('type')).toBe('date')
+    fireEvent.change(screen.getByLabelText('Start *'), { target: { value: '2026-10-10T14:30' } })
+    fireEvent.change(screen.getByLabelText('Due *'), { target: { value: '2026-10-11' } })
+    fireEvent.click(screen.getByText('Create issue'))
+    await waitFor(() => expect(source.createIssue).toHaveBeenCalled())
+    expect(source.createIssue.mock.calls[0][0].values).toEqual({ customfield_9: '2026-10-10T14:30', duedate: '2026-10-11' })
+  })
+})

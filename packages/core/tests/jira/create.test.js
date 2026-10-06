@@ -32,6 +32,11 @@ describe('classifyJiraField', () => {
       customfield_1: 'option', customfield_2: 'richtext', customfield_3: null, duedate: 'date',
     })
   })
+
+  it('classifies datetime fields separately from date fields', () => {
+    expect(classifyJiraField({ fieldId: 'customfield_9', schema: { type: 'datetime' } }, IDS)).toBe('datetime')
+    expect(classifyJiraField({ fieldId: 'duedate', schema: { type: 'date' } }, IDS)).toBe('date')
+  })
 })
 
 describe('normaliseCreateFields + layoutCreateFields', () => {
@@ -77,6 +82,18 @@ describe('buildJiraCreatePayload', () => {
     })
     expect(payload.fields.description.type).toBe('doc')
     expect(payload.fields).not.toHaveProperty('customfield_2')
+  })
+
+  it('sends a datetime-local value as a full UTC timestamp and keeps dates as YYYY-MM-DD', () => {
+    const payload = buildJiraCreatePayload({
+      projectKey: 'ABC', typeId: '1', summary: 's',
+      fields: [{ key: 'customfield_9', kind: 'datetime' }, { key: 'duedate', kind: 'date' }],
+      values: { customfield_9: '2026-10-10T14:30', duedate: '2026-10-11' },
+    })
+    const expected = new Date(2026, 9, 10, 14, 30).toISOString().replace(/Z$/, '+0000')
+    expect(payload.fields.customfield_9).toBe(expected)
+    expect(payload.fields.customfield_9).toMatch(/^2026-10-1\dT\d{2}:\d{2}:00\.000\+0000$/)
+    expect(payload.fields.duedate).toBe('2026-10-11')
   })
 
   it('sends a parent key upper-cased', () => {

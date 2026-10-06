@@ -51,6 +51,12 @@ function JiraFieldInput({ field, value, onChange, people }) {
           <input aria-label={label} type="date" value={value || ''} onChange={e => onChange(e.target.value)} style={settInputStyle} />
         </SettField>
       )
+    case 'datetime':
+      return (
+        <SettField label={label}>
+          <input aria-label={label} type="datetime-local" value={value || ''} onChange={e => onChange(e.target.value)} style={settInputStyle} />
+        </SettField>
+      )
     case 'labels':
       return (
         <SettField label={label} hint="Comma-separated. Spaces become hyphens.">

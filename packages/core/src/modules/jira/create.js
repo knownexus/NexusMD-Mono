@@ -19,7 +19,8 @@ export function classifyJiraField(f, fieldIds = {}) {
   if (s.type === 'array' && hasValues) return 'multi-option'
   if (s.type === 'priority' || s.type === 'option' || hasValues) return 'option'
   if (s.type === 'number') return 'number'
-  if (s.type === 'date' || s.type === 'datetime') return 'date'
+  if (s.type === 'date') return 'date'
+  if (s.type === 'datetime') return 'datetime'
   if (s.type === 'string') return String(s.custom || '').endsWith(':textarea') ? 'richtext' : 'text'
   return null
 }
@@ -64,6 +65,13 @@ const isEmpty = (v) => v === undefined || v === null || v === '' || (Array.isArr
 const toLabels = (v) => (Array.isArray(v) ? v : String(v).split(/[,;]/))
   .map(t => String(t).trim().replace(/\s+/g, '-')).filter(Boolean)
 
+// A datetime-local value ("2026-10-10T14:30", local time) → a full UTC timestamp, with
+// the offset written the way Jira documents datetime values ("…T13:30:00.000+0000").
+function toJiraDateTime(v) {
+  const d = new Date(v)
+  return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().replace(/Z$/, '+0000')
+}
+
 export function buildJiraCreatePayload({ projectKey, typeId, summary, values = {}, fields = [] }) {
   const out = { project: { key: projectKey }, issuetype: { id: String(typeId) }, summary: String(summary).trim() }
   for (const f of fields) {
@@ -74,6 +82,7 @@ export function buildJiraCreatePayload({ projectKey, typeId, summary, values = {
       case 'text': out[f.key] = String(v); break
       case 'number': out[f.key] = Number(v); break
       case 'date': out[f.key] = String(v); break
+      case 'datetime': out[f.key] = toJiraDateTime(v); break
       case 'user': out[f.key] = { accountId: v }; break
       case 'option': out[f.key] = { id: String(v) }; break
       case 'multi-option': out[f.key] = v.map(id => ({ id: String(id) })); break
