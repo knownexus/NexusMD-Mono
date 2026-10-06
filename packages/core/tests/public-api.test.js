@@ -73,7 +73,7 @@ const EXPECTED = [
   'mapJiraIssue', 'mapResolvedJiraIssue', 'pickSprint',
   'JIRA_CACHE_KEY', 'JIRA_BASE_FIELDS', 'buildActiveJql', 'buildResolvedJql', 'searchAllIssues', 'loadJiraData', 'loadCachedJiraData',
   'loadJiraDetail', 'loadJiraComments', 'addJiraComment', 'loadJiraRawFields', 'buildJiraFieldsPayload',
-  'updateJiraIssue', 'listJiraTransitions', 'pickTransition', 'transitionJiraIssue', 'jiraPatchFromAdoField',
+  'updateJiraIssue', 'listJiraTransitions', 'pickTransition', 'transitionJiraIssue', 'transitionJiraIssueToAny', 'jiraPatchFromAdoField',
   'classifyJiraField', 'normaliseCreateFields', 'layoutCreateFields', 'buildJiraCreatePayload',
   'fetchJiraCreateTypes', 'fetchJiraCreateFields', 'fetchJiraLinkTypes', 'createJiraIssue',
   'fetchJiraBoards', 'fetchJiraBoardColumns', 'jiraColumnForStatus',

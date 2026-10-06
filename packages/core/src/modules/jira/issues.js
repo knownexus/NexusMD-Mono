@@ -94,6 +94,22 @@ export async function transitionJiraIssue(client, key, target, { currentState = 
   return { state: t.toName, stateCategory: t.toCategory }
 }
 
+// Move an issue into whichever of `statuses` (a board column) its workflow can
+// reach first, trying the column's statuses in order.
+export async function transitionJiraIssueToAny(client, key, statuses, { currentState = '' } = {}) {
+  const transitions = await listJiraTransitions(client, key)
+  let chosen = null
+  for (const status of statuses || []) {
+    chosen = pickTransition(transitions, { state: status })
+    if (chosen) break
+  }
+  if (!chosen) {
+    throw new Error(`No transition from "${currentState || 'its current status'}" to any status in this column`)
+  }
+  await client.post(`${issuePath(key)}/transitions`, { transition: { id: chosen.id } })
+  return { state: chosen.toName, stateCategory: chosen.toCategory }
+}
+
 // The shared views write ADO field names (saveField(id, 'System.State', v)).
 // Translate one such write into a Jira transition or a normalised field patch.
 export function jiraPatchFromAdoField(field, value, { people = [], priorities = [] } = {}) {

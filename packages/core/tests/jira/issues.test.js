@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   loadJiraDetail, loadJiraComments, addJiraComment, loadJiraRawFields,
   buildJiraFieldsPayload, updateJiraIssue, listJiraTransitions, pickTransition,
-  transitionJiraIssue, jiraPatchFromAdoField,
+  transitionJiraIssue, transitionJiraIssueToAny, jiraPatchFromAdoField,
 } from '../../src/modules/jira/issues.js'
 
 const META = {
@@ -109,6 +109,29 @@ describe('transitions', () => {
     const client = makeClient({ '/transitions': TRANSITIONS })
     await expect(transitionJiraIssue(client, 'ABC-1', { state: 'Blocked' }, { currentState: 'To Do' }))
       .rejects.toThrow('No transition from "To Do" to "Blocked" in this workflow')
+    expect(client.post).not.toHaveBeenCalled()
+  })
+})
+
+describe('transitionJiraIssueToAny', () => {
+  const TRANSITIONS = { transitions: [
+    { id: '21', name: 'Review', to: { name: 'Code Review', statusCategory: { key: 'indeterminate' } } },
+    { id: '11', name: 'Start', to: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } },
+  ] }
+  it('takes the first transition in the column\'s status order', async () => {
+    const client = makeClient({ '/transitions': TRANSITIONS })
+    expect(await transitionJiraIssueToAny(client, 'ABC-1', ['In Progress', 'Code Review'], { currentState: 'To Do' }))
+      .toEqual({ state: 'In Progress', stateCategory: 'InProgress' })
+    expect(client.post).toHaveBeenCalledWith('rest/api/3/issue/ABC-1/transitions', { transition: { id: '11' } })
+  })
+  it('matches status names case-insensitively', async () => {
+    const client = makeClient({ '/transitions': TRANSITIONS })
+    expect((await transitionJiraIssueToAny(client, 'ABC-1', ['code review'])).state).toBe('Code Review')
+  })
+  it('throws without posting when no transition reaches the column', async () => {
+    const client = makeClient({ '/transitions': TRANSITIONS })
+    await expect(transitionJiraIssueToAny(client, 'ABC-1', ['Done'], { currentState: 'To Do' }))
+      .rejects.toThrow('No transition from "To Do" to any status in this column')
     expect(client.post).not.toHaveBeenCalled()
   })
 })

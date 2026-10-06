@@ -10,7 +10,7 @@ export {
 } from './loader.js'
 export {
   loadJiraDetail, loadJiraComments, addJiraComment, loadJiraRawFields, buildJiraFieldsPayload,
-  updateJiraIssue, listJiraTransitions, pickTransition, transitionJiraIssue, jiraPatchFromAdoField,
+  updateJiraIssue, listJiraTransitions, pickTransition, transitionJiraIssue, transitionJiraIssueToAny, jiraPatchFromAdoField,
 } from './issues.js'
 export {
   classifyJiraField, normaliseCreateFields, layoutCreateFields, buildJiraCreatePayload,
