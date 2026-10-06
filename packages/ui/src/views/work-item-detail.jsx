@@ -9,7 +9,7 @@ import React from 'react';
 import { renderContent, sanitizeHtml, mdToHtml } from './render-content.js';
 import { Icon } from '../icons.jsx';
 import { toast } from '../toast.jsx';
-import { timeAgo, slugify } from '@nexusmd/core';
+import { timeAgo, slugify, sourceOfId } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 import { getWorkItemSource } from './work-item-source.js';
 import { useProjectAreas } from '../project-areas.js';
@@ -38,7 +38,7 @@ async function prefetchWorkItem(id, project) {
 // Renders a single HTML field with a view/edit toggle.
 // On save, PATCHes /api/workitems/{itemId} using the ADO JSON-patch format.
 
-function HtmlField({ label, value: initialValue, field, itemId }) {
+function HtmlField({ label, value: initialValue, field, itemId, editElsewhereUrl = null }) {
   const { workItemSource } = useNexusData();
   const [editing,  setEditing]  = React.useState(false);
   const [text,     setText]     = React.useState(initialValue || '');
@@ -74,7 +74,13 @@ function HtmlField({ label, value: initialValue, field, itemId }) {
     <div className="drawer-section">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h4 style={{ margin: 0 }}>{label}</h4>
-        {!editing && (
+        {!editing && editElsewhereUrl && (
+          <a className="btn sm ghost" style={{ fontSize: 11.5 }} href={editElsewhereUrl} target="_blank" rel="noopener noreferrer"
+            title="This field contains content NexusMD cannot save back to Jira without losing it">
+            <Icon name="link" size={11}/> Edit in Jira
+          </a>
+        )}
+        {!editing && !editElsewhereUrl && (
           <button className="btn sm ghost" style={{ fontSize: 11.5 }}
             onClick={() => { setText(initialValue || ''); setPreview(false); setStatus(''); setEditing(true); }}>
             <Icon name="edit" size={11}/> Edit
@@ -327,6 +333,10 @@ export function WorkItemDetail({ id, project }) {
   }
 
   const hasAnyContent = detail?.description || detail?.acceptanceCriteria || detail?.reproSteps;
+  // Jira fields holding images can't round-trip through HTML → ADF (the image would be
+  // dropped on save), so they are shown read-only with a link to edit them in Jira.
+  const isJira = sourceOfId(id) === 'jira';
+  const editInJiraUrl = (html) => (isJira && /<img\b/i.test(html || '') ? (workItemSource?.webUrl?.({ id }) || null) : null);
 
   return (
     <div>
@@ -336,6 +346,7 @@ export function WorkItemDetail({ id, project }) {
           value={detail.description}
           field="System.Description"
           itemId={id}
+          editElsewhereUrl={editInJiraUrl(detail.description)}
         />
       )}
       {detail?.acceptanceCriteria && (
@@ -344,6 +355,7 @@ export function WorkItemDetail({ id, project }) {
           value={detail.acceptanceCriteria}
           field="Microsoft.VSTS.Common.AcceptanceCriteria"
           itemId={id}
+          editElsewhereUrl={editInJiraUrl(detail.acceptanceCriteria)}
         />
       )}
       {detail?.reproSteps && (

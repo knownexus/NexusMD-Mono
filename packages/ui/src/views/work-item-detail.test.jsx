@@ -1,7 +1,7 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { WorkItemFieldsEditor } from './work-item-detail.jsx'
+import { WorkItemFieldsEditor, WorkItemDetail } from './work-item-detail.jsx'
 import { NexusDataProvider } from '../data-context.jsx'
 
 afterEach(cleanup)
@@ -50,5 +50,48 @@ describe('WorkItemFieldsEditor', () => {
     fireEvent.change(screen.getByDisplayValue('To Do'), { target: { value: 'Active' } })
     await waitFor(() => expect(saveField).toHaveBeenCalled())
     await waitFor(() => expect(screen.getByDisplayValue('To Do')).toBeTruthy())
+  })
+})
+
+function renderDetail({ id, detail }) {
+  const workItemSource = {
+    loadDetail: vi.fn().mockResolvedValue(detail),
+    loadComments: vi.fn().mockResolvedValue([]),
+    webUrl: (item) => (String(item.id).startsWith('jira:') ? `https://a.atlassian.net/browse/${item.id.slice(5)}` : `https://ado/${item.id}`),
+  }
+  const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+  return render(
+    <NexusDataProvider value={{ data: { WORK_ITEMS: [] }, storage, getProfileKey: k => k, pushPref: () => {}, workItemSource }}>
+      <WorkItemDetail id={id} />
+    </NexusDataProvider>
+  )
+}
+
+describe('WorkItemDetail — Jira fields that cannot round-trip', () => {
+  it('renders a Jira description containing an image read-only with an "Edit in Jira" link', async () => {
+    renderDetail({ id: 'jira:IMG-1', detail: { description: '<p>See <img src="x.png"></p>', acceptanceCriteria: '<p>plain AC</p>' } })
+    const link = await screen.findByRole('link', { name: /Edit in Jira/ })
+    expect(link.getAttribute('href')).toBe('https://a.atlassian.net/browse/IMG-1')
+    // Only the image-bearing description loses its editor; the plain AC keeps it.
+    expect(screen.getAllByRole('button', { name: /Edit/ })).toHaveLength(1)
+    expect(screen.getAllByRole('link', { name: /Edit in Jira/ })).toHaveLength(1)
+  })
+
+  it('renders Jira acceptance criteria containing an image read-only too', async () => {
+    renderDetail({ id: 'jira:IMG-2', detail: { acceptanceCriteria: '<p><IMG src="y.png"></p>' } })
+    expect(await screen.findByRole('link', { name: /Edit in Jira/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Edit/ })).toBeNull()
+  })
+
+  it('keeps the editor for a Jira description with a table but no image', async () => {
+    renderDetail({ id: 'jira:TBL-1', detail: { description: '<table><tr><td>a</td></tr></table>' } })
+    expect(await screen.findByRole('button', { name: /Edit/ })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /Edit in Jira/ })).toBeNull()
+  })
+
+  it('leaves ADO items with images editable', async () => {
+    renderDetail({ id: 4242, detail: { description: '<p><img src="x.png"></p>' } })
+    expect(await screen.findByRole('button', { name: /Edit/ })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /Edit in Jira/ })).toBeNull()
   })
 })
