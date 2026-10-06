@@ -7,12 +7,14 @@ const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' 
 const MARKS = { strong: 'strong', b: 'strong', em: 'em', i: 'em', u: 'underline', s: 'strike', strike: 'strike', del: 'strike', code: 'code' }
 const BLOCK = new Set(['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'pre', 'blockquote', 'table', 'hr'])
 const LIST_CHILD_TYPES = new Set(['paragraph', 'bulletList', 'orderedList', 'codeBlock'])
+const QUOTE_CHILD_TYPES = new Set([...LIST_CHILD_TYPES, 'heading'])
+const KNOWN_TAG = /<\/?(p|div|h[1-6]|ul|ol|li|pre|blockquote|table|tr|td|th|hr|br|strong|b|em|i|u|s|strike|del|code|a|span|img)\b/i
 
 function decode(s) {
   return s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e) => {
     if (e[0] === '#') {
       const n = e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10)
-      return Number.isFinite(n) ? String.fromCodePoint(n) : m
+      return n > 0 && n <= 0x10FFFF ? String.fromCodePoint(n) : m
     }
     return ENTITIES[e.toLowerCase()] ?? m
   })
@@ -87,11 +89,34 @@ function textOf(n) {
   return n.children.map(textOf).join('')
 }
 
+function adfText(n) {
+  if (n.text !== undefined) return n.text
+  if (n.type === 'hardBreak') return '\n'
+  const parts = (n.content || []).map(adfText)
+  return ['paragraph', 'heading', 'codeBlock'].includes(n.type) ? parts.join('') : parts.join('\n')
+}
+
+// Keep allowed block types; flatten any other block to a paragraph of its text so nothing vanishes.
+function restrict(bs, allowed) {
+  const out = []
+  for (const b of bs) {
+    if (allowed.has(b.type)) { out.push(b); continue }
+    const content = []
+    adfText(b).split('\n').forEach((line, i) => {
+      if (i > 0) content.push({ type: 'hardBreak' })
+      if (line) content.push({ type: 'text', text: line })
+    })
+    if (content.some(c => c.type === 'text')) out.push({ type: 'paragraph', content })
+  }
+  return out
+}
+
 const paragraph = (content) => (content.length ? [{ type: 'paragraph', content }] : [])
 
 function list(n) {
   const items = n.children.filter(c => c.tag === 'li').map(li => {
-    const content = blocks(li.children).filter(b => LIST_CHILD_TYPES.has(b.type))
+    const content = restrict(blocks(li.children), LIST_CHILD_TYPES)
+    if (content.length && (content[0].type === 'bulletList' || content[0].type === 'orderedList')) content.unshift({ type: 'paragraph' })
     return { type: 'listItem', content: content.length ? content : [{ type: 'paragraph' }] }
   })
   return items.length ? { type: n.tag === 'ol' ? 'orderedList' : 'bulletList', content: items } : null
@@ -112,7 +137,7 @@ function block(n) {
       return [text ? { type: 'codeBlock', content: [{ type: 'text', text }] } : { type: 'codeBlock' }]
     }
     case 'blockquote': {
-      const inner = blocks(n.children).filter(b => LIST_CHILD_TYPES.has(b.type))
+      const inner = restrict(blocks(n.children), QUOTE_CHILD_TYPES)
       return inner.length ? [{ type: 'blockquote', content: inner }] : []
     }
     case 'hr': return [{ type: 'rule' }]
@@ -147,6 +172,6 @@ function plainTextToAdf(text) {
 
 export function htmlToAdf(html) {
   const s = String(html ?? '')
-  if (!/<[a-z!/]/i.test(s)) return plainTextToAdf(s)
+  if (!KNOWN_TAG.test(s)) return plainTextToAdf(s)
   return { type: 'doc', version: 1, content: blocks(parse(s).children) }
 }

@@ -80,4 +80,38 @@ describe('htmlToAdf', () => {
       p(t('para 2')),
     ))
   })
+
+  it('leaves out-of-range numeric entities as text instead of throwing', () => {
+    expect(htmlToAdf('<p>a &#99999999; b</p>')).toEqual(doc(p(t('a &#99999999; b'))))
+  })
+
+  it('prepends an empty paragraph when a list item starts with a nested list', () => {
+    expect(htmlToAdf('<ul><li><ul><li>a</li></ul></li></ul>')).toEqual(doc({
+      type: 'bulletList',
+      content: [{ type: 'listItem', content: [
+        { type: 'paragraph' },
+        { type: 'bulletList', content: [{ type: 'listItem', content: [p(t('a'))] }] },
+      ] }],
+    }))
+  })
+
+  it('keeps headings inside blockquotes', () => {
+    expect(htmlToAdf('<blockquote><h2>T</h2><p>x</p></blockquote>')).toEqual(doc({
+      type: 'blockquote',
+      content: [{ type: 'heading', attrs: { level: 2 }, content: [t('T')] }, p(t('x'))],
+    }))
+  })
+
+  it('flattens disallowed blocks to paragraphs instead of dropping their text', () => {
+    expect(htmlToAdf('<ul><li><h3>Head</h3></li></ul>')).toEqual(doc({
+      type: 'bulletList', content: [{ type: 'listItem', content: [p(t('Head'))] }],
+    }))
+    expect(htmlToAdf('<blockquote><blockquote>inner</blockquote></blockquote>')).toEqual(doc({
+      type: 'blockquote', content: [p(t('inner'))],
+    }))
+  })
+
+  it('treats text with a stray < as plain text', () => {
+    expect(htmlToAdf('Use List<String> here')).toEqual(doc(p(t('Use List<String> here'))))
+  })
 })
