@@ -24,6 +24,20 @@ describe('buildSnapshot', () => {
     expect(snap.WORK_ITEM_PROVIDERS.map(p => p.id)).toEqual(['ado', 'jira'])
   })
 
+  it('hides people: drops them from the rosters and unassigns their items', () => {
+    const st = storage({
+      [ADO_CACHE_KEY]: { ORG: 'o', WORK_ITEMS: [{ id: 1, assignee: 'alex-doe' }, { id: 2, assignee: 'sam-roe' }], TEAM: [{ id: 'alex-doe', name: 'Alex Doe' }, { id: 'sam-roe', name: 'Sam Roe' }] },
+    })
+    const args = { adoConfig: { org: 'o' }, adoConfigured: true, jiraConfig: {}, jiraActive: false, storage: st, empty: EMPTY }
+    const snap = buildSnapshot({ ...args, hiddenIds: ['alex-doe'] })
+    expect(snap.TEAM.map(m => m.id)).toEqual(['sam-roe'])
+    expect(snap.TEAM_ALL.map(m => m.id)).toEqual(['alex-doe', 'sam-roe'])
+    expect(snap.WORK_ITEMS.map(w => w.assignee)).toEqual([null, 'sam-roe'])
+    const all = buildSnapshot(args)
+    expect(all.TEAM.map(m => m.id)).toEqual(['alex-doe', 'sam-roe'])
+    expect(all.TEAM_ALL).toBeUndefined()
+  })
+
   it('ignores the Jira cache when Jira is not active', () => {
     const st = storage({ [JIRA_CACHE_KEY]: { SITE: 's', WORK_ITEMS: [{ id: 'jira:A-1' }] } })
     const snap = buildSnapshot({ adoConfig: {}, adoConfigured: false, jiraConfig: { site: 's' }, jiraActive: false, storage: st, empty: EMPTY })

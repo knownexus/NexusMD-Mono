@@ -5,7 +5,7 @@ import React from 'react'
 import { createRoutedWorkItemSource } from '@nexusmd/ui'
 import {
   loadCachedAdoData, loadCachedJiraData, mergeWorkItemData,
-  readProviderStatus, recordProviderStatus, adoStateForCategory, CATEGORY_LABELS,
+  readProviderStatus, recordProviderStatus, adoStateForCategory, applyHiddenPeople, CATEGORY_LABELS,
 } from '@nexusmd/core'
 
 // One routed source per (ado, jira) pair. Rebuilding it with every snapshot would
@@ -15,13 +15,13 @@ export function useRoutedWorkItemSource(ado, jira) {
   return React.useMemo(() => createRoutedWorkItemSource({ ado, jira }), [ado, jira])
 }
 
-export function buildSnapshot({ adoConfig, adoConfigured, jiraConfig, jiraActive, storage, empty }) {
+export function buildSnapshot({ adoConfig, adoConfigured, jiraConfig, jiraActive, storage, empty, hiddenIds = [] }) {
   const ado = loadCachedAdoData(adoConfig, { storage })
   const jira = jiraActive ? loadCachedJiraData(jiraConfig, { storage }) : null
   const merged = mergeWorkItemData({
     ado, jira, status: readProviderStatus(storage), configured: { ado: !!adoConfigured, jira: !!jiraActive },
   })
-  return { ...empty, ...(ado || {}), ...merged }
+  return applyHiddenPeople({ ...empty, ...(ado || {}), ...merged }, hiddenIds)
 }
 
 export async function refreshProviders({ storage, providers }) {

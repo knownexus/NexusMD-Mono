@@ -247,6 +247,14 @@ const desktopWorkItemSource = {
   },
 }
 
+// Per-profile ids of people hidden from NexusMD (the Team view's "Remove").
+function readHiddenPeople() {
+  try {
+    const ids = JSON.parse(localStorage.getItem(getProfileKey('nexusmd.team.removed')) || '[]')
+    return Array.isArray(ids) ? ids : []
+  } catch { return [] }
+}
+
 // Cached ADO snapshot, shaped for the shared views, re-read on every data:updated.
 function useNexusSnapshot() {
   const [snapshot, setSnapshot] = React.useState(EMPTY_NEXUS_DATA)
@@ -257,6 +265,7 @@ function useNexusSnapshot() {
         adoConfig: getAdoConfig(), adoConfigured: isAdoConfigured(),
         jiraConfig: getJiraConfig(), jiraActive: isJiraActive(),
         storage: localStorageAdapter, empty: EMPTY_NEXUS_DATA,
+        hiddenIds: readHiddenPeople(),
       }))
     } catch { setSnapshot(EMPTY_NEXUS_DATA) }
     setLoaded(true)
@@ -418,22 +427,33 @@ function ViewBody({
     } catch { return [] }
   })
 
+  // data.TEAM is already filtered by hidden people; TEAM_ALL is the full roster.
+  const fullRoster = data.TEAM_ALL || data.TEAM || []
   const effectiveTeam = React.useMemo(() => {
-    const base = (data.TEAM || []).filter(m => !removedIds.includes(m.id))
+    const base = fullRoster.filter(m => !removedIds.includes(m.id))
     const existingIds = new Set(base.map(m => m.id))
     return [...base, ...customTeam.filter(m => !existingIds.has(m.id))]
-  }, [data.TEAM, customTeam, removedIds])
+  }, [fullRoster, customTeam, removedIds])
+  // The Team view lists removed people (to restore them), so it needs the unfiltered roster.
+  const teamViewTeam = React.useMemo(() => {
+    const existingIds = new Set(fullRoster.map(m => m.id))
+    return [...fullRoster, ...customTeam.filter(m => !existingIds.has(m.id))]
+  }, [fullRoster, customTeam])
 
   const handleTeamChange = (newTeam) => {
-    const baseIds = new Set((data.TEAM || []).map(m => m.id))
+    const baseIds = new Set(fullRoster.map(m => m.id))
     const newCustom = newTeam.filter(m => !baseIds.has(m.id))
-    const newRemoved = (data.TEAM || []).filter(m => !newTeam.find(t => t.id === m.id)).map(m => m.id)
+    const newRemoved = fullRoster.filter(m => !newTeam.find(t => t.id === m.id)).map(m => m.id)
     setCustomTeam(newCustom)
     setRemovedIds(newRemoved)
     try {
       localStorage.setItem(getProfileKey('nexusmd.team.custom'), JSON.stringify(newCustom))
       localStorage.setItem(getProfileKey('nexusmd.team.removed'), JSON.stringify(newRemoved))
     } catch {}
+    // Rebuild the snapshot so hidden/restored people apply immediately (skip no-op syncs)
+    if (newRemoved.length !== removedIds.length || newRemoved.some(id => !removedIds.includes(id))) {
+      core._emit?.('data:updated')
+    }
   }
 
   const handleScheduleOneOnOne = (dev) => {
@@ -465,7 +485,7 @@ function ViewBody({
           needsMeCriteria={needsMeCriteria} setPlannerData={setPlannerData}
           quickLinks={tweaks.quickLinks || []}
           density={tweaks.density}
-          team={data.TEAM || []}
+          team={effectiveTeam}
           acknowledgedSet={acknowledgedSet}
         />
       )
@@ -485,7 +505,7 @@ function ViewBody({
           setItems={setLocalItems}
           onOpen={onOpenItem}
           onCreate={() => { window.dispatchEvent(new CustomEvent('nexusmd:create-wi', { detail: {} })) }}
-          team={data.TEAM || []}
+          team={effectiveTeam}
           newItemIds={newItemIds.work}
         />
       )
@@ -512,7 +532,7 @@ function ViewBody({
     case 'team':
       return (
         <TeamView
-          team={effectiveTeam}
+          team={teamViewTeam}
           workItems={data.WORK_ITEMS || []}
           prs={data.PRS || []}
           onOpenItem={onOpenItem}
