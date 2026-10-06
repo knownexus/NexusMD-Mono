@@ -6,11 +6,12 @@ import { NexusDataProvider } from '../data-context.jsx'
 
 afterEach(cleanup)
 
-function renderEditor({ item, workItemSource, onItemUpdated = vi.fn() }) {
+function renderEditor({ item, workItemSource, onItemUpdated = vi.fn(), data: extraData = {} }) {
   const data = {
     STATES: ['To Do', 'Active', 'Done'],
     TEAM: [{ id: 'u1', name: 'Alex' }, { id: 'u2', name: 'Sam' }],
     WORK_ITEMS: [],
+    ...extraData,
   }
   const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
   return render(
@@ -38,7 +39,19 @@ describe('WorkItemFieldsEditor', () => {
     })
     fireEvent.change(screen.getByDisplayValue('To Do'), { target: { value: 'Active' } })
     await waitFor(() => expect(saveField).toHaveBeenCalledWith(1, 'System.State', 'Active'))
-    await waitFor(() => expect(onItemUpdated).toHaveBeenCalledWith({ state: 'Active' }))
+    await waitFor(() => expect(onItemUpdated).toHaveBeenCalledWith({ state: 'Active', stateCategory: null }))
+  })
+
+  it('includes the new state category in the local patch', async () => {
+    const onItemUpdated = vi.fn()
+    renderEditor({
+      item: { id: 'jira:A-1', source: 'jira', type: 'story', state: 'To Do', stateCategory: 'Proposed', assignee: null, priority: 3, area: '', tags: [] },
+      workItemSource: { saveField: vi.fn().mockResolvedValue() },
+      onItemUpdated,
+      data: { STATE_CATEGORIES_BY_SOURCE: { ado: {}, jira: { 'To Do': 'Proposed', Active: 'InProgress' } } },
+    })
+    fireEvent.change(screen.getByDisplayValue('To Do'), { target: { value: 'Active' } })
+    await waitFor(() => expect(onItemUpdated).toHaveBeenCalledWith({ state: 'Active', stateCategory: 'InProgress' }))
   })
 
   it('rolls back the State select on save failure', async () => {

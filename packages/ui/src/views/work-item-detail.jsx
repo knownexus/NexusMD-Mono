@@ -482,6 +482,8 @@ export function WorkItemFieldsEditor({ item, onItemUpdated }) {
     return [...s].sort((a, b) => a.localeCompare(b));
   }, [data.WORK_ITEMS]);
 
+  const stateCategoryOf = (state) => data.STATE_CATEGORIES_BY_SOURCE?.[item.source || 'ado']?.[state] ?? null;
+
   const patch = async (field, adoValue, localPatch) => {
     const prev = local;
     setLocal(l => ({ ...l, ...localPatch }));
@@ -511,7 +513,7 @@ export function WorkItemFieldsEditor({ item, onItemUpdated }) {
         <dt>State</dt>
         <dd>
           <select value={local.state || ''} style={sel}
-            onChange={e => { const v = e.target.value; patch('System.State', v, { state: v }); }}>
+            onChange={e => { const v = e.target.value; patch('System.State', v, { state: v, stateCategory: stateCategoryOf(v) }); }}>
             {STATES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </dd>
