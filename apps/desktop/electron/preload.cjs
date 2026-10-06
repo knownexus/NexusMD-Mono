@@ -135,6 +135,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('db-manager:get-columns', { type, config, table }),
   },
 
+  // ── Jira proxy IPC ──────────────────────────────────────────────────────────
+  jira: {
+    request: (req) => ipcRenderer.invoke('jira:request', req),
+  },
+
   // ── nativeTheme (used by theme adapter) ────────────────────────────────────
   // One-time read of the native theme preference.
   getNativeTheme: () => ipcRenderer.invoke('get-native-theme'),
