@@ -76,6 +76,7 @@ const EXPECTED = [
   'updateJiraIssue', 'listJiraTransitions', 'pickTransition', 'transitionJiraIssue', 'jiraPatchFromAdoField',
   'classifyJiraField', 'normaliseCreateFields', 'layoutCreateFields', 'buildJiraCreatePayload',
   'fetchJiraCreateTypes', 'fetchJiraCreateFields', 'fetchJiraLinkTypes', 'createJiraIssue',
+  'fetchJiraBoards', 'fetchJiraBoardColumns', 'jiraColumnForStatus',
 ].sort()
 
 describe('public API surface', () => {

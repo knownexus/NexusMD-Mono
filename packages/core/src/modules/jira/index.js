@@ -16,3 +16,4 @@ export {
   classifyJiraField, normaliseCreateFields, layoutCreateFields, buildJiraCreatePayload,
   fetchJiraCreateTypes, fetchJiraCreateFields, fetchJiraLinkTypes, createJiraIssue,
 } from './create.js'
+export { fetchJiraBoards, fetchJiraBoardColumns, jiraColumnForStatus } from './boards.js'
