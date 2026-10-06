@@ -201,4 +201,14 @@ describe('loadJiraData board layout', () => {
     await loadJiraData({ ...CONFIG, boardId: '7' }, { http, storage: makeStorage() }, { isRefresh: true, priorData: { _jiraMeta: priorMeta, PROJECT_KEYS: ['ABC'] } })
     expect(http.fetch.mock.calls.some(([p]) => p.includes('/statuses'))).toBe(true)
   })
+  it('reuses cached metadata only when the cached board matches the chosen board', async () => {
+    const meta = { types: ['Story'], typeStates: {}, stateCategoryByName: {}, states: [], priorities: [{ id: '3', name: 'Medium', rank: 1 }], fieldIds: {}, me: null, people: [{ accountId: 'a', displayName: 'A', avatarUrl: '' }], statusNameById: { 1: 'To Do' } }
+    const run = async (cachedBoard) => {
+      const http = makeHttp({ board: { columnConfig: { columns: [] } } })
+      await loadJiraData({ ...CONFIG, boardId: '7' }, { http, storage: makeStorage() }, { isRefresh: true, priorData: { _jiraMeta: meta, PROJECT_KEYS: ['ABC'], BOARD_ID: cachedBoard } })
+      return http.fetch.mock.calls.some(([p]) => p.includes('/statuses'))
+    }
+    expect(await run('3')).toBe(true)
+    expect(await run('7')).toBe(false)
+  })
 })

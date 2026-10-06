@@ -67,7 +67,7 @@ function canReuseMeta(isRefresh, priorData, projectKeys, boardId) {
   if (!isRefresh || !meta) return false
   const prior = Array.isArray(priorData.PROJECT_KEYS) ? [...priorData.PROJECT_KEYS].sort() : null
   if (!prior || prior.length !== projectKeys.length || prior.some((k, i) => k !== projectKeys[i])) return false
-  if (boardId && !meta.statusNameById) return false
+  if (boardId && (!meta.statusNameById || priorData.BOARD_ID !== boardId)) return false
   return !!(meta.people?.length && meta.priorities?.length)
 }
 
