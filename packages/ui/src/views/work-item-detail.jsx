@@ -9,7 +9,7 @@ import React from 'react';
 import { renderContent, sanitizeHtml, mdToHtml } from './render-content.js';
 import { Icon } from '../icons.jsx';
 import { toast } from '../toast.jsx';
-import { timeAgo } from '@nexusmd/core';
+import { timeAgo, slugify } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 import { getWorkItemSource } from './work-item-source.js';
 import { useProjectAreas } from '../project-areas.js';
@@ -445,8 +445,18 @@ export function RawFieldsInspector({ id }) {
 
 export function WorkItemFieldsEditor({ item, onItemUpdated }) {
   const { data, storage, getProfileKey, workItemSource } = useNexusData();
-  const STATES = data.STATES || [];
   const TEAM = data.TEAM || [];
+  const isJira = item.source === 'jira';
+  const typeStates = data.WI_TYPE_STATES_BY_SOURCE?.[item.source || 'ado']?.[item.type];
+  const STATES = (() => {
+    const base = typeStates?.length ? typeStates : (data.STATES || []);
+    return item.state && !base.includes(item.state) ? [item.state, ...base] : base;
+  })();
+  const jiraPriorities = isJira ? (data.PRIORITIES_BY_SOURCE?.jira || []) : null;
+  // Jira assignee options come from the site's assignable users; ADO from the team.
+  const assigneeOptions = isJira
+    ? (data.JIRA_PEOPLE || []).map(p => ({ id: TEAM.find(t => t.name === p.displayName)?.id || slugify(p.displayName), name: p.displayName }))
+    : TEAM;
   const [areas] = useProjectAreas({ storage, getProfileKey });
 
   const [local, setLocal] = React.useState(item);
@@ -473,7 +483,7 @@ export function WorkItemFieldsEditor({ item, onItemUpdated }) {
     }
   };
 
-  const assignee = TEAM.find(t => t.id === local.assignee);
+  const assignee = assigneeOptions.find(t => t.id === local.assignee);
 
   const sel = {
     background: 'transparent', border: '1px solid transparent', borderRadius: 5,
@@ -499,30 +509,45 @@ export function WorkItemFieldsEditor({ item, onItemUpdated }) {
           <select value={assignee?.name || ''} style={sel}
             onChange={e => {
               const name = e.target.value;
-              const member = TEAM.find(t => t.name === name);
+              const member = assigneeOptions.find(t => t.name === name);
               patch('System.AssignedTo', name || '', { assignee: member?.id || null });
             }}>
             <option value="">Unassigned</option>
-            {TEAM.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+            {assigneeOptions.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
           </select>
         </dd>
 
         <dt>Priority</dt>
         <dd>
-          <select value={String(local.priority || 3)} style={sel}
-            onChange={e => { const v = parseInt(e.target.value, 10); patch('Microsoft.VSTS.Common.Priority', v, { priority: v }); }}>
-            <option value="1">1 – Critical</option>
-            <option value="2">2 – High</option>
-            <option value="3">3 – Medium</option>
-            <option value="4">4 – Low</option>
-          </select>
+          {jiraPriorities ? (
+            <select value={String(local.priority || 3)} style={sel}
+              onChange={e => {
+                const v = parseInt(e.target.value, 10);
+                const p = jiraPriorities.find(x => x.rank === v);
+                patch('Microsoft.VSTS.Common.Priority', v, { priority: v, priorityName: p?.name || null });
+              }}>
+              {jiraPriorities.map(p => <option key={p.id} value={p.rank}>{p.name}</option>)}
+            </select>
+          ) : (
+            <select value={String(local.priority || 3)} style={sel}
+              onChange={e => { const v = parseInt(e.target.value, 10); patch('Microsoft.VSTS.Common.Priority', v, { priority: v }); }}>
+              <option value="1">1 – Critical</option>
+              <option value="2">2 – High</option>
+              <option value="3">3 – Medium</option>
+              <option value="4">4 – Low</option>
+            </select>
+          )}
         </dd>
 
-        <dt>Area</dt>
-        <dd>
-          <AreaTreePicker compact areas={areas} value={local.area || ''}
-            onChange={val => patch('Custom.Area', val, { area: val })}/>
-        </dd>
+        {!isJira && (
+          <>
+            <dt>Area</dt>
+            <dd>
+              <AreaTreePicker compact areas={areas} value={local.area || ''}
+                onChange={val => patch('Custom.Area', val, { area: val })}/>
+            </dd>
+          </>
+        )}
 
         <dt>Tags</dt>
         <dd>
