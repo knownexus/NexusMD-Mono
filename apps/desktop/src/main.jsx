@@ -1018,6 +1018,23 @@ function App() {
         title={createWI?.title}
         project={getAdoConfig().projects || []}
         team={snapshot.TEAM || []}
+        adoAvailable={isAdoConfigured()}
+        jira={isJiraActive() ? {
+          source: nexusDataValue.workItemSource.jira,
+          projectKeys: getJiraConfig().projectKeys,
+          people: snapshot.JIRA_PEOPLE || [],
+          site: getJiraConfig().site,
+        } : null}
+        defaultProvider={defaultCreateProvider({
+          readJson: (k, d) => { try { const v = localStorage.getItem(getProfileKey(k)); return v == null ? d : JSON.parse(v) } catch { return d } },
+          adoAvailable: isAdoConfigured(),
+          jiraAvailable: isJiraActive(),
+        })}
+        onProviderChange={(p) => { try { localStorage.setItem(getProfileKey('nexusmd.wi.createProvider'), JSON.stringify(p)) } catch {} }}
+        onJiraCreated={(result) => {
+          if (!result.warnings?.length) setTimeout(() => setCreateWI(null), 600)
+          refreshAllData()
+        }}
         onClose={() => setCreateWI(null)}
         onCreate={async (payload) => {
           const result = await desktopWorkItemSource.createWorkItem(payload)

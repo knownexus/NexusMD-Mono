@@ -4,6 +4,7 @@ import { adoTypeToHelm } from '@nexusmd/core'
 import { fieldBucket, fieldGroup, LINK_TYPES, resolveTypeLayout, TYPE_LAYOUTS } from './ado-workitem-types.js'
 import * as adoWorkItemTypesModule from './ado-workitem-types.js'
 import { SettField, settInputStyle } from './desktop-settings.jsx'
+import { JiraCreateForm } from './jira-create-form.jsx'
 
 function FieldLabel({ def }) {
   return <span>{def.name}{def.alwaysRequired ? ' *' : ''}</span>
@@ -128,7 +129,10 @@ export function MarkdownField({ label, value, onChange, required, rows = 4 }) {
 
 const DEFAULT_TYPE_REF = 'Microsoft.VSTS.WorkItemTypes.Task'
 
-export function CreateWorkItemDrawer({ open, title: initialTitle, project: projectsList, team, onClose, onCreate }) {
+export function CreateWorkItemDrawer({
+  open, title: initialTitle, project: projectsList, team, onClose, onCreate,
+  jira = null, adoAvailable = true, defaultProvider = 'ado', onProviderChange, onJiraCreated,
+}) {
   const [project, setProject] = React.useState(projectsList[0] || '')
   const [typeRef, setTypeRef] = React.useState(DEFAULT_TYPE_REF)
   const [defs, setDefs] = React.useState(null)
@@ -146,7 +150,7 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
   }, [])
 
   React.useEffect(() => {
-    if (!open) return
+    if (!open || !adoAvailable) return
     setWiTitle(initialTitle || '')
     setProject(projectsList[0] || '')
     setTypeRef(DEFAULT_TYPE_REF)
@@ -160,8 +164,36 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
   const [linkId, setLinkId] = React.useState('')
   const [saving, setSaving] = React.useState(false)
   const [titleError, setTitleError] = React.useState('')
+  const [provider, setProvider] = React.useState(defaultProvider)
+  React.useEffect(() => {
+    if (open) setProvider(jira ? defaultProvider : 'ado')
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+  const chooseProvider = (p) => { setProvider(p); onProviderChange?.(p) }
+  const providerSwitch = jira && adoAvailable ? (
+    <div role="group" aria-label="Create in" style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+      {[['ado', 'Azure DevOps'], ['jira', 'Jira']].map(([v, l]) => (
+        <button key={v} type="button" className={`btn sm ${provider === v ? 'primary' : 'ghost'}`} aria-pressed={provider === v} onClick={() => chooseProvider(v)}>{l}</button>
+      ))}
+    </div>
+  ) : null
 
   if (!open) return null
+
+  if (jira && (provider === 'jira' || !adoAvailable)) {
+    return (
+      <Drawer open={open} onClose={onClose} defaultWidth={820} title="New Jira issue">
+        {providerSwitch}
+        <JiraCreateForm
+          source={jira.source}
+          projectKeys={jira.projectKeys}
+          people={jira.people}
+          site={jira.site}
+          initialTitle={initialTitle}
+          onCreated={(result) => onJiraCreated?.(result)}
+        />
+      </Drawer>
+    )
+  }
 
   const allTypes = defs?.types || []
   // Restrict the Type picker to the types we have a layout for. If none match
@@ -240,6 +272,7 @@ export function CreateWorkItemDrawer({ open, title: initialTitle, project: proje
         </button>
       )}
     >
+      {providerSwitch}
       {loadError && (
         <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>
           {loadError} — click Refresh to retry.
