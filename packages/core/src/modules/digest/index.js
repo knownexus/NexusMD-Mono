@@ -25,7 +25,7 @@ import { ADO_CACHE_KEY } from '../ado/loader.js'
  * }}
  */
 export function buildDigest({ workItems = [], prs = [], builds = [], team = [], sprint = null } = {}) {
-  const openItems     = workItems.filter(wi => !isTerminalState(wi.state))
+  const openItems     = workItems.filter(wi => !isTerminalState(wi.state, wi.stateCategory))
   const blockedItems  = openItems.filter(wi => isBlockedState(wi.state))
   const criticalItems = openItems.filter(wi => wi.priority <= 1)
   const activePrs     = prs.filter(p => p.status === 'active' || p.status === 'draft')

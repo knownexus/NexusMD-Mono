@@ -62,3 +62,13 @@ describe('buildDigest', () => {
     expect(sam).toMatchObject({ openCount: 1, blockedCount: 0, prCount: 1 })
   })
 })
+
+describe('buildDigest with state categories', () => {
+  it('treats a custom-named state in the Completed category as closed', () => {
+    const d = buildDigest({ workItems: [
+      { id: 'jira:A-1', state: 'Shipped', stateCategory: 'Completed', priority: 1 },
+      { id: 'jira:A-2', state: 'Doing', stateCategory: 'InProgress', priority: 2 },
+    ] })
+    expect(d.openCount).toBe(1)
+  })
+})

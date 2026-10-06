@@ -262,7 +262,7 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
   const needsMyReview   = PRS.filter(p => effectiveNeedsMe(p, needsMeCriteria) && p.status === 'active');
   const failingBuilds   = BUILDS.filter(b => b.status === 'failed' && !(acknowledgedSet && acknowledgedSet.has(b.id)));
   const blockers        = WORK_ITEMS.filter(w => isBlockedState(w.state));
-  const unassigned      = WORK_ITEMS.filter(w => !w.assignee && !isTerminalState(w.state));
+  const unassigned      = WORK_ITEMS.filter(w => !w.assignee && !isTerminalState(w.state, w.stateCategory));
   const newToday        = WORK_ITEMS.filter(w => w.isNew);
   const triageItems = (() => {
     const seen = new Set();
@@ -719,7 +719,7 @@ function BlockersWidget({ items, builds, onOpen }) {
 // ─────────────────────────────────────────────────────────
 function TeamNowWidget({ team, workItems, onOpen }) {
   const items = team.map(t => {
-    const assigned = workItems.filter(w => w.assignee === t.id && !isTerminalState(w.state));
+    const assigned = workItems.filter(w => w.assignee === t.id && !isTerminalState(w.state, w.stateCategory));
     assigned.sort((a, b) => a.priority - b.priority);
     const count = t.assignedCount ?? assigned.length;
     return { ...t, current: assigned[0], assignedCount: count };

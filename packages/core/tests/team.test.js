@@ -121,3 +121,10 @@ describe('enrichTeam', () => {
     expect(enrichTeam(null, {})).toEqual([])
   })
 })
+
+describe('enrichTeamMember with state categories', () => {
+  it('counts a custom Completed-category state as done', () => {
+    const m = enrichTeamMember({ id: 'a' }, { workItems: [{ assignee: 'a', state: 'Shipped', stateCategory: 'Completed', priority: 1 }] })
+    expect(m.done).toHaveLength(1)
+  })
+})
