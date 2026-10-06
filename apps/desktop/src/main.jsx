@@ -15,7 +15,7 @@ import {
   WorkItemDetail, BuildDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
   WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
-  ApiClientProvider, ApiClientView, ViewDbManager, createRoutedWorkItemSource,
+  ApiClientProvider, ApiClientView, ViewDbManager,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav } from './layout.js'
 import { resolveItemsUpdate } from './items-state.js'
@@ -31,7 +31,7 @@ import {
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraHttpAdapter, createJiraWorkItemSource } from './jira-client.js'
-import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider, adoWorkItemUrl } from './work-item-data.js'
+import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider, adoWorkItemUrl, useRoutedWorkItemSource } from './work-item-data.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
@@ -831,6 +831,8 @@ function App() {
   // would make JiraCreateForm re-fetch create-meta and wipe the user's input.
   const jiraActive = isJiraActive()
   const jiraSource = React.useMemo(() => (jiraActive ? createJiraWorkItemSource() : null), [jiraActive])
+  // Stable across data refreshes: only a Jira-source change produces a new identity.
+  const workItemSource = useRoutedWorkItemSource(desktopWorkItemSource, jiraSource)
 
   const nexusDataValue = React.useMemo(() => ({
     data:           snapshot,
@@ -838,12 +840,9 @@ function App() {
     storage:        window.localStorage,
     getProfileKey,
     pushPref:       () => {},
-    workItemSource: createRoutedWorkItemSource({
-      ado: desktopWorkItemSource,
-      jira: jiraSource,
-    }),
+    workItemSource,
     buildSource:    desktopBuildSource,
-  }), [snapshot, jiraSource])
+  }), [snapshot, workItemSource])
 
   return (
     <NexusDataProvider value={nexusDataValue}>

@@ -1,10 +1,19 @@
 // apps/desktop/src/work-item-data.js — combine provider caches into the snapshot the
 // shared views read, and refresh providers independently (one failing never blocks
 // the other; its last cache stays visible, marked stale).
+import React from 'react'
+import { createRoutedWorkItemSource } from '@nexusmd/ui'
 import {
   loadCachedAdoData, loadCachedJiraData, mergeWorkItemData,
   readProviderStatus, recordProviderStatus, adoStateForCategory, CATEGORY_LABELS,
 } from '@nexusmd/core'
+
+// One routed source per (ado, jira) pair. Rebuilding it with every snapshot would
+// give workItemSource a new identity on each data refresh, making WorkItemDetail
+// reload and drop in-progress edits and comment drafts.
+export function useRoutedWorkItemSource(ado, jira) {
+  return React.useMemo(() => createRoutedWorkItemSource({ ado, jira }), [ado, jira])
+}
 
 export function buildSnapshot({ adoConfig, adoConfigured, jiraConfig, jiraActive, storage, empty }) {
   const ado = loadCachedAdoData(adoConfig, { storage })
