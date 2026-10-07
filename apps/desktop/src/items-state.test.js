@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { resolveItemsUpdate } from './items-state.js'
+import { renderHook, act } from '@testing-library/react'
+import { resolveItemsUpdate, useLocalItems } from './items-state.js'
 
 describe('resolveItemsUpdate', () => {
   const snapshot = [{ id: 1, assignee: null }, { id: 2, assignee: null }]
@@ -26,5 +27,26 @@ describe('resolveItemsUpdate', () => {
 
   it('falls back to [] when both prev and fallback are nullish', () => {
     expect(resolveItemsUpdate(null, arr => [...arr, { id: 1 }], null)).toEqual([{ id: 1 }])
+  })
+})
+
+describe('useLocalItems', () => {
+  it('holds optimistic edits until the snapshot changes, then mirrors the new snapshot again', () => {
+    const snap1 = { WORK_ITEMS: [{ id: 1, assignee: null }] }
+    const { result, rerender } = renderHook(({ snapshot }) => useLocalItems(snapshot), { initialProps: { snapshot: snap1 } })
+    expect(result.current[0]).toBeNull()
+
+    act(() => result.current[1](arr => arr.map(w => ({ ...w, assignee: 'louis' }))))
+    expect(result.current[0]).toEqual([{ id: 1, assignee: 'louis' }])
+
+    rerender({ snapshot: snap1 }) // same snapshot: the edit survives
+    expect(result.current[0]).toEqual([{ id: 1, assignee: 'louis' }])
+
+    const snap2 = { WORK_ITEMS: [{ id: 1, assignee: null }, { id: 2, assignee: null }] }
+    rerender({ snapshot: snap2 }) // new snapshot (refresh, hide/restore): reset to the sentinel
+    expect(result.current[0]).toBeNull()
+
+    act(() => result.current[1](arr => arr.map(w => (w.id === 2 ? { ...w, assignee: 'x' } : w))))
+    expect(result.current[0]).toEqual([{ id: 1, assignee: null }, { id: 2, assignee: 'x' }])
   })
 })

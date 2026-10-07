@@ -18,7 +18,7 @@ import {
   ApiClientProvider, ApiClientView, ViewDbManager,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav } from './layout.js'
-import { resolveItemsUpdate } from './items-state.js'
+import { useLocalItems } from './items-state.js'
 import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -390,6 +390,9 @@ function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
   )
 }
 
+// Stable fallback so fullRoster (a memo dependency) doesn't change identity every render.
+const EMPTY = []
+
 // The view body — reads the snapshot from context and wires per-view host state.
 function ViewBody({
   view, onOpenItem, onOpenPR, onOpenPerson = () => {}, onOpenBuild = () => {},
@@ -428,7 +431,7 @@ function ViewBody({
   })
 
   // data.TEAM is already filtered by hidden people; TEAM_ALL is the full roster.
-  const fullRoster = data.TEAM_ALL || data.TEAM || []
+  const fullRoster = data.TEAM_ALL || data.TEAM || EMPTY
   const effectiveTeam = React.useMemo(() => {
     const base = fullRoster.filter(m => !removedIds.includes(m.id))
     const existingIds = new Set(base.map(m => m.id))
@@ -706,7 +709,6 @@ function App() {
   const openPR     = pr   => setDrawer({ kind: 'pr', data: pr })
   const openPerson = dev  => setDrawer({ kind: 'person', data: dev })
   const openBuild  = b    => setDrawer({ kind: 'build', data: b })
-  const [localItems, setLocalItems] = React.useState(null)
   const [tweaks, setTweaksState] = React.useState(loadTweaks)
 
   // Fall back to clientWidth when innerWidth is 0 (e.g. jsdom in tests) so the
@@ -759,12 +761,10 @@ function App() {
   const { snapshot, loaded: dataLoaded } = useNexusSnapshot()
 
   // localItems starts as null (sentinel: mirror snapshot.WORK_ITEMS). Shared
-  // views update via setItems(arr => arr.map(...)); resolve the sentinel to the
-  // current snapshot so the first edit doesn't call .map on null.
-  const setItemsResolved = React.useCallback(
-    updater => setLocalItems(prev => resolveItemsUpdate(prev, updater, snapshot.WORK_ITEMS)),
-    [snapshot.WORK_ITEMS],
-  )
+  // views update via setItems(arr => arr.map(...)); the setter resolves the
+  // sentinel to the current snapshot so the first edit doesn't call .map on null.
+  // A new snapshot (refresh, hide/restore) resets it so Work Items shows it.
+  const [localItems, setItemsResolved] = useLocalItems(snapshot)
 
   const seenCategories = {
     work:   { items: snapshot.WORK_ITEMS || [], fingerprint: SEEN_FINGERPRINTS.work },
