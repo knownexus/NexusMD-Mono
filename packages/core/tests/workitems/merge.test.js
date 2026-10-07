@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { mergeWorkItemData, mergeTeam } from '../../src/modules/workitems/merge.js'
+import { deriveActivity } from '../../src/modules/ado/derive.js'
 
 const ADO = {
   WORK_ITEMS: [{ id: 7, type: 'story', state: 'Active', adoStateCategory: 'InProgress', assignee: 'alex-doe' }],
@@ -28,6 +29,25 @@ const JIRA = {
 
 describe('mergeWorkItemData', () => {
   const merged = mergeWorkItemData({ ado: ADO, jira: JIRA, status: {}, configured: { ado: true, jira: true } })
+
+  it('derives Recent activity from both ADO and Jira items', () => {
+    const ado = { ...ADO, WORK_ITEMS: [{ id: 7, title: 'ADO thing', state: 'Active', assignee: 'alex-doe', updated: '5m' }] }
+    const jira = { ...JIRA, WORK_ITEMS: [{ ...JIRA.WORK_ITEMS[0], title: 'Jira thing', updated: '2m' }] }
+    const m = mergeWorkItemData({ ado, jira, configured: { ado: true, jira: true } })
+    expect(m.ACTIVITY).toEqual([
+      { who: 'sam-roe', action: 'is working on', what: 'ABC-1 Jira thing', when: '2m' },
+      { who: 'alex-doe', action: 'is working on', what: '#7 ADO thing', when: '5m' },
+    ])
+  })
+
+  it('keeps ADO-only Recent activity identical to the ADO loader output', () => {
+    const items = [
+      { id: 7, title: 'ADO thing', state: 'Active', assignee: 'alex-doe', updated: '5m' },
+      { id: 8, title: 'Other', state: 'Done', assignee: 'alex-doe', updated: '1m' },
+    ]
+    const m = mergeWorkItemData({ ado: { ...ADO, WORK_ITEMS: items }, configured: { ado: true } })
+    expect(m.ACTIVITY).toEqual(deriveActivity(items))
+  })
 
   it('tags ADO items and concatenates both sources', () => {
     expect(merged.WORK_ITEMS.map(w => w.id)).toEqual([7, 'jira:ABC-1'])

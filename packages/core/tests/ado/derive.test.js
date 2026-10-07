@@ -98,6 +98,14 @@ describe('deriveActivity', () => {
     const wis = [{ id: 1, title: 'Unowned', state: 'Active', assignee: null, updated: '1m', changedMs: Date.now() }]
     expect(deriveActivity(wis)).toEqual([])
   })
+  it('labels Jira items by their key and tolerates a missing title', () => {
+    const wis = [{ id: 'jira:ABC-1', source: 'jira', displayId: 'ABC-1', state: 'In Dev', stateCategory: 'InProgress', assignee: 'sam', updated: '1m' }]
+    expect(deriveActivity(wis)).toEqual([{ who: 'sam', action: 'is working on', what: 'ABC-1 ', when: '1m' }])
+  })
+  it('skips Jira items in a done status category', () => {
+    const wis = [{ id: 'jira:ABC-2', source: 'jira', displayId: 'ABC-2', title: 'x', state: 'Shipped', stateCategory: 'Completed', assignee: 'sam', updated: '1m' }]
+    expect(deriveActivity(wis)).toEqual([])
+  })
   it('truncates long titles to 50 chars + ellipsis', () => {
     const long = 'A'.repeat(60)
     const wis = [{ id: 1, title: long, state: 'Active', assignee: 'alice', updated: '1m', changedMs: Date.now() }]

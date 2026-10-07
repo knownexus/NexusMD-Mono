@@ -1,4 +1,5 @@
 import { slugify, PROJECT_COLORS, isTerminalState, isActiveState, isReviewState } from './helpers.js'
+import { displayIdOf } from '../workitems/ids.js'
 
 export function deriveProjects(items, configProjects = []) {
   const seen = new Map()
@@ -64,16 +65,24 @@ export function deriveActivity(wis) {
     if (s.endsWith('h')) return n * 60
     return n * 1440
   }
+  // Jira items (merged in by workitems/merge.js) carry a status category and a key;
+  // ADO items keep the name-based terminal check and their "#id" label.
+  const isJira = w => w.source === 'jira'
+  const isDone = w => (isJira(w) ? isTerminalState(w.state, w.stateCategory) : isTerminalState(w.state))
   return wis
-    .filter(w => !isTerminalState(w.state) && w.assignee)
+    .filter(w => !isDone(w) && w.assignee)
     .sort((a, b) => parseAge(a.updated) - parseAge(b.updated))
     .slice(0, 10)
-    .map(w => ({
-      who: w.assignee,
-      action: 'is working on',
-      what: `#${w.id} ${w.title.slice(0, 50)}${w.title.length > 50 ? '…' : ''}`,
-      when: w.updated,
-    }))
+    .map(w => {
+      const title = w.title || ''
+      const label = isJira(w) ? displayIdOf(w) : `#${w.id}`
+      return {
+        who: w.assignee,
+        action: 'is working on',
+        what: `${label} ${title.slice(0, 50)}${title.length > 50 ? '…' : ''}`,
+        when: w.updated,
+      }
+    })
 }
 
 export function derivePrSparkline(prs) {

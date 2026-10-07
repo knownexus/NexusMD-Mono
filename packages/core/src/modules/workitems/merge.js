@@ -1,4 +1,5 @@
 import { slugify, adoTypeToHelm } from '../ado/helpers.js'
+import { deriveActivity } from '../ado/derive.js'
 
 export const PROVIDER_LABELS = { ado: 'Azure DevOps', jira: 'Jira' }
 
@@ -62,6 +63,7 @@ export function mergeWorkItemData({ ado = null, jira = null, status = {}, config
   return {
     WORK_ITEMS: [...adoItems, ...jiraItems],
     WORK_ITEMS_BY_SOURCE: { ado: adoItems, jira: jiraItems },
+    ACTIVITY: deriveActivity([...adoItems, ...jiraItems]),
     PROJECTS: [...(ado?.PROJECTS || []), ...(jira?.PROJECTS || [])],
     TEAM: mergeTeam(ado?.TEAM || [], jira?.PEOPLE || [], jiraItems, jira?.ME || null),
     STATES: union(ado?.STATES || [], jira?.STATES || []),
