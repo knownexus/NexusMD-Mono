@@ -42,6 +42,13 @@ describe('preload bridge', () => {
     expect(() => exposed.oauth.refresh('RT')).not.toThrow()
   })
 
+  it('bridges the start-on-login setting to its IPC channels', () => {
+    exposed.getLoginItemEnabled()
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('get-login-item-enabled')
+    exposed.setLoginItemEnabled(true)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('set-login-item-enabled', true)
+  })
+
   it('onRefreshData listens on the refresh-data channel and forwards to the callback', () => {
     const callback = vi.fn()
     exposed.onRefreshData(callback)

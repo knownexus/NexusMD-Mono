@@ -64,6 +64,7 @@ const oauthIpc       = require('./ipc/oauth.cjs');
 const apiClientScriptIpc = require('./ipc/api-client-script.cjs');
 const dbManagerIpc   = require('./ipc/db-manager.cjs');
 const jiraIpc        = require('./ipc/jira.cjs');
+const loginItemIpc   = require('./ipc/login-item.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
 const { buildLinkMenuTemplate } = require('./link-window/link-context-menu.cjs');
@@ -323,6 +324,7 @@ app.whenReady().then(async () => {
   apiClientScriptIpc.register(ipcMain);
   dbManagerIpc.register(ipcMain);
   jiraIpc.register(ipcMain);
+  loginItemIpc.register(ipcMain, { app });
   linkWindow.register(ipcMain);
 
   app.on('activate', () => {

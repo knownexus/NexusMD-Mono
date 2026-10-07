@@ -46,7 +46,9 @@ vi.mock('@nexusmd/ui', () => ({
 }))
 
 vi.stubGlobal('electronAPI', {
+  getLoginItemEnabled: vi.fn(() => Promise.resolve(false)),
   getCloseToTray: vi.fn(() => Promise.resolve(true)),
+  setLoginItemEnabled: vi.fn(),
   setCloseToTray: vi.fn(),
   getZoomFactor: vi.fn(() => Promise.resolve(1.0)),
   setZoomFactor: vi.fn(),

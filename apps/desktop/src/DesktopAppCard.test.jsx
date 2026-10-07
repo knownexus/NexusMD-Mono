@@ -43,7 +43,9 @@ let mockElectronAPI
 
 beforeEach(() => {
   mockElectronAPI = {
+    getLoginItemEnabled: vi.fn(() => Promise.resolve(false)),
     getCloseToTray: vi.fn(() => Promise.resolve(true)),
+    setLoginItemEnabled: vi.fn(() => Promise.resolve()),
     setCloseToTray: vi.fn(() => Promise.resolve()),
     pickOutputFolder: vi.fn(() => Promise.resolve(null)),
   }
@@ -55,16 +57,30 @@ afterEach(() => { cleanup(); localStorage.clear() })
 import { DesktopAppCard } from './desktop-settings.jsx'
 
 describe('DesktopAppCard', () => {
-  it('calls getCloseToTray on mount', async () => {
+  it('calls getLoginItemEnabled and getCloseToTray on mount', async () => {
     render(<DesktopAppCard />)
-    await waitFor(() => expect(mockElectronAPI.getCloseToTray).toHaveBeenCalled())
+    await waitFor(() => expect(mockElectronAPI.getLoginItemEnabled).toHaveBeenCalled())
+    expect(mockElectronAPI.getCloseToTray).toHaveBeenCalled()
+  })
+
+  it('labels the start-on-login toggle for Windows sign-in', () => {
+    render(<DesktopAppCard />)
+    expect(screen.getByText('Start NexusMD when I sign in to Windows')).toBeTruthy()
+  })
+
+  it('calls setLoginItemEnabled(true) when start-on-login toggle is clicked', async () => {
+    render(<DesktopAppCard />)
+    await waitFor(() => expect(mockElectronAPI.getLoginItemEnabled).toHaveBeenCalled())
+    const toggles = screen.getAllByRole('switch')
+    fireEvent.click(toggles[0])
+    expect(mockElectronAPI.setLoginItemEnabled).toHaveBeenCalledWith(true)
   })
 
   it('calls setCloseToTray(false) when close-to-tray toggle is clicked', async () => {
     render(<DesktopAppCard />)
     await waitFor(() => expect(mockElectronAPI.getCloseToTray).toHaveBeenCalled())
     const toggles = screen.getAllByRole('switch')
-    fireEvent.click(toggles[0])
+    fireEvent.click(toggles[1])
     expect(mockElectronAPI.setCloseToTray).toHaveBeenCalledWith(false)
   })
 
