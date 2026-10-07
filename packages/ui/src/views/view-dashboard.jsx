@@ -811,9 +811,17 @@ function ActivityWidget({ items, team, onOpen }) {
   return (
     <div className="activity">
       {items.map((a, i) => {
-        const idMatch = a.what.match(/#(\d+)/);
-        const wiId = idMatch ? parseInt(idMatch[1], 10) : null;
-        const wi = wiId ? (NexusMDData.WORK_ITEMS || []).find(w => Number(w.id) === wiId) : null;
+        // Entries carry the item id (ADO number or "jira:KEY"); the "#123" text match is
+        // only a fallback for older cached entries without one.
+        const items = NexusMDData.WORK_ITEMS || [];
+        let wi = null;
+        if (a.id != null) {
+          wi = items.find(w => w.id === a.id) || null;
+        } else {
+          const idMatch = (a.what || '').match(/#(\d+)/);
+          const wiId = idMatch ? parseInt(idMatch[1], 10) : null;
+          wi = wiId ? items.find(w => Number(w.id) === wiId) : null;
+        }
         const interactive = !!(wi && onOpen);
         return (
           <div key={i} className="activity-item"

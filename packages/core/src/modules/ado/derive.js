@@ -77,6 +77,7 @@ export function deriveActivity(wis) {
       const title = w.title || ''
       const label = isJira(w) ? displayIdOf(w) : `#${w.id}`
       return {
+        id: w.id,
         who: w.assignee,
         action: 'is working on',
         what: `${label} ${title.slice(0, 50)}${title.length > 50 ? '…' : ''}`,

@@ -36,8 +36,8 @@ describe('mergeWorkItemData', () => {
     const jira = { ...JIRA, WORK_ITEMS: [{ ...JIRA.WORK_ITEMS[0], title: 'Jira thing', updated: '2m' }] }
     const m = mergeWorkItemData({ ado, jira, configured: { ado: true, jira: true } })
     expect(m.ACTIVITY).toEqual([
-      { who: 'sam-roe', action: 'is working on', what: 'ABC-1 Jira thing', when: '2m' },
-      { who: 'alex-doe', action: 'is working on', what: '#7 ADO thing', when: '5m' },
+      { id: 'jira:ABC-1', who: 'sam-roe', action: 'is working on', what: 'ABC-1 Jira thing', when: '2m' },
+      { id: 7, who: 'alex-doe', action: 'is working on', what: '#7 ADO thing', when: '5m' },
     ])
   })
 
