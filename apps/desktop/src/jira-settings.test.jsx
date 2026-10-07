@@ -87,6 +87,45 @@ describe('JiraConnectionCard', () => {
     await waitFor(() => expect(screen.getByText("Couldn't load boards")).toBeTruthy())
   })
 
+  it('clears the listed boards and the board hint when the project keys change', async () => {
+    jira.routes = {
+      'rest/api/3/myself': { displayName: 'Me Person' },
+      'rest/api/3/project/search': { values: [] },
+      'rest/agile/1.0/board?projectKeyOrId=ABC': { values: [{ id: 7, name: 'Team board', type: 'scrum', location: { projectKey: 'ABC' } }] },
+    }
+    render(<JiraConnectionCard />)
+    fireEvent.change(screen.getByLabelText('Site'), { target: { value: 'acme' } })
+    fireEvent.change(screen.getByLabelText('Project keys'), { target: { value: 'ABC' } })
+    fireEvent.click(screen.getByText('Test connection'))
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Team board (ABC, scrum)' })).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('Project keys'), { target: { value: 'XYZ' } })
+    expect(screen.queryByRole('option', { name: 'Team board (ABC, scrum)' })).toBeNull()
+
+    fireEvent.click(screen.getByText('Test connection'))
+    await waitFor(() => expect(screen.getByText("Couldn't load boards")).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('Project keys'), { target: { value: 'ABC' } })
+    expect(screen.queryByText("Couldn't load boards")).toBeNull()
+  })
+
+  it('saves no board when the saved board is not among the listed boards', async () => {
+    const prev = jira.config
+    jira.config = { ...prev, boardId: '99' }
+    try {
+      jira.routes = {
+        'rest/api/3/myself': { displayName: 'Me Person' },
+        'rest/api/3/project/search': { values: [] },
+        'rest/agile/1.0/board?projectKeyOrId=ABC': { values: [{ id: 7, name: 'Team board', type: 'scrum', location: { projectKey: 'ABC' } }] },
+      }
+      render(<JiraConnectionCard />)
+      fireEvent.change(screen.getByLabelText('Site'), { target: { value: 'acme' } })
+      fireEvent.change(screen.getByLabelText('Project keys'), { target: { value: 'ABC' } })
+      fireEvent.click(screen.getByText('Test connection'))
+      await waitFor(() => expect(screen.getByRole('option', { name: 'Team board (ABC, scrum)' })).toBeTruthy())
+      fireEvent.click(screen.getByText('Save & connect'))
+      expect(jira.save).toHaveBeenLastCalledWith(expect.objectContaining({ boardId: '' }))
+    } finally { jira.config = prev }
+  })
+
   it('drops the Jira cache before refreshing so metadata is refetched', () => {
     localStorage.setItem(JIRA_CACHE_KEY, '{"WORK_ITEMS":[]}')
     localStorage.setItem('nexusmd.ado.cache.v1', '{"WORK_ITEMS":[]}')

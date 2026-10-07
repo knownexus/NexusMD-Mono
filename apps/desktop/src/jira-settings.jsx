@@ -58,14 +58,23 @@ export function JiraConnectionCard({ onRefreshData }) {
     }
   }
 
+  // The listed boards belong to the keys they were fetched for, so drop them on change.
+  const changeKeys = (value) => {
+    setKeys(value)
+    setBoards([])
+    setBoardHint('')
+  }
+
   const toggleKey = (key) => {
     const current = splitKeys(keys)
     const next = current.includes(key) ? current.filter(k => k !== key) : [...current, key]
-    setKeys(next.join(', '))
+    changeKeys(next.join(', '))
   }
 
   const save = () => {
-    saveJiraConfig({ ...connectionValues(), projectKeys: splitKeys(keys), jql: jql.trim(), enabled, boardId })
+    // A board that isn't among the boards listed for these keys is stale.
+    const savedBoardId = boards.length && !boards.some(b => b.id === boardId) ? '' : boardId
+    saveJiraConfig({ ...connectionValues(), projectKeys: splitKeys(keys), jql: jql.trim(), enabled, boardId: savedBoardId })
     setToken('')
     setStatus('Saved! Loading data…')
     // Drop the cache so the refresh refetches metadata for the new settings.
@@ -99,7 +108,7 @@ export function JiraConnectionCard({ onRefreshData }) {
           </a>
         </SettField>
         <SettField label="Project keys" hint="Comma-separated, e.g. ABC, DEF. Test the connection to pick from a list.">
-          <input aria-label="Project keys" value={keys} onChange={e => setKeys(e.target.value)} placeholder="ABC, DEF" style={settInputStyle} />
+          <input aria-label="Project keys" value={keys} onChange={e => changeKeys(e.target.value)} placeholder="ABC, DEF" style={settInputStyle} />
         </SettField>
         {available.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px' }}>
