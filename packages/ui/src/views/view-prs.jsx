@@ -208,6 +208,11 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
     return Array.from(map.values())
   }, [filtered, grouping])
 
+  // Why the list is empty when ADO PRs failed to load (e.g. PAT without Code (Read)).
+  const prError = NexusMDData.PR_ERROR
+    || (NexusMDData.WORK_ITEM_PROVIDERS || []).find(p => p.id === 'ado')?.warning
+    || null
+
   return (
     <div>
       <div className="page-head">
@@ -220,6 +225,14 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
           <button className="btn sm" onClick={() => NexusMDApi?.load().catch(() => {})}><Icon name="refresh" size={13}/> Refresh</button>
         </div>
       </div>
+
+      {prError && (
+        <div role="alert" title={NexusMDData.PR_ERROR_DETAIL || prError}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 10, borderRadius: 8, border: '1px solid var(--warning, var(--border))', color: 'var(--text-muted)', fontSize: 13 }}>
+          <Icon name="pr" size={13} />
+          <span>{prError}</span>
+        </div>
+      )}
 
       {focusedWI != null && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 10, borderRadius: 8, background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', fontSize: 13 }}>
