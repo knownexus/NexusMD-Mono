@@ -361,6 +361,27 @@ describe('loadAdoData — PR errors', () => {
     expect(result.PR_ERROR_DETAIL).toBeNull()
   })
 
+  it('warns that the token sees no repositories when every project returns zero', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const http = makeHttp({ '/_apis/git/repositories?': { value: [] } })
+    const result = await loadAdoData({ org: 'myorg', projects: ['proj-a', 'proj-b'] }, { http, storage: makeStorage() })
+    expect(result.PRS).toEqual([])
+    expect(result.PR_ERROR).toBe('No repositories visible to the ADO token — it probably lacks Code (Read) scope')
+    expect(result.PR_ERROR_DETAIL).toBe('All 2 configured project(s) returned 0 repositories')
+  })
+
+  it('leaves PR_ERROR null when repositories exist but have no active PRs', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const http = makeHttp({
+      '/_apis/git/repositories?': { value: [{ id: 'repo1', name: 'Repo One' }] },
+      '/pullrequests?': { value: [] },
+    })
+    const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
+    expect(result.PRS).toEqual([])
+    expect(result.PR_ERROR).toBeNull()
+    expect(result.PR_ERROR_DETAIL).toBeNull()
+  })
+
   it('leaves PR_ERROR null when some PRs load even though another repo failed', async () => {
     vi.spyOn(core, '_emit').mockImplementation(() => {})
     const http = {

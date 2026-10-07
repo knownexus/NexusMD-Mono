@@ -106,12 +106,14 @@ export async function loadAdoData(
   // The first repositories / PR-list failure, surfaced as PR_ERROR when no PRs
   // load at all (e.g. a PAT without Code (Read) scope) instead of an empty list.
   let prError = null
+  let repoCount = 0
   const notePrError = (e) => { if (!prError) prError = e }
   const prsP = (async () => {
     const all = []
     await Promise.all(cfgProjects.map(async proj => {
       try {
         const repos = await get(`${encodeURIComponent(proj)}/_apis/git/repositories?api-version=7.0`)
+        repoCount += (repos.value || []).length
         await Promise.all((repos.value || []).map(async repo => {
           try {
             const r = await get(`${encodeURIComponent(proj)}/_apis/git/repositories/${repo.id}/pullrequests?searchCriteria.status=active&$top=100&api-version=7.0`)
@@ -295,8 +297,13 @@ export async function loadAdoData(
     return status ? `PRs unavailable (HTTP ${status[1]})` : `PRs unavailable — ${msg.slice(0, 200)}`
   }
   const prFailed = !!prError && !(prsRaw || []).length
-  const prErrorText = prFailed ? describePrError(prError) : null
-  const prErrorDetail = prFailed ? prErrorMessage(prError).slice(0, 500) : null
+  // ADO security-trims instead of returning 401 when Code (Read) is missing, so a
+  // token that sees zero repositories everywhere is reported rather than silent.
+  const noRepos = !prError && cfgProjects.length > 0 && repoCount === 0
+  const prErrorText = prFailed ? describePrError(prError)
+    : noRepos ? 'No repositories visible to the ADO token — it probably lacks Code (Read) scope' : null
+  const prErrorDetail = prFailed ? prErrorMessage(prError).slice(0, 500)
+    : noRepos ? `All ${cfgProjects.length} configured project(s) returned 0 repositories` : null
   const helmPRs = []
   ;(prsRaw || []).filter(p => p.status === 'active').forEach(pr => {
     try { helmPRs.push(mapPR(pr, nameToId, me?.name || '')) } catch (_) {}
