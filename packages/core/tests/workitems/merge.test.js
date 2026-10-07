@@ -33,7 +33,7 @@ describe('mergeWorkItemData', () => {
 
   it('derives Recent activity from both ADO and Jira items', () => {
     const ado = { ...ADO, WORK_ITEMS: [{ id: 7, title: 'ADO thing', state: 'Active', assignee: 'alex-doe', updated: '5m' }] }
-    const jira = { ...JIRA, WORK_ITEMS: [{ ...JIRA.WORK_ITEMS[0], title: 'Jira thing', updated: '2m' }] }
+    const jira = { ...JIRA, WORK_ITEMS: [{ ...JIRA.WORK_ITEMS[0], state: 'In Dev', stateCategory: 'InProgress', title: 'Jira thing', updated: '2m' }] }
     const m = mergeWorkItemData({ ado, jira, configured: { ado: true, jira: true } })
     expect(m.ACTIVITY).toEqual([
       { id: 'jira:ABC-1', who: 'sam-roe', action: 'is working on', what: 'ABC-1 Jira thing', when: '2m' },

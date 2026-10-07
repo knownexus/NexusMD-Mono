@@ -106,6 +106,14 @@ describe('deriveActivity', () => {
     const wis = [{ id: 'jira:ABC-2', source: 'jira', displayId: 'ABC-2', title: 'x', state: 'Shipped', stateCategory: 'Completed', assignee: 'sam', updated: '1m' }]
     expect(deriveActivity(wis)).toEqual([])
   })
+  it('skips Jira backlog (Proposed) items but keeps ADO items regardless of category', () => {
+    const wis = [
+      { id: 'jira:ABC-3', source: 'jira', displayId: 'ABC-3', title: 'Backlog', state: 'To Do', stateCategory: 'Proposed', assignee: 'sam', updated: '1m' },
+      { id: 'jira:ABC-4', source: 'jira', displayId: 'ABC-4', title: 'Doing', state: 'In Dev', stateCategory: 'InProgress', assignee: 'sam', updated: '2m' },
+      { id: 9, source: 'ado', title: 'New ADO', state: 'New', stateCategory: 'Proposed', assignee: 'bob', updated: '3m' },
+    ]
+    expect(deriveActivity(wis).map(a => a.id)).toEqual(['jira:ABC-4', 9])
+  })
   it('carries the work item id on each entry', () => {
     const wis = [{ id: 42, title: 'T', state: 'Active', assignee: 'alice', updated: '1m' }]
     expect(deriveActivity(wis)[0].id).toBe(42)

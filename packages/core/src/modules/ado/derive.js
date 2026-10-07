@@ -69,8 +69,10 @@ export function deriveActivity(wis) {
   // ADO items keep the name-based terminal check and their "#id" label.
   const isJira = w => w.source === 'jira'
   const isDone = w => (isJira(w) ? isTerminalState(w.state, w.stateCategory) : isTerminalState(w.state))
+  // Jira backlog items (To Do, Shortlist…) are assigned but nobody "is working on" them.
+  const isJiraBacklog = w => isJira(w) && w.stateCategory === 'Proposed'
   return wis
-    .filter(w => !isDone(w) && w.assignee)
+    .filter(w => !isDone(w) && !isJiraBacklog(w) && w.assignee)
     .sort((a, b) => parseAge(a.updated) - parseAge(b.updated))
     .slice(0, 10)
     .map(w => {
