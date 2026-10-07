@@ -1,4 +1,5 @@
-import { slugify, adoTypeToHelm } from '../ado/helpers.js'
+import { slugify, adoTypeToHelm, timeAgo } from '../ado/helpers.js'
+import { isDoneItem } from './classify.js'
 import { deriveActivity } from '../ado/derive.js'
 
 export const PROVIDER_LABELS = { ado: 'Azure DevOps', jira: 'Jira' }
@@ -46,6 +47,20 @@ export function mergeTeam(adoTeam = [], jiraPeople = [], jiraItems = [], jiraMe 
   return team
 }
 
+// Per-member workload over the merged items (the ADO loader computes these from ADO
+// items only, so Jira-only work would show as 0). Same rules and format as there.
+function withWorkload(team, items) {
+  return team.map(member => {
+    const assigned = items.filter(w => w.assignee === member.id && !isDoneItem(w))
+    const latest = assigned.reduce((best, w) => (!best || (w.changedMs && w.changedMs > (best.changedMs || 0))) ? w : best, null)
+    return {
+      ...member,
+      assignedCount: assigned.length,
+      lastActiveAgo: latest?.changedMs ? timeAgo(new Date(latest.changedMs).toISOString()) : '—',
+    }
+  })
+}
+
 export function mergeWorkItemData({ ado = null, jira = null, status = {}, configured = {} } = {}) {
   const adoItems = (ado?.WORK_ITEMS || []).map(w => ({
     ...w, source: 'ado', displayId: `#${w.id}`, stateCategory: w.stateCategory ?? w.adoStateCategory ?? null,
@@ -67,7 +82,7 @@ export function mergeWorkItemData({ ado = null, jira = null, status = {}, config
     WORK_ITEMS_BY_SOURCE: { ado: adoItems, jira: jiraItems },
     ACTIVITY: deriveActivity([...adoItems, ...jiraItems]),
     PROJECTS: [...(ado?.PROJECTS || []), ...(jira?.PROJECTS || [])],
-    TEAM: mergeTeam(ado?.TEAM || [], jira?.PEOPLE || [], jiraItems, jira?.ME || null),
+    TEAM: withWorkload(mergeTeam(ado?.TEAM || [], jira?.PEOPLE || [], jiraItems, jira?.ME || null), [...adoItems, ...jiraItems]),
     STATES: union(ado?.STATES || [], jira?.STATES || []),
     TYPES: union(ado?.TYPES || [], jira?.TYPES || []),
     WI_TYPE_STATES: mergeTypeStates(ado?.WI_TYPE_STATES, jira?.WI_TYPE_STATES),

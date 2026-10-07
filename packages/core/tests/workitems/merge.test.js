@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mergeWorkItemData, mergeTeam } from '../../src/modules/workitems/merge.js'
 import { deriveActivity } from '../../src/modules/ado/derive.js'
+import { timeAgo } from '../../src/modules/ado/helpers.js'
 
 const ADO = {
   WORK_ITEMS: [{ id: 7, type: 'story', state: 'Active', adoStateCategory: 'InProgress', assignee: 'alex-doe' }],
@@ -54,6 +55,34 @@ describe('mergeWorkItemData', () => {
     expect(bad.WORK_ITEM_PROVIDERS[0]).toMatchObject({ id: 'ado', warning: 'PRs unavailable (HTTP 401) — check the ADO PAT has Code (Read) scope' })
     const ok = mergeWorkItemData({ ado: { ...ADO, PR_ERROR: null }, configured: { ado: true } })
     expect(ok.WORK_ITEM_PROVIDERS[0].warning).toBeNull()
+  })
+
+  it('recomputes each member\'s open-item count and last activity over the merged items', () => {
+    const t1 = Date.now() - 3 * 3600_000
+    const t2 = Date.now() - 20 * 60_000
+    const jira = { ...JIRA, WORK_ITEMS: [
+      { id: 'jira:ABC-1', source: 'jira', state: 'In Dev', stateCategory: 'InProgress', assignee: 'sam-roe', assigneeAccountId: 's1', changedMs: t1 },
+      { id: 'jira:ABC-2', source: 'jira', state: 'In QA', stateCategory: 'InProgress', assignee: 'sam-roe', assigneeAccountId: 's1', changedMs: t2 },
+      { id: 'jira:ABC-3', source: 'jira', state: 'Released', stateCategory: 'Completed', assignee: 'sam-roe', assigneeAccountId: 's1', changedMs: Date.now() },
+    ] }
+    const ado = { ...ADO, TEAM: [{ id: 'alex-doe', name: 'Alex Doe', assignedCount: 1, lastActiveAgo: 'stale' }] }
+    const m = mergeWorkItemData({ ado, jira, configured: { ado: true, jira: true } })
+    const sam = m.TEAM.find(t => t.id === 'sam-roe')
+    expect(sam.assignedCount).toBe(2)
+    expect(sam.lastActiveAgo).toBe(timeAgo(new Date(t2).toISOString()))
+    // ADO item 7 has no changedMs → same '—' as the ADO loader
+    expect(m.TEAM.find(t => t.id === 'alex-doe')).toMatchObject({ assignedCount: 1, lastActiveAgo: '—' })
+  })
+
+  it('leaves an ADO-only team identical to the ADO loader\'s counts', () => {
+    const changed = Date.now() - 2 * 86_400_000
+    const items = [
+      { id: 7, state: 'Active', adoStateCategory: 'InProgress', assignee: 'alex-doe', changedMs: changed },
+      { id: 8, state: 'Closed', adoStateCategory: 'Completed', assignee: 'alex-doe', changedMs: Date.now() },
+    ]
+    const team = [{ id: 'alex-doe', name: 'Alex Doe', assignedCount: 1, lastActiveAgo: timeAgo(new Date(changed).toISOString()) }]
+    const m = mergeWorkItemData({ ado: { ...ADO, WORK_ITEMS: items, TEAM: team }, configured: { ado: true } })
+    expect(m.TEAM).toEqual(team)
   })
 
   it('tags ADO items and concatenates both sources', () => {
