@@ -12,6 +12,19 @@ import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getA
 import { useNexusData } from '../data-context.jsx';
 import { toast } from '../toast.jsx';
 
+// Collapsed group keys, remembered per profile and kept separately per grouping.
+// One persisted object keyed by grouping (usePersisted only reads storage on mount).
+function useCollapsedGroups(storageKey, grouping) {
+  const [all, setAll] = usePersisted(storageKey, {});
+  const collapsed = (all && all[grouping]) || {};
+  const setCollapsed = (next) => setAll(prev => {
+    const cur = (prev && prev[grouping]) || {};
+    const val = typeof next === 'function' ? next(cur) : next;
+    return { ...(prev || {}), [grouping]: val };
+  });
+  return [collapsed, setCollapsed];
+}
+
 // Persist work-item field changes. Desktop hosts inject workItemSource (writes
 // straight to ADO or Jira, routed by id); legacy web hosts hit /api/workitems/:id.
 // `ops` is a list of [ '/fields/<Field>', value ] pairs. Failures are toasted and
@@ -327,7 +340,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   const [boardGrouping,   setBoardGrouping]  = usePersisted('nexusmd.wi.boardGrouping', 'none');
   const [sort,            setSort]           = usePersisted('nexusmd.wi.sort',          { col: 'id', dir: 'desc' });
   const [selection,       setSelection]      = useStateW(new Set());
-  const [collapsed,       setCollapsed]      = useStateW({});
+  const [collapsed,       setCollapsed]      = useCollapsedGroups('nexusmd.wi.collapsed.table', grouping);
   const [includedTags,       setIncludedTags]       = usePersisted('nexusmd.wi.tags.inc',           new Set());
   const [excludedTags,       setExcludedTags]       = usePersisted('nexusmd.wi.tags.exc',           new Set());
   const [noTagsOnly,         setNoTagsOnly]         = usePersisted('nexusmd.wi.noTagsOnly',         false);
@@ -1832,7 +1845,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
   const { data: NexusMDData, workItemSource } = useNexusData();
   const [dragId,    setDragId]    = useStateW(null);
   const [overKey,   setOverKey]   = useStateW(null);
-  const [collapsed, setCollapsed] = useStateW({});
+  const [collapsed, setCollapsed] = useCollapsedGroups('nexusmd.wi.collapsed.board', grouping);
 
   const PROJECTS = NexusMDData.PROJECTS || [];
 
