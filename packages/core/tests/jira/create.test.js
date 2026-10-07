@@ -58,6 +58,19 @@ describe('normaliseCreateFields + layoutCreateFields', () => {
     expect(layout.unsupportedRequired.map(f => f.key)).toEqual(['customfield_3'])
   })
 
+  it('gives the points role to the board estimation field when it is on the form', () => {
+    const raw = [...RAW, { fieldId: 'customfield_10028', name: 'Story Points', required: false, schema: { type: 'number' } }]
+    const withBoard = normaliseCreateFields(raw, IDS, { pointsFieldId: 'customfield_10028' })
+    expect(withBoard.find(f => f.key === 'customfield_10028')).toMatchObject({ role: 'points', kind: 'number' })
+    expect(withBoard.find(f => f.key === 'customfield_10016').role).toBeNull()
+    expect(layoutCreateFields(withBoard).core.map(f => f.key)).toContain('customfield_10028')
+  })
+
+  it('keeps the site story points field as points when the board field is not on the form', () => {
+    const fields = normaliseCreateFields(RAW, IDS, { pointsFieldId: 'customfield_10028' })
+    expect(fields.find(f => f.key === 'customfield_10016').role).toBe('points')
+  })
+
   it('treats a required sprint as unsupported (not settable at create in v1)', () => {
     const layout = layoutCreateFields(normaliseCreateFields([{ ...RAW[7], required: true }], IDS))
     expect(layout.unsupportedRequired.map(f => f.key)).toEqual(['customfield_10020'])
@@ -117,6 +130,12 @@ describe('create-meta fetchers', () => {
     const fields = await fetchJiraCreateFields(client, 'ABC', '1', IDS)
     expect(client.get).toHaveBeenCalledWith('rest/api/3/issue/createmeta/ABC/issuetypes/1?maxResults=200')
     expect(fields.length).toBeGreaterThan(0)
+  })
+  it('passes the board estimation field through to normalisation', async () => {
+    const raw = [...RAW, { fieldId: 'customfield_10028', name: 'Story Points', required: false, schema: { type: 'number' } }]
+    const client = { get: vi.fn(async () => ({ fields: raw })) }
+    const fields = await fetchJiraCreateFields(client, 'ABC', '1', IDS, { pointsFieldId: 'customfield_10028' })
+    expect(fields.find(f => f.role === 'points').key).toBe('customfield_10028')
   })
   it('reads link types', async () => {
     const client = { get: vi.fn(async () => ({ issueLinkTypes: [{ id: 1, name: 'Blocks', outward: 'blocks', inward: 'is blocked by' }] })) }

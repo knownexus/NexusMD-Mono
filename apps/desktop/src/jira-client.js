@@ -60,6 +60,9 @@ export function createJiraWorkItemSource({
   getMeta = () => cachedJira()?._jiraMeta || {},
   getPeople = () => cachedJira()?.PEOPLE || [],
   getSite = () => getJiraConfig().site,
+  // The chosen board's estimation field: points are displayed from it, so edits and
+  // the create form's points field must target it too.
+  getPointsFieldId = () => cachedJira()?.BOARD_ESTIMATION_FIELD || null,
 } = {}) {
   const client = makeJiraClient(http)
   const keyOf = (id) => jiraKeyFromId(id)
@@ -72,7 +75,7 @@ export function createJiraWorkItemSource({
       const meta = getMeta()
       const t = jiraPatchFromAdoField(field, value, { people: getPeople(), priorities: meta.priorities || [] })
       if (t.transition) { await transitionJiraIssue(client, keyOf(id), t.transition); return }
-      await updateJiraIssue(client, keyOf(id), t.patch, meta)
+      await updateJiraIssue(client, keyOf(id), t.patch, { ...meta, pointsFieldId: getPointsFieldId() })
     },
     moveToCategory: (id, category, item) => transitionJiraIssue(client, keyOf(id), { category }, { currentState: item?.state }),
     moveToStatuses: (id, statuses, item) => transitionJiraIssueToAny(client, keyOf(id), statuses, { currentState: item?.state }),
@@ -82,7 +85,7 @@ export function createJiraWorkItemSource({
     },
     webUrl: (item) => `${getSite()}/browse/${encodeURIComponent(keyOf(item.id))}`,
     getCreateTypes: (projectKey) => fetchJiraCreateTypes(client, projectKey),
-    getCreateFields: (projectKey, typeId) => fetchJiraCreateFields(client, projectKey, typeId, getMeta().fieldIds || {}),
+    getCreateFields: (projectKey, typeId) => fetchJiraCreateFields(client, projectKey, typeId, getMeta().fieldIds || {}, { pointsFieldId: getPointsFieldId() }),
     getLinkTypes: () => fetchJiraLinkTypes(client),
     createIssue: (input, extras) => createJiraIssue(client, input, extras),
   }

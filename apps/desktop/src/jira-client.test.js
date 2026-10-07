@@ -111,6 +111,39 @@ describe('createJiraWorkItemSource', () => {
     expect(await source.moveToCategory('jira:ABC-1', 'Completed', { state: 'To Do' })).toEqual({ state: 'Shipped', stateCategory: 'Completed' })
   })
 
+  it('writes points to the board estimation field and maps it to the create form', async () => {
+    const invoke = vi.fn(async ({ url }) => (url.includes('createmeta')
+      ? ipcReply(200, { fields: [
+        { fieldId: 'customfield_10016', name: 'Story point estimate', schema: { type: 'number' } },
+        { fieldId: 'customfield_10028', name: 'Story Points', schema: { type: 'number' } },
+      ] })
+      : ipcReply(204)))
+    const http = createJiraHttpAdapter({ getConfig: () => CONFIG, invoke })
+    const source = createJiraWorkItemSource({
+      http, getSite: () => CONFIG.site, getPeople: () => people,
+      getMeta: () => ({ ...meta, fieldIds: { storyPoints: 'customfield_10016' } }),
+      getPointsFieldId: () => 'customfield_10028',
+    })
+    await source.saveField('jira:ABC-1', 'Microsoft.VSTS.Scheduling.StoryPoints', 5)
+    const put = invoke.mock.calls.find(([r]) => r.method === 'PUT')[0]
+    expect(JSON.parse(put.body)).toEqual({ fields: { customfield_10028: 5 } })
+    const fields = await source.getCreateFields('ABC', '1')
+    expect(fields.find(f => f.role === 'points').key).toBe('customfield_10028')
+  })
+
+  it('reads the board estimation field from the cached Jira data by default', async () => {
+    saveJiraConfig({ site: 'acme', email: 'me@acme.io', apiToken: 'tok', projectKeys: ['ABC'] })
+    localStorage.setItem('nexusmd.jira.cache.v1', JSON.stringify({
+      SITE: 'https://acme.atlassian.net', WORK_ITEMS: [], BOARD_ESTIMATION_FIELD: 'customfield_10028',
+      _jiraMeta: { ...meta, fieldIds: { storyPoints: 'customfield_10016' } },
+    }))
+    const invoke = vi.fn(async () => ipcReply(204))
+    const source = createJiraWorkItemSource({ http: createJiraHttpAdapter({ getConfig: () => CONFIG, invoke }), getPeople: () => people })
+    await source.saveField('jira:ABC-1', 'Microsoft.VSTS.Scheduling.StoryPoints', 3)
+    const put = invoke.mock.calls.find(([r]) => r.method === 'PUT')[0]
+    expect(JSON.parse(put.body)).toEqual({ fields: { customfield_10028: 3 } })
+  })
+
   it('builds browse URLs', () => {
     const { source } = makeSource({})
     expect(source.webUrl({ id: 'jira:ABC-1' })).toBe('https://acme.atlassian.net/browse/ABC-1')

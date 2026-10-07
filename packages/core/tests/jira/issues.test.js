@@ -60,6 +60,12 @@ describe('buildJiraFieldsPayload', () => {
   it('turns spaces in labels into hyphens because Jira rejects spaces', () => {
     expect(buildJiraFieldsPayload({ tags: ['needs review', ' x '] }, META).labels).toEqual(['needs-review', 'x'])
   })
+  it('writes points to the board estimation field when one is known', () => {
+    expect(buildJiraFieldsPayload({ points: '8' }, { ...META, pointsFieldId: 'customfield_10028' }))
+      .toEqual({ customfield_10028: 8 })
+    expect(buildJiraFieldsPayload({ points: '' }, { fieldIds: {}, pointsFieldId: 'customfield_10028' }))
+      .toEqual({ customfield_10028: null })
+  })
   it('explains when the site has no story points field', () => {
     expect(() => buildJiraFieldsPayload({ points: 3 }, { fieldIds: {} })).toThrow('no story points field')
   })

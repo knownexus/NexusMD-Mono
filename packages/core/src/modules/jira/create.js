@@ -32,7 +32,12 @@ function roleOf(key, kind, fieldIds) {
   return null
 }
 
-export function normaliseCreateFields(rawFields = [], fieldIds = {}) {
+// `pointsFieldId` is the board's estimation field: when it is on the create form it
+// takes the points role (it is what the board displays); otherwise the site-wide
+// story points field keeps it.
+export function normaliseCreateFields(rawFields = [], fieldIds = {}, { pointsFieldId = null } = {}) {
+  const onForm = new Set(rawFields.map(f => f.fieldId || f.key))
+  if (pointsFieldId && onForm.has(pointsFieldId)) fieldIds = { ...fieldIds, storyPoints: pointsFieldId }
   return rawFields
     .filter(f => !SKIP.has(f.fieldId || f.key))
     .map(f => {
@@ -101,9 +106,9 @@ export async function fetchJiraCreateTypes(client, projectKey) {
   return (res?.issueTypes || res?.values || []).map(t => ({ id: String(t.id), name: t.name, subtask: !!t.subtask }))
 }
 
-export async function fetchJiraCreateFields(client, projectKey, typeId, fieldIds = {}) {
+export async function fetchJiraCreateFields(client, projectKey, typeId, fieldIds = {}, options = {}) {
   const res = await client.get(`${createmetaPath(projectKey)}/${encodeURIComponent(typeId)}?maxResults=200`)
-  return normaliseCreateFields(res?.fields || res?.values || [], fieldIds)
+  return normaliseCreateFields(res?.fields || res?.values || [], fieldIds, options)
 }
 
 export async function fetchJiraLinkTypes(client) {

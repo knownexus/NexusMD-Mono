@@ -57,8 +57,11 @@ export function buildJiraFieldsPayload(patch, meta = {}) {
   if ('priorityName' in patch) fields.priority = { name: patch.priorityName }
   if ('tags' in patch) fields.labels = patch.tags.map(toLabel).filter(Boolean)
   if ('points' in patch) {
-    if (!ids.storyPoints) throw new Error('This Jira site has no story points field')
-    fields[ids.storyPoints] = patch.points === '' || patch.points == null ? null : Number(patch.points)
+    // The board's estimation field (what the board and our cards display) wins over
+    // the site-wide story points field, or an edit would "snap back".
+    const pointsId = meta.pointsFieldId || ids.storyPoints
+    if (!pointsId) throw new Error('This Jira site has no story points field')
+    fields[pointsId] = patch.points === '' || patch.points == null ? null : Number(patch.points)
   }
   return fields
 }
