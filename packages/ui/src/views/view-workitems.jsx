@@ -1877,7 +1877,8 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
   const onDragStart = (id) => {
     setDragId(id);
     dragRef.current = id;
-    setReachable(null);
+    // Column mode: only board columns are drop targets, so 'Other' is dimmed from the start.
+    setReachable(laneMode === 'jira-columns' && boardColumns ? new Set(boardColumns.map(c => c.name)) : null);
     if ((laneMode === 'state' || laneMode === 'jira-columns') && isJiraId(id) && workItemSource?.availableTargetStates) {
       const current = items.find(w => w.id === id)?.state;
       workItemSource.availableTargetStates(id)
@@ -1912,14 +1913,16 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
   const moveToColumn = async (id, laneKey) => {
     const item = items.find(w => w.id === id);
     const column = boardColumns?.find(c => c.name === laneKey);
-    if (!item || !column) return; // "Other" isn't a drop target
-    if (jiraColumnForStatus([column], item.state)) return; // already in this column
-    if (!workItemSource?.moveToStatuses) { toast?.('✗ Moving between columns is not supported here', 'error'); return; }
+    if (!item || !column) return false; // "Other" isn't a drop target
+    if (jiraColumnForStatus([column], item.state)) return true; // already in this column
+    if (!workItemSource?.moveToStatuses) { toast?.('✗ Moving between columns is not supported here', 'error'); return false; }
     try {
       const r = await workItemSource.moveToStatuses(id, column.statuses, item);
       updateItem(id, { state: r.state, stateCategory: r.stateCategory });
+      return true;
     } catch (e) {
       toast?.('✗ ' + (e?.message || 'Move failed'), 'error');
+      return false;
     }
   };
 
@@ -1941,8 +1944,8 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
       return;
     }
     if (laneMode === 'jira-columns') {
-      await moveToColumn(id, state);
-      if (assigneeChange && prev?.assignee !== assigneeId) {
+      const moved = await moveToColumn(id, state);
+      if (moved && assigneeChange && prev?.assignee !== assigneeId) {
         updateItem(id, { assignee: assigneeId });
         if (!(await patchWI(id, [['/fields/System.AssignedTo', member?.name || null]]))) updateItem(id, { assignee: prev?.assignee ?? null });
       }

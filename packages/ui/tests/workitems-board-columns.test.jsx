@@ -98,3 +98,22 @@ it('dims columns the workflow cannot reach', async () => {
   expect(document.querySelectorAll('.lane')[1].style.opacity).toBe('')
   expect(document.querySelectorAll('.lane')[2].style.opacity).toBe('')
 })
+
+it('does not call moveToStatuses when a card is dropped on the Other lane', async () => {
+  const moveToStatuses = vi.fn(async () => ({ state: 'Done', stateCategory: 'Completed' }))
+  renderBoard({ items: [item('A-1', 'Blocked'), item('A-2', 'In Progress')], source: { moveToStatuses } })
+  fireEvent.dragStart(screen.getByText('T A-2').closest('.board-card'), { dataTransfer: { setData: () => {} } })
+  fireEvent.drop(laneOf('T A-1'), { dataTransfer: {} })
+  await new Promise(r => setTimeout(r, 0))
+  expect(moveToStatuses).not.toHaveBeenCalled()
+})
+
+it('dims the Other lane as soon as a drag starts, without availableTargetStates', () => {
+  renderBoard({ items: [item('A-1', 'Blocked'), item('A-2', 'In Progress')], source: { moveToStatuses: vi.fn() } })
+  fireEvent.dragStart(screen.getByText('T A-2').closest('.board-card'), { dataTransfer: { setData: () => {} } })
+  const lanes = document.querySelectorAll('.lane')
+  expect(lanes[3].querySelector('h4').textContent).toBe('Other')
+  expect(lanes[3].style.opacity).toBe('0.4')
+  expect(lanes[0].style.opacity).toBe('')
+  expect(lanes[1].style.opacity).toBe('')
+})
