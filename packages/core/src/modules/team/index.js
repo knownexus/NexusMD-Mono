@@ -4,9 +4,7 @@
 // Storage and React stay in the apps; these functions take plain data and
 // return plain data so every app (web, desktop, mobile) shares one implementation.
 
-import {
-  isActiveState, isReviewState, isBlockedState, isTerminalState,
-} from '../ado/helpers.js'
+import { isActiveItem, isReviewItem, isBlockedItem, isDoneItem } from '../workitems/classify.js'
 
 /**
  * Merge the locally-stored roster overrides over a service-sourced team list.
@@ -41,9 +39,9 @@ export function mergeTeamRoster(baseTeam, { removedIds = [], customMembers = [] 
  */
 export function enrichTeamMember(member, { workItems = [], prs = [] } = {}) {
   const myWIs = workItems.filter(w => w.assignee === member.id)
-  const active = myWIs.filter(w => isActiveState(w.state) || isReviewState(w.state))
-  const blocked = myWIs.filter(w => isBlockedState(w.state))
-  const done = myWIs.filter(w => isTerminalState(w.state, w.stateCategory))
+  const active = myWIs.filter(w => isActiveItem(w) || isReviewItem(w))
+  const blocked = myWIs.filter(isBlockedItem)
+  const done = myWIs.filter(isDoneItem)
   const myPRs = prs.filter(p => p.author === member.id && p.status === 'active')
   const current = [...active].sort((a, b) => a.priority - b.priority)[0]
   const points = myWIs.reduce((s, w) => s + (w.sprint ? w.points : 0), 0)

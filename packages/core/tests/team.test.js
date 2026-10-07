@@ -98,6 +98,21 @@ describe('enrichTeamMember', () => {
     expect(m.role).toBe('Dev')
   })
 
+  it('buckets Jira items by status category and flag', () => {
+    const jiraWIs = [
+      { id: 'jira:A-1', source: 'jira', assignee: 'a', state: 'In Dev', stateCategory: 'InProgress', priority: 2 },
+      { id: 'jira:A-2', source: 'jira', assignee: 'a', state: 'In QA', stateCategory: 'InProgress', priority: 1 },
+      { id: 'jira:A-3', source: 'jira', assignee: 'a', state: 'Design', stateCategory: 'InProgress', priority: 3, flagged: true },
+      { id: 'jira:A-4', source: 'jira', assignee: 'a', state: 'Released', stateCategory: 'Completed', priority: 3 },
+      { id: 'jira:A-5', source: 'jira', assignee: 'a', state: 'To Do', stateCategory: 'Proposed', priority: 3 },
+    ]
+    const m = enrichTeamMember({ id: 'a' }, { workItems: jiraWIs })
+    expect(m.active.map(w => w.id)).toEqual(['jira:A-1', 'jira:A-2'])
+    expect(m.blocked.map(w => w.id)).toEqual(['jira:A-3'])
+    expect(m.done.map(w => w.id)).toEqual(['jira:A-4'])
+    expect(m.current.id).toBe('jira:A-2')
+  })
+
   it('handles a member with no work and no data', () => {
     const m = enrichTeamMember({ id: 'ghost' })
     expect(m.myWIs).toEqual([])

@@ -71,4 +71,19 @@ describe('buildDigest with state categories', () => {
     ] })
     expect(d.openCount).toBe(1)
   })
+
+  it('counts flagged and blocked-named Jira items as blocked, but not done ones', () => {
+    const d = buildDigest({
+      workItems: [
+        { id: 'jira:A-1', source: 'jira', state: 'In Dev', stateCategory: 'InProgress', flagged: true, assignee: 'alex-doe' },
+        { id: 'jira:A-2', source: 'jira', state: 'Blocked by vendor', stateCategory: 'InProgress', assignee: 'alex-doe' },
+        { id: 'jira:A-3', source: 'jira', state: 'Released', stateCategory: 'Completed', flagged: true, assignee: 'alex-doe' },
+        { id: 'jira:A-4', source: 'jira', state: 'In QA', stateCategory: 'InProgress', assignee: 'alex-doe' },
+      ],
+      team,
+    })
+    expect(d.openCount).toBe(3)
+    expect(d.blockedCount).toBe(2)
+    expect(d.teamMetrics.find(m => m.id === 'alex-doe')).toMatchObject({ openCount: 3, blockedCount: 2 })
+  })
 })

@@ -66,6 +66,7 @@ const EXPECTED = [
   'CATEGORY_LANES', 'CATEGORY_LABELS', 'itemCategory', 'adoStateForCategory',
   'WORK_ITEM_STATUS_KEY', 'readProviderStatus', 'recordProviderStatus', 'describeProviderError',
   'PROVIDER_LABELS', 'mergeTeam', 'mergeWorkItemData', 'applyHiddenPeople',
+  'isDoneItem', 'isBlockedItem', 'isReviewItem', 'isActiveItem',
   // Jira module
   'normaliseSite', 'makeJiraConfig', 'makeJiraClient', 'JiraError', 'jiraErrorMessage',
   'htmlToAdf',

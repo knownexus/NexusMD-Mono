@@ -1,5 +1,5 @@
 import { registerModule } from '../../features/module-registry.js'
-import { isTerminalState, isBlockedState } from '../ado/helpers.js'
+import { isDoneItem, isBlockedItem } from '../workitems/classify.js'
 import { ADO_CACHE_KEY } from '../ado/loader.js'
 
 /**
@@ -25,8 +25,8 @@ import { ADO_CACHE_KEY } from '../ado/loader.js'
  * }}
  */
 export function buildDigest({ workItems = [], prs = [], builds = [], team = [], sprint = null } = {}) {
-  const openItems     = workItems.filter(wi => !isTerminalState(wi.state, wi.stateCategory))
-  const blockedItems  = openItems.filter(wi => isBlockedState(wi.state))
+  const openItems     = workItems.filter(wi => !isDoneItem(wi))
+  const blockedItems  = openItems.filter(isBlockedItem)
   const criticalItems = openItems.filter(wi => wi.priority <= 1)
   const activePrs     = prs.filter(p => p.status === 'active' || p.status === 'draft')
   const failedBuilds  = builds.filter(b => b.status === 'failed' || b.status === 'partial')
@@ -36,7 +36,7 @@ export function buildDigest({ workItems = [], prs = [], builds = [], team = [], 
     id:           member.id,
     name:         member.name,
     openCount:    openItems.filter(wi => wi.assignee === member.id).length,
-    blockedCount: openItems.filter(wi => wi.assignee === member.id && isBlockedState(wi.state)).length,
+    blockedCount: openItems.filter(wi => wi.assignee === member.id && isBlockedItem(wi)).length,
     prCount:      activePrs.filter(p => p.author === member.id).length,
   }))
 
