@@ -325,10 +325,12 @@ function ScheduleOneOnOneModal({ open, dev, onClose, onSave }) {
 }
 
 export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTeamChange, onAddNote, onScheduleOneOnOne }) {
-  const { data: NexusMDData, storage, pushPref } = useNexusData()
+  const { data: NexusMDData, storage, pushPref, getProfileKey } = useNexusData()
+  // The hidden list is per profile (the desktop scopes it; web's getProfileKey is the identity).
+  const removedKey = getProfileKey('nexusmd.team.removed')
   const [search, setSearch] = useStateT('')
   const [removedIds, setRemovedIds] = useStateT(() => {
-    try { return JSON.parse(storage.getItem('nexusmd.team.removed') || '[]') } catch { return [] }
+    try { return JSON.parse(storage.getItem(removedKey) || '[]') } catch { return [] }
   })
   const [customMembers, setCustomMembers] = useStateT(() => {
     try { return JSON.parse(storage.getItem('nexusmd.team.custom') || '[]') } catch { return [] }
@@ -385,7 +387,7 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
     const next = [...removedIds, id]
     setRemovedIds(next)
     const s = JSON.stringify(next)
-    storage.setItem('nexusmd.team.removed', s)
+    storage.setItem(removedKey, s)
     pushPref?.('nexusmd.team.removed', s)
   }
 
@@ -393,7 +395,7 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
     const next = removedIds.filter(x => x !== id)
     setRemovedIds(next)
     const s = JSON.stringify(next)
-    storage.setItem('nexusmd.team.removed', s)
+    storage.setItem(removedKey, s)
     pushPref?.('nexusmd.team.removed', s)
   }
 
