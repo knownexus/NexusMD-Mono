@@ -1,8 +1,8 @@
 import { slugify } from '../ado/helpers.js'
 
 // Hide people (e.g. leavers) from NexusMD only: drop them from the rosters and show
-// their work items as Unassigned. TEAM_ALL keeps the full roster so the Team view
-// can still offer a restore.
+// their work items as Unassigned (and drop their Recent activity). TEAM_ALL keeps
+// the full roster so the Team view can still offer a restore.
 export function applyHiddenPeople(data, hiddenIds) {
   const hidden = new Set(hiddenIds || [])
   if (!hidden.size || !data) return data
@@ -19,6 +19,9 @@ export function applyHiddenPeople(data, hiddenIds) {
   if (Array.isArray(data.WORK_ITEMS)) {
     out.WORK_ITEMS = data.WORK_ITEMS.map(w =>
       hidden.has(w.assignee) ? { ...w, assignee: null, assigneeAccountId: null } : w)
+  }
+  if (Array.isArray(data.ACTIVITY)) {
+    out.ACTIVITY = data.ACTIVITY.filter(a => !hidden.has(a.who))
   }
   return out
 }

@@ -43,4 +43,11 @@ describe('applyHiddenPeople', () => {
   it('tolerates missing collections', () => {
     expect(applyHiddenPeople({ ORG: 'x' }, ['a'])).toMatchObject({ ORG: 'x' })
   })
+
+  it('drops Recent activity entries by hidden people', () => {
+    const withActivity = { ...data, ACTIVITY: [{ who: 'alex-doe', what: 'a' }, { who: 'sam-roe', what: 'b' }] }
+    const out = applyHiddenPeople(withActivity, ['alex-doe'])
+    expect(out.ACTIVITY).toEqual([{ who: 'sam-roe', what: 'b' }])
+    expect(applyHiddenPeople(data, ['alex-doe']).ACTIVITY).toBeUndefined()
+  })
 })
