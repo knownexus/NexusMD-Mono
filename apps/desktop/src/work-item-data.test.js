@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { JIRA_CACHE_KEY, ADO_CACHE_KEY, WORK_ITEM_STATUS_KEY } from '@nexusmd/core'
-import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider, adoWorkItemUrl, useRoutedWorkItemSource } from './work-item-data.js'
+import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider, adoWorkItemUrl, useRoutedWorkItemSource, nextHiddenIds } from './work-item-data.js'
 
 function storage(seed = {}) {
   const s = { ...seed }
@@ -123,5 +123,24 @@ describe('useRoutedWorkItemSource', () => {
     const second = result.current
     rerender({ snapshot: { WORK_ITEMS: [{ id: 3 }] }, j: jira })
     expect(result.current).toBe(second)
+  })
+})
+
+describe('nextHiddenIds', () => {
+  const roster = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+  it('keeps hidden ids that are not in the current roster', () => {
+    expect(nextHiddenIds(['ghost'], roster, roster)).toEqual(['ghost'])
+  })
+  it('adds roster members missing from the new team', () => {
+    expect(nextHiddenIds(['ghost'], roster, [{ id: 'a' }, { id: 'c' }])).toEqual(['ghost', 'b'])
+  })
+  it('restores roster members that are back in the new team', () => {
+    expect(nextHiddenIds(['a', 'ghost'], roster, roster)).toEqual(['ghost'])
+  })
+  it('changes nothing when the roster is empty', () => {
+    expect(nextHiddenIds(['a', 'ghost'], [], [])).toEqual(['a', 'ghost'])
+  })
+  it('does not duplicate an already-hidden id', () => {
+    expect(nextHiddenIds(['b'], roster, [{ id: 'a' }, { id: 'c' }])).toEqual(['b'])
   })
 })

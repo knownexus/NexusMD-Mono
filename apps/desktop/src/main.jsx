@@ -31,7 +31,7 @@ import {
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraHttpAdapter, createJiraWorkItemSource } from './jira-client.js'
-import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider, adoWorkItemUrl, useRoutedWorkItemSource } from './work-item-data.js'
+import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider, adoWorkItemUrl, useRoutedWorkItemSource, nextHiddenIds } from './work-item-data.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
@@ -443,7 +443,7 @@ function ViewBody({
   const handleTeamChange = (newTeam) => {
     const baseIds = new Set(fullRoster.map(m => m.id))
     const newCustom = newTeam.filter(m => !baseIds.has(m.id))
-    const newRemoved = fullRoster.filter(m => !newTeam.find(t => t.id === m.id)).map(m => m.id)
+    const newRemoved = nextHiddenIds(removedIds, fullRoster, newTeam)
     setCustomTeam(newCustom)
     setRemovedIds(newRemoved)
     try {
