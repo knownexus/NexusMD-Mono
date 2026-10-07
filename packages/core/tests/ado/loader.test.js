@@ -304,6 +304,57 @@ describe('loadAdoData — PR work-item links', () => {
   })
 })
 
+describe('loadAdoData — PR errors', () => {
+  const failing = (status, match) => ({
+    fetch: vi.fn(async (path) => {
+      if (match(path)) return { ok: false, status, json: async () => ({}) }
+      if (path.includes('/_apis/git/repositories?')) return { ok: true, status: 200, json: async () => ({ value: [{ id: 'repo1', name: 'Repo One' }] }) }
+      return { ok: true, status: 200, json: async () => ({ value: [] }) }
+    }),
+  })
+
+  it('publishes PR_ERROR with a PAT-scope hint when the repositories call returns 401', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const http = failing(401, p => p.includes('/_apis/git/repositories?'))
+    const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
+    expect(result.PRS).toEqual([])
+    expect(result.PR_ERROR).toBe('PRs unavailable (HTTP 401) — check the ADO PAT has Code (Read) scope')
+  })
+
+  it('publishes PR_ERROR with the message for other failures of a PR list call', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const http = failing(500, p => p.includes('/pullrequests?'))
+    const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
+    expect(result.PR_ERROR).toMatch(/^PRs unavailable — ADO GET .*pullrequests.* 500$/)
+    expect(result.PR_ERROR.length).toBeLessThanOrEqual(200 + 'PRs unavailable — '.length)
+  })
+
+  it('leaves PR_ERROR null when PRs load', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const http = makeHttp({
+      '/_apis/git/repositories?': { value: [{ id: 'repo1', name: 'Repo One' }] },
+      '/pullrequests?': { value: [{ pullRequestId: 55, title: 'Fix', createdBy: { displayName: 'Al' }, status: 'active', reviewers: [] }] },
+    })
+    const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
+    expect(result.PRS).toHaveLength(1)
+    expect(result.PR_ERROR).toBeNull()
+  })
+
+  it('leaves PR_ERROR null when some PRs load even though another repo failed', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const http = {
+      fetch: vi.fn(async (path) => {
+        if (path.includes('/_apis/git/repositories?')) return { ok: true, status: 200, json: async () => ({ value: [{ id: 'r1', name: 'One' }, { id: 'r2', name: 'Two' }] }) }
+        if (path.includes('repositories/r2/pullrequests?')) return { ok: false, status: 403, json: async () => ({}) }
+        if (path.includes('repositories/r1/pullrequests?')) return { ok: true, status: 200, json: async () => ({ value: [{ pullRequestId: 5, title: 'x', status: 'active', reviewers: [] }] }) }
+        return { ok: true, status: 200, json: async () => ({ value: [] }) }
+      }),
+    }
+    const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
+    expect(result.PR_ERROR).toBeNull()
+  })
+})
+
 describe('loadAdoData — PR web url', () => {
   it('builds a DevOps PR web url from org/project/repo/id when _links is absent', async () => {
     vi.spyOn(core, '_emit').mockImplementation(() => {})

@@ -103,6 +103,10 @@ export async function loadAdoData(
     ? get(`${encodeURIComponent(cfgProjects[0])}/_apis/work/teamsettings/iterations?$timeframe=current&api-version=7.0`).catch(() => null)
     : Promise.resolve(null)
 
+  // The first repositories / PR-list failure, surfaced as PR_ERROR when no PRs
+  // load at all (e.g. a PAT without Code (Read) scope) instead of an empty list.
+  let prError = null
+  const notePrError = (e) => { if (!prError) prError = e }
   const prsP = (async () => {
     const all = []
     await Promise.all(cfgProjects.map(async proj => {
@@ -127,9 +131,9 @@ export async function loadAdoData(
               url: pr._links?.web?.href
                 || `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(proj)}/_git/${encodeURIComponent(repo.name)}/pullrequest/${pr.pullRequestId}`,
             }))
-          } catch (_) {}
+          } catch (e) { notePrError(e) }
         }))
-      } catch (_) {}
+      } catch (e) { notePrError(e) }
     }))
     // Populate PR↔work-item links (one lightweight call per active PR).
     await Promise.all(all.map(async pr => {
@@ -282,6 +286,14 @@ export async function loadAdoData(
   }
 
   // ── PRs ───────────────────────────────────────────────────────────────────
+  const describePrError = (e) => {
+    const msg = String(e?.message || e || 'unknown error')
+    const code = msg.match(/ (401|403)\b/)
+    return code
+      ? `PRs unavailable (HTTP ${code[1]}) — check the ADO PAT has Code (Read) scope`
+      : `PRs unavailable — ${msg.slice(0, 200)}`
+  }
+  const prErrorText = prError && !(prsRaw || []).length ? describePrError(prError) : null
   const helmPRs = []
   ;(prsRaw || []).filter(p => p.status === 'active').forEach(pr => {
     try { helmPRs.push(mapPR(pr, nameToId, me?.name || '')) } catch (_) {}
@@ -333,6 +345,7 @@ export async function loadAdoData(
     WI_TYPE_STATES: meta?.typeStates || {},
     WORK_ITEMS: helmWIs,
     PRS: helmPRs,
+    PR_ERROR: prErrorText,
     BUILDS: helmBuilds,
     TESTS: helmTests,
     ACTIVITY: deriveActivity(helmWIs),

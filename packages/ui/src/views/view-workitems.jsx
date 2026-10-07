@@ -263,10 +263,10 @@ export function WorkItemIdLink({ w, fontSize = 12 }) {
   );
 }
 
-function ProviderStatusPills({ providers = [] }) {
+function ProviderStatusPills({ providers = [], showErrors = true }) {
   const pills = [];
   providers.forEach(p => {
-    if (p.status === 'error' || p.status === 'stale') {
+    if (showErrors && (p.status === 'error' || p.status === 'stale')) {
       pills.push(
         <span key={`${p.id}:err`} role="status" title={p.error || ''}
           style={{ fontSize: 11.5, padding: '2px 8px', borderRadius: 999, border: '1px solid var(--danger)', color: 'var(--danger)', whiteSpace: 'nowrap' }}>
@@ -343,8 +343,10 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
 
   const providers = NexusMDData.WORK_ITEM_PROVIDERS || [];
   const multiProvider = providers.length > 1;
-  // Jira-only profiles need the pills too, or a failed load is invisible; ADO-only sees none.
-  const showProviderPills = providers.some(p => p.id === 'jira');
+  // Jira-only profiles need the pills too, or a failed load is invisible. ADO-only
+  // profiles see only warnings (e.g. PRs unavailable), never error/stale pills.
+  const hasJiraProvider = providers.some(p => p.id === 'jira');
+  const showProviderPills = hasJiraProvider || providers.some(p => p.warning);
   const separate = multiProvider && displayMode === 'separate';
   const activeSource = separate ? (providers.some(p => p.id === sourceTab) ? sourceTab : providers[0].id) : null;
   const boardColumns = Array.isArray(NexusMDData.JIRA_BOARD_COLUMNS) && NexusMDData.JIRA_BOARD_COLUMNS.length
@@ -695,7 +697,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
               ))}
             </div>
           )}
-          {showProviderPills && <ProviderStatusPills providers={providers} />}
+          {showProviderPills && <ProviderStatusPills providers={providers} showErrors={hasJiraProvider} />}
           <div style={{ display: 'flex', background: 'var(--surface-2)', borderRadius: 6, padding: 2 }}>
             <button className="btn sm ghost" onClick={() => setView('table')} style={view === 'table' ? { background: 'var(--surface)', boxShadow: 'var(--shadow-sm)' } : null}><Icon name="list" size={14}/> Table</button>
             <button className="btn sm ghost" onClick={() => setView('board')} style={view === 'board' ? { background: 'var(--surface)', boxShadow: 'var(--shadow-sm)' } : null}><Icon name="board" size={14}/> Board</button>

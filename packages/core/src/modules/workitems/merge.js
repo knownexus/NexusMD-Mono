@@ -56,7 +56,9 @@ export function mergeWorkItemData({ ado = null, jira = null, status = {}, config
     const s = status[id] || {}
     const hasData = id === 'ado' ? !!ado : !!jira
     const state = s.status === 'error' ? (hasData ? 'stale' : 'error') : (hasData ? 'ok' : 'loading')
-    const warning = id === 'jira' && jira?.BOARD_ERROR ? 'Jira board unavailable — using status columns' : null
+    const warning = id === 'jira'
+      ? (jira?.BOARD_ERROR ? 'Jira board unavailable — using status columns' : null)
+      : (ado?.PR_ERROR || null)
     return { id, label: PROVIDER_LABELS[id], status: state, error: s.status === 'error' ? (s.error || null) : null, warning }
   })
 

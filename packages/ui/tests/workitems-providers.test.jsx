@@ -63,6 +63,18 @@ it('in separate mode shows source tabs and only that source\'s items, with its r
   expect(screen.queryByText('Jira story')).toBeNull()
 })
 
+it('shows the ADO PR warning pill in an ADO-only profile, but still no error pill', () => {
+  const warning = 'PRs unavailable (HTTP 401) — check the ADO PAT has Code (Read) scope'
+  renderView({ items: [ADO_ITEM], providers: [{ id: 'ado', label: 'Azure DevOps', status: 'stale', error: 'boom', warning }] })
+  expect(screen.getByText(`Azure DevOps: ${warning}`)).toBeTruthy()
+  expect(screen.queryByText(/Azure DevOps: boom/)).toBeNull()
+})
+
+it('shows no provider pills in an ADO-only profile without a warning', () => {
+  renderView({ items: [ADO_ITEM], providers: [{ id: 'ado', label: 'Azure DevOps', status: 'stale', error: 'boom', warning: null }] })
+  expect(screen.queryByText(/Azure DevOps:/)).toBeNull()
+})
+
 it('keeps today\'s single-provider UI when only one provider is connected', () => {
   renderView({ items: [ADO_ITEM], providers: [PROVIDERS[0]] })
   expect(screen.queryByRole('group', { name: 'Display mode' })).toBeNull()

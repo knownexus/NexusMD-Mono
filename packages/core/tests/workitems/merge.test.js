@@ -49,6 +49,13 @@ describe('mergeWorkItemData', () => {
     expect(m.ACTIVITY).toEqual(deriveActivity(items))
   })
 
+  it('surfaces the ADO PR error as the ADO provider warning', () => {
+    const bad = mergeWorkItemData({ ado: { ...ADO, PR_ERROR: 'PRs unavailable (HTTP 401) — check the ADO PAT has Code (Read) scope' }, configured: { ado: true } })
+    expect(bad.WORK_ITEM_PROVIDERS[0]).toMatchObject({ id: 'ado', warning: 'PRs unavailable (HTTP 401) — check the ADO PAT has Code (Read) scope' })
+    const ok = mergeWorkItemData({ ado: { ...ADO, PR_ERROR: null }, configured: { ado: true } })
+    expect(ok.WORK_ITEM_PROVIDERS[0].warning).toBeNull()
+  })
+
   it('tags ADO items and concatenates both sources', () => {
     expect(merged.WORK_ITEMS.map(w => w.id)).toEqual([7, 'jira:ABC-1'])
     expect(merged.WORK_ITEMS[0]).toMatchObject({ source: 'ado', displayId: '#7', stateCategory: 'InProgress' })
