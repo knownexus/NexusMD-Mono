@@ -286,14 +286,17 @@ export async function loadAdoData(
   }
 
   // ── PRs ───────────────────────────────────────────────────────────────────
+  const prErrorMessage = (e) => String(e?.message || e || 'unknown error')
   const describePrError = (e) => {
-    const msg = String(e?.message || e || 'unknown error')
-    const code = msg.match(/ (401|403)\b/)
-    return code
-      ? `PRs unavailable (HTTP ${code[1]}) — check the ADO PAT has Code (Read) scope`
-      : `PRs unavailable — ${msg.slice(0, 200)}`
+    const msg = prErrorMessage(e)
+    const auth = msg.match(/ (401|403)\b/)
+    if (auth) return `PRs unavailable (HTTP ${auth[1]}) — check the ADO PAT has Code (Read) scope`
+    const status = msg.match(/→ (\d{3})/)
+    return status ? `PRs unavailable (HTTP ${status[1]})` : `PRs unavailable — ${msg.slice(0, 200)}`
   }
-  const prErrorText = prError && !(prsRaw || []).length ? describePrError(prError) : null
+  const prFailed = !!prError && !(prsRaw || []).length
+  const prErrorText = prFailed ? describePrError(prError) : null
+  const prErrorDetail = prFailed ? prErrorMessage(prError).slice(0, 500) : null
   const helmPRs = []
   ;(prsRaw || []).filter(p => p.status === 'active').forEach(pr => {
     try { helmPRs.push(mapPR(pr, nameToId, me?.name || '')) } catch (_) {}
@@ -346,6 +349,7 @@ export async function loadAdoData(
     WORK_ITEMS: helmWIs,
     PRS: helmPRs,
     PR_ERROR: prErrorText,
+    PR_ERROR_DETAIL: prErrorDetail,
     BUILDS: helmBuilds,
     TESTS: helmTests,
     ACTIVITY: deriveActivity(helmWIs),

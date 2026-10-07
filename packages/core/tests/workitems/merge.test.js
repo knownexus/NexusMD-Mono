@@ -53,6 +53,8 @@ describe('mergeWorkItemData', () => {
   it('surfaces the ADO PR error as the ADO provider warning', () => {
     const bad = mergeWorkItemData({ ado: { ...ADO, PR_ERROR: 'PRs unavailable (HTTP 401) — check the ADO PAT has Code (Read) scope' }, configured: { ado: true } })
     expect(bad.WORK_ITEM_PROVIDERS[0]).toMatchObject({ id: 'ado', warning: 'PRs unavailable (HTTP 401) — check the ADO PAT has Code (Read) scope' })
+    const detailed = mergeWorkItemData({ ado: { ...ADO, PR_ERROR: 'PRs unavailable (HTTP 500)', PR_ERROR_DETAIL: 'ADO GET x → 500' }, configured: { ado: true } })
+    expect(detailed.WORK_ITEM_PROVIDERS[0]).toMatchObject({ warning: 'PRs unavailable (HTTP 500)', warningDetail: 'ADO GET x → 500' })
     const ok = mergeWorkItemData({ ado: { ...ADO, PR_ERROR: null }, configured: { ado: true } })
     expect(ok.WORK_ITEM_PROVIDERS[0].warning).toBeNull()
   })
@@ -112,8 +114,8 @@ describe('mergeWorkItemData', () => {
       status: { jira: { status: 'error', error: 'auth failed — check settings' } },
     })
     expect(m.WORK_ITEM_PROVIDERS).toEqual([
-      { id: 'ado', label: 'Azure DevOps', status: 'ok', error: null, warning: null },
-      { id: 'jira', label: 'Jira', status: 'stale', error: 'auth failed — check settings', warning: null },
+      { id: 'ado', label: 'Azure DevOps', status: 'ok', error: null, warning: null, warningDetail: null },
+      { id: 'jira', label: 'Jira', status: 'stale', error: 'auth failed — check settings', warning: null, warningDetail: null },
     ])
     const noCache = mergeWorkItemData({ ado: ADO, jira: null, configured: { ado: true, jira: true }, status: { jira: { status: 'error', error: 'e' } } })
     expect(noCache.WORK_ITEM_PROVIDERS[1].status).toBe('error')

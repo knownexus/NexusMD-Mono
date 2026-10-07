@@ -321,12 +321,32 @@ describe('loadAdoData — PR errors', () => {
     expect(result.PR_ERROR).toBe('PRs unavailable (HTTP 401) — check the ADO PAT has Code (Read) scope')
   })
 
-  it('publishes PR_ERROR with the message for other failures of a PR list call', async () => {
+  it('publishes PR_ERROR with the HTTP status for other failures, keeping the full message as PR_ERROR_DETAIL', async () => {
     vi.spyOn(core, '_emit').mockImplementation(() => {})
     const http = failing(500, p => p.includes('/pullrequests?'))
     const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
-    expect(result.PR_ERROR).toMatch(/^PRs unavailable — ADO GET .*pullrequests.* 500$/)
-    expect(result.PR_ERROR.length).toBeLessThanOrEqual(200 + 'PRs unavailable — '.length)
+    expect(result.PR_ERROR).toBe('PRs unavailable (HTTP 500)')
+    expect(result.PR_ERROR_DETAIL).toMatch(/^ADO GET .*pullrequests.*→ 500$/)
+  })
+
+  it('keeps the PAT hint and the full message as detail for 401', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const http = failing(401, p => p.includes('/_apis/git/repositories?'))
+    const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
+    expect(result.PR_ERROR_DETAIL).toMatch(/repositories.*→ 401$/)
+  })
+
+  it('shows the message when the failure has no HTTP status', async () => {
+    vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const http = {
+      fetch: vi.fn(async (path) => {
+        if (path.includes('/_apis/git/repositories?')) throw new Error('Failed to fetch')
+        return { ok: true, status: 200, json: async () => ({ value: [] }) }
+      }),
+    }
+    const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
+    expect(result.PR_ERROR).toBe('PRs unavailable — Failed to fetch')
+    expect(result.PR_ERROR_DETAIL).toBe('Failed to fetch')
   })
 
   it('leaves PR_ERROR null when PRs load', async () => {
@@ -338,6 +358,7 @@ describe('loadAdoData — PR errors', () => {
     const result = await loadAdoData({ org: 'myorg', projects: ['proj-a'] }, { http, storage: makeStorage() })
     expect(result.PRS).toHaveLength(1)
     expect(result.PR_ERROR).toBeNull()
+    expect(result.PR_ERROR_DETAIL).toBeNull()
   })
 
   it('leaves PR_ERROR null when some PRs load even though another repo failed', async () => {

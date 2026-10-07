@@ -276,7 +276,7 @@ function ProviderStatusPills({ providers = [], showErrors = true }) {
     }
     if (p.warning) {
       pills.push(
-        <span key={`${p.id}:warn`} role="status" title={p.warning}
+        <span key={`${p.id}:warn`} role="status" title={p.warningDetail || p.warning}
           style={{ fontSize: 11.5, padding: '2px 8px', borderRadius: 999, border: '1px solid var(--warning, var(--border))', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
           {p.label}: {p.warning}
         </span>

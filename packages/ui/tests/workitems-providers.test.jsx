@@ -70,6 +70,11 @@ it('shows the ADO PR warning pill in an ADO-only profile, but still no error pil
   expect(screen.queryByText(/Azure DevOps: boom/)).toBeNull()
 })
 
+it('uses the warning detail as the pill tooltip', () => {
+  renderView({ items: [ADO_ITEM], providers: [{ id: 'ado', label: 'Azure DevOps', status: 'ok', error: null, warning: 'PRs unavailable (HTTP 500)', warningDetail: 'ADO GET x → 500' }] })
+  expect(screen.getByText('Azure DevOps: PRs unavailable (HTTP 500)').getAttribute('title')).toBe('ADO GET x → 500')
+})
+
 it('shows no provider pills in an ADO-only profile without a warning', () => {
   renderView({ items: [ADO_ITEM], providers: [{ id: 'ado', label: 'Azure DevOps', status: 'stale', error: 'boom', warning: null }] })
   expect(screen.queryByText(/Azure DevOps:/)).toBeNull()
