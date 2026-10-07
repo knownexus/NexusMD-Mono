@@ -19,6 +19,7 @@ export function mapJiraIssue(issue, { meta = {}, nameToId = {} } = {}) {
   const prio = (meta.priorities || []).find(p => p.name === f.priority?.name)
   const sprint = fieldIds.sprint ? pickSprint(f[fieldIds.sprint]) : null
   const points = fieldIds.storyPoints ? f[fieldIds.storyPoints] : null
+  const flaggedValue = fieldIds.flagged ? f[fieldIds.flagged] : null
   const changed = f.updated || ''
   const projectKey = projectKeyOf(issue)
   return {
@@ -39,6 +40,7 @@ export function mapJiraIssue(issue, { meta = {}, nameToId = {} } = {}) {
     priority: prio ? prio.rank : 3,
     priorityName: f.priority?.name || null,
     points: Math.round(parseFloat(points || 0) || 0),
+    flagged: Array.isArray(flaggedValue) && flaggedValue.length > 0,
     tags: Array.isArray(f.labels) ? f.labels : [],
     updated: timeAgo(changed),
     changedMs: changed ? new Date(changed).getTime() : null,

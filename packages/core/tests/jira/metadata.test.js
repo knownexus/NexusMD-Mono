@@ -33,6 +33,7 @@ const FIELDS = [
   { id: 'customfield_10028', name: 'Story Points' },
   { id: 'customfield_10020', name: 'Sprint', schema: { custom: 'com.pyxis.greenhopper.jira:gh-sprint' } },
   { id: 'customfield_10040', name: 'Acceptance Criteria' },
+  { id: 'customfield_10021', name: 'Flagged' },
 ]
 
 describe('categoryOfJiraStatus', () => {
@@ -49,11 +50,16 @@ describe('discoverFieldIds', () => {
   it('prefers "Story point estimate" and finds sprint by schema', () => {
     expect(discoverFieldIds(FIELDS)).toEqual({
       storyPoints: 'customfield_10016', sprint: 'customfield_10020',
-      acceptanceCriteria: 'customfield_10040', reproSteps: null,
+      acceptanceCriteria: 'customfield_10040', reproSteps: null, flagged: 'customfield_10021',
     })
   })
+  it('finds the Flagged field case-insensitively', () => {
+    expect(discoverFieldIds([{ id: 'customfield_9', name: 'FLAGGED' }]).flagged).toBe('customfield_9')
+    expect(discoverFieldIds([{ id: 'customfield_9', name: 'Flag reason' }]).flagged).toBeNull()
+  })
   it('returns nulls for an empty list', () => {
-    expect(discoverFieldIds([])).toEqual({ storyPoints: null, sprint: null, acceptanceCriteria: null, reproSteps: null })
+    expect(discoverFieldIds([])).toEqual({ storyPoints: null, sprint: null, acceptanceCriteria: null, reproSteps: null, flagged: null })
+    expect(emptyJiraMeta().fieldIds.flagged).toBeNull()
   })
 })
 

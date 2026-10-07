@@ -26,12 +26,13 @@ export function discoverFieldIds(fields = []) {
     sprint: fields.find(f => f.schema?.custom === 'com.pyxis.greenhopper.jira:gh-sprint')?.id || null,
     acceptanceCriteria: idByName(fields, ['acceptance criteria']),
     reproSteps: idByName(fields, ['steps to reproduce']),
+    flagged: idByName(fields, ['flagged']),
   }
 }
 
 export const emptyJiraMeta = () => ({
   types: [], typeStates: {}, stateCategoryByName: {}, states: [], priorities: [],
-  fieldIds: { storyPoints: null, sprint: null, acceptanceCriteria: null, reproSteps: null },
+  fieldIds: { storyPoints: null, sprint: null, acceptanceCriteria: null, reproSteps: null, flagged: null },
   me: null, people: [], statusNameById: {},
 })
 

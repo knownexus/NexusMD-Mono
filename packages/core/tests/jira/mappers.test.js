@@ -63,6 +63,16 @@ describe('mapJiraIssue', () => {
     })
   })
 
+  it('maps the Flagged field to flagged', () => {
+    const meta = { ...META, fieldIds: { ...META.fieldIds, flagged: 'customfield_10021' } }
+    const flaggedIssue = { ...ISSUE, fields: { ...ISSUE.fields, customfield_10021: [{ value: 'Impediment' }] } }
+    expect(mapJiraIssue(flaggedIssue, { meta }).flagged).toBe(true)
+    const cleared = { ...ISSUE, fields: { ...ISSUE.fields, customfield_10021: [] } }
+    expect(mapJiraIssue(cleared, { meta }).flagged).toBe(false)
+    expect(mapJiraIssue({ ...ISSUE, fields: { ...ISSUE.fields, customfield_10021: null } }, { meta }).flagged).toBe(false)
+    expect(mapJiraIssue(flaggedIssue, { meta: META }).flagged).toBe(false)
+  })
+
   it('treats a closed-only sprint list as not in the current sprint', () => {
     const issue = { ...ISSUE, fields: { ...ISSUE.fields, customfield_10020: [{ name: 'Old', state: 'closed' }] } }
     expect(mapJiraIssue(issue, { meta: META })).toMatchObject({ sprint: false, iterationPath: 'Old' })
