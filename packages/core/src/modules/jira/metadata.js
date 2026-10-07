@@ -12,6 +12,14 @@ export const toPerson = (u) => ({
   avatarUrl: u.avatarUrls?.['48x48'] || '',
 })
 
+function idsByName(fields, names) {
+  const out = []
+  for (const n of names) {
+    for (const f of fields) if (String(f.name || '').toLowerCase() === n && !out.includes(f.id)) out.push(f.id)
+  }
+  return out
+}
+
 function idByName(fields, names) {
   for (const n of names) {
     const f = fields.find(x => String(x.name || '').toLowerCase() === n)
@@ -21,8 +29,12 @@ function idByName(fields, names) {
 }
 
 export function discoverFieldIds(fields = []) {
+  // Company- and team-managed boards estimate with different fields; keep every
+  // candidate so the loader can read whichever one the board actually uses.
+  const storyPointsCandidates = idsByName(fields, ['story point estimate', 'story points'])
   return {
-    storyPoints: idByName(fields, ['story point estimate', 'story points']),
+    storyPoints: storyPointsCandidates[0] || null,
+    storyPointsCandidates,
     sprint: fields.find(f => f.schema?.custom === 'com.pyxis.greenhopper.jira:gh-sprint')?.id || null,
     acceptanceCriteria: idByName(fields, ['acceptance criteria']),
     reproSteps: idByName(fields, ['steps to reproduce']),
@@ -32,7 +44,7 @@ export function discoverFieldIds(fields = []) {
 
 export const emptyJiraMeta = () => ({
   types: [], typeStates: {}, stateCategoryByName: {}, states: [], priorities: [],
-  fieldIds: { storyPoints: null, sprint: null, acceptanceCriteria: null, reproSteps: null, flagged: null },
+  fieldIds: { storyPoints: null, storyPointsCandidates: [], sprint: null, acceptanceCriteria: null, reproSteps: null, flagged: null },
   me: null, people: [], statusNameById: {},
 })
 

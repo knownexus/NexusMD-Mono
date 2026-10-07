@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { fetchJiraBoards, fetchJiraBoardColumns, jiraColumnForStatus } from '../../src/modules/jira/boards.js'
+import { fetchJiraBoards, fetchJiraBoardColumns, fetchJiraBoardConfig, jiraColumnForStatus } from '../../src/modules/jira/boards.js'
 
 function client(routes) {
   return { get: vi.fn(async (path) => {
@@ -49,6 +49,22 @@ describe('fetchJiraBoardColumns', () => {
   })
   it('returns [] for a configuration with no columns', async () => {
     expect(await fetchJiraBoardColumns(client({ 'board/7/configuration': {} }), '7', names)).toEqual([])
+  })
+})
+
+describe('fetchJiraBoardConfig', () => {
+  it('returns the columns and the board estimation field', async () => {
+    const c = client({ 'board/7/configuration': {
+      columnConfig: { columns: [{ name: 'To Do', statuses: [{ id: '1' }] }] },
+      estimation: { type: 'field', field: { fieldId: 'customfield_10028', displayName: 'Story Points' } },
+    } })
+    expect(await fetchJiraBoardConfig(c, '7', { 1: 'To Do' })).toEqual({
+      columns: [{ name: 'To Do', statuses: ['To Do'] }], estimationFieldId: 'customfield_10028',
+    })
+  })
+  it('reports no estimation field when the board has none', async () => {
+    expect(await fetchJiraBoardConfig(client({ 'board/7/configuration': {} }), '7', {}))
+      .toEqual({ columns: [], estimationFieldId: null })
   })
 })
 

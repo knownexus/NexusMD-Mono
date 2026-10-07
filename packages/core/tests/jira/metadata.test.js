@@ -49,16 +49,26 @@ describe('categoryOfJiraStatus', () => {
 describe('discoverFieldIds', () => {
   it('prefers "Story point estimate" and finds sprint by schema', () => {
     expect(discoverFieldIds(FIELDS)).toEqual({
-      storyPoints: 'customfield_10016', sprint: 'customfield_10020',
+      storyPoints: 'customfield_10016', storyPointsCandidates: ['customfield_10016', 'customfield_10028'],
+      sprint: 'customfield_10020',
       acceptanceCriteria: 'customfield_10040', reproSteps: null, flagged: 'customfield_10021',
     })
+  })
+  it('lists every story-points field, "Story point estimate" first, case-insensitively', () => {
+    const ids = discoverFieldIds([
+      { id: 'customfield_1', name: 'STORY POINTS' },
+      { id: 'customfield_2', name: 'story point estimate' },
+      { id: 'customfield_3', name: 'Story Points' },
+    ])
+    expect(ids.storyPointsCandidates).toEqual(['customfield_2', 'customfield_1', 'customfield_3'])
+    expect(ids.storyPoints).toBe('customfield_2')
   })
   it('finds the Flagged field case-insensitively', () => {
     expect(discoverFieldIds([{ id: 'customfield_9', name: 'FLAGGED' }]).flagged).toBe('customfield_9')
     expect(discoverFieldIds([{ id: 'customfield_9', name: 'Flag reason' }]).flagged).toBeNull()
   })
   it('returns nulls for an empty list', () => {
-    expect(discoverFieldIds([])).toEqual({ storyPoints: null, sprint: null, acceptanceCriteria: null, reproSteps: null, flagged: null })
+    expect(discoverFieldIds([])).toEqual({ storyPoints: null, storyPointsCandidates: [], sprint: null, acceptanceCriteria: null, reproSteps: null, flagged: null })
     expect(emptyJiraMeta().fieldIds.flagged).toBeNull()
   })
 })

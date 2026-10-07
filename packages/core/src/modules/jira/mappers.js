@@ -11,14 +11,24 @@ export function pickSprint(sprints) {
 
 const projectKeyOf = (issue) => issue.fields?.project?.key || String(issue.key || '').split('-')[0]
 
-export function mapJiraIssue(issue, { meta = {}, nameToId = {} } = {}) {
+// The first field in `order` holding a number (Jira returns null for an unset field).
+function firstNumber(f, order) {
+  for (const id of order) {
+    if (!id) continue
+    const n = parseFloat(f[id])
+    if (Number.isFinite(n)) return n
+  }
+  return 0
+}
+
+export function mapJiraIssue(issue, { meta = {}, nameToId = {}, pointsFieldOrder = null } = {}) {
   const f = issue.fields || {}
   const fieldIds = meta.fieldIds || {}
   const statusName = f.status?.name || ''
   const assigneeName = f.assignee?.displayName || null
   const prio = (meta.priorities || []).find(p => p.name === f.priority?.name)
   const sprint = fieldIds.sprint ? pickSprint(f[fieldIds.sprint]) : null
-  const points = fieldIds.storyPoints ? f[fieldIds.storyPoints] : null
+  const points = firstNumber(f, pointsFieldOrder || meta.pointsFieldOrder || [fieldIds.storyPoints])
   const flaggedValue = fieldIds.flagged ? f[fieldIds.flagged] : null
   const changed = f.updated || ''
   const projectKey = projectKeyOf(issue)
@@ -39,7 +49,7 @@ export function mapJiraIssue(issue, { meta = {}, nameToId = {} } = {}) {
     assigneeAccountId: f.assignee?.accountId || null,
     priority: prio ? prio.rank : 3,
     priorityName: f.priority?.name || null,
-    points: Math.round(parseFloat(points || 0) || 0),
+    points: Math.round(points),
     flagged: Array.isArray(flaggedValue) && flaggedValue.length > 0,
     tags: Array.isArray(f.labels) ? f.labels : [],
     updated: timeAgo(changed),

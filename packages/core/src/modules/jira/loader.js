@@ -1,7 +1,7 @@
 import { core } from '../../core.js'
 import { PROJECT_COLORS } from '../ado/helpers.js'
 import { makeJiraClient } from './client.js'
-import { fetchJiraBoardColumns } from './boards.js'
+import { fetchJiraBoardConfig } from './boards.js'
 import { fetchJiraMetadata, fillMetadataFromIssues } from './metadata.js'
 import { mapJiraIssue, mapResolvedJiraIssue } from './mappers.js'
 
@@ -68,6 +68,8 @@ function canReuseMeta(isRefresh, priorData, projectKeys, boardId) {
   const prior = Array.isArray(priorData.PROJECT_KEYS) ? [...priorData.PROJECT_KEYS].sort() : null
   if (!prior || prior.length !== projectKeys.length || prior.some((k, i) => k !== projectKeys[i])) return false
   if (boardId && (!meta.statusNameById || priorData.BOARD_ID !== boardId)) return false
+  // Metadata cached before story-point candidates / Flagged were discovered.
+  if (!Array.isArray(meta.fieldIds?.storyPointsCandidates)) return false
   return !!(meta.people?.length && meta.priorities?.length)
 }
 
@@ -80,7 +82,11 @@ export async function loadJiraData(config, { http, storage, sleep } = {}, { isRe
   const projectKeys = [...keys].sort()
 
   let meta = canReuseMeta(isRefresh, priorData, projectKeys, config.boardId) ? priorData._jiraMeta : await fetchJiraMetadata(client, keys)
-  const fields = [...JIRA_BASE_FIELDS, ...Object.values(meta.fieldIds || {}).filter(Boolean)]
+  // The board's estimation field from the last load of the same board, so a field
+  // that is not one of the named candidates is still requested.
+  const knownEstimation = config.boardId && priorData?.BOARD_ID === config.boardId ? (priorData.BOARD_ESTIMATION_FIELD || null) : null
+  const fieldIdList = Object.values(meta.fieldIds || {}).flat().filter(v => typeof v === 'string' && v)
+  const fields = Array.from(new Set([...JIRA_BASE_FIELDS, ...fieldIdList, ...(knownEstimation ? [knownEstimation] : [])]))
 
   const [active, resolved] = await Promise.all([
     searchAllIssues(client, buildActiveJql(keys, config.jql), fields, MAX_ACTIVE),
@@ -90,12 +96,18 @@ export async function loadJiraData(config, { http, storage, sleep } = {}, { isRe
   meta = fillMetadataFromIssues(meta, active)
   let boardColumns = null
   let boardError = null
+  let estimationFieldId = knownEstimation
   if (config.boardId) {
-    try { boardColumns = await fetchJiraBoardColumns(client, config.boardId, meta.statusNameById || {}) }
-    catch (e) { boardError = String(e?.message || e || 'board unavailable').slice(0, 200) }
+    try {
+      const boardConfig = await fetchJiraBoardConfig(client, config.boardId, meta.statusNameById || {})
+      boardColumns = boardConfig.columns
+      estimationFieldId = boardConfig.estimationFieldId
+    } catch (e) { boardError = String(e?.message || e || 'board unavailable').slice(0, 200) }
   }
+  const candidates = meta.fieldIds?.storyPointsCandidates || [meta.fieldIds?.storyPoints]
+  const pointsFieldOrder = Array.from(new Set([estimationFieldId, ...candidates].filter(Boolean)))
   const items = []
-  active.forEach(issue => { try { items.push(mapJiraIssue(issue, { meta })) } catch (_) {} })
+  active.forEach(issue => { try { items.push(mapJiraIssue(issue, { meta, pointsFieldOrder })) } catch (_) {} })
 
   const data = {
     SITE: config.site,
@@ -103,6 +115,7 @@ export async function loadJiraData(config, { http, storage, sleep } = {}, { isRe
     BOARD_ID: config.boardId || '',
     BOARD_COLUMNS: boardColumns,
     BOARD_ERROR: boardError,
+    BOARD_ESTIMATION_FIELD: estimationFieldId || null,
     WORK_ITEMS: items,
     PROJECTS: deriveJiraProjects(items),
     TYPES: meta.types,

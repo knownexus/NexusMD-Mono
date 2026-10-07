@@ -18,7 +18,7 @@ const ISSUE = (key, status = 'To Do', cat = 'new') => ({
   key, fields: { summary: key, issuetype: { name: 'Story' }, status: { name: status, statusCategory: { key: cat } }, project: { key: 'ABC', name: 'Alpha' } },
 })
 
-function makeHttp({ searchPages = [[ISSUE('ABC-1')]], resolved = [], board = null } = {}) {
+function makeHttp({ searchPages = [[ISSUE('ABC-1')]], resolved = [], board = null, fields = [] } = {}) {
   let page = 0
   return {
     fetch: vi.fn(async (path, opts) => {
@@ -31,7 +31,7 @@ function makeHttp({ searchPages = [[ISSUE('ABC-1')]], resolved = [], board = nul
       }
       if (path.includes('/statuses')) return res([{ name: 'Story', statuses: [{ id: '1', name: 'To Do', statusCategory: { key: 'new' } }] }])
       if (path.includes('rest/api/3/priority')) return res([{ id: '3', name: 'Medium' }])
-      if (path.includes('rest/api/3/field')) return res([])
+      if (path.includes('rest/api/3/field')) return res(fields)
       if (path.includes('myself')) return res({ accountId: 'me', displayName: 'Me' })
       if (path.includes('multiProjectSearch')) return res([])
       if (path.includes('rest/agile/1.0/board/')) {
@@ -98,7 +98,7 @@ describe('loadJiraData', () => {
 
   const PRIOR_META = {
     types: ['Epic'], typeStates: {}, stateCategoryByName: {}, states: [],
-    priorities: [{ id: '1', name: 'High', rank: 1 }], fieldIds: {}, me: null,
+    priorities: [{ id: '1', name: 'High', rank: 1 }], fieldIds: { storyPointsCandidates: [] }, me: null,
     people: [{ id: 'p1', accountId: 'p1', name: 'Pat' }],
   }
   const fetchedMeta = (http) => http.fetch.mock.calls.some(([p]) => p.includes('/statuses'))
@@ -175,6 +175,63 @@ describe('loadCachedJiraData', () => {
   })
 })
 
+describe('loadJiraData story points', () => {
+  const FIELDS = [
+    { id: 'customfield_10016', name: 'Story point estimate' },
+    { id: 'customfield_10028', name: 'Story Points' },
+  ]
+  const pointed = (key, values) => ({ ...ISSUE(key), fields: { ...ISSUE(key).fields, ...values } })
+  const searchedFields = (http) => http.fetch.mock.calls
+    .filter(([p, o]) => p === 'rest/api/3/search/jql' && !JSON.parse(o.body).jql.includes('statusCategory = Done'))
+    .map(([, o]) => JSON.parse(o.body).fields)[0]
+
+  it('requests every story-points candidate and falls back to whichever has a value', async () => {
+    const http = makeHttp({ fields: FIELDS, searchPages: [[pointed('ABC-1', { customfield_10016: null, customfield_10028: 5 })]] })
+    const data = await loadJiraData(CONFIG, { http, storage: makeStorage() })
+    expect(searchedFields(http)).toEqual(expect.arrayContaining(['customfield_10016', 'customfield_10028']))
+    expect(data.WORK_ITEMS[0].points).toBe(5)
+  })
+
+  it('prefers the board estimation field over the other candidates', async () => {
+    const http = makeHttp({
+      fields: FIELDS,
+      searchPages: [[pointed('ABC-1', { customfield_10016: 2, customfield_10028: 5 })]],
+      board: { columnConfig: { columns: [] }, estimation: { type: 'field', field: { fieldId: 'customfield_10028' } } },
+    })
+    const data = await loadJiraData({ ...CONFIG, boardId: '7' }, { http, storage: makeStorage() })
+    expect(data.WORK_ITEMS[0].points).toBe(5)
+    expect(data.BOARD_ESTIMATION_FIELD).toBe('customfield_10028')
+    expect(data._jiraMeta.pointsFieldOrder).toBeUndefined()
+  })
+
+  it('requests a non-candidate estimation field remembered from the last load of the same board', async () => {
+    const meta = {
+      types: ['Story'], typeStates: {}, stateCategoryByName: {}, states: [], priorities: [{ id: '3', name: 'Medium', rank: 1 }],
+      fieldIds: { storyPoints: null, storyPointsCandidates: [] }, me: null,
+      people: [{ accountId: 'a', displayName: 'A', avatarUrl: '' }], statusNameById: { 1: 'To Do' },
+    }
+    const http = makeHttp({
+      searchPages: [[pointed('ABC-1', { customfield_10500: 13 })]],
+      board: { columnConfig: { columns: [] }, estimation: { field: { fieldId: 'customfield_10500' } } },
+    })
+    const data = await loadJiraData({ ...CONFIG, boardId: '7' }, { http, storage: makeStorage() },
+      { isRefresh: true, priorData: { _jiraMeta: meta, PROJECT_KEYS: ['ABC'], BOARD_ID: '7', BOARD_ESTIMATION_FIELD: 'customfield_10500' } })
+    expect(searchedFields(http)).toContain('customfield_10500')
+    expect(data.WORK_ITEMS[0].points).toBe(13)
+  })
+
+  it('refetches metadata cached before story-point candidates and Flagged were discovered', async () => {
+    const oldMeta = {
+      types: ['Story'], typeStates: {}, stateCategoryByName: {}, states: [], priorities: [{ id: '3', name: 'Medium', rank: 1 }],
+      fieldIds: { storyPoints: 'customfield_10016', sprint: null, acceptanceCriteria: null, reproSteps: null }, me: null,
+      people: [{ accountId: 'a', displayName: 'A', avatarUrl: '' }],
+    }
+    const http = makeHttp({ fields: FIELDS })
+    await loadJiraData(CONFIG, { http, storage: makeStorage() }, { isRefresh: true, priorData: { _jiraMeta: oldMeta, PROJECT_KEYS: ['ABC'] } })
+    expect(http.fetch.mock.calls.some(([p]) => p.includes('/statuses'))).toBe(true)
+  })
+})
+
 describe('loadJiraData board layout', () => {
   it('publishes the chosen board\'s columns', async () => {
     const http = makeHttp({ board: { columnConfig: { columns: [{ name: 'Todo', statuses: [{ id: '1' }] }] } } })
@@ -202,7 +259,7 @@ describe('loadJiraData board layout', () => {
     expect(http.fetch.mock.calls.some(([p]) => p.includes('/statuses'))).toBe(true)
   })
   it('reuses cached metadata only when the cached board matches the chosen board', async () => {
-    const meta = { types: ['Story'], typeStates: {}, stateCategoryByName: {}, states: [], priorities: [{ id: '3', name: 'Medium', rank: 1 }], fieldIds: {}, me: null, people: [{ accountId: 'a', displayName: 'A', avatarUrl: '' }], statusNameById: { 1: 'To Do' } }
+    const meta = { types: ['Story'], typeStates: {}, stateCategoryByName: {}, states: [], priorities: [{ id: '3', name: 'Medium', rank: 1 }], fieldIds: { storyPointsCandidates: [] }, me: null, people: [{ accountId: 'a', displayName: 'A', avatarUrl: '' }], statusNameById: { 1: 'To Do' } }
     const run = async (cachedBoard) => {
       const http = makeHttp({ board: { columnConfig: { columns: [] } } })
       await loadJiraData({ ...CONFIG, boardId: '7' }, { http, storage: makeStorage() }, { isRefresh: true, priorData: { _jiraMeta: meta, PROJECT_KEYS: ['ABC'], BOARD_ID: cachedBoard } })

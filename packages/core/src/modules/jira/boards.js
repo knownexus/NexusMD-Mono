@@ -15,12 +15,19 @@ export async function fetchJiraBoards(client, projectKeys = []) {
   return Array.from(byId.values()).sort((a, b) => Number(a.id) - Number(b.id))
 }
 
-export async function fetchJiraBoardColumns(client, boardId, statusNameById = {}) {
+// The board's columns plus the field it estimates with (the board's own story
+// points field, which may differ from the site-wide "Story point estimate").
+export async function fetchJiraBoardConfig(client, boardId, statusNameById = {}) {
   const res = await client.get(`rest/agile/1.0/board/${encodeURIComponent(boardId)}/configuration`)
-  return (res?.columnConfig?.columns || []).map(col => ({
+  const columns = (res?.columnConfig?.columns || []).map(col => ({
     name: col.name,
     statuses: (col.statuses || []).map(s => statusNameById[String(s.id)]).filter(Boolean),
   }))
+  return { columns, estimationFieldId: res?.estimation?.field?.fieldId || null }
+}
+
+export async function fetchJiraBoardColumns(client, boardId, statusNameById = {}) {
+  return (await fetchJiraBoardConfig(client, boardId, statusNameById)).columns
 }
 
 export function jiraColumnForStatus(columns, statusName) {

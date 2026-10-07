@@ -63,6 +63,15 @@ describe('mapJiraIssue', () => {
     })
   })
 
+  it('takes points from the first field in pointsFieldOrder that has a number', () => {
+    const issue = { ...ISSUE, fields: { ...ISSUE.fields, customfield_10016: null, customfield_10028: 8, customfield_10099: 3 } }
+    expect(mapJiraIssue(issue, { meta: META, pointsFieldOrder: ['customfield_10099', 'customfield_10028'] }).points).toBe(3)
+    expect(mapJiraIssue(issue, { meta: META, pointsFieldOrder: ['customfield_10016', 'customfield_10028'] }).points).toBe(8)
+    expect(mapJiraIssue(issue, { meta: { ...META, pointsFieldOrder: ['customfield_10028'] } }).points).toBe(8)
+    expect(mapJiraIssue({ ...ISSUE, fields: { ...ISSUE.fields, customfield_10028: 2.6 } }, { meta: META, pointsFieldOrder: ['customfield_10028'] }).points).toBe(3)
+    expect(mapJiraIssue(issue, { meta: META }).points).toBe(0)
+  })
+
   it('maps the Flagged field to flagged', () => {
     const meta = { ...META, fieldIds: { ...META.fieldIds, flagged: 'customfield_10021' } }
     const flaggedIssue = { ...ISSUE, fields: { ...ISSUE.fields, customfield_10021: [{ value: 'Impediment' }] } }
