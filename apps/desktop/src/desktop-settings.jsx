@@ -107,7 +107,7 @@ export function AdoConnectionCard({ onRefreshData }) {
           <input value={org} onChange={e => setOrg(e.target.value)}
             placeholder="your-org-name" style={settInputStyle} />
         </SettField>
-        <SettField label="Personal Access Token" hint="Needs Work Items, Code, and Build (Read) scopes. Leave blank to keep existing.">
+        <SettField label="Personal Access Token" hint="Needs Work Items (Read & Write), Code (Read & Write), Build (Read & Execute), Test Management (Read), and Project and Team (Read) scopes. Leave blank to keep existing.">
           <input type="password" value={pat} onChange={e => setPat(e.target.value)}
             placeholder="Leave blank to keep existing PAT" style={settInputStyle} />
         </SettField>

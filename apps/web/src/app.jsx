@@ -334,7 +334,7 @@ function SettingsModal({ open, onClose, onSaved }) {
                 <SettField label="Organisation" hint="The name after dev.azure.com/">
                   <input value={org} onChange={e => setOrg(e.target.value)} placeholder="your-org-name" style={settInputStyle}/>
                 </SettField>
-                <SettField label="Personal Access Token" hint="Stored server-side only. Needs WI/Code/Build read scopes.">
+                <SettField label="Personal Access Token" hint="Stored server-side only. Needs Work Items (Read & Write), Code (Read & Write), Build (Read & Execute), Test Management (Read), and Project and Team (Read) scopes.">
                   <input type="password" value={pat} onChange={e => setPat(e.target.value)}
                     placeholder="Leave blank to keep existing PAT" style={settInputStyle}/>
                 </SettField>
