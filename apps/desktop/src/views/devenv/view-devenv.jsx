@@ -2,6 +2,9 @@ import React from 'react'
 import { pickerAdapter } from '../../adapters/picker.js'
 import { CommandsView } from './commands-view.jsx'
 import { useDevenvRunContext } from './devenv-run-context.jsx'
+import { getProfileKey } from '../../profile-keys.js'
+import { StatusView } from './status-view.jsx'
+import { StartView } from './start-view.jsx'
 
 // A run started before the window reloaded can't be watched or answered any more (its
 // output and any open question went to the old window), so the only safe offer is Cancel.
@@ -17,17 +20,36 @@ function LeftoverRunsBanner({ leftover }) {
   )
 }
 
-// Phase 1 has one tab; Status, Start, Builds, Logs, Tests, Database, Emulator, Mac and
-// Profile join it in later phases (docs/superpowers/specs/2026-10-08-devenv-module-design.md).
+const TABS = ['Status', 'Start', 'Commands']
+const tabKey = () => getProfileKey('devenv.tab')
+
+function useTab() {
+  const [tab, setTab] = React.useState(() => {
+    try { const t = localStorage.getItem(tabKey()); return TABS.includes(t) ? t : 'Status' } catch { return 'Status' }
+  })
+  const choose = t => { setTab(t); try { localStorage.setItem(tabKey(), t) } catch {} }
+  return [tab, choose]
+}
+
+// Builds, Logs, Tests, Database, Emulator, Mac and Profile tabs join these in later phases
+// (docs/superpowers/specs/2026-10-08-devenv-module-design.md).
 export function DevenvView({ adapters }) {
   const adapter = adapters.devenv
   const run = useDevenvRunContext()
+  const [tab, setTab] = useTab()
   if (!adapter?.isAvailable() || !run) return <div style={{ padding: 16 }}>Dev Environment needs the desktop app.</div>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%', minHeight: 0, padding: 16 }}>
       <h2 style={{ margin: 0 }}>Dev Environment</h2>
       <LeftoverRunsBanner leftover={run.leftover} />
-      <CommandsView adapter={adapter} picker={pickerAdapter} />
+      <div style={{ display: 'flex', gap: 6 }}>
+        {TABS.map(t => (
+          <button key={t} className={`btn sm ${tab === t ? '' : 'ghost'}`} aria-pressed={tab === t} onClick={() => setTab(t)}>{t}</button>
+        ))}
+      </div>
+      {tab === 'Status' && <StatusView adapter={adapter} onStart={() => setTab('Start')} />}
+      {tab === 'Start' && <StartView />}
+      {tab === 'Commands' && <CommandsView adapter={adapter} picker={pickerAdapter} />}
     </div>
   )
 }
