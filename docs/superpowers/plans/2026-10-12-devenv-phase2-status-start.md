@@ -19,7 +19,7 @@ NexusMD gains:
 
 **Spec:** `docs/superpowers/specs/2026-10-08-devenv-module-design.md` (Phase 2, plus its Amendments). Phase 1 plan for reference: `docs/superpowers/plans/2026-10-08-devenv-phase1-foundation.md`.
 
-**Two repositories.** Tasks 1–3 change `C:\repos\dev-environment`. Tasks 4–9 change `C:\repos\NexusMD-Mono`. Task 10 spans both.
+**Two repositories.** Tasks 1–3 change `C:\repos\dev-environment`. Tasks 4–8 change `C:\repos\NexusMD-Mono`. Task 9 spans both.
 
 ## Global Constraints
 
