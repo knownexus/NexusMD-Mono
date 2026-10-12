@@ -218,6 +218,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cancel:  (runId) => ipcRenderer.invoke('devenv:cancel', runId),
     catalog: (config) => ipcRenderer.invoke('devenv:catalog', config),
     open:    (target) => ipcRenderer.invoke('devenv:open', target),
+    active:  () => ipcRenderer.invoke('devenv:active'),
     onLine: (callback) => {
       const handler = (_event, msg) => callback(msg);
       ipcRenderer.on('devenv:line', handler);

@@ -70,6 +70,8 @@ describe('preload bridge', () => {
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:catalog', cfg)
     exposed.devenv.open({ url: 'http://127.0.0.1:1' })
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:open', { url: 'http://127.0.0.1:1' })
+    exposed.devenv.active()
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:active')
   })
 
   it('devenv.onLine / onExit subscribe and return an unsubscribe', () => {

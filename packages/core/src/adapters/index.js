@@ -149,6 +149,8 @@ export const IDevenvAdapter = {
   cancel:  async (runId) => Promise.reject(new Error('IDevenvAdapter.cancel not implemented')),
   catalog: async (config) => Promise.reject(new Error('IDevenvAdapter.catalog not implemented')),
   open:    async (target) => Promise.reject(new Error('IDevenvAdapter.open not implemented')),
+  // Runs still alive in the host, as [{ runId, label, exclusive }].
+  active:  async () => [],
   onLine:  (cb) => () => {},
   onExit:  (cb) => () => {},
 }

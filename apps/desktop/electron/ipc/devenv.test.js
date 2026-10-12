@@ -100,6 +100,19 @@ describe('devenv ipc', () => {
     await expect(t.handlers['devenv:run'](null, CONFIG, ['status'], { exclusive: false })).resolves.toHaveProperty('runId')
   })
 
+  it('active lists runs still alive, so a reloaded window can find them', async () => {
+    expect(await t.handlers['devenv:active'](null)).toEqual([])
+    const a = await t.handlers['devenv:run'](null, CONFIG, ['start'], { exclusive: true, label: 'devenv start' })
+    const b = await t.handlers['devenv:run'](null, CONFIG, ['status'], { exclusive: false })
+    expect(await t.handlers['devenv:active'](null)).toEqual([
+      { runId: a.runId, label: 'devenv start', exclusive: true },
+      { runId: b.runId, label: 'status', exclusive: false },
+    ])
+    t.children[0].finish(0)
+    await tick(); await tick()
+    expect(await t.handlers['devenv:active'](null)).toEqual([{ runId: b.runId, label: 'status', exclusive: false }])
+  })
+
   it('frees the exclusive slot when the run exits', async () => {
     await t.handlers['devenv:run'](null, CONFIG, ['start'], { exclusive: true })
     t.children[0].finish(1)

@@ -10,6 +10,7 @@ export const devenvAdapter = {
   cancel(runId) { return api().cancel(runId) },
   catalog(config) { return api().catalog(config) },
   open(target) { return api().open(target) },
+  active() { return api().active() },
   onLine(cb) { return api()?.onLine(cb) ?? (() => {}) },
   onExit(cb) { return api()?.onExit(cb) ?? (() => {}) },
 }

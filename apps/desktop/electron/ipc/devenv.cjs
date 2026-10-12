@@ -187,6 +187,10 @@ function register(ipcMain, deps = {}) {
     return { ok: true };
   });
 
+  // A reloaded renderer has lost its runIds; this lets it find (and cancel) runs it started.
+  handle('devenv:active', async () =>
+    [...runs.entries()].map(([runId, r]) => ({ runId, label: r.label, exclusive: r.exclusive })));
+
   handle('devenv:catalog', async (_e, config) => {
     const { lines, stderr, code } = await collect(config, ['help', '--json']);
     for (const line of lines) {
