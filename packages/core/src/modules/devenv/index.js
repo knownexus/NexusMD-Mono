@@ -12,6 +12,9 @@ export {
   applyLine, applyAnswered, applyOpened, applyCancelRequested, applyExit,
 } from './run-state.js'
 export { normaliseCatalog, isCompatibleCatalog, takesArgs, takesManyArgs, buildDevenvArgv, commandKey as devenvCommandKey } from './catalog.js'
+export { normaliseStatus } from './status.js'
+export { createPlanForm, validatePlanForm, buildPlanAnswer, normaliseRefPrompt } from './plan.js'
+export { normaliseSummary } from './summary.js'
 
 let _adapter = null
 

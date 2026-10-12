@@ -82,4 +82,5 @@ export {
   DEVENV_MAX_LINES, createRunState, applyStarting, applyStarted, applyStartFailed,
   applyLine, applyAnswered, applyOpened, applyCancelRequested, applyExit,
   normaliseCatalog, isCompatibleCatalog, takesArgs, takesManyArgs, buildDevenvArgv, devenvCommandKey,
+  normaliseStatus, createPlanForm, validatePlanForm, buildPlanAnswer, normaliseRefPrompt, normaliseSummary,
 } from './modules/devenv/index.js'
