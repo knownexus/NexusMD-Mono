@@ -19,6 +19,7 @@ import { desktopSync } from './sync.js'
 import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
 import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
 import { dbManagerAdapter } from './adapters/db-manager.js'
+import { DevenvSettingsCard } from './devenv-settings-card.jsx'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 import {
   listSavedConnections, saveConnection, getConnectionSecret, deleteConnection,
@@ -1105,6 +1106,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
           {tab === 'desktop' && (
             <>
               <DesktopAppCard />
+              <DevenvSettingsCard />
               <DesktopQuickLinksCard
                 links={tweaks.quickLinks || []}
                 onChange={links => setTweak('quickLinks', links)}

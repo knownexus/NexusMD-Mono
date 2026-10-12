@@ -8,7 +8,7 @@ let ipcRenderer
 const origRequire = Module.prototype.require
 
 beforeAll(() => {
-  ipcRenderer = { invoke: vi.fn(), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn() }
+  ipcRenderer = { invoke: vi.fn(), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
   const fakeElectron = {
     contextBridge: { exposeInMainWorld: (_name, obj) => { exposed = obj } },
     ipcRenderer,
@@ -56,5 +56,32 @@ describe('preload bridge', () => {
     expect(channel).toBe('refresh-data')
     handler()
     expect(callback).toHaveBeenCalled()
+  })
+
+  it('exposes devenv run/answer/cancel/catalog/open over the devenv channels', () => {
+    const cfg = { root: 'C:\\repos\\dev-environment', pwsh: 'pwsh', profile: '' }
+    exposed.devenv.run(cfg, ['status'], { exclusive: false })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:run', cfg, ['status'], { exclusive: false })
+    exposed.devenv.answer(3, { id: 'p1', value: '2' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:answer', 3, { id: 'p1', value: '2' })
+    exposed.devenv.cancel(3)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:cancel', 3)
+    exposed.devenv.catalog(cfg)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:catalog', cfg)
+    exposed.devenv.open({ url: 'http://127.0.0.1:1' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:open', { url: 'http://127.0.0.1:1' })
+  })
+
+  it('devenv.onLine / onExit subscribe and return an unsubscribe', () => {
+    const cb = vi.fn()
+    const off = exposed.devenv.onLine(cb)
+    const [channel, handler] = ipcRenderer.on.mock.calls.at(-1)
+    expect(channel).toBe('devenv:line')
+    handler({}, { runId: 1, stream: 'stdout', line: 'x' })
+    expect(cb).toHaveBeenCalledWith({ runId: 1, stream: 'stdout', line: 'x' })
+    off()
+    expect(ipcRenderer.removeListener).toHaveBeenCalledWith('devenv:line', handler)
+    exposed.devenv.onExit(vi.fn())
+    expect(ipcRenderer.on.mock.calls.at(-1)[0]).toBe('devenv:exit')
   })
 })

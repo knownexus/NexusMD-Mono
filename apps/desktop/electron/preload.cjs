@@ -210,4 +210,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
       run: (script, context) => ipcRenderer.invoke('api-client:script:run', script, context),
     },
   },
+
+  // ── Dev Environment module (devenv adapter) ────────────────────────────────
+  devenv: {
+    run:     (config, argv, opts) => ipcRenderer.invoke('devenv:run', config, argv, opts),
+    answer:  (runId, answer) => ipcRenderer.invoke('devenv:answer', runId, answer),
+    cancel:  (runId) => ipcRenderer.invoke('devenv:cancel', runId),
+    catalog: (config) => ipcRenderer.invoke('devenv:catalog', config),
+    open:    (target) => ipcRenderer.invoke('devenv:open', target),
+    onLine: (callback) => {
+      const handler = (_event, msg) => callback(msg);
+      ipcRenderer.on('devenv:line', handler);
+      return () => ipcRenderer.removeListener('devenv:line', handler);
+    },
+    onExit: (callback) => {
+      const handler = (_event, msg) => callback(msg);
+      ipcRenderer.on('devenv:exit', handler);
+      return () => ipcRenderer.removeListener('devenv:exit', handler);
+    },
+  },
 });

@@ -51,6 +51,7 @@ import { secureStorageAdapter } from './adapters/secureStorage.js'
 import { scriptRunnerAdapter }  from './adapters/scriptRunner.js'
 import { rawHttpAdapter }       from './adapters/rawHttp.js'
 import { dbManagerAdapter }     from './adapters/db-manager.js'
+import { devenvAdapter }        from './adapters/devenv.js'
 import { listSavedConnections, getConnectionSecret } from './db-manager-config.js'
 
 const adapters = {
@@ -79,6 +80,8 @@ const adapters = {
   // Desktop-only — its absence on web/app is what keeps the db-manager
   // module from registering there.
   dbManager:     dbManagerAdapter,
+  // Desktop-only — runs pwsh in the main process; gates the devenv module.
+  devenv:        devenvAdapter,
 }
 
 const NEXUSMD_THEMES = [
