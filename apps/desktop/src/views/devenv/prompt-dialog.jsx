@@ -3,6 +3,7 @@ import { PlModal } from '@nexusmd/ui'
 
 const fieldStyle = { width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-2)', fontSize: 13 }
 
+// Callers should pass key={prompt.id} so each prompt starts with fresh local state.
 export function PromptDialog({ prompt, onAnswer, onCancel }) {
   const options = prompt.options || []
   const [choice, setChoice] = React.useState(prompt.default ?? options[0]?.value ?? '')

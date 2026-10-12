@@ -96,4 +96,50 @@ describe('useDevenvRun', () => {
     expect(result.current.state.status).toBe('failed')
     expect(result.current.state.error).toMatch(/still running/)
   })
+
+  it('cancel before run() resolves is applied once the runId is known', async () => {
+    const a = fakeAdapter()
+    let resolveRun
+    a.run = vi.fn(() => new Promise(r => { resolveRun = r }))
+    const { result } = renderHook(() => useDevenvRun({ adapter: a, config: CFG }))
+    let started
+    act(() => { started = result.current.start(['start'], { exclusive: true, label: 'start' }) })
+    await act(() => result.current.cancel())
+    expect(a.cancel).not.toHaveBeenCalled()
+    await act(async () => { resolveRun({ runId: 9 }); await started })
+    expect(a.cancel).toHaveBeenCalledWith(9)
+    act(() => a.emitExit({ runId: 9, code: 1, cancelled: true }))
+    expect(result.current.state.status).toBe('cancelled')
+  })
+
+  it('a rejected answer sets an error without leaking the value', async () => {
+    const a = fakeAdapter()
+    a.answer = vi.fn(async () => { throw new Error('gone') })
+    const { result } = renderHook(() => useDevenvRun({ adapter: a, config: CFG }))
+    await act(() => result.current.start(['clean'], { exclusive: true, label: 'clean' }))
+    act(() => a.emitLine({ runId: 9, stream: 'stdout', line: P + '{"type":"prompt","id":"p1","kind":"secret","title":"pw"}' }))
+    await act(() => result.current.answer('p1', 'hunter22'))
+    expect(result.current.state.error).toBe('gone')
+    expect(result.current.state.status).toBe('running')
+    expect(JSON.stringify(result.current.state)).not.toContain('hunter22')
+  })
+
+  it('a rejected prompt cancel sets an error', async () => {
+    const a = fakeAdapter()
+    a.answer = vi.fn(async () => { throw new Error('nope') })
+    const { result } = renderHook(() => useDevenvRun({ adapter: a, config: CFG }))
+    await act(() => result.current.start(['clean'], { exclusive: true, label: 'clean' }))
+    await act(() => result.current.cancelPrompt('p1'))
+    expect(result.current.state.error).toBe('nope')
+  })
+
+  it('a rejected cancel clears cancelling and sets an error', async () => {
+    const a = fakeAdapter()
+    a.cancel = vi.fn(async () => { throw new Error('cannot cancel') })
+    const { result } = renderHook(() => useDevenvRun({ adapter: a, config: CFG }))
+    await act(() => result.current.start(['start'], { exclusive: true, label: 'start' }))
+    await act(() => result.current.cancel())
+    expect(result.current.state.cancelling).toBe(false)
+    expect(result.current.state.error).toBe('cannot cancel')
+  })
 })

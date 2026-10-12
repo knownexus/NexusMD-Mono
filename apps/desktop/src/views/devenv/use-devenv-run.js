@@ -10,6 +10,7 @@ export function useDevenvRun({ adapter, config, notify }) {
   const [state, setState] = React.useState(() => createRunState())
   const runIdRef = React.useRef(null)
   const pendingRef = React.useRef([])
+  const cancelPendingRef = React.useRef(false)
   const notifyRef = React.useRef(notify)
   notifyRef.current = notify
 
@@ -43,14 +44,22 @@ export function useDevenvRun({ adapter, config, notify }) {
     setState(s => applyOpened(s))
   }, [state.opens, adapter])
 
+  // Starting a new run replaces this hook's view. An earlier run keeps going in the main
+  // process (read-only runs may run alongside a mutating one); phase 2's Status tab tracks
+  // background runs.
   const start = React.useCallback(async (argv, { exclusive, label }) => {
     runIdRef.current = null
+    cancelPendingRef.current = false
     pendingRef.current = []
     setState(s => applyStarting({ ...s, command: label }))
     try {
       const { runId } = await adapter.run(config, argv, { exclusive, label })
       runIdRef.current = runId
       setState(s => applyStarted(s, runId))
+      if (cancelPendingRef.current) {
+        cancelPendingRef.current = false
+        adapter.cancel(runId).catch(e => setState(s => ({ ...s, cancelling: false, error: e.message })))
+      }
       const pending = pendingRef.current
       pendingRef.current = []
       for (const p of pending) {
@@ -64,19 +73,23 @@ export function useDevenvRun({ adapter, config, notify }) {
     }
   }, [adapter, config, handleLine])
 
+  // Errors never include the answer value (it may be a password).
+  const fail = e => setState(s => ({ ...s, error: e?.message || 'Request failed' }))
+
   const answer = React.useCallback(async (promptId, value) => {
     setState(s => applyAnswered(s, promptId))
-    await adapter.answer(runIdRef.current, { id: promptId, value })
+    try { await adapter.answer(runIdRef.current, { id: promptId, value }) } catch (e) { fail(e) }
   }, [adapter])
 
   const cancelPrompt = React.useCallback(async promptId => {
     setState(s => applyAnswered(s, promptId))
-    await adapter.answer(runIdRef.current, { id: promptId, cancel: true })
+    try { await adapter.answer(runIdRef.current, { id: promptId, cancel: true }) } catch (e) { fail(e) }
   }, [adapter])
 
   const cancel = React.useCallback(async () => {
     setState(s => applyCancelRequested(s))
-    await adapter.cancel(runIdRef.current)
+    if (runIdRef.current === null) { cancelPendingRef.current = true; return }
+    try { await adapter.cancel(runIdRef.current) } catch (e) { setState(s => ({ ...s, cancelling: false, error: e?.message || 'Cancel failed' })) }
   }, [adapter])
 
   return { state, start, answer, cancelPrompt, cancel }
