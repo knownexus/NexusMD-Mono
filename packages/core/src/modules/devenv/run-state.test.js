@@ -72,8 +72,8 @@ describe('run state', () => {
   })
 
   it('a failed start records the message', () => {
-    const s = applyStartFailed(applyStarting(createRunState('x')), 'No devenv.ps1 in C:\nope')
+    const s = applyStartFailed(applyStarting(createRunState('x')), 'No devenv.ps1 in C:\\nope')
     expect(s.status).toBe('failed')
-    expect(s.error).toBe('No devenv.ps1 in C:\nope')
+    expect(s.error).toBe('No devenv.ps1 in C:\\nope')
   })
 })
