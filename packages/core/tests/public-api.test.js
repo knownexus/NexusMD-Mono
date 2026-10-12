@@ -58,6 +58,12 @@ const EXPECTED = [
   'resolveConnectionParams', 'buildConnectionString', 'createInitialState', 'applyConnected', 'applyDisconnected',
   'applyTableSelected', 'applyTableLoaded', 'applyRowsDeleted', 'applyCellUpdated', 'applyError',
   'generateConnectionId', 'upsertConnection', 'removeConnection',
+  // Dev Environment module (desktop-only: requires the `devenv` adapter)
+  'getDevenvAdapter', 'DEVENV_CONTROL_PREFIX', 'DEVENV_PROTOCOL_VERSION', 'parseDevenvLine',
+  'ansiToSpans', 'stripAnsi',
+  'DEVENV_MAX_LINES', 'createRunState', 'applyStarting', 'applyStarted', 'applyStartFailed',
+  'applyLine', 'applyAnswered', 'applyOpened', 'applyCancelRequested', 'applyExit',
+  'normaliseCatalog', 'isCompatibleCatalog', 'takesArgs', 'takesManyArgs', 'buildDevenvArgv', 'devenvCommandKey',
   'formatSqlValue', 'formatCondition',
   'buildSearchQuery', 'buildInsertQuery', 'buildUpdateQuery', 'buildDeleteQuery',
   'buildJoinQuery', 'buildAggregateQuery',

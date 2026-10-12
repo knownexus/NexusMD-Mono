@@ -76,3 +76,10 @@ export {
   buildSearchQuery, buildInsertQuery, buildUpdateQuery, buildDeleteQuery,
   buildJoinQuery, buildAggregateQuery,
 } from './modules/db-manager/query-builders.js'
+export {
+  getDevenvAdapter, DEVENV_CONTROL_PREFIX, DEVENV_PROTOCOL_VERSION, parseDevenvLine,
+  ansiToSpans, stripAnsi,
+  DEVENV_MAX_LINES, createRunState, applyStarting, applyStarted, applyStartFailed,
+  applyLine, applyAnswered, applyOpened, applyCancelRequested, applyExit,
+  normaliseCatalog, isCompatibleCatalog, takesArgs, takesManyArgs, buildDevenvArgv, devenvCommandKey,
+} from './modules/devenv/index.js'

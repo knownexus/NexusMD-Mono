@@ -139,3 +139,16 @@ export const IDbManagerAdapter = {
   updateCell:  async (type, config, table, primaryKey, primaryValue, column, value) => Promise.reject(new Error('IDbManagerAdapter.updateCell not implemented')),
   runQuery:    async (type, config, sql) => Promise.reject(new Error('IDbManagerAdapter.runQuery not implemented')),
 }
+
+// Dev Environment — desktop-only (pwsh runs in the Electron main process). Absence from
+// createNoOpAdapters() gates the devenv module to platforms that supply it.
+export const IDevenvAdapter = {
+  isAvailable: () => false,
+  run:     async (config, argv, opts) => Promise.reject(new Error('IDevenvAdapter.run not implemented')),
+  answer:  async (runId, answer) => Promise.reject(new Error('IDevenvAdapter.answer not implemented')),
+  cancel:  async (runId) => Promise.reject(new Error('IDevenvAdapter.cancel not implemented')),
+  catalog: async (config) => Promise.reject(new Error('IDevenvAdapter.catalog not implemented')),
+  open:    async (target) => Promise.reject(new Error('IDevenvAdapter.open not implemented')),
+  onLine:  (cb) => () => {},
+  onExit:  (cb) => () => {},
+}
