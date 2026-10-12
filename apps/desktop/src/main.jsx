@@ -38,6 +38,7 @@ import { PersonSummary, PersonActions } from './person-summary.jsx'
 import DesktopNotesView from './desktop-notes-view.jsx'
 import { CalendarView } from './views/view-calendar.jsx'
 import { DevenvView } from './views/devenv/view-devenv.jsx'
+import { DevenvRunProvider } from './views/devenv/devenv-run-context.jsx'
 import { createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
 import { navigationAdapter }    from './adapters/navigation.js'
@@ -872,6 +873,9 @@ function App() {
 
   return (
     <NexusDataProvider value={nexusDataValue}>
+    {/* Above ViewBody so a devenv run (and its prompts) outlives leaving its screen. */}
+    <DevenvRunProvider adapter={adapters.devenv}
+      notify={(title, body) => notificationAdapter.send(title, body, { tag: 'devenv-prompt' })}>
       <div data-density={tweaks.density} data-sidebar={effSidebar}
         style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
         <aside style={{
@@ -1075,6 +1079,7 @@ function App() {
         }}
       />
       <DesktopProjectAreasModal open={areasOpen} onClose={() => setAreasOpen(false)} />
+    </DevenvRunProvider>
     </NexusDataProvider>
   )
 }

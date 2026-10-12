@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react'
 import { CommandsView } from './commands-view.jsx'
+import { DevenvRunProvider } from './devenv-run-context.jsx'
 
 const CATALOG = {
   type: 'result', kind: 'catalog', protocol: 1, profileError: null,
@@ -23,11 +24,24 @@ function fakeAdapter(catalog = CATALOG) {
     answer: vi.fn(async () => ({ ok: true })),
     cancel: vi.fn(async () => ({ ok: true })),
     open: vi.fn(async () => ({ ok: true })),
-    onLine: cb => { l.line.push(cb); return () => {} },
-    onExit: cb => { l.exit.push(cb); return () => {} },
+    onLine: cb => { l.line.push(cb); return () => { l.line = l.line.filter(x => x !== cb) } },
+    onExit: cb => { l.exit.push(cb); return () => { l.exit = l.exit.filter(x => x !== cb) } },
+    active: vi.fn(async () => []),
     line: m => l.line.forEach(cb => cb(m)),
     exit: m => l.exit.forEach(cb => cb(m)),
   }
+}
+
+function tree(a, picker, show = true) {
+  return <DevenvRunProvider adapter={a}>{show && <CommandsView adapter={a} picker={picker} />}</DevenvRunProvider>
+}
+const renderView = (a, picker) => render(tree(a, picker))
+
+async function runClean(a) {
+  await waitFor(() => screen.getByText('devenv clean'))
+  fireEvent.click(screen.getByText('devenv clean'))
+  fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+  await waitFor(() => expect(a.run).toHaveBeenCalled())
 }
 
 describe('CommandsView', () => {
@@ -35,7 +49,7 @@ describe('CommandsView', () => {
   afterEach(cleanup)
 
   it('lists visible commands by group, hiding hidden ones', async () => {
-    render(<CommandsView adapter={fakeAdapter()} picker={{}} />)
+    renderView(fakeAdapter(), {})
     await waitFor(() => screen.getByText('devenv status'))
     screen.getByText('Emulator')
     screen.getByText('devenv emulator push')
@@ -43,7 +57,7 @@ describe('CommandsView', () => {
   })
 
   it('filters by text', async () => {
-    render(<CommandsView adapter={fakeAdapter()} picker={{}} />)
+    renderView(fakeAdapter(), {})
     await waitFor(() => screen.getByText('devenv status'))
     fireEvent.change(screen.getByLabelText('Filter commands'), { target: { value: 'disk' } })
     screen.getByText('devenv clean')
@@ -52,7 +66,7 @@ describe('CommandsView', () => {
 
   it('runs a command with its form values and shows output', async () => {
     const a = fakeAdapter()
-    render(<CommandsView adapter={a} picker={{ pickFile: vi.fn(async () => 'C:\\pics\\a b.jpg') }} />)
+    renderView(a, { pickFile: vi.fn(async () => 'C:\\pics\\a b.jpg') })
     await waitFor(() => screen.getByText('devenv emulator push'))
     fireEvent.click(screen.getByText('devenv emulator push'))
     fireEvent.click(screen.getByRole('button', { name: 'Browse…' }))
@@ -68,7 +82,7 @@ describe('CommandsView', () => {
 
   it('shows a prompt dialog and answers it', async () => {
     const a = fakeAdapter()
-    render(<CommandsView adapter={a} picker={{}} />)
+    renderView(a, {})
     await waitFor(() => screen.getByText('devenv clean'))
     fireEvent.click(screen.getByText('devenv clean'))
     fireEvent.click(screen.getByRole('button', { name: 'Run' }))
@@ -80,11 +94,46 @@ describe('CommandsView', () => {
   })
 
   it('explains a missing or outdated devenv', async () => {
-    const { unmount } = render(<CommandsView adapter={{ ...fakeAdapter(), catalog: vi.fn(async () => { throw new Error('No devenv.ps1 in C:\\x') }) }} picker={{}} />)
+    const { unmount } = renderView({ ...fakeAdapter(), catalog: vi.fn(async () => { throw new Error('No devenv.ps1 in C:\\x') }) }, {})
     await waitFor(() => screen.getByText('No devenv.ps1 in C:\\x'))
     screen.getByText(/Settings → Desktop/)
     unmount()
-    render(<CommandsView adapter={fakeAdapter({ ...CATALOG, protocol: 2 })} picker={{}} />)
+    renderView(fakeAdapter({ ...CATALOG, protocol: 2 }), {})
     await waitFor(() => screen.getByText(/update devenv/i))
+  })
+
+  it('disables Run for every command while a run is active, with a hint', async () => {
+    const a = fakeAdapter()
+    renderView(a, {})
+    await runClean(a)
+    fireEvent.click(screen.getByText('devenv status'))
+    expect(screen.getByRole('button', { name: 'Run' }).disabled).toBe(true)
+    screen.getByText('Wait for the running command to finish or cancel it.')
+    act(() => a.exit({ runId: 1, code: 0, cancelled: false }))
+    expect(screen.getByRole('button', { name: 'Run' }).disabled).toBe(false)
+    expect(screen.queryByText('Wait for the running command to finish or cancel it.')).toBeNull()
+  })
+
+  it('keeps a run, its output and its prompts across leaving and returning to the screen', async () => {
+    const a = fakeAdapter()
+    const { rerender } = renderView(a, {})
+    await runClean(a)
+    act(() => a.line({ runId: 1, stream: 'stdout', line: 'Scanning…' }))
+    rerender(tree(a, {}, false))
+    expect(screen.queryByText('Scanning…')).toBeNull()
+    act(() => a.line({ runId: 1, stream: 'stdout', line: 'Found 3 old commits' }))
+    act(() => a.line({ runId: 1, stream: 'stdout', line: '@@devenv {"type":"prompt","id":"p1","kind":"text","title":"Keep how many?"}' }))
+    screen.getByText('Keep how many?')
+    rerender(tree(a, {}, true))
+    await waitFor(() => screen.getByText('devenv status'))
+    screen.getByText('Scanning…')
+    screen.getByText('Found 3 old commits')
+    fireEvent.change(screen.getByLabelText('Keep how many?'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    await waitFor(() => expect(a.answer).toHaveBeenCalledWith(1, { id: 'p1', value: '2' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(a.cancel).toHaveBeenCalledWith(1))
+    act(() => a.exit({ runId: 1, code: 1, cancelled: true }))
+    screen.getByText('Cancelled')
   })
 })

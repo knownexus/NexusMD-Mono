@@ -1,23 +1,11 @@
 import React from 'react'
 import { normaliseCatalog, isCompatibleCatalog, buildDevenvArgv, takesArgs, takesManyArgs } from '@nexusmd/core'
-import { getDevenvConfig } from '../../devenv-config.js'
-import { useDevenvRun } from './use-devenv-run.js'
+import { useDevenvRunContext } from './devenv-run-context.jsx'
 import { RunPanel } from './run-panel.jsx'
-import { PromptDialog } from './prompt-dialog.jsx'
 
 const fieldStyle = { width: '100%', padding: '6px 9px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-2)', fontSize: 13 }
 
-function useDevenvConfig() {
-  const [cfg, setCfg] = React.useState(getDevenvConfig)
-  React.useEffect(() => {
-    const onChange = () => setCfg(getDevenvConfig())
-    window.addEventListener('nexusmd:devenv-config', onChange)
-    return () => window.removeEventListener('nexusmd:devenv-config', onChange)
-  }, [])
-  return cfg
-}
-
-function CommandForm({ command, picker, onRun, disabled }) {
+function CommandForm({ command, picker, onRun, disabled, hint }) {
   const [positional, setPositional] = React.useState([''])
   const [switches, setSwitches] = React.useState({})
   const [values, setValues] = React.useState({})
@@ -60,17 +48,20 @@ function CommandForm({ command, picker, onRun, disabled }) {
       ))}
       <button className="btn primary" style={{ alignSelf: 'flex-start' }} disabled={disabled}
         onClick={() => onRun(buildDevenvArgv(command, { positional, switches, values }))}>Run</button>
+      {hint && <div style={{ color: 'var(--text-muted)' }}>{hint}</div>}
     </div>
   )
 }
 
-export function CommandsView({ adapter, picker, notify }) {
-  const config = useDevenvConfig()
+// The run itself comes from DevenvRunProvider (mounted above the view switch), so leaving
+// this screen keeps it, its output and its prompts.
+export function CommandsView({ adapter, picker }) {
+  const run = useDevenvRunContext()
+  const config = run.config
   const [catalog, setCatalog] = React.useState(null)
   const [error, setError] = React.useState(null)
   const [filter, setFilter] = React.useState('')
   const [selected, setSelected] = React.useState(null)
-  const run = useDevenvRun({ adapter, config, notify })
 
   React.useEffect(() => {
     let live = true
@@ -98,7 +89,6 @@ export function CommandsView({ adapter, picker, notify }) {
   const visible = catalog.commands.filter(c => !c.hidden && (!q || `${c.key} ${c.summary}`.toLowerCase().includes(q)))
   const command = visible.find(c => c.key === selected) || catalog.commands.find(c => c.key === selected) || null
   const busy = run.state.status === 'starting' || run.state.status === 'running'
-  const prompt = run.state.prompts[0]
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16, minHeight: 0, height: '100%' }}>
@@ -124,16 +114,12 @@ export function CommandsView({ adapter, picker, notify }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
         {command
-          ? <CommandForm command={command} picker={picker} disabled={busy && command.mut}
+          ? <CommandForm command={command} picker={picker} disabled={busy}
+              hint={busy ? 'Wait for the running command to finish or cancel it.' : null}
               onRun={argv => run.start(argv, { exclusive: command.mut, label: `devenv ${command.key}` })} />
           : <div style={{ color: 'var(--text-muted)' }}>Pick a command.</div>}
         {run.state.status !== 'idle' && <RunPanel state={run.state} onCancel={run.cancel} />}
       </div>
-      {prompt && (
-        <PromptDialog key={prompt.id} prompt={prompt}
-          onAnswer={value => run.answer(prompt.id, value)}
-          onCancel={() => run.cancelPrompt(prompt.id)} />
-      )}
     </div>
   )
 }
