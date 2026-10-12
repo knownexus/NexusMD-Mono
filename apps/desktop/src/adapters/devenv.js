@@ -11,6 +11,7 @@ export const devenvAdapter = {
   catalog(config) { return api().catalog(config) },
   open(target) { return api().open(target) },
   active() { return api().active() },
+  query(config, argv) { return api().query(config, argv) },
   onLine(cb) { return api()?.onLine(cb) ?? (() => {}) },
   onExit(cb) { return api()?.onExit(cb) ?? (() => {}) },
 }

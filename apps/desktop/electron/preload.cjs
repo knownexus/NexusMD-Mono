@@ -219,6 +219,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     catalog: (config) => ipcRenderer.invoke('devenv:catalog', config),
     open:    (target) => ipcRenderer.invoke('devenv:open', target),
     active:  () => ipcRenderer.invoke('devenv:active'),
+    query:   (config, argv) => ipcRenderer.invoke('devenv:query', config, argv),
     onLine: (callback) => {
       const handler = (_event, msg) => callback(msg);
       ipcRenderer.on('devenv:line', handler);

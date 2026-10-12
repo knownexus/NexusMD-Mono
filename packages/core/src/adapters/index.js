@@ -151,6 +151,8 @@ export const IDevenvAdapter = {
   open:    async (target) => Promise.reject(new Error('IDevenvAdapter.open not implemented')),
   // Runs still alive in the host, as [{ runId, label, exclusive }].
   active:  async () => [],
+  // Read-only devenv questions (status) — never queued behind a running command.
+  query:   async (config, argv) => ({ code: -1, results: [], stderr: 'not available' }),
   onLine:  (cb) => () => {},
   onExit:  (cb) => () => {},
 }

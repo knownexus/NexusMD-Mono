@@ -20,6 +20,12 @@ const PREFIX = '@@devenv ';
 // Files the module may open (reports, logs); never executables or scripts.
 const OPENABLE_EXTENSIONS = new Set(['.html', '.htm', '.txt', '.log', '.json', '.md', '.csv']);
 
+const QUERIES = [['status', '--json']];
+
+function isQuery(argv) {
+  return Array.isArray(argv) && QUERIES.some(q => q.length === argv.length && q.every((a, i) => a === argv[i]));
+}
+
 function killTree(pid) {
   // child.kill() would leave docker / dotnet / adb grandchildren running.
   return new Promise(resolve => {
@@ -128,7 +134,7 @@ function register(ipcMain, deps = {}) {
     return runId;
   }
 
-  function collect(config, argv) {
+  function collect(config, argv, timeoutMessage) {
     const inv = buildInvocation(config, argv, fileExists);
     return new Promise((resolve, reject) => {
       const child = spawn(inv.command, inv.args, inv.options);
@@ -139,7 +145,7 @@ function register(ipcMain, deps = {}) {
         settled = true;
         collectors.delete(child);
         Promise.resolve(kill(child.pid)).catch(() => {});
-        reject(new Error('devenv took too long to list its commands'));
+        reject(new Error(timeoutMessage));
       }, catalogTimeoutMs);
       const lines = [];
       const errLines = [];
@@ -192,13 +198,26 @@ function register(ipcMain, deps = {}) {
     [...runs.entries()].map(([runId, r]) => ({ runId, label: r.label, exclusive: r.exclusive })));
 
   handle('devenv:catalog', async (_e, config) => {
-    const { lines, stderr, code } = await collect(config, ['help', '--json']);
+    const { lines, stderr, code } = await collect(config, ['help', '--json'], 'devenv took too long to list its commands');
     for (const line of lines) {
       const msg = parseControl(line);
       if (msg && msg.type === 'result' && msg.kind === 'catalog') return msg;
     }
     const detail = stderr || lines.slice(-5).join('\n') || 'Is this devenv up to date?';
     throw new Error(`devenv didn't return its command list (exit ${code}). ${detail}`);
+  });
+
+  // Read-only questions for the Status tab: they never take the exclusive slot, so status
+  // keeps refreshing while a start or stop is running.
+  handle('devenv:query', async (_e, config, argv) => {
+    if (!isQuery(argv)) throw new Error(`Not a devenv query: ${Array.isArray(argv) ? argv.join(' ') : String(argv)}`);
+    const { lines, stderr, code } = await collect(config, argv, `devenv took too long to answer ${argv.join(' ')}`);
+    const results = [];
+    for (const line of lines) {
+      const msg = parseControl(line);
+      if (msg && msg.type === 'result') results.push(msg);
+    }
+    return { code, results, stderr };
   });
 
   handle('devenv:open', async (_e, target) => {

@@ -229,4 +229,28 @@ describe('devenv ipc', () => {
     await t.api.disposeAll()
     expect(t.deps.kill).toHaveBeenCalledTimes(2)
   })
+
+  it('query runs status --json privately and returns its result messages', async () => {
+    const p = t.handlers['devenv:query'](null, CONFIG, ['status', '--json'])
+    await tick()
+    expect(t.deps.spawn.mock.calls[0][1].slice(-2)).toEqual(['status', '--json'])
+    t.children[0].stdout.write('@@devenv {"type":"result","kind":"status","docker":{"ok":true}}\nplain\n')
+    t.children[0].finish(0)
+    await expect(p).resolves.toEqual({ code: 0, results: [{ type: 'result', kind: 'status', docker: { ok: true } }], stderr: '' })
+    expect(t.sent).toEqual([])
+  })
+
+  it('query is allowed while an exclusive run holds the slot', async () => {
+    await t.handlers['devenv:run'](null, CONFIG, ['start'], { exclusive: true, label: 'start' })
+    const p = t.handlers['devenv:query'](null, CONFIG, ['status', '--json'])
+    await tick()
+    t.children[1].finish(0)
+    await expect(p).resolves.toHaveProperty('code', 0)
+  })
+
+  it('query refuses anything but status --json', async () => {
+    await expect(t.handlers['devenv:query'](null, CONFIG, ['stop'])).rejects.toThrow(/Not a devenv query/)
+    await expect(t.handlers['devenv:query'](null, CONFIG, ['status'])).rejects.toThrow(/Not a devenv query/)
+    expect(t.deps.spawn).not.toHaveBeenCalled()
+  })
 })

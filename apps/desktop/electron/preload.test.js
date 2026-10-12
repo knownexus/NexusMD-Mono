@@ -74,6 +74,12 @@ describe('preload bridge', () => {
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:active')
   })
 
+  it('exposes devenv.query over devenv:query', () => {
+    const cfg = { root: 'C:\\repos\\dev-environment', pwsh: 'pwsh', profile: '' }
+    exposed.devenv.query(cfg, ['status', '--json'])
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:query', cfg, ['status', '--json'])
+  })
+
   it('devenv.onLine / onExit subscribe and return an unsubscribe', () => {
     const cb = vi.fn()
     const off = exposed.devenv.onLine(cb)
