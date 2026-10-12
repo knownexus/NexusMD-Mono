@@ -43,6 +43,57 @@ describe('PromptDialog', () => {
     expect(onAnswer).toHaveBeenCalledWith('YES')
   })
 
+  it('confirm with a word offers No, which answers an empty string', () => {
+    const onAnswer = vi.fn(); const onCancel = vi.fn()
+    render(<PromptDialog prompt={{ ...base, kind: 'confirm', confirmWord: 'YES', detail: 'Wipes the database.' }} onAnswer={onAnswer} onCancel={onCancel} />)
+    fireEvent.click(screen.getByRole('button', { name: 'No' }))
+    expect(onAnswer).toHaveBeenCalledWith('')
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
+  it('Enter submits a choice prompt', () => {
+    const onAnswer = vi.fn()
+    render(<PromptDialog prompt={{ ...base, kind: 'choice', default: '1', options: [{ value: '1', label: 'Leave it' }, { value: '4', label: 'Remote DEV' }] }} onAnswer={onAnswer} onCancel={vi.fn()} />)
+    const picked = screen.getByLabelText(/Remote DEV/)
+    fireEvent.click(picked)
+    fireEvent.keyDown(picked, { key: 'Enter' })
+    expect(onAnswer).toHaveBeenCalledWith('4')
+  })
+
+  it('a choice prompt focuses the selected option so Enter works straight away', () => {
+    render(<PromptDialog prompt={{ ...base, kind: 'choice', default: '1', options: [{ value: '1', label: 'Leave it' }] }} onAnswer={vi.fn()} onCancel={vi.fn()} />)
+    expect(document.activeElement).toBe(screen.getByLabelText(/Leave it/))
+  })
+
+  it('Enter submits a multi prompt', () => {
+    const onAnswer = vi.fn()
+    render(<PromptDialog prompt={{ ...base, kind: 'multi', options: [{ value: '1', label: 'a' }, { value: '2', label: 'b' }] }} onAnswer={onAnswer} onCancel={vi.fn()} />)
+    fireEvent.click(screen.getByLabelText('b'))
+    fireEvent.keyDown(screen.getByLabelText('b'), { key: 'Enter' })
+    expect(onAnswer).toHaveBeenCalledWith(['2'])
+  })
+
+  it('Enter does not submit a word confirm until the word is typed', () => {
+    const onAnswer = vi.fn()
+    render(<PromptDialog prompt={{ ...base, kind: 'confirm', confirmWord: 'YES' }} onAnswer={onAnswer} onCancel={vi.fn()} />)
+    const input = screen.getByLabelText('Type YES to confirm')
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onAnswer).not.toHaveBeenCalled()
+    fireEvent.change(input, { target: { value: 'YES' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onAnswer).toHaveBeenCalledWith('YES')
+  })
+
+  it('a backdrop click does not cancel the command; Esc does', () => {
+    const onCancel = vi.fn()
+    render(<PromptDialog prompt={{ ...base, kind: 'text' }} onAnswer={vi.fn()} onCancel={onCancel} />)
+    const veil = document.querySelector('.plm-veil')
+    fireEvent.mouseDown(veil)
+    expect(onCancel).not.toHaveBeenCalled()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
   it('confirm with options shows them as buttons', () => {
     const onAnswer = vi.fn()
     render(<PromptDialog prompt={{ ...base, kind: 'confirm', options: [{ value: 'y', label: 'Yes, proceed' }, { value: 'n', label: 'No' }] }} onAnswer={onAnswer} onCancel={vi.fn()} />)

@@ -40,7 +40,9 @@ export function PrioChip({ value, onChange, stopClick, readOnly }) {
 }
 
 /** Unified modal shell used by every planner dialog. */
-export function PlModal({ open, onClose, icon, title, sub, wide, className, children, footer, footerLeft }) {
+// closeOnBackdrop=false is for dialogs where closing has consequences (e.g. it aborts a
+// running command); Esc and the close button still call onClose.
+export function PlModal({ open, onClose, icon, title, sub, wide, className, children, footer, footerLeft, closeOnBackdrop = true }) {
   useEffect(() => {
     if (!open) return
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -49,7 +51,7 @@ export function PlModal({ open, onClose, icon, title, sub, wide, className, chil
   }, [open, onClose])
   if (!open) return null
   return (
-    <div className="plm-veil" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="plm-veil" onMouseDown={(e) => { if (closeOnBackdrop && e.target === e.currentTarget) onClose() }}>
       <div className={`plm ${wide ? 'wide' : ''} ${className || ''}`} role="dialog" aria-modal="true">
         <div className="plm-head">
           {icon && <span className="plm-ic"><Icon name={icon} size={16}/></span>}
