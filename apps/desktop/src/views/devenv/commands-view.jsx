@@ -23,7 +23,9 @@ function CommandForm({ command, picker, onRun, disabled }) {
   const [values, setValues] = React.useState({})
   React.useEffect(() => { setPositional(['']); setSwitches({}); setValues({}) }, [command.key])
 
-  const pick = async kind => (kind === 'folder' ? picker.pickDirectory?.() : picker.pickFile?.())
+  const pick = async kind => {
+    try { return await (kind === 'folder' ? picker.pickDirectory?.() : picker.pickFile?.()) } catch { return null }
+  }
   const setArg = (i, v) => setPositional(p => p.map((x, j) => (j === i ? v : x)))
 
   return (

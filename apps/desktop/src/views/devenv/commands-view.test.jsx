@@ -52,15 +52,15 @@ describe('CommandsView', () => {
 
   it('runs a command with its form values and shows output', async () => {
     const a = fakeAdapter()
-    render(<CommandsView adapter={a} picker={{ pickFile: vi.fn(async () => 'C:\pics\a b.jpg') }} />)
+    render(<CommandsView adapter={a} picker={{ pickFile: vi.fn(async () => 'C:\\pics\\a b.jpg') }} />)
     await waitFor(() => screen.getByText('devenv emulator push'))
     fireEvent.click(screen.getByText('devenv emulator push'))
     fireEvent.click(screen.getByRole('button', { name: 'Browse…' }))
-    await waitFor(() => expect(screen.getByLabelText('Argument 1').value).toBe('C:\pics\a b.jpg'))
+    await waitFor(() => expect(screen.getByLabelText('Argument 1').value).toBe('C:\\pics\\a b.jpg'))
     fireEvent.change(screen.getByLabelText('--to'), { target: { value: '/sdcard/Pictures' } })
     fireEvent.click(screen.getByRole('button', { name: 'Run' }))
     await waitFor(() => expect(a.run).toHaveBeenCalled())
-    expect(a.run.mock.calls[0][1]).toEqual(['emulator', 'push', 'C:\pics\a b.jpg', '--to', '/sdcard/Pictures'])
+    expect(a.run.mock.calls[0][1]).toEqual(['emulator', 'push', 'C:\\pics\\a b.jpg', '--to', '/sdcard/Pictures'])
     expect(a.run.mock.calls[0][2]).toEqual({ exclusive: true, label: 'devenv emulator push' })
     act(() => a.line({ runId: 1, stream: 'stdout', line: 'Pushed a b.jpg' }))
     screen.getByText('Pushed a b.jpg')
