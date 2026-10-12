@@ -150,3 +150,11 @@ All under the **Dev Environment** nav entry.
 - Desktop tests need Node 20 (.nvmrc); on Node 22+ run them with NODE_OPTIONS=--no-experimental-webstorage, because Node's global localStorage hides jsdom's.
 - Cancel is a process-tree kill (taskkill /T /F): devenv's PowerShell `finally` blocks do not run on cancel; a cancelled prompt (dialog Cancel) instead lets devenv stop itself cleanly.
 - In phase 1 the Commands screen runs one command at a time; the run lives above the screen, so navigating away keeps it (and its prompts).
+
+## Amendments made during Phase 2 planning
+
+- Status comes from `devenv status --json` (one `result` line) through a read-only, allowlisted `devenv:query` IPC that never takes the exclusive slot; the text `devenv status` is unchanged.
+- The plan and branch prompts are kinds `plan` and `ref`, answered with devplan's existing result objects through `Request-DevenvDecision`; closing either dialog answers (plan: `action: 'cancel'`; ref: `kind: 'cancel'`) rather than cancelling the run.
+- The plan form and branch picker are dialogs rendered by the run provider (so they appear on any screen); the Start tab launches the run and shows its progress and summary.
+- Status, Start and Commands are the Dev Environment tabs in this phase; Status is the default.
+- The status hook survives React StrictMode's dev double-mount and only the newest status request may update the view.
