@@ -148,3 +148,5 @@ All under the **Dev Environment** nav entry.
 - Phase 1 prompts are devenv's existing questions rendered as dialogs (including the plain start-plan menu); the dedicated plan form and branch picker are phase 2.
 - `Select-Indices` gained a `-Labels` parameter so checklists show names, not numbers.
 - Desktop tests need Node 20 (.nvmrc); on Node 22+ run them with NODE_OPTIONS=--no-experimental-webstorage, because Node's global localStorage hides jsdom's.
+- Cancel is a process-tree kill (taskkill /T /F): devenv's PowerShell `finally` blocks do not run on cancel; a cancelled prompt (dialog Cancel) instead lets devenv stop itself cleanly.
+- In phase 1 the Commands screen runs one command at a time; the run lives above the screen, so navigating away keeps it (and its prompts).
