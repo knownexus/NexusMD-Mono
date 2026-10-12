@@ -44,6 +44,16 @@ describe('DevenvRunProvider', () => {
     expect(screen.queryByText('Clean - reclaim disk')).toBeNull()
   })
 
+  it('renders a plan prompt as the plan dialog and answers it with devplan\'s result', async () => {
+    const a = fakeAdapter()
+    render(<DevenvRunProvider adapter={a}><Grab /></DevenvRunProvider>)
+    await act(() => ctx.start(['start'], { exclusive: true, label: 'devenv start' }))
+    const plan = { locked: true, lockError: null, database: 'asis', services: [], backups: [], testApis: [], testServices: [] }
+    act(() => a.line({ runId: 1, stream: 'stdout', line: '@@devenv ' + JSON.stringify({ type: 'prompt', id: 'p1', kind: 'plan', title: 'Review', plan }) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    await waitFor(() => expect(a.answer).toHaveBeenCalledWith(1, { id: 'p1', value: expect.objectContaining({ action: 'start' }) }))
+  })
+
   it('notifies about a prompt that arrives while the window is unfocused', async () => {
     const a = fakeAdapter()
     const notify = vi.fn()

@@ -4,7 +4,7 @@
 import React from 'react'
 import { useDevenvRun } from './use-devenv-run.js'
 import { useDevenvConfig } from './use-devenv-config.js'
-import { PromptDialog } from './prompt-dialog.jsx'
+import { PromptHost } from './prompt-host.jsx'
 
 const DevenvRunContext = React.createContext(null)
 
@@ -55,7 +55,7 @@ function Provider({ adapter, notify, children }) {
     <DevenvRunContext.Provider value={value}>
       {children}
       {prompt && (
-        <PromptDialog key={prompt.id} prompt={prompt}
+        <PromptHost key={prompt.id} prompt={prompt}
           onAnswer={v => run.answer(prompt.id, v)}
           onCancel={() => run.cancelPrompt(prompt.id)} />
       )}
