@@ -39,14 +39,14 @@ export function useDevenvRun({ adapter, config, notify }) {
   React.useEffect(() => {
     if (!state.opens.length) return
     for (const o of state.opens) {
-      adapter.open(o.url ? { url: o.url } : { path: o.path }).catch(() => {})
+      adapter.open(o.url ? { url: o.url } : { path: o.path })
+        .catch(e => setState(s => ({ ...s, error: `Couldn't open ${o.url || o.path}: ${e?.message || 'failed'}` })))
     }
     setState(s => applyOpened(s))
   }, [state.opens, adapter])
 
-  // Starting a new run replaces this hook's view. An earlier run keeps going in the main
-  // process (read-only runs may run alongside a mutating one); phase 2's Status tab tracks
-  // background runs.
+  // Starting a new run replaces this hook's view, so callers start one only once the
+  // previous run has ended (the Commands screen disables Run while one is active).
   const start = React.useCallback(async (argv, { exclusive, label }) => {
     runIdRef.current = null
     cancelPendingRef.current = false
@@ -81,9 +81,13 @@ export function useDevenvRun({ adapter, config, notify }) {
     try { await adapter.answer(runIdRef.current, { id: promptId, value }) } catch (e) { fail(e) }
   }, [adapter])
 
+  // devenv stops itself after a cancelled prompt ("Cancelled.", exit 1); marking the run as
+  // cancelling makes that exit read as Cancelled rather than Failed.
   const cancelPrompt = React.useCallback(async promptId => {
-    setState(s => applyAnswered(s, promptId))
-    try { await adapter.answer(runIdRef.current, { id: promptId, cancel: true }) } catch (e) { fail(e) }
+    setState(s => applyCancelRequested(applyAnswered(s, promptId)))
+    try { await adapter.answer(runIdRef.current, { id: promptId, cancel: true }) } catch (e) {
+      setState(s => ({ ...s, cancelling: false, error: e?.message || 'Request failed' }))
+    }
   }, [adapter])
 
   const cancel = React.useCallback(async () => {

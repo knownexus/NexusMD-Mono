@@ -77,6 +77,26 @@ describe('useDevenvRun', () => {
     expect(result.current.state.opens).toEqual([])
   })
 
+  it('cancelling a prompt ends as Cancelled, not Failed, when devenv exits 1', async () => {
+    const a = fakeAdapter()
+    const { result } = renderHook(() => useDevenvRun({ adapter: a, config: CFG }))
+    await act(() => result.current.start(['clean'], { exclusive: true, label: 'clean' }))
+    act(() => a.emitLine({ runId: 9, stream: 'stdout', line: P + '{"type":"prompt","id":"p1","kind":"choice","title":"Clean"}' }))
+    await act(() => result.current.cancelPrompt('p1'))
+    expect(a.cancel).not.toHaveBeenCalled()
+    act(() => a.emitExit({ runId: 9, code: 1, cancelled: false }))
+    expect(result.current.state.status).toBe('cancelled')
+  })
+
+  it('reports a failed open instead of swallowing it', async () => {
+    const a = fakeAdapter()
+    a.open = vi.fn(async () => { throw new Error('Not found: C:\\out\\report.html') })
+    const { result } = renderHook(() => useDevenvRun({ adapter: a, config: CFG }))
+    await act(() => result.current.start(['test', 'web'], { exclusive: false, label: 'test web' }))
+    await act(async () => { a.emitLine({ runId: 9, stream: 'stdout', line: P + '{"type":"open","path":"C:\\\\out\\\\report.html"}' }) })
+    expect(result.current.state.error).toBe("Couldn't open C:\\out\\report.html: Not found: C:\\out\\report.html")
+  })
+
   it('notifies when a prompt arrives while the window is not focused', async () => {
     const a = fakeAdapter()
     const notify = vi.fn()
@@ -131,6 +151,7 @@ describe('useDevenvRun', () => {
     await act(() => result.current.start(['clean'], { exclusive: true, label: 'clean' }))
     await act(() => result.current.cancelPrompt('p1'))
     expect(result.current.state.error).toBe('nope')
+    expect(result.current.state.cancelling).toBe(false)
   })
 
   it('a rejected cancel clears cancelling and sets an error', async () => {
