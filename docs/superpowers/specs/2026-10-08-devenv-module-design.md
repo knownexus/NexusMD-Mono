@@ -138,3 +138,13 @@ All under the **Dev Environment** nav entry.
 - **Electron main (vitest, injected `spawn`):** line streaming across chunk boundaries, stdin answers, exclusive lock, tree cancel, secret answers absent from logs, env passed (`DEVENV_HOST`, `DEVENV_PROFILE`), `windowsHide: true`.
 - **UI (vitest + testing-library):** each prompt kind, plan form → decision, ref picker, `RunPanel` (ANSI, progress, exit), Commands form generation, profile editor validation.
 - **Manual checklist (real devenv, each phase):** start (local DB) → status → one API build → logs follow → test up + run + report → db restore → emulator start + push file → mac doctor → stop. Confirm no console window appears at any point.
+
+## Amendments made during Phase 1 planning
+
+- Phase 1 opens HTML reports with the default app (`shell.openPath`); the in-app report window arrives with the Tests screen (phase 4).
+- The Settings **Check** button runs `help --json` only; `doctor` is run from the Commands screen.
+- Until phase 5, Mac commands under NexusMD use `ssh -o BatchMode=yes` and need `sshKey` in `mac.json`; without it they fail fast instead of asking for a password.
+- `logs show` prints the whole log into the output panel under NexusMD (no `less`).
+- Phase 1 prompts are devenv's existing questions rendered as dialogs (including the plain start-plan menu); the dedicated plan form and branch picker are phase 2.
+- `Select-Indices` gained a `-Labels` parameter so checklists show names, not numbers.
+- Desktop tests need Node 20 (.nvmrc); on Node 22+ run them with NODE_OPTIONS=--no-experimental-webstorage, because Node's global localStorage hides jsdom's.
