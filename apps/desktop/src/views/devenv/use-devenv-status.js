@@ -11,12 +11,16 @@ export function useDevenvStatus({ adapter, config, runStatus, intervalMs = 10000
   const [loading, setLoading] = React.useState(false)
   const live = React.useRef(true)
   const reqId = React.useRef(0)
+  const inFlight = React.useRef(0)
   // StrictMode runs the cleanup and the effect again in dev, so liveness must be re-armed.
   React.useEffect(() => { live.current = true; return () => { live.current = false } }, [])
 
   // Overlapping refreshes can resolve out of order; only the newest request may write state.
-  const load = React.useCallback(async quiet => {
+  const load = React.useCallback(async (quiet, skipIfBusy = false) => {
+    // docker ps can hang for the whole timeout; stacking polls behind it would only pile up processes.
+    if (skipIfBusy && inFlight.current > 0) return
     const seq = ++reqId.current
+    inFlight.current++
     if (!quiet) setLoading(true)
     const current = () => live.current && seq === reqId.current
     try {
@@ -28,6 +32,7 @@ export function useDevenvStatus({ adapter, config, runStatus, intervalMs = 10000
     } catch (e) {
       if (current()) setError(e?.message || 'devenv status failed')
     } finally {
+      inFlight.current--
       if (current()) setLoading(false)
     }
   }, [adapter, config])
@@ -36,10 +41,15 @@ export function useDevenvStatus({ adapter, config, runStatus, intervalMs = 10000
 
   React.useEffect(() => {
     load(false)
-    const id = setInterval(() => {
-      if (typeof document === 'undefined' || document.visibilityState === 'visible') load(true)
-    }, intervalMs)
-    return () => clearInterval(id)
+    const visible = () => typeof document === 'undefined' || document.visibilityState === 'visible'
+    const id = setInterval(() => { if (visible()) load(true, true) }, intervalMs)
+    // Timers are throttled while hidden, so the view can be stale the moment it comes back.
+    const onVisible = () => { if (visible()) load(true, true) }
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(id)
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [load, intervalMs])
 
   const prev = React.useRef(runStatus)

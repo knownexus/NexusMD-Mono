@@ -46,7 +46,7 @@ export function StatusView({ adapter, onStart }) {
 
       {error && <div className="card" role="alert" style={{ padding: 10, color: 'var(--danger)' }}>{error}</div>}
       {status && !status.docker.ok && (
-        <div className="card" role="alert" style={{ padding: 10 }}>{`Docker isn't running — ${status.docker.error || 'no answer from docker'}`}</div>
+        <div className="card" role="alert" style={{ padding: 10 }}>{status.docker.error || "Docker isn't running"}</div>
       )}
 
       {status && (

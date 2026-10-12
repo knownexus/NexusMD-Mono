@@ -40,7 +40,14 @@ describe('StatusView', () => {
     const { adapter, onStart } = setup({ result: { ...full, docker: { ok: false, error: 'Docker Desktop is not running' } } })
     render(<StatusView adapter={adapter} onStart={onStart} />)
     await act(async () => {})
-    expect(screen.getByText("Docker isn't running — Docker Desktop is not running")).toBeTruthy()
+    expect(screen.getByText('Docker Desktop is not running')).toBeTruthy()
+  })
+
+  it('falls back to a plain banner when Docker is down without an error', async () => {
+    const { adapter, onStart } = setup({ result: { ...full, docker: { ok: false, error: null } } })
+    render(<StatusView adapter={adapter} onStart={onStart} />)
+    await act(async () => {})
+    expect(screen.getByText("Docker isn't running")).toBeTruthy()
   })
 
   it('runs actions through the provider run', async () => {

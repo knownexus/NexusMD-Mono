@@ -24,7 +24,7 @@ describe('useDevenvStatus', () => {
     const a = adapterWith(async () => ({ code: 0, results: [statusResult], stderr: '' }))
     renderHook(() => useDevenvStatus({ adapter: a, config: CFG, runStatus: 'idle', intervalMs: 1000 }))
     await act(async () => {})
-    await act(async () => { vi.advanceTimersByTime(3000) })
+    for (let i = 0; i < 3; i++) await act(async () => { vi.advanceTimersByTime(1000) })
     expect(a.query.mock.calls.length).toBeGreaterThanOrEqual(4)
   })
 
@@ -80,5 +80,32 @@ describe('useDevenvStatus', () => {
     act(() => { vi.advanceTimersByTime(1000) })
     expect(result.current.loading).toBe(false)
     await act(async () => {})
+  })
+
+  it('skips a quiet poll while a request is still in flight', async () => {
+    vi.useFakeTimers()
+    let release
+    const a = adapterWith(() => new Promise(r => { release = () => r({ code: 0, results: [statusResult], stderr: '' }) }))
+    renderHook(() => useDevenvStatus({ adapter: a, config: CFG, runStatus: 'idle', intervalMs: 1000 }))
+    await act(async () => {})
+    await act(async () => { vi.advanceTimersByTime(3500) })
+    expect(a.query).toHaveBeenCalledTimes(1)
+    await act(async () => { release() })
+    await act(async () => { vi.advanceTimersByTime(1000) })
+    expect(a.query).toHaveBeenCalledTimes(2)
+    await act(async () => { release() })
+  })
+
+  it('refreshes quietly when the document becomes visible again, and stops after unmount', async () => {
+    const a = adapterWith(async () => ({ code: 0, results: [statusResult], stderr: '' }))
+    const { result, unmount } = renderHook(() => useDevenvStatus({ adapter: a, config: CFG, runStatus: 'idle' }), { wrapper: React.StrictMode })
+    await act(async () => {})
+    const before = a.query.mock.calls.length
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(a.query.mock.calls.length).toBe(before + 1)
+    expect(result.current.loading).toBe(false)
+    unmount()
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(a.query.mock.calls.length).toBe(before + 1)
   })
 })

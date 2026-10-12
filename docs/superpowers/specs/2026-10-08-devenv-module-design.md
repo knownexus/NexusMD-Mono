@@ -89,7 +89,7 @@ Control lines on stdout: `@@devenv ` followed by one line of JSON. All other lin
 
 | `type` | Fields | NexusMD behaviour |
 |---|---|---|
-| `prompt` | `id`, `kind`, `title`, `detail?`, `options?: [{ value, label, hint? }]`, `default?`, `confirmWord?`, `plan?` (kind `plan`), `refs?` (kind `ref`) | Shows `PromptDialog`; writes `{"id":…,"value":…}` or `{"id":…,"cancel":true}` + newline to stdin |
+| `prompt` | `id`, `kind`, `title`, `detail?`, `options?: [{ value, label, hint? }]`, `default?`, `confirmWord?`, `plan?` (kind `plan`), `ref` (kind `ref`) | Shows `PromptDialog`; writes `{"id":…,"value":…}` or `{"id":…,"cancel":true}` + newline to stdin |
 | `step` | `n`, `total`, `text` | Progress bar in `RunPanel` |
 | `result` | `kind`, payload | Feeds the screen that started the run (status cards, summary, catalog, report path) |
 | `open` | `url` or `path` | URL → default browser; `.html` report → in-app window; folder → Explorer |
