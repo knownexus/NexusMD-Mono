@@ -15,6 +15,7 @@ export const NAV = [
   { id: 'markdown',  label: 'Documents',     icon: 'pin' },
   { id: 'api-client', label: 'API Client',   icon: 'link' },
   { id: 'db-manager', label: 'Database',     icon: 'database' },
+  { id: 'devenv',    label: 'Dev Environment', icon: 'build' },
 ]
 
 export const SETTINGS_NAV = { id: 'settings', label: 'Settings', icon: 'settings' }

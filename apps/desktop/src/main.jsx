@@ -37,6 +37,7 @@ import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
 import DesktopNotesView from './desktop-notes-view.jsx'
 import { CalendarView } from './views/view-calendar.jsx'
+import { DevenvView } from './views/devenv/view-devenv.jsx'
 import { createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
 import { navigationAdapter }    from './adapters/navigation.js'
@@ -602,6 +603,8 @@ function ViewBody({
           onResolveSecret={id => getConnectionSecret(secureStorageAdapter, id)}
         />
       )
+    case 'devenv':
+      return <DevenvView adapters={adapters} />
     case 'settings':
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
         nav={NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder}

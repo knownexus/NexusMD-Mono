@@ -29,4 +29,8 @@ describe('nav-config', () => {
     expect(ids).toContain('notes')
     expect(ids.indexOf('notes')).toBe(ids.indexOf('planner') + 1)
   })
+
+  it('has a Dev Environment item', () => {
+    expect(NAV.find(n => n.id === 'devenv')).toEqual({ id: 'devenv', label: 'Dev Environment', icon: 'build' })
+  })
 })
