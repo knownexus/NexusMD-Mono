@@ -38,4 +38,11 @@ describe('StartView', () => {
     expect(screen.getByText('http://127.0.0.1:5101')).toBeTruthy()
     expect(screen.getByText('FAILED - ssh exit 255')).toBeTruthy()
   })
+
+  it('ignores a summary left by a different command', () => {
+    setup({ status: 'done', command: 'devenv stop', exitCode: 0, results: [summary] })
+    render(<StartView />)
+    expect(screen.queryByText('Session up')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
+  })
 })
