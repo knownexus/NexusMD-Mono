@@ -17,6 +17,8 @@ const { StringDecoder } = require('string_decoder');
 const { withLogging } = require('./withLogging.cjs');
 
 const PREFIX = '@@devenv ';
+// Files the module may open (reports, logs); never executables or scripts.
+const OPENABLE_EXTENSIONS = new Set(['.html', '.htm', '.txt', '.log', '.json', '.md', '.csv']);
 
 function killTree(pid) {
   // child.kill() would leave docker / dotnet / adb grandchildren running.
@@ -75,10 +77,14 @@ function register(ipcMain, deps = {}) {
     send = () => {},
     shell = require('electron').shell,
     fileExists = fs.existsSync,
+    isDirectory = p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } },
+    catalogTimeoutMs = 30000,
+    exitGraceMs = 2000,
     logger,
   } = deps;
   const handle = withLogging(ipcMain, logger);
   const runs = new Map();
+  const collectors = new Set();
   let nextId = 1;
 
   function start(config, argv, { exclusive = true, label } = {}) {
@@ -99,9 +105,11 @@ function register(ipcMain, deps = {}) {
     // An answer written just as the process exits must not crash the main process.
     child.stdin.on?.('error', () => {});
     let finished = false;
+    let graceTimer = null;
     const finish = code => {
       if (finished) return;
       finished = true;
+      clearTimeout(graceTimer);
       out.end();
       err.end();
       runs.delete(runId);
@@ -112,6 +120,11 @@ function register(ipcMain, deps = {}) {
       finish(-1);
     });
     child.on('close', code => finish(code ?? -1));
+    // 'close' never fires if a grandchild keeps the stdio pipes open; don't hold the slot forever.
+    child.on('exit', code => {
+      if (finished) return;
+      graceTimer = setTimeout(() => finish(code ?? -1), exitGraceMs);
+    });
     return runId;
   }
 
@@ -119,6 +132,15 @@ function register(ipcMain, deps = {}) {
     const inv = buildInvocation(config, argv, fileExists);
     return new Promise((resolve, reject) => {
       const child = spawn(inv.command, inv.args, inv.options);
+      collectors.add(child);
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        collectors.delete(child);
+        Promise.resolve(kill(child.pid)).catch(() => {});
+        reject(new Error('devenv took too long to list its commands'));
+      }, catalogTimeoutMs);
       const lines = [];
       const errLines = [];
       const out = lineSplitter(l => lines.push(l));
@@ -126,16 +148,26 @@ function register(ipcMain, deps = {}) {
       child.stdout.on('data', c => out.push(c));
       child.stderr.on('data', c => err.push(c));
       child.stdin.end?.();
-      child.on('error', e => reject(new Error(`Couldn't start ${inv.command}: ${e.message}`)));
+      child.on('error', e => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        collectors.delete(child);
+        reject(new Error(`Couldn't start ${inv.command}: ${e.message}`));
+      });
       child.on('close', code => {
         out.end();
         err.end();
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        collectors.delete(child);
         resolve({ lines, stderr: errLines.join('\n'), code });
       });
     });
   }
 
-  handle('devenv:run', async (_e, config, argv, opts) => ({ runId: start(config, argv, opts) }));
+  handle('devenv:run', async (_e, config, argv, opts) => ({ runId: start(config, argv, opts ?? {}) }));
 
   handle('devenv:answer', async (_e, runId, answer) => {
     const run = runs.get(runId);
@@ -173,6 +205,8 @@ function register(ipcMain, deps = {}) {
     }
     if (target && typeof target.path === 'string') {
       if (!path.isAbsolute(target.path) || !fileExists(target.path)) throw new Error(`Not found: ${target.path}`);
+      const ext = path.extname(target.path).toLowerCase();
+      if (!OPENABLE_EXTENSIONS.has(ext) && !isDirectory(target.path)) throw new Error(`Refusing to open ${target.path}`);
       const error = await shell.openPath(target.path);
       if (error) throw new Error(error);
       return { ok: true };
@@ -182,9 +216,10 @@ function register(ipcMain, deps = {}) {
 
   return {
     async disposeAll() {
-      const all = [...runs.values()];
+      const all = [...runs.values()].map(r => r.child).concat([...collectors]);
       runs.clear();
-      await Promise.all(all.map(r => kill(r.child.pid)));
+      collectors.clear();
+      await Promise.all(all.map(c => kill(c.pid)));
     },
   };
 }

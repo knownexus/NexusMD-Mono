@@ -16,7 +16,7 @@ function fakeChild(pid = 4242) {
   return child
 }
 
-function setup() {
+function setup(extra = {}) {
   const handlers = {}
   const children = []
   const sent = []
@@ -28,6 +28,7 @@ function setup() {
     shell: { openExternal: vi.fn(async () => {}), openPath: vi.fn(async () => '') },
     fileExists: () => true,
     logger: { scope: () => ({ error: (...a) => logged.push(a), info: () => {} }) },
+    ...extra,
   }
   const api = register({ handle: (c, fn) => { handlers[c] = fn } }, deps)
   return { handlers, children, sent, logged, deps, api }
@@ -158,6 +159,55 @@ describe('devenv ipc', () => {
     await t.handlers['devenv:open'](null, { path: 'C:\\r\\trace.html' })
     expect(t.deps.shell.openPath).toHaveBeenCalledWith('C:\\r\\trace.html')
     await expect(t.handlers['devenv:open'](null, { path: 'rel\\x.html' })).rejects.toThrow(/Not found/)
+  })
+
+  it('refuses to open executables and scripts, but opens folders and reports', async () => {
+    const t2 = setup({ isDirectory: p => p === 'C:\\r\\folder' })
+    await t2.handlers['devenv:open'](null, { path: 'C:\\r\\TRACE.HTML' })
+    expect(t2.deps.shell.openPath).toHaveBeenCalledWith('C:\\r\\TRACE.HTML')
+    await t2.handlers['devenv:open'](null, { path: 'C:\\r\\folder' })
+    expect(t2.deps.shell.openPath).toHaveBeenCalledWith('C:\\r\\folder')
+    await expect(t2.handlers['devenv:open'](null, { path: 'C:\\tools\\evil.exe' })).rejects.toThrow(/Refusing to open/)
+    await expect(t2.handlers['devenv:open'](null, { path: 'C:\\tools\\x.ps1' })).rejects.toThrow(/Refusing to open/)
+    expect(t2.deps.shell.openPath).toHaveBeenCalledTimes(2)
+  })
+
+  it('catalog times out, kills the process and rejects', async () => {
+    const t2 = setup({ catalogTimeoutMs: 10 })
+    await expect(t2.handlers['devenv:catalog'](null, CONFIG)).rejects.toThrow(/took too long to list its commands/)
+    expect(t2.deps.kill).toHaveBeenCalledWith(4242)
+  })
+
+  it('disposeAll also kills a pending catalog process', async () => {
+    const p = t.handlers['devenv:catalog'](null, CONFIG).catch(() => {})
+    await tick()
+    await t.api.disposeAll()
+    expect(t.deps.kill).toHaveBeenCalledWith(4242)
+    t.children[0].finish(0)
+    await p
+  })
+
+  it('finishes a run after exit even if close never fires', async () => {
+    const t2 = setup({ exitGraceMs: 10 })
+    const { runId } = await t2.handlers['devenv:run'](null, CONFIG, ['start'], { exclusive: true })
+    t2.children[0].emit('exit', 3)
+    expect(t2.sent).toEqual([])
+    await new Promise(r => setTimeout(r, 40))
+    expect(t2.sent).toEqual([{ channel: 'devenv:exit', msg: { runId, code: 3, cancelled: false } }])
+    await expect(t2.handlers['devenv:run'](null, CONFIG, ['stop'], { exclusive: true })).resolves.toHaveProperty('runId')
+  })
+
+  it('does not log answer secrets when an answer is rejected', async () => {
+    const { runId } = await t.handlers['devenv:run'](null, CONFIG, ['start'], {})
+    t.children[0].finish(0)
+    await tick(); await tick()
+    await expect(t.handlers['devenv:answer'](null, runId, { id: 'p1', value: 'hunter22' })).rejects.toThrow(/already finished/)
+    expect(t.logged.length).toBeGreaterThan(0)
+    expect(JSON.stringify(t.logged)).not.toContain('hunter22')
+  })
+
+  it('tolerates missing run options', async () => {
+    await expect(t.handlers['devenv:run'](null, CONFIG, ['status'])).resolves.toHaveProperty('runId')
   })
 
   it('disposeAll kills every running process', async () => {
