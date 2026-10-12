@@ -54,8 +54,8 @@ describe('buildDevenvArgv', () => {
     expect(buildDevenvArgv(cmd('test run'), {
       positional: [' smoke ', '', 'orders/get.bru'],
       switches: { 'all-apis': true, 'no-open': false },
-      values: { env: 'docker', collection: 'C:\My Tests\coll' },
-    })).toEqual(['test', 'run', 'smoke', 'orders/get.bru', '--all-apis', '--collection', 'C:\My Tests\coll', '--env', 'docker'])
+      values: { env: 'docker', collection: 'C:\\My Tests\\coll' },
+    })).toEqual(['test', 'run', 'smoke', 'orders/get.bru', '--all-apis', '--collection', 'C:\\My Tests\\coll', '--env', 'docker'])
   })
   it('ignores switches and values the command does not declare', () => {
     expect(buildDevenvArgv(cmd('status'), { switches: { evil: true }, values: { x: '1' } })).toEqual(['status'])

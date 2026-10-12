@@ -59,7 +59,7 @@ const EXPECTED = [
   'applyTableSelected', 'applyTableLoaded', 'applyRowsDeleted', 'applyCellUpdated', 'applyError',
   'generateConnectionId', 'upsertConnection', 'removeConnection',
   // Dev Environment module (desktop-only: requires the `devenv` adapter)
-  'getDevenvAdapter', 'DEVENV_CONTROL_PREFIX', 'DEVENV_PROTOCOL_VERSION', 'parseDevenvLine',
+  'IDevenvAdapter', 'getDevenvAdapter', 'DEVENV_CONTROL_PREFIX', 'DEVENV_PROTOCOL_VERSION', 'parseDevenvLine',
   'ansiToSpans', 'stripAnsi',
   'DEVENV_MAX_LINES', 'createRunState', 'applyStarting', 'applyStarted', 'applyStartFailed',
   'applyLine', 'applyAnswered', 'applyOpened', 'applyCancelRequested', 'applyExit',

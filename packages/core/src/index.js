@@ -6,7 +6,7 @@ export {
   ISecureStorageAdapter, INetworkAdapter, ILifecycleAdapter, IShareAdapter,
   ITrayAdapter, INavigationAdapter, IThemeAdapter, IUpdateAdapter,
   IBadgeAdapter, IDeepLinkAdapter, IScriptRunnerAdapter, IRawHttpAdapter,
-  IDbManagerAdapter,
+  IDbManagerAdapter, IDevenvAdapter,
 } from './adapters/index.js'
 export { createNoOpAdapters } from './adapters/defaults.js'
 export {
