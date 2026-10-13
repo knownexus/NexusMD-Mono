@@ -3,11 +3,13 @@ import { describe, it, expect, vi } from 'vitest'
 import path from 'path'
 import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
-import { register, gitEnv, isRepositoryRoot } from './git.cjs'
+import { register, gitEnv, isRepositoryRoot, findGit } from './git.cjs'
 
 const ROOT = process.platform === 'win32' ? 'C:\\repos' : '/repos'
 const REPO = { name: 'App', path: path.join(ROOT, 'App') }
 const COMMON = path.join(ROOT, 'App', '.git')
+const GIT = path.join(ROOT, 'Git', 'cmd', 'git.exe')
+const FSMON = ['-c', 'core.fsmonitor=false']
 
 function fakeChild(result, pid) {
   const child = new EventEmitter()
@@ -29,11 +31,13 @@ function setup(respond = () => ({ stdout: '' }), probe = {}, extra = {}) {
   const calls = []
   const deps = {
     spawn: vi.fn((cmd, args, opts) => {
-      calls.push({ cmd, args: args.slice(1), opts })
-      return fakeChild(respond(args.slice(1), opts), 1000 + calls.length)
+      const op = args.slice(1 + FSMON.length)
+      calls.push({ cmd, args: op, raw: args, opts })
+      return fakeChild(respond(op, opts), 1000 + calls.length)
     }),
     kill: vi.fn(async () => {}),
     probe: { isDirectory: () => true, isFile: () => false, exists: () => false, listDirectories: () => [], readText: () => null, mtime: () => null, ...probe },
+    gitPath: GIT,
     timeoutMs: 50,
     logger: { scope: () => ({ error: () => {}, info: () => {} }) },
     ...extra,
@@ -63,12 +67,46 @@ describe('git env and repository markers', () => {
   })
 })
 
+describe('findGit', () => {
+  const win = process.platform === 'win32'
+  const A = path.join(ROOT, 'a')
+  const B = path.join(ROOT, 'b')
+  const env = { PATH: ['', 'relative', A, B].join(path.delimiter) }
+  const exe = win ? 'git.exe' : 'git'
+
+  it('ignores empty and relative PATH entries and takes the first existing file', () => {
+    const seen = []
+    const found = findGit(env, { isFile: p => { seen.push(p); return p === path.join(B, exe) } })
+    expect(found).toBe(path.join(B, exe))
+    expect(seen.every(p => path.isAbsolute(p))).toBe(true)
+  })
+
+  it.runIf(win)('tries git.exe before git.com in each directory', () => {
+    expect(findGit(env, { isFile: p => p.startsWith(A) })).toBe(path.join(A, 'git.exe'))
+    expect(findGit(env, { isFile: p => p === path.join(A, 'git.com') })).toBe(path.join(A, 'git.com'))
+  })
+
+  it('returns null when git is not on PATH', () => {
+    expect(findGit(env, { isFile: () => false })).toBeNull()
+  })
+})
+
+describe('git not found', () => {
+  it('reports no version and rejects other operations', async () => {
+    const { invoke, deps } = setup(() => ({ stdout: '' }), {}, { gitPath: null })
+    expect(await invoke('git:version')).toBeNull()
+    await expect(invoke('git:resolve', ROOT)).rejects.toThrow(/Git not found/)
+    expect(deps.spawn).not.toHaveBeenCalled()
+  })
+})
+
 describe('git:worktrees and git:branches', () => {
   it('runs an exact argv in the common dir, hidden, without a shell and with prompts disabled', async () => {
     const { invoke, calls, deps } = setup(commonDirResponder(() => ({ stdout: 'worktree X\0\0' })))
     expect(await invoke('git:worktrees', REPO, [REPO.path])).toBe('worktree X\0\0')
     expect(calls.map(c => c.args)).toEqual([['rev-parse', '--path-format=absolute', '--git-common-dir'], ['worktree', 'list', '--porcelain', '-z']])
-    expect(deps.spawn.mock.calls[0][0]).toBe('git')
+    expect(deps.spawn.mock.calls[0][0]).toBe(GIT)
+    for (const c of calls) expect(c.raw.slice(0, 3)).toEqual(['--no-pager', ...FSMON])
     expect(deps.spawn.mock.calls[0][1][0]).toBe('--no-pager')
     expect(calls[1].opts).toMatchObject({ cwd: COMMON, windowsHide: true })
     expect(calls[1].opts.shell).toBeUndefined()
@@ -140,6 +178,26 @@ describe('git:status', () => {
   })
 })
 
+describe('remote and device paths', () => {
+  const bad = ['\\\\server\\share\\repo', '\\\\?\\C:\\repo', '//server/share/repo']
+
+  it('rejects them as repository, folder and worktree paths without spawning git', async () => {
+    const { invoke, deps } = setup()
+    for (const p of bad) {
+      await expect(invoke('git:resolve', p)).rejects.toThrow(/absolute/)
+      await expect(invoke('git:worktrees', { name: 'X', path: p }, [p])).rejects.toThrow(/absolute/)
+    }
+    expect(deps.spawn).not.toHaveBeenCalled()
+  })
+
+  it('skips them in discover roots and reports them missing in checkFolders', async () => {
+    const { invoke, deps } = setup()
+    expect(await invoke('git:discover', bad, [])).toEqual([])
+    expect(await invoke('git:checkFolders', bad)).toEqual(bad.map(p => ({ path: p, exists: false })))
+    expect(deps.spawn).not.toHaveBeenCalled()
+  })
+})
+
 describe('git:discover and git:checkFolders', () => {
   it('lists repo folders one level down, skips plain folders and missing roots, de-duplicates and marks registered ones', async () => {
     const commonFor = cwd => cwd.includes('b-repo') || cwd === REPO.path ? path.join(ROOT, 'B', '.git') : path.join(ROOT, 'A', '.git')
@@ -170,10 +228,15 @@ describe('process limits', () => {
     let live = 0, peak = 0
     const { invoke, deps, api } = setup(() => 'hang', {}, { timeoutMs: 10000, maxConcurrent: 2 })
     deps.spawn.mockImplementation(() => { live++; peak = Math.max(peak, live); return fakeChild('hang', 7) })
-    for (let i = 0; i < 4; i++) invoke('git:version').catch(() => {})
+    const results = []
+    for (let i = 0; i < 4; i++) results.push(invoke('git:resolve', ROOT).catch(e => e))
     await new Promise(r => setImmediate(r))
     expect(peak).toBe(2)
     await api.disposeAll()
     expect(deps.kill).toHaveBeenCalled()
+    const settled = await Promise.all(results.slice(2))
+    expect(settled.every(e => /shutting down/.test(e.message))).toBe(true)
+    await expect(invoke('git:resolve', ROOT)).rejects.toThrow(/shutting down/)
+    expect(deps.spawn).toHaveBeenCalledTimes(2)
   })
 })

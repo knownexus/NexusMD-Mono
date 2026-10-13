@@ -52,6 +52,26 @@ function killTree(pid) {
   });
 }
 
+// Windows searches the cwd before PATH for a bare command, so a git.exe committed in a scanned
+// folder would run. Resolve to an absolute path from PATH instead.
+function findGit(env = process.env, probe = defaultProbe()) {
+  const names = process.platform === 'win32' ? ['git.exe', 'git.com'] : ['git'];
+  const raw = env.PATH ?? env.Path ?? '';
+  for (const dir of String(raw).split(path.delimiter)) {
+    if (!dir || !path.isAbsolute(dir)) continue;
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      if (probe.isFile(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+// UNC and device paths make Windows authenticate to a remote host just by being touched.
+function isRemoteOrDevicePath(p) {
+  return /^[\\/]{2}/.test(p);
+}
+
 function defaultProbe() {
   const stat = p => { try { return fs.statSync(p); } catch { return null; } };
   return {
@@ -82,25 +102,30 @@ function register(ipcMain, deps = {}) {
     maxConcurrent = 6,
     logger,
   } = deps;
+  process.env.NoDefaultCurrentDirectoryInExePath = '1';
+  const gitPath = deps.gitPath !== undefined ? deps.gitPath : findGit(process.env, probe);
   const handle = withLogging(ipcMain, logger);
   const running = new Set();
   const waiting = [];
+  let disposed = false;
   let active = 0;
   let version = null;
 
-  const acquire = () => new Promise(resolve => {
-    if (active < maxConcurrent) { active++; resolve(); } else waiting.push(resolve);
+  const acquire = () => new Promise((resolve, reject) => {
+    if (disposed) { reject(new Error('Git Workspace is shutting down')); return; }
+    if (active < maxConcurrent) { active++; resolve(); } else waiting.push({ resolve, reject });
   });
   const release = () => {
     const next = waiting.shift();
-    if (next) next(); else active--;
+    if (next) next.resolve(); else active--;
   };
 
   async function git(cwd, args) {
+    if (!gitPath) throw new Error('Git not found');
     await acquire();
     try {
       return await new Promise((resolve, reject) => {
-        const child = spawn('git', ['--no-pager', ...args], { cwd, env: gitEnv(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+        const child = spawn(gitPath, ['--no-pager', '-c', 'core.fsmonitor=false', ...args], { cwd, env: gitEnv(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
         running.add(child);
         const out = [];
         const err = [];
@@ -132,7 +157,7 @@ function register(ipcMain, deps = {}) {
   }
 
   function requireAbsolute(p, what) {
-    if (typeof p !== 'string' || !path.isAbsolute(p)) throw new Error(`${what} must be an absolute path`);
+    if (typeof p !== 'string' || !path.isAbsolute(p) || isRemoteOrDevicePath(p)) throw new Error(`${what} must be an absolute path`);
   }
 
   function requireRegistered(repo, registered) {
@@ -221,13 +246,13 @@ function register(ipcMain, deps = {}) {
   handle('git:discover', async (_e, roots, repos) => {
     const known = new Map();
     for (const repo of Array.isArray(repos) ? repos : []) {
-      if (typeof repo?.path !== 'string' || !path.isAbsolute(repo.path)) continue;
+      if (typeof repo?.path !== 'string' || !path.isAbsolute(repo.path) || isRemoteOrDevicePath(repo.path)) continue;
       try { known.set(normalise(await resolveCommon(repo.path)), repo.name); } catch { /* unavailable registrations can't match */ }
     }
     const seen = new Set();
     const found = [];
     for (const root of Array.isArray(roots) ? roots : []) {
-      if (typeof root !== 'string' || !path.isAbsolute(root) || !probe.isDirectory(root)) continue;
+      if (typeof root !== 'string' || !path.isAbsolute(root) || isRemoteOrDevicePath(root) || !probe.isDirectory(root)) continue;
       let names;
       try { names = probe.listDirectories(root); } catch { continue; }
       names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
@@ -247,10 +272,12 @@ function register(ipcMain, deps = {}) {
   });
 
   handle('git:checkFolders', async (_e, paths) =>
-    (Array.isArray(paths) ? paths : []).map(p => ({ path: p, exists: typeof p === 'string' && path.isAbsolute(p) && probe.isDirectory(p) })));
+    (Array.isArray(paths) ? paths : []).map(p => ({ path: p, exists: typeof p === 'string' && path.isAbsolute(p) && !isRemoteOrDevicePath(p) && probe.isDirectory(p) })));
 
   return {
     async disposeAll() {
+      disposed = true;
+      for (const w of waiting.splice(0)) w.reject(new Error('Git Workspace is shutting down'));
       const all = [...running];
       running.clear();
       await Promise.all(all.map(c => Promise.resolve(kill(c.pid)).catch(() => {})));
@@ -258,4 +285,4 @@ function register(ipcMain, deps = {}) {
   };
 }
 
-module.exports = { register, gitEnv, isRepositoryRoot };
+module.exports = { register, gitEnv, isRepositoryRoot, findGit };
