@@ -42,13 +42,18 @@ export function EmulatorView({ adapter, picker }) {
 
   React.useEffect(() => {
     const list = avds.data?.avds
-    if (avd || !list?.length || !status) return
+    // Wait for status to settle either way so a failed status query can't block the pick.
+    if (avd || !list?.length || !(status || statusError)) return
     const running = emu?.running && list.includes(emu.avd) ? emu.avd : null
     setAvd(running ?? (list.includes(avds.data.default) ? avds.data.default : list[0]))
-  }, [avds.data, status, emu, avd])
+  }, [avds.data, status, statusError, emu, avd])
+
+  // An armed recreate must not outlive the moment it was asked for.
+  React.useEffect(() => { if (busy) setConfirming(false) }, [busy])
 
   const go = build => {
     setActionError(null)
+    setConfirming(false)
     let argv
     try { argv = typeof build === 'function' ? build() : build } catch (e) { setActionError(e.message); return }
     run.start(argv, { exclusive: true, label: `devenv ${argv.join(' ')}` })
@@ -76,7 +81,7 @@ export function EmulatorView({ adapter, picker }) {
             <input type="checkbox" aria-label="Use the proxy" checked={proxy} onChange={e => setProxy(e.target.checked)} />
             <span>Use the proxy</span>
           </label>
-          <button className="btn sm primary" disabled={busy} onClick={() => go(() => buildEmulatorArgv({ kind: 'start', avd, proxy }))}>Start</button>
+          <button className="btn sm primary" disabled={busy || !avd} onClick={() => go(() => buildEmulatorArgv({ kind: 'start', avd, proxy }))}>Start</button>
           <button className="btn sm" disabled={busy} onClick={() => go(buildEmulatorArgv({ kind: 'stop' }))}>Stop</button>
           <button className="btn sm ghost" disabled={busy} onClick={() => go(buildEmulatorArgv({ kind: 'proxy', on: true }))}>Proxy on</button>
           <button className="btn sm ghost" disabled={busy} onClick={() => go(buildEmulatorArgv({ kind: 'proxy', on: false }))}>Proxy off</button>

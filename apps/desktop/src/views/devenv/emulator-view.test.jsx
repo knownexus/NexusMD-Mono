@@ -10,12 +10,13 @@ const CFG = { root: 'C:\\repos\\dev-environment', pwsh: 'pwsh', profile: '' }
 const STATUS = emu => ({ type: 'result', kind: 'status', docker: { ok: true }, backend: [], infra: [], test: {}, database: {}, ios: {}, android: { emulator: emu, proxy: 'running' } })
 const AVDS = (extra = {}) => ({ type: 'result', kind: 'emulator-avds', avds: ['Pixel_9', 'Tablet'], default: 'Pixel_9', error: null, ...extra })
 
-function setup({ over = {}, emu = null, avds = AVDS() } = {}) {
+function setup({ over = {}, emu = null, avds = AVDS(), statusFails = false } = {}) {
   globalThis.__run = { state: { ...createRunState(), ...over }, start: vi.fn(), cancel: vi.fn(), config: CFG }
   const adapter = {
     pathForFile: vi.fn(f => (f.name === 'skip' ? '' : `C:\\Users\\me\\${f.name}`)),
     query: vi.fn(async (_c, argv) => {
       const k = argv.join(' ')
+      if (k === 'status --json' && statusFails) return { code: 1, stderr: 'x', results: [] }
       if (k === 'status --json') return { code: 0, stderr: '', results: [STATUS(emu)] }
       if (k === 'emulator avds --json') return { code: 0, stderr: '', results: [avds] }
       return { code: 1, stderr: 'unexpected', results: [] }
@@ -94,6 +95,22 @@ describe('EmulatorView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Push' }))
     expect(run.start).not.toHaveBeenCalled()
     expect(screen.getByRole('alert').textContent).toMatch(/sdcard/)
+  })
+
+  it('still preselects an AVD when the status query fails', async () => {
+    const { run } = setup({ statusFails: true })
+    await waitFor(() => expect(screen.getByLabelText('AVD').value).toBe('Pixel_9'))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    expect(run.start).toHaveBeenLastCalledWith(['emulator', 'start', '--avd', 'Pixel_9'], expect.objectContaining({ exclusive: true }))
+  })
+
+  it('disarms the recreate confirmation when another action runs', async () => {
+    setup()
+    await waitFor(() => expect(screen.getByLabelText('AVD').value).toBe('Pixel_9'))
+    fireEvent.click(screen.getByRole('button', { name: 'Recreate image…' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    expect(screen.queryByText('This deletes Pixel_9 and creates it again.')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Recreate Pixel_9' })).toBeNull()
   })
 
   it('shows the SDK error from the AVD list', async () => {
