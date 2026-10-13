@@ -1,0 +1,123 @@
+// The group editor's model, ported from gws GroupDraft: whole repos, worktree paths and
+// branches can be mixed; discovered repos are registered on save; saving is all-or-nothing.
+
+import { worktreeId, worktreeName, branchLabel } from './parse.js'
+import { uniqueName, groupNameError } from './groups.js'
+
+export class GroupSaveError extends Error {
+  constructor(memberId, message) {
+    super(message)
+    this.name = 'GroupSaveError'
+    this.memberId = memberId
+  }
+}
+
+const memberId = (kind, repo, value) => `${kind}\x00${repo}\x00${value}`
+const member = (kind, repo, value, label) => ({ kind, repo, value, label, id: memberId(kind, repo, value) })
+const isEntry = m => m.kind === 'worktree' || m.kind === 'branch'
+
+export class GroupDraft {
+  constructor(config, snapshot, existing = null) {
+    this.members = []
+    this.checked = new Set()
+    this.branchesShown = new Set()
+    const worktrees = snapshot?.worktrees || []
+    const branches = snapshot?.branches || []
+    for (const repo of config.repos) {
+      this.members.push(member('repo', repo.name, repo.name, repo.name))
+      for (const t of worktrees.filter(t => t.repo === repo.name)) {
+        this.members.push(member('worktree', repo.name, worktreeId(t), `${worktreeName(t)} → ${branchLabel(t)}${t.error ? ' (unavailable)' : ''}`))
+      }
+      for (const b of branches.filter(b => b.repo === repo.name)) this.members.push(member('branch', repo.name, b.ref, `Branch · ${b.name}`))
+    }
+    if (!existing) return
+    // Missing entries stay selected so a temporarily unavailable disk or ref doesn't shrink the group.
+    for (const name of existing.repos) this.#selectOrAdd(member('repo', name, name, `${name} (unavailable)`))
+    for (const path of existing.worktrees) {
+      this.#selectOrAdd(this.members.find(m => m.kind === 'worktree' && m.value === path) ?? member('worktree', '(unavailable)', path, `${path} (unavailable)`))
+    }
+    for (const b of existing.branches) this.#selectOrAdd(member('branch', b.repo, b.ref, `Branch · ${b.ref.replace(/^refs\/heads\//, '')} (unavailable)`))
+  }
+
+  #selectOrAdd(m) {
+    if (!this.members.some(x => x.id === m.id)) this.members.push(m)
+    this.checked.add(m.id)
+  }
+
+  /** Adds discovered, not-yet-registered repositories (`{ name, path, registeredAs }`). */
+  addDiscovered(found) {
+    for (const r of found || []) {
+      if (r.registeredAs) continue
+      if (!this.members.some(m => m.kind === 'new-repo' && m.value === r.path)) this.members.push(member('new-repo', r.path, r.path, r.name))
+    }
+  }
+
+  inherited(m) {
+    return isEntry(m) && this.checked.has(memberId('repo', m.repo, m.repo))
+  }
+
+  toggle(m) {
+    if (this.inherited(m)) throw new Error('This is included by the whole repo. Switch the repo to individual entries to choose it.')
+    if (!this.checked.delete(m.id)) this.checked.add(m.id)
+  }
+
+  state(repo) {
+    if (this.checked.has(memberId('repo', repo, repo)) || this.checked.has(memberId('new-repo', repo, repo))) return 'whole'
+    return this.members.some(m => m.repo === repo && isEntry(m) && this.checked.has(m.id)) ? 'some' : 'none'
+  }
+
+  toggleWhole(repo) {
+    const head = this.members.find(m => m.kind === 'repo' && m.repo === repo)
+    if (!head) return
+    const children = this.members.filter(m => m.repo === repo && isEntry(m))
+    if (this.checked.delete(head.id)) {
+      for (const t of children.filter(c => c.kind === 'worktree')) this.checked.add(t.id)
+    } else {
+      for (const c of children) this.checked.delete(c.id)
+      this.checked.add(head.id)
+    }
+  }
+
+  rows(search = '', folded = new Set()) {
+    const q = search.trim().toLowerCase()
+    const out = []
+    const heads = [...this.members.filter(m => m.kind === 'repo'), ...this.members.filter(m => m.kind === 'new-repo')]
+    for (const head of heads) {
+      const children = head.kind === 'repo'
+        ? this.members.filter(m => m.repo === head.repo && (m.kind === 'worktree' || (m.kind === 'branch' && (this.branchesShown.has(head.repo) || this.checked.has(m.id)))))
+        : []
+      const match = m => !q || `${head.label} ${m.label}`.toLowerCase().includes(q)
+      if (!match(head) && !children.some(match)) continue
+      out.push(head)
+      if (!folded.has(head.repo)) out.push(...children.filter(match))
+    }
+    // Selected entries whose repository is no longer registered stay visible so they can be unticked.
+    const registered = new Set(this.members.filter(m => m.kind === 'repo').map(m => m.repo))
+    out.push(...this.members.filter(m => isEntry(m) && this.checked.has(m.id) && !registered.has(m.repo)))
+    return out
+  }
+
+  /**
+   * Validates everything first, then returns the new config and group; inputs are never mutated.
+   * @param {(path: string) => Promise<unknown>} resolve rejects if a discovered folder is no longer a repository
+   */
+  async commit(config, name, existing, resolve) {
+    const error = groupNameError(config, name, existing?.name ?? null)
+    if (error) throw new Error(error)
+    const groupName = String(name).trim()
+    const ticked = this.members.filter(m => this.checked.has(m.id))
+    const added = []
+    for (const m of ticked.filter(m => m.kind === 'new-repo')) {
+      try { await resolve(m.value) } catch (e) { throw new GroupSaveError(m.id, `${m.label}: ${e?.message || e}`) }
+      added.push({ name: uniqueName(m.label, [...config.repos.map(r => r.name), ...added.map(r => r.name)]), path: m.value })
+    }
+    const repos = [...new Set([...ticked.filter(m => m.kind === 'repo').map(m => m.value), ...added.map(r => r.name)])]
+    const worktrees = [...new Set(ticked.filter(m => m.kind === 'worktree').map(m => m.value))]
+    const branches = ticked.filter(m => m.kind === 'branch').map(m => ({ repo: m.repo, ref: m.value }))
+    if (!repos.length && !worktrees.length && !branches.length) throw new Error('Select at least one repository, worktree or branch.')
+    const group = { name: groupName, repos, worktrees, branches }
+    const replacing = existing && config.groups.includes(existing)
+    const groups = replacing ? config.groups.map(g => g === existing ? group : g) : [...config.groups, group]
+    return { config: { ...config, repos: [...config.repos, ...added], groups }, group }
+  }
+}

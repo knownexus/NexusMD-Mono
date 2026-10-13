@@ -158,3 +158,18 @@ export const IDevenvAdapter = {
   onLine:  (cb) => () => {},
   onExit:  (cb) => () => {},
 }
+
+// Desktop-only: runs the git CLI in the Electron main process for the Git Workspace module.
+// Deliberately absent from createNoOpAdapters() so the module is gated to platforms that
+// supply it. `registered` is the list of registered repo paths; main rejects anything else.
+export const IGitAdapter = {
+  isAvailable: () => false,
+  version:      async () => null,
+  resolve:      async (dir) => Promise.reject(new Error('IGitAdapter.resolve not implemented')),
+  worktrees:    async (repo, registered) => Promise.reject(new Error('IGitAdapter.worktrees not implemented')),
+  // → { porcelain, operation, rebasingBranch, fetchedAt } | { missing: true } | { error }
+  status:       async (repo, worktreePath, registered) => Promise.reject(new Error('IGitAdapter.status not implemented')),
+  branches:     async (repo, registered) => Promise.reject(new Error('IGitAdapter.branches not implemented')),
+  discover:     async (roots, repos) => [],
+  checkFolders: async (paths) => [],
+}

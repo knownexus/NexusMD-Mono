@@ -80,4 +80,18 @@ test.describe('desktop shell smoke', () => {
 
     await app.close()
   })
+
+  test('Git Workspace opens from the sidebar', async () => {
+    const app = await electron.launch({ args: [appDir] })
+    const win = await app.firstWindow()
+    await win.waitForLoadState('domcontentloaded')
+
+    await win.getByText('Git Workspace').first().click()
+    await expect(
+      win.getByRole('tablist', { name: 'Project groups' })
+        .or(win.getByText(/Git not found|Checking for git/)),
+    ).toBeVisible({ timeout: 15_000 })
+
+    await app.close()
+  })
 })

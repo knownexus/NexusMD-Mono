@@ -233,4 +233,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('devenv:exit', handler);
     },
   },
+
+  // ── Git Workspace module (git adapter) ─────────────────────────────────────
+  git: {
+    version:      () => ipcRenderer.invoke('git:version'),
+    resolve:      (dir) => ipcRenderer.invoke('git:resolve', dir),
+    worktrees:    (repo, registered) => ipcRenderer.invoke('git:worktrees', repo, registered),
+    status:       (repo, worktreePath, registered) => ipcRenderer.invoke('git:status', repo, worktreePath, registered),
+    branches:     (repo, registered) => ipcRenderer.invoke('git:branches', repo, registered),
+    discover:     (roots, repos) => ipcRenderer.invoke('git:discover', roots, repos),
+    checkFolders: (paths) => ipcRenderer.invoke('git:checkFolders', paths),
+  },
 });
