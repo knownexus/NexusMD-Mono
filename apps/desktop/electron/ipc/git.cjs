@@ -157,7 +157,8 @@ function register(ipcMain, deps = {}) {
   }
 
   function requireAbsolute(p, what) {
-    if (typeof p !== 'string' || !path.isAbsolute(p) || isRemoteOrDevicePath(p)) throw new Error(`${what} must be an absolute path`);
+    if (typeof p === 'string' && isRemoteOrDevicePath(p)) throw new Error("Network (UNC) paths aren't supported");
+    if (typeof p !== 'string' || !path.isAbsolute(p)) throw new Error(`${what} must be an absolute path`);
   }
 
   function requireRegistered(repo, registered) {

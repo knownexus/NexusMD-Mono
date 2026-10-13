@@ -184,10 +184,15 @@ describe('remote and device paths', () => {
   it('rejects them as repository, folder and worktree paths without spawning git', async () => {
     const { invoke, deps } = setup()
     for (const p of bad) {
-      await expect(invoke('git:resolve', p)).rejects.toThrow(/absolute/)
-      await expect(invoke('git:worktrees', { name: 'X', path: p }, [p])).rejects.toThrow(/absolute/)
+      await expect(invoke('git:resolve', p)).rejects.toThrow("Network (UNC) paths aren't supported")
+      await expect(invoke('git:worktrees', { name: 'X', path: p }, [p])).rejects.toThrow("Network (UNC) paths aren't supported")
     }
     expect(deps.spawn).not.toHaveBeenCalled()
+  })
+
+  it('still says "must be an absolute path" for relative folders', async () => {
+    const { invoke } = setup()
+    await expect(invoke('git:resolve', 'relative\\repo')).rejects.toThrow(/must be an absolute path/)
   })
 
   it('skips them in discover roots and reports them missing in checkFolders', async () => {

@@ -57,14 +57,20 @@ export function effectiveRoots(config) {
 }
 
 const ABSOLUTE = /^([A-Za-z]:[\\/]|\\\\|\/)/
+const NETWORK = /^[\\/]{2}/
 
-/** Splits a `;`-separated list of folders; relative entries are returned in `invalid`. */
+/**
+ * Splits a `;`-separated list of folders. Relative entries come back in `invalid`;
+ * UNC and device paths (`\\server\share`, `//server/share`, `\\?\…`) in `network`.
+ */
 export function parseRoots(text) {
   const roots = []
   const invalid = []
+  const network = []
   for (const entry of String(text ?? '').split(';').map(s => s.trim()).filter(Boolean)) {
-    if (!ABSOLUTE.test(entry)) invalid.push(entry)
+    if (NETWORK.test(entry)) { if (!network.includes(entry)) network.push(entry) }
+    else if (!ABSOLUTE.test(entry)) invalid.push(entry)
     else if (!roots.some(r => r.toLowerCase() === entry.toLowerCase())) roots.push(entry)
   }
-  return { roots, invalid }
+  return { roots, invalid, network }
 }

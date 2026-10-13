@@ -60,8 +60,14 @@ describe('git config', () => {
   })
 
   it('parses semicolon-separated absolute search roots', () => {
-    expect(parseRoots(' C:/repos ; ;D:\\src;\\\\server\\share; repos ')).toEqual({ roots: ['C:/repos', 'D:\\src', '\\\\server\\share'], invalid: ['repos'] })
+    expect(parseRoots(' C:/repos ; ;D:\\src; repos ')).toEqual({ roots: ['C:/repos', 'D:\\src'], invalid: ['repos'], network: [] })
     expect(parseRoots('C:/repos;c:/REPOS').roots).toEqual(['C:/repos'])
-    expect(parseRoots('')).toEqual({ roots: [], invalid: [] })
+    expect(parseRoots('')).toEqual({ roots: [], invalid: [], network: [] })
+  })
+
+  it('reports UNC and device roots as network paths, not as roots', () => {
+    expect(parseRoots('\\\\server\\share;//server/share;\\\\?\\C:\\repo;C:/repos')).toEqual({
+      roots: ['C:/repos'], invalid: [], network: ['\\\\server\\share', '//server/share', '\\\\?\\C:\\repo'],
+    })
   })
 })

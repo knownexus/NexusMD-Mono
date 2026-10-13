@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import { GitSettingsCard } from './git-settings-card.jsx'
 import { getGitConfig, setGitConfig } from './git-config.js'
+import { getProfileKey } from './profile-keys.js'
 
 afterEach(cleanup)
 beforeEach(() => localStorage.clear())
@@ -48,5 +49,66 @@ describe('GitSettingsCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save folders' }))
     expect(await screen.findByText('No search folders · the group editor shows registered repositories only')).toBeTruthy()
     expect(getGitConfig().roots).toEqual([])
+  })
+
+  it('disables every control and writes nothing when the settings are from a newer version', () => {
+    const raw = JSON.stringify({ version: 2, repos: [{ name: 'A', path: 'C:/repos/A' }] })
+    localStorage.setItem(getProfileKey('git.config'), raw)
+    const picker = { pickDirectory: vi.fn() }
+    render(<GitSettingsCard adapter={adapter()} picker={picker} />)
+    expect(screen.getByText(/saved by a newer NexusMD \(version 2\) and can't be edited here/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Add repository…' }).disabled).toBe(true)
+    expect(screen.getByRole('button', { name: 'Save folders' }).disabled).toBe(true)
+    expect(screen.getByLabelText('Search folders').disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Add repository…' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save folders' }))
+    expect(picker.pickDirectory).not.toHaveBeenCalled()
+    expect(localStorage.getItem(getProfileKey('git.config'))).toBe(raw)
+  })
+
+  it('rejects a UNC search folder with the network message and keeps the saved folders', () => {
+    setGitConfig({ roots: ['C:/repos'] })
+    render(<GitSettingsCard adapter={adapter()} picker={{}} />)
+    fireEvent.change(screen.getByLabelText('Search folders'), { target: { value: '\\\\server\\share' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save folders' }))
+    expect(screen.getByText("Network (UNC) paths aren't supported: \\\\server\\share")).toBeTruthy()
+    expect(getGitConfig().roots).toEqual(['C:/repos'])
+  })
+
+  it('shows a network refusal from the main process without the IPC prefix', async () => {
+    const a = adapter()
+    a.resolve = vi.fn(async () => { throw new Error("Error invoking remote method 'git:resolve': Error: Network (UNC) paths aren't supported") })
+    const picker = { pickDirectory: vi.fn().mockResolvedValueOnce('\\\\server\\share\\repo') }
+    render(<GitSettingsCard adapter={a} picker={picker} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add repository…' }))
+    expect(await screen.findByText("Network (UNC) paths aren't supported")).toBeTruthy()
+    expect(getGitConfig().repos).toEqual([])
+  })
+
+  it('names the registered repository after adding it', async () => {
+    const picker = { pickDirectory: vi.fn().mockResolvedValueOnce('D:\\src\\Payments') }
+    render(<GitSettingsCard adapter={adapter()} picker={picker} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add repository…' }))
+    expect(await screen.findByText('Added Payments')).toBeTruthy()
+  })
+
+  it('keeps the saved folders and says so when checking them fails', async () => {
+    const a = adapter()
+    a.checkFolders = vi.fn(async () => { throw new Error('boom') })
+    render(<GitSettingsCard adapter={a} picker={{}} />)
+    fireEvent.change(screen.getByLabelText('Search folders'), { target: { value: 'C:/repos; D:/x' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save folders' }))
+    expect(await screen.findByText("Saved, but couldn't check the folders")).toBeTruthy()
+    expect(getGitConfig().roots).toEqual(['C:/repos', 'D:/x'])
+  })
+
+  it('clears the last message when a registration is removed', async () => {
+    setGitConfig({ repos: [{ name: 'A', path: 'C:/repos/A' }] })
+    const picker = { pickDirectory: vi.fn().mockResolvedValueOnce('D:\\src\\a-copy') }
+    render(<GitSettingsCard adapter={adapter()} picker={picker} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add repository…' }))
+    expect(await screen.findByText('That repository is already registered as A')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove A' }))
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })
