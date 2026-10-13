@@ -54,6 +54,7 @@ import { scriptRunnerAdapter }  from './adapters/scriptRunner.js'
 import { rawHttpAdapter }       from './adapters/rawHttp.js'
 import { dbManagerAdapter }     from './adapters/db-manager.js'
 import { devenvAdapter }        from './adapters/devenv.js'
+import { gitAdapter }           from './adapters/git.js'
 import { listSavedConnections, getConnectionSecret } from './db-manager-config.js'
 
 const adapters = {
@@ -84,6 +85,8 @@ const adapters = {
   dbManager:     dbManagerAdapter,
   // Desktop-only — runs pwsh in the main process; gates the devenv module.
   devenv:        devenvAdapter,
+  // Desktop-only — runs git in the main process; gates the git module.
+  git:           gitAdapter,
 }
 
 const NEXUSMD_THEMES = [

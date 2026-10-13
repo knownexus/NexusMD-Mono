@@ -65,6 +65,7 @@ const apiClientScriptIpc = require('./ipc/api-client-script.cjs');
 const dbManagerIpc   = require('./ipc/db-manager.cjs');
 const jiraIpc        = require('./ipc/jira.cjs');
 const devenvIpc      = require('./ipc/devenv.cjs');
+const gitIpc         = require('./ipc/git.cjs');
 const loginItemIpc   = require('./ipc/login-item.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
@@ -95,6 +96,7 @@ if (!gotLock) {
 // ---------------------------------------------------------------------------
 let mainWindow = null;
 let devenvRuns = null;
+let gitProcesses = null;
 let tray = null;
 let forceQuit = false;
 
@@ -329,6 +331,7 @@ app.whenReady().then(async () => {
   devenvRuns = devenvIpc.register(ipcMain, {
     send: (channel, msg) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, msg); },
   });
+  gitProcesses = gitIpc.register(ipcMain);
   loginItemIpc.register(ipcMain, { app });
   linkWindow.register(ipcMain);
 
@@ -443,6 +446,7 @@ app.on('before-quit', () => {
   forceQuit = true;
   dbManagerIpc.closeAll().catch(err => log.scope('lifecycle').error('db-manager closeAll failed', err));
   devenvRuns?.disposeAll().catch(err => log.scope('lifecycle').error('devenv disposeAll failed', err));
+  gitProcesses?.disposeAll().catch(err => log.scope('lifecycle').error('git disposeAll failed', err));
 });
 
 // On macOS it is common to keep the app running even with no windows
