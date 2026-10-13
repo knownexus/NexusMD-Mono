@@ -102,6 +102,72 @@ describe('GitSettingsCard', () => {
     expect(getGitConfig().roots).toEqual(['C:/repos', 'D:/x'])
   })
 
+  it('flags missing repositories and search folders on load', async () => {
+    setGitConfig({ repos: [{ name: 'A', path: 'C:/repos/A' }, { name: 'Gone', path: 'C:/repos/missing-repo' }], roots: ['C:/repos', 'D:/missing'] })
+    const a = adapter()
+    render(<GitSettingsCard adapter={a} picker={{}} />)
+    expect(await screen.findByText('Not found: D:/missing')).toBeTruthy()
+    expect(a.checkFolders).toHaveBeenCalledWith(['C:/repos/A', 'C:/repos/missing-repo', 'C:/repos', 'D:/missing'])
+    expect(screen.getAllByText('not found')).toHaveLength(1)
+    expect(screen.getByText('not found').closest('div').textContent).toContain('Gone')
+  })
+
+  it('checks again when the repositories change and ignores a stale answer', async () => {
+    setGitConfig({ repos: [{ name: 'Gone', path: 'C:/repos/missing-repo' }], roots: [] })
+    const a = adapter()
+    let answerFirst
+    a.checkFolders = vi.fn()
+      .mockImplementationOnce(paths => new Promise(r => { answerFirst = () => r(paths.map(p => ({ path: p, exists: false }))) }))
+      .mockImplementation(async paths => paths.map(p => ({ path: p, exists: true })))
+    render(<GitSettingsCard adapter={a} picker={{}} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Gone' }))
+    await waitFor(() => expect(a.checkFolders).toHaveBeenCalledTimes(2))
+    answerFirst()
+    await new Promise(r => setTimeout(r, 0))
+    expect(screen.queryByText('not found')).toBeNull()
+  })
+
+  it('ignores a failing folder check on load', async () => {
+    setGitConfig({ repos: [{ name: 'A', path: 'C:/repos/A' }] })
+    const a = adapter()
+    a.checkFolders = vi.fn(async () => { throw new Error('boom') })
+    render(<GitSettingsCard adapter={a} picker={{}} />)
+    await waitFor(() => expect(a.checkFolders).toHaveBeenCalled())
+    expect(screen.queryByText('not found')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Remove A' })).toBeTruthy()
+  })
+
+  it('ignores a second Add repository click while one is running', async () => {
+    let pick
+    const picker = { pickDirectory: vi.fn(() => new Promise(r => { pick = r })) }
+    render(<GitSettingsCard adapter={adapter()} picker={picker} />)
+    const button = screen.getByRole('button', { name: 'Add repository…' })
+    fireEvent.click(button)
+    expect(button.disabled).toBe(true)
+    fireEvent.click(button)
+    expect(picker.pickDirectory).toHaveBeenCalledTimes(1)
+    pick('D:\\src\\Payments')
+    expect(await screen.findByText('Added Payments')).toBeTruthy()
+    expect(button.disabled).toBe(false)
+  })
+
+  it('registers against the settings as they are after the repository check', async () => {
+    setGitConfig({ repos: [{ name: 'A', path: 'C:/repos/A' }], roots: ['C:/repos'] })
+    const a = adapter()
+    const resolve = a.resolve
+    let changed = false
+    a.resolve = vi.fn(async dir => {
+      if (!changed) { changed = true; setGitConfig({ repos: [...getGitConfig().repos, { name: 'B', path: 'C:/repos/B' }], roots: ['D:/other'] }) }
+      return resolve(dir)
+    })
+    const picker = { pickDirectory: vi.fn().mockResolvedValueOnce('D:\\src\\Payments') }
+    render(<GitSettingsCard adapter={a} picker={picker} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add repository…' }))
+    expect(await screen.findByText('Added Payments')).toBeTruthy()
+    expect(getGitConfig().repos.map(r => r.name)).toEqual(['A', 'B', 'Payments'])
+    expect(getGitConfig().roots).toEqual(['D:/other'])
+  })
+
   it('clears the last message when a registration is removed', async () => {
     setGitConfig({ repos: [{ name: 'A', path: 'C:/repos/A' }] })
     const picker = { pickDirectory: vi.fn().mockResolvedValueOnce('D:\\src\\a-copy') }

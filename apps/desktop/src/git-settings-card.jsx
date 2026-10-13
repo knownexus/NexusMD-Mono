@@ -17,23 +17,57 @@ function cleanError(e) {
   return String(e?.message ?? e).replace(IPC_PREFIX, '')
 }
 
+const sameRepos = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+
 export function GitSettingsCard({ adapter = gitAdapter, picker = pickerAdapter }) {
   const config = useGitConfig()
   const [rootsText, setRootsText] = React.useState(() => effectiveRoots(getGitConfig()).join('; '))
   const [message, setMessage] = React.useState(null)
-  if (!adapter.isAvailable()) return null
+  const [missing, setMissing] = React.useState(() => new Set())
+  const [adding, setAdding] = React.useState(false)
+  const addingRef = React.useRef(false)
+  const checkRef = React.useRef(0)
+  const available = adapter.isAvailable()
+  const savedRoots = effectiveRoots(config)
+  const checkKey = JSON.stringify([config.repos.map(r => r.path), savedRoots])
+
+  React.useEffect(() => {
+    if (!available) return
+    const [repoPaths, roots] = JSON.parse(checkKey)
+    const id = ++checkRef.current
+    Promise.resolve()
+      .then(() => adapter.checkFolders([...repoPaths, ...roots]))
+      .then(found => {
+        if (id === checkRef.current) setMissing(new Set(found.filter(f => !f.exists).map(f => f.path)))
+      })
+      .catch(() => { /* the flags are advisory; the view reports unavailable repos itself */ })
+  }, [adapter, available, checkKey])
+
+  if (!available) return null
   const locked = config.unsupported != null
+  const missingRoots = savedRoots.filter(r => missing.has(r))
 
   const addRepo = async () => {
-    if (locked) return
-    const dir = await picker.pickDirectory()
-    if (!dir) return
+    if (locked || addingRef.current) return
+    addingRef.current = true
+    setAdding(true)
     try {
-      const next = await registerRepo(getGitConfig(), dir, adapter)
-      setGitConfig(next)
+      const dir = await picker.pickDirectory()
+      if (!dir) return
+      // registerRepo awaits git; register against settings that changed meanwhile, not a stale copy.
+      let next
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const base = getGitConfig()
+        next = await registerRepo(base, dir, adapter)
+        if (sameRepos(getGitConfig().repos, base.repos)) break
+      }
+      setGitConfig({ repos: next.repos })
       setMessage({ ok: true, text: `Added ${next.repos[next.repos.length - 1].name}` })
     } catch (e) {
       setMessage({ ok: false, text: cleanError(e) })
+    } finally {
+      addingRef.current = false
+      setAdding(false)
     }
   }
   const saveRoots = async () => {
@@ -65,18 +99,22 @@ export function GitSettingsCard({ adapter = gitAdapter, picker = pickerAdapter }
           <input aria-label="Search folders" style={inputStyle} value={rootsText} disabled={locked} onChange={e => setRootsText(e.target.value)} />
           <button className="btn sm" disabled={locked} onClick={saveRoots}>Save folders</button>
         </div>
+        {missingRoots.length > 0 && <div style={{ marginTop: 4, color: 'var(--danger)' }}>{`Not found: ${missingRoots.join(', ')}`}</div>}
       </VsRow>
       <VsRow title="Repositories" desc="Removing a repository only unregisters it; its files stay in place.">
         <div style={{ display: 'grid', gap: 4 }}>
           {config.repos.length === 0 && <span style={{ color: 'var(--text-muted)' }}>None registered.</span>}
           {config.repos.map(r => (
             <div key={r.name} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{ flex: 1 }}>{r.name} <span style={{ color: 'var(--text-muted)' }}>{r.path}</span></span>
+              <span style={{ flex: 1 }}>
+                {r.name} <span style={{ color: 'var(--text-muted)' }}>{r.path}</span>
+                {missing.has(r.path) && <> · <span style={{ color: 'var(--danger)' }}>not found</span></>}
+              </span>
               <button className="btn sm ghost" aria-label={`Remove ${r.name}`} disabled={locked}
                 onClick={() => { setMessage(null); setGitConfig(unregisterRepo(getGitConfig(), r.name)) }}>Remove</button>
             </div>
           ))}
-          <div><button className="btn sm" disabled={locked} onClick={addRepo}>Add repository…</button></div>
+          <div><button className="btn sm" disabled={locked || adding} onClick={addRepo}>Add repository…</button></div>
         </div>
       </VsRow>
       {message && <div role="status" style={{ padding: '6px 12px', color: message.ok ? 'var(--success)' : 'var(--danger)' }}>{message.text}</div>}
