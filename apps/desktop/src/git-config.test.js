@@ -1,0 +1,47 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { getGitConfig, setGitConfig, DEFAULT_GIT_CONFIG, effectiveRoots, parseRoots, GIT_CONFIG_EVENT } from './git-config.js'
+import { getProfileKey } from './profile-keys.js'
+
+describe('git config', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('starts empty with the default search root', () => {
+    expect(getGitConfig()).toEqual(DEFAULT_GIT_CONFIG)
+    expect(effectiveRoots(getGitConfig())).toEqual(['C:/repos'])
+    expect(effectiveRoots({ roots: [] })).toEqual([])
+  })
+
+  it('merges and persists patches and announces the change', () => {
+    const seen = vi.fn()
+    window.addEventListener(GIT_CONFIG_EVENT, seen)
+    setGitConfig({ repos: [{ name: 'A', path: 'C:/repos/A' }] })
+    expect(getGitConfig().repos).toEqual([{ name: 'A', path: 'C:/repos/A' }])
+    expect(seen).toHaveBeenCalled()
+    window.removeEventListener(GIT_CONFIG_EVENT, seen)
+  })
+
+  it('fills in missing fields of older or partial settings', () => {
+    localStorage.setItem(getProfileKey('git.config'), JSON.stringify({
+      repos: [{ name: 'A', path: 'C:/repos/A' }, { name: 'bad' }], groups: [{ name: 'G', repos: ['A'] }, { nope: 1 }], extra: true,
+    }))
+    const cfg = getGitConfig()
+    expect(cfg.repos).toEqual([{ name: 'A', path: 'C:/repos/A' }])
+    expect(cfg.groups).toEqual([{ name: 'G', repos: ['A'], worktrees: [], branches: [] }])
+    expect(cfg.roots).toBeNull()
+    expect(cfg.view).toEqual(DEFAULT_GIT_CONFIG.view)
+    expect(cfg.extra).toBeUndefined()
+  })
+
+  it('marks settings from a newer version as unsupported and survives corrupt storage', () => {
+    localStorage.setItem(getProfileKey('git.config'), JSON.stringify({ version: 2 }))
+    expect(getGitConfig().unsupported).toBe(2)
+    localStorage.setItem(getProfileKey('git.config'), '{nope')
+    expect(getGitConfig()).toEqual(DEFAULT_GIT_CONFIG)
+  })
+
+  it('parses semicolon-separated absolute search roots', () => {
+    expect(parseRoots(' C:/repos ; ;D:\\src;\\\\server\\share; repos ')).toEqual({ roots: ['C:/repos', 'D:\\src', '\\\\server\\share'], invalid: ['repos'] })
+    expect(parseRoots('C:/repos;c:/REPOS').roots).toEqual(['C:/repos'])
+    expect(parseRoots('')).toEqual({ roots: [], invalid: [] })
+  })
+})
