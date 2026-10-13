@@ -67,6 +67,9 @@ const EXPECTED = [
   'normaliseStatus', 'createPlanForm', 'validatePlanForm', 'buildPlanAnswer', 'normaliseRefPrompt', 'normaliseSummary',
   'normaliseBuilds', 'buildBuildArgv', 'DEVENV_MOBILE_ABIS', 'DEVENV_DEPLOY_MODES',
   'normaliseLogTargets', 'classifyLogLevel', 'filterLogLines', 'captureFolder', 'DEVENV_CAPTURE_SINCE',
+  // Git Workspace module (desktop-only: requires the `git` adapter)
+  'IGitAdapter', 'getGitAdapter', 'GIT_AREAS', 'parseStatus', 'parseWorktrees', 'parseBranches', 'statusCode',
+  'worktreeId', 'worktreeName', 'activeBranchRef', 'branchLabel', 'loadSnapshot', 'applyStatus', 'worktreeSummary',
   'formatSqlValue', 'formatCondition',
   'buildSearchQuery', 'buildInsertQuery', 'buildUpdateQuery', 'buildDeleteQuery',
   'buildJoinQuery', 'buildAggregateQuery',
