@@ -17,21 +17,31 @@ export function GroupEditor({ open, config, snapshot, existing, adapter, onClose
   const [, redraw] = React.useReducer(n => n + 1, 0)
   const roots = effectiveRoots(config)
 
+  // Every async result is checked against the session (dialog open) and scan sequence it started in.
+  const session = React.useRef(0)
+  const scanSeq = React.useRef(0)
+
   const scan = React.useCallback(async d => {
+    const mine = session.current
+    const seq = ++scanSeq.current
+    const live = () => mine === session.current && seq === scanSeq.current
     setSearching(true)
     try {
-      d.addDiscovered(await adapter.discover(roots, config.repos))
+      const found = await adapter.discover(roots, config.repos)
+      if (!live()) return
+      d.addDiscovered(found)
       redraw()
     } catch (e) {
-      setStatus(`Repository search failed: ${e?.message || e}`)
+      if (live()) setStatus(`Repository search failed: ${e?.message || e}`)
     } finally {
-      setSearching(false)
+      if (live()) setSearching(false)
     }
     // roots/config.repos are read at the moment of the scan on purpose.
   }, [adapter, JSON.stringify(roots), JSON.stringify(config.repos)])
 
   React.useEffect(() => {
-    if (!open) return
+    if (!open) { setDraft(null); return }
+    session.current++
     const d = new GroupDraft(config, snapshot || { worktrees: [], branches: [] }, existing)
     setDraft(d)
     setName(existing?.name ?? 'New group')
@@ -39,31 +49,40 @@ export function GroupEditor({ open, config, snapshot, existing, adapter, onClose
     setFolded(new Set())
     setStatus('')
     setFailing(null)
+    setSaving(false)
+    setSearching(false)
     scan(d)
+    return () => { session.current++ }
     // A new draft only when the dialog opens.
   }, [open])
+
+  React.useEffect(() => {
+    if (failing) document.querySelector('[data-failing="true"] [role="checkbox"]')?.focus()
+  }, [failing])
 
   if (!open || !draft) return null
 
   const act = fn => { try { fn(); setStatus('') } catch (e) { setStatus(e.message) } redraw() }
   const toggleFold = repo => setFolded(prev => { const next = new Set(prev); if (!next.delete(repo)) next.add(repo); return next })
   const save = async () => {
+    const mine = session.current
     setSaving(true)
     try {
       const { config: next, group } = await draft.commit(config, name, existing, dir => adapter.resolve(dir))
-      onSaved(next, group)
+      if (mine === session.current) onSaved(next, group)
     } catch (e) {
+      if (mine !== session.current) return
       setStatus(e.message)
       setFailing(e.memberId ?? null)
     } finally {
-      setSaving(false)
+      if (mine === session.current) setSaving(false)
     }
   }
 
   const rows = draft.rows(filter, folded)
   const footer = (
     <>
-      <button className="btn sm ghost" onClick={onClose}>Cancel</button>
+      <button className="btn sm ghost" onClick={onClose} disabled={saving}>Cancel</button>
       <button className="btn sm" onClick={save} disabled={saving}>Save</button>
     </>
   )
