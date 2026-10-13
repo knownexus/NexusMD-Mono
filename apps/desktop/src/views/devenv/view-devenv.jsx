@@ -8,6 +8,7 @@ import { StartView } from './start-view.jsx'
 import { BuildsView } from './builds-view.jsx'
 import { LogsView } from './logs-view.jsx'
 import { TestsView } from './tests-view.jsx'
+import { DatabaseView } from './database-view.jsx'
 
 // A run started before the window reloaded can't be watched or answered any more (its
 // output and any open question went to the old window), so the only safe offer is Cancel.
@@ -55,7 +56,7 @@ export function DevenvView({ adapters }) {
       {tab === 'Builds' && <BuildsView adapter={adapter} />}
       {tab === 'Logs' && <LogsView adapter={adapter} />}
       {tab === 'Tests' && <TestsView adapter={adapter} picker={pickerAdapter} />}
-      {tab === 'Database' && null}
+      {tab === 'Database' && <DatabaseView adapter={adapter} />}
       {tab === 'Emulator' && null}
       {tab === 'Commands' && <CommandsView adapter={adapter} picker={pickerAdapter} />}
     </div>
