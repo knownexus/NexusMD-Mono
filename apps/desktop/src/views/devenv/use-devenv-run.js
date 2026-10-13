@@ -8,7 +8,9 @@ import {
 
 export function useDevenvRun({ adapter, config, notify }) {
   const [state, setState] = React.useState(() => createRunState())
-  const runIdRef = React.useRef(null)
+  // -1 = no run yet. Only null (a start in flight) buffers events: other screens' runs (a log
+  // follow) stream all the time, and buffering them while idle would grow without bound.
+  const runIdRef = React.useRef(-1)
   const pendingRef = React.useRef([])
   const cancelPendingRef = React.useRef(false)
   const notifyRef = React.useRef(notify)
@@ -92,6 +94,7 @@ export function useDevenvRun({ adapter, config, notify }) {
 
   const cancel = React.useCallback(async () => {
     setState(s => applyCancelRequested(s))
+    if (runIdRef.current === -1) { setState(s => ({ ...s, cancelling: false })); return }
     if (runIdRef.current === null) { cancelPendingRef.current = true; return }
     try { await adapter.cancel(runIdRef.current) } catch (e) { setState(s => ({ ...s, cancelling: false, error: e?.message || 'Cancel failed' })) }
   }, [adapter])

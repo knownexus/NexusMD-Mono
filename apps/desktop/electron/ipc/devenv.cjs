@@ -20,7 +20,7 @@ const PREFIX = '@@devenv ';
 // Files the module may open (reports, logs); never executables or scripts.
 const OPENABLE_EXTENSIONS = new Set(['.html', '.htm', '.txt', '.log', '.json', '.md', '.csv']);
 
-const QUERIES = [['status', '--json']];
+const QUERIES = [['status', '--json'], ['build', 'status', '--json'], ['logs', 'targets', '--json']];
 
 function isQuery(argv) {
   return Array.isArray(argv) && QUERIES.some(q => q.length === argv.length && q.every((a, i) => a === argv[i]));

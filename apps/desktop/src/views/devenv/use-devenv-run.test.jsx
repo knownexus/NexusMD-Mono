@@ -163,4 +163,13 @@ describe('useDevenvRun', () => {
     expect(result.current.state.cancelling).toBe(false)
     expect(result.current.state.error).toBe('cannot cancel')
   })
+
+  it('drops lines from other runs while idle instead of buffering them', async () => {
+    const a = fakeAdapter()
+    a.run = vi.fn(async () => ({ runId: 5 }))
+    const { result } = renderHook(() => useDevenvRun({ adapter: a, config: CFG }))
+    act(() => { for (let i = 0; i < 3; i++) a.emitLine({ runId: 5, stream: 'stdout', line: `old ${i}` }) })
+    await act(() => result.current.start(['status'], { exclusive: false, label: 'status' }))
+    expect(result.current.state.lines).toEqual([])
+  })
 })

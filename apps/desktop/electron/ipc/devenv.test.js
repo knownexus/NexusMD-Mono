@@ -248,9 +248,21 @@ describe('devenv ipc', () => {
     await expect(p).resolves.toHaveProperty('code', 0)
   })
 
-  it('query refuses anything but status --json', async () => {
+  it('query refuses anything outside the allowlist', async () => {
     await expect(t.handlers['devenv:query'](null, CONFIG, ['stop'])).rejects.toThrow(/Not a devenv query/)
     await expect(t.handlers['devenv:query'](null, CONFIG, ['status'])).rejects.toThrow(/Not a devenv query/)
+    await expect(t.handlers['devenv:query'](null, CONFIG, ['build', 'status'])).rejects.toThrow(/Not a devenv query/)
+    await expect(t.handlers['devenv:query'](null, CONFIG, ['logs', 'targets', '--json', 'x'])).rejects.toThrow(/Not a devenv query/)
     expect(t.deps.spawn).not.toHaveBeenCalled()
+  })
+
+  it('query allows build status and logs targets', async () => {
+    for (const argv of [['build', 'status', '--json'], ['logs', 'targets', '--json']]) {
+      const p = t.handlers['devenv:query'](null, CONFIG, argv)
+      await tick()
+      t.children.at(-1).finish(0)
+      await expect(p).resolves.toHaveProperty('code', 0)
+    }
+    expect(t.deps.spawn).toHaveBeenCalledTimes(2)
   })
 })
