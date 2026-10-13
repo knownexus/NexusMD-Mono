@@ -68,7 +68,9 @@ export function TestsView({ adapter, picker }) {
   }
   const toggle = (list, setList, key, on) => setList(on ? [...list, key] : list.filter(k => k !== key))
   const insideTicked = p => selected.some(s => s !== p && p.startsWith(`${s}/`))
-  const chooseCollection = async () => { const dir = await picker.pickDirectory(); if (dir) setCollection(dir) }
+  const chooseCollection = async () => {
+    try { const dir = await picker.pickDirectory(); if (dir) setCollection(dir) } catch (e) { setActionError(`Couldn't choose a folder: ${e?.message || e}`) }
+  }
   const openReport = path => adapter.open({ path }).catch(e => setActionError(e?.message || `Couldn't open ${path}`))
   const t = tree.data && treeFor === collection && !tree.error ? tree.data : null
   const canRun = !busy && t && !t.error

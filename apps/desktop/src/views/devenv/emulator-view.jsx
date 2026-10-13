@@ -61,9 +61,11 @@ export function EmulatorView({ adapter, picker }) {
   const addPaths = paths => setFiles(fs => [...fs, ...paths.filter(p => p && !fs.includes(p))])
   const onDrop = e => {
     e.preventDefault()
-    addPaths([...(e.dataTransfer?.files ?? [])].map(f => adapter.pathForFile(f)))
+    try { addPaths([...(e.dataTransfer?.files ?? [])].map(f => adapter.pathForFile(f))) } catch (err) { setActionError(`Couldn't add the file: ${err?.message || err}`) }
   }
-  const addFile = async () => { const p = await picker.pickFile(); if (p) addPaths([p]) }
+  const addFile = async () => {
+    try { const p = await picker.pickFile(); if (p) addPaths([p]) } catch (e) { setActionError(`Couldn't add the file: ${e?.message || e}`) }
+  }
   const alerts = [actionError, statusError, avds.error, avds.data?.error].filter(Boolean)
 
   return (

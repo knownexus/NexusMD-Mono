@@ -4,7 +4,7 @@ import path from 'path'
 import { pathToFileURL } from 'url'
 import { createReportWindows } from './report-window.cjs'
 
-function fakes() {
+function fakes({ loadRejects = false } = {}) {
   const wins = []
   class FakeWindow {
     constructor(opts) {
@@ -15,7 +15,10 @@ function fakes() {
         setWindowOpenHandler: fn => { this.openHandler = fn },
         on: (ev, fn) => { this.handlers[ev] = fn },
       }
-      this.loadFile = vi.fn()
+      this.loadFile = vi.fn(() => (loadRejects ? Promise.reject(new Error('ERR_ABORTED')) : Promise.resolve()))
+      this.minimized = false
+      this.isMinimized = () => this.minimized
+      this.restore = vi.fn()
       this.reload = vi.fn()
       this.focus = vi.fn()
       this.on = (ev, fn) => { this.handlers[`win:${ev}`] = fn }
@@ -23,8 +26,11 @@ function fakes() {
     }
     isDestroyed() { return this.destroyed }
   }
-  const shell = { openExternal: vi.fn() }
-  return { wins, shell, openReport: createReportWindows({ BrowserWindow: FakeWindow, shell }) }
+  const shell = { openExternal: vi.fn(() => Promise.resolve()) }
+  const ses = { setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn() }
+  const session = { fromPartition: vi.fn(() => ses) }
+  const log = vi.fn()
+  return { wins, shell, ses, session, log, openReport: createReportWindows({ BrowserWindow: FakeWindow, shell, session, log }) }
 }
 
 const FILE = path.resolve('C:\\repos\\dev-environment\\.local\\test\\traces\\runs\\r1\\trace.html')
@@ -34,7 +40,7 @@ describe('report windows', () => {
     const { wins, openReport } = fakes()
     openReport(FILE)
     const prefs = wins[0].opts.webPreferences
-    expect(prefs).toEqual({ sandbox: true, contextIsolation: true, nodeIntegration: false })
+    expect(prefs).toEqual({ sandbox: true, contextIsolation: true, nodeIntegration: false, partition: 'devenv-reports' })
     expect(wins[0].loadFile).toHaveBeenCalledWith(FILE)
     expect(wins[0].opts.title).toBe('trace.html')
   })
@@ -80,5 +86,41 @@ describe('report windows', () => {
     const file = { preventDefault: vi.fn() }
     nav(file, 'file:///C:/Windows/win.ini')
     expect(file.preventDefault).toHaveBeenCalled()
+  })
+
+  it('denies every permission but plain clipboard writes, installing the handlers once', () => {
+    const { ses, session, openReport } = fakes()
+    openReport(FILE)
+    openReport(path.resolve('C:\\other\\trace.html'))
+    expect(session.fromPartition).toHaveBeenCalledWith('devenv-reports')
+    expect(ses.setPermissionRequestHandler).toHaveBeenCalledTimes(1)
+    expect(ses.setPermissionCheckHandler).toHaveBeenCalledTimes(1)
+    const ask = ses.setPermissionRequestHandler.mock.calls[0][0]
+    const check = ses.setPermissionCheckHandler.mock.calls[0][0]
+    for (const [perm, ok] of [['clipboard-sanitized-write', true], ['media', false], ['geolocation', false], ['notifications', false]]) {
+      const cb = vi.fn()
+      ask({}, perm, cb)
+      expect(cb).toHaveBeenCalledWith(ok)
+      expect(check({}, perm)).toBe(ok)
+    }
+  })
+
+  it('restores a minimized report when it opens again', () => {
+    const { wins, openReport } = fakes()
+    openReport(FILE)
+    wins[0].minimized = true
+    openReport(FILE)
+    expect(wins[0].restore).toHaveBeenCalled()
+  })
+
+  it('logs a failed load instead of leaving an unhandled rejection', async () => {
+    const { log, openReport } = fakes({ loadRejects: true })
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    openReport(FILE)
+    await new Promise(r => setTimeout(r, 20))
+    process.off('unhandledRejection', unhandled)
+    expect(unhandled).not.toHaveBeenCalled()
+    expect(log).toHaveBeenCalled()
   })
 })

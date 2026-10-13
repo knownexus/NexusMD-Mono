@@ -28,6 +28,24 @@ function setup({ over = {}, emu = null, avds = AVDS(), statusFails = false } = {
 }
 
 describe('EmulatorView', () => {
+  it('shows an alert when the file picker fails and adds nothing', async () => {
+    const { picker } = setup()
+    picker.pickFile.mockRejectedValueOnce(new Error('picker down'))
+    await screen.findByTestId('drop-zone')
+    fireEvent.click(screen.getByRole('button', { name: 'Add file…' }))
+    await waitFor(() => expect(screen.getAllByRole('alert').some(a => /Couldn't add the file: picker down/.test(a.textContent))).toBe(true))
+    expect(screen.queryByText('doc.pdf')).toBeNull()
+  })
+
+  it('shows an alert when resolving a dropped file path throws and adds nothing', async () => {
+    const { adapter } = setup()
+    adapter.pathForFile.mockImplementationOnce(() => { throw new Error('no path') })
+    await screen.findByTestId('drop-zone')
+    fireEvent.drop(screen.getByTestId('drop-zone'), { dataTransfer: { files: [{ name: 'photo.jpg' }] } })
+    await waitFor(() => expect(screen.getAllByRole('alert').some(a => /Couldn't add the file: no path/.test(a.textContent))).toBe(true))
+    expect(screen.queryByText(/photo\.jpg/)).toBeNull()
+  })
+
   it('starts the chosen AVD with or without the proxy', async () => {
     const { run } = setup()
     await waitFor(() => expect(screen.getByLabelText('AVD').value).toBe('Pixel_9'))

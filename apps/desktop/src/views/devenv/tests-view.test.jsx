@@ -33,6 +33,14 @@ function setup({ over = {}, collection } = {}) {
 }
 
 describe('TestsView', () => {
+  it('shows an alert when choosing a collection folder fails', async () => {
+    const { picker } = setup()
+    picker.pickDirectory.mockRejectedValueOnce(new Error('dialog blew up'))
+    await screen.findByRole('button', { name: 'Choose collection…' })
+    fireEvent.click(screen.getByRole('button', { name: 'Choose collection…' }))
+    await waitFor(() => expect(screen.getAllByRole('alert').some(a => /Couldn't choose a folder: dialog blew up/.test(a.textContent))).toBe(true))
+  })
+
   it('starts the stack with the running APIs pre-ticked, plus any ticked', async () => {
     const { run } = setup()
     await waitFor(() => expect(screen.getByLabelText('Orders :5201').checked).toBe(true))

@@ -104,7 +104,10 @@ function register(ipcMain, deps = {}) {
   const showReport = file => {
     if (!reportWindows) {
       const { createReportWindows } = require('./report-window.cjs');
-      reportWindows = createReportWindows({ BrowserWindow: require('electron').BrowserWindow, shell });
+      const { BrowserWindow, session } = require('electron');
+      const scoped = logger?.scope?.('devenv');
+      const log = (msg, e) => scoped?.error?.(msg, e);
+      reportWindows = createReportWindows({ BrowserWindow, shell, session, log });
     }
     reportWindows(file);
   };
