@@ -161,3 +161,21 @@ Repo names are unique, compared case-insensitively. "All projects" is reserved. 
   - The poll hook skips overlapping calls and ignores stale responses.
   - The editor ticks, toggles whole repo, shows branches, saves atomically, and focuses the failing row.
 - **E2E:** a smoke test that the nav entry opens the view. It's reported as "blocked" in headless shells, per `WRITING_MODULES.md`.
+
+## Amendments made during stage 1 planning
+
+- Discovery marker rules and de-duplication live in `apps/desktop/electron/ipc/git.cjs`; Electron main is CommonJS and cannot `require()` the ESM-only `@nexusmd/core`, so there is no `packages/core/src/modules/git/discovery.js`. `uniqueName` lives in `groups.js`.
+- `discover(roots, repos)` takes registered repos as `{ name, path }` so it can report `registeredAs`.
+- New read-only operation `checkFolders(paths)` → `[{ path, exists }]`, used by the settings card to list missing search folders.
+- `IGitAdapter.version()` (async) reports whether git runs (`null` = not found); `isAvailable()` stays the synchronous desktop-bridge check, as for devenv.
+- No enable/disable toggle on the settings card: like devenv, the module is gated by the adapter and its nav entry is always present on desktop.
+- Group rename/duplicate/delete and repo registration are pure functions in `groups.js`; the group editor model is `group-draft.js`.
+
+## Decisions made during stage 1 implementation
+
+- git is spawned only by absolute path, resolved once from PATH (absolute entries only; `git.exe` then `git.com`), and main sets `NoDefaultCurrentDirectoryInExePath=1` — a bare `git` with a cwd would run a `git.exe` planted in the target folder on Windows.
+- Every git call passes `-c core.fsmonitor=false` so repo-local fsmonitor commands can't run.
+- UNC and device paths (`\server\share`, `\?\`, `//server/share`) are rejected for repos, roots and folder checks (avoids outbound SMB authentication).
+- The `registered` list is supplied by the renderer; it guards against renderer bugs and is not an authorisation boundary — the boundary is the fixed, read-only argv.
+- Accepted residual risk for stage 1: repo-local `filter.<driver>.clean/process` can still run during `git status` for stat-dirty files; stage 2's design should consider ownership / `safe.directory` checks before running status in discovered folders.
+- Settings saved by a newer NexusMD version are never overwritten (`setGitConfig` is a no-op while unsupported).
