@@ -10,7 +10,7 @@ describe('parseStatus', () => {
       '2 R. N... 100644 100644 100644 abc abc R100 new name.txt\0old name.txt\0' +
       '? unknown ü.txt\0'
     const s = parseStatus(out)
-    expect([s.branch, s.head, s.upstream, s.ahead, s.behind]).toEqual(['actual-branch', 'abc', 'origin/main', 2, 3])
+    expect([s.branch, s.head, s.upstream, s.ahead, s.behind, s.hasAb]).toEqual(['actual-branch', 'abc', 'origin/main', 2, 3, true])
     expect(s.changes.map(c => [c.area, c.path])).toEqual([
       ['staged', 'space [a].txt'], ['unstaged', 'space [a].txt'], ['staged', 'new name.txt'], ['untracked', 'unknown ü.txt'],
     ])
@@ -20,7 +20,7 @@ describe('parseStatus', () => {
 
   it('reports conflicts, a detached unborn HEAD, no upstream and leading-dash paths', () => {
     const s = parseStatus('# branch.oid (initial)\0# branch.head (detached)\0u UU N... 100644 100644 100644 100644 a b c -dash.txt\0')
-    expect([s.branch, s.upstream, s.ahead, s.behind]).toEqual(['(detached)', null, 0, 0])
+    expect([s.branch, s.upstream, s.ahead, s.behind, s.hasAb]).toEqual(['(detached)', null, 0, 0, false])
     expect(s.changes).toHaveLength(1)
     expect(s.changes[0]).toMatchObject({ area: 'conflict', path: '-dash.txt', xy: 'UU' })
   })
@@ -31,7 +31,12 @@ describe('parseStatus', () => {
   })
 
   it('returns an empty result for empty output', () => {
-    expect(parseStatus('')).toEqual({ branch: '(detached)', head: '', upstream: null, ahead: 0, behind: 0, changes: [] })
+    expect(parseStatus('')).toEqual({ branch: '(detached)', head: '', upstream: null, ahead: 0, behind: 0, hasAb: false, changes: [] })
+  })
+
+  it('reports no ahead/behind line when the configured upstream ref is gone', () => {
+    const s = parseStatus('# branch.oid abc\0# branch.head main\0# branch.upstream origin/gone\0')
+    expect([s.upstream, s.hasAb]).toEqual(['origin/gone', false])
   })
 })
 

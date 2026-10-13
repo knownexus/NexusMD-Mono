@@ -22,7 +22,8 @@ export function applyStatus(tree, s) {
   const p = parseStatus(s?.porcelain || '')
   Object.assign(tree, {
     branch: p.branch, head: p.head || tree.head, upstream: p.upstream, ahead: p.ahead, behind: p.behind, changes: p.changes,
-    upstreamGone: !!p.upstream && !s.upstreamResolves,
+    // Porcelain v2 omits branch.ab when the configured upstream ref no longer exists.
+    upstreamGone: !!p.upstream && !p.hasAb,
     operation: s.operation || '', rebasingBranch: s.rebasingBranch || null, fetchedAt: s.fetchedAt || null,
   })
   return tree

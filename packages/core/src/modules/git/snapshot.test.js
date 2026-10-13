@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { loadSnapshot, worktreeSummary } from './snapshot.js'
+import { loadSnapshot, applyStatus, worktreeSummary } from './snapshot.js'
 import { createNoOpAdapters } from '../../adapters/defaults.js'
 import { getRegistry } from '../../features/module-registry.js'
 import './index.js'
@@ -20,12 +20,29 @@ function fakeAdapter() {
       if (path.endsWith('/gone')) return { missing: true }
       return {
         porcelain: '# branch.oid a\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +1 -0\x001 .M N... 100644 100644 100644 a a f.txt\0? n.txt\0',
-        operation: '', rebasingBranch: null, fetchedAt: '2026-10-13T08:00:00.000Z', upstreamResolves: false,
+        operation: '', rebasingBranch: null, fetchedAt: '2026-10-13T08:00:00.000Z',
       }
     }),
     branches: vi.fn(async () => 'refs/heads/main\0a\0Init\0origin/main\n'),
   }
 }
+
+describe('applyStatus', () => {
+  const tree = () => ({ head: '', prunable: false, error: '' })
+  const status = porcelain => ({ porcelain, operation: '', rebasingBranch: null, fetchedAt: null })
+
+  it('marks the upstream gone when one is configured but git reports no ahead/behind', () => {
+    expect(applyStatus(tree(), status('# branch.head main\0# branch.upstream origin/main\0')).upstreamGone).toBe(true)
+  })
+
+  it('keeps the upstream when git reports ahead/behind for it', () => {
+    expect(applyStatus(tree(), status('# branch.head main\0# branch.upstream origin/main\0# branch.ab +0 -0\0')).upstreamGone).toBe(false)
+  })
+
+  it('never marks a branch without an upstream as gone', () => {
+    expect(applyStatus(tree(), status('# branch.head main\0')).upstreamGone).toBe(false)
+  })
+})
 
 describe('loadSnapshot', () => {
   it('loads every repo, keeps failures local and never reports a broken worktree as clean', async () => {
@@ -35,7 +52,7 @@ describe('loadSnapshot', () => {
     expect(s.errors).toEqual([{ repo: 'C', message: 'No repository at C:/repos/C' }])
     expect(s.worktrees.map(t => t.path)).toEqual(['C:/repos/A', 'C:/repos/A/locked', 'C:/repos/A/gone', 'C:/repos/B'])
     const [main, locked, gone] = s.worktrees
-    expect(main).toMatchObject({ branch: 'main', upstream: 'origin/main', ahead: 1, upstreamGone: true, fetchedAt: '2026-10-13T08:00:00.000Z', error: '' })
+    expect(main).toMatchObject({ branch: 'main', upstream: 'origin/main', ahead: 1, upstreamGone: false, fetchedAt: '2026-10-13T08:00:00.000Z', error: '' })
     expect(worktreeSummary(main)).toEqual({ changed: 2, staged: 0 })
     expect(locked.error).toBe('fatal: Unable to create index.lock')
     expect(gone.error).toBe('Missing worktree · stale registration')

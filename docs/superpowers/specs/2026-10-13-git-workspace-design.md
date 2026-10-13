@@ -79,9 +79,9 @@ All methods are async and take plain data. `repo` is a registered repo `{ name, 
 | Method | Main runs | Returns |
 |---|---|---|
 | `isAvailable()` | `git --version` (cached) | `boolean` |
-| `resolve(path)` | `git rev-parse --path-format=absolute --git-common-dir` in `path`, then `.git-main`, then `.bare` | `{ commonDir }` or error |
+| `resolve(path)` | `git rev-parse --path-format=absolute --git-common-dir` in `path`, then `.git-main`, then `.bare` (layout folders first when `path` has no `.git`); cached per folder for 5 s | `{ commonDir }` or error |
 | `worktrees(repo, registered)` | `git worktree list --porcelain -z` in the common dir | raw text |
-| `status(worktreePath, registered)` | `git status --porcelain=v2 --branch -z --untracked-files=all`, plus `rev-parse --git-dir` and existence checks for rebase/merge/revert/cherry-pick state files and `FETCH_HEAD` mtime | `{ porcelain, operation, rebasingBranch, fetchedAt }` |
+| `status(worktreePath, registered)` | `git status --porcelain=v2 --branch -z --untracked-files=all`, plus one `rev-parse --path-format=absolute --git-dir --git-common-dir` and existence checks for rebase/merge/revert/cherry-pick state files and `FETCH_HEAD` mtime | `{ porcelain, operation, rebasingBranch, fetchedAt }` |
 | `branches(repo, registered)` | `git for-each-ref --sort=refname --format=%(refname)%00%(objectname)%00%(subject)%00%(upstream:short) refs/heads/` | raw text |
 | `discover(roots, registered)` | Enumerate one level under each root; probe markers (`.git` dir/file, `.git-main`, `.bare`, bare `HEAD`+`objects`); `resolve` each match | `[{ name, path, commonDir }]` |
 
@@ -173,9 +173,11 @@ Repo names are unique, compared case-insensitively. "All projects" is reserved. 
 
 ## Decisions made during stage 1 implementation
 
-- git is spawned only by absolute path, resolved once from PATH (absolute entries only; `git.exe` then `git.com`), and main sets `NoDefaultCurrentDirectoryInExePath=1` — a bare `git` with a cwd would run a `git.exe` planted in the target folder on Windows.
+- git is spawned only by absolute path, resolved from PATH (absolute entries only; `git.exe` then `git.com`), and main sets `NoDefaultCurrentDirectoryInExePath=1` — a bare `git` with a cwd would run a `git.exe` planted in the target folder on Windows.
 - Every git call passes `-c core.fsmonitor=false` so repo-local fsmonitor commands can't run.
-- UNC and device paths (`\server\share`, `\?\`, `//server/share`) are rejected for repos, roots and folder checks (avoids outbound SMB authentication).
+- UNC and device paths (`\server\share`, `\?\`, `//server/share`) are rejected for repos and roots, reported as missing by folder checks, and skipped by discovery (avoids outbound SMB authentication).
+- `.git` files pointing at network paths are skipped during discovery; `include.path` to a network path remains in the accepted residual-risk class alongside filter drivers.
+- A gone upstream is detected from porcelain v2 omitting `# branch.ab` while `# branch.upstream` is present, so `status` needs no `@{upstream}` spawn. git is looked up again on PATH (quoted entries unquoted) until found, so installing it and reopening the screen works.
 - The `registered` list is supplied by the renderer; it guards against renderer bugs and is not an authorisation boundary — the boundary is the fixed, read-only argv.
 - Accepted residual risk for stage 1: repo-local `filter.<driver>.clean/process` can still run during `git status` for stat-dirty files; stage 2's design should consider ownership / `safe.directory` checks before running status in discovered folders.
 - Settings saved by a newer NexusMD version are never overwritten (`setGitConfig` is a no-op while unsupported).

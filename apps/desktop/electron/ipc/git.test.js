@@ -74,6 +74,11 @@ describe('findGit', () => {
   const env = { PATH: ['', 'relative', A, B].join(path.delimiter) }
   const exe = win ? 'git.exe' : 'git'
 
+  it('strips surrounding double quotes from PATH entries', () => {
+    const quoted = { PATH: [`"${A}"`, B].join(path.delimiter) }
+    expect(findGit(quoted, { isFile: p => p === path.join(A, exe) })).toBe(path.join(A, exe))
+  })
+
   it('ignores empty and relative PATH entries and takes the first existing file', () => {
     const seen = []
     const found = findGit(env, { isFile: p => { seen.push(p); return p === path.join(B, exe) } })
@@ -98,6 +103,16 @@ describe('git not found', () => {
     await expect(invoke('git:resolve', ROOT)).rejects.toThrow(/Git not found/)
     expect(deps.spawn).not.toHaveBeenCalled()
   })
+
+  it('looks for git again, so installing it and reopening the screen works', async () => {
+    let installed = false
+    const exe = process.platform === 'win32' ? 'git.exe' : 'git'
+    const { invoke, calls } = setup(() => ({ stdout: 'git version 2.50.0\n' }), { isFile: p => installed && p === path.join(ROOT, exe) }, { gitPath: undefined, env: { PATH: ROOT } })
+    expect(await invoke('git:version')).toBeNull()
+    installed = true
+    expect(await invoke('git:version')).toBe('git version 2.50.0')
+    expect(calls[0].cmd).toBe(path.join(ROOT, exe))
+  })
 })
 
 describe('git:worktrees and git:branches', () => {
@@ -119,6 +134,28 @@ describe('git:worktrees and git:branches', () => {
     expect(calls[1].args).toEqual(['for-each-ref', '--sort=refname', '--format=%(refname)%00%(objectname)%00%(subject)%00%(upstream:short)', 'refs/heads/'])
   })
 
+  it('resolves the common dir once per repo within the cache window', async () => {
+    let t = 0
+    const { invoke, calls, api } = setup(commonDirResponder(() => ({ stdout: '' })), {}, { now: () => t })
+    await invoke('git:worktrees', REPO, [REPO.path])
+    await invoke('git:branches', REPO, [REPO.path])
+    t = 4999
+    await invoke('git:worktrees', REPO, [REPO.path])
+    expect(calls.filter(c => c.args[0] === 'rev-parse')).toHaveLength(1)
+    t = 5000
+    await invoke('git:worktrees', REPO, [REPO.path])
+    expect(calls.filter(c => c.args[0] === 'rev-parse')).toHaveLength(2)
+    expect(api.cacheSize()).toBe(1)
+    await api.disposeAll()
+    expect(api.cacheSize()).toBe(0)
+  })
+
+  it('tries .git-main and .bare first when the folder has no .git', async () => {
+    const { invoke, calls } = setup(() => ({ stdout: `${COMMON}\n` }), { exists: () => false, isDirectory: p => !p.endsWith('.bare') })
+    await invoke('git:resolve', REPO.path)
+    expect(calls.map(c => c.opts.cwd)).toEqual([path.join(REPO.path, '.git-main')])
+  })
+
   it('rejects unregistered or relative repository paths without spawning git', async () => {
     const { invoke, deps } = setup()
     await expect(invoke('git:worktrees', { name: 'X', path: path.join(ROOT, 'Other') }, [REPO.path])).rejects.toThrow(/Not a registered repository/)
@@ -129,13 +166,11 @@ describe('git:worktrees and git:branches', () => {
 })
 
 describe('git:status', () => {
-  it('returns porcelain, the operation in progress, the rebasing branch, fetch time and the upstream check', async () => {
+  it('returns porcelain, the operation in progress, the rebasing branch and fetch time from two git processes', async () => {
     const gitDir = path.join(COMMON, 'worktrees', 'feature')
     const { invoke, calls } = setup((args) => {
       if (args[0] === 'status') return { stdout: '# branch.head x\0' }
-      if (args[2] === '--git-dir') return { stdout: `${gitDir}\n` }
-      if (args[2] === '--git-common-dir') return { stdout: `${COMMON}\n` }
-      if (args[1] === '--verify') return { code: 1 }
+      if (args[0] === 'rev-parse') return { stdout: `${gitDir}\n${COMMON}\n` }
       return { stdout: '' }
     }, {
       exists: p => p === path.join(gitDir, 'rebase-merge'),
@@ -143,8 +178,12 @@ describe('git:status', () => {
       mtime: p => p === path.join(COMMON, 'FETCH_HEAD') ? '2026-10-13T08:00:00.000Z' : null,
     })
     const result = await invoke('git:status', REPO, path.join(REPO.path, 'feature'), [REPO.path])
-    expect(result).toEqual({ porcelain: '# branch.head x\0', operation: 'Rebase in progress', rebasingBranch: 'refs/heads/feature', fetchedAt: '2026-10-13T08:00:00.000Z', upstreamResolves: false })
-    expect(calls[0].args).toEqual(['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all'])
+    expect(result).toEqual({ porcelain: '# branch.head x\0', operation: 'Rebase in progress', rebasingBranch: 'refs/heads/feature', fetchedAt: '2026-10-13T08:00:00.000Z' })
+    expect(calls.map(c => c.args)).toEqual([
+      ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all'],
+      ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'],
+    ])
+    expect(calls.some(c => c.args.includes('@{upstream}'))).toBe(false)
     expect(calls[0].opts.cwd).toBe(path.join(REPO.path, 'feature'))
   })
 
@@ -195,6 +234,19 @@ describe('remote and device paths', () => {
     await expect(invoke('git:resolve', 'relative\\repo')).rejects.toThrow(/must be an absolute path/)
   })
 
+  it('skips folders whose .git file points at a network path', async () => {
+    const dotGit = name => path.join(ROOT, name, '.git')
+    const { invoke, calls } = setup(() => ({ stdout: `${COMMON}\n` }), {
+      listDirectories: () => ['remote', 'local'],
+      exists: p => p === dotGit('remote') || p === dotGit('local'),
+      isFile: p => p === dotGit('remote') || p === dotGit('local'),
+      readText: p => p === dotGit('remote') ? 'gitdir: \\\\server\\share\\repo.git\n' : p === dotGit('local') ? `gitdir: ${COMMON}\n` : null,
+    })
+    expect((await invoke('git:discover', [ROOT], [])).map(f => f.name)).toEqual(['local'])
+    expect(calls.every(c => !c.opts.cwd.includes('remote'))).toBe(true)
+    await expect(invoke('git:resolve', path.join(ROOT, 'remote'))).rejects.toThrow("Network (UNC) paths aren't supported")
+  })
+
   it('skips them in discover roots and reports them missing in checkFolders', async () => {
     const { invoke, deps } = setup()
     expect(await invoke('git:discover', bad, [])).toEqual([])
@@ -205,7 +257,7 @@ describe('remote and device paths', () => {
 
 describe('git:discover and git:checkFolders', () => {
   it('lists repo folders one level down, skips plain folders and missing roots, de-duplicates and marks registered ones', async () => {
-    const commonFor = cwd => cwd.includes('b-repo') || cwd === REPO.path ? path.join(ROOT, 'B', '.git') : path.join(ROOT, 'A', '.git')
+    const commonFor = cwd => cwd.includes('b-repo') || cwd.startsWith(REPO.path) ? path.join(ROOT, 'B', '.git') : path.join(ROOT, 'A', '.git')
     const { invoke } = setup(
       (args, opts) => args[0] === 'rev-parse' ? { stdout: `${commonFor(opts.cwd)}\n` } : { stdout: '' },
       {

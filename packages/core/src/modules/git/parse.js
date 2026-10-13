@@ -23,7 +23,7 @@ function splitN(s, sep, n) {
  * A file changed on both the staged and unstaged side yields two changes.
  */
 export function parseStatus(output) {
-  const result = { branch: '(detached)', head: '', upstream: null, ahead: 0, behind: 0, changes: [] }
+  const result = { branch: '(detached)', head: '', upstream: null, ahead: 0, behind: 0, hasAb: false, changes: [] }
   const records = (output || '').split('\0')
   for (let i = 0; i < records.length; i++) {
     const r = records[i]
@@ -34,6 +34,7 @@ export function parseStatus(output) {
       const [ahead, behind] = r.slice(12).split(' ')
       result.ahead = Number(ahead.slice(1))
       result.behind = Number(behind.slice(1))
+      result.hasAb = true
     }
     else if (r.startsWith('? ')) result.changes.push(change(r.slice(2), null, '??', GIT_AREAS.UNTRACKED, 'N...'))
     else if (/^[12u] /.test(r)) {

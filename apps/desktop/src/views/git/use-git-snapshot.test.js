@@ -9,7 +9,7 @@ function adapterWith(resolveImpl) {
   return {
     resolve: vi.fn(resolveImpl),
     worktrees: vi.fn(async repo => `worktree ${repo.path}\x00HEAD a\x00branch refs/heads/main\x00\x00`),
-    status: vi.fn(async () => ({ porcelain: '# branch.head main\x00', operation: '', rebasingBranch: null, fetchedAt: null, upstreamResolves: true })),
+    status: vi.fn(async () => ({ porcelain: '# branch.head main\x00', operation: '', rebasingBranch: null, fetchedAt: null })),
     branches: vi.fn(async () => ''),
   }
 }

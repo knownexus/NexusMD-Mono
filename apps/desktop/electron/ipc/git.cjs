@@ -57,7 +57,9 @@ function killTree(pid) {
 function findGit(env = process.env, probe = defaultProbe()) {
   const names = process.platform === 'win32' ? ['git.exe', 'git.com'] : ['git'];
   const raw = env.PATH ?? env.Path ?? '';
-  for (const dir of String(raw).split(path.delimiter)) {
+  for (const entry of String(raw).split(path.delimiter)) {
+    // Windows PATH entries may be quoted, e.g. "C:\Program Files\Git\cmd".
+    const dir = entry.replace(/^"(.*)"$/, '$1');
     if (!dir || !path.isAbsolute(dir)) continue;
     for (const name of names) {
       const candidate = path.join(dir, name);
@@ -84,9 +86,18 @@ function defaultProbe() {
   };
 }
 
+// A `.git` file (worktree or submodule) naming a network gitdir would make git touch that host.
+function pointsAtNetwork(dir, probe) {
+  const dotGit = path.join(dir, '.git');
+  if (!probe.isFile(dotGit)) return false;
+  const m = /^gitdir:\s*(.+?)\s*$/m.exec(probe.readText?.(dotGit) || '');
+  return !!m && isRemoteOrDevicePath(m[1]);
+}
+
 // Only folders with their own markers count; otherwise every subfolder of a checkout would
 // resolve to that checkout's repository.
 function isRepositoryRoot(dir, probe) {
+  if (pointsAtNetwork(dir, probe)) return false;
   return probe.exists(path.join(dir, '.git')) ||
     probe.isDirectory(path.join(dir, '.git-main')) ||
     probe.isDirectory(path.join(dir, '.bare')) ||
@@ -101,15 +112,26 @@ function register(ipcMain, deps = {}) {
     timeoutMs = 30000,
     maxConcurrent = 6,
     logger,
+    env = process.env,
+    now = Date.now,
+    commonDirTtlMs = 5000,
   } = deps;
   process.env.NoDefaultCurrentDirectoryInExePath = '1';
-  const gitPath = deps.gitPath !== undefined ? deps.gitPath : findGit(process.env, probe);
+  let gitPath = deps.gitPath !== undefined ? deps.gitPath : findGit(env, probe);
   const handle = withLogging(ipcMain, logger);
   const running = new Set();
   const waiting = [];
+  // normalised folder → { commonDir, at }: one poll asks resolve, worktrees and branches per repo.
+  const commonDirs = new Map();
   let disposed = false;
   let active = 0;
   let version = null;
+
+  // Git is looked up again until found, so installing it and reopening the screen works.
+  function gitExecutable() {
+    if (!gitPath) gitPath = findGit(env, probe);
+    return gitPath;
+  }
 
   const acquire = () => new Promise((resolve, reject) => {
     if (disposed) { reject(new Error('Git Workspace is shutting down')); return; }
@@ -121,11 +143,12 @@ function register(ipcMain, deps = {}) {
   };
 
   async function git(cwd, args) {
-    if (!gitPath) throw new Error('Git not found');
+    const exe = gitExecutable();
+    if (!exe) throw new Error('Git not found');
     await acquire();
     try {
       return await new Promise((resolve, reject) => {
-        const child = spawn(gitPath, ['--no-pager', '-c', 'core.fsmonitor=false', ...args], { cwd, env: gitEnv(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+        const child = spawn(exe,['--no-pager', '-c', 'core.fsmonitor=false', ...args], { cwd, env: gitEnv(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
         running.add(child);
         const out = [];
         const err = [];
@@ -169,10 +192,23 @@ function register(ipcMain, deps = {}) {
   }
 
   async function resolveCommon(dir) {
-    for (const candidate of [dir, path.join(dir, '.git-main'), path.join(dir, '.bare')]) {
+    const key = normalise(dir);
+    const cached = commonDirs.get(key);
+    if (cached && now() - cached.at < commonDirTtlMs) return cached.commonDir;
+    if (pointsAtNetwork(dir, probe)) throw new Error("Network (UNC) paths aren't supported");
+    const layouts = [path.join(dir, '.git-main'), path.join(dir, '.bare')];
+    const hasDotGit = probe.exists(path.join(dir, '.git'));
+    const order = !hasDotGit && layouts.some(p => probe.isDirectory(p)) ? [...layouts, dir] : [dir, ...layouts];
+    for (const candidate of order) {
       if (!probe.isDirectory(candidate)) continue;
       const r = await git(candidate, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
-      if (r.code === 0 && r.stdout.trim()) return r.stdout.trim();
+      if (r.code === 0 && r.stdout.trim()) {
+        const commonDir = r.stdout.trim();
+        const at = now();
+        for (const [k, v] of commonDirs) if (at - v.at >= commonDirTtlMs) commonDirs.delete(k);
+        commonDirs.set(key, { commonDir, at });
+        return commonDir;
+      }
     }
     throw new Error(`No repository at ${dir} (including .git-main and .bare)`);
   }
@@ -226,14 +262,13 @@ function register(ipcMain, deps = {}) {
     if (!probe.isDirectory(worktreePath)) return { missing: true };
     const status = await git(worktreePath, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all']);
     if (status.code !== 0) return { error: status.stderr || `git status failed (exit ${status.code})` };
-    const gitDir = (await git(worktreePath, ['rev-parse', '--path-format=absolute', '--git-dir'])).stdout.trim();
-    const commonDir = (await git(worktreePath, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).stdout.trim();
-    const upstream = await git(worktreePath, ['rev-parse', '--verify', '--quiet', '@{upstream}']);
+    // A gone upstream is detected in core from the missing `# branch.ab` line, so no extra spawn.
+    const dirs = await git(worktreePath, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']);
+    const [gitDir = '', commonDir = ''] = dirs.code === 0 ? dirs.stdout.split(/\r?\n/).map(s => s.trim()) : [];
     return {
       porcelain: status.stdout,
       ...(await inProgress(gitDir)),
       fetchedAt: commonDir ? probe.mtime(path.join(commonDir, 'FETCH_HEAD')) : null,
-      upstreamResolves: upstream.code === 0,
     };
   });
 
@@ -276,8 +311,10 @@ function register(ipcMain, deps = {}) {
     (Array.isArray(paths) ? paths : []).map(p => ({ path: p, exists: typeof p === 'string' && path.isAbsolute(p) && !isRemoteOrDevicePath(p) && probe.isDirectory(p) })));
 
   return {
+    cacheSize: () => commonDirs.size,
     async disposeAll() {
       disposed = true;
+      commonDirs.clear();
       for (const w of waiting.splice(0)) w.reject(new Error('Git Workspace is shutting down'));
       const all = [...running];
       running.clear();

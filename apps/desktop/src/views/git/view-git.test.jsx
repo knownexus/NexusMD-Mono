@@ -16,7 +16,7 @@ function adapter(overrides = {}) {
       return { commonDir: `${dir}/.git` }
     }),
     worktrees: vi.fn(async repo => `worktree ${repo.path}\0HEAD a\0branch refs/heads/main\0\0`),
-    status: vi.fn(async () => ({ porcelain, operation: '', rebasingBranch: null, fetchedAt: null, upstreamResolves: true })),
+    status: vi.fn(async () => ({ porcelain, operation: '', rebasingBranch: null, fetchedAt: null })),
     branches: vi.fn(async () => ''),
     discover: vi.fn(async () => []),
     ...overrides,

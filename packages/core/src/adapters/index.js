@@ -165,6 +165,7 @@ export const IGitAdapter = {
   version:      async () => null,
   resolve:      async (dir) => Promise.reject(new Error('IGitAdapter.resolve not implemented')),
   worktrees:    async (repo, registered) => Promise.reject(new Error('IGitAdapter.worktrees not implemented')),
+  // → { porcelain, operation, rebasingBranch, fetchedAt } | { missing: true } | { error }
   status:       async (repo, worktreePath, registered) => Promise.reject(new Error('IGitAdapter.status not implemented')),
   branches:     async (repo, registered) => Promise.reject(new Error('IGitAdapter.branches not implemented')),
   discover:     async (roots, repos) => [],
