@@ -15,6 +15,8 @@ export {
   uniqueName, groupNameError, renameGroup, duplicateGroup, deleteGroup, registerRepo, unregisterRepo,
 } from './groups.js'
 
+export { GroupDraft, GroupSaveError } from './group-draft.js'
+
 let _adapter = null
 
 export function getGitAdapter() {

@@ -92,4 +92,5 @@ export {
   loadSnapshot, applyStatus, worktreeSummary,
   ALL_PROJECTS, findGroup, groupIncludesWorktree, groupIncludesBranch, scopeSnapshot, changeCount,
   uniqueName, groupNameError, renameGroup, duplicateGroup, deleteGroup, registerRepo, unregisterRepo,
+  GroupDraft, GroupSaveError,
 } from './modules/git/index.js'
