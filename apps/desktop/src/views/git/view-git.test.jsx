@@ -2,9 +2,10 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, within, waitFor } from '@testing-library/react'
 import { ViewGit } from './view-git.jsx'
 import { setGitConfig, getGitConfig } from '../../git-config.js'
+import { clearGitSnapshotCache } from './use-git-snapshot.js'
 
 afterEach(cleanup)
-beforeEach(() => localStorage.clear())
+beforeEach(() => { localStorage.clear(); clearGitSnapshotCache() })
 
 const porcelain = '# branch.oid a\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +1 -0\x001 .M N... 100644 100644 100644 a a f.txt\0'
 function adapter(overrides = {}) {

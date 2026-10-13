@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor, act, cleanup } from '@testing-library/react'
-import { useGitSnapshot } from './use-git-snapshot.js'
+import { useGitSnapshot, clearGitSnapshotCache } from './use-git-snapshot.js'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); clearGitSnapshotCache() })
 
 const repos = [{ name: 'A', path: 'C:/repos/A' }]
 function adapterWith(resolveImpl) {
@@ -62,5 +62,30 @@ describe('useGitSnapshot', () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
     await act(async () => { result.current.refresh() })
     expect(adapter.resolve).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows the last snapshot immediately when the screen is reopened, then refreshes quietly', async () => {
+    const adapter = adapterWith(async dir => ({ commonDir: `${dir}/.git` }))
+    const first = renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null }))
+    await waitFor(() => expect(first.result.current.snapshot?.worktrees).toHaveLength(1))
+    const cached = first.result.current.snapshot
+    first.unmount()
+    const pending = deferred()
+    adapter.resolve.mockImplementation(() => pending.promise)
+    const second = renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null }))
+    expect(second.result.current.snapshot).toBe(cached)
+    expect(second.result.current.loading).toBe(false)
+    await act(async () => { pending.resolve({ commonDir: 'refreshed' }) })
+    await waitFor(() => expect(second.result.current.snapshot.worktrees[0].commonDir).toBe('refreshed'))
+  })
+
+  it('starts empty when the registered repos changed since the last visit', async () => {
+    const adapter = adapterWith(async dir => ({ commonDir: `${dir}/.git` }))
+    const first = renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null }))
+    await waitFor(() => expect(first.result.current.snapshot).not.toBeNull())
+    first.unmount()
+    adapter.resolve.mockImplementation(() => new Promise(() => {}))
+    const other = renderHook(() => useGitSnapshot({ adapter, repos: [...repos, { name: 'B', path: 'C:/repos/B' }], intervalMs: null }))
+    expect(other.result.current.snapshot).toBeNull()
   })
 })
