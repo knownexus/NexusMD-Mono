@@ -3,7 +3,7 @@ import { renderHook, act, cleanup, waitFor } from '@testing-library/react'
 import { useDevenvQuery } from './use-devenv-query.js'
 
 afterEach(cleanup)
-const CFG = { root: 'C:\repos\dev-environment', pwsh: 'pwsh', profile: '' }
+const CFG = { root: 'C:\\repos\\dev-environment', pwsh: 'pwsh', profile: '' }
 const ARGV = ['build', 'status', '--json']
 
 describe('useDevenvQuery', () => {
