@@ -7,6 +7,7 @@ import { StatusView } from './status-view.jsx'
 import { StartView } from './start-view.jsx'
 import { BuildsView } from './builds-view.jsx'
 import { LogsView } from './logs-view.jsx'
+import { TestsView } from './tests-view.jsx'
 
 // A run started before the window reloaded can't be watched or answered any more (its
 // output and any open question went to the old window), so the only safe offer is Cancel.
@@ -22,7 +23,7 @@ function LeftoverRunsBanner({ leftover }) {
   )
 }
 
-const TABS = ['Status', 'Start', 'Builds', 'Logs', 'Commands']
+const TABS = ['Status', 'Start', 'Builds', 'Logs', 'Tests', 'Database', 'Emulator', 'Commands']
 const tabKey = () => getProfileKey('devenv.tab')
 
 function useTab() {
@@ -33,7 +34,7 @@ function useTab() {
   return [tab, choose]
 }
 
-// Tests, Database, Emulator, Mac and Profile tabs join these in later phases
+// Mac and Profile tabs join these in later phases
 // (docs/superpowers/specs/2026-10-08-devenv-module-design.md).
 export function DevenvView({ adapters }) {
   const adapter = adapters.devenv
@@ -53,6 +54,9 @@ export function DevenvView({ adapters }) {
       {tab === 'Start' && <StartView />}
       {tab === 'Builds' && <BuildsView adapter={adapter} />}
       {tab === 'Logs' && <LogsView adapter={adapter} />}
+      {tab === 'Tests' && <TestsView adapter={adapter} picker={pickerAdapter} />}
+      {tab === 'Database' && null}
+      {tab === 'Emulator' && null}
       {tab === 'Commands' && <CommandsView adapter={adapter} picker={pickerAdapter} />}
     </div>
   )
