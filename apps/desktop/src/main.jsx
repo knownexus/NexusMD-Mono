@@ -38,6 +38,7 @@ import { PersonSummary, PersonActions } from './person-summary.jsx'
 import DesktopNotesView from './desktop-notes-view.jsx'
 import { CalendarView } from './views/view-calendar.jsx'
 import { DevenvView } from './views/devenv/view-devenv.jsx'
+import { ViewGit } from './views/git/view-git.jsx'
 import { DevenvRunProvider } from './views/devenv/devenv-run-context.jsx'
 import { createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
@@ -608,6 +609,8 @@ function ViewBody({
         />
       )
     case 'devenv':
+    case 'git':
+      return <ViewGit adapters={adapters} />
       return <DevenvView adapters={adapters} />
     case 'settings':
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}

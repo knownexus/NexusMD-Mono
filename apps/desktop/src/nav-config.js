@@ -16,6 +16,7 @@ export const NAV = [
   { id: 'api-client', label: 'API Client',   icon: 'link' },
   { id: 'db-manager', label: 'Database',     icon: 'database' },
   { id: 'devenv',    label: 'Dev Environment', icon: 'build' },
+  { id: 'git',       label: 'Git Workspace',  icon: 'git-branch' },
 ]
 
 export const SETTINGS_NAV = { id: 'settings', label: 'Settings', icon: 'settings' }
