@@ -153,6 +153,8 @@ export const IDevenvAdapter = {
   active:  async () => [],
   // Read-only devenv questions (status) — never queued behind a running command.
   query:   async (config, argv) => ({ code: -1, results: [], stderr: 'not available' }),
+  // The file-system path of a File dropped on the window ('' when unknown).
+  pathForFile: (file) => '',
   onLine:  (cb) => () => {},
   onExit:  (cb) => () => {},
 }

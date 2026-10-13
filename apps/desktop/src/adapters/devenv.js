@@ -12,6 +12,7 @@ export const devenvAdapter = {
   open(target) { return api().open(target) },
   active() { return api().active() },
   query(config, argv) { return api().query(config, argv) },
+  pathForFile(file) { return api()?.pathForFile?.(file) || '' },
   onLine(cb) { return api()?.onLine(cb) ?? (() => {}) },
   onExit(cb) { return api()?.onExit(cb) ?? (() => {}) },
 }

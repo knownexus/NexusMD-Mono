@@ -26,6 +26,7 @@ function setup(extra = {}) {
     kill: vi.fn(async () => {}),
     send: (channel, msg) => sent.push({ channel, msg }),
     shell: { openExternal: vi.fn(async () => {}), openPath: vi.fn(async () => '') },
+    openReport: vi.fn(),
     fileExists: () => true,
     logger: { scope: () => ({ error: (...a) => logged.push(a), info: () => {} }) },
     ...extra,
@@ -170,19 +171,19 @@ describe('devenv ipc', () => {
     expect(t.deps.shell.openExternal).toHaveBeenCalledWith('http://127.0.0.1:5280/?token=x')
     await expect(t.handlers['devenv:open'](null, { url: 'file:///C:/x' })).rejects.toThrow(/http/)
     await t.handlers['devenv:open'](null, { path: 'C:\\r\\trace.html' })
-    expect(t.deps.shell.openPath).toHaveBeenCalledWith('C:\\r\\trace.html')
+    expect(t.deps.openReport).toHaveBeenCalledWith('C:\\r\\trace.html')
     await expect(t.handlers['devenv:open'](null, { path: 'rel\\x.html' })).rejects.toThrow(/Not found/)
   })
 
   it('refuses to open executables and scripts, but opens folders and reports', async () => {
     const t2 = setup({ isDirectory: p => p === 'C:\\r\\folder' })
     await t2.handlers['devenv:open'](null, { path: 'C:\\r\\TRACE.HTML' })
-    expect(t2.deps.shell.openPath).toHaveBeenCalledWith('C:\\r\\TRACE.HTML')
+    expect(t2.deps.openReport).toHaveBeenCalledWith('C:\\r\\TRACE.HTML')
     await t2.handlers['devenv:open'](null, { path: 'C:\\r\\folder' })
     expect(t2.deps.shell.openPath).toHaveBeenCalledWith('C:\\r\\folder')
     await expect(t2.handlers['devenv:open'](null, { path: 'C:\\tools\\evil.exe' })).rejects.toThrow(/Refusing to open/)
     await expect(t2.handlers['devenv:open'](null, { path: 'C:\\tools\\x.ps1' })).rejects.toThrow(/Refusing to open/)
-    expect(t2.deps.shell.openPath).toHaveBeenCalledTimes(2)
+    expect(t2.deps.shell.openPath).toHaveBeenCalledTimes(1)
   })
 
   it('catalog times out, kills the process and rejects', async () => {
@@ -253,7 +254,36 @@ describe('devenv ipc', () => {
     await expect(t.handlers['devenv:query'](null, CONFIG, ['status'])).rejects.toThrow(/Not a devenv query/)
     await expect(t.handlers['devenv:query'](null, CONFIG, ['build', 'status'])).rejects.toThrow(/Not a devenv query/)
     await expect(t.handlers['devenv:query'](null, CONFIG, ['logs', 'targets', '--json', 'x'])).rejects.toThrow(/Not a devenv query/)
+    for (const argv of [
+      ['test', 'collection', '--json', '--collection', 'relative\\dir'],
+      ['test', 'collection', '--json', '--collection', '-x'],
+      ['test', 'collection', '--json', '--collection'],
+      ['db', 'sql', '--json'],
+    ]) await expect(t.handlers['devenv:query'](null, CONFIG, argv)).rejects.toThrow(/Not a devenv query/)
     expect(t.deps.spawn).not.toHaveBeenCalled()
+  })
+
+  it('query allows the phase 4 data commands and a collection folder', async () => {
+    const ok = [
+      ['test', 'runs', '--json'], ['test', 'collection', '--json'],
+      ['test', 'collection', '--json', '--collection', 'C:\\My Tests\\collection'],
+      ['db', 'baselines', '--json'], ['db', 'scripts', '--json'], ['emulator', 'avds', '--json'],
+    ]
+    for (const argv of ok) {
+      const p = t.handlers['devenv:query'](null, CONFIG, argv)
+      await tick()
+      t.children.at(-1).finish(0)
+      await expect(p).resolves.toHaveProperty('code', 0)
+    }
+    expect(t.deps.spawn).toHaveBeenCalledTimes(ok.length)
+  })
+
+  it('opens html reports in a report window and other files with the default app', async () => {
+    await t.handlers['devenv:open'](null, { path: 'C:\\r\\trace.html' })
+    expect(t.deps.openReport).toHaveBeenCalledWith('C:\\r\\trace.html')
+    expect(t.deps.shell.openPath).not.toHaveBeenCalled()
+    await t.handlers['devenv:open'](null, { path: 'C:\\r\\out.log' })
+    expect(t.deps.shell.openPath).toHaveBeenCalledWith('C:\\r\\out.log')
   })
 
   it('query allows build status and logs targets', async () => {

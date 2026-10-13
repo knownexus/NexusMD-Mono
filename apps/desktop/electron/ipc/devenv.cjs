@@ -20,10 +20,20 @@ const PREFIX = '@@devenv ';
 // Files the module may open (reports, logs); never executables or scripts.
 const OPENABLE_EXTENSIONS = new Set(['.html', '.htm', '.txt', '.log', '.json', '.md', '.csv']);
 
-const QUERIES = [['status', '--json'], ['build', 'status', '--json'], ['logs', 'targets', '--json']];
+const QUERIES = [
+  ['status', '--json'], ['build', 'status', '--json'], ['logs', 'targets', '--json'],
+  ['test', 'runs', '--json'], ['test', 'collection', '--json'],
+  ['db', 'baselines', '--json'], ['db', 'scripts', '--json'], ['emulator', 'avds', '--json'],
+];
+// Queries that end with one folder: an absolute path, never something devenv would read as an option.
+const FOLDER_QUERIES = [['test', 'collection', '--json', '--collection']];
 
 function isQuery(argv) {
-  return Array.isArray(argv) && QUERIES.some(q => q.length === argv.length && q.every((a, i) => a === argv[i]));
+  if (!Array.isArray(argv) || argv.some(a => typeof a !== 'string')) return false;
+  const starts = q => q.every((a, i) => a === argv[i]);
+  if (QUERIES.some(q => q.length === argv.length && starts(q))) return true;
+  return FOLDER_QUERIES.some(q => q.length + 1 === argv.length && starts(q)
+    && path.isAbsolute(argv[q.length]) && !argv[q.length].startsWith('-'));
 }
 
 function killTree(pid) {
@@ -87,7 +97,17 @@ function register(ipcMain, deps = {}) {
     catalogTimeoutMs = 30000,
     exitGraceMs = 2000,
     logger,
+    openReport,
   } = deps;
+  // Created on first use so tests and non-Electron loads never require `electron` for it.
+  let reportWindows = openReport;
+  const showReport = file => {
+    if (!reportWindows) {
+      const { createReportWindows } = require('./report-window.cjs');
+      reportWindows = createReportWindows({ BrowserWindow: require('electron').BrowserWindow, shell });
+    }
+    reportWindows(file);
+  };
   const handle = withLogging(ipcMain, logger);
   const runs = new Map();
   const collectors = new Set();
@@ -230,6 +250,7 @@ function register(ipcMain, deps = {}) {
       if (!path.isAbsolute(target.path) || !fileExists(target.path)) throw new Error(`Not found: ${target.path}`);
       const ext = path.extname(target.path).toLowerCase();
       if (!OPENABLE_EXTENSIONS.has(ext) && !isDirectory(target.path)) throw new Error(`Refusing to open ${target.path}`);
+      if (ext === '.html' || ext === '.htm') { showReport(target.path); return { ok: true }; }
       const error = await shell.openPath(target.path);
       if (error) throw new Error(error);
       return { ok: true };

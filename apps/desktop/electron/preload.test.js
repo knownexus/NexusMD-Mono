@@ -12,6 +12,7 @@ beforeAll(() => {
   const fakeElectron = {
     contextBridge: { exposeInMainWorld: (_name, obj) => { exposed = obj } },
     ipcRenderer,
+    webUtils: { getPathForFile: vi.fn(() => 'C:\\Users\\me\\photo.jpg') },
   }
   Module.prototype.require = function (id) {
     if (id === 'electron') return fakeElectron
@@ -78,6 +79,10 @@ describe('preload bridge', () => {
     const cfg = { root: 'C:\\repos\\dev-environment', pwsh: 'pwsh', profile: '' }
     exposed.devenv.query(cfg, ['status', '--json'])
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:query', cfg, ['status', '--json'])
+  })
+
+  it('exposes devenv.pathForFile through webUtils', () => {
+    expect(exposed.devenv.pathForFile({ name: 'photo.jpg' })).toBe('C:\\Users\\me\\photo.jpg')
   })
 
   it('devenv.onLine / onExit subscribe and return an unsubscribe', () => {

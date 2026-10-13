@@ -1,6 +1,6 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 // Expose a safe, narrow API to the renderer process.
 // The React SPA can call window.electronAPI.* for native features.
@@ -220,6 +220,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     open:    (target) => ipcRenderer.invoke('devenv:open', target),
     active:  () => ipcRenderer.invoke('devenv:active'),
     query:   (config, argv) => ipcRenderer.invoke('devenv:query', config, argv),
+    // Dropped File objects have no path in the renderer since Electron 32; webUtils resolves it here.
+    pathForFile: (file) => webUtils.getPathForFile(file),
     onLine: (callback) => {
       const handler = (_event, msg) => callback(msg);
       ipcRenderer.on('devenv:line', handler);
