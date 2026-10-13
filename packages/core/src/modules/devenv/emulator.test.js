@@ -7,6 +7,9 @@ describe('normaliseAvds', () => {
       .toEqual({ avds: ['Pixel_9'], default: 'Pixel_9', error: null })
     expect(normaliseAvds({ kind: 'emulator-avds', avds: [], default: null, error: 'no SDK' }).error).toBe('no SDK')
   })
+  it('drops names that look like options', () => {
+    expect(normaliseAvds({ kind: 'emulator-avds', avds: ['-x', 'Pixel_9'], default: null, error: null }).avds).toEqual(['Pixel_9'])
+  })
   it('rejects other results', () => { expect(() => normaliseAvds({ kind: 'x' })).toThrow('Not a devenv emulator-avds result') })
 })
 
@@ -28,6 +31,8 @@ describe('buildEmulatorArgv', () => {
     expect(() => buildEmulatorArgv({ kind: 'push', paths: ['C:\\a'], dest: '/data/x' })).toThrow(/sdcard/)
     expect(() => buildEmulatorArgv({ kind: 'start', avd: 'a b' })).toThrow()
     expect(() => buildEmulatorArgv({ kind: 'create' })).toThrow()
+    expect(() => buildEmulatorArgv({ kind: 'start', avd: '--no-proxy' })).toThrow()
+    expect(() => buildEmulatorArgv({ kind: 'create', avd: '-x' })).toThrow()
     expect(() => buildEmulatorArgv({ kind: 'nope' })).toThrow()
   })
 })

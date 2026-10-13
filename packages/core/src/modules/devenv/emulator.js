@@ -3,7 +3,8 @@
 // The Emulator tab's model: devenv's AVD list and the argv for each emulator action, with
 // devenv's own rules (AVD names, push destinations under /sdcard or /storage).
 
-const AVD = /^[A-Za-z0-9_.-]+$/
+// No leading '-': devenv would read the name as an option.
+const AVD = /^[A-Za-z0-9_.][A-Za-z0-9_.-]*$/
 const str = v => (typeof v === 'string' && v ? v : null)
 
 export function normaliseAvds(result) {
