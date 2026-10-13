@@ -38,6 +38,7 @@ import { PersonSummary, PersonActions } from './person-summary.jsx'
 import DesktopNotesView from './desktop-notes-view.jsx'
 import { CalendarView } from './views/view-calendar.jsx'
 import { DevenvView } from './views/devenv/view-devenv.jsx'
+import { ViewGit } from './views/git/view-git.jsx'
 import { DevenvRunProvider } from './views/devenv/devenv-run-context.jsx'
 import { createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
@@ -54,6 +55,7 @@ import { scriptRunnerAdapter }  from './adapters/scriptRunner.js'
 import { rawHttpAdapter }       from './adapters/rawHttp.js'
 import { dbManagerAdapter }     from './adapters/db-manager.js'
 import { devenvAdapter }        from './adapters/devenv.js'
+import { gitAdapter }           from './adapters/git.js'
 import { listSavedConnections, getConnectionSecret } from './db-manager-config.js'
 
 const adapters = {
@@ -84,6 +86,8 @@ const adapters = {
   dbManager:     dbManagerAdapter,
   // Desktop-only — runs pwsh in the main process; gates the devenv module.
   devenv:        devenvAdapter,
+  // Desktop-only — runs git in the main process; gates the git module.
+  git:           gitAdapter,
 }
 
 const NEXUSMD_THEMES = [
@@ -606,6 +610,8 @@ function ViewBody({
       )
     case 'devenv':
       return <DevenvView adapters={adapters} />
+    case 'git':
+      return <ViewGit adapters={adapters} />
     case 'settings':
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
         nav={NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder}

@@ -6,7 +6,7 @@ export {
   ISecureStorageAdapter, INetworkAdapter, ILifecycleAdapter, IShareAdapter,
   ITrayAdapter, INavigationAdapter, IThemeAdapter, IUpdateAdapter,
   IBadgeAdapter, IDeepLinkAdapter, IScriptRunnerAdapter, IRawHttpAdapter,
-  IDbManagerAdapter, IDevenvAdapter,
+  IDbManagerAdapter, IDevenvAdapter, IGitAdapter,
 } from './adapters/index.js'
 export { createNoOpAdapters } from './adapters/defaults.js'
 export {
@@ -86,3 +86,11 @@ export {
   normaliseBuilds, buildBuildArgv, DEVENV_MOBILE_ABIS, DEVENV_DEPLOY_MODES,
   normaliseLogTargets, classifyLogLevel, filterLogLines, captureFolder, DEVENV_CAPTURE_SINCE,
 } from './modules/devenv/index.js'
+export {
+  getGitAdapter, GIT_AREAS, parseStatus, parseWorktrees, parseBranches, statusCode,
+  worktreeId, worktreeName, activeBranchRef, branchLabel,
+  loadSnapshot, applyStatus, worktreeSummary,
+  ALL_PROJECTS, findGroup, groupIncludesWorktree, groupIncludesBranch, scopeSnapshot, changeCount,
+  uniqueName, groupNameError, renameGroup, duplicateGroup, deleteGroup, registerRepo, unregisterRepo,
+  GroupDraft, GroupSaveError,
+} from './modules/git/index.js'
