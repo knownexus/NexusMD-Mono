@@ -31,6 +31,8 @@ const WARN = /\b(warn|warning|wrn)\b/i
 
 export function classifyLogLevel(text) {
   const t = stripAnsi(text ?? '')
+  // MSBuild's success summary ("0 Error(s)") names the words but reports none.
+  if (/^\s*0 (Warning|Error)\(s\)\s*$/i.test(t)) return null
   if (ERROR.test(t)) return 'error'
   if (WARN.test(t)) return 'warn'
   return null

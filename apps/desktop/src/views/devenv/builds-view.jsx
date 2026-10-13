@@ -51,6 +51,8 @@ export function BuildsView({ adapter }) {
 
       {problem && <div className="card" role="alert" style={{ padding: 10, color: 'var(--danger)' }}>{problem}</div>}
 
+      {loading && !data && <div style={{ color: 'var(--text-muted)' }}>Loading build status…</div>}
+
       {data && (
         <div className="card" style={{ padding: 12, display: 'grid', gridTemplateColumns: 'minmax(100px,auto) 1fr 1fr auto auto', gap: '6px 12px', alignItems: 'center' }}>
           {data.apis.map(a => (
@@ -58,10 +60,10 @@ export function BuildsView({ adapter }) {
               <strong>{a.label}</strong>
               <Source item={a} />
               <span>{builtText(a.built)}</span>
-              <span className={`chip ${a.upToDate ? 'done' : 'failed'}`}>{a.upToDate ? 'Up to date' : 'Needs a build'}</span>
+              <span className={`chip ${a.upToDate ? 'done' : 'failed'}`}>{a.error ? 'Unavailable' : a.upToDate ? 'Up to date' : 'Needs a build'}</span>
               <span style={{ display: 'flex', gap: 6 }}>
-                <button className="btn sm" disabled={busy} aria-label={`Build ${a.label}`} onClick={() => go({ kind: 'api', key: a.key })}>Build</button>
-                <button className="btn sm ghost" disabled={busy} aria-label={`Clean rebuild ${a.label}`} onClick={() => go({ kind: 'api', key: a.key, clean: true })}>Clean rebuild</button>
+                <button className="btn sm" disabled={busy || !!a.error} aria-label={`Build ${a.label}`} onClick={() => go({ kind: 'api', key: a.key })}>Build</button>
+                <button className="btn sm ghost" disabled={busy || !!a.error} aria-label={`Clean rebuild ${a.label}`} onClick={() => go({ kind: 'api', key: a.key, clean: true })}>Clean rebuild</button>
               </span>
             </React.Fragment>
           ))}

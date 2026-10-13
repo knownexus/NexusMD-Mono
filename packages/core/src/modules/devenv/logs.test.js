@@ -28,6 +28,11 @@ describe('classifyLogLevel', () => {
     expect(classifyLogLevel('info: started')).toBeNull()
     expect(classifyLogLevel('terrorist')).toBeNull()
   })
+  it('does not flag the MSBuild zero-count summary lines', () => {
+    expect(classifyLogLevel('    0 Error(s)')).toBeNull()
+    expect(classifyLogLevel('    0 Warning(s)')).toBeNull()
+    expect(classifyLogLevel('    3 Error(s)')).toBe('error')
+  })
 })
 
 describe('filterLogLines', () => {

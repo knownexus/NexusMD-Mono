@@ -24,6 +24,23 @@ describe('LogPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
     expect(onStop).toHaveBeenCalled()
   })
+  it('keeps scrolling to the newest line once the line cap is reached', () => {
+    const make = tag => Array.from({ length: 5000 }, (_, i) => ({ stream: 'stdout', text: `${tag} ${i}` }))
+    const sets = []
+    const proto = HTMLPreElement.prototype
+    Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => 1000 })
+    Object.defineProperty(proto, 'scrollTop', { configurable: true, get: () => 0, set: v => { sets.push(v) } })
+    try {
+      const { rerender } = render(<LogPanel state={state({ lines: make('a') })} filter="" onStop={() => {}} />)
+      const before = sets.length
+      expect(before).toBeGreaterThan(0)
+      rerender(<LogPanel state={state({ lines: make('b') })} filter="" onStop={() => {}} />)
+      expect(sets.length).toBeGreaterThan(before)
+    } finally {
+      delete proto.scrollHeight
+      delete proto.scrollTop
+    }
+  })
   it('has no Stop once finished', () => {
     render(<LogPanel state={state({ lines, status: 'done', exitCode: 0 })} filter="" onStop={() => {}} />)
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()

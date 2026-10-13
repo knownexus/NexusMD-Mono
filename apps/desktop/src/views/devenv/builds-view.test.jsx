@@ -29,6 +29,27 @@ describe('BuildsView', () => {
     expect(screen.getByText('never built')).toBeTruthy()
   })
 
+  it('marks a row with a source error unavailable and disables its build buttons', async () => {
+    setup([ORDERS, GONE])
+    await screen.findByText('Orders')
+    expect(screen.getByText('Unavailable')).toBeTruthy()
+    expect(screen.queryByText('Needs a build')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Build Gone' }).disabled).toBe(true)
+    expect(screen.getByRole('button', { name: 'Clean rebuild Gone' }).disabled).toBe(true)
+    expect(screen.getByRole('button', { name: 'Build Orders' }).disabled).toBe(false)
+  })
+
+  it('shows a loading line until the build status arrives', async () => {
+    globalThis.__run = { state: createRunState(), start: vi.fn(), cancel: vi.fn(), config: CFG }
+    let release
+    const adapter = { query: vi.fn(() => new Promise(resolve => { release = () => resolve(builds([ORDERS])) })) }
+    render(<BuildsView adapter={adapter} />)
+    expect(screen.getByText('Loading build status…')).toBeTruthy()
+    release()
+    await screen.findByText('Orders')
+    expect(screen.queryByText('Loading build status…')).toBeNull()
+  })
+
   it('builds, clean-rebuilds and builds all through the provider run', async () => {
     const { run } = setup([ORDERS])
     await screen.findByText('Orders')
