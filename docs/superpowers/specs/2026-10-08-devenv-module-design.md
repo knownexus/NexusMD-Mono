@@ -158,3 +158,12 @@ All under the **Dev Environment** nav entry.
 - The plan form and branch picker are dialogs rendered by the run provider (so they appear on any screen); the Start tab launches the run and shows its progress and summary.
 - Status, Start and Commands are the Dev Environment tabs in this phase; Status is the default.
 - The status hook survives React StrictMode's dev double-mount and only the newest status request may update the view.
+
+## Amendments made during Phase 3 planning
+
+- Builds reads `devenv build status --json` (result kind `builds`) from the `build-commit.txt` / `build-mode.json` / `ios-build-commit.txt` files devenv writes after each build, not from the lock file; "up to date" uses the start plan's rule (clean worktree, clean build, same commit).
+- `build <api>` and `build apis` gained `--clean` (delete the project's bin/obj first, as the start plan's clean rebuild does).
+- Logs reads its target list from `devenv logs targets --json` (result kind `log-targets`), so devenv owns the mapping from a log to the command that shows it; `logs capture` emits a `capture` result with the folder.
+- `devenv:query` allowlists `status --json`, `build status --json` and `logs targets --json`.
+- The Logs tab owns its own non-exclusive run beside the provider's run; a follow is cancelled when another log is shown and when the tab is left. Builds use the provider's run.
+- Status, Start, Builds, Logs and Commands are the Dev Environment tabs in this phase.

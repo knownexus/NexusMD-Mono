@@ -6,6 +6,7 @@ import { getProfileKey } from '../../profile-keys.js'
 import { StatusView } from './status-view.jsx'
 import { StartView } from './start-view.jsx'
 import { BuildsView } from './builds-view.jsx'
+import { LogsView } from './logs-view.jsx'
 
 // A run started before the window reloaded can't be watched or answered any more (its
 // output and any open question went to the old window), so the only safe offer is Cancel.
@@ -51,8 +52,8 @@ export function DevenvView({ adapters }) {
       {tab === 'Status' && <StatusView adapter={adapter} onStart={() => setTab('Start')} />}
       {tab === 'Start' && <StartView />}
       {tab === 'Builds' && <BuildsView adapter={adapter} />}
-      {tab === 'Logs' && null}
-      {tab === 'Commands' &&<CommandsView adapter={adapter} picker={pickerAdapter} />}
+      {tab === 'Logs' && <LogsView adapter={adapter} />}
+      {tab === 'Commands' && <CommandsView adapter={adapter} picker={pickerAdapter} />}
     </div>
   )
 }
