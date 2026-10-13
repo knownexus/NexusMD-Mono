@@ -63,6 +63,39 @@ describe('LogsView', () => {
     expect(adapter.run).toHaveBeenLastCalledWith(CFG, ['backend', 'logs', 'storage'], { exclusive: false, label: 'devenv backend logs storage' })
   })
 
+  it('does not wait for the old follow to die before showing another target', async () => {
+    const { adapter } = setup()
+    await screen.findByRole('option', { name: 'Orders' })
+    pick('backend:orders')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show' })) })
+    adapter.cancel.mockImplementation(() => new Promise(() => {}))
+    pick('backend:storage')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show' })) })
+    expect(adapter.run).toHaveBeenCalledTimes(2)
+    expect(adapter.run).toHaveBeenLastCalledWith(CFG, ['backend', 'logs', 'storage'], { exclusive: false, label: 'devenv backend logs storage' })
+  })
+
+  it('kills a follow that finishes starting after the tab was left', async () => {
+    const { adapter, view } = setup()
+    await screen.findByRole('option', { name: 'Orders' })
+    pick('backend:orders')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show' })) })
+    let release
+    adapter.run.mockImplementationOnce(() => new Promise(resolve => { release = () => resolve({ runId: 77 }) }))
+    pick('backend:storage')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show' })) })
+    view.unmount()
+    await act(async () => { release() })
+    await waitFor(() => expect(adapter.cancel).toHaveBeenCalledWith(77))
+  })
+
+  it('shows a loading line until the targets arrive', async () => {
+    setup()
+    expect(screen.getByText('Loading logs…')).toBeTruthy()
+    await screen.findByRole('option', { name: 'Orders' })
+    expect(screen.queryByText('Loading logs…')).toBeNull()
+  })
+
   it('ignores a second Show while a start is in flight', async () => {
     const { adapter } = setup()
     await screen.findByRole('option', { name: 'Orders' })

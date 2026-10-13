@@ -28,7 +28,12 @@ export function LogsView({ adapter }) {
   activeRef.current = ACTIVE.includes(logs.state.status)
   const cancelRef = React.useRef(logs.cancel)
   cancelRef.current = logs.cancel
-  React.useEffect(() => () => { if (activeRef.current) cancelRef.current() }, [])
+  // Re-armed in the effect body so StrictMode's mount/cleanup/mount cycle leaves it true.
+  const mountedRef = React.useRef(false)
+  React.useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false; if (activeRef.current) cancelRef.current() }
+  }, [])
 
   // A second start while the first is still resolving its run id could not cancel it, leaking the process.
   const startingRef = React.useRef(false)
@@ -38,8 +43,13 @@ export function LogsView({ adapter }) {
     startingRef.current = true
     try {
       setOpenError(null)
-      if (activeRef.current) await logs.cancel()
+      // Log runs are non-exclusive, so the old tree's taskkill (10-18 s) need not be waited for;
+      // cancel captures the old runId synchronously and the old run's late exit is dropped by runId.
+      if (activeRef.current) Promise.resolve(logs.cancel()).catch(() => {})
+      if (!mountedRef.current) return
       await logs.start(argv, { exclusive: false, label: `devenv ${argv.join(' ')}` })
+      // The tab was left while the run id was resolving; the unmount cleanup had nothing to cancel yet.
+      if (!mountedRef.current) cancelRef.current()
     } finally {
       startingRef.current = false
     }
@@ -49,6 +59,7 @@ export function LogsView({ adapter }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, flex: 1 }}>
+      {!data && !error && <div style={{ color: 'var(--text-muted)' }}>Loading logs…</div>}
       {error && <div className="card" role="alert" style={{ padding: 10, color: 'var(--danger)' }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <select aria-label="Log" value={target?.id || ''} onChange={e => setSelected(e.target.value)} disabled={!targets.length}>

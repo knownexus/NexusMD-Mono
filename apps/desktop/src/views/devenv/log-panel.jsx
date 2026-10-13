@@ -14,10 +14,11 @@ export function LogPanel({ state, filter, onStop }) {
   const running = state.status === 'starting' || state.status === 'running'
   const shown = filterLogLines(state.lines, filter)
 
+  // Depends on the array, not its length: the length stays at the line cap while lines keep arriving.
   React.useEffect(() => {
     const el = outRef.current
     if (el && pinned) el.scrollTop = el.scrollHeight
-  }, [state.lines.length, pinned])
+  }, [state.lines, pinned])
 
   const copy = () => navigator.clipboard?.writeText(shown.map(r => stripAnsi(r.line.text)).join('\n')).catch(() => {})
 
