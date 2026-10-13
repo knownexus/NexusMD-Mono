@@ -63,6 +63,20 @@ describe('LogsView', () => {
     expect(adapter.run).toHaveBeenLastCalledWith(CFG, ['backend', 'logs', 'storage'], { exclusive: false, label: 'devenv backend logs storage' })
   })
 
+  it('ignores a second Show while a start is in flight', async () => {
+    const { adapter } = setup()
+    await screen.findByRole('option', { name: 'Orders' })
+    let release
+    adapter.run.mockImplementationOnce(() => new Promise(resolve => { release = () => resolve({ runId: 21 }) }))
+    pick('backend:orders')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show' })) })
+    expect(screen.getByRole('button', { name: 'Show' }).disabled).toBe(true)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show' })) })
+    expect(adapter.run).toHaveBeenCalledTimes(1)
+    await act(async () => { release() })
+    expect(screen.getByRole('button', { name: 'Show' }).disabled).toBe(false)
+  })
+
   it('stops the follow when the tab is left', async () => {
     const { adapter, view } = setup()
     await screen.findByRole('option', { name: 'Orders' })

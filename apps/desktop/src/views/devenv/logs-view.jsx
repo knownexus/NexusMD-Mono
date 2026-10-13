@@ -30,10 +30,19 @@ export function LogsView({ adapter }) {
   cancelRef.current = logs.cancel
   React.useEffect(() => () => { if (activeRef.current) cancelRef.current() }, [])
 
+  // A second start while the first is still resolving its run id could not cancel it, leaking the process.
+  const startingRef = React.useRef(false)
+  const starting = logs.state.status === 'starting'
   const launch = async argv => {
-    setOpenError(null)
-    if (activeRef.current) await logs.cancel()
-    await logs.start(argv, { exclusive: false, label: `devenv ${argv.join(' ')}` })
+    if (startingRef.current) return
+    startingRef.current = true
+    try {
+      setOpenError(null)
+      if (activeRef.current) await logs.cancel()
+      await logs.start(argv, { exclusive: false, label: `devenv ${argv.join(' ')}` })
+    } finally {
+      startingRef.current = false
+    }
   }
   const folder = captureFolder(logs.state.results)
   const openFolder = () => adapter.open({ path: folder }).catch(e => setOpenError(e?.message || 'Could not open the folder'))
@@ -49,13 +58,13 @@ export function LogsView({ adapter }) {
             </optgroup>
           ))}
         </select>
-        <button className="btn sm primary" disabled={!target} onClick={() => launch(target.argv)}>Show</button>
+        <button className="btn sm primary" disabled={!target || starting} onClick={() => launch(target.argv)}>Show</button>
         <input aria-label="Filter" placeholder="Filter" value={filter} onChange={e => setFilter(e.target.value)} />
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <select aria-label="Since" value={since} onChange={e => setSince(e.target.value)}>
             {DEVENV_CAPTURE_SINCE.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          <button className="btn sm ghost" onClick={() => launch(['logs', 'capture', '--since', since])}>Capture logs</button>
+          <button className="btn sm ghost" disabled={starting} onClick={() => launch(['logs', 'capture', '--since', since])}>Capture logs</button>
           {folder && <button className="btn sm" onClick={openFolder}>Open capture folder</button>}
         </span>
       </div>
