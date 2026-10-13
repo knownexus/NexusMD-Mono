@@ -90,4 +90,6 @@ export {
   getGitAdapter, GIT_AREAS, parseStatus, parseWorktrees, parseBranches, statusCode,
   worktreeId, worktreeName, activeBranchRef, branchLabel,
   loadSnapshot, applyStatus, worktreeSummary,
+  ALL_PROJECTS, findGroup, groupIncludesWorktree, groupIncludesBranch, scopeSnapshot, changeCount,
+  uniqueName, groupNameError, renameGroup, duplicateGroup, deleteGroup, registerRepo, unregisterRepo,
 } from './modules/git/index.js'

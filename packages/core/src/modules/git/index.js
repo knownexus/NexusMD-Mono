@@ -10,6 +10,10 @@ export {
   worktreeId, worktreeName, activeBranchRef, branchLabel,
 } from './parse.js'
 export { loadSnapshot, applyStatus, worktreeSummary } from './snapshot.js'
+export {
+  ALL_PROJECTS, findGroup, groupIncludesWorktree, groupIncludesBranch, scopeSnapshot, changeCount,
+  uniqueName, groupNameError, renameGroup, duplicateGroup, deleteGroup, registerRepo, unregisterRepo,
+} from './groups.js'
 
 let _adapter = null
 
