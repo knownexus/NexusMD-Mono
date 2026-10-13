@@ -17,6 +17,9 @@ export { createPlanForm, validatePlanForm, buildPlanAnswer, normaliseRefPrompt }
 export { normaliseSummary } from './summary.js'
 export { normaliseBuilds, buildBuildArgv, MOBILE_ABIS as DEVENV_MOBILE_ABIS, DEPLOY_MODES as DEVENV_DEPLOY_MODES } from './builds.js'
 export { normaliseLogTargets, classifyLogLevel, filterLogLines, captureFolder, CAPTURE_SINCE as DEVENV_CAPTURE_SINCE } from './logs.js'
+export { normaliseTestRuns, normaliseTestCollection, buildTestUpArgv, buildTestRunArgv, topLevelPaths } from './tests.js'
+export { normaliseBaselines, normaliseSqlScripts, buildDbArgv, DB_EDITOR_URL as DEVENV_DB_EDITOR_URL } from './database.js'
+export { normaliseAvds, buildEmulatorArgv } from './emulator.js'
 
 let _adapter = null
 
