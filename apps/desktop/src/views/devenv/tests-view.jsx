@@ -40,6 +40,11 @@ export function TestsView({ adapter, picker }) {
   const runs = useDevenvQuery({ adapter, config: run.config, argv: RUNS_ARGV, kind: 'test-runs', normalise: normaliseTestRuns, runStatus: run.state.status })
   const tree = useDevenvQuery({ adapter, config: run.config, argv: collectionArgv, kind: 'test-collection', normalise: normaliseTestCollection, runStatus: run.state.status })
 
+  // useDevenvQuery keeps the previous data while a newer load is pending or has failed, so
+  // remember which collection the data belongs to rather than trusting it blindly.
+  const [treeFor, setTreeFor] = React.useState(null)
+  React.useEffect(() => { if (tree.data) setTreeFor(collection) }, [tree.data])
+
   const apis = status?.test.apis ?? []
   const [picked, setPicked] = React.useState(null)   // null until the first status pre-ticks the running APIs
   React.useEffect(() => {
@@ -65,7 +70,7 @@ export function TestsView({ adapter, picker }) {
   const insideTicked = p => selected.some(s => s !== p && p.startsWith(`${s}/`))
   const chooseCollection = async () => { const dir = await picker.pickDirectory(); if (dir) setCollection(dir) }
   const openReport = path => adapter.open({ path }).catch(e => setActionError(e?.message || `Couldn't open ${path}`))
-  const t = tree.data
+  const t = tree.data && treeFor === collection && !tree.error ? tree.data : null
   const canRun = !busy && t && !t.error
   const alerts = [actionError, statusError, runs.error, tree.error].filter(Boolean)
 

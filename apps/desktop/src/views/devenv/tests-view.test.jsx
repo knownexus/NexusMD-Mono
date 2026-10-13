@@ -80,6 +80,38 @@ describe('TestsView', () => {
     expect(run.start).toHaveBeenLastCalledWith(['test', 'run', '--collection', 'C:\\other\\collection'], expect.objectContaining({ exclusive: true }))
   })
 
+  it('drops the old tree and disables Run when the new collection fails to load', async () => {
+    const { adapter, run } = setup()
+    await screen.findByLabelText('smoke/')
+    const original = adapter.query.getMockImplementation()
+    adapter.query.mockImplementation(async (c, argv) => (argv.includes('--collection')
+      ? { code: 1, stderr: 'Cannot read collection', results: [] }
+      : original(c, argv)))
+    fireEvent.click(screen.getByRole('button', { name: 'Choose collection…' }))
+    await waitFor(() => expect(screen.getAllByRole('alert').some(a => /Cannot read collection/.test(a.textContent))).toBe(true))
+    expect(screen.queryByLabelText('smoke/')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Run all' }).disabled).toBe(true)
+    expect(run.start).not.toHaveBeenCalled()
+  })
+
+  it('hides the old tree and disables Run while another collection loads', async () => {
+    const { adapter } = setup()
+    await screen.findByLabelText('smoke/')
+    const original = adapter.query.getMockImplementation()
+    let release
+    const held = new Promise(r => { release = r })
+    adapter.query.mockImplementation(async (c, argv) => (argv.includes('--collection')
+      ? held
+      : original(c, argv)))
+    fireEvent.click(screen.getByRole('button', { name: 'Choose collection…' }))
+    await waitFor(() => expect(adapter.query).toHaveBeenCalledWith(CFG, ['test', 'collection', '--json', '--collection', 'C:\\other\\collection']))
+    expect(screen.queryByLabelText('smoke/')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Run all' }).disabled).toBe(true)
+    release({ code: 0, stderr: '', results: [COLLECTION('C:\\other\\collection', { custom: true })] })
+    await screen.findByLabelText('smoke/')
+    expect(screen.getByRole('button', { name: 'Run all' }).disabled).toBe(false)
+  })
+
   it('shows a collection error and offers no run', async () => {
     setup({ collection: () => COLLECTION('C:\\x', { error: 'Not a Bruno collection (no bruno.json): C:\\x' }) })
     await screen.findByText('Not a Bruno collection (no bruno.json): C:\\x')
