@@ -37,6 +37,26 @@ describe('git config', () => {
     expect(getGitConfig().unsupported).toBe(2)
     localStorage.setItem(getProfileKey('git.config'), '{nope')
     expect(getGitConfig()).toEqual(DEFAULT_GIT_CONFIG)
+    expect(getGitConfig().repos).not.toBe(DEFAULT_GIT_CONFIG.repos)
+  })
+
+  it('does not overwrite settings from a newer version on save', () => {
+    const raw = JSON.stringify({ version: 2, repos: [{ name: 'X', path: 'C:/x' }] })
+    localStorage.setItem(getProfileKey('git.config'), raw)
+    const seen = vi.fn()
+    window.addEventListener(GIT_CONFIG_EVENT, seen)
+    expect(setGitConfig({ repos: [] }).unsupported).toBe(2)
+    expect(localStorage.getItem(getProfileKey('git.config'))).toBe(raw)
+    expect(seen).not.toHaveBeenCalled()
+    window.removeEventListener(GIT_CONFIG_EVENT, seen)
+  })
+
+  it('returns fresh arrays so callers cannot corrupt the defaults', () => {
+    const cfg = getGitConfig()
+    expect(cfg.repos).not.toBe(DEFAULT_GIT_CONFIG.repos)
+    expect(cfg.groups).not.toBe(DEFAULT_GIT_CONFIG.groups)
+    cfg.repos.push({ name: 'Z', path: 'C:/z' })
+    expect(DEFAULT_GIT_CONFIG.repos).toEqual([])
   })
 
   it('parses semicolon-separated absolute search roots', () => {

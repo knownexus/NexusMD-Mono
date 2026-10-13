@@ -10,7 +10,7 @@ export const DEFAULT_GIT_CONFIG = Object.freeze({
 })
 
 const strings = v => Array.isArray(v) ? v.filter(x => typeof x === 'string') : []
-const fresh = () => ({ ...DEFAULT_GIT_CONFIG, view: { ...DEFAULT_GIT_CONFIG.view, collapsed: [] } })
+const fresh = () => ({ ...DEFAULT_GIT_CONFIG, repos: [], groups: [], view: { ...DEFAULT_GIT_CONFIG.view, collapsed: [] } })
 
 function normalise(saved) {
   const view = saved.view && typeof saved.view === 'object' ? saved.view : {}
@@ -43,7 +43,9 @@ export function getGitConfig() {
 }
 
 export function setGitConfig(patch) {
-  const next = { ...getGitConfig(), ...patch }
+  const current = getGitConfig()
+  if (current.unsupported != null) return current
+  const next = { ...current, ...patch }
   delete next.unsupported
   try { localStorage.setItem(KEY(), JSON.stringify(next)) } catch {}
   window.dispatchEvent(new Event(GIT_CONFIG_EVENT))
