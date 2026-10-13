@@ -36,6 +36,7 @@ function GitWorkspace({ adapter }) {
   if (gitVersion === undefined) return card('Checking for git…')
 
   const view = config.view
+  const editingGroup = editing?.name ? config.groups.find(g => g.name === editing.name) ?? null : null
   const group = findGroup(config, view.group)
   const scoped = scopeSnapshot(snapshot, group)
   const tabs = [
@@ -54,7 +55,7 @@ function GitWorkspace({ adapter }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <GroupTabs tabs={tabs} active={group ? group.name : ALL_PROJECTS}
             onSelect={name => setView({ group: name, selected: null })}
-            onNew={() => setEditing({ existing: null })} onMenu={setMenuFor} />
+            onNew={() => setEditing({ name: null })} onMenu={setMenuFor} />
         </div>
         <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           {loading ? 'Refreshing…' : snapshot ? `Updated ${new Date(snapshot.takenAt).toLocaleTimeString()}` : ''}
@@ -73,16 +74,21 @@ function GitWorkspace({ adapter }) {
       </div>
       {menuFor && (
         <GroupMenu name={menuFor} onClose={() => setMenuFor(null)}
-          onEdit={() => setEditing({ existing: config.groups.find(g => g.name === menuFor) })}
-          onRename={tryName((cfg, value) => {
-            const next = renameGroup(cfg, menuFor, value)
-            if (cfg.view.group === menuFor) setTimeout(() => setView({ group: value.trim() }))
-            return next
-          })}
+          onEdit={() => setEditing({ name: menuFor })}
+          onRename={value => {
+            try {
+              const cfg = getGitConfig()
+              const next = renameGroup(cfg, menuFor, value)
+              const renamed = next.groups.find(g => g.name.toLowerCase() === value.trim().toLowerCase())
+              setGitConfig({ repos: next.repos, groups: next.groups,
+                view: cfg.view.group === menuFor ? { ...cfg.view, group: renamed ? renamed.name : value.trim() } : cfg.view })
+              return null
+            } catch (e) { return e.message }
+          }}
           onDuplicate={tryName((cfg, value) => duplicateGroup(cfg, menuFor, value))}
           onDelete={() => { save(deleteGroup(getGitConfig(), menuFor)); if (view.group === menuFor) setView({ group: ALL_PROJECTS, selected: null }) }} />
       )}
-      <GroupEditor open={!!editing} config={config} snapshot={snapshot} existing={editing?.existing ?? null} adapter={adapter}
+      <GroupEditor open={!!editing} config={config} snapshot={snapshot} existing={editingGroup} adapter={adapter}
         onClose={() => setEditing(null)}
         onSaved={(next, saved) => { save(next); setView({ group: saved.name, selected: null }); setEditing(null); refresh() }} />
     </div>

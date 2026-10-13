@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within, waitFor } from '@testing-library/react'
 import { ViewGit } from './view-git.jsx'
 import { setGitConfig, getGitConfig } from '../../git-config.js'
 
@@ -80,5 +80,29 @@ describe('ViewGit', () => {
     cleanup()
     render(<ViewGit adapters={{}} />)
     expect(screen.getByText('Git Workspace needs the desktop app.')).toBeTruthy()
+  })
+  it('replaces the edited group when a config change lands while the editor is open', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter() }} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Group options for Only B' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit members…' }))
+    await screen.findByLabelText('Group name')
+    setGitConfig({ view: { ...getGitConfig().view, collapsed: ['A'] } })
+    fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'Renamed B' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(getGitConfig().groups.map(g => g.name)).toEqual(['Renamed B']))
+  })
+
+  it('renames the active group and keeps it selected in one write', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter() }} />)
+    const tabs = await screen.findByRole('tablist', { name: 'Project groups' })
+    fireEvent.click(within(tabs).getByRole('tab', { name: 'Only B 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Group options for Only B' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rename…' }))
+    fireEvent.change(screen.getByLabelText('New group name'), { target: { value: 'Team B' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(getGitConfig().view.group).toBe('Team B')
+    expect(getGitConfig().groups.map(g => g.name)).toEqual(['Team B'])
   })
 })

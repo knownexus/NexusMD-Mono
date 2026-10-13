@@ -609,9 +609,9 @@ function ViewBody({
         />
       )
     case 'devenv':
+      return <DevenvView adapters={adapters} />
     case 'git':
       return <ViewGit adapters={adapters} />
-      return <DevenvView adapters={adapters} />
     case 'settings':
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
         nav={NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder}
