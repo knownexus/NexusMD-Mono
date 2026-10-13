@@ -15,6 +15,8 @@ export { normaliseCatalog, isCompatibleCatalog, takesArgs, takesManyArgs, buildD
 export { normaliseStatus } from './status.js'
 export { createPlanForm, validatePlanForm, buildPlanAnswer, normaliseRefPrompt } from './plan.js'
 export { normaliseSummary } from './summary.js'
+export { normaliseBuilds, buildBuildArgv, MOBILE_ABIS as DEVENV_MOBILE_ABIS, DEPLOY_MODES as DEVENV_DEPLOY_MODES } from './builds.js'
+export { normaliseLogTargets, classifyLogLevel, filterLogLines, captureFolder, CAPTURE_SINCE as DEVENV_CAPTURE_SINCE } from './logs.js'
 
 let _adapter = null
 

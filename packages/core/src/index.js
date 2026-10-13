@@ -83,4 +83,6 @@ export {
   applyLine, applyAnswered, applyOpened, applyCancelRequested, applyExit,
   normaliseCatalog, isCompatibleCatalog, takesArgs, takesManyArgs, buildDevenvArgv, devenvCommandKey,
   normaliseStatus, createPlanForm, validatePlanForm, buildPlanAnswer, normaliseRefPrompt, normaliseSummary,
+  normaliseBuilds, buildBuildArgv, DEVENV_MOBILE_ABIS, DEVENV_DEPLOY_MODES,
+  normaliseLogTargets, classifyLogLevel, filterLogLines, captureFolder, DEVENV_CAPTURE_SINCE,
 } from './modules/devenv/index.js'
