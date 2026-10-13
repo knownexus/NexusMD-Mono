@@ -32,7 +32,8 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
     }
   }, [adapter, reposKey, enabled])
 
-  const refresh = React.useCallback(() => load(false), [load])
+  // A manual refresh while a load is running would only queue a duplicate poll.
+  const refresh = React.useCallback(() => load(false, true), [load])
 
   React.useEffect(() => {
     load(false)

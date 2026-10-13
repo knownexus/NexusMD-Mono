@@ -41,6 +41,17 @@ describe('GroupEditor', () => {
     expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'Payments' }))
   })
 
+  it('focuses the failing row again when the same member fails a second save', async () => {
+    setup(async () => { throw new Error('No repository at C:/repos/Payments') })
+    await screen.findByText('Payments')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Payments' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'Payments' })))
+    screen.getByLabelText('Group name').focus()
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'Payments' })))
+  })
+
   it('explains why an entry inside a whole repo cannot be ticked separately', async () => {
     setup()
     await screen.findByText('Payments')

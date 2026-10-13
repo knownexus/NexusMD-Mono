@@ -84,6 +84,7 @@ describe('ViewGit', () => {
   it('replaces the edited group when a config change lands while the editor is open', async () => {
     configure()
     render(<ViewGit adapters={{ git: adapter() }} />)
+    await screen.findByRole('region', { name: 'A' })
     fireEvent.click(await screen.findByRole('button', { name: 'Group options for Only B' }))
     fireEvent.click(screen.getByRole('button', { name: 'Edit members…' }))
     await screen.findByLabelText('Group name')
@@ -104,5 +105,65 @@ describe('ViewGit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(getGitConfig().view.group).toBe('Team B')
     expect(getGitConfig().groups.map(g => g.name)).toEqual(['Team B'])
+  })
+
+  it('keeps New group and Edit members disabled until the first snapshot arrives', async () => {
+    configure()
+    const answers = []
+    const a = adapter({ resolve: vi.fn(dir => new Promise(r => { answers.push(() => r({ commonDir: `${dir}/.git` })) })) })
+    render(<ViewGit adapters={{ git: a }} />)
+    const plus = await screen.findByRole('button', { name: 'New group' })
+    expect(plus.disabled).toBe(true)
+    expect(plus.title).toBe('Loading repositories…')
+    fireEvent.click(screen.getByRole('button', { name: 'Group options for Only B' }))
+    const edit = screen.getByRole('button', { name: 'Edit members…' })
+    expect(edit.disabled).toBe(true)
+    expect(edit.title).toBe('Loading repositories…')
+    fireEvent.click(edit)
+    expect(screen.queryByLabelText('Group name')).toBeNull()
+    answers.forEach(f => f())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'New group' }).disabled).toBe(false))
+  })
+
+  const loadsOfA = a => a.worktrees.mock.calls.filter(([repo]) => repo.name === 'A').length
+
+  it('reloads once after saving a group that keeps the same repositories', async () => {
+    configure()
+    const a = adapter()
+    render(<ViewGit adapters={{ git: a }} />)
+    await screen.findByRole('region', { name: 'A' })
+    await waitFor(() => expect(screen.queryByText('Refreshing…')).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Group options for Only B' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit members…' }))
+    fireEvent.change(await screen.findByLabelText('Group name'), { target: { value: 'Renamed B' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(loadsOfA(a)).toBe(2))
+    await new Promise(r => setTimeout(r, 30))
+    expect(loadsOfA(a)).toBe(2)
+  })
+
+  it('reloads once, not twice, after saving a group that registers a repository', async () => {
+    configure()
+    const a = adapter({ discover: vi.fn(async () => [{ name: 'C', path: 'C:/repos/C', commonDir: 'C:/repos/C/.git', registeredAs: null }]) })
+    render(<ViewGit adapters={{ git: a }} />)
+    await screen.findByRole('region', { name: 'A' })
+    await waitFor(() => expect(screen.queryByText('Refreshing…')).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'New group' }))
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'C' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(getGitConfig().repos.map(r => r.name)).toContain('C'))
+    await waitFor(() => expect(loadsOfA(a)).toBe(2))
+    await new Promise(r => setTimeout(r, 30))
+    expect(loadsOfA(a)).toBe(2)
+  })
+
+  it('names the effective search folders in the empty state', async () => {
+    setGitConfig({ roots: ['D:/src', 'E:/work'] })
+    render(<ViewGit adapters={{ git: adapter() }} />)
+    expect(await screen.findByText('No repositories yet. Add one in Settings → Desktop → Git Workspace, or create a group to pick from D:/src; E:/work.')).toBeTruthy()
+    cleanup()
+    setGitConfig({ roots: [] })
+    render(<ViewGit adapters={{ git: adapter() }} />)
+    expect(await screen.findByText('No repositories yet. Add repositories in Settings → Desktop → Git Workspace.')).toBeTruthy()
   })
 })

@@ -3,9 +3,8 @@ import { worktreeName, branchLabel, worktreeSummary, worktreeId } from '@nexusmd
 
 function trackingText(t) {
   if (t.error) return t.error
-  if (t.operation) return t.operation
   const upstream = !t.upstream ? ' · no upstream' : t.upstreamGone ? ' · upstream missing' : ''
-  return `↑${t.ahead} ↓${t.behind}${upstream}`
+  return `${t.operation ? `${t.operation} · ` : ''}↑${t.ahead} ↓${t.behind}${upstream}`
 }
 
 function TreeRow({ tree, selected, onSelect }) {

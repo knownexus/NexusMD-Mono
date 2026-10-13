@@ -2,7 +2,7 @@ import React from 'react'
 import { PlModal } from '@nexusmd/ui'
 
 // Edit / rename / duplicate / delete for one group. onRename/onDuplicate return an error message or null.
-export function GroupMenu({ name, onClose, onEdit, onRename, onDuplicate, onDelete }) {
+export function GroupMenu({ name, onClose, onEdit, onRename, onDuplicate, onDelete, editBusy = null }) {
   const [mode, setMode] = React.useState('menu')
   const [value, setValue] = React.useState('')
   const [error, setError] = React.useState(null)
@@ -15,7 +15,7 @@ export function GroupMenu({ name, onClose, onEdit, onRename, onDuplicate, onDele
     <PlModal open onClose={onClose} title={name} icon="git-branch" footer={footer}>
       {mode === 'menu' && (
         <div style={{ display: 'grid', gap: 6 }}>
-          <button className="btn sm ghost" onClick={() => { onEdit(); onClose() }}>Edit members…</button>
+          <button className="btn sm ghost" title={editBusy ?? undefined} disabled={!!editBusy} onClick={() => { onEdit(); onClose() }}>Edit members…</button>
           <button className="btn sm ghost" onClick={() => { setValue(name); setMode('rename') }}>Rename…</button>
           <button className="btn sm ghost" onClick={() => { setValue(`${name} copy`); setMode('duplicate') }}>Duplicate…</button>
           <button className="btn sm ghost" onClick={() => setMode('delete')}>Delete…</button>

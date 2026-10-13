@@ -43,11 +43,24 @@ describe('useGitSnapshot', () => {
     const first = deferred()
     let calls = 0
     const adapter = adapterWith(() => (++calls === 1 ? first.promise : Promise.resolve({ commonDir: 'second' })))
-    const { result } = renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null }))
-    await act(async () => { result.current.refresh() })
+    const { result, rerender } = renderHook(props => useGitSnapshot({ adapter, repos: props.repos, intervalMs: null }), { initialProps: { repos } })
+    rerender({ repos: [{ name: 'A', path: 'C:/repos/A2' }] })
     await waitFor(() => expect(result.current.snapshot?.worktrees[0].commonDir).toBe('second'))
     await act(async () => { first.resolve({ commonDir: 'first' }) })
     await new Promise(r => setTimeout(r, 20))
     expect(result.current.snapshot.worktrees[0].commonDir).toBe('second')
+  })
+
+  it('ignores a manual refresh while a load is running', async () => {
+    const pending = deferred()
+    let calls = 0
+    const adapter = adapterWith(() => (++calls === 1 ? pending.promise : Promise.resolve({ commonDir: 'C:/repos/A/.git' })))
+    const { result } = renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null }))
+    await act(async () => { result.current.refresh() })
+    expect(adapter.resolve).toHaveBeenCalledTimes(1)
+    await act(async () => { pending.resolve({ commonDir: 'C:/repos/A/.git' }) })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    await act(async () => { result.current.refresh() })
+    expect(adapter.resolve).toHaveBeenCalledTimes(2)
   })
 })

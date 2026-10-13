@@ -66,6 +66,8 @@ export function GroupEditor({ open, config, snapshot, existing, adapter, onClose
   const toggleFold = repo => setFolded(prev => { const next = new Set(prev); if (!next.delete(repo)) next.add(repo); return next })
   const save = async () => {
     const mine = session.current
+    // Cleared first so a repeat failure on the same member changes `failing` and refocuses it.
+    setFailing(null)
     setSaving(true)
     try {
       const { config: next, group } = await draft.commit(config, name, existing, dir => adapter.resolve(dir))

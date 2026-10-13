@@ -1,6 +1,7 @@
 import React from 'react'
 
-export function GroupTabs({ tabs, active, onSelect, onNew, onMenu }) {
+// `busy` (a reason string) disables New group until there is something to pick from.
+export function GroupTabs({ tabs, active, onSelect, onNew, onMenu, busy = null }) {
   const refs = React.useRef({})
   // The active tab must stay visible when the strip overflows.
   React.useEffect(() => { refs.current[active]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }) }, [active])
@@ -21,7 +22,7 @@ export function GroupTabs({ tabs, active, onSelect, onNew, onMenu }) {
           </span>
         ))}
       </div>
-      <button className="btn sm ghost" aria-label="New group" onClick={onNew}>+</button>
+      <button className="btn sm ghost" aria-label="New group" title={busy ?? undefined} disabled={!!busy} onClick={onNew}>+</button>
     </div>
   )
 }
