@@ -167,3 +167,13 @@ All under the **Dev Environment** nav entry.
 - `devenv:query` allowlists `status --json`, `build status --json` and `logs targets --json`.
 - The Logs tab owns its own non-exclusive run beside the provider's run; a follow is cancelled when another log is shown and when the tab is left. Builds use the provider's run.
 - Status, Start, Builds, Logs and Commands are the Dev Environment tabs in this phase.
+
+## Amendments made during Phase 4 planning
+
+- The Tests, Database and Emulator tabs read devenv data commands through `devenv:query`: `test runs --json` (run history from `.local/test/traces/runs/*/run.json` and Bruno's `bruno.json`), `test collection --json [--collection <folder>]` (the folder/request tree `bru run` accepts), `db baselines --json`, `db scripts --json` and `emulator avds --json`. `devenv:query` allows one absolute folder argument, for `test collection` only.
+- Every Tests / Database / Emulator action is an existing devenv command run through the provider's single run; `test web`, `test report` and `db verify` run non-exclusive.
+- `.html` files opened through `devenv:open` (devenv's `open` events and the Tests history) open in a sandboxed NexusMD window (no preload); links in it go to the system browser.
+- `devenv db restore` only fills databases that don't exist yet (devenv's own rule); the Database tab says so and points at Start's plan or Clean for replacing data.
+- Recreating an AVD (`emulator create`) is confirmed in the Emulator tab first; devenv itself still does not ask.
+- Dropped files get their paths through `webUtils.getPathForFile` in the preload.
+- Status, Start, Builds, Logs, Tests, Database, Emulator and Commands are the Dev Environment tabs in this phase.
