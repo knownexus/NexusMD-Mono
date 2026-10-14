@@ -1,7 +1,7 @@
 # Dev Environment Module — Design
 
 **Date:** 2026-10-08
-**Status:** Approved design, pending implementation plan
+**Status:** Implemented (phases 1–6)
 **Repos touched:** `NexusMD-Mono` (new module) and `C:\repos\dev-environment` (devenv: host mode, protocol, catalog)
 
 ## Goal
@@ -185,3 +185,12 @@ All under the **Dev Environment** nav entry.
 - `devenv mac status --json` (result kind `mac-status`: configured, host, user, sshKey, keyExists, connection ok/auth/hostkey/unreachable/error/unconfigured, detail, error) is allowlisted in `devenv:query`; it probes the login with BatchMode and a 5 s timeout and never throws.
 - `devenv build ios --password` is unchanged: the .NET Pair-to-Mac build agent still receives `-p:ServerPassword` on its own command line, and builds use the agent's own Mac login, not devenv's key.
 - Status, Start, Builds, Logs, Tests, Database, Emulator, Mac and Commands are the Dev Environment tabs in this phase.
+
+## Amendments made during Phase 6 planning
+
+- "Create from template" is `devenv setup profile` (also for terminal users): it copies the template's missing files into devenv's profile folder (`DEVENV_PROFILE`, else `<devenv>/profile`), never overwrites and skips the template's README.md.
+- NexusMD reads and writes profile files itself, in the Electron main process (`devenv:profile:list|read|write`), never through pwsh: every path is relative to the profile folder main computes from the config, junctions and symlinks are neither followed nor listed, and files over 1 MiB, binary or non-UTF-8 files are view-only.
+- Saves are atomic (temp file + rename, retried briefly on Windows sharing errors) and carry the SHA-256 stamp the edit started from; a changed file is reported as stale (Reload / Overwrite) rather than overwritten. A write also carries the folder it was read from, so changing the profile folder in Settings can't misdirect a draft.
+- Validation is pure in core, with the YAML parser (js-yaml) injected from desktop; errors block Save, warnings don't. The environment.json and mac.json rules follow devenv's own requirements (`Get-DevEnvServices`, `Get-MacConfig`, test.ps1, the profile README).
+- The forms keep unknown fields, key order, BOM and line endings, and rewrite indentation to 2 spaces. Drafts live in memory for the session (tab and file switches keep them; reload loses them). Validation runs on every edit rather than debounced: profile files are small.
+- Status, Start, Builds, Logs, Tests, Database, Emulator, Mac, Profile and Commands are the Dev Environment tabs; with this phase the v1 phasing is complete.
