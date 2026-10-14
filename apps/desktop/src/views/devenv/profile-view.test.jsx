@@ -25,7 +25,7 @@ function setup({ exists = true, over = {} } = {}) {
     profileCreate: vi.fn(async () => { state.exists = true; return { ok: true, dir: DIR } }),
   }
   render(<ProfileView adapter={adapter} />)
-  return { run: globalThis.__run, adapter }
+  return { run: globalThis.__run, adapter, disk }
 }
 
 describe('ProfileView', () => {
@@ -69,6 +69,18 @@ describe('ProfileView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'environment.json' }))
     await waitFor(() => expect(screen.getByLabelText('Edit environment.json').value).toBe(ENV))
     expect(screen.queryByText('Unsaved changes from earlier were restored.')).toBeNull()
+  })
+
+  it('refreshes the file list after a save creates a file', async () => {
+    const { adapter, disk } = setup()
+    await screen.findByLabelText('Edit environment.json')
+    adapter.profileWrite.mockImplementation(async (_c, p, text) => { disk[p] = { text, bom: false, mtimeMs: 2 }; return { ok: true, mtimeMs: 2 } })
+    fireEvent.click(screen.getByRole('button', { name: 'mac.json (not created yet)' }))
+    await screen.findByLabelText('Edit mac.json')
+    fireEvent.change(screen.getByLabelText('Edit mac.json'), { target: { value: '{"host":"h","user":"u"}\n' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })) })
+    await screen.findByRole('button', { name: 'mac.json' })
+    expect(screen.queryByRole('button', { name: 'mac.json (not created yet)' })).toBeNull()
   })
 
   it('runs devenv doctor as Check, alongside other runs', async () => {

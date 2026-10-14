@@ -47,13 +47,18 @@ export function useProfileFile({ adapter, config, path }) {
 
   const save = React.useCallback(async ({ overwrite = false } = {}) => {
     if (errors.length) return false
+    // Typing continues during the write, so only what was actually sent counts as saved.
+    const written = s.text
     setS(p => ({ ...p, saving: true, error: null }))
     try {
-      const r = await adapter.profileWrite(config, path, fromLf(s.text, s.eol), { expectedMtimeMs: s.mtimeMs, overwrite, bom: s.bom, create: s.missing })
+      const r = await adapter.profileWrite(config, path, fromLf(written, s.eol), { expectedMtimeMs: s.mtimeMs, overwrite, bom: s.bom, create: s.missing })
       if (r.conflict) { setS(p => ({ ...p, saving: false, conflict: { mtimeMs: r.mtimeMs } })); return false }
       if (r.missing) { setS(p => ({ ...p, saving: false, missing: true, mtimeMs: null, error: `${path} no longer exists on disk - Save again to create it.` })); return false }
-      drafts.delete(key)
-      setS(p => ({ ...p, saving: false, saved: p.text, mtimeMs: r.mtimeMs, conflict: null, missing: false, restored: false }))
+      setS(p => {
+        if (p.text === written) drafts.delete(key)
+        else drafts.set(key, { text: p.text, saved: written, eol: p.eol, bom: p.bom, mtimeMs: r.mtimeMs, missing: false })
+        return { ...p, saving: false, saved: written, mtimeMs: r.mtimeMs, conflict: null, missing: false, restored: false }
+      })
       return true
     } catch (e) {
       setS(p => ({ ...p, saving: false, error: e?.message || 'Save failed.' }))

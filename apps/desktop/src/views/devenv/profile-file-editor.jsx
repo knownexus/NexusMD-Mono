@@ -5,9 +5,10 @@ import { useProfileFile } from './use-profile-file.js'
 
 const alertStyle = { padding: 10, color: 'var(--danger)' }
 
-export function ProfileFileEditor({ adapter, config, path, onDirtyChange, forms = {} }) {
+export function ProfileFileEditor({ adapter, config, path, onDirtyChange, onSaved, forms = {} }) {
   const f = useProfileFile({ adapter, config, path })
   const Form = forms[path]
+  const save = async opts => { if (await f.save(opts)) onSaved?.() }
   const [mode, setMode] = React.useState(Form ? 'form' : 'text')
   React.useEffect(() => { onDirtyChange?.(f.dirty) }, [f.dirty, onDirtyChange])
 
@@ -30,7 +31,7 @@ export function ProfileFileEditor({ adapter, config, path, onDirtyChange, forms 
         )}
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <button className="btn sm ghost" disabled={!f.dirty || f.saving} onClick={f.revert}>Revert</button>
-          <button className="btn sm primary" disabled={!f.dirty || f.saving || f.errors.length > 0} onClick={() => f.save()}>Save</button>
+          <button className="btn sm primary" disabled={!f.dirty || f.saving || f.errors.length > 0} onClick={() => save()}>Save</button>
         </span>
       </div>
       {f.restored && <span style={{ color: 'var(--text-muted)' }}>Unsaved changes from earlier were restored.</span>}
@@ -39,8 +40,8 @@ export function ProfileFileEditor({ adapter, config, path, onDirtyChange, forms 
       {f.conflict && (
         <div className="card" role="alert" style={{ ...alertStyle, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span>This file changed on disk since you opened it.</span>
-          <button className="btn sm" onClick={f.revert}>Reload (discard my changes)</button>
-          <button className="btn sm danger" onClick={() => f.save({ overwrite: true })}>Overwrite</button>
+          <button className="btn sm" disabled={f.saving} onClick={f.revert}>Reload (discard my changes)</button>
+          <button className="btn sm danger" disabled={f.saving} onClick={() => save({ overwrite: true })}>Overwrite</button>
         </div>
       )}
       {f.errors.length > 0 && (

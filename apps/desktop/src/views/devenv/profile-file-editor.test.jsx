@@ -85,6 +85,42 @@ describe('ProfileFileEditor', () => {
     await waitFor(() => expect(screen.getByLabelText('Edit sql/a.sql').value).toBe('select 1\n'))
   })
 
+  it('keeps edits typed while a save is in flight as unsaved, with the new mtime', async () => {
+    const a = fakeAdapter({ 'sql/a.sql': { text: 'select 1\n', bom: false, mtimeMs: 1 } })
+    let release
+    const real = a.profileWrite.getMockImplementation()
+    a.profileWrite.mockImplementation((...args) => new Promise(res => { release = () => res(real(...args)) }))
+    const first = render(<ProfileFileEditor adapter={a} config={CFG} path="sql/a.sql" />)
+    await waitFor(() => expect(screen.getByLabelText('Edit sql/a.sql').value).toBe('select 1\n'))
+    edit('Edit sql/a.sql', 'select 2\n')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })) })
+    edit('Edit sql/a.sql', 'select 3\n')
+    await act(async () => { release() })
+    expect(a.disk['sql/a.sql'].text).toBe('select 2\n')
+    expect(screen.getByText('Unsaved')).toBeTruthy()
+    first.unmount()
+    a.profileWrite.mockImplementation(real)
+    render(<ProfileFileEditor adapter={a} config={CFG} path="sql/a.sql" />)
+    await waitFor(() => expect(screen.getByLabelText('Edit sql/a.sql').value).toBe('select 3\n'))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })) })
+    expect(a.profileWrite).toHaveBeenLastCalledWith(CFG, 'sql/a.sql', 'select 3\n', expect.objectContaining({ expectedMtimeMs: 2, overwrite: false }))
+  })
+
+  it('does not write over a file that changed on disk since a draft was kept', async () => {
+    const a = fakeAdapter({ 'sql/b.sql': { text: 'select 1\n', bom: false, mtimeMs: 1 } })
+    const first = render(<ProfileFileEditor adapter={a} config={CFG} path="sql/b.sql" />)
+    await waitFor(() => expect(screen.getByLabelText('Edit sql/b.sql').value).toBe('select 1\n'))
+    edit('Edit sql/b.sql', 'select 2\n')
+    first.unmount()
+    a.disk['sql/b.sql'] = { text: 'other\n', bom: false, mtimeMs: 7 }
+    render(<ProfileFileEditor adapter={a} config={CFG} path="sql/b.sql" />)
+    await screen.findByText('Unsaved changes from earlier were restored.')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })) })
+    expect(screen.getByText('This file changed on disk since you opened it.')).toBeTruthy()
+    expect(a.disk['sql/b.sql'].text).toBe('other\n')
+    expect(a.profileWrite.mock.calls.every(c => c[3].overwrite === false)).toBe(true)
+  })
+
   it('reports read errors', async () => {
     const a = { profileRead: vi.fn(async () => { throw new Error('big.txt is too large to edit here (2048 KB).') }), profileWrite: vi.fn() }
     render(<ProfileFileEditor adapter={a} config={CFG} path="big.txt" />)

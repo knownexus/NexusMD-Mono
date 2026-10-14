@@ -61,7 +61,7 @@ export function ProfileView({ adapter }) {
                 aria-label={label(p)} style={{ justifyContent: 'flex-start', textAlign: 'left' }} onClick={() => choose(p)}>{label(p)}</button>
             ))}
           </nav>
-          <ProfileFileEditor key={selected} adapter={adapter} config={config} path={selected} onDirtyChange={setDirty} forms={FORMS} />
+          <ProfileFileEditor key={selected} adapter={adapter} config={config} path={selected} onDirtyChange={setDirty} onSaved={refresh} forms={FORMS} />
         </div>
       )}
       <PlModal open={!!pending} onClose={() => setPending(null)} title="Unsaved changes"
