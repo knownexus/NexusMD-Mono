@@ -11,6 +11,8 @@ import { WorktreeDetail } from './worktree-detail.jsx'
 import { WorktreePanel } from './worktree-panel.jsx'
 import { GroupMenu } from './group-menu.jsx'
 import { GroupEditor } from './group-editor.jsx'
+import { useGitActions } from './use-git-actions.js'
+import { ReviewDialog } from './review-dialog.jsx'
 
 const card = (text, role) => <div className="card" role={role} style={{ padding: 16 }}>{text}</div>
 
@@ -35,6 +37,7 @@ function GitWorkspace({ adapter }) {
     return () => { live = false }
   }, [adapter])
   const { snapshot, error, loading, refresh } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported })
+  const actions = useGitActions({ adapter, registered, refresh })
 
   if (config.unsupported) return card(`These Git Workspace settings were saved by a newer NexusMD (version ${config.unsupported}). Update NexusMD to use them.`, 'alert')
   if (gitVersion === null) return card('Git not found. Install Git for Windows (git-scm.com) and make sure git is on PATH, then reopen this screen.', 'alert')
@@ -88,7 +91,9 @@ function GitWorkspace({ adapter }) {
                 version={snapshot?.takenAt} tree={selectedTree} selected={selectedIds} focusId={focusId}
                 onSelectionChange={ids => setSelections(s => ({ ...s, [treeKey]: ids }))}
                 onFocus={id => setFocus(f => ({ ...f, [treeKey]: id }))}
-                onAction={() => {}} onCommit={() => {}} onHunk={() => {}} busy={false} status={null}
+                onAction={action => actions.openReview(action, selectedTree, selectedIds)} onCommit={() => {}}
+                onHunk={(change, index, stamp) => actions.hunk(selectedTree, change, index, stamp)}
+                busy={!!actions.busy[selectedTree.path]} status={actions.status[selectedTree.path] ?? null}
                 split={view.split} onSplit={split => setView({ split })} />
             )
             : <WorktreeDetail tree={null} branch={selectedBranch} />}
@@ -120,6 +125,7 @@ function GitWorkspace({ adapter }) {
           setEditing(null)
           if (!reposChanged) refresh()
         }} />
+      <ReviewDialog key={actions.review?.id ?? 'none'} state={actions.review} onClose={actions.closeReview} onConfirm={actions.confirm} />
     </div>
   )
 }
