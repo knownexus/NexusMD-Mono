@@ -1,7 +1,7 @@
 # Git Workspace Module — Design
 
 **Date:** 2026-10-13
-**Status:** Approved design. Stage 1 implemented; stage 2 implemented (2026-10-14).
+**Status:** Approved design. Stage 1 implemented; stage 2 implemented (2026-10-14); stage 3 designed, pending its plan.
 **Repos touched:** `NexusMD-Mono` (new module). Reference implementation: `gws` in `C:\repos\DotFiles\pwsh\GitWorkspace` (C#, terminal UI), which this module replaces.
 
 ## Goal
@@ -381,3 +381,205 @@ A draggable divider sits between the changes and diff panes. Its ratio is stored
 - Core signatures: `fileReview(action, changes, selectedIds)` and `commitTargets(worktrees, selectedTreeId)`.
 - Write results are `{ ok, detail, stale? }`. Bad paths and unregistered repos still throw, as in stage 1.
 - The commit dialog labels each worktree's block "Staged files in <title>" so it doesn't duplicate the worktree checkbox's label.
+
+## Stage 3 — Commits browser
+
+Scope:
+- commit history for a worktree's HEAD, or for any local branch;
+- a graph with refs and unpushed markers;
+- literal search (`words` in the message, `@name` author, `:path` file);
+- filters: all / unpushed / since a base;
+- drill-down: commit → its files → a file's diff, with a choice of parent for merges;
+- commit details and file lists loaded in the background and cached.
+
+Stage 3 is **read-only**. It adds no write operation, takes no lock, and changes nothing in a repository. Everything in stage 4's list stays out of scope, including "check out this commit", revert and cherry-pick from the history.
+
+**Reference implementation.** gws's history code (`C:\repos\DotFiles\pwsh\GitWorkspace`) isn't in the DotFiles repository on GitHub, so this design was written from the summary above and NexusMD's stage 1–2 code, not from a line-by-line port. Points where gws behaviour should be matched are marked *(check against gws)*.
+
+### Architecture
+
+The same shape as stage 2: named read operations, exact argv in main, parsing in core.
+
+1. The renderer asks for a history page with a **query object**: which ref, which filter, which search, how many commits.
+2. Main validates every field, builds the argv itself and runs `git log --graph` with a fixed format.
+3. Core parses the text into rows. The renderer draws them and asks for a commit's details, files and diffs on demand.
+
+Commit objects never change, so everything keyed by a full commit id is cached in the renderer for the session. A history page is keyed by its query plus the tip commit id it was read at, so it's re-read only when the ref moves.
+
+Rejected options:
+- **Paging with `--skip`.** `git log --graph --skip=N` draws the graph from the skipped point, so lanes break between pages. Instead "Load more" re-runs the query with a larger limit (200 → 400 → … → 5000). That re-runs the walk, but the graph stays correct and the result is cached.
+- **A JS graph layout from parent ids.** Git's own `--graph` drawing is exact and well tested. Core only colours and re-draws its characters.
+
+### Adapter contract (stage 3)
+
+Every call runs under stage 1's environment and process rules (absolute git path, `GIT_TERMINAL_PROMPT=0`, `GIT_OPTIONAL_LOCKS=0`, `LC_ALL=C`, stripped `GIT_*` location variables, `GIT_LITERAL_PATHSPECS=1`, 30 s timeout with a tree-kill). Every call also adds:
+
+```
+git --no-pager -c core.fsmonitor=false -c log.showSignature=false -c i18n.logOutputEncoding=UTF-8 -c color.ui=never …
+```
+
+`log.showSignature=false` stops a repository's config from making `log` run gpg on every commit.
+
+All four methods take `(repo, worktreePath, registered, …)`, like stage 2. `worktreePath` must be exactly an entry of `git worktree list --porcelain` for that repo. A bare entry counts, so a `.bare` layout can show branch history without a checked-out worktree.
+
+| Method | Main runs | Returns |
+|---|---|---|
+| `refs(repo, worktreePath, registered)` | `for-each-ref --format=%(refname)%00%(objectname)%00%(upstream)%00%(HEAD) refs/heads/ refs/remotes/ refs/tags/`, plus `symbolic-ref --quiet refs/remotes/origin/HEAD` and `rev-parse --is-shallow-repository` | `{ refs: raw text, originHead: ref \| null, shallow }` |
+| `log(repo, worktreePath, registered, query)` | See **Building the log argv** below | `{ text, tip, unpushed: [oid], truncated, limit }` |
+| `commitDetails(repo, worktreePath, registered, oid)` | 1. `rev-parse --verify --quiet --end-of-options <oid>^{commit}`. 2. `show -s --format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%D%x00%B --end-of-options <oid>`. | `{ details: raw text }`, or `{ missing: true }` |
+| `commitFiles(repo, worktreePath, registered, oid, parent)` | `diff-tree -r -z -M --name-status --no-ext-diff --no-textconv <parent> <oid>`; for a root commit, `diff-tree --root -r -z -M --name-status <oid>` | `{ files: raw text }` |
+| `commitDiff(repo, worktreePath, registered, oid, parent, paths)` | `diff --no-color --no-ext-diff --no-textconv -M -U3 <parent> <oid> -- <paths>`; for a root commit, `show --format= --no-color --no-ext-diff --no-textconv -M -U3 <oid> -- <paths>`. Same 1 MB cap and binary detection as stage 2. | `{ text, truncated, binary }` |
+
+**Query object** (built by core, checked again by main):
+
+```js
+{
+  ref: 'HEAD' | 'refs/heads/<name>',       // HEAD only for a worktree, a branch for inactive branch rows
+  filter: 'all' | 'unpushed' | 'sinceBase',
+  base: 'refs/heads/<x>' | 'refs/remotes/<r>/<x>' | null,   // required for sinceBase
+  search: null | { kind: 'message' | 'author' | 'path', text },
+  limit: 200 | 400 | … | 5000,
+}
+```
+
+**Checks before spawning** (anything else is refused with a message, nothing spawned):
+- `ref` is `HEAD` or exactly one of the `refs/heads/` names `for-each-ref` returns now. `base` is exactly one returned `refs/heads/` or `refs/remotes/` name.
+- `limit` is a multiple of 200 from 200 to 5000.
+- Search text is 1–200 characters, with no NUL, CR or LF.
+- A `path` search is a relative path inside the worktree (stage 2's `requirePaths` rule).
+- `oid` is 40 (SHA-1) or 64 (SHA-256) lowercase hex characters. `parent` is either `null` (root commit) or one of that commit's own parents, read with `rev-list --parents --max-count=1 --end-of-options <oid>`.
+
+**Building the log argv:**
+
+```
+log --graph --topo-order --max-count=<limit+1> --no-color --no-ext-diff --no-textconv
+    --format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s
+    [search flags] [exclusions] --end-of-options <revs> [-- <path>]
+```
+
+- `all` → `--end-of-options <ref>`.
+- `unpushed` → `--not --remotes --not --end-of-options <ref>`. Everything after `--end-of-options` is a revision, so the exclusion has to come first; the second `--not` turns exclusion off again before `<ref>`. (`<ref> --not --remotes` would put `--not` after `--end-of-options`, where it isn't an option.)
+- `sinceBase` → `--end-of-options <base>..<ref>`.
+- Message search: `--fixed-strings --regexp-ignore-case --grep=<text>`. Author search: `--fixed-strings --regexp-ignore-case --author=<text>`. Each is a single argv element starting with `--grep=` / `--author=`, so the text can't become an option.
+- Path search: `-- <path>` (literal, from `GIT_LITERAL_PATHSPECS`). Git simplifies the graph to commits touching that path, as it does in a terminal.
+- Reading `limit + 1` commits tells main whether there are more (`truncated`); the extra row is dropped before returning.
+- `tip` is `rev-parse --verify --end-of-options <ref>^{commit}`, read just before the log. An unborn branch returns `tip: null` and no text.
+- `unpushed` is `rev-list --max-count=<limit> --not --remotes --not --end-of-options <ref>`: commits on this ref that no remote-tracking branch has. If the repo has no remotes it's `null`, not "everything", and the UI says "No remotes".
+
+Output over 8 MB is cut at the last complete record and reported as `truncated`.
+
+These forms were checked against git 2.43: the `--not … --not --end-of-options` order, `--fixed-strings` applying to both `--grep` and `--author`, `<base>..<ref>` after `--end-of-options`, and an option-like word after `--end-of-options` being refused (`option '--all' must come before non-option arguments`) rather than obeyed.
+
+### Core (`packages/core/src/modules/git`, pure ESM)
+
+**`history.js`**
+- `parseLog(text)` → `rows: [{ graph, commit? }]`.
+  - Each output line is the graph prefix (git's `* | / \ _ .` characters and spaces), then, on commit lines, `\x1e` and the record.
+  - `commit` is `{ oid, parents: [oid], author, email, time, refs, subject }`. Lines with no record are connector rows (graph only).
+  - `refs` comes from `%D`: `HEAD -> main`, `origin/main`, `tag: v1.2`, a detached `HEAD`. Each becomes `{ kind: 'head' | 'branch' | 'remote' | 'tag', name }`.
+- `graphCells(graph)` → `[{ ch, lane }]`: git's ASCII redrawn as box-drawing glyphs (`*` → `●`, `|` → `│`, `/` → `╱`, `\` → `╲`), with a lane index for colouring. *(check against gws's graph glyphs and colours)*
+- `parseSearch(input)` → `null` | `{ kind, text }`. A leading `@` means author, a leading `:` means path, anything else is message words. `\@` and `\:` escape a literal first character. Text is trimmed; whitespace inside it is kept.
+- `historyQuery({ tree | branch, filter, base, search, limit })` builds the query object. It throws the same messages main uses, so bad input is caught before IPC.
+- `defaultBase(refs, tree)` picks the "since base" default:
+  1. the upstream's remote's HEAD (`refs/remotes/origin/HEAD` → its target);
+  2. else `refs/heads/main`, then `refs/heads/master`, if they exist and aren't the ref itself;
+  3. else none, and the filter asks the user to pick.
+- `parseCommitDetails(raw)` → `{ oid, parents, author, authorEmail, authorDate, committer, committerEmail, committerDate, refs, message }`.
+- `parseNameStatus(raw)` → `[{ status, path, oldPath? }]` for `M A D T R### C###` records (the `R`/`C` records carry two paths).
+- `parentLabel(details, index)` → `'1 (main line)'`, `'2 (merged in)'`, and so on, plus the parent's short id.
+
+All new exports are added to `public-api.test.js`.
+
+### Screens (stage 3)
+
+**Changes | History.** The worktree panel gets a two-button switch above the header strip. The choice is stored in `view.panel` (`'changes'` default). Selecting an **inactive branch row** (◇) opens History for that branch, because a branch that isn't checked out has no changes to show.
+
+**History layout.** It reuses the panel's draggable divider and `view.split`:
+1. **Toolbar:**
+   - A search box with the placeholder "words · @author · :path". Enter runs the search; Esc clears it.
+   - The filter switch: `All` `Unpushed` `Since [base ▾]`. `Unpushed` shows "No remotes" and is disabled when the repo has none.
+   - The commit count, "Load more" while `truncated`, and a ⟳ button.
+   - Notes for a shallow clone ("Shallow clone — older history isn't here") and for an unborn branch ("No commits yet").
+2. **Commit list:** one row per commit, each with:
+   - the graph cells;
+   - ref chips (HEAD, local branch, remote branch, tag; each in its own style);
+   - the subject;
+   - the author;
+   - a relative date (the full date in a tooltip);
+   - `↑` when the commit is unpushed.
+
+   Connector rows are drawn graph-only and are skipped by keyboard focus.
+3. **Commit detail** (below the divider):
+   - the full id (with Copy), author and committer when they differ, dates, and the full message;
+   - parents as links that jump to that commit in the list (or show it on its own if it isn't loaded);
+   - for a merge, **Compare with parent** `[1 (main line) ▾]`, default parent 1;
+   - the file list (status code, path, `← old` for renames);
+   - the focused file's diff, in stage 2's `DiffPane` with a read-only legend (`− old: <parent short id>` / `+ new: <commit short id>`) and no hunk buttons.
+
+**Interaction.**
+- ↑/↓ moves through commits, Enter moves focus into the file list, Esc goes back, `/` focuses the search box.
+- Selecting a commit loads its details and file list. The first file's diff loads only when a file is focused.
+- **Background loading:** after the focused commit, details and file lists for the next five commits are fetched, with at most two history requests in flight. That keeps the 10 s status polls (which share main's concurrency limit of 6) from waiting behind history.
+- **Caches** (session, in memory):
+  - details and file lists by oid (up to 500 commits);
+  - diffs by (oid, parent, path) (up to 200);
+  - log pages by (repo, query, tip).
+
+  A new snapshot that shows the worktree's HEAD (or the branch's tip) moved re-reads the visible page in the background. The old rows stay on screen until it arrives, and the focused commit stays focused if it's still in the page.
+
+### Error handling (stage 3)
+
+| Situation | Behaviour |
+|---|---|
+| Invalid search (empty, too long, newline, path outside the worktree) | Caught in core before any IPC; shown under the search box |
+| `log` takes longer than 30 s | The tree is killed. Shows "History took too long - narrow it with a search or a filter." Earlier pages stay on screen. |
+| Shallow clone | The history ends where the clone does, with the shallow note; `unpushed` may over-report, and the note says so |
+| Unborn branch | "No commits yet"; no git log is run |
+| A commit id no longer exists (history rewritten, then gc) | "This commit no longer exists - refresh"; its cache entries are dropped |
+| Ref deleted or renamed since the list was read | Main refuses the query ("That branch no longer exists"); the view falls back to the worktree's HEAD, or to the branch list for an inactive branch row |
+| Diff over 1 MB, or binary | Stage 2's truncated or binary notice |
+| No remotes | `Unpushed` disabled with "No remotes"; no `↑` markers |
+| `since base` with no base found | The filter opens its base picker instead of running |
+
+### Residual risk (stage 3)
+
+- Every diff and log uses `--no-ext-diff --no-textconv`, so repository-configured diff programs don't run. Commit-to-commit diffs read objects only, so clean/smudge filters don't run either (they run against the working tree, which stage 3 never compares).
+- `log.showSignature=false` keeps gpg from running. A repo's `core.hooksPath` is irrelevant: nothing in stage 3 triggers a hook.
+- So stage 3 adds no new exposure to repository-configured programs. The ownership / `safe.directory` question raised in stage 1 stays open for **stage 4**, whose pull, rebase and checkout run filters and hooks.
+- Search text reaches git only as the tail of a single `--grep=` / `--author=` element or after `--`; refs and oids only after `--end-of-options`, and only after matching a list main read itself.
+
+### Testing (stage 3)
+
+**Core:**
+- `parseLog` on recorded `git log --graph` output: a linear history, a merge, an octopus merge, a criss-cross merge, a root commit, a detached HEAD, tags, remote refs, `HEAD -> branch`, unicode and very long subjects, and a page truncated mid-graph.
+- `graphCells` glyphs and lane numbers on the same fixtures.
+- `parseSearch`: each prefix, escapes, trimming, the error cases.
+- `historyQuery` refusals; `defaultBase` with and without `origin/HEAD`, `main`, `master`.
+- `parseCommitDetails` (multi-line message, empty body, different committer) and `parseNameStatus` (renames, copies, type changes, unicode paths).
+- Public API.
+
+**IPC (injected spawn):**
+- Exact argv for each filter × search combination, including `--end-of-options` placement and `limit + 1`.
+- Refusals spawn nothing: a ref not in `for-each-ref`, a base that isn't a branch, a non-hex oid, a parent that isn't one of the commit's parents, search text with a newline, a path outside the worktree, a limit off the 200 step.
+- `unpushed` is `null` with no remotes.
+- The 8 MB cut lands on a record boundary.
+- The global `-c` flags are present on every history call.
+
+**Integration (real git, temporary repos):**
+- A repo with a merge, a tag, a pushed and an unpushed commit (a bare "remote" in the temp folder): filters return the right commits, `↑` marks only the unpushed ones, and `since base` matches `git log base..ref`.
+- Message, author and path searches with regex characters (`a.b`, `[x]`, `*`) are matched literally.
+- Merge-parent diffs: parent 1 vs parent 2 file lists differ as expected.
+- A `.bare` layout shows branch history from its bare entry.
+- `log.showSignature=true` in the repo's config doesn't run gpg (a fake `gpg.program` that records it was called stays unused).
+
+**UI (jsdom, fake adapter):**
+- The Changes | History switch and `view.panel`; an inactive branch row opens History.
+- Rows render graph, ref chips and `↑`; connector rows are skipped by ↑/↓.
+- Search parsing errors show under the box; Enter runs, Esc clears.
+- Filters change the query; "No remotes" disables Unpushed.
+- Load more raises the limit and keeps the focused commit.
+- Selecting a merge offers parents, and switching parent reloads the file list.
+- At most two background requests are in flight; cached commits don't refetch.
+- A moved tip re-reads the page and keeps the old rows until it arrives.
+
+**E2E:** the existing smoke test still opens the view (reported as blocked in headless shells).
