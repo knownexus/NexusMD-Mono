@@ -426,8 +426,8 @@ All four methods take `(repo, worktreePath, registered, …)`, like stage 2. `wo
 |---|---|---|
 | `refs(repo, worktreePath, registered)` | `for-each-ref --format=%(refname)%00%(objectname)%00%(upstream)%00%(HEAD) refs/heads/ refs/remotes/ refs/tags/`, plus `symbolic-ref --quiet refs/remotes/origin/HEAD` and `rev-parse --is-shallow-repository` | `{ refs: raw text, originHead: ref \| null, shallow }` |
 | `log(repo, worktreePath, registered, query)` | See **Building the log argv** below | `{ text, tip, unpushed: [oid], truncated, limit }` |
-| `commitDetails(repo, worktreePath, registered, oid)` | 1. `rev-parse --verify --quiet --end-of-options <oid>^{commit}`. 2. `show -s --format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%D%x00%B --end-of-options <oid>`. | `{ details: raw text }`, or `{ missing: true }` |
-| `commitFiles(repo, worktreePath, registered, oid, parent)` | `diff-tree -r -z -M --name-status --no-ext-diff --no-textconv <parent> <oid>`; for a root commit, `diff-tree --root -r -z -M --name-status <oid>` | `{ files: raw text }` |
+| `commitDetails(repo, worktreePath, registered, oid)` | 1. `rev-parse --verify --quiet --end-of-options <oid>^{commit}`. 2. `show -s --decorate=full --format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%D%x00%B --end-of-options <oid>`. | `{ details: raw text }`, or `{ missing: true }` |
+| `commitFiles(repo, worktreePath, registered, oid, parent)` | `diff-tree --no-commit-id -r -z -M --name-status --no-ext-diff --no-textconv <parent> <oid>`; for a root commit, `diff-tree --no-commit-id --root -r -z -M --name-status <oid>` (without `--no-commit-id`, `--root` prints the commit id as an extra record) | `{ files: raw text }` |
 | `commitDiff(repo, worktreePath, registered, oid, parent, paths)` | `diff --no-color --no-ext-diff --no-textconv -M -U3 <parent> <oid> -- <paths>`; for a root commit, `show --format= --no-color --no-ext-diff --no-textconv -M -U3 <oid> -- <paths>`. Same 1 MB cap and binary detection as stage 2. | `{ text, truncated, binary }` |
 
 **Query object** (built by core, checked again by main):
@@ -452,7 +452,7 @@ All four methods take `(repo, worktreePath, registered, …)`, like stage 2. `wo
 **Building the log argv:**
 
 ```
-log --graph --topo-order --max-count=<limit+1> --no-color --no-ext-diff --no-textconv
+log --graph --topo-order --decorate=full --max-count=<limit+1> --no-color --no-ext-diff --no-textconv
     --format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s
     [search flags] [exclusions] --end-of-options <revs> [-- <path>]
 ```
@@ -476,7 +476,7 @@ These forms were checked against git 2.43: the `--not … --not --end-of-options
 - `parseLog(text)` → `rows: [{ graph, commit? }]`.
   - Each output line is the graph prefix (git's `* | / \ _ .` characters and spaces), then, on commit lines, `\x1e` and the record.
   - `commit` is `{ oid, parents: [oid], author, email, time, refs, subject }`. Lines with no record are connector rows (graph only).
-  - `refs` comes from `%D`: `HEAD -> main`, `origin/main`, `tag: v1.2`, a detached `HEAD`. Each becomes `{ kind: 'head' | 'branch' | 'remote' | 'tag', name }`.
+  - `refs` comes from `%D` with `--decorate=full`: `HEAD -> refs/heads/main`, `refs/remotes/origin/main`, `tag: refs/tags/v1.2`, a detached `HEAD`. Each becomes `{ kind: 'head' | 'branch' | 'remote' | 'tag', name }` with the short name. Full names are what make the kind unambiguous: with short names, a local branch called `origin/main` would look like a remote one.
 - `graphCells(graph)` → `[{ ch, lane }]`: git's ASCII redrawn as box-drawing glyphs (`*` → `●`, `|` → `│`, `/` → `╱`, `\` → `╲`), with a lane index for colouring. *(check against gws's graph glyphs and colours)*
 - `parseSearch(input)` → `null` | `{ kind, text }`. A leading `@` means author, a leading `:` means path, anything else is message words. `\@` and `\:` escape a literal first character. Text is trimmed; whitespace inside it is kept.
 - `historyQuery({ tree | branch, filter, base, search, limit })` builds the query object. It throws the same messages main uses, so bad input is caught before IPC.
