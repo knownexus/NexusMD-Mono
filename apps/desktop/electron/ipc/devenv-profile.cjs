@@ -56,6 +56,8 @@ const isDir = p => fsp.stat(p).then(s => s.isDirectory(), () => false);
 
 async function resolveFile(dir, rel) {
   if (typeof rel !== 'string' || !rel || rel.includes('\0') || path.isAbsolute(rel)) throw new Error(`Not a profile file: ${rel}`);
+  // Windows would read "name:stream" as an alternate data stream and silently drop a trailing dot or space.
+  if (process.platform === 'win32' && (rel.includes(':') || rel.split(/[\\/]/).some(s => s !== '.' && s !== '..' && /[. ]$/.test(s)))) throw new Error(`Not a profile file: ${rel}`);
   const full = path.resolve(dir, rel);
   if (!inside(dir, full)) throw new Error(`Not a profile file: ${rel}`);
   const realDir = (await realDeep(dir)) || dir;
@@ -111,7 +113,9 @@ function register(ipcMain, { logger } = {}) {
     if (buf.subarray(0, 8192).includes(0)) throw new Error(`${rel} isn't a text file.`);
     const bom = buf.subarray(0, 3).equals(BOM);
     if (bom) buf = buf.subarray(3);
-    return { text: buf.toString('utf8'), bom, mtimeMs: st.mtimeMs };
+    let text;
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { throw new Error(`${rel} isn't UTF-8 text.`); }
+    return { text, bom, mtimeMs: st.mtimeMs };
   });
 
   handle('devenv:profile-write', async (_e, config, rel, text, opts) => {

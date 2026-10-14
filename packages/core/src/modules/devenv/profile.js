@@ -86,6 +86,11 @@ export function validateEnvironment(env) {
         })
       }
       for (const f of ['extraDbConn', 'collectionPatterns']) if (t[f] !== undefined && !isObj(t[f])) err(`test.${f}`, `test.${f} must be an object.`)
+      if (repos && isObj(t.collectionPatterns)) {
+        for (const [pattern, value] of Object.entries(t.collectionPatterns)) {
+          if (typeof value !== 'string' || !keys.includes(value)) err(`test.collectionPatterns.${pattern}`, `test.collectionPatterns "${pattern}" points at "${value}", which isn't a repository.`)
+        }
+      }
     }
   }
   return errors
@@ -158,6 +163,10 @@ export function renameRepository(env, from, to) {
   // extraDbConn is keyed by repository, so a rename must carry it along or the entry is orphaned
   if (isObj(env.test?.extraDbConn) && from in env.test.extraDbConn) {
     next = setIn(next, ['test', 'extraDbConn'], Object.fromEntries(Object.entries(env.test.extraDbConn).map(([k, v]) => [swap(k), v])))
+  }
+  // collectionPatterns maps regexes (keys, left alone) to repository keys (values)
+  if (isObj(env.test?.collectionPatterns) && Object.values(env.test.collectionPatterns).includes(from)) {
+    next = setIn(next, ['test', 'collectionPatterns'], Object.fromEntries(Object.entries(env.test.collectionPatterns).map(([k, v]) => [k, swap(v)])))
   }
   return next
 }

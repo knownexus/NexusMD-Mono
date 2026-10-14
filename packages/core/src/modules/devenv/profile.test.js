@@ -112,6 +112,23 @@ describe('edit helpers', () => {
     expect(Object.entries(renamed.test.extraDbConn)).toEqual([['c', { x: 1 }], ['b', { y: 2 }]])
     expect(renameRepository({ repositories: { a: {} }, test: { extraDbConn: 5 } }, 'a', 'c').test.extraDbConn).toBe(5)
   })
+  it('renames repository keys used as test.collectionPatterns values, leaving the regex keys and order alone', () => {
+    const env = { repositories: { a: {}, b: {} }, test: { collectionPatterns: { '^a-': 'a', other: 'b', '^a2': 'a' } } }
+    const renamed = renameRepository(env, 'a', 'c')
+    expect(Object.entries(renamed.test.collectionPatterns)).toEqual([['^a-', 'c'], ['other', 'b'], ['^a2', 'c']])
+    expect(renameRepository({ repositories: { a: {} }, test: { collectionPatterns: 5 } }, 'a', 'c').test.collectionPatterns).toBe(5)
+    expect(env.test.collectionPatterns['^a-']).toBe('a')
+  })
+  it('reports test.collectionPatterns values that are not repositories', () => {
+    const env = structuredClone(ENV)
+    env.test.collectionPatterns = { order: 'orders', gone: 'ghost', num: 5 }
+    const errs = validateEnvironment(env)
+    expect(errs.map(e => e.message)).toEqual([
+      'test.collectionPatterns "gone" points at "ghost", which isn\'t a repository.',
+      'test.collectionPatterns "num" points at "5", which isn\'t a repository.',
+    ])
+    expect(errs[0].path).toBe('test.collectionPatterns.gone')
+  })
   it('adds, renames (in order, with references) and removes repositories', () => {
     const added = addRepository(ENV, 'billing')
     expect(added.repositories.billing).toEqual(newRepository())

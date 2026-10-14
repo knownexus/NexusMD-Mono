@@ -14,6 +14,7 @@ export function ProfileView({ adapter }) {
   const config = run.config
   const [info, setInfo] = React.useState(null)
   const [files, setFiles] = React.useState([])
+  const [truncated, setTruncated] = React.useState(false)
   const [error, setError] = React.useState(null)
   const [selected, setSelected] = React.useState('environment.json')
   const [dirty, setDirty] = React.useState(false)
@@ -24,7 +25,9 @@ export function ProfileView({ adapter }) {
     try {
       const i = await adapter.profileInfo(config)
       setInfo(i)
-      setFiles(i.exists ? (await adapter.profileList(config)).files.map(x => x.path) : [])
+      const list = i.exists ? await adapter.profileList(config) : null
+      setFiles(list ? list.files.map(x => x.path) : [])
+      setTruncated(!!list?.truncated)
     } catch (e) { setError(e?.message || 'Could not read the profile.') }
   }, [adapter, config])
   React.useEffect(() => { refresh() }, [refresh])
@@ -62,6 +65,7 @@ export function ProfileView({ adapter }) {
               <button key={p} className={`btn sm ${p === selected ? '' : 'ghost'}`} aria-current={p === selected ? 'true' : undefined}
                 aria-label={label(p)} style={{ justifyContent: 'flex-start', textAlign: 'left' }} onClick={() => choose(p)}>{label(p)}</button>
             ))}
+            {truncated && <span style={{ color: 'var(--text-muted)', fontSize: 12, padding: '4px 8px' }}>Only the first 2000 files are listed.</span>}
           </nav>
           <ProfileFileEditor key={selected} adapter={adapter} config={config} path={selected} onDirtyChange={setDirty} onSaved={refresh} forms={FORMS} />
         </div>

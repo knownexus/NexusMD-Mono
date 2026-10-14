@@ -30,7 +30,11 @@ function DatabasesField({ databases, onCommit }) {
   const joined = databases.join(', ')
   const [draft, setDraft] = React.useState(joined)
   React.useEffect(() => { setDraft(joined) }, [joined])
-  const commit = () => onCommit(draft.trim() ? draft.split(',').map(s => s.trim()).filter(Boolean) : undefined)
+  const commit = () => {
+    const list = draft.trim() ? draft.split(',').map(s => s.trim()).filter(Boolean) : []
+    if (list.length === databases.length && list.every((d, i) => d === databases[i])) return
+    onCommit(list.length ? list : undefined)
+  }
   return (
     <label style={labelStyle}>
       <span>Databases (comma-separated)</span>

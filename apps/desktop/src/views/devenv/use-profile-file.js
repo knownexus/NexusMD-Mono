@@ -42,7 +42,7 @@ export function useProfileFile({ adapter, config, path }) {
     return { ...p, text }
   }), [key])
 
-  const errors = React.useMemo(() => (s.status === 'ready' ? validateProfileFile(path, s.text) : []), [path, s.text, s.status])
+  const errors = React.useMemo(() => (s.status === 'ready' && !(s.missing && s.text === '') ? validateProfileFile(path, s.text) : []), [path, s.text, s.status, s.missing])
   const dirty = s.status === 'ready' && s.text !== s.saved
 
   const save = React.useCallback(async ({ overwrite = false } = {}) => {

@@ -80,6 +80,16 @@ describe('read', () => {
     fs.writeFileSync(path.join(dir, 'big.txt'), 'x'.repeat(1024 * 1024 + 1))
     await expect(call('devenv:profile-read', cfg(), 'big.txt')).rejects.toThrow(/too large/)
   })
+  it('refuses files that are not valid UTF-8', async () => {
+    fs.writeFileSync(path.join(dir, 'latin.txt'), Buffer.from([0x63, 0x61, 0x66, 0xe9]))
+    await expect(call('devenv:profile-read', cfg(), 'latin.txt')).rejects.toThrow("latin.txt isn't UTF-8 text.")
+  })
+  it.skipIf(process.platform !== 'win32')('refuses Windows-only path tricks (streams, trailing dot or space) but not dot-folders', async () => {
+    for (const bad of ['environment.json:stream', 'a:b', 'docker./x', 'docker /x', 'environment.json.', 'environment.json ']) {
+      await expect(call('devenv:profile-read', cfg(), bad)).rejects.toThrow(/Not a profile file/)
+    }
+    expect(await call('devenv:profile-read', cfg(), '.github/x.yml')).toEqual({ missing: true })
+  })
   it('refuses paths outside the profile, including through a junction', async () => {
     const outside = path.join(tmp, 'outside'); fs.mkdirSync(outside); fs.writeFileSync(path.join(outside, 'secret.txt'), 's')
     fs.symlinkSync(outside, path.join(dir, 'link'), 'junction')

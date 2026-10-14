@@ -79,6 +79,16 @@ describe('EnvironmentForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove wiring 1' }))
     expect(last(onChange).test.wiring).toEqual([])
   })
+  it('does not report a change when Databases is focused and blurred untouched', () => {
+    const onChange = setup()
+    fireEvent.focus(screen.getByLabelText('Databases'))
+    fireEvent.blur(screen.getByLabelText('Databases'))
+    expect(onChange).not.toHaveBeenCalled()
+    const none = setup({ ...ENV, database: { name: 'x' } })
+    const boxes = screen.getAllByLabelText('Databases')
+    fireEvent.blur(boxes[1])
+    expect(none).not.toHaveBeenCalled()
+  })
   it('keeps a typed comma in Databases until blur, then commits', () => {
     const onChange = setup()
     const box = screen.getByLabelText('Databases')

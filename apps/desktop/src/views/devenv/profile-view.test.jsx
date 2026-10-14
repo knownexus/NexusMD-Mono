@@ -13,13 +13,13 @@ const CFG = { root: 'C:\\repos\\dev-environment', pwsh: 'pwsh', profile: '' }
 const DIR = 'C:\\repos\\dev-environment\\profile'
 const ENV = '{"repositories":{"a":{"source":"s","ref":"r","project":"p","kind":"api"}}}\n'
 
-function setup({ exists = true, over = {} } = {}) {
+function setup({ exists = true, over = {}, truncated = false } = {}) {
   globalThis.__run = { state: { ...createRunState(), ...over }, start: vi.fn(), cancel: vi.fn(), config: CFG }
   const disk = { 'environment.json': { text: ENV, bom: false, mtimeMs: 1 }, 'sql/a.sql': { text: 'select 1\n', bom: false, mtimeMs: 1 } }
   const state = { exists }
   const adapter = {
     profileInfo: vi.fn(async () => ({ dir: DIR, isDefault: true, exists: state.exists, example: true })),
-    profileList: vi.fn(async () => ({ dir: DIR, truncated: false, files: Object.keys(disk).map(p => ({ path: p, size: 1, mtimeMs: 1 })) })),
+    profileList: vi.fn(async () => ({ dir: DIR, truncated, files: Object.keys(disk).map(p => ({ path: p, size: 1, mtimeMs: 1 })) })),
     profileRead: vi.fn(async (_c, p) => (p in disk ? { ...disk[p] } : { missing: true })),
     profileWrite: vi.fn(async () => ({ ok: true, mtimeMs: 2 })),
     profileCreate: vi.fn(async () => { state.exists = true; return { ok: true, dir: DIR } }),
@@ -29,6 +29,15 @@ function setup({ exists = true, over = {} } = {}) {
 }
 
 describe('ProfileView', () => {
+  it('notes when the file list was cut off, and not otherwise', async () => {
+    setup({ truncated: true })
+    await screen.findByText('Only the first 2000 files are listed.')
+    cleanup()
+    setup()
+    await screen.findByRole('button', { name: 'sql/a.sql' })
+    expect(screen.queryByText('Only the first 2000 files are listed.')).toBeNull()
+  })
+
   it('offers to create a missing profile from the template', async () => {
     const { adapter } = setup({ exists: false })
     await screen.findByText(`No profile at ${DIR} yet.`)
