@@ -1,0 +1,17 @@
+diff --git a/src/app.js b/src/app.js
+index 1111111..2222222 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -1,3 +1,3 @@
+ one
+-two
++TWO
+ three
+@@ -10,2 +10,3 @@ function tail() {
+ ten
++ten and a half
+ eleven
+@@ -20,2 +21,2 @@
+-twenty
++TWENTY
+ twenty-one
