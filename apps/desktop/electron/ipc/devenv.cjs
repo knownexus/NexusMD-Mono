@@ -23,7 +23,7 @@ const OPENABLE_EXTENSIONS = new Set(['.html', '.htm', '.txt', '.log', '.json', '
 const QUERIES = [
   ['status', '--json'], ['build', 'status', '--json'], ['logs', 'targets', '--json'],
   ['test', 'runs', '--json'], ['test', 'collection', '--json'],
-  ['db', 'baselines', '--json'], ['db', 'scripts', '--json'], ['emulator', 'avds', '--json'],
+  ['db', 'baselines', '--json'], ['db', 'scripts', '--json'], ['emulator', 'avds', '--json'], ['mac', 'status', '--json'],
 ];
 // Queries that end with one folder: an absolute path, never something devenv would read as an option.
 const FOLDER_QUERIES = [['test', 'collection', '--json', '--collection']];

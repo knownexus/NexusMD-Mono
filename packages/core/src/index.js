@@ -88,6 +88,7 @@ export {
   normaliseTestRuns, normaliseTestCollection, buildTestUpArgv, buildTestRunArgv, topLevelPaths,
   normaliseBaselines, normaliseSqlScripts, buildDbArgv, DEVENV_DB_EDITOR_URL,
   normaliseAvds, buildEmulatorArgv,
+  normaliseMacStatus, buildMacArgv, macConnectionText,
 } from './modules/devenv/index.js'
 export {
   getGitAdapter, GIT_AREAS, parseStatus, parseWorktrees, parseBranches, statusCode,

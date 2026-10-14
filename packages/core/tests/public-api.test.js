@@ -70,6 +70,7 @@ const EXPECTED = [
   'normaliseTestRuns', 'normaliseTestCollection', 'buildTestUpArgv', 'buildTestRunArgv', 'topLevelPaths',
   'normaliseBaselines', 'normaliseSqlScripts', 'buildDbArgv', 'DEVENV_DB_EDITOR_URL',
   'normaliseAvds', 'buildEmulatorArgv',
+  'normaliseMacStatus', 'buildMacArgv', 'macConnectionText',
   // Git Workspace module (desktop-only: requires the `git` adapter)
   'IGitAdapter', 'getGitAdapter', 'GIT_AREAS', 'parseStatus', 'parseWorktrees', 'parseBranches', 'statusCode',
   'worktreeId', 'worktreeName', 'activeBranchRef', 'branchLabel', 'loadSnapshot', 'applyStatus', 'worktreeSummary',

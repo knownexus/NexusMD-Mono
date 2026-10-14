@@ -148,6 +148,14 @@ describe('devenv ipc', () => {
     ])
   })
 
+  it('query allows mac status', async () => {
+    const p = t.handlers['devenv:query'](null, CONFIG, ['mac', 'status', '--json'])
+    await tick()
+    t.children.at(-1).finish(0)
+    await expect(p).resolves.toHaveProperty('code', 0)
+    await expect(t.handlers['devenv:query'](null, CONFIG, ['mac', 'status'])).rejects.toThrow(/Not a devenv query/)
+  })
+
   it('catalog runs help --json privately and returns the catalog message', async () => {
     const p = t.handlers['devenv:catalog'](null, CONFIG)
     await tick()

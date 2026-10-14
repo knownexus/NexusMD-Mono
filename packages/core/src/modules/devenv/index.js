@@ -20,6 +20,7 @@ export { normaliseLogTargets, classifyLogLevel, filterLogLines, captureFolder, C
 export { normaliseTestRuns, normaliseTestCollection, buildTestUpArgv, buildTestRunArgv, topLevelPaths } from './tests.js'
 export { normaliseBaselines, normaliseSqlScripts, buildDbArgv, DB_EDITOR_URL as DEVENV_DB_EDITOR_URL } from './database.js'
 export { normaliseAvds, buildEmulatorArgv } from './emulator.js'
+export { normaliseMacStatus, buildMacArgv, macConnectionText } from './mac.js'
 
 let _adapter = null
 
