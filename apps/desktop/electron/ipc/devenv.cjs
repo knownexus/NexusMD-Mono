@@ -15,6 +15,7 @@ const fs = require('fs');
 const { spawn: nodeSpawn, execFile } = require('child_process');
 const { StringDecoder } = require('string_decoder');
 const { withLogging } = require('./withLogging.cjs');
+const { registerProfile } = require('./devenv-profile.cjs');
 
 const PREFIX = '@@devenv ';
 // Files the module may open (reports, logs); never executables or scripts.
@@ -98,6 +99,7 @@ function register(ipcMain, deps = {}) {
     exitGraceMs = 2000,
     logger,
     openReport,
+    fsp = require('fs/promises'),
   } = deps;
   // Created on first use so tests and non-Electron loads never require `electron` for it.
   let reportWindows = openReport;
@@ -112,6 +114,8 @@ function register(ipcMain, deps = {}) {
     reportWindows(file);
   };
   const handle = withLogging(ipcMain, logger);
+  // Profile files (the Profile tab) go through the same handle, so failures are logged alike.
+  registerProfile(handle, { fsp });
   const runs = new Map();
   const collectors = new Set();
   let nextId = 1;
