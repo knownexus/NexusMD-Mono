@@ -11,6 +11,8 @@ import { TestsView } from './tests-view.jsx'
 import { DatabaseView } from './database-view.jsx'
 import { EmulatorView } from './emulator-view.jsx'
 import { MacView } from './mac-view.jsx'
+import { ProfileView } from './profile-view.jsx'
+import { hasDrafts, useDraftsVersion } from './profile-drafts.js'
 
 // A run started before the window reloaded can't be watched or answered any more (its
 // output and any open question went to the old window), so the only safe offer is Cancel.
@@ -26,7 +28,7 @@ function LeftoverRunsBanner({ leftover }) {
   )
 }
 
-const TABS = ['Status', 'Start', 'Builds', 'Logs', 'Tests', 'Database', 'Emulator', 'Mac', 'Commands']
+const TABS = ['Status', 'Start', 'Builds', 'Logs', 'Tests', 'Database', 'Emulator', 'Mac', 'Profile', 'Commands']
 const tabKey = () => getProfileKey('devenv.tab')
 
 function useTab() {
@@ -37,12 +39,11 @@ function useTab() {
   return [tab, choose]
 }
 
-// The Profile tab joins these in a later phase
-// (docs/superpowers/specs/2026-10-08-devenv-module-design.md).
 export function DevenvView({ adapters }) {
   const adapter = adapters.devenv
   const run = useDevenvRunContext()
   const [tab, setTab] = useTab()
+  useDraftsVersion()
   if (!adapter?.isAvailable() || !run) return <div style={{ padding: 16 }}>Dev Environment needs the desktop app.</div>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%', minHeight: 0, padding: 16 }}>
@@ -50,7 +51,9 @@ export function DevenvView({ adapters }) {
       <LeftoverRunsBanner leftover={run.leftover} />
       <div style={{ display: 'flex', gap: 6 }}>
         {TABS.map(t => (
-          <button key={t} className={`btn sm ${tab === t ? '' : 'ghost'}`} aria-pressed={tab === t} onClick={() => setTab(t)}>{t}</button>
+          <button key={t} className={`btn sm ${tab === t ? '' : 'ghost'}`} aria-pressed={tab === t} onClick={() => setTab(t)}>
+            {t}{t === 'Profile' && hasDrafts() ? <span aria-hidden="true" title="Unsaved changes"> •</span> : null}
+          </button>
         ))}
       </div>
       {tab === 'Status' && <StatusView adapter={adapter} onStart={() => setTab('Start')} />}
@@ -61,6 +64,7 @@ export function DevenvView({ adapters }) {
       {tab === 'Database' && <DatabaseView adapter={adapter} />}
       {tab === 'Emulator' && <EmulatorView adapter={adapter} picker={pickerAdapter} />}
       {tab === 'Mac' && <MacView adapter={adapter} />}
+      {tab === 'Profile' && <ProfileView adapter={adapter} picker={pickerAdapter} />}
       {tab === 'Commands' && <CommandsView adapter={adapter} picker={pickerAdapter} />}
     </div>
   )

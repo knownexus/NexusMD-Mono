@@ -6,10 +6,13 @@ vi.mock('./devenv-run-context.jsx', () => ({ useDevenvRunContext: () => globalTh
 vi.mock('./status-view.jsx', () => ({ StatusView: ({ onStart }) => <button onClick={onStart}>status-stub</button> }))
 vi.mock('./start-view.jsx', () => ({ StartView: () => <div>start-stub</div> }))
 vi.mock('./commands-view.jsx', () => ({ CommandsView: () => <div>commands-stub</div> }))
+vi.mock('./profile-view.jsx', () => ({ ProfileView: () => <div>profile-stub</div> }))
 
 import { DevenvView } from './view-devenv.jsx'
+import { setDraft, clearAllDrafts } from './profile-drafts.js'
+import { act } from '@testing-library/react'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); clearAllDrafts() })
 beforeEach(() => {
   localStorage.clear()
   globalThis.__run = { state: createRunState(), start: vi.fn(), cancel: vi.fn(), leftover: { runs: [], error: null, cancelAll: vi.fn() } }
@@ -28,6 +31,18 @@ describe('DevenvView', () => {
     render(<DevenvView adapters={adapters} />)
     fireEvent.click(screen.getByText('status-stub'))
     expect(screen.getByText('start-stub')).toBeTruthy()
+  })
+  it('has a Profile tab between Mac and Commands, marked while a draft is unsaved', () => {
+    render(<DevenvView adapters={adapters} />)
+    const names = ['Status', 'Start', 'Builds', 'Logs', 'Tests', 'Database', 'Emulator', 'Mac', 'Profile', 'Commands']
+    const order = names.map(n => screen.getByRole('button', { name: n }))
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(screen.getByText('profile-stub')).toBeTruthy()
+    act(() => setDraft('C:\\p', 'mac.json', { text: '{}', baseStamp: null }))
+    expect(screen.getByRole('button', { name: 'Profile' }).textContent).toBe('Profile •')
   })
   it('remembers the tab', () => {
     const { unmount } = render(<DevenvView adapters={adapters} />)
