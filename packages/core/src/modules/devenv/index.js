@@ -21,6 +21,10 @@ export { normaliseTestRuns, normaliseTestCollection, buildTestUpArgv, buildTestR
 export { normaliseBaselines, normaliseSqlScripts, buildDbArgv, DB_EDITOR_URL as DEVENV_DB_EDITOR_URL } from './database.js'
 export { normaliseAvds, buildEmulatorArgv } from './emulator.js'
 export { normaliseMacStatus, buildMacArgv, macConnectionText } from './mac.js'
+export {
+  profileFileKind, validateProfileFile, validateEnvironment, validateMac, detectEol, toLf, fromLf, formatJson,
+  setIn, newRepository, addRepository, renameRepository, removeRepository, REPOSITORY_KEY,
+} from './profile.js'
 
 let _adapter = null
 

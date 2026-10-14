@@ -18,5 +18,8 @@
   },
   "devDependencies": {
     "vitest": "^2.0.0"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
   }
 }
