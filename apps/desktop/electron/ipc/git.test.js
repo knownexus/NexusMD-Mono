@@ -332,6 +332,7 @@ describe('stage 2 reads', () => {
   it('sets literal pathspecs unless a call opts out', () => {
     expect(gitEnv({}).GIT_LITERAL_PATHSPECS).toBe('1')
     expect(gitEnv({}, { literal: false }).GIT_LITERAL_PATHSPECS).toBeUndefined()
+    expect('GIT_LITERAL_PATHSPECS' in gitEnv({ GIT_LITERAL_PATHSPECS: '1' }, { literal: false })).toBe(false)
   })
 
   it('rejects a folder inside the repo that git does not list as a worktree, without spawning a read or write', async () => {

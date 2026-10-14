@@ -30,7 +30,9 @@ const OPERATIONS = [
 function gitEnv(base = process.env, { literal = true } = {}) {
   // A target always means the requested checkout, even if NexusMD inherited git internals.
   const env = { ...base, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C' };
+  // An inherited value is dropped too, or hooks would still get literal pathspecs.
   if (literal) env.GIT_LITERAL_PATHSPECS = '1';
+  else delete env.GIT_LITERAL_PATHSPECS;
   for (const k of STRIP_ENV) delete env[k];
   return env;
 }
