@@ -91,6 +91,19 @@ function result(r) {
   return { ok: false, detail: /index\.lock/.test(r.stderr) ? `${detail}\n${LOCK_HINT}` : detail || `git exited with code ${r.code}` };
 }
 
+// Cuts one hunk out of a single-file diff: the file header plus the index-th "@@" hunk.
+// Numbering matches parseDiff in @nexusmd/core. Lines keep any "\r", so CRLF files apply cleanly.
+function extractHunk(text, index) {
+  const lines = String(text).split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  if (lines.filter(l => l.startsWith('diff --')).length > 1) throw new Error('This diff covers more than one file. Stage the whole file instead.');
+  const starts = [];
+  lines.forEach((l, i) => { if (l.startsWith('@@')) starts.push(i); });
+  if (!Number.isInteger(index) || index < 0 || index >= starts.length) throw new Error('That hunk no longer exists. Refresh and review again.');
+  const end = index + 1 < starts.length ? starts[index + 1] : lines.length;
+  return [...lines.slice(0, starts[0]), ...lines.slice(starts[index], end)].join('\n') + '\n';
+}
+
 const sha = (...parts) => crypto.createHash('sha256').update(parts.join('\0')).digest('hex');
 
 // The rest of a porcelain v2 record after its n fixed fields (the path may contain spaces).
@@ -488,6 +501,28 @@ function register(ipcMain, deps = {}) {
     });
   });
 
+  function hunkWrite(channel, area, reverse) {
+    handle(channel, async (_e, repo, worktreePath, registered, paths, index, expected) => {
+      await requireWorktree(repo, worktreePath, registered);
+      const rel = requirePaths(worktreePath, paths);
+      return withRepoLock(repo, async () => {
+        const state = await filesState(worktreePath, rel);
+        if (!state.entries.length) return refuse('Untracked files are staged whole.');
+        if (state.entries.some(e => e.stage !== '0')) return refuse('Conflicted files are staged whole, after resolving them.');
+        if (state.entries.some(e => e.mode === '160000')) return refuse(SUBMODULE);
+        const d = await diffText(worktreePath, area, rel);
+        if (sha(state.stamp, d.text) !== expected) return { ok: false, stale: true, detail: STALE };
+        if (d.binary || d.truncated) return refuse('Binary or truncated diffs are staged whole.');
+        let patch;
+        try { patch = extractHunk(d.text, index); } catch (e) { return refuse(e.message); }
+        return result(await git(worktreePath, ['apply', '--cached', ...(reverse ? ['--reverse'] : []), '--whitespace=nowarn', '-'], { input: patch }));
+      });
+    });
+  }
+
+  hunkWrite('git:stageHunk', 'unstaged', false);
+  hunkWrite('git:unstageHunk', 'staged', true);
+
   handle('git:branches', async (_e, repo, registered) => {
     requireRegistered(repo, registered);
     const r = await git(await resolveCommon(repo.path), ['for-each-ref', '--sort=refname', BRANCH_FORMAT, 'refs/heads/']);
@@ -539,4 +574,4 @@ function register(ipcMain, deps = {}) {
   };
 }
 
-module.exports = { register, gitEnv, isRepositoryRoot, findGit };
+module.exports = { register, gitEnv, isRepositoryRoot, findGit, extractHunk };

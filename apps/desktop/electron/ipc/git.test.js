@@ -1,9 +1,11 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from 'vitest'
+import fs from 'fs'
 import path from 'path'
 import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
-import { register, gitEnv, isRepositoryRoot, findGit } from './git.cjs'
+import { parseDiff } from '@nexusmd/core'
+import { register, gitEnv, isRepositoryRoot, findGit, extractHunk } from './git.cjs'
 
 const ROOT = process.platform === 'win32' ? 'C:\\repos' : '/repos'
 const REPO = { name: 'App', path: path.join(ROOT, 'App') }
@@ -503,5 +505,64 @@ describe('stage 2 writes', () => {
     await vi.waitFor(() => expect(s.calls.filter(c => c.args[0] === 'add')).toHaveLength(2))
     s.calls.filter(c => c.args[0] === 'add')[1].child.emit('close', 0)
     expect((await second).ok).toBe(true)
+  })
+})
+
+const THREE = fs.readFileSync(new URL('../../../../packages/core/src/modules/git/fixtures/three-hunks.diff', import.meta.url), 'utf8')
+
+describe('extractHunk', () => {
+  it('keeps the file header and the chosen hunk, numbered as core numbers them', () => {
+    const patch = extractHunk(THREE, 1)
+    const lines = patch.split('\n')
+    expect(lines.slice(0, 4)).toEqual(['diff --git a/src/app.js b/src/app.js', 'index 1111111..2222222 100644', '--- a/src/app.js', '+++ b/src/app.js'])
+    expect(lines[4]).toBe(parseDiff(THREE).files[0].hunks[1].header)
+    expect(lines.slice(5)).toEqual([' ten', '+ten and a half', ' eleven', ''])
+    expect(extractHunk(THREE, 2).split('\n')[4]).toBe(parseDiff(THREE).files[0].hunks[2].header)
+  })
+
+  it('preserves CRLF content lines', () => {
+    expect(extractHunk(THREE.replace(/\n/g, '\r\n'), 0)).toContain('-two\r\n+TWO\r\n')
+  })
+
+  it('refuses a missing hunk or a diff with more than one file', () => {
+    expect(() => extractHunk(THREE, 3)).toThrow('That hunk no longer exists. Refresh and review again.')
+    expect(() => extractHunk(THREE, -1)).toThrow('That hunk no longer exists. Refresh and review again.')
+    expect(() => extractHunk(THREE + THREE, 0)).toThrow('This diff covers more than one file. Stage the whole file instead.')
+  })
+})
+
+describe('git:stageHunk and git:unstageHunk', () => {
+  const hunkSetup = (over = {}) => setup(reads({ diff: { stdout: THREE }, ...over }))
+  const diffStamp = async (s, area = 'unstaged') => (await s.invoke('git:diff', REPO, WT, REG, { area, paths: ['a b.txt'] })).stamp
+
+  it('applies one hunk to the index from stdin', async () => {
+    const s = hunkSetup()
+    const r = await s.invoke('git:stageHunk', REPO, WT, REG, ['a b.txt'], 1, await diffStamp(s))
+    expect(r.ok).toBe(true)
+    const apply = s.calls.find(c => c.args[0] === 'apply')
+    expect(apply.args).toEqual(['apply', '--cached', '--whitespace=nowarn', '-'])
+    expect(apply.child.input).toBe(extractHunk(THREE, 1))
+  })
+
+  it('reverses a staged hunk out of the index', async () => {
+    const s = hunkSetup()
+    await s.invoke('git:unstageHunk', REPO, WT, REG, ['a b.txt'], 0, await diffStamp(s, 'staged'))
+    expect(s.calls.find(c => c.args[0] === 'apply').args).toEqual(['apply', '--cached', '--reverse', '--whitespace=nowarn', '-'])
+    expect(s.calls.filter(c => c.args[0] === 'diff').at(-1).args).toContain('--cached')
+  })
+
+  it('refuses stale, missing, untracked, conflicted and binary hunks without applying', async () => {
+    const attempt = async (over, index = 0, stamp = null) => {
+      const s = hunkSetup(over)
+      const r = await s.invoke('git:stageHunk', REPO, WT, REG, ['a b.txt'], index, stamp ?? await diffStamp(s))
+      return [r, s.calls.some(c => c.args[0] === 'apply')]
+    }
+    expect(await attempt({}, 0, 'old')).toEqual([{ ok: false, stale: true, detail: 'Changed since you reviewed it. Refresh and review again.' }, false])
+    expect(await attempt({}, 7)).toEqual([{ ok: false, detail: 'That hunk no longer exists. Refresh and review again.' }, false])
+    expect(await attempt({ 'ls-files': { stdout: '' } })).toEqual([{ ok: false, detail: 'Untracked files are staged whole.' }, false])
+    expect(await attempt({ 'ls-files': { stdout: '100644 1111111111111111111111111111111111111111 2\ta b.txt\x00' } }))
+      .toEqual([{ ok: false, detail: 'Conflicted files are staged whole, after resolving them.' }, false])
+    expect(await attempt({ diff: { stdout: 'diff --git a/a b.txt b/a b.txt\nBinary files a/a b.txt and b/a b.txt differ\n' } }))
+      .toEqual([{ ok: false, detail: 'Binary or truncated diffs are staged whole.' }, false])
   })
 })
