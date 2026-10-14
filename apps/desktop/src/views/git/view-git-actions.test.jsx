@@ -145,4 +145,18 @@ describe('file actions', () => {
     expect(a.stageHunk).toHaveBeenCalledTimes(1)
     expect(a.stageHunk).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, ['f.txt'], 1, 'd1')
   })
+
+  it('opens the commit dialog from the toolbar with the selected worktree ticked', async () => {
+    const STAGED = '# branch.oid a\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +0 -0\x001 M. N... 100644 100644 100644 a b f.txt\0'
+    const { state, a } = setupView({ commit: vi.fn(async () => ({ ok: true, detail: 'ok' })) })
+    state.porcelain = STAGED
+    await openWorktree()
+    fireEvent.click(screen.getByRole('button', { name: 'Commit…' }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByLabelText('A › checkout → main').checked).toBe(true)
+    fireEvent.change(within(dialog).getByLabelText('Commit message'), { target: { value: 'Ship it' } })
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Commit' }).disabled).toBe(false))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Commit' }))
+    await waitFor(() => expect(a.commit).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, 'Ship it', 'stamp-1'))
+  })
 })

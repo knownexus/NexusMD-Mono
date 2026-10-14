@@ -1,6 +1,6 @@
 import React from 'react'
 import {
-  ALL_PROJECTS, findGroup, scopeSnapshot, changeCount, renameGroup, duplicateGroup, deleteGroup, worktreeId, pruneSelection,
+  ALL_PROJECTS, findGroup, scopeSnapshot, changeCount, renameGroup, duplicateGroup, deleteGroup, worktreeId, pruneSelection, commitTargets,
 } from '@nexusmd/core'
 import { setGitConfig, getGitConfig, effectiveRoots } from '../../git-config.js'
 import { useGitConfig } from './use-git-config.js'
@@ -13,6 +13,7 @@ import { GroupMenu } from './group-menu.jsx'
 import { GroupEditor } from './group-editor.jsx'
 import { useGitActions } from './use-git-actions.js'
 import { ReviewDialog } from './review-dialog.jsx'
+import { CommitDialog } from './commit-dialog.jsx'
 
 const card = (text, role) => <div className="card" role={role} style={{ padding: 16 }}>{text}</div>
 
@@ -31,6 +32,9 @@ function GitWorkspace({ adapter }) {
   // Per worktree, for this session: which changes are ticked and which one shows its diff.
   const [selections, setSelections] = React.useState({})
   const [focus, setFocus] = React.useState({})
+  // An open commit dialog: which worktrees start ticked (null = the selected one) and messages kept for a retry.
+  const [committing, setCommitting] = React.useState(null)
+  const commits = React.useRef(0)
   React.useEffect(() => {
     let live = true
     adapter.version().then(v => { if (live) setGitVersion(v) }, () => { if (live) setGitVersion(null) })
@@ -63,6 +67,11 @@ function GitWorkspace({ adapter }) {
   const roots = effectiveRoots(config)
   const tryName = fn => value => { try { save(fn(getGitConfig(), value)); return null } catch (e) { return e.message } }
 
+  const openCommit = (tickedIds = null, messages = {}) => setCommitting({ id: ++commits.current, tickedIds, messages })
+  const commitList = committing
+    ? commitTargets(scoped.worktrees, view.selected).map(t => (committing.tickedIds ? { ...t, ticked: !t.unavailable && committing.tickedIds.includes(t.id) } : t))
+    : []
+
   return (
     <div style={{ display: 'grid', gap: 12, padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -91,7 +100,7 @@ function GitWorkspace({ adapter }) {
                 version={snapshot?.takenAt} tree={selectedTree} selected={selectedIds} focusId={focusId}
                 onSelectionChange={ids => setSelections(s => ({ ...s, [treeKey]: ids }))}
                 onFocus={id => setFocus(f => ({ ...f, [treeKey]: id }))}
-                onAction={action => actions.openReview(action, selectedTree, selectedIds)} onCommit={() => {}}
+                onAction={action => actions.openReview(action, selectedTree, selectedIds)} onCommit={() => openCommit()}
                 onHunk={(change, index, stamp) => actions.hunk(selectedTree, change, index, stamp)}
                 busy={!!actions.busy[selectedTree.path]} status={actions.status[selectedTree.path] ?? null}
                 split={view.split} onSplit={split => setView({ split })} />
@@ -126,6 +135,11 @@ function GitWorkspace({ adapter }) {
           if (!reposChanged) refresh()
         }} />
       <ReviewDialog key={actions.review?.id ?? 'none'} state={actions.review} onClose={actions.closeReview} onConfirm={actions.confirm} />
+      {committing && (
+        <CommitDialog key={committing.id} targets={commitList} adapter={adapter} registered={registered} initialMessages={committing.messages}
+          onClose={() => setCommitting(null)} onDone={refresh}
+          onRetry={async (failedIds, messages) => { setCommitting(null); await refresh(); openCommit(failedIds, messages) }} />
+      )}
     </div>
   )
 }
