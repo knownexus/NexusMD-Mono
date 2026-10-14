@@ -64,6 +64,32 @@ describe('useGitSnapshot', () => {
     expect(adapter.resolve).toHaveBeenCalledTimes(2)
   })
 
+  it('queues exactly one quiet load after the running one when reloads are asked for mid-load', async () => {
+    const pending = deferred()
+    let calls = 0
+    const adapter = adapterWith(() => (++calls === 1 ? pending.promise : Promise.resolve({ commonDir: `after-${calls}` })))
+    const { result } = renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null }))
+    let done
+    await act(async () => { done = result.current.reload(); result.current.reload() })
+    expect(adapter.resolve).toHaveBeenCalledTimes(1)
+    await act(async () => { pending.resolve({ commonDir: 'before-write' }) })
+    await act(async () => { await done })
+    expect(adapter.resolve).toHaveBeenCalledTimes(2)
+    expect(result.current.snapshot.worktrees[0].commonDir).toBe('after-2')
+  })
+
+  it('reloads at once and quietly when nothing is running', async () => {
+    const adapter = adapterWith(async dir => ({ commonDir: `${dir}/.git` }))
+    const { result } = renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null }))
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull())
+    const pending = deferred()
+    adapter.resolve.mockImplementation(() => pending.promise)
+    await act(async () => { result.current.reload() })
+    expect(adapter.resolve).toHaveBeenCalledTimes(2)
+    expect(result.current.loading).toBe(false)
+    await act(async () => { pending.resolve({ commonDir: 'x' }) })
+  })
+
   it('shows the last snapshot immediately when the screen is reopened, then refreshes quietly', async () => {
     const adapter = adapterWith(async dir => ({ commonDir: `${dir}/.git` }))
     const first = renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null }))

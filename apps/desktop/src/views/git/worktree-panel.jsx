@@ -14,13 +14,19 @@ export function WorktreePanel({
   const change = tree.changes.find(c => c.id === focusId) ?? null
   const diff = useDiff({ adapter, repo, worktreePath: tree.path, registered, change, version })
   const box = React.useRef(null)
+  // While dragging, the ratio lives here; config (localStorage) is written once on release.
+  const [dragging, setDragging] = React.useState(null)
+  const shown = dragging ?? split
   const drag = e => {
     e.preventDefault()
     const rect = box.current.getBoundingClientRect()
-    const move = ev => onSplit(clamp((ev.clientY - rect.top) / rect.height))
+    let last = null
+    const move = ev => { last = clamp((ev.clientY - rect.top) / rect.height); setDragging(last) }
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
+      setDragging(null)
+      if (last != null) onSplit(last)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -32,12 +38,12 @@ export function WorktreePanel({
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <WorktreeHeader tree={tree} />
-      <div ref={box} style={{ display: 'grid', gridTemplateRows: `minmax(0, ${split}fr) 6px minmax(0, ${1 - split}fr)`, height: '70vh', minHeight: 320 }}>
+      <div ref={box} style={{ display: 'grid', gridTemplateRows: `minmax(0, ${shown}fr) 6px minmax(0, ${1 - shown}fr)`, height: '70vh', minHeight: 320 }}>
         <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={onFocus}
           onAction={onAction} onCommit={onCommit} busy={busy} status={status} />
-        <div role="separator" aria-orientation="horizontal" aria-label="Resize changes and diff" aria-valuenow={Math.round(split * 100)}
+        <div role="separator" aria-orientation="horizontal" aria-label="Resize changes and diff" aria-valuenow={Math.round(shown * 100)}
           tabIndex={0} onPointerDown={drag} onKeyDown={nudge} style={{ cursor: 'row-resize', background: 'var(--border)' }} />
-        <DiffPane change={change} diff={diff} busy={busy} onHunk={(index, stamp) => onHunk(change, index, stamp)} />
+        <DiffPane change={change} diff={diff} busy={busy} onHunk={(index, stamp) => onHunk(change, index, stamp, diff.reload)} />
       </div>
     </div>
   )

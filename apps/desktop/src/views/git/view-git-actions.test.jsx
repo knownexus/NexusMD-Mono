@@ -146,6 +146,72 @@ describe('file actions', () => {
     expect(a.stageHunk).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, ['f.txt'], 1, 'd1')
   })
 
+  it('reloads the snapshot after a write even when a load was already running', async () => {
+    const { a } = setupView()
+    await openWorktree()
+    fireEvent.click(screen.getByLabelText('Select f.txt'))
+    fireEvent.click(screen.getByRole('button', { name: 'Stage 1' }))
+    const run = within(screen.getByRole('dialog')).getByRole('button', { name: 'Stage' })
+    await waitFor(() => expect(run.disabled).toBe(false))
+    const poll = deferred()
+    const before = a.status.mock.calls.length
+    a.status.mockImplementationOnce(() => poll.promise)
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(a.status.mock.calls.length).toBe(before + 1))
+    fireEvent.click(run)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Done'))
+    expect(a.status.mock.calls.length).toBe(before + 1)
+    await act(async () => { poll.resolve({ porcelain: DIRTY, operation: '', rebasingBranch: null, fetchedAt: null }) })
+    await waitFor(() => expect(a.status.mock.calls.length).toBe(before + 2))
+  })
+
+  it('reloads the focused diff as soon as a hunk write finishes, with its buttons disabled meanwhile', async () => {
+    const { a } = setupView()
+    await openWorktree()
+    fireEvent.click(screen.getByText('f.txt'))
+    const buttons = await screen.findAllByRole('button', { name: 'Stage hunk' })
+    await waitFor(() => expect(buttons[0].disabled).toBe(false))
+    // No new snapshot arrives, so only the hunk write can trigger the reload.
+    a.status.mockImplementation(() => new Promise(() => {}))
+    const next = deferred()
+    a.diff.mockImplementationOnce(() => next.promise)
+    const diffs = a.diff.mock.calls.length
+    fireEvent.click(buttons[0])
+    await waitFor(() => expect(a.diff.mock.calls.length).toBe(diffs + 1))
+    expect(screen.getAllByRole('button', { name: 'Stage hunk' }).every(b => b.disabled)).toBe(true)
+    await act(async () => { next.resolve({ text: TWO.slice(0, TWO.indexOf('@@ -9')), stamp: 'd2', truncated: false, binary: false, size: 10 }) })
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Stage hunk' })).toHaveLength(1))
+    expect(screen.getByRole('button', { name: 'Stage hunk' }).disabled).toBe(false)
+  })
+
+  it('shows a thrown write error without Electron\'s remote-method prefix', async () => {
+    setupView({ stage: vi.fn(async () => { throw new Error("Error invoking remote method 'git:stage': Error: git add timed out after 30s") }) })
+    await openWorktree()
+    fireEvent.click(screen.getByLabelText('Select f.txt'))
+    fireEvent.click(screen.getByRole('button', { name: 'Stage 1' }))
+    const run = within(screen.getByRole('dialog')).getByRole('button', { name: 'Stage' })
+    await waitFor(() => expect(run.disabled).toBe(false))
+    fireEvent.click(run)
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('git add timed out after 30s'))
+  })
+
+  it('saves the divider position once, when the drag ends', async () => {
+    setupView()
+    await openWorktree()
+    const divider = screen.getByRole('separator', { name: 'Resize changes and diff' })
+    divider.parentElement.getBoundingClientRect = () => ({ top: 0, height: 100 })
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    fireEvent.pointerDown(divider)
+    // jsdom has no PointerEvent, so clientY is set on a plain event.
+    for (const y of [30, 40, 60]) act(() => { window.dispatchEvent(Object.assign(new Event('pointermove'), { clientY: y })) })
+    expect(setItem).not.toHaveBeenCalled()
+    expect(divider.getAttribute('aria-valuenow')).toBe('60')
+    fireEvent.pointerUp(window)
+    expect(setItem).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(setItem.mock.calls[0][1]).view.split).toBe(0.6)
+    setItem.mockRestore()
+  })
+
   it('opens the commit dialog from the toolbar with the selected worktree ticked', async () => {
     const STAGED = '# branch.oid a\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +0 -0\x001 M. N... 100644 100644 100644 a b f.txt\0'
     const { state, a } = setupView({ commit: vi.fn(async () => ({ ok: true, detail: 'ok' })) })

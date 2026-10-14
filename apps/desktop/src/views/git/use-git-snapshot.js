@@ -19,6 +19,8 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
   const live = React.useRef(true)
   const reqId = React.useRef(0)
   const inFlight = React.useRef(0)
+  // A reload asked for while a load runs: { promise, resolve } for the one load queued after it.
+  const queued = React.useRef(null)
   const hasSnapshot = React.useRef(snapshot != null)
   // StrictMode runs the cleanup and the effect again in dev, so liveness must be re-armed.
   React.useEffect(() => { live.current = true; return () => { live.current = false } }, [])
@@ -39,11 +41,28 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
     } finally {
       inFlight.current--
       if (current()) setLoading(false)
+      if (!inFlight.current && queued.current) {
+        const q = queued.current
+        queued.current = null
+        load(true).then(q.resolve, q.resolve)
+      }
     }
   }, [adapter, reposKey, enabled])
 
   // A manual refresh while a load is running would only queue a duplicate poll.
   const refresh = React.useCallback(() => load(false, true), [load])
+
+  // After a write: a running load may have read status before the write, so one quiet load is
+  // queued after it (never more than one), or starts at once when nothing is running.
+  const reload = React.useCallback(() => {
+    if (!inFlight.current) return load(true)
+    if (!queued.current) {
+      let resolve
+      const promise = new Promise(r => { resolve = r })
+      queued.current = { promise, resolve }
+    }
+    return queued.current.promise
+  }, [load])
 
   React.useEffect(() => {
     // With a cached snapshot on screen, the first refresh is quiet rather than a loading state.
@@ -61,5 +80,5 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
     }
   }, [load, enabled, intervalMs])
 
-  return { snapshot, error, loading, refresh }
+  return { snapshot, error, loading, refresh, reload }
 }

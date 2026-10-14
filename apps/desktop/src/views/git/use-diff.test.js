@@ -43,6 +43,29 @@ describe('useDiff', () => {
     expect(result.current.result.stamp).toBe('s2')
   })
 
+  it('keeps the parsed diff when a reload brings the same text and stamp', async () => {
+    const adapter = { diff: vi.fn(async () => ({ text: TEXT, stamp: 's1' })) }
+    const f = change('f.txt')
+    const { result, rerender } = renderHook(p => useDiff({ adapter, repo, worktreePath: repo.path, registered, change: f, version: p.version }), { initialProps: { version: 1 } })
+    await waitFor(() => expect(result.current.result?.stamp).toBe('s1'))
+    const { result: before, files } = result.current
+    rerender({ version: 2 })
+    await waitFor(() => expect(adapter.diff).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.result).toBe(before)
+    expect(result.current.files).toBe(files)
+  })
+
+  it('reloads at once when asked, without a new snapshot', async () => {
+    let n = 0
+    const adapter = { diff: vi.fn(async () => ({ text: TEXT, stamp: `s${++n}` })) }
+    const { result } = renderHook(() => useDiff({ adapter, repo, worktreePath: repo.path, registered, change: change('f.txt'), version: 1 }))
+    await waitFor(() => expect(result.current.result?.stamp).toBe('s1'))
+    act(() => { result.current.reload() })
+    expect(result.current.loading).toBe(true)
+    await waitFor(() => expect(result.current.result.stamp).toBe('s2'))
+  })
+
   it('keeps only the newest response when the focus moves quickly', async () => {
     const slow = deferred()
     const adapter = { diff: vi.fn(async (_r, _w, _g, ch) => (ch.paths[0] === 'slow.txt' ? slow.promise : { text: TEXT, stamp: 'fast' })) }
@@ -57,5 +80,11 @@ describe('useDiff', () => {
     const adapter = { diff: vi.fn(async () => { throw new Error('boom') }) }
     const { result } = renderHook(() => useDiff({ adapter, repo, worktreePath: repo.path, registered, change: change('f.txt'), version: 1 }))
     await waitFor(() => expect(result.current.error).toBe('boom'))
+  })
+
+  it('drops Electron\'s remote-method prefix from errors', async () => {
+    const adapter = { diff: vi.fn(async () => { throw new Error("Error invoking remote method 'git:diff': Error: Not a worktree of C:/repos/A: C:/repos/A/sub") }) }
+    const { result } = renderHook(() => useDiff({ adapter, repo, worktreePath: repo.path, registered, change: change('f.txt'), version: 1 }))
+    await waitFor(() => expect(result.current.error).toBe('Not a worktree of C:/repos/A: C:/repos/A/sub'))
   })
 })

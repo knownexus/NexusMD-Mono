@@ -40,8 +40,8 @@ function GitWorkspace({ adapter }) {
     adapter.version().then(v => { if (live) setGitVersion(v) }, () => { if (live) setGitVersion(null) })
     return () => { live = false }
   }, [adapter])
-  const { snapshot, error, loading, refresh } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported })
-  const actions = useGitActions({ adapter, registered, refresh })
+  const { snapshot, error, loading, refresh, reload } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported })
+  const actions = useGitActions({ adapter, registered, reload })
 
   if (config.unsupported) return card(`These Git Workspace settings were saved by a newer NexusMD (version ${config.unsupported}). Update NexusMD to use them.`, 'alert')
   if (gitVersion === null) return card('Git not found. Install Git for Windows (git-scm.com) and make sure git is on PATH, then reopen this screen.', 'alert')
@@ -101,7 +101,7 @@ function GitWorkspace({ adapter }) {
                 onSelectionChange={ids => setSelections(s => ({ ...s, [treeKey]: ids }))}
                 onFocus={id => setFocus(f => ({ ...f, [treeKey]: id }))}
                 onAction={action => actions.openReview(action, selectedTree, selectedIds)} onCommit={() => openCommit()}
-                onHunk={(change, index, stamp) => actions.hunk(selectedTree, change, index, stamp)}
+                onHunk={(change, index, stamp, after) => actions.hunk(selectedTree, change, index, stamp, after)}
                 busy={!!actions.busy[selectedTree.path]} status={actions.status[selectedTree.path] ?? null}
                 split={view.split} onSplit={split => setView({ split })} />
             )
@@ -137,8 +137,8 @@ function GitWorkspace({ adapter }) {
       <ReviewDialog key={actions.review?.id ?? 'none'} state={actions.review} onClose={actions.closeReview} onConfirm={actions.confirm} />
       {committing && (
         <CommitDialog key={committing.id} targets={commitList} adapter={adapter} registered={registered} initialMessages={committing.messages}
-          onClose={() => setCommitting(null)} onDone={refresh}
-          onRetry={async (failedIds, messages) => { setCommitting(null); await refresh(); openCommit(failedIds, messages) }} />
+          onClose={() => setCommitting(null)} onDone={reload}
+          onRetry={async (failedIds, messages) => { setCommitting(null); await reload(); openCommit(failedIds, messages) }} />
       )}
     </div>
   )

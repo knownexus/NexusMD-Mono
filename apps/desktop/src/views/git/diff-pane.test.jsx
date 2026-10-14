@@ -43,6 +43,35 @@ describe('DiffPane', () => {
     expect(screen.getAllByRole('button', { name: 'Stage hunk' }).every(b => b.disabled)).toBe(true)
   })
 
+  it('disables hunk buttons while the diff reloads', () => {
+    render(<DiffPane change={change('unstaged')} diff={{ ...loaded(TWO), loading: true }} onHunk={vi.fn()} />)
+    expect(screen.getAllByRole('button', { name: 'Stage hunk' }).every(b => b.disabled)).toBe(true)
+  })
+
+  it('hides hunk buttons for renamed, copied, mode-changed and staged-deleted files', () => {
+    const body = TWO.slice(TWO.indexOf('@@'))
+    const cases = [
+      ['staged', 'diff --git a/was.txt b/f.txt\nsimilarity index 90%\nrename from was.txt\nrename to f.txt\n--- a/was.txt\n+++ b/f.txt\n'],
+      ['staged', 'diff --git a/was.txt b/f.txt\ncopy from was.txt\ncopy to f.txt\n--- a/was.txt\n+++ b/f.txt\n'],
+      ['unstaged', 'diff --git a/f.txt b/f.txt\nold mode 100644\nnew mode 100755\n--- a/f.txt\n+++ b/f.txt\n'],
+      ['staged', 'diff --git a/f.txt b/f.txt\ndeleted file mode 100644\n--- a/f.txt\n+++ /dev/null\n'],
+    ]
+    for (const [area, header] of cases) {
+      cleanup()
+      render(<DiffPane change={change(area)} diff={loaded(header + body)} onHunk={vi.fn()} />)
+      expect(screen.getAllByTestId('diff-line').length).toBeGreaterThan(0)
+      expect(screen.queryByRole('button', { name: /hunk/ })).toBeNull()
+    }
+  })
+
+  it('says an emptied tracked diff is no longer changed, and keeps the mode-change note for header-only diffs', () => {
+    render(<DiffPane change={change('staged')} diff={loaded('')} onHunk={vi.fn()} />)
+    expect(screen.getAllByRole('note').map(n => n.textContent)).toEqual(['No longer changed.'])
+    cleanup()
+    render(<DiffPane change={change('unstaged')} diff={loaded('diff --git a/f.txt b/f.txt\nold mode 100644\nnew mode 100755\n')} onHunk={vi.fn()} />)
+    expect(screen.getAllByRole('note').map(n => n.textContent)).toEqual(['No textual changes (mode change or submodule).'])
+  })
+
   it('shows untracked files as new with no hunk buttons', () => {
     render(<DiffPane change={change('untracked', 'n.txt')} diff={loaded('--- /dev/null\n+++ b/n.txt\n@@ -0,0 +1 @@\n+hi\n')} onHunk={vi.fn()} />)
     expect(screen.getByText('+ new file')).toBeTruthy()
