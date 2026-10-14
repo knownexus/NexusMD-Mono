@@ -400,3 +400,108 @@ describe('stage 2 reads', () => {
     await expect(setup(reads()).invoke('git:stamp', REPO, WT, REG, { kind: 'other' })).rejects.toThrow('Unknown stamp request')
   })
 })
+
+const stampOf = async (s, request) => s.invoke('git:stamp', REPO, WT, REG, request)
+const files = (paths = ['a b.txt']) => ({ kind: 'files', paths })
+
+describe('stage 2 writes', () => {
+  it('stages paths through stdin after checking the stamp', async () => {
+    const s = setup(reads())
+    const expected = await stampOf(s, files(['a b.txt', '-x [1].txt']))
+    const r = await s.invoke('git:stage', REPO, WT, REG, ['a b.txt', '-x [1].txt'], expected)
+    expect(r).toEqual({ ok: true, detail: 'Done' })
+    const add = s.calls.find(c => c.args[0] === 'add')
+    expect(add.args).toEqual(['add', '--pathspec-from-file=-', '--pathspec-file-nul'])
+    expect(add.opts.stdio[0]).toBe('pipe')
+    expect(add.child.input).toBe('a b.txt\x00-x [1].txt\x00')
+  })
+
+  it('refuses a stale review without running the write', async () => {
+    const s = setup(reads())
+    const r = await s.invoke('git:stage', REPO, WT, REG, ['a b.txt'], 'not-the-stamp')
+    expect(r).toEqual({ ok: false, stale: true, detail: 'Changed since you reviewed it. Refresh and review again.' })
+    expect(s.calls.some(c => c.args[0] === 'add')).toBe(false)
+  })
+
+  it('refuses submodule paths', async () => {
+    const s = setup(reads({ 'ls-files': { stdout: '160000 3333333333333333333333333333333333333333 0\tlib\x00' } }))
+    const r = await s.invoke('git:stage', REPO, WT, REG, ['lib'], await stampOf(s, files(['lib'])))
+    expect(r).toEqual({ ok: false, detail: 'Submodule changes need to be managed inside the submodule.' })
+    expect(s.calls.some(c => c.args[0] === 'add')).toBe(false)
+  })
+
+  it('unstages with restore --staged, or rm --cached on an unborn branch', async () => {
+    const s = setup(reads())
+    await s.invoke('git:unstage', REPO, WT, REG, ['a b.txt'], await stampOf(s, files()))
+    expect(s.calls.find(c => c.args[0] === 'restore').args).toEqual(['restore', '--staged', '--pathspec-from-file=-', '--pathspec-file-nul'])
+    const u = setup(reads({ 'rev-parse': args => (args.includes('HEAD') ? { code: 1 } : { stdout: `${COMMON}\n` }) }))
+    await u.invoke('git:unstage', REPO, WT, REG, ['a b.txt'], await stampOf(u, files()))
+    expect(u.calls.find(c => c.args[0] === 'rm').args).toEqual(['rm', '--cached', '-r', '--ignore-unmatch', '--quiet', '--pathspec-from-file=-', '--pathspec-file-nul'])
+  })
+
+  it('discards only tracked files with unstaged changes', async () => {
+    const s = setup(reads())
+    expect(await s.invoke('git:discard', REPO, WT, REG, ['a b.txt'], await stampOf(s, files()))).toEqual({ ok: true, detail: 'Done' })
+    expect(s.calls.find(c => c.args[0] === 'restore').args).toEqual(['restore', '--worktree', '--pathspec-from-file=-', '--pathspec-file-nul'])
+    const t = setup(reads())
+    const r = await t.invoke('git:discard', REPO, WT, REG, ['new.txt'], await stampOf(t, files(['new.txt'])))
+    expect(r).toEqual({ ok: false, detail: 'Discard only accepts tracked files with unstaged changes: new.txt' })
+    expect(t.calls.some(c => c.args[0] === 'restore')).toBe(false)
+  })
+
+  it('returns git failures with output, adding a hint for a held index lock', async () => {
+    const s = setup(reads({ add: { code: 128, stderr: "fatal: Unable to create 'C:/repos/App/.git/index.lock': File exists." } }))
+    const r = await s.invoke('git:stage', REPO, WT, REG, ['a b.txt'], await stampOf(s, files()))
+    expect(r.ok).toBe(false)
+    expect(r.detail).toBe("fatal: Unable to create 'C:/repos/App/.git/index.lock': File exists.\nAnother git process is using this repo; close it or remove the stale lock.")
+  })
+
+  it('commits the message through stdin with the longer timeout', async () => {
+    const s = setup(reads({ diff: { code: 1 }, commit: { stdout: '[main abc1234] Fix it\n' } }))
+    const r = await s.invoke('git:commit', REPO, WT, REG, 'Fix it\n\nBody', await stampOf(s, { kind: 'commit' }))
+    expect(r).toEqual({ ok: true, detail: '[main abc1234] Fix it' })
+    const commit = s.calls.find(c => c.args[0] === 'commit')
+    expect(commit.args).toEqual(['commit', '-F', '-'])
+    expect(commit.child.input).toBe('Fix it\n\nBody')
+    expect(s.calls.find(c => c.args[0] === 'diff').args).toEqual(['diff', '--cached', '--quiet', '--no-ext-diff'])
+  })
+
+  it('refuses empty messages, nothing staged, conflicts and operations in progress', async () => {
+    const commit = async (over, message = 'Fix', probe = {}) => {
+      const s = setup(reads(over), probe)
+      const r = await s.invoke('git:commit', REPO, WT, REG, message, await stampOf(s, { kind: 'commit' }))
+      return [r, s.calls.some(c => c.args[0] === 'commit')]
+    }
+    expect(await commit({ diff: { code: 1 } }, '  ')).toEqual([{ ok: false, detail: 'Enter a commit message.' }, false])
+    expect(await commit({ diff: { code: 0 } })).toEqual([{ ok: false, detail: 'No staged changes.' }, false])
+    expect(await commit({ diff: { code: 1 }, 'ls-files': { stdout: '100644 1111111111111111111111111111111111111111 1\tboth.txt\x00' } }))
+      .toEqual([{ ok: false, detail: 'Resolve conflicts before committing.' }, false])
+    const merging = await commit(
+      { diff: { code: 1 }, 'rev-parse': args => args.includes('HEAD') ? { stdout: `${HEAD}\n` } : { stdout: `${COMMON}\n${COMMON}\n` } },
+      'Fix', { exists: p => p === path.join(COMMON, 'MERGE_HEAD') })
+    expect(merging).toEqual([{ ok: false, detail: 'Merge in progress. Continue or abort it first.' }, false])
+  })
+
+  it('reports a commit that outlives its timeout', async () => {
+    const s = setup(reads({ diff: { code: 1 }, commit: 'hang' }), {}, { commitTimeoutMs: 30 })
+    const r = await s.invoke('git:commit', REPO, WT, REG, 'Fix', await stampOf(s, { kind: 'commit' }))
+    expect(r).toEqual({ ok: false, detail: 'git commit timed out after 0s. Hooks may have left partial output in the worktree.' })
+    expect(s.deps.kill).toHaveBeenCalled()
+  })
+
+  it('runs one write at a time per repository while reads carry on', async () => {
+    const s = setup(reads({ add: 'hang' }), {}, { timeoutMs: 5000 })
+    const expected = await stampOf(s, files())
+    const first = s.invoke('git:stage', REPO, WT, REG, ['a b.txt'], expected)
+    await vi.waitFor(() => expect(s.calls.filter(c => c.args[0] === 'add')).toHaveLength(1))
+    const second = s.invoke('git:stage', REPO, WT, REG, ['a b.txt'], expected)
+    await s.invoke('git:diff', REPO, WT, REG, unstaged())
+    await new Promise(r => setTimeout(r, 20))
+    expect(s.calls.filter(c => c.args[0] === 'add')).toHaveLength(1)
+    s.calls.find(c => c.args[0] === 'add').child.emit('close', 0)
+    expect((await first).ok).toBe(true)
+    await vi.waitFor(() => expect(s.calls.filter(c => c.args[0] === 'add')).toHaveLength(2))
+    s.calls.filter(c => c.args[0] === 'add')[1].child.emit('close', 0)
+    expect((await second).ok).toBe(true)
+  })
+})

@@ -78,6 +78,18 @@ function isRemoteOrDevicePath(p) {
 const DIFF_CAP = 1024 * 1024;
 const DIFF_ARGS = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '-U3'];
 const AREAS = ['unstaged', 'staged', 'untracked', 'conflict'];
+const STALE = 'Changed since you reviewed it. Refresh and review again.';
+const LOCK_HINT = 'Another git process is using this repo; close it or remove the stale lock.';
+const SUBMODULE = 'Submodule changes need to be managed inside the submodule.';
+const PATHSPEC_STDIN = ['--pathspec-from-file=-', '--pathspec-file-nul'];
+const nul = paths => paths.map(p => `${p}\0`).join('');
+const refuse = detail => ({ ok: false, detail });
+
+function result(r) {
+  const detail = [r.stdout.trim(), r.stderr].filter(Boolean).join('\n');
+  if (r.code === 0) return { ok: true, detail: detail || 'Done' };
+  return { ok: false, detail: /index\.lock/.test(r.stderr) ? `${detail}\n${LOCK_HINT}` : detail || `git exited with code ${r.code}` };
+}
 
 const sha = (...parts) => crypto.createHash('sha256').update(parts.join('\0')).digest('hex');
 
@@ -132,6 +144,7 @@ function register(ipcMain, deps = {}) {
     env = process.env,
     now = Date.now,
     commonDirTtlMs = 5000,
+    commitTimeoutMs = 120000,
   } = deps;
   process.env.NoDefaultCurrentDirectoryInExePath = '1';
   let gitPath = deps.gitPath !== undefined ? deps.gitPath : findGit(env, probe);
@@ -140,6 +153,7 @@ function register(ipcMain, deps = {}) {
   const waiting = [];
   // normalised folder → { commonDir, at }: one poll asks resolve, worktrees and branches per repo.
   const commonDirs = new Map();
+  const locks = new Map();
   let disposed = false;
   let active = 0;
   let version = null;
@@ -354,6 +368,39 @@ function register(ipcMain, deps = {}) {
     return { operation: '', rebasingBranch: null };
   }
 
+  // Writes to one repository run one at a time; reads never wait.
+  async function withRepoLock(repo, fn) {
+    const key = normalise(await resolveCommon(repo.path));
+    const previous = locks.get(key) || Promise.resolve();
+    const run = previous.then(fn, fn);
+    const tail = run.catch(() => {});
+    locks.set(key, tail);
+    try {
+      return await run;
+    } finally {
+      if (locks.get(key) === tail) locks.delete(key);
+    }
+  }
+
+  async function gitDirOf(wt) {
+    const r = await git(wt, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']);
+    return r.code === 0 ? r.stdout.split(/\r?\n/)[0].trim() : '';
+  }
+
+  // Shared shape of a whole-file write: validate, lock, re-check the reviewed state, then act.
+  function fileWrite(channel, act) {
+    handle(channel, async (_e, repo, worktreePath, registered, paths, expected) => {
+      await requireWorktree(repo, worktreePath, registered);
+      const rel = requirePaths(worktreePath, paths);
+      return withRepoLock(repo, async () => {
+        const state = await filesState(worktreePath, rel);
+        if (state.stamp !== expected) return { ok: false, stale: true, detail: STALE };
+        if (state.entries.some(e => e.mode === '160000')) return refuse(SUBMODULE);
+        return act(worktreePath, rel, state);
+      });
+    });
+  }
+
   handle('git:version', async () => {
     if (!version) {
       try {
@@ -405,6 +452,40 @@ function register(ipcMain, deps = {}) {
     if (request?.kind === 'commit') return (await commitState(worktreePath)).stamp;
     if (request?.kind === 'files') return (await filesState(worktreePath, requirePaths(worktreePath, request.paths))).stamp;
     throw new Error('Unknown stamp request');
+  });
+
+  fileWrite('git:stage', async (wt, rel) => result(await git(wt, ['add', ...PATHSPEC_STDIN], { input: nul(rel) })));
+
+  fileWrite('git:unstage', async (wt, rel, state) => result(await git(wt,
+    state.head ? ['restore', '--staged', ...PATHSPEC_STDIN] : ['rm', '--cached', '-r', '--ignore-unmatch', '--quiet', ...PATHSPEC_STDIN],
+    { input: nul(rel) })));
+
+  fileWrite('git:discard', async (wt, rel, state) => {
+    const tracked = new Set(state.entries.filter(e => e.stage === '0').map(e => e.path));
+    const unstaged = new Set(state.records.filter(r => (r.kind === '1' || r.kind === '2') && r.xy[1] !== '.').map(r => r.path));
+    const bad = rel.find(p => !tracked.has(p) || !unstaged.has(p));
+    if (bad) return refuse(`Discard only accepts tracked files with unstaged changes: ${bad}`);
+    return result(await git(wt, ['restore', '--worktree', ...PATHSPEC_STDIN], { input: nul(rel) }));
+  });
+
+  handle('git:commit', async (_e, repo, worktreePath, registered, message, expected) => {
+    await requireWorktree(repo, worktreePath, registered);
+    if (typeof message !== 'string' || !message.trim()) return refuse('Enter a commit message.');
+    return withRepoLock(repo, async () => {
+      const state = await commitState(worktreePath);
+      if (state.stamp !== expected) return { ok: false, stale: true, detail: STALE };
+      if (state.entries.some(e => e.stage !== '0')) return refuse('Resolve conflicts before committing.');
+      const { operation } = await inProgress(await gitDirOf(worktreePath));
+      if (operation) return refuse(`${operation}. Continue or abort it first.`);
+      const staged = await git(worktreePath, ['diff', '--cached', '--quiet', '--no-ext-diff']);
+      if (staged.code === 0) return refuse('No staged changes.');
+      if (staged.code !== 1) return refuse(staged.stderr || `git diff failed (exit ${staged.code})`);
+      try {
+        return result(await git(worktreePath, ['commit', '-F', '-'], { input: message, timeout: commitTimeoutMs }));
+      } catch (e) {
+        return refuse(`${e.message}. Hooks may have left partial output in the worktree.`);
+      }
+    });
   });
 
   handle('git:branches', async (_e, repo, registered) => {
