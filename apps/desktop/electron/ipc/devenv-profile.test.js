@@ -89,16 +89,35 @@ describe('read', () => {
   })
 })
 
+// A short (8.3) spelling of the temp dir, if this machine has one; the long form is what realpath returns.
+const longTmp = fs.realpathSync.native(os.tmpdir())
+const shortTmp = [os.tmpdir(), longTmp].find(p => p.includes('~'))
+
 describe('confinement of folders that do not exist yet', () => {
-  beforeEach(makeProfile)
+  // Rebuilt under the long-form tmp dir so the checks compare real paths exactly: on a short tmp
+  // path the old lexical fallback refused escapes by accident and these tests proved nothing.
+  beforeEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true })
+    tmp = fs.mkdtempSync(path.join(longTmp, 'nexusmd-profile-'))
+    root = path.join(tmp, 'dev-environment')
+    dir = path.join(root, 'profile')
+    makeProfile()
+  })
   const outsideDir = () => {
     const outside = path.join(tmp, 'outside'); fs.mkdirSync(outside, { recursive: true })
     fs.symlinkSync(outside, path.join(dir, 'link'), 'junction')
     return outside
   }
-  it('creates nested files inside the profile, under an 8.3 short tmp path', async () => {
+  it('creates nested files inside the profile', async () => {
     expect((await call('devenv:profile-write', cfg(), 'sub/deeper/new.txt', 'x', { create: true })).ok).toBe(true)
     expect(fs.readFileSync(path.join(dir, 'sub', 'deeper', 'new.txt'), 'utf8')).toBe('x')
+  })
+  it.skipIf(!shortTmp)('creates nested files when the profile path is spelled with an 8.3 short name (no short tmp form on this machine)', async () => {
+    const r = path.join(fs.mkdtempSync(path.join(shortTmp, 'nexusmd-short-')), 'dev-environment')
+    try {
+      fs.mkdirSync(path.join(r, 'profile'), { recursive: true })
+      expect((await call('devenv:profile-write', { root: r, pwsh: 'pwsh', profile: '' }, 'a/b/c.txt', 'x', { create: true })).ok).toBe(true)
+    } finally { fs.rmSync(path.dirname(r), { recursive: true, force: true }) }
   })
   it('refuses a nested create through a junction and creates nothing outside', async () => {
     const outside = outsideDir()
