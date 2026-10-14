@@ -172,4 +172,16 @@ export const IGitAdapter = {
   branches:     async (repo, registered) => Promise.reject(new Error('IGitAdapter.branches not implemented')),
   discover:     async (roots, repos) => [],
   checkFolders: async (paths) => [],
+  // Stage 2. change = { area, paths } → { text, truncated, binary, size, gone?, stamp }
+  diff:         async (repo, worktreePath, registered, change) => Promise.reject(new Error('IGitAdapter.diff not implemented')),
+  // request = { kind: 'files', paths } | { kind: 'commit' } → stamp string for a write's `expected`
+  stamp:        async (repo, worktreePath, registered, request) => Promise.reject(new Error('IGitAdapter.stamp not implemented')),
+  // Writes → { ok, detail, stale? }. `expected` is the stamp of what the user reviewed.
+  stage:           async (repo, worktreePath, registered, paths, expected) => Promise.reject(new Error('IGitAdapter.stage not implemented')),
+  unstage:         async (repo, worktreePath, registered, paths, expected) => Promise.reject(new Error('IGitAdapter.unstage not implemented')),
+  discard:         async (repo, worktreePath, registered, paths, expected) => Promise.reject(new Error('IGitAdapter.discard not implemented')),
+  deleteUntracked: async (repo, worktreePath, registered, paths, expected) => Promise.reject(new Error('IGitAdapter.deleteUntracked not implemented')),
+  stageHunk:       async (repo, worktreePath, registered, paths, index, expected) => Promise.reject(new Error('IGitAdapter.stageHunk not implemented')),
+  unstageHunk:     async (repo, worktreePath, registered, paths, index, expected) => Promise.reject(new Error('IGitAdapter.unstageHunk not implemented')),
+  commit:          async (repo, worktreePath, registered, message, expected) => Promise.reject(new Error('IGitAdapter.commit not implemented')),
 }
