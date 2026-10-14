@@ -220,6 +220,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     open:    (target) => ipcRenderer.invoke('devenv:open', target),
     active:  () => ipcRenderer.invoke('devenv:active'),
     query:   (config, argv) => ipcRenderer.invoke('devenv:query', config, argv),
+    profileInfo:   (config) => ipcRenderer.invoke('devenv:profile-info', config),
+    profileList:   (config) => ipcRenderer.invoke('devenv:profile-list', config),
+    profileRead:   (config, path) => ipcRenderer.invoke('devenv:profile-read', config, path),
+    profileWrite:  (config, path, text, opts) => ipcRenderer.invoke('devenv:profile-write', config, path, text, opts),
+    profileCreate: (config) => ipcRenderer.invoke('devenv:profile-create', config),
     // Dropped File objects have no path in the renderer since Electron 32; webUtils resolves it here.
     pathForFile: (file) => webUtils.getPathForFile(file),
     onLine: (callback) => {

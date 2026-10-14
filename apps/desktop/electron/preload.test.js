@@ -43,6 +43,15 @@ describe('preload bridge', () => {
     expect(() => exposed.oauth.refresh('RT')).not.toThrow()
   })
 
+  it('exposes the devenv profile file methods over their channels', () => {
+    const cfg = { root: 'C:\\r', pwsh: 'pwsh', profile: '' }
+    exposed.devenv.profileInfo(cfg); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile-info', cfg)
+    exposed.devenv.profileList(cfg); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile-list', cfg)
+    exposed.devenv.profileRead(cfg, 'mac.json'); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile-read', cfg, 'mac.json')
+    exposed.devenv.profileWrite(cfg, 'mac.json', '{}', { create: true }); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile-write', cfg, 'mac.json', '{}', { create: true })
+    exposed.devenv.profileCreate(cfg); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile-create', cfg)
+  })
+
   it('bridges the start-on-login setting to its IPC channels', () => {
     exposed.getLoginItemEnabled()
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('get-login-item-enabled')

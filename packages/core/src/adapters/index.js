@@ -153,6 +153,12 @@ export const IDevenvAdapter = {
   active:  async () => [],
   // Read-only devenv questions (status) — never queued behind a running command.
   query:   async (config, argv) => ({ code: -1, results: [], stderr: 'not available' }),
+  // The devenv profile's files (Profile tab), confined to the profile folder by the host.
+  profileInfo:   async (config) => Promise.reject(new Error('IDevenvAdapter.profileInfo not implemented')),
+  profileList:   async (config) => Promise.reject(new Error('IDevenvAdapter.profileList not implemented')),
+  profileRead:   async (config, path) => Promise.reject(new Error('IDevenvAdapter.profileRead not implemented')),
+  profileWrite:  async (config, path, text, opts) => Promise.reject(new Error('IDevenvAdapter.profileWrite not implemented')),
+  profileCreate: async (config) => Promise.reject(new Error('IDevenvAdapter.profileCreate not implemented')),
   // The file-system path of a File dropped on the window ('' when unknown).
   pathForFile: (file) => '',
   onLine:  (cb) => () => {},
