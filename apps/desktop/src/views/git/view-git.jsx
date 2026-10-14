@@ -1,6 +1,6 @@
 import React from 'react'
 import {
-  ALL_PROJECTS, findGroup, scopeSnapshot, changeCount, renameGroup, duplicateGroup, deleteGroup, worktreeId,
+  ALL_PROJECTS, findGroup, scopeSnapshot, changeCount, renameGroup, duplicateGroup, deleteGroup, worktreeId, pruneSelection,
 } from '@nexusmd/core'
 import { setGitConfig, getGitConfig, effectiveRoots } from '../../git-config.js'
 import { useGitConfig } from './use-git-config.js'
@@ -8,6 +8,7 @@ import { useGitSnapshot } from './use-git-snapshot.js'
 import { GroupTabs } from './group-tabs.jsx'
 import { WorktreeList } from './worktree-list.jsx'
 import { WorktreeDetail } from './worktree-detail.jsx'
+import { WorktreePanel } from './worktree-panel.jsx'
 import { GroupMenu } from './group-menu.jsx'
 import { GroupEditor } from './group-editor.jsx'
 
@@ -24,6 +25,9 @@ function GitWorkspace({ adapter }) {
   const [gitVersion, setGitVersion] = React.useState(undefined)
   const [menuFor, setMenuFor] = React.useState(null)
   const [editing, setEditing] = React.useState(null)
+  // Per worktree, for this session: which changes are ticked and which one shows its diff.
+  const [selections, setSelections] = React.useState({})
+  const [focus, setFocus] = React.useState({})
   React.useEffect(() => {
     let live = true
     adapter.version().then(v => { if (live) setGitVersion(v) }, () => { if (live) setGitVersion(null) })
@@ -46,6 +50,9 @@ function GitWorkspace({ adapter }) {
   const setView = patch => setGitConfig({ view: { ...getGitConfig().view, ...patch } })
   const selectedTree = scoped.worktrees.find(t => worktreeId(t) === view.selected)
   const selectedBranch = scoped.inactiveBranches.find(b => b.id === view.selected)
+  const treeKey = selectedTree ? worktreeId(selectedTree) : null
+  const selectedIds = selectedTree ? pruneSelection(selections[treeKey] ?? [], selectedTree.changes) : []
+  const focusId = selectedTree && selectedTree.changes.some(c => c.id === focus[treeKey]) ? focus[treeKey] : null
   const save = next => setGitConfig({ repos: next.repos, groups: next.groups })
   // The group editor builds its tree from the snapshot, so it waits for the first one.
   const editBusy = snapshot ? null : 'Loading repositories…'
@@ -69,12 +76,19 @@ function GitWorkspace({ adapter }) {
       {!config.repos.length && card(roots.length
         ? `No repositories yet. Add one in Settings → Desktop → Git Workspace, or create a group to pick from ${roots.join('; ')}.`
         : 'No repositories yet. Add repositories in Settings → Desktop → Git Workspace.')}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 2fr)', gap: 12, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr)', gap: 12, alignItems: 'start' }}>
         <WorktreeList repos={config.repos} scoped={scoped} errors={snapshot?.errors || []} collapsed={view.collapsed}
           onToggleRepo={name => setView({ collapsed: view.collapsed.includes(name) ? view.collapsed.filter(n => n !== name) : [...view.collapsed, name] })}
           selected={view.selected} onSelect={s => setView({ selected: s.id })} />
-        <aside aria-label="Details" className="card" style={{ padding: 12 }}>
-          <WorktreeDetail tree={selectedTree} branch={selectedBranch} />
+        <aside aria-label="Details" className="card" style={{ padding: 12, minWidth: 0 }}>
+          {selectedTree
+            ? (
+              <WorktreePanel tree={selectedTree} selected={selectedIds} focusId={focusId}
+                onSelectionChange={ids => setSelections(s => ({ ...s, [treeKey]: ids }))}
+                onFocus={id => setFocus(f => ({ ...f, [treeKey]: id }))}
+                onAction={() => {}} onCommit={() => {}} busy={false} status={null} />
+            )
+            : <WorktreeDetail tree={null} branch={selectedBranch} />}
         </aside>
       </div>
       {menuFor && (
