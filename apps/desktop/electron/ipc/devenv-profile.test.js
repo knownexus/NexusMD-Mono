@@ -89,6 +89,56 @@ describe('read', () => {
   })
 })
 
+describe('confinement of folders that do not exist yet', () => {
+  beforeEach(makeProfile)
+  const outsideDir = () => {
+    const outside = path.join(tmp, 'outside'); fs.mkdirSync(outside, { recursive: true })
+    fs.symlinkSync(outside, path.join(dir, 'link'), 'junction')
+    return outside
+  }
+  it('creates nested files inside the profile, under an 8.3 short tmp path', async () => {
+    expect((await call('devenv:profile-write', cfg(), 'sub/deeper/new.txt', 'x', { create: true })).ok).toBe(true)
+    expect(fs.readFileSync(path.join(dir, 'sub', 'deeper', 'new.txt'), 'utf8')).toBe('x')
+  })
+  it('refuses a nested create through a junction and creates nothing outside', async () => {
+    const outside = outsideDir()
+    await expect(call('devenv:profile-write', cfg(), 'link/newdir/evil.txt', 'x', { create: true })).rejects.toThrow(/Not a profile file/)
+    expect(fs.readdirSync(outside)).toEqual([])
+  })
+  it('refuses a junction as the final component', async () => {
+    const outside = outsideDir()
+    await expect(call('devenv:profile-read', cfg(), 'link')).rejects.toThrow(/Not a profile file/)
+    await expect(call('devenv:profile-write', cfg(), 'link', 'x', { create: true, overwrite: true })).rejects.toThrow(/Not a profile file/)
+    await expect(call('devenv:profile-write', cfg(), 'link/x', 'x', { create: true })).rejects.toThrow(/Not a profile file/)
+    expect(fs.readdirSync(outside)).toEqual([])
+  })
+  it('allows nested creates when the profile folder itself is a junction', async () => {
+    const realFolder = path.join(tmp, 'real-profile'); fs.mkdirSync(realFolder)
+    const linked = path.join(tmp, 'linked-profile'); fs.symlinkSync(realFolder, linked, 'junction')
+    expect((await call('devenv:profile-write', cfg({ profile: linked }), 'new/x.txt', 'x', { create: true })).ok).toBe(true)
+    expect(fs.readFileSync(path.join(realFolder, 'new', 'x.txt'), 'utf8')).toBe('x')
+  })
+  it('tolerates null write options', async () => {
+    expect(await call('devenv:profile-write', cfg(), 'nope.txt', 'x', null)).toEqual({ ok: false, missing: true })
+  })
+})
+
+describe('limits', () => {
+  beforeEach(makeProfile)
+  it('skips bin, obj, .vs and .idea in the listing', async () => {
+    for (const d of ['bin', 'obj', '.vs', '.idea']) { fs.mkdirSync(path.join(dir, d)); fs.writeFileSync(path.join(dir, d, 'x.txt'), 'x') }
+    expect((await call('devenv:profile-list', cfg())).files.map(f => f.path)).toEqual(['docker/services.compose.yml', 'environment.json'])
+  })
+  it('refuses to write over 2 MB', async () => {
+    await expect(call('devenv:profile-write', cfg(), 'big.txt', 'x'.repeat(2 * 1024 * 1024 + 1), { create: true })).rejects.toThrow(/too large/)
+  })
+  it('refuses to create without a profile.example', async () => {
+    fs.rmSync(path.join(root, 'profile.example'), { recursive: true })
+    fs.rmSync(dir, { recursive: true })
+    await expect(call('devenv:profile-create', cfg())).rejects.toThrow(/No profile.example/)
+  })
+})
+
 describe('write', () => {
   beforeEach(makeProfile)
   const file = () => path.join(dir, 'environment.json')

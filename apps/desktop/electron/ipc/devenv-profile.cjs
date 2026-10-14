@@ -26,9 +26,31 @@ function profileDir(config) {
 
 const inside = (dir, p) => {
   const d = dir.endsWith(path.sep) ? dir : dir + path.sep;
-  return p.toLowerCase().startsWith(d.toLowerCase());
+  return fold(p).startsWith(fold(d));
 };
-const real = p => fsp.realpath(p).catch(() => null);
+// Windows and macOS file systems are case-insensitive by default; Linux's is not.
+const CASE_INSENSITIVE = process.platform === 'win32' || process.platform === 'darwin';
+const fold = s => (CASE_INSENSITIVE ? s.toLowerCase() : s);
+
+// Real path of p even when its tail doesn't exist yet: realpath the deepest existing ancestor, then
+// re-append the missing segments. A junction anywhere above is thus resolved, which a lexical
+// fallback would miss. A dangling link (lstat works, realpath doesn't) is refused outright.
+async function realDeep(p) {
+  const tail = [];
+  let cur = p;
+  for (;;) {
+    try {
+      return path.join(await fsp.realpath(cur), ...tail.reverse());
+    } catch (e) {
+      if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') throw e;
+      if (await fsp.lstat(cur).then(() => true, () => false)) return null;
+      const parent = path.dirname(cur);
+      if (parent === cur) return null;
+      tail.push(path.basename(cur));
+      cur = parent;
+    }
+  }
+}
 const exists = p => fsp.stat(p).then(() => true, () => false);
 const isDir = p => fsp.stat(p).then(s => s.isDirectory(), () => false);
 
@@ -36,10 +58,10 @@ async function resolveFile(dir, rel) {
   if (typeof rel !== 'string' || !rel || rel.includes('\0') || path.isAbsolute(rel)) throw new Error(`Not a profile file: ${rel}`);
   const full = path.resolve(dir, rel);
   if (!inside(dir, full)) throw new Error(`Not a profile file: ${rel}`);
-  const realDir = (await real(dir)) || dir;
-  const realFull = (await real(full)) || path.join((await real(path.dirname(full))) || path.dirname(full), path.basename(full));
-  if (!inside(realDir, realFull)) throw new Error(`Not a profile file: ${rel}`);
-  return full;
+  const realDir = (await realDeep(dir)) || dir;
+  const realFull = await realDeep(full);
+  if (!realFull || !inside(realDir, realFull)) throw new Error(`Not a profile file: ${rel}`);
+  return { full, realDir };
 }
 
 async function listFiles(dir) {
@@ -80,7 +102,7 @@ function register(ipcMain, { logger } = {}) {
 
   handle('devenv:profile-read', async (_e, config, rel) => {
     const dir = profileDir(config);
-    const full = await resolveFile(dir, rel);
+    const { full } = await resolveFile(dir, rel);
     let st;
     try { st = await fsp.stat(full); } catch (e) { if (e.code === 'ENOENT') return { missing: true }; throw e; }
     if (!st.isFile()) throw new Error(`Not a file: ${rel}`);
@@ -92,13 +114,14 @@ function register(ipcMain, { logger } = {}) {
     return { text: buf.toString('utf8'), bom, mtimeMs: st.mtimeMs };
   });
 
-  handle('devenv:profile-write', async (_e, config, rel, text, opts = {}) => {
+  handle('devenv:profile-write', async (_e, config, rel, text, opts) => {
+    opts = opts || {};
     if (typeof text !== 'string') throw new Error('Nothing to save.');
     const body = Buffer.concat([opts.bom ? BOM : Buffer.alloc(0), Buffer.from(text, 'utf8')]);
     if (body.length > MAX_WRITE) throw new Error(`${rel} is too large to save here.`);
     const dir = profileDir(config);
     if (!(await isDir(dir))) throw new Error(`No profile folder at ${dir}.`);
-    const full = await resolveFile(dir, rel);
+    const { full, realDir } = await resolveFile(dir, rel);
     let current = null;
     try { current = await fsp.stat(full); } catch (e) { if (e.code !== 'ENOENT') throw e; }
     if (!opts.overwrite) {
@@ -106,6 +129,9 @@ function register(ipcMain, { logger } = {}) {
       if (!current && !opts.create) return { ok: false, missing: true };
     }
     await fsp.mkdir(path.dirname(full), { recursive: true });
+    // Re-check after mkdir: the folders may have changed since resolveFile looked.
+    const realParent = await realDeep(path.dirname(full));
+    if (!realParent || !inside(realDir, realParent + path.sep)) throw new Error(`Not a profile file: ${rel}`);
     const tmp = path.join(path.dirname(full), `.${path.basename(full)}.nexusmd-${crypto.randomBytes(4).toString('hex')}.tmp`);
     try {
       await fsp.writeFile(tmp, body);
