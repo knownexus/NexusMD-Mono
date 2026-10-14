@@ -89,6 +89,8 @@ export {
   normaliseBaselines, normaliseSqlScripts, buildDbArgv, DEVENV_DB_EDITOR_URL,
   normaliseAvds, buildEmulatorArgv,
   normaliseMacStatus, buildMacArgv, macConnectionText,
+  profileFileKind, isProfilePath, profileTextStyle, parseProfileJson, formatProfileJson, validateProfileEnvironment, validateProfileMac, validateProfileFile,
+  setProfileValue, addProfileRepository, removeProfileRepository, moveProfileRepository, renameProfileRepository, unknownEnvironmentFields, unknownMacFields,
 } from './modules/devenv/index.js'
 export {
   getGitAdapter, GIT_AREAS, parseStatus, parseWorktrees, parseBranches, statusCode,
