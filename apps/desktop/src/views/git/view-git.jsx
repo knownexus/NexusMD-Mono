@@ -22,6 +22,7 @@ export function ViewGit({ adapters }) {
 
 function GitWorkspace({ adapter }) {
   const config = useGitConfig()
+  const registered = React.useMemo(() => config.repos.map(r => r.path), [config.repos])
   const [gitVersion, setGitVersion] = React.useState(undefined)
   const [menuFor, setMenuFor] = React.useState(null)
   const [editing, setEditing] = React.useState(null)
@@ -83,10 +84,12 @@ function GitWorkspace({ adapter }) {
         <aside aria-label="Details" className="card" style={{ padding: 12, minWidth: 0 }}>
           {selectedTree
             ? (
-              <WorktreePanel tree={selectedTree} selected={selectedIds} focusId={focusId}
+              <WorktreePanel adapter={adapter} repo={{ name: selectedTree.repo, path: selectedTree.repoRoot }} registered={registered}
+                version={snapshot?.takenAt} tree={selectedTree} selected={selectedIds} focusId={focusId}
                 onSelectionChange={ids => setSelections(s => ({ ...s, [treeKey]: ids }))}
                 onFocus={id => setFocus(f => ({ ...f, [treeKey]: id }))}
-                onAction={() => {}} onCommit={() => {}} busy={false} status={null} />
+                onAction={() => {}} onCommit={() => {}} onHunk={() => {}} busy={false} status={null}
+                split={view.split} onSplit={split => setView({ split })} />
             )
             : <WorktreeDetail tree={null} branch={selectedBranch} />}
         </aside>
