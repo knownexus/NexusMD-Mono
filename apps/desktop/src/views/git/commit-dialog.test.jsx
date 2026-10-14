@@ -100,6 +100,29 @@ describe('CommitDialog', () => {
     expect(onRetry).toHaveBeenCalledWith(['C:/repos/App/feature'], { shared: 'Fix it', perTarget: {} })
   })
 
+  it('fetches a stamp once for a worktree that appears after opening, never re-fetching the others', async () => {
+    const adapter = { stamp: vi.fn(async (_repo, path) => `stamp:${path}`), commit: vi.fn(async () => ({ ok: true, detail: 'ok' })) }
+    const props = { adapter, registered: REG, onClose: vi.fn(), onDone: vi.fn(), onRetry: vi.fn() }
+    const { rerender } = render(<CommitDialog targets={commitTargets([tree('checkout')], 'C:/repos/App')} {...props} />)
+    await waitFor(() => expect(adapter.stamp).toHaveBeenCalledTimes(1))
+    rerender(<CommitDialog targets={commitTargets([tree('checkout'), tree('feature')], 'C:/repos/App')} {...props} />)
+    await waitFor(() => expect(adapter.stamp).toHaveBeenCalledTimes(2))
+    expect(adapter.stamp.mock.calls[1][1]).toBe('C:/repos/App/feature')
+    fireEvent.click(screen.getByLabelText('App › feature → feature'))
+    fireEvent.change(screen.getByLabelText('Commit message'), { target: { value: 'Fix it' } })
+    await waitFor(() => expect(commitButton().disabled).toBe(false))
+    rerender(<CommitDialog targets={commitTargets([tree('checkout'), tree('feature')], 'C:/repos/App')} {...props} />)
+    expect(adapter.stamp).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows thrown errors without Electron\'s remote-method prefix', async () => {
+    renderDialog({ adapter: { commit: vi.fn(async () => { throw new Error("Error invoking remote method 'git:commit': Error: git commit timed out") }) } })
+    fireEvent.change(screen.getByLabelText('Commit message'), { target: { value: 'Fix it' } })
+    await waitFor(() => expect(commitButton().disabled).toBe(false))
+    fireEvent.click(commitButton())
+    expect(await screen.findByText('git commit timed out')).toBeTruthy()
+  })
+
   it('ignores Escape while a commit is running and then shows the results', async () => {
     const pending = deferred()
     const { onClose } = renderDialog({ adapter: { commit: vi.fn(() => pending.promise) } })

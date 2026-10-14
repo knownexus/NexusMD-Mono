@@ -1,13 +1,14 @@
 import React from 'react'
 import { PlModal } from '@nexusmd/ui'
 import { commitReview } from '@nexusmd/core'
+import { ipcMessage as message } from './use-git-actions.js'
 
 const repoOf = tree => ({ name: tree.repo, path: tree.repoRoot })
-const message = e => e?.message || String(e)
 
 /**
- * Commits the staged changes of each ticked worktree, one after another. Stamps are taken when the
- * dialog opens, so a worktree whose index changed afterwards is refused rather than committed.
+ * Commits the staged changes of each ticked worktree, one after another. Each target's stamp is
+ * taken once, when the dialog opens or when the target first appears, so a worktree whose index
+ * changed afterwards is refused rather than committed.
  */
 export function CommitDialog({ targets, adapter, registered, initialMessages = {}, onClose, onDone, onRetry }) {
   const [ticked, setTicked] = React.useState(() => Object.fromEntries(targets.map(t => [t.id, t.ticked])))
@@ -18,18 +19,22 @@ export function CommitDialog({ targets, adapter, registered, initialMessages = {
   const [phase, setPhase] = React.useState('edit')
   const [results, setResults] = React.useState([])
   const started = React.useRef(false)
+  const requested = React.useRef(new Set())
+  const live = React.useRef(true)
+  React.useEffect(() => { live.current = true; return () => { live.current = false } }, [])
 
+  // Targets can appear after opening (a poll found new staged changes); each gets one stamp request.
+  const available = targets.filter(t => !t.unavailable).map(t => t.id).join('\0')
   React.useEffect(() => {
-    let live = true
     for (const t of targets) {
-      if (t.unavailable) continue
+      if (t.unavailable || requested.current.has(t.id)) continue
+      requested.current.add(t.id)
       adapter.stamp(repoOf(t.tree), t.tree.path, registered, { kind: 'commit' }).then(
-        stamp => { if (live) setStamps(m => ({ ...m, [t.id]: { stamp } })) },
-        e => { if (live) setStamps(m => ({ ...m, [t.id]: { error: message(e) } })) },
+        stamp => { if (live.current) setStamps(m => ({ ...m, [t.id]: { stamp } })) },
+        e => { if (live.current) setStamps(m => ({ ...m, [t.id]: { error: message(e) } })) },
       )
     }
-    return () => { live = false }
-  }, [])
+  }, [available])
 
   const view = targets.map(t => ({ ...t, ticked: !!ticked[t.id] && !t.unavailable }))
   const review = commitReview(view, perTarget ? { perTarget: messages } : { message: shared })

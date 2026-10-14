@@ -82,6 +82,24 @@ describe('ChangesPane', () => {
     expect(h.onCommit).toHaveBeenCalled()
   })
 
+  it('ignores keys held with Ctrl, Meta or Alt', () => {
+    const h = renderPane({ selected: [B.id, A.id], focusId: B.id })
+    const list = screen.getByLabelText('Changed files')
+    for (const mod of ['ctrlKey', 'metaKey', 'altKey']) {
+      for (const key of ['s', 'u', 'c', ' ', 'ArrowDown']) fireEvent.keyDown(list, { key, [mod]: true })
+    }
+    expect(h.onAction).not.toHaveBeenCalled()
+    expect(h.onCommit).not.toHaveBeenCalled()
+    expect(h.onSelectionChange).not.toHaveBeenCalled()
+    expect(h.onFocus).not.toHaveBeenCalled()
+  })
+
+  it('leaves Space on a tabbed-to checkbox to that checkbox', () => {
+    const h = renderPane({ focusId: B.id })
+    fireEvent.keyDown(screen.getByLabelText('Select a.txt'), { key: ' ' })
+    expect(h.onSelectionChange).not.toHaveBeenCalled()
+  })
+
   it('locks the toolbar while a write runs and shows the last result', () => {
     renderPane({ selected: [B.id], busy: true, status: { ok: false, text: 'fatal: nope' } })
     expect(button('Stage 1').disabled).toBe(true)

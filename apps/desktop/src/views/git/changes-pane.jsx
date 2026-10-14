@@ -53,6 +53,9 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
   const run = action => { if (!busy && actions[action].length) onAction(action) }
   const commit = () => { if (!busy && canCommit) onCommit() }
   const onKeyDown = e => {
+    // Ctrl+C is copy, not Commit; and keys on a row's own checkbox belong to that checkbox.
+    if (e.ctrlKey || e.metaKey || e.altKey) return
+    if (e.target !== e.currentTarget && e.target.tagName === 'INPUT') return
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       const i = ordered.findIndex(c => c.id === focusId)
