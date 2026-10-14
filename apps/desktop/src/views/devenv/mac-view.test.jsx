@@ -63,8 +63,13 @@ describe('MacView', () => {
   })
 
   it('shows a missing key file', async () => {
-    setup({ status: STATUS({ sshKey: 'C:\\k', keyExists: false }) })
+    const { run } = setup({ status: STATUS({ configured: false, connection: 'unconfigured', detail: null, sshKey: 'C:\\k', keyExists: false, error: 'mac.json: sshKey file not found: C:\\k - run Set up SSH key again.' }) })
     await screen.findByText('C:\\k (file missing)')
+    expect(screen.getAllByRole('alert').some(a => /sshKey file not found/.test(a.textContent))).toBe(true)
+    expect(screen.getByRole('button', { name: 'Doctor' }).disabled).toBe(true)
+    expect(screen.getByRole('button', { name: 'Fix' }).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Set up SSH key' }))
+    expect(run.start).toHaveBeenCalledWith(['mac', 'key-setup'], { exclusive: true, label: 'devenv mac key-setup' })
   })
 
   it('disables actions while a run is active and shows its own run', async () => {

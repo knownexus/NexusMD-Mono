@@ -33,6 +33,8 @@ export function MacView({ adapter }) {
     run.start(argv, { exclusive, label: `devenv ${argv.join(' ')}` })
   }
   const configured = mac?.configured === true
+  // devenv reports a dangling sshKey as unconfigured, yet key-setup is exactly the way out
+  const keyMissing = !!mac && !mac.configured && !!mac.host && !!mac.user && !!mac.sshKey && !mac.keyExists
   const alerts = [error, mac?.error].filter(Boolean)
 
   return (
@@ -52,7 +54,7 @@ export function MacView({ adapter }) {
         <button className="btn sm ghost" style={{ alignSelf: 'flex-start' }} disabled={loading} onClick={refresh}>Refresh</button>
       </Card>
 
-      {configured && mac.connection !== 'ok' && (
+      {((configured && mac.connection !== 'ok') || keyMissing) && (
         <Card title="Set up SSH key">
           <ol style={{ margin: 0, paddingLeft: 18 }}>{STEPS.map(s => <li key={s}>{s}</li>)}</ol>
           <button className="btn sm primary" style={{ alignSelf: 'flex-start' }} disabled={busy} onClick={() => go('key-setup')}>Set up SSH key</button>
