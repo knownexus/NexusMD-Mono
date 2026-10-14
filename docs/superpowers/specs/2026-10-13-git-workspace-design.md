@@ -1,7 +1,7 @@
 # Git Workspace Module — Design
 
 **Date:** 2026-10-13
-**Status:** Approved design. Stage 1 implemented; stage 2 detailed (2026-10-14), pending implementation plan
+**Status:** Approved design. Stage 1 implemented; stage 2 implemented (2026-10-14).
 **Repos touched:** `NexusMD-Mono` (new module). Reference implementation: `gws` in `C:\repos\DotFiles\pwsh\GitWorkspace` (C#, terminal UI), which this module replaces.
 
 ## Goal
@@ -364,3 +364,16 @@ A draggable divider sits between the changes and diff panes. Its ratio is stored
 - The stamp-mismatch message.
 - A hunk button sends the right index.
 - Commit dialog: shared vs per-target message, per-target results, and Retry failed re-reviewing only the failures.
+
+## Amendments made during stage 2 planning
+
+- Every stage 2 adapter method takes `(repo, worktreePath, registered, …)`, like `status`. `diff` takes `change = { area, paths }`. The hunk operations take `paths` (both names of a staged rename) rather than `path`.
+- New read operation: `stamp(repo, worktreePath, registered, { kind: 'files', paths } | { kind: 'commit' })`. It returns the `expected` value for whole-file actions and commits.
+- Whole-file stamps cover HEAD plus the paths' `ls-files --stage` entries and their porcelain v2 status records. They don't cover diff text: that scales to many files without long argv, and the review lists files rather than content. Hunk stamps are `sha256(fileStamp, diffText)`, which is the `stamp` that `diff` returns.
+- Literal pathspecs come from `GIT_LITERAL_PATHSPECS=1` in the git environment rather than the `--literal-pathspecs` flag.
+- `deleteUntracked` checks "still untracked" with porcelain v2 `?` records. This is the same set as `ls-files --others --exclude-standard`.
+- Hunk operations need a diff with exactly one file section; otherwise they are refused and the hunk buttons are hidden.
+- The focused file's diff reloads on every new snapshot as well as on a focus change, because porcelain v2 has no working-tree content hash. The last diff stays on screen while it reloads.
+- Core signatures: `fileReview(action, changes, selectedIds)` and `commitTargets(worktrees, selectedTreeId)`.
+- Write results are `{ ok, detail, stale? }`. Bad paths and unregistered repos still throw, as in stage 1.
+- The commit dialog labels each worktree's block "Staged files in <title>" so it doesn't duplicate the worktree checkbox's label.
