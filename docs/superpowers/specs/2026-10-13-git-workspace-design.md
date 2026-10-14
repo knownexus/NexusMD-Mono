@@ -1,7 +1,7 @@
 # Git Workspace Module — Design
 
 **Date:** 2026-10-13
-**Status:** Approved design (stage 1 detailed), pending implementation plan
+**Status:** Approved design. Stage 1 implemented; stage 2 detailed (2026-10-14), pending implementation plan
 **Repos touched:** `NexusMD-Mono` (new module). Reference implementation: `gws` in `C:\repos\DotFiles\pwsh\GitWorkspace` (C#, terminal UI), which this module replaces.
 
 ## Goal
@@ -24,7 +24,7 @@ Manage many local Git repositories and their worktrees from NexusMD desktop, org
 ## Phasing (one spec, implemented in order, each stage its own plan)
 
 1. **Foundation and workspace overview** (detailed below). Adapter, IPC, core parsers and group model, Git Workspace view with group tabs, worktree status, detail panel, group editor with discovery, settings card. Read-only: no git write commands.
-2. **Changes and diffs.** Changed-file list per worktree with selection; unified-diff viewer with an explicit old/new legend, `old`/`new` line-number gutters and coloured added/removed lines (port of gws `DiffView`); on-demand diff loading; stage/unstage (whole files, then hunks); commit (all staged changes per chosen worktree, shared or per-target message). Write operations take a per-repo lock and always show a preview before running. Discard and delete-untracked come later, with typed confirmation.
+2. **Changes and diffs.** Changed-file list per worktree with selection; unified-diff viewer with an explicit old/new legend, `old`/`new` line-number gutters and coloured added/removed lines (port of gws `DiffView`); on-demand diff loading; stage/unstage (whole files, then hunks); commit (all staged changes per chosen worktree, shared or per-target message). Write operations take a per-repo lock and always show a preview before running. Discard and delete-untracked are included, with typed confirmation (detailed below).
 3. **Commits browser.** `git log --graph` rows with refs and unpushed markers, literal search (`words` message, `@name` author, `:path` file), filters (all / unpushed / since base), commit → files → file-diff drill-down, merge-parent selection, background-loaded and cached details.
 4. **Branch and sync actions.** Fetch, pull (fast-forward by default; rebase/merge explicit), push (never force; explicit remote/ref; first push sets upstream), create/checkout branch, new worktree, remove clean worktree, stash/apply, revert, continue/abort, interactive rebase. Every action: preview → confirm → per-target result in an activity log; multi-repo batches are not atomic and say so; retry repeats only failures and refuses stale state. Its own spec section is written before stage 4 planning.
 
@@ -181,3 +181,186 @@ Repo names are unique, compared case-insensitively. "All projects" is reserved. 
 - The `registered` list is supplied by the renderer; it guards against renderer bugs and is not an authorisation boundary — the boundary is the fixed, read-only argv.
 - Accepted residual risk for stage 1: repo-local `filter.<driver>.clean/process` can still run during `git status` for stat-dirty files; stage 2's design should consider ownership / `safe.directory` checks before running status in discovered folders.
 - Settings saved by a newer NexusMD version are never overwritten (`setGitConfig` is a no-op while unsupported).
+
+## Stage 2 — Changes and diffs
+
+Scope:
+- changed-file list with selection;
+- unified diff viewer;
+- whole-file stage/unstage;
+- hunk stage/unstage;
+- discard unstaged;
+- delete untracked;
+- multi-worktree commit.
+
+Everything in stage 4's list stays out of scope.
+
+### Architecture
+
+Stage 2 uses named write operations with a review stamp. Three options were considered; option A was chosen. Main-held plan objects and renderer-built patches were rejected.
+
+The flow:
+1. The renderer reads a diff and shows it.
+2. It sends a write naming the files (or a hunk index), plus the `expected` stamp of what it showed.
+3. Main recomputes the stamp just before running and refuses on a mismatch, as gws `Plan.Run` does.
+
+Main stays stateless apart from a per-repo write lock. The renderer never supplies patch text or git arguments.
+
+### Adapter contract (stage 2)
+
+Every call runs `git --no-pager -c core.fsmonitor=false --literal-pathspecs …` under stage 1's environment and process rules. The timeout is 30 s, except `commit`, which gets 120 s for hooks. Paths always go after `--` or on stdin.
+
+| Method | Main runs | Returns |
+|---|---|---|
+| `diff(worktree, registered, change)` | **Unstaged:** `diff --no-color --no-ext-diff --no-textconv -M -U3 -- <path(s)>`. **Staged:** the same plus `--cached`. **Untracked:** main reads the file (1 MB cap, binary detection) and builds an all-added diff. **Conflict:** `diff` (combined, read-only). | `{ text, truncated, binary, stamp }` |
+| `stage(worktree, registered, paths, expected)` | `add --pathspec-from-file=- --pathspec-file-nul` (NUL-separated paths on stdin) | `{ ok, detail }` |
+| `unstage(…)` | `restore --staged --pathspec-from-file=- --pathspec-file-nul`. On an unborn branch: `rm --cached -r --ignore-unmatch` with the same pathspec input. | `{ ok, detail }` |
+| `stageHunk(worktree, registered, path, index, expected)` | 1. Re-read the unstaged diff for `path`. 2. Check the stamp. 3. Cut out the file header plus hunk `index` (0-based count of `@@` headers in that file). 4. Run `apply --cached --whitespace=nowarn -` with the patch on stdin. | `{ ok, detail }` |
+| `unstageHunk(…)` | The same, from the staged diff, with `apply --cached --reverse --whitespace=nowarn -` | `{ ok, detail }` |
+| `discard(worktree, registered, paths, expected)` | `restore --worktree --pathspec-from-file=- --pathspec-file-nul`. Accepts tracked files with unstaged changes only. | `{ ok, detail }` |
+| `deleteUntracked(worktree, registered, paths, expected)` | Checks every path first. If any check fails, nothing is deleted; only then is each file removed with `fs.unlink`. See the checks below. | `{ ok, detail }` |
+| `commit(worktree, registered, message, expected)` | `commit -F -` with the message on stdin. Hooks run as they would in a terminal. | `{ ok, detail }` |
+
+`deleteUntracked` checks each path is:
+- resolved inside the worktree root;
+- not a directory;
+- free of any parent folder that is a reparse point or symlink;
+- still untracked (`ls-files --others --exclude-standard -z`).
+
+**Stamps.** Main computes a SHA-256 stamp:
+- **File actions and hunks:** HEAD oid + each path's `ls-files --stage -z` entry + its diff text. For untracked files, the file bytes.
+- **Commit:** HEAD oid + the whole of `ls-files --stage -z`.
+
+On a mismatch nothing is spawned, and the call returns "Changed since you reviewed it. Refresh and review again."
+
+**Refusals.** These are refused before anything is spawned:
+- submodule entries;
+- hunk operations on binary, truncated, untracked or conflicted files;
+- discard of anything other than tracked files with unstaged changes;
+- commit with no staged changes or an empty message;
+- commit while a merge, rebase, revert or cherry-pick is in progress, or while conflicts remain.
+
+Staging during a conflict is allowed, because staging marks the file resolved.
+
+**Lock.** Writes are serialised per common dir. A second write to the same repo queues behind the first. Reads are never locked.
+
+**Residual risk.**
+- `--no-ext-diff --no-textconv` stops repo-configured diff programs from running.
+- Clean/smudge filters still run on `add` and `restore`, as they do in a terminal. This is the class of risk accepted in stage 1, now extended to writes.
+- No force flags are used anywhere.
+
+### Core (`packages/core/src/modules/git`, pure ESM)
+
+**`diff.js`**
+- `parseDiff(text)` returns:
+  ```
+  { files: [{ oldPath, newPath, status, binary,
+      hunks: [{ header, oldStart, newStart,
+        lines: [{ kind: 'context'|'add'|'del'|'meta', text, oldNo, newNo }] }] }] }
+  ```
+- It handles renames and copies, new and deleted files, mode changes, `\ No newline at end of file`, binary markers, CRLF, and quoted-path unescaping. It is a port of gws `DiffView.Parse`.
+- Hunk numbering matches main's splitter. Main is CommonJS and keeps its own small splitter; both are tested against the same recorded diffs.
+
+**`diffSides(change)`** returns the legend for each area:
+
+| Area | Legend |
+|---|---|
+| Unstaged | `− old: index` / `+ new: working tree` |
+| Staged | `− old: HEAD` / `+ new: index` |
+| Untracked | `+ new file` |
+| Conflict | `ours` / `theirs`, no staging |
+
+**`selection.js`**
+- Per-worktree selection, keyed by change id (`area:path`), with `toggle`, `range`, `all` and `none`.
+- Ids that are no longer in the snapshot are pruned.
+- `actionsFor(changes, selectedIds)` returns the applicable actions, with a file count for each. A mixed selection runs each action on the files it applies to, and the review lists the skipped files.
+
+**`review.js`**
+- `fileReview(action, changes)` returns `{ title, files, warning, skipped, needsTyping }`. `needsTyping` is `'DISCARD'`, `'DELETE'` or `null`.
+- `commitReview(targets, message | perTarget)` returns one block per worktree: `repo › worktree → branch`, its staged files and its message. It also carries the note "Each worktree commits separately; if one fails the others are not undone."
+- `commitTargets(snapshot, group, selectedTreeId)` returns the worktrees in the current group that have staged changes.
+  - Only the selected worktree is ticked at first.
+  - Worktrees with an in-progress operation or conflicts are listed as unavailable, with the reason.
+
+All new exports are added to `public-api.test.js`.
+
+### Screens (stage 2)
+
+**Layout.** Three panes. The worktree list stays on the left. The right side, from top to bottom:
+1. **Header strip:** stage 1's detail fields, in compact form.
+2. **Changes pane:**
+   - A toolbar: `Stage` `Unstage` `Discard…` `Delete…` `Commit…`. Each shows how many files it applies to, and is disabled with a tooltip when it doesn't apply.
+   - The file list, grouped under *Conflicts*, *Staged*, *Changes* and *Untracked*. Each row has a checkbox, a coloured status code and the path, plus `← old` for renames.
+3. **Diff pane:**
+   - a legend bar;
+   - `old` and `new` line-number gutters;
+   - red and green line backgrounds, plus `−` and `+` signs;
+   - a `Stage hunk` or `Unstage hunk` button on each hunk header;
+   - notices for binary files, truncated files (with the size), conflicted files ("Resolve in your editor, then stage the file") and "No longer changed".
+
+A draggable divider sits between the changes and diff panes. Its ratio is stored in `view.split`.
+
+**Interaction.**
+- Clicking a row focuses it and loads its diff.
+- The checkbox, Space or Shift-click selects. A group heading's checkbox selects or clears its whole group.
+- Keys: ↑/↓ move the focus, Space selects, `s`/`u` stage or unstage the selection, and `c` opens Commit.
+- Diffs load on demand, for the focused file only. They are cached per (worktree, change id, stamp) and re-fetched only when a snapshot shows the file changed.
+- Selections persist per worktree for the session.
+
+**Review before running.**
+- Stage, Unstage and Commit open a `PlModal` review; Enter or the button runs it.
+- Discard and Delete add a red warning and a field that requires typing `DISCARD` or `DELETE`.
+- Hunk buttons run directly. The hunk on screen is the preview, and the stamp guarantees that what runs is what was shown.
+
+**Commit dialog** (`PlModal`, wide):
+- A target checklist and one shared message, with a "Message per worktree" switch.
+- Ctrl+Enter or the button commits.
+- Results are shown per target: ✓ or ✗ with git's output.
+- **Retry failed** takes a fresh snapshot and re-reviews only the failures. It never re-runs blindly.
+
+**After any write.** A quiet snapshot refresh runs at once. A status line under the toolbar shows the result, or git's error in red. The activity log comes in stage 4.
+
+### Error handling (stage 2)
+
+| Situation | Behaviour |
+|---|---|
+| Stamp mismatch | Nothing runs. Shows "Changed since you reviewed it. Refresh and review again." and refreshes. |
+| Second write to a busy repo | Queues; its button shows a spinner. |
+| Git write fails (a hook rejects, `index.lock`, a patch does not apply) | Shows git's stderr verbatim. For `index.lock`, adds: "Another git process is using this repo; close it or remove the stale lock." The module never deletes the lock. |
+| Commit takes longer than 120 s | The process tree is killed and the target is reported as "timed out". The result notes that hooks may have left partial output. |
+| Diff over 1 MB, or binary | Shows a truncated or binary notice with the size. Hunk buttons are hidden; whole-file actions still work. |
+| File gone between the list and the diff | Shows "No longer changed" and refreshes the list. |
+| A delete-untracked check fails | Nothing in that worktree is deleted. The refused path and the reason are reported. |
+| A multi-target commit fails part-way | The other targets still run. Results are per target, with Retry failed. |
+
+### Testing (stage 2)
+
+**Core:**
+- `parseDiff` on recorded diffs: renames, new and deleted files, mode change, no-newline, binary, CRLF, quoted unicode paths, multiple hunks.
+- `diffSides`.
+- Selection, including pruning and mixed selections.
+- Review builders: `needsTyping`, skipped files, commit blocks.
+- `commitTargets`, including ticks and unavailable reasons.
+- Public API.
+
+**IPC (injected spawn and fs):**
+- Exact argv and stdin for every new operation.
+- A stamp mismatch spawns no write.
+- The lock serialises writes to the same repo, without blocking reads or other repos.
+- The hunk splitter matches core's numbering on the shared fixtures.
+- Delete refusals: traversal, a directory, a linked parent, a file that is now tracked.
+- The submodule, commit-during-conflict and empty-message refusals.
+
+**Integration (real git, temporary repos):**
+- The full sequence: stage → unstage → stage hunk 2 of 3 → unstage hunk → discard → delete untracked → commit. Each step is checked with `git status` and the index.
+- Unstage on an unborn branch.
+- A stale review is refused.
+- A two-worktree commit where one hook fails and the other still commits.
+
+**UI (jsdom, fake adapter):**
+- Focusing a file loads its diff once, and the legend matches its area.
+- Toolbar counts and disabled states.
+- Typed-confirmation gating.
+- The stamp-mismatch message.
+- A hunk button sends the right index.
+- Commit dialog: shared vs per-target message, per-target results, and Retry failed re-reviewing only the failures.
