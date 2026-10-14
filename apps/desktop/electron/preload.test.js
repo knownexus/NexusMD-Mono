@@ -81,6 +81,16 @@ describe('preload bridge', () => {
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:query', cfg, ['status', '--json'])
   })
 
+  it('exposes the profile file channels', () => {
+    const cfg = { root: 'C:\\repos\\dev-environment', pwsh: 'pwsh', profile: '' }
+    exposed.devenv.listProfileFiles(cfg)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile:list', cfg)
+    exposed.devenv.readProfileFile(cfg, 'mac.json')
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile:read', cfg, 'mac.json')
+    exposed.devenv.writeProfileFile(cfg, 'mac.json', '{}', { expected: null, dir: 'C:\\p' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile:write', cfg, 'mac.json', '{}', { expected: null, dir: 'C:\\p' })
+  })
+
   it('exposes devenv.pathForFile through webUtils', () => {
     expect(exposed.devenv.pathForFile({ name: 'photo.jpg' })).toBe('C:\\Users\\me\\photo.jpg')
   })
