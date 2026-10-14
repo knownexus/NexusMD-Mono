@@ -66,6 +66,7 @@ describe('EnvironmentForm', () => {
   it('edits database, mobile and test settings and the wiring list', () => {
     const onChange = setup()
     fireEvent.change(screen.getByLabelText('Databases'), { target: { value: 'A, B' } })
+    fireEvent.blur(screen.getByLabelText('Databases'))
     expect(last(onChange).database.databases).toEqual(['A', 'B'])
     fireEvent.change(screen.getByLabelText('Mobile package id'), { target: { value: 'com.x' } })
     expect(last(onChange).mobile.packageId).toBe('com.x')
@@ -77,6 +78,19 @@ describe('EnvironmentForm', () => {
     expect(last(onChange).test.wiring[0].key).toBe('Other__Url')
     fireEvent.click(screen.getByRole('button', { name: 'Remove wiring 1' }))
     expect(last(onChange).test.wiring).toEqual([])
+  })
+  it('keeps a typed comma in Databases until blur, then commits', () => {
+    const onChange = setup()
+    const box = screen.getByLabelText('Databases')
+    fireEvent.change(box, { target: { value: 'A' } })
+    fireEvent.change(box, { target: { value: 'A,' } })
+    expect(box.value).toBe('A,')
+    fireEvent.change(box, { target: { value: 'A, B' } })
+    fireEvent.blur(box)
+    expect(last(onChange).database.databases).toEqual(['A', 'B'])
+    fireEvent.change(box, { target: { value: '' } })
+    fireEvent.blur(box)
+    expect('databases' in last(onChange).database).toBe(false)
   })
   it('works for an empty file', () => {
     const onChange = setup({})

@@ -155,6 +155,10 @@ export function renameRepository(env, from, to) {
   const swap = v => (v === from ? to : v)
   if (Array.isArray(env.test?.defaultServices)) next = setIn(next, ['test', 'defaultServices'], env.test.defaultServices.map(swap))
   if (Array.isArray(env.test?.wiring)) next = setIn(next, ['test', 'wiring'], env.test.wiring.map(w => (isObj(w) ? { ...w, from: swap(w.from), to: swap(w.to) } : w)))
+  // extraDbConn is keyed by repository, so a rename must carry it along or the entry is orphaned
+  if (isObj(env.test?.extraDbConn) && from in env.test.extraDbConn) {
+    next = setIn(next, ['test', 'extraDbConn'], Object.fromEntries(Object.entries(env.test.extraDbConn).map(([k, v]) => [swap(k), v])))
+  }
   return next
 }
 

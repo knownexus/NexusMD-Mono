@@ -106,6 +106,12 @@ describe('edit helpers', () => {
     expect(o).toEqual({ a: { b: 1 }, list: [{ x: 1 }] })
   })
   it('formats JSON with two spaces and a final newline', () => { expect(formatJson({ a: 1 })).toBe('{\n  "a": 1\n}\n') })
+  it('renames the repository key inside test.extraDbConn, in order', () => {
+    const env = { repositories: { a: {}, b: {} }, test: { extraDbConn: { a: { x: 1 }, b: { y: 2 } } } }
+    const renamed = renameRepository(env, 'a', 'c')
+    expect(Object.entries(renamed.test.extraDbConn)).toEqual([['c', { x: 1 }], ['b', { y: 2 }]])
+    expect(renameRepository({ repositories: { a: {} }, test: { extraDbConn: 5 } }, 'a', 'c').test.extraDbConn).toBe(5)
+  })
   it('adds, renames (in order, with references) and removes repositories', () => {
     const added = addRepository(ENV, 'billing')
     expect(added.repositories.billing).toEqual(newRepository())

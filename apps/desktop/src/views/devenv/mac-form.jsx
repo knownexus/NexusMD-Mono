@@ -13,7 +13,8 @@ function Field({ label, aria, value, onChange, hint }) {
   )
 }
 
-export function MacForm({ value, onChange }) {
+export function MacForm({ value: given, onChange }) {
+  const value = given || {}
   const set = (k, v, optional) => onChange(setIn(value, [k], optional && v === '' ? undefined : v))
   return (
     <div className="card" style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>

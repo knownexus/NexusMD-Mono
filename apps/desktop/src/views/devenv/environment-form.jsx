@@ -25,6 +25,21 @@ function Check({ label, aria, checked, onChange }) {
   )
 }
 
+// Draft text so a trailing comma survives while typing; the array is committed on blur or Enter.
+function DatabasesField({ databases, onCommit }) {
+  const joined = databases.join(', ')
+  const [draft, setDraft] = React.useState(joined)
+  React.useEffect(() => { setDraft(joined) }, [joined])
+  const commit = () => onCommit(draft.trim() ? draft.split(',').map(s => s.trim()).filter(Boolean) : undefined)
+  return (
+    <label style={labelStyle}>
+      <span>Databases (comma-separated)</span>
+      <input aria-label="Databases" style={inputStyle} value={draft} onChange={e => setDraft(e.target.value)}
+        onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit() }} />
+    </label>
+  )
+}
+
 function Section({ title, children }) {
   return (
     <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -129,8 +144,7 @@ export function EnvironmentForm({ value, onChange }) {
       <Section title="Database">
         <div style={grid}>
           <Field label="Default database" aria="Database name" value={env.database?.name} onChange={v => optional(['database', 'name'], v)} />
-          <Field label="Databases (comma-separated)" aria="Databases" value={(env.database?.databases || []).join(', ')}
-            onChange={v => set(['database', 'databases'], v.trim() ? v.split(',').map(s => s.trim()).filter(Boolean) : undefined)} />
+          <DatabasesField databases={Array.isArray(env.database?.databases) ? env.database.databases : []} onCommit={v => set(['database', 'databases'], v)} />
           <Field label="Source container (for backups)" aria="Source container" value={env.database?.sourceContainer} onChange={v => optional(['database', 'sourceContainer'], v)} />
         </div>
       </Section>
