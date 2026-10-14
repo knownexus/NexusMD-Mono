@@ -20,7 +20,8 @@ function fakeChild(result, pid) {
   child.pid = pid
   child.stdin = new PassThrough()
   child.input = ''
-  child.stdin.on('data', c => { child.input += c })
+  child.inputBytes = []
+  child.stdin.on('data', c => { child.input += c; child.inputBytes.push(Buffer.from(c)) })
   if (result !== 'hang') {
     setImmediate(() => {
       child.stdout.end(Buffer.from(result.stdout || ''))
@@ -45,7 +46,7 @@ function setup(respond = () => ({ stdout: '' }), probe = {}, extra = {}) {
     kill: vi.fn(async () => {}),
     probe: {
       isDirectory: () => true, isFile: () => false, exists: () => false, listDirectories: () => [], readText: () => null, mtime: () => null,
-      isLink: () => false, size: () => null, readBytes: () => null, unlink: vi.fn(), ...probe,
+      isLink: () => false, size: () => null, readBytes: () => null, statKey: () => '', unlink: vi.fn(), ...probe,
     },
     gitPath: GIT,
     timeoutMs: 50,
@@ -319,6 +320,7 @@ const reads = (over = {}) => args => {
   if (args[0] in over) return typeof over[args[0]] === 'function' ? over[args[0]](args) : over[args[0]]
   if (args[0] === 'rev-parse' && args.includes('HEAD')) return { stdout: `${HEAD}\n` }
   if (args[0] === 'rev-parse' && args[2] === '--git-common-dir') return { stdout: `${COMMON}\n` }
+  if (args[0] === 'worktree') return { stdout: `worktree ${WT.replace(/\\/g, '/')}\0HEAD ${HEAD}\0branch refs/heads/main\0\0` }
   if (args[0] === 'ls-files') return { stdout: LS }
   if (args[0] === 'status') return { stdout: STATUS }
   if (args[0] === 'diff') return { stdout: 'diff --git a/a b.txt b/a b.txt\n' }
@@ -327,8 +329,29 @@ const reads = (over = {}) => args => {
 const unstaged = (paths = ['a b.txt']) => ({ area: 'unstaged', paths })
 
 describe('stage 2 reads', () => {
-  it('sets literal pathspecs for every git call', () => {
+  it('sets literal pathspecs unless a call opts out', () => {
     expect(gitEnv({}).GIT_LITERAL_PATHSPECS).toBe('1')
+    expect(gitEnv({}, { literal: false }).GIT_LITERAL_PATHSPECS).toBeUndefined()
+  })
+
+  it('rejects a folder inside the repo that git does not list as a worktree, without spawning a read or write', async () => {
+    const sub = path.join(WT, 'sub')
+    const requests = [
+      ['git:diff', unstaged()], ['git:stamp', { kind: 'files', paths: ['a b.txt'] }], ['git:stage', ['a b.txt'], 'x'],
+      ['git:discard', ['a b.txt'], 'x'], ['git:deleteUntracked', ['a b.txt'], 'x'], ['git:commit', 'Fix', 'x'],
+      ['git:stageHunk', ['a b.txt'], 0, 'x'], ['git:unstageHunk', ['a b.txt'], 0, 'x'],
+    ]
+    for (const [channel, ...args] of requests) {
+      const s = setup(reads())
+      await expect(s.invoke(channel, REPO, sub, REG, ...args)).rejects.toThrow(`Not a worktree of ${REPO.path}: ${sub}`)
+      expect(s.calls.map(c => c.args[0])).toEqual(['rev-parse', 'worktree'])
+    }
+  })
+
+  it('still lets status read any folder inside the repo', async () => {
+    const s = setup(reads())
+    expect(await s.invoke('git:status', REPO, path.join(WT, 'sub'), REG)).toMatchObject({ porcelain: STATUS })
+    expect(s.calls.some(c => c.args[0] === 'worktree')).toBe(false)
   })
 
   it('diffs unstaged and staged changes with an exact argv', async () => {
@@ -468,6 +491,39 @@ describe('stage 2 writes', () => {
     expect(s.calls.find(c => c.args[0] === 'diff').args).toEqual(['diff', '--cached', '--quiet', '--no-ext-diff'])
   })
 
+  it('runs the commit (and so its hooks) without literal pathspecs, while path-taking calls keep them', async () => {
+    const s = setup(reads({ diff: { code: 1 } }))
+    await s.invoke('git:commit', REPO, WT, REG, 'Fix', await stampOf(s, { kind: 'commit' }))
+    const commit = s.calls.find(c => c.args[0] === 'commit')
+    expect(commit.opts.env.GIT_LITERAL_PATHSPECS).toBeUndefined()
+    expect(commit.opts.env.GIT_TERMINAL_PROMPT).toBe('0')
+    for (const c of s.calls.filter(x => x.args[0] !== 'commit')) expect(c.opts.env.GIT_LITERAL_PATHSPECS).toBe('1')
+    const t = setup(reads())
+    await t.invoke('git:stage', REPO, WT, REG, ['a b.txt'], await stampOf(t, files()))
+    expect(t.calls.find(c => c.args[0] === 'add').opts.env.GIT_LITERAL_PATHSPECS).toBe('1')
+  })
+
+  it('refuses to stage an untracked nested repository, by its folder record, bare name or a path inside it', async () => {
+    const status = { status: { stdout: `${STATUS}? nested/\x00` } }
+    for (const p of ['nested/', 'nested', 'nested/x.txt']) {
+      const s = setup(reads(status))
+      const r = await s.invoke('git:stage', REPO, WT, REG, ['a b.txt', p], await stampOf(s, files(['a b.txt', p])))
+      expect(r).toEqual({ ok: false, detail: 'Nested repositories are managed on their own.' })
+      expect(s.calls.some(c => c.args[0] === 'add')).toBe(false)
+    }
+  })
+
+  it('covers each path\'s size and mtime in the files stamp, so a later edit is stale and nothing is restored', async () => {
+    let key = '10:1000'
+    const s = setup(reads(), { statKey: p => (p === path.join(WT, 'a b.txt') ? key : '') })
+    const expected = await stampOf(s, files())
+    expect(await stampOf(s, files())).toBe(expected)
+    key = '11:2000'
+    const r = await s.invoke('git:discard', REPO, WT, REG, ['a b.txt'], expected)
+    expect(r).toEqual({ ok: false, stale: true, detail: 'Changed since you reviewed it. Refresh and review again.' })
+    expect(s.calls.some(c => c.args[0] === 'restore')).toBe(false)
+  })
+
   it('refuses empty messages, nothing staged, conflicts and operations in progress', async () => {
     const commit = async (over, message = 'Fix', probe = {}) => {
       const s = setup(reads(over), probe)
@@ -565,6 +621,44 @@ describe('git:stageHunk and git:unstageHunk', () => {
     expect(await attempt({ diff: { stdout: 'diff --git a/a b.txt b/a b.txt\nBinary files a/a b.txt and b/a b.txt differ\n' } }))
       .toEqual([{ ok: false, detail: 'Binary or truncated diffs are staged whole.' }, false])
   })
+
+  it('refuses hunks of renamed, copied or mode-changed files', async () => {
+    const body = THREE.slice(THREE.indexOf('@@'))
+    const headers = [
+      'diff --git a/was.txt b/a b.txt\nsimilarity index 90%\nrename from was.txt\nrename to a b.txt\nindex 1111111..2222222 100644\n--- a/was.txt\n+++ b/a b.txt\n',
+      'diff --git a/was.txt b/a b.txt\nsimilarity index 90%\ncopy from was.txt\ncopy to a b.txt\n--- a/was.txt\n+++ b/a b.txt\n',
+      'diff --git a/a b.txt b/a b.txt\nold mode 100644\nnew mode 100755\nindex 1111111..2222222\n--- a/a b.txt\n+++ b/a b.txt\n',
+    ]
+    for (const header of headers) {
+      for (const [channel, area] of [['git:stageHunk', 'unstaged'], ['git:unstageHunk', 'staged']]) {
+        const s = hunkSetup({ diff: { stdout: header + body } })
+        const r = await s.invoke(channel, REPO, WT, REG, ['a b.txt'], 0, await diffStamp(s, area))
+        expect(r).toEqual({ ok: false, detail: 'Renamed, copied or mode-changed files are staged whole.' })
+        expect(s.calls.some(c => c.args[0] === 'apply')).toBe(false)
+      }
+    }
+  })
+
+  it('says a staged deletion is unstaged whole', async () => {
+    const deleted = '1 D. N... 100644 000000 000000 1111111111111111111111111111111111111111 0000000000000000000000000000000000000000 a b.txt\x00'
+    const s = hunkSetup({ 'ls-files': { stdout: '' }, status: { stdout: deleted } })
+    const r = await s.invoke('git:unstageHunk', REPO, WT, REG, ['a b.txt'], 0, await diffStamp(s, 'staged'))
+    expect(r).toEqual({ ok: false, detail: 'Deleted files are unstaged whole.' })
+  })
+
+  it('writes a hunk of a non-UTF-8 file back byte for byte', async () => {
+    const latin = Buffer.concat([Buffer.from(THREE.replace('+TWO', '+caf'), 'latin1')])
+    const at = latin.indexOf('+caf') + 4
+    const raw = Buffer.concat([latin.subarray(0, at), Buffer.from([0xe9]), latin.subarray(at)])
+    const s = hunkSetup({ diff: { stdout: raw } })
+    const d = await s.invoke('git:diff', REPO, WT, REG, unstaged())
+    expect(d.text).toContain('+caf�')
+    expect(d.raw).toBeUndefined()
+    expect((await s.invoke('git:stageHunk', REPO, WT, REG, ['a b.txt'], 0, d.stamp)).ok).toBe(true)
+    const sent = Buffer.concat(s.calls.find(c => c.args[0] === 'apply').child.inputBytes)
+    expect(sent.includes(Buffer.from([0x63, 0x61, 0x66, 0xe9]))).toBe(true)
+    expect(sent.equals(Buffer.from(extractHunk(raw.toString('latin1'), 0), 'latin1'))).toBe(true)
+  })
 })
 
 describe('git:deleteUntracked', () => {
@@ -588,6 +682,13 @@ describe('git:deleteUntracked', () => {
       .toEqual([{ ok: false, detail: 'Refusing a directory: new.txt' }, []])
     expect(await del(['new.txt', 'sub/deep.txt'], { isLink: p => p === path.join(WT, 'sub') }))
       .toEqual([{ ok: false, detail: 'Refusing a path through a linked folder: sub/deep.txt' }, []])
+  })
+
+  it('refuses an untracked nested repository folder', async () => {
+    const s = setup(reads({ status: { stdout: '? sub/\x00' } }), { isDirectory: p => !p.endsWith('.txt') })
+    const r = await s.invoke('git:deleteUntracked', REPO, WT, REG, ['sub/'], await s.invoke('git:stamp', REPO, WT, REG, { kind: 'files', paths: ['sub/'] }))
+    expect(r).toEqual({ ok: false, detail: 'Refusing a directory: sub/' })
+    expect(s.deps.probe.unlink).not.toHaveBeenCalled()
   })
 
   it('refuses a stale review and paths outside the worktree', async () => {

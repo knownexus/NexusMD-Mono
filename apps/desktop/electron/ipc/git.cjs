@@ -25,9 +25,12 @@ const OPERATIONS = [
   ['CHERRY_PICK_HEAD', 'Cherry-pick in progress', false],
 ];
 
-function gitEnv(base = process.env) {
+// Literal pathspecs keep renderer-named files from acting as globs. A commit runs hooks, which must
+// see git's normal pathspec behaviour (as in a terminal), so it opts out with literal: false.
+function gitEnv(base = process.env, { literal = true } = {}) {
   // A target always means the requested checkout, even if NexusMD inherited git internals.
-  const env = { ...base, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C', GIT_LITERAL_PATHSPECS: '1' };
+  const env = { ...base, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C' };
+  if (literal) env.GIT_LITERAL_PATHSPECS = '1';
   for (const k of STRIP_ENV) delete env[k];
   return env;
 }
@@ -81,6 +84,10 @@ const AREAS = ['unstaged', 'staged', 'untracked', 'conflict'];
 const STALE = 'Changed since you reviewed it. Refresh and review again.';
 const LOCK_HINT = 'Another git process is using this repo; close it or remove the stale lock.';
 const SUBMODULE = 'Submodule changes need to be managed inside the submodule.';
+const NESTED = 'Nested repositories are managed on their own.';
+const WHOLE_ONLY = 'Renamed, copied or mode-changed files are staged whole.';
+// Patch headers a single hunk must not carry: applying them would also rename, copy or chmod.
+const WHOLE_ONLY_HEADER = /^(rename from |copy from |old mode |new mode )/;
 const PATHSPEC_STDIN = ['--pathspec-from-file=-', '--pathspec-file-nul'];
 const nul = paths => paths.map(p => `${p}\0`).join('');
 const refuse = detail => ({ ok: false, detail });
@@ -124,6 +131,7 @@ function defaultProbe() {
     mtime: p => stat(p)?.mtime.toISOString() ?? null,
     isLink: p => { try { return fs.lstatSync(p).isSymbolicLink(); } catch { return false; } },
     size: p => { const s = stat(p); return s?.isFile() ? s.size : null; },
+    statKey: p => { const s = stat(p); return s ? `${s.size}:${s.mtimeMs}` : ''; },
     readBytes: p => { try { return fs.readFileSync(p); } catch { return null; } },
     unlink: p => fs.unlinkSync(p),
   };
@@ -187,14 +195,14 @@ function register(ipcMain, deps = {}) {
     if (next) next.resolve(); else active--;
   };
 
-  async function git(cwd, args, { input = null, timeout = timeoutMs } = {}) {
+  async function git(cwd, args, { input = null, timeout = timeoutMs, literal = true } = {}) {
     const exe = gitExecutable();
     if (!exe) throw new Error('Git not found');
     await acquire();
     try {
       return await new Promise((resolve, reject) => {
         const child = spawn(exe, ['--no-pager', '-c', 'core.fsmonitor=false', ...args], {
-          cwd, env: gitEnv(), windowsHide: true, stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+          cwd, env: gitEnv(process.env, { literal }), windowsHide: true, stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
         });
         running.add(child);
         const out = [];
@@ -217,7 +225,7 @@ function register(ipcMain, deps = {}) {
         child.on('error', e => done(() => reject(new Error(`Couldn't start git: ${e.message}`))));
         child.on('close', code => done(() => {
           const bytes = Buffer.concat(out);
-          resolve({ code, stdout: bytes.toString('utf8'), stderr: Buffer.concat(err).toString('utf8').trim(), bytes: bytes.length });
+          resolve({ code, stdout: bytes.toString('utf8'), raw: bytes, stderr: Buffer.concat(err).toString('utf8').trim(), bytes: bytes.length });
         }));
         if (input != null) {
           // A write to a process that already exited must not crash main.
@@ -242,13 +250,27 @@ function register(ipcMain, deps = {}) {
     }
   }
 
+  async function requireListed(repo, worktreePath) {
+    const listed = (await worktreeList(repo.path)).split('\0').filter(f => f.startsWith('worktree ')).map(f => f.slice(9));
+    if (!listed.some(p => samePath(p, worktreePath))) throw new Error(`Not a worktree of ${repo.path}: ${worktreePath}`);
+  }
+
+  // Status (stage 1) accepts any folder inside the repo.
   async function requireWorktree(repo, worktreePath, registered) {
     requireRegistered(repo, registered);
     requireAbsolute(worktreePath, 'Worktree path');
-    if (!isInside(worktreePath, repo.path)) {
-      const listed = (await worktreeList(repo.path)).split('\0').filter(f => f.startsWith('worktree ')).map(f => f.slice(9));
-      if (!listed.some(p => samePath(p, worktreePath))) throw new Error(`Not a worktree of ${repo.path}: ${worktreePath}`);
-    }
+    if (!isInside(worktreePath, repo.path)) await requireListed(repo, worktreePath);
+  }
+
+  // Stage 2 checks assume the worktree root (porcelain paths are root-relative, a subfolder's
+  // ls-files are not), so the path must be exactly one git lists. `validate` runs the caller's
+  // own argument checks first, so bad arguments never spawn git.
+  async function requireExactWorktree(repo, worktreePath, registered, validate = () => undefined) {
+    requireRegistered(repo, registered);
+    requireAbsolute(worktreePath, 'Worktree path');
+    const out = validate();
+    await requireListed(repo, worktreePath);
+    return out;
   }
 
   // File paths come from the renderer: relative, inside the worktree, never the worktree itself.
@@ -295,19 +317,23 @@ function register(ipcMain, deps = {}) {
       else if (kind === '1') p = afterFields(raw, 8);
       else if (kind === '2') { p = afterFields(raw, 9); orig = records[++i]; }
       else if (kind === 'u') p = afterFields(raw, 10);
-      if (p !== null && (want.has(p) || (orig && want.has(orig)))) {
+      // `? nested/` is a whole untracked repository; it covers its bare name and anything inside it.
+      const nested = kind === '?' && p.endsWith('/') && paths.some(w => w === p.slice(0, -1) || w.startsWith(p));
+      if (p !== null && (want.has(p) || (orig && want.has(orig)) || nested)) {
         found.push({ kind, xy: kind === '?' ? '??' : raw.slice(2, 4), path: p, orig, raw: orig ? `${raw}\0${orig}` : raw });
       }
     }
     return found;
   }
 
-  // What a whole-file review promises: HEAD, the paths' index entries and their status records.
+  // What a whole-file review promises: HEAD, the paths' index entries, their status records and
+  // each path's size and mtime, so an edit made after the review (same XY) is still caught.
   async function filesState(wt, paths) {
     const want = new Set(paths);
     const [h, entries, records] = await Promise.all([head(wt), indexEntries(wt), statusFor(wt, paths)]);
     const mine = entries.filter(e => want.has(e.path));
-    return { head: h, entries: mine, records, stamp: sha(h, ...mine.map(e => e.raw), ...records.map(r => r.raw)) };
+    const stats = paths.map(p => `${p}\0${probe.statKey(path.resolve(wt, p))}`);
+    return { head: h, entries: mine, records, stamp: sha(h, ...mine.map(e => e.raw), ...records.map(r => r.raw), ...stats) };
   }
 
   async function commitState(wt) {
@@ -340,7 +366,9 @@ function register(ipcMain, deps = {}) {
     if (r.code !== 0) throw new Error(r.stderr || `git diff failed (exit ${r.code})`);
     const truncated = r.bytes > DIFF_CAP;
     const text = truncated ? r.stdout.slice(0, DIFF_CAP) : r.stdout;
-    return { text, truncated, binary: /^(Binary files |GIT binary patch)/m.test(text), size: r.bytes };
+    // `raw` is the exact bytes as latin1 (one char per byte), so a hunk cut from it and written back
+    // as latin1 matches the index even when the file isn't UTF-8. It never leaves main.
+    return { text, raw: r.raw.toString('latin1'), truncated, binary: /^(Binary files |GIT binary patch)/m.test(text), size: r.bytes };
   }
 
   async function resolveCommon(dir) {
@@ -404,8 +432,7 @@ function register(ipcMain, deps = {}) {
   // Shared shape of a whole-file write: validate, lock, re-check the reviewed state, then act.
   function fileWrite(channel, act) {
     handle(channel, async (_e, repo, worktreePath, registered, paths, expected) => {
-      await requireWorktree(repo, worktreePath, registered);
-      const rel = requirePaths(worktreePath, paths);
+      const rel = await requireExactWorktree(repo, worktreePath, registered, () => requirePaths(worktreePath, paths));
       return withRepoLock(repo, async () => {
         const state = await filesState(worktreePath, rel);
         if (state.stamp !== expected) return { ok: false, stale: true, detail: STALE };
@@ -453,22 +480,31 @@ function register(ipcMain, deps = {}) {
   });
 
   handle('git:diff', async (_e, repo, worktreePath, registered, change) => {
-    await requireWorktree(repo, worktreePath, registered);
-    if (!AREAS.includes(change?.area)) throw new Error(`Unknown change area: ${change?.area}`);
-    const paths = requirePaths(worktreePath, change.paths);
-    const d = await diffText(worktreePath, change.area, paths);
+    const paths = await requireExactWorktree(repo, worktreePath, registered, () => {
+      if (!AREAS.includes(change?.area)) throw new Error(`Unknown change area: ${change?.area}`);
+      return requirePaths(worktreePath, change.paths);
+    });
+    const { raw: _raw, ...d } = await diffText(worktreePath, change.area, paths);
     const { stamp } = await filesState(worktreePath, paths);
+    // hunkWrite stamps the same UTF-8 text the same way.
     return { ...d, stamp: sha(stamp, d.text) };
   });
 
   handle('git:stamp', async (_e, repo, worktreePath, registered, request) => {
-    await requireWorktree(repo, worktreePath, registered);
-    if (request?.kind === 'commit') return (await commitState(worktreePath)).stamp;
-    if (request?.kind === 'files') return (await filesState(worktreePath, requirePaths(worktreePath, request.paths))).stamp;
-    throw new Error('Unknown stamp request');
+    const paths = await requireExactWorktree(repo, worktreePath, registered, () => {
+      if (request?.kind === 'commit') return null;
+      if (request?.kind === 'files') return requirePaths(worktreePath, request.paths);
+      throw new Error('Unknown stamp request');
+    });
+    if (!paths) return (await commitState(worktreePath)).stamp;
+    return (await filesState(worktreePath, paths)).stamp;
   });
 
-  fileWrite('git:stage', async (wt, rel) => result(await git(wt, ['add', ...PATHSPEC_STDIN], { input: nul(rel) })));
+  // An untracked folder record is a nested repository: `git add` would record an embedded gitlink.
+  fileWrite('git:stage', async (wt, rel, state) => {
+    if (state.records.some(r => r.kind === '?' && r.path.endsWith('/'))) return refuse(NESTED);
+    return result(await git(wt, ['add', ...PATHSPEC_STDIN], { input: nul(rel) }));
+  });
 
   fileWrite('git:unstage', async (wt, rel, state) => result(await git(wt,
     state.head ? ['restore', '--staged', ...PATHSPEC_STDIN] : ['rm', '--cached', '-r', '--ignore-unmatch', '--quiet', ...PATHSPEC_STDIN],
@@ -508,7 +544,7 @@ function register(ipcMain, deps = {}) {
   });
 
   handle('git:commit', async (_e, repo, worktreePath, registered, message, expected) => {
-    await requireWorktree(repo, worktreePath, registered);
+    await requireExactWorktree(repo, worktreePath, registered);
     if (typeof message !== 'string' || !message.trim()) return refuse('Enter a commit message.');
     return withRepoLock(repo, async () => {
       const state = await commitState(worktreePath);
@@ -520,7 +556,7 @@ function register(ipcMain, deps = {}) {
       if (staged.code === 0) return refuse('No staged changes.');
       if (staged.code !== 1) return refuse(staged.stderr || `git diff failed (exit ${staged.code})`);
       try {
-        return result(await git(worktreePath, ['commit', '-F', '-'], { input: message, timeout: commitTimeoutMs }));
+        return result(await git(worktreePath, ['commit', '-F', '-'], { input: message, timeout: commitTimeoutMs, literal: false }));
       } catch (e) {
         return refuse(`${e.message}. Hooks may have left partial output in the worktree.`);
       }
@@ -529,19 +565,24 @@ function register(ipcMain, deps = {}) {
 
   function hunkWrite(channel, area, reverse) {
     handle(channel, async (_e, repo, worktreePath, registered, paths, index, expected) => {
-      await requireWorktree(repo, worktreePath, registered);
-      const rel = requirePaths(worktreePath, paths);
+      const rel = await requireExactWorktree(repo, worktreePath, registered, () => requirePaths(worktreePath, paths));
       return withRepoLock(repo, async () => {
         const state = await filesState(worktreePath, rel);
-        if (!state.entries.length) return refuse('Untracked files are staged whole.');
+        if (!state.entries.length) {
+          // A staged deletion has no index entry either.
+          return refuse(state.records.some(r => r.kind !== '?' && r.xy[0] === 'D') ? 'Deleted files are unstaged whole.' : 'Untracked files are staged whole.');
+        }
         if (state.entries.some(e => e.stage !== '0')) return refuse('Conflicted files are staged whole, after resolving them.');
         if (state.entries.some(e => e.mode === '160000')) return refuse(SUBMODULE);
         const d = await diffText(worktreePath, area, rel);
         if (sha(state.stamp, d.text) !== expected) return { ok: false, stale: true, detail: STALE };
         if (d.binary || d.truncated) return refuse('Binary or truncated diffs are staged whole.');
+        const header = d.raw.split('\n');
+        if (header.slice(0, Math.max(0, header.findIndex(l => l.startsWith('@@')))).some(l => WHOLE_ONLY_HEADER.test(l))) return refuse(WHOLE_ONLY);
         let patch;
-        try { patch = extractHunk(d.text, index); } catch (e) { return refuse(e.message); }
-        return result(await git(worktreePath, ['apply', '--cached', ...(reverse ? ['--reverse'] : []), '--whitespace=nowarn', '-'], { input: patch }));
+        try { patch = extractHunk(d.raw, index); } catch (e) { return refuse(e.message); }
+        const input = Buffer.from(patch, 'latin1');
+        return result(await git(worktreePath, ['apply', '--cached', ...(reverse ? ['--reverse'] : []), '--whitespace=nowarn', '-'], { input }));
       });
     });
   }
