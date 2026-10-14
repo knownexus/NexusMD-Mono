@@ -1,6 +1,6 @@
 import React from 'react'
 import { EditorView, basicSetup } from 'codemirror'
-import { EditorState, Compartment, Annotation } from '@codemirror/state'
+import { EditorState, Compartment, Annotation, Transaction } from '@codemirror/state'
 import { StreamLanguage } from '@codemirror/language'
 import { json } from '@codemirror/lang-json'
 import { yaml } from '@codemirror/lang-yaml'
@@ -19,6 +19,8 @@ const languageFor = name => LANGUAGES[name]?.() ?? []
 
 // Marks transactions that replace the document from props, so they are not echoed to onChange.
 const External = Annotation.define()
+// CodeMirror stores documents with LF only, so compare and insert in that form.
+const normalize = text => (text ?? '').replace(/\r\n?/g, '\n')
 
 // NexusMD's own colours and monospace stack, so the editor reads like the rest of the app.
 const THEME = EditorView.theme({
@@ -40,7 +42,7 @@ export function CodeEditor({ value, language, onChange, ariaLabel }) {
     const v = new EditorView({
       parent: host.current,
       state: EditorState.create({
-        doc: initial.current.value,
+        doc: normalize(initial.current.value),
         extensions: [
           basicSetup, THEME, lang.current.of(languageFor(initial.current.language)),
           EditorView.contentAttributes.of({ 'aria-label': initial.current.ariaLabel }),
@@ -57,7 +59,9 @@ export function CodeEditor({ value, language, onChange, ariaLabel }) {
 
   React.useEffect(() => {
     const v = view.current
-    if (v && v.state.doc.toString() !== value) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value }, annotations: External.of(true) })
+    const next = normalize(value)
+    // Kept out of undo history: undoing a Revert/Reload would resurrect discarded text and report it as a user edit.
+    if (v && v.state.doc.toString() !== next) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next }, annotations: [External.of(true), Transaction.addToHistory.of(false)] })
   }, [value])
 
   React.useEffect(() => {
