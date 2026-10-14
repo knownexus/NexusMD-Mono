@@ -54,7 +54,8 @@ export function MacView({ adapter }) {
         <button className="btn sm ghost" style={{ alignSelf: 'flex-start' }} disabled={loading} onClick={refresh}>Refresh</button>
       </Card>
 
-      {((configured && mac.connection !== 'ok') || keyMissing) && (
+      {/* unreachable / hostkey: a password can't help, the status text above says what to do */}
+      {((configured && (mac.connection === 'auth' || mac.connection === 'error')) || keyMissing) && (
         <Card title="Set up SSH key">
           <ol style={{ margin: 0, paddingLeft: 18 }}>{STEPS.map(s => <li key={s}>{s}</li>)}</ol>
           <button className="btn sm primary" style={{ alignSelf: 'flex-start' }} disabled={busy} onClick={() => go('key-setup')}>Set up SSH key</button>

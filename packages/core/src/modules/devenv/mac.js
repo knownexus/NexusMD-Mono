@@ -30,7 +30,7 @@ export function buildMacArgv(action) {
 const TEXT = {
   ok: 'devenv logs in to the Mac with its key.',
   auth: "The Mac doesn't accept this PC's key yet - set up the SSH key.",
-  hostkey: "The Mac's host key is unknown or has changed - check it is the right Mac, then set up the SSH key.",
+  hostkey: "The Mac's host key has changed - if you trust this Mac, run ssh-keygen -R <its address> on this PC, then refresh.",
   unreachable: "Can't reach the Mac - is it on, on this network, with Remote Login enabled?",
   error: 'ssh failed - see the detail below.',
   unconfigured: 'mac.json is missing or invalid.',

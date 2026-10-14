@@ -28,6 +28,17 @@ describe('MacView', () => {
     expect(run.start).toHaveBeenCalledWith(['mac', 'key-setup'], { exclusive: true, label: 'devenv mac key-setup' })
   })
 
+  it.each(['unreachable', 'hostkey'])('offers no key wizard when the problem is %s (the status text explains)', async connection => {
+    setup({ status: STATUS({ connection, detail: 'ssh: connect to host mac.local port 22: Connection timed out' }) })
+    await screen.findByText('me@mac.local')
+    expect(screen.queryByRole('button', { name: 'Set up SSH key' })).toBeNull()
+  })
+
+  it.each(['auth', 'error'])('offers the key wizard when the connection is %s', async connection => {
+    setup({ status: STATUS({ connection }) })
+    expect(await screen.findByRole('button', { name: 'Set up SSH key' })).toBeTruthy()
+  })
+
   it('folds the wizard away once the key works', async () => {
     setup({ status: STATUS({ connection: 'ok', sshKey: 'C:\\Users\\me\\.ssh\\devenv_mac_ed25519', keyExists: true, detail: null }) })
     await screen.findByText('C:\\Users\\me\\.ssh\\devenv_mac_ed25519')

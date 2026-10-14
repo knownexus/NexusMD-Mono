@@ -143,7 +143,7 @@ All under the **Dev Environment** nav entry.
 
 - Phase 1 opens HTML reports with the default app (`shell.openPath`); the in-app report window arrives with the Tests screen (phase 4).
 - The Settings **Check** button runs `help --json` only; `doctor` is run from the Commands screen.
-- Until phase 5, Mac commands under NexusMD use `ssh -o BatchMode=yes` and need `sshKey` in `mac.json`; without it they fail fast instead of asking for a password.
+- Until phase 5, Mac commands under NexusMD use `ssh -o BatchMode=yes` and need `sshKey` in `mac.json`; without it they fail fast instead of asking for a password. (superseded by the Phase 5 amendments)
 - `logs show` prints the whole log into the output panel under NexusMD (no `less`).
 - Phase 1 prompts are devenv's existing questions rendered as dialogs (including the plain start-plan menu); the dedicated plan form and branch picker are phase 2.
 - `Select-Indices` gained a `-Labels` parameter so checklists show names, not numbers.
@@ -181,7 +181,7 @@ All under the **Dev Environment** nav entry.
 ## Amendments made during Phase 5 planning
 
 - Under NexusMD every Mac ssh process gets its own stdin (never devenv's, which carries NexusMD's answers) and BatchMode; `mac fix` asks for the Mac password with a `secret` prompt and sends it as the first line of that stdin. `ios/mac-host.sh` checks it once with `sudo -v` (exit 254, nothing changed, if refused) and pipes it to `sudo -S` for each fix. Terminal mode keeps `ssh -t` and sudo's own prompt.
-- `devenv mac key-setup`: an ed25519 key without a passphrase (`~/.ssh/devenv_mac_ed25519`; devenv logs in with BatchMode and Windows' ssh-agent is usually off), installed with one password login (`SSH_ASKPASS` = `ios/askpass.cmd`, `SSH_ASKPASS_REQUIRE=force`, password in `DEVENV_MAC_PASSWORD` on that ssh child only); the Mac's host key is recorded on first contact (`StrictHostKeyChecking=accept-new`); re-running is harmless.
+- `devenv mac key-setup`: an ed25519 key without a passphrase (`~/.ssh/devenv_mac_ed25519`; devenv logs in with BatchMode and Windows' ssh-agent is usually off), installed with one password login. It first probes with the key and, if the Mac is unreachable or its host key has changed, stops with a clear message before asking for any password (removing a changed host key is left to the user: `ssh-keygen -R`). Under NexusMD the password comes from a `secret` prompt and reaches ssh through `SSH_ASKPASS` = `ios/askpass.cmd` (`SSH_ASKPASS_REQUIRE=force`, password in `DEVENV_MAC_PASSWORD` on that ssh child only); askpass is host mode only - in a terminal, key-setup lets ssh prompt on the terminal itself. The Mac's host key is recorded on first contact (`StrictHostKeyChecking=accept-new`); re-running is harmless.
 - `devenv mac status --json` (result kind `mac-status`: configured, host, user, sshKey, keyExists, connection ok/auth/hostkey/unreachable/error/unconfigured, detail, error) is allowlisted in `devenv:query`; it probes the login with BatchMode and a 5 s timeout and never throws.
 - `devenv build ios --password` is unchanged: the .NET Pair-to-Mac build agent still receives `-p:ServerPassword` on its own command line, and builds use the agent's own Mac login, not devenv's key.
 - Status, Start, Builds, Logs, Tests, Database, Emulator, Mac and Commands are the Dev Environment tabs in this phase.

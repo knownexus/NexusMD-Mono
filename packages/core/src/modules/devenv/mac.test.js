@@ -32,5 +32,6 @@ describe('macConnectionText', () => {
   it('explains every state', () => {
     for (const c of ['ok', 'auth', 'hostkey', 'unreachable', 'error', 'unconfigured']) expect(macConnectionText(c)).toMatch(/\w/)
     expect(macConnectionText('auth')).toMatch(/key/i)
+    expect(macConnectionText('hostkey')).toMatch(/ssh-keygen -R <its address>/)
   })
 })
