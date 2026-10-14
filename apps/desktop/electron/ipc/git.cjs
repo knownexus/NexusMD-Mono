@@ -10,6 +10,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { spawn: nodeSpawn, execFile } = require('child_process');
 const { withLogging } = require('./withLogging.cjs');
 
@@ -26,7 +27,7 @@ const OPERATIONS = [
 
 function gitEnv(base = process.env) {
   // A target always means the requested checkout, even if NexusMD inherited git internals.
-  const env = { ...base, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C' };
+  const env = { ...base, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C', GIT_LITERAL_PATHSPECS: '1' };
   for (const k of STRIP_ENV) delete env[k];
   return env;
 }
@@ -74,6 +75,19 @@ function isRemoteOrDevicePath(p) {
   return /^[\\/]{2}/.test(p);
 }
 
+const DIFF_CAP = 1024 * 1024;
+const DIFF_ARGS = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '-U3'];
+const AREAS = ['unstaged', 'staged', 'untracked', 'conflict'];
+
+const sha = (...parts) => crypto.createHash('sha256').update(parts.join('\0')).digest('hex');
+
+// The rest of a porcelain v2 record after its n fixed fields (the path may contain spaces).
+function afterFields(record, n) {
+  let i = -1;
+  for (let k = 0; k < n; k++) i = record.indexOf(' ', i + 1);
+  return record.slice(i + 1);
+}
+
 function defaultProbe() {
   const stat = p => { try { return fs.statSync(p); } catch { return null; } };
   return {
@@ -83,6 +97,9 @@ function defaultProbe() {
     listDirectories: p => fs.readdirSync(p, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name),
     readText: p => { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } },
     mtime: p => stat(p)?.mtime.toISOString() ?? null,
+    isLink: p => { try { return fs.lstatSync(p).isSymbolicLink(); } catch { return false; } },
+    size: p => { const s = stat(p); return s?.isFile() ? s.size : null; },
+    readBytes: p => { try { return fs.readFileSync(p); } catch { return null; } },
   };
 }
 
@@ -142,13 +159,15 @@ function register(ipcMain, deps = {}) {
     if (next) next.resolve(); else active--;
   };
 
-  async function git(cwd, args) {
+  async function git(cwd, args, { input = null, timeout = timeoutMs } = {}) {
     const exe = gitExecutable();
     if (!exe) throw new Error('Git not found');
     await acquire();
     try {
       return await new Promise((resolve, reject) => {
-        const child = spawn(exe,['--no-pager', '-c', 'core.fsmonitor=false', ...args], { cwd, env: gitEnv(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+        const child = spawn(exe, ['--no-pager', '-c', 'core.fsmonitor=false', ...args], {
+          cwd, env: gitEnv(), windowsHide: true, stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+        });
         running.add(child);
         const out = [];
         const err = [];
@@ -163,16 +182,20 @@ function register(ipcMain, deps = {}) {
         };
         timer = setTimeout(() => done(() => {
           Promise.resolve(kill(child.pid)).catch(() => {});
-          reject(new Error(`git ${args[0]} timed out after ${Math.round(timeoutMs / 1000)}s`));
-        }), timeoutMs);
+          reject(new Error(`git ${args[0]} timed out after ${Math.round(timeout / 1000)}s`));
+        }), timeout);
         child.stdout.on('data', c => out.push(Buffer.from(c)));
         child.stderr.on('data', c => err.push(Buffer.from(c)));
         child.on('error', e => done(() => reject(new Error(`Couldn't start git: ${e.message}`))));
-        child.on('close', code => done(() => resolve({
-          code,
-          stdout: Buffer.concat(out).toString('utf8'),
-          stderr: Buffer.concat(err).toString('utf8').trim(),
-        })));
+        child.on('close', code => done(() => {
+          const bytes = Buffer.concat(out);
+          resolve({ code, stdout: bytes.toString('utf8'), stderr: Buffer.concat(err).toString('utf8').trim(), bytes: bytes.length });
+        }));
+        if (input != null) {
+          // A write to a process that already exited must not crash main.
+          child.stdin.on('error', () => {});
+          child.stdin.end(input);
+        }
       });
     } finally {
       release();
@@ -189,6 +212,107 @@ function register(ipcMain, deps = {}) {
     if (!Array.isArray(registered) || !registered.some(r => typeof r === 'string' && path.isAbsolute(r) && samePath(r, repo.path))) {
       throw new Error(`Not a registered repository: ${repo.path}`);
     }
+  }
+
+  async function requireWorktree(repo, worktreePath, registered) {
+    requireRegistered(repo, registered);
+    requireAbsolute(worktreePath, 'Worktree path');
+    if (!isInside(worktreePath, repo.path)) {
+      const listed = (await worktreeList(repo.path)).split('\0').filter(f => f.startsWith('worktree ')).map(f => f.slice(9));
+      if (!listed.some(p => samePath(p, worktreePath))) throw new Error(`Not a worktree of ${repo.path}: ${worktreePath}`);
+    }
+  }
+
+  // File paths come from the renderer: relative, inside the worktree, never the worktree itself.
+  function requirePaths(worktreePath, paths) {
+    if (!Array.isArray(paths) || !paths.length) throw new Error('Choose at least one file');
+    const root = path.resolve(worktreePath);
+    for (const p of paths) {
+      const bad = typeof p !== 'string' || !p || p.includes('\0') || path.isAbsolute(p) || /^[a-zA-Z]:/.test(p) || isRemoteOrDevicePath(p);
+      const full = bad ? null : path.resolve(root, p);
+      if (bad || !isInside(full, root) || samePath(full, root)) throw new Error(`Invalid file path: ${p}`);
+    }
+    return paths;
+  }
+
+  async function head(wt) {
+    const r = await git(wt, ['rev-parse', '--verify', '--quiet', 'HEAD']);
+    return r.code === 0 ? r.stdout.trim() : '';
+  }
+
+  // `ls-files --stage -z` entries: "<mode> <oid> <stage>\t<path>".
+  async function indexEntries(wt) {
+    const r = await git(wt, ['ls-files', '--stage', '-z']);
+    if (r.code !== 0) throw new Error(r.stderr || 'git ls-files failed');
+    return r.stdout.split('\0').filter(Boolean).map(raw => {
+      const tab = raw.indexOf('\t');
+      const [mode, oid, stage] = raw.slice(0, tab).split(' ');
+      return { mode, oid, stage, path: raw.slice(tab + 1), raw };
+    });
+  }
+
+  // Porcelain v2 records for the given paths (a rename matches on either name).
+  async function statusFor(wt, paths) {
+    const r = await git(wt, ['status', '--porcelain=v2', '-z', '--untracked-files=all']);
+    if (r.code !== 0) throw new Error(r.stderr || 'git status failed');
+    const want = new Set(paths);
+    const records = r.stdout.split('\0');
+    const found = [];
+    for (let i = 0; i < records.length; i++) {
+      const raw = records[i];
+      const kind = raw[0];
+      let p = null;
+      let orig = null;
+      if (kind === '?') p = raw.slice(2);
+      else if (kind === '1') p = afterFields(raw, 8);
+      else if (kind === '2') { p = afterFields(raw, 9); orig = records[++i]; }
+      else if (kind === 'u') p = afterFields(raw, 10);
+      if (p !== null && (want.has(p) || (orig && want.has(orig)))) {
+        found.push({ kind, xy: kind === '?' ? '??' : raw.slice(2, 4), path: p, orig, raw: orig ? `${raw}\0${orig}` : raw });
+      }
+    }
+    return found;
+  }
+
+  // What a whole-file review promises: HEAD, the paths' index entries and their status records.
+  async function filesState(wt, paths) {
+    const want = new Set(paths);
+    const [h, entries, records] = await Promise.all([head(wt), indexEntries(wt), statusFor(wt, paths)]);
+    const mine = entries.filter(e => want.has(e.path));
+    return { head: h, entries: mine, records, stamp: sha(h, ...mine.map(e => e.raw), ...records.map(r => r.raw)) };
+  }
+
+  async function commitState(wt) {
+    const [h, entries] = await Promise.all([head(wt), indexEntries(wt)]);
+    return { head: h, entries, stamp: sha(h, ...entries.map(e => e.raw)) };
+  }
+
+  // Untracked files have no git diff; build an all-added one so they share the viewer.
+  function untrackedDiff(wt, rel) {
+    const full = path.resolve(wt, rel);
+    if (probe.isLink(full)) throw new Error(`Refusing to read a linked file: ${rel}`);
+    const size = probe.size(full);
+    if (size == null) return { text: '', truncated: false, binary: false, size: 0, gone: true };
+    if (size > DIFF_CAP) return { text: '', truncated: true, binary: false, size };
+    const bytes = probe.readBytes(full);
+    if (!bytes) return { text: '', truncated: false, binary: false, size: 0, gone: true };
+    if (bytes.subarray(0, 8000).includes(0)) return { text: '', truncated: false, binary: true, size };
+    if (!bytes.length) return { text: '', truncated: false, binary: false, size: 0 };
+    const lines = bytes.toString('utf8').replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n');
+    return {
+      text: `--- /dev/null\n+++ b/${rel}\n@@ -0,0 +1,${lines.length} @@\n${lines.map(l => `+${l}\n`).join('')}`,
+      truncated: false, binary: false, size,
+    };
+  }
+
+  async function diffText(wt, area, paths) {
+    if (!AREAS.includes(area)) throw new Error(`Unknown change area: ${area}`);
+    if (area === 'untracked') return untrackedDiff(wt, paths[0]);
+    const r = await git(wt, [...DIFF_ARGS, ...(area === 'staged' ? ['--cached'] : []), '--', ...paths]);
+    if (r.code !== 0) throw new Error(r.stderr || `git diff failed (exit ${r.code})`);
+    const truncated = r.bytes > DIFF_CAP;
+    const text = truncated ? r.stdout.slice(0, DIFF_CAP) : r.stdout;
+    return { text, truncated, binary: /^(Binary files |GIT binary patch)/m.test(text), size: r.bytes };
   }
 
   async function resolveCommon(dir) {
@@ -253,12 +377,7 @@ function register(ipcMain, deps = {}) {
   });
 
   handle('git:status', async (_e, repo, worktreePath, registered) => {
-    requireRegistered(repo, registered);
-    requireAbsolute(worktreePath, 'Worktree path');
-    if (!isInside(worktreePath, repo.path)) {
-      const listed = (await worktreeList(repo.path)).split('\0').filter(f => f.startsWith('worktree ')).map(f => f.slice(9));
-      if (!listed.some(p => samePath(p, worktreePath))) throw new Error(`Not a worktree of ${repo.path}: ${worktreePath}`);
-    }
+    await requireWorktree(repo, worktreePath, registered);
     if (!probe.isDirectory(worktreePath)) return { missing: true };
     const status = await git(worktreePath, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all']);
     if (status.code !== 0) return { error: status.stderr || `git status failed (exit ${status.code})` };
@@ -270,6 +389,22 @@ function register(ipcMain, deps = {}) {
       ...(await inProgress(gitDir)),
       fetchedAt: commonDir ? probe.mtime(path.join(commonDir, 'FETCH_HEAD')) : null,
     };
+  });
+
+  handle('git:diff', async (_e, repo, worktreePath, registered, change) => {
+    await requireWorktree(repo, worktreePath, registered);
+    if (!AREAS.includes(change?.area)) throw new Error(`Unknown change area: ${change?.area}`);
+    const paths = requirePaths(worktreePath, change.paths);
+    const d = await diffText(worktreePath, change.area, paths);
+    const { stamp } = await filesState(worktreePath, paths);
+    return { ...d, stamp: sha(stamp, d.text) };
+  });
+
+  handle('git:stamp', async (_e, repo, worktreePath, registered, request) => {
+    await requireWorktree(repo, worktreePath, registered);
+    if (request?.kind === 'commit') return (await commitState(worktreePath)).stamp;
+    if (request?.kind === 'files') return (await filesState(worktreePath, requirePaths(worktreePath, request.paths))).stamp;
+    throw new Error('Unknown stamp request');
   });
 
   handle('git:branches', async (_e, repo, registered) => {

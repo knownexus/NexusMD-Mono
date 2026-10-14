@@ -16,6 +16,9 @@ function fakeChild(result, pid) {
   child.stdout = new PassThrough()
   child.stderr = new PassThrough()
   child.pid = pid
+  child.stdin = new PassThrough()
+  child.input = ''
+  child.stdin.on('data', c => { child.input += c })
   if (result !== 'hang') {
     setImmediate(() => {
       child.stdout.end(Buffer.from(result.stdout || ''))
@@ -32,11 +35,16 @@ function setup(respond = () => ({ stdout: '' }), probe = {}, extra = {}) {
   const deps = {
     spawn: vi.fn((cmd, args, opts) => {
       const op = args.slice(1 + FSMON.length)
-      calls.push({ cmd, args: op, raw: args, opts })
-      return fakeChild(respond(op, opts), 1000 + calls.length)
+      const call = { cmd, args: op, raw: args, opts }
+      calls.push(call)
+      call.child = fakeChild(respond(op, opts), 1000 + calls.length)
+      return call.child
     }),
     kill: vi.fn(async () => {}),
-    probe: { isDirectory: () => true, isFile: () => false, exists: () => false, listDirectories: () => [], readText: () => null, mtime: () => null, ...probe },
+    probe: {
+      isDirectory: () => true, isFile: () => false, exists: () => false, listDirectories: () => [], readText: () => null, mtime: () => null,
+      isLink: () => false, size: () => null, readBytes: () => null, unlink: vi.fn(), ...probe,
+    },
     gitPath: GIT,
     timeoutMs: 50,
     logger: { scope: () => ({ error: () => {}, info: () => {} }) },
@@ -295,5 +303,100 @@ describe('process limits', () => {
     expect(settled.every(e => /shutting down/.test(e.message))).toBe(true)
     await expect(invoke('git:resolve', ROOT)).rejects.toThrow(/shutting down/)
     expect(deps.spawn).toHaveBeenCalledTimes(2)
+  })
+})
+
+const WT = REPO.path
+const REG = [REPO.path]
+const HEAD = 'a'.repeat(40)
+const LS = '100644 1111111111111111111111111111111111111111 0\ta b.txt\x00100644 2222222222222222222222222222222222222222 0\tother.txt\x00'
+const STATUS = '1 .M N... 100644 100644 100644 1111111111111111111111111111111111111111 1111111111111111111111111111111111111111 a b.txt\x00? new.txt\x00'
+const DIFF_ARGS = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '-U3']
+// Answers the read commands stage 2 runs; `over` replaces answers by subcommand.
+const reads = (over = {}) => args => {
+  if (args[0] in over) return typeof over[args[0]] === 'function' ? over[args[0]](args) : over[args[0]]
+  if (args[0] === 'rev-parse' && args.includes('HEAD')) return { stdout: `${HEAD}\n` }
+  if (args[0] === 'rev-parse' && args[2] === '--git-common-dir') return { stdout: `${COMMON}\n` }
+  if (args[0] === 'ls-files') return { stdout: LS }
+  if (args[0] === 'status') return { stdout: STATUS }
+  if (args[0] === 'diff') return { stdout: 'diff --git a/a b.txt b/a b.txt\n' }
+  return { stdout: '' }
+}
+const unstaged = (paths = ['a b.txt']) => ({ area: 'unstaged', paths })
+
+describe('stage 2 reads', () => {
+  it('sets literal pathspecs for every git call', () => {
+    expect(gitEnv({}).GIT_LITERAL_PATHSPECS).toBe('1')
+  })
+
+  it('diffs unstaged and staged changes with an exact argv', async () => {
+    const a = setup(reads())
+    await a.invoke('git:diff', REPO, WT, REG, unstaged())
+    expect(a.calls.find(c => c.args[0] === 'diff').args).toEqual([...DIFF_ARGS, '--', 'a b.txt'])
+    const b = setup(reads())
+    await b.invoke('git:diff', REPO, WT, REG, { area: 'staged', paths: ['moved.txt', 'was.txt'] })
+    expect(b.calls.find(c => c.args[0] === 'diff').args).toEqual([...DIFF_ARGS, '--cached', '--', 'moved.txt', 'was.txt'])
+    const c = setup(reads())
+    await c.invoke('git:diff', REPO, WT, REG, { area: 'conflict', paths: ['both.txt'] })
+    expect(c.calls.find(x => x.args[0] === 'diff').args).toEqual([...DIFF_ARGS, '--', 'both.txt'])
+  })
+
+  it('returns the diff with a stamp that follows the diff text', async () => {
+    const run = text => setup(reads({ diff: { stdout: text } })).invoke('git:diff', REPO, WT, REG, unstaged())
+    const a = await run('one')
+    expect([a.text, a.truncated, a.binary, a.size]).toEqual(['one', false, false, 3])
+    expect(a.stamp).toMatch(/^[0-9a-f]{64}$/)
+    expect((await run('one')).stamp).toBe(a.stamp)
+    expect((await run('two')).stamp).not.toBe(a.stamp)
+  })
+
+  it('flags binary diffs and truncates diffs over 1 MB', async () => {
+    const bin = await setup(reads({ diff: { stdout: 'diff --git a/x.png b/x.png\nBinary files a/x.png and b/x.png differ\n' } }))
+      .invoke('git:diff', REPO, WT, REG, unstaged(['x.png']))
+    expect(bin.binary).toBe(true)
+    const big = await setup(reads({ diff: { stdout: 'x'.repeat(1024 * 1024 + 10) } })).invoke('git:diff', REPO, WT, REG, unstaged())
+    expect([big.truncated, big.text.length, big.size]).toEqual([true, 1024 * 1024, 1024 * 1024 + 10])
+  })
+
+  it('builds untracked diffs from the file itself without running git diff', async () => {
+    const { invoke, calls } = setup(reads(), { size: () => 9, readBytes: () => Buffer.from('one\r\ntwo\n') })
+    const d = await invoke('git:diff', REPO, WT, REG, { area: 'untracked', paths: ['new.txt'] })
+    expect(d.text).toBe('--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1,2 @@\n+one\n+two\n')
+    expect(calls.some(c => c.args[0] === 'diff')).toBe(false)
+  })
+
+  it('reports binary, oversized, empty, vanished and linked untracked files', async () => {
+    const untracked = probe => setup(reads(), probe).invoke('git:diff', REPO, WT, REG, { area: 'untracked', paths: ['new.txt'] })
+    const bin = await untracked({ size: () => 3, readBytes: () => Buffer.from([1, 0, 2]) })
+    expect([bin.binary, bin.text]).toEqual([true, ''])
+    const big = await untracked({ size: () => 2 * 1024 * 1024 })
+    expect([big.truncated, big.size, big.text]).toEqual([true, 2 * 1024 * 1024, ''])
+    const empty = await untracked({ size: () => 0, readBytes: () => Buffer.alloc(0) })
+    expect([empty.text, empty.size]).toEqual(['', 0])
+    expect((await untracked({ size: () => null })).gone).toBe(true)
+    await expect(untracked({ isLink: () => true })).rejects.toThrow('Refusing to read a linked file: new.txt')
+  })
+
+  it('stamps only the requested paths for file actions, and the whole index for commits', async () => {
+    const stamp = (over, request = { kind: 'files', paths: ['a b.txt'] }) => setup(reads(over)).invoke('git:stamp', REPO, WT, REG, request)
+    const base = await stamp({})
+    expect(base).toMatch(/^[0-9a-f]{64}$/)
+    const other = '1 .M N... 100644 100644 100644 3333333333333333333333333333333333333333 3333333333333333333333333333333333333333 other.txt\x00'
+    expect(await stamp({ status: { stdout: STATUS + other } })).toBe(base)
+    expect(await stamp({ 'ls-files': { stdout: LS.replace('1111111111111111111111111111111111111111', '9'.repeat(40)) } })).not.toBe(base)
+    expect(await stamp({ status: { stdout: STATUS.replace('.M', 'MM') } })).not.toBe(base)
+    const commit = await stamp({}, { kind: 'commit' })
+    expect(await stamp({ 'ls-files': { stdout: LS.replace('2222222222222222222222222222222222222222', '8'.repeat(40)) } }, { kind: 'commit' })).not.toBe(commit)
+  })
+
+  it('rejects bad file paths, unknown areas and unregistered repos without spawning git', async () => {
+    for (const bad of [['../x'], ['C:\\x'], ['C:x'], ['/x'], [], ['a\x00b'], [42]]) {
+      const { invoke, deps } = setup(reads())
+      await expect(invoke('git:diff', REPO, WT, REG, unstaged(bad))).rejects.toThrow()
+      expect(deps.spawn).not.toHaveBeenCalled()
+    }
+    await expect(setup(reads()).invoke('git:diff', REPO, WT, REG, { area: 'weird', paths: ['a'] })).rejects.toThrow('Unknown change area: weird')
+    await expect(setup(reads()).invoke('git:diff', REPO, WT, [], unstaged())).rejects.toThrow('Not a registered repository')
+    await expect(setup(reads()).invoke('git:stamp', REPO, WT, REG, { kind: 'other' })).rejects.toThrow('Unknown stamp request')
   })
 })
