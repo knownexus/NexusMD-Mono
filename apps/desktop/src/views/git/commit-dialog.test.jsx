@@ -99,4 +99,16 @@ describe('CommitDialog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Retry failed' }))
     expect(onRetry).toHaveBeenCalledWith(['C:/repos/App/feature'], { shared: 'Fix it', perTarget: {} })
   })
+
+  it('ignores Escape while a commit is running and then shows the results', async () => {
+    const pending = deferred()
+    const { onClose } = renderDialog({ adapter: { commit: vi.fn(() => pending.promise) } })
+    fireEvent.change(screen.getByLabelText('Commit message'), { target: { value: 'Fix it' } })
+    await waitFor(() => expect(commitButton().disabled).toBe(false))
+    fireEvent.click(commitButton())
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+    await act(async () => { pending.resolve({ ok: true, detail: 'ok' }) })
+    expect(await screen.findByRole('list', { name: 'Commit results' })).toBeTruthy()
+  })
 })

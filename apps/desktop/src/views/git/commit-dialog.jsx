@@ -72,7 +72,7 @@ export function CommitDialog({ targets, adapter, registered, initialMessages = {
     )
 
   return (
-    <PlModal open wide onClose={onClose} title="Commit" icon="git-branch" footer={footer} closeOnBackdrop={phase !== 'running'}>
+    <PlModal open wide onClose={phase === 'running' ? () => {} : onClose} title="Commit" icon="git-branch" footer={footer} closeOnBackdrop={phase !== 'running'}>
       {phase === 'results'
         ? (
           <ul aria-label="Commit results" style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 8 }}>
