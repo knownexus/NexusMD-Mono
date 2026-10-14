@@ -177,3 +177,11 @@ All under the **Dev Environment** nav entry.
 - Recreating an AVD (`emulator create`) is confirmed in the Emulator tab first; devenv itself still does not ask.
 - Dropped files get their paths through `webUtils.getPathForFile` in the preload.
 - Status, Start, Builds, Logs, Tests, Database, Emulator and Commands are the Dev Environment tabs in this phase.
+
+## Amendments made during Phase 5 planning
+
+- Under NexusMD every Mac ssh process gets its own stdin (never devenv's, which carries NexusMD's answers) and BatchMode; `mac fix` asks for the Mac password with a `secret` prompt and sends it as the first line of that stdin. `ios/mac-host.sh` checks it once with `sudo -v` (exit 254, nothing changed, if refused) and pipes it to `sudo -S` for each fix. Terminal mode keeps `ssh -t` and sudo's own prompt.
+- `devenv mac key-setup`: an ed25519 key without a passphrase (`~/.ssh/devenv_mac_ed25519`; devenv logs in with BatchMode and Windows' ssh-agent is usually off), installed with one password login (`SSH_ASKPASS` = `ios/askpass.cmd`, `SSH_ASKPASS_REQUIRE=force`, password in `DEVENV_MAC_PASSWORD` on that ssh child only); the Mac's host key is recorded on first contact (`StrictHostKeyChecking=accept-new`); re-running is harmless.
+- `devenv mac status --json` (result kind `mac-status`: configured, host, user, sshKey, keyExists, connection ok/auth/hostkey/unreachable/error/unconfigured, detail, error) is allowlisted in `devenv:query`; it probes the login with BatchMode and a 5 s timeout and never throws.
+- `devenv build ios --password` is unchanged: the .NET Pair-to-Mac build agent still receives `-p:ServerPassword` on its own command line, and builds use the agent's own Mac login, not devenv's key.
+- Status, Start, Builds, Logs, Tests, Database, Emulator, Mac and Commands are the Dev Environment tabs in this phase.
