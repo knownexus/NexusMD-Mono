@@ -18,7 +18,7 @@ export {
 export { GroupDraft, GroupSaveError } from './group-draft.js'
 export { parseDiff, diffSides } from './diff.js'
 export {
-  changePaths, isSubmodule, FILE_ACTIONS, actionsFor, groupChanges, toggleSelection, rangeSelection, pruneSelection,
+  changePaths, isSubmodule, isNestedRepo, FILE_ACTIONS, actionsFor, groupChanges, toggleSelection, rangeSelection, pruneSelection,
 } from './selection.js'
 export { fileReview, commitTargets, commitReview, COMMIT_NOTE } from './review.js'
 

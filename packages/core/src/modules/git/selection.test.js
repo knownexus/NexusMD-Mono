@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  changePaths, isSubmodule, FILE_ACTIONS, actionsFor, groupChanges, toggleSelection, rangeSelection, pruneSelection,
+  changePaths, isSubmodule, isNestedRepo, FILE_ACTIONS, actionsFor, groupChanges, toggleSelection, rangeSelection, pruneSelection,
 } from './selection.js'
 
 const c = (area, path, extra = {}) => ({ path, originalPath: null, xy: '.M', area, sub: 'N...', id: `${area}\0${path}`, ...extra })
@@ -23,6 +23,14 @@ describe('selection model', () => {
   it('recognises submodule entries', () => {
     expect(isSubmodule(changes[4])).toBe(true)
     expect(isSubmodule(changes[2])).toBe(false)
+  })
+
+  it('treats an untracked folder as a nested repository that no action applies to', () => {
+    const nested = c('untracked', 'nested/')
+    expect(isNestedRepo(nested)).toBe(true)
+    expect(isNestedRepo(changes[0])).toBe(false)
+    const a = actionsFor([nested, changes[0]], [nested.id, changes[0].id])
+    expect([ids(a.stage), ids(a.delete)]).toEqual([['untracked\0new.txt'], ['untracked\0new.txt']])
   })
 
   it('splits a mixed selection by the action each change allows, never including submodules', () => {

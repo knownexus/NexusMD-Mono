@@ -10,6 +10,11 @@ export function isSubmodule(change) {
   return typeof change.sub === 'string' && change.sub.startsWith('S')
 }
 
+/** git reports an untracked repository as one `? nested/` folder; staging it would add an embedded gitlink. */
+export function isNestedRepo(change) {
+  return change.area === GIT_AREAS.UNTRACKED && typeof change.path === 'string' && change.path.endsWith('/')
+}
+
 const APPLIES = {
   // Staging a conflicted file marks it resolved.
   stage: c => c.area === GIT_AREAS.UNSTAGED || c.area === GIT_AREAS.UNTRACKED || c.area === GIT_AREAS.CONFLICT,
@@ -23,7 +28,7 @@ export const FILE_ACTIONS = Object.freeze(Object.keys(APPLIES))
 /** The selected changes each file action applies to. */
 export function actionsFor(changes, selectedIds) {
   const chosen = changes.filter(c => selectedIds.includes(c.id))
-  return Object.fromEntries(FILE_ACTIONS.map(a => [a, chosen.filter(c => !isSubmodule(c) && APPLIES[a](c))]))
+  return Object.fromEntries(FILE_ACTIONS.map(a => [a, chosen.filter(c => !isSubmodule(c) && !isNestedRepo(c) && APPLIES[a](c))]))
 }
 
 const GROUPS = [

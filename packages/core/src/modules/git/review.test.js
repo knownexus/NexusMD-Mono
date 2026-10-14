@@ -22,6 +22,14 @@ describe('fileReview', () => {
     expect([r.warning, r.needsTyping]).toEqual([null, null])
   })
 
+  it('skips an untracked nested repository with its own reason', () => {
+    const nested = c('untracked', 'nested/')
+    const r = fileReview('stage', [nested], [nested.id])
+    expect([r.files, r.paths]).toEqual([[], []])
+    expect(r.skipped).toEqual([{ id: nested.id, path: 'nested/', reason: 'nested repository — manage it on its own' }])
+    expect(fileReview('delete', [nested], [nested.id]).skipped[0].reason).toBe('nested repository — manage it on its own')
+  })
+
   it('includes both names of a renamed file in the paths', () => {
     expect(fileReview('unstage', changes, all).paths).toEqual(['moved.txt', 'was.txt'])
     expect(fileReview('unstage', changes, all).title).toBe('Unstage 1 file')

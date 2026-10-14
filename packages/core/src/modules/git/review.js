@@ -1,5 +1,5 @@
 import { GIT_AREAS, statusCode, worktreeId, worktreeName, branchLabel } from './parse.js'
-import { actionsFor, changePaths, isSubmodule } from './selection.js'
+import { actionsFor, changePaths, isSubmodule, isNestedRepo } from './selection.js'
 
 export const COMMIT_NOTE = 'Each worktree commits separately; if one fails the others are not undone.'
 
@@ -22,7 +22,9 @@ export function fileReview(action, changes, selectedIds) {
     files: applicable.map(c => ({ id: c.id, code: statusCode(c), path: c.path, originalPath: c.originalPath })),
     paths: [...new Set(applicable.flatMap(changePaths))],
     skipped: changes.filter(c => selectedIds.includes(c.id) && !applicable.includes(c)).map(c => ({
-      id: c.id, path: c.path, reason: isSubmodule(c) ? 'submodule — manage it inside the submodule' : `not applicable to ${action}`,
+      id: c.id, path: c.path,
+      reason: isSubmodule(c) ? 'submodule — manage it inside the submodule'
+        : isNestedRepo(c) ? 'nested repository — manage it on its own' : `not applicable to ${action}`,
     })),
     warning: t.warning,
     needsTyping: t.needsTyping,
