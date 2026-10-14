@@ -39,6 +39,9 @@ describe('ProfileView', () => {
 
   it('lists the files, opens environment.json first, and always offers mac.json', async () => {
     setup()
+    await screen.findByLabelText('a name')
+    expect(screen.queryByLabelText('Edit environment.json')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Text' }))
     await screen.findByLabelText('Edit environment.json')
     expect(screen.getByRole('button', { name: 'sql/a.sql' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'mac.json (not created yet)' })).toBeTruthy()
@@ -48,6 +51,7 @@ describe('ProfileView', () => {
 
   it('asks before leaving a file with unsaved changes', async () => {
     setup()
+    fireEvent.click(await screen.findByRole('button', { name: 'Text' }))
     await screen.findByLabelText('Edit environment.json')
     fireEvent.change(screen.getByLabelText('Edit environment.json'), { target: { value: '{}' } })
     fireEvent.click(screen.getByRole('button', { name: 'sql/a.sql' }))
@@ -61,21 +65,24 @@ describe('ProfileView', () => {
 
   it('really discards the draft, so re-selecting the file shows the on-disk text', async () => {
     setup()
+    fireEvent.click(await screen.findByRole('button', { name: 'Text' }))
     await screen.findByLabelText('Edit environment.json')
     fireEvent.change(screen.getByLabelText('Edit environment.json'), { target: { value: '{}' } })
     fireEvent.click(screen.getByRole('button', { name: 'sql/a.sql' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }))
     await screen.findByLabelText('Edit sql/a.sql')
     fireEvent.click(screen.getByRole('button', { name: 'environment.json' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Text' }))
     await waitFor(() => expect(screen.getByLabelText('Edit environment.json').value).toBe(ENV))
     expect(screen.queryByText('Unsaved changes from earlier were restored.')).toBeNull()
   })
 
   it('refreshes the file list after a save creates a file', async () => {
     const { adapter, disk } = setup()
-    await screen.findByLabelText('Edit environment.json')
+    await screen.findByLabelText('a name')
     adapter.profileWrite.mockImplementation(async (_c, p, text) => { disk[p] = { text, bom: false, mtimeMs: 2 }; return { ok: true, mtimeMs: 2 } })
     fireEvent.click(screen.getByRole('button', { name: 'mac.json (not created yet)' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Text' }))
     await screen.findByLabelText('Edit mac.json')
     fireEvent.change(screen.getByLabelText('Edit mac.json'), { target: { value: '{"host":"h","user":"u"}\n' } })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })) })
@@ -85,7 +92,7 @@ describe('ProfileView', () => {
 
   it('runs devenv doctor as Check, alongside other runs', async () => {
     const { run } = setup()
-    await screen.findByLabelText('Edit environment.json')
+    await screen.findByLabelText('a name')
     fireEvent.click(screen.getByRole('button', { name: 'Check' }))
     expect(run.start).toHaveBeenCalledWith(['doctor'], { exclusive: false, label: 'devenv doctor' })
   })

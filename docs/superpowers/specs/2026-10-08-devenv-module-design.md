@@ -185,3 +185,12 @@ All under the **Dev Environment** nav entry.
 - `devenv mac status --json` (result kind `mac-status`: configured, host, user, sshKey, keyExists, connection ok/auth/hostkey/unreachable/error/unconfigured, detail, error) is allowlisted in `devenv:query`; it probes the login with BatchMode and a 5 s timeout and never throws.
 - `devenv build ios --password` is unchanged: the .NET Pair-to-Mac build agent still receives `-p:ServerPassword` on its own command line, and builds use the agent's own Mac login, not devenv's key.
 - Status, Start, Builds, Logs, Tests, Database, Emulator, Mac and Commands are the Dev Environment tabs in this phase.
+
+## Amendments made during Phase 6 planning
+
+- Profile files go through a dedicated Electron module (`devenv:profile-info|list|read|write|create`), not the app's general `file:*` channels: every path is relative to the profile folder (`config.profile` or `<root>\profile`) and must stay inside it by real path, so `..`, absolute paths and junctions leading out are refused; `.git`, `node_modules`, `bin`, `obj`, `.vs`, `.idea` and symlinks are not listed.
+- Saves are atomic (temp file + rename) and carry the file's `mtimeMs` from when it was read; a different `mtimeMs` on disk (for example `devenv start` rewriting `source`/`ref`) is a conflict offering Reload or Overwrite. A UTF-8 BOM and CRLF line endings are preserved. Files over 1 MB or with NUL bytes aren't opened.
+- Validation before save: JSON and YAML (`yaml` package) must parse; `environment.json` and `mac.json` are checked against the rules devenv relies on (repository keys, required source/ref/project, kind api/mobile/web, the `mobile` key and `mobile.packageId`, ports, test blocks, wiring references, container name; Mac host/user). devenv itself has no schema validation, so these rules live in core (`profile.js`).
+- The forms edit the parsed object (unknown keys kept) and save it as 2-space JSON; `extraDbConn` and `collectionPatterns` are edited in the Text view. Unsaved edits survive file and tab switches for the window's lifetime; switching files with unsaved edits asks first.
+- Other files open in CodeMirror 6 (JSON, YAML, PowerShell, SQL, Markdown highlighting). Check runs `devenv doctor` (non-exclusive).
+- Status, Start, Builds, Logs, Tests, Database, Emulator, Mac, Profile and Commands are the Dev Environment tabs - every screen in this spec.

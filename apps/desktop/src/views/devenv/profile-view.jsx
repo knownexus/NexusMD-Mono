@@ -1,11 +1,13 @@
 import React from 'react'
 import { PlModal } from '@nexusmd/ui'
 import { useDevenvRunContext } from './devenv-run-context.jsx'
+import { EnvironmentForm } from './environment-form.jsx'
+import { MacForm } from './mac-form.jsx'
 import { ProfileFileEditor } from './profile-file-editor.jsx'
 import { discardProfileDraft } from './use-profile-file.js'
 import { RunPanel } from './run-panel.jsx'
 
-const FORMS = {}
+const FORMS = { 'environment.json': EnvironmentForm, 'mac.json': MacForm }
 
 export function ProfileView({ adapter }) {
   const run = useDevenvRunContext()

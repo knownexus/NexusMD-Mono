@@ -121,6 +121,18 @@ describe('ProfileFileEditor', () => {
     expect(a.profileWrite.mock.calls.every(c => c[3].overwrite === false)).toBe(true)
   })
 
+  it('edits environment.json in a form, and falls back to text when the JSON is broken', async () => {
+    const Form = ({ value, onChange }) => <button onClick={() => onChange({ ...value, name: 'x' })}>{`form:${Object.keys(value.repositories || {}).join(',')}`}</button>
+    const a = fakeAdapter({ 'environment.json': { text: '{"repositories":{"a":{"source":"s","ref":"r","project":"p","kind":"api"}}}', bom: false, mtimeMs: 1 } })
+    render(<ProfileFileEditor adapter={a} config={CFG} path="environment.json" forms={{ 'environment.json': Form }} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'form:a' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Text' }))
+    expect(screen.getByLabelText('Edit environment.json').value).toBe('{\n  "repositories": {\n    "a": {\n      "source": "s",\n      "ref": "r",\n      "project": "p",\n      "kind": "api"\n    }\n  },\n  "name": "x"\n}\n')
+    edit('Edit environment.json', '{ broken')
+    fireEvent.click(screen.getByRole('button', { name: 'Form' }))
+    expect(screen.getByText('Fix the JSON in the Text view first.')).toBeTruthy()
+  })
+
   it('reports read errors', async () => {
     const a = { profileRead: vi.fn(async () => { throw new Error('big.txt is too large to edit here (2048 KB).') }), profileWrite: vi.fn() }
     render(<ProfileFileEditor adapter={a} config={CFG} path="big.txt" />)
