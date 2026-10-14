@@ -11,6 +11,7 @@ import { TestsView } from './tests-view.jsx'
 import { DatabaseView } from './database-view.jsx'
 import { EmulatorView } from './emulator-view.jsx'
 import { MacView } from './mac-view.jsx'
+import { ProfileView } from './profile-view.jsx'
 
 // A run started before the window reloaded can't be watched or answered any more (its
 // output and any open question went to the old window), so the only safe offer is Cancel.
@@ -26,7 +27,7 @@ function LeftoverRunsBanner({ leftover }) {
   )
 }
 
-const TABS = ['Status', 'Start', 'Builds', 'Logs', 'Tests', 'Database', 'Emulator', 'Mac', 'Commands']
+const TABS = ['Status', 'Start', 'Builds', 'Logs', 'Tests', 'Database', 'Emulator', 'Mac', 'Profile', 'Commands']
 const tabKey = () => getProfileKey('devenv.tab')
 
 function useTab() {
@@ -37,7 +38,7 @@ function useTab() {
   return [tab, choose]
 }
 
-// The Profile tab joins these in a later phase
+// The tabs cover every screen in the spec
 // (docs/superpowers/specs/2026-10-08-devenv-module-design.md).
 export function DevenvView({ adapters }) {
   const adapter = adapters.devenv
@@ -61,6 +62,7 @@ export function DevenvView({ adapters }) {
       {tab === 'Database' && <DatabaseView adapter={adapter} />}
       {tab === 'Emulator' && <EmulatorView adapter={adapter} picker={pickerAdapter} />}
       {tab === 'Mac' && <MacView adapter={adapter} />}
+      {tab === 'Profile' && <ProfileView adapter={adapter} />}
       {tab === 'Commands' && <CommandsView adapter={adapter} picker={pickerAdapter} />}
     </div>
   )
