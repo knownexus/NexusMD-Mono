@@ -125,6 +125,7 @@ function defaultProbe() {
     isLink: p => { try { return fs.lstatSync(p).isSymbolicLink(); } catch { return false; } },
     size: p => { const s = stat(p); return s?.isFile() ? s.size : null; },
     readBytes: p => { try { return fs.readFileSync(p); } catch { return null; } },
+    unlink: p => fs.unlinkSync(p),
   };
 }
 
@@ -479,6 +480,31 @@ function register(ipcMain, deps = {}) {
     const bad = rel.find(p => !tracked.has(p) || !unstaged.has(p));
     if (bad) return refuse(`Discard only accepts tracked files with unstaged changes: ${bad}`);
     return result(await git(wt, ['restore', '--worktree', ...PATHSPEC_STDIN], { input: nul(rel) }));
+  });
+
+  // Files only: never a directory, never through a linked folder, and only while still untracked.
+  // Every path is checked before anything is deleted.
+  fileWrite('git:deleteUntracked', async (wt, rel, state) => {
+    const untracked = new Set(state.records.filter(r => r.kind === '?').map(r => r.path));
+    const root = path.resolve(wt);
+    for (const p of rel) {
+      const full = path.resolve(root, p);
+      if (!untracked.has(p)) return refuse(`Not an untracked file any more: ${p}`);
+      if (probe.isDirectory(full)) return refuse(`Refusing a directory: ${p}`);
+      for (let dir = path.dirname(full); isInside(dir, root) && !samePath(dir, root); dir = path.dirname(dir)) {
+        if (probe.isLink(dir)) return refuse(`Refusing a path through a linked folder: ${p}`);
+      }
+    }
+    let deleted = 0;
+    for (const p of rel) {
+      try {
+        probe.unlink(path.resolve(root, p));
+        deleted++;
+      } catch (e) {
+        return refuse(`Deleted ${deleted} of ${rel.length} files; could not delete ${p}: ${e.message}`);
+      }
+    }
+    return { ok: true, detail: `Deleted ${deleted} untracked file${deleted === 1 ? '' : 's'}.` };
   });
 
   handle('git:commit', async (_e, repo, worktreePath, registered, message, expected) => {

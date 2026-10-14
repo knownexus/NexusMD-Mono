@@ -566,3 +566,38 @@ describe('git:stageHunk and git:unstageHunk', () => {
       .toEqual([{ ok: false, detail: 'Binary or truncated diffs are staged whole.' }, false])
   })
 })
+
+describe('git:deleteUntracked', () => {
+  const STATUS_U = '? new.txt\x00? sub/deep.txt\x00' + STATUS.split('\x00')[0] + '\x00'
+  // The default fake probe calls everything a directory; here only non-.txt paths are folders.
+  const del = async (paths, probe = {}, stamp = null) => {
+    const s = setup(reads({ status: { stdout: STATUS_U } }), { isDirectory: p => !p.endsWith('.txt'), ...probe })
+    const r = await s.invoke('git:deleteUntracked', REPO, WT, REG, paths, stamp ?? await s.invoke('git:stamp', REPO, WT, REG, { kind: 'files', paths }))
+    return [r, s.deps.probe.unlink.mock.calls.map(c => c[0])]
+  }
+
+  it('deletes each untracked file after checking them all', async () => {
+    expect(await del(['new.txt', 'sub/deep.txt'])).toEqual([
+      { ok: true, detail: 'Deleted 2 untracked files.' }, [path.join(WT, 'new.txt'), path.join(WT, 'sub', 'deep.txt')],
+    ])
+  })
+
+  it('deletes nothing when any path is tracked, a directory, or under a linked folder', async () => {
+    expect(await del(['new.txt', 'a b.txt'])).toEqual([{ ok: false, detail: 'Not an untracked file any more: a b.txt' }, []])
+    expect(await del(['new.txt'], { isDirectory: p => p.endsWith('new.txt') || !p.endsWith('.txt') }))
+      .toEqual([{ ok: false, detail: 'Refusing a directory: new.txt' }, []])
+    expect(await del(['new.txt', 'sub/deep.txt'], { isLink: p => p === path.join(WT, 'sub') }))
+      .toEqual([{ ok: false, detail: 'Refusing a path through a linked folder: sub/deep.txt' }, []])
+  })
+
+  it('refuses a stale review and paths outside the worktree', async () => {
+    expect(await del(['new.txt'], {}, 'old')).toEqual([{ ok: false, stale: true, detail: 'Changed since you reviewed it. Refresh and review again.' }, []])
+    await expect(del(['../outside.txt'])).rejects.toThrow('Invalid file path: ../outside.txt')
+  })
+
+  it('reports a file that could not be deleted part-way', async () => {
+    const unlink = vi.fn(p => { if (p.endsWith('deep.txt')) throw new Error('EBUSY: resource busy') })
+    const [r] = await del(['new.txt', 'sub/deep.txt'], { unlink })
+    expect(r).toEqual({ ok: false, detail: 'Deleted 1 of 2 files; could not delete sub/deep.txt: EBUSY: resource busy' })
+  })
+})
