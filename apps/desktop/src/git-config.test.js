@@ -70,6 +70,14 @@ describe('git config', () => {
       roots: ['C:/repos'], invalid: [], network: ['\\\\server\\share', '//server/share', '\\\\?\\C:\\repo'],
     })
   })
+  it('remembers the History panel and treats anything else as Changes', () => {
+    expect(getGitConfig().view.panel).toBe('changes')
+    setGitConfig({ view: { ...getGitConfig().view, panel: 'history' } })
+    expect(getGitConfig().view.panel).toBe('history')
+    setGitConfig({ view: { ...getGitConfig().view, panel: 'x' } })
+    expect(getGitConfig().view.panel).toBe('changes')
+  })
+
   it('keeps a valid diff split and replaces an invalid one with the default', () => {
     setGitConfig({ view: { ...getGitConfig().view, split: 0.6 } })
     expect(getGitConfig().view.split).toBe(0.6)
