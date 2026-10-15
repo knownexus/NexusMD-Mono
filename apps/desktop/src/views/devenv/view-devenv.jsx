@@ -12,6 +12,7 @@ import { DatabaseView } from './database-view.jsx'
 import { EmulatorView } from './emulator-view.jsx'
 import { MacView } from './mac-view.jsx'
 import { ProfileView } from './profile-view.jsx'
+import { hasProfileDrafts, useProfileDraftsVersion } from './use-profile-file.js'
 
 // A run started before the window reloaded can't be watched or answered any more (its
 // output and any open question went to the old window), so the only safe offer is Cancel.
@@ -44,6 +45,7 @@ export function DevenvView({ adapters }) {
   const adapter = adapters.devenv
   const run = useDevenvRunContext()
   const [tab, setTab] = useTab()
+  useProfileDraftsVersion()
   if (!adapter?.isAvailable() || !run) return <div style={{ padding: 16 }}>Dev Environment needs the desktop app.</div>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%', minHeight: 0, padding: 16 }}>
@@ -51,7 +53,9 @@ export function DevenvView({ adapters }) {
       <LeftoverRunsBanner leftover={run.leftover} />
       <div style={{ display: 'flex', gap: 6 }}>
         {TABS.map(t => (
-          <button key={t} className={`btn sm ${tab === t ? '' : 'ghost'}`} aria-pressed={tab === t} onClick={() => setTab(t)}>{t}</button>
+          <button key={t} className={`btn sm ${tab === t ? '' : 'ghost'}`} aria-pressed={tab === t} onClick={() => setTab(t)}>
+            {t}{t === 'Profile' && hasProfileDrafts() ? <span aria-hidden="true" title="Unsaved changes"> •</span> : null}
+          </button>
         ))}
       </div>
       {tab === 'Status' && <StatusView adapter={adapter} onStart={() => setTab('Start')} />}

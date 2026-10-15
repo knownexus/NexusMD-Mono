@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
+import { useProfileFile, clearProfileDrafts } from './use-profile-file.js'
 import { createRunState } from '@nexusmd/core'
 
 vi.mock('./devenv-run-context.jsx', () => ({ useDevenvRunContext: () => globalThis.__run }))
@@ -10,7 +11,7 @@ vi.mock('./profile-view.jsx', () => ({ ProfileView: () => <div>profile-stub</div
 
 import { DevenvView } from './view-devenv.jsx'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); clearProfileDrafts() })
 beforeEach(() => {
   localStorage.clear()
   globalThis.__run = { state: createRunState(), start: vi.fn(), cancel: vi.fn(), leftover: { runs: [], error: null, cancelAll: vi.fn() } }
@@ -39,6 +40,21 @@ describe('DevenvView', () => {
     }
     fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
     expect(screen.getByText('profile-stub')).toBeTruthy()
+  })
+  it('marks the Profile tab while any profile draft is unsaved', async () => {
+    // Real draft store: a tiny component creates a draft through useProfileFile.
+    const adapter = { profileRead: async () => ({ text: '{}', bom: false, stamp: 's' }) }
+    const cfg = { root: 'r', profile: '' }
+    let api
+    function Probe() { api = useProfileFile({ adapter, config: cfg, path: 'environment.json' }); return null }
+    render(<DevenvView adapters={adapters} />)
+    expect(screen.getByRole('button', { name: 'Profile' }).textContent).toBe('Profile')
+    render(<Probe />)
+    await waitFor(() => expect(api.status).toBe('ready'))
+    act(() => api.setText('{"x":1}'))
+    expect(screen.getByRole('button', { name: 'Profile' }).textContent).toBe('Profile •')
+    act(() => clearProfileDrafts())
+    expect(screen.getByRole('button', { name: 'Profile' }).textContent).toBe('Profile')
   })
   it('remembers the tab', () => {
     const { unmount } = render(<DevenvView adapters={adapters} />)

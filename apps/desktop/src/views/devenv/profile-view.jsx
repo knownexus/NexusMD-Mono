@@ -1,10 +1,9 @@
 import React from 'react'
-import { PlModal } from '@nexusmd/ui'
 import { useDevenvRunContext } from './devenv-run-context.jsx'
 import { EnvironmentForm } from './environment-form.jsx'
 import { MacForm } from './mac-form.jsx'
 import { ProfileFileEditor } from './profile-file-editor.jsx'
-import { discardProfileDraft } from './use-profile-file.js'
+import { hasProfileDraft, useProfileDraftsVersion } from './use-profile-file.js'
 import { RunPanel } from './run-panel.jsx'
 
 const FORMS = { 'environment.json': EnvironmentForm, 'mac.json': MacForm }
@@ -17,8 +16,6 @@ export function ProfileView({ adapter }) {
   const [truncated, setTruncated] = React.useState(false)
   const [error, setError] = React.useState(null)
   const [selected, setSelected] = React.useState('environment.json')
-  const [dirty, setDirty] = React.useState(false)
-  const [pending, setPending] = React.useState(null)
 
   const refresh = React.useCallback(async () => {
     setError(null)
@@ -36,7 +33,8 @@ export function ProfileView({ adapter }) {
     setError(null)
     try { await adapter.profileCreate(config); await refresh() } catch (e) { setError(e?.message || 'Could not create the profile.') }
   }
-  const choose = p => { if (p === selected) return; if (dirty) setPending(p); else setSelected(p) }
+  useProfileDraftsVersion()
+  const choose = p => setSelected(p)
   const paths = info?.exists ? [...new Set([...files, 'mac.json'])].sort((a, b) => a.localeCompare(b)) : []
   const label = p => (p === 'mac.json' && !files.includes('mac.json') ? 'mac.json (not created yet)' : p)
 
@@ -61,23 +59,21 @@ export function ProfileView({ adapter }) {
       {info?.exists && (
         <div style={{ display: 'flex', gap: 12, minHeight: 0, flex: 1 }}>
           <nav aria-label="Profile files" style={{ width: 260, flex: 'none', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {paths.map(p => (
-              <button key={p} className={`btn sm ${p === selected ? '' : 'ghost'}`} aria-current={p === selected ? 'true' : undefined}
-                aria-label={label(p)} style={{ justifyContent: 'flex-start', textAlign: 'left' }} onClick={() => choose(p)}>{label(p)}</button>
-            ))}
+            {paths.map(p => {
+              const unsaved = hasProfileDraft(config, p)
+              return (
+                <button key={p} className={`btn sm ${p === selected ? '' : 'ghost'}`} aria-current={p === selected ? 'true' : undefined}
+                  aria-label={unsaved ? `${label(p)}, unsaved changes` : label(p)} title={unsaved ? 'Unsaved changes' : undefined}
+                  style={{ justifyContent: 'flex-start', textAlign: 'left' }} onClick={() => choose(p)}>
+                  {label(p)}{unsaved && <span aria-hidden="true"> •</span>}
+                </button>
+              )
+            })}
             {truncated && <span style={{ color: 'var(--text-muted)', fontSize: 12, padding: '4px 8px' }}>Only the first 2000 files are listed.</span>}
           </nav>
-          <ProfileFileEditor key={selected} adapter={adapter} config={config} path={selected} onDirtyChange={setDirty} onSaved={refresh} forms={FORMS} />
+          <ProfileFileEditor key={selected} adapter={adapter} config={config} path={selected} onSaved={refresh} forms={FORMS} />
         </div>
       )}
-      <PlModal open={!!pending} onClose={() => setPending(null)} title="Unsaved changes"
-        footer={<>
-          <button className="btn sm ghost" onClick={() => setPending(null)}>Keep editing</button>
-          <button className="btn sm danger" onClick={() => { discardProfileDraft(config, selected); setDirty(false); setSelected(pending); setPending(null) }}>Discard changes</button>
-        </>}>
-        <p>{`${selected} has unsaved changes.`}</p>
-        <p style={{ color: 'var(--text-muted)' }}>Discarding keeps nothing - the file stays as it is on disk.</p>
-      </PlModal>
       {run.state.command === 'devenv doctor' && run.state.status !== 'idle' && <RunPanel state={run.state} onCancel={run.cancel} />}
     </div>
   )

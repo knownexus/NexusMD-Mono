@@ -2,12 +2,13 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
 import { createRunState } from '@nexusmd/core'
 import { ProfileView } from './profile-view.jsx'
+import { clearProfileDrafts } from './use-profile-file.js'
 
 vi.mock('./devenv-run-context.jsx', () => ({ useDevenvRunContext: () => globalThis.__run }))
 vi.mock('./code-editor.jsx', () => ({
   CodeEditor: ({ value, onChange, ariaLabel }) => <textarea aria-label={ariaLabel} value={value} onChange={e => onChange(e.target.value)} />,
 }))
-afterEach(cleanup)
+afterEach(() => { cleanup(); clearProfileDrafts() })
 
 const CFG = { root: 'C:\\repos\\dev-environment', pwsh: 'pwsh', profile: '' }
 const DIR = 'C:\\repos\\dev-environment\\profile'
@@ -58,32 +59,28 @@ describe('ProfileView', () => {
     await screen.findByLabelText('Edit sql/a.sql')
   })
 
-  it('asks before leaving a file with unsaved changes', async () => {
+  it('switches files without asking and keeps the unsaved draft, marked in the list', async () => {
     setup()
     fireEvent.click(await screen.findByRole('button', { name: 'Text' }))
     await screen.findByLabelText('Edit environment.json')
-    fireEvent.change(screen.getByLabelText('Edit environment.json'), { target: { value: '{}' } })
+    fireEvent.change(screen.getByLabelText('Edit environment.json'), { target: { value: '{"edited":true}' } })
     fireEvent.click(screen.getByRole('button', { name: 'sql/a.sql' }))
-    expect(await screen.findByText('environment.json has unsaved changes.')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
-    expect(screen.getByLabelText('Edit environment.json').value).toBe('{}')
-    fireEvent.click(screen.getByRole('button', { name: 'sql/a.sql' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }))
+    expect(screen.queryByText('Unsaved changes')).toBeNull()
     await screen.findByLabelText('Edit sql/a.sql')
+    const marked = screen.getByRole('button', { name: 'environment.json, unsaved changes' })
+    expect(marked.textContent).toContain('•')
+    fireEvent.click(marked)
+    await screen.findByText('Unsaved changes from earlier were restored.')
   })
 
-  it('really discards the draft, so re-selecting the file shows the on-disk text', async () => {
+  it('drops the marker when the draft is reverted', async () => {
     setup()
     fireEvent.click(await screen.findByRole('button', { name: 'Text' }))
     await screen.findByLabelText('Edit environment.json')
-    fireEvent.change(screen.getByLabelText('Edit environment.json'), { target: { value: '{}' } })
-    fireEvent.click(screen.getByRole('button', { name: 'sql/a.sql' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }))
-    await screen.findByLabelText('Edit sql/a.sql')
-    fireEvent.click(screen.getByRole('button', { name: 'environment.json' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Text' }))
-    await waitFor(() => expect(screen.getByLabelText('Edit environment.json').value).toBe(ENV))
-    expect(screen.queryByText('Unsaved changes from earlier were restored.')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Edit environment.json'), { target: { value: '{"edited":true}' } })
+    await screen.findByRole('button', { name: 'environment.json, unsaved changes' })
+    fireEvent.click(screen.getByRole('button', { name: 'Revert' }))
+    await screen.findByRole('button', { name: 'environment.json' })
   })
 
   it('refreshes the file list after a save creates a file', async () => {
