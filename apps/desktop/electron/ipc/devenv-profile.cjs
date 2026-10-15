@@ -3,6 +3,8 @@
 // The devenv profile (environment.json, mac.json, compose files, scripts...) as files the Dev
 // Environment Profile tab can list, read and save. Paths come from the renderer relative to the
 // profile folder and must stay inside it - judged by real paths, so a junction can't lead out.
+// Reads return a SHA-256 stamp of the file's bytes; saves compare it (not the mtime) to detect
+// outside changes, write via temp file + rename (retried on Windows sharing errors), and return the new stamp.
 
 'use strict';
 
@@ -16,6 +18,13 @@ const MAX_WRITE = 2 * 1024 * 1024;
 const MAX_FILES = 2000;
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'bin', 'obj', '.vs', '.idea']);
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
+const RENAME_RETRIES = 3;
+const RENAME_RETRY_MS = 100;
+// Windows sharing errors while antivirus or an editor has the file open for a moment.
+const RETRY_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
+const TMP_FILE = /^\..+\.nexusmd-[0-9a-f]{8}\.tmp$/;
+const sha256 = buf => crypto.createHash('sha256').update(buf).digest('hex');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function profileDir(config) {
   const { root, profile } = config || {};
@@ -76,6 +85,7 @@ async function listFiles(dir) {
     for (const e of entries) {
       if (files.length >= MAX_FILES) { truncated = true; return; }
       if (e.isSymbolicLink()) continue;
+      if (!e.isDirectory() && TMP_FILE.test(e.name)) continue;
       const r = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) await walk(path.join(abs, e.name), r); continue; }
       if (!e.isFile()) continue;
@@ -110,12 +120,13 @@ function register(ipcMain, { logger } = {}) {
     if (!st.isFile()) throw new Error(`Not a file: ${rel}`);
     if (st.size > MAX_READ) throw new Error(`${rel} is too large to edit here (${Math.round(st.size / 1024)} KB).`);
     let buf = await fsp.readFile(full);
+    const stamp = sha256(buf);
     if (buf.subarray(0, 8192).includes(0)) throw new Error(`${rel} isn't a text file.`);
     const bom = buf.subarray(0, 3).equals(BOM);
     if (bom) buf = buf.subarray(3);
     let text;
     try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { throw new Error(`${rel} isn't UTF-8 text.`); }
-    return { text, bom, mtimeMs: st.mtimeMs };
+    return { text, bom, stamp };
   });
 
   handle('devenv:profile-write', async (_e, config, rel, text, opts) => {
@@ -127,9 +138,10 @@ function register(ipcMain, { logger } = {}) {
     if (!(await isDir(dir))) throw new Error(`No profile folder at ${dir}.`);
     const { full, realDir } = await resolveFile(dir, rel);
     let current = null;
-    try { current = await fsp.stat(full); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    try { current = await fsp.readFile(full); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    const currentStamp = current ? sha256(current) : null;
     if (!opts.overwrite) {
-      if (current && (opts.create || current.mtimeMs !== opts.expectedMtimeMs)) return { ok: false, conflict: true, mtimeMs: current.mtimeMs };
+      if (current && (opts.create || currentStamp !== opts.expectedStamp)) return { ok: false, conflict: true, stamp: currentStamp };
       if (!current && !opts.create) return { ok: false, missing: true };
     }
     await fsp.mkdir(path.dirname(full), { recursive: true });
@@ -139,12 +151,17 @@ function register(ipcMain, { logger } = {}) {
     const tmp = path.join(path.dirname(full), `.${path.basename(full)}.nexusmd-${crypto.randomBytes(4).toString('hex')}.tmp`);
     try {
       await fsp.writeFile(tmp, body);
-      await fsp.rename(tmp, full);
+      for (let attempt = 0; ; attempt++) {
+        try { await fsp.rename(tmp, full); break; } catch (e) {
+          if (attempt < RENAME_RETRIES && RETRY_CODES.has(e.code)) { await sleep(RENAME_RETRY_MS); continue; }
+          throw e;
+        }
+      }
     } catch (e) {
       await fsp.rm(tmp, { force: true }).catch(() => {});
       throw e;
     }
-    return { ok: true, mtimeMs: (await fsp.stat(full)).mtimeMs };
+    return { ok: true, stamp: sha256(body) };
   });
 
   handle('devenv:profile-create', async (_e, config) => {

@@ -154,6 +154,10 @@ export const IDevenvAdapter = {
   // Read-only devenv questions (status) — never queued behind a running command.
   query:   async (config, argv) => ({ code: -1, results: [], stderr: 'not available' }),
   // The devenv profile's files (Profile tab), confined to the profile folder by the host.
+  // profileList -> { dir, files: [{ path, size, mtimeMs }], truncated }  (mtimeMs is for display only)
+  // profileRead -> { text, bom, stamp } | { missing: true }; stamp is the SHA-256 (hex) of the bytes on disk.
+  // profileWrite(config, path, text, { expectedStamp, overwrite, bom, create }) ->
+  //   { ok: true, stamp } | { ok: false, conflict: true, stamp } | { ok: false, missing: true }
   profileInfo:   async (config) => Promise.reject(new Error('IDevenvAdapter.profileInfo not implemented')),
   profileList:   async (config) => Promise.reject(new Error('IDevenvAdapter.profileList not implemented')),
   profileRead:   async (config, path) => Promise.reject(new Error('IDevenvAdapter.profileRead not implemented')),

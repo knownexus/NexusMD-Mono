@@ -15,30 +15,30 @@ function fakeAdapter(files = {}) {
     profileRead: vi.fn(async (_c, p) => (p in disk ? { ...disk[p] } : { missing: true })),
     profileWrite: vi.fn(async (_c, p, text, opts) => {
       const cur = disk[p]
-      if (!opts.overwrite && cur && (opts.create || cur.mtimeMs !== opts.expectedMtimeMs)) return { ok: false, conflict: true, mtimeMs: cur.mtimeMs }
+      if (!opts.overwrite && cur && (opts.create || cur.stamp !== opts.expectedStamp)) return { ok: false, conflict: true, stamp: cur.stamp }
       if (!opts.overwrite && !cur && !opts.create) return { ok: false, missing: true }
-      disk[p] = { text, bom: !!opts.bom, mtimeMs: (cur?.mtimeMs ?? 0) + 1 }
-      return { ok: true, mtimeMs: disk[p].mtimeMs }
+      disk[p] = { text, bom: !!opts.bom, stamp: `${cur?.stamp ?? "aaa"}+` }
+      return { ok: true, stamp: disk[p].stamp }
     }),
   }
 }
 const edit = (label, text) => fireEvent.change(screen.getByLabelText(label), { target: { value: text } })
 
 describe('ProfileFileEditor', () => {
-  it('loads a file, saves edits with the mtime it read, and keeps CRLF and the BOM', async () => {
-    const a = fakeAdapter({ 'commands.ps1': { text: 'a\r\nb\r\n', bom: true, mtimeMs: 10 } })
+  it('loads a file, saves edits with the stamp it read, and keeps CRLF and the BOM', async () => {
+    const a = fakeAdapter({ 'commands.ps1': { text: 'a\r\nb\r\n', bom: true, stamp: 'aaa' } })
     render(<ProfileFileEditor adapter={a} config={CFG} path="commands.ps1" />)
     await waitFor(() => expect(screen.getByLabelText('Edit commands.ps1').value).toBe('a\nb\n'))
     expect(screen.getByRole('button', { name: 'Save' }).disabled).toBe(true)
     edit('Edit commands.ps1', 'a\nc\n')
     expect(screen.getByText('Unsaved')).toBeTruthy()
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })) })
-    expect(a.profileWrite).toHaveBeenCalledWith(CFG, 'commands.ps1', 'a\r\nc\r\n', { expectedMtimeMs: 10, overwrite: false, bom: true, create: false })
+    expect(a.profileWrite).toHaveBeenCalledWith(CFG, 'commands.ps1', 'a\r\nc\r\n', { expectedStamp: "aaa", overwrite: false, bom: true, create: false })
     expect(screen.queryByText('Unsaved')).toBeNull()
   })
 
   it('blocks saving invalid JSON and shows the line', async () => {
-    const a = fakeAdapter({ 'docker/x.json': { text: '{}\n', bom: false, mtimeMs: 1 } })
+    const a = fakeAdapter({ 'docker/x.json': { text: '{}\n', bom: false, stamp: 'aaa' } })
     render(<ProfileFileEditor adapter={a} config={CFG} path="docker/x.json" />)
     await waitFor(() => expect(screen.getByLabelText('Edit docker/x.json').value).toBe('{}\n'))
     edit('Edit docker/x.json', '{\n  "a": 1,\n}')
@@ -47,16 +47,16 @@ describe('ProfileFileEditor', () => {
   })
 
   it('shows a conflict when the file changed on disk, and can overwrite or reload', async () => {
-    const a = fakeAdapter({ 'environment.json': { text: '{"repositories":{"a":{"source":"s","ref":"r","project":"p","kind":"api"}}}', bom: false, mtimeMs: 1 } })
+    const a = fakeAdapter({ 'environment.json': { text: '{"repositories":{"a":{"source":"s","ref":"r","project":"p","kind":"api"}}}', bom: false, stamp: 'aaa' } })
     render(<ProfileFileEditor adapter={a} config={CFG} path="environment.json" />)
     await waitFor(() => expect(screen.getByLabelText('Edit environment.json')).toBeTruthy())
-    a.disk['environment.json'] = { text: '{"repositories":{"b":{"source":"s","ref":"r","project":"p","kind":"api"}}}', bom: false, mtimeMs: 5 }
+    a.disk['environment.json'] = { text: '{"repositories":{"b":{"source":"s","ref":"r","project":"p","kind":"api"}}}', bom: false, stamp: "bbb" }
     edit('Edit environment.json', '{"repositories":{"c":{"source":"s","ref":"r","project":"p","kind":"api"}}}')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })) })
     expect(screen.getByText('This file changed on disk since you opened it.')).toBeTruthy()
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Overwrite' })) })
     expect(a.profileWrite).toHaveBeenLastCalledWith(CFG, 'environment.json', expect.stringContaining('"c"'), expect.objectContaining({ overwrite: true }))
-    a.disk['environment.json'].mtimeMs = 99
+    a.disk['environment.json'].stamp = "ccc"
     edit('Edit environment.json', '{"repositories":{"d":{"source":"s","ref":"r","project":"p","kind":"api"}}}')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })) })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Reload (discard my changes)' })) })
@@ -73,7 +73,7 @@ describe('ProfileFileEditor', () => {
   })
 
   it('keeps unsaved edits when the editor is remounted, until reverted', async () => {
-    const a = fakeAdapter({ 'sql/a.sql': { text: 'select 1\n', bom: false, mtimeMs: 1 } })
+    const a = fakeAdapter({ 'sql/a.sql': { text: 'select 1\n', bom: false, stamp: 'aaa' } })
     const first = render(<ProfileFileEditor adapter={a} config={CFG} path="sql/a.sql" />)
     await waitFor(() => expect(screen.getByLabelText('Edit sql/a.sql').value).toBe('select 1\n'))
     edit('Edit sql/a.sql', 'select 2\n')
@@ -85,8 +85,8 @@ describe('ProfileFileEditor', () => {
     await waitFor(() => expect(screen.getByLabelText('Edit sql/a.sql').value).toBe('select 1\n'))
   })
 
-  it('keeps edits typed while a save is in flight as unsaved, with the new mtime', async () => {
-    const a = fakeAdapter({ 'sql/a.sql': { text: 'select 1\n', bom: false, mtimeMs: 1 } })
+  it('keeps edits typed while a save is in flight as unsaved, with the new stamp', async () => {
+    const a = fakeAdapter({ 'sql/a.sql': { text: 'select 1\n', bom: false, stamp: 'aaa' } })
     let release
     const real = a.profileWrite.getMockImplementation()
     a.profileWrite.mockImplementation((...args) => new Promise(res => { release = () => res(real(...args)) }))
@@ -103,16 +103,16 @@ describe('ProfileFileEditor', () => {
     render(<ProfileFileEditor adapter={a} config={CFG} path="sql/a.sql" />)
     await waitFor(() => expect(screen.getByLabelText('Edit sql/a.sql').value).toBe('select 3\n'))
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })) })
-    expect(a.profileWrite).toHaveBeenLastCalledWith(CFG, 'sql/a.sql', 'select 3\n', expect.objectContaining({ expectedMtimeMs: 2, overwrite: false }))
+    expect(a.profileWrite).toHaveBeenLastCalledWith(CFG, 'sql/a.sql', 'select 3\n', expect.objectContaining({ expectedStamp: "aaa+", overwrite: false }))
   })
 
   it('does not write over a file that changed on disk since a draft was kept', async () => {
-    const a = fakeAdapter({ 'sql/b.sql': { text: 'select 1\n', bom: false, mtimeMs: 1 } })
+    const a = fakeAdapter({ 'sql/b.sql': { text: 'select 1\n', bom: false, stamp: 'aaa' } })
     const first = render(<ProfileFileEditor adapter={a} config={CFG} path="sql/b.sql" />)
     await waitFor(() => expect(screen.getByLabelText('Edit sql/b.sql').value).toBe('select 1\n'))
     edit('Edit sql/b.sql', 'select 2\n')
     first.unmount()
-    a.disk['sql/b.sql'] = { text: 'other\n', bom: false, mtimeMs: 7 }
+    a.disk['sql/b.sql'] = { text: 'other\n', bom: false, stamp: "ddd" }
     render(<ProfileFileEditor adapter={a} config={CFG} path="sql/b.sql" />)
     await screen.findByText('Unsaved changes from earlier were restored.')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })) })
@@ -123,7 +123,7 @@ describe('ProfileFileEditor', () => {
 
   it('edits environment.json in a form, and falls back to text when the JSON is broken', async () => {
     const Form = ({ value, onChange }) => <button onClick={() => onChange({ ...value, name: 'x' })}>{`form:${Object.keys(value.repositories || {}).join(',')}`}</button>
-    const a = fakeAdapter({ 'environment.json': { text: '{"repositories":{"a":{"source":"s","ref":"r","project":"p","kind":"api"}}}', bom: false, mtimeMs: 1 } })
+    const a = fakeAdapter({ 'environment.json': { text: '{"repositories":{"a":{"source":"s","ref":"r","project":"p","kind":"api"}}}', bom: false, stamp: 'aaa' } })
     render(<ProfileFileEditor adapter={a} config={CFG} path="environment.json" forms={{ 'environment.json': Form }} />)
     fireEvent.click(await screen.findByRole('button', { name: 'form:a' }))
     fireEvent.click(screen.getByRole('button', { name: 'Text' }))

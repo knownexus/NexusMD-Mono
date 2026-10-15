@@ -1,6 +1,8 @@
 // @vitest-environment node
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
+import fsp from 'fs/promises'
+import crypto from 'crypto'
 import os from 'os'
 import path from 'path'
 import { register, profileDir } from './devenv-profile.cjs'
@@ -68,7 +70,7 @@ describe('info, create, list', () => {
 
 describe('read', () => {
   beforeEach(makeProfile)
-  it('reads text with its mtime, strips and reports a BOM, and reports a missing file', async () => {
+  it('reads text with its stamp, strips and reports a BOM, and reports a missing file', async () => {
     fs.writeFileSync(path.join(dir, 'bom.ps1'), Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('Write-Host hi\r\n')]))
     expect(await call('devenv:profile-read', cfg(), 'bom.ps1')).toMatchObject({ text: 'Write-Host hi\r\n', bom: true })
     expect((await call('devenv:profile-read', cfg(), 'docker\\services.compose.yml')).text).toBe('services: {}\n')
@@ -171,22 +173,70 @@ describe('limits', () => {
 describe('write', () => {
   beforeEach(makeProfile)
   const file = () => path.join(dir, 'environment.json')
-  it('saves atomically and returns the new mtime, leaving no temp file', async () => {
-    const { mtimeMs } = await call('devenv:profile-read', cfg(), 'environment.json')
-    const r = await call('devenv:profile-write', cfg(), 'environment.json', '{"name":"x"}\n', { expectedMtimeMs: mtimeMs })
+  const sha = b => crypto.createHash('sha256').update(b).digest('hex')
+  it('saves atomically and returns the new stamp, leaving no temp file', async () => {
+    const { stamp } = await call('devenv:profile-read', cfg(), 'environment.json')
+    const r = await call('devenv:profile-write', cfg(), 'environment.json', '{"name":"x"}\n', { expectedStamp: stamp })
     expect(r.ok).toBe(true)
     expect(fs.readFileSync(file(), 'utf8')).toBe('{"name":"x"}\n')
-    expect(r.mtimeMs).toBe(fs.statSync(file()).mtimeMs)
+    expect(r.stamp).toBe(sha(fs.readFileSync(file())))
     expect(fs.readdirSync(dir).filter(n => n.includes('nexusmd'))).toEqual([])
   })
   it('refuses to overwrite a file that changed on disk, unless told to', async () => {
-    const { mtimeMs } = await call('devenv:profile-read', cfg(), 'environment.json')
-    fs.writeFileSync(file(), '{"changed":true}\n'); fs.utimesSync(file(), new Date(), new Date(Date.now() + 5000))
-    const r = await call('devenv:profile-write', cfg(), 'environment.json', '{"mine":1}\n', { expectedMtimeMs: mtimeMs })
-    expect(r).toEqual({ ok: false, conflict: true, mtimeMs: fs.statSync(file()).mtimeMs })
+    const { stamp } = await call('devenv:profile-read', cfg(), 'environment.json')
+    fs.writeFileSync(file(), '{"changed":true}\n')
+    const r = await call('devenv:profile-write', cfg(), 'environment.json', '{"mine":1}\n', { expectedStamp: stamp })
+    expect(r).toEqual({ ok: false, conflict: true, stamp: sha(fs.readFileSync(file())) })
     expect(fs.readFileSync(file(), 'utf8')).toBe('{"changed":true}\n')
-    expect((await call('devenv:profile-write', cfg(), 'environment.json', '{"mine":1}\n', { expectedMtimeMs: mtimeMs, overwrite: true })).ok).toBe(true)
+    expect((await call('devenv:profile-write', cfg(), 'environment.json', '{"mine":1}\n', { expectedStamp: stamp, overwrite: true })).ok).toBe(true)
     expect(fs.readFileSync(file(), 'utf8')).toBe('{"mine":1}\n')
+  })
+  it('stamps a read with the SHA-256 of the bytes on disk, BOM included', async () => {
+    const bytes = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('{"a":1}\r\n')])
+    fs.writeFileSync(file(), bytes)
+    const r = await call('devenv:profile-read', cfg(), 'environment.json')
+    expect(r.stamp).toBe(crypto.createHash('sha256').update(bytes).digest('hex'))
+    expect(r.bom).toBe(true)
+  })
+  it('reports a conflict when the bytes changed even though the mtime did not', async () => {
+    const r = await call('devenv:profile-read', cfg(), 'environment.json')
+    const { mtime, atime } = fs.statSync(file())
+    fs.writeFileSync(file(), '{"changed":true}\n')
+    fs.utimesSync(file(), atime, mtime)
+    const w = await call('devenv:profile-write', cfg(), 'environment.json', '{"x":1}\n', { expectedStamp: r.stamp })
+    expect(w).toEqual({ ok: false, conflict: true, stamp: crypto.createHash('sha256').update('{"changed":true}\n').digest('hex') })
+    expect(fs.readFileSync(file(), 'utf8')).toBe('{"changed":true}\n')
+  })
+  it('returns the stamp of what it wrote', async () => {
+    const r = await call('devenv:profile-read', cfg(), 'environment.json')
+    const w = await call('devenv:profile-write', cfg(), 'environment.json', '{"y":2}\n', { expectedStamp: r.stamp, bom: true })
+    const onDisk = fs.readFileSync(file())
+    expect(w).toEqual({ ok: true, stamp: crypto.createHash('sha256').update(onDisk).digest('hex') })
+  })
+  it('retries the rename while the file is briefly locked', async () => {
+    const r = await call('devenv:profile-read', cfg(), 'environment.json')
+    const busy = Object.assign(new Error('busy'), { code: 'EBUSY' })
+    const spy = vi.spyOn(fsp, 'rename').mockRejectedValueOnce(busy).mockRejectedValueOnce(Object.assign(new Error('perm'), { code: 'EPERM' }))
+    try {
+      const w = await call('devenv:profile-write', cfg(), 'environment.json', '{"z":3}\n', { expectedStamp: r.stamp })
+      expect(w.ok).toBe(true)
+      expect(spy).toHaveBeenCalledTimes(3)
+      expect(fs.readFileSync(file(), 'utf8')).toBe('{"z":3}\n')
+    } finally { spy.mockRestore() }
+  })
+  it('gives up after the retries and leaves no temp file behind', async () => {
+    const r = await call('devenv:profile-read', cfg(), 'environment.json')
+    const spy = vi.spyOn(fsp, 'rename').mockRejectedValue(Object.assign(new Error('locked'), { code: 'EBUSY' }))
+    try {
+      await expect(call('devenv:profile-write', cfg(), 'environment.json', '{}\n', { expectedStamp: r.stamp })).rejects.toThrow()
+      expect(spy).toHaveBeenCalledTimes(4)
+      expect(fs.readdirSync(path.dirname(file())).filter(n => n.includes('.nexusmd-'))).toEqual([])
+    } finally { spy.mockRestore() }
+  })
+  it('does not list leftover save temp files', async () => {
+    fs.writeFileSync(path.join(path.dirname(file()), '.environment.json.nexusmd-0a1b2c3d.tmp'), 'x')
+    const r = await call('devenv:profile-list', cfg())
+    expect(r.files.map(f => f.path).some(p => p.includes('.nexusmd-'))).toBe(false)
   })
   it('creates a missing file only when asked, and treats an unexpected existing file as a conflict', async () => {
     expect(await call('devenv:profile-write', cfg(), 'mac.json', '{}', {})).toEqual({ ok: false, missing: true })

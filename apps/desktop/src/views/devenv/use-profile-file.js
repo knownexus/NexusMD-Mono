@@ -3,7 +3,7 @@ import { validateProfileFile, detectEol, toLf, fromLf } from '@nexusmd/core'
 
 // Unsaved edits survive switching files or tabs for this window's lifetime.
 const drafts = new Map()
-const EMPTY = { status: 'loading', text: '', saved: '', eol: '\n', bom: false, mtimeMs: null, missing: false, error: null, conflict: null, saving: false, restored: false }
+const EMPTY = { status: 'loading', text: '', saved: '', eol: '\n', bom: false, stamp: null, missing: false, error: null, conflict: null, saving: false, restored: false }
 
 const draftKey = (config, path) => `${config.root}|${config.profile}|${path}`
 
@@ -28,7 +28,7 @@ export function useProfileFile({ adapter, config, path }) {
       if (live.current !== key) return
       if (r.missing) { setS({ ...EMPTY, status: 'ready', missing: true }); return }
       const text = toLf(r.text)
-      setS({ ...EMPTY, status: 'ready', text, saved: text, eol: detectEol(r.text), bom: !!r.bom, mtimeMs: r.mtimeMs })
+      setS({ ...EMPTY, status: 'ready', text, saved: text, eol: detectEol(r.text), bom: !!r.bom, stamp: r.stamp })
     } catch (e) {
       if (live.current === key) setS({ ...EMPTY, status: 'error', error: e?.message || 'Could not read the file.' })
     }
@@ -37,7 +37,7 @@ export function useProfileFile({ adapter, config, path }) {
   React.useEffect(() => { load() }, [load])
 
   const setText = React.useCallback(text => setS(p => {
-    if (text !== p.saved) drafts.set(key, { text, saved: p.saved, eol: p.eol, bom: p.bom, mtimeMs: p.mtimeMs, missing: p.missing })
+    if (text !== p.saved) drafts.set(key, { text, saved: p.saved, eol: p.eol, bom: p.bom, stamp: p.stamp, missing: p.missing })
     else drafts.delete(key)
     return { ...p, text }
   }), [key])
@@ -51,20 +51,20 @@ export function useProfileFile({ adapter, config, path }) {
     const written = s.text
     setS(p => ({ ...p, saving: true, error: null }))
     try {
-      const r = await adapter.profileWrite(config, path, fromLf(written, s.eol), { expectedMtimeMs: s.mtimeMs, overwrite, bom: s.bom, create: s.missing })
-      if (r.conflict) { setS(p => ({ ...p, saving: false, conflict: { mtimeMs: r.mtimeMs } })); return false }
-      if (r.missing) { setS(p => ({ ...p, saving: false, missing: true, mtimeMs: null, error: `${path} no longer exists on disk - Save again to create it.` })); return false }
+      const r = await adapter.profileWrite(config, path, fromLf(written, s.eol), { expectedStamp: s.stamp, overwrite, bom: s.bom, create: s.missing })
+      if (r.conflict) { setS(p => ({ ...p, saving: false, conflict: { stamp: r.stamp } })); return false }
+      if (r.missing) { setS(p => ({ ...p, saving: false, missing: true, stamp: null, error: `${path} no longer exists on disk - Save again to create it.` })); return false }
       setS(p => {
         if (p.text === written) drafts.delete(key)
-        else drafts.set(key, { text: p.text, saved: written, eol: p.eol, bom: p.bom, mtimeMs: r.mtimeMs, missing: false })
-        return { ...p, saving: false, saved: written, mtimeMs: r.mtimeMs, conflict: null, missing: false, restored: false }
+        else drafts.set(key, { text: p.text, saved: written, eol: p.eol, bom: p.bom, stamp: r.stamp, missing: false })
+        return { ...p, saving: false, saved: written, stamp: r.stamp, conflict: null, missing: false, restored: false }
       })
       return true
     } catch (e) {
       setS(p => ({ ...p, saving: false, error: e?.message || 'Save failed.' }))
       return false
     }
-  }, [adapter, config, path, key, s.text, s.eol, s.bom, s.mtimeMs, s.missing, errors])
+  }, [adapter, config, path, key, s.text, s.eol, s.bom, s.stamp, s.missing, errors])
 
   const revert = React.useCallback(() => load({ discardDraft: true }), [load])
   return { ...s, setText, errors, dirty, save, revert }

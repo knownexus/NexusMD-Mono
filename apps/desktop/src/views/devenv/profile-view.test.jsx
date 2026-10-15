@@ -15,13 +15,13 @@ const ENV = '{"repositories":{"a":{"source":"s","ref":"r","project":"p","kind":"
 
 function setup({ exists = true, over = {}, truncated = false } = {}) {
   globalThis.__run = { state: { ...createRunState(), ...over }, start: vi.fn(), cancel: vi.fn(), config: CFG }
-  const disk = { 'environment.json': { text: ENV, bom: false, mtimeMs: 1 }, 'sql/a.sql': { text: 'select 1\n', bom: false, mtimeMs: 1 } }
+  const disk = { 'environment.json': { text: ENV, bom: false, stamp: 'aaa' }, 'sql/a.sql': { text: 'select 1\n', bom: false, stamp: 'aaa' } }
   const state = { exists }
   const adapter = {
     profileInfo: vi.fn(async () => ({ dir: DIR, isDefault: true, exists: state.exists, example: true })),
     profileList: vi.fn(async () => ({ dir: DIR, truncated, files: Object.keys(disk).map(p => ({ path: p, size: 1, mtimeMs: 1 })) })),
     profileRead: vi.fn(async (_c, p) => (p in disk ? { ...disk[p] } : { missing: true })),
-    profileWrite: vi.fn(async () => ({ ok: true, mtimeMs: 2 })),
+    profileWrite: vi.fn(async () => ({ ok: true, stamp: 'bbb' })),
     profileCreate: vi.fn(async () => { state.exists = true; return { ok: true, dir: DIR } }),
   }
   render(<ProfileView adapter={adapter} />)
@@ -89,7 +89,7 @@ describe('ProfileView', () => {
   it('refreshes the file list after a save creates a file', async () => {
     const { adapter, disk } = setup()
     await screen.findByLabelText('a name')
-    adapter.profileWrite.mockImplementation(async (_c, p, text) => { disk[p] = { text, bom: false, mtimeMs: 2 }; return { ok: true, mtimeMs: 2 } })
+    adapter.profileWrite.mockImplementation(async (_c, p, text) => { disk[p] = { text, bom: false, stamp: 'bbb' }; return { ok: true, stamp: 'bbb' } })
     fireEvent.click(screen.getByRole('button', { name: 'mac.json (not created yet)' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Text' }))
     await screen.findByLabelText('Edit mac.json')
