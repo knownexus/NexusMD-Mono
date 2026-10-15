@@ -1,7 +1,7 @@
 # Git Workspace Module — Design
 
 **Date:** 2026-10-13
-**Status:** Approved design. Stage 1 implemented; stage 2 implemented (2026-10-14); stage 3 implemented (2026-10-15); stage 4 designed, pending its plan.
+**Status:** Approved design. Stage 1 implemented; stage 2 implemented (2026-10-14); stage 3 implemented (2026-10-15); stage 4 implemented (2026-10-15).
 **Repos touched:** `NexusMD-Mono` (new module). Reference implementation: `gws` in `C:\repos\DotFiles\pwsh\GitWorkspace` (C#, terminal UI), which this module replaces.
 
 ## Goal
@@ -859,3 +859,24 @@ Enter or the button runs it. **Stash Drop** needs the word `DROP` typed; **Abort
 - the History context menu entries, and their hiding rules for rebase.
 
 **E2E:** the existing smoke test (blocked in headless shells).
+
+## Amendments made during stage 4 planning and implementation
+
+**Editors and the helper:**
+- **Every write sets `GIT_EDITOR=:` and `GIT_SEQUENCE_EDITOR=:`,** git's built-in no-op, plus `GIT_MERGE_AUTOEDIT=no`. These override any editor in the user's environment; the development container itself exports `GIT_EDITOR=true`.
+- **Interactive rebase replaces both editors** with `ELECTRON_RUN_AS_NODE=1 "<electron>" "<git-editor.cjs>" <mode>`, with forward-slash paths. The variable is set inside the editor command, so it reaches the helper but not the repository's hooks. A real-git test proves a hook sees it empty.
+- **The rebase plan file:** the plan (`{ todo, messages }`) goes to a `0600` temp file. If the rebase stops on a conflict, its path is recorded in `<git dir>/nexusmd-rebase-plan`, so Continue passes the same editors and later rewords still apply. Abort, or a finished Continue, removes both files.
+- **Packaging:** `git-editor.cjs` is listed in `build.asarUnpack` and resolved through `app.asar.unpacked`.
+
+**Main process:**
+- **Actions live in `electron/ipc/git-actions.cjs`,** registered from `git.cjs` with its checks, per-repo lock and runner. `git()` gained an `env` option.
+- **Action timeouts are injectable** (`longTimeoutMs`, `shortTimeoutMs`), like stage 1's `timeoutMs`.
+- **Branch names are checked in two layers:** core's `checkBranchName`, then git's `check-ref-format --branch`. Core is stricter than git only for `@`, which `--branch` reads as the current branch.
+- **Pull previews use the last-fetched state** and say so; the run fetches first.
+- **Fetch's stamp ignores local state:** nothing local changes, so a commit made since the preview doesn't make a fetch stale.
+- **Repository lookup (stage 1's `resolve`) now reports git's ownership refusal** with the `safe.directory` hint, instead of "No repository at …". That's where a foreign-owned repository first fails, before any action can run.
+
+**Renderer:**
+- **Fetch all / Pull all** are toolbar buttons for the current group, so they work on All projects too, which has no group menu.
+- **Pull** opens the preview with a Fast-forward / Rebase / Merge switch, instead of a ▾ menu.
+- **History's commit actions** (new branch here, check out, revert, rebase from here) are offered only for a worktree's own HEAD history, not for an inactive branch row, because they act on a worktree.
