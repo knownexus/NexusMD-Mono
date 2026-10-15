@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
-import { useProfileFile, hasProfileDraft, hasProfileDrafts, clearProfileDrafts } from './use-profile-file.js'
+import { useProfileFile, hasProfileDraft, hasProfileDrafts, clearProfileDrafts, discardProfileDraft, useProfileDraftsVersion } from './use-profile-file.js'
 
 const CFG = { root: 'C:\\repos\\dev-environment', pwsh: 'pwsh', profile: '' }
 
@@ -33,6 +33,7 @@ describe('useProfileFile', () => {
     first.unmount()
     const again = renderHookHarness({ adapter, config: CFG, path: 'environment.json' })
     await waitFor(() => expect(adapter.profileRead).toHaveBeenCalledTimes(2))
+    await act(async () => {})
     expect(again.result().conflict).toBe(null)
   })
 
@@ -54,6 +55,7 @@ describe('useProfileFile', () => {
     adapter.profileRead.mockResolvedValue({ text: '{"a":2}\n', bom: false, stamp: 's2' })
     const back = renderHookHarness({ adapter, config: CFG, path: 'extra.json' })
     await waitFor(() => expect(adapter.profileRead).toHaveBeenCalledTimes(2))
+    await act(async () => {})
     expect(back.result().text).toBe('{"a":3}\n')
     expect(back.result().saved).toBe('{"a":2}\n')
     expect(back.result().conflict).toBe(null)
@@ -68,6 +70,26 @@ describe('useProfileFile', () => {
     expect(hasProfileDraft(CFG, 'mac.json')).toBe(true)
     act(() => h.result().setText('{}\n'))
     expect(hasProfileDrafts()).toBe(false)
+
+    const v = renderHook(() => useProfileDraftsVersion())
+    const v0 = v.result.current
+    act(() => h.result().setText('{"host":"x"}\n'))
+    const v1 = v.result.current
+    expect(v1).toBeGreaterThan(v0)
+    act(() => h.result().setText('{}\n'))
+    const v2 = v.result.current
+    expect(v2).toBeGreaterThan(v1)
+    act(() => h.result().setText('{"host":"y"}\n'))
+    const v3 = v.result.current
+    expect(v3).toBeGreaterThan(v2)
+    act(() => discardProfileDraft(CFG, 'mac.json'))
+    const v4 = v.result.current
+    expect(v4).toBeGreaterThan(v3)
+    act(() => h.result().setText('{"host":"z"}\n'))
+    const v5 = v.result.current
+    expect(v5).toBeGreaterThan(v4)
+    act(() => clearProfileDrafts())
+    expect(v.result.current).toBeGreaterThan(v5)
   })
 
   it('does not validate a file that does not exist yet while it is empty', async () => {
