@@ -156,7 +156,7 @@ describe('git workspace history against real repositories', () => {
   it('reports the remote HEAD and shallowness', async () => {
     const w = repo('Work')
     // git 2.48+ records origin/HEAD on fetch; older git doesn't, so set it either way.
-    run(w.path, 'update-ref', '-d', 'refs/remotes/origin/HEAD')
+    run(w.path, 'update-ref', '--no-deref', '-d', 'refs/remotes/origin/HEAD')
     expect(await call('git:refs', w, w.path, REG())).toMatchObject({ originHead: null, shallow: false })
     run(w.path, 'remote', 'set-head', 'origin', 'main')
     expect(await call('git:refs', w, w.path, REG())).toMatchObject({ originHead: 'refs/remotes/origin/main', shallow: false })
