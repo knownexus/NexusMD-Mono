@@ -1,10 +1,75 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
-import { useProfileFile } from './use-profile-file.js'
+import { useProfileFile, hasProfileDraft, hasProfileDrafts, clearProfileDrafts } from './use-profile-file.js'
 
 const CFG = { root: 'C:\\repos\\dev-environment', pwsh: 'pwsh', profile: '' }
 
+function renderHookHarness(props) {
+  const h = renderHook(() => useProfileFile(props))
+  return { result: () => h.result.current, unmount: h.unmount }
+}
+
+afterEach(() => clearProfileDrafts())
+
 describe('useProfileFile', () => {
+  it('warns at once when a kept draft is reopened over a file that changed on disk', async () => {
+    const adapter = { profileRead: vi.fn().mockResolvedValue({ text: '{"a":1}\n', bom: false, stamp: 's1' }), profileWrite: vi.fn() }
+    const first = renderHookHarness({ adapter, config: CFG, path: 'environment.json' })
+    await waitFor(() => expect(first.result().status).toBe('ready'))
+    act(() => first.result().setText('{"a":2}\n'))
+    first.unmount()
+    adapter.profileRead.mockResolvedValue({ text: '{"a":9}\n', bom: false, stamp: 's2' })
+    const again = renderHookHarness({ adapter, config: CFG, path: 'environment.json' })
+    await waitFor(() => expect(again.result().conflict).toEqual({ stamp: 's2' }))
+    expect(again.result().text).toBe('{"a":2}\n')
+    expect(again.result().restored).toBe(true)
+  })
+
+  it('shows no warning when the kept draft still matches the file', async () => {
+    const adapter = { profileRead: vi.fn().mockResolvedValue({ text: '{"a":1}\n', bom: false, stamp: 's1' }), profileWrite: vi.fn() }
+    const first = renderHookHarness({ adapter, config: CFG, path: 'environment.json' })
+    await waitFor(() => expect(first.result().status).toBe('ready'))
+    act(() => first.result().setText('{"a":2}\n'))
+    first.unmount()
+    const again = renderHookHarness({ adapter, config: CFG, path: 'environment.json' })
+    await waitFor(() => expect(adapter.profileRead).toHaveBeenCalledTimes(2))
+    expect(again.result().conflict).toBe(null)
+  })
+
+  it('keeps text typed during a save as a draft against the new stamp, even after leaving the file', async () => {
+    let finish
+    const adapter = {
+      profileRead: vi.fn().mockResolvedValue({ text: '{"a":1}\n', bom: false, stamp: 's1' }),
+      profileWrite: vi.fn(() => new Promise(r => { finish = r })),
+    }
+    const h = renderHookHarness({ adapter, config: CFG, path: 'extra.json' })
+    await waitFor(() => expect(h.result().status).toBe('ready'))
+    act(() => h.result().setText('{"a":2}\n'))
+    let saving
+    act(() => { saving = h.result().save() })
+    act(() => h.result().setText('{"a":3}\n'))
+    h.unmount()
+    await act(async () => { finish({ ok: true, stamp: 's2' }); await saving })
+    expect(hasProfileDraft(CFG, 'extra.json')).toBe(true)
+    adapter.profileRead.mockResolvedValue({ text: '{"a":2}\n', bom: false, stamp: 's2' })
+    const back = renderHookHarness({ adapter, config: CFG, path: 'extra.json' })
+    await waitFor(() => expect(adapter.profileRead).toHaveBeenCalledTimes(2))
+    expect(back.result().text).toBe('{"a":3}\n')
+    expect(back.result().saved).toBe('{"a":2}\n')
+    expect(back.result().conflict).toBe(null)
+  })
+
+  it('notifies draft listeners when a draft appears and goes', async () => {
+    const adapter = { profileRead: vi.fn().mockResolvedValue({ text: '{}\n', bom: false, stamp: 's1' }), profileWrite: vi.fn() }
+    const h = renderHookHarness({ adapter, config: CFG, path: 'mac.json' })
+    await waitFor(() => expect(h.result().status).toBe('ready'))
+    expect(hasProfileDrafts()).toBe(false)
+    act(() => h.result().setText('{"host":"x"}\n'))
+    expect(hasProfileDraft(CFG, 'mac.json')).toBe(true)
+    act(() => h.result().setText('{}\n'))
+    expect(hasProfileDrafts()).toBe(false)
+  })
+
   it('does not validate a file that does not exist yet while it is empty', async () => {
     const adapter = { profileRead: vi.fn(async () => ({ missing: true })) }
     const { result } = renderHook(() => useProfileFile({ adapter, config: CFG, path: 'mac.json' }))
