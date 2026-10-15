@@ -202,4 +202,11 @@ export const IGitAdapter = {
   commitFiles:   async (repo, worktreePath, registered, oid, parent) => Promise.reject(new Error('IGitAdapter.commitFiles not implemented')),
   // → { text, truncated, binary, size } | { missing: true }
   commitDiff:    async (repo, worktreePath, registered, oid, parent, paths) => Promise.reject(new Error('IGitAdapter.commitDiff not implemented')),
+  // Stage 4 (branch and sync actions). kind: one of ACTION_KINDS; options per kind (see actions.js).
+  remotes:       async (repo, worktreePath, registered) => Promise.reject(new Error('IGitAdapter.remotes not implemented')),
+  stashes:       async (repo, worktreePath, registered) => Promise.reject(new Error('IGitAdapter.stashes not implemented')),
+  // → { eligible, reason, details, programs, stamp }
+  preview:       async (repo, worktreePath, registered, kind, options) => Promise.reject(new Error('IGitAdapter.preview not implemented')),
+  // → { ok, detail, stale?, conflict?, operation? }
+  run:           async (repo, worktreePath, registered, kind, options, stamp) => Promise.reject(new Error('IGitAdapter.run not implemented')),
 }
