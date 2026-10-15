@@ -137,7 +137,15 @@ function Options({ kind, options, onOptions, details, refs, target }) {
   if (kind === 'stashPush') return <div style={{ display: 'grid', gap: 6 }}>{text('message', 'Message')}{box('includeUntracked', 'Include untracked files')}</div>
   if (kind === 'stashApply' || kind === 'stashPop') return box('index', 'Restore staged changes too')
   if (kind === 'revert' && options.parents > 1) {
-    return select('parent', 'Keep parent', Array.from({ length: options.parents }, (_, i) => String(i + 1)), v => (v === '1' ? '1 (main line)' : v))
+    // main wants the parent as a number (git's -m).
+    return (
+      <label style={{ display: 'grid', gap: 2 }}>
+        <span style={{ fontSize: 12 }}>Keep parent</span>
+        <select aria-label="Keep parent" style={input} value={String(options.parent ?? 1)} onChange={e => commit({ parent: Number(e.target.value) })}>
+          {Array.from({ length: options.parents }, (_, i) => <option key={i} value={String(i + 1)}>{i === 0 ? '1 (main line)' : String(i + 1)}</option>)}
+        </select>
+      </label>
+    )
   }
   return null
 }

@@ -43,9 +43,14 @@ function RefChip({ r }) {
 
 const FILTERS = [['all', 'All'], ['unpushed', 'Unpushed'], ['sinceBase', 'Since']]
 
-/** The History toolbar and the commit list. Focus moves with ↑/↓; Enter hands focus to the file list. */
-export function HistoryPane({ history: h, focusOid, onFocus, onOpenFiles }) {
+/**
+ * The History toolbar and the commit list. Focus moves with ↑/↓; Enter hands focus to the file list.
+ * `commitMenu(commit, index)` returns a row's actions ([{ label, onSelect }]), shown from its ⋯ button
+ * or a right-click.
+ */
+export function HistoryPane({ history: h, focusOid, onFocus, onOpenFiles, commitMenu = null }) {
   const [input, setInput] = React.useState('')
+  const [menuFor, setMenuFor] = React.useState(null)
   const searchRef = React.useRef(null)
   const listRef = React.useRef(null)
   const commits = h.rows.filter(r => r.commit)
@@ -110,8 +115,10 @@ export function HistoryPane({ history: h, focusOid, onFocus, onOpenFiles }) {
         style={{ overflow: 'auto', minHeight: 0, flex: 1, fontSize: 13 }}>
         {h.rows.map((r, i) => (r.commit
           ? (
-            <div key={r.commit.oid} id={`commit-${r.commit.oid}`} data-oid={r.commit.oid} role="option" aria-selected={r.commit.oid === focusOid}
+            <React.Fragment key={r.commit.oid}>
+            <div id={`commit-${r.commit.oid}`} data-oid={r.commit.oid} role="option" aria-selected={r.commit.oid === focusOid}
               onClick={() => onFocus(r.commit.oid)}
+              onContextMenu={commitMenu ? e => { e.preventDefault(); onFocus(r.commit.oid); setMenuFor(r.commit.oid) } : undefined}
               style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', padding: '1px 4px',
                 background: r.commit.oid === focusOid ? 'color-mix(in srgb, var(--accent) 14%, transparent)' : undefined }}>
               <Graph graph={r.graph} />
@@ -120,7 +127,22 @@ export function HistoryPane({ history: h, focusOid, onFocus, onOpenFiles }) {
               {h.unpushed?.has(r.commit.oid) && <span aria-label="Not pushed" title="Not pushed" style={{ color: 'var(--warning)' }}>↑</span>}
               <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{r.commit.author}</span>
               <span title={new Date(r.commit.time).toLocaleString()} style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: 12 }}>{relativeTime(r.commit.time)}</span>
+              {commitMenu && (
+                <button className="btn sm ghost" aria-label={`Actions for ${r.commit.oid.slice(0, 7)}`} aria-haspopup="menu" aria-expanded={menuFor === r.commit.oid}
+                  onClick={e => { e.stopPropagation(); setMenuFor(m => (m === r.commit.oid ? null : r.commit.oid)) }}>⋯</button>
+              )}
             </div>
+            {menuFor === r.commit.oid && commitMenu && (
+              <div role="menu" aria-label={`Actions for ${r.commit.oid.slice(0, 7)}`} className="card"
+                onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setMenuFor(null) } }}
+                style={{ display: 'grid', gap: 2, padding: 4, margin: '2px 0 4px 32px', justifySelf: 'start' }}>
+                {commitMenu(r.commit, commits.findIndex(c => c.commit.oid === r.commit.oid)).map(item => (
+                  <button key={item.label} role="menuitem" className="btn sm ghost" style={{ justifyContent: 'flex-start' }}
+                    onClick={() => { setMenuFor(null); item.onSelect() }}>{item.label}</button>
+                ))}
+              </div>
+            )}
+            </React.Fragment>
           )
           : <div key={`g${i}`} aria-hidden="true" style={{ padding: '0 4px' }}><Graph graph={r.graph} /></div>))}
       </div>
