@@ -19,7 +19,7 @@ beforeAll(() => {
     return origRequire.apply(this, arguments)
   }
   // Load preload fresh so its top-level exposeInMainWorld runs against the fake.
-  const preloadPath = path.join(process.cwd(), 'electron', 'preload.cjs')
+  const preloadPath = path.join(__dirname, 'preload.cjs')
   delete require.cache?.[preloadPath]
   origRequire.call(module, preloadPath)   // eslint-disable-line
 })

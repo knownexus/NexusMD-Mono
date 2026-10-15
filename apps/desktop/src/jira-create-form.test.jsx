@@ -30,7 +30,8 @@ describe('JiraCreateForm', () => {
     render(<JiraCreateForm source={source} projectKeys={['ABC']} people={PEOPLE} site="https://a.atlassian.net" initialTitle="From planner" onCreated={onCreated} />)
     await waitFor(() => expect(source.getCreateFields).toHaveBeenCalledWith('ABC', '10001'))
     expect(screen.getByLabelText('Summary').value).toBe('From planner')
-    fireEvent.change(screen.getByLabelText('Assignee'), { target: { value: 'u1' } })
+    // The fields render once getCreateFields resolves, not when it is called.
+    fireEvent.change(await screen.findByLabelText('Assignee'), { target: { value: 'u1' } })
     fireEvent.change(screen.getByLabelText('Team *'), { target: { value: '7' } })
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: '**bold**' } })
     fireEvent.click(screen.getByText('Create issue'))
@@ -68,7 +69,7 @@ describe('JiraCreateForm', () => {
     const source = makeSource(FIELDS)
     const { rerender } = render(<JiraCreateForm source={source} projectKeys={['ABC']} people={PEOPLE} site="s" onCreated={() => {}} />)
     await waitFor(() => expect(source.getCreateFields).toHaveBeenCalledTimes(1))
-    fireEvent.change(screen.getByLabelText('Team *'), { target: { value: '7' } })
+    fireEvent.change(await screen.findByLabelText('Team *'), { target: { value: '7' } })
     rerender(<JiraCreateForm source={source} projectKeys={['ABC']} people={[...PEOPLE, { accountId: 'u2', displayName: 'Sam Roe' }]} site="s" onCreated={() => {}} />)
     await new Promise(r => setTimeout(r, 20))
     expect(screen.getByLabelText('Team *').value).toBe('7')
