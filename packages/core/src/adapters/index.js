@@ -191,4 +191,15 @@ export const IGitAdapter = {
   stageHunk:       async (repo, worktreePath, registered, paths, index, expected) => Promise.reject(new Error('IGitAdapter.stageHunk not implemented')),
   unstageHunk:     async (repo, worktreePath, registered, paths, index, expected) => Promise.reject(new Error('IGitAdapter.unstageHunk not implemented')),
   commit:          async (repo, worktreePath, registered, message, expected) => Promise.reject(new Error('IGitAdapter.commit not implemented')),
+  // Stage 3 (read-only). query = { ref, filter, base, search, limit } (historyQuery)
+  // → { refs: raw, originHead, shallow }
+  refs:          async (repo, worktreePath, registered) => Promise.reject(new Error('IGitAdapter.refs not implemented')),
+  // → { text, tip, unpushed: [oid] | null, truncated, limit }
+  log:           async (repo, worktreePath, registered, query) => Promise.reject(new Error('IGitAdapter.log not implemented')),
+  // → { details: raw } | { missing: true }
+  commitDetails: async (repo, worktreePath, registered, oid) => Promise.reject(new Error('IGitAdapter.commitDetails not implemented')),
+  // parent: one of the commit's parents, or null for a root commit → { files: raw } | { missing: true }
+  commitFiles:   async (repo, worktreePath, registered, oid, parent) => Promise.reject(new Error('IGitAdapter.commitFiles not implemented')),
+  // → { text, truncated, binary, size } | { missing: true }
+  commitDiff:    async (repo, worktreePath, registered, oid, parent, paths) => Promise.reject(new Error('IGitAdapter.commitDiff not implemented')),
 }

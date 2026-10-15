@@ -81,6 +81,7 @@ const EXPECTED = [
   'GroupDraft', 'GroupSaveError',
   'parseDiff', 'diffSides', 'changePaths', 'isSubmodule', 'FILE_ACTIONS', 'actionsFor', 'groupChanges',
   'toggleSelection', 'rangeSelection', 'pruneSelection', 'fileReview', 'commitTargets', 'commitReview', 'COMMIT_NOTE',
+  'parseRefs', 'parseLog', 'graphCells', 'parseSearch', 'historyQuery', 'HISTORY_STEP', 'HISTORY_MAX', 'parseRefList', 'defaultBase', 'parseCommitDetails', 'parseNameStatus', 'parentLabel',
   'formatSqlValue', 'formatCondition',
   'buildSearchQuery', 'buildInsertQuery', 'buildUpdateQuery', 'buildDeleteQuery',
   'buildJoinQuery', 'buildAggregateQuery',

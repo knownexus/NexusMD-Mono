@@ -1,0 +1,7 @@
+*   ab553d75f114073137c0e429190c516dd1f172ccdb3f572de347bc8eb42aed2ac342876f8a88d449 e12457497b4fa139f9574675f5a8acd9b20447ceAna Ñana@example.com1791994609HEAD -> refs/heads/mainMerge side
+|\  
+| * e12457497b4fa139f9574675f5a8acd9b20447cee907bed4b851e72a3ccdec922eb3e74365e2d48eAna Ñana@example.com1791994609refs/heads/sideside
+* | db3f572de347bc8eb42aed2ac342876f8a88d449e907bed4b851e72a3ccdec922eb3e74365e2d48eAna Ñana@example.com1791994609c3 [x] ünïcode
+|/  
+* e907bed4b851e72a3ccdec922eb3e74365e2d48e83c3ed955ba9820058c36db38ad10f51157f2febAna Ñana@example.com1791994609tag: refs/tags/v1, refs/remotes/origin/mainc2 a.b
+* 83c3ed955ba9820058c36db38ad10f51157f2febAna Ñana@example.com1791994609c1 a.b

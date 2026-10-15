@@ -21,6 +21,9 @@ export {
   changePaths, isSubmodule, isNestedRepo, FILE_ACTIONS, actionsFor, groupChanges, toggleSelection, rangeSelection, pruneSelection,
 } from './selection.js'
 export { fileReview, commitTargets, commitReview, COMMIT_NOTE } from './review.js'
+export {
+  parseRefs, parseLog, graphCells, parseSearch, historyQuery, HISTORY_STEP, HISTORY_MAX, parseRefList, defaultBase, parseCommitDetails, parseNameStatus, parentLabel,
+} from './history.js'
 
 let _adapter = null
 

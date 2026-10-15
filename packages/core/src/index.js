@@ -101,4 +101,5 @@ export {
   GroupDraft, GroupSaveError,
   parseDiff, diffSides, changePaths, isSubmodule, FILE_ACTIONS, actionsFor, groupChanges, toggleSelection, rangeSelection, pruneSelection,
   fileReview, commitTargets, commitReview, COMMIT_NOTE,
+  parseRefs, parseLog, graphCells, parseSearch, historyQuery, HISTORY_STEP, HISTORY_MAX, parseRefList, defaultBase, parseCommitDetails, parseNameStatus, parentLabel,
 } from './modules/git/index.js'
