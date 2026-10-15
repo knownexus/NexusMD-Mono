@@ -33,7 +33,7 @@ it('shows the duration cell when config is empty (positive control)', () => {
 
 it('shows the run\'s project as a ProjectChip by default', () => {
   const storage = memStorage({})
-  const projects = [{ id: 'Proj', name: 'Cirrus', color: '#123456' }]
+  const projects = [{ id: 'proj', name: 'Cirrus', color: '#123456' }]
   const { getByText } = render(
     <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {}, data: { ORG: 'o', PROJECTS: projects } }}>
       <TestsView tests={[RUN]} acknowledgedTests={[]} setAcknowledgedTests={() => {}} />
@@ -44,7 +44,7 @@ it('shows the run\'s project as a ProjectChip by default', () => {
 
 it('omits the Project column when hidden by config', () => {
   const storage = memStorage({ 'nexusmd.fields.testsTable': JSON.stringify([{ key: 'project', visible: false }]) })
-  const projects = [{ id: 'Proj', name: 'Cirrus', color: '#123456' }]
+  const projects = [{ id: 'proj', name: 'Cirrus', color: '#123456' }]
   const { queryByText } = render(
     <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {}, data: { ORG: 'o', PROJECTS: projects } }}>
       <TestsView tests={[RUN]} acknowledgedTests={[]} setAcknowledgedTests={() => {}} />
