@@ -9,11 +9,20 @@ const drafts = new Map()
 const listeners = new Set()
 const emit = () => { for (const l of listeners) l() }
 const draftKey = (config, path) => `${config.root}|${config.profile}|${path}`
-const putDraft = (key, d) => { drafts.set(key, d); emit() }
+// Only a draft appearing or going changes what the markers show, so edits to an existing one stay quiet.
+const putDraft = (key, d) => { const isNew = !drafts.has(key); drafts.set(key, d); if (isNew) emit() }
 const dropDraft = key => { if (drafts.delete(key)) emit() }
+// Saves still writing, so a file reopened mid-save waits for the outcome instead of seeing stale state.
+const pendingSaves = new Map()
 
 export const hasProfileDraft = (config, path) => drafts.has(draftKey(config, path))
-export const hasProfileDrafts = () => drafts.size > 0
+const prefixOf = config => `${config.root}|${config.profile}|`
+export function profileDraftPaths(config) {
+  if (!config) return []
+  const prefix = prefixOf(config)
+  return [...drafts.keys()].filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length))
+}
+export const hasProfileDrafts = config => profileDraftPaths(config).length > 0
 // Without this, "Revert" would still bring the draft back on the next visit.
 export function discardProfileDraft(config, path) { dropDraft(draftKey(config, path)) }
 export function clearProfileDrafts() { if (drafts.size) { drafts.clear(); emit() } }
@@ -37,7 +46,17 @@ export function useProfileFile({ adapter, config, path }) {
   latest.current = s
   const typed = React.useRef('')
 
+  const gen = React.useRef(0)
+
   const load = React.useCallback(async ({ discardDraft = false } = {}) => {
+    const mine = ++gen.current
+    const stale = () => live.current !== key || gen.current !== mine
+    const pending = pendingSaves.get(key)
+    if (pending) {
+      setS(p => ({ ...p, status: 'loading' }))
+      try { await pending } catch { /* the save reports its own failure */ }
+      if (stale()) return
+    }
     if (discardDraft) dropDraft(key)
     const d = drafts.get(key)
     if (d) {
@@ -46,7 +65,7 @@ export function useProfileFile({ adapter, config, path }) {
       // The draft may be older than the file: say so now rather than at Save.
       try {
         const r = await adapter.profileRead(config, path)
-        if (live.current !== key) return
+        if (stale()) return
         if (r.missing) {
           if (!d.missing) setS(p => ({ ...p, missing: true, stamp: null, error: `${path} no longer exists on disk - Save again to create it.` }))
         } else if (d.missing || r.stamp !== d.stamp) {
@@ -58,13 +77,13 @@ export function useProfileFile({ adapter, config, path }) {
     setS(p => ({ ...p, status: 'loading', error: null, conflict: null }))
     try {
       const r = await adapter.profileRead(config, path)
-      if (live.current !== key) return
+      if (stale()) return
       if (r.missing) { typed.current = ''; setS({ ...EMPTY, status: 'ready', missing: true }); return }
       const text = toLf(r.text)
       typed.current = text
       setS({ ...EMPTY, status: 'ready', text, saved: text, eol: detectEol(r.text), bom: !!r.bom, stamp: r.stamp })
     } catch (e) {
-      if (live.current === key) setS({ ...EMPTY, status: 'error', error: e?.message || 'Could not read the file.' })
+      if (!stale()) setS({ ...EMPTY, status: 'error', error: e?.message || 'Could not read the file.' })
     }
   }, [adapter, config, path, key])
 
@@ -81,8 +100,7 @@ export function useProfileFile({ adapter, config, path }) {
   const errors = React.useMemo(() => (s.status === 'ready' && !(s.missing && s.text === '') ? validateProfileFile(path, s.text) : []), [path, s.text, s.status, s.missing])
   const dirty = s.status === 'ready' && s.text !== s.saved
 
-  const save = React.useCallback(async ({ overwrite = false } = {}) => {
-    if (errors.length) return false
+  const doSave = React.useCallback(async ({ overwrite = false } = {}) => {
     // Typing continues during the write, so only what was actually sent counts as saved.
     const written = s.text
     setS(p => ({ ...p, saving: true, error: null }))
@@ -99,7 +117,16 @@ export function useProfileFile({ adapter, config, path }) {
       setS(p => ({ ...p, saving: false, error: e?.message || 'Save failed.' }))
       return false
     }
-  }, [adapter, config, path, key, s.text, s.eol, s.bom, s.stamp, s.missing, errors])
+  }, [adapter, config, path, key, s.text, s.eol, s.bom, s.stamp, s.missing])
+
+  const save = React.useCallback(({ overwrite = false } = {}) => {
+    if (errors.length) return Promise.resolve(false)
+    const p = doSave({ overwrite })
+    pendingSaves.set(key, p)
+    const done = () => { if (pendingSaves.get(key) === p) pendingSaves.delete(key) }
+    p.then(done, done)
+    return p
+  }, [doSave, errors, key])
 
   const revert = React.useCallback(() => load({ discardDraft: true }), [load])
   return { ...s, setText, errors, dirty, save, revert }

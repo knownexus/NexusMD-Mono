@@ -133,6 +133,17 @@ describe('ProfileFileEditor', () => {
     expect(screen.getByText('Fix the JSON in the Text view first.')).toBeTruthy()
   })
 
+  it('shows only the "no longer exists" message, not also "doesn\'t exist yet", when the file vanished', async () => {
+    const a = fakeAdapter({ 'sql/c.sql': { text: 'select 1\n', bom: false, stamp: 'aaa' } })
+    render(<ProfileFileEditor adapter={a} config={CFG} path="sql/c.sql" />)
+    await waitFor(() => expect(screen.getByLabelText('Edit sql/c.sql').value).toBe('select 1\n'))
+    edit('Edit sql/c.sql', 'select 2\n')
+    delete a.disk['sql/c.sql']
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })) })
+    expect(screen.getByRole('alert').textContent).toMatch(/no longer exists on disk/)
+    expect(screen.queryByText(/doesn't exist yet/)).toBeNull()
+  })
+
   it('reports read errors', async () => {
     const a = { profileRead: vi.fn(async () => { throw new Error('big.txt is too large to edit here (2048 KB).') }), profileWrite: vi.fn() }
     render(<ProfileFileEditor adapter={a} config={CFG} path="big.txt" />)

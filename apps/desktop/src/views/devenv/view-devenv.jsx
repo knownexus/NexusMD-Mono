@@ -54,7 +54,7 @@ export function DevenvView({ adapters }) {
       <div style={{ display: 'flex', gap: 6 }}>
         {TABS.map(t => (
           <button key={t} className={`btn sm ${tab === t ? '' : 'ghost'}`} aria-pressed={tab === t} onClick={() => setTab(t)}>
-            {t}{t === 'Profile' && hasProfileDrafts() ? <span aria-hidden="true" title="Unsaved changes"> •</span> : null}
+            {t}{t === 'Profile' && hasProfileDrafts(run.config) ? <span aria-hidden="true" title="Unsaved changes"> •</span> : null}
           </button>
         ))}
       </div>

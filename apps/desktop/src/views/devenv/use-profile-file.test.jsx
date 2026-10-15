@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
-import { useProfileFile, hasProfileDraft, hasProfileDrafts, clearProfileDrafts, discardProfileDraft, useProfileDraftsVersion } from './use-profile-file.js'
+import { useProfileFile, hasProfileDraft, hasProfileDrafts, profileDraftPaths, clearProfileDrafts, discardProfileDraft, useProfileDraftsVersion } from './use-profile-file.js'
 
 const CFG = { root: 'C:\\repos\\dev-environment', pwsh: 'pwsh', profile: '' }
 
@@ -61,21 +61,76 @@ describe('useProfileFile', () => {
     expect(back.result().conflict).toBe(null)
   })
 
-  it('notifies draft listeners when a draft appears and goes', async () => {
+  it('shows no false conflict and no stale state when reopened while its save is in flight', async () => {
+    let finish
+    const adapter = {
+      profileRead: vi.fn().mockResolvedValue({ text: '{"a":1}\n', bom: false, stamp: 's1' }),
+      profileWrite: vi.fn(() => new Promise(r => { finish = r })),
+    }
+    const h = renderHookHarness({ adapter, config: CFG, path: 'extra.json' })
+    await waitFor(() => expect(h.result().status).toBe('ready'))
+    act(() => h.result().setText('{"a":2}\n'))
+    let saving
+    act(() => { saving = h.result().save() })
+    act(() => h.result().setText('{"a":3}\n'))
+    h.unmount()
+    adapter.profileRead.mockResolvedValue({ text: '{"a":2}\n', bom: false, stamp: 's2' })
+    const back = renderHookHarness({ adapter, config: CFG, path: 'extra.json' })
+    await act(async () => {})
+    expect(back.result().status).toBe('loading')
+    await act(async () => { finish({ ok: true, stamp: 's2' }); await saving })
+    await act(async () => {})
+    expect(back.result().status).toBe('ready')
+    expect(back.result().conflict).toBe(null)
+    expect(back.result().text).toBe('{"a":3}\n')
+    expect(back.result().saved).toBe('{"a":2}\n')
+  })
+
+  it('ignores a stale early re-read once Revert has started a newer load', async () => {
+    const adapter = { profileRead: vi.fn().mockResolvedValue({ text: '{"a":1}\n', bom: false, stamp: 's1' }), profileWrite: vi.fn() }
+    const first = renderHookHarness({ adapter, config: CFG, path: 'extra.json' })
+    await waitFor(() => expect(first.result().status).toBe('ready'))
+    act(() => first.result().setText('{"a":2}\n'))
+    first.unmount()
+    let late
+    adapter.profileRead.mockImplementationOnce(() => new Promise(r => { late = r }))
+    const again = renderHookHarness({ adapter, config: CFG, path: 'extra.json' })
+    await waitFor(() => expect(again.result().restored).toBe(true))
+    await act(async () => { await again.result().revert() })
+    expect(again.result().text).toBe('{"a":1}\n')
+    await act(async () => { late({ text: '{"a":9}\n', bom: false, stamp: 's9' }) })
+    expect(again.result().conflict).toBe(null)
+  })
+
+  it('counts and lists only the drafts of the given config', async () => {
+    const other = { ...CFG, root: 'D:\\elsewhere' }
     const adapter = { profileRead: vi.fn().mockResolvedValue({ text: '{}\n', bom: false, stamp: 's1' }), profileWrite: vi.fn() }
     const h = renderHookHarness({ adapter, config: CFG, path: 'mac.json' })
     await waitFor(() => expect(h.result().status).toBe('ready'))
-    expect(hasProfileDrafts()).toBe(false)
+    act(() => h.result().setText('{"host":"x"}\n'))
+    expect(hasProfileDrafts(CFG)).toBe(true)
+    expect(hasProfileDrafts(other)).toBe(false)
+    expect(profileDraftPaths(CFG)).toEqual(['mac.json'])
+    expect(profileDraftPaths(other)).toEqual([])
+  })
+
+  it('notifies draft listeners when a draft appears and goes, but not on every keystroke', async () => {
+    const adapter = { profileRead: vi.fn().mockResolvedValue({ text: '{}\n', bom: false, stamp: 's1' }), profileWrite: vi.fn() }
+    const h = renderHookHarness({ adapter, config: CFG, path: 'mac.json' })
+    await waitFor(() => expect(h.result().status).toBe('ready'))
+    expect(hasProfileDrafts(CFG)).toBe(false)
     act(() => h.result().setText('{"host":"x"}\n'))
     expect(hasProfileDraft(CFG, 'mac.json')).toBe(true)
     act(() => h.result().setText('{}\n'))
-    expect(hasProfileDrafts()).toBe(false)
+    expect(hasProfileDrafts(CFG)).toBe(false)
 
     const v = renderHook(() => useProfileDraftsVersion())
     const v0 = v.result.current
     act(() => h.result().setText('{"host":"x"}\n'))
     const v1 = v.result.current
     expect(v1).toBeGreaterThan(v0)
+    act(() => h.result().setText('{"host":"xy"}\n'))
+    expect(v.result.current).toBe(v1)
     act(() => h.result().setText('{}\n'))
     const v2 = v.result.current
     expect(v2).toBeGreaterThan(v1)

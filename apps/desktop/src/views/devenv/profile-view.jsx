@@ -3,7 +3,7 @@ import { useDevenvRunContext } from './devenv-run-context.jsx'
 import { EnvironmentForm } from './environment-form.jsx'
 import { MacForm } from './mac-form.jsx'
 import { ProfileFileEditor } from './profile-file-editor.jsx'
-import { hasProfileDraft, useProfileDraftsVersion } from './use-profile-file.js'
+import { hasProfileDraft, profileDraftPaths, useProfileDraftsVersion } from './use-profile-file.js'
 import { RunPanel } from './run-panel.jsx'
 
 const FORMS = { 'environment.json': EnvironmentForm, 'mac.json': MacForm }
@@ -35,8 +35,13 @@ export function ProfileView({ adapter }) {
   }
   useProfileDraftsVersion()
   const choose = p => setSelected(p)
-  const paths = info?.exists ? [...new Set([...files, 'mac.json'])].sort((a, b) => a.localeCompare(b)) : []
-  const label = p => (p === 'mac.json' && !files.includes('mac.json') ? 'mac.json (not created yet)' : p)
+  const draftPaths = profileDraftPaths(config)
+  const paths = info?.exists ? [...new Set([...files, 'mac.json', ...draftPaths])].sort((a, b) => a.localeCompare(b)) : []
+  const label = p => {
+    if (files.includes(p)) return p
+    if (p === 'mac.json') return 'mac.json (not created yet)'
+    return `${p} (deleted on disk)`
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, flex: 1 }}>

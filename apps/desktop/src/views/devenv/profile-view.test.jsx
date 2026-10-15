@@ -83,6 +83,17 @@ describe('ProfileView', () => {
     await screen.findByRole('button', { name: 'environment.json' })
   })
 
+  it('keeps a draft reachable after its file vanished from disk, labelled as deleted', async () => {
+    const { disk } = setup()
+    fireEvent.click(await screen.findByRole('button', { name: 'sql/a.sql' }))
+    await screen.findByLabelText('Edit sql/a.sql')
+    fireEvent.change(screen.getByLabelText('Edit sql/a.sql'), { target: { value: 'select 2\n' } })
+    delete disk['sql/a.sql']
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh' })) })
+    const orphan = await screen.findByRole('button', { name: 'sql/a.sql (deleted on disk), unsaved changes' })
+    expect(orphan.textContent).toContain('•')
+  })
+
   it('refreshes the file list after a save creates a file', async () => {
     const { adapter, disk } = setup()
     await screen.findByLabelText('a name')

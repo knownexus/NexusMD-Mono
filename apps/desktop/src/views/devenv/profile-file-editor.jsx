@@ -5,12 +5,11 @@ import { useProfileFile } from './use-profile-file.js'
 
 const alertStyle = { padding: 10, color: 'var(--danger)' }
 
-export function ProfileFileEditor({ adapter, config, path, onDirtyChange, onSaved, forms = {} }) {
+export function ProfileFileEditor({ adapter, config, path, onSaved, forms = {} }) {
   const f = useProfileFile({ adapter, config, path })
   const Form = forms[path]
   const save = async opts => { if (await f.save(opts)) onSaved?.() }
   const [mode, setMode] = React.useState(Form ? 'form' : 'text')
-  React.useEffect(() => { onDirtyChange?.(f.dirty) }, [f.dirty, onDirtyChange])
 
   let parsed = null
   let parseError = null
@@ -35,7 +34,7 @@ export function ProfileFileEditor({ adapter, config, path, onDirtyChange, onSave
         </span>
       </div>
       {f.restored && <span style={{ color: 'var(--text-muted)' }}>Unsaved changes from earlier were restored.</span>}
-      {f.missing && <span style={{ color: 'var(--text-muted)' }}>{`${path} doesn't exist yet - fill it in and Save to create it.`}</span>}
+      {f.missing && !f.error && <span style={{ color: 'var(--text-muted)' }}>{`${path} doesn't exist yet - fill it in and Save to create it.`}</span>}
       {f.error && <div className="card" role="alert" style={alertStyle}>{f.error}</div>}
       {f.conflict && (
         <div className="card" role="alert" style={{ ...alertStyle, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

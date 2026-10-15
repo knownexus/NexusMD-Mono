@@ -45,6 +45,7 @@ describe('DevenvView', () => {
     // Real draft store: a tiny component creates a draft through useProfileFile.
     const adapter = { profileRead: async () => ({ text: '{}', bom: false, stamp: 's' }) }
     const cfg = { root: 'r', profile: '' }
+    globalThis.__run.config = cfg
     let api
     function Probe() { api = useProfileFile({ adapter, config: cfg, path: 'environment.json' }); return null }
     render(<DevenvView adapters={adapters} />)
@@ -54,6 +55,18 @@ describe('DevenvView', () => {
     act(() => api.setText('{"x":1}'))
     expect(screen.getByRole('button', { name: 'Profile' }).textContent).toBe('Profile •')
     act(() => clearProfileDrafts())
+    expect(screen.getByRole('button', { name: 'Profile' }).textContent).toBe('Profile')
+  })
+  it('does not mark the Profile tab for a draft under another config', async () => {
+    const adapter = { profileRead: async () => ({ text: '{}', bom: false, stamp: 's' }) }
+    globalThis.__run.config = { root: 'r', profile: '' }
+    const otherCfg = { root: 'other', profile: '' }
+    let api
+    function Probe() { api = useProfileFile({ adapter, config: otherCfg, path: 'environment.json' }); return null }
+    render(<DevenvView adapters={adapters} />)
+    render(<Probe />)
+    await waitFor(() => expect(api.status).toBe('ready'))
+    act(() => api.setText('{"x":1}'))
     expect(screen.getByRole('button', { name: 'Profile' }).textContent).toBe('Profile')
   })
   it('remembers the tab', () => {
