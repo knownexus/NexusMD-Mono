@@ -173,6 +173,13 @@ export function renameRepository(env, from, to) {
 
 export function removeRepository(env, key) {
   let next = setIn(env, ['repositories', key], undefined)
-  if (Array.isArray(env.test?.defaultServices)) next = setIn(next, ['test', 'defaultServices'], env.test.defaultServices.filter(s => s !== key))
+  const t = env.test
+  if (Array.isArray(t?.defaultServices)) next = setIn(next, ['test', 'defaultServices'], t.defaultServices.filter(s => s !== key))
+  // References to a removed repository would only fail validation; they go with it.
+  if (Array.isArray(t?.wiring)) next = setIn(next, ['test', 'wiring'], t.wiring.filter(w => !isObj(w) || (w.from !== key && w.to !== key)))
+  if (isObj(t?.extraDbConn) && key in t.extraDbConn) next = setIn(next, ['test', 'extraDbConn', key], undefined)
+  if (isObj(t?.collectionPatterns) && Object.values(t.collectionPatterns).includes(key)) {
+    next = setIn(next, ['test', 'collectionPatterns'], Object.fromEntries(Object.entries(t.collectionPatterns).filter(([, v]) => v !== key)))
+  }
   return next
 }

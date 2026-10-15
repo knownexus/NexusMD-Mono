@@ -141,4 +141,26 @@ describe('edit helpers', () => {
     expect(removed.test.defaultServices).toEqual([])
     expect(ENV.repositories.orders).toBeTruthy()
   })
+  it('removeRepository drops wiring, extraDbConn and collectionPatterns that point at it', () => {
+    const env = {
+      repositories: { a: { source: 'x', ref: 'main', project: 'p', kind: 'api' }, b: { source: 'y', ref: 'main', project: 'q', kind: 'api' } },
+      test: {
+        defaultServices: ['a', 'b'],
+        wiring: [{ from: 'a', to: 'b', key: 'S1' }, { from: 'b', to: 'a', key: 'S2' }, { from: 'b', to: 'b', key: 'S3' }],
+        extraDbConn: { a: { K: 'DbA' }, b: { K: 'DbB' } },
+        collectionPatterns: { 'x|y': 'a', z: 'b' },
+      },
+    }
+    const next = removeRepository(env, 'a')
+    expect(Object.keys(next.repositories)).toEqual(['b'])
+    expect(next.test.defaultServices).toEqual(['b'])
+    expect(next.test.wiring).toEqual([{ from: 'b', to: 'b', key: 'S3' }])
+    expect(next.test.extraDbConn).toEqual({ b: { K: 'DbB' } })
+    expect(next.test.collectionPatterns).toEqual({ z: 'b' })
+    expect(env.test.wiring).toHaveLength(3)
+  })
+  it('removeRepository leaves odd test values alone', () => {
+    const env = { repositories: { a: {} }, test: { wiring: 'nope', extraDbConn: 5, collectionPatterns: null } }
+    expect(removeRepository(env, 'a').test).toEqual({ wiring: 'nope', extraDbConn: 5, collectionPatterns: null })
+  })
 })
