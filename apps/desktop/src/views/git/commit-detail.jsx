@@ -79,9 +79,12 @@ export function CommitDetail({ commit, oid, parentIndex, onParent, focusedPath, 
         ))}
       </div>
       {focused && (
-        <DiffPane change={{ id: `commit\0${focused.path}`, area: 'commit', path: focused.path }}
-          diff={commit.diff ?? EMPTY_DIFF} readOnly
-          sides={{ old: commit.parent ? short(commit.parent) : 'empty', new: short(d.oid), staging: null }} />
+        // The whole commit pane scrolls; without flex: none the diff would shrink to nothing in it.
+        <div style={{ flex: 'none' }}>
+          <DiffPane change={{ id: `commit\0${focused.path}`, area: 'commit', path: focused.path }}
+            diff={commit.diff ?? EMPTY_DIFF} readOnly
+            sides={{ old: commit.parent ? short(commit.parent) : 'empty', new: short(d.oid), staging: null }} />
+        </div>
       )}
     </section>
   )
