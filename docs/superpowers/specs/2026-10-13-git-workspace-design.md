@@ -1,7 +1,7 @@
 # Git Workspace Module — Design
 
 **Date:** 2026-10-13
-**Status:** Approved design. Stage 1 implemented; stage 2 implemented (2026-10-14); stage 3 designed, pending its plan.
+**Status:** Approved design. Stage 1 implemented; stage 2 implemented (2026-10-14); stage 3 implemented (2026-10-15).
 **Repos touched:** `NexusMD-Mono` (new module). Reference implementation: `gws` in `C:\repos\DotFiles\pwsh\GitWorkspace` (C#, terminal UI), which this module replaces.
 
 ## Goal
@@ -583,3 +583,23 @@ All new exports are added to `public-api.test.js`.
 - A moved tip re-reads the page and keeps the old rows until it arrives.
 
 **E2E:** the existing smoke test still opens the view (reported as blocked in headless shells).
+
+## Amendments made during stage 3 planning and implementation
+
+**Planning decisions:**
+- The adapter methods are `refs`, `log`, `commitDetails`, `commitFiles` and `commitDiff`. `commitDetails` avoids a clash with stage 2's `commit` write.
+- `commitDiff` takes `paths`: both names of a rename, like stage 2's hunk operations.
+- **Where history runs:**
+  - for a worktree, in that worktree;
+  - for an inactive branch, in the repository's first usable worktree, or in its common dir (the bare entry of a `.bare` layout with no worktrees).
+- `refs` is read once per History view and on ⟳. A query naming a ref that's gone is refused with `That branch no longer exists.`, and the view re-reads the refs. That re-read doesn't re-run the log, so a gone branch can't loop.
+- `DiffPane` gains optional `sides` and `readOnly` props. Stage 2 callers are unchanged.
+- Every `diff-tree` call passes `--no-commit-id`; with `--root` it otherwise prints the commit id as an extra record.
+
+**Found while implementing:**
+- **Case-insensitive search folds ASCII letters only.** Every git call runs under `LC_ALL=C` (stage 1), so `ana` finds `Ana`, but `ñ` doesn't find `Ñ`. Unicode text still matches in its exact case.
+- **A `:path` search uses git's default history simplification,** exactly as `git log -- <path>` in a terminal. A merge that changed nothing in that path relative to one parent isn't listed.
+- **The default "since" base can be none.** That happens on `main` when `origin/HEAD` isn't set: the rule never picks the ref itself. The filter then asks for a base.
+- **A page is re-read when the snapshot's tip for the target moves,** not on every 10 s poll.
+- **The queue drops stale requests.** Moving focus drops every queued (not yet running) commit and diff request, so fifty quick focus moves cause a handful of reads, never more than two at once.
+- **A parent that isn't on the loaded page** is shown on its own until focus moves.
