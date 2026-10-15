@@ -5,7 +5,7 @@ import path from 'path'
 import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
 import { parseDiff } from '@nexusmd/core'
-import { register, gitEnv, isRepositoryRoot, findGit, extractHunk } from './git.cjs'
+import { register, gitEnv, isRepositoryRoot, findGit, extractHunk, logArgs, HISTORY_CONFIG } from './git.cjs'
 
 const ROOT = process.platform === 'win32' ? 'C:\\repos' : '/repos'
 const REPO = { name: 'App', path: path.join(ROOT, 'App') }
@@ -701,5 +701,139 @@ describe('git:deleteUntracked', () => {
     const unlink = vi.fn(p => { if (p.endsWith('deep.txt')) throw new Error('EBUSY: resource busy') })
     const [r] = await del(['new.txt', 'sub/deep.txt'], { unlink })
     expect(r).toEqual({ ok: false, detail: 'Deleted 1 of 2 files; could not delete sub/deep.txt: EBUSY: resource busy' })
+  })
+})
+
+describe('stage 3 history: refs and log', () => {
+  const H = HISTORY_CONFIG
+  const ORIGIN = 'refs/remotes/origin/main'
+  const REC = n => Array.from({ length: n }, (_, i) => `* \x1e${String(i).padStart(40, '0')}\x1f\x1fA\x1fa@b\x1f1\x1f\x1fc${i}`).join('\n') + '\n'
+  // Answers the history reads (which carry HISTORY_CONFIG); `over` replaces answers by subcommand.
+  const hist = (over = {}) => {
+    const base = reads()
+    return args => {
+      const isHist = H.every((a, i) => args[i] === a)
+      const a = isHist ? args.slice(H.length) : args
+      if (isHist && a[0] in over) return typeof over[a[0]] === 'function' ? over[a[0]](a) : over[a[0]]
+      if (a[0] === 'for-each-ref') return { stdout: `refs/heads/main\nrefs/heads/side\n${ORIGIN}\n` }
+      if (a[0] === 'rev-parse' && a.includes('--end-of-options')) return { stdout: `${HEAD}\n` }
+      if (a[0] === 'remote') return { stdout: 'origin\n' }
+      if (a[0] === 'rev-list') return { stdout: `${HEAD}\n` }
+      if (a[0] === 'log') return { stdout: REC(3) }
+      return base(a)
+    }
+  }
+  const histCalls = (calls, sub) => calls.filter(c => H.every((a, i) => c.args[i] === a) && c.args[H.length] === sub).map(c => c.args.slice(H.length))
+  const logCall = calls => histCalls(calls, 'log')[0]
+  const q = over => ({ ref: 'HEAD', filter: 'all', base: null, search: null, limit: 200, ...over })
+
+  it('runs log with the history config, the fixed format and limit + 1', async () => {
+    const { invoke, calls } = setup(hist())
+    const r = await invoke('git:log', REPO, WT, REG, q())
+    const call = calls.find(c => c.args[H.length] === 'log')
+    expect(call.raw.slice(0, 3 + H.length)).toEqual(['--no-pager', ...FSMON, ...H])
+    expect(logCall(calls)).toEqual(logArgs(q()))
+    expect(logCall(calls)).toEqual(['log', '--graph', '--topo-order', '--decorate=full', '--max-count=201', '--no-color', '--no-ext-diff', '--no-textconv',
+      '--format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s', '--end-of-options', 'HEAD'])
+    expect(r).toMatchObject({ tip: HEAD, unpushed: [HEAD], truncated: false, limit: 200 })
+    expect(r.text).toBe(REC(3))
+  })
+
+  it('puts the unpushed exclusion before --end-of-options', async () => {
+    const { invoke, calls } = setup(hist())
+    await invoke('git:log', REPO, WT, REG, q({ filter: 'unpushed' }))
+    expect(logCall(calls).slice(-5)).toEqual(['--not', '--remotes', '--not', '--end-of-options', 'HEAD'])
+    expect(histCalls(calls, 'rev-list')[0]).toEqual(['rev-list', '--max-count=200', '--not', '--remotes', '--not', '--end-of-options', 'HEAD'])
+  })
+
+  it('compares with a base as base..ref after --end-of-options', async () => {
+    const { invoke, calls } = setup(hist())
+    await invoke('git:log', REPO, WT, REG, q({ ref: 'refs/heads/side', filter: 'sinceBase', base: ORIGIN }))
+    expect(logCall(calls).slice(-2)).toEqual(['--end-of-options', `${ORIGIN}..refs/heads/side`])
+  })
+
+  it('keeps search text inside one argv element, matched literally', async () => {
+    const { invoke, calls } = setup(hist())
+    await invoke('git:log', REPO, WT, REG, q({ search: { kind: 'message', text: '--all' } }))
+    expect(logCall(calls)).toContain('--grep=--all')
+    expect(logCall(calls)).not.toContain('--all')
+    expect(logCall(calls)).toEqual(expect.arrayContaining(['--fixed-strings', '--regexp-ignore-case']))
+    await invoke('git:log', REPO, WT, REG, q({ search: { kind: 'author', text: 'a.b' } }))
+    expect(histCalls(calls, 'log')[1]).toContain('--author=a.b')
+    await invoke('git:log', REPO, WT, REG, q({ search: { kind: 'path', text: '-x [1].txt' } }))
+    const pathLog = histCalls(calls, 'log')[2]
+    expect(pathLog.slice(-2)).toEqual(['--', '-x [1].txt'])
+    expect(calls.find(c => c.args[H.length] === 'log').opts.env.GIT_LITERAL_PATHSPECS).toBe('1')
+  })
+
+  it.each([
+    ['a ref that no longer exists', q({ ref: 'refs/heads/gone' }), 'That branch no longer exists.'],
+    ['an option-like ref', q({ ref: '-x' }), 'Choose a branch'],
+    ['a tag as the base', q({ filter: 'sinceBase', base: 'refs/tags/v1' }), 'Pick a base to compare with'],
+    ['a base that no longer exists', q({ filter: 'sinceBase', base: 'refs/remotes/origin/gone' }), 'That branch no longer exists.'],
+    ['an odd page size', q({ limit: 300 }), 'Unsupported page size'],
+    ['too large a page', q({ limit: 5200 }), 'Unsupported page size'],
+    ['a two-line search', q({ search: { kind: 'message', text: 'a\nb' } }), 'Search must be one line'],
+    ['a path outside the worktree', q({ search: { kind: 'path', text: '../x' } }), 'Search paths must be inside the worktree'],
+    ['an absolute path', q({ search: { kind: 'path', text: path.join(ROOT, 'x') } }), 'Search paths must be inside the worktree'],
+    ['an unknown filter', q({ filter: 'weird' }), 'Unknown filter'],
+  ])('refuses %s without running log', async (_name, query, message) => {
+    const { invoke, calls } = setup(hist())
+    await expect(invoke('git:log', REPO, WT, REG, query)).rejects.toThrow(message)
+    expect(histCalls(calls, 'log')).toEqual([])
+    expect(histCalls(calls, 'rev-list')).toEqual([])
+  })
+
+  it('an unborn branch has no tip and runs no log', async () => {
+    const { invoke, calls } = setup(hist({ 'rev-parse': { code: 1 } }))
+    expect(await invoke('git:log', REPO, WT, REG, q())).toEqual({ text: '', tip: null, unpushed: [], truncated: false, limit: 200 })
+    expect(histCalls(calls, 'log')).toEqual([])
+  })
+
+  it('with no remotes, unpushed is null and rev-list is skipped', async () => {
+    const { invoke, calls } = setup(hist({ remote: { stdout: '' } }))
+    expect((await invoke('git:log', REPO, WT, REG, q())).unpushed).toBeNull()
+    expect(histCalls(calls, 'rev-list')).toEqual([])
+  })
+
+  it('keeps limit commits and says there are more', async () => {
+    const { invoke } = setup(hist({ log: { stdout: REC(201) } }))
+    const r = await invoke('git:log', REPO, WT, REG, q())
+    expect(r.truncated).toBe(true)
+    expect(r.text.split('\n').filter(l => l.includes('\x1e'))).toHaveLength(200)
+  })
+
+  it('cuts output over 8 MB at a line end', async () => {
+    const line = `* \x1e${'0'.repeat(40)}\x1f\x1fA\x1fa@b\x1f1\x1f\x1f${'x'.repeat(1000)}\n`
+    const big = line.repeat(Math.ceil((9 * 1024 * 1024) / line.length))
+    const { invoke } = setup(hist({ log: { stdout: big } }), {}, { timeoutMs: 5000 })
+    const r = await invoke('git:log', REPO, WT, REG, q({ limit: 5000 }))
+    expect(r.truncated).toBe(true)
+    expect(r.text.length).toBeLessThanOrEqual(8 * 1024 * 1024)
+    expect(r.text.endsWith('\n')).toBe(true)
+  })
+
+  it('reports a slow log with the history timeout message and kills it', async () => {
+    const { invoke, deps } = setup(hist({ log: 'hang' }))
+    await expect(invoke('git:log', REPO, WT, REG, q())).rejects.toThrow('History took too long - narrow it with a search or a filter.')
+    expect(deps.kill).toHaveBeenCalled()
+  })
+
+  it('refs returns the ref list, origin HEAD and shallowness', async () => {
+    const { invoke, calls } = setup(hist({
+      'for-each-ref': { stdout: 'refs/heads/main\0aaa\0\0*\n' },
+      'symbolic-ref': { code: 1 },
+      'rev-parse': a => (a.includes('--is-shallow-repository') ? { stdout: 'true\n' } : { stdout: `${HEAD}\n` }),
+    }))
+    expect(await invoke('git:refs', REPO, WT, REG)).toEqual({ refs: 'refs/heads/main\0aaa\0\0*\n', originHead: null, shallow: true })
+    expect(histCalls(calls, 'for-each-ref')[0]).toEqual(['for-each-ref', '--format=%(refname)%00%(objectname)%00%(upstream)%00%(HEAD)', 'refs/heads/', 'refs/remotes/', 'refs/tags/'])
+  })
+
+  it('refuses an unregistered repository or a folder git does not list, spawning nothing for history', async () => {
+    const { invoke, calls } = setup(hist())
+    await expect(invoke('git:log', { name: 'X', path: path.join(ROOT, 'X') }, path.join(ROOT, 'X'), REG, q())).rejects.toThrow('Not a registered repository')
+    await expect(invoke('git:log', REPO, path.join(WT, 'sub'), REG, q())).rejects.toThrow('Not a worktree')
+    await expect(invoke('git:refs', REPO, path.join(WT, 'sub'), REG)).rejects.toThrow('Not a worktree')
+    expect(calls.filter(c => H.every((a, i) => c.args[i] === a))).toEqual([])
   })
 })

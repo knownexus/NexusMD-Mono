@@ -255,5 +255,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stageHunk:       (repo, worktreePath, registered, paths, index, expected) => ipcRenderer.invoke('git:stageHunk', repo, worktreePath, registered, paths, index, expected),
     unstageHunk:     (repo, worktreePath, registered, paths, index, expected) => ipcRenderer.invoke('git:unstageHunk', repo, worktreePath, registered, paths, index, expected),
     commit:          (repo, worktreePath, registered, message, expected) => ipcRenderer.invoke('git:commit', repo, worktreePath, registered, message, expected),
+    refs:            (repo, worktreePath, registered) => ipcRenderer.invoke('git:refs', repo, worktreePath, registered),
+    log:             (repo, worktreePath, registered, query) => ipcRenderer.invoke('git:log', repo, worktreePath, registered, query),
+    commitDetails:   (repo, worktreePath, registered, oid) => ipcRenderer.invoke('git:commitDetails', repo, worktreePath, registered, oid),
+    commitFiles:     (repo, worktreePath, registered, oid, parent) => ipcRenderer.invoke('git:commitFiles', repo, worktreePath, registered, oid, parent),
+    commitDiff:      (repo, worktreePath, registered, oid, parent, paths) => ipcRenderer.invoke('git:commitDiff', repo, worktreePath, registered, oid, parent, paths),
   },
 });

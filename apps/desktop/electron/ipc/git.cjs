@@ -91,6 +91,16 @@ const WHOLE_ONLY = 'Renamed, copied or mode-changed files are staged whole.';
 // Patch headers a single hunk must not carry: applying them would also rename, copy or chmod.
 const WHOLE_ONLY_HEADER = /^(rename from |copy from |old mode |new mode )/;
 const PATHSPEC_STDIN = ['--pathspec-from-file=-', '--pathspec-file-nul'];
+// Stage 3 (history, read-only). A repository's config must not make log run gpg or change encodings.
+const HISTORY_CONFIG = ['-c', 'log.showSignature=false', '-c', 'i18n.logOutputEncoding=UTF-8', '-c', 'color.ui=never'];
+const LOG_FORMAT = '--format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s';
+const HISTORY_STEP = 200;
+const HISTORY_MAX = 5000;
+const LOG_CAP = 8 * 1024 * 1024;
+const FILTERS = ['all', 'unpushed', 'sinceBase'];
+const SEARCH_KINDS = ['message', 'author', 'path'];
+const GONE_REF = 'That branch no longer exists.';
+const HISTORY_TIMEOUT = 'History took too long - narrow it with a search or a filter.';
 const nul = paths => paths.map(p => `${p}\0`).join('');
 const refuse = detail => ({ ok: false, detail });
 
@@ -102,6 +112,54 @@ function result(r) {
 
 // Cuts one hunk out of a single-file diff: the file header plus the index-th "@@" hunk.
 // Numbering matches parseDiff in @nexusmd/core. Lines keep any "\r", so CRLF files apply cleanly.
+// The same rules as core's historyQuery (main can't require ESM core); the ref and base are checked
+// against refs main reads itself in the log handler.
+function checkQuery(q, worktreePath) {
+  if (!q || typeof q !== 'object') throw new Error('Invalid history query');
+  const { ref, filter = 'all', base = null, search = null, limit = HISTORY_STEP } = q;
+  if (ref !== 'HEAD' && !(typeof ref === 'string' && ref.startsWith('refs/heads/') && ref.length > 11)) throw new Error('Choose a branch');
+  if (!FILTERS.includes(filter)) throw new Error(`Unknown filter: ${filter}`);
+  const isBase = typeof base === 'string' && ['refs/heads/', 'refs/remotes/'].some(p => base.startsWith(p) && base.length > p.length);
+  if (filter === 'sinceBase' && !isBase) throw new Error('Pick a base to compare with');
+  if (!Number.isInteger(limit) || limit < HISTORY_STEP || limit > HISTORY_MAX || limit % HISTORY_STEP) throw new Error('Unsupported page size');
+  let s = null;
+  if (search != null) {
+    if (!SEARCH_KINDS.includes(search.kind) || typeof search.text !== 'string' || !search.text) throw new Error('Unknown search');
+    if (search.text.length > 200) throw new Error('Search is limited to 200 characters');
+    if (/[\0\r\n]/.test(search.text)) throw new Error('Search must be one line');
+    if (search.kind === 'path') {
+      const bad = path.isAbsolute(search.text) || /^[a-zA-Z]:/.test(search.text) || /^[\\/]/.test(search.text) || isRemoteOrDevicePath(search.text);
+      const full = bad ? null : path.resolve(worktreePath, search.text);
+      if (bad || !isInside(full, worktreePath)) throw new Error('Search paths must be inside the worktree');
+    }
+    s = { kind: search.kind, text: search.text };
+  }
+  return { ref, filter, base: filter === 'sinceBase' ? base : null, search: s, limit };
+}
+
+function logArgs(q) {
+  const args = ['log', '--graph', '--topo-order', '--decorate=full', `--max-count=${q.limit + 1}`, '--no-color', '--no-ext-diff', '--no-textconv', LOG_FORMAT];
+  // Each search is one argv element, so its text can never become an option.
+  if (q.search?.kind === 'message') args.push('--fixed-strings', '--regexp-ignore-case', `--grep=${q.search.text}`);
+  if (q.search?.kind === 'author') args.push('--fixed-strings', '--regexp-ignore-case', `--author=${q.search.text}`);
+  // After --end-of-options every word is a revision, so exclusions go first and the second --not
+  // switches exclusion off again before the ref.
+  if (q.filter === 'unpushed') args.push('--not', '--remotes', '--not');
+  args.push('--end-of-options', q.filter === 'sinceBase' ? `${q.base}..${q.ref}` : q.ref);
+  if (q.search?.kind === 'path') args.push('--', q.search.text);
+  return args;
+}
+
+// Keeps at most `limit` commit records, cutting before the first one past it.
+function limitRecords(text, limit) {
+  const lines = text.split('\n');
+  let n = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes('\x1e') && ++n > limit) return { text: lines.slice(0, i).join('\n') + '\n', cut: true };
+  }
+  return { text, cut: false };
+}
+
 function extractHunk(text, index) {
   const lines = String(text).split('\n');
   if (lines[lines.length - 1] === '') lines.pop();
@@ -197,13 +255,13 @@ function register(ipcMain, deps = {}) {
     if (next) next.resolve(); else active--;
   };
 
-  async function git(cwd, args, { input = null, timeout = timeoutMs, literal = true } = {}) {
+  async function git(cwd, args, { input = null, timeout = timeoutMs, literal = true, extraConfig = [] } = {}) {
     const exe = gitExecutable();
     if (!exe) throw new Error('Git not found');
     await acquire();
     try {
       return await new Promise((resolve, reject) => {
-        const child = spawn(exe, ['--no-pager', '-c', 'core.fsmonitor=false', ...args], {
+        const child = spawn(exe, ['--no-pager', '-c', 'core.fsmonitor=false', ...extraConfig, ...args], {
           cwd, env: gitEnv(process.env, { literal }), windowsHide: true, stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
         });
         running.add(child);
@@ -426,6 +484,8 @@ function register(ipcMain, deps = {}) {
     }
   }
 
+  const hgit = (cwd, args, opts = {}) => git(cwd, args, { ...opts, extraConfig: HISTORY_CONFIG });
+
   async function gitDirOf(wt) {
     const r = await git(wt, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']);
     return r.code === 0 ? r.stdout.split(/\r?\n/)[0].trim() : '';
@@ -627,6 +687,50 @@ function register(ipcMain, deps = {}) {
     return found;
   });
 
+  handle('git:refs', async (_e, repo, worktreePath, registered) => {
+    await requireExactWorktree(repo, worktreePath, registered);
+    const r = await hgit(worktreePath, ['for-each-ref', '--format=%(refname)%00%(objectname)%00%(upstream)%00%(HEAD)', 'refs/heads/', 'refs/remotes/', 'refs/tags/']);
+    if (r.code !== 0) throw new Error(r.stderr || 'git for-each-ref failed');
+    const o = await hgit(worktreePath, ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']);
+    const sh = await hgit(worktreePath, ['rev-parse', '--is-shallow-repository']);
+    return { refs: r.stdout, originHead: o.code === 0 && o.stdout.trim() ? o.stdout.trim() : null, shallow: sh.stdout.trim() === 'true' };
+  });
+
+  handle('git:log', async (_e, repo, worktreePath, registered, query) => {
+    const q = await requireExactWorktree(repo, worktreePath, registered, () => checkQuery(query, worktreePath));
+    // The ref and base must be refs that exist now; anything else never reaches git.
+    const names = await hgit(worktreePath, ['for-each-ref', '--format=%(refname)', 'refs/heads/', 'refs/remotes/']);
+    if (names.code !== 0) throw new Error(names.stderr || 'git for-each-ref failed');
+    const known = new Set(names.stdout.split('\n').filter(Boolean));
+    if ((q.ref !== 'HEAD' && !known.has(q.ref)) || (q.base && !known.has(q.base))) throw new Error(GONE_REF);
+    const tipR = await hgit(worktreePath, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${q.ref}^{commit}`]);
+    if (tipR.code !== 0) return { text: '', tip: null, unpushed: [], truncated: false, limit: q.limit };
+    const tip = tipR.stdout.trim();
+    let unpushed = null;
+    const remotes = await hgit(worktreePath, ['remote']);
+    if (remotes.code === 0 && remotes.stdout.trim()) {
+      const u = await hgit(worktreePath, ['rev-list', `--max-count=${q.limit}`, '--not', '--remotes', '--not', '--end-of-options', q.ref]);
+      unpushed = u.code === 0 ? u.stdout.split('\n').filter(Boolean) : [];
+    }
+    let r;
+    try {
+      r = await hgit(worktreePath, logArgs(q));
+    } catch (e) {
+      if (/timed out/.test(e.message)) throw new Error(HISTORY_TIMEOUT);
+      throw e;
+    }
+    if (r.code !== 0) throw new Error(r.stderr || `git log failed (exit ${r.code})`);
+    let text = r.stdout;
+    let truncated = false;
+    if (r.bytes > LOG_CAP) {
+      text = text.slice(0, LOG_CAP);
+      text = text.slice(0, text.lastIndexOf('\n') + 1);
+      truncated = true;
+    }
+    const limited = limitRecords(text, q.limit);
+    return { text: limited.text, tip, unpushed, truncated: truncated || limited.cut, limit: q.limit };
+  });
+
   handle('git:checkFolders', async (_e, paths) =>
     (Array.isArray(paths) ? paths : []).map(p => ({ path: p, exists: typeof p === 'string' && path.isAbsolute(p) && !isRemoteOrDevicePath(p) && probe.isDirectory(p) })));
 
@@ -643,4 +747,4 @@ function register(ipcMain, deps = {}) {
   };
 }
 
-module.exports = { register, gitEnv, isRepositoryRoot, findGit, extractHunk };
+module.exports = { register, gitEnv, isRepositoryRoot, findGit, extractHunk, checkQuery, logArgs, HISTORY_CONFIG };
