@@ -30,6 +30,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+      # The API project's BuildFrontend target runs `npm run build` (vite) in apps/web.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
       - run: dotnet test apps/web/NexusMDWeb.sln -c Release
 
   build:

@@ -8,7 +8,7 @@ import { createRequire } from 'module'
 
 const require = createRequire(import.meta.url)
 const { main } = require('./git-editor.cjs')
-const HELPER = path.resolve(process.cwd(), 'electron/ipc/git-editor.cjs')
+const HELPER = path.join(__dirname, 'git-editor.cjs')
 
 let dir, gitDir, planFile
 const A = 'a'.repeat(40)
