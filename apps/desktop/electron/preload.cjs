@@ -260,5 +260,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     commitDetails:   (repo, worktreePath, registered, oid) => ipcRenderer.invoke('git:commitDetails', repo, worktreePath, registered, oid),
     commitFiles:     (repo, worktreePath, registered, oid, parent) => ipcRenderer.invoke('git:commitFiles', repo, worktreePath, registered, oid, parent),
     commitDiff:      (repo, worktreePath, registered, oid, parent, paths) => ipcRenderer.invoke('git:commitDiff', repo, worktreePath, registered, oid, parent, paths),
+    remotes:         (repo, worktreePath, registered) => ipcRenderer.invoke('git:remotes', repo, worktreePath, registered),
+    stashes:         (repo, worktreePath, registered) => ipcRenderer.invoke('git:stashes', repo, worktreePath, registered),
+    preview:         (repo, worktreePath, registered, kind, options) => ipcRenderer.invoke('git:preview', repo, worktreePath, registered, kind, options),
+    run:             (repo, worktreePath, registered, kind, options, stamp) => ipcRenderer.invoke('git:run', repo, worktreePath, registered, kind, options, stamp),
   },
 });
