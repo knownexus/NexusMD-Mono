@@ -31,12 +31,16 @@ function wholeFileOnly(file, area) {
     (area === 'staged' && file.status === 'deleted')
 }
 
-/** A change's unified diff: a legend naming the old and new sides, line numbers, and hunk buttons. */
-export function DiffPane({ change, diff, onHunk, busy = false }) {
+/**
+ * A change's unified diff: a legend naming the old and new sides, line numbers, and hunk buttons.
+ * The history passes its own `sides` (parent and commit ids) and `readOnly`, which drops the hunk
+ * buttons and the staging advice.
+ */
+export function DiffPane({ change, diff, onHunk, busy = false, sides: sidesOverride = null, readOnly = false }) {
   if (!change) return <div style={{ color: 'var(--text-muted)' }}>Select a file to see its diff.</div>
-  const sides = diffSides(change)
+  const sides = sidesOverride ?? diffSides(change)
   const { result, files, error, loading } = diff
-  const hunkLabel = sides?.staging === 'stage' ? 'Stage hunk' : sides?.staging === 'unstage' ? 'Unstage hunk' : null
+  const hunkLabel = readOnly ? null : sides?.staging === 'stage' ? 'Stage hunk' : sides?.staging === 'unstage' ? 'Unstage hunk' : null
   const showHunks = !!hunkLabel && !!result && !result.binary && !result.truncated && files.length === 1 && !wholeFileOnly(files[0], change.area)
   const textual = result && !result.gone && !result.binary && !result.truncated
   // An empty diff for a tracked change means it was staged or reverted since the list was read.
@@ -53,10 +57,10 @@ export function DiffPane({ change, diff, onHunk, busy = false }) {
       {sides?.old && <div aria-hidden="true" style={{ ...GRID, color: 'var(--text-muted)' }}><span>old</span><span>new</span></div>}
       {error && <div role="alert" style={{ color: 'var(--danger)' }}>{error}</div>}
       {result?.gone && note('No longer changed.')}
-      {result?.binary && note(`Binary file${result.size ? ` (${size(result.size)})` : ''}. Stage or discard it as a whole.`)}
-      {result?.truncated && note(`This diff is too large to show (${size(result.size)}). Stage or discard the file as a whole.`)}
+      {result?.binary && note(`Binary file${result.size ? ` (${size(result.size)})` : ''}.${readOnly ? '' : ' Stage or discard it as a whole.'}`)}
+      {result?.truncated && note(`This diff is too large to show (${size(result.size)}).${readOnly ? '' : ' Stage or discard the file as a whole.'}`)}
       {change.area === 'conflict' && note('Resolve in your editor, then stage the file.')}
-      {empty && change.area !== 'conflict' && note(change.area === 'untracked' ? 'Empty file.' : 'No longer changed.')}
+      {empty && change.area !== 'conflict' && note(readOnly ? 'No textual changes.' : change.area === 'untracked' ? 'Empty file.' : 'No longer changed.')}
       {metaOnly && change.area !== 'conflict' && note('No textual changes (mode change or submodule).')}
       {files.map((f, fi) => (
         <div key={fi}>

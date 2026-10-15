@@ -97,3 +97,22 @@ describe('DiffPane', () => {
     expect(screen.getByRole('alert').textContent).toBe('boom')
   })
 })
+
+describe('DiffPane in the history (read-only)', () => {
+  const TEXT = 'diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1 +1 @@\n-a\n+b\n'
+  const change = { id: 'commit\0f', area: 'commit', path: 'f' }
+  const view = result => ({ result, files: parseDiff(result.text).files, error: null, loading: false })
+  it('uses the sides it is given and has no hunk buttons', () => {
+    render(<DiffPane change={change} diff={view({ text: TEXT, truncated: false, binary: false, size: 10 })} sides={{ old: '1538ae7', new: 'b877e68', staging: null }} readOnly />)
+    expect(screen.getByLabelText('Diff legend').textContent).toContain('− old: 1538ae7')
+    expect(screen.getByLabelText('Diff legend').textContent).toContain('+ new: b877e68')
+    expect(screen.queryByRole('button', { name: /hunk/ })).toBeNull()
+  })
+  it('words binary and large files without staging advice', () => {
+    const { unmount } = render(<DiffPane change={change} diff={view({ text: '', truncated: false, binary: true, size: 2048 })} sides={{ old: 'a', new: 'b', staging: null }} readOnly />)
+    expect(screen.getByText('Binary file (2 KB).')).toBeTruthy()
+    unmount()
+    render(<DiffPane change={change} diff={view({ text: '', truncated: true, binary: false, size: 2 * 1024 * 1024 })} sides={{ old: 'a', new: 'b', staging: null }} readOnly />)
+    expect(screen.getByText('This diff is too large to show (2.0 MB).')).toBeTruthy()
+  })
+})
