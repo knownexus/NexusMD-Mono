@@ -31,6 +31,13 @@ function configure() {
   })
 }
 
+// Group options are offered for the active group, so its tab is selected first.
+async function openGroupMenu(name) {
+  const tabs = await screen.findByRole('tablist', { name: 'Project groups' })
+  fireEvent.click(within(tabs).getByRole('tab', { name: new RegExp(`^${name}`) }))
+  fireEvent.click(screen.getByRole('button', { name: `Group options for ${name}` }))
+}
+
 describe('ViewGit', () => {
   it('shows group tabs with change counts and filters the repos by group', async () => {
     configure()
@@ -68,7 +75,7 @@ describe('ViewGit', () => {
   it('deletes a group from its menu after confirmation', async () => {
     configure()
     render(<ViewGit adapters={{ git: adapter() }} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Group options for Only B' }))
+    await openGroupMenu('Only B')
     fireEvent.click(screen.getByRole('button', { name: 'Delete…' }))
     fireEvent.click(screen.getByRole('button', { name: 'Delete group' }))
     expect(getGitConfig().groups).toEqual([])
@@ -86,7 +93,7 @@ describe('ViewGit', () => {
     configure()
     render(<ViewGit adapters={{ git: adapter() }} />)
     await screen.findByRole('region', { name: 'A' })
-    fireEvent.click(await screen.findByRole('button', { name: 'Group options for Only B' }))
+    await openGroupMenu('Only B')
     fireEvent.click(screen.getByRole('button', { name: 'Edit members…' }))
     await screen.findByLabelText('Group name')
     setGitConfig({ view: { ...getGitConfig().view, collapsed: ['A'] } })
@@ -116,7 +123,7 @@ describe('ViewGit', () => {
     const plus = await screen.findByRole('button', { name: 'New group' })
     expect(plus.disabled).toBe(true)
     expect(plus.title).toBe('Loading repositories…')
-    fireEvent.click(screen.getByRole('button', { name: 'Group options for Only B' }))
+    await openGroupMenu('Only B')
     const edit = screen.getByRole('button', { name: 'Edit members…' })
     expect(edit.disabled).toBe(true)
     expect(edit.title).toBe('Loading repositories…')
@@ -134,7 +141,7 @@ describe('ViewGit', () => {
     render(<ViewGit adapters={{ git: a }} />)
     await screen.findByRole('region', { name: 'A' })
     await waitFor(() => expect(screen.queryByText('Refreshing…')).toBeNull())
-    fireEvent.click(screen.getByRole('button', { name: 'Group options for Only B' }))
+    await openGroupMenu('Only B')
     fireEvent.click(screen.getByRole('button', { name: 'Edit members…' }))
     fireEvent.change(await screen.findByLabelText('Group name'), { target: { value: 'Renamed B' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))

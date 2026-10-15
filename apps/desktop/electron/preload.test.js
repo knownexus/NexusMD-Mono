@@ -103,6 +103,13 @@ describe('preload bridge', () => {
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:run', repo, repo.path, reg, 'pull', { mode: 'ff' }, 's')
   })
 
+  it('exposes the git command line channel', () => {
+    const repo = { name: 'App', path: 'C:\\repos\\App' }
+    const reg = [repo.path]
+    exposed.git.exec(repo, repo.path, reg, ['status', '--short'])
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:exec', repo, repo.path, reg, ['status', '--short'])
+  })
+
   it('exposes the stage 3 git history channels', () => {
     const repo = { name: 'App', path: 'C:\\repos\\App' }
     const reg = [repo.path]

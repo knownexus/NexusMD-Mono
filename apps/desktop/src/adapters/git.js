@@ -30,4 +30,10 @@ export const gitAdapter = {
   stashes(repo, worktreePath, registered) { return api().stashes(repo, worktreePath, registered) },
   preview(repo, worktreePath, registered, kind, options) { return api().preview(repo, worktreePath, registered, kind, options) },
   run(repo, worktreePath, registered, kind, options, stamp) { return api().run(repo, worktreePath, registered, kind, options, stamp) },
+  // NEW: the Git Workspace command line. argv excludes the leading "git". Resolves { code, stdout, stderr }.
+  // Undefined until the IPC exists, so the UI can say so instead of throwing.
+  get exec() {
+    const fn = api()?.exec
+    return fn ? (repo, worktreePath, registered, argv) => fn(repo, worktreePath, registered, argv) : undefined
+  },
 }

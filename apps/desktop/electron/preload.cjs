@@ -266,5 +266,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stashes:         (repo, worktreePath, registered) => ipcRenderer.invoke('git:stashes', repo, worktreePath, registered),
     preview:         (repo, worktreePath, registered, kind, options) => ipcRenderer.invoke('git:preview', repo, worktreePath, registered, kind, options),
     run:             (repo, worktreePath, registered, kind, options, stamp) => ipcRenderer.invoke('git:run', repo, worktreePath, registered, kind, options, stamp),
+    exec:            (repo, worktreePath, registered, argv) => ipcRenderer.invoke('git:exec', repo, worktreePath, registered, argv),
   },
 });

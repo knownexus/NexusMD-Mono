@@ -1,8 +1,9 @@
 // electron/ipc/git.cjs
 //
 // Runs the git CLI for the Git Workspace module. The renderer names an operation; this file
-// owns the exact argv of each one, so the renderer can never pass git arguments. Repository
-// paths arrive with the registered-repo list and are checked on every call (main keeps no state).
+// owns the exact argv of each one, so the renderer can't pass git arguments. The one exception is
+// git:exec, the command line the user types into, which runs their argv as a git subcommand.
+// Repository paths arrive with the registered-repo list and are checked on every call (main keeps no state).
 //
 // spawn / kill / filesystem probes are injectable because vi.mock() cannot intercept a CJS require().
 
@@ -13,7 +14,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { spawn: nodeSpawn, execFile } = require('child_process');
 const { withLogging } = require('./withLogging.cjs');
-const { registerActions, ownershipMessage } = require('./git-actions.cjs');
+const { registerActions, ownershipMessage, WRITE_ENV } = require('./git-actions.cjs');
 
 const STRIP_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_PREFIX', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'];
 const BRANCH_FORMAT = '--format=%(refname)%00%(objectname)%00%(subject)%00%(upstream:short)';
@@ -104,6 +105,20 @@ const GONE_REF = 'That branch no longer exists.';
 const HISTORY_TIMEOUT = 'History took too long - narrow it with a search or a filter.';
 const OID = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
 const NOT_PARENT = 'Not a parent of that commit';
+const EXEC_CAP = 1024 * 1024;
+const EXEC_MAX_ARGS = 256;
+
+// A command-line argv must start with a subcommand: git's global options (-C, -c, --git-dir,
+// --exec-path, ...) come before it and would point git somewhere else or reconfigure it.
+function checkExecArgv(argv) {
+  if (!Array.isArray(argv) || !argv.length || argv.length > EXEC_MAX_ARGS || argv.some(a => typeof a !== 'string' || a.includes('\0'))) {
+    throw new Error('Not a git command');
+  }
+  if (!argv[0] || argv[0].startsWith('-')) throw new Error(`git ${argv[0]} is not allowed here - start with a command such as status`);
+  if (argv.some(a => /safe\.directory/i.test(a))) throw new Error('Refusing to change safe.directory');
+  return argv;
+}
+
 const nul = paths => paths.map(p => `${p}\0`).join('');
 const refuse = detail => ({ ok: false, detail });
 
@@ -230,6 +245,7 @@ function register(ipcMain, deps = {}) {
     now = Date.now,
     commonDirTtlMs = 5000,
     commitTimeoutMs = 120000,
+    execTimeoutMs = 60000,
   } = deps;
   process.env.NoDefaultCurrentDirectoryInExePath = '1';
   let gitPath = deps.gitPath !== undefined ? deps.gitPath : findGit(env, probe);
@@ -816,6 +832,16 @@ function register(ipcMain, deps = {}) {
     editorCommand: deps.editorCommand, fsx: deps.fsx, longTimeoutMs: deps.longTimeoutMs, shortTimeoutMs: deps.shortTimeoutMs,
   });
 
+  // The command line. argv is a git subcommand and its arguments, typed by the user (the renderer
+  // confirms destructive ones first). It runs like a terminal (no literal pathspecs) but can't
+  // wait on an editor or a credential prompt, and it takes the repository's write lock.
+  handle('git:exec', async (_e, repo, worktreePath, registered, argv) => {
+    await requireExactWorktree(repo, worktreePath, registered, () => checkExecArgv(argv));
+    const r = await withRepoLock(repo, () => git(worktreePath, argv, { timeout: execTimeoutMs, literal: false, env: WRITE_ENV }));
+    const cap = s => (s.length > EXEC_CAP ? `${s.slice(0, EXEC_CAP)}\n[output truncated]` : s);
+    return { code: r.code, stdout: cap(r.stdout), stderr: cap(r.stderr) };
+  });
+
   handle('git:checkFolders', async (_e, paths) =>
     (Array.isArray(paths) ? paths : []).map(p => ({ path: p, exists: typeof p === 'string' && path.isAbsolute(p) && !isRemoteOrDevicePath(p) && probe.isDirectory(p) })));
 
@@ -833,4 +859,4 @@ function register(ipcMain, deps = {}) {
   };
 }
 
-module.exports = { register, gitEnv, isRepositoryRoot, findGit, extractHunk, checkQuery, logArgs, HISTORY_CONFIG };
+module.exports = { register, gitEnv, isRepositoryRoot, findGit, extractHunk, checkQuery, logArgs, checkExecArgv, HISTORY_CONFIG };
