@@ -101,6 +101,8 @@ const FILTERS = ['all', 'unpushed', 'sinceBase'];
 const SEARCH_KINDS = ['message', 'author', 'path'];
 const GONE_REF = 'That branch no longer exists.';
 const HISTORY_TIMEOUT = 'History took too long - narrow it with a search or a filter.';
+const OID = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
+const NOT_PARENT = 'Not a parent of that commit';
 const nul = paths => paths.map(p => `${p}\0`).join('');
 const refuse = detail => ({ ok: false, detail });
 
@@ -729,6 +731,78 @@ function register(ipcMain, deps = {}) {
     }
     const limited = limitRecords(text, q.limit);
     return { text: limited.text, tip, unpushed, truncated: truncated || limited.cut, limit: q.limit };
+  });
+
+  function requireOid(oid, what = 'commit') {
+    if (typeof oid !== 'string' || !OID.test(oid)) throw new Error(`Not a ${what} id: ${String(oid)}`);
+    return oid;
+  }
+
+  // The commit's own parents, read from git; null when the commit is gone.
+  async function commitParents(wt, oid) {
+    const r = await hgit(wt, ['rev-list', '--parents', '--max-count=1', '--end-of-options', oid]);
+    if (r.code !== 0) return null;
+    return r.stdout.trim().split(' ').slice(1);
+  }
+
+  // `parent` must be one of the commit's own parents (null only for a root commit), so any
+  // revision the renderer names is something git itself reported.
+  async function requireParent(wt, oid, parent) {
+    const parents = await commitParents(wt, oid);
+    if (parents === null) return null;
+    if (parent === null ? parents.length !== 0 : !parents.includes(parent)) throw new Error(NOT_PARENT);
+    return parents;
+  }
+
+  async function historyRead(wt, args) {
+    try {
+      return await hgit(wt, args);
+    } catch (e) {
+      if (/timed out/.test(e.message)) throw new Error(HISTORY_TIMEOUT);
+      throw e;
+    }
+  }
+
+  handle('git:commitDetails', async (_e, repo, worktreePath, registered, oid) => {
+    await requireExactWorktree(repo, worktreePath, registered, () => requireOid(oid));
+    const v = await hgit(worktreePath, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${oid}^{commit}`]);
+    if (v.code !== 0) return { missing: true };
+    const r = await historyRead(worktreePath, ['show', '-s', '--decorate=full',
+      '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%D%x00%B', '--end-of-options', oid]);
+    if (r.code !== 0) throw new Error(r.stderr || 'git show failed');
+    return { details: r.stdout };
+  });
+
+  handle('git:commitFiles', async (_e, repo, worktreePath, registered, oid, parent) => {
+    await requireExactWorktree(repo, worktreePath, registered, () => {
+      requireOid(oid);
+      if (parent !== null) requireOid(parent, 'parent');
+    });
+    if (await requireParent(worktreePath, oid, parent) === null) return { missing: true };
+    // --no-commit-id: with --root, diff-tree otherwise prints the commit id as an extra record.
+    const args = parent === null
+      ? ['diff-tree', '--no-commit-id', '--root', '-r', '-z', '-M', '--name-status', '--no-ext-diff', '--no-textconv', '--end-of-options', oid]
+      : ['diff-tree', '--no-commit-id', '-r', '-z', '-M', '--name-status', '--no-ext-diff', '--no-textconv', '--end-of-options', parent, oid];
+    const r = await historyRead(worktreePath, args);
+    if (r.code !== 0) throw new Error(r.stderr || 'git diff-tree failed');
+    return { files: r.stdout };
+  });
+
+  handle('git:commitDiff', async (_e, repo, worktreePath, registered, oid, parent, paths) => {
+    const rel = await requireExactWorktree(repo, worktreePath, registered, () => {
+      requireOid(oid);
+      if (parent !== null) requireOid(parent, 'parent');
+      return requirePaths(worktreePath, paths);
+    });
+    if (await requireParent(worktreePath, oid, parent) === null) return { missing: true };
+    const args = parent === null
+      ? ['show', '--format=', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '-U3', '--end-of-options', oid, '--', ...rel]
+      : ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '-U3', '--end-of-options', parent, oid, '--', ...rel];
+    const r = await historyRead(worktreePath, args);
+    if (r.code !== 0) throw new Error(r.stderr || `git ${args[0]} failed (exit ${r.code})`);
+    const truncated = r.bytes > DIFF_CAP;
+    const text = truncated ? r.stdout.slice(0, DIFF_CAP) : r.stdout;
+    return { text, truncated, binary: /^(Binary files |GIT binary patch)/m.test(text), size: r.bytes };
   });
 
   handle('git:checkFolders', async (_e, paths) =>
