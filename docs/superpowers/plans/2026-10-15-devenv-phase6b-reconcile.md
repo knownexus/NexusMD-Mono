@@ -85,7 +85,7 @@ Also fix A's `removeRepository` cascade.
 
 **Interfaces:**
 - Consumes: A's modules as they are at b86d6c1.
-- Produces: a merge commit whose Phase 6 files equal b86d6c1's. Every other file equals master's, except `package.json`/`package-lock.json` (js-yaml dropped).
+- Produces: a merge commit whose Phase 6 files equal the branch tip d658b8c (= b86d6c1 plus this plan). Every other file equals master's, except `package.json`/`package-lock.json` (js-yaml dropped).
 
 - [ ] **Step 1: Start the merge**
 
@@ -171,12 +171,12 @@ grep -rn "profile-drafts\|registerProfile\|js-yaml\|listProfileFiles\|readProfil
 
 # Every file that differs from git-stage-2 master is one this branch touched:
 git add -A   # stage the resolved merge first; both checks compare against the index
-comm -13 <(git diff --name-only eac102e b86d6c1 | sort) <(git diff --cached --name-only 62ba0dd -- . ':!package-lock.json' | sort)
+comm -13 <(git diff --name-only eac102e d658b8c | sort) <(git diff --cached --name-only 62ba0dd -- . ':!package-lock.json' | sort)
 # Expected: no output
 
 # Every file that differs from this branch's tip is one master (git stage 2) touched:
-comm -13 <(git diff --name-only eac102e 62ba0dd | sort) <(git diff --cached --name-only b86d6c1 -- . ':!package-lock.json' ':!docs/superpowers/specs/2026-10-08-devenv-module-design.md' | sort)
-# Expected: no output (the spec differs from b86d6c1 only by the status line; check that with `git diff --cached b86d6c1 -- docs/superpowers/specs/`)
+comm -13 <(git diff --name-only eac102e 62ba0dd | sort) <(git diff --cached --name-only d658b8c -- . ':!package-lock.json' ':!docs/superpowers/specs/2026-10-08-devenv-module-design.md' | sort)
+# Expected: no output (the spec differs from b86d6c1 only by the status line; check that with `git diff --cached d658b8c -- docs/superpowers/specs/`)
 ```
 
 If a `comm` prints a path, that file is wrong. Fix it before going on.
