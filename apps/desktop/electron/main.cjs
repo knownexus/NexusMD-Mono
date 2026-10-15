@@ -237,7 +237,11 @@ function createMainWindow() {
   if (process.env.VITE_DEV_SERVER_URL) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    win.loadFile(path.join(process.resourcesPath, 'renderer', 'index.html'));
+    // Packaged: extraResources/renderer. Unpackaged (npm start, e2e): vite's outDir.
+    const rendererDir = app.isPackaged
+      ? path.join(process.resourcesPath, 'renderer')
+      : path.join(__dirname, '..', '..', '..', 'dist', 'desktop', 'renderer');
+    win.loadFile(path.join(rendererDir, 'index.html'));
   }
 
   win.webContents.on('did-finish-load', () => {
