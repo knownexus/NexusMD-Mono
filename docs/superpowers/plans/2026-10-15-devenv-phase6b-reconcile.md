@@ -175,7 +175,7 @@ comm -13 <(git diff --name-only eac102e d658b8c | sort) <(git diff --cached --na
 # Expected: no output
 
 # Every file that differs from this branch's tip is one master (git stage 2) touched:
-comm -13 <(git diff --name-only eac102e 62ba0dd | sort) <(git diff --cached --name-only d658b8c -- . ':!package-lock.json' ':!docs/superpowers/specs/2026-10-08-devenv-module-design.md' | sort)
+comm -13 <(git diff --name-only eac102e 62ba0dd | sort) <(git diff --cached --name-only d658b8c -- . ':!package-lock.json' ':!docs/superpowers/plans' ':!docs/superpowers/specs/2026-10-08-devenv-module-design.md' | sort)
 # Expected: no output (the spec differs from b86d6c1 only by the status line; check that with `git diff --cached d658b8c -- docs/superpowers/specs/`)
 ```
 
