@@ -87,4 +87,17 @@ describe('useDiff', () => {
     const { result } = renderHook(() => useDiff({ adapter, repo, worktreePath: repo.path, registered, change: change('f.txt'), version: 1 }))
     await waitFor(() => expect(result.current.error).toBe('Not a worktree of C:/repos/A: C:/repos/A/sub'))
   })
+
+  it('marks the diff as loading as soon as reload is called, keeping the last diff', async () => {
+    const next = deferred()
+    let calls = 0
+    const adapter = { diff: vi.fn(() => (++calls === 1 ? Promise.resolve({ text: TEXT, stamp: 's1' }) : next.promise)) }
+    const { result } = renderHook(() => useDiff({ adapter, repo, worktreePath: repo.path, registered, change: change('f.txt'), version: 1 }))
+    await waitFor(() => expect(result.current.result?.stamp).toBe('s1'))
+    act(() => { result.current.reload() })
+    expect(result.current.loading).toBe(true)
+    expect(result.current.result.stamp).toBe('s1')
+    await act(async () => { next.resolve({ text: TEXT, stamp: 's2' }) })
+    expect([result.current.loading, result.current.result.stamp]).toEqual([false, 's2'])
+  })
 })

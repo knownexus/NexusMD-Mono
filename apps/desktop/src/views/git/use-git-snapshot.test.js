@@ -114,4 +114,16 @@ describe('useGitSnapshot', () => {
     const other = renderHook(() => useGitSnapshot({ adapter, repos: [...repos, { name: 'B', path: 'C:/repos/B' }], intervalMs: null }))
     expect(other.result.current.snapshot).toBeNull()
   })
+
+  it('runs a reload queued during an older load with the current repo list', async () => {
+    const first = deferred()
+    let calls = 0
+    const adapter = adapterWith(dir => (++calls === 1 ? first.promise : Promise.resolve({ commonDir: `${dir}/.git` })))
+    const { result, rerender } = renderHook(p => useGitSnapshot({ adapter, repos: p.repos, intervalMs: null }), { initialProps: { repos } })
+    let queued
+    act(() => { queued = result.current.reload() })
+    rerender({ repos: [{ name: 'B', path: 'C:/repos/B' }] })
+    await act(async () => { first.resolve({ commonDir: 'C:/repos/A/.git' }); await queued })
+    expect(adapter.resolve.mock.calls.at(-1)[0]).toBe('C:/repos/B')
+  })
 })

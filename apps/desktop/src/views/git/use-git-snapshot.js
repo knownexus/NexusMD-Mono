@@ -22,6 +22,8 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
   // A reload asked for while a load runs: { promise, resolve } for the one load queued after it.
   const queued = React.useRef(null)
   const hasSnapshot = React.useRef(snapshot != null)
+  // The newest loader: a load queued during an older one must read the current repo list.
+  const latestLoad = React.useRef(null)
   // StrictMode runs the cleanup and the effect again in dev, so liveness must be re-armed.
   React.useEffect(() => { live.current = true; return () => { live.current = false } }, [])
 
@@ -44,10 +46,11 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
       if (!inFlight.current && queued.current) {
         const q = queued.current
         queued.current = null
-        load(true).then(q.resolve, q.resolve)
+        latestLoad.current(true).then(q.resolve, q.resolve)
       }
     }
   }, [adapter, reposKey, enabled])
+  latestLoad.current = load
 
   // A manual refresh while a load is running would only queue a duplicate poll.
   const refresh = React.useCallback(() => load(false, true), [load])

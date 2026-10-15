@@ -32,6 +32,11 @@ export function useDiff({ adapter, repo, worktreePath, registered, change, versi
     )
     return () => { live = false }
   }, [adapter, worktreePath, key, request, version, nonce])
-  const reload = React.useCallback(() => setNonce(n => n + 1), [])
+  // Loading is set here, not only in the effect, so it lands in the same render as the write's
+  // busy flag clearing and hunk buttons never come back live on the old diff.
+  const reload = React.useCallback(() => {
+    setState(s => (s.key ? { ...s, loading: true } : s))
+    setNonce(n => n + 1)
+  }, [])
   return React.useMemo(() => ({ ...state, reload }), [state, reload])
 }
