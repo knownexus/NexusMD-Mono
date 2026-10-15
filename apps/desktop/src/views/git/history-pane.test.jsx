@@ -8,8 +8,8 @@ import { CommitDetail } from './commit-detail.jsx'
 
 afterEach(cleanup)
 
-// jsdom's import.meta.url isn't a file URL; tests run from apps/desktop.
-const LOG = fs.readFileSync(path.resolve(process.cwd(), '../../packages/core/src/modules/git/fixtures/log-merge.txt'), 'utf8')
+// jsdom's import.meta.url isn't a file URL; vitest's __dirname is.
+const LOG = fs.readFileSync(path.resolve(__dirname, '../../../../../packages/core/src/modules/git/fixtures/log-merge.txt'), 'utf8')
 const rows = parseLog(LOG)
 const commits = rows.filter(r => r.commit).map(r => r.commit)
 

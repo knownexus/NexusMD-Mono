@@ -46,7 +46,7 @@ beforeAll(() => {
 
   register({ handle: (channel, fn) => { handlers[channel] = fn } }, {
     logger: { scope: () => ({ error: () => {}, info: () => {} }) },
-    editorCommand: { exe: process.execPath, helper: path.resolve(process.cwd(), 'electron/ipc/git-editor.cjs') },
+    editorCommand: { exe: process.execPath, helper: path.join(__dirname, 'git-editor.cjs') },
   })
 }, 60000)
 
