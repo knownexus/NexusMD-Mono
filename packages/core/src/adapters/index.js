@@ -194,4 +194,22 @@ export const IGitAdapter = {
   stageHunk:       async (repo, worktreePath, registered, paths, index, expected) => Promise.reject(new Error('IGitAdapter.stageHunk not implemented')),
   unstageHunk:     async (repo, worktreePath, registered, paths, index, expected) => Promise.reject(new Error('IGitAdapter.unstageHunk not implemented')),
   commit:          async (repo, worktreePath, registered, message, expected) => Promise.reject(new Error('IGitAdapter.commit not implemented')),
+  // Stage 3 (read-only). query = { ref, filter, base, search, limit } (historyQuery)
+  // → { refs: raw, originHead, shallow }
+  refs:          async (repo, worktreePath, registered) => Promise.reject(new Error('IGitAdapter.refs not implemented')),
+  // → { text, tip, unpushed: [oid] | null, truncated, limit }
+  log:           async (repo, worktreePath, registered, query) => Promise.reject(new Error('IGitAdapter.log not implemented')),
+  // → { details: raw } | { missing: true }
+  commitDetails: async (repo, worktreePath, registered, oid) => Promise.reject(new Error('IGitAdapter.commitDetails not implemented')),
+  // parent: one of the commit's parents, or null for a root commit → { files: raw } | { missing: true }
+  commitFiles:   async (repo, worktreePath, registered, oid, parent) => Promise.reject(new Error('IGitAdapter.commitFiles not implemented')),
+  // → { text, truncated, binary, size } | { missing: true }
+  commitDiff:    async (repo, worktreePath, registered, oid, parent, paths) => Promise.reject(new Error('IGitAdapter.commitDiff not implemented')),
+  // Stage 4 (branch and sync actions). kind: one of ACTION_KINDS; options per kind (see actions.js).
+  remotes:       async (repo, worktreePath, registered) => Promise.reject(new Error('IGitAdapter.remotes not implemented')),
+  stashes:       async (repo, worktreePath, registered) => Promise.reject(new Error('IGitAdapter.stashes not implemented')),
+  // → { eligible, reason, details, programs, stamp }
+  preview:       async (repo, worktreePath, registered, kind, options) => Promise.reject(new Error('IGitAdapter.preview not implemented')),
+  // → { ok, detail, stale?, conflict?, operation? }
+  run:           async (repo, worktreePath, registered, kind, options, stamp) => Promise.reject(new Error('IGitAdapter.run not implemented')),
 }

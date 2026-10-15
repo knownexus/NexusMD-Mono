@@ -1,0 +1,14 @@
+*-.   67b92c8aa789ac395fed0e4b2d28854b3494df0bab553d75f114073137c0e429190c516dd1f172cc 815f35fc9a2f9331fa8180df114c6af4a0a52a60 629205b9ddf4b57502b60d603bf82e555ee66453Ana Ñana@example.com1791994609HEAD -> refs/heads/mainoctopus
+|\ \  
+| | * 629205b9ddf4b57502b60d603bf82e555ee66453ab553d75f114073137c0e429190c516dd1f172ccAna Ñana@example.com1791994609refs/heads/o2o2
+| |/  
+|/|   
+| * 815f35fc9a2f9331fa8180df114c6af4a0a52a60ab553d75f114073137c0e429190c516dd1f172ccAna Ñana@example.com1791994609refs/heads/o1o1
+|/  
+*   ab553d75f114073137c0e429190c516dd1f172ccdb3f572de347bc8eb42aed2ac342876f8a88d449 e12457497b4fa139f9574675f5a8acd9b20447ceAna Ñana@example.com1791994609Merge side
+|\  
+| * e12457497b4fa139f9574675f5a8acd9b20447cee907bed4b851e72a3ccdec922eb3e74365e2d48eAna Ñana@example.com1791994609refs/heads/sideside
+* | db3f572de347bc8eb42aed2ac342876f8a88d449e907bed4b851e72a3ccdec922eb3e74365e2d48eAna Ñana@example.com1791994609c3 [x] ünïcode
+|/  
+* e907bed4b851e72a3ccdec922eb3e74365e2d48e83c3ed955ba9820058c36db38ad10f51157f2febAna Ñana@example.com1791994609tag: refs/tags/v1, refs/remotes/origin/mainc2 a.b
+* 83c3ed955ba9820058c36db38ad10f51157f2febAna Ñana@example.com1791994609c1 a.b

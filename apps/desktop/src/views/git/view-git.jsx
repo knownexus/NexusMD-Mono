@@ -1,6 +1,7 @@
 import React from 'react'
 import {
   ALL_PROJECTS, findGroup, scopeSnapshot, changeCount, renameGroup, duplicateGroup, deleteGroup, worktreeId, pruneSelection, commitTargets,
+  actionTargets,
 } from '@nexusmd/core'
 import { setGitConfig, getGitConfig, effectiveRoots } from '../../git-config.js'
 import { useGitConfig } from './use-git-config.js'
@@ -9,6 +10,9 @@ import { GroupTabs } from './group-tabs.jsx'
 import { WorktreeList } from './worktree-list.jsx'
 import { WorktreeDetail } from './worktree-detail.jsx'
 import { WorktreePanel } from './worktree-panel.jsx'
+import { HistoryPanel } from './history-panel.jsx'
+import { useGitSync } from './use-git-sync.js'
+import { ActionDialog, ActivityDrawer } from './action-dialog.jsx'
 import { GroupMenu } from './group-menu.jsx'
 import { GroupEditor } from './group-editor.jsx'
 import { useGitActions } from './use-git-actions.js'
@@ -42,6 +46,7 @@ function GitWorkspace({ adapter }) {
   }, [adapter])
   const { snapshot, error, loading, refresh, reload } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported })
   const actions = useGitActions({ adapter, registered, reload })
+  const sync = useGitSync({ adapter, registered, reload })
 
   if (config.unsupported) return card(`These Git Workspace settings were saved by a newer NexusMD (version ${config.unsupported}). Update NexusMD to use them.`, 'alert')
   if (gitVersion === null) return card('Git not found. Install Git for Windows (git-scm.com) and make sure git is on PATH, then reopen this screen.', 'alert')
@@ -83,6 +88,8 @@ function GitWorkspace({ adapter }) {
         <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           {loading ? 'Refreshing…' : snapshot ? `Updated ${new Date(snapshot.takenAt).toLocaleTimeString()}` : ''}
         </span>
+        <button className="btn sm ghost" disabled={!scoped.worktrees.length} onClick={() => sync.open('fetch', actionTargets('fetch', scoped.worktrees, null))}>Fetch all</button>
+        <button className="btn sm ghost" disabled={!scoped.worktrees.length} onClick={() => sync.open('pull', actionTargets('pull', scoped.worktrees, null), { mode: 'ff', batch: true })}>Pull all</button>
         <button className="btn sm ghost" aria-label="Refresh" onClick={refresh}>⟳</button>
       </div>
       {error && card(error, 'alert')}
@@ -103,11 +110,16 @@ function GitWorkspace({ adapter }) {
                 onAction={action => actions.openReview(action, selectedTree, selectedIds)} onCommit={() => openCommit()}
                 onHunk={(change, index, stamp, after) => actions.hunk(selectedTree, change, index, stamp, after)}
                 busy={!!actions.busy[selectedTree.path]} status={actions.status[selectedTree.path] ?? null}
-                split={view.split} onSplit={split => setView({ split })} />
+                split={view.split} onSplit={split => setView({ split })}
+                panel={view.panel} onPanel={panel => setView({ panel })}
+                onSync={(kind, options) => sync.open(kind, actionTargets(kind, [selectedTree], treeKey), options)} />
             )
-            : <WorktreeDetail tree={null} branch={selectedBranch} />}
+            : <BranchHistory adapter={adapter} branch={selectedBranch} repos={config.repos} worktrees={snapshot?.worktrees ?? []}
+              registered={registered} split={view.split} onSplit={split => setView({ split })} />}
         </aside>
       </div>
+      <ActivityDrawer sync={sync} />
+      <ActionDialog sync={sync} adapter={adapter} registered={registered} />
       {menuFor && (
         <GroupMenu name={menuFor} onClose={() => setMenuFor(null)} editBusy={editBusy}
           onEdit={() => setEditing({ name: menuFor })}
@@ -140,6 +152,21 @@ function GitWorkspace({ adapter }) {
           onClose={() => setCommitting(null)} onDone={reload}
           onRetry={async (failedIds, messages) => { setCommitting(null); await reload(); openCommit(failedIds, messages) }} />
       )}
+    </div>
+  )
+}
+
+// A branch that isn't checked out has no changes, only history. git runs in any usable worktree
+// of its repository, or in the common dir (the bare entry) of a layout with none.
+function BranchHistory({ adapter, branch, repos, worktrees, registered, split, onSplit }) {
+  const repo = branch ? repos.find(r => r.name === branch.repo) : null
+  if (!branch || !repo) return <WorktreeDetail tree={null} branch={branch} />
+  const cwd = worktrees.find(t => t.repo === branch.repo && !t.prunable && !t.error)?.path ?? branch.commonDir
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <WorktreeDetail tree={null} branch={branch} />
+      <HistoryPanel key={branch.id} adapter={adapter} repo={repo} cwd={cwd} registered={registered}
+        target={{ ref: branch.ref, head: branch.head || null }} split={split} onSplit={onSplit} />
     </div>
   )
 }

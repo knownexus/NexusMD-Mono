@@ -1,7 +1,7 @@
 # Git Workspace Module — Design
 
 **Date:** 2026-10-13
-**Status:** Approved design. Stage 1 implemented; stage 2 implemented (2026-10-14).
+**Status:** Approved design. Stage 1 implemented; stage 2 implemented (2026-10-14); stage 3 implemented (2026-10-15); stage 4 implemented (2026-10-15).
 **Repos touched:** `NexusMD-Mono` (new module). Reference implementation: `gws` in `C:\repos\DotFiles\pwsh\GitWorkspace` (C#, terminal UI), which this module replaces.
 
 ## Goal
@@ -381,3 +381,502 @@ A draggable divider sits between the changes and diff panes. Its ratio is stored
 - Core signatures: `fileReview(action, changes, selectedIds)` and `commitTargets(worktrees, selectedTreeId)`.
 - Write results are `{ ok, detail, stale? }`. Bad paths and unregistered repos still throw, as in stage 1.
 - The commit dialog labels each worktree's block "Staged files in <title>" so it doesn't duplicate the worktree checkbox's label.
+
+## Stage 3 — Commits browser
+
+Scope:
+- commit history for a worktree's HEAD, or for any local branch;
+- a graph with refs and unpushed markers;
+- literal search (`words` in the message, `@name` author, `:path` file);
+- filters: all / unpushed / since a base;
+- drill-down: commit → its files → a file's diff, with a choice of parent for merges;
+- commit details and file lists loaded in the background and cached.
+
+Stage 3 is **read-only**. It adds no write operation, takes no lock, and changes nothing in a repository. Everything in stage 4's list stays out of scope, including "check out this commit", revert and cherry-pick from the history.
+
+**Reference implementation.** gws's history code (`C:\repos\DotFiles\pwsh\GitWorkspace`) isn't in the DotFiles repository on GitHub, so this design was written from the summary above and NexusMD's stage 1–2 code, not from a line-by-line port. Points where gws behaviour should be matched are marked *(check against gws)*.
+
+### Architecture
+
+The same shape as stage 2: named read operations, exact argv in main, parsing in core.
+
+1. The renderer asks for a history page with a **query object**: which ref, which filter, which search, how many commits.
+2. Main validates every field, builds the argv itself and runs `git log --graph` with a fixed format.
+3. Core parses the text into rows. The renderer draws them and asks for a commit's details, files and diffs on demand.
+
+Commit objects never change, so everything keyed by a full commit id is cached in the renderer for the session. A history page is keyed by its query plus the tip commit id it was read at, so it's re-read only when the ref moves.
+
+Rejected options:
+- **Paging with `--skip`.** `git log --graph --skip=N` draws the graph from the skipped point, so lanes break between pages. Instead "Load more" re-runs the query with a larger limit (200 → 400 → … → 5000). That re-runs the walk, but the graph stays correct and the result is cached.
+- **A JS graph layout from parent ids.** Git's own `--graph` drawing is exact and well tested. Core only colours and re-draws its characters.
+
+### Adapter contract (stage 3)
+
+Every call runs under stage 1's environment and process rules (absolute git path, `GIT_TERMINAL_PROMPT=0`, `GIT_OPTIONAL_LOCKS=0`, `LC_ALL=C`, stripped `GIT_*` location variables, `GIT_LITERAL_PATHSPECS=1`, 30 s timeout with a tree-kill). Every call also adds:
+
+```
+git --no-pager -c core.fsmonitor=false -c log.showSignature=false -c i18n.logOutputEncoding=UTF-8 -c color.ui=never …
+```
+
+`log.showSignature=false` stops a repository's config from making `log` run gpg on every commit.
+
+All four methods take `(repo, worktreePath, registered, …)`, like stage 2. `worktreePath` must be exactly an entry of `git worktree list --porcelain` for that repo. A bare entry counts, so a `.bare` layout can show branch history without a checked-out worktree.
+
+| Method | Main runs | Returns |
+|---|---|---|
+| `refs(repo, worktreePath, registered)` | `for-each-ref --format=%(refname)%00%(objectname)%00%(upstream)%00%(HEAD) refs/heads/ refs/remotes/ refs/tags/`, plus `symbolic-ref --quiet refs/remotes/origin/HEAD` and `rev-parse --is-shallow-repository` | `{ refs: raw text, originHead: ref \| null, shallow }` |
+| `log(repo, worktreePath, registered, query)` | See **Building the log argv** below | `{ text, tip, unpushed: [oid], truncated, limit }` |
+| `commitDetails(repo, worktreePath, registered, oid)` | 1. `rev-parse --verify --quiet --end-of-options <oid>^{commit}`. 2. `show -s --decorate=full --format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%D%x00%B --end-of-options <oid>`. | `{ details: raw text }`, or `{ missing: true }` |
+| `commitFiles(repo, worktreePath, registered, oid, parent)` | `diff-tree --no-commit-id -r -z -M --name-status --no-ext-diff --no-textconv <parent> <oid>`; for a root commit, `diff-tree --no-commit-id --root -r -z -M --name-status <oid>` (without `--no-commit-id`, `--root` prints the commit id as an extra record) | `{ files: raw text }` |
+| `commitDiff(repo, worktreePath, registered, oid, parent, paths)` | `diff --no-color --no-ext-diff --no-textconv -M -U3 <parent> <oid> -- <paths>`; for a root commit, `show --format= --no-color --no-ext-diff --no-textconv -M -U3 <oid> -- <paths>`. Same 1 MB cap and binary detection as stage 2. | `{ text, truncated, binary }` |
+
+**Query object** (built by core, checked again by main):
+
+```js
+{
+  ref: 'HEAD' | 'refs/heads/<name>',       // HEAD only for a worktree, a branch for inactive branch rows
+  filter: 'all' | 'unpushed' | 'sinceBase',
+  base: 'refs/heads/<x>' | 'refs/remotes/<r>/<x>' | null,   // required for sinceBase
+  search: null | { kind: 'message' | 'author' | 'path', text },
+  limit: 200 | 400 | … | 5000,
+}
+```
+
+**Checks before spawning** (anything else is refused with a message, nothing spawned):
+- `ref` is `HEAD` or exactly one of the `refs/heads/` names `for-each-ref` returns now. `base` is exactly one returned `refs/heads/` or `refs/remotes/` name.
+- `limit` is a multiple of 200 from 200 to 5000.
+- Search text is 1–200 characters, with no NUL, CR or LF.
+- A `path` search is a relative path inside the worktree (stage 2's `requirePaths` rule).
+- `oid` is 40 (SHA-1) or 64 (SHA-256) lowercase hex characters. `parent` is either `null` (root commit) or one of that commit's own parents, read with `rev-list --parents --max-count=1 --end-of-options <oid>`.
+
+**Building the log argv:**
+
+```
+log --graph --topo-order --decorate=full --max-count=<limit+1> --no-color --no-ext-diff --no-textconv
+    --format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s
+    [search flags] [exclusions] --end-of-options <revs> [-- <path>]
+```
+
+- `all` → `--end-of-options <ref>`.
+- `unpushed` → `--not --remotes --not --end-of-options <ref>`. Everything after `--end-of-options` is a revision, so the exclusion has to come first; the second `--not` turns exclusion off again before `<ref>`. (`<ref> --not --remotes` would put `--not` after `--end-of-options`, where it isn't an option.)
+- `sinceBase` → `--end-of-options <base>..<ref>`.
+- Message search: `--fixed-strings --regexp-ignore-case --grep=<text>`. Author search: `--fixed-strings --regexp-ignore-case --author=<text>`. Each is a single argv element starting with `--grep=` / `--author=`, so the text can't become an option.
+- Path search: `-- <path>` (literal, from `GIT_LITERAL_PATHSPECS`). Git simplifies the graph to commits touching that path, as it does in a terminal.
+- Reading `limit + 1` commits tells main whether there are more (`truncated`); the extra row is dropped before returning.
+- `tip` is `rev-parse --verify --end-of-options <ref>^{commit}`, read just before the log. An unborn branch returns `tip: null` and no text.
+- `unpushed` is `rev-list --max-count=<limit> --not --remotes --not --end-of-options <ref>`: commits on this ref that no remote-tracking branch has. If the repo has no remotes it's `null`, not "everything", and the UI says "No remotes".
+
+Output over 8 MB is cut at the last complete record and reported as `truncated`.
+
+These forms were checked against git 2.43: the `--not … --not --end-of-options` order, `--fixed-strings` applying to both `--grep` and `--author`, `<base>..<ref>` after `--end-of-options`, and an option-like word after `--end-of-options` being refused (`option '--all' must come before non-option arguments`) rather than obeyed.
+
+### Core (`packages/core/src/modules/git`, pure ESM)
+
+**`history.js`**
+- `parseLog(text)` → `rows: [{ graph, commit? }]`.
+  - Each output line is the graph prefix (git's `* | / \ _ .` characters and spaces), then, on commit lines, `\x1e` and the record.
+  - `commit` is `{ oid, parents: [oid], author, email, time, refs, subject }`. Lines with no record are connector rows (graph only).
+  - `refs` comes from `%D` with `--decorate=full`: `HEAD -> refs/heads/main`, `refs/remotes/origin/main`, `tag: refs/tags/v1.2`, a detached `HEAD`. Each becomes `{ kind: 'head' | 'branch' | 'remote' | 'tag', name }` with the short name. Full names are what make the kind unambiguous: with short names, a local branch called `origin/main` would look like a remote one.
+- `graphCells(graph)` → `[{ ch, lane }]`: git's ASCII redrawn as box-drawing glyphs (`*` → `●`, `|` → `│`, `/` → `╱`, `\` → `╲`), with a lane index for colouring. *(check against gws's graph glyphs and colours)*
+- `parseSearch(input)` → `null` | `{ kind, text }`. A leading `@` means author, a leading `:` means path, anything else is message words. `\@` and `\:` escape a literal first character. Text is trimmed; whitespace inside it is kept.
+- `historyQuery({ tree | branch, filter, base, search, limit })` builds the query object. It throws the same messages main uses, so bad input is caught before IPC.
+- `defaultBase(refs, tree)` picks the "since base" default:
+  1. the upstream's remote's HEAD (`refs/remotes/origin/HEAD` → its target);
+  2. else `refs/heads/main`, then `refs/heads/master`, if they exist and aren't the ref itself;
+  3. else none, and the filter asks the user to pick.
+- `parseCommitDetails(raw)` → `{ oid, parents, author, authorEmail, authorDate, committer, committerEmail, committerDate, refs, message }`.
+- `parseNameStatus(raw)` → `[{ status, path, oldPath? }]` for `M A D T R### C###` records (the `R`/`C` records carry two paths).
+- `parentLabel(details, index)` → `'1 (main line)'`, `'2 (merged in)'`, and so on, plus the parent's short id.
+
+All new exports are added to `public-api.test.js`.
+
+### Screens (stage 3)
+
+**Changes | History.** The worktree panel gets a two-button switch above the header strip. The choice is stored in `view.panel` (`'changes'` default). Selecting an **inactive branch row** (◇) opens History for that branch, because a branch that isn't checked out has no changes to show.
+
+**History layout.** It reuses the panel's draggable divider and `view.split`:
+1. **Toolbar:**
+   - A search box with the placeholder "words · @author · :path". Enter runs the search; Esc clears it.
+   - The filter switch: `All` `Unpushed` `Since [base ▾]`. `Unpushed` shows "No remotes" and is disabled when the repo has none.
+   - The commit count, "Load more" while `truncated`, and a ⟳ button.
+   - Notes for a shallow clone ("Shallow clone — older history isn't here") and for an unborn branch ("No commits yet").
+2. **Commit list:** one row per commit, each with:
+   - the graph cells;
+   - ref chips (HEAD, local branch, remote branch, tag; each in its own style);
+   - the subject;
+   - the author;
+   - a relative date (the full date in a tooltip);
+   - `↑` when the commit is unpushed.
+
+   Connector rows are drawn graph-only and are skipped by keyboard focus.
+3. **Commit detail** (below the divider):
+   - the full id (with Copy), author and committer when they differ, dates, and the full message;
+   - parents as links that jump to that commit in the list (or show it on its own if it isn't loaded);
+   - for a merge, **Compare with parent** `[1 (main line) ▾]`, default parent 1;
+   - the file list (status code, path, `← old` for renames);
+   - the focused file's diff, in stage 2's `DiffPane` with a read-only legend (`− old: <parent short id>` / `+ new: <commit short id>`) and no hunk buttons.
+
+**Interaction.**
+- ↑/↓ moves through commits, Enter moves focus into the file list, Esc goes back, `/` focuses the search box.
+- Selecting a commit loads its details and file list. The first file's diff loads only when a file is focused.
+- **Background loading:** after the focused commit, details and file lists for the next five commits are fetched, with at most two history requests in flight. That keeps the 10 s status polls (which share main's concurrency limit of 6) from waiting behind history.
+- **Caches** (session, in memory):
+  - details and file lists by oid (up to 500 commits);
+  - diffs by (oid, parent, path) (up to 200);
+  - log pages by (repo, query, tip).
+
+  A new snapshot that shows the worktree's HEAD (or the branch's tip) moved re-reads the visible page in the background. The old rows stay on screen until it arrives, and the focused commit stays focused if it's still in the page.
+
+### Error handling (stage 3)
+
+| Situation | Behaviour |
+|---|---|
+| Invalid search (empty, too long, newline, path outside the worktree) | Caught in core before any IPC; shown under the search box |
+| `log` takes longer than 30 s | The tree is killed. Shows "History took too long - narrow it with a search or a filter." Earlier pages stay on screen. |
+| Shallow clone | The history ends where the clone does, with the shallow note; `unpushed` may over-report, and the note says so |
+| Unborn branch | "No commits yet"; no git log is run |
+| A commit id no longer exists (history rewritten, then gc) | "This commit no longer exists - refresh"; its cache entries are dropped |
+| Ref deleted or renamed since the list was read | Main refuses the query ("That branch no longer exists"); the view falls back to the worktree's HEAD, or to the branch list for an inactive branch row |
+| Diff over 1 MB, or binary | Stage 2's truncated or binary notice |
+| No remotes | `Unpushed` disabled with "No remotes"; no `↑` markers |
+| `since base` with no base found | The filter opens its base picker instead of running |
+
+### Residual risk (stage 3)
+
+- Every diff and log uses `--no-ext-diff --no-textconv`, so repository-configured diff programs don't run. Commit-to-commit diffs read objects only, so clean/smudge filters don't run either (they run against the working tree, which stage 3 never compares).
+- `log.showSignature=false` keeps gpg from running. A repo's `core.hooksPath` is irrelevant: nothing in stage 3 triggers a hook.
+- So stage 3 adds no new exposure to repository-configured programs. The ownership / `safe.directory` question raised in stage 1 stays open for **stage 4**, whose pull, rebase and checkout run filters and hooks.
+- Search text reaches git only as the tail of a single `--grep=` / `--author=` element or after `--`; refs and oids only after `--end-of-options`, and only after matching a list main read itself.
+
+### Testing (stage 3)
+
+**Core:**
+- `parseLog` on recorded `git log --graph` output: a linear history, a merge, an octopus merge, a criss-cross merge, a root commit, a detached HEAD, tags, remote refs, `HEAD -> branch`, unicode and very long subjects, and a page truncated mid-graph.
+- `graphCells` glyphs and lane numbers on the same fixtures.
+- `parseSearch`: each prefix, escapes, trimming, the error cases.
+- `historyQuery` refusals; `defaultBase` with and without `origin/HEAD`, `main`, `master`.
+- `parseCommitDetails` (multi-line message, empty body, different committer) and `parseNameStatus` (renames, copies, type changes, unicode paths).
+- Public API.
+
+**IPC (injected spawn):**
+- Exact argv for each filter × search combination, including `--end-of-options` placement and `limit + 1`.
+- Refusals spawn nothing: a ref not in `for-each-ref`, a base that isn't a branch, a non-hex oid, a parent that isn't one of the commit's parents, search text with a newline, a path outside the worktree, a limit off the 200 step.
+- `unpushed` is `null` with no remotes.
+- The 8 MB cut lands on a record boundary.
+- The global `-c` flags are present on every history call.
+
+**Integration (real git, temporary repos):**
+- A repo with a merge, a tag, a pushed and an unpushed commit (a bare "remote" in the temp folder): filters return the right commits, `↑` marks only the unpushed ones, and `since base` matches `git log base..ref`.
+- Message, author and path searches with regex characters (`a.b`, `[x]`, `*`) are matched literally.
+- Merge-parent diffs: parent 1 vs parent 2 file lists differ as expected.
+- A `.bare` layout shows branch history from its bare entry.
+- `log.showSignature=true` in the repo's config doesn't run gpg (a fake `gpg.program` that records it was called stays unused).
+
+**UI (jsdom, fake adapter):**
+- The Changes | History switch and `view.panel`; an inactive branch row opens History.
+- Rows render graph, ref chips and `↑`; connector rows are skipped by ↑/↓.
+- Search parsing errors show under the box; Enter runs, Esc clears.
+- Filters change the query; "No remotes" disables Unpushed.
+- Load more raises the limit and keeps the focused commit.
+- Selecting a merge offers parents, and switching parent reloads the file list.
+- At most two background requests are in flight; cached commits don't refetch.
+- A moved tip re-reads the page and keeps the old rows until it arrives.
+
+**E2E:** the existing smoke test still opens the view (reported as blocked in headless shells).
+
+## Amendments made during stage 3 planning and implementation
+
+**Planning decisions:**
+- The adapter methods are `refs`, `log`, `commitDetails`, `commitFiles` and `commitDiff`. `commitDetails` avoids a clash with stage 2's `commit` write.
+- `commitDiff` takes `paths`: both names of a rename, like stage 2's hunk operations.
+- **Where history runs:**
+  - for a worktree, in that worktree;
+  - for an inactive branch, in the repository's first usable worktree, or in its common dir (the bare entry of a `.bare` layout with no worktrees).
+- `refs` is read once per History view and on ⟳. A query naming a ref that's gone is refused with `That branch no longer exists.`, and the view re-reads the refs. That re-read doesn't re-run the log, so a gone branch can't loop.
+- `DiffPane` gains optional `sides` and `readOnly` props. Stage 2 callers are unchanged.
+- Every `diff-tree` call passes `--no-commit-id`; with `--root` it otherwise prints the commit id as an extra record.
+
+**Found while implementing:**
+- **Case-insensitive search folds ASCII letters only.** Every git call runs under `LC_ALL=C` (stage 1), so `ana` finds `Ana`, but `ñ` doesn't find `Ñ`. Unicode text still matches in its exact case.
+- **A `:path` search uses git's default history simplification,** exactly as `git log -- <path>` in a terminal. A merge that changed nothing in that path relative to one parent isn't listed.
+- **The default "since" base can be none.** That happens on `main` when `origin/HEAD` isn't set: the rule never picks the ref itself. The filter then asks for a base.
+- **A page is re-read when the snapshot's tip for the target moves,** not on every 10 s poll.
+- **The queue drops stale requests.** Moving focus drops every queued (not yet running) commit and diff request, so fifty quick focus moves cause a handful of reads, never more than two at once.
+- **A parent that isn't on the loaded page** is shown on its own until focus moves.
+
+## Stage 4 — Branch and sync actions
+
+Scope, as listed under Phasing:
+- fetch;
+- pull: fast-forward by default, rebase or merge when chosen;
+- push: never force; explicit remote and ref; the first push sets the upstream;
+- create a branch, and check out a branch or a commit;
+- new worktree, and remove a clean worktree;
+- stash push, apply, pop and drop;
+- revert;
+- continue or abort an operation in progress;
+- interactive rebase.
+
+Every action follows the same path: a **preview**, then a **confirm**, then a **per-target result in an activity log**. Batches across repositories are not atomic, and the preview says so. **Retry** repeats only the failures, and refuses to run if their state changed since the preview.
+
+Still out of scope:
+- deleting branches, local or remote;
+- force pushes of any kind;
+- `reset`, `clean`, tags, submodule updates;
+- `cherry-pick`, `rebase --rebase-merges`, and the `edit`, `break` and `exec` rebase commands.
+
+**Reference implementation.** As for stage 3, gws's source isn't on GitHub. Behaviour that should match gws is marked *(check against gws)*.
+
+### Trust: settling the `safe.directory` question from stage 1
+
+Stage 1 asked whether to check folder ownership before running git in discovered folders. Stage 4 settles it as follows.
+
+1. **Git's own ownership check stays in charge, and NexusMD never weakens it.**
+   - Since 2.35.2, git refuses a repository whose folder another user owns ("detected dubious ownership"). Git for Windows does the same with the owner SID.
+   - NexusMD never adds `safe.directory` entries and never passes `-c safe.directory=…`.
+   - The refusal is shown as: "Git refuses this repository because another user owns its folder. If you trust it, run `git config --global --add safe.directory <path>` yourself."
+2. **Registration is the trust decision.**
+   - Every stage 4 action runs only on a **registered** repository (stage 1's rule for all operations).
+   - Discovery never runs anything but stage 1's read-only probes. A discovered repository has to be registered, which is an explicit user action, before any action can touch it.
+3. **Repository-configured programs run, as in a terminal.** In a registered repository they run exactly as `git` would run them in that folder:
+   - hooks: `post-checkout`, `post-merge`, `pre-push`, `pre-rebase`, `post-rewrite`;
+   - clean/smudge filters;
+   - `core.sshCommand`;
+   - credential helpers.
+
+   This is the class of risk stages 1–2 accepted, now extended to the write actions that trigger these programs.
+4. **The preview names those programs.** It lists the repository's active hooks (non-sample files in the hooks folder, honouring `core.hooksPath`) and any repo-local `filter.*`, `core.sshCommand` and `credential.helper` settings. That way the user sees what will run before confirming.
+
+### devenv overlap
+
+devenv keeps its Start-tab flow (stage 1 decision). Stage 4 was reviewed against devenv's `session.ps1` (`New-BranchWorktree`, `Get-LocalWorktrees`, `Select-Ref`) at devenv `a49576c`.
+
+- **New worktrees use devenv's layout.** The default path is `<repository root>/<branch short name>`, with `\ / : * ? " < > |` replaced by `-`. An existing local branch of that name is checked out rather than duplicated; otherwise the branch is created from the remote ref with tracking. devenv's worktree picker lists any folder `git worktree list` reports, so both tools see each other's worktrees.
+- **devenv never fetches** ("This never fetches"). Stage 4's Fetch is how its remote-branch picker gets new branches, and the preview says so.
+- **No lock is shared with devenv.**
+  - devenv builds each worktree as it is on disk, so a checkout, pull or rebase changes what its next build uses, exactly as the same command in a terminal would.
+  - Concurrent git writes are serialised by git's own `index.lock` and by stage 2's per-repo lock on NexusMD's side.
+  - Coupling the Git module to devenv's lock file was rejected: the modules stay independent.
+
+### Architecture
+
+The same shape as stage 2: named operations, exact argv in main, and a **stamp** of what the preview showed.
+
+1. The renderer asks main for a **plan** for one action and its targets: `preview(kind, targets, options)`.
+2. Main reads each target's state and returns, per target:
+   - eligibility, with the reason when skipped;
+   - what will happen (commits to push, the upstream to merge, the files a stash takes);
+   - the programs that will run;
+   - a `stamp`.
+
+   Main keeps no plan objects; the stamp is the only link between preview and run.
+3. The renderer runs the confirmed targets with `run(kind, target, options, stamp)`, one target at a time per repository. Main recomputes the stamp under the repo lock and refuses on a mismatch ("Changed since the preview. Preview again.").
+
+**Target stamp:** `sha256(HEAD oid, symbolic HEAD, upstream ref, upstream oid, porcelain v2 status, in-progress operation)`. For a stash action it also includes the stash entry's oid. For push it also includes the destination ref's last-fetched oid.
+
+**Environment added for stage 4 writes** (on top of stage 1–2's):
+- `GIT_EDITOR` and `GIT_SEQUENCE_EDITOR` point to a no-op helper, so no git command can ever wait on an editor. Interactive rebase replaces both (below).
+- `GIT_MERGE_AUTOEDIT=no`.
+- The helper is `electron/ipc/git-editor.cjs`, run with Electron's own binary and `ELECTRON_RUN_AS_NODE=1`, so it doesn't depend on a shell or on Node being installed.
+
+**Timeouts:**
+- 120 s for anything that talks to a remote (fetch, pull, push) or runs hooks (checkout, merge, rebase, revert, worktree add);
+- 30 s otherwise.
+
+A network timeout says: "git timed out talking to <remote> - a credential or SSH prompt may be waiting. Run `git fetch` once in a terminal to set it up." stdin is closed and `GIT_TERMINAL_PROMPT=0` (stage 1), so prompts fail rather than hang until the timeout.
+
+### Adapter contract (stage 4)
+
+Every method takes `(repo, worktreePath, registered, …)` with stage 2's exact-worktree rule. Repository-wide actions (fetch, branch create) use any listed worktree, or the bare entry.
+
+| Method | Purpose |
+|---|---|
+| `remotes(repo, wt, registered)` | `remote -v` → names and URLs, for push and fetch previews |
+| `preview(repo, wt, registered, kind, options)` | Reads state and returns `{ eligible, reason, details, programs, stamp }` |
+| `run(repo, wt, registered, kind, options, stamp)` | Runs one action, returning `{ ok, detail, stale?, conflict?, operation? }` |
+| `stashes(repo, wt, registered)` | `stash list --format=%H%x00%gd%x00%ct%x00%s` |
+
+`kind` and its argv. Main builds every argv; `options` fields are validated against lists main reads itself (remotes, refs, stash oids, commit parents).
+
+| `kind` | Main runs | Refused when |
+|---|---|---|
+| `fetch` | `fetch --all --prune` (it keeps writing FETCH_HEAD, which stage 1 shows as "last fetch") | never; a remote failure is that target's result |
+| `pull` (`mode: 'ff'`) | `fetch <remote>`, then `merge --ff-only --end-of-options <upstream>` | no upstream, or upstream gone; an operation in progress |
+| `pull` (`mode: 'rebase'`) | `fetch <remote>`, then `rebase --end-of-options <upstream>` | as `ff`, plus local changes (rebase needs a clean worktree; the preview offers Stash first) |
+| `pull` (`mode: 'merge'`) | `fetch <remote>`, then `merge --no-edit --end-of-options <upstream>` | as `ff` |
+| `push` | `push --porcelain [--set-upstream] <remote> refs/heads/<local>:refs/heads/<dest>` | detached HEAD; `<dest>` failing `check-ref-format`; a rejection from the remote (non-fast-forward) is reported as "The remote has commits you don't have - pull first." Force is never offered |
+| `branch` | `branch --no-track <name> <startOid>`, or `switch -c` / `switch --track -c` when "check it out" is ticked | name failing `check-ref-format --branch`, or already existing |
+| `checkout` | `switch <branch>`, or `switch --detach <oid>` for a commit | the branch is checked out in another worktree (git refuses; the preview says where) |
+| `worktreeAdd` | `worktree add [--track -b <name>] <path> <ref>`, with devenv's path rule | path exists, isn't absolute, is UNC, or its parent is missing; branch checked out elsewhere |
+| `worktreeRemove` | `worktree remove <path>` (no `--force`) | the main worktree; locked; changes or untracked files (git refuses too) |
+| `stashPush` | `stash push [--include-untracked] -m <message>` | nothing to stash |
+| `stashApply` / `stashPop` | `stash apply [--index] <oid>`; pop is apply, then drop if the apply was clean | the oid isn't in the stash list |
+| `stashDrop` | `stash drop stash@{n}`, after checking `stash@{n}` is still the oid shown | oid moved; typed confirmation `DROP` required in the UI |
+| `revert` | `revert --no-edit [-m <parent number>] --end-of-options <oid>` | an operation in progress; a merge without a chosen parent (stage 3's parent picker) |
+| `continue` / `abort` | `<rebase\|merge\|revert\|cherry-pick> --continue` / `--abort` | no such operation in progress; `--continue` with conflicts left |
+| `rebaseInteractive` | See below | see below |
+
+Every argv form in this table was run against git 2.43 while designing. That includes `push --porcelain --set-upstream` with explicit refspecs, `merge --ff-only --end-of-options`, `switch --track -c`, `worktree add --track -b`, `stash apply --index <oid>`, `revert -m 2 --end-of-options` and `check-ref-format --branch`.
+
+
+### Interactive rebase
+
+**What it can do:** reorder, `pick`, `drop`, `squash`, `fixup` and `reword`, over the commits from a base (the upstream, or a commit chosen in History) to HEAD. Stage 3's History opens it from the base commit.
+
+**Where it's allowed: only on unpushed commits.**
+- The range must contain no commit reachable from any remote-tracking ref (`--not --remotes`), and no merge commits.
+- Otherwise it's refused: "Interactive rebase only rewrites commits that haven't been pushed." or "…ranges without merge commits."
+- So it never rewrites published history, and so never creates a need for a force push, which stage 4 never offers.
+
+**How it runs without a terminal** (verified with git 2.43 while designing):
+- `GIT_SEQUENCE_EDITOR` runs the helper, which replaces git's todo file with the todo the user arranged. The todo is passed through a temporary file, `0600` in the OS temp folder and deleted afterwards.
+- `GIT_EDITOR` runs the helper, which reads the last line of `<git dir>/rebase-merge/done` to find which commit is being edited, then writes the message the user gave for it.
+  - A `reword` message is keyed by that commit.
+  - A squash group's message is keyed by the **last** commit of the group: git calls the editor once, after the group's last `squash` line.
+  - With no message given, the helper leaves git's file as is.
+- Command: `rebase -i --end-of-options <baseOid>`. The todo only uses `pick`, `reword`, `squash`, `fixup` and `drop` with full oids, and every oid must be in the range main read.
+
+**Stamp:** the target stamp, plus the range's oids in order.
+
+**Conflicts:**
+- Git stops and stage 1 shows "Rebase in progress".
+- The user resolves in their editor and stages with stage 2, which allows staging during a conflict.
+- Then they choose **Continue** or **Abort** (Abort asks for confirmation).
+- The pending messages stay in the temp file until the rebase finishes or is aborted, so later rewords still get theirs.
+
+### Core (`packages/core/src/modules/git`, pure ESM)
+
+**`actions.js`**
+- `actionTargets(kind, worktrees, selectedId, group)` → `[{ id, repo, worktreePath, ticked, unavailable }]`. Batches apply only to `fetch` and `pull` (ff), across the current group; every other action has one target.
+- `previewModel(kind, previews)` builds the preview dialog's rows: the eligible targets, the skipped ones with reasons, and the programs that will run. It carries the note "Each repository runs separately; if one fails the others are not undone."
+- `worktreeDefaultPath(repoRoot, branchShortName)` applies devenv's rule.
+- `checkBranchName(name)` is a pure first pass mirroring `check-ref-format --branch`. Main still runs git's own check.
+
+**`rebase-plan.js`**
+- `rebasePlan(commits)` → editable rows `{ oid, subject, action, message }`.
+- `move`, `setAction`, `setMessage`.
+- `rebaseTodo(rows)` → todo text.
+- `rebaseMessages(rows)` → `{ oid: message }`, with a squash group keyed by its last commit.
+- `rebaseProblems(rows)`:
+  - the first row can't be `squash`/`fixup`;
+  - at least one row must remain;
+  - an empty `reword` message.
+
+**`activity.js`**
+- The session activity log: `{ at, repo, worktree, kind, summary, ok, detail }`, newest first, capped at 200.
+- Retry selection: failures only, re-previewed.
+
+All new exports are added to `public-api.test.js`.
+
+### Screens (stage 4)
+
+**Worktree panel header:**
+- **Sync:** `Fetch` `Pull ▾` (Fast-forward / Rebase / Merge) `Push…`.
+- **Branch ▾:** New branch… / Check out… / New worktree… / Remove worktree… / Stash… .
+- When an operation is in progress, a banner with **Continue** and **Abort**.
+
+**Group tab menu:** **Fetch all** and **Pull all (fast-forward)** across the group, as a batch.
+
+**History** (stage 3) gains a commit context menu:
+- **New branch here…**
+- **Check out (detached)…**
+- **Revert…**
+- **Rebase from here…** (interactive; only shown when the range is unpushed and has no merges)
+
+**Preview dialog** (`PlModal`, wide), per target:
+- `repo › worktree → branch`;
+- what will happen (commits listed with subjects; ahead/behind; new branch / upstream set);
+- skipped targets with reasons;
+- "Runs: pre-push hook, post-merge hook, filter lfs" when any;
+- the non-atomic note for batches.
+
+Enter or the button runs it. **Stash Drop** needs the word `DROP` typed; **Abort** asks for a plain confirm.
+
+**Interactive rebase dialog:**
+- The commits, oldest first, each with an action select and drag handles (↑/↓ buttons too).
+- A message field appears for `reword`, and on the last row of each squash group.
+- Problems from `rebaseProblems` block Run.
+
+**Activity log:** a collapsible drawer under the panel. One line per target: time, `repo › worktree`, action, ✓/✗, with git's output on expand. It has **Retry failed** and **Copy**, and lasts for the session.
+
+**After any action:** a quiet snapshot refresh; History reloads if the tip moved (stage 3).
+
+### Error handling (stage 4)
+
+| Situation | Behaviour |
+|---|---|
+| Stamp mismatch | Nothing runs: "Changed since the preview. Preview again." |
+| Dubious ownership | git's refusal is shown with the `safe.directory` command for the user to run; NexusMD never runs it |
+| Push rejected (non-fast-forward) | "The remote has commits you don't have - pull first." Never offers force |
+| Network or credential failure | git's stderr, plus the timeout hint above when it timed out |
+| Rebase or merge conflict | The result says so; stage 1 shows the operation; Continue / Abort in the banner |
+| A hook rejects | git's stderr verbatim (as stage 2's commit) |
+| Worktree remove refused | git's reason (changes, untracked files, locked); never `--force` |
+| Batch partly fails | The others still run; per-target results; Retry failed re-previews only the failures |
+| `index.lock` | stage 2's lock hint; the module never deletes the lock |
+| Stash apply would overwrite files (its untracked files already exist) | git's message ("already exists, no checkout"); the stash is kept, never dropped |
+
+### Testing (stage 4)
+
+**Core:**
+- `actionTargets` batching and unavailable reasons;
+- `worktreeDefaultPath` against devenv's examples (`feature/x` → `feature-x`, `a:b` → `a-b`);
+- `checkBranchName`;
+- `rebasePlan`, `rebaseTodo` and `rebaseMessages`, including a squash group keyed by its last commit;
+- `rebaseProblems`;
+- activity log cap and retry selection;
+- the public API.
+
+**IPC (injected spawn):**
+- Exact argv for each kind and mode.
+- No `--force`, `-f`, `--force-with-lease`, `reset`, `clean`, `branch -D` or `push --delete` anywhere: a test scans every argv built.
+- Stamp mismatch spawns nothing.
+- Every validation refusal spawns nothing.
+- The editor variables are set on every write.
+- Timeouts of 120 s for network and hook kinds.
+
+**Integration (real git; a bare "remote" in the temp folder):**
+- fetch;
+- pull in each mode, including a fast-forward refusal on divergence;
+- first push sets the upstream, and a rejected push gets the right message;
+- branch, then checkout, then switch back;
+- worktree add with devenv's path and existing-branch reuse, then remove (and refusal when dirty);
+- stash push, apply, pop and drop;
+- revert of a normal commit and of a merge with `-m 2`;
+- interactive rebase that reorders, rewords and squashes (messages land as given);
+- a rebase stopped by a conflict, then Continue after staging, and Abort;
+- refusal on a pushed range;
+- a `pre-push` hook that rejects;
+- a repository owned by another user (Linux CI only, skipped on Windows) shows the ownership message and nothing runs.
+
+**UI (jsdom, fake adapter):**
+- the preview dialog per kind, with skipped reasons and programs;
+- typed `DROP`;
+- the batch note;
+- the rebase dialog's ordering, actions, messages and problems;
+- the Continue / Abort banner;
+- the activity log with Retry failed re-previewing only failures;
+- the History context menu entries, and their hiding rules for rebase.
+
+**E2E:** the existing smoke test (blocked in headless shells).
+
+## Amendments made during stage 4 planning and implementation
+
+**Editors and the helper:**
+- **Every write sets `GIT_EDITOR=:` and `GIT_SEQUENCE_EDITOR=:`,** git's built-in no-op, plus `GIT_MERGE_AUTOEDIT=no`. These override any editor in the user's environment; the development container itself exports `GIT_EDITOR=true`.
+- **Interactive rebase replaces both editors** with `ELECTRON_RUN_AS_NODE=1 "<electron>" "<git-editor.cjs>" <mode>`, with forward-slash paths. The variable is set inside the editor command, so it reaches the helper but not the repository's hooks. A real-git test proves a hook sees it empty.
+- **The rebase plan file:** the plan (`{ todo, messages }`) goes to a `0600` temp file. If the rebase stops on a conflict, its path is recorded in `<git dir>/nexusmd-rebase-plan`, so Continue passes the same editors and later rewords still apply. Abort, or a finished Continue, removes both files.
+- **Packaging:** `git-editor.cjs` is listed in `build.asarUnpack` and resolved through `app.asar.unpacked`.
+
+**Main process:**
+- **Actions live in `electron/ipc/git-actions.cjs`,** registered from `git.cjs` with its checks, per-repo lock and runner. `git()` gained an `env` option.
+- **Action timeouts are injectable** (`longTimeoutMs`, `shortTimeoutMs`), like stage 1's `timeoutMs`.
+- **Branch names are checked in two layers:** core's `checkBranchName`, then git's `check-ref-format --branch`. Core is stricter than git only for `@`, which `--branch` reads as the current branch.
+- **Pull previews use the last-fetched state** and say so; the run fetches first.
+- **Fetch's stamp ignores local state:** nothing local changes, so a commit made since the preview doesn't make a fetch stale.
+- **Repository lookup (stage 1's `resolve`) now reports git's ownership refusal** with the `safe.directory` hint, instead of "No repository at …". That's where a foreign-owned repository first fails, before any action can run.
+
+**Renderer:**
+- **Fetch all / Pull all** are toolbar buttons for the current group, so they work on All projects too, which has no group menu.
+- **Pull** opens the preview with a Fast-forward / Rebase / Merge switch, instead of a ▾ menu.
+- **History's commit actions** (new branch here, check out, revert, rebase from here) are offered only for a worktree's own HEAD history, not for an inactive branch row, because they act on a worktree.

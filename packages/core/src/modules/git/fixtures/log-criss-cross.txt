@@ -1,0 +1,11 @@
+*   c21bdf2303a2dd12f530c8d89d2571a29648e841f7309ed71a2b0e07ba3ef41991f683dcd8fb6a71 49b1a8aff9eb848cb5bcf63fff83e498017335b5Ana Ñana@example.com1791994609HEAD -> refs/heads/x1Merge branch 'x2' (early part) into x1
+|\  
+| | * 22c52391537766f1700c150cf58a4fc0a86290d449b1a8aff9eb848cb5bcf63fff83e498017335b5 f7309ed71a2b0e07ba3ef41991f683dcd8fb6a71Ana Ñana@example.com1791994609refs/heads/x2Merge branch 'x1' into x2
+| |/| 
+| |/  
+|/|   
+* | f7309ed71a2b0e07ba3ef41991f683dcd8fb6a71e907bed4b851e72a3ccdec922eb3e74365e2d48eAna Ñana@example.com1791994609x1
+| * 49b1a8aff9eb848cb5bcf63fff83e498017335b5e907bed4b851e72a3ccdec922eb3e74365e2d48eAna Ñana@example.com1791994609x2
+|/  
+* e907bed4b851e72a3ccdec922eb3e74365e2d48e83c3ed955ba9820058c36db38ad10f51157f2febAna Ñana@example.com1791994609tag: refs/tags/v1, refs/remotes/origin/mainc2 a.b
+* 83c3ed955ba9820058c36db38ad10f51157f2febAna Ñana@example.com1791994609c1 a.b

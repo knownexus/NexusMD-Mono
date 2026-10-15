@@ -21,4 +21,13 @@ export const gitAdapter = {
   stageHunk(repo, worktreePath, registered, paths, index, expected) { return api().stageHunk(repo, worktreePath, registered, paths, index, expected) },
   unstageHunk(repo, worktreePath, registered, paths, index, expected) { return api().unstageHunk(repo, worktreePath, registered, paths, index, expected) },
   commit(repo, worktreePath, registered, message, expected) { return api().commit(repo, worktreePath, registered, message, expected) },
+  refs(repo, worktreePath, registered) { return api().refs(repo, worktreePath, registered) },
+  log(repo, worktreePath, registered, query) { return api().log(repo, worktreePath, registered, query) },
+  commitDetails(repo, worktreePath, registered, oid) { return api().commitDetails(repo, worktreePath, registered, oid) },
+  commitFiles(repo, worktreePath, registered, oid, parent) { return api().commitFiles(repo, worktreePath, registered, oid, parent) },
+  commitDiff(repo, worktreePath, registered, oid, parent, paths) { return api().commitDiff(repo, worktreePath, registered, oid, parent, paths) },
+  remotes(repo, worktreePath, registered) { return api().remotes(repo, worktreePath, registered) },
+  stashes(repo, worktreePath, registered) { return api().stashes(repo, worktreePath, registered) },
+  preview(repo, worktreePath, registered, kind, options) { return api().preview(repo, worktreePath, registered, kind, options) },
+  run(repo, worktreePath, registered, kind, options, stamp) { return api().run(repo, worktreePath, registered, kind, options, stamp) },
 }

@@ -33,7 +33,9 @@ function fakes({ loadRejects = false } = {}) {
   return { wins, shell, ses, session, log, openReport: createReportWindows({ BrowserWindow: FakeWindow, shell, session, log }) }
 }
 
-const FILE = path.resolve('C:\\repos\\dev-environment\\.local\\test\\traces\\runs\\r1\\trace.html')
+// Absolute on whichever OS runs the tests: C:\… on Windows (as in the app), /… elsewhere.
+const abs = (...parts) => path.join(process.platform === 'win32' ? 'C:\\' : '/', ...parts)
+const FILE = abs('repos', 'dev-environment', '.local', 'test', 'traces', 'runs', 'r1', 'trace.html')
 
 describe('report windows', () => {
   it('opens a sandboxed window with no preload and loads the file', () => {
@@ -91,7 +93,7 @@ describe('report windows', () => {
   it('denies every permission but plain clipboard writes, installing the handlers once', () => {
     const { ses, session, openReport } = fakes()
     openReport(FILE)
-    openReport(path.resolve('C:\\other\\trace.html'))
+    openReport(abs('other', 'trace.html'))
     expect(session.fromPartition).toHaveBeenCalledWith('devenv-reports')
     expect(ses.setPermissionRequestHandler).toHaveBeenCalledTimes(1)
     expect(ses.setPermissionCheckHandler).toHaveBeenCalledTimes(1)

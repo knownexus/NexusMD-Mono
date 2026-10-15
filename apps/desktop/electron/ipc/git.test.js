@@ -5,7 +5,7 @@ import path from 'path'
 import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
 import { parseDiff } from '@nexusmd/core'
-import { register, gitEnv, isRepositoryRoot, findGit, extractHunk } from './git.cjs'
+import { register, gitEnv, isRepositoryRoot, findGit, extractHunk, logArgs, HISTORY_CONFIG } from './git.cjs'
 
 const ROOT = process.platform === 'win32' ? 'C:\\repos' : '/repos'
 const REPO = { name: 'App', path: path.join(ROOT, 'App') }
@@ -701,5 +701,335 @@ describe('git:deleteUntracked', () => {
     const unlink = vi.fn(p => { if (p.endsWith('deep.txt')) throw new Error('EBUSY: resource busy') })
     const [r] = await del(['new.txt', 'sub/deep.txt'], { unlink })
     expect(r).toEqual({ ok: false, detail: 'Deleted 1 of 2 files; could not delete sub/deep.txt: EBUSY: resource busy' })
+  })
+})
+
+describe('stage 3 history: refs and log', () => {
+  const H = HISTORY_CONFIG
+  const ORIGIN = 'refs/remotes/origin/main'
+  const REC = n => Array.from({ length: n }, (_, i) => `* \x1e${String(i).padStart(40, '0')}\x1f\x1fA\x1fa@b\x1f1\x1f\x1fc${i}`).join('\n') + '\n'
+  // Answers the history reads (which carry HISTORY_CONFIG); `over` replaces answers by subcommand.
+  const hist = (over = {}) => {
+    const base = reads()
+    return args => {
+      const isHist = H.every((a, i) => args[i] === a)
+      const a = isHist ? args.slice(H.length) : args
+      if (isHist && a[0] in over) return typeof over[a[0]] === 'function' ? over[a[0]](a) : over[a[0]]
+      if (a[0] === 'for-each-ref') return { stdout: `refs/heads/main\nrefs/heads/side\n${ORIGIN}\n` }
+      if (a[0] === 'rev-parse' && a.includes('--end-of-options')) return { stdout: `${HEAD}\n` }
+      if (a[0] === 'remote') return { stdout: 'origin\n' }
+      if (a[0] === 'rev-list') return { stdout: `${HEAD}\n` }
+      if (a[0] === 'log') return { stdout: REC(3) }
+      return base(a)
+    }
+  }
+  const histCalls = (calls, sub) => calls.filter(c => H.every((a, i) => c.args[i] === a) && c.args[H.length] === sub).map(c => c.args.slice(H.length))
+  const logCall = calls => histCalls(calls, 'log')[0]
+  const q = over => ({ ref: 'HEAD', filter: 'all', base: null, search: null, limit: 200, ...over })
+
+  it('runs log with the history config, the fixed format and limit + 1', async () => {
+    const { invoke, calls } = setup(hist())
+    const r = await invoke('git:log', REPO, WT, REG, q())
+    const call = calls.find(c => c.args[H.length] === 'log')
+    expect(call.raw.slice(0, 3 + H.length)).toEqual(['--no-pager', ...FSMON, ...H])
+    expect(logCall(calls)).toEqual(logArgs(q()))
+    expect(logCall(calls)).toEqual(['log', '--graph', '--topo-order', '--decorate=full', '--max-count=201', '--no-color', '--no-ext-diff', '--no-textconv',
+      '--format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s', '--end-of-options', 'HEAD'])
+    expect(r).toMatchObject({ tip: HEAD, unpushed: [HEAD], truncated: false, limit: 200 })
+    expect(r.text).toBe(REC(3))
+  })
+
+  it('puts the unpushed exclusion before --end-of-options', async () => {
+    const { invoke, calls } = setup(hist())
+    await invoke('git:log', REPO, WT, REG, q({ filter: 'unpushed' }))
+    expect(logCall(calls).slice(-5)).toEqual(['--not', '--remotes', '--not', '--end-of-options', 'HEAD'])
+    expect(histCalls(calls, 'rev-list')[0]).toEqual(['rev-list', '--max-count=200', '--not', '--remotes', '--not', '--end-of-options', 'HEAD'])
+  })
+
+  it('compares with a base as base..ref after --end-of-options', async () => {
+    const { invoke, calls } = setup(hist())
+    await invoke('git:log', REPO, WT, REG, q({ ref: 'refs/heads/side', filter: 'sinceBase', base: ORIGIN }))
+    expect(logCall(calls).slice(-2)).toEqual(['--end-of-options', `${ORIGIN}..refs/heads/side`])
+  })
+
+  it('keeps search text inside one argv element, matched literally', async () => {
+    const { invoke, calls } = setup(hist())
+    await invoke('git:log', REPO, WT, REG, q({ search: { kind: 'message', text: '--all' } }))
+    expect(logCall(calls)).toContain('--grep=--all')
+    expect(logCall(calls)).not.toContain('--all')
+    expect(logCall(calls)).toEqual(expect.arrayContaining(['--fixed-strings', '--regexp-ignore-case']))
+    await invoke('git:log', REPO, WT, REG, q({ search: { kind: 'author', text: 'a.b' } }))
+    expect(histCalls(calls, 'log')[1]).toContain('--author=a.b')
+    await invoke('git:log', REPO, WT, REG, q({ search: { kind: 'path', text: '-x [1].txt' } }))
+    const pathLog = histCalls(calls, 'log')[2]
+    expect(pathLog.slice(-2)).toEqual(['--', '-x [1].txt'])
+    expect(calls.find(c => c.args[H.length] === 'log').opts.env.GIT_LITERAL_PATHSPECS).toBe('1')
+  })
+
+  it.each([
+    ['a ref that no longer exists', q({ ref: 'refs/heads/gone' }), 'That branch no longer exists.'],
+    ['an option-like ref', q({ ref: '-x' }), 'Choose a branch'],
+    ['a tag as the base', q({ filter: 'sinceBase', base: 'refs/tags/v1' }), 'Pick a base to compare with'],
+    ['a base that no longer exists', q({ filter: 'sinceBase', base: 'refs/remotes/origin/gone' }), 'That branch no longer exists.'],
+    ['an odd page size', q({ limit: 300 }), 'Unsupported page size'],
+    ['too large a page', q({ limit: 5200 }), 'Unsupported page size'],
+    ['a two-line search', q({ search: { kind: 'message', text: 'a\nb' } }), 'Search must be one line'],
+    ['a path outside the worktree', q({ search: { kind: 'path', text: '../x' } }), 'Search paths must be inside the worktree'],
+    ['an absolute path', q({ search: { kind: 'path', text: path.join(ROOT, 'x') } }), 'Search paths must be inside the worktree'],
+    ['an unknown filter', q({ filter: 'weird' }), 'Unknown filter'],
+  ])('refuses %s without running log', async (_name, query, message) => {
+    const { invoke, calls } = setup(hist())
+    await expect(invoke('git:log', REPO, WT, REG, query)).rejects.toThrow(message)
+    expect(histCalls(calls, 'log')).toEqual([])
+    expect(histCalls(calls, 'rev-list')).toEqual([])
+  })
+
+  it('an unborn branch has no tip and runs no log', async () => {
+    const { invoke, calls } = setup(hist({ 'rev-parse': { code: 1 } }))
+    expect(await invoke('git:log', REPO, WT, REG, q())).toEqual({ text: '', tip: null, unpushed: [], truncated: false, limit: 200 })
+    expect(histCalls(calls, 'log')).toEqual([])
+  })
+
+  it('with no remotes, unpushed is null and rev-list is skipped', async () => {
+    const { invoke, calls } = setup(hist({ remote: { stdout: '' } }))
+    expect((await invoke('git:log', REPO, WT, REG, q())).unpushed).toBeNull()
+    expect(histCalls(calls, 'rev-list')).toEqual([])
+  })
+
+  it('keeps limit commits and says there are more', async () => {
+    const { invoke } = setup(hist({ log: { stdout: REC(201) } }))
+    const r = await invoke('git:log', REPO, WT, REG, q())
+    expect(r.truncated).toBe(true)
+    expect(r.text.split('\n').filter(l => l.includes('\x1e'))).toHaveLength(200)
+  })
+
+  it('cuts output over 8 MB at a line end', async () => {
+    const line = `* \x1e${'0'.repeat(40)}\x1f\x1fA\x1fa@b\x1f1\x1f\x1f${'x'.repeat(1000)}\n`
+    const big = line.repeat(Math.ceil((9 * 1024 * 1024) / line.length))
+    const { invoke } = setup(hist({ log: { stdout: big } }), {}, { timeoutMs: 5000 })
+    const r = await invoke('git:log', REPO, WT, REG, q({ limit: 5000 }))
+    expect(r.truncated).toBe(true)
+    expect(r.text.length).toBeLessThanOrEqual(8 * 1024 * 1024)
+    expect(r.text.endsWith('\n')).toBe(true)
+  })
+
+  it('reports a slow log with the history timeout message and kills it', async () => {
+    const { invoke, deps } = setup(hist({ log: 'hang' }))
+    await expect(invoke('git:log', REPO, WT, REG, q())).rejects.toThrow('History took too long - narrow it with a search or a filter.')
+    expect(deps.kill).toHaveBeenCalled()
+  })
+
+  it('refs returns the ref list, origin HEAD and shallowness', async () => {
+    const { invoke, calls } = setup(hist({
+      'for-each-ref': { stdout: 'refs/heads/main\0aaa\0\0*\n' },
+      'symbolic-ref': { code: 1 },
+      'rev-parse': a => (a.includes('--is-shallow-repository') ? { stdout: 'true\n' } : { stdout: `${HEAD}\n` }),
+    }))
+    expect(await invoke('git:refs', REPO, WT, REG)).toEqual({ refs: 'refs/heads/main\0aaa\0\0*\n', originHead: null, shallow: true })
+    expect(histCalls(calls, 'for-each-ref')[0]).toEqual(['for-each-ref', '--format=%(refname)%00%(objectname)%00%(upstream)%00%(HEAD)', 'refs/heads/', 'refs/remotes/', 'refs/tags/'])
+  })
+
+  it('refuses an unregistered repository or a folder git does not list, spawning nothing for history', async () => {
+    const { invoke, calls } = setup(hist())
+    await expect(invoke('git:log', { name: 'X', path: path.join(ROOT, 'X') }, path.join(ROOT, 'X'), REG, q())).rejects.toThrow('Not a registered repository')
+    await expect(invoke('git:log', REPO, path.join(WT, 'sub'), REG, q())).rejects.toThrow('Not a worktree')
+    await expect(invoke('git:refs', REPO, path.join(WT, 'sub'), REG)).rejects.toThrow('Not a worktree')
+    expect(calls.filter(c => H.every((a, i) => c.args[i] === a))).toEqual([])
+  })
+})
+
+describe('stage 3 history: commit details, files and diffs', () => {
+  const H = HISTORY_CONFIG
+  const C = 'c'.repeat(40)
+  const P1 = '1'.repeat(40)
+  const P2 = '2'.repeat(40)
+  const hist = (parents = [P1, P2], over = {}) => {
+    const base = reads()
+    return args => {
+      const isHist = H.every((a, i) => args[i] === a)
+      const a = isHist ? args.slice(H.length) : args
+      if (isHist && a[0] in over) return typeof over[a[0]] === 'function' ? over[a[0]](a) : over[a[0]]
+      if (a[0] === 'rev-list') return parents === null ? { code: 128, stderr: 'bad object' } : { stdout: `${[C, ...parents].join(' ')}\n` }
+      if (a[0] === 'rev-parse' && a.includes('--end-of-options')) return parents === null ? { code: 1 } : { stdout: `${C}\n` }
+      if (a[0] === 'show' || a[0] === 'diff-tree' || a[0] === 'diff') return { stdout: 'out' }
+      return base(a)
+    }
+  }
+  const histCalls = (calls, sub) => calls.filter(c => H.every((a, i) => c.args[i] === a) && c.args[H.length] === sub).map(c => c.args.slice(H.length))
+
+  it('reads details with full ref names', async () => {
+    const { invoke, calls } = setup(hist())
+    expect(await invoke('git:commitDetails', REPO, WT, REG, C)).toEqual({ details: 'out' })
+    expect(histCalls(calls, 'show')[0]).toEqual(['show', '-s', '--decorate=full',
+      '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%D%x00%B', '--end-of-options', C])
+  })
+
+  it('a commit that no longer exists is missing, not an error', async () => {
+    const { invoke } = setup(hist(null))
+    expect(await invoke('git:commitDetails', REPO, WT, REG, C)).toEqual({ missing: true })
+    expect(await invoke('git:commitFiles', REPO, WT, REG, C, P1)).toEqual({ missing: true })
+    expect(await invoke('git:commitDiff', REPO, WT, REG, C, P1, ['f'])).toEqual({ missing: true })
+  })
+
+  it('lists files against the chosen parent, and a root commit with --root', async () => {
+    const { invoke, calls } = setup(hist())
+    await invoke('git:commitFiles', REPO, WT, REG, C, P2)
+    expect(histCalls(calls, 'diff-tree')[0]).toEqual(['diff-tree', '--no-commit-id', '-r', '-z', '-M', '--name-status', '--no-ext-diff', '--no-textconv', '--end-of-options', P2, C])
+    const root = setup(hist([]))
+    await root.invoke('git:commitFiles', REPO, WT, REG, C, null)
+    expect(histCalls(root.calls, 'diff-tree')[0]).toEqual(['diff-tree', '--no-commit-id', '--root', '-r', '-z', '-M', '--name-status', '--no-ext-diff', '--no-textconv', '--end-of-options', C])
+  })
+
+  it('diffs one file against the parent, and a root commit with show', async () => {
+    const { invoke, calls } = setup(hist())
+    expect(await invoke('git:commitDiff', REPO, WT, REG, C, P1, ['a b.txt'])).toEqual({ text: 'out', truncated: false, binary: false, size: 3 })
+    expect(histCalls(calls, 'diff')[0]).toEqual(['diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '-U3', '--end-of-options', P1, C, '--', 'a b.txt'])
+    const root = setup(hist([]))
+    await root.invoke('git:commitDiff', REPO, WT, REG, C, null, ['f'])
+    expect(histCalls(root.calls, 'show')[0]).toEqual(['show', '--format=', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '-U3', '--end-of-options', C, '--', 'f'])
+  })
+
+  it('caps a large diff at 1 MB', async () => {
+    const { invoke } = setup(hist([P1], { diff: { stdout: 'x'.repeat(1024 * 1024 + 10) } }))
+    const r = await invoke('git:commitDiff', REPO, WT, REG, C, P1, ['f'])
+    expect(r.truncated).toBe(true)
+    expect(r.text).toHaveLength(1024 * 1024)
+  })
+
+  it.each([
+    ['a symbolic name', 'git:commitDetails', ['HEAD']],
+    ['an uppercase id', 'git:commitDetails', [C.toUpperCase()]],
+    ['a short id', 'git:commitDetails', ['c'.repeat(39)]],
+    ['an option as the parent', 'git:commitFiles', [C, '--all']],
+    ['a path outside the worktree', 'git:commitDiff', [C, P1, ['../x']]],
+  ])('refuses %s before spawning any history read', async (_n, channel, args) => {
+    const { invoke, calls } = setup(hist())
+    await expect(invoke(channel, REPO, WT, REG, ...args)).rejects.toThrow()
+    expect(calls.filter(c => H.every((a, i) => c.args[i] === a))).toEqual([])
+  })
+
+  it.each([
+    ['a parent that is not one of the commit\'s', [C, '9'.repeat(40)]],
+    ['no parent for a commit that has one', [C, null]],
+  ])('refuses %s after reading the parents, with no diff run', async (_n, args) => {
+    const { invoke, calls } = setup(hist([P1]))
+    await expect(invoke('git:commitFiles', REPO, WT, REG, ...args)).rejects.toThrow('Not a parent of that commit')
+    await expect(invoke('git:commitDiff', REPO, WT, REG, ...args, ['f'])).rejects.toThrow('Not a parent of that commit')
+    expect(histCalls(calls, 'diff-tree')).toEqual([])
+    expect(histCalls(calls, 'diff')).toEqual([])
+  })
+
+  it('every history read carries the history config', async () => {
+    const { invoke, calls } = setup(hist())
+    await invoke('git:commitDetails', REPO, WT, REG, C)
+    await invoke('git:commitFiles', REPO, WT, REG, C, P1)
+    await invoke('git:commitDiff', REPO, WT, REG, C, P1, ['f'])
+    const history = calls.filter(c => ['show', 'diff-tree', 'diff', 'rev-list'].includes(c.args[H.length]))
+    expect(history.length).toBeGreaterThanOrEqual(5)
+    for (const c of history) expect(c.raw.slice(0, 3 + H.length)).toEqual(['--no-pager', ...FSMON, ...H])
+  })
+})
+
+describe('stage 4 actions (unit)', () => {
+  const OID = 'c'.repeat(40)
+  const FORBIDDEN = ['--force', '-f', '--force-with-lease', '--force-if-includes', '--delete', '-D', '--mirror', '--tags', '--hard', 'reset', 'clean']
+  // A plausible repository: on main, tracking origin/main, clean, one stash.
+  const state = (over = {}) => args => {
+    const a = args
+    if (a[0] === 'status') return { stdout: over.status ?? '' }
+    if (a[0] === 'rev-parse' && a.includes('HEAD') && a.includes('--verify')) return { stdout: `${HEAD}\n` }
+    if (a[0] === 'symbolic-ref') return { stdout: 'refs/heads/main\n' }
+    if (a[0] === 'rev-parse' && a.includes('--symbolic-full-name')) return { stdout: 'origin/main\n' }
+    if (a[0] === 'rev-parse' && a.includes('@{upstream}')) return { stdout: `${'d'.repeat(40)}\n` }
+    if (a[0] === 'rev-parse' && a.includes('--git-dir')) return { stdout: `${COMMON}\n${COMMON}\n` }
+    if (a[0] === 'rev-parse' && a[2] === '--git-common-dir') return { stdout: `${COMMON}\n` }
+    if (a[0] === 'remote') return { stdout: 'origin\n' }
+    if (a[0] === 'config' && a.includes('branch.main.remote')) return { stdout: 'origin\n' }
+    if (a[0] === 'config') return { code: 1 }
+    if (a[0] === 'for-each-ref') return { stdout: 'refs/heads/main\nrefs/heads/side\nrefs/remotes/origin/main\n' }
+    if (a[0] === 'rev-list' && a.includes('--left-right')) return { stdout: '0\t1\n' }
+    if (a[0] === 'rev-list' && a.includes('--parents')) return { stdout: `${OID} ${'1'.repeat(40)}\n` }
+    if (a[0] === 'stash') return { stdout: `${OID}\0stash@{0}\n` }
+    if (a[0] === 'check-ref-format') return { code: a[2].startsWith('-') || a[2].startsWith('+') ? 1 : 0 }
+    if (a[0] === 'show-ref') return { code: 1 }
+    if (a[0] === 'cat-file') return { code: 0 }
+    if (a[0] === 'worktree') return { stdout: `worktree ${WT.replace(/\\/g, '/')}\0HEAD ${HEAD}\0branch refs/heads/main\0\0` }
+    if (a[0] === 'log') return { stdout: '' }
+    return { stdout: '' }
+  }
+  // Only writes set GIT_MERGE_AUTOEDIT (the environment may already carry a GIT_EDITOR).
+  const writes = calls => calls.filter(c => c.opts.env?.GIT_MERGE_AUTOEDIT === 'no')
+
+  it.each([
+    ['push', { remote: '-f' }], ['push', { remote: 'origin', dest: '+main' }], ['push', { remote: 'origin', dest: '--force' }],
+    ['branch', { name: '--force' }], ['branch', { name: 'x', start: '--all' }], ['checkout', { branch: '--force' }],
+    ['checkout', { oid: 'HEAD --force' }], ['revert', { oid: '-f' }], ['worktreeAdd', { ref: 'refs/heads/side', path: '-f' }],
+    ['worktreeRemove', { path: '--force' }], ['stashDrop', { oid: '--all' }], ['pull', { mode: 'force' }],
+    ['rebaseInteractive', { base: '--root', rows: [] }],
+  ])('%s with hostile options %j: refused before any write, no forbidden flag anywhere', async (kind, options) => {
+    const { invoke, calls } = setup(state())
+    const p = await invoke('git:preview', REPO, WT, REG, kind, options)
+    expect(p.eligible).toBe(false)
+    const r = await invoke('git:run', REPO, WT, REG, kind, options, 'stamp')
+    expect(r.ok).toBe(false)
+    expect(writes(calls)).toEqual([])
+    for (const c of calls) for (const f of FORBIDDEN) expect(c.args).not.toContain(f)
+  })
+
+  it('every write carries the no-op editors and never waits on one', async () => {
+    const { invoke, calls } = setup(state())
+    const p = await invoke('git:preview', REPO, WT, REG, 'branch', { name: 'feature/x' })
+    expect(p.eligible).toBe(true)
+    expect(await invoke('git:run', REPO, WT, REG, 'branch', { name: 'feature/x' }, p.stamp)).toMatchObject({ ok: true })
+    const [write] = writes(calls)
+    expect(write.args).toEqual(['branch', '--no-track', 'feature/x', 'HEAD'])
+    expect(write.opts.env).toMatchObject({ GIT_EDITOR: ':', GIT_SEQUENCE_EDITOR: ':', GIT_MERGE_AUTOEDIT: 'no' })
+  })
+
+  it('a stale stamp runs nothing', async () => {
+    const { invoke, calls } = setup(state())
+    expect(await invoke('git:run', REPO, WT, REG, 'pull', { mode: 'ff' }, 'not-the-stamp')).toEqual({ ok: false, stale: true, detail: 'Changed since the preview. Preview again.' })
+    expect(writes(calls)).toEqual([])
+  })
+
+  it('builds the documented argv for pull and push', async () => {
+    const { invoke, calls } = setup(state())
+    let p = await invoke('git:preview', REPO, WT, REG, 'pull', { mode: 'ff' })
+    await invoke('git:run', REPO, WT, REG, 'pull', { mode: 'ff' }, p.stamp)
+    expect(writes(calls).map(c => c.args)).toEqual([['fetch', 'origin'], ['merge', '--ff-only', '--end-of-options', 'origin/main']])
+    p = await invoke('git:preview', REPO, WT, REG, 'push', { remote: 'origin', dest: 'review/main', setUpstream: false })
+    await invoke('git:run', REPO, WT, REG, 'push', { remote: 'origin', dest: 'review/main', setUpstream: false }, p.stamp)
+    expect(writes(calls).at(-1).args).toEqual(['push', '--porcelain', 'origin', 'refs/heads/main:refs/heads/review/main'])
+  })
+
+  it('maps a rejected push and a network timeout to their messages', async () => {
+    const rejected = setup(state())
+    rejected.deps.spawn.mockImplementation((cmd, args, opts) => {
+      const a = args.slice(3)
+      const r = a[0] === 'push' ? { code: 1, stdout: 'To x\n!\trefs/heads/main:refs/heads/main\t[rejected] (fetch first)\n' } : state()(a)
+      return fakeChild(r, 1)
+    })
+    let p = await rejected.invoke('git:preview', REPO, WT, REG, 'push', { remote: 'origin' })
+    expect((await rejected.invoke('git:run', REPO, WT, REG, 'push', { remote: 'origin' }, p.stamp)).detail).toMatch(/^The remote has commits you don't have - pull first\./)
+    const slow = setup((a, o) => (a[0] === 'fetch' ? 'hang' : state()(a, o)), {}, { longTimeoutMs: 50 })
+    p = await slow.invoke('git:preview', REPO, WT, REG, 'fetch', {})
+    expect(await slow.invoke('git:run', REPO, WT, REG, 'fetch', {}, p.stamp)).toEqual({ ok: false, detail: expect.stringMatching(/^git timed out talking to the remotes - a credential or SSH prompt may be waiting/) })
+  })
+
+  it('lists the repository programs that will run', async () => {
+    const hooks = fs.mkdtempSync(path.join((await import('os')).tmpdir(), 'nexusmd-hooks-'))
+    for (const f of ['pre-push', 'pre-push.sample', 'post-merge']) fs.writeFileSync(path.join(hooks, f), '')
+    const { invoke } = setup(args => (args[0] === 'config' && args.includes('core.hooksPath') ? { stdout: `${hooks}\n` }
+      : args[0] === 'config' && args.includes('--get-regexp') ? { stdout: 'filter.lfs.clean git-lfs clean\nfilter.lfs.smudge git-lfs smudge\ncore.sshcommand ssh -i k\n' }
+        : state()(args)))
+    const p = await invoke('git:preview', REPO, WT, REG, 'fetch', {})
+    expect(p.programs).toEqual(['post-merge hook', 'pre-push hook', 'filter lfs', 'core.sshCommand'])
+    fs.rmSync(hooks, { recursive: true, force: true })
+  })
+
+  it('refuses unknown kinds outright', async () => {
+    const { invoke } = setup(state())
+    await expect(invoke('git:preview', REPO, WT, REG, 'reset', {})).rejects.toThrow('Unknown action: reset')
+    await expect(invoke('git:run', REPO, WT, REG, '__proto__', {}, 'x')).rejects.toThrow('Unknown action')
   })
 })
