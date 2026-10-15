@@ -1,6 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
+import http from 'node:http'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -38,6 +39,7 @@ test.describe('desktop shell smoke', () => {
     await win.waitForLoadState('domcontentloaded')
 
     await win.getByText('Settings').first().click()
+    await win.getByText('Profiles', { exact: true }).click()
     // VsProfiles (the default profile seeded on first run) + the new backup card.
     await expect(win.getByText('Default').first()).toBeVisible({ timeout: 15_000 })
     await expect(win.getByText('Backup & Restore')).toBeVisible()
@@ -53,10 +55,18 @@ test.describe('desktop shell smoke', () => {
 
     // Drive the link-window manager directly (same singleton main.cjs wires up
     // to IPC) rather than depending on live ADO data being loaded in the UI.
+    // openLink only accepts http(s), so serve the tab pages locally.
+    const server = http.createServer((req, res) => {
+      const title = decodeURIComponent(req.url.slice(1))
+      res.setHeader('Content-Type', 'text/html')
+      res.end(`<title>${title}</title><body>${title}</body>`)
+    })
+    await new Promise(done => server.listen(0, '127.0.0.1', done))
+    const base = `http://127.0.0.1:${server.address().port}/`
     const managerPath = resolve(appDir, 'electron/link-window/manager.cjs')
-    const openTab = (title) => app.evaluate((_electron, { path, title }) => {
-      require(path).openLink(`data:text/html,<title>${title}</title><body>${title}</body>`)
-    }, { path: managerPath, title })
+    const openTab = (title) => app.evaluate((_electron, { path, url }) => {
+      process.mainModule.require(path).openLink(url)
+    }, { path: managerPath, url: base + encodeURIComponent(title) })
 
     await openTab('Tab One')
     const tabStrip = await app.waitForEvent('window', {
@@ -79,6 +89,7 @@ test.describe('desktop shell smoke', () => {
     await linkWindowClosed
 
     await app.close()
+    server.close()
   })
 
   test('Git Workspace opens from the sidebar', async () => {

@@ -34,6 +34,10 @@ function layoutViews() {
   }
 }
 
+function closeView(view) {
+  if (view && !view.webContents.isDestroyed()) view.webContents.close();
+}
+
 function createLinkWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -58,6 +62,9 @@ function createLinkWindow() {
 
   win.on('resize', layoutViews);
   win.on('closed', () => {
+    // A window doesn't destroy its WebContentsViews' webContents; close them.
+    closeView(tabStripView);
+    tabs.forEach(t => closeView(t.view));
     linkWindow = null;
     tabStripView = null;
     tabs = [];
@@ -149,6 +156,7 @@ function closeTab(id) {
     linkWindow.contentView.removeChildView(tab.view);
     activeTabId = null;
   }
+  closeView(tab.view);
 
   if (tabs.length === 0) {
     linkWindow.close();
