@@ -1,9 +1,11 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from 'vitest'
+import fs from 'fs'
 import path from 'path'
 import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
-import { register, gitEnv, isRepositoryRoot, findGit } from './git.cjs'
+import { parseDiff } from '@nexusmd/core'
+import { register, gitEnv, isRepositoryRoot, findGit, extractHunk } from './git.cjs'
 
 const ROOT = process.platform === 'win32' ? 'C:\\repos' : '/repos'
 const REPO = { name: 'App', path: path.join(ROOT, 'App') }
@@ -16,6 +18,10 @@ function fakeChild(result, pid) {
   child.stdout = new PassThrough()
   child.stderr = new PassThrough()
   child.pid = pid
+  child.stdin = new PassThrough()
+  child.input = ''
+  child.inputBytes = []
+  child.stdin.on('data', c => { child.input += c; child.inputBytes.push(Buffer.from(c)) })
   if (result !== 'hang') {
     setImmediate(() => {
       child.stdout.end(Buffer.from(result.stdout || ''))
@@ -32,11 +38,16 @@ function setup(respond = () => ({ stdout: '' }), probe = {}, extra = {}) {
   const deps = {
     spawn: vi.fn((cmd, args, opts) => {
       const op = args.slice(1 + FSMON.length)
-      calls.push({ cmd, args: op, raw: args, opts })
-      return fakeChild(respond(op, opts), 1000 + calls.length)
+      const call = { cmd, args: op, raw: args, opts }
+      calls.push(call)
+      call.child = fakeChild(respond(op, opts), 1000 + calls.length)
+      return call.child
     }),
     kill: vi.fn(async () => {}),
-    probe: { isDirectory: () => true, isFile: () => false, exists: () => false, listDirectories: () => [], readText: () => null, mtime: () => null, ...probe },
+    probe: {
+      isDirectory: () => true, isFile: () => false, exists: () => false, listDirectories: () => [], readText: () => null, mtime: () => null,
+      isLink: () => false, size: () => null, readBytes: () => null, statKey: () => '', unlink: vi.fn(), ...probe,
+    },
     gitPath: GIT,
     timeoutMs: 50,
     logger: { scope: () => ({ error: () => {}, info: () => {} }) },
@@ -295,5 +306,400 @@ describe('process limits', () => {
     expect(settled.every(e => /shutting down/.test(e.message))).toBe(true)
     await expect(invoke('git:resolve', ROOT)).rejects.toThrow(/shutting down/)
     expect(deps.spawn).toHaveBeenCalledTimes(2)
+  })
+})
+
+const WT = REPO.path
+const REG = [REPO.path]
+const HEAD = 'a'.repeat(40)
+const LS = '100644 1111111111111111111111111111111111111111 0\ta b.txt\x00100644 2222222222222222222222222222222222222222 0\tother.txt\x00'
+const STATUS = '1 .M N... 100644 100644 100644 1111111111111111111111111111111111111111 1111111111111111111111111111111111111111 a b.txt\x00? new.txt\x00'
+const DIFF_ARGS = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '-U3']
+// Answers the read commands stage 2 runs; `over` replaces answers by subcommand.
+const reads = (over = {}) => args => {
+  if (args[0] in over) return typeof over[args[0]] === 'function' ? over[args[0]](args) : over[args[0]]
+  if (args[0] === 'rev-parse' && args.includes('HEAD')) return { stdout: `${HEAD}\n` }
+  if (args[0] === 'rev-parse' && args[2] === '--git-common-dir') return { stdout: `${COMMON}\n` }
+  if (args[0] === 'worktree') return { stdout: `worktree ${WT.replace(/\\/g, '/')}\0HEAD ${HEAD}\0branch refs/heads/main\0\0` }
+  if (args[0] === 'ls-files') return { stdout: LS }
+  if (args[0] === 'status') return { stdout: STATUS }
+  if (args[0] === 'diff') return { stdout: 'diff --git a/a b.txt b/a b.txt\n' }
+  return { stdout: '' }
+}
+const unstaged = (paths = ['a b.txt']) => ({ area: 'unstaged', paths })
+
+describe('stage 2 reads', () => {
+  it('sets literal pathspecs unless a call opts out', () => {
+    expect(gitEnv({}).GIT_LITERAL_PATHSPECS).toBe('1')
+    expect(gitEnv({}, { literal: false }).GIT_LITERAL_PATHSPECS).toBeUndefined()
+    expect('GIT_LITERAL_PATHSPECS' in gitEnv({ GIT_LITERAL_PATHSPECS: '1' }, { literal: false })).toBe(false)
+  })
+
+  it('rejects a folder inside the repo that git does not list as a worktree, without spawning a read or write', async () => {
+    const sub = path.join(WT, 'sub')
+    const requests = [
+      ['git:diff', unstaged()], ['git:stamp', { kind: 'files', paths: ['a b.txt'] }], ['git:stage', ['a b.txt'], 'x'],
+      ['git:discard', ['a b.txt'], 'x'], ['git:deleteUntracked', ['a b.txt'], 'x'], ['git:commit', 'Fix', 'x'],
+      ['git:stageHunk', ['a b.txt'], 0, 'x'], ['git:unstageHunk', ['a b.txt'], 0, 'x'],
+    ]
+    for (const [channel, ...args] of requests) {
+      const s = setup(reads())
+      await expect(s.invoke(channel, REPO, sub, REG, ...args)).rejects.toThrow(`Not a worktree of ${REPO.path}: ${sub}`)
+      expect(s.calls.map(c => c.args[0])).toEqual(['rev-parse', 'worktree'])
+    }
+  })
+
+  it('still lets status read any folder inside the repo', async () => {
+    const s = setup(reads())
+    expect(await s.invoke('git:status', REPO, path.join(WT, 'sub'), REG)).toMatchObject({ porcelain: STATUS })
+    expect(s.calls.some(c => c.args[0] === 'worktree')).toBe(false)
+  })
+
+  it('diffs unstaged and staged changes with an exact argv', async () => {
+    const a = setup(reads())
+    await a.invoke('git:diff', REPO, WT, REG, unstaged())
+    expect(a.calls.find(c => c.args[0] === 'diff').args).toEqual([...DIFF_ARGS, '--', 'a b.txt'])
+    const b = setup(reads())
+    await b.invoke('git:diff', REPO, WT, REG, { area: 'staged', paths: ['moved.txt', 'was.txt'] })
+    expect(b.calls.find(c => c.args[0] === 'diff').args).toEqual([...DIFF_ARGS, '--cached', '--', 'moved.txt', 'was.txt'])
+    const c = setup(reads())
+    await c.invoke('git:diff', REPO, WT, REG, { area: 'conflict', paths: ['both.txt'] })
+    expect(c.calls.find(x => x.args[0] === 'diff').args).toEqual([...DIFF_ARGS, '--', 'both.txt'])
+  })
+
+  it('returns the diff with a stamp that follows the diff text', async () => {
+    const run = text => setup(reads({ diff: { stdout: text } })).invoke('git:diff', REPO, WT, REG, unstaged())
+    const a = await run('one')
+    expect([a.text, a.truncated, a.binary, a.size]).toEqual(['one', false, false, 3])
+    expect(a.stamp).toMatch(/^[0-9a-f]{64}$/)
+    expect((await run('one')).stamp).toBe(a.stamp)
+    expect((await run('two')).stamp).not.toBe(a.stamp)
+  })
+
+  it('flags binary diffs and truncates diffs over 1 MB', async () => {
+    const bin = await setup(reads({ diff: { stdout: 'diff --git a/x.png b/x.png\nBinary files a/x.png and b/x.png differ\n' } }))
+      .invoke('git:diff', REPO, WT, REG, unstaged(['x.png']))
+    expect(bin.binary).toBe(true)
+    const big = await setup(reads({ diff: { stdout: 'x'.repeat(1024 * 1024 + 10) } })).invoke('git:diff', REPO, WT, REG, unstaged())
+    expect([big.truncated, big.text.length, big.size]).toEqual([true, 1024 * 1024, 1024 * 1024 + 10])
+  })
+
+  it('builds untracked diffs from the file itself without running git diff', async () => {
+    const { invoke, calls } = setup(reads(), { size: () => 9, readBytes: () => Buffer.from('one\r\ntwo\n') })
+    const d = await invoke('git:diff', REPO, WT, REG, { area: 'untracked', paths: ['new.txt'] })
+    expect(d.text).toBe('--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1,2 @@\n+one\n+two\n')
+    expect(calls.some(c => c.args[0] === 'diff')).toBe(false)
+  })
+
+  it('reports binary, oversized, empty, vanished and linked untracked files', async () => {
+    const untracked = probe => setup(reads(), probe).invoke('git:diff', REPO, WT, REG, { area: 'untracked', paths: ['new.txt'] })
+    const bin = await untracked({ size: () => 3, readBytes: () => Buffer.from([1, 0, 2]) })
+    expect([bin.binary, bin.text]).toEqual([true, ''])
+    const big = await untracked({ size: () => 2 * 1024 * 1024 })
+    expect([big.truncated, big.size, big.text]).toEqual([true, 2 * 1024 * 1024, ''])
+    const empty = await untracked({ size: () => 0, readBytes: () => Buffer.alloc(0) })
+    expect([empty.text, empty.size]).toEqual(['', 0])
+    expect((await untracked({ size: () => null })).gone).toBe(true)
+    await expect(untracked({ isLink: () => true })).rejects.toThrow('Refusing to read a linked file: new.txt')
+  })
+
+  it('stamps only the requested paths for file actions, and the whole index for commits', async () => {
+    const stamp = (over, request = { kind: 'files', paths: ['a b.txt'] }) => setup(reads(over)).invoke('git:stamp', REPO, WT, REG, request)
+    const base = await stamp({})
+    expect(base).toMatch(/^[0-9a-f]{64}$/)
+    const other = '1 .M N... 100644 100644 100644 3333333333333333333333333333333333333333 3333333333333333333333333333333333333333 other.txt\x00'
+    expect(await stamp({ status: { stdout: STATUS + other } })).toBe(base)
+    expect(await stamp({ 'ls-files': { stdout: LS.replace('1111111111111111111111111111111111111111', '9'.repeat(40)) } })).not.toBe(base)
+    expect(await stamp({ status: { stdout: STATUS.replace('.M', 'MM') } })).not.toBe(base)
+    const commit = await stamp({}, { kind: 'commit' })
+    expect(await stamp({ 'ls-files': { stdout: LS.replace('2222222222222222222222222222222222222222', '8'.repeat(40)) } }, { kind: 'commit' })).not.toBe(commit)
+  })
+
+  it('rejects bad file paths, unknown areas and unregistered repos without spawning git', async () => {
+    for (const bad of [['../x'], ['C:\\x'], ['C:x'], ['/x'], [], ['a\x00b'], [42]]) {
+      const { invoke, deps } = setup(reads())
+      await expect(invoke('git:diff', REPO, WT, REG, unstaged(bad))).rejects.toThrow()
+      expect(deps.spawn).not.toHaveBeenCalled()
+    }
+    await expect(setup(reads()).invoke('git:diff', REPO, WT, REG, { area: 'weird', paths: ['a'] })).rejects.toThrow('Unknown change area: weird')
+    await expect(setup(reads()).invoke('git:diff', REPO, WT, [], unstaged())).rejects.toThrow('Not a registered repository')
+    await expect(setup(reads()).invoke('git:stamp', REPO, WT, REG, { kind: 'other' })).rejects.toThrow('Unknown stamp request')
+  })
+})
+
+const stampOf = async (s, request) => s.invoke('git:stamp', REPO, WT, REG, request)
+const files = (paths = ['a b.txt']) => ({ kind: 'files', paths })
+
+describe('stage 2 writes', () => {
+  it('stages paths through stdin after checking the stamp', async () => {
+    const s = setup(reads())
+    const expected = await stampOf(s, files(['a b.txt', '-x [1].txt']))
+    const r = await s.invoke('git:stage', REPO, WT, REG, ['a b.txt', '-x [1].txt'], expected)
+    expect(r).toEqual({ ok: true, detail: 'Done' })
+    const add = s.calls.find(c => c.args[0] === 'add')
+    expect(add.args).toEqual(['add', '--pathspec-from-file=-', '--pathspec-file-nul'])
+    expect(add.opts.stdio[0]).toBe('pipe')
+    expect(add.child.input).toBe('a b.txt\x00-x [1].txt\x00')
+  })
+
+  it('refuses a stale review without running the write', async () => {
+    const s = setup(reads())
+    const r = await s.invoke('git:stage', REPO, WT, REG, ['a b.txt'], 'not-the-stamp')
+    expect(r).toEqual({ ok: false, stale: true, detail: 'Changed since you reviewed it. Refresh and review again.' })
+    expect(s.calls.some(c => c.args[0] === 'add')).toBe(false)
+  })
+
+  it('refuses submodule paths', async () => {
+    const s = setup(reads({ 'ls-files': { stdout: '160000 3333333333333333333333333333333333333333 0\tlib\x00' } }))
+    const r = await s.invoke('git:stage', REPO, WT, REG, ['lib'], await stampOf(s, files(['lib'])))
+    expect(r).toEqual({ ok: false, detail: 'Submodule changes need to be managed inside the submodule.' })
+    expect(s.calls.some(c => c.args[0] === 'add')).toBe(false)
+  })
+
+  it('unstages with restore --staged, or rm --cached on an unborn branch', async () => {
+    const s = setup(reads())
+    await s.invoke('git:unstage', REPO, WT, REG, ['a b.txt'], await stampOf(s, files()))
+    expect(s.calls.find(c => c.args[0] === 'restore').args).toEqual(['restore', '--staged', '--pathspec-from-file=-', '--pathspec-file-nul'])
+    const u = setup(reads({ 'rev-parse': args => (args.includes('HEAD') ? { code: 1 } : { stdout: `${COMMON}\n` }) }))
+    await u.invoke('git:unstage', REPO, WT, REG, ['a b.txt'], await stampOf(u, files()))
+    expect(u.calls.find(c => c.args[0] === 'rm').args).toEqual(['rm', '--cached', '-r', '--ignore-unmatch', '--quiet', '--pathspec-from-file=-', '--pathspec-file-nul'])
+  })
+
+  it('discards only tracked files with unstaged changes', async () => {
+    const s = setup(reads())
+    expect(await s.invoke('git:discard', REPO, WT, REG, ['a b.txt'], await stampOf(s, files()))).toEqual({ ok: true, detail: 'Done' })
+    expect(s.calls.find(c => c.args[0] === 'restore').args).toEqual(['restore', '--worktree', '--pathspec-from-file=-', '--pathspec-file-nul'])
+    const t = setup(reads())
+    const r = await t.invoke('git:discard', REPO, WT, REG, ['new.txt'], await stampOf(t, files(['new.txt'])))
+    expect(r).toEqual({ ok: false, detail: 'Discard only accepts tracked files with unstaged changes: new.txt' })
+    expect(t.calls.some(c => c.args[0] === 'restore')).toBe(false)
+  })
+
+  it('returns git failures with output, adding a hint for a held index lock', async () => {
+    const s = setup(reads({ add: { code: 128, stderr: "fatal: Unable to create 'C:/repos/App/.git/index.lock': File exists." } }))
+    const r = await s.invoke('git:stage', REPO, WT, REG, ['a b.txt'], await stampOf(s, files()))
+    expect(r.ok).toBe(false)
+    expect(r.detail).toBe("fatal: Unable to create 'C:/repos/App/.git/index.lock': File exists.\nAnother git process is using this repo; close it or remove the stale lock.")
+  })
+
+  it('commits the message through stdin with the longer timeout', async () => {
+    const s = setup(reads({ diff: { code: 1 }, commit: { stdout: '[main abc1234] Fix it\n' } }))
+    const r = await s.invoke('git:commit', REPO, WT, REG, 'Fix it\n\nBody', await stampOf(s, { kind: 'commit' }))
+    expect(r).toEqual({ ok: true, detail: '[main abc1234] Fix it' })
+    const commit = s.calls.find(c => c.args[0] === 'commit')
+    expect(commit.args).toEqual(['commit', '-F', '-'])
+    expect(commit.child.input).toBe('Fix it\n\nBody')
+    expect(s.calls.find(c => c.args[0] === 'diff').args).toEqual(['diff', '--cached', '--quiet', '--no-ext-diff'])
+  })
+
+  it('runs the commit (and so its hooks) without literal pathspecs, while path-taking calls keep them', async () => {
+    const s = setup(reads({ diff: { code: 1 } }))
+    await s.invoke('git:commit', REPO, WT, REG, 'Fix', await stampOf(s, { kind: 'commit' }))
+    const commit = s.calls.find(c => c.args[0] === 'commit')
+    expect(commit.opts.env.GIT_LITERAL_PATHSPECS).toBeUndefined()
+    expect(commit.opts.env.GIT_TERMINAL_PROMPT).toBe('0')
+    for (const c of s.calls.filter(x => x.args[0] !== 'commit')) expect(c.opts.env.GIT_LITERAL_PATHSPECS).toBe('1')
+    const t = setup(reads())
+    await t.invoke('git:stage', REPO, WT, REG, ['a b.txt'], await stampOf(t, files()))
+    expect(t.calls.find(c => c.args[0] === 'add').opts.env.GIT_LITERAL_PATHSPECS).toBe('1')
+  })
+
+  it('refuses to stage an untracked nested repository, by its folder record, bare name or a path inside it', async () => {
+    const status = { status: { stdout: `${STATUS}? nested/\x00` } }
+    for (const p of ['nested/', 'nested', 'nested/x.txt']) {
+      const s = setup(reads(status))
+      const r = await s.invoke('git:stage', REPO, WT, REG, ['a b.txt', p], await stampOf(s, files(['a b.txt', p])))
+      expect(r).toEqual({ ok: false, detail: 'Nested repositories are managed on their own.' })
+      expect(s.calls.some(c => c.args[0] === 'add')).toBe(false)
+    }
+  })
+
+  it('covers each path\'s size and mtime in the files stamp, so a later edit is stale and nothing is restored', async () => {
+    let key = '10:1000'
+    const s = setup(reads(), { statKey: p => (p === path.join(WT, 'a b.txt') ? key : '') })
+    const expected = await stampOf(s, files())
+    expect(await stampOf(s, files())).toBe(expected)
+    key = '11:2000'
+    const r = await s.invoke('git:discard', REPO, WT, REG, ['a b.txt'], expected)
+    expect(r).toEqual({ ok: false, stale: true, detail: 'Changed since you reviewed it. Refresh and review again.' })
+    expect(s.calls.some(c => c.args[0] === 'restore')).toBe(false)
+  })
+
+  it('refuses empty messages, nothing staged, conflicts and operations in progress', async () => {
+    const commit = async (over, message = 'Fix', probe = {}) => {
+      const s = setup(reads(over), probe)
+      const r = await s.invoke('git:commit', REPO, WT, REG, message, await stampOf(s, { kind: 'commit' }))
+      return [r, s.calls.some(c => c.args[0] === 'commit')]
+    }
+    expect(await commit({ diff: { code: 1 } }, '  ')).toEqual([{ ok: false, detail: 'Enter a commit message.' }, false])
+    expect(await commit({ diff: { code: 0 } })).toEqual([{ ok: false, detail: 'No staged changes.' }, false])
+    expect(await commit({ diff: { code: 1 }, 'ls-files': { stdout: '100644 1111111111111111111111111111111111111111 1\tboth.txt\x00' } }))
+      .toEqual([{ ok: false, detail: 'Resolve conflicts before committing.' }, false])
+    const merging = await commit(
+      { diff: { code: 1 }, 'rev-parse': args => args.includes('HEAD') ? { stdout: `${HEAD}\n` } : { stdout: `${COMMON}\n${COMMON}\n` } },
+      'Fix', { exists: p => p === path.join(COMMON, 'MERGE_HEAD') })
+    expect(merging).toEqual([{ ok: false, detail: 'Merge in progress. Continue or abort it first.' }, false])
+  })
+
+  it('reports a commit that outlives its timeout', async () => {
+    const s = setup(reads({ diff: { code: 1 }, commit: 'hang' }), {}, { commitTimeoutMs: 30 })
+    const r = await s.invoke('git:commit', REPO, WT, REG, 'Fix', await stampOf(s, { kind: 'commit' }))
+    expect(r).toEqual({ ok: false, detail: 'git commit timed out after 0s. Hooks may have left partial output in the worktree.' })
+    expect(s.deps.kill).toHaveBeenCalled()
+  })
+
+  it('runs one write at a time per repository while reads carry on', async () => {
+    const s = setup(reads({ add: 'hang' }), {}, { timeoutMs: 5000 })
+    const expected = await stampOf(s, files())
+    const first = s.invoke('git:stage', REPO, WT, REG, ['a b.txt'], expected)
+    await vi.waitFor(() => expect(s.calls.filter(c => c.args[0] === 'add')).toHaveLength(1))
+    const second = s.invoke('git:stage', REPO, WT, REG, ['a b.txt'], expected)
+    await s.invoke('git:diff', REPO, WT, REG, unstaged())
+    await new Promise(r => setTimeout(r, 20))
+    expect(s.calls.filter(c => c.args[0] === 'add')).toHaveLength(1)
+    s.calls.find(c => c.args[0] === 'add').child.emit('close', 0)
+    expect((await first).ok).toBe(true)
+    await vi.waitFor(() => expect(s.calls.filter(c => c.args[0] === 'add')).toHaveLength(2))
+    s.calls.filter(c => c.args[0] === 'add')[1].child.emit('close', 0)
+    expect((await second).ok).toBe(true)
+  })
+})
+
+const THREE = fs.readFileSync(new URL('../../../../packages/core/src/modules/git/fixtures/three-hunks.diff', import.meta.url), 'utf8')
+
+describe('extractHunk', () => {
+  it('keeps the file header and the chosen hunk, numbered as core numbers them', () => {
+    const patch = extractHunk(THREE, 1)
+    const lines = patch.split('\n')
+    expect(lines.slice(0, 4)).toEqual(['diff --git a/src/app.js b/src/app.js', 'index 1111111..2222222 100644', '--- a/src/app.js', '+++ b/src/app.js'])
+    expect(lines[4]).toBe(parseDiff(THREE).files[0].hunks[1].header)
+    expect(lines.slice(5)).toEqual([' ten', '+ten and a half', ' eleven', ''])
+    expect(extractHunk(THREE, 2).split('\n')[4]).toBe(parseDiff(THREE).files[0].hunks[2].header)
+  })
+
+  it('preserves CRLF content lines', () => {
+    expect(extractHunk(THREE.replace(/\n/g, '\r\n'), 0)).toContain('-two\r\n+TWO\r\n')
+  })
+
+  it('refuses a missing hunk or a diff with more than one file', () => {
+    expect(() => extractHunk(THREE, 3)).toThrow('That hunk no longer exists. Refresh and review again.')
+    expect(() => extractHunk(THREE, -1)).toThrow('That hunk no longer exists. Refresh and review again.')
+    expect(() => extractHunk(THREE + THREE, 0)).toThrow('This diff covers more than one file. Stage the whole file instead.')
+  })
+})
+
+describe('git:stageHunk and git:unstageHunk', () => {
+  const hunkSetup = (over = {}) => setup(reads({ diff: { stdout: THREE }, ...over }))
+  const diffStamp = async (s, area = 'unstaged') => (await s.invoke('git:diff', REPO, WT, REG, { area, paths: ['a b.txt'] })).stamp
+
+  it('applies one hunk to the index from stdin', async () => {
+    const s = hunkSetup()
+    const r = await s.invoke('git:stageHunk', REPO, WT, REG, ['a b.txt'], 1, await diffStamp(s))
+    expect(r.ok).toBe(true)
+    const apply = s.calls.find(c => c.args[0] === 'apply')
+    expect(apply.args).toEqual(['apply', '--cached', '--whitespace=nowarn', '-'])
+    expect(apply.child.input).toBe(extractHunk(THREE, 1))
+  })
+
+  it('reverses a staged hunk out of the index', async () => {
+    const s = hunkSetup()
+    await s.invoke('git:unstageHunk', REPO, WT, REG, ['a b.txt'], 0, await diffStamp(s, 'staged'))
+    expect(s.calls.find(c => c.args[0] === 'apply').args).toEqual(['apply', '--cached', '--reverse', '--whitespace=nowarn', '-'])
+    expect(s.calls.filter(c => c.args[0] === 'diff').at(-1).args).toContain('--cached')
+  })
+
+  it('refuses stale, missing, untracked, conflicted and binary hunks without applying', async () => {
+    const attempt = async (over, index = 0, stamp = null) => {
+      const s = hunkSetup(over)
+      const r = await s.invoke('git:stageHunk', REPO, WT, REG, ['a b.txt'], index, stamp ?? await diffStamp(s))
+      return [r, s.calls.some(c => c.args[0] === 'apply')]
+    }
+    expect(await attempt({}, 0, 'old')).toEqual([{ ok: false, stale: true, detail: 'Changed since you reviewed it. Refresh and review again.' }, false])
+    expect(await attempt({}, 7)).toEqual([{ ok: false, detail: 'That hunk no longer exists. Refresh and review again.' }, false])
+    expect(await attempt({ 'ls-files': { stdout: '' } })).toEqual([{ ok: false, detail: 'Untracked files are staged whole.' }, false])
+    expect(await attempt({ 'ls-files': { stdout: '100644 1111111111111111111111111111111111111111 2\ta b.txt\x00' } }))
+      .toEqual([{ ok: false, detail: 'Conflicted files are staged whole, after resolving them.' }, false])
+    expect(await attempt({ diff: { stdout: 'diff --git a/a b.txt b/a b.txt\nBinary files a/a b.txt and b/a b.txt differ\n' } }))
+      .toEqual([{ ok: false, detail: 'Binary or truncated diffs are staged whole.' }, false])
+  })
+
+  it('refuses hunks of renamed, copied or mode-changed files', async () => {
+    const body = THREE.slice(THREE.indexOf('@@'))
+    const headers = [
+      'diff --git a/was.txt b/a b.txt\nsimilarity index 90%\nrename from was.txt\nrename to a b.txt\nindex 1111111..2222222 100644\n--- a/was.txt\n+++ b/a b.txt\n',
+      'diff --git a/was.txt b/a b.txt\nsimilarity index 90%\ncopy from was.txt\ncopy to a b.txt\n--- a/was.txt\n+++ b/a b.txt\n',
+      'diff --git a/a b.txt b/a b.txt\nold mode 100644\nnew mode 100755\nindex 1111111..2222222\n--- a/a b.txt\n+++ b/a b.txt\n',
+    ]
+    for (const header of headers) {
+      for (const [channel, area] of [['git:stageHunk', 'unstaged'], ['git:unstageHunk', 'staged']]) {
+        const s = hunkSetup({ diff: { stdout: header + body } })
+        const r = await s.invoke(channel, REPO, WT, REG, ['a b.txt'], 0, await diffStamp(s, area))
+        expect(r).toEqual({ ok: false, detail: 'Renamed, copied or mode-changed files are staged whole.' })
+        expect(s.calls.some(c => c.args[0] === 'apply')).toBe(false)
+      }
+    }
+  })
+
+  it('says a staged deletion is unstaged whole', async () => {
+    const deleted = '1 D. N... 100644 000000 000000 1111111111111111111111111111111111111111 0000000000000000000000000000000000000000 a b.txt\x00'
+    const s = hunkSetup({ 'ls-files': { stdout: '' }, status: { stdout: deleted } })
+    const r = await s.invoke('git:unstageHunk', REPO, WT, REG, ['a b.txt'], 0, await diffStamp(s, 'staged'))
+    expect(r).toEqual({ ok: false, detail: 'Deleted files are unstaged whole.' })
+  })
+
+  it('writes a hunk of a non-UTF-8 file back byte for byte', async () => {
+    const latin = Buffer.concat([Buffer.from(THREE.replace('+TWO', '+caf'), 'latin1')])
+    const at = latin.indexOf('+caf') + 4
+    const raw = Buffer.concat([latin.subarray(0, at), Buffer.from([0xe9]), latin.subarray(at)])
+    const s = hunkSetup({ diff: { stdout: raw } })
+    const d = await s.invoke('git:diff', REPO, WT, REG, unstaged())
+    expect(d.text).toContain('+caf�')
+    expect(d.raw).toBeUndefined()
+    expect((await s.invoke('git:stageHunk', REPO, WT, REG, ['a b.txt'], 0, d.stamp)).ok).toBe(true)
+    const sent = Buffer.concat(s.calls.find(c => c.args[0] === 'apply').child.inputBytes)
+    expect(sent.includes(Buffer.from([0x63, 0x61, 0x66, 0xe9]))).toBe(true)
+    expect(sent.equals(Buffer.from(extractHunk(raw.toString('latin1'), 0), 'latin1'))).toBe(true)
+  })
+})
+
+describe('git:deleteUntracked', () => {
+  const STATUS_U = '? new.txt\x00? sub/deep.txt\x00' + STATUS.split('\x00')[0] + '\x00'
+  // The default fake probe calls everything a directory; here only non-.txt paths are folders.
+  const del = async (paths, probe = {}, stamp = null) => {
+    const s = setup(reads({ status: { stdout: STATUS_U } }), { isDirectory: p => !p.endsWith('.txt'), ...probe })
+    const r = await s.invoke('git:deleteUntracked', REPO, WT, REG, paths, stamp ?? await s.invoke('git:stamp', REPO, WT, REG, { kind: 'files', paths }))
+    return [r, s.deps.probe.unlink.mock.calls.map(c => c[0])]
+  }
+
+  it('deletes each untracked file after checking them all', async () => {
+    expect(await del(['new.txt', 'sub/deep.txt'])).toEqual([
+      { ok: true, detail: 'Deleted 2 untracked files.' }, [path.join(WT, 'new.txt'), path.join(WT, 'sub', 'deep.txt')],
+    ])
+  })
+
+  it('deletes nothing when any path is tracked, a directory, or under a linked folder', async () => {
+    expect(await del(['new.txt', 'a b.txt'])).toEqual([{ ok: false, detail: 'Not an untracked file any more: a b.txt' }, []])
+    expect(await del(['new.txt'], { isDirectory: p => p.endsWith('new.txt') || !p.endsWith('.txt') }))
+      .toEqual([{ ok: false, detail: 'Refusing a directory: new.txt' }, []])
+    expect(await del(['new.txt', 'sub/deep.txt'], { isLink: p => p === path.join(WT, 'sub') }))
+      .toEqual([{ ok: false, detail: 'Refusing a path through a linked folder: sub/deep.txt' }, []])
+  })
+
+  it('refuses an untracked nested repository folder', async () => {
+    const s = setup(reads({ status: { stdout: '? sub/\x00' } }), { isDirectory: p => !p.endsWith('.txt') })
+    const r = await s.invoke('git:deleteUntracked', REPO, WT, REG, ['sub/'], await s.invoke('git:stamp', REPO, WT, REG, { kind: 'files', paths: ['sub/'] }))
+    expect(r).toEqual({ ok: false, detail: 'Refusing a directory: sub/' })
+    expect(s.deps.probe.unlink).not.toHaveBeenCalled()
+  })
+
+  it('refuses a stale review and paths outside the worktree', async () => {
+    expect(await del(['new.txt'], {}, 'old')).toEqual([{ ok: false, stale: true, detail: 'Changed since you reviewed it. Refresh and review again.' }, []])
+    await expect(del(['../outside.txt'])).rejects.toThrow('Invalid file path: ../outside.txt')
+  })
+
+  it('reports a file that could not be deleted part-way', async () => {
+    const unlink = vi.fn(p => { if (p.endsWith('deep.txt')) throw new Error('EBUSY: resource busy') })
+    const [r] = await del(['new.txt', 'sub/deep.txt'], { unlink })
+    expect(r).toEqual({ ok: false, detail: 'Deleted 1 of 2 files; could not delete sub/deep.txt: EBUSY: resource busy' })
   })
 })

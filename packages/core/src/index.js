@@ -99,4 +99,6 @@ export {
   ALL_PROJECTS, findGroup, groupIncludesWorktree, groupIncludesBranch, scopeSnapshot, changeCount,
   uniqueName, groupNameError, renameGroup, duplicateGroup, deleteGroup, registerRepo, unregisterRepo,
   GroupDraft, GroupSaveError,
+  parseDiff, diffSides, changePaths, isSubmodule, FILE_ACTIONS, actionsFor, groupChanges, toggleSelection, rangeSelection, pruneSelection,
+  fileReview, commitTargets, commitReview, COMMIT_NOTE,
 } from './modules/git/index.js'

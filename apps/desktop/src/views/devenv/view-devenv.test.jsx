@@ -6,6 +6,7 @@ vi.mock('./devenv-run-context.jsx', () => ({ useDevenvRunContext: () => globalTh
 vi.mock('./status-view.jsx', () => ({ StatusView: ({ onStart }) => <button onClick={onStart}>status-stub</button> }))
 vi.mock('./start-view.jsx', () => ({ StartView: () => <div>start-stub</div> }))
 vi.mock('./commands-view.jsx', () => ({ CommandsView: () => <div>commands-stub</div> }))
+vi.mock('./profile-view.jsx', () => ({ ProfileView: () => <div>profile-stub</div> }))
 
 import { DevenvView } from './view-devenv.jsx'
 
@@ -28,6 +29,16 @@ describe('DevenvView', () => {
     render(<DevenvView adapters={adapters} />)
     fireEvent.click(screen.getByText('status-stub'))
     expect(screen.getByText('start-stub')).toBeTruthy()
+  })
+  it('has a Profile tab between Mac and Commands', () => {
+    render(<DevenvView adapters={adapters} />)
+    const names = ['Status', 'Start', 'Builds', 'Logs', 'Tests', 'Database', 'Emulator', 'Mac', 'Profile', 'Commands']
+    const order = names.map(n => screen.getByRole('button', { name: n }))
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(screen.getByText('profile-stub')).toBeTruthy()
   })
   it('remembers the tab', () => {
     const { unmount } = render(<DevenvView adapters={adapters} />)

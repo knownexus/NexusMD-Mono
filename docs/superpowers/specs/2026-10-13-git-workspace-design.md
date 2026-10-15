@@ -1,7 +1,7 @@
 # Git Workspace Module — Design
 
 **Date:** 2026-10-13
-**Status:** Approved design. Stage 1 implemented; stage 2 detailed (2026-10-14), pending implementation plan
+**Status:** Approved design. Stage 1 implemented; stage 2 implemented (2026-10-14).
 **Repos touched:** `NexusMD-Mono` (new module). Reference implementation: `gws` in `C:\repos\DotFiles\pwsh\GitWorkspace` (C#, terminal UI), which this module replaces.
 
 ## Goal
@@ -364,3 +364,20 @@ A draggable divider sits between the changes and diff panes. Its ratio is stored
 - The stamp-mismatch message.
 - A hunk button sends the right index.
 - Commit dialog: shared vs per-target message, per-target results, and Retry failed re-reviewing only the failures.
+
+## Amendments made during stage 2 planning
+
+- Every stage 2 adapter method takes `(repo, worktreePath, registered, …)`, like `status`. `diff` takes `change = { area, paths }`. The hunk operations take `paths` (both names of a staged rename) rather than `path`.
+- New read operation: `stamp(repo, worktreePath, registered, { kind: 'files', paths } | { kind: 'commit' })`. It returns the `expected` value for whole-file actions and commits.
+- Whole-file stamps cover HEAD plus the paths' `ls-files --stage` entries, their porcelain v2 status records, and each path's working-tree `size` and `mtimeMs` (empty when the path is missing). The stat part means an edit made after the review is refused even when its status code doesn't change, which matters most for Discard. They don't cover diff text: that scales to many files without long argv. Hunk stamps are `sha256(fileStamp, diffText)`, which is the `stamp` that `diff` returns.
+- Literal pathspecs come from `GIT_LITERAL_PATHSPECS=1` in the git environment rather than the `--literal-pathspecs` flag. It is set for every call except `commit`: commits run without it, so hooks see git's normal pathspec behaviour, as in a terminal (`commit -F -` takes no pathspecs itself).
+- Every stage 2 read and write (`diff`, `stamp`, the file and hunk writes, `commit`) requires `worktreePath` to be exactly a `worktree` entry of `git worktree list --porcelain` for that repo, because their checks assume the worktree root. Stage 1's `status` keeps its looser rule.
+- Hunk operations are refused for renamed, copied or mode-changed files ("Renamed, copied or mode-changed files are staged whole."), and the diff pane hides their hunk buttons. A staged deletion is unstaged whole.
+- An untracked nested repository (`? nested/`) is never staged: core skips it ("nested repository — manage it on its own") and main refuses it ("Nested repositories are managed on their own."). Delete refuses it as a directory.
+- Hunks are cut from the raw diff bytes (decoded as latin1 in main) and written back byte for byte, so non-UTF-8 files work. The renderer still gets UTF-8 text, and both `diff` and the hunk handlers stamp that text.
+- `deleteUntracked` checks "still untracked" with porcelain v2 `?` records. This is the same set as `ls-files --others --exclude-standard`.
+- Hunk operations need a diff with exactly one file section; otherwise they are refused and the hunk buttons are hidden.
+- The focused file's diff reloads on every new snapshot as well as on a focus change, because porcelain v2 has no working-tree content hash. The last diff stays on screen while it reloads.
+- Core signatures: `fileReview(action, changes, selectedIds)` and `commitTargets(worktrees, selectedTreeId)`.
+- Write results are `{ ok, detail, stale? }`. Bad paths and unregistered repos still throw, as in stage 1.
+- The commit dialog labels each worktree's block "Staged files in <title>" so it doesn't duplicate the worktree checkbox's label.

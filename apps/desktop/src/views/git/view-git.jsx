@@ -1,6 +1,6 @@
 import React from 'react'
 import {
-  ALL_PROJECTS, findGroup, scopeSnapshot, changeCount, renameGroup, duplicateGroup, deleteGroup, worktreeId,
+  ALL_PROJECTS, findGroup, scopeSnapshot, changeCount, renameGroup, duplicateGroup, deleteGroup, worktreeId, pruneSelection, commitTargets,
 } from '@nexusmd/core'
 import { setGitConfig, getGitConfig, effectiveRoots } from '../../git-config.js'
 import { useGitConfig } from './use-git-config.js'
@@ -8,8 +8,12 @@ import { useGitSnapshot } from './use-git-snapshot.js'
 import { GroupTabs } from './group-tabs.jsx'
 import { WorktreeList } from './worktree-list.jsx'
 import { WorktreeDetail } from './worktree-detail.jsx'
+import { WorktreePanel } from './worktree-panel.jsx'
 import { GroupMenu } from './group-menu.jsx'
 import { GroupEditor } from './group-editor.jsx'
+import { useGitActions } from './use-git-actions.js'
+import { ReviewDialog } from './review-dialog.jsx'
+import { CommitDialog } from './commit-dialog.jsx'
 
 const card = (text, role) => <div className="card" role={role} style={{ padding: 16 }}>{text}</div>
 
@@ -21,15 +25,23 @@ export function ViewGit({ adapters }) {
 
 function GitWorkspace({ adapter }) {
   const config = useGitConfig()
+  const registered = React.useMemo(() => config.repos.map(r => r.path), [config.repos])
   const [gitVersion, setGitVersion] = React.useState(undefined)
   const [menuFor, setMenuFor] = React.useState(null)
   const [editing, setEditing] = React.useState(null)
+  // Per worktree, for this session: which changes are ticked and which one shows its diff.
+  const [selections, setSelections] = React.useState({})
+  const [focus, setFocus] = React.useState({})
+  // An open commit dialog: which worktrees start ticked (null = the selected one) and messages kept for a retry.
+  const [committing, setCommitting] = React.useState(null)
+  const commits = React.useRef(0)
   React.useEffect(() => {
     let live = true
     adapter.version().then(v => { if (live) setGitVersion(v) }, () => { if (live) setGitVersion(null) })
     return () => { live = false }
   }, [adapter])
-  const { snapshot, error, loading, refresh } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported })
+  const { snapshot, error, loading, refresh, reload } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported })
+  const actions = useGitActions({ adapter, registered, reload })
 
   if (config.unsupported) return card(`These Git Workspace settings were saved by a newer NexusMD (version ${config.unsupported}). Update NexusMD to use them.`, 'alert')
   if (gitVersion === null) return card('Git not found. Install Git for Windows (git-scm.com) and make sure git is on PATH, then reopen this screen.', 'alert')
@@ -46,11 +58,19 @@ function GitWorkspace({ adapter }) {
   const setView = patch => setGitConfig({ view: { ...getGitConfig().view, ...patch } })
   const selectedTree = scoped.worktrees.find(t => worktreeId(t) === view.selected)
   const selectedBranch = scoped.inactiveBranches.find(b => b.id === view.selected)
+  const treeKey = selectedTree ? worktreeId(selectedTree) : null
+  const selectedIds = selectedTree ? pruneSelection(selections[treeKey] ?? [], selectedTree.changes) : []
+  const focusId = selectedTree && selectedTree.changes.some(c => c.id === focus[treeKey]) ? focus[treeKey] : null
   const save = next => setGitConfig({ repos: next.repos, groups: next.groups })
   // The group editor builds its tree from the snapshot, so it waits for the first one.
   const editBusy = snapshot ? null : 'Loading repositories…'
   const roots = effectiveRoots(config)
   const tryName = fn => value => { try { save(fn(getGitConfig(), value)); return null } catch (e) { return e.message } }
+
+  const openCommit = (tickedIds = null, messages = {}) => setCommitting({ id: ++commits.current, tickedIds, messages })
+  const commitList = committing
+    ? commitTargets(scoped.worktrees, view.selected).map(t => (committing.tickedIds ? { ...t, ticked: !t.unavailable && committing.tickedIds.includes(t.id) } : t))
+    : []
 
   return (
     <div style={{ display: 'grid', gap: 12, padding: 16 }}>
@@ -69,12 +89,23 @@ function GitWorkspace({ adapter }) {
       {!config.repos.length && card(roots.length
         ? `No repositories yet. Add one in Settings → Desktop → Git Workspace, or create a group to pick from ${roots.join('; ')}.`
         : 'No repositories yet. Add repositories in Settings → Desktop → Git Workspace.')}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 2fr)', gap: 12, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr)', gap: 12, alignItems: 'start' }}>
         <WorktreeList repos={config.repos} scoped={scoped} errors={snapshot?.errors || []} collapsed={view.collapsed}
           onToggleRepo={name => setView({ collapsed: view.collapsed.includes(name) ? view.collapsed.filter(n => n !== name) : [...view.collapsed, name] })}
           selected={view.selected} onSelect={s => setView({ selected: s.id })} />
-        <aside aria-label="Details" className="card" style={{ padding: 12 }}>
-          <WorktreeDetail tree={selectedTree} branch={selectedBranch} />
+        <aside aria-label="Details" className="card" style={{ padding: 12, minWidth: 0 }}>
+          {selectedTree
+            ? (
+              <WorktreePanel adapter={adapter} repo={{ name: selectedTree.repo, path: selectedTree.repoRoot }} registered={registered}
+                version={snapshot?.takenAt} tree={selectedTree} selected={selectedIds} focusId={focusId}
+                onSelectionChange={ids => setSelections(s => ({ ...s, [treeKey]: ids }))}
+                onFocus={id => setFocus(f => ({ ...f, [treeKey]: id }))}
+                onAction={action => actions.openReview(action, selectedTree, selectedIds)} onCommit={() => openCommit()}
+                onHunk={(change, index, stamp, after) => actions.hunk(selectedTree, change, index, stamp, after)}
+                busy={!!actions.busy[selectedTree.path]} status={actions.status[selectedTree.path] ?? null}
+                split={view.split} onSplit={split => setView({ split })} />
+            )
+            : <WorktreeDetail tree={null} branch={selectedBranch} />}
         </aside>
       </div>
       {menuFor && (
@@ -103,6 +134,12 @@ function GitWorkspace({ adapter }) {
           setEditing(null)
           if (!reposChanged) refresh()
         }} />
+      <ReviewDialog key={actions.review?.id ?? 'none'} state={actions.review} onClose={actions.closeReview} onConfirm={actions.confirm} />
+      {committing && (
+        <CommitDialog key={committing.id} targets={commitList} adapter={adapter} registered={registered} initialMessages={committing.messages}
+          onClose={() => setCommitting(null)} onDone={reload}
+          onRetry={async (failedIds, messages) => { setCommitting(null); await reload(); openCommit(failedIds, messages) }} />
+      )}
     </div>
   )
 }

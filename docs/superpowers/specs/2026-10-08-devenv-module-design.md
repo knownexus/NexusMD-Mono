@@ -1,7 +1,7 @@
 # Dev Environment Module — Design
 
 **Date:** 2026-10-08
-**Status:** Approved design, pending implementation plan
+**Status:** Implemented (phases 1–6)
 **Repos touched:** `NexusMD-Mono` (new module) and `C:\repos\dev-environment` (devenv: host mode, protocol, catalog)
 
 ## Goal

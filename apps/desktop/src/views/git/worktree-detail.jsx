@@ -12,6 +12,21 @@ function Field({ label, value }) {
   )
 }
 
+/** Where a worktree is and how it tracks its upstream; shown above its changes. */
+export function WorktreeHeader({ tree }) {
+  return (
+    <div style={{ display: 'grid', gap: 4 }}>
+      <Field label="Path" value={tree.path} />
+      <Field label="Upstream" value={tree.upstream ? `${tree.upstream}${tree.upstreamGone ? ' (missing)' : ''}` : 'None'} />
+      <Field label="Last fetch" value={tree.fetchedAt ? new Date(tree.fetchedAt).toLocaleString() : 'Unknown'} />
+      <Field label="In progress" value={tree.operation} />
+      <Field label="Locked" value={tree.locked} />
+      <Field label="Stale" value={tree.prunable} />
+      {tree.error && <div role="alert" style={{ color: 'var(--danger)' }}>{tree.error}</div>}
+    </div>
+  )
+}
+
 export function WorktreeDetail({ tree, branch }) {
   if (branch) {
     return (
@@ -26,13 +41,7 @@ export function WorktreeDetail({ tree, branch }) {
   if (!tree) return <div style={{ color: 'var(--text-muted)' }}>Select a worktree to see its details.</div>
   return (
     <div style={{ display: 'grid', gap: 6 }}>
-      <Field label="Path" value={tree.path} />
-      <Field label="Upstream" value={tree.upstream ? `${tree.upstream}${tree.upstreamGone ? ' (missing)' : ''}` : 'None'} />
-      <Field label="Last fetch" value={tree.fetchedAt ? new Date(tree.fetchedAt).toLocaleString() : 'Unknown'} />
-      <Field label="In progress" value={tree.operation} />
-      <Field label="Locked" value={tree.locked} />
-      <Field label="Stale" value={tree.prunable} />
-      {tree.error && <div role="alert" style={{ color: 'var(--danger)' }}>{tree.error}</div>}
+      <WorktreeHeader tree={tree} />
       {!tree.error && (
         tree.changes.length === 0
           ? <div style={{ color: 'var(--text-muted)' }}>No changes.</div>

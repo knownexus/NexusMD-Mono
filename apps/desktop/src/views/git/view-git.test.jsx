@@ -167,4 +167,19 @@ describe('ViewGit', () => {
     render(<ViewGit adapters={{ git: adapter() }} />)
     expect(await screen.findByText('No repositories yet. Add repositories in Settings → Desktop → Git Workspace.')).toBeTruthy()
   })
+  it('drops selected files that vanish on refresh', async () => {
+    configure()
+    let now = porcelain
+    const a = adapter({ status: vi.fn(async () => ({ porcelain: now, operation: '', rebasingBranch: null, fetchedAt: null })) })
+    render(<ViewGit adapters={{ git: a }} />)
+    const region = await screen.findByRole('region', { name: 'A' })
+    fireEvent.click(await within(region).findByRole('button', { name: /checkout → main/ }))
+    await waitFor(() => expect(screen.queryByText('Refreshing…')).toBeNull())
+    fireEvent.click(screen.getByLabelText('Select f.txt'))
+    expect(screen.getByRole('button', { name: 'Stage 1' })).toBeTruthy()
+    now = '# branch.oid a\0# branch.head main\0'
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Stage' }).disabled).toBe(true))
+    expect(screen.getByText('No changes.')).toBeTruthy()
+  })
 })

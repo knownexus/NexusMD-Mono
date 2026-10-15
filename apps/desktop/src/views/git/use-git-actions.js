@@ -1,0 +1,58 @@
+import React from 'react'
+import { fileReview, changePaths } from '@nexusmd/core'
+
+const METHOD = { stage: 'stage', unstage: 'unstage', discard: 'discard', delete: 'deleteUntracked' }
+const repoOf = tree => ({ name: tree.repo, path: tree.repoRoot })
+
+/** An error's message without Electron's "Error invoking remote method 'git:…': Error: " prefix. */
+export function ipcMessage(e) {
+  return String(e?.message || e).replace(/^Error invoking remote method '[^']*': (?:[A-Za-z]*Error: )?/, '')
+}
+
+// Reviews and runs file writes. One write per worktree at a time here (main also locks per repo),
+// so a double click can never run a write twice. The last result is kept per worktree.
+// Every write ends with a quiet snapshot reload that can't be skipped by a poll already running.
+export function useGitActions({ adapter, registered, reload }) {
+  const [review, setReview] = React.useState(null)
+  const [busy, setBusy] = React.useState({})
+  const [status, setStatus] = React.useState({})
+  const running = React.useRef(new Set())
+  const reviews = React.useRef(0)
+
+  // `after` runs before busy clears, so a hunk's diff is already reloading when its buttons re-enable.
+  const guard = async (tree, write, after) => {
+    if (running.current.has(tree.path)) return
+    running.current.add(tree.path)
+    setBusy(b => ({ ...b, [tree.path]: true }))
+    let r
+    try { r = await write() } catch (e) { r = { ok: false, detail: ipcMessage(e) } }
+    after?.()
+    running.current.delete(tree.path)
+    setBusy(b => { const next = { ...b }; delete next[tree.path]; return next })
+    setStatus(s => ({ ...s, [tree.path]: { ok: !!r.ok, text: r.detail } }))
+    reload()
+  }
+
+  const openReview = (action, tree, selectedIds) => {
+    const r = fileReview(action, tree.changes, selectedIds)
+    if (!r.files.length) return
+    const id = ++reviews.current
+    setReview({ id, tree, review: r, stamp: null, error: null })
+    adapter.stamp(repoOf(tree), tree.path, registered, { kind: 'files', paths: r.paths }).then(
+      stamp => setReview(cur => (cur?.id === id ? { ...cur, stamp } : cur)),
+      e => setReview(cur => (cur?.id === id ? { ...cur, error: ipcMessage(e) } : cur)),
+    )
+  }
+
+  const confirm = () => {
+    const cur = review
+    if (!cur?.stamp) return
+    setReview(null)
+    guard(cur.tree, () => adapter[METHOD[cur.review.action]](repoOf(cur.tree), cur.tree.path, registered, cur.review.paths, cur.stamp))
+  }
+
+  const hunk = (tree, change, index, stamp, after) => guard(tree, () =>
+    adapter[change.area === 'staged' ? 'unstageHunk' : 'stageHunk'](repoOf(tree), tree.path, registered, changePaths(change), index, stamp), after)
+
+  return { review, openReview, closeReview: () => setReview(null), confirm, hunk, busy, status }
+}

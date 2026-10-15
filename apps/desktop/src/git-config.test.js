@@ -70,4 +70,10 @@ describe('git config', () => {
       roots: ['C:/repos'], invalid: [], network: ['\\\\server\\share', '//server/share', '\\\\?\\C:\\repo'],
     })
   })
+  it('keeps a valid diff split and replaces an invalid one with the default', () => {
+    setGitConfig({ view: { ...getGitConfig().view, split: 0.6 } })
+    expect(getGitConfig().view.split).toBe(0.6)
+    setGitConfig({ view: { ...getGitConfig().view, split: 5 } })
+    expect(getGitConfig().view.split).toBe(0.45)
+  })
 })
