@@ -24,6 +24,9 @@ export { fileReview, commitTargets, commitReview, COMMIT_NOTE } from './review.j
 export {
   parseRefs, parseLog, graphCells, parseSearch, historyQuery, HISTORY_STEP, HISTORY_MAX, parseRefList, defaultBase, parseCommitDetails, parseNameStatus, parentLabel,
 } from './history.js'
+export { ACTION_KINDS, BATCH_KINDS, BATCH_NOTE, actionTargets, previewModel, worktreeDefaultPath, checkBranchName } from './actions.js'
+export { REBASE_ACTIONS, rebasePlan, moveRow, setRowAction, setRowMessage, rebaseTodo, squashGroups, rebaseMessages, messageRows, rebaseProblems } from './rebase-plan.js'
+export { ACTIVITY_MAX, addActivity, failedTargets } from './activity.js'
 
 let _adapter = null
 
