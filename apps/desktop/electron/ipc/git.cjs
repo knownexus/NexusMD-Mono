@@ -13,6 +13,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { spawn: nodeSpawn, execFile } = require('child_process');
 const { withLogging } = require('./withLogging.cjs');
+const { registerActions, ownershipMessage } = require('./git-actions.cjs');
 
 const STRIP_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_PREFIX', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'];
 const BRANCH_FORMAT = '--format=%(refname)%00%(objectname)%00%(subject)%00%(upstream:short)';
@@ -257,14 +258,14 @@ function register(ipcMain, deps = {}) {
     if (next) next.resolve(); else active--;
   };
 
-  async function git(cwd, args, { input = null, timeout = timeoutMs, literal = true, extraConfig = [] } = {}) {
+  async function git(cwd, args, { input = null, timeout = timeoutMs, literal = true, extraConfig = [], env: extraEnv = null } = {}) {
     const exe = gitExecutable();
     if (!exe) throw new Error('Git not found');
     await acquire();
     try {
       return await new Promise((resolve, reject) => {
         const child = spawn(exe, ['--no-pager', '-c', 'core.fsmonitor=false', ...extraConfig, ...args], {
-          cwd, env: gitEnv(process.env, { literal }), windowsHide: true, stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+          cwd, env: extraEnv ? { ...gitEnv(process.env, { literal }), ...extraEnv } : gitEnv(process.env, { literal }), windowsHide: true, stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
         });
         running.add(child);
         const out = [];
@@ -441,9 +442,11 @@ function register(ipcMain, deps = {}) {
     const layouts = [path.join(dir, '.git-main'), path.join(dir, '.bare')];
     const hasDotGit = probe.exists(path.join(dir, '.git'));
     const order = !hasDotGit && layouts.some(p => probe.isDirectory(p)) ? [...layouts, dir] : [dir, ...layouts];
+    let dubious = false;
     for (const candidate of order) {
       if (!probe.isDirectory(candidate)) continue;
       const r = await git(candidate, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+      if (/dubious ownership/.test(r.stderr)) dubious = true;
       if (r.code === 0 && r.stdout.trim()) {
         const commonDir = r.stdout.trim();
         const at = now();
@@ -452,6 +455,8 @@ function register(ipcMain, deps = {}) {
         return commonDir;
       }
     }
+    // git's own ownership check refused it: say so, rather than "no repository" (stage 4 design).
+    if (dubious) throw new Error(ownershipMessage(dir));
     throw new Error(`No repository at ${dir} (including .git-main and .bare)`);
   }
 
@@ -805,11 +810,18 @@ function register(ipcMain, deps = {}) {
     return { text, truncated, binary: /^(Binary files |GIT binary patch)/m.test(text), size: r.bytes };
   });
 
+  // Stage 4: branch and sync actions (git-actions.cjs), sharing this file's checks, lock and git runner.
+  const actions = registerActions(handle, {
+    git, requireExactWorktree, withRepoLock, gitDirOf, inProgress, isInside, samePath, isRemoteOrDevicePath,
+    editorCommand: deps.editorCommand, fsx: deps.fsx, longTimeoutMs: deps.longTimeoutMs, shortTimeoutMs: deps.shortTimeoutMs,
+  });
+
   handle('git:checkFolders', async (_e, paths) =>
     (Array.isArray(paths) ? paths : []).map(p => ({ path: p, exists: typeof p === 'string' && path.isAbsolute(p) && !isRemoteOrDevicePath(p) && probe.isDirectory(p) })));
 
   return {
     cacheSize: () => commonDirs.size,
+    actions,
     async disposeAll() {
       disposed = true;
       commonDirs.clear();
