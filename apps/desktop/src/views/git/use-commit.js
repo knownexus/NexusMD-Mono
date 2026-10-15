@@ -13,9 +13,9 @@ const MISSING = Object.freeze({ missing: true })
  * the background. Moving focus drops any request still queued, so scrolling fast never builds a
  * backlog behind the status polls.
  * @param {{ adapter: object, repo: object, cwd: string, registered: string[], oid: string|null,
- *   parentIndex?: number, file?: { path: string, oldPath?: string|null }|null, nextOids?: string[], cache?: object }} p
+ *   parentIndex?: number, focusedPath?: string|null, nextOids?: string[], cache?: object }} p
  */
-export function useCommit({ adapter, repo, cwd, registered, oid, parentIndex = 0, file = null, nextOids = [], cache = historyCache }) {
+export function useCommit({ adapter, repo, cwd, registered, oid, parentIndex = 0, focusedPath = null, nextOids = [], cache = historyCache }) {
   const ctx = JSON.stringify({ repo: { name: repo.name, path: repo.path }, cwd, registered })
   const base = `${repo.path}\0${cwd}`
   const [details, setDetails] = React.useState(null)
@@ -105,7 +105,9 @@ export function useCommit({ adapter, repo, cwd, registered, oid, parentIndex = 0
     return () => { live = false }
   }, [oid, parent, loaders])
 
-  const filePaths = file ? [file.path, ...(file.oldPath ? [file.oldPath] : [])] : null
+  // A rename's diff needs both names, which only the file list knows.
+  const entry = focusedPath && files ? files.find(f => f.path === focusedPath) ?? null : null
+  const filePaths = entry ? [entry.path, ...(entry.oldPath ? [entry.oldPath] : [])] : null
   const fileKey = filePaths ? filePaths.join('\0') : null
   React.useEffect(() => {
     setDiff(null)
