@@ -91,6 +91,19 @@ describe('preload bridge', () => {
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile:write', cfg, 'mac.json', '{}', { expected: null, dir: 'C:\\p' })
   })
 
+  it('exposes the stage 4 git action channels', () => {
+    const repo = { name: 'App', path: 'C:\\repos\\App' }
+    const reg = [repo.path]
+    exposed.git.remotes(repo, repo.path, reg)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:remotes', repo, repo.path, reg)
+    exposed.git.stashes(repo, repo.path, reg)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:stashes', repo, repo.path, reg)
+    exposed.git.preview(repo, repo.path, reg, 'pull', { mode: 'ff' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:preview', repo, repo.path, reg, 'pull', { mode: 'ff' })
+    exposed.git.run(repo, repo.path, reg, 'pull', { mode: 'ff' }, 's')
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:run', repo, repo.path, reg, 'pull', { mode: 'ff' }, 's')
+  })
+
   it('exposes the stage 3 git history channels', () => {
     const repo = { name: 'App', path: 'C:\\repos\\App' }
     const reg = [repo.path]

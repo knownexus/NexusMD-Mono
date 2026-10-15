@@ -929,3 +929,107 @@ describe('stage 3 history: commit details, files and diffs', () => {
     for (const c of history) expect(c.raw.slice(0, 3 + H.length)).toEqual(['--no-pager', ...FSMON, ...H])
   })
 })
+
+describe('stage 4 actions (unit)', () => {
+  const OID = 'c'.repeat(40)
+  const FORBIDDEN = ['--force', '-f', '--force-with-lease', '--force-if-includes', '--delete', '-D', '--mirror', '--tags', '--hard', 'reset', 'clean']
+  // A plausible repository: on main, tracking origin/main, clean, one stash.
+  const state = (over = {}) => args => {
+    const a = args
+    if (a[0] === 'status') return { stdout: over.status ?? '' }
+    if (a[0] === 'rev-parse' && a.includes('HEAD') && a.includes('--verify')) return { stdout: `${HEAD}\n` }
+    if (a[0] === 'symbolic-ref') return { stdout: 'refs/heads/main\n' }
+    if (a[0] === 'rev-parse' && a.includes('--symbolic-full-name')) return { stdout: 'origin/main\n' }
+    if (a[0] === 'rev-parse' && a.includes('@{upstream}')) return { stdout: `${'d'.repeat(40)}\n` }
+    if (a[0] === 'rev-parse' && a.includes('--git-dir')) return { stdout: `${COMMON}\n${COMMON}\n` }
+    if (a[0] === 'rev-parse' && a[2] === '--git-common-dir') return { stdout: `${COMMON}\n` }
+    if (a[0] === 'remote') return { stdout: 'origin\n' }
+    if (a[0] === 'config' && a.includes('branch.main.remote')) return { stdout: 'origin\n' }
+    if (a[0] === 'config') return { code: 1 }
+    if (a[0] === 'for-each-ref') return { stdout: 'refs/heads/main\nrefs/heads/side\nrefs/remotes/origin/main\n' }
+    if (a[0] === 'rev-list' && a.includes('--left-right')) return { stdout: '0\t1\n' }
+    if (a[0] === 'rev-list' && a.includes('--parents')) return { stdout: `${OID} ${'1'.repeat(40)}\n` }
+    if (a[0] === 'stash') return { stdout: `${OID}\0stash@{0}\n` }
+    if (a[0] === 'check-ref-format') return { code: a[2].startsWith('-') || a[2].startsWith('+') ? 1 : 0 }
+    if (a[0] === 'show-ref') return { code: 1 }
+    if (a[0] === 'cat-file') return { code: 0 }
+    if (a[0] === 'worktree') return { stdout: `worktree ${WT.replace(/\\/g, '/')}\0HEAD ${HEAD}\0branch refs/heads/main\0\0` }
+    if (a[0] === 'log') return { stdout: '' }
+    return { stdout: '' }
+  }
+  // Only writes set GIT_MERGE_AUTOEDIT (the environment may already carry a GIT_EDITOR).
+  const writes = calls => calls.filter(c => c.opts.env?.GIT_MERGE_AUTOEDIT === 'no')
+
+  it.each([
+    ['push', { remote: '-f' }], ['push', { remote: 'origin', dest: '+main' }], ['push', { remote: 'origin', dest: '--force' }],
+    ['branch', { name: '--force' }], ['branch', { name: 'x', start: '--all' }], ['checkout', { branch: '--force' }],
+    ['checkout', { oid: 'HEAD --force' }], ['revert', { oid: '-f' }], ['worktreeAdd', { ref: 'refs/heads/side', path: '-f' }],
+    ['worktreeRemove', { path: '--force' }], ['stashDrop', { oid: '--all' }], ['pull', { mode: 'force' }],
+    ['rebaseInteractive', { base: '--root', rows: [] }],
+  ])('%s with hostile options %j: refused before any write, no forbidden flag anywhere', async (kind, options) => {
+    const { invoke, calls } = setup(state())
+    const p = await invoke('git:preview', REPO, WT, REG, kind, options)
+    expect(p.eligible).toBe(false)
+    const r = await invoke('git:run', REPO, WT, REG, kind, options, 'stamp')
+    expect(r.ok).toBe(false)
+    expect(writes(calls)).toEqual([])
+    for (const c of calls) for (const f of FORBIDDEN) expect(c.args).not.toContain(f)
+  })
+
+  it('every write carries the no-op editors and never waits on one', async () => {
+    const { invoke, calls } = setup(state())
+    const p = await invoke('git:preview', REPO, WT, REG, 'branch', { name: 'feature/x' })
+    expect(p.eligible).toBe(true)
+    expect(await invoke('git:run', REPO, WT, REG, 'branch', { name: 'feature/x' }, p.stamp)).toMatchObject({ ok: true })
+    const [write] = writes(calls)
+    expect(write.args).toEqual(['branch', '--no-track', 'feature/x', 'HEAD'])
+    expect(write.opts.env).toMatchObject({ GIT_EDITOR: ':', GIT_SEQUENCE_EDITOR: ':', GIT_MERGE_AUTOEDIT: 'no' })
+  })
+
+  it('a stale stamp runs nothing', async () => {
+    const { invoke, calls } = setup(state())
+    expect(await invoke('git:run', REPO, WT, REG, 'pull', { mode: 'ff' }, 'not-the-stamp')).toEqual({ ok: false, stale: true, detail: 'Changed since the preview. Preview again.' })
+    expect(writes(calls)).toEqual([])
+  })
+
+  it('builds the documented argv for pull and push', async () => {
+    const { invoke, calls } = setup(state())
+    let p = await invoke('git:preview', REPO, WT, REG, 'pull', { mode: 'ff' })
+    await invoke('git:run', REPO, WT, REG, 'pull', { mode: 'ff' }, p.stamp)
+    expect(writes(calls).map(c => c.args)).toEqual([['fetch', 'origin'], ['merge', '--ff-only', '--end-of-options', 'origin/main']])
+    p = await invoke('git:preview', REPO, WT, REG, 'push', { remote: 'origin', dest: 'review/main', setUpstream: false })
+    await invoke('git:run', REPO, WT, REG, 'push', { remote: 'origin', dest: 'review/main', setUpstream: false }, p.stamp)
+    expect(writes(calls).at(-1).args).toEqual(['push', '--porcelain', 'origin', 'refs/heads/main:refs/heads/review/main'])
+  })
+
+  it('maps a rejected push and a network timeout to their messages', async () => {
+    const rejected = setup(state())
+    rejected.deps.spawn.mockImplementation((cmd, args, opts) => {
+      const a = args.slice(3)
+      const r = a[0] === 'push' ? { code: 1, stdout: 'To x\n!\trefs/heads/main:refs/heads/main\t[rejected] (fetch first)\n' } : state()(a)
+      return fakeChild(r, 1)
+    })
+    let p = await rejected.invoke('git:preview', REPO, WT, REG, 'push', { remote: 'origin' })
+    expect((await rejected.invoke('git:run', REPO, WT, REG, 'push', { remote: 'origin' }, p.stamp)).detail).toMatch(/^The remote has commits you don't have - pull first\./)
+    const slow = setup((a, o) => (a[0] === 'fetch' ? 'hang' : state()(a, o)), {}, { longTimeoutMs: 50 })
+    p = await slow.invoke('git:preview', REPO, WT, REG, 'fetch', {})
+    expect(await slow.invoke('git:run', REPO, WT, REG, 'fetch', {}, p.stamp)).toEqual({ ok: false, detail: expect.stringMatching(/^git timed out talking to the remotes - a credential or SSH prompt may be waiting/) })
+  })
+
+  it('lists the repository programs that will run', async () => {
+    const hooks = fs.mkdtempSync(path.join((await import('os')).tmpdir(), 'nexusmd-hooks-'))
+    for (const f of ['pre-push', 'pre-push.sample', 'post-merge']) fs.writeFileSync(path.join(hooks, f), '')
+    const { invoke } = setup(args => (args[0] === 'config' && args.includes('core.hooksPath') ? { stdout: `${hooks}\n` }
+      : args[0] === 'config' && args.includes('--get-regexp') ? { stdout: 'filter.lfs.clean git-lfs clean\nfilter.lfs.smudge git-lfs smudge\ncore.sshcommand ssh -i k\n' }
+        : state()(args)))
+    const p = await invoke('git:preview', REPO, WT, REG, 'fetch', {})
+    expect(p.programs).toEqual(['post-merge hook', 'pre-push hook', 'filter lfs', 'core.sshCommand'])
+    fs.rmSync(hooks, { recursive: true, force: true })
+  })
+
+  it('refuses unknown kinds outright', async () => {
+    const { invoke } = setup(state())
+    await expect(invoke('git:preview', REPO, WT, REG, 'reset', {})).rejects.toThrow('Unknown action: reset')
+    await expect(invoke('git:run', REPO, WT, REG, '__proto__', {}, 'x')).rejects.toThrow('Unknown action')
+  })
+})
