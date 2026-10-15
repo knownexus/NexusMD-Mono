@@ -239,7 +239,7 @@ function registerActions(handle, ctx) {
       preview: async (wt, o) => {
         const tracking = out(await read(wt, ['rev-parse', '--verify', '--quiet', `refs/remotes/${o.remote}/${o.dest}`]));
         const commits = await subjects(wt, tracking ? [`${tracking}..HEAD`] : ['HEAD', '--not', '--remotes']);
-        return { ...o, newBranch: !tracking, commits };
+        return { ...o, newBranch: !tracking, commits, remotes: await remotes(wt) };
       },
       steps: o => [['push', '--porcelain', ...(o.setUpstream ? ['--set-upstream'] : []), o.remote, `refs/heads/${o.local}:refs/heads/${o.dest}`]],
       network: o => o.remote,
