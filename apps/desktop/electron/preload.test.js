@@ -91,6 +91,22 @@ describe('preload bridge', () => {
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile:write', cfg, 'mac.json', '{}', { expected: null, dir: 'C:\\p' })
   })
 
+  it('exposes the stage 3 git history channels', () => {
+    const repo = { name: 'App', path: 'C:\\repos\\App' }
+    const reg = [repo.path]
+    const q = { ref: 'HEAD', filter: 'all', base: null, search: null, limit: 200 }
+    exposed.git.refs(repo, repo.path, reg)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:refs', repo, repo.path, reg)
+    exposed.git.log(repo, repo.path, reg, q)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:log', repo, repo.path, reg, q)
+    exposed.git.commitDetails(repo, repo.path, reg, 'a'.repeat(40))
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:commitDetails', repo, repo.path, reg, 'a'.repeat(40))
+    exposed.git.commitFiles(repo, repo.path, reg, 'a'.repeat(40), null)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:commitFiles', repo, repo.path, reg, 'a'.repeat(40), null)
+    exposed.git.commitDiff(repo, repo.path, reg, 'a'.repeat(40), 'b'.repeat(40), ['f'])
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:commitDiff', repo, repo.path, reg, 'a'.repeat(40), 'b'.repeat(40), ['f'])
+  })
+
   it('exposes devenv.pathForFile through webUtils', () => {
     expect(exposed.devenv.pathForFile({ name: 'photo.jpg' })).toBe('C:\\Users\\me\\photo.jpg')
   })
