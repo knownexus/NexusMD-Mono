@@ -56,7 +56,8 @@ afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
 })
 
-describe('stage 4 actions against real repositories', () => {
+// Real git on Windows starts a process per command; these tests make 100+ calls each and can pass a minute under full-suite load.
+describe('stage 4 actions against real repositories', { timeout: 180000 }, () => {
   it('fetches, then fast-forwards; refuses a fast-forward once both sides moved', async () => {
     const work = R('Work')
     const other = R('Other').path

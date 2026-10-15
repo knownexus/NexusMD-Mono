@@ -65,7 +65,8 @@ afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
 })
 
-describe('git workspace history against real repositories', () => {
+// Real git on Windows starts a process per command, so a test can take well over the 5 s default.
+describe('git workspace history against real repositories', { timeout: 60000 }, () => {
   it('lists the whole history in topo order with parsed refs', async () => {
     const w = repo('Work')
     const r = await call('git:log', w, w.path, REG(), q())
