@@ -837,3 +837,95 @@ describe('stage 3 history: refs and log', () => {
     expect(calls.filter(c => H.every((a, i) => c.args[i] === a))).toEqual([])
   })
 })
+
+describe('stage 3 history: commit details, files and diffs', () => {
+  const H = HISTORY_CONFIG
+  const C = 'c'.repeat(40)
+  const P1 = '1'.repeat(40)
+  const P2 = '2'.repeat(40)
+  const hist = (parents = [P1, P2], over = {}) => {
+    const base = reads()
+    return args => {
+      const isHist = H.every((a, i) => args[i] === a)
+      const a = isHist ? args.slice(H.length) : args
+      if (isHist && a[0] in over) return typeof over[a[0]] === 'function' ? over[a[0]](a) : over[a[0]]
+      if (a[0] === 'rev-list') return parents === null ? { code: 128, stderr: 'bad object' } : { stdout: `${[C, ...parents].join(' ')}\n` }
+      if (a[0] === 'rev-parse' && a.includes('--end-of-options')) return parents === null ? { code: 1 } : { stdout: `${C}\n` }
+      if (a[0] === 'show' || a[0] === 'diff-tree' || a[0] === 'diff') return { stdout: 'out' }
+      return base(a)
+    }
+  }
+  const histCalls = (calls, sub) => calls.filter(c => H.every((a, i) => c.args[i] === a) && c.args[H.length] === sub).map(c => c.args.slice(H.length))
+
+  it('reads details with full ref names', async () => {
+    const { invoke, calls } = setup(hist())
+    expect(await invoke('git:commitDetails', REPO, WT, REG, C)).toEqual({ details: 'out' })
+    expect(histCalls(calls, 'show')[0]).toEqual(['show', '-s', '--decorate=full',
+      '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%D%x00%B', '--end-of-options', C])
+  })
+
+  it('a commit that no longer exists is missing, not an error', async () => {
+    const { invoke } = setup(hist(null))
+    expect(await invoke('git:commitDetails', REPO, WT, REG, C)).toEqual({ missing: true })
+    expect(await invoke('git:commitFiles', REPO, WT, REG, C, P1)).toEqual({ missing: true })
+    expect(await invoke('git:commitDiff', REPO, WT, REG, C, P1, ['f'])).toEqual({ missing: true })
+  })
+
+  it('lists files against the chosen parent, and a root commit with --root', async () => {
+    const { invoke, calls } = setup(hist())
+    await invoke('git:commitFiles', REPO, WT, REG, C, P2)
+    expect(histCalls(calls, 'diff-tree')[0]).toEqual(['diff-tree', '--no-commit-id', '-r', '-z', '-M', '--name-status', '--no-ext-diff', '--no-textconv', '--end-of-options', P2, C])
+    const root = setup(hist([]))
+    await root.invoke('git:commitFiles', REPO, WT, REG, C, null)
+    expect(histCalls(root.calls, 'diff-tree')[0]).toEqual(['diff-tree', '--no-commit-id', '--root', '-r', '-z', '-M', '--name-status', '--no-ext-diff', '--no-textconv', '--end-of-options', C])
+  })
+
+  it('diffs one file against the parent, and a root commit with show', async () => {
+    const { invoke, calls } = setup(hist())
+    expect(await invoke('git:commitDiff', REPO, WT, REG, C, P1, ['a b.txt'])).toEqual({ text: 'out', truncated: false, binary: false, size: 3 })
+    expect(histCalls(calls, 'diff')[0]).toEqual(['diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '-U3', '--end-of-options', P1, C, '--', 'a b.txt'])
+    const root = setup(hist([]))
+    await root.invoke('git:commitDiff', REPO, WT, REG, C, null, ['f'])
+    expect(histCalls(root.calls, 'show')[0]).toEqual(['show', '--format=', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '-U3', '--end-of-options', C, '--', 'f'])
+  })
+
+  it('caps a large diff at 1 MB', async () => {
+    const { invoke } = setup(hist([P1], { diff: { stdout: 'x'.repeat(1024 * 1024 + 10) } }))
+    const r = await invoke('git:commitDiff', REPO, WT, REG, C, P1, ['f'])
+    expect(r.truncated).toBe(true)
+    expect(r.text).toHaveLength(1024 * 1024)
+  })
+
+  it.each([
+    ['a symbolic name', 'git:commitDetails', ['HEAD']],
+    ['an uppercase id', 'git:commitDetails', [C.toUpperCase()]],
+    ['a short id', 'git:commitDetails', ['c'.repeat(39)]],
+    ['an option as the parent', 'git:commitFiles', [C, '--all']],
+    ['a path outside the worktree', 'git:commitDiff', [C, P1, ['../x']]],
+  ])('refuses %s before spawning any history read', async (_n, channel, args) => {
+    const { invoke, calls } = setup(hist())
+    await expect(invoke(channel, REPO, WT, REG, ...args)).rejects.toThrow()
+    expect(calls.filter(c => H.every((a, i) => c.args[i] === a))).toEqual([])
+  })
+
+  it.each([
+    ['a parent that is not one of the commit\'s', [C, '9'.repeat(40)]],
+    ['no parent for a commit that has one', [C, null]],
+  ])('refuses %s after reading the parents, with no diff run', async (_n, args) => {
+    const { invoke, calls } = setup(hist([P1]))
+    await expect(invoke('git:commitFiles', REPO, WT, REG, ...args)).rejects.toThrow('Not a parent of that commit')
+    await expect(invoke('git:commitDiff', REPO, WT, REG, ...args, ['f'])).rejects.toThrow('Not a parent of that commit')
+    expect(histCalls(calls, 'diff-tree')).toEqual([])
+    expect(histCalls(calls, 'diff')).toEqual([])
+  })
+
+  it('every history read carries the history config', async () => {
+    const { invoke, calls } = setup(hist())
+    await invoke('git:commitDetails', REPO, WT, REG, C)
+    await invoke('git:commitFiles', REPO, WT, REG, C, P1)
+    await invoke('git:commitDiff', REPO, WT, REG, C, P1, ['f'])
+    const history = calls.filter(c => ['show', 'diff-tree', 'diff', 'rev-list'].includes(c.args[H.length]))
+    expect(history.length).toBeGreaterThanOrEqual(5)
+    for (const c of history) expect(c.raw.slice(0, 3 + H.length)).toEqual(['--no-pager', ...FSMON, ...H])
+  })
+})
