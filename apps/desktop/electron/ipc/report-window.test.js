@@ -33,7 +33,7 @@ function fakes({ loadRejects = false } = {}) {
   return { wins, shell, ses, session, log, openReport: createReportWindows({ BrowserWindow: FakeWindow, shell, session, log }) }
 }
 
-// Absolute on whichever OS runs the tests: C:\\… on Windows (as in the app), /… elsewhere.
+// Absolute on whichever OS runs the tests: C:\… on Windows (as in the app), /… elsewhere.
 const abs = (...parts) => path.join(process.platform === 'win32' ? 'C:\\' : '/', ...parts)
 const FILE = abs('repos', 'dev-environment', '.local', 'test', 'traces', 'runs', 'r1', 'trace.html')
 
