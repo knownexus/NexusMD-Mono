@@ -149,10 +149,17 @@ describe('useCommit', () => {
     const { result, rerender } = render(adapter, { oid: oid(1) })
     await waitFor(() => expect(result.current.files).toEqual([{ status: 'M', score: null, oldPath: null, path: 'f' }]))
     expect(adapter.commitFiles).toHaveBeenCalledWith(repo, repo.path, registered, oid(1), oid(98))
-    rerender({ oid: oid(1), file: { path: 'f' } })
+    rerender({ oid: oid(1), focusedPath: 'f' })
     await waitFor(() => expect(result.current.diff?.files?.[0]?.hunks).toHaveLength(1))
-    rerender({ oid: oid(1), file: { path: 'f' }, parentIndex: 1 })
+    rerender({ oid: oid(1), focusedPath: 'f', parentIndex: 1 })
     await waitFor(() => expect(adapter.commitFiles).toHaveBeenLastCalledWith(repo, repo.path, registered, oid(1), oid(99)))
+  })
+
+  it('diffs a renamed file with both of its names', async () => {
+    const adapter = commitAdapter({ commitFiles: vi.fn(async () => ({ files: 'R100\0old name\0new name\0' })) })
+    const { result } = render(adapter, { oid: oid(2), focusedPath: 'new name' })
+    await waitFor(() => expect(result.current.diff?.result).toBeTruthy())
+    expect(adapter.commitDiff).toHaveBeenCalledWith(repo, repo.path, registered, oid(2), oid(99), ['new name', 'old name'])
   })
 
   it('a cached commit makes no new request', async () => {

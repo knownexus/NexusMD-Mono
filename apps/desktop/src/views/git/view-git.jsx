@@ -9,6 +9,7 @@ import { GroupTabs } from './group-tabs.jsx'
 import { WorktreeList } from './worktree-list.jsx'
 import { WorktreeDetail } from './worktree-detail.jsx'
 import { WorktreePanel } from './worktree-panel.jsx'
+import { HistoryPanel } from './history-panel.jsx'
 import { GroupMenu } from './group-menu.jsx'
 import { GroupEditor } from './group-editor.jsx'
 import { useGitActions } from './use-git-actions.js'
@@ -103,9 +104,11 @@ function GitWorkspace({ adapter }) {
                 onAction={action => actions.openReview(action, selectedTree, selectedIds)} onCommit={() => openCommit()}
                 onHunk={(change, index, stamp, after) => actions.hunk(selectedTree, change, index, stamp, after)}
                 busy={!!actions.busy[selectedTree.path]} status={actions.status[selectedTree.path] ?? null}
-                split={view.split} onSplit={split => setView({ split })} />
+                split={view.split} onSplit={split => setView({ split })}
+                panel={view.panel} onPanel={panel => setView({ panel })} />
             )
-            : <WorktreeDetail tree={null} branch={selectedBranch} />}
+            : <BranchHistory adapter={adapter} branch={selectedBranch} repos={config.repos} worktrees={snapshot?.worktrees ?? []}
+              registered={registered} split={view.split} onSplit={split => setView({ split })} />}
         </aside>
       </div>
       {menuFor && (
@@ -140,6 +143,21 @@ function GitWorkspace({ adapter }) {
           onClose={() => setCommitting(null)} onDone={reload}
           onRetry={async (failedIds, messages) => { setCommitting(null); await reload(); openCommit(failedIds, messages) }} />
       )}
+    </div>
+  )
+}
+
+// A branch that isn't checked out has no changes, only history. git runs in any usable worktree
+// of its repository, or in the common dir (the bare entry) of a layout with none.
+function BranchHistory({ adapter, branch, repos, worktrees, registered, split, onSplit }) {
+  const repo = branch ? repos.find(r => r.name === branch.repo) : null
+  if (!branch || !repo) return <WorktreeDetail tree={null} branch={branch} />
+  const cwd = worktrees.find(t => t.repo === branch.repo && !t.prunable && !t.error)?.path ?? branch.commonDir
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <WorktreeDetail tree={null} branch={branch} />
+      <HistoryPanel key={branch.id} adapter={adapter} repo={repo} cwd={cwd} registered={registered}
+        target={{ ref: branch.ref, head: branch.head || null }} split={split} onSplit={onSplit} />
     </div>
   )
 }
