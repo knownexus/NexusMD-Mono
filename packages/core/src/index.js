@@ -103,4 +103,5 @@ export {
   fileReview, commitTargets, commitReview, COMMIT_NOTE,
   parseRefs, parseLog, graphCells, parseSearch, historyQuery, HISTORY_STEP, HISTORY_MAX, parseRefList, defaultBase, parseCommitDetails, parseNameStatus, parentLabel,
   ACTION_KINDS, BATCH_KINDS, BATCH_NOTE, actionTargets, previewModel, worktreeDefaultPath, checkBranchName, REBASE_ACTIONS, rebasePlan, moveRow, setRowAction, setRowMessage, rebaseTodo, squashGroups, rebaseMessages, messageRows, rebaseProblems, ACTIVITY_MAX, addActivity, failedTargets, filterFiles,
+  parseConflicts, resolveRegion, hasMarkers, conflictKind, conflictLabels, operationText,
 } from './modules/git/index.js'

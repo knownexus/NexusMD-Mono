@@ -24,6 +24,7 @@ const EXPECTED = [
   'derivePrSparkline', 'deriveProjects', 'deriveSprint', 'effectiveNeedsMe', 'effectiveTeamActivity',
   'elapsedMs', 'encryptConfidentialForServer',
   'filterFiles',
+  'parseConflicts', 'resolveRegion', 'hasMarkers', 'conflictKind', 'conflictLabels', 'operationText',
   'enrichTeam', 'enrichTeamMember', 'exportProfile', 'fetchAdoProcessMetadata', 'filterTriageItems',
   'fmtDateShort', 'formatClock', 'formatDateTime', 'formatDuration', 'generateProfileId', 'getActiveLanes', 'getEventsForDay', 'getIsoWeek',
   'getIsoYearWeek', 'getMondayOfDate', 'getYearWeekForOffset',
