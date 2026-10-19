@@ -51,6 +51,14 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     : change?.area === 'conflict' ? change.path
     : !change && tree.operation && justResolved?.tree === tree.path ? justResolved.path : null
   const resolveDirty = React.useRef(false)
+  // A just-resolved file that conflicts again (the next step of the operation, or outside the app) is a new
+  // conflict: once a snapshot has shown it gone, its return remounts the pane, which loads it afresh.
+  const [resolveGen, setResolveGen] = React.useState(0)
+  if (justResolved?.tree === tree.path) {
+    const back = tree.changes.some(c => c.area === 'conflict' && c.path === justResolved.path)
+    if (!back && !justResolved.gone) setJustResolved({ ...justResolved, gone: true })
+    else if (back && justResolved.gone) { setJustResolved(null); setResolveGen(g => g + 1) }
+  }
   // Discarding also forgets the kept draft, so the edits don't come back the next time the file opens.
   const confirmDiscard = () => {
     if (resolvePath && resolveDirty.current) {
@@ -199,7 +207,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
                   </div>
                 )}
                 {!editing && (resolvePath
-                  ? <ResolvePane key={`${tree.path}|${resolvePath}`}adapter={adapter} repo={repo} tree={tree} registered={registered} change={change ?? { path: resolvePath }}
+                  ? <ResolvePane key={`${tree.path}|${resolvePath}|${resolveGen}`} adapter={adapter} repo={repo} tree={tree} registered={registered} change={change ?? { path: resolvePath }}
                       onDirtyChange={d => { resolveDirty.current = d }}
                       onResolved={() => { setJustResolved({ tree: tree.path, path: resolvePath }); onSaved?.() }} />
                   : editor && !diffChange

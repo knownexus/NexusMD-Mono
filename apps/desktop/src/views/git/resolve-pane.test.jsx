@@ -68,13 +68,15 @@ describe('ResolvePane', () => {
 
   it("Both (main's first) orders the sides", async () => {
     await setup()
-    fireEvent.click(screen.getByRole('button', { name: 'Both' }))
-    const menu = screen.getByRole('menu', { name: 'Both' })
-    expect(within(menu).getAllByRole('menuitem').map(b => b.textContent)).toEqual(["Both (main's version first)", 'Both (my version first)'])
-    fireEvent.click(within(menu).getByRole('menuitem', { name: "Both (main's version first)" }))
+    // Plain buttons, so they are reachable and usable from the keyboard like any other.
+    const both = screen.getByRole('group', { name: 'Both' })
+    const choices = within(both).getAllByRole('button')
+    expect(choices.map(b => b.textContent)).toEqual(["Both (main's version first)", 'Both (my version first)'])
+    expect(choices.every(b => b.tagName === 'BUTTON' && !b.disabled && b.tabIndex === 0)).toBe(true)
+    expect(screen.queryByRole('menu')).toBeNull()
+    fireEvent.click(choices[0])
     expect(result().state.doc.toString().startsWith('a\nL1\nR1\nb\n')).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Both' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Both (my version first)' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Both' })).getByRole('button', { name: 'Both (my version first)' }))
     expect(result().state.doc.toString()).toBe('a\nL1\nR1\nb\nR2\nL2\nc\n')
     expect(screen.getByText('0 of 2 left')).toBeTruthy()
   })

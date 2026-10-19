@@ -23,7 +23,6 @@ export function ResolvePane({ adapter, repo, tree, registered, change, onResolve
   // A fresh { line } per navigation, so the result jumps again even to the same line (and not while typing).
   const [jump, setJump] = React.useState(null)
   const [showBase, setShowBase] = React.useState(false)
-  const [bothMenu, setBothMenu] = React.useState(false)
   const [askMarkers, setAskMarkers] = React.useState(false)
   const [stale, setStale] = React.useState(false)
   // The counter's total is the regions there were when this load finished; a reload starts over.
@@ -50,7 +49,7 @@ export function ResolvePane({ adapter, repo, tree, registered, change, onResolve
     c.setCurrent(i)
     setJump({ line: lineAt(c.text, c.regions[i].start) })
   }
-  const take = choice => { setBothMenu(false); if (region) c.take(cur, choice) }
+  const take = choice => { if (region) c.take(cur, choice) }
 
   const after = r => {
     if (r === 'ok') onResolved?.()
@@ -134,15 +133,12 @@ export function ResolvePane({ adapter, repo, tree, registered, change, onResolve
           ) : (
             <div role="note" className="nx-muted">No conflicts left. Check the result, then mark the file resolved.</div>
           )}
-          <div className="row" style={{ gap: 6, position: 'relative' }}>
-            <button className="btn sm ghost" aria-haspopup="menu" aria-expanded={bothMenu} disabled={!region} onClick={() => setBothMenu(m => !m)}>Both</button>
-            {bothMenu && (
-              <div role="menu" aria-label="Both" className="card" onKeyDown={e => { if (e.key === 'Escape') setBothMenu(false) }}
-                style={{ position: 'absolute', top: '100%', left: 0, zIndex: 5, display: 'grid', gap: 2, padding: 4, marginTop: 4, boxShadow: 'var(--shadow-lg)' }}>
-                <button role="menuitem" className="btn sm ghost" style={{ justifyContent: 'flex-start' }} onClick={() => take('leftFirst')}>{`Both (${labels.left.version} first)`}</button>
-                <button role="menuitem" className="btn sm ghost" style={{ justifyContent: 'flex-start' }} onClick={() => take('rightFirst')}>{`Both (${labels.right.version} first)`}</button>
-              </div>
-            )}
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            {/* Two plain buttons rather than a menu: reachable and usable from the keyboard like any other. */}
+            <span role="group" aria-label="Both" className="row" style={{ gap: 6 }}>
+              <button className="btn sm ghost" disabled={!region} onClick={() => take('leftFirst')}>{`Both (${labels.left.version} first)`}</button>
+              <button className="btn sm ghost" disabled={!region} onClick={() => take('rightFirst')}>{`Both (${labels.right.version} first)`}</button>
+            </span>
             <button className="btn sm ghost" aria-pressed={showBase} disabled={!base} title={base ? undefined : 'No common original'} onClick={() => setShowBase(v => !v)}>Show original</button>
           </div>
           {showBase && base && (

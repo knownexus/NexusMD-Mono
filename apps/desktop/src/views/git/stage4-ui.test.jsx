@@ -221,6 +221,28 @@ describe('resolving a conflicted file in the panel', () => {
     expect(await screen.findByText('1 of 1 left')).toBeTruthy()
   })
 
+  it('a file that conflicts again after being resolved shows its sides again', async () => {
+    const git = conflicted()
+    await openWorktree(git)
+    fireEvent.click(await screen.findByText('c.txt'))
+    await screen.findByText('1 of 1 left')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: "Take dev's" }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mark resolved' }))
+    await screen.findByRole('button', { name: 'Undo resolution' })
+    await waitFor(() => expect(screen.queryByRole('button', { name: "Take dev's for c.txt" })).toBeNull())
+    // The next step of the rebase (or something outside the app) puts c.txt back in conflict.
+    git.resolveConflict.mockClear()
+    git.status.mockImplementation(async () => ({
+      porcelain: porcelain(`u UU N... 100644 100644 100644 100644 ${h} ${h} ${h} c.txt\0`),
+      operation: 'Rebase in progress', rebasingBranch: 'main', fetchedAt: null,
+      operationInfo: { kind: 'rebase', onto: { name: 'refs/heads/dev', oid: oid(1) }, step: 2, total: 2, replaying: { oid: oid(3), subject: 'More' } },
+    }))
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    expect(await screen.findByText('1 of 1 left')).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: "Take dev's" })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Undo resolution' })).toBeNull()
+  })
+
   it('leaving a half-resolved file asks first', async () => {
     const git = conflicted()
     await openWorktree(git)
