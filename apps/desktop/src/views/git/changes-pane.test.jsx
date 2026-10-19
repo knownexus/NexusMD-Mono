@@ -114,3 +114,34 @@ describe('ChangesPane', () => {
     expect(button('Commit…').disabled).toBe(true)
   })
 })
+
+describe('ChangesPane conflicts', () => {
+  const U = c('conflict', 'u.txt', { xy: 'UU' })
+  const D = c('conflict', 'd.txt', { xy: 'DU' })
+  const op = { kind: 'rebase', onto: { name: 'refs/heads/main', oid: 'a'.repeat(40) }, step: 1, total: 2, replaying: null }
+  const ctree = { path: 'C:/repos/A', branch: 'feat', operationInfo: op, changes: [A, B, U, D] }
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it('lists conflicts first with whole-file choices', () => {
+    renderPane({ tree: ctree, onResolve: vi.fn() })
+    const groups = screen.getAllByRole('group').filter(g => /\(\d+\)$/.test(g.getAttribute('aria-label')))
+    expect(groups[0].getAttribute('aria-label')).toBe('Conflicts (2)')
+    const row = within(groups[0])
+    expect(row.getAllByRole('button', { name: "Take main's" })).toHaveLength(2)
+    expect(row.getAllByRole('button', { name: 'Take mine' })).toHaveLength(2)
+    expect(within(screen.getByRole('group', { name: 'Staged (1)' })).queryByRole('button', { name: /^Take/ })).toBeNull()
+  })
+
+  it('whole-file choice asks first and resolves', () => {
+    const onResolve = vi.fn()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValue(true)
+    renderPane({ tree: ctree, onResolve })
+    const take = within(screen.getByRole('group', { name: 'Conflicts (2)' })).getAllByRole('button', { name: "Take main's" })[0]
+    fireEvent.click(take)
+    expect(confirm).toHaveBeenLastCalledWith("Use main's version for the whole of u.txt?")
+    expect(onResolve).not.toHaveBeenCalled()
+    fireEvent.click(take)
+    expect(onResolve).toHaveBeenCalledWith(U, 'left')
+  })
+})

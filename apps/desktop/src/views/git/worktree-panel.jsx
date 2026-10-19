@@ -3,7 +3,7 @@ import { ChangesPane } from './changes-pane.jsx'
 import { DiffPane } from './diff-pane.jsx'
 import { useDiff } from './use-diff.js'
 import { HistoryPanel } from './history-panel.jsx'
-import { OperationBanner } from './operation-banner.jsx'
+import { OperationBar } from './operation-bar.jsx'
 import { StashList } from './stash-list.jsx'
 import { GitCommandLine } from './git-command-line.jsx'
 import { FileEditor } from './file-editor.jsx'
@@ -23,7 +23,7 @@ function trackText(tree) {
  * `confirmDiscard()`, which asks before unsaved edits would be lost, and `openFile(path, line)`.
  */
 export const WorktreePanel = React.forwardRef(function WorktreePanel({
-  adapter, repo, registered, version, tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, onHunk,
+  adapter, repo, registered, version, tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, onResolve = null, onHunk,
   busy, status, split, onSplit, panel = 'changes', onPanel = () => {}, onSync = null, onExec = null, onSaved,
 }, ref) {
   const [stashes, setStashes] = React.useState(false)
@@ -165,14 +165,14 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
         </div>
       )}
       <div className="nx-panel-body">
-        {onSync && <OperationBanner tree={tree} onAction={onSync} />}
+        {onSync && <OperationBar tree={tree} onAction={onSync} />}
         {stashes && <StashList adapter={adapter} repo={repo} tree={tree} registered={registered} onAction={onSync} onClose={() => setStashes(false)} />}
         {history
           ? <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync} />
           : (
             <div ref={box} style={{ display: 'grid', gridTemplateRows: `minmax(0, ${shown}fr) 6px minmax(0, ${1 - shown}fr)`, height: '64vh', minHeight: 320 }}>
               <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={focus} drafts={drafts}
-                onAction={onAction} onCommit={onCommit} busy={busy} status={status} />
+                onAction={onAction} onCommit={onCommit} onResolve={onResolve} busy={busy} status={status} />
               <div role="separator" aria-orientation="horizontal" aria-label="Resize changes and diff" aria-valuenow={Math.round(shown * 100)}
                 tabIndex={0} onPointerDown={drag} onKeyDown={nudge} style={{ cursor: 'row-resize', background: 'var(--border)', borderRadius: 3 }} />
               <div style={{ display: 'grid', gridTemplateRows: canEdit ? 'auto minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: 6, minHeight: 0 }}>

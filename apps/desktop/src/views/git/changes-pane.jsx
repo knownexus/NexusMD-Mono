@@ -1,5 +1,5 @@
 import React from 'react'
-import { statusCode, groupChanges, actionsFor, toggleSelection, rangeSelection, isSubmodule } from '@nexusmd/core'
+import { statusCode, groupChanges, actionsFor, toggleSelection, rangeSelection, isSubmodule, conflictLabels } from '@nexusmd/core'
 
 const AREA_COLOUR = { staged: 'var(--success)', unstaged: 'var(--warning)', untracked: 'var(--warning)', conflict: 'var(--danger)' }
 const VERB = { stage: 'Stage', unstage: 'Unstage', discard: 'Discard', delete: 'Delete' }
@@ -11,7 +11,7 @@ const NONE = {
   delete: 'Select untracked files',
 }
 
-function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionChange, drafts }) {
+function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionChange, drafts, labels, busy, onResolve }) {
   const ids = group.changes.filter(c => !isSubmodule(c)).map(c => c.id)
   const chosen = ids.filter(id => selected.includes(id)).length
   const box = React.useRef(null)
@@ -38,6 +38,16 @@ function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionC
           {drafts.includes(c.path) && <span role="img" aria-label="Unsaved edits" title="Unsaved edits" style={{ color: 'var(--warning)' }}>●</span>}
           {c.originalPath && <span style={{ color: 'var(--text-muted)' }}>{`← ${c.originalPath}`}</span>}
           {isSubmodule(c) && <span style={{ color: 'var(--text-muted)' }}>submodule</span>}
+          {c.area === 'conflict' && labels && onResolve && (
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+              {['left', 'right'].map(side => (
+                <button key={side} className="btn sm ghost" disabled={busy}
+                  onClick={() => { if (window.confirm(`Use ${labels[side].version} for the whole of ${c.path}?`)) onResolve(c, side) }}>
+                  {labels[side].take}
+                </button>
+              ))}
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -45,8 +55,9 @@ function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionC
 }
 
 /** A worktree's changed files with selection, the file-action toolbar and the last result. */
-export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, busy = false, status = null, drafts = [] }) {
+export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, onResolve = null, busy = false, status = null, drafts = [] }) {
   const groups = groupChanges(tree.changes)
+  const labels = conflictLabels(tree.operationInfo, tree.branch)
   const ordered = groups.flatMap(g => g.changes)
   const actions = actionsFor(tree.changes, selected)
   const canCommit = tree.changes.some(c => c.area === 'staged')
@@ -96,7 +107,8 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
         : (
           <div tabIndex={0} aria-label="Changed files" onKeyDown={onKeyDown} style={{ overflow: 'auto', minHeight: 0, fontFamily: 'var(--font-mono, monospace)' }}>
             {groups.map(g => (
-              <ChangeGroup key={g.area} group={g} selected={selected} focusId={focusId} onFocus={onFocus} onSelect={select} onSelectionChange={onSelectionChange} drafts={drafts} />
+              <ChangeGroup key={g.area} group={g} selected={selected} focusId={focusId} onFocus={onFocus} onSelect={select} onSelectionChange={onSelectionChange} drafts={drafts}
+                labels={labels} busy={busy} onResolve={onResolve} />
             ))}
           </div>
         )}
