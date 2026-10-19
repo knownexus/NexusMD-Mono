@@ -8,6 +8,7 @@ import { StashList } from './stash-list.jsx'
 import { GitCommandLine } from './git-command-line.jsx'
 import { FileEditor } from './file-editor.jsx'
 import { GoToFile } from './go-to-file.jsx'
+import { discardWorktreeDraft, worktreeDraftPaths, useWorktreeDraftsVersion } from './use-worktree-file.js'
 
 const clamp = v => Math.min(0.8, Math.max(0.2, v))
 
@@ -41,7 +42,13 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   const editor = !history && opened?.tree === tree.path ? opened : null
   const editing = mode === 'edit' && !!editor
   const dirty = React.useRef(false)
-  const confirmDiscard = () => !editor || !dirty.current || window.confirm(`Discard unsaved changes to ${editor.path}?`)
+  // Discarding also forgets the kept draft, so the edits don't come back the next time the file opens.
+  const confirmDiscard = () => {
+    if (!editor || !dirty.current) return true
+    if (!window.confirm(`Discard unsaved changes to ${editor.path}?`)) return false
+    discardWorktreeDraft(repo.path, editor.tree, editor.path)
+    return true
+  }
   const open = (path, line = null) => setOpened({ tree: tree.path, path, line: line == null ? null : { line } })
   const openFile = (path, line = null) => {
     if (path !== editor?.path && !confirmDiscard()) return false
@@ -65,6 +72,11 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     if (history) onPanel('changes')
     if (openFile(path)) setGoTo(false)
   }
+  // Edits kept from an editor that went away (another app view, a refresh that briefly lost this
+  // worktree) are pointed at here and in the changes list until saved or reverted.
+  useWorktreeDraftsVersion()
+  const drafts = worktreeDraftPaths(repo.path, tree.path)
+  const elsewhere = drafts.filter(p => p !== editor?.path)
   // Closing or reloading the window with unsaved edits asks first (main shows the question).
   React.useEffect(() => {
     const warn = e => { if (dirty.current) { e.preventDefault(); e.returnValue = '' } }
@@ -146,6 +158,12 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
       <div className="nx-panel-section" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <PanelSwitch panel={panel} onPanel={switchPanel} count={tree.changes.length} />
       </div>
+      {elsewhere.length > 0 && (
+        <div role="note" aria-label="Unsaved edits" className="nx-panel-section" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span className="nx-badge warn">● Unsaved edits kept</span>
+          {elsewhere.map(p => <button key={p} className="btn sm ghost" title={`Open ${p}`} onClick={() => goToFile(p)}>{p}</button>)}
+        </div>
+      )}
       <div className="nx-panel-body">
         {onSync && <OperationBanner tree={tree} onAction={onSync} />}
         {stashes && <StashList adapter={adapter} repo={repo} tree={tree} registered={registered} onAction={onSync} onClose={() => setStashes(false)} />}
@@ -153,7 +171,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
           ? <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync} />
           : (
             <div ref={box} style={{ display: 'grid', gridTemplateRows: `minmax(0, ${shown}fr) 6px minmax(0, ${1 - shown}fr)`, height: '64vh', minHeight: 320 }}>
-              <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={focus}
+              <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={focus} drafts={drafts}
                 onAction={onAction} onCommit={onCommit} busy={busy} status={status} />
               <div role="separator" aria-orientation="horizontal" aria-label="Resize changes and diff" aria-valuenow={Math.round(shown * 100)}
                 tabIndex={0} onPointerDown={drag} onKeyDown={nudge} style={{ cursor: 'row-resize', background: 'var(--border)', borderRadius: 3 }} />

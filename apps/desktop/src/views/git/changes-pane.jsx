@@ -11,7 +11,7 @@ const NONE = {
   delete: 'Select untracked files',
 }
 
-function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionChange }) {
+function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionChange, drafts }) {
   const ids = group.changes.filter(c => !isSubmodule(c)).map(c => c.id)
   const chosen = ids.filter(id => selected.includes(id)).length
   const box = React.useRef(null)
@@ -35,6 +35,7 @@ function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionC
             onClick={e => e.stopPropagation()} onChange={e => onSelect(c.id, e.nativeEvent.shiftKey)} />
           <span style={{ color: AREA_COLOUR[c.area], whiteSpace: 'pre' }}>{statusCode(c)}</span>
           <span>{c.path}</span>
+          {drafts.includes(c.path) && <span role="img" aria-label="Unsaved edits" title="Unsaved edits" style={{ color: 'var(--warning)' }}>●</span>}
           {c.originalPath && <span style={{ color: 'var(--text-muted)' }}>{`← ${c.originalPath}`}</span>}
           {isSubmodule(c) && <span style={{ color: 'var(--text-muted)' }}>submodule</span>}
         </div>
@@ -44,7 +45,7 @@ function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionC
 }
 
 /** A worktree's changed files with selection, the file-action toolbar and the last result. */
-export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, busy = false, status = null }) {
+export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, busy = false, status = null, drafts = [] }) {
   const groups = groupChanges(tree.changes)
   const ordered = groups.flatMap(g => g.changes)
   const actions = actionsFor(tree.changes, selected)
@@ -95,7 +96,7 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
         : (
           <div tabIndex={0} aria-label="Changed files" onKeyDown={onKeyDown} style={{ overflow: 'auto', minHeight: 0, fontFamily: 'var(--font-mono, monospace)' }}>
             {groups.map(g => (
-              <ChangeGroup key={g.area} group={g} selected={selected} focusId={focusId} onFocus={onFocus} onSelect={select} onSelectionChange={onSelectionChange} />
+              <ChangeGroup key={g.area} group={g} selected={selected} focusId={focusId} onFocus={onFocus} onSelect={select} onSelectionChange={onSelectionChange} drafts={drafts} />
             ))}
           </div>
         )}

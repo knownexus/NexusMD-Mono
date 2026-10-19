@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor, act, cleanup } from '@testing-library/react'
-import { useWorktreeFile } from './use-worktree-file.js'
+import { useWorktreeFile, clearWorktreeDrafts, worktreeDraftPaths, discardWorktreeDraft } from './use-worktree-file.js'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); clearWorktreeDrafts() })
 
 const repo = { name: 'A', path: 'C:/repos/A' }
 const registered = ['C:/repos/A']
@@ -162,5 +162,129 @@ describe('useWorktreeFile', () => {
     await act(async () => { slow.resolve({ text: 'slow\n', bom: false, stamp: 's' }) })
     expect(result.current.text).toBe('fast\n')
     expect(result.current.status).toBe('ready')
+  })
+
+  it('writes a mixed file back with its majority line ending', async () => {
+    const adapter = {
+      readFile: vi.fn(async () => ({ text: 'a\nb\r\nc\nd\n', bom: false, stamp: 's1' })),
+      writeFile: vi.fn(async () => ({ ok: true, stamp: 's2' })),
+    }
+    const { result } = setup(adapter)
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    act(() => { result.current.setText('a\nb\nc\nd\ne\n') })
+    await act(async () => { await result.current.save() })
+    expect(adapter.writeFile.mock.calls[0][4]).toBe('a\nb\nc\nd\ne\n')
+  })
+
+  it("breaks a line-ending tie with the first line's ending", async () => {
+    const adapter = {
+      readFile: vi.fn(async () => ({ text: 'a\r\nb\n', bom: false, stamp: 's1' })),
+      writeFile: vi.fn(async () => ({ ok: true, stamp: 's2' })),
+    }
+    const { result } = setup(adapter)
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    act(() => { result.current.setText('a\nc\n') })
+    await act(async () => { await result.current.save() })
+    expect(adapter.writeFile.mock.calls[0][4]).toBe('a\r\nc\r\n')
+  })
+})
+
+describe('useWorktreeFile drafts', () => {
+  const file = (text = 'a\n', stamp = 's1') => ({ text, bom: false, stamp })
+
+  it('keeps unsaved edits when the editor goes away and restores them with a notice', async () => {
+    const adapter = { readFile: vi.fn(async () => file()) }
+    const first = setup(adapter)
+    await waitFor(() => expect(first.result.current.status).toBe('ready'))
+    act(() => { first.result.current.setText('mine\n') })
+    expect(worktreeDraftPaths(repo.path, repo.path)).toEqual(['f.txt'])
+    first.unmount()
+    const again = setup(adapter)
+    await waitFor(() => expect(again.result.current.text).toBe('mine\n'))
+    expect(again.result.current.restored).toBe(true)
+    expect(again.result.current.dirty).toBe(true)
+    await waitFor(() => expect(adapter.readFile).toHaveBeenCalledTimes(2))
+    await act(async () => {})
+    expect(again.result.current.conflict).toBe(false)
+  })
+
+  it('reports a conflict at once when the file changed on disk since the draft', async () => {
+    const adapter = {
+      readFile: vi.fn(async () => file()),
+      writeFile: vi.fn(async (_r, _w, _g, _p, _t, o) => (o.overwrite ? { ok: true, stamp: 's3' } : { ok: false, conflict: true, stamp: 's2' })),
+    }
+    const first = setup(adapter)
+    await waitFor(() => expect(first.result.current.status).toBe('ready'))
+    act(() => { first.result.current.setText('mine\n') })
+    first.unmount()
+    adapter.readFile.mockImplementation(async () => file('theirs\n', 's2'))
+    const again = setup(adapter)
+    await waitFor(() => expect(again.result.current.conflict).toBe(true))
+    expect(again.result.current.text).toBe('mine\n')
+    // Never written silently: a plain save still carries the draft's stamp and is refused.
+    await act(async () => { await again.result.current.save() })
+    expect(adapter.writeFile.mock.calls[0][5]).toMatchObject({ expectedStamp: 's1', overwrite: false })
+    expect(again.result.current.conflict).toBe(true)
+  })
+
+  it('says so when the file of a restored draft no longer exists, keeping the text', async () => {
+    const adapter = { readFile: vi.fn(async () => file()) }
+    const first = setup(adapter)
+    await waitFor(() => expect(first.result.current.status).toBe('ready'))
+    act(() => { first.result.current.setText('mine\n') })
+    first.unmount()
+    adapter.readFile.mockImplementation(async () => ({ missing: true }))
+    const again = setup(adapter)
+    await waitFor(() => expect(again.result.current.error).toBe('f.txt no longer exists.'))
+    expect(again.result.current.text).toBe('mine\n')
+  })
+
+  it('drops the draft on save, on revert, and when edits are typed back to the saved text', async () => {
+    const adapter = { readFile: vi.fn(async () => file()), writeFile: vi.fn(async () => ({ ok: true, stamp: 's2' })) }
+    const { result } = setup(adapter)
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    act(() => { result.current.setText('mine\n') })
+    act(() => { result.current.setText('a\n') })
+    expect(worktreeDraftPaths(repo.path, repo.path)).toEqual([])
+    act(() => { result.current.setText('mine\n') })
+    await act(async () => { await result.current.save() })
+    expect(worktreeDraftPaths(repo.path, repo.path)).toEqual([])
+    act(() => { result.current.setText('again\n') })
+    expect(worktreeDraftPaths(repo.path, repo.path)).toEqual(['f.txt'])
+    await act(async () => { await result.current.revert() })
+    expect(worktreeDraftPaths(repo.path, repo.path)).toEqual([])
+    expect(result.current.restored).toBe(false)
+  })
+
+  it('finishes the draft bookkeeping of a save that completes after the editor went away', async () => {
+    const w = deferred()
+    const adapter = { readFile: vi.fn(async () => file()), writeFile: vi.fn(() => w.promise) }
+    const first = setup(adapter)
+    await waitFor(() => expect(first.result.current.status).toBe('ready'))
+    act(() => { first.result.current.setText('mine\n') })
+    let p
+    act(() => { p = first.result.current.save() })
+    first.unmount()
+    adapter.readFile.mockImplementation(async () => file('mine\n', 's2'))
+    const again = setup(adapter)
+    await act(async () => { w.resolve({ ok: true, stamp: 's2' }); await p })
+    await waitFor(() => expect(again.result.current.status).toBe('ready'))
+    expect(worktreeDraftPaths(repo.path, repo.path)).toEqual([])
+    expect(again.result.current.text).toBe('mine\n')
+    expect(again.result.current.conflict).toBe(false)
+    expect(again.result.current.restored).toBe(false)
+  })
+
+  it('discardWorktreeDraft forgets a kept draft', async () => {
+    const adapter = { readFile: vi.fn(async () => file()) }
+    const first = setup(adapter)
+    await waitFor(() => expect(first.result.current.status).toBe('ready'))
+    act(() => { first.result.current.setText('mine\n') })
+    first.unmount()
+    discardWorktreeDraft(repo.path, repo.path, 'f.txt')
+    const again = setup(adapter)
+    await waitFor(() => expect(again.result.current.status).toBe('ready'))
+    expect(again.result.current.text).toBe('a\n')
+    expect(again.result.current.restored).toBe(false)
   })
 })

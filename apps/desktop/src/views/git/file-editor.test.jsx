@@ -2,8 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
 import { EditorView } from 'codemirror'
 import { FileEditor } from './file-editor.jsx'
+import { clearWorktreeDrafts } from './use-worktree-file.js'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); clearWorktreeDrafts() })
 
 const repo = { name: 'A', path: 'C:/repos/A' }
 const registered = ['C:/repos/A']
@@ -67,5 +68,22 @@ describe('FileEditor', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe("logo.png isn't a text file."))
     expect(container.querySelector('.cm-editor')).toBeNull()
     expect(screen.getByRole('button', { name: 'Save' }).disabled).toBe(true)
+  })
+  it('restores edits from an editor that went away, with a notice until saved', async () => {
+    const adapter = {
+      readFile: vi.fn(async () => ({ text: 'a\n', bom: false, stamp: 's1' })),
+      writeFile: vi.fn(async () => ({ ok: true, stamp: 's2' })),
+    }
+    const first = setup(adapter)
+    type(await editorView(first.container), 'x')
+    first.unmount()
+    const { container, onSaved } = setup(adapter)
+    const view = await editorView(container)
+    expect(view.state.doc.toString()).toBe('xa\n')
+    expect(screen.getByText('Unsaved changes from earlier were restored.')).toBeTruthy()
+    expect(screen.getByText('● Unsaved')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText('Unsaved changes from earlier were restored.')).toBeNull()
   })
 })

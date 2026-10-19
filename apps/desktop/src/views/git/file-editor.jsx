@@ -35,6 +35,7 @@ export function FileEditor({ adapter, repo, worktreePath, registered, path, line
           <button className="btn sm accent" disabled={!canSave} title="Ctrl+S" onClick={() => save()}>Save</button>
         </span>
       </div>
+      {f.restored && <div className="nx-alert" role="status" style={{ background: 'var(--info-soft)', color: 'var(--info)' }}>Unsaved changes from earlier were restored.</div>}
       {f.error && <div className="nx-alert bad" role="alert">{f.error}</div>}
       {f.conflict && (
         <div className="nx-alert bad" role="alert">
