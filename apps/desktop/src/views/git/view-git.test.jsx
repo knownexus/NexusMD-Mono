@@ -190,3 +190,17 @@ describe('ViewGit', () => {
     expect(screen.getByText('No changes.')).toBeTruthy()
   })
 })
+
+describe('ViewGit repository list', () => {
+  it('hides the repository list to give the details the full width, and remembers it', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter() }} />)
+    await screen.findByRole('region', { name: 'A' })
+    fireEvent.click(screen.getByRole('button', { name: 'Hide repositories' }))
+    expect(screen.queryByRole('region', { name: 'A' })).toBeNull()
+    expect(screen.getByRole('complementary', { name: 'Details' })).toBeTruthy()
+    expect(getGitConfig().view.list).toBe('hidden')
+    fireEvent.click(screen.getByRole('button', { name: 'Show repositories' }))
+    expect(screen.getByRole('region', { name: 'A' })).toBeTruthy()
+  })
+})

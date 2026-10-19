@@ -105,7 +105,9 @@ function GitWorkspace({ adapter }) {
     reload()
   }
 
+  const listHidden = view.list === 'hidden'
   return (
+    <div className="nx-shell">
     <div className="nx-page">
       <header className="nx-head">
         <div>
@@ -116,6 +118,8 @@ function GitWorkspace({ adapter }) {
           <span className="nx-subtle" style={{ fontSize: 12 }}>
             {loading ? 'Refreshing…' : snapshot ? `Updated ${new Date(snapshot.takenAt).toLocaleTimeString()}` : ''}
           </span>
+          <button className="btn sm ghost" aria-pressed={!listHidden} title={listHidden ? 'Show the repository list beside the details' : 'Hide the repository list to give the details the full width'}
+            onClick={() => setView({ list: listHidden ? 'shown' : 'hidden' })}>{listHidden ? 'Show repositories' : 'Hide repositories'}</button>
           <button className="btn sm ghost" aria-label="Refresh" onClick={refresh}>Refresh</button>
           <button className="btn sm ghost" title="git fetch --all --prune" disabled={!scoped.worktrees.length} onClick={() => sync.open('fetch', actionTargets('fetch', scoped.worktrees, null))}>Fetch all</button>
           <button className="btn sm" title="git pull --ff-only in every worktree" disabled={!scoped.worktrees.length} onClick={() => sync.open('pull', actionTargets('pull', scoped.worktrees, null), { mode: 'ff', batch: true })}>Pull all</button>
@@ -132,10 +136,10 @@ function GitWorkspace({ adapter }) {
         ? `No repositories yet. Add one in Settings → Desktop → Git Workspace, or create a group to pick from ${roots.join('; ')}.`
         : 'No repositories yet. Add repositories in Settings → Desktop → Git Workspace.')}
 
-      <div className="nx-split">
-        <RepoCards repos={config.repos} scoped={scoped} errors={snapshot?.errors || []} collapsed={view.collapsed}
+      <div className="nx-split" data-list={listHidden ? 'hidden' : 'shown'}>
+        {!listHidden && <RepoCards repos={config.repos} scoped={scoped} errors={snapshot?.errors || []} collapsed={view.collapsed}
           onToggleRepo={name => setView({ collapsed: view.collapsed.includes(name) ? view.collapsed.filter(n => n !== name) : [...view.collapsed, name] })}
-          selected={view.selected} onSelect={s => setView({ selected: s.id })} />
+          selected={view.selected} onSelect={s => setView({ selected: s.id })} />}
         <aside aria-label="Details" className="card nx-panel">
           {selectedTree
             ? (
@@ -160,7 +164,6 @@ function GitWorkspace({ adapter }) {
         </aside>
       </div>
 
-      {cmdRun && <RunDrawer eyebrow="Git" title={cmdRun.title} status={cmdRun.status} lines={cmdRun.lines} exitCode={cmdRun.exitCode} onClose={() => setCmdRun(null)} />}
       <ActivityDrawer sync={sync} />
       <ActionDialog sync={sync} adapter={adapter} registered={registered} />
       {menuFor && (
@@ -196,6 +199,8 @@ function GitWorkspace({ adapter }) {
           onClose={() => setCommitting(null)} onDone={reload}
           onRetry={async (failedIds, messages) => { setCommitting(null); await reload(); openCommit(failedIds, messages) }} />
       )}
+    </div>
+      {cmdRun && <RunDrawer eyebrow="Git" title={cmdRun.title} status={cmdRun.status} lines={cmdRun.lines} exitCode={cmdRun.exitCode} onClose={() => setCmdRun(null)} />}
     </div>
   )
 }

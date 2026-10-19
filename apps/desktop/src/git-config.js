@@ -6,7 +6,7 @@ export const GIT_CONFIG_EVENT = 'nexusmd:git-config'
 export const DEFAULT_ROOTS = Object.freeze(['C:/repos'])
 export const DEFAULT_GIT_CONFIG = Object.freeze({
   version: 1, repos: [], groups: [], roots: null,
-  view: Object.freeze({ group: 'All projects', collapsed: [], selected: null, split: 0.45, panel: 'changes' }),
+  view: Object.freeze({ group: 'All projects', collapsed: [], selected: null, split: 0.45, panel: 'changes', list: 'shown' }),
 })
 
 const strings = v => Array.isArray(v) ? v.filter(x => typeof x === 'string') : []
@@ -28,6 +28,7 @@ function normalise(saved) {
       selected: typeof view.selected === 'string' ? view.selected : null,
       split: typeof view.split === 'number' && view.split >= 0.2 && view.split <= 0.8 ? view.split : DEFAULT_GIT_CONFIG.view.split,
       panel: view.panel === 'history' ? 'history' : 'changes',
+      list: view.list === 'hidden' ? 'hidden' : 'shown',
     },
   }
 }

@@ -49,7 +49,8 @@ export function WorktreePanel({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
       <div className="nx-panel-head">
-        <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Grows to fill the row, and pushes the sync buttons onto their own line before getting too narrow to read. */}
+        <div style={{ flex: '1 1 260px', minWidth: 0 }}>
           <div className="nx-panel-branch">{tree.branch}</div>
           <div className="nx-panel-sub">{`${tree.path} · ${trackText(tree)}`}</div>
           <div className="nx-panel-sub">{`Last fetch ${tree.fetchedAt ? new Date(tree.fetchedAt).toLocaleString() : 'unknown'}`}</div>

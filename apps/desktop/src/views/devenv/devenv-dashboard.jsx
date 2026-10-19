@@ -39,10 +39,14 @@ const TITLES = [
 ]
 const friendly = cmd => (TITLES.find(([re]) => re.test(cmd || ''))?.[1] ?? (cmd || '').replace(/^devenv\s+/, ''))
 
+// [title, view, size]. xl dialogs take most of the window and the view fills it (laying out its own padding);
+// lg ones are a wider version of the standard dialog.
 const MODALS = {
-  start: ['Start environment', StartView], builds: ['Builds', BuildsView], logs: ['Logs', LogsView], tests: ['Tests', TestsView], database: ['Database', DatabaseView],
-  emulator: ['Android emulator', EmulatorView], mac: ['iOS on Mac', MacView], profile: ['Profile', ProfileView], commands: ['All actions', CommandsView],
+  start: ['Start environment', StartView, 'lg'], builds: ['Builds', BuildsView, 'lg'], logs: ['Logs', LogsView, 'xl-pad'], tests: ['Tests', TestsView, 'lg'],
+  database: ['Database', DatabaseView, 'xl-auto'], emulator: ['Android emulator', EmulatorView, 'lg'], mac: ['iOS on Mac', MacView, 'lg'],
+  profile: ['Profile', ProfileView, 'xl'], commands: ['All actions', CommandsView, 'lg'],
 }
+const MODAL_ICONS = { database: 'database', profile: 'edit', logs: 'doc' }
 
 function Tile({ title, meta, children, actions }) {
   return (
@@ -121,10 +125,11 @@ export function DevenvDashboard({ adapter }) {
   const st = run.state
   // A run has no id while it is starting, so the drawer shows then too; closing hides it for that run only.
   const showDrawer = st.status !== 'idle' && st.runId !== dismissed
-  const [mTitle, ModalView] = modal ? MODALS[modal] : [null, null]
+  const [mTitle, ModalView, size] = modal ? MODALS[modal] : [null, null, null]
   const problem = actionError || error || builds.error
 
   return (
+    <div className="nx-shell">
     <div className="nx-page">
       <header className="nx-head">
         <div>
@@ -133,7 +138,7 @@ export function DevenvDashboard({ adapter }) {
         </div>
         <div className="nx-head-actions">
           <span className="nx-subtle" style={{ fontSize: 12 }}>{status?.at ? `Updated ${new Date(status.at).toLocaleTimeString()}` : loading ? 'Loading…' : ''}</span>
-          <span className={`nx-badge lg ${isUp ? 'ok' : ''}`}>{status ? (isUp ? `Running · ${up} of ${services.length} services` : 'Stopped') : '...'}</span>
+          <span className={`nx-badge lg ${isUp ? 'ok' : ''}`}>{status ? (isUp ? `Running · ${up} of ${services.length} services` : 'Stopped') : '…'}</span>
           <button className="btn sm ghost" disabled={loading} onClick={() => { refresh(); builds.refresh() }} aria-label="Refresh">Refresh</button>
           <button className="btn sm" disabled={busy} onClick={() => go(['doctor'], { exclusive: false, label: 'Health check' })}>Health check</button>
           {isUp
@@ -256,12 +261,14 @@ export function DevenvDashboard({ adapter }) {
       </div>
 
       {modal && (
-        <PlModal open wide title={mTitle} icon="terminal" onClose={() => setModal(null)}>
-          <div style={{ minHeight: 360, display: 'flex', flexDirection: 'column' }}>
+        <PlModal open title={mTitle} icon={MODAL_ICONS[modal] || 'build'} onClose={() => setModal(null)} className={size === 'lg' ? 'nx-modal-lg' : size === 'xl-auto' ? 'nx-modal-xl auto' : 'nx-modal-xl'}>
+          <div className={size === 'lg' ? undefined : size === 'xl-pad' ? 'nx-modal-fill nx-modal-pad' : 'nx-modal-fill'}
+            style={size === 'lg' ? { minHeight: 360, display: 'flex', flexDirection: 'column' } : undefined}>
             <ModalView adapter={adapter} picker={pickerAdapter} />
           </div>
         </PlModal>
       )}
+    </div>
 
       {showDrawer && (
         <RunDrawer

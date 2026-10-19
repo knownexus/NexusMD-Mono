@@ -8,6 +8,18 @@ import { RunPanel } from './run-panel.jsx'
 
 const FORMS = { 'environment.json': EnvironmentForm, 'mac.json': MacForm }
 
+// "docker/api.json" shows as a muted "docker/" and a plain "api.json".
+function FileName({ path, note }) {
+  const cut = path.lastIndexOf('/') + 1
+  return (
+    <span className="nx-trunc" style={{ minWidth: 0 }}>
+      {cut > 0 && <span className="dir">{path.slice(0, cut)}</span>}
+      {path.slice(cut)}
+      {note && <span className="ghost">{` ${note}`}</span>}
+    </span>
+  )
+}
+
 export function ProfileView({ adapter }) {
   const run = useDevenvRunContext()
   const config = run.config
@@ -34,52 +46,62 @@ export function ProfileView({ adapter }) {
     try { await adapter.profileCreate(config); await refresh() } catch (e) { setError(e?.message || 'Could not create the profile.') }
   }
   useProfileDraftsVersion()
-  const choose = p => setSelected(p)
   const draftPaths = profileDraftPaths(config)
   const paths = info?.exists ? [...new Set([...files, 'mac.json', ...draftPaths])].sort((a, b) => a.localeCompare(b)) : []
-  const label = p => {
-    if (files.includes(p)) return p
-    if (p === 'mac.json') return 'mac.json (not created yet)'
-    return `${p} (deleted on disk)`
-  }
+  const note = p => (files.includes(p) ? null : p === 'mac.json' ? '(not created yet)' : '(deleted on disk)')
+  const label = p => (note(p) ? `${p} ${note(p)}` : p)
+  const doctor = run.state.command === 'devenv doctor' && run.state.status !== 'idle'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, flex: 1 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span>{info ? `${info.dir}${info.isDefault ? " (devenv's profile folder)" : ' (from Settings)'}` : '…'}</span>
-        <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button className="btn sm ghost" onClick={refresh}>Refresh</button>
-          <button className="btn sm" disabled={!info?.exists} onClick={() => run.start(['doctor'], { exclusive: false, label: 'devenv doctor' })}>Check</button>
-        </span>
-      </div>
-      {error && <div className="card" role="alert" style={{ padding: 10, color: 'var(--danger)' }}>{error}</div>}
-      {info && !info.exists && (
-        <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span>{`No profile at ${info.dir} yet.`}</span>
-          {info.example
-            ? <button className="btn sm primary" style={{ alignSelf: 'flex-start' }} onClick={create}>Create from template</button>
-            : <span style={{ color: 'var(--text-muted)' }}>There is no profile.example in the devenv folder to start from.</span>}
+    <div className="nx-modal-fill">
+      <div className="nx-profile">
+        <div className="nx-profile-bar">
+          <span className="nx-muted" style={{ fontSize: 12.5 }}>Folder</span>
+          <span className="nx-mono nx-trunc" style={{ fontSize: 12.5, minWidth: 0, flex: '0 1 auto' }} title={info?.dir}>{info ? info.dir : '…'}</span>
+          {info && <span className="nx-badge">{info.isDefault ? "devenv's profile folder" : 'From Settings'}</span>}
+          <span className="row" style={{ marginLeft: 'auto', gap: 8 }}>
+            <button className="btn sm ghost" onClick={refresh}>Refresh</button>
+            <button className="btn sm" disabled={!info?.exists} onClick={() => run.start(['doctor'], { exclusive: false, label: 'devenv doctor' })}>Check profile</button>
+          </span>
         </div>
-      )}
-      {info?.exists && (
-        <div style={{ display: 'flex', gap: 12, minHeight: 0, flex: 1 }}>
-          <nav aria-label="Profile files" style={{ width: 260, flex: 'none', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+
+        {info?.exists && (
+          <nav aria-label="Profile files" className="nx-profile-files">
             {paths.map(p => {
               const unsaved = hasProfileDraft(config, p)
               return (
-                <button key={p} className={`btn sm ${p === selected ? '' : 'ghost'}`} aria-current={p === selected ? 'true' : undefined}
-                  aria-label={unsaved ? `${label(p)}, unsaved changes` : label(p)} title={unsaved ? 'Unsaved changes' : undefined}
-                  style={{ justifyContent: 'flex-start', textAlign: 'left' }} onClick={() => choose(p)}>
-                  {label(p)}{unsaved && <span aria-hidden="true"> •</span>}
+                <button key={p} className="nx-file" aria-current={p === selected ? 'true' : undefined}
+                  aria-label={unsaved ? `${label(p)}, unsaved changes` : label(p)} title={unsaved ? 'Unsaved changes' : p} onClick={() => setSelected(p)}>
+                  <FileName path={p} note={note(p)} />
+                  {unsaved && <span className="mark" aria-hidden="true">•</span>}
                 </button>
               )
             })}
-            {truncated && <span style={{ color: 'var(--text-muted)', fontSize: 12, padding: '4px 8px' }}>Only the first 2000 files are listed.</span>}
+            {truncated && <span className="nx-field-hint" style={{ padding: '6px 10px' }}>Only the first 2000 files are listed.</span>}
           </nav>
-          <ProfileFileEditor key={selected} adapter={adapter} config={config} path={selected} onSaved={refresh} forms={FORMS} />
+        )}
+
+        <div className="nx-profile-main" style={info?.exists ? undefined : { gridColumn: '1 / -1' }}>
+          {error && <div className="nx-editor-notes"><div className="nx-alert bad" role="alert">{error}</div></div>}
+          {info && !info.exists && (
+            <div className="nx-editor-body">
+              <div className="nx-section" style={{ maxWidth: 520 }}>
+                <div className="nx-section-body">
+                  <span className="nx-strong">{`No profile at ${info.dir} yet.`}</span>
+                  {info.example
+                    ? <>
+                        <span className="nx-section-note">Start from devenv's template, then fill in your own settings here.</span>
+                        <button className="btn sm accent" style={{ alignSelf: 'flex-start' }} onClick={create}>Create from template</button>
+                      </>
+                    : <span className="nx-section-note">There is no profile.example in the devenv folder to start from.</span>}
+                </div>
+              </div>
+            </div>
+          )}
+          {info?.exists && <ProfileFileEditor key={selected} adapter={adapter} config={config} path={selected} onSaved={refresh} forms={FORMS} />}
+          {doctor && <div style={{ padding: '0 20px 16px', display: 'flex', minHeight: 0 }}><RunPanel state={run.state} onCancel={run.cancel} /></div>}
         </div>
-      )}
-      {run.state.command === 'devenv doctor' && run.state.status !== 'idle' && <RunPanel state={run.state} onCancel={run.cancel} />}
+      </div>
     </div>
   )
 }

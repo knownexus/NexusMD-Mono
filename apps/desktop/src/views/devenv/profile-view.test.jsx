@@ -110,7 +110,7 @@ describe('ProfileView', () => {
   it('runs devenv doctor as Check, alongside other runs', async () => {
     const { run } = setup()
     await screen.findByLabelText('a name')
-    fireEvent.click(screen.getByRole('button', { name: 'Check' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Check profile' }))
     expect(run.start).toHaveBeenCalledWith(['doctor'], { exclusive: false, label: 'devenv doctor' })
   })
 

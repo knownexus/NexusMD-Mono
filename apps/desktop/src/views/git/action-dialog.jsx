@@ -1,5 +1,5 @@
 import React from 'react'
-import { PlModal } from '@nexusmd/ui'
+import { PlModal, Icon } from '@nexusmd/ui'
 import { parseRefList, checkBranchName, worktreeDefaultPath } from '@nexusmd/core'
 
 const VERB = {
@@ -205,17 +205,23 @@ export function ActionDialog({ sync, adapter, registered }) {
   )
 }
 
-/** The session's actions, newest first, with git's output on expand. */
+/** The session's actions, newest first, with git's output on expand. Closing hides it until the next entry. */
 export function ActivityDrawer({ sync }) {
   const [open, setOpen] = React.useState(false)
-  if (!sync.activity.length) return null
+  // The newest entry when it was closed; the log is newest first.
+  const [closedAt, setClosedAt] = React.useState(null)
+  const newest = sync.activity[0]
+  if (!newest || newest === closedAt) return null
   const runs = [...new Set(sync.activity.map(e => e.runId))]
   const copy = () => navigator.clipboard?.writeText(sync.activity.map(e => `${new Date(e.at).toLocaleTimeString()} ${e.ok ? '✓' : '✗'} ${e.kind} ${e.label}\n${e.detail}`).join('\n\n')).catch(() => {})
   return (
-    <section aria-label="Activity" className="card" style={{ padding: 8 }}>
+    <section aria-label="Activity" className="card" style={{ padding: 8, flex: 'none' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button className="btn sm ghost" aria-expanded={open} onClick={() => setOpen(o => !o)}>{`Activity (${sync.activity.length})`}</button>
         {open && <button className="btn sm ghost" onClick={copy}>Copy</button>}
+        <button className="nx-icon-btn" style={{ marginLeft: 'auto' }} aria-label="Close activity" title="Close" onClick={() => { setOpen(false); setClosedAt(newest) }}>
+          <Icon name="x" size={14} />
+        </button>
       </div>
       {open && runs.map(runId => {
         const entries = sync.activity.filter(e => e.runId === runId)

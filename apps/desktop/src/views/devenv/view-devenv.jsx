@@ -9,7 +9,7 @@ function LeftoverRunsBanner({ leftover }) {
   if (!leftover.runs.length) return null
   const labels = leftover.runs.map(r => r.label).join(', ')
   return (
-    <div className="nx-alert" role="alert" style={{ margin: '16px 28px 0' }}>
+    <div className="nx-alert" role="alert" style={{ margin: '16px 28px 0', flex: 'none' }}>
       <span style={{ flex: 1 }}>{`Still running from before the window reloaded: ${labels}`}</span>
       {leftover.error && <span style={{ color: 'var(--danger)' }}>{leftover.error}</span>}
       <button className="btn sm danger" onClick={leftover.cancelAll}>Cancel</button>

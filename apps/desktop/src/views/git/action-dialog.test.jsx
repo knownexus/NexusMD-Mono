@@ -112,4 +112,17 @@ describe('useGitSync and the action dialog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Activity (1)' }))
     expect(screen.getByText(/Fetch · A › main → main - Done/)).toBeTruthy()
   })
+
+  it('the activity drawer closes, and comes back when another action logs', async () => {
+    render(<Harness git={adapter()} />)
+    act(() => sync().open('fetch', [target('A')]))
+    fireEvent.click(await screen.findByRole('button', { name: 'Fetch' }))
+    await screen.findByRole('button', { name: 'Activity (1)' })
+    fireEvent.click(screen.getByRole('button', { name: 'Close activity' }))
+    expect(screen.queryByRole('region', { name: 'Activity' })).toBeNull()
+    act(() => sync().close())
+    act(() => sync().open('fetch', [target('B')]))
+    fireEvent.click(await screen.findByRole('button', { name: 'Fetch' }))
+    expect(await screen.findByRole('button', { name: 'Activity (2)' })).toBeTruthy()
+  })
 })

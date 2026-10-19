@@ -212,7 +212,14 @@ function createMainWindow() {
   win.webContents.setWindowOpenHandler(createWindowOpenHandler({
     isAllowedUrl: linkWindow.isAllowedUrl,
     openLink:     linkWindow.openLink,
+    popoutOptions: { title: 'NexusMD output', icon: windowIconPath(isDark) },
   }));
+  // The pop-out stays blank apart from what the renderer writes into it: it can't
+  // navigate away or open windows of its own.
+  win.webContents.on('did-create-window', (child) => {
+    child.webContents.on('will-navigate', (e) => e.preventDefault());
+    child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  });
 
   // Right-click a link to choose where it opens: in-app (default left-click
   // behavior), the system browser, or copy the address. Handled centrally here
@@ -285,6 +292,10 @@ function createMainWindow() {
 
   win.once('ready-to-show', () => {
     win.show();
+    // Windows applies the launcher's show state to a process's first ShowWindow, so a
+    // launcher that starts us hidden (the portable build's) leaves the window hidden.
+    // The second call isn't overridden.
+    if (!win.isVisible()) win.show();
   });
 
   // Honour user's close preference (unless forceQuit is set by before-quit)
