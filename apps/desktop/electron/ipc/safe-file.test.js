@@ -18,7 +18,7 @@ afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }) })
 describe('resolveInside', () => {
   it('refuses ../, absolute, ADS (a:b) and trailing-dot names', async () => {
     const bad = ['../x', 'a/../../x', path.join(tmp, 'x'), '', 'a\0b']
-    if (process.platform === 'win32') bad.push('a:b', 'name.', 'sub/name ')
+    if (process.platform === 'win32') bad.push('a:b', 'name.', 'sub/name ', 'sub\\name ', 'a.\\b')
     for (const rel of bad) await expect(resolveInside(dir, rel, notOk)).rejects.toThrow(`Nope: ${rel}`)
   })
 

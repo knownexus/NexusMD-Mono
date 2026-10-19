@@ -52,7 +52,7 @@ async function realDeep(p) {
 async function resolveInside(dir, rel, notOk) {
   if (typeof rel !== 'string' || !rel || rel.includes('\0') || path.isAbsolute(rel)) throw notOk(rel);
   // Windows would read "name:stream" as an alternate data stream and silently drop a trailing dot or space.
-  if (process.platform === 'win32' && (rel.includes(':') || rel.split(/[\/]/).some(s => s !== '.' && s !== '..' && /[. ]$/.test(s)))) throw notOk(rel);
+  if (process.platform === 'win32' && (rel.includes(':') || rel.split(/[\\/]/).some(s => s !== '.' && s !== '..' && /[. ]$/.test(s)))) throw notOk(rel);
   const full = path.resolve(dir, rel);
   if (!inside(dir, full)) throw notOk(rel);
   const realDir = (await realDeep(dir)) || dir;
