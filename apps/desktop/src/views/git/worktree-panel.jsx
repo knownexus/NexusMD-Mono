@@ -6,6 +6,7 @@ import { HistoryPanel } from './history-panel.jsx'
 import { OperationBanner } from './operation-banner.jsx'
 import { StashList } from './stash-list.jsx'
 import { GitCommandLine } from './git-command-line.jsx'
+import { FileEditor } from './file-editor.jsx'
 
 const clamp = v => Math.min(0.8, Math.max(0.2, v))
 
@@ -14,16 +15,64 @@ function trackText(tree) {
   return `${tree.upstream}${tree.upstreamGone ? ' (missing)' : ''} · ${tree.ahead} ahead, ${tree.behind} behind`
 }
 
-/** The selected worktree: header with sync actions, git command line, then Changes or History (the focused file's diff below a divider). */
-export function WorktreePanel({
+/**
+ * The selected worktree: header with sync actions, git command line, then Changes or History (the
+ * focused file's diff, or that file in an editor, below a divider). The ref exposes
+ * `confirmDiscard()`, which asks before unsaved edits would be lost, and `openFile(path, line)`.
+ */
+export const WorktreePanel = React.forwardRef(function WorktreePanel({
   adapter, repo, registered, version, tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, onHunk,
-  busy, status, split, onSplit, panel = 'changes', onPanel = () => {}, onSync = null, onExec = null,
-}) {
+  busy, status, split, onSplit, panel = 'changes', onPanel = () => {}, onSync = null, onExec = null, onSaved,
+}, ref) {
   const [stashes, setStashes] = React.useState(false)
   const history = panel === 'history'
   // The changes pane's diff isn't on screen in History, so it isn't loaded either.
   const change = history ? null : tree.changes.find(c => c.id === focusId) ?? null
-  const diff = useDiff({ adapter, repo, worktreePath: tree.path, registered, change, version })
+  // The file in the editor, for the worktree it was opened in. `line` is a fresh { line } per request
+  // so the editor jumps again even to the same line, and stays put while typing. Kept (hidden) in Diff.
+  const [opened, setOpened] = React.useState(null)
+  const [mode, setMode] = React.useState('diff')
+  const editor = !history && opened?.tree === tree.path ? opened : null
+  const editing = mode === 'edit' && !!editor
+  const dirty = React.useRef(false)
+  const confirmDiscard = () => !editor || !dirty.current || window.confirm(`Discard unsaved changes to ${editor.path}?`)
+  const open = (path, line = null) => setOpened({ tree: tree.path, path, line: line == null ? null : { line } })
+  const openFile = (path, line = null) => {
+    if (path !== editor?.path && !confirmDiscard()) return false
+    open(path, line)
+    setMode('edit')
+    return true
+  }
+  React.useImperativeHandle(ref, () => ({ confirmDiscard, openFile }))
+  // Closing or reloading the window with unsaved edits asks first (main shows the question).
+  React.useEffect(() => {
+    const warn = e => { if (dirty.current) { e.preventDefault(); e.returnValue = '' } }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [])
+  // Focusing another file keeps the mode: in Edit it opens that file, in Diff the hidden editor closes.
+  // Conflicted files only show their diff.
+  const focus = id => {
+    const next = tree.changes.find(c => c.id === id) ?? null
+    if (next?.path !== editor?.path) {
+      if (!confirmDiscard()) return
+      if (mode === 'edit' && next && next.area !== 'conflict') open(next.path)
+      else setOpened(null)
+    }
+    onFocus(id)
+  }
+  const switchPanel = id => {
+    if (id === panel) return
+    if (!confirmDiscard()) return
+    setOpened(null)
+    onPanel(id)
+  }
+  const edit = () => { if (!editor && change) open(change.path); setMode('edit') }
+  // An opened file's diff, whichever of its changes is focused (unstaged first); none if it is unchanged.
+  const diffChange = !editor || change?.path === editor.path ? change
+    : tree.changes.find(c => c.path === editor.path && c.area !== 'staged') ?? tree.changes.find(c => c.path === editor.path) ?? null
+  const diff = useDiff({ adapter, repo, worktreePath: tree.path, registered, change: diffChange, version })
+  const canEdit = !!editor || (!!change && change.area !== 'conflict')
   const box = React.useRef(null)
   // While dragging, the ratio lives here; config (localStorage) is written once on release.
   const [dragging, setDragging] = React.useState(null)
@@ -72,7 +121,7 @@ export function WorktreePanel({
         </div>
       )}
       <div className="nx-panel-section" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <PanelSwitch panel={panel} onPanel={onPanel} count={tree.changes.length} />
+        <PanelSwitch panel={panel} onPanel={switchPanel} count={tree.changes.length} />
       </div>
       <div className="nx-panel-body">
         {onSync && <OperationBanner tree={tree} onAction={onSync} />}
@@ -81,14 +130,35 @@ export function WorktreePanel({
           ? <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync} />
           : (
             <div ref={box} style={{ display: 'grid', gridTemplateRows: `minmax(0, ${shown}fr) 6px minmax(0, ${1 - shown}fr)`, height: '64vh', minHeight: 320 }}>
-              <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={onFocus}
+              <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={focus}
                 onAction={onAction} onCommit={onCommit} busy={busy} status={status} />
               <div role="separator" aria-orientation="horizontal" aria-label="Resize changes and diff" aria-valuenow={Math.round(shown * 100)}
                 tabIndex={0} onPointerDown={drag} onKeyDown={nudge} style={{ cursor: 'row-resize', background: 'var(--border)', borderRadius: 3 }} />
-              <DiffPane change={change} diff={diff} busy={busy} onHunk={(index, stamp) => onHunk(change, index, stamp, diff.reload)} />
+              <div style={{ display: 'grid', gridTemplateRows: canEdit ? 'auto minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: 6, minHeight: 0 }}>
+                {canEdit && <ModeSwitch editing={editing} onDiff={() => setMode('diff')} onEdit={edit} />}
+                {editor && (
+                  <div style={{ display: editing ? 'flex' : 'none', flexDirection: 'column', minHeight: 0 }}>
+                    <FileEditor adapter={adapter} repo={repo} worktreePath={tree.path} registered={registered} path={editor.path} line={editor.line}
+                      onSaved={onSaved} onDirtyChange={d => { dirty.current = d }} />
+                  </div>
+                )}
+                {!editing && (editor && !diffChange
+                  ? <div role="note" style={{ color: 'var(--text-muted)' }}>No changes yet.</div>
+                  : <DiffPane change={diffChange} diff={diff} busy={busy} onHunk={(index, stamp) => onHunk(diffChange, index, stamp, diff.reload)}
+                      onLine={diffChange && diffChange.area !== 'conflict' ? n => openFile(diffChange.path, n) : null} />)}
+              </div>
             </div>
           )}
       </div>
+    </div>
+  )
+})
+
+function ModeSwitch({ editing, onDiff, onEdit }) {
+  return (
+    <div role="group" aria-label="Diff or edit" className="nx-pills">
+      <button className="nx-pill" aria-pressed={!editing} onClick={onDiff} style={{ height: 26 }}>Diff</button>
+      <button className="nx-pill" aria-pressed={editing} onClick={onEdit} style={{ height: 26 }}>Edit</button>
     </div>
   )
 }

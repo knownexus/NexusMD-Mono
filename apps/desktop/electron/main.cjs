@@ -306,6 +306,17 @@ function createMainWindow() {
     }
   });
 
+  // The renderer blocks unload while it holds unsaved edits (the Git Workspace editor). Electron
+  // would then silently refuse to close or quit, so ask here; Discard lets the unload go ahead.
+  win.webContents.on('will-prevent-unload', e => {
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'question', buttons: ['Discard changes', 'Cancel'], defaultId: 1, cancelId: 1,
+      title: 'Unsaved changes', message: 'You have unsaved changes.', detail: 'Discard them and close?',
+    });
+    if (choice === 0) e.preventDefault();
+    else forceQuit = false;
+  });
+
   return win;
 }
 

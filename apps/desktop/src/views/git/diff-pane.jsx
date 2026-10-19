@@ -13,9 +13,11 @@ const size = n => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${
 const note = text => <div role="note" style={{ color: 'var(--text-muted)', padding: 8 }}>{text}</div>
 
 // One row per line; memoised on the hunk's lines, which useDiff keeps when a reload brings the same diff.
-const HunkLines = React.memo(function HunkLines({ lines }) {
+// With `onLine`, a row that has a new-side number opens the file there when clicked.
+const HunkLines = React.memo(function HunkLines({ lines, onLine }) {
   return lines.map((l, li) => (
-    <div key={li} data-testid="diff-line" data-kind={l.kind} style={{ ...GRID, ...LINE_STYLE[l.kind] }}>
+    <div key={li} data-testid="diff-line" data-kind={l.kind} style={{ ...GRID, ...LINE_STYLE[l.kind], ...(onLine && l.newNo != null ? { cursor: 'pointer' } : null) }}
+      title={onLine && l.newNo != null ? `Edit at line ${l.newNo}` : undefined} onClick={onLine && l.newNo != null ? () => onLine(l.newNo) : undefined}>
       <span style={{ color: 'var(--text-muted)', textAlign: 'right' }}>{l.oldNo ?? ''}</span>
       <span style={{ color: 'var(--text-muted)', textAlign: 'right' }}>{l.newNo ?? ''}</span>
       <span>{SIGN[l.kind]}</span>
@@ -36,7 +38,11 @@ function wholeFileOnly(file, area) {
  * The history passes its own `sides` (parent and commit ids) and `readOnly`, which drops the hunk
  * buttons and the staging advice.
  */
-export function DiffPane({ change, diff, onHunk, busy = false, sides: sidesOverride = null, readOnly = false }) {
+export function DiffPane({ change, diff, onHunk, onLine = null, busy = false, sides: sidesOverride = null, readOnly = false }) {
+  // Stable for the memoised rows, which would otherwise re-render on every parent render.
+  const lineRef = React.useRef(onLine)
+  lineRef.current = onLine
+  const clickLine = React.useCallback(n => lineRef.current?.(n), [])
   if (!change) return <div style={{ color: 'var(--text-muted)' }}>Select a file to see its diff.</div>
   const sides = sidesOverride ?? diffSides(change)
   const { result, files, error, loading } = diff
@@ -75,7 +81,7 @@ export function DiffPane({ change, diff, onHunk, busy = false, sides: sidesOverr
                   <button className="btn sm ghost" style={{ marginLeft: 'auto' }} disabled={busy || loading} onClick={() => onHunk(hi, result.stamp)}>{hunkLabel}</button>
                 )}
               </div>
-              <HunkLines lines={h.lines} />
+              <HunkLines lines={h.lines} onLine={onLine ? clickLine : null} />
             </div>
           ))}
         </div>

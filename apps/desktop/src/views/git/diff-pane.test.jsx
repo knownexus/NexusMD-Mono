@@ -89,6 +89,17 @@ describe('DiffPane', () => {
     expect(screen.queryByRole('button', { name: /hunk/ })).toBeNull()
   })
 
+  it('clicking a line calls onLine with its new line number', () => {
+    const onLine = vi.fn()
+    render(<DiffPane change={change('unstaged')} diff={loaded(TWO)} onHunk={vi.fn()} onLine={onLine} />)
+    const rows = screen.getAllByTestId('diff-line')
+    fireEvent.click(rows[1]) // deleted: no new-side line
+    expect(onLine).not.toHaveBeenCalled()
+    fireEvent.click(rows[0])
+    fireEvent.click(rows[4])
+    expect(onLine.mock.calls).toEqual([[1], [11]])
+  })
+
   it('asks for a file when none is focused and shows load errors', () => {
     render(<DiffPane change={null} diff={{ result: null, files: [], error: null, loading: false }} onHunk={vi.fn()} />)
     expect(screen.getByText('Select a file to see its diff.')).toBeTruthy()

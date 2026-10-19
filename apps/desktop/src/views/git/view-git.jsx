@@ -48,6 +48,9 @@ function GitWorkspace({ adapter }) {
   // The command line's last run, shown in the drawer.
   const [cmdRun, setCmdRun] = React.useState(null)
   const commits = React.useRef(0)
+  // The worktree panel asks before its unsaved edits would be lost to a change of worktree or group.
+  const panelRef = React.useRef(null)
+  const mayLeave = () => panelRef.current?.confirmDiscard() ?? true
   React.useEffect(() => {
     let live = true
     adapter.version().then(v => { if (live) setGitVersion(v) }, () => { if (live) setGitVersion(null) })
@@ -127,7 +130,7 @@ function GitWorkspace({ adapter }) {
       </header>
 
       <GroupTabs tabs={tabs} active={group ? group.name : ALL_PROJECTS}
-        onSelect={name => setView({ group: name, selected: null })}
+        onSelect={name => { if (mayLeave()) setView({ group: name, selected: null }) }}
         onNew={() => setEditing({ name: null })} onMenu={setMenuFor} busy={editBusy} />
 
       {snapshot && <GitSummary worktrees={scoped.worktrees} />}
@@ -139,11 +142,11 @@ function GitWorkspace({ adapter }) {
       <div className="nx-split" data-list={listHidden ? 'hidden' : 'shown'}>
         {!listHidden && <RepoCards repos={config.repos} scoped={scoped} errors={snapshot?.errors || []} collapsed={view.collapsed}
           onToggleRepo={name => setView({ collapsed: view.collapsed.includes(name) ? view.collapsed.filter(n => n !== name) : [...view.collapsed, name] })}
-          selected={view.selected} onSelect={s => setView({ selected: s.id })} />}
+          selected={view.selected} onSelect={s => { if (s.id !== view.selected && mayLeave()) setView({ selected: s.id }) }} />}
         <aside aria-label="Details" className="card nx-panel">
           {selectedTree
             ? (
-              <WorktreePanel adapter={adapter} repo={{ name: selectedTree.repo, path: selectedTree.repoRoot }} registered={registered}
+              <WorktreePanel ref={panelRef} adapter={adapter} repo={{ name: selectedTree.repo, path: selectedTree.repoRoot }} registered={registered}
                 version={snapshot?.takenAt} tree={selectedTree} selected={selectedIds} focusId={focusId}
                 onSelectionChange={ids => setSelections(s => ({ ...s, [treeKey]: ids }))}
                 onFocus={id => setFocus(f => ({ ...f, [treeKey]: id }))}
@@ -153,7 +156,7 @@ function GitWorkspace({ adapter }) {
                 split={view.split} onSplit={split => setView({ split })}
                 panel={view.panel} onPanel={panel => setView({ panel })}
                 onSync={(kind, options) => sync.open(kind, actionTargets(kind, [selectedTree], treeKey), options)}
-                onExec={exec} />
+                onExec={exec} onSaved={reload} />
             )
             : (
               <div style={{ padding: 16 }}>
@@ -180,16 +183,26 @@ function GitWorkspace({ adapter }) {
             } catch (e) { return e.message }
           }}
           onDuplicate={tryName((cfg, value) => duplicateGroup(cfg, menuFor, value))}
-          onDelete={() => { save(deleteGroup(getGitConfig(), menuFor)); if (view.group === menuFor) setView({ group: ALL_PROJECTS, selected: null }) }} />
+          onDelete={() => {
+            if (view.group === menuFor && !mayLeave()) return
+            save(deleteGroup(getGitConfig(), menuFor))
+            if (view.group === menuFor) setView({ group: ALL_PROJECTS, selected: null })
+          }} />
       )}
       <GroupEditor open={!!editing} config={config} snapshot={snapshot} existing={editingGroup} adapter={adapter}
         onClose={() => setEditing(null)}
-        onDelete={editingGroup ? () => { save(deleteGroup(getGitConfig(), editingGroup.name)); if (view.group === editingGroup.name) setView({ group: ALL_PROJECTS, selected: null }); setEditing(null) } : null}
+        onDelete={editingGroup ? () => {
+          if (view.group === editingGroup.name && !mayLeave()) return
+          save(deleteGroup(getGitConfig(), editingGroup.name))
+          if (view.group === editingGroup.name) setView({ group: ALL_PROJECTS, selected: null })
+          setEditing(null)
+        } : null}
         onSaved={(next, saved) => {
           // A changed repo list already reloads the snapshot; refreshing too would poll twice.
           const reposChanged = JSON.stringify(next.repos) !== JSON.stringify(getGitConfig().repos)
           save(next)
-          setView({ group: saved.name, selected: null })
+          // Declining keeps the saved group but leaves the open worktree (and its edits) on screen.
+          if (mayLeave()) setView({ group: saved.name, selected: null })
           setEditing(null)
           if (!reposChanged) refresh()
         }} />
