@@ -267,5 +267,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     preview:         (repo, worktreePath, registered, kind, options) => ipcRenderer.invoke('git:preview', repo, worktreePath, registered, kind, options),
     run:             (repo, worktreePath, registered, kind, options, stamp) => ipcRenderer.invoke('git:run', repo, worktreePath, registered, kind, options, stamp),
     exec:            (repo, worktreePath, registered, argv) => ipcRenderer.invoke('git:exec', repo, worktreePath, registered, argv),
+    files:           (repo, worktreePath, registered) => ipcRenderer.invoke('git:files', repo, worktreePath, registered),
+    readFile:        (repo, worktreePath, registered, rel) => ipcRenderer.invoke('git:readFile', repo, worktreePath, registered, rel),
+    writeFile:       (repo, worktreePath, registered, rel, text, options) => ipcRenderer.invoke('git:writeFile', repo, worktreePath, registered, rel, text, options),
   },
 });

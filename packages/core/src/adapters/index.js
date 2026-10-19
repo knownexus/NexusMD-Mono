@@ -212,4 +212,10 @@ export const IGitAdapter = {
   preview:       async (repo, worktreePath, registered, kind, options) => Promise.reject(new Error('IGitAdapter.preview not implemented')),
   // → { ok, detail, stale?, conflict?, operation? }
   run:           async (repo, worktreePath, registered, kind, options, stamp) => Promise.reject(new Error('IGitAdapter.run not implemented')),
+  // File editor. → { files: [rel], truncated }
+  files:         async (repo, worktreePath, registered) => Promise.reject(new Error('IGitAdapter.files not implemented')),
+  // → { text, bom, stamp } | { missing: true }; rejects for binary or over-1 MB files
+  readFile:      async (repo, worktreePath, registered, rel) => Promise.reject(new Error('IGitAdapter.readFile not implemented')),
+  // options = { expectedStamp, overwrite, bom } → { ok: true, stamp } | { ok: false, conflict: true, stamp } | { ok: false, missing: true }
+  writeFile:     async (repo, worktreePath, registered, rel, text, options) => Promise.reject(new Error('IGitAdapter.writeFile not implemented')),
 }

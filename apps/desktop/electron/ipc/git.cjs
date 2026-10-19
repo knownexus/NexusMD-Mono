@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const { spawn: nodeSpawn, execFile } = require('child_process');
 const { withLogging } = require('./withLogging.cjs');
 const { registerActions, ownershipMessage, WRITE_ENV } = require('./git-actions.cjs');
+const { registerFiles } = require('./git-files.cjs');
 
 const STRIP_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_PREFIX', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'];
 const BRANCH_FORMAT = '--format=%(refname)%00%(objectname)%00%(subject)%00%(upstream:short)';
@@ -831,6 +832,9 @@ function register(ipcMain, deps = {}) {
     git, requireExactWorktree, withRepoLock, gitDirOf, inProgress, isInside, samePath, isRemoteOrDevicePath,
     editorCommand: deps.editorCommand, fsx: deps.fsx, longTimeoutMs: deps.longTimeoutMs, shortTimeoutMs: deps.shortTimeoutMs,
   });
+
+  // The Git Workspace file editor (git-files.cjs): list, read and write worktree files.
+  registerFiles(handle, { git, requireExactWorktree, requirePaths, withRepoLock });
 
   // The command line. argv is a git subcommand and its arguments, typed by the user (the renderer
   // confirms destructive ones first). It runs like a terminal (no literal pathspecs) but can't
