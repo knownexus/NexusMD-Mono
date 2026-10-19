@@ -189,7 +189,7 @@ describe('git:status', () => {
       mtime: p => p === path.join(COMMON, 'FETCH_HEAD') ? '2026-10-13T08:00:00.000Z' : null,
     })
     const result = await invoke('git:status', REPO, path.join(REPO.path, 'feature'), [REPO.path])
-    expect(result).toEqual({ porcelain: '# branch.head x\0', operation: 'Rebase in progress', rebasingBranch: 'refs/heads/feature', fetchedAt: '2026-10-13T08:00:00.000Z' })
+    expect(result).toEqual({ porcelain: '# branch.head x\0', operation: 'Rebase in progress', rebasingBranch: 'refs/heads/feature', operationInfo: { kind: 'rebase', step: null, total: null, onto: null, replaying: null, merging: null, picked: null }, fetchedAt: '2026-10-13T08:00:00.000Z' })
     expect(calls.map(c => c.args)).toEqual([
       ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all'],
       ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'],
