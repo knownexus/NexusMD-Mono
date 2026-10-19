@@ -394,3 +394,60 @@ describe('git:unresolve and special files', { timeout: 60000 }, () => {
     await expect(conf(r, 'f')).rejects.toThrow()
   })
 })
+
+describe('unresolve guards (resolution record)', { timeout: 90000 }, () => {
+  const stampOf = (r, rel) => call('git:stamp', r, r.path, REG(), { kind: 'files', paths: [rel] })
+  const unresolve = async (r, rel) => call('git:unresolve', r, r.path, REG(), rel, await stampOf(r, rel))
+  const records = r => path.join(r.path, '.git', 'nexusmd-resolutions.json')
+  const index = r => run(r.path, 'ls-files', '-s')
+  const CHANGED = 'f has changes since it was resolved.'
+
+  it('refuses a file recreated after a delete resolution', async () => {
+    const r = diverged('RecDel')
+    tryRun(r.path, 'rebase', 'main')
+    await resolve(r, 'f', { take: 'delete' }, (await conf(r, 'f')).stamp)
+    write(r.path, 'f', 'my new work\n')
+    const before = index(r)
+    expect(await unresolve(r, 'f')).toMatchObject({ ok: false, detail: CHANGED })
+    expect(fs.readFileSync(path.join(r.path, 'f'), 'utf8')).toBe('my new work\n')
+    expect(index(r)).toBe(before)
+  })
+
+  it('refuses an edit staged after resolving', async () => {
+    const r = diverged('Staged')
+    tryRun(r.path, 'rebase', 'main')
+    await resolve(r, 'f', { take: 'text', text: 'done\n', bom: false }, (await conf(r, 'f')).stamp)
+    write(r.path, 'f', 'done plus\n'); run(r.path, 'add', 'f')
+    const before = index(r)
+    expect(await unresolve(r, 'f')).toMatchObject({ ok: false, detail: CHANGED })
+    expect(fs.readFileSync(path.join(r.path, 'f'), 'utf8')).toBe('done plus\n')
+    expect(index(r)).toBe(before)
+  })
+
+  it('refuses a resolution made outside NexusMD', async () => {
+    const r = diverged('Outside')
+    tryRun(r.path, 'rebase', 'main')
+    write(r.path, 'f', 'by hand\n'); run(r.path, 'add', 'f')
+    expect(await unresolve(r, 'f')).toMatchObject({ ok: false, detail: 'f was resolved outside NexusMD \u2014 undo it there.' })
+    expect(fs.readFileSync(path.join(r.path, 'f'), 'utf8')).toBe('by hand\n')
+    expect(conflicted(r, 'f')).toBe(false)
+  })
+
+  it('clears the record when the rebase finishes', async () => {
+    const r = diverged('Cleared')
+    tryRun(r.path, 'rebase', 'main')
+    await resolve(r, 'f', { take: 'text', text: 'done\n', bom: false }, (await conf(r, 'f')).stamp)
+    expect(fs.existsSync(records(r))).toBe(true)
+    expect(await act(r, r.path, 'continue')).toMatchObject({ ok: true })
+    expect(fs.existsSync(records(r))).toBe(false)
+  })
+
+  it('clears the record when the rebase is aborted', async () => {
+    const r = diverged('Aborted')
+    tryRun(r.path, 'rebase', 'main')
+    await resolve(r, 'f', { take: 'left' }, (await conf(r, 'f')).stamp)
+    expect(fs.existsSync(records(r))).toBe(true)
+    expect(await act(r, r.path, 'abort')).toMatchObject({ ok: true })
+    expect(fs.existsSync(records(r))).toBe(false)
+  })
+})

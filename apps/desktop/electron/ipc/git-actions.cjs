@@ -443,6 +443,8 @@ function registerActions(handle, ctx) {
     const { operation } = await inProgress(dir);
     if (dir && !operation) {
       try { fsx.rmSync(path.join(dir, BASE_MARKER), { force: true }); } catch { /* already gone */ }
+      // git-conflicts.cjs's record of resolved files is just as stale.
+      try { fsx.rmSync(path.join(dir, 'nexusmd-resolutions.json'), { force: true }); } catch { /* already gone */ }
     }
     return operation;
   }

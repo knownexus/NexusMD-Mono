@@ -7,6 +7,9 @@
 
 'use strict';
 
+const path = require('path');
+const fsp = require('fs/promises');
+const crypto = require('crypto');
 const { readText, writeAtomic, BOM } = require('./safe-file.cjs');
 const { requireWorktreeFile } = require('./git-files.cjs');
 
@@ -25,9 +28,10 @@ const hasMarkers = text => String(text ?? '').split('\n').some(l => {
 
 // What readText throws for a file that isn't editable text; any other error (permissions, I/O) is real.
 const NOT_TEXT = /too large to edit|isn't a text file|isn't UTF-8 text/;
+const RESOLUTIONS = 'nexusmd-resolutions.json';
 const refuse = detail => ({ ok: false, detail });
 
-function registerConflicts(handle, { git, requireExactWorktree, requirePaths, withRepoLock, filesState, indexEntries, result }) {
+function registerConflicts(handle, { git, requireExactWorktree, requirePaths, withRepoLock, filesState, indexEntries, gitDirOf, result }) {
   const target = (repo, wt, registered, rel) =>
     requireExactWorktree(repo, wt, registered, () => requirePaths(wt, [rel])).then(() => requireWorktreeFile(wt, rel));
 
@@ -75,14 +79,42 @@ function registerConflicts(handle, { git, requireExactWorktree, requirePaths, wi
   function conflictWrite(channel, hasArg, act) {
     handle(channel, async (_e, repo, wt, registered, rel, ...rest) => {
       const expected = rest[rest.length - 1];
-      const { real, realDir } = await target(repo, wt, registered, rel);
+      const { full, real, realDir } = await target(repo, wt, registered, rel);
       return withRepoLock(repo, async () => {
         const state = await filesState(wt, [rel]);
         if (state.stamp !== expected) return { ok: false, stale: true, detail: STALE };
-        return act({ wt, rel, real, realDir, state, arg: hasArg ? rest[0] : undefined });
+        return act({ wt, rel, full, real, realDir, state, arg: hasArg ? rest[0] : undefined });
       });
     });
   }
+
+  // What each resolve left in the index, kept in the worktree's git dir so unresolve can tell the file
+  // is still exactly as resolved. Cleared when the operation ends (git-actions.cjs).
+  async function readRecords(wt) {
+    const dir = await gitDirOf(wt);
+    if (!dir) return { dir, map: {} };
+    try {
+      const map = JSON.parse(await fsp.readFile(path.join(dir, RESOLUTIONS), 'utf8'));
+      return { dir, map: map && typeof map === 'object' && !Array.isArray(map) ? map : {} };
+    } catch { return { dir, map: {} }; }
+  }
+  async function writeRecords(dir, map) {
+    if (!dir) return;
+    const file = path.join(dir, RESOLUTIONS);
+    if (!Object.keys(map).length) { await fsp.rm(file, { force: true }); return; }
+    const tmp = `${file}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+    await fsp.writeFile(tmp, JSON.stringify(map));
+    await fsp.rename(tmp, file);
+  }
+  async function remember(wt, rel) {
+    try {
+      const [{ dir, map }, entries] = await Promise.all([readRecords(wt), indexEntries(wt)]);
+      const e = entries.find(x => x.path === rel && x.stage === '0');
+      map[rel] = e ? { oid: e.oid, mode: e.mode } : { deleted: true };
+      await writeRecords(dir, map);
+    } catch { /* without a record the file just can't be un-resolved */ }
+  }
+  const done = async (wt, rel, r) => { const out = result(r); if (out.ok) await remember(wt, rel); return out; };
 
   const add = (wt, rel) => git(wt, ['add', ...PATHSPEC_STDIN], { input: `${rel}\0` });
   const remove = (wt, rel) => git(wt, ['rm', '-f', '--quiet', '--', rel]);
@@ -99,31 +131,50 @@ function registerConflicts(handle, { git, requireExactWorktree, requirePaths, wi
       const body = Buffer.concat([resolution.bom ? BOM : Buffer.alloc(0), Buffer.from(resolution.text, 'utf8')]);
       if (body.length > MAX_WRITE_BYTES) return refuse(`${rel} is too large to save from here.`);
       await writeAtomic(real, realDir, body, () => new Error(`Not a worktree file: ${rel}`));
-      return result(await add(wt, rel));
+      return done(wt, rel, await add(wt, rel));
     }
-    if (take === 'delete') return result(await remove(wt, rel));
+    if (take === 'delete') return done(wt, rel, await remove(wt, rel));
     if (take === 'left' || take === 'right') {
       // An absent side means that side deleted the file, so taking it deletes it.
-      if (!staged.some(e => e.stage === (take === 'left' ? '2' : '3'))) return result(await remove(wt, rel));
+      if (!staged.some(e => e.stage === (take === 'left' ? '2' : '3'))) return done(wt, rel, await remove(wt, rel));
       const co = await git(wt, ['checkout', take === 'left' ? '--ours' : '--theirs', '--', rel]);
       if (co.code !== 0) return result(co);
-      return result(await add(wt, rel));
+      return done(wt, rel, await add(wt, rel));
     }
     return refuse(`Unknown resolution: ${take}`);
   });
 
   // Only a file that was resolved here and not touched since: the resolve-undo record brings back the
   // stages (even a missing side), and markers are rebuilt only when both sides exist.
-  conflictWrite('git:unresolve', false, async ({ wt, rel, state }) => {
+  conflictWrite('git:unresolve', false, async ({ wt, rel, full, state }) => {
     if (state.entries.some(e => e.mode === '160000')) return refuse(SUBMODULE);
     if (stagesOf(state.entries, rel).length) return refuse('Still conflicted — nothing to undo.');
     const undo = await git(wt, ['ls-files', '--resolve-undo', '-z', '--', rel]);
     if (undo.code !== 0) return result(undo);
     if (!undo.stdout.trim()) return refuse(`Nothing to undo for ${rel}.`);
-    if (state.records.some(r => r.path === rel && (r.kind === '1' || r.kind === '2') && r.xy[1] !== '.')) return refuse(`${rel} has changes since it was resolved.`);
+    const { dir, map } = await readRecords(wt);
+    const rec = map[rel];
+    if (!rec || typeof rec !== 'object') return refuse(`${rel} was resolved outside NexusMD — undo it there.`);
+    const changed = refuse(`${rel} has changes since it was resolved.`);
+    const zero = state.entries.find(e => e.path === rel && e.stage === '0');
+    if (rec.deleted) {
+      if (zero || await fsp.lstat(full).then(() => true, () => false)) return changed;
+    } else {
+      if (!zero || zero.oid !== rec.oid || zero.mode !== rec.mode) return changed;
+      if (zero.mode === '120000') {
+        if (state.records.some(r => r.path === rel && r.xy !== '.' && r.xy[1] !== '.')) return changed;
+      } else {
+        const h = await git(wt, ['hash-object', '--', rel]);
+        if (h.code !== 0 || h.stdout.trim() !== rec.oid) return changed;
+      }
+    }
     const back = await git(wt, ['update-index', '--unresolve', '--', rel]);
     if (back.code !== 0) return result(back);
-    const stages = stagesOf(await indexEntries(wt), rel).map(e => e.stage);
+    delete map[rel];
+    await writeRecords(dir, map);
+    const back2 = stagesOf(await indexEntries(wt), rel);
+    const stages = back2.map(e => e.stage);
+    if (back2.some(e => e.mode === '120000')) return { ok: true, detail: 'Done' };
     if (stages.includes('2') && stages.includes('3')) return result(await git(wt, ['checkout', '-m', '--', rel]));
     return { ok: true, detail: 'Done' };
   });
