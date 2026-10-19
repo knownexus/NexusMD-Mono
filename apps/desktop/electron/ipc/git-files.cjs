@@ -32,9 +32,10 @@ async function realOrParent(p) {
 async function requireWorktreeFile(wt, rel) {
   if (typeof rel !== 'string' || /^[a-zA-Z]:/.test(rel) || /^[\\/]{2}/.test(rel)) throw notWorktreeFile(rel);
   const { full, realDir } = await resolveInside(await fsp.realpath(wt), rel, notWorktreeFile);
-  const real = path.relative(realDir, await realOrParent(full));
-  if (real.split(/[\\/]/).some(s => s.toLowerCase() === '.git')) throw notWorktreeFile(rel);
-  return { full, realDir };
+  const real = await realOrParent(full);
+  if (path.relative(realDir, real).split(/[\\/]/).some(s => s.toLowerCase() === '.git')) throw notWorktreeFile(rel);
+  // `real` is where the file actually lives (a symlinked file's target), confined like `full`.
+  return { full, real, realDir };
 }
 
 function registerFiles(handle, { git, requireExactWorktree, requirePaths, withRepoLock }) {
@@ -57,16 +58,17 @@ function registerFiles(handle, { git, requireExactWorktree, requirePaths, withRe
 
   handle('git:writeFile', async (_e, repo, wt, registered, rel, text, { expectedStamp, overwrite = false, bom = false } = {}) => {
     if (typeof text !== 'string') throw new Error('Nothing to write');
-    const { full, realDir } = await target(repo, wt, registered, rel);
+    // Written at the real path, so saving through a symlink updates its target and keeps the link.
+    const { real, realDir } = await target(repo, wt, registered, rel);
     const body = Buffer.concat([bom ? BOM : Buffer.alloc(0), Buffer.from(text, 'utf8')]);
     if (body.length > MAX_WRITE_BYTES) throw new Error(`${rel} is too large to save from here.`);
     return withRepoLock(repo, async () => {
       let current;
-      try { current = await fsp.readFile(full); } catch (e) { if (e.code === 'ENOENT') return { ok: false, missing: true }; throw e; }
+      try { current = await fsp.readFile(real); } catch (e) { if (e.code === 'ENOENT') return { ok: false, missing: true }; throw e; }
       checkText(current, rel, { maxBytes: MAX_READ_BYTES });
       const stamp = sha256(current);
       if (!overwrite && stamp !== expectedStamp) return { ok: false, conflict: true, stamp };
-      await writeAtomic(full, realDir, body, notWorktreeFile);
+      await writeAtomic(real, realDir, body, notWorktreeFile);
       return { ok: true, stamp: sha256(body) };
     });
   });

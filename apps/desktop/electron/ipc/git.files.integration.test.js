@@ -95,7 +95,9 @@ describe('git workspace file editor against a real repository', { timeout: 60000
     const config = fs.readFileSync(path.join(repo.path, '.git', 'config'), 'utf8')
     fs.mkdirSync(disk('sub'), { recursive: true })
     const rels = ['../x', 'C:\\x', '.git/config', '.GIT/HEAD', 'sub/../.git/config', '//host/share/x']
-    if (process.platform === 'win32') rels.push('.git\\config', 'sub\\..\\.git\\HEAD', 'GIT~1/config', '\\\\host\\share\\x')
+    if (process.platform === 'win32') rels.push('.git\\config', 'sub\\..\\.git\\HEAD', '\\\\host\\share\\x')
+    // Only where the volume makes 8.3 short names; elsewhere GIT~1 is just a missing file.
+    if (process.platform === 'win32' && fs.existsSync(path.join(repo.path, 'GIT~1'))) rels.push('GIT~1/config')
     for (const rel of rels) {
       await expect(read(rel), rel).rejects.toThrow(/Not a worktree file|Invalid file path/)
       await expect(save(rel, 'boom', { expectedStamp: 'x', overwrite: true }), rel).rejects.toThrow(/Not a worktree file|Invalid file path/)
@@ -114,6 +116,19 @@ describe('git workspace file editor against a real repository', { timeout: 60000
     await expect(read('nested/.git/config')).rejects.toThrow(/Not a worktree file/)
     expect(fs.readFileSync(path.join(repo.path, '.git', 'config'), 'utf8')).toBe(config)
     fs.rmSync(disk('gitlink'), { recursive: true, force: true })
+  })
+
+  it('saves through a symlinked file into its target and keeps the link', async () => {
+    fs.writeFileSync(disk('target.txt'), 'before\n')
+    // Windows needs Developer Mode or elevation for file symlinks.
+    try { fs.symlinkSync('target.txt', disk('link.txt'), 'file') } catch (e) { if (e.code === 'EPERM') return; throw e }
+    try {
+      const { stamp } = await read('link.txt')
+      expect(await save('link.txt', 'after\n', { expectedStamp: stamp })).toMatchObject({ ok: true })
+      expect(fs.lstatSync(disk('link.txt')).isSymbolicLink()).toBe(true)
+      expect(fs.readFileSync(disk('target.txt'), 'utf8')).toBe('after\n')
+      expect(fs.readdirSync(repo.path).filter(f => f.endsWith('.tmp'))).toEqual([])
+    } finally { fs.rmSync(disk('link.txt'), { force: true }) }
   })
 
   it('does not overwrite a binary or oversized file', async () => {
