@@ -14,7 +14,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { spawn: nodeSpawn, execFile } = require('child_process');
 const { withLogging } = require('./withLogging.cjs');
-const { registerActions, ownershipMessage, WRITE_ENV } = require('./git-actions.cjs');
+const { registerActions, ownershipMessage, WRITE_ENV, BASE_MARKER } = require('./git-actions.cjs');
 const { registerFiles } = require('./git-files.cjs');
 
 const STRIP_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_PREFIX', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'];
@@ -494,6 +494,60 @@ function register(ipcMain, deps = {}) {
     return { operation: '', rebasingBranch: null };
   }
 
+  const shortRef = ref => ref.replace(/^refs\/(heads|remotes)\//, '');
+  const readOid = (dir, name) => (probe.readText(path.join(dir, name)) || '').split(/\r?\n/)[0].trim() || null;
+  const readNumber = (dir, name) => {
+    const n = parseInt(probe.readText(path.join(dir, name)) || '', 10);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  // A branch name for a commit is only certain when exactly one branch points at it.
+  async function soleBranchAt(worktreePath, oid) {
+    const r = await git(worktreePath, ['for-each-ref', '--points-at', oid, '--format=%(refname)', 'refs/heads', 'refs/remotes']);
+    if (r.code !== 0) return null;
+    const names = r.stdout.split(/\r?\n/).filter(n => n && !n.endsWith('/HEAD'));
+    return names.length === 1 ? shortRef(names[0]) : null;
+  }
+
+  async function subjectOf(worktreePath, oid) {
+    const r = await git(worktreePath, ['log', '-1', '--format=%s', '--end-of-options', oid]);
+    return r.code === 0 ? r.stdout.trim() : '';
+  }
+
+  // What the stopped operation is doing, for the conflict view. Only called while one is in progress.
+  async function operationInfo(worktreePath, gitDir) {
+    if (!gitDir) return null;
+    const info = { kind: null, step: null, total: null, onto: null, replaying: null, merging: null, picked: null };
+    const rebaseDir = ['rebase-merge', 'rebase-apply'].map(n => path.join(gitDir, n)).find(p => probe.exists(p));
+    if (rebaseDir) {
+      info.kind = 'rebase';
+      const merge = path.basename(rebaseDir) === 'rebase-merge';
+      info.step = readNumber(rebaseDir, merge ? 'msgnum' : 'next');
+      info.total = readNumber(rebaseDir, merge ? 'end' : 'last');
+      const onto = readOid(rebaseDir, 'onto');
+      if (onto) {
+        // The name NexusMD remembered counts only while it still points at the commit being rebased onto.
+        let name = null;
+        const remembered = (probe.readText(path.join(gitDir, BASE_MARKER)) || '').trim();
+        if (/^refs\/(heads|remotes)\/\S+$/.test(remembered)) {
+          const target = await git(worktreePath, ['rev-parse', '--verify', '--quiet', `${remembered}^{commit}`]);
+          if (target.code === 0 && target.stdout.trim() === onto) name = shortRef(remembered);
+        }
+        info.onto = { oid: onto, name: name ?? await soleBranchAt(worktreePath, onto) };
+      }
+      const replaying = readOid(gitDir, 'REBASE_HEAD');
+      if (replaying) info.replaying = { oid: replaying, subject: await subjectOf(worktreePath, replaying) };
+      return info;
+    }
+    const merging = readOid(gitDir, 'MERGE_HEAD');
+    if (merging) return { ...info, kind: 'merge', merging: { oid: merging, name: await soleBranchAt(worktreePath, merging) } };
+    for (const [file, kind] of [['CHERRY_PICK_HEAD', 'cherry-pick'], ['REVERT_HEAD', 'revert']]) {
+      const picked = readOid(gitDir, file);
+      if (picked) return { ...info, kind, picked: { oid: picked, subject: await subjectOf(worktreePath, picked) } };
+    }
+    return null;
+  }
+
   // Writes to one repository run one at a time; reads never wait.
   async function withRepoLock(repo, fn) {
     const key = normalise(await resolveCommon(repo.path));
@@ -558,9 +612,11 @@ function register(ipcMain, deps = {}) {
     // A gone upstream is detected in core from the missing `# branch.ab` line, so no extra spawn.
     const dirs = await git(worktreePath, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']);
     const [gitDir = '', commonDir = ''] = dirs.code === 0 ? dirs.stdout.split(/\r?\n/).map(s => s.trim()) : [];
+    const progress = await inProgress(gitDir);
     return {
       porcelain: status.stdout,
-      ...(await inProgress(gitDir)),
+      ...progress,
+      operationInfo: progress.operation ? await operationInfo(worktreePath, gitDir) : null,
       fetchedAt: commonDir ? probe.mtime(path.join(commonDir, 'FETCH_HEAD')) : null,
     };
   });

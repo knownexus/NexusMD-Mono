@@ -42,6 +42,12 @@ describe('applyStatus', () => {
   it('never marks a branch without an upstream as gone', () => {
     expect(applyStatus(tree(), status('# branch.head main\0')).upstreamGone).toBe(false)
   })
+
+  it('applyStatus copies operationInfo', () => {
+    const info = { kind: 'merge', step: null, total: null, onto: null, replaying: null, merging: { oid: 'a'.repeat(40), name: 'main' }, picked: null }
+    expect(applyStatus(tree(), { ...status('# branch.head main\0'), operationInfo: info }).operationInfo).toEqual(info)
+    expect(applyStatus(tree(), status('# branch.head main\0')).operationInfo).toBeNull()
+  })
 })
 
 describe('loadSnapshot', () => {

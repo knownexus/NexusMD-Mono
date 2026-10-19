@@ -24,7 +24,7 @@ export function applyStatus(tree, s) {
     branch: p.branch, head: p.head || tree.head, upstream: p.upstream, ahead: p.ahead, behind: p.behind, changes: p.changes,
     // Porcelain v2 omits branch.ab when the configured upstream ref no longer exists.
     upstreamGone: !!p.upstream && !p.hasAb,
-    operation: s.operation || '', rebasingBranch: s.rebasingBranch || null, fetchedAt: s.fetchedAt || null,
+    operation: s.operation || '', rebasingBranch: s.rebasingBranch || null, operationInfo: s.operationInfo || null, fetchedAt: s.fetchedAt || null,
   })
   return tree
 }

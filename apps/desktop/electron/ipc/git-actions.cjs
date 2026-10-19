@@ -26,6 +26,8 @@ const OPERATION_COMMANDS = {
   'Rebase in progress': 'rebase', 'Merge in progress': 'merge', 'Revert in progress': 'revert', 'Cherry-pick in progress': 'cherry-pick',
 };
 const PLAN_MARKER = 'nexusmd-rebase-plan';
+// The full ref name of the base of a rebase NexusMD started, so the conflict view can name it.
+const BASE_MARKER = 'nexusmd-rebase-onto';
 
 // Never in a stage 4 argv, whatever options arrive (the design's forbidden list).
 const FORBIDDEN_FLAGS = new Set(['--force', '-f', '--force-with-lease', '--force-if-includes', '--delete', '-d', '-D', '--mirror', '--all', '--tags', '--hard']);
@@ -219,6 +221,7 @@ function registerActions(handle, ctx) {
         return [...fetch, merge];
       },
       network: o => o.remote,
+      before: async (wt, o, state) => { if (o.mode === 'rebase') await rememberBase(wt, state.upstream); },
     },
     push: {
       timeout: LONG,
@@ -425,8 +428,27 @@ function registerActions(handle, ctx) {
     try { fsx.rmSync(markerFile, { force: true }); } catch { /* already gone */ }
   }
 
+  // Remembers which branch a rebase started here is rebasing onto; only a ref name is kept (an oid names nothing).
+  async function rememberBase(wt, base) {
+    if (!base || base.startsWith('-')) return;
+    const full = out(await read(wt, ['rev-parse', '--symbolic-full-name', base]));
+    const dir = await gitDirOf(wt);
+    if (!dir || !full || !/^refs\/(heads|remotes)\//.test(full)) return;
+    try { fsx.writeFileSync(path.join(dir, BASE_MARKER), `${full}\n`); } catch { /* the name just won't be shown */ }
+  }
+
+  // Shared by continue, abort and skip (through finish): once nothing is in progress the remembered base is stale.
+  async function forgetBaseIfIdle(wt) {
+    const dir = await gitDirOf(wt);
+    const { operation } = await inProgress(dir);
+    if (dir && !operation) {
+      try { fsx.rmSync(path.join(dir, BASE_MARKER), { force: true }); } catch { /* already gone */ }
+    }
+    return operation;
+  }
+
   async function finish(wt, r) {
-    const { operation } = await inProgress(await gitDirOf(wt));
+    const operation = await forgetBaseIfIdle(wt);
     const detail = [r.stdout.trim(), r.stderr].filter(Boolean).join('\n') || (r.code === 0 ? 'Done' : `git exited with code ${r.code}`);
     if (r.code === 0 && !operation) return { ok: true, detail };
     return { ok: false, detail, ...(operation ? { conflict: true, operation } : {}) };
@@ -437,6 +459,7 @@ function registerActions(handle, ctx) {
     fsx.writeFileSync(planFile, JSON.stringify({ todo: rebaseTodo(o.rows), messages: rebaseMessages(o.rows) }), { mode: 0o600 });
     const marker = await gitDirFile(wt);
     try {
+      await rememberBase(wt, o.base);
       const r = await w(wt, ['rebase', '-i', '--end-of-options', o.base], { timeout: LONG, env: editorEnv(planFile) });
       const res = await finish(wt, r);
       // Stopped on a conflict: keep the plan so Continue applies the remaining rewords.
@@ -469,6 +492,7 @@ function registerActions(handle, ctx) {
     const cwd = a.cwd ? a.cwd(o) : wt;
     if (a.verb) return runStash(wt, a.verb, o);
     if (a.run) return a.run(wt, o, state);
+    if (a.before) await a.before(wt, o, state);
     const outputs = [];
     for (const args of a.steps(o, state)) {
       let r;
@@ -486,6 +510,7 @@ function registerActions(handle, ctx) {
         return special ? { ...res, detail: `${special}\n\n${res.detail}` } : res;
       }
     }
+    if (a.before) await forgetBaseIfIdle(wt);
     return { ok: true, detail: outputs.filter(Boolean).join('\n') || 'Done' };
   }
 
@@ -552,5 +577,5 @@ function registerActions(handle, ctx) {
 
 module.exports = {
   registerActions, assertSafeArgv, branchNameProblem, rebaseTodo, rebaseMessages,
-  WRITE_ENV, STALE, REJECTED, PUSHED_RANGE, MERGES_RANGE, ownershipMessage, networkMessage,
+  WRITE_ENV, BASE_MARKER, STALE, REJECTED, PUSHED_RANGE, MERGES_RANGE, ownershipMessage, networkMessage,
 };
