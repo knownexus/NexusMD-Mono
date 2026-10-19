@@ -7,6 +7,7 @@ import { OperationBanner } from './operation-banner.jsx'
 import { StashList } from './stash-list.jsx'
 import { GitCommandLine } from './git-command-line.jsx'
 import { FileEditor } from './file-editor.jsx'
+import { GoToFile } from './go-to-file.jsx'
 
 const clamp = v => Math.min(0.8, Math.max(0.2, v))
 
@@ -49,6 +50,21 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     return true
   }
   React.useImperativeHandle(ref, () => ({ confirmDiscard, openFile }))
+  // Ctrl+P (Go to file) while this panel is shown; not over another dialog. preventDefault keeps the print dialog away.
+  const [goTo, setGoTo] = React.useState(false)
+  React.useEffect(() => {
+    const key = e => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'p') return
+      e.preventDefault()
+      if (!document.querySelector('[aria-modal="true"]')) setGoTo(true)
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [])
+  const goToFile = path => {
+    if (history) onPanel('changes')
+    if (openFile(path)) setGoTo(false)
+  }
   // Closing or reloading the window with unsaved edits asks first (main shows the question).
   React.useEffect(() => {
     const warn = e => { if (dirty.current) { e.preventDefault(); e.returnValue = '' } }
@@ -117,8 +133,10 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
             </div>
           )}
         </div>
+        <button className="btn sm ghost" title="Ctrl+P" style={{ alignSelf: 'flex-start' }} onClick={() => setGoTo(true)}>Go to file</button>
         {onSync && <SyncBar tree={tree} onSync={onSync} onStashes={() => setStashes(true)} />}
       </div>
+      {goTo && <GoToFile adapter={adapter} repo={repo} worktreePath={tree.path} registered={registered} onOpen={goToFile} onClose={() => setGoTo(false)} />}
       {tree.error && <div role="alert" className="nx-alert bad" style={{ margin: '10px 16px 0' }}>{tree.error}</div>}
       {onExec && (
         <div className="nx-panel-section" style={{ background: 'var(--surface-2)' }}>

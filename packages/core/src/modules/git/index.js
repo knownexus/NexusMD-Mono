@@ -27,6 +27,7 @@ export {
 export { ACTION_KINDS, BATCH_KINDS, BATCH_NOTE, actionTargets, previewModel, worktreeDefaultPath, checkBranchName } from './actions.js'
 export { REBASE_ACTIONS, rebasePlan, moveRow, setRowAction, setRowMessage, rebaseTodo, squashGroups, rebaseMessages, messageRows, rebaseProblems } from './rebase-plan.js'
 export { ACTIVITY_MAX, addActivity, failedTargets } from './activity.js'
+export { filterFiles } from './file-filter.js'
 
 let _adapter = null
 

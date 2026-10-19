@@ -247,6 +247,24 @@ describe('editing files', () => {
     Range.prototype.getBoundingClientRect ??= () => ({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 })
   })
 
+  it('Ctrl+P opens Go to file, prevents printing, and opens the picked file in Edit', async () => {
+    const { a } = setupView({ ...files(), files: vi.fn(async () => ({ files: ['f.txt', 'docs/guide.md'], truncated: false })) })
+    await openWorktree()
+    const ev = new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true, cancelable: true })
+    act(() => { window.dispatchEvent(ev) })
+    expect(ev.defaultPrevented).toBe(true)
+    const box = await screen.findByRole('textbox', { name: 'File name' })
+    // A second Ctrl+P over the open dialog is swallowed, not stacked.
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true, cancelable: true })) })
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    await screen.findAllByRole('option')
+    fireEvent.change(box, { target: { value: 'guide' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await editorFor('docs/guide.md')
+    expect(a.readFile).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, 'docs/guide.md')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
   it('Edit opens the focused file and Diff returns', async () => {
     const { a } = setupView(files())
     await openWorktree()
