@@ -1,4 +1,4 @@
-> the next step is an implementation plan (superpowers:writing-plans).
+# Git Workspace: edit files and resolve conflicts — design
 
 ## Context and why
 
