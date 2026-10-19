@@ -276,6 +276,17 @@ describe('editing files', () => {
     } finally { other.remove() }
   })
 
+  it('swallows a second Ctrl+P over the open Go to file dialog instead of stacking', async () => {
+    setupView({ ...files(), files: vi.fn(async () => ({ files: ['f.txt'], truncated: false })) })
+    await openWorktree()
+    const press = () => { const ev = new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true, cancelable: true }); act(() => { window.dispatchEvent(ev) }); return ev }
+    press()
+    await screen.findByRole('combobox', { name: 'File name' })
+    expect(press().defaultPrevented).toBe(true)
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(screen.getAllByRole('combobox', { name: 'File name' })).toHaveLength(1)
+  })
+
   it('Edit opens the focused file and Diff returns', async () => {
     const { a } = setupView(files())
     await openWorktree()

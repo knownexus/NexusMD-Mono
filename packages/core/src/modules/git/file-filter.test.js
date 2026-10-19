@@ -29,8 +29,7 @@ describe('filterFiles', () => {
 
 describe('filterFiles span', () => {
   it('measures the shortest matched span', () => {
-    // Both have the same basename match status and length; only the best window differs (axxab: 2, a-x-b: 3).
-    const out = filterFiles(['d/a-x-b', 'd/axxab'], 'ab')
-    expect(out).toEqual(['d/axxab', 'd/a-x-b'])
+    // Neither basename holds the query, so only the span decides: a-x-b is 5, axxxxbab is 2 (its trailing ab).
+    expect(filterFiles(['p/a-x-b/q.txt', 'p/axxxxbab/q.txt'], 'ab')).toEqual(['p/axxxxbab/q.txt', 'p/a-x-b/q.txt'])
   })
 })
