@@ -10,21 +10,14 @@
 
 const path = require('path');
 const fsp = require('fs/promises');
-const crypto = require('crypto');
 const { withLogging } = require('./withLogging.cjs');
+const { resolveInside, readText, writeAtomic, sha256, BOM, TMP_FILE } = require('./safe-file.cjs');
 
 const MAX_READ = 1024 * 1024;
 const MAX_WRITE = 2 * 1024 * 1024;
 const MAX_FILES = 2000;
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'bin', 'obj', '.vs', '.idea']);
-const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
-const RENAME_RETRIES = 3;
-const RENAME_RETRY_MS = 100;
-// Windows sharing errors while antivirus or an editor has the file open for a moment.
-const RETRY_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
-const TMP_FILE = /^\..+\.nexusmd-[0-9a-f]{8}\.tmp$/;
-const sha256 = buf => crypto.createHash('sha256').update(buf).digest('hex');
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const notProfileFile = rel => new Error(`Not a profile file: ${rel}`);
 
 function profileDir(config) {
   const { root, profile } = config || {};
@@ -33,47 +26,8 @@ function profileDir(config) {
   return path.resolve(profile || path.join(root, 'profile'));
 }
 
-const inside = (dir, p) => {
-  const d = dir.endsWith(path.sep) ? dir : dir + path.sep;
-  return fold(p).startsWith(fold(d));
-};
-// Windows and macOS file systems are case-insensitive by default; Linux's is not.
-const CASE_INSENSITIVE = process.platform === 'win32' || process.platform === 'darwin';
-const fold = s => (CASE_INSENSITIVE ? s.toLowerCase() : s);
-
-// Real path of p even when its tail doesn't exist yet: realpath the deepest existing ancestor, then
-// re-append the missing segments. A junction anywhere above is thus resolved, which a lexical
-// fallback would miss. A dangling link (lstat works, realpath doesn't) is refused outright.
-async function realDeep(p) {
-  const tail = [];
-  let cur = p;
-  for (;;) {
-    try {
-      return path.join(await fsp.realpath(cur), ...tail.reverse());
-    } catch (e) {
-      if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') throw e;
-      if (await fsp.lstat(cur).then(() => true, () => false)) return null;
-      const parent = path.dirname(cur);
-      if (parent === cur) return null;
-      tail.push(path.basename(cur));
-      cur = parent;
-    }
-  }
-}
 const exists = p => fsp.stat(p).then(() => true, () => false);
 const isDir = p => fsp.stat(p).then(s => s.isDirectory(), () => false);
-
-async function resolveFile(dir, rel) {
-  if (typeof rel !== 'string' || !rel || rel.includes('\0') || path.isAbsolute(rel)) throw new Error(`Not a profile file: ${rel}`);
-  // Windows would read "name:stream" as an alternate data stream and silently drop a trailing dot or space.
-  if (process.platform === 'win32' && (rel.includes(':') || rel.split(/[\\/]/).some(s => s !== '.' && s !== '..' && /[. ]$/.test(s)))) throw new Error(`Not a profile file: ${rel}`);
-  const full = path.resolve(dir, rel);
-  if (!inside(dir, full)) throw new Error(`Not a profile file: ${rel}`);
-  const realDir = (await realDeep(dir)) || dir;
-  const realFull = await realDeep(full);
-  if (!realFull || !inside(realDir, realFull)) throw new Error(`Not a profile file: ${rel}`);
-  return { full, realDir };
-}
 
 async function listFiles(dir) {
   const files = [];
@@ -114,19 +68,8 @@ function register(ipcMain, { logger } = {}) {
 
   handle('devenv:profile-read', async (_e, config, rel) => {
     const dir = profileDir(config);
-    const { full } = await resolveFile(dir, rel);
-    let st;
-    try { st = await fsp.stat(full); } catch (e) { if (e.code === 'ENOENT') return { missing: true }; throw e; }
-    if (!st.isFile()) throw new Error(`Not a file: ${rel}`);
-    if (st.size > MAX_READ) throw new Error(`${rel} is too large to edit here (${Math.round(st.size / 1024)} KB).`);
-    let buf = await fsp.readFile(full);
-    const stamp = sha256(buf);
-    if (buf.subarray(0, 8192).includes(0)) throw new Error(`${rel} isn't a text file.`);
-    const bom = buf.subarray(0, 3).equals(BOM);
-    if (bom) buf = buf.subarray(3);
-    let text;
-    try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { throw new Error(`${rel} isn't UTF-8 text.`); }
-    return { text, bom, stamp };
+    const { full } = await resolveInside(dir, rel, notProfileFile);
+    return readText(full, rel, { maxBytes: MAX_READ });
   });
 
   handle('devenv:profile-write', async (_e, config, rel, text, opts) => {
@@ -136,7 +79,7 @@ function register(ipcMain, { logger } = {}) {
     if (body.length > MAX_WRITE) throw new Error(`${rel} is too large to save here.`);
     const dir = profileDir(config);
     if (!(await isDir(dir))) throw new Error(`No profile folder at ${dir}.`);
-    const { full, realDir } = await resolveFile(dir, rel);
+    const { full, realDir } = await resolveInside(dir, rel, notProfileFile);
     let current = null;
     try { current = await fsp.readFile(full); } catch (e) { if (e.code !== 'ENOENT') throw e; }
     const currentStamp = current ? sha256(current) : null;
@@ -144,23 +87,7 @@ function register(ipcMain, { logger } = {}) {
       if (current && (opts.create || currentStamp !== opts.expectedStamp)) return { ok: false, conflict: true, stamp: currentStamp };
       if (!current && !opts.create) return { ok: false, missing: true };
     }
-    await fsp.mkdir(path.dirname(full), { recursive: true });
-    // Re-check after mkdir: the folders may have changed since resolveFile looked.
-    const realParent = await realDeep(path.dirname(full));
-    if (!realParent || !inside(realDir, realParent + path.sep)) throw new Error(`Not a profile file: ${rel}`);
-    const tmp = path.join(path.dirname(full), `.${path.basename(full)}.nexusmd-${crypto.randomBytes(4).toString('hex')}.tmp`);
-    try {
-      await fsp.writeFile(tmp, body);
-      for (let attempt = 0; ; attempt++) {
-        try { await fsp.rename(tmp, full); break; } catch (e) {
-          if (attempt < RENAME_RETRIES && RETRY_CODES.has(e.code)) { await sleep(RENAME_RETRY_MS); continue; }
-          throw e;
-        }
-      }
-    } catch (e) {
-      await fsp.rm(tmp, { force: true }).catch(() => {});
-      throw e;
-    }
+    await writeAtomic(full, realDir, body, notProfileFile);
     return { ok: true, stamp: sha256(body) };
   });
 
