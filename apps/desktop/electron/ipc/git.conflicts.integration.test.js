@@ -98,13 +98,39 @@ describe('operation details in git:status', { timeout: 60000 }, () => {
     expect(conflictLabels(mtree.operationInfo, checkoutName(mtree)).left).toEqual({ title: 'Your checkout', take: 'Take mine', version: 'my version' })
   })
 
-  it('base name is null when two branches point at it', async () => {
+  it('base name is null when two branches point at it and nothing names one', async () => {
     const r = diverged('Ambiguous')
     run(r.path, 'branch', 'main-copy', 'main')
-    tryRun(r.path, 'rebase', 'main')
+    // Rebasing onto a bare commit id: the reflog says "checkout <oid>", which names no branch.
+    const main = run(r.path, 'rev-parse', 'main').trim()
+    tryRun(r.path, 'rebase', main)
     const s = await status(r)
     expect(s.operationInfo.kind).toBe('rebase')
-    expect(s.operationInfo.onto).toEqual({ oid: run(r.path, 'rev-parse', 'main').trim(), name: null })
+    expect(s.operationInfo.onto).toEqual({ oid: main, name: null })
+  })
+
+  it('a terminal rebase names its base from the reflog, even with origin/main at the same commit', async () => {
+    const bare = path.join(root, 'reflog-remote.git')
+    run(root, 'init', '-q', '--bare', bare)
+    const r = diverged('Reflog')
+    run(r.path, 'remote', 'add', 'origin', bare)
+    run(r.path, 'push', '-q', 'origin', 'main')
+    const main = run(r.path, 'rev-parse', 'main').trim()
+    expect(run(r.path, 'rev-parse', 'origin/main').trim()).toBe(main)
+    expect(tryRun(r.path, 'rebase', 'main')).toMatch(/CONFLICT/)
+    expect(fs.existsSync(marker(r))).toBe(false)
+    expect((await status(r)).operationInfo.onto).toEqual({ oid: main, name: 'main' })
+  })
+
+  it('a reflog name that no longer points at onto is not used', async () => {
+    const r = diverged('ReflogMoved')
+    const main = run(r.path, 'rev-parse', 'main').trim()
+    tryRun(r.path, 'rebase', 'main')
+    // main moves away during the rebase; main-old and main-copy are both at onto, so nothing is certain.
+    run(r.path, 'branch', 'main-old', main)
+    run(r.path, 'branch', 'main-copy', main)
+    run(r.path, 'branch', '-f', 'main', 'main~1')
+    expect((await status(r)).operationInfo.onto).toEqual({ oid: main, name: null })
   })
 
   it('a rebase NexusMD started remembers its base', async () => {
@@ -132,7 +158,8 @@ describe('operation details in git:status', { timeout: 60000 }, () => {
   it('ignores a remembered base that no longer points at onto', async () => {
     const r = diverged('Stale')
     run(r.path, 'branch', 'moved', 'feature')
-    tryRun(r.path, 'rebase', 'main')
+    // By commit id, so the reflog names no branch and only the marker or the single-branch rule could.
+    tryRun(r.path, 'rebase', run(r.path, 'rev-parse', 'main').trim())
     write(path.join(r.path, '.git'), 'nexusmd-rebase-onto', 'refs/heads/moved\n')
     // `main` is the only branch at onto, so the single-branch rule names it; the stale marker is not used.
     expect((await status(r)).operationInfo.onto.name).toBe('main')

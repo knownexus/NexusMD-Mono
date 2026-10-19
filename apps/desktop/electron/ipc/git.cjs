@@ -510,6 +510,23 @@ function register(ipcMain, deps = {}) {
     return names.length === 1 ? shortRef(names[0]) : null;
   }
 
+  // The branch a rebase started in a terminal was given, from this worktree's HEAD reflog: the newest
+  // "rebase (start): checkout <name>" entry. Used only when <name> is a branch (local or remote) that
+  // still points at onto; anything else (a commit id, HEAD~2, a moved branch) names nothing.
+  async function reflogBase(worktreePath, onto) {
+    const log = await git(worktreePath, ['reflog', '-n', '200', '--format=%gs', 'HEAD', '--']);
+    if (log.code !== 0) return null;
+    // The newest start of any rebase (pull --rebase included), so an older rebase's entry is never read as this one's.
+    const start = log.stdout.split(/\r?\n/).find(l => / \(start\): /.test(l));
+    const m = start && /^rebase(?: -i| \(interactive\))? \(start\): checkout (\S+)$/.exec(start);
+    if (!m || m[1].startsWith('-')) return null;
+    const full = await git(worktreePath, ['rev-parse', '--verify', '--quiet', '--symbolic-full-name', '--end-of-options', m[1]]);
+    const ref = full.code === 0 ? full.stdout.trim() : '';
+    if (!/^refs\/(heads|remotes)\/\S+$/.test(ref)) return null;
+    const target = await git(worktreePath, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`]);
+    return target.code === 0 && target.stdout.trim() === onto ? shortRef(ref) : null;
+  }
+
   async function subjectOf(worktreePath, oid) {
     const r = await git(worktreePath, ['log', '-1', '--format=%s', '--end-of-options', oid]);
     return r.code === 0 ? r.stdout.trim() : '';
@@ -534,6 +551,9 @@ function register(ipcMain, deps = {}) {
           const target = await git(worktreePath, ['rev-parse', '--verify', '--quiet', `${remembered}^{commit}`]);
           if (target.code === 0 && target.stdout.trim() === onto) name = shortRef(remembered);
         }
+        // Then the branch a terminal rebase named (it wins over "the only branch there": after
+        // `git rebase main`, origin/main is usually at the same commit), then that single branch.
+        if (!name) name = await reflogBase(worktreePath, onto);
         info.onto = { oid: onto, name: name ?? await soleBranchAt(worktreePath, onto) };
       }
       const replaying = readOid(gitDir, 'REBASE_HEAD');
