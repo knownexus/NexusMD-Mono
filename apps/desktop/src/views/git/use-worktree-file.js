@@ -30,16 +30,19 @@ const pendingSaves = new Map()
 
 // The conflict editor (use-conflict.js) keeps its unsaved result text in this same store.
 export { draftKey as worktreeDraftKey }
+// Conflict-editor drafts live under their own key, so the plain editor and the conflict editor never restore each other's.
+const CONFLICT = '|conflict-editor'
+export const conflictDraftKey = (repoPath, worktreePath, path) => draftKey(repoPath, worktreePath, path) + CONFLICT
 export const getWorktreeDraft = key => drafts.get(key)
 export const putWorktreeDraft = putDraft
 export const dropWorktreeDraft = dropDraft
 
 export function worktreeDraftPaths(repoPath, worktreePath) {
   const prefix = prefixOf(repoPath, worktreePath)
-  return [...drafts.keys()].filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length))
+  return [...new Set([...drafts.keys()].filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length).replace(CONFLICT, '')))]
 }
 // Discarding edits (the panel's "Discard unsaved changes?") must also forget the kept draft.
-export function discardWorktreeDraft(repoPath, worktreePath, path) { dropDraft(draftKey(repoPath, worktreePath, path)) }
+export function discardWorktreeDraft(repoPath, worktreePath, path) { dropDraft(draftKey(repoPath, worktreePath, path)); dropDraft(conflictDraftKey(repoPath, worktreePath, path)) }
 export function clearWorktreeDrafts() { if (drafts.size) { drafts.clear(); emit() } }
 export function useWorktreeDraftsVersion() {
   const [version, setVersion] = React.useState(0)

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor, act, cleanup } from '@testing-library/react'
-import { clearWorktreeDrafts } from './use-worktree-file.js'
+import { clearWorktreeDrafts, useWorktreeFile, worktreeDraftPaths } from './use-worktree-file.js'
 import { useConflict } from './use-conflict.js'
 
 afterEach(() => { cleanup(); clearWorktreeDrafts() })
@@ -147,5 +147,104 @@ describe('useConflict', () => {
     await waitFor(() => expect(result.current.text).toBe('B'))
     await act(async () => { release() })
     expect(result.current.text).toBe('B')
+  })
+
+  // A draft taken against working stamp w1, restored while the file on disk is now w2.
+  const staleDraft = async adapter => {
+    const a = setup(adapter)
+    await waitFor(() => expect(a.result.current.status).toBe('ready'))
+    act(() => { a.result.current.take(0, 'left') })
+    a.unmount()
+    adapter.conflict.mockImplementation(async () => ({ ...conflict({ text: marked + 'x\n', bom: false, stamp: 'w2' }), stamp: 'c2' }))
+    const b = setup(adapter)
+    await waitFor(() => expect(b.result.current.conflict).toBe(true))
+    return b
+  }
+
+  it('refuses to write while a restored draft is flagged, until keepMine', async () => {
+    const adapter = mk()
+    const { result } = await staleDraft(adapter)
+    let r
+    await act(async () => { r = await result.current.markResolved() })
+    expect(r).toBe('conflict')
+    await act(async () => { r = await result.current.takeWhole('left') })
+    expect(r).toBe('conflict')
+    expect(adapter.resolveConflict).not.toHaveBeenCalled()
+    act(() => { result.current.keepMine() })
+    expect(result.current.conflict).toBe(false)
+    await act(async () => { r = await result.current.markResolved() })
+    expect(r).toBe('ok')
+    expect(adapter.resolveConflict.mock.calls[0][5]).toBe('c2')
+  })
+
+  it('reload with discardDraft takes the disk version', async () => {
+    const adapter = mk()
+    const { result } = await staleDraft(adapter)
+    await act(async () => { await result.current.reload({ discardDraft: true }) })
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    expect(result.current.conflict).toBe(false)
+    expect(result.current.restored).toBe(false)
+    expect(result.current.text).toBe(marked + 'x\n')
+  })
+
+  it('editing a flagged draft keeps it flagged across remounts', async () => {
+    const adapter = mk()
+    const b = await staleDraft(adapter)
+    act(() => { b.result.current.setText('edited\n') })
+    b.unmount()
+    const c = setup(adapter)
+    await waitFor(() => expect(c.result.current.restored).toBe(true))
+    expect(c.result.current.text).toBe('edited\n')
+    expect(c.result.current.conflict).toBe(true)
+  })
+
+  it('recovers from stale by reloading', async () => {
+    const adapter = mk()
+    adapter.resolveConflict.mockImplementationOnce(async () => ({ ok: false, stale: true, detail: 'changed' }))
+    const { result } = setup(adapter)
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    let r
+    await act(async () => { r = await result.current.takeWhole('left') })
+    expect(r).toBe('stale')
+    adapter.conflict.mockImplementation(async () => ({ ...conflict(), stamp: 'c2' }))
+    await act(async () => { await result.current.reload({ discardDraft: true }) })
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    await act(async () => { r = await result.current.takeWhole('left') })
+    expect(r).toBe('ok')
+    expect(adapter.resolveConflict.mock.calls[1][5]).toBe('c2')
+  })
+
+  it('conflict and plain editor drafts never restore each other', async () => {
+    const adapter = mk({ readFile: vi.fn(async () => ({ text: 'plain\n', bom: false, stamp: 's1' })) })
+    const plain = renderHook(() => useWorktreeFile({ adapter, repo, worktreePath: repo.path, registered, path: 'f.txt' }))
+    await waitFor(() => expect(plain.result.current.status).toBe('ready'))
+    act(() => { plain.result.current.setText('plain edited\n') })
+    plain.unmount()
+    const c = setup(adapter)
+    await waitFor(() => expect(c.result.current.status).toBe('ready'))
+    expect(c.result.current.restored).toBe(false)
+    act(() => { c.result.current.take(0, 'left') })
+    c.unmount()
+    expect(worktreeDraftPaths(repo.path, repo.path)).toEqual(['f.txt'])
+    const plain2 = renderHook(() => useWorktreeFile({ adapter, repo, worktreePath: repo.path, registered, path: 'f.txt' }))
+    await waitFor(() => expect(plain2.result.current.status).toBe('ready'))
+    expect(plain2.result.current.text).toBe('plain edited\n')
+  })
+
+  it('is resolved after success and then ignores edits and writes', async () => {
+    const adapter = mk()
+    const { result } = setup(adapter)
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    await act(async () => { await result.current.takeWhole('left') })
+    expect(result.current.status).toBe('resolved')
+    act(() => { result.current.setText('zzz') })
+    expect(result.current.text).toBe(marked)
+    let r
+    await act(async () => { r = await result.current.takeWhole('right') })
+    expect(r).toBe(false)
+    await act(async () => { r = await result.current.markResolved({ force: true }) })
+    expect(r).toBe(false)
+    expect(adapter.resolveConflict).toHaveBeenCalledTimes(1)
+    expect(worktreeDraftPaths(repo.path, repo.path)).toEqual([])
   })
 })
