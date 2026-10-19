@@ -101,7 +101,7 @@ export function CodeEditor({ value, language, onChange, ariaLabel, line = null, 
     if (!v || typeof line !== 'number') return
     const pos = v.state.doc.line(Math.min(Math.max(1, Math.floor(line)), v.state.doc.lines)).from
     v.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) })
-  }, [line, value])
+  }, [line])
 
   return <div ref={host} style={{ flex: 1, minHeight: 240, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6 }} />
 }
