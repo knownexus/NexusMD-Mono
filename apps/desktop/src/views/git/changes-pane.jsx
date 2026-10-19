@@ -41,7 +41,7 @@ function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionC
           {c.area === 'conflict' && labels && onResolve && (
             <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
               {['left', 'right'].map(side => (
-                <button key={side} className="btn sm ghost" disabled={busy}
+                <button key={side} className="btn sm ghost" disabled={busy} aria-label={`${labels[side].take} for ${c.path}`}
                   onClick={() => { if (window.confirm(`Use ${labels[side].version} for the whole of ${c.path}?`)) onResolve(c, side) }}>
                   {labels[side].take}
                 </button>
@@ -67,7 +67,7 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
   const onKeyDown = e => {
     // Ctrl+C is copy, not Commit; and keys on a row's own checkbox belong to that checkbox.
     if (e.ctrlKey || e.metaKey || e.altKey) return
-    if (e.target !== e.currentTarget && e.target.tagName === 'INPUT') return
+    if (e.target !== e.currentTarget && (e.target.tagName === 'INPUT' || e.target.closest('button'))) return
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       const i = ordered.findIndex(c => c.id === focusId)

@@ -55,10 +55,11 @@ export function useGitActions({ adapter, registered, reload }) {
     adapter[change.area === 'staged' ? 'unstageHunk' : 'stageHunk'](repoOf(tree), tree.path, registered, changePaths(change), index, stamp), after)
 
   // Take one side of a conflicted file whole. The stamp is read here, so a file changed since is refused (stale).
-  const resolve = (tree, change, take) => guard(tree, async () => {
+  const resolve = (tree, change, take, onResolved) => guard(tree, async () => {
     const repo = repoOf(tree)
     const expected = await adapter.stamp(repo, tree.path, registered, { kind: 'files', paths: [change.path] })
     const r = await adapter.resolveConflict(repo, tree.path, registered, change.path, { take }, expected)
+    if (r.ok) onResolved?.()
     return r.ok ? r : { ok: false, detail: r.detail || (r.stale ? `${change.path} changed since it was listed. Refresh and try again.` : `Could not resolve ${change.path}.`) }
   })
 

@@ -100,6 +100,12 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     close()
     onPanel(id)
   }
+  // Taking a side rewrites the file on disk, so edits to it (open here or kept) are asked about first and dropped once it succeeds.
+  const resolve = (change, take) => {
+    if (editor?.path === change.path) { if (!confirmDiscard()) return }
+    else if (drafts.includes(change.path) && !window.confirm(`Discard unsaved changes to ${change.path}?`)) return
+    onResolve(change, take, () => discardWorktreeDraft(repo.path, tree.path, change.path))
+  }
   const edit = () => { if (!editor && change) open(change.path); setMode('edit') }
   // An opened file's diff, whichever of its changes is focused (unstaged first); none if it is unchanged.
   const diffChange = !editor || change?.path === editor.path ? change
@@ -172,7 +178,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
           : (
             <div ref={box} style={{ display: 'grid', gridTemplateRows: `minmax(0, ${shown}fr) 6px minmax(0, ${1 - shown}fr)`, height: '64vh', minHeight: 320 }}>
               <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={focus} drafts={drafts}
-                onAction={onAction} onCommit={onCommit} onResolve={onResolve} busy={busy} status={status} />
+                onAction={onAction} onCommit={onCommit} onResolve={onResolve && resolve} busy={busy} status={status} />
               <div role="separator" aria-orientation="horizontal" aria-label="Resize changes and diff" aria-valuenow={Math.round(shown * 100)}
                 tabIndex={0} onPointerDown={drag} onKeyDown={nudge} style={{ cursor: 'row-resize', background: 'var(--border)', borderRadius: 3 }} />
               <div style={{ display: 'grid', gridTemplateRows: canEdit ? 'auto minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: 6, minHeight: 0 }}>

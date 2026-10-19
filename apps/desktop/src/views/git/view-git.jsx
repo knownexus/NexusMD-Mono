@@ -150,7 +150,7 @@ function GitWorkspace({ adapter }) {
                 version={snapshot?.takenAt} tree={selectedTree} selected={selectedIds} focusId={focusId}
                 onSelectionChange={ids => setSelections(s => ({ ...s, [treeKey]: ids }))}
                 onFocus={id => setFocus(f => ({ ...f, [treeKey]: id }))}
-                onAction={action => actions.openReview(action, selectedTree, selectedIds)} onCommit={() => openCommit()} onResolve={(change, take) => actions.resolve(selectedTree, change, take)}
+                onAction={action => actions.openReview(action, selectedTree, selectedIds)} onCommit={() => openCommit()} onResolve={(change, take, onResolved) => actions.resolve(selectedTree, change, take, onResolved)}
                 onHunk={(change, index, stamp, after) => actions.hunk(selectedTree, change, index, stamp, after)}
                 busy={!!actions.busy[selectedTree.path] || cmdRun?.status === 'running'} status={actions.status[selectedTree.path] ?? null}
                 split={view.split} onSplit={split => setView({ split })}
