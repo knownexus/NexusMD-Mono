@@ -44,6 +44,12 @@ export function worktreeDraftPaths(repoPath, worktreePath) {
 // Discarding edits (the panel's "Discard unsaved changes?") must also forget the kept draft.
 export function discardWorktreeDraft(repoPath, worktreePath, path) { dropDraft(draftKey(repoPath, worktreePath, path)); dropDraft(conflictDraftKey(repoPath, worktreePath, path)) }
 export function clearWorktreeDrafts() { if (drafts.size) { drafts.clear(); emit() } }
+export const hasAnyWorktreeDrafts = () => drafts.size > 0
+// Closing or reloading the window while any edits are kept asks first (main shows the question).
+// Registered with the store itself, so it holds whichever view is showing, for as long as drafts can exist.
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', e => { if (hasAnyWorktreeDrafts()) { e.preventDefault(); e.returnValue = '' } })
+}
 export function useWorktreeDraftsVersion() {
   const [version, setVersion] = React.useState(0)
   React.useEffect(() => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor, act, cleanup } from '@testing-library/react'
-import { useWorktreeFile, clearWorktreeDrafts, worktreeDraftPaths, discardWorktreeDraft } from './use-worktree-file.js'
+import { useWorktreeFile, clearWorktreeDrafts, worktreeDraftPaths, discardWorktreeDraft, hasAnyWorktreeDrafts, putWorktreeDraft, conflictDraftKey } from './use-worktree-file.js'
 
 afterEach(() => { cleanup(); clearWorktreeDrafts() })
 
@@ -286,5 +286,18 @@ describe('useWorktreeFile drafts', () => {
     await waitFor(() => expect(again.result.current.status).toBe('ready'))
     expect(again.result.current.text).toBe('a\n')
     expect(again.result.current.restored).toBe(false)
+  })
+})
+
+describe('closing the window with kept drafts', () => {
+  const unload = () => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return e }
+  it('asks while any worktree draft exists, with no editor mounted', () => {
+    expect(hasAnyWorktreeDrafts()).toBe(false)
+    expect(unload().defaultPrevented).toBe(false)
+    putWorktreeDraft(conflictDraftKey(repo.path, 'C:/repos/A-wt', 'x.txt'), { text: 'x', saved: '', eol: '\n', bom: false, stamp: 's' })
+    expect(hasAnyWorktreeDrafts()).toBe(true)
+    expect(unload().defaultPrevented).toBe(true)
+    clearWorktreeDrafts()
+    expect(unload().defaultPrevented).toBe(false)
   })
 })

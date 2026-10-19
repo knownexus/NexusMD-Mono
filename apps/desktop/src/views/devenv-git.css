@@ -226,3 +226,15 @@ select.nx-input { padding-right: 4px; }
 .nx-run .nx-drawer-head { padding: 8px 10px 8px 14px; }
 .nx-run .nx-drawer-out { min-height: 160px; max-height: 340px; padding: 10px 14px; }
 .nx-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* resolving a conflicted file: the current conflict's two sides above the editable result */
+.nx-resolve { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
+.nx-resolve-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 4px 0; }
+.nx-resolve-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.nx-resolve-side { border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); min-width: 0; display: flex; flex-direction: column; }
+.nx-resolve-side-head { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.nx-resolve-side pre { margin: 0; padding: 6px 8px; max-height: 160px; overflow: auto; font: 12px var(--mono); white-space: pre; }
+.nx-resolve-side > .nx-muted { padding: 6px 8px; }
+.nx-resolve-base { display: flex; flex-direction: column; }
+.nx-resolve-whole { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
+@media (max-width: 720px) { .nx-resolve-sides { grid-template-columns: minmax(0, 1fr); } }

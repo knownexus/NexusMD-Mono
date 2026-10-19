@@ -83,7 +83,9 @@ describe('DiffPane', () => {
     const notes = (area, diff) => { cleanup(); render(<DiffPane change={change(area)} diff={diff} onHunk={vi.fn()} />); return screen.getAllByRole('note').map(n => n.textContent) }
     expect(notes('unstaged', loaded('Binary files a/f.txt and b/f.txt differ\n', { binary: true, size: 2048 }))).toEqual(['Binary file (2 KB). Stage or discard it as a whole.'])
     expect(notes('unstaged', loaded('', { truncated: true, size: 3 * 1024 * 1024 }))).toEqual(['This diff is too large to show (3.0 MB). Stage or discard the file as a whole.'])
-    expect(notes('conflict', loaded(''))).toEqual(['Resolve in your editor, then stage the file.'])
+    cleanup()
+    render(<DiffPane change={change('conflict')} diff={loaded('')} onHunk={vi.fn()} />)
+    expect(screen.queryAllByRole('note')).toEqual([])
     expect(notes('untracked', loaded(''))).toEqual(['Empty file.'])
     expect(notes('unstaged', loaded('', { gone: true }))).toEqual(['No longer changed.'])
     expect(screen.queryByRole('button', { name: /hunk/ })).toBeNull()

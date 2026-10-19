@@ -7,6 +7,7 @@ import { OperationBar } from './operation-bar.jsx'
 import { StashList } from './stash-list.jsx'
 import { GitCommandLine } from './git-command-line.jsx'
 import { FileEditor } from './file-editor.jsx'
+import { ResolvePane } from './resolve-pane.jsx'
 import { GoToFile } from './go-to-file.jsx'
 import { discardWorktreeDraft, worktreeDraftPaths, useWorktreeDraftsVersion } from './use-worktree-file.js'
 
@@ -34,16 +35,29 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   // so the editor jumps again even to the same line, and stays put while typing. Kept (hidden) in Diff.
   const [opened, setOpened] = React.useState(null)
   const [mode, setMode] = React.useState('diff')
+  // A file just marked resolved keeps its resolve screen (for Undo resolution) after the snapshot reload
+  // drops its conflict entry, until another file is focused or the operation ends.
+  const [justResolved, setJustResolved] = React.useState(null)
   // Closing the editor always goes back to Diff, so the pills never claim Diff while a click would open Edit.
-  const close = () => { setOpened(null); setMode('diff') }
+  const close = () => { setOpened(null); setMode('diff'); setJustResolved(null) }
   // Another worktree starts in Diff with nothing open (ViewGit asked about the edits before switching).
   const [shownTree, setShownTree] = React.useState(tree.path)
   if (shownTree !== tree.path) { setShownTree(tree.path); close() }
   const editor = !history && opened?.tree === tree.path ? opened : null
   const editing = mode === 'edit' && !!editor
   const dirty = React.useRef(false)
+  // The conflicted file being resolved (focused, or just resolved), when no editor is open.
+  const resolvePath = history || editor ? null
+    : change?.area === 'conflict' ? change.path
+    : !change && tree.operation && justResolved?.tree === tree.path ? justResolved.path : null
+  const resolveDirty = React.useRef(false)
   // Discarding also forgets the kept draft, so the edits don't come back the next time the file opens.
   const confirmDiscard = () => {
+    if (resolvePath && resolveDirty.current) {
+      if (!window.confirm(`Discard unsaved changes to ${resolvePath}?`)) return false
+      discardWorktreeDraft(repo.path, tree.path, resolvePath)
+      return true
+    }
     if (!editor || !dirty.current) return true
     if (!window.confirm(`Discard unsaved changes to ${editor.path}?`)) return false
     discardWorktreeDraft(repo.path, editor.tree, editor.path)
@@ -77,21 +91,16 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   useWorktreeDraftsVersion()
   const drafts = worktreeDraftPaths(repo.path, tree.path)
   const elsewhere = drafts.filter(p => p !== editor?.path)
-  // Closing or reloading the window with unsaved edits asks first (main shows the question).
-  React.useEffect(() => {
-    const warn = e => { if (dirty.current) { e.preventDefault(); e.returnValue = '' } }
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [])
   // Focusing another file keeps the mode: in Edit it opens that file, in Diff the hidden editor closes.
-  // Conflicted files only show their diff, so focusing one goes back to Diff.
+  // Conflicted files open their resolve screen, so focusing one goes back to Diff.
   const focus = id => {
     const next = tree.changes.find(c => c.id === id) ?? null
-    if (next?.path !== editor?.path) {
+    if (next?.path !== (editor?.path ?? resolvePath)) {
       if (!confirmDiscard()) return
       if (mode === 'edit' && next && next.area !== 'conflict') open(next.path)
       else close()
     }
+    setJustResolved(null)
     onFocus(id)
   }
   const switchPanel = id => {
@@ -108,7 +117,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   }
   const edit = () => { if (!editor && change) open(change.path); setMode('edit') }
   // An opened file's diff, whichever of its changes is focused (unstaged first); none if it is unchanged.
-  const diffChange = !editor || change?.path === editor.path ? change
+  const diffChange = resolvePath ? null : !editor || change?.path === editor.path ? change
     : tree.changes.find(c => c.path === editor.path && c.area !== 'staged') ?? tree.changes.find(c => c.path === editor.path) ?? null
   const diff = useDiff({ adapter, repo, worktreePath: tree.path, registered, change: diffChange, version })
   const canEdit = !!editor || (!!change && change.area !== 'conflict')
@@ -189,7 +198,11 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
                       onSaved={onSaved} onDirtyChange={d => { dirty.current = d }} />
                   </div>
                 )}
-                {!editing && (editor && !diffChange
+                {!editing && (resolvePath
+                  ? <ResolvePane key={`${tree.path}|${resolvePath}`}adapter={adapter} repo={repo} tree={tree} registered={registered} change={change ?? { path: resolvePath }}
+                      onDirtyChange={d => { resolveDirty.current = d }}
+                      onResolved={() => { setJustResolved({ tree: tree.path, path: resolvePath }); onSaved?.() }} />
+                  : editor && !diffChange
                   ? <div role="note" style={{ color: 'var(--text-muted)' }}>No changes yet.</div>
                   : <DiffPane change={diffChange} diff={diff} busy={busy} onHunk={(index, stamp) => onHunk(diffChange, index, stamp, diff.reload)}
                       onLine={diffChange && diffChange.area !== 'conflict' ? n => openFile(diffChange.path, n) : null} />)}

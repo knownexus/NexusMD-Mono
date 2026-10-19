@@ -5,6 +5,7 @@ import { setGitConfig, getGitConfig } from '../../git-config.js'
 import { clearGitSnapshotCache } from './use-git-snapshot.js'
 import { historyCache } from './history-cache.js'
 import { RebaseDialog } from './rebase-dialog.jsx'
+import { clearWorktreeDrafts } from './use-worktree-file.js'
 
 afterEach(cleanup)
 // A kept draft for c.txt, as left by an editor that went away; stands in for one, since conflicted files have no Edit.
@@ -177,6 +178,62 @@ describe('resolving over a kept draft', () => {
     fireEvent.click(await screen.findByRole('button', { name: "Take dev's for c.txt" }))
     await waitFor(() => expect(git.resolveConflict).toHaveBeenCalled())
     await waitFor(() => expect(keptDraft.discarded).toEqual(['c.txt']))
+  })
+})
+
+describe('resolving a conflicted file in the panel', () => {
+  const h = 'f'.repeat(40)
+  const MARKED = '<<<<<<< HEAD\nL\n=======\nR\n>>>>>>> fix\n'
+  const conflicted = () => {
+    const state = { resolved: false }
+    const git = adapter({
+      status: vi.fn(async () => ({
+        porcelain: porcelain(state.resolved ? `1 M. N... 100644 100644 100644 ${h} ${h} c.txt\0` : `u UU N... 100644 100644 100644 100644 ${h} ${h} ${h} c.txt\0`),
+        operation: 'Rebase in progress', rebasingBranch: 'main', fetchedAt: null,
+        operationInfo: { kind: 'rebase', onto: { name: 'refs/heads/dev', oid: oid(1) }, step: 1, total: 2, replaying: { oid: oid(2), subject: 'Fix' } },
+      })),
+      conflict: vi.fn(async () => ({ kind: 'both-modified', binary: false, stages: { base: null, left: { text: 'L\n' }, right: { text: 'R\n' } }, working: { text: MARKED, bom: false, stamp: 'w1' }, stamp: 'c1' })),
+      resolveConflict: vi.fn(async () => { state.resolved = true; return { ok: true } }),
+      unresolve: vi.fn(async () => { state.resolved = false; return { ok: true } }),
+      stamp: vi.fn(async () => 'stamp-1'),
+    })
+    return git
+  }
+  afterEach(() => { vi.restoreAllMocks(); clearWorktreeDrafts() })
+
+  it('a focused conflict shows the resolve screen, and Undo stays after it is staged', async () => {
+    const git = conflicted()
+    await openWorktree(git)
+    fireEvent.click(await screen.findByText('c.txt'))
+    expect(await screen.findByRole('heading', { name: 'Resolve: c.txt' })).toBeTruthy()
+    expect(screen.queryByText('Resolve in your editor, then stage the file.')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Diff or edit' })).toBeNull()
+    await screen.findByText('1 of 1 left')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: "Take dev's" }))
+    const statusCalls = git.status.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Mark resolved' }))
+    await waitFor(() => expect(git.resolveConflict).toHaveBeenCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'c.txt', { take: 'text', text: 'L\n', bom: false, force: false }, 'c1'))
+    await waitFor(() => expect(git.status.mock.calls.length).toBeGreaterThan(statusCalls))
+    await waitFor(() => expect(screen.queryByRole('button', { name: "Take dev's for c.txt" })).toBeNull())
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo resolution' }))
+    await waitFor(() => expect(git.unresolve).toHaveBeenCalled())
+    expect(await screen.findByRole('button', { name: "Take dev's for c.txt" })).toBeTruthy()
+    expect(await screen.findByText('1 of 1 left')).toBeTruthy()
+  })
+
+  it('leaving a half-resolved file asks first', async () => {
+    const git = conflicted()
+    await openWorktree(git)
+    fireEvent.click(await screen.findByText('c.txt'))
+    await screen.findByText('1 of 1 left')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: 'Take mine' }))
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    expect(confirm).toHaveBeenCalledWith('Discard unsaved changes to c.txt?')
+    expect(screen.getByRole('heading', { name: 'Resolve: c.txt' })).toBeTruthy()
+    confirm.mockReturnValue(true)
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Resolve: c.txt' })).toBeNull())
   })
 })
 

@@ -65,7 +65,6 @@ export function DiffPane({ change, diff, onHunk, onLine = null, busy = false, si
       {result?.gone && note('No longer changed.')}
       {result?.binary && note(`Binary file${result.size ? ` (${size(result.size)})` : ''}.${readOnly ? '' : ' Stage or discard it as a whole.'}`)}
       {result?.truncated && note(`This diff is too large to show (${size(result.size)}).${readOnly ? '' : ' Stage or discard the file as a whole.'}`)}
-      {change.area === 'conflict' && note('Resolve in your editor, then stage the file.')}
       {empty && change.area !== 'conflict' && note(readOnly ? 'No textual changes.' : change.area === 'untracked' ? 'Empty file.' : 'No longer changed.')}
       {metaOnly && change.area !== 'conflict' && note('No textual changes (mode change or submodule).')}
       {files.map((f, fi) => (
