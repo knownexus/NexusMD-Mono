@@ -8,14 +8,20 @@ export function GoToFile({ adapter, repo, worktreePath, registered, onOpen, onCl
   const [query, setQuery] = React.useState('')
   const [index, setIndex] = React.useState(0)
   const [error, setError] = React.useState(null)
+  // Only the worktree's identity lists the files again; the parent passes fresh-but-equal objects on every render.
+  const deps = React.useRef({ adapter, repo, registered })
+  deps.current = { adapter, repo, registered }
+  const repoPath = repo?.path
+  const repoName = repo?.name
   React.useEffect(() => {
     let live = true
-    adapter.files(repo, worktreePath, registered).then(
+    const d = deps.current
+    d.adapter.files(d.repo, worktreePath, d.registered).then(
       r => { if (live) setList(r) },
       e => { if (live) setError(e?.message || 'Could not list the files.') },
     )
     return () => { live = false }
-  }, [adapter, repo, worktreePath, registered])
+  }, [repoPath, repoName, worktreePath])
   const results = React.useMemo(() => (list ? filterFiles(list.files, query) : []), [list, query])
   const current = Math.min(index, Math.max(0, results.length - 1))
   const listbox = React.useRef(null)

@@ -57,4 +57,14 @@ describe('GoToFile', () => {
     fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
   })
+  it('lists the files once, not again when the parent re-renders with equal but new props', async () => {
+    const adapter = { files: vi.fn(async () => ({ files, truncated: false })) }
+    const props = () => ({ adapter, repo: { ...repo }, worktreePath: repo.path, registered: [...registered], onOpen: () => {}, onClose: () => {} })
+    const { rerender } = render(<GoToFile {...props()} />)
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(3))
+    rerender(<GoToFile {...props()} />)
+    rerender(<GoToFile {...props()} />)
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(3))
+    expect(adapter.files).toHaveBeenCalledTimes(1)
+  })
 })
