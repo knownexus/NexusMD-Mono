@@ -7,8 +7,9 @@
 
 'use strict';
 
+const path = require('path');
 const fsp = require('fs/promises');
-const { resolveInside, readText, writeAtomic, sha256, BOM } = require('./safe-file.cjs');
+const { resolveInside, readText, checkText, writeAtomic, sha256, BOM } = require('./safe-file.cjs');
 
 const MAX_LIST = 50000;
 const MAX_READ_BYTES = 1024 * 1024;
@@ -16,11 +17,23 @@ const MAX_WRITE_BYTES = 2 * 1024 * 1024;
 
 const notWorktreeFile = rel => new Error(`Not a worktree file: ${rel}`);
 
+// Real path of p, or of its deepest existing parent when p itself doesn't exist yet.
+async function realOrParent(p) {
+  try { return await fsp.realpath(p); } catch (e) {
+    if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') throw e;
+    const parent = path.dirname(p);
+    return parent === p ? p : path.join(await realOrParent(parent), path.basename(p));
+  }
+}
+
 // Same lexical rules as git.cjs's requirePaths, kept here so the export works without that closure.
+// The .git test judges the real resolved target, so "a/../.git", backslashes, links and 8.3 names
+// can't reach it; any segment named .git is refused, which covers nested repositories too.
 async function requireWorktreeFile(wt, rel) {
-  if (typeof rel !== 'string' || /^[a-zA-Z]:/.test(rel) || /^[\/]{2}/.test(rel)) throw notWorktreeFile(rel);
+  if (typeof rel !== 'string' || /^[a-zA-Z]:/.test(rel) || /^[\\/]{2}/.test(rel)) throw notWorktreeFile(rel);
   const { full, realDir } = await resolveInside(await fsp.realpath(wt), rel, notWorktreeFile);
-  if (rel.split(/[\/]/).find(s => s && s !== '.')?.toLowerCase() === '.git') throw notWorktreeFile(rel);
+  const real = path.relative(realDir, await realOrParent(full));
+  if (real.split(/[\\/]/).some(s => s.toLowerCase() === '.git')) throw notWorktreeFile(rel);
   return { full, realDir };
 }
 
@@ -50,6 +63,7 @@ function registerFiles(handle, { git, requireExactWorktree, requirePaths, withRe
     return withRepoLock(repo, async () => {
       let current;
       try { current = await fsp.readFile(full); } catch (e) { if (e.code === 'ENOENT') return { ok: false, missing: true }; throw e; }
+      checkText(current, rel, { maxBytes: MAX_READ_BYTES });
       const stamp = sha256(current);
       if (!overwrite && stamp !== expectedStamp) return { ok: false, conflict: true, stamp };
       await writeAtomic(full, realDir, body, notWorktreeFile);

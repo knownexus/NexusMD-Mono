@@ -92,12 +92,35 @@ describe('git workspace file editor against a real repository', () => {
 
   it('refuses paths outside the worktree or inside .git', async () => {
     const config = fs.readFileSync(path.join(repo.path, '.git', 'config'), 'utf8')
-    for (const rel of ['../x', 'C:\\x', '.git/config', '.GIT/HEAD']) {
-      await expect(read(rel)).rejects.toThrow()
-      await expect(save(rel, 'boom', { expectedStamp: 'x', overwrite: true })).rejects.toThrow()
+    fs.mkdirSync(disk('sub'), { recursive: true })
+    const rels = ['../x', 'C:\\x', '.git/config', '.GIT/HEAD', 'sub/../.git/config', '//host/share/x']
+    if (process.platform === 'win32') rels.push('.git\\config', 'sub\\..\\.git\\HEAD', 'GIT~1/config', '\\\\host\\share\\x')
+    for (const rel of rels) {
+      await expect(read(rel), rel).rejects.toThrow(/Not a worktree file|Invalid file path/)
+      await expect(save(rel, 'boom', { expectedStamp: 'x', overwrite: true }), rel).rejects.toThrow(/Not a worktree file|Invalid file path/)
     }
     expect(fs.existsSync(path.join(root, 'x'))).toBe(false)
     expect(fs.readFileSync(path.join(repo.path, '.git', 'config'), 'utf8')).toBe(config)
+  })
+
+  it('refuses a link that leads into .git, and a nested .git folder', async () => {
+    const config = fs.readFileSync(path.join(repo.path, '.git', 'config'), 'utf8')
+    try { fs.symlinkSync(path.join(repo.path, '.git'), disk('gitlink'), 'junction') } catch { return }
+    await expect(read('gitlink/config')).rejects.toThrow(/Not a worktree file/)
+    await expect(save('gitlink/config', 'boom', { overwrite: true })).rejects.toThrow(/Not a worktree file/)
+    fs.mkdirSync(disk('nested/.git'), { recursive: true })
+    fs.writeFileSync(disk('nested/.git/config'), 'x')
+    await expect(read('nested/.git/config')).rejects.toThrow(/Not a worktree file/)
+    expect(fs.readFileSync(path.join(repo.path, '.git', 'config'), 'utf8')).toBe(config)
+    fs.rmSync(disk('gitlink'), { recursive: true, force: true })
+  })
+
+  it('does not overwrite a binary or oversized file', async () => {
+    fs.writeFileSync(disk('bin2.dat'), Buffer.from([1, 0, 2]))
+    fs.writeFileSync(disk('big2.txt'), 'x'.repeat(1024 * 1024 + 1))
+    await expect(save('bin2.dat', 'text', { overwrite: true })).rejects.toThrow(/isn't a text file/)
+    await expect(save('big2.txt', 'text', { overwrite: true })).rejects.toThrow(/too large/)
+    expect([...fs.readFileSync(disk('bin2.dat'))]).toEqual([1, 0, 2])
   })
 
   it("refuses a missing file and a file that isn't registered", async () => {

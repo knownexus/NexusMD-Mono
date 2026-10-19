@@ -61,19 +61,22 @@ async function resolveInside(dir, rel, notOk) {
   return { full, realDir };
 }
 
+// Refuses what isn't editable text: over maxBytes, containing NUL, or not UTF-8.
+function checkText(buf, rel, { maxBytes }) {
+  if (buf.length > maxBytes) throw new Error(`${rel} is too large to edit here (${Math.round(buf.length / 1024)} KB).`);
+  if (buf.subarray(0, 8192).includes(0)) throw new Error(`${rel} isn't a text file.`);
+  try { new TextDecoder('utf-8', { fatal: true }).decode(buf.subarray(buf.subarray(0, 3).equals(BOM) ? 3 : 0)); } catch { throw new Error(`${rel} isn't UTF-8 text.`); }
+}
+
 async function readText(full, rel, { maxBytes }) {
   let st;
   try { st = await fsp.stat(full); } catch (e) { if (e.code === 'ENOENT') return { missing: true }; throw e; }
   if (!st.isFile()) throw new Error(`Not a file: ${rel}`);
   if (st.size > maxBytes) throw new Error(`${rel} is too large to edit here (${Math.round(st.size / 1024)} KB).`);
-  let buf = await fsp.readFile(full);
-  const stamp = sha256(buf);
-  if (buf.subarray(0, 8192).includes(0)) throw new Error(`${rel} isn't a text file.`);
+  const buf = await fsp.readFile(full);
+  checkText(buf, rel, { maxBytes });
   const bom = buf.subarray(0, 3).equals(BOM);
-  if (bom) buf = buf.subarray(3);
-  let text;
-  try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { throw new Error(`${rel} isn't UTF-8 text.`); }
-  return { text, bom, stamp };
+  return { text: new TextDecoder('utf-8').decode(bom ? buf.subarray(3) : buf), bom, stamp: sha256(buf) };
 }
 
 async function writeAtomic(full, realDir, body, notOk) {
@@ -96,4 +99,4 @@ async function writeAtomic(full, realDir, body, notOk) {
   }
 }
 
-module.exports = { resolveInside, readText, writeAtomic, sha256, BOM, TMP_FILE };
+module.exports = { resolveInside, readText, checkText, writeAtomic, sha256, BOM, TMP_FILE };
