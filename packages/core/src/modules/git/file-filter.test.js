@@ -26,3 +26,11 @@ describe('filterFiles', () => {
     expect(performance.now() - t).toBeLessThan(1000)
   })
 })
+
+describe('filterFiles span', () => {
+  it('measures the shortest matched span', () => {
+    // Both have the same basename match status and length; only the best window differs (axxab: 2, a-x-b: 3).
+    const out = filterFiles(['d/a-x-b', 'd/axxab'], 'ab')
+    expect(out).toEqual(['d/axxab', 'd/a-x-b'])
+  })
+})

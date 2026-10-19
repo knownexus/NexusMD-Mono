@@ -28,15 +28,15 @@ export function GoToFile({ adapter, repo, worktreePath, registered, onOpen, onCl
   return (
     <PlModal open onClose={onClose} title="Go to file" icon="search">
       <div style={{ display: 'grid', gap: 8 }}>
-        <input autoFocus aria-label="File name" placeholder="Type a file name" value={query} onKeyDown={onKeyDown}
+        <input autoFocus role="combobox" aria-label="File name" aria-autocomplete="list" aria-controls="go-to-file-list" aria-expanded={!!results.length} aria-activedescendant={results.length ? `go-to-file-${current}` : undefined} placeholder="Type a file name" value={query} onKeyDown={onKeyDown}
           onChange={e => { setQuery(e.target.value); setIndex(0) }}
           style={{ padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-2)' }} />
         {error && <div role="alert" className="nx-alert bad">{error}</div>}
         {!list && !error && <div style={{ color: 'var(--text-muted)' }}>Loading files…</div>}
         {list && (
-          <div ref={listbox} role="listbox" aria-label="Files" style={{ maxHeight: 320, overflow: 'auto', display: 'grid' }}>
+          <div ref={listbox} id="go-to-file-list" role="listbox" aria-label="Files" style={{ maxHeight: 320, overflow: 'auto', display: 'grid' }}>
             {results.map((path, i) => (
-              <div key={path} role="option" aria-selected={i === current} onClick={() => onOpen(path)}
+              <div key={path} id={`go-to-file-${i}`} role="option" aria-selected={i === current} onClick={() => onOpen(path)}
                 style={{ padding: '3px 8px', cursor: 'pointer', fontSize: 13, background: i === current ? 'var(--surface-2)' : 'none', wordBreak: 'break-all' }}>
                 {path}
               </div>

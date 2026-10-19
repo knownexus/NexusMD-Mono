@@ -21,7 +21,7 @@ describe('GoToFile', () => {
     expect(screen.getByText('Loading files…')).toBeTruthy()
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(3))
     expect(adapter.files).toHaveBeenCalledWith(repo, repo.path, registered)
-    const box = screen.getByRole('textbox')
+    const box = screen.getByRole('combobox')
     fireEvent.change(box, { target: { value: 'vgit' } })
     expect(screen.getAllByRole('option')).toHaveLength(1)
     fireEvent.keyDown(box, { key: 'Enter' })
@@ -31,10 +31,19 @@ describe('GoToFile', () => {
   it('moves with the arrow keys', async () => {
     const { onOpen } = setup()
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(3))
-    const box = screen.getByRole('textbox')
+    const box = screen.getByRole('combobox')
     fireEvent.keyDown(box, { key: 'ArrowDown' })
     fireEvent.keyDown(box, { key: 'Enter' })
     expect(onOpen).toHaveBeenCalledWith('src/app/main.jsx')
+  })
+
+  it('announces the selected option through aria-activedescendant', async () => {
+    setup()
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(3))
+    const box = screen.getByRole('combobox')
+    fireEvent.keyDown(box, { key: 'ArrowDown' })
+    expect(box.getAttribute('aria-activedescendant')).toBe(screen.getAllByRole('option')[1].id)
+    expect(screen.getAllByRole('option')[1].getAttribute('aria-selected')).toBe('true')
   })
 
   it('says when the list was cut off', async () => {
@@ -45,7 +54,7 @@ describe('GoToFile', () => {
   it('Esc closes', async () => {
     const { onClose } = setup()
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(3))
-    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' })
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
   })
 })

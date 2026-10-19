@@ -2,21 +2,19 @@
 //
 // Go to file: fuzzy-filters a worktree's file list.
 
-// The shortest span of `q` as a subsequence of `s` (both lower case), or -1 when it isn't one.
+// The shortest window of `s` that holds `q` as a subsequence (both lower case), or -1 when there is none.
 function span(s, q) {
-  let j = 0
-  let end = -1
-  for (let i = 0; i < s.length && j < q.length; i++) {
-    if (s.charCodeAt(i) === q.charCodeAt(j)) { j++; end = i }
+  let best = -1
+  for (let start = s.indexOf(q[0]); start >= 0; start = s.indexOf(q[0], start + 1)) {
+    let j = 1
+    let i = start + 1
+    for (; i < s.length && j < q.length; i++) if (s.charCodeAt(i) === q.charCodeAt(j)) j++
+    if (j < q.length) break // later starts have even less text left
+    const len = i - start
+    if (best < 0 || len < best) best = len
+    if (best === q.length) break
   }
-  if (j < q.length) return -1
-  // Walk back from the end to the latest start that still fits.
-  let start = end
-  j = q.length - 1
-  for (let i = end; i >= 0 && j >= 0; i--) {
-    if (s.charCodeAt(i) === q.charCodeAt(j)) { j--; start = i }
-  }
-  return end - start + 1
+  return q.length === 1 ? (s.includes(q) ? 1 : -1) : best
 }
 
 /**
