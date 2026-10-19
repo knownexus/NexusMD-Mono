@@ -134,3 +134,163 @@ describe('operation details in git:status', { timeout: 60000 }, () => {
     expect((await status(r)).operationInfo).toBeNull()
   })
 })
+
+const conf = (r, rel) => call('git:conflict', r, r.path, REG(), rel)
+const resolve = (r, rel, resolution, expected) => call('git:resolveConflict', r, r.path, REG(), rel, resolution, expected)
+const xy = async (r, rel) => (run(r.path, 'status', '--porcelain=v2', '--', rel).split('\n').find(l => l.startsWith('u ')) || '').slice(2, 4)
+const conflicted = (r, rel) => run(r.path, 'ls-files', '-u', '--', rel).trim() !== ''
+
+describe('git:conflict and git:resolveConflict', { timeout: 60000 }, () => {
+  it('stage 3 is the replayed commit', async () => {
+    const r = diverged('Stages')
+    tryRun(r.path, 'rebase', 'main')
+    const c = await conf(r, 'f')
+    expect(c.kind).toBe('both-modified')
+    expect(c.binary).toBe(false)
+    expect(c.stages.base.text).toBe('base\n')
+    expect(c.stages.left.text).toBe('main\n')
+    expect(c.stages.right.text).toBe('feature\n')
+    expect(c.working.text).toMatch(/<<<<<<</)
+    expect(c.stamp).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('refuses a file that is not conflicted', async () => {
+    const r = diverged('NotConflicted')
+    await expect(conf(r, 'f')).rejects.toThrow('Not conflicted any more: f')
+  })
+
+  it('resolves with text and stages it', async () => {
+    const r = diverged('Text')
+    tryRun(r.path, 'rebase', 'main')
+    const c = await conf(r, 'f')
+    expect(await resolve(r, 'f', { take: 'text', text: 'both\r\n', bom: true }, c.stamp)).toMatchObject({ ok: true })
+    expect(conflicted(r, 'f')).toBe(false)
+    expect(await xy(r, 'f')).toBe('')
+    const bytes = fs.readFileSync(path.join(r.path, 'f'))
+    expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf])
+    expect(bytes.subarray(3).toString()).toBe('both\r\n')
+    expect(run(r.path, 'diff', '--cached', '--name-only')).toContain('f')
+  })
+
+  it('refuses text that still has markers unless forced', async () => {
+    const r = diverged('Markers')
+    tryRun(r.path, 'rebase', 'main')
+    const c = await conf(r, 'f')
+    const text = '<<<<<<< a\nx\n=======\ny\n>>>>>>> b\n'
+    expect(await resolve(r, 'f', { take: 'text', text, bom: false }, c.stamp)).toMatchObject({ ok: false })
+    expect(conflicted(r, 'f')).toBe(true)
+    expect(fs.readFileSync(path.join(r.path, 'f'), 'utf8')).not.toBe(text)
+    expect(await resolve(r, 'f', { take: 'text', text, bom: false, force: true }, c.stamp)).toMatchObject({ ok: true })
+    expect(conflicted(r, 'f')).toBe(false)
+  })
+
+  it('take left and take right', async () => {
+    const a = diverged('Left')
+    tryRun(a.path, 'rebase', 'main')
+    expect(await resolve(a, 'f', { take: 'left' }, (await conf(a, 'f')).stamp)).toMatchObject({ ok: true })
+    expect(fs.readFileSync(path.join(a.path, 'f'), 'utf8')).toBe('main\n')
+    expect(conflicted(a, 'f')).toBe(false)
+    const b = diverged('Right')
+    tryRun(b.path, 'rebase', 'main')
+    expect(await resolve(b, 'f', { take: 'right' }, (await conf(b, 'f')).stamp)).toMatchObject({ ok: true })
+    expect(fs.readFileSync(path.join(b.path, 'f'), 'utf8')).toBe('feature\n')
+    expect(conflicted(b, 'f')).toBe(false)
+  })
+
+  function deletedOnMain(name) {
+    const dir = path.join(root, name)
+    fs.mkdirSync(dir)
+    run(dir, 'init', '-q')
+    write(dir, 'f', 'base\n'); write(dir, 'g', 'keep\n'); commit(dir, 'base')
+    run(dir, 'checkout', '-q', '-b', 'feature')
+    write(dir, 'f', 'feature\n'); commit(dir, 'feature edit')
+    run(dir, 'checkout', '-q', 'main')
+    run(dir, 'rm', '-q', 'f'); run(dir, 'commit', '-qm', 'main deletes')
+    run(dir, 'checkout', '-q', 'feature')
+    REPOS.push(dir)
+    tryRun(dir, 'rebase', 'main')
+    return { name, path: dir }
+  }
+
+  it('keeps my version of a file main deleted', async () => {
+    const r = deletedOnMain('Deleted')
+    const c = await conf(r, 'f')
+    expect(c.kind).toBe('deleted-by-left')
+    expect(c.stages.left).toBeNull()
+    expect(c.stages.right.text).toBe('feature\n')
+    expect(await resolve(r, 'f', { take: 'right' }, c.stamp)).toMatchObject({ ok: true })
+    expect(fs.readFileSync(path.join(r.path, 'f'), 'utf8')).toBe('feature\n')
+    expect(conflicted(r, 'f')).toBe(false)
+    expect(run(r.path, 'ls-files', '--', 'f').trim()).toBe('f')
+  })
+
+  it('taking an absent side deletes the file', async () => {
+    const r = deletedOnMain('DeletedLeft')
+    expect(await resolve(r, 'f', { take: 'left' }, (await conf(r, 'f')).stamp)).toMatchObject({ ok: true })
+    expect(fs.existsSync(path.join(r.path, 'f'))).toBe(false)
+    expect(conflicted(r, 'f')).toBe(false)
+  })
+
+  it('accepts the deletion', async () => {
+    const r = deletedOnMain('Accept')
+    expect(await resolve(r, 'f', { take: 'delete' }, (await conf(r, 'f')).stamp)).toMatchObject({ ok: true })
+    expect(fs.existsSync(path.join(r.path, 'f'))).toBe(false)
+    expect(conflicted(r, 'f')).toBe(false)
+    expect(run(r.path, 'ls-files', '--', 'f').trim()).toBe('')
+  })
+
+  it('binary takes one side', async () => {
+    const dir = path.join(root, 'Binary')
+    fs.mkdirSync(dir)
+    run(dir, 'init', '-q')
+    fs.writeFileSync(path.join(dir, 'b.bin'), Buffer.from([0, 1, 2]))
+    commit(dir, 'base')
+    run(dir, 'checkout', '-q', '-b', 'feature')
+    fs.writeFileSync(path.join(dir, 'b.bin'), Buffer.from([0, 1, 3]))
+    commit(dir, 'feature')
+    run(dir, 'checkout', '-q', 'main')
+    fs.writeFileSync(path.join(dir, 'b.bin'), Buffer.from([0, 1, 4]))
+    commit(dir, 'main')
+    run(dir, 'checkout', '-q', 'feature')
+    REPOS.push(dir)
+    const r = { name: 'Binary', path: dir }
+    tryRun(dir, 'rebase', 'main')
+    const c = await conf(r, 'b.bin')
+    expect(c.binary).toBe(true)
+    expect(c.stages.left).toBeNull()
+    expect(c.stages.right).toBeNull()
+    expect(c.working).toBeNull()
+    expect(await resolve(r, 'b.bin', { take: 'right' }, c.stamp)).toMatchObject({ ok: true })
+    expect([...fs.readFileSync(path.join(dir, 'b.bin'))]).toEqual([0, 1, 3])
+    expect(conflicted(r, 'b.bin')).toBe(false)
+  })
+
+  it('unresolve restores the conflict after add', async () => {
+    const r = diverged('Unresolve')
+    tryRun(r.path, 'rebase', 'main')
+    const c = await conf(r, 'f')
+    await resolve(r, 'f', { take: 'text', text: 'done\n', bom: false }, c.stamp)
+    expect(conflicted(r, 'f')).toBe(false)
+    const stamp = await call('git:stamp', r, r.path, REG(), { kind: 'files', paths: ['f'] })
+    expect(await call('git:unresolve', r, r.path, REG(), 'f', stamp)).toMatchObject({ ok: true })
+    expect(fs.readFileSync(path.join(r.path, 'f'), 'utf8')).toMatch(/<<<<<<</)
+    expect(conflicted(r, 'f')).toBe(true)
+    expect(await xy(r, 'f')).toBe('UU')
+  })
+
+  it('refuses a stale resolve', async () => {
+    const r = diverged('StaleResolve')
+    tryRun(r.path, 'rebase', 'main')
+    const c = await conf(r, 'f')
+    write(r.path, 'f', 'edited elsewhere\n')
+    expect(await resolve(r, 'f', { take: 'left' }, c.stamp)).toMatchObject({ ok: false, stale: true })
+    expect(conflicted(r, 'f')).toBe(true)
+  })
+
+  it('refuses paths in .git and outside the worktree', async () => {
+    const r = diverged('Escape')
+    tryRun(r.path, 'rebase', 'main')
+    await expect(conf(r, '.git/config')).rejects.toThrow()
+    await expect(resolve(r, '../x', { take: 'left' }, 'x')).rejects.toThrow()
+  })
+})

@@ -33,6 +33,9 @@ export const gitAdapter = {
   files(repo, worktreePath, registered) { return api().files(repo, worktreePath, registered) },
   readFile(repo, worktreePath, registered, rel) { return api().readFile(repo, worktreePath, registered, rel) },
   writeFile(repo, worktreePath, registered, rel, text, options) { return api().writeFile(repo, worktreePath, registered, rel, text, options) },
+  conflict(repo, worktreePath, registered, rel) { return api().conflict(repo, worktreePath, registered, rel) },
+  resolveConflict(repo, worktreePath, registered, rel, resolution, expected) { return api().resolveConflict(repo, worktreePath, registered, rel, resolution, expected) },
+  unresolve(repo, worktreePath, registered, rel, expected) { return api().unresolve(repo, worktreePath, registered, rel, expected) },
   // NEW: the Git Workspace command line. argv excludes the leading "git". Resolves { code, stdout, stderr }.
   // Undefined until the IPC exists, so the UI can say so instead of throwing.
   get exec() {

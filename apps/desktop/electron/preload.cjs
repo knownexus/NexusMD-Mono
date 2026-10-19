@@ -270,5 +270,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     files:           (repo, worktreePath, registered) => ipcRenderer.invoke('git:files', repo, worktreePath, registered),
     readFile:        (repo, worktreePath, registered, rel) => ipcRenderer.invoke('git:readFile', repo, worktreePath, registered, rel),
     writeFile:       (repo, worktreePath, registered, rel, text, options) => ipcRenderer.invoke('git:writeFile', repo, worktreePath, registered, rel, text, options),
+    conflict:        (repo, worktreePath, registered, rel) => ipcRenderer.invoke('git:conflict', repo, worktreePath, registered, rel),
+    resolveConflict: (repo, worktreePath, registered, rel, resolution, expected) => ipcRenderer.invoke('git:resolveConflict', repo, worktreePath, registered, rel, resolution, expected),
+    unresolve:       (repo, worktreePath, registered, rel, expected) => ipcRenderer.invoke('git:unresolve', repo, worktreePath, registered, rel, expected),
   },
 });
