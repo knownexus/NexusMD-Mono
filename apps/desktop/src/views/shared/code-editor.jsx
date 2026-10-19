@@ -56,6 +56,8 @@ export function CodeEditor({ value, language, onChange, ariaLabel, line = null, 
   const view = React.useRef(null)
   const lang = React.useRef(new Compartment())
   const ro = React.useRef(new Compartment())
+  const replaced = React.useRef(false)
+  const jumped = React.useRef(null)
   const onChangeRef = React.useRef(onChange)
   onChangeRef.current = onChange
   const initial = React.useRef({ value, language, ariaLabel, readOnly })
@@ -84,7 +86,10 @@ export function CodeEditor({ value, language, onChange, ariaLabel, line = null, 
     const v = view.current
     const next = normalize(value)
     // Kept out of undo history: undoing a Revert/Reload would resurrect discarded text and report it as a user edit.
-    if (v && v.state.doc.toString() !== next) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next }, annotations: [External.of(true), Transaction.addToHistory.of(false)] })
+    if (v && v.state.doc.toString() !== next) {
+      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next }, annotations: [External.of(true), Transaction.addToHistory.of(false)] })
+      replaced.current = true
+    }
   }, [value])
 
   React.useEffect(() => {
@@ -95,13 +100,19 @@ export function CodeEditor({ value, language, onChange, ariaLabel, line = null, 
     view.current?.dispatch({ effects: ro.current.reconfigure(EditorState.readOnly.of(!!readOnly)) })
   }, [readOnly])
 
-  // Declared after the value effect so a new file's text is in place before its line is selected.
+  // `line` is a 1-based number, or a { line } object: a new object always jumps, even to the same line.
+  // Declared after the value effect so replaced text is in place first; typing alone never re-jumps.
   React.useEffect(() => {
     const v = view.current
-    if (!v || typeof line !== 'number') return
-    const pos = v.state.doc.line(Math.min(Math.max(1, Math.floor(line)), v.state.doc.lines)).from
+    const wanted = typeof line === 'object' && line ? line.line : line
+    const changed = jumped.current !== line
+    const wasReplaced = replaced.current
+    jumped.current = line
+    replaced.current = false
+    if (!v || !(changed || wasReplaced) || typeof wanted !== 'number' || !Number.isFinite(wanted)) return
+    const pos = v.state.doc.line(Math.min(Math.max(1, Math.floor(wanted)), v.state.doc.lines)).from
     v.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) })
-  }, [line])
+  }, [line, value])
 
   return <div ref={host} style={{ flex: 1, minHeight: 240, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6 }} />
 }

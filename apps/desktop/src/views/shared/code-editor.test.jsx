@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
+import React from 'react'
 import { render, cleanup } from '@testing-library/react'
 import { EditorView } from 'codemirror'
 import { undo } from '@codemirror/commands'
@@ -82,5 +83,39 @@ describe('CodeEditor', () => {
   it('readOnly blocks typing', () => {
     const { container } = render(<CodeEditor value="a" language="text" onChange={() => {}} ariaLabel="x" readOnly />)
     expect(viewOf(container).state.readOnly).toBe(true)
+  })
+  const fifty = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join('\n')
+  const noop = () => {}
+  it('re-jumps when a new { line } object asks for the same line', () => {
+    const { container, rerender } = render(<CodeEditor value={fifty} language="text" onChange={noop} ariaLabel="x" line={{ line: 30 }} />)
+    const view = viewOf(container)
+    view.dispatch({ selection: { anchor: 0 } })
+    rerender(<CodeEditor value={fifty} language="text" onChange={noop} ariaLabel="x" line={{ line: 30 }} />)
+    expect(view.state.selection.main.head).toBe(view.state.doc.line(30).from)
+  })
+  it('jumps again after the text is replaced', () => {
+    const { container, rerender } = render(<CodeEditor value={fifty} language="text" onChange={noop} ariaLabel="x" line={30} />)
+    const view = viewOf(container)
+    const other = fifty.replace('line 1\n', 'one\n')
+    rerender(<CodeEditor value={other} language="text" onChange={noop} ariaLabel="x" line={30} />)
+    view.dispatch({ selection: { anchor: 0 } })
+    rerender(<CodeEditor value={other + ' '} language="text" onChange={noop} ariaLabel="x" line={30} />)
+    rerender(<CodeEditor value={fifty} language="text" onChange={noop} ariaLabel="x" line={30} />)
+    expect(view.state.selection.main.head).toBe(view.state.doc.line(30).from)
+  })
+  it('ignores a non-finite line', () => {
+    const { container } = render(<CodeEditor value={fifty} language="text" onChange={noop} ariaLabel="x" line={NaN} />)
+    expect(viewOf(container).state.selection.main.head).toBe(0)
+  })
+  it('typing does not re-jump', () => {
+    const Host = () => {
+      const [v, setV] = React.useState(fifty)
+      return <CodeEditor value={v} language="text" onChange={setV} ariaLabel="x" line={30} />
+    }
+    const { container } = render(<Host />)
+    const view = viewOf(container)
+    view.dispatch({ selection: { anchor: 0 } })
+    view.dispatch({ changes: { from: 0, insert: 'x' } })
+    expect(view.state.selection.main.head).toBeLessThan(5)
   })
 })
