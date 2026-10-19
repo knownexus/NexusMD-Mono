@@ -1,6 +1,6 @@
 import React from 'react'
 import { profileFileKind, formatJson } from '@nexusmd/core'
-import { CodeEditor } from './code-editor.jsx'
+import { CodeEditor } from '../shared/code-editor.jsx'
 import { useProfileFile } from './use-profile-file.js'
 
 export function ProfileFileEditor({ adapter, config, path, onSaved, forms = {} }) {

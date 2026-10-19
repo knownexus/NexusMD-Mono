@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
 import { ProfileFileEditor } from './profile-file-editor.jsx'
 
-vi.mock('./code-editor.jsx', () => ({
+vi.mock('../shared/code-editor.jsx', () => ({
   CodeEditor: ({ value, onChange, ariaLabel }) => <textarea aria-label={ariaLabel} value={value} onChange={e => onChange(e.target.value)} />,
 }))
 afterEach(cleanup)

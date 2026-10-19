@@ -5,7 +5,7 @@ import { ProfileView } from './profile-view.jsx'
 import { clearProfileDrafts } from './use-profile-file.js'
 
 vi.mock('./devenv-run-context.jsx', () => ({ useDevenvRunContext: () => globalThis.__run }))
-vi.mock('./code-editor.jsx', () => ({
+vi.mock('../shared/code-editor.jsx', () => ({
   CodeEditor: ({ value, onChange, ariaLabel }) => <textarea aria-label={ariaLabel} value={value} onChange={e => onChange(e.target.value)} />,
 }))
 afterEach(() => { cleanup(); clearProfileDrafts() })

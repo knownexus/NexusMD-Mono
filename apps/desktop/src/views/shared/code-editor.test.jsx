@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { EditorView } from 'codemirror'
 import { undo } from '@codemirror/commands'
-import { CodeEditor } from './code-editor.jsx'
+import { CodeEditor, languageForPath } from './code-editor.jsx'
 
 afterEach(cleanup)
 
@@ -53,5 +53,34 @@ describe('CodeEditor', () => {
     rerender(<CodeEditor value={crlf} language="text" onChange={onChange} ariaLabel="x" />)
     expect(view.state.selection.main.anchor).toBe(3)
     expect(onChange).not.toHaveBeenCalled()
+  })
+  it('languageForPath maps each extension', () => {
+    const table = {
+      'a.js': 'javascript', 'a.mjs': 'javascript', 'a.cjs': 'javascript', 'a.jsx': 'javascript',
+      'a.ts': 'typescript', 'a.tsx': 'typescript', 'a.mts': 'typescript', 'a.cts': 'typescript',
+      'a.css': 'css', 'a.scss': 'css', 'a.less': 'css', 'a.html': 'html', 'a.htm': 'html',
+      'a.cs': 'csharp', 'a.csx': 'csharp', 'a.json': 'json', 'a.yml': 'yaml', 'a.yaml': 'yaml',
+      'a.sql': 'sql', 'a.md': 'markdown', 'a.markdown': 'markdown',
+      'a.ps1': 'powershell', 'a.psm1': 'powershell', 'a.psd1': 'powershell',
+      'DIR/A.TSX': 'typescript', README: null, 'a.txt': null,
+    }
+    for (const [path, lang] of Object.entries(table)) expect(languageForPath(path), path).toBe(lang)
+  })
+  it('accepts the new languages', () => {
+    for (const language of ['javascript', 'typescript', 'css', 'html', 'csharp']) {
+      const { container, unmount } = render(<CodeEditor value="x" language={language} onChange={() => {}} ariaLabel={language} />)
+      expect(container.querySelector('.cm-editor')).toBeTruthy()
+      unmount()
+    }
+  })
+  it('jumps to the given line', () => {
+    const text = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join('\n')
+    const { container } = render(<CodeEditor value={text} language="text" onChange={() => {}} ariaLabel="x" line={30} />)
+    const view = viewOf(container)
+    expect(view.state.selection.main.head).toBe(view.state.doc.line(30).from)
+  })
+  it('readOnly blocks typing', () => {
+    const { container } = render(<CodeEditor value="a" language="text" onChange={() => {}} ariaLabel="x" readOnly />)
+    expect(viewOf(container).state.readOnly).toBe(true)
   })
 })
