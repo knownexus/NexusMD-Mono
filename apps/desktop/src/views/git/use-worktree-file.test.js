@@ -116,6 +116,43 @@ describe('useWorktreeFile', () => {
     expect(result.current.dirty).toBe(false)
   })
 
+  it('keeps edits when repo/registered are new but equal objects', async () => {
+    const adapter = { readFile: vi.fn(async () => ({ text: 'a\n', bom: false, stamp: 's1' })) }
+    const { result, rerender } = renderHook(() => useWorktreeFile({ adapter, repo: { ...repo }, worktreePath: repo.path, registered: [...registered], path: 'f.txt' }))
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    act(() => { result.current.setText('mine\n') })
+    rerender()
+    expect(result.current.text).toBe('mine\n')
+    expect(result.current.dirty).toBe(true)
+    expect(adapter.readFile).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats an unrecognised failed write as an error and stays dirty', async () => {
+    const adapter = {
+      readFile: vi.fn(async () => ({ text: 'a\n', bom: false, stamp: 's1' })),
+      writeFile: vi.fn(async () => ({ ok: false })),
+    }
+    const { result } = setup(adapter)
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    act(() => { result.current.setText('b\n') })
+    let ok
+    await act(async () => { ok = await result.current.save() })
+    expect(ok).toBe(false)
+    expect(result.current.error).toBeTruthy()
+    expect(result.current.dirty).toBe(true)
+    await act(async () => { await result.current.save() })
+    expect(adapter.writeFile.mock.calls[1][5].expectedStamp).toBe('s1')
+  })
+
+  it('runs only one write for two saves in the same tick', async () => {
+    const adapter = { readFile: vi.fn(async () => ({ text: 'a\n', bom: false, stamp: 's1' })), writeFile: vi.fn(async () => ({ ok: true, stamp: 's2' })) }
+    const { result } = setup(adapter)
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    act(() => { result.current.setText('b\n') })
+    await act(async () => { await Promise.all([result.current.save(), result.current.save()]) })
+    expect(adapter.writeFile).toHaveBeenCalledTimes(1)
+  })
+
   it('ignores a stale load after switching file', async () => {
     const slow = deferred()
     const adapter = { readFile: vi.fn(async (_r, _w, _g, p) => (p === 'slow.txt' ? slow.promise : { text: 'fast\n', bom: false, stamp: 'f' })) }
