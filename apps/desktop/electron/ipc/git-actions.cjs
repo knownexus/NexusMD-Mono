@@ -356,6 +356,17 @@ function registerActions(handle, ctx) {
       preview: async (wt, o) => o,
       run: async (wt, o) => continueOrAbort(wt, o.command, 'continue'),
     },
+    skip: {
+      timeout: LONG,
+      check: async (wt, o, state) => {
+        const command = OPERATION_COMMANDS[state.operation];
+        if (!command) throw new Error('Nothing is in progress.');
+        if (command === 'merge') throw new Error("A merge can't skip; continue or abort it.");
+        return { command };
+      },
+      preview: async (wt, o) => ({ ...o, note: 'Drops this commit from the result.' }),
+      run: async (wt, o) => continueOrAbort(wt, o.command, 'skip'),
+    },
     abort: {
       timeout: SHORT,
       check: async (wt, o, state) => {
@@ -477,13 +488,13 @@ function registerActions(handle, ctx) {
   async function continueOrAbort(wt, command, verb) {
     const marker = command === 'rebase' ? await gitDirFile(wt) : null;
     let env = {};
-    if (marker && verb === 'continue') {
+    if (marker && verb !== 'abort') {
       try {
         const planFile = fsx.readFileSync(marker, 'utf8').trim();
         if (planFile && fsx.existsSync(planFile)) env = editorEnv(planFile);
       } catch { /* a rebase NexusMD didn't start */ }
     }
-    const r = await w(wt, [command, `--${verb}`], { timeout: verb === 'continue' ? LONG : SHORT, env });
+    const r = await w(wt, [command, `--${verb}`], { timeout: verb === 'abort' ? SHORT : LONG, env });
     const res = await finish(wt, r);
     if (marker && (verb === 'abort' || res.ok)) cleanupPlan(marker);
     return res;

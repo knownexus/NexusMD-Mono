@@ -13,7 +13,7 @@ const run = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).
 const tryRun = (cwd, ...args) => { try { return run(cwd, ...args) } catch (e) { return `ERR ${e.stderr}` } }
 const call = (channel, ...args) => handlers[channel](null, ...args)
 const R = name => ({ name, path: path.join(root, name) })
-const REG = () => ['Work', 'Other', 'Rebase', 'Hooked'].map(n => path.join(root, n))
+const REG = () => ['Work', 'Other', 'Rebase', 'Hooked', 'Merging'].map(n => path.join(root, n))
 const write = (dir, file, text) => fs.writeFileSync(path.join(dir, file), text)
 const commit = (dir, msg) => { run(dir, 'add', '-A'); run(dir, 'commit', '-qm', msg) }
 const head = dir => run(dir, 'rev-parse', 'HEAD').trim()
@@ -216,6 +216,35 @@ describe('stage 4 actions against real repositories', { timeout: 180000 }, () =>
     expect(await act(r, r.path, 'abort')).toMatchObject({ ok: true })
     expect(head(r.path)).toBe(before)
     expect(fs.existsSync(path.join(r.path, '.git', 'nexusmd-rebase-plan'))).toBe(false)
+  })
+
+  it('skip drops the stopped commit and the rebase finishes', async () => {
+    const r = R('Rebase')
+    const base = head(r.path)
+    write(r.path, 'shared', 'A2\n'); commit(r.path, 'A2')
+    write(r.path, 'shared', 'B2\n'); commit(r.path, 'B2')
+    const [b, a] = run(r.path, 'rev-list', `${base}..HEAD`).split('\n').filter(Boolean)
+    const res = await act(r, r.path, 'rebaseInteractive', { base, rows: [{ oid: b, action: 'pick' }, { oid: a, action: 'pick' }] })
+    expect(res.conflict).toBe(true)
+    const p = await call('git:preview', r, r.path, REG(), 'skip', {})
+    expect(p.details.note).toBe('Drops this commit from the result.')
+    expect(await act(r, r.path, 'skip')).toMatchObject({ ok: true })
+    expect(fs.existsSync(path.join(r.path, '.git', 'rebase-merge'))).toBe(false)
+    expect(subjects(r.path, `${base}..HEAD`)).toEqual(['A2'])
+    expect(fs.existsSync(path.join(r.path, '.git', 'nexusmd-rebase-plan'))).toBe(false)
+  })
+
+  it('skip is refused during a merge', async () => {
+    const m = R('Merging')
+    fs.mkdirSync(m.path)
+    run(m.path, 'init', '-q')
+    write(m.path, 'f', '1\n'); commit(m.path, 'm1')
+    run(m.path, 'checkout', '-qb', 'side')
+    write(m.path, 'f', 'side\n'); commit(m.path, 'side')
+    run(m.path, 'checkout', '-q', 'main')
+    write(m.path, 'f', 'main\n'); commit(m.path, 'main')
+    tryRun(m.path, 'merge', 'side')
+    expect((await act(m, m.path, 'skip')).previewRefused).toBe("A merge can't skip; continue or abort it.")
   })
 
   it('refuses to rewrite pushed commits or merges', async () => {

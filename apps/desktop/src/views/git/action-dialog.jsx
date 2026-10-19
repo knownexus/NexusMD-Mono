@@ -5,7 +5,7 @@ import { parseRefList, checkBranchName, worktreeDefaultPath } from '@nexusmd/cor
 const VERB = {
   fetch: 'Fetch', pull: 'Pull', push: 'Push', branch: 'Create branch', checkout: 'Check out', worktreeAdd: 'Add worktree',
   worktreeRemove: 'Remove worktree', stashPush: 'Stash', stashApply: 'Apply', stashPop: 'Pop', stashDrop: 'Drop',
-  revert: 'Revert', continue: 'Continue', abort: 'Abort', rebaseInteractive: 'Rebase',
+  revert: 'Revert', continue: 'Continue', skip: 'Skip', abort: 'Abort', rebaseInteractive: 'Rebase',
 }
 const TYPED = { stashDrop: 'DROP' }
 const input = { padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-2)' }
