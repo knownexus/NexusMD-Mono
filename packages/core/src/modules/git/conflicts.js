@@ -88,8 +88,11 @@ const commitText = (c) => `${short(c?.oid)} "${c?.subject ?? ''}"`
 
 const MINE = { take: 'Take mine', version: 'my version' }
 
+// The branch name, or null when it isn't known or HEAD is detached: then the side is "your checkout".
+const known = (branch) => (branch && branch !== '(detached)' ? branch : null)
+
 function mineLeft(branch) {
-  return { title: `Your branch (${branch})`, ...MINE }
+  return { title: known(branch) ? `Your branch (${branch})` : 'Your checkout', ...MINE }
 }
 
 export function conflictLabels(op, branch) {
@@ -127,13 +130,14 @@ export function operationText(op, branch) {
   switch (op?.kind) {
     case 'rebase': {
       const onto = shortName(op.onto?.name) || short(op.onto?.oid)
-      const parts = [onto ? `Rebasing ${branch} onto ${onto}` : `Rebasing ${branch}`]
+      const what = known(branch) ? `Rebasing ${branch}` : 'Rebasing'
+      const parts = [onto ? `${what} onto ${onto}` : what]
       if (op.step != null && op.total != null) parts.push(`commit ${op.step} of ${op.total}`)
       if (op.replaying) parts.push(commitText(op.replaying))
       return parts.join(' · ')
     }
     case 'merge':
-      return `Merging ${shortName(op.merging?.name) || short(op.merging?.oid)} into ${branch}`
+      return `Merging ${shortName(op.merging?.name) || short(op.merging?.oid)} into ${known(branch) ?? 'your checkout'}`
     case 'cherry-pick':
       return `Cherry-picking ${commitText(op.picked)}`
     case 'revert':

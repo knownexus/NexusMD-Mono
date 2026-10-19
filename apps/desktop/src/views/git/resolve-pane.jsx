@@ -1,5 +1,5 @@
 import React from 'react'
-import { conflictLabels, toLf } from '@nexusmd/core'
+import { conflictLabels, checkoutName, toLf } from '@nexusmd/core'
 import { CodeEditor, languageForPath } from '../shared/code-editor.jsx'
 import { useConflict } from './use-conflict.js'
 import { NonTextConflict } from './non-text-conflict.jsx'
@@ -19,7 +19,7 @@ const lineAt = (text, offset) => text.slice(0, offset).split('\n').length
 export function ResolvePane({ adapter, repo, tree, registered, change, onResolved, onDirtyChange }) {
   const path = change.path
   const c = useConflict({ adapter, repo, worktreePath: tree.path, registered, path })
-  const labels = conflictLabels(tree.operationInfo, tree.branch)
+  const labels = conflictLabels(tree.operationInfo, checkoutName(tree))
   // A fresh { line } per navigation, so the result jumps again even to the same line (and not while typing).
   const [jump, setJump] = React.useState(null)
   const [showBase, setShowBase] = React.useState(false)

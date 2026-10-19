@@ -124,3 +124,9 @@ export function activeBranchRef(tree) {
 export function branchLabel(tree) {
   return tree.rebasingBranch ? `${tree.rebasingBranch.replace(/^refs\/heads\//, '')} (rebasing)` : tree.branch
 }
+
+/** The short name of the branch this worktree is working on (the one being rebased, during a rebase), or null when detached. */
+export function checkoutName(tree) {
+  if (tree.rebasingBranch) return tree.rebasingBranch.replace(/^refs\/heads\//, '')
+  return tree.branch && tree.branch !== '(detached)' ? tree.branch : null
+}

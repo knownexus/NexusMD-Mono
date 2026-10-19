@@ -7,7 +7,7 @@ import { registerModule } from '../../features/module-registry.js'
 
 export {
   GIT_AREAS, parseStatus, parseWorktrees, parseBranches, statusCode,
-  worktreeId, worktreeName, activeBranchRef, branchLabel,
+  worktreeId, worktreeName, activeBranchRef, branchLabel, checkoutName,
 } from './parse.js'
 export { loadSnapshot, applyStatus, worktreeSummary } from './snapshot.js'
 export {

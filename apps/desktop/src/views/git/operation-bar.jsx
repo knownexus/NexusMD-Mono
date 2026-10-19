@@ -1,12 +1,12 @@
 import React from 'react'
-import { operationText } from '@nexusmd/core'
+import { operationText, checkoutName } from '@nexusmd/core'
 
 /** A rebase, merge, revert or cherry-pick stopped part-way: say where it is, and offer Continue, Skip (not for a merge) or Abort. */
 export function OperationBar({ tree, onAction }) {
   if (!tree?.operation) return null
   const conflicts = tree.changes.some(c => c.area === 'conflict')
   const kind = tree.operationInfo?.kind
-  const text = operationText(tree.operationInfo, tree.branch) || tree.operation
+  const text = operationText(tree.operationInfo, checkoutName(tree)) || tree.operation
   return (
     <div role="status" className="card" style={{ padding: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', borderColor: 'var(--warning)' }}>
       <strong style={{ flex: 1 }}>{text}</strong>

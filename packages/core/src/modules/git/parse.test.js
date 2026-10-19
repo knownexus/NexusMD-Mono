@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseStatus, parseWorktrees, parseBranches, statusCode, worktreeId, worktreeName, activeBranchRef, branchLabel } from './parse.js'
+import { parseStatus, parseWorktrees, parseBranches, statusCode, worktreeId, worktreeName, activeBranchRef, branchLabel, checkoutName } from './parse.js'
 
 const REPO = { name: 'Test', path: 'C:/repos/Test' }
 
@@ -89,5 +89,13 @@ describe('parseBranches', () => {
       { repo: 'Test', commonDir: 'C:/c', ref: 'refs/heads/main', head: 'abc', subject: 'Initial', upstream: 'origin/main', name: 'main', id: 'b:Test:refs/heads/main' },
       { repo: 'Test', commonDir: 'C:/c', ref: 'refs/heads/topic', head: 'def', subject: 'Fix [x]', upstream: null, name: 'topic', id: 'b:Test:refs/heads/topic' },
     ])
+  })
+})
+
+describe('checkoutName', () => {
+  it('is the branch being rebased, the checked-out branch, or null when detached', () => {
+    expect(checkoutName({ branch: '(detached)', rebasingBranch: 'refs/heads/feat/x' })).toBe('feat/x')
+    expect(checkoutName({ branch: 'main', rebasingBranch: null })).toBe('main')
+    expect(checkoutName({ branch: '(detached)', rebasingBranch: null })).toBeNull()
   })
 })

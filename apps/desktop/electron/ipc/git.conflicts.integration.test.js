@@ -5,6 +5,10 @@ import os from 'os'
 import path from 'path'
 import { execFileSync } from 'child_process'
 import { register } from './git.cjs'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { applyStatus, checkoutName, conflictLabels } from '@nexusmd/core'
+import { OperationBar } from '../../src/views/git/operation-bar.jsx'
 
 let root
 const handlers = {}
@@ -72,6 +76,26 @@ describe('operation details in git:status', { timeout: 60000 }, () => {
       merging: null, picked: null,
     })
     expect(s.operationInfo.replaying.oid).toMatch(/^[0-9a-f]{40}$/)
+  })
+
+  it('the operation bar and labels name the branch being rebased, from real status output', async () => {
+    const r = diverged('RealBar')
+    tryRun(r.path, 'rebase', 'main')
+    const s = await status(r)
+    // During a rebase porcelain reports a detached HEAD; the branch is only known from the rebase state.
+    expect(s.porcelain).toContain('# branch.head (detached)')
+    const tree = applyStatus({ repo: r.name, repoRoot: r.path, path: r.path, branch: 'feature', changes: [] }, s)
+    expect(tree.branch).toBe('(detached)')
+    const html = renderToStaticMarkup(React.createElement(OperationBar, { tree, onAction: () => {} }))
+    expect(html).toContain('Rebasing feature onto main · commit 1 of 1')
+    expect(html).not.toContain('detached')
+    const m = diverged('RealBarMerge')
+    run(m.path, 'checkout', '-q', '--detach')
+    tryRun(m.path, 'merge', 'main')
+    const mtree = applyStatus({ repo: m.name, repoRoot: m.path, path: m.path, branch: 'x', changes: [] }, await status(m))
+    const mhtml = renderToStaticMarkup(React.createElement(OperationBar, { tree: mtree, onAction: () => {} }))
+    expect(mhtml).toContain('Merging main into your checkout')
+    expect(conflictLabels(mtree.operationInfo, checkoutName(mtree)).left).toEqual({ title: 'Your checkout', take: 'Take mine', version: 'my version' })
   })
 
   it('base name is null when two branches point at it', async () => {

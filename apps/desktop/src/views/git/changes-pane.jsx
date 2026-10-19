@@ -1,5 +1,5 @@
 import React from 'react'
-import { statusCode, groupChanges, actionsFor, toggleSelection, rangeSelection, isSubmodule, conflictLabels } from '@nexusmd/core'
+import { statusCode, groupChanges, actionsFor, toggleSelection, rangeSelection, isSubmodule, conflictLabels, checkoutName } from '@nexusmd/core'
 
 const AREA_COLOUR = { staged: 'var(--success)', unstaged: 'var(--warning)', untracked: 'var(--warning)', conflict: 'var(--danger)' }
 const VERB = { stage: 'Stage', unstage: 'Unstage', discard: 'Discard', delete: 'Delete' }
@@ -57,7 +57,7 @@ function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionC
 /** A worktree's changed files with selection, the file-action toolbar and the last result. */
 export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, onResolve = null, busy = false, status = null, drafts = [] }) {
   const groups = groupChanges(tree.changes)
-  const labels = conflictLabels(tree.operationInfo, tree.branch)
+  const labels = conflictLabels(tree.operationInfo, checkoutName(tree))
   const ordered = groups.flatMap(g => g.changes)
   const actions = actionsFor(tree.changes, selected)
   const canCommit = tree.changes.some(c => c.area === 'staged')

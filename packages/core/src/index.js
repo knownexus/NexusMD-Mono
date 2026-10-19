@@ -94,7 +94,7 @@ export {
 } from './modules/devenv/index.js'
 export {
   getGitAdapter, GIT_AREAS, parseStatus, parseWorktrees, parseBranches, statusCode,
-  worktreeId, worktreeName, activeBranchRef, branchLabel,
+  worktreeId, worktreeName, activeBranchRef, branchLabel, checkoutName,
   loadSnapshot, applyStatus, worktreeSummary,
   ALL_PROJECTS, findGroup, groupIncludesWorktree, groupIncludesBranch, scopeSnapshot, changeCount,
   uniqueName, groupNameError, renameGroup, duplicateGroup, deleteGroup, registerRepo, unregisterRepo,

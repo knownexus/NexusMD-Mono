@@ -109,6 +109,14 @@ describe('conflictLabels', () => {
     expect(l.left.take).toBe('Take mine')
     expect(l.right).toEqual({ title: 'Reverting bbbbbbb "Add x"', take: 'Take the reverted version', version: 'the reverted version' })
   })
+
+  it('a detached HEAD is "your checkout", never "Your branch ((detached))"', () => {
+    for (const branch of [null, '(detached)']) {
+      const l = conflictLabels({ kind: 'merge', merging: { oid: A, name: 'topic' } }, branch)
+      expect(l.left).toEqual({ title: 'Your checkout', take: 'Take mine', version: 'my version' })
+      expect(conflictLabels({ kind: 'cherry-pick', picked: { oid: B, subject: 'x' } }, branch).left.title).toBe('Your checkout')
+    }
+  })
 })
 
 describe('operationText', () => {
@@ -127,5 +135,12 @@ describe('operationText', () => {
     expect(operationText({ kind: 'merge', merging: { oid: A, name: null } }, 'main')).toBe('Merging aaaaaaa into main')
     expect(operationText({ kind: 'cherry-pick', picked: { oid: B, subject: 'Add x' } }, 'main')).toBe('Cherry-picking bbbbbbb "Add x"')
     expect(operationText({ kind: 'revert', picked: { oid: B, subject: 'Add x' } }, 'main')).toBe('Reverting bbbbbbb "Add x"')
+  })
+
+  it('an unknown or detached branch is left out, never "(detached)"', () => {
+    const op = { kind: 'rebase', step: 1, total: 2, onto: { oid: A, name: 'main' }, replaying: null }
+    expect(operationText(op, null)).toBe('Rebasing onto main · commit 1 of 2')
+    expect(operationText(op, '(detached)')).toBe('Rebasing onto main · commit 1 of 2')
+    expect(operationText({ kind: 'merge', merging: { oid: A, name: 'topic' } }, '(detached)')).toBe('Merging topic into your checkout')
   })
 })
