@@ -43,7 +43,8 @@ afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
 })
 
-describe('git workspace file editor against a real repository', () => {
+// Real git on Windows starts a process per command, so a test can take well over the 5 s default.
+describe('git workspace file editor against a real repository', { timeout: 60000 }, () => {
   it('lists tracked and untracked files but not ignored ones', async () => {
     const { files, truncated } = await call('git:files', repo, repo.path, REG())
     expect(files).toContain('story.txt')
