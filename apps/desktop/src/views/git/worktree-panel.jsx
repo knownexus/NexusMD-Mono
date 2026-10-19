@@ -32,6 +32,11 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   // so the editor jumps again even to the same line, and stays put while typing. Kept (hidden) in Diff.
   const [opened, setOpened] = React.useState(null)
   const [mode, setMode] = React.useState('diff')
+  // Closing the editor always goes back to Diff, so the pills never claim Diff while a click would open Edit.
+  const close = () => { setOpened(null); setMode('diff') }
+  // Another worktree starts in Diff with nothing open (ViewGit asked about the edits before switching).
+  const [shownTree, setShownTree] = React.useState(tree.path)
+  if (shownTree !== tree.path) { setShownTree(tree.path); close() }
   const editor = !history && opened?.tree === tree.path ? opened : null
   const editing = mode === 'edit' && !!editor
   const dirty = React.useRef(false)
@@ -51,20 +56,20 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     return () => window.removeEventListener('beforeunload', warn)
   }, [])
   // Focusing another file keeps the mode: in Edit it opens that file, in Diff the hidden editor closes.
-  // Conflicted files only show their diff.
+  // Conflicted files only show their diff, so focusing one goes back to Diff.
   const focus = id => {
     const next = tree.changes.find(c => c.id === id) ?? null
     if (next?.path !== editor?.path) {
       if (!confirmDiscard()) return
       if (mode === 'edit' && next && next.area !== 'conflict') open(next.path)
-      else setOpened(null)
+      else close()
     }
     onFocus(id)
   }
   const switchPanel = id => {
     if (id === panel) return
     if (!confirmDiscard()) return
-    setOpened(null)
+    close()
     onPanel(id)
   }
   const edit = () => { if (!editor && change) open(change.path); setMode('edit') }

@@ -469,9 +469,15 @@ ipcMain.on('window:close', () => {
 // ---------------------------------------------------------------------------
 // Clean shutdown
 // ---------------------------------------------------------------------------
+// before-quit only lets the windows close: a window with unsaved edits can still cancel the quit
+// (will-prevent-unload above), so the backends are shut down in will-quit, once every window has closed.
 app.on('before-quit', () => {
   log.scope('lifecycle').info('app quitting');
   forceQuit = true;
+});
+
+app.on('will-quit', () => {
+  log.scope('lifecycle').info('windows closed; shutting down backends');
   dbManagerIpc.closeAll().catch(err => log.scope('lifecycle').error('db-manager closeAll failed', err));
   devenvRuns?.disposeAll().catch(err => log.scope('lifecycle').error('devenv disposeAll failed', err));
   gitProcesses?.disposeAll().catch(err => log.scope('lifecycle').error('git disposeAll failed', err));

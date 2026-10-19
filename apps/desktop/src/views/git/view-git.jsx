@@ -198,11 +198,12 @@ function GitWorkspace({ adapter }) {
           setEditing(null)
         } : null}
         onSaved={(next, saved) => {
+          // Saving shows the group with nothing selected; declining keeps the dialog open and nothing saved.
+          if (!mayLeave()) return
           // A changed repo list already reloads the snapshot; refreshing too would poll twice.
           const reposChanged = JSON.stringify(next.repos) !== JSON.stringify(getGitConfig().repos)
           save(next)
-          // Declining keeps the saved group but leaves the open worktree (and its edits) on screen.
-          if (mayLeave()) setView({ group: saved.name, selected: null })
+          setView({ group: saved.name, selected: null })
           setEditing(null)
           if (!reposChanged) refresh()
         }} />

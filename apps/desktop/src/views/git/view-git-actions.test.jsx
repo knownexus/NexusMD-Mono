@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, within, waitFor, act } from '@testing-library/react'
 import { EditorView } from 'codemirror'
 import { ViewGit } from './view-git.jsx'
-import { setGitConfig } from '../../git-config.js'
+import { setGitConfig, getGitConfig } from '../../git-config.js'
 import { clearGitSnapshotCache } from './use-git-snapshot.js'
 
 afterEach(cleanup)
@@ -288,6 +288,77 @@ describe('editing files', () => {
     fireEvent.click(changes().getByText('new.txt'))
     expect((await editorFor('new.txt')).state.doc.toString()).toBe(NINE_PLUS)
     expect(screen.queryByText('● Unsaved')).toBeNull()
+  })
+
+  it('goes back to Diff whenever the editor closes', async () => {
+    const CONFLICT = DIRTY + 'u UU N... 100644 100644 100644 100644 a b c c.txt\0'
+    const { state } = setupView({
+      ...files(),
+      // History is only passed through; it never needs to finish loading.
+      refs: vi.fn(() => new Promise(() => {})),
+      log: vi.fn(() => new Promise(() => {})),
+      worktrees: vi.fn(async repo => `worktree ${repo.path}\0HEAD a\0branch refs/heads/main\0\0worktree C:/repos/A-feat\0HEAD b\0branch refs/heads/feat\0\0`),
+    })
+    state.porcelain = CONFLICT
+    await openWorktree()
+    const diffShown = async () => {
+      expect(pills().getByRole('button', { name: 'Diff' }).getAttribute('aria-pressed')).toBe('true')
+      expect(await screen.findAllByRole('button', { name: 'Stage hunk' })).toHaveLength(2)
+      expect(screen.queryByLabelText(/^Edit /)).toBeNull()
+    }
+    const editF = async () => {
+      fireEvent.click(changes().getByText('f.txt'))
+      fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+      await editorFor('f.txt')
+    }
+    // Changes → History → Changes.
+    await editF()
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Changes/ }))
+    await diffShown()
+    // A conflicted file has no Edit; the next file opens in Diff.
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    await editorFor('f.txt')
+    fireEvent.click(changes().getByText('c.txt'))
+    expect(screen.queryByRole('group', { name: 'Diff or edit' })).toBeNull()
+    fireEvent.click(changes().getByText('f.txt'))
+    await diffShown()
+    // Another worktree and back.
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    await editorFor('f.txt')
+    const region = screen.getByRole('region', { name: 'A' })
+    fireEvent.click(within(region).getByRole('button', { name: /^C:\/repos\/A-feat →/ }))
+    await screen.findByText(/^C:\/repos\/A-feat · /)
+    fireEvent.click(within(region).getByRole('button', { name: /checkout → main/ }))
+    fireEvent.click(await changes().findByText('f.txt'))
+    await diffShown()
+  })
+
+  it('asks before a group save would close unsaved edits, and saves nothing when declined', async () => {
+    setupView(files())
+    act(() => { setGitConfig({ groups: [{ name: 'Mine', repos: ['A'], worktrees: [], branches: [] }] }) })
+    const tabs = await screen.findByRole('tablist', { name: 'Project groups' })
+    fireEvent.click(within(tabs).getByRole('tab', { name: /^Mine/ }))
+    await openWorktree()
+    fireEvent.click(changes().getByText('f.txt'))
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    const view = await editorFor('f.txt')
+    act(() => { view.dispatch({ changes: { from: 0, insert: 'mine ' } }) })
+    fireEvent.click(screen.getByRole('button', { name: 'Group options for Mine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit members…' }))
+    fireEvent.change(await screen.findByLabelText('Group name'), { target: { value: 'Mine 2' } })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith('Discard unsaved changes to f.txt?'))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Save' }).disabled).toBe(false))
+    expect(getGitConfig().groups.map(g => g.name)).toEqual(['Mine'])
+    expect(screen.getByLabelText('Group name')).toBeTruthy()
+    expect((await editorFor('f.txt')).state.doc.toString()).toBe(`mine ${NINE_PLUS}`)
+    confirm.mockReturnValue(true)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(getGitConfig().groups.map(g => g.name)).toEqual(['Mine 2']))
+    expect(screen.queryByLabelText(/^Edit f.txt/)).toBeNull()
   })
 
   it('clicking a diff line opens Edit at that line', async () => {
