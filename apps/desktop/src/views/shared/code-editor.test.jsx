@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import React from 'react'
-import { render, cleanup } from '@testing-library/react'
+import { render, cleanup, act } from '@testing-library/react'
 import { EditorView } from 'codemirror'
 import { undo } from '@codemirror/commands'
 import { CodeEditor, languageForPath } from './code-editor.jsx'
@@ -115,7 +115,7 @@ describe('CodeEditor', () => {
     const { container } = render(<Host />)
     const view = viewOf(container)
     view.dispatch({ selection: { anchor: 0 } })
-    view.dispatch({ changes: { from: 0, insert: 'x' } })
-    expect(view.state.selection.main.head).toBeLessThan(5)
+    act(() => view.dispatch({ changes: { from: 5, insert: 'x' }, selection: { anchor: 6 } }))
+    expect(view.state.selection.main.head).toBe(6)
   })
 })
