@@ -1,9 +1,12 @@
 import React from 'react'
-import { statusCode, groupChanges, actionsFor, toggleSelection, rangeSelection, isSubmodule, conflictLabels, checkoutName } from '@nexusmd/core'
+import { statusCode, groupChanges, actionsFor, toggleSelection, rangeSelection, isSubmodule, conflictLabels, conflictKind, checkoutName } from '@nexusmd/core'
 
 const AREA_COLOUR = { staged: 'var(--success)', unstaged: 'var(--warning)', untracked: 'var(--warning)', conflict: 'var(--danger)' }
 const VERB = { stage: 'Stage', unstage: 'Unstage', discard: 'Discard', delete: 'Delete' }
 const DESTRUCTIVE = new Set(['discard', 'delete'])
+// Only a conflict both sides changed gets whole-file takes on its row; one where a side deleted or added the file
+// is resolved from its own screen, whose wording says so (taking a deleting side removes the file).
+const ROW_TAKES = new Set(['both-modified', 'both-added'])
 const NONE = {
   stage: 'Select changes that can be staged',
   unstage: 'Select staged changes',
@@ -38,7 +41,7 @@ function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionC
           {drafts.includes(c.path) && <span role="img" aria-label="Unsaved edits" title="Unsaved edits" style={{ color: 'var(--warning)' }}>●</span>}
           {c.originalPath && <span style={{ color: 'var(--text-muted)' }}>{`← ${c.originalPath}`}</span>}
           {isSubmodule(c) && <span style={{ color: 'var(--text-muted)' }}>submodule</span>}
-          {c.area === 'conflict' && labels && onResolve && (
+          {c.area === 'conflict' && labels && onResolve && ROW_TAKES.has(conflictKind(c.xy)) && (
             <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
               {['left', 'right'].map(side => (
                 <button key={side} className="btn sm ghost" disabled={busy} aria-label={`${labels[side].take} for ${c.path}`}
