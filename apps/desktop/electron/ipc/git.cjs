@@ -894,7 +894,7 @@ function register(ipcMain, deps = {}) {
   registerFiles(handle, { git, requireExactWorktree, requirePaths, withRepoLock });
 
   // Reading and resolving conflicted files (git-conflicts.cjs).
-  registerConflicts(handle, { git, requireExactWorktree, requirePaths, withRepoLock, filesState, result });
+  registerConflicts(handle, { git, requireExactWorktree, requirePaths, withRepoLock, filesState, indexEntries, result });
 
   // The command line. argv is a git subcommand and its arguments, typed by the user (the renderer
   // confirms destructive ones first). It runs like a terminal (no literal pathspecs) but can't

@@ -294,3 +294,103 @@ describe('git:conflict and git:resolveConflict', { timeout: 60000 }, () => {
     await expect(resolve(r, '../x', { take: 'left' }, 'x')).rejects.toThrow()
   })
 })
+
+describe('git:unresolve and special files', { timeout: 60000 }, () => {
+  const stampOf = (r, rel) => call('git:stamp', r, r.path, REG(), { kind: 'files', paths: [rel] })
+  const unresolve = async (r, rel) => call('git:unresolve', r, r.path, REG(), rel, await stampOf(r, rel))
+
+  function deletedOnMain(name) {
+    const dir = path.join(root, name)
+    fs.mkdirSync(dir)
+    run(dir, 'init', '-q')
+    write(dir, 'f', 'base\n'); write(dir, 'g', 'keep\n'); commit(dir, 'base')
+    run(dir, 'checkout', '-q', '-b', 'feature')
+    write(dir, 'f', 'feature\n'); commit(dir, 'feature edit')
+    run(dir, 'checkout', '-q', 'main')
+    run(dir, 'rm', '-q', 'f'); run(dir, 'commit', '-qm', 'main deletes')
+    run(dir, 'checkout', '-q', 'feature')
+    REPOS.push(dir)
+    tryRun(dir, 'rebase', 'main')
+    return { name, path: dir }
+  }
+
+  it('unresolve restores a conflict that was missing a side', async () => {
+    const r = deletedOnMain('UnDU')
+    await resolve(r, 'f', { take: 'right' }, (await conf(r, 'f')).stamp)
+    expect(conflicted(r, 'f')).toBe(false)
+    expect(await unresolve(r, 'f')).toMatchObject({ ok: true })
+    expect(conflicted(r, 'f')).toBe(true)
+    expect(await xy(r, 'f')).toBe('DU')
+    expect((await conf(r, 'f')).kind).toBe('deleted-by-left')
+  })
+
+  it('unresolve works after a delete of a both-modified file', async () => {
+    const r = diverged('UnRm')
+    tryRun(r.path, 'rebase', 'main')
+    expect(await resolve(r, 'f', { take: 'delete' }, (await conf(r, 'f')).stamp)).toMatchObject({ ok: true })
+    expect(await unresolve(r, 'f')).toMatchObject({ ok: true })
+    expect(await xy(r, 'f')).toBe('UU')
+    expect(fs.readFileSync(path.join(r.path, 'f'), 'utf8')).toMatch(/<<<<<<</)
+  })
+
+  it('unresolve refuses a never-conflicted modified file and keeps the edit', async () => {
+    const r = diverged('UnClean')
+    write(r.path, 'f', 'my edit\n')
+    expect(await unresolve(r, 'f')).toMatchObject({ ok: false, detail: 'Nothing to undo for f.' })
+    expect(fs.readFileSync(path.join(r.path, 'f'), 'utf8')).toBe('my edit\n')
+  })
+
+  it('unresolve refuses a still-conflicted file and keeps the draft', async () => {
+    const r = diverged('UnStill')
+    tryRun(r.path, 'rebase', 'main')
+    write(r.path, 'f', 'half done\n')
+    expect(await unresolve(r, 'f')).toMatchObject({ ok: false, detail: 'Still conflicted — nothing to undo.' })
+    expect(fs.readFileSync(path.join(r.path, 'f'), 'utf8')).toBe('half done\n')
+  })
+
+  it('unresolve refuses a resolved file edited since', async () => {
+    const r = diverged('UnEdited')
+    tryRun(r.path, 'rebase', 'main')
+    await resolve(r, 'f', { take: 'text', text: 'done\n', bom: false }, (await conf(r, 'f')).stamp)
+    write(r.path, 'f', 'done and more\n')
+    expect(await unresolve(r, 'f')).toMatchObject({ ok: false, detail: 'f has changes since it was resolved.' })
+    expect(fs.readFileSync(path.join(r.path, 'f'), 'utf8')).toBe('done and more\n')
+    expect(conflicted(r, 'f')).toBe(false)
+  })
+
+  it('a symlink conflict is not text and refuses a text resolve', async () => {
+    const dir = path.join(root, 'Link')
+    fs.mkdirSync(dir)
+    run(dir, 'init', '-q')
+    write(dir, 'x', 'x\n'); commit(dir, 'base')
+    const setLink = target => {
+      const oid = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: dir, input: target }).toString().trim()
+      run(dir, 'update-index', '--add', '--cacheinfo', `120000,${oid},l`)
+      run(dir, 'commit', '-qm', `link ${target}`)
+    }
+    run(dir, 'checkout', '-q', '-b', 'feature')
+    setLink('feature-target')
+    run(dir, 'checkout', '-q', 'main')
+    setLink('main-target')
+    run(dir, 'checkout', '-q', 'feature')
+    REPOS.push(dir)
+    const r = { name: 'Link', path: dir }
+    tryRun(dir, 'rebase', 'main')
+    const c = await conf(r, 'l')
+    expect(c).toMatchObject({ binary: true, symlink: true, working: null })
+    expect(c.stages).toEqual({ base: null, left: null, right: null })
+    expect(await resolve(r, 'l', { take: 'text', text: 'oops\n', bom: false }, c.stamp)).toMatchObject({ ok: false })
+    expect(conflicted(r, 'l')).toBe(true)
+    expect(await resolve(r, 'l', { take: 'right' }, c.stamp)).toMatchObject({ ok: true })
+    expect(conflicted(r, 'l')).toBe(false)
+    expect(run(dir, 'ls-files', '-s', '--', 'l')).toMatch(/^120000 /)
+  })
+
+  it('a working file that cannot be read is an error, not binary', async () => {
+    const r = diverged('Unreadable')
+    tryRun(r.path, 'rebase', 'main')
+    fs.rmSync(path.join(r.path, 'f'))
+    fs.mkdirSync(path.join(r.path, 'f'))
+    await expect(conf(r, 'f')).rejects.toThrow()
+  })
+})

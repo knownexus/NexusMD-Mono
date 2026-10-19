@@ -23,9 +23,11 @@ const hasMarkers = text => String(text ?? '').split('\n').some(l => {
   return /^<<<<<<<( |$)/.test(b) || b === '=======' || /^>>>>>>>( |$)/.test(b);
 });
 
+// What readText throws for a file that isn't editable text; any other error (permissions, I/O) is real.
+const NOT_TEXT = /too large to edit|isn't a text file|isn't UTF-8 text/;
 const refuse = detail => ({ ok: false, detail });
 
-function registerConflicts(handle, { git, requireExactWorktree, requirePaths, withRepoLock, filesState, result }) {
+function registerConflicts(handle, { git, requireExactWorktree, requirePaths, withRepoLock, filesState, indexEntries, result }) {
   const target = (repo, wt, registered, rel) =>
     requireExactWorktree(repo, wt, registered, () => requirePaths(wt, [rel])).then(() => requireWorktreeFile(wt, rel));
 
@@ -51,16 +53,18 @@ function registerConflicts(handle, { git, requireExactWorktree, requirePaths, wi
     if (!staged.length) throw new Error(`Not conflicted any more: ${rel}`);
     const byStage = n => staged.find(e => e.stage === String(n)) || null;
     const [base, left, right] = await Promise.all([1, 2, 3].map(n => blobText(wt, byStage(n))));
-    let binary = base.binary || left.binary || right.binary;
+    const symlink = staged.some(e => e.mode === '120000');
+    let binary = symlink || base.binary || left.binary || right.binary;
     let working = null;
-    try {
+    if (!symlink) try {
       const r = await readText(real, rel, { maxBytes: MAX_READ_BYTES });
       if (!r.missing) working = { text: r.text, bom: r.bom, stamp: r.stamp };
-    } catch { binary = true; }
+    } catch (e) { if (!NOT_TEXT.test(e.message)) throw e; binary = true; }
     const record = state.records.find(r => r.kind === 'u' && r.path === rel);
     return {
       kind: (record && KINDS[record.xy]) || null,
       binary,
+      symlink,
       stages: binary ? { base: null, left: null, right: null } : { base: base.text, left: left.text, right: right.text },
       working: binary ? null : working,
       stamp: state.stamp,
@@ -89,6 +93,7 @@ function registerConflicts(handle, { git, requireExactWorktree, requirePaths, wi
     if (staged.some(e => e.mode === '160000')) return refuse(SUBMODULE);
     const take = resolution?.take;
     if (take === 'text') {
+      if (staged.some(e => e.mode === '120000')) return refuse(`${rel} is a symbolic link; take one side instead.`);
       if (typeof resolution.text !== 'string') return refuse('Nothing to write');
       if (resolution.force !== true && hasMarkers(resolution.text)) return refuse('The text still has conflict markers.');
       const body = Buffer.concat([resolution.bom ? BOM : Buffer.alloc(0), Buffer.from(resolution.text, 'utf8')]);
@@ -107,9 +112,20 @@ function registerConflicts(handle, { git, requireExactWorktree, requirePaths, wi
     return refuse(`Unknown resolution: ${take}`);
   });
 
+  // Only a file that was resolved here and not touched since: the resolve-undo record brings back the
+  // stages (even a missing side), and markers are rebuilt only when both sides exist.
   conflictWrite('git:unresolve', false, async ({ wt, rel, state }) => {
     if (state.entries.some(e => e.mode === '160000')) return refuse(SUBMODULE);
-    return result(await git(wt, ['checkout', '-m', '--', rel]));
+    if (stagesOf(state.entries, rel).length) return refuse('Still conflicted — nothing to undo.');
+    const undo = await git(wt, ['ls-files', '--resolve-undo', '-z', '--', rel]);
+    if (undo.code !== 0) return result(undo);
+    if (!undo.stdout.trim()) return refuse(`Nothing to undo for ${rel}.`);
+    if (state.records.some(r => r.path === rel && (r.kind === '1' || r.kind === '2') && r.xy[1] !== '.')) return refuse(`${rel} has changes since it was resolved.`);
+    const back = await git(wt, ['update-index', '--unresolve', '--', rel]);
+    if (back.code !== 0) return result(back);
+    const stages = stagesOf(await indexEntries(wt), rel).map(e => e.stage);
+    if (stages.includes('2') && stages.includes('3')) return result(await git(wt, ['checkout', '-m', '--', rel]));
+    return { ok: true, detail: 'Done' };
   });
 }
 
