@@ -28,6 +28,12 @@ const dropDraft = key => { if (drafts.delete(key)) emit() }
 // Saves still writing, so a file reopened mid-save waits for the outcome instead of seeing stale state.
 const pendingSaves = new Map()
 
+// The conflict editor (use-conflict.js) keeps its unsaved result text in this same store.
+export { draftKey as worktreeDraftKey }
+export const getWorktreeDraft = key => drafts.get(key)
+export const putWorktreeDraft = putDraft
+export const dropWorktreeDraft = dropDraft
+
 export function worktreeDraftPaths(repoPath, worktreePath) {
   const prefix = prefixOf(repoPath, worktreePath)
   return [...drafts.keys()].filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length))
