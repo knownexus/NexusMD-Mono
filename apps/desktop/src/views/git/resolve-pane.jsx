@@ -75,7 +75,8 @@ export function ResolvePane({ adapter, repo, tree, registered, change, onResolve
 
   const data = c.data
   const ready = c.status === 'ready' && !!data
-  const text = ready && TEXT_KINDS.includes(data.kind) && !data.binary && !data.symlink
+  // Line by line only with a working file to edit: a missing one would load as empty and stage an empty file.
+  const text = ready && TEXT_KINDS.includes(data.kind) && !data.binary && !data.symlink && !data.missing && !!data.working
   const blocked = c.saving || c.conflict || stale
   const base = data?.stages?.base
 
@@ -114,7 +115,7 @@ export function ResolvePane({ adapter, repo, tree, registered, change, onResolve
         </div>
       )}
       {ready && !text && (
-        <NonTextConflict kind={data.kind} labels={labels} binary={!!data.binary} symlink={!!data.symlink} onTake={whole} busy={blocked} />
+        <NonTextConflict kind={data.kind} labels={labels} binary={!!data.binary} symlink={!!data.symlink} missing={!data.binary && !data.symlink && !data.working} path={path} onTake={whole} busy={blocked} />
       )}
       {text && (
         <>

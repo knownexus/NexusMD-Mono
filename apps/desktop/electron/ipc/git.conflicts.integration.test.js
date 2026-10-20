@@ -437,6 +437,39 @@ describe('git:unresolve and special files', { timeout: 60000 }, () => {
     expect(run(dir, 'ls-files', '-s', '--', 'l')).toMatch(/^120000 /)
   })
 
+  it('a text conflict whose working file is missing is not loaded as an empty text', async () => {
+    const r = diverged('MissingWorking')
+    tryRun(r.path, 'rebase', 'main')
+    fs.rmSync(path.join(r.path, 'f'))
+    const c = await conf(r, 'f')
+    expect(c).toMatchObject({ kind: 'both-modified', missing: true, working: null })
+    // The sides are still there to choose from whole.
+    expect(await resolve(r, 'f', { take: 'left' }, c.stamp)).toMatchObject({ ok: true })
+    expect(fs.readFileSync(path.join(r.path, 'f'), 'utf8')).toBe('main\n')
+  })
+
+  it('a submodule conflict is refused in plain words, not a raw git error', async () => {
+    const dir = path.join(root, 'Gitlink')
+    fs.mkdirSync(dir)
+    run(dir, 'init', '-q')
+    write(dir, 'x', 'x\n'); commit(dir, 'base')
+    const setLink = n => {
+      run(dir, 'update-index', '--add', '--cacheinfo', `160000,${String(n).repeat(40)},sub`)
+      run(dir, 'commit', '-qm', `sub ${n}`)
+    }
+    setLink(1)
+    run(dir, 'checkout', '-q', '-b', 'feature')
+    setLink(2)
+    run(dir, 'checkout', '-q', 'main')
+    setLink(3)
+    run(dir, 'checkout', '-q', 'feature')
+    REPOS.push(dir)
+    const r = { name: 'Gitlink', path: dir }
+    tryRun(dir, 'rebase', 'main')
+    expect(run(dir, 'ls-files', '-u', '--', 'sub')).toMatch(/^160000 /)
+    await expect(conf(r, 'sub')).rejects.toThrow(/^Submodule changes need to be managed inside the submodule\.$/)
+  })
+
   it('a working file that cannot be read is an error, not binary', async () => {
     const r = diverged('Unreadable')
     tryRun(r.path, 'rebase', 'main')

@@ -2,10 +2,10 @@ import React from 'react'
 
 /**
  * A conflict that can't be merged line by line: one side deleted the file, both did, or it is binary
- * or a symbolic link. Says what happened by meaning, and offers the whole-file choices; `onTake` gets
+ * or a symbolic link, or its working file is missing. Says what happened by meaning, and offers the whole-file choices; `onTake` gets
  * 'left' | 'right' | 'delete'.
  */
-export function NonTextConflict({ kind, labels, binary = false, symlink = false, onTake, busy = false }) {
+export function NonTextConflict({ kind, labels, binary = false, symlink = false, missing = false, path = 'This file', onTake, busy = false }) {
   const { left, right } = labels
   let sentence
   let choices
@@ -19,6 +19,7 @@ export function NonTextConflict({ kind, labels, binary = false, symlink = false,
   } else {
     sentence = binary ? "This is a binary file, so it can't be merged line by line. Use one version or the other."
       : symlink ? "This is a symbolic link, so it can't be merged line by line. Use one version or the other."
+      : missing && (kind === 'both-modified' || kind === 'both-added') ? `${path} is missing from the folder, so there is nothing to merge line by line. Use one version or the other.`
       : kind === 'added-by-left' ? `${left.title} added this file. Use one version or the other.`
       : kind === 'added-by-right' ? `${right.title} added this file. Use one version or the other.`
       : "This file can't be merged line by line. Use one version or the other."

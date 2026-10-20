@@ -55,20 +55,26 @@ function registerConflicts(handle, { git, requireExactWorktree, requirePaths, wi
     const state = await filesState(wt, [rel]);
     const staged = stagesOf(state.entries, rel);
     if (!staged.length) throw new Error(`Not conflicted any more: ${rel}`);
+    // A gitlink's stages are commits, not blobs: say what to do instead of cat-file's error.
+    if (staged.some(e => e.mode === '160000')) throw new Error(SUBMODULE);
     const byStage = n => staged.find(e => e.stage === String(n)) || null;
     const [base, left, right] = await Promise.all([1, 2, 3].map(n => blobText(wt, byStage(n))));
     const symlink = staged.some(e => e.mode === '120000');
     let binary = symlink || base.binary || left.binary || right.binary;
     let working = null;
+    let missing = false;
     if (!symlink) try {
       const r = await readText(real, rel, { maxBytes: MAX_READ_BYTES });
-      if (!r.missing) working = { text: r.text, bom: r.bom, stamp: r.stamp };
+      if (r.missing) missing = true;
+      else working = { text: r.text, bom: r.bom, stamp: r.stamp };
     } catch (e) { if (!NOT_TEXT.test(e.message)) throw e; binary = true; }
     const record = state.records.find(r => r.kind === 'u' && r.path === rel);
     return {
       kind: (record && KINDS[record.xy]) || null,
       binary,
       symlink,
+      // No working file to resolve line by line (deleted since the conflict): only whole sides are offered.
+      missing,
       stages: binary ? { base: null, left: null, right: null } : { base: base.text, left: left.text, right: right.text },
       working: binary ? null : working,
       stamp: state.stamp,

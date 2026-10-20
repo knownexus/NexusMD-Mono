@@ -182,4 +182,14 @@ describe('ResolvePane', () => {
     await waitFor(() => expect(adapter.resolveConflict).toHaveBeenCalledWith(repo, tree.path, registered, 'f.txt', { take: 'delete' }, 'c1'))
     await waitFor(() => expect(onResolved).toHaveBeenCalled())
   })
+
+  it('a text conflict whose working file is missing never loads as an empty result', async () => {
+    const adapter = mk({ conflict: vi.fn(async () => data({ working: null, missing: true })) })
+    render(<ResolvePane adapter={adapter} repo={repo} tree={tree} registered={registered} change={change} onResolved={vi.fn()} />)
+    expect(await screen.findByText(/f\.txt is missing from the folder/)).toBeTruthy()
+    expect(screen.queryByText(/No conflicts left/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Mark resolved' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: "Use main's version" }))
+    await waitFor(() => expect(adapter.resolveConflict).toHaveBeenCalledWith(repo, tree.path, registered, 'f.txt', { take: 'left' }, 'c1'))
+  })
 })
