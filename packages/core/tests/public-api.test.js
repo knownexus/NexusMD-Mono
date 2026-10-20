@@ -77,7 +77,7 @@ const EXPECTED = [
   'setIn', 'newRepository', 'addRepository', 'renameRepository', 'removeRepository', 'REPOSITORY_KEY',
   // Git Workspace module (desktop-only: requires the `git` adapter)
   'IGitAdapter', 'getGitAdapter', 'GIT_AREAS', 'parseStatus', 'parseWorktrees', 'parseBranches', 'statusCode',
-  'worktreeId', 'worktreeName', 'activeBranchRef', 'branchLabel', 'loadSnapshot', 'applyStatus', 'worktreeSummary',
+  'worktreeId', 'worktreeName', 'activeBranchRef', 'branchLabel', 'checkoutName', 'loadSnapshot', 'applyStatus', 'worktreeSummary',
   'ALL_PROJECTS', 'findGroup', 'groupIncludesWorktree', 'groupIncludesBranch', 'scopeSnapshot', 'changeCount',
   'uniqueName', 'groupNameError', 'renameGroup', 'duplicateGroup', 'deleteGroup', 'registerRepo', 'unregisterRepo',
   'GroupDraft', 'GroupSaveError',
