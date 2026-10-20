@@ -41,6 +41,13 @@ export function worktreeDraftPaths(repoPath, worktreePath) {
   const prefix = prefixOf(repoPath, worktreePath)
   return [...new Set([...drafts.keys()].filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length).replace(CONFLICT, '')))]
 }
+// The kept drafts split by editor: plain-editor drafts, and conflict-editor (resolve screen) drafts.
+export function worktreeDraftsByEditor(repoPath, worktreePath) {
+  const prefix = prefixOf(repoPath, worktreePath)
+  const keys = [...drafts.keys()].filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length))
+  return { plain: keys.filter(k => !k.endsWith(CONFLICT)), conflict: keys.filter(k => k.endsWith(CONFLICT)).map(k => k.slice(0, -CONFLICT.length)) }
+}
+export function discardConflictDraft(repoPath, worktreePath, path) { dropDraft(conflictDraftKey(repoPath, worktreePath, path)) }
 // Discarding edits (the panel's "Discard unsaved changes?") must also forget the kept draft.
 export function discardWorktreeDraft(repoPath, worktreePath, path) { dropDraft(draftKey(repoPath, worktreePath, path)); dropDraft(conflictDraftKey(repoPath, worktreePath, path)) }
 export function clearWorktreeDrafts() { if (drafts.size) { drafts.clear(); emit() } }

@@ -9,7 +9,7 @@ import { GitCommandLine } from './git-command-line.jsx'
 import { FileEditor } from './file-editor.jsx'
 import { ResolvePane } from './resolve-pane.jsx'
 import { GoToFile } from './go-to-file.jsx'
-import { discardWorktreeDraft, worktreeDraftPaths, useWorktreeDraftsVersion } from './use-worktree-file.js'
+import { discardWorktreeDraft, discardConflictDraft, worktreeDraftPaths, worktreeDraftsByEditor, useWorktreeDraftsVersion } from './use-worktree-file.js'
 
 const clamp = v => Math.min(0.8, Math.max(0.2, v))
 
@@ -98,7 +98,12 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   // worktree) are pointed at here and in the changes list until saved or reverted.
   useWorktreeDraftsVersion()
   const drafts = worktreeDraftPaths(repo.path, tree.path)
-  const elsewhere = drafts.filter(p => p !== editor?.path)
+  const byEditor = worktreeDraftsByEditor(repo.path, tree.path)
+  const elsewhere = byEditor.plain.filter(p => p !== editor?.path)
+  // Resolve-screen drafts not on screen: a still-conflicted file reopens its resolve screen; one that
+  // isn't conflicted any more can only be discarded (asked first), never silently.
+  const keptResolves = byEditor.conflict.filter(p => p !== resolvePath)
+    .map(p => ({ path: p, change: tree.changes.find(c => c.area === 'conflict' && c.path === p) ?? null }))
   // Focusing another file keeps the mode: in Edit it opens that file, in Diff the hidden editor closes.
   // Conflicted files open their resolve screen, so focusing one goes back to Diff.
   const focus = id => {
@@ -110,6 +115,23 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     }
     setJustResolved(null)
     onFocus(id)
+  }
+  const openResolve = c => {
+    if (history || c.path !== resolvePath) {
+      if (!confirmDiscard()) return
+      close()
+      if (history) onPanel('changes')
+    }
+    setJustResolved(null)
+    onFocus(c.id)
+  }
+  const discardKeptResolve = p => {
+    if (window.confirm(`Discard unsaved resolve edits to ${p}? It isn't conflicted any more, so they can't be used.`)) discardConflictDraft(repo.path, tree.path, p)
+  }
+  // Skip and Abort change the conflicted files under the resolve screen, so unsaved edits are asked about first.
+  const operation = (kind, options) => {
+    if ((kind === 'skip' || kind === 'abort') && !confirmDiscard()) return
+    onSync(kind, options)
   }
   const switchPanel = id => {
     if (id === panel) return
@@ -181,14 +203,22 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
       <div className="nx-panel-section" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <PanelSwitch panel={panel} onPanel={switchPanel} count={tree.changes.length} />
       </div>
-      {elsewhere.length > 0 && (
+      {elsewhere.length + keptResolves.length > 0 && (
         <div role="note" aria-label="Unsaved edits" className="nx-panel-section" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <span className="nx-badge warn">● Unsaved edits kept</span>
           {elsewhere.map(p => <button key={p} className="btn sm ghost" title={`Open ${p}`} onClick={() => goToFile(p)}>{p}</button>)}
+          {keptResolves.map(({ path: p, change: c }) => (c
+            ? <button key={`r:${p}`} className="btn sm ghost" title={`Resolve ${p}`} onClick={() => openResolve(c)}>{p}</button>
+            : (
+              <span key={`r:${p}`} className="row" style={{ gap: 4 }}>
+                <span className="nx-muted" title="Resolve edits to a file that isn't conflicted any more">{p}</span>
+                <button className="btn sm ghost danger" aria-label={`Discard unsaved resolve edits to ${p}`} onClick={() => discardKeptResolve(p)}>Discard</button>
+              </span>
+            )))}
         </div>
       )}
       <div className="nx-panel-body">
-        {onSync && <OperationBar tree={tree} onAction={onSync} />}
+        {onSync && <OperationBar tree={tree} onAction={operation} />}
         {stashes && <StashList adapter={adapter} repo={repo} tree={tree} registered={registered} onAction={onSync} onClose={() => setStashes(false)} />}
         {history
           ? <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync} />
