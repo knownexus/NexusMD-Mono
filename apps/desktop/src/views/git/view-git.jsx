@@ -20,6 +20,7 @@ import { ReviewDialog } from './review-dialog.jsx'
 import { CommitDialog } from './commit-dialog.jsx'
 import { RunDrawer } from '../shared/run-drawer.jsx'
 import '../devenv-git.css'
+import './git-workspace.css'
 
 const card = (text, role) => <div className={role === 'alert' ? 'nx-alert' : 'card'} role={role} style={{ padding: 16 }}>{text}</div>
 
