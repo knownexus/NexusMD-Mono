@@ -45,7 +45,7 @@ describe('ViewGit', () => {
     const tabs = await screen.findByRole('tablist', { name: 'Project groups' })
     expect(await within(tabs).findByRole('tab', { name: 'Registered repos 3 repos' })).toBeTruthy()
     expect(within(tabs).getByRole('tab', { name: 'Only B 1 repo' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: 'A' })).toBeTruthy()
+    expect(await screen.findByRole('region', { name: 'A' })).toBeTruthy()
     fireEvent.click(within(tabs).getByRole('tab', { name: 'Only B 1 repo' }))
     expect(screen.queryByRole('region', { name: 'A' })).toBeNull()
     expect(screen.getByRole('region', { name: 'B' })).toBeTruthy()
