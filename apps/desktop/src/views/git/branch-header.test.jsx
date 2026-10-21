@@ -112,6 +112,29 @@ describe('BranchHeader', () => {
     expect(onStashes).toHaveBeenCalled()
   })
 
+  const removeItem = bar => {
+    fireEvent.click(bar.getByRole('button', { name: 'More ▾' }))
+    return screen.getByRole('menuitem', { name: 'Remove this worktree…' })
+  }
+
+  it('lets a linked worktree whose folder is named main, master or develop be removed', () => {
+    for (const folder of ['main', 'master', 'develop']) {
+      const { bar, onSync } = setup(tree({ path: `C:/repos/Joiners/${folder}`, commonDir: 'C:/repos/Joiners/.git' }))
+      const remove = removeItem(bar)
+      expect(remove.disabled).toBe(false)
+      fireEvent.click(remove)
+      expect(onSync).toHaveBeenLastCalledWith('worktreeRemove', { path: `C:/repos/Joiners/${folder}` })
+      cleanup()
+    }
+  })
+
+  it('disables removing the main checkout whatever its folder is called', () => {
+    const { bar } = setup(tree({ repoRoot: 'C:/repos/Joiners', path: 'C:\\work\\feature-x', commonDir: 'C:/work/feature-x/.git' }))
+    const remove = removeItem(bar)
+    expect(remove.disabled).toBe(true)
+    expect(remove.title).toBe("The main worktree can't be removed")
+  })
+
   it("won't remove the main worktree, and says why", () => {
     const { bar } = setup(tree({ path: 'C:/repos/Joiners', upstream: null }))
     fireEvent.click(bar.getByRole('button', { name: 'More ▾' }))

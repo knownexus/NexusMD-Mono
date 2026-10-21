@@ -10,7 +10,14 @@ const PRIMARY = {
   push: ['push', {}],
   publish: ['push', { setUpstream: true }],
 }
-const MAIN_FOLDERS = /^(main|master|develop)$/i
+const norm = p => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+
+// The repository's primary checkout: its .git directory is the common dir. Linked worktrees (and every
+// worktree of a bare repository) have theirs elsewhere. Without a common dir, the registered root stands in.
+export function isMainWorktree(tree) {
+  if (tree.commonDir) return norm(tree.commonDir) === `${norm(tree.path)}/.git`
+  return norm(tree.path) === norm(tree.repoRoot)
+}
 
 function tracking(tree) {
   if (tree.upstreamGone) return [{ text: 'Upstream was deleted on origin', tone: 'warn' }]
@@ -43,7 +50,7 @@ export function BranchHeader({ tree, stashCount = null, onSync, onStashes, onOve
   const branch = checkoutName(tree) ?? tree.branch
   // A linked worktree's folder is named when it differs from the branch; the main checkout isn't.
   const folder = name !== 'checkout' && name !== branch ? name : null
-  const isMain = name === 'checkout' || MAIN_FOLDERS.test(name)
+  const isMain = isMainWorktree(tree)
   const detached = tree.branch === '(detached)'
   const busy = !!tree.operation
   const primary = busy ? null : primaryAction(tree)
