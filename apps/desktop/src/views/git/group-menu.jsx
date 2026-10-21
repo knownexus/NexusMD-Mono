@@ -1,29 +1,36 @@
 import React from 'react'
 import { PlModal } from '@nexusmd/ui'
+import { PopoverMenu } from './popover-menu.jsx'
 
-// Edit / rename / duplicate / delete for one group. onRename/onDuplicate return an error message or null.
-export function GroupMenu({ name, onClose, onEdit, onRename, onDuplicate, onDelete, editBusy = null }) {
-  const [mode, setMode] = React.useState('menu')
-  const [value, setValue] = React.useState('')
+/** The ⋯ menu beside the active custom group's tab; each item opens its own small dialog. */
+export function GroupMenuButton({ name, editBusy = null, onEdit, onOpen }) {
+  return (
+    <PopoverMenu label="⋯" align="left" buttonClassName="nx-gw-icon-btn" menuLabel={`Group options for ${name}`}
+      buttonProps={{ 'aria-label': `Group options for ${name}`, title: 'Group options' }}
+      items={[
+        { label: 'Edit members…', onSelect: onEdit, disabled: !!editBusy, reason: editBusy ?? undefined },
+        { label: 'Rename…', onSelect: () => onOpen('rename') },
+        { label: 'Duplicate…', onSelect: () => onOpen('duplicate') },
+        { label: 'Delete…', onSelect: () => onOpen('delete'), danger: true },
+      ]} />
+  )
+}
+
+// Rename / duplicate / delete for one group. onRename/onDuplicate return an error message or null.
+export function GroupMenu({ name, mode, onClose, onRename, onDuplicate, onDelete }) {
+  const [value, setValue] = React.useState(mode === 'duplicate' ? `${name} copy` : name)
   const [error, setError] = React.useState(null)
   const submit = fn => { const e = fn(value); if (e) setError(e); else onClose() }
-  const footer = mode === 'menu' ? null
-    : mode === 'delete'
-      ? <><button className="btn sm ghost" onClick={onClose}>Cancel</button><button className="btn sm danger" onClick={() => { onDelete(); onClose() }}>Delete group</button></>
-      : <><button className="btn sm ghost" onClick={onClose}>Cancel</button><button className="btn sm" onClick={() => submit(mode === 'rename' ? onRename : onDuplicate)}>Save</button></>
+  const footer = mode === 'delete'
+    ? <><button className="btn sm ghost" onClick={onClose}>Cancel</button><button className="btn sm danger" onClick={() => { onDelete(); onClose() }}>Delete group</button></>
+    : <><button className="btn sm ghost" onClick={onClose}>Cancel</button><button className="btn sm" onClick={() => submit(mode === 'rename' ? onRename : onDuplicate)}>Save</button></>
+  const title = { rename: `Rename ${name}`, duplicate: `Duplicate ${name}`, delete: `Delete ${name}` }[mode]
   return (
-    <PlModal open onClose={onClose} title={name} icon="git-branch" footer={footer}>
-      {mode === 'menu' && (
+    <PlModal open onClose={onClose} title={title} icon="git-branch" footer={footer}>
+      {mode !== 'delete' && (
         <div style={{ display: 'grid', gap: 6 }}>
-          <button className="btn sm ghost" title={editBusy ?? undefined} disabled={!!editBusy} onClick={() => { onEdit(); onClose() }}>Edit members…</button>
-          <button className="btn sm ghost" onClick={() => { setValue(name); setMode('rename') }}>Rename…</button>
-          <button className="btn sm ghost" onClick={() => { setValue(`${name} copy`); setMode('duplicate') }}>Duplicate…</button>
-          <button className="btn sm ghost" onClick={() => setMode('delete')}>Delete…</button>
-        </div>
-      )}
-      {(mode === 'rename' || mode === 'duplicate') && (
-        <div style={{ display: 'grid', gap: 6 }}>
-          <input aria-label="New group name" value={value} onChange={e => setValue(e.target.value)} />
+          <input aria-label="New group name" autoFocus value={value} onChange={e => setValue(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') submit(mode === 'rename' ? onRename : onDuplicate) }} />
           {error && <div role="alert" style={{ color: 'var(--danger)' }}>{error}</div>}
         </div>
       )}

@@ -1,31 +1,28 @@
 import React from 'react'
 
-// Same props as before. `busy` (a reason string) disables New group until there is something to pick from.
-export function GroupTabs({ tabs, active, onSelect, onNew, onMenu, busy = null }) {
+const repos = n => `${n} ${n === 1 ? 'repo' : 'repos'}`
+
+// A segmented control; each tab reads "Label  N repos". `busy` (a reason string) disables + Group until there is something to pick from.
+export function GroupTabs({ tabs, active, onSelect, onNew, busy = null }) {
   const strip = React.useRef(null)
   const refs = React.useRef({})
-  // Keep the active pill visible when the strip overflows (scrollLeft, not scrollIntoView).
+  // Keep the active tab visible when the strip overflows (scrollLeft, not scrollIntoView).
   React.useEffect(() => {
     const el = refs.current[active], box = strip.current
     if (!el || !box) return
     if (el.offsetLeft < box.scrollLeft) box.scrollLeft = el.offsetLeft
     else if (el.offsetLeft + el.offsetWidth > box.scrollLeft + box.clientWidth) box.scrollLeft = el.offsetLeft + el.offsetWidth - box.clientWidth
   }, [active])
-  const activeTab = tabs.find(t => t.name === active)
   return (
-    <div className="nx-pills">
-      <div ref={strip} role="tablist" aria-label="Project groups" className="nx-pills" style={{ flexWrap: 'nowrap', overflowX: 'auto', minWidth: 0 }}>
+    <div className="nx-gw-seg" style={{ minWidth: 0, maxWidth: '100%', flex: '0 1 auto' }}>
+      <div ref={strip} role="tablist" aria-label="Project groups" style={{ display: 'flex', gap: 2, overflowX: 'auto', minWidth: 0 }} className="nx-gw-seg-tabs">
         {tabs.map(t => (
-          <button key={t.name} ref={el => { refs.current[t.name] = el }} role="tab" aria-selected={t.name === active} className="nx-pill"
-            onClick={() => onSelect(t.name)} onContextMenu={e => { if (t.editable) { e.preventDefault(); onMenu(t.name) } }}>
-            {t.name}{t.count > 0 && <span className="n">{t.count}</span>}
+          <button key={t.name} ref={el => { refs.current[t.name] = el }} type="button" role="tab" aria-selected={t.name === active} onClick={() => onSelect(t.name)}>
+            {t.name}<span className="n">{repos(t.repos)}</span>
           </button>
         ))}
       </div>
-      <button className="nx-link" aria-label="New group" title={busy ?? undefined} disabled={!!busy} onClick={onNew} style={{ marginLeft: 6 }}>+ New group</button>
-      {activeTab?.editable && (
-        <button className="nx-link" style={{ color: 'var(--text-muted)' }} aria-label={`Group options for ${activeTab.name}`} onClick={() => onMenu(activeTab.name)}>Edit group</button>
-      )}
+      <button type="button" className="nx-gw-plus" aria-label="New group" title={busy ?? undefined} disabled={!!busy} onClick={onNew}>+ Group</button>
     </div>
   )
 }

@@ -1,19 +1,22 @@
 import React from 'react'
 import {
-  ALL_PROJECTS, findGroup, scopeSnapshot, changeCount, renameGroup, duplicateGroup, deleteGroup, worktreeId, pruneSelection, commitTargets,
-  actionTargets,
+  ALL_PROJECTS, findGroup, scopeSnapshot, renameGroup, duplicateGroup, deleteGroup, worktreeId, pruneSelection, commitTargets,
+  actionTargets, branchState,
 } from '@nexusmd/core'
 import { setGitConfig, getGitConfig, effectiveRoots, effectiveDotfiles } from '../../git-config.js'
 import { useGitConfig } from './use-git-config.js'
 import { useGitSnapshot } from './use-git-snapshot.js'
 import { GroupTabs } from './group-tabs.jsx'
-import { RepoCards, GitSummary } from './repo-cards.jsx'
+import { RepoCards } from './repo-cards.jsx'
+import { FilterChips, BranchSearch } from './filter-chips.jsx'
+import { BranchSwitcher } from './branch-switcher.jsx'
+import { allFetchedText } from './fetched-ago.js'
 import { WorktreeDetail } from './worktree-detail.jsx'
 import { WorktreePanel } from './worktree-panel.jsx'
 import { HistoryPanel } from './history-panel.jsx'
 import { useGitSync } from './use-git-sync.js'
 import { ActionDialog, ActivityDrawer } from './action-dialog.jsx'
-import { GroupMenu } from './group-menu.jsx'
+import { GroupMenu, GroupMenuButton } from './group-menu.jsx'
 import { GroupEditor } from './group-editor.jsx'
 import { useGitActions, ipcMessage } from './use-git-actions.js'
 import { ReviewDialog } from './review-dialog.jsx'
@@ -46,8 +49,14 @@ function GitWorkspace({ adapter }) {
   const config = useGitConfig()
   const registered = React.useMemo(() => config.repos.map(r => r.path), [config.repos])
   const [gitVersion, setGitVersion] = React.useState(undefined)
+  // A group dialog from the ⋯ menu: { name, mode: rename | duplicate | delete }.
   const [menuFor, setMenuFor] = React.useState(null)
   const [editing, setEditing] = React.useState(null)
+  // The branch list's chip (a BRANCH_FILTERS id) and its word-start filter text.
+  const [filter, setFilter] = React.useState('all')
+  const [query, setQuery] = React.useState('')
+  const [switcher, setSwitcher] = React.useState(false)
+  const searchRef = React.useRef(null)
   // Per worktree, for this session: which changes are ticked and which one shows its diff.
   const [selections, setSelections] = React.useState({})
   const [focus, setFocus] = React.useState({})
@@ -76,9 +85,15 @@ function GitWorkspace({ adapter }) {
   const editingGroup = editing?.name ? config.groups.find(g => g.name === editing.name) ?? null : null
   const group = findGroup(config, view.group)
   const scoped = scopeSnapshot(snapshot, group)
+  // A group's repositories: whole ones it names, and those holding a worktree or branch it picked.
+  const repoCount = g => {
+    if (!g) return config.repos.length
+    const named = new Set([...g.repos, ...g.branches.map(b => b.repo), ...scopeSnapshot(snapshot, g).worktrees.map(t => t.repo)])
+    return config.repos.filter(r => named.has(r.name)).length
+  }
   const tabs = [
-    { name: ALL_PROJECTS, count: changeCount(snapshot, null), editable: false },
-    ...config.groups.map(g => ({ name: g.name, count: changeCount(snapshot, g), editable: true })),
+    { name: ALL_PROJECTS, repos: repoCount(null), editable: false },
+    ...config.groups.map(g => ({ name: g.name, repos: repoCount(g), editable: true })),
   ]
   const setView = patch => setGitConfig({ view: { ...getGitConfig().view, ...patch } })
   const selectedTree = scoped.worktrees.find(t => worktreeId(t) === view.selected)
@@ -91,6 +106,15 @@ function GitWorkspace({ adapter }) {
   const editBusy = snapshot ? null : 'Loading repositories…'
   const roots = effectiveRoots(config)
   const tryName = fn => value => { try { save(fn(getGitConfig(), value)); return null } catch (e) { return e.message } }
+
+  // Pull all fast-forwards the branches that are behind with nothing local in the way.
+  const pullable = scoped.worktrees.filter(t => { const s = branchState(t); return !t.error && s.behind && !s.changed && !s.busy && t.upstream && !t.upstreamGone })
+  // The targets are fixed when the dialog opens, so pulled rows stay listed with their result.
+  const pullAll = () => sync.open('pull', actionTargets('pull', pullable, null), { mode: 'ff', batch: true })
+  const fetchedText = allFetchedText(scoped.worktrees)
+  const headStatus = snapshot && stale ? `As of ${readAt(snapshot.takenAt)} · refreshing…` : loading ? 'Refreshing…'
+    : fetchedText ?? (snapshot ? `Updated ${readAt(snapshot.takenAt)}` : '')
+  const activeTab = tabs.find(t => t.name === (group ? group.name : ALL_PROJECTS))
 
   const openCommit = (tickedIds = null, messages = {}) => setCommitting({ id: ++commits.current, tickedIds, messages })
   const commitList = committing
@@ -126,42 +150,58 @@ function GitWorkspace({ adapter }) {
   }
 
   const listHidden = view.list === 'hidden'
+  const selectTree = s => { if (s.id !== view.selected && mayLeave()) setView({ selected: s.id }) }
   return (
     <div className="nx-shell">
-    <div className="nx-page">
-      <header className="nx-head">
-        <div>
-          <div className="nx-eyebrow">Workspace</div>
-          <h2 className="nx-title">Git Workspace</h2>
+    <div className="nx-gw-page">
+      <header className="nx-gw-head">
+        <div className="nx-gw-head-row">
+          <h2 className="nx-gw-title">Git Workspace</h2>
+          <GroupTabs tabs={tabs} active={activeTab?.name ?? ALL_PROJECTS}
+            onSelect={name => { if (mayLeave()) setView({ group: name, selected: null }) }}
+            onNew={() => setEditing({ name: null })} busy={editBusy} />
+          {activeTab?.editable && (
+            <GroupMenuButton name={activeTab.name} editBusy={editBusy} onEdit={() => setEditing({ name: activeTab.name })}
+              onOpen={mode => setMenuFor({ name: activeTab.name, mode })} />
+          )}
+          <span className="nx-gw-spacer" />
+          {headStatus && <span className="nx-gw-status"><span className="nx-gw-dot" data-tone={loading || stale ? 'info' : 'ok'} />{headStatus}</span>}
+          <button type="button" className="nx-gw-jumpbtn" disabled={!scoped.worktrees.length} onClick={() => setSwitcher(true)}>
+            Jump to branch…<span className="kbd">Ctrl K</span>
+          </button>
+          <button className="btn sm ghost" title="git fetch --all --prune in every repository" disabled={!scoped.worktrees.length} onClick={() => sync.open('fetch', actionTargets('fetch', scoped.worktrees, null))}>Fetch all</button>
+          <button className="btn sm accent" title={pullable.length ? "Fast-forwards every branch that's behind and has no local changes" : 'No branch is behind with nothing local in the way'}
+            disabled={!pullable.length} onClick={pullAll}>{`Pull all (${pullable.length})`}</button>
         </div>
-        <div className="nx-head-actions">
-          <span className="nx-subtle" style={{ fontSize: 12 }}>
-            {snapshot && stale ? `As of ${readAt(snapshot.takenAt)} · refreshing…` : loading ? 'Refreshing…' : snapshot ? `Updated ${readAt(snapshot.takenAt)}` : ''}
-          </span>
+        <div className="nx-gw-head-row">
+          <BranchSearch ref={searchRef} value={query} onChange={setQuery} />
+          <span className="nx-gw-divider" />
+          <span className="nx-gw-show">Show</span>
+          <FilterChips trees={scoped.worktrees} value={filter} onChange={setFilter} />
+          <span className="nx-gw-spacer" />
           <button className="btn sm ghost" aria-pressed={!listHidden} title={listHidden ? 'Show the repository list beside the details' : 'Hide the repository list to give the details the full width'}
             onClick={() => setView({ list: listHidden ? 'shown' : 'hidden' })}>{listHidden ? 'Show repositories' : 'Hide repositories'}</button>
-          <button className="btn sm ghost" aria-label="Refresh" onClick={refresh}>Refresh</button>
-          <button className="btn sm ghost" title="git fetch --all --prune" disabled={!scoped.worktrees.length} onClick={() => sync.open('fetch', actionTargets('fetch', scoped.worktrees, null))}>Fetch all</button>
-          <button className="btn sm" title="git pull --ff-only in every worktree" disabled={!scoped.worktrees.length} onClick={() => sync.open('pull', actionTargets('pull', scoped.worktrees, null), { mode: 'ff', batch: true })}>Pull all</button>
+          <button className="btn sm ghost" aria-label="Refresh" title="Read every repository's state again" onClick={refresh}>Refresh</button>
         </div>
       </header>
 
-      <GroupTabs tabs={tabs} active={group ? group.name : ALL_PROJECTS}
-        onSelect={name => { if (mayLeave()) setView({ group: name, selected: null }) }}
-        onNew={() => setEditing({ name: null })} onMenu={setMenuFor} busy={editBusy} />
+      <div className="nx-gw-alerts">
+        {error && card(error, 'alert')}
+        {!config.repos.length && card(roots.length
+          ? `No repositories registered yet. Pick them in Settings → Desktop → Git Workspace, which lists the repositories found in ${roots.join('; ')}.`
+          : 'No repositories registered yet. Add them in Settings → Desktop → Git Workspace.')}
+      </div>
 
-      {snapshot && <GitSummary worktrees={scoped.worktrees} />}
-      {error && card(error, 'alert')}
-      {!config.repos.length && card(roots.length
-        ? `No repositories registered yet. Pick them in Settings → Desktop → Git Workspace, which lists the repositories found in ${roots.join('; ')}.`
-        : 'No repositories registered yet. Add them in Settings → Desktop → Git Workspace.')}
-
-      <div className="nx-split" data-list={listHidden ? 'hidden' : 'shown'}>
-        {!listHidden && <RepoCards repos={config.repos} scoped={scoped} errors={snapshot?.errors || []} collapsed={view.collapsed}
-          onToggleRepo={name => setView({ collapsed: view.collapsed.includes(name) ? view.collapsed.filter(n => n !== name) : [...view.collapsed, name] })}
-          onSetCollapsed={collapsed => setView({ collapsed })}
-          selected={view.selected} onSelect={s => { if (s.id !== view.selected && mayLeave()) setView({ selected: s.id }) }} />}
-        <aside aria-label="Details" className="card nx-panel">
+      <div className="nx-gw-body" data-list={listHidden ? 'hidden' : 'shown'}>
+        {!listHidden && (
+          <nav aria-label="Branches" className="nx-gw-aside">
+            <RepoCards repos={config.repos} scoped={scoped} errors={snapshot?.errors || []} collapsed={view.collapsed}
+              onToggleRepo={name => setView({ collapsed: view.collapsed.includes(name) ? view.collapsed.filter(n => n !== name) : [...view.collapsed, name] })}
+              onSetCollapsed={collapsed => setView({ collapsed })}
+              selected={view.selected} onSelect={selectTree} />
+          </nav>
+        )}
+        <aside aria-label="Details" className="nx-gw-main">
           {selectedTree
             ? (
               <WorktreePanel ref={panelRef} adapter={adapter} repo={{ name: selectedTree.repo, path: selectedTree.repoRoot }} registered={registered}
@@ -185,26 +225,30 @@ function GitWorkspace({ adapter }) {
         </aside>
       </div>
 
+      {switcher && (
+        <BranchSwitcher trees={scoped.worktrees} selected={view.selected} onClose={() => setSwitcher(false)}
+          onOpen={t => { setSwitcher(false); selectTree({ kind: 'worktree', id: worktreeId(t) }) }} />
+      )}
+
       <ActivityDrawer sync={sync} />
       <ActionDialog sync={sync} adapter={adapter} registered={registered} />
       {menuFor && (
-        <GroupMenu name={menuFor} onClose={() => setMenuFor(null)} editBusy={editBusy}
-          onEdit={() => setEditing({ name: menuFor })}
+        <GroupMenu key={`${menuFor.name}|${menuFor.mode}`} name={menuFor.name} mode={menuFor.mode} onClose={() => setMenuFor(null)}
           onRename={value => {
             try {
               const cfg = getGitConfig()
-              const next = renameGroup(cfg, menuFor, value)
+              const next = renameGroup(cfg, menuFor.name, value)
               const renamed = next.groups.find(g => g.name.toLowerCase() === value.trim().toLowerCase())
               setGitConfig({ repos: next.repos, groups: next.groups,
-                view: cfg.view.group === menuFor ? { ...cfg.view, group: renamed ? renamed.name : value.trim() } : cfg.view })
+                view: cfg.view.group === menuFor.name ? { ...cfg.view, group: renamed ? renamed.name : value.trim() } : cfg.view })
               return null
             } catch (e) { return e.message }
           }}
-          onDuplicate={tryName((cfg, value) => duplicateGroup(cfg, menuFor, value))}
+          onDuplicate={tryName((cfg, value) => duplicateGroup(cfg, menuFor.name, value))}
           onDelete={() => {
-            if (view.group === menuFor && !mayLeave()) return
-            save(deleteGroup(getGitConfig(), menuFor))
-            if (view.group === menuFor) setView({ group: ALL_PROJECTS, selected: null })
+            if (view.group === menuFor.name && !mayLeave()) return
+            save(deleteGroup(getGitConfig(), menuFor.name))
+            if (view.group === menuFor.name) setView({ group: ALL_PROJECTS, selected: null })
           }} />
       )}
       <GroupEditor open={!!editing} config={config} snapshot={snapshot} existing={editingGroup}

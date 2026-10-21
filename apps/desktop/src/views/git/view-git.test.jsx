@@ -39,14 +39,14 @@ async function openGroupMenu(name) {
 }
 
 describe('ViewGit', () => {
-  it('shows group tabs with change counts and filters the repos by group', async () => {
+  it('shows group tabs with repository counts and filters the repos by group', async () => {
     configure()
     render(<ViewGit adapters={{ git: adapter() }} />)
     const tabs = await screen.findByRole('tablist', { name: 'Project groups' })
-    expect(await within(tabs).findByRole('tab', { name: 'Registered repos 2' })).toBeTruthy()
-    expect(within(tabs).getByRole('tab', { name: 'Only B 1' })).toBeTruthy()
+    expect(await within(tabs).findByRole('tab', { name: 'Registered repos 3 repos' })).toBeTruthy()
+    expect(within(tabs).getByRole('tab', { name: 'Only B 1 repo' })).toBeTruthy()
     expect(screen.getByRole('region', { name: 'A' })).toBeTruthy()
-    fireEvent.click(within(tabs).getByRole('tab', { name: 'Only B 1' }))
+    fireEvent.click(within(tabs).getByRole('tab', { name: 'Only B 1 repo' }))
     expect(screen.queryByRole('region', { name: 'A' })).toBeNull()
     expect(screen.getByRole('region', { name: 'B' })).toBeTruthy()
     expect(getGitConfig().view.group).toBe('Only B')
@@ -76,7 +76,7 @@ describe('ViewGit', () => {
     configure()
     render(<ViewGit adapters={{ git: adapter() }} />)
     await openGroupMenu('Only B')
-    fireEvent.click(screen.getByRole('button', { name: 'Delete…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }))
     fireEvent.click(screen.getByRole('button', { name: 'Delete group' }))
     expect(getGitConfig().groups).toEqual([])
   })
@@ -94,7 +94,7 @@ describe('ViewGit', () => {
     render(<ViewGit adapters={{ git: adapter() }} />)
     await screen.findByRole('region', { name: 'A' })
     await openGroupMenu('Only B')
-    fireEvent.click(screen.getByRole('button', { name: 'Edit members…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit members…' }))
     await screen.findByLabelText('Group name')
     setGitConfig({ view: { ...getGitConfig().view, collapsed: ['A'] } })
     fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'Renamed B' } })
@@ -106,9 +106,9 @@ describe('ViewGit', () => {
     configure()
     render(<ViewGit adapters={{ git: adapter() }} />)
     const tabs = await screen.findByRole('tablist', { name: 'Project groups' })
-    fireEvent.click(within(tabs).getByRole('tab', { name: 'Only B 1' }))
+    fireEvent.click(within(tabs).getByRole('tab', { name: 'Only B 1 repo' }))
     fireEvent.click(screen.getByRole('button', { name: 'Group options for Only B' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Rename…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
     fireEvent.change(screen.getByLabelText('New group name'), { target: { value: 'Team B' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(getGitConfig().view.group).toBe('Team B')
@@ -124,7 +124,7 @@ describe('ViewGit', () => {
     expect(plus.disabled).toBe(true)
     expect(plus.title).toBe('Loading repositories…')
     await openGroupMenu('Only B')
-    const edit = screen.getByRole('button', { name: 'Edit members…' })
+    const edit = screen.getByRole('menuitem', { name: 'Edit members…' })
     expect(edit.disabled).toBe(true)
     expect(edit.title).toBe('Loading repositories…')
     fireEvent.click(edit)
@@ -142,7 +142,7 @@ describe('ViewGit', () => {
     await screen.findByRole('region', { name: 'A' })
     await waitFor(() => expect(screen.queryByText('Refreshing…')).toBeNull())
     await openGroupMenu('Only B')
-    fireEvent.click(screen.getByRole('button', { name: 'Edit members…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit members…' }))
     fireEvent.change(await screen.findByLabelText('Group name'), { target: { value: 'Renamed B' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(loadsOfA(a)).toBe(2))
@@ -173,6 +173,59 @@ describe('ViewGit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stage' }).disabled).toBe(true))
     expect(screen.getByText('No changes.')).toBeTruthy()
+  })
+})
+
+describe('ViewGit header', () => {
+  const BEHIND = '# branch.oid a\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +0 -2\0'
+
+  it('counts only branches behind with nothing local for Pull all, and pulls just those', async () => {
+    configure()
+    const preview = vi.fn(async () => ({ eligible: true, details: { behind: 2, ahead: 0, asOf: 'now', incoming: [] }, programs: [], stamp: 's' }))
+    const a = adapter({
+      status: vi.fn(async repo => ({ porcelain: repo.name === 'B' ? BEHIND : porcelain, operation: '', rebasingBranch: null, fetchedAt: null })),
+      preview,
+    })
+    render(<ViewGit adapters={{ git: a }} />)
+    const pull = await screen.findByRole('button', { name: 'Pull all (1)' })
+    fireEvent.click(pull)
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(preview).toHaveBeenCalled())
+    expect(preview.mock.calls.map(c => c[0].name)).toEqual(['B'])
+    expect(within(dialog).getByRole('list', { name: 'Targets' }).children).toHaveLength(1)
+  })
+
+  it('disables Pull all when nothing qualifies', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter() }} />)
+    expect((await screen.findByRole('button', { name: 'Pull all (0)' })).disabled).toBe(true)
+  })
+
+  it('jumps to a branch by the start of its words', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter() }} />)
+    await screen.findByRole('region', { name: 'A' })
+    fireEvent.click(screen.getByRole('button', { name: /Jump to branch/ }))
+    const box = screen.getByRole('combobox', { name: 'Branch name' })
+    fireEvent.change(box, { target: { value: 'b ma' } })
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+    fireEvent.change(box, { target: { value: 'ain' } })
+    expect(screen.queryAllByRole('option')).toHaveLength(0)
+    fireEvent.change(box, { target: { value: 'b' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(getGitConfig().view.selected).toBe('C:/repos/B')
+  })
+
+  it('offers the group menu as a popover for custom groups only', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter() }} />)
+    await screen.findByRole('region', { name: 'A' })
+    expect(screen.queryByRole('button', { name: /Group options/ })).toBeNull()
+    await openGroupMenu('Only B')
+    const menu = screen.getByRole('menu', { name: 'Group options for Only B' })
+    expect(within(menu).getAllByRole('menuitem').map(m => m.textContent)).toEqual(['Edit members…', 'Rename…', 'Duplicate…', 'Delete…'])
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })
 

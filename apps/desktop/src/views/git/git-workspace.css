@@ -14,16 +14,54 @@
 .nx-gw-t[data-tone="muted"] { color: var(--text-muted); }
 .nx-gw-t[data-strong] { font-weight: 600; }
 
+/* page: header, then the branch list beside the details, then the command dock */
+.nx-gw-page { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg); container: nx-page / inline-size; }
+.nx-gw-alerts { flex: none; display: grid; gap: 8px; padding: 12px 24px 0; }
+.nx-gw-alerts:empty { display: none; }
+.nx-gw-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 330px minmax(0, 1fr); }
+.nx-gw-body[data-list="hidden"] { grid-template-columns: minmax(0, 1fr); }
+.nx-gw-aside { min-height: 0; overflow: auto; padding: 12px 10px 24px; border-right: 1px solid var(--border); background: var(--bg); }
+.nx-gw-main { min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+@container nx-page (max-width: 720px) {
+  .nx-gw-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 40%) minmax(0, 1fr); }
+  .nx-gw-aside { border-right: 0; border-bottom: 1px solid var(--border); }
+}
+
 /* header */
 .nx-gw-head { display: flex; flex-direction: column; gap: 12px; padding: 14px 24px 12px; background: var(--surface); border-bottom: 1px solid var(--border); }
 .nx-gw-head-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; }
 .nx-gw-head-row > * { flex: none; white-space: nowrap; }
 .nx-gw-seg { display: flex; gap: 2px; padding: 3px; background: var(--surface-2); border-radius: var(--radius); }
-.nx-gw-seg > button { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer; }
-.nx-gw-seg > button[aria-selected="true"], .nx-gw-seg > button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+.nx-gw-seg > button, .nx-gw-seg-tabs > button { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.nx-gw-seg > button[aria-selected="true"], .nx-gw-seg > button[aria-pressed="true"], .nx-gw-seg-tabs > button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
 .nx-gw-seg .n { font-size: 11px; color: var(--text-muted); }
 .nx-gw-seg.sm { padding: 2px; border-radius: var(--radius-sm); }
 .nx-gw-seg.sm > button { height: 22px; padding: 0 9px; font-size: 11.5px; border-radius: 4px; }
+
+.nx-gw-title { margin: 0; font: 600 20px/1.2 var(--font-heading, 'Cinzel', Georgia, serif); color: var(--text); letter-spacing: .03em; }
+.nx-gw-plus, .nx-gw-seg > .nx-gw-plus { height: 26px; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--accent); font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.nx-gw-seg > .nx-gw-plus:hover:not([disabled]) { background: var(--surface-3); }
+.nx-gw-plus[disabled] { opacity: .5; cursor: default; }
+.nx-gw-icon-btn { height: 30px; min-width: 30px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font-size: 16px; line-height: 1; cursor: pointer; }
+.nx-gw-icon-btn:hover { background: var(--surface-2); color: var(--text); }
+.nx-gw-spacer { flex: 1 1 0 !important; min-width: 0; }
+.nx-gw-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.nx-gw-jumpbtn { display: inline-flex; align-items: center; gap: 8px; min-width: 180px; height: 30px; padding: 0 8px 0 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text-muted); font-size: 12.5px; cursor: pointer; }
+.nx-gw-jumpbtn:hover { border-color: var(--border-strong); }
+.nx-gw-jumpbtn .kbd { margin-left: auto; }
+.nx-gw-divider { width: 1px; height: 18px; background: var(--border); }
+.nx-gw-show { font-size: 12px; color: var(--text-muted); }
+
+/* Ctrl+K / Ctrl+P palette */
+.nx-gw-palette .nx-gw-pal-input { width: 100%; height: 46px; padding: 0 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); font-size: 14px; outline: none; }
+.nx-gw-palette .nx-gw-pal-input:focus { border-color: var(--accent); }
+.nx-gw-pal-list { max-height: 360px; overflow: auto; display: grid; gap: 1px; }
+.nx-gw-pal-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--radius-sm); cursor: pointer; }
+.nx-gw-pal-row[aria-selected="true"] { background: var(--accent-soft); }
+.nx-gw-pal-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.nx-gw-pal-main .b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-gw-pal-main .d { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nx-gw-pal-meta { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
 
 /* filter chips */
 .nx-gw-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }

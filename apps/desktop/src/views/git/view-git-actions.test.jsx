@@ -386,7 +386,7 @@ describe('editing files', () => {
     const view = await editorFor('f.txt')
     act(() => { view.dispatch({ changes: { from: 0, insert: 'mine ' } }) })
     fireEvent.click(screen.getByRole('button', { name: 'Group options for Mine' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit members…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit members…' }))
     fireEvent.change(await screen.findByLabelText('Group name'), { target: { value: 'Mine 2' } })
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const dialog = screen.getByRole('dialog')
