@@ -56,7 +56,7 @@ export function AttentionOverview({ trees, repoCount, onOpen, onAction, onPullAl
                 </button>
                 <div className="nx-gw-attn-actions">
                   <button className="btn sm ghost" onClick={() => onOpen(t)}>Open</button>
-                  <button className={`btn sm${a.kind === 'resolve' ? ' danger' : ''}`} style={{ fontWeight: 600 }} onClick={() => onAction(a.kind, t)}>{a.label}</button>
+                  <button className={`btn sm ${a.kind === 'resolve' ? 'danger' : 'accent'}`} style={{ fontWeight: 600 }} onClick={() => onAction(a.kind, t)}>{a.label}</button>
                 </div>
               </div>
             )

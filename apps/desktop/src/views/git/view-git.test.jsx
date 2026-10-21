@@ -247,6 +247,64 @@ describe('ViewGit header', () => {
   })
 })
 
+describe('ViewGit overview', () => {
+  const head = (ab, upstream = '# branch.upstream origin/main\0') => `# branch.oid a\0# branch.head main\0${upstream}# branch.ab ${ab}\0`
+  const STAGED = '1 M. N... 100644 100644 100644 a a s.txt\0'
+  function withStatus(byRepo, extra = {}) {
+    configure()
+    const a = adapter({
+      status: vi.fn(async repo => ({ porcelain: byRepo[repo.name], operation: '', rebasingBranch: null, fetchedAt: null })),
+      preview: vi.fn(async () => ({ eligible: true, details: null, programs: [], stamp: 's' })),
+      stamp: vi.fn(async () => 'stamp-1'),
+      ...extra,
+    })
+    render(<ViewGit adapters={{ git: a }} />)
+    return a
+  }
+
+  it('lists what needs attention when nothing is selected, and opens a branch on its changes', async () => {
+    withStatus({ A: porcelain, B: head('+0 -2') })
+    expect(await screen.findByRole('heading', { name: '2 branches need attention' })).toBeTruthy()
+    const changes = screen.getByRole('region', { name: 'Uncommitted work' })
+    fireEvent.click(within(changes).getByRole('button', { name: 'Review & commit' }))
+    expect(getGitConfig().view.selected).toBe('C:/repos/A')
+    expect(getGitConfig().view.panel).toBe('changes')
+    expect(screen.queryByRole('heading', { name: /need attention/ })).toBeNull()
+  })
+
+  it('pulls one branch from the overview through the pull preview', async () => {
+    const a = withStatus({ A: head('+0 -0'), B: head('+0 -2') })
+    fireEvent.click(await screen.findByRole('button', { name: 'Pull ↓2' }))
+    await waitFor(() => expect(a.preview).toHaveBeenCalled())
+    expect(a.preview.mock.calls[0][0].name).toBe('B')
+    expect(a.preview.mock.calls[0][3]).toBe('pull')
+    expect(a.preview.mock.calls[0][4]).toEqual({ mode: 'ff' })
+  })
+
+  it('publishes an unpublished branch as a push that sets the upstream', async () => {
+    const a = withStatus({ A: head('+0 -0'), B: '# branch.oid a\0# branch.head main\0' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }))
+    await waitFor(() => expect(a.preview).toHaveBeenCalled())
+    expect(a.preview.mock.calls[0][3]).toBe('push')
+    expect(a.preview.mock.calls[0][4]).toEqual({ setUpstream: true })
+  })
+
+  it('commits across branches with every worktree that has staged files ticked', async () => {
+    withStatus({ A: head('+0 -0') + STAGED, B: head('+0 -0') + STAGED })
+    fireEvent.click(await screen.findByRole('button', { name: 'Commit across branches (2)…' }))
+    const dialog = screen.getByRole('dialog')
+    const boxes = within(within(dialog).getByRole('group', { name: 'Worktrees' })).getAllByRole('checkbox')
+    expect(boxes).toHaveLength(2)
+    expect(boxes.every(b => b.checked)).toBe(true)
+  })
+
+  it('says so when nothing needs attention', async () => {
+    withStatus({ A: head('+0 -0'), B: head('+0 -0') })
+    expect(await screen.findByRole('heading', { name: 'All caught up' })).toBeTruthy()
+    expect(screen.getByText(/Nothing needs you right now/)).toBeTruthy()
+  })
+})
+
 describe('ViewGit repository list', () => {
   it('hides the repository list to give the details the full width, and remembers it', async () => {
     configure()

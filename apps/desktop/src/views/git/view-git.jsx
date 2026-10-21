@@ -10,6 +10,7 @@ import { GroupTabs } from './group-tabs.jsx'
 import { BranchList } from './branch-list.jsx'
 import { FilterChips, BranchSearch } from './filter-chips.jsx'
 import { BranchSwitcher } from './branch-switcher.jsx'
+import { AttentionOverview } from './attention-overview.jsx'
 import { allFetchedText } from './fetched-ago.js'
 import { WorktreeDetail } from './worktree-detail.jsx'
 import { WorktreePanel } from './worktree-panel.jsx'
@@ -151,6 +152,15 @@ function GitWorkspace({ adapter }) {
 
   const listHidden = view.list === 'hidden'
   const selectTree = s => { if (s.id !== view.selected && mayLeave()) setView({ selected: s.id }) }
+  // From the overview: open a worktree on its Changes, or run the action that moves it forward.
+  const openTree = t => { if (mayLeave()) setView({ selected: worktreeId(t), panel: 'changes' }) }
+  const overviewAction = (kind, t) => {
+    const id = worktreeId(t)
+    if (kind === 'resolve' || kind === 'review') openTree(t)
+    else if (kind === 'pull') sync.open('pull', actionTargets('pull', [t], id), { mode: 'ff' })
+    else if (kind === 'push') sync.open('push', actionTargets('push', [t], id), {})
+    else if (kind === 'publish') sync.open('push', actionTargets('push', [t], id), { setUpstream: true })
+  }
   return (
     <div className="nx-shell">
     <div className="nx-gw-page">
@@ -216,11 +226,17 @@ function GitWorkspace({ adapter }) {
                 onSync={(kind, options) => sync.open(kind, actionTargets(kind, [selectedTree], treeKey), options)}
                 onExec={exec} onSaved={() => reload([selectedTree.repo])} />
             )
-            : (
+            : selectedBranch
+            ? (
               <div style={{ padding: 16 }}>
                 <BranchHistory adapter={adapter} branch={selectedBranch} repos={config.repos} worktrees={snapshot?.worktrees ?? []}
                   registered={registered} split={view.split} onSplit={split => setView({ split })} />
               </div>
+            )
+            : snapshot && (
+              <AttentionOverview trees={scoped.worktrees} repoCount={new Set(scoped.worktrees.map(t => t.repo)).size}
+                onOpen={openTree} onAction={overviewAction} onPullAll={pullAll}
+                onCommitAcross={() => openCommit(commitTargets(scoped.worktrees, null).filter(t => !t.unavailable).map(t => t.id))} />
             )}
         </aside>
       </div>
