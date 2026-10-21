@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, within, waitFor, act } from '@testing-library/react'
+import { EditorView } from 'codemirror'
 import { ViewGit } from './view-git.jsx'
-import { setGitConfig } from '../../git-config.js'
+import { setGitConfig, getGitConfig } from '../../git-config.js'
 import { clearGitSnapshotCache } from './use-git-snapshot.js'
+import { clearWorktreeDrafts } from './use-worktree-file.js'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); clearWorktreeDrafts() })
 beforeEach(() => { localStorage.clear(); clearGitSnapshotCache() })
 
 const DIRTY = '# branch.oid a\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +0 -0\x001 .M N... 100644 100644 100644 a a f.txt\0? new.txt\0'
@@ -224,5 +226,303 @@ describe('file actions', () => {
     await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Commit' }).disabled).toBe(false))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Commit' }))
     await waitFor(() => expect(a.commit).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, 'Ship it', 'stamp-1'))
+  })
+})
+
+describe('editing files', () => {
+  const NINE_PLUS = Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join('\n') + '\n'
+  const files = () => ({
+    readFile: vi.fn(async () => ({ text: NINE_PLUS, bom: false, stamp: 'f1' })),
+    writeFile: vi.fn(async () => ({ ok: true, stamp: 'f2' })),
+  })
+  const changes = () => within(screen.getByRole('region', { name: 'Changes' }))
+  const pills = () => within(screen.getByRole('group', { name: 'Diff or edit' }))
+  const editorFor = async path => {
+    const content = await screen.findByLabelText(`Edit ${path}`)
+    return EditorView.findFromDOM(content.closest('.cm-editor'))
+  }
+  afterEach(() => { vi.restoreAllMocks() })
+  // jsdom has no layout; CodeMirror measures text ranges after scrolling a jumped-to line into view.
+  beforeEach(() => {
+    Range.prototype.getClientRects ??= () => []
+    Range.prototype.getBoundingClientRect ??= () => ({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 })
+  })
+
+  it('Ctrl+P opens Go to file, prevents printing, and opens the picked file in Edit', async () => {
+    const { a } = setupView({ ...files(), files: vi.fn(async () => ({ files: ['f.txt', 'docs/guide.md'], truncated: false })) })
+    await openWorktree()
+    const ev = new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true, cancelable: true })
+    act(() => { window.dispatchEvent(ev) })
+    expect(ev.defaultPrevented).toBe(true)
+    const box = await screen.findByRole('combobox', { name: 'File name' })
+    await screen.findAllByRole('option')
+    fireEvent.change(box, { target: { value: 'guide' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await editorFor('docs/guide.md')
+    expect(a.readFile).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, 'docs/guide.md')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('ignores Ctrl+P while another modal is open, but still prevents printing', async () => {
+    setupView({ ...files(), files: vi.fn(async () => ({ files: ['f.txt'], truncated: false })) })
+    await openWorktree()
+    const other = document.createElement('div')
+    other.setAttribute('aria-modal', 'true')
+    document.body.appendChild(other)
+    try {
+      const ev = new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true, cancelable: true })
+      act(() => { window.dispatchEvent(ev) })
+      expect(ev.defaultPrevented).toBe(true)
+      expect(screen.queryByRole('combobox', { name: 'File name' })).toBeNull()
+    } finally { other.remove() }
+  })
+
+  it('swallows a second Ctrl+P over the open Go to file dialog instead of stacking', async () => {
+    setupView({ ...files(), files: vi.fn(async () => ({ files: ['f.txt'], truncated: false })) })
+    await openWorktree()
+    const press = () => { const ev = new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true, cancelable: true }); act(() => { window.dispatchEvent(ev) }); return ev }
+    press()
+    await screen.findByRole('combobox', { name: 'File name' })
+    expect(press().defaultPrevented).toBe(true)
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(screen.getAllByRole('combobox', { name: 'File name' })).toHaveLength(1)
+  })
+
+  it('Edit opens the focused file and Diff returns', async () => {
+    const { a } = setupView(files())
+    await openWorktree()
+    fireEvent.click(changes().getByText('f.txt'))
+    await screen.findAllByRole('button', { name: 'Stage hunk' })
+    expect(pills().getByRole('button', { name: 'Diff' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    const view = await editorFor('f.txt')
+    expect(view.state.doc.toString()).toBe(NINE_PLUS)
+    expect(a.readFile).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, 'f.txt')
+    expect(screen.queryAllByRole('button', { name: 'Stage hunk' })).toHaveLength(0)
+    fireEvent.click(pills().getByRole('button', { name: 'Diff' }))
+    expect(await screen.findAllByRole('button', { name: 'Stage hunk' })).toHaveLength(2)
+    // Focusing another change keeps the mode: back in Edit, it opens that file.
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    await editorFor('f.txt')
+    fireEvent.click(changes().getByText('new.txt'))
+    await editorFor('new.txt')
+    expect(a.readFile).toHaveBeenLastCalledWith(REPO, 'C:/repos/A', REG, 'new.txt')
+    expect(pills().getByRole('button', { name: 'Edit' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('asks before leaving unsaved edits', async () => {
+    setupView(files())
+    await openWorktree()
+    fireEvent.click(changes().getByText('f.txt'))
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    const view = await editorFor('f.txt')
+    act(() => { view.dispatch({ changes: { from: 0, insert: 'mine ' } }) })
+    await screen.findByText('● Unsaved')
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.click(changes().getByText('new.txt'))
+    expect(confirm).toHaveBeenCalledWith('Discard unsaved changes to f.txt?')
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    expect(confirm).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('button', { name: /^Changes/ }).getAttribute('aria-pressed')).toBe('true')
+    expect((await editorFor('f.txt')).state.doc.toString()).toBe(`mine ${NINE_PLUS}`)
+    confirm.mockReturnValue(true)
+    fireEvent.click(changes().getByText('new.txt'))
+    expect((await editorFor('new.txt')).state.doc.toString()).toBe(NINE_PLUS)
+    expect(screen.queryByText('● Unsaved')).toBeNull()
+  })
+
+  it('goes back to Diff whenever the editor closes', async () => {
+    const CONFLICT = DIRTY + 'u UU N... 100644 100644 100644 100644 a b c c.txt\0'
+    const { state } = setupView({
+      ...files(),
+      // History is only passed through; it never needs to finish loading.
+      refs: vi.fn(() => new Promise(() => {})),
+      log: vi.fn(() => new Promise(() => {})),
+      worktrees: vi.fn(async repo => `worktree ${repo.path}\0HEAD a\0branch refs/heads/main\0\0worktree C:/repos/A-feat\0HEAD b\0branch refs/heads/feat\0\0`),
+    })
+    state.porcelain = CONFLICT
+    await openWorktree()
+    const diffShown = async () => {
+      expect(pills().getByRole('button', { name: 'Diff' }).getAttribute('aria-pressed')).toBe('true')
+      expect(await screen.findAllByRole('button', { name: 'Stage hunk' })).toHaveLength(2)
+      expect(screen.queryByLabelText(/^Edit /)).toBeNull()
+    }
+    const editF = async () => {
+      fireEvent.click(changes().getByText('f.txt'))
+      fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+      await editorFor('f.txt')
+    }
+    // Changes → History → Changes.
+    await editF()
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Changes/ }))
+    await diffShown()
+    // A conflicted file has no Edit; the next file opens in Diff.
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    await editorFor('f.txt')
+    fireEvent.click(changes().getByText('c.txt'))
+    expect(screen.queryByRole('group', { name: 'Diff or edit' })).toBeNull()
+    fireEvent.click(changes().getByText('f.txt'))
+    await diffShown()
+    // Another worktree and back.
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    await editorFor('f.txt')
+    const region = screen.getByRole('region', { name: 'A' })
+    fireEvent.click(within(region).getByRole('button', { name: /^C:\/repos\/A-feat →/ }))
+    await screen.findByText(/^C:\/repos\/A-feat · /)
+    fireEvent.click(within(region).getByRole('button', { name: /checkout → main/ }))
+    fireEvent.click(await changes().findByText('f.txt'))
+    await diffShown()
+  })
+
+  it('asks before a group save would close unsaved edits, and saves nothing when declined', async () => {
+    setupView(files())
+    act(() => { setGitConfig({ groups: [{ name: 'Mine', repos: ['A'], worktrees: [], branches: [] }] }) })
+    const tabs = await screen.findByRole('tablist', { name: 'Project groups' })
+    fireEvent.click(within(tabs).getByRole('tab', { name: /^Mine/ }))
+    await openWorktree()
+    fireEvent.click(changes().getByText('f.txt'))
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    const view = await editorFor('f.txt')
+    act(() => { view.dispatch({ changes: { from: 0, insert: 'mine ' } }) })
+    fireEvent.click(screen.getByRole('button', { name: 'Group options for Mine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit members…' }))
+    fireEvent.change(await screen.findByLabelText('Group name'), { target: { value: 'Mine 2' } })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith('Discard unsaved changes to f.txt?'))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Save' }).disabled).toBe(false))
+    expect(getGitConfig().groups.map(g => g.name)).toEqual(['Mine'])
+    expect(screen.getByLabelText('Group name')).toBeTruthy()
+    expect((await editorFor('f.txt')).state.doc.toString()).toBe(`mine ${NINE_PLUS}`)
+    confirm.mockReturnValue(true)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(getGitConfig().groups.map(g => g.name)).toEqual(['Mine 2']))
+    expect(screen.queryByLabelText(/^Edit f.txt/)).toBeNull()
+  })
+
+  it('clicking a diff line opens Edit at that line', async () => {
+    setupView(files())
+    await openWorktree()
+    fireEvent.click(changes().getByText('f.txt'))
+    await screen.findAllByRole('button', { name: 'Stage hunk' })
+    const added = screen.getAllByTestId('diff-line').filter(r => r.dataset.kind === 'add')
+    fireEvent.click(added[1])
+    const view = await editorFor('f.txt')
+    expect(pills().getByRole('button', { name: 'Edit' }).getAttribute('aria-pressed')).toBe('true')
+    await waitFor(() => expect(view.state.selection.main.head).toBe(view.state.doc.line(9).from))
+  })
+})
+
+describe('unsaved edits kept as drafts', () => {
+  const TEXT = 'line 1\nline 2\n'
+  const files = () => ({
+    readFile: vi.fn(async () => ({ text: TEXT, bom: false, stamp: 'f1' })),
+    writeFile: vi.fn(async () => ({ ok: true, stamp: 'f2' })),
+  })
+  const changes = () => within(screen.getByRole('region', { name: 'Changes' }))
+  const pills = () => within(screen.getByRole('group', { name: 'Diff or edit' }))
+  const editorFor = async path => {
+    const content = await screen.findByLabelText(`Edit ${path}`)
+    return EditorView.findFromDOM(content.closest('.cm-editor'))
+  }
+  const editF = async () => {
+    fireEvent.click(changes().getByText('f.txt'))
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    const view = await editorFor('f.txt')
+    act(() => { view.dispatch({ changes: { from: 0, insert: 'mine ' } }) })
+    await screen.findByText('● Unsaved')
+  }
+  // Waits for the panel, e.g. after the view mounts again.
+  const changesShown = async () => within(await screen.findByRole('region', { name: 'Changes' }))
+  afterEach(() => { vi.restoreAllMocks() })
+  beforeEach(() => {
+    Range.prototype.getClientRects ??= () => []
+    Range.prototype.getBoundingClientRect ??= () => ({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 })
+  })
+
+  it('restores edits after switching to another app view and back, until reverted', async () => {
+    const { a } = setupView(files())
+    await openWorktree()
+    await editF()
+    // Another app view unmounts the Git Workspace without asking.
+    const confirm = vi.spyOn(window, 'confirm')
+    cleanup()
+    expect(confirm).not.toHaveBeenCalled()
+    render(<ViewGit adapters={{ git: a }} />)
+    // The worktree is still selected; its kept edits are pointed at.
+    expect(await (await changesShown()).findByRole('img', { name: 'Unsaved edits' })).toBeTruthy()
+    const note = screen.getByRole('note', { name: 'Unsaved edits' })
+    fireEvent.click(within(note).getByRole('button', { name: 'f.txt' }))
+    expect((await editorFor('f.txt')).state.doc.toString()).toBe(`mine ${TEXT}`)
+    expect(screen.getByText('Unsaved changes from earlier were restored.')).toBeTruthy()
+    expect(screen.getByText('● Unsaved')).toBeTruthy()
+    // Revert drops the draft: the file's text comes back and nothing is pointed at any more.
+    fireEvent.click(screen.getByRole('button', { name: 'Revert' }))
+    await waitFor(async () => expect((await editorFor('f.txt')).state.doc.toString()).toBe(TEXT))
+    expect(screen.queryByText('Unsaved changes from earlier were restored.')).toBeNull()
+    expect(changes().queryByRole('img', { name: 'Unsaved edits' })).toBeNull()
+    expect(screen.queryByRole('note', { name: 'Unsaved edits' })).toBeNull()
+  })
+
+  it('opening a restored draft over a file changed on disk shows the conflict, never overwriting', async () => {
+    const { a } = setupView(files())
+    await openWorktree()
+    await editF()
+    cleanup()
+    a.readFile.mockImplementation(async () => ({ text: 'theirs\n', bom: false, stamp: 'f9' }))
+    render(<ViewGit adapters={{ git: a }} />)
+    fireEvent.click(await (await changesShown()).findByText('f.txt'))
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    expect((await editorFor('f.txt')).state.doc.toString()).toBe(`mine ${TEXT}`)
+    expect(await screen.findByText('This file changed on disk since you opened it.')).toBeTruthy()
+    expect(a.writeFile).not.toHaveBeenCalled()
+  })
+
+  it('keeps edits when a refresh briefly loses the worktree', async () => {
+    let broken = false
+    const { a } = setupView({
+      ...files(),
+      worktrees: vi.fn(async repo => { if (broken) throw new Error('busy'); return `worktree ${repo.path}\0HEAD a\0branch refs/heads/main\0\0` }),
+    })
+    await openWorktree()
+    await editF()
+    broken = true
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Changes' })).toBeNull())
+    broken = false
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    fireEvent.click(await (await changesShown()).findByText('f.txt'))
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    expect((await editorFor('f.txt')).state.doc.toString()).toBe(`mine ${TEXT}`)
+    expect(screen.getByText('Unsaved changes from earlier were restored.')).toBeTruthy()
+    expect(a.writeFile).not.toHaveBeenCalled()
+  })
+
+  it('asks before another worktree card would close unsaved edits; declining keeps both, confirming drops the draft', async () => {
+    setupView({
+      ...files(),
+      worktrees: vi.fn(async repo => `worktree ${repo.path}\0HEAD a\0branch refs/heads/main\0\0worktree C:/repos/A-feat\0HEAD b\0branch refs/heads/feat\0\0`),
+    })
+    await openWorktree()
+    await editF()
+    const selected = getGitConfig().view.selected
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const region = screen.getByRole('region', { name: 'A' })
+    fireEvent.click(within(region).getByRole('button', { name: /^C:\/repos\/A-feat →/ }))
+    expect(confirm).toHaveBeenCalledWith('Discard unsaved changes to f.txt?')
+    expect(getGitConfig().view.selected).toBe(selected)
+    expect((await editorFor('f.txt')).state.doc.toString()).toBe(`mine ${TEXT}`)
+    expect(screen.getByText('● Unsaved')).toBeTruthy()
+    confirm.mockReturnValue(true)
+    fireEvent.click(within(region).getByRole('button', { name: /^C:\/repos\/A-feat →/ }))
+    await screen.findByText(/^C:\/repos\/A-feat · /)
+    fireEvent.click(within(region).getByRole('button', { name: /checkout → main/ }))
+    fireEvent.click(await (await changesShown()).findByText('f.txt'))
+    fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
+    expect((await editorFor('f.txt')).state.doc.toString()).toBe(TEXT)
+    expect(screen.queryByText('Unsaved changes from earlier were restored.')).toBeNull()
+    expect(changes().queryByRole('img', { name: 'Unsaved edits' })).toBeNull()
   })
 })

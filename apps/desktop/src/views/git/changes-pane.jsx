@@ -1,9 +1,12 @@
 import React from 'react'
-import { statusCode, groupChanges, actionsFor, toggleSelection, rangeSelection, isSubmodule } from '@nexusmd/core'
+import { statusCode, groupChanges, actionsFor, toggleSelection, rangeSelection, isSubmodule, conflictLabels, conflictKind, checkoutName } from '@nexusmd/core'
 
 const AREA_COLOUR = { staged: 'var(--success)', unstaged: 'var(--warning)', untracked: 'var(--warning)', conflict: 'var(--danger)' }
 const VERB = { stage: 'Stage', unstage: 'Unstage', discard: 'Discard', delete: 'Delete' }
 const DESTRUCTIVE = new Set(['discard', 'delete'])
+// Only a conflict both sides changed gets whole-file takes on its row; one where a side deleted or added the file
+// is resolved from its own screen, whose wording says so (taking a deleting side removes the file).
+const ROW_TAKES = new Set(['both-modified', 'both-added'])
 const NONE = {
   stage: 'Select changes that can be staged',
   unstage: 'Select staged changes',
@@ -11,7 +14,7 @@ const NONE = {
   delete: 'Select untracked files',
 }
 
-function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionChange }) {
+function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionChange, drafts, labels, busy, onResolve }) {
   const ids = group.changes.filter(c => !isSubmodule(c)).map(c => c.id)
   const chosen = ids.filter(id => selected.includes(id)).length
   const box = React.useRef(null)
@@ -35,8 +38,19 @@ function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionC
             onClick={e => e.stopPropagation()} onChange={e => onSelect(c.id, e.nativeEvent.shiftKey)} />
           <span style={{ color: AREA_COLOUR[c.area], whiteSpace: 'pre' }}>{statusCode(c)}</span>
           <span>{c.path}</span>
+          {drafts.includes(c.path) && <span role="img" aria-label="Unsaved edits" title="Unsaved edits" style={{ color: 'var(--warning)' }}>●</span>}
           {c.originalPath && <span style={{ color: 'var(--text-muted)' }}>{`← ${c.originalPath}`}</span>}
           {isSubmodule(c) && <span style={{ color: 'var(--text-muted)' }}>submodule</span>}
+          {c.area === 'conflict' && labels && onResolve && ROW_TAKES.has(conflictKind(c.xy)) && (
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+              {['left', 'right'].map(side => (
+                <button key={side} className="btn sm ghost" disabled={busy} aria-label={`${labels[side].take} for ${c.path}`}
+                  onClick={() => { if (window.confirm(`Use ${labels[side].version} for the whole of ${c.path}?`)) onResolve(c, side) }}>
+                  {labels[side].take}
+                </button>
+              ))}
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -44,8 +58,9 @@ function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionC
 }
 
 /** A worktree's changed files with selection, the file-action toolbar and the last result. */
-export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, busy = false, status = null }) {
+export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, onResolve = null, busy = false, status = null, drafts = [] }) {
   const groups = groupChanges(tree.changes)
+  const labels = conflictLabels(tree.operationInfo, checkoutName(tree))
   const ordered = groups.flatMap(g => g.changes)
   const actions = actionsFor(tree.changes, selected)
   const canCommit = tree.changes.some(c => c.area === 'staged')
@@ -55,7 +70,7 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
   const onKeyDown = e => {
     // Ctrl+C is copy, not Commit; and keys on a row's own checkbox belong to that checkbox.
     if (e.ctrlKey || e.metaKey || e.altKey) return
-    if (e.target !== e.currentTarget && e.target.tagName === 'INPUT') return
+    if (e.target !== e.currentTarget && (e.target.tagName === 'INPUT' || e.target.closest('button'))) return
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       const i = ordered.findIndex(c => c.id === focusId)
@@ -95,7 +110,8 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
         : (
           <div tabIndex={0} aria-label="Changed files" onKeyDown={onKeyDown} style={{ overflow: 'auto', minHeight: 0, fontFamily: 'var(--font-mono, monospace)' }}>
             {groups.map(g => (
-              <ChangeGroup key={g.area} group={g} selected={selected} focusId={focusId} onFocus={onFocus} onSelect={select} onSelectionChange={onSelectionChange} />
+              <ChangeGroup key={g.area} group={g} selected={selected} focusId={focusId} onFocus={onFocus} onSelect={select} onSelectionChange={onSelectionChange} drafts={drafts}
+                labels={labels} busy={busy} onResolve={onResolve} />
             ))}
           </div>
         )}

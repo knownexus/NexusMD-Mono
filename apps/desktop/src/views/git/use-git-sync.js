@@ -86,7 +86,8 @@ export function useGitSync({ adapter, registered, reload }) {
       }
     })
     setDialog(cur => (cur && cur.runId === d.runId ? { ...cur, running: false, results } : cur))
-    reload?.()
+    // Only the repos acted on have changed.
+    reload?.([...new Set(d.targets.map(t => t.repo))])
   }, [dialog, adapter, registered, reload])
 
   const retryFailed = React.useCallback(runId => {

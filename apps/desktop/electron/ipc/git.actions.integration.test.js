@@ -13,7 +13,7 @@ const run = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).
 const tryRun = (cwd, ...args) => { try { return run(cwd, ...args) } catch (e) { return `ERR ${e.stderr}` } }
 const call = (channel, ...args) => handlers[channel](null, ...args)
 const R = name => ({ name, path: path.join(root, name) })
-const REG = () => ['Work', 'Other', 'Rebase', 'Hooked'].map(n => path.join(root, n))
+const REG = () => ['Work', 'Other', 'Rebase', 'Hooked', 'Merging', 'Onto'].map(n => path.join(root, n))
 const write = (dir, file, text) => fs.writeFileSync(path.join(dir, file), text)
 const commit = (dir, msg) => { run(dir, 'add', '-A'); run(dir, 'commit', '-qm', msg) }
 const head = dir => run(dir, 'rev-parse', 'HEAD').trim()
@@ -218,6 +218,35 @@ describe('stage 4 actions against real repositories', { timeout: 180000 }, () =>
     expect(fs.existsSync(path.join(r.path, '.git', 'nexusmd-rebase-plan'))).toBe(false)
   })
 
+  it('skip drops the stopped commit and the rebase finishes', async () => {
+    const r = R('Rebase')
+    const base = head(r.path)
+    write(r.path, 'shared', 'A2\n'); commit(r.path, 'A2')
+    write(r.path, 'shared', 'B2\n'); commit(r.path, 'B2')
+    const [b, a] = run(r.path, 'rev-list', `${base}..HEAD`).split('\n').filter(Boolean)
+    const res = await act(r, r.path, 'rebaseInteractive', { base, rows: [{ oid: b, action: 'pick' }, { oid: a, action: 'pick' }] })
+    expect(res.conflict).toBe(true)
+    const p = await call('git:preview', r, r.path, REG(), 'skip', {})
+    expect(p.details.note).toBe('Drops this commit from the result.')
+    expect(await act(r, r.path, 'skip')).toMatchObject({ ok: true })
+    expect(fs.existsSync(path.join(r.path, '.git', 'rebase-merge'))).toBe(false)
+    expect(subjects(r.path, `${base}..HEAD`)).toEqual(['A2'])
+    expect(fs.existsSync(path.join(r.path, '.git', 'nexusmd-rebase-plan'))).toBe(false)
+  })
+
+  it('skip is refused during a merge', async () => {
+    const m = R('Merging')
+    fs.mkdirSync(m.path)
+    run(m.path, 'init', '-q')
+    write(m.path, 'f', '1\n'); commit(m.path, 'm1')
+    run(m.path, 'checkout', '-qb', 'side')
+    write(m.path, 'f', 'side\n'); commit(m.path, 'side')
+    run(m.path, 'checkout', '-q', 'main')
+    write(m.path, 'f', 'main\n'); commit(m.path, 'main')
+    tryRun(m.path, 'merge', 'side')
+    expect((await act(m, m.path, 'skip')).previewRefused).toBe("A merge can't skip; continue or abort it.")
+  })
+
   it('refuses to rewrite pushed commits or merges', async () => {
     const work = R('Work')
     await act(work, work.path, 'fetch')
@@ -241,6 +270,56 @@ describe('stage 4 actions against real repositories', { timeout: 180000 }, () =>
     const r = await act(h, h.path, 'push', { remote: 'origin' })
     expect(r.ok).toBe(false)
     expect(r.detail).toMatch(/pushing is off today/)
+  })
+
+  it('rebases onto a chosen branch, tag or typed commit, and refuses what it cannot do', async () => {
+    const r = R('Onto')
+    fs.mkdirSync(r.path)
+    run(r.path, 'init', '-q')
+    write(r.path, 'f', 'base\n'); commit(r.path, 'base')
+    run(r.path, 'checkout', '-qb', 'feat')
+    write(r.path, 'mine', 'm\n'); commit(r.path, 'mine')
+    run(r.path, 'checkout', '-q', 'main')
+    write(r.path, 'theirs', 't\n'); commit(r.path, 'theirs')
+    run(r.path, 'tag', 'v1')
+    write(r.path, 'later', 'l\n'); commit(r.path, 'later')
+    run(r.path, 'checkout', '-q', 'feat')
+
+    expect((await act(r, r.path, 'rebase', {})).previewRefused).toBe('Choose where to rebase onto.')
+    expect((await act(r, r.path, 'rebase', { onto: '--force' })).previewRefused).toBe('Choose where to rebase onto.')
+    expect((await act(r, r.path, 'rebase', { onto: 'nope' })).previewRefused).toBe("nope isn't a branch, tag or commit in this repository.")
+    expect((await act(r, r.path, 'rebase', { onto: 'refs/heads/feat' })).previewRefused).toBe("feat can't be rebased onto itself.")
+
+    const p = await call('git:preview', r, r.path, REG(), 'rebase', { onto: 'refs/tags/v1' })
+    expect(p.details).toMatchObject({ label: 'v1', count: 1, pushed: 0, replay: [expect.objectContaining({ subject: 'mine' })], incoming: [expect.objectContaining({ subject: 'theirs' })] })
+    expect(await call('git:run', r, r.path, REG(), 'rebase', { onto: 'refs/tags/v1' }, p.stamp)).toMatchObject({ ok: true })
+    expect(subjects(r.path)).toEqual(['mine', 'theirs', 'base'])
+    expect((await act(r, r.path, 'rebase', { onto: 'refs/tags/v1' })).previewRefused).toBe('feat already contains everything in v1.')
+
+    write(r.path, 'f', 'dirty\n')
+    expect((await act(r, r.path, 'rebase', { onto: 'main' })).previewRefused).toMatch(/Stash my changes/)
+    const typed = run(r.path, 'rev-parse', 'main').trim()
+    expect(await act(r, r.path, 'rebase', { onto: typed, autostash: true })).toMatchObject({ ok: true })
+    expect(subjects(r.path)).toEqual(['mine', 'later', 'theirs', 'base'])
+    expect(fs.readFileSync(path.join(r.path, 'f'), 'utf8')).toBe('dirty\n')
+  })
+
+  it('rebasing onto a remote branch can fetch it first', async () => {
+    const work = R('Work')
+    const other = R('Other').path
+    await act(work, work.path, 'fetch')
+    run(work.path, 'checkout', '-qb', 'onto-remote', 'origin/main')
+    write(work.path, 'mine-remote', 'm\n'); commit(work.path, 'mine on remote base')
+    run(other, 'pull', '-q', '--rebase')
+    write(other, 'news', 'n\n'); commit(other, 'news from other'); run(other, 'push', '-q')
+    // Without a fetch there is nothing new on origin/main yet.
+    expect((await act(work, work.path, 'rebase', { onto: 'refs/remotes/origin/main' })).previewRefused).toMatch(/already contains everything in origin\/main/)
+    const p = await call('git:preview', work, work.path, REG(), 'rebase', { onto: 'refs/remotes/origin/main', fetch: true })
+    expect(p.details).toMatchObject({ remote: 'origin', fetch: true, asOf: 'before fetching' })
+    expect(await call('git:run', work, work.path, REG(), 'rebase', { onto: 'refs/remotes/origin/main', fetch: true }, p.stamp)).toMatchObject({ ok: true })
+    expect(subjects(work.path).slice(0, 2)).toEqual(['mine on remote base', 'news from other'])
+    expect(fs.existsSync(path.join(work.path, '.git', 'nexusmd-rebase-onto'))).toBe(false)
+    run(work.path, 'checkout', '-q', 'main')
   })
 
   it.skipIf(process.platform === 'win32' || process.getuid?.() !== 0)('a repository another user owns is refused with the safe.directory hint', async () => {

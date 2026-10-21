@@ -95,12 +95,29 @@ describe('preload bridge', () => {
     const reg = [repo.path]
     exposed.git.remotes(repo, repo.path, reg)
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:remotes', repo, repo.path, reg)
+    exposed.git.aliases(repo, repo.path, reg)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:aliases', repo, repo.path, reg)
+    exposed.git.shellAliases('C:\\repos\\DotFiles')
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:shellAliases', 'C:\\repos\\DotFiles')
+    exposed.git.shellRun(repo, repo.path, reg, 'C:\\repos\\DotFiles', 'g!', [])
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:shellRun', repo, repo.path, reg, 'C:\\repos\\DotFiles', 'g!', [])
+    exposed.git.shellWarm('C:\\repos\\DotFiles')
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:shellWarm', 'C:\\repos\\DotFiles')
+    exposed.git.openTerminal(repo, repo.path, reg)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:openTerminal', repo, repo.path, reg)
     exposed.git.stashes(repo, repo.path, reg)
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:stashes', repo, repo.path, reg)
     exposed.git.preview(repo, repo.path, reg, 'pull', { mode: 'ff' })
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:preview', repo, repo.path, reg, 'pull', { mode: 'ff' })
     exposed.git.run(repo, repo.path, reg, 'pull', { mode: 'ff' }, 's')
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:run', repo, repo.path, reg, 'pull', { mode: 'ff' }, 's')
+  })
+
+  it('exposes the git command line channel', () => {
+    const repo = { name: 'App', path: 'C:\\repos\\App' }
+    const reg = [repo.path]
+    exposed.git.exec(repo, repo.path, reg, ['status', '--short'])
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('git:exec', repo, repo.path, reg, ['status', '--short'])
   })
 
   it('exposes the stage 3 git history channels', () => {

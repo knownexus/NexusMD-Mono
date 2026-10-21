@@ -1,8 +1,9 @@
 // electron/ipc/git.cjs
 //
 // Runs the git CLI for the Git Workspace module. The renderer names an operation; this file
-// owns the exact argv of each one, so the renderer can never pass git arguments. Repository
-// paths arrive with the registered-repo list and are checked on every call (main keeps no state).
+// owns the exact argv of each one, so the renderer can't pass git arguments. The one exception is
+// git:exec, the command line the user types into, which runs their argv as a git subcommand.
+// Repository paths arrive with the registered-repo list and are checked on every call (main keeps no state).
 //
 // spawn / kill / filesystem probes are injectable because vi.mock() cannot intercept a CJS require().
 
@@ -13,7 +14,10 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { spawn: nodeSpawn, execFile } = require('child_process');
 const { withLogging } = require('./withLogging.cjs');
-const { registerActions, ownershipMessage } = require('./git-actions.cjs');
+const { registerActions, ownershipMessage, WRITE_ENV, BASE_MARKER } = require('./git-actions.cjs');
+const { registerFiles } = require('./git-files.cjs');
+const { registerConflicts } = require('./git-conflicts.cjs');
+const { registerShell } = require('./git-shell.cjs');
 
 const STRIP_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_PREFIX', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'];
 const BRANCH_FORMAT = '--format=%(refname)%00%(objectname)%00%(subject)%00%(upstream:short)';
@@ -104,6 +108,22 @@ const GONE_REF = 'That branch no longer exists.';
 const HISTORY_TIMEOUT = 'History took too long - narrow it with a search or a filter.';
 const OID = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
 const NOT_PARENT = 'Not a parent of that commit';
+const EXEC_CAP = 1024 * 1024;
+const SHELL_ALIASES_CAP = 1024 * 1024;
+const EXEC_COLOR = ['-c', 'color.ui=always'];
+const EXEC_MAX_ARGS = 256;
+
+// A command-line argv must start with a subcommand: git's global options (-C, -c, --git-dir,
+// --exec-path, ...) come before it and would point git somewhere else or reconfigure it.
+function checkExecArgv(argv) {
+  if (!Array.isArray(argv) || !argv.length || argv.length > EXEC_MAX_ARGS || argv.some(a => typeof a !== 'string' || a.includes('\0'))) {
+    throw new Error('Not a git command');
+  }
+  if (!argv[0] || argv[0].startsWith('-')) throw new Error(`git ${argv[0]} is not allowed here - start with a command such as status`);
+  if (argv.some(a => /safe\.directory/i.test(a))) throw new Error('Refusing to change safe.directory');
+  return argv;
+}
+
 const nul = paths => paths.map(p => `${p}\0`).join('');
 const refuse = detail => ({ ok: false, detail });
 
@@ -228,8 +248,11 @@ function register(ipcMain, deps = {}) {
     logger,
     env = process.env,
     now = Date.now,
-    commonDirTtlMs = 5000,
+    // A repository's common folder only changes if it's moved or rebuilt; resolving it costs a git process.
+    commonDirTtlMs = 60000,
+    listedTtlMs = 30000,
     commitTimeoutMs = 120000,
+    execTimeoutMs = 60000,
   } = deps;
   process.env.NoDefaultCurrentDirectoryInExePath = '1';
   let gitPath = deps.gitPath !== undefined ? deps.gitPath : findGit(env, probe);
@@ -238,6 +261,8 @@ function register(ipcMain, deps = {}) {
   const waiting = [];
   // normalised folder → { commonDir, at }: one poll asks resolve, worktrees and branches per repo.
   const commonDirs = new Map();
+  // commonDir → { stamp, at, paths }: the worktree paths requireListed last read from git.
+  const listedPaths = new Map();
   const locks = new Map();
   let disposed = false;
   let active = 0;
@@ -313,9 +338,19 @@ function register(ipcMain, deps = {}) {
     }
   }
 
+  // Every operation checks its worktree is one git lists, and each git process costs about half a
+  // second on Windows: the listed paths are kept per repository while its worktrees folder is
+  // unchanged, for listedTtlMs. A path not in the kept list is always checked with git again.
   async function requireListed(repo, worktreePath) {
+    const common = await resolveCommon(repo.path);
+    const stamp = probe.statKey(path.join(common, 'worktrees'));
+    const kept = listedPaths.get(common);
+    const fresh = kept && kept.stamp === stamp && now() - kept.at < listedTtlMs;
+    const match = paths => paths.some(p => samePath(p, worktreePath));
+    if (fresh && match(kept.paths)) return;
     const listed = (await worktreeList(repo.path)).split('\0').filter(f => f.startsWith('worktree ')).map(f => f.slice(9));
-    if (!listed.some(p => samePath(p, worktreePath))) throw new Error(`Not a worktree of ${repo.path}: ${worktreePath}`);
+    listedPaths.set(common, { stamp, at: now(), paths: listed });
+    if (!match(listed)) throw new Error(`Not a worktree of ${repo.path}: ${worktreePath}`);
   }
 
   // Status (stage 1) accepts any folder inside the repo.
@@ -460,6 +495,21 @@ function register(ipcMain, deps = {}) {
     throw new Error(`No repository at ${dir} (including .git-main and .bare)`);
   }
 
+  // A worktree's git folder and common folder, from its .git: a folder (a plain clone), or a file
+  // naming the folder (a linked worktree), whose `commondir` names the shared one. Null for
+  // anything else (a bare layout, an unreadable file), which is left to git rev-parse.
+  function gitDirsFromDotGit(worktreePath) {
+    const dotGit = path.join(worktreePath, '.git');
+    if (probe.isDirectory(dotGit)) return { gitDir: dotGit, commonDir: dotGit };
+    if (!probe.isFile(dotGit)) return null;
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(probe.readText(dotGit) || '');
+    if (!m) return null;
+    const gitDir = path.resolve(worktreePath, m[1]);
+    if (!probe.isDirectory(gitDir)) return null;
+    const common = (probe.readText(path.join(gitDir, 'commondir')) || '').trim();
+    return { gitDir, commonDir: common ? path.resolve(gitDir, common) : gitDir };
+  }
+
   async function worktreeList(repoPath) {
     const r = await git(await resolveCommon(repoPath), ['worktree', 'list', '--porcelain', '-z']);
     if (r.code !== 0) throw new Error(r.stderr || 'git worktree list failed');
@@ -475,6 +525,80 @@ function register(ipcMain, deps = {}) {
       return { operation: label, rebasingBranch: head.startsWith('refs/heads/') ? head : null };
     }
     return { operation: '', rebasingBranch: null };
+  }
+
+  const shortRef = ref => ref.replace(/^refs\/(heads|remotes)\//, '');
+  const readOid = (dir, name) => (probe.readText(path.join(dir, name)) || '').split(/\r?\n/)[0].trim() || null;
+  const readNumber = (dir, name) => {
+    const n = parseInt(probe.readText(path.join(dir, name)) || '', 10);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  // A branch name for a commit is only certain when exactly one branch points at it.
+  async function soleBranchAt(worktreePath, oid) {
+    const r = await git(worktreePath, ['for-each-ref', '--points-at', oid, '--format=%(refname)', 'refs/heads', 'refs/remotes']);
+    if (r.code !== 0) return null;
+    const names = r.stdout.split(/\r?\n/).filter(n => n && !n.endsWith('/HEAD'));
+    return names.length === 1 ? shortRef(names[0]) : null;
+  }
+
+  // The branch a rebase started in a terminal was given, from this worktree's HEAD reflog: the newest
+  // "rebase (start): checkout <name>" entry. Used only when <name> is a branch (local or remote) that
+  // still points at onto; anything else (a commit id, HEAD~2, a moved branch) names nothing.
+  async function reflogBase(worktreePath, onto) {
+    const log = await git(worktreePath, ['reflog', '-n', '200', '--format=%gs', 'HEAD', '--']);
+    if (log.code !== 0) return null;
+    // The newest start of any rebase (pull --rebase included), so an older rebase's entry is never read as this one's.
+    const start = log.stdout.split(/\r?\n/).find(l => / \(start\): /.test(l));
+    const m = start && /^rebase(?: -i| \(interactive\))? \(start\): checkout (\S+)$/.exec(start);
+    if (!m || m[1].startsWith('-')) return null;
+    const full = await git(worktreePath, ['rev-parse', '--verify', '--quiet', '--symbolic-full-name', '--end-of-options', m[1]]);
+    const ref = full.code === 0 ? full.stdout.trim() : '';
+    if (!/^refs\/(heads|remotes)\/\S+$/.test(ref)) return null;
+    const target = await git(worktreePath, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`]);
+    return target.code === 0 && target.stdout.trim() === onto ? shortRef(ref) : null;
+  }
+
+  async function subjectOf(worktreePath, oid) {
+    const r = await git(worktreePath, ['log', '-1', '--format=%s', '--end-of-options', oid]);
+    return r.code === 0 ? r.stdout.trim() : '';
+  }
+
+  // What the stopped operation is doing, for the conflict view. Only called while one is in progress.
+  async function operationInfo(worktreePath, gitDir) {
+    if (!gitDir) return null;
+    const info = { kind: null, step: null, total: null, onto: null, replaying: null, merging: null, picked: null };
+    const rebaseDir = ['rebase-merge', 'rebase-apply'].map(n => path.join(gitDir, n)).find(p => probe.exists(p));
+    if (rebaseDir) {
+      info.kind = 'rebase';
+      const merge = path.basename(rebaseDir) === 'rebase-merge';
+      info.step = readNumber(rebaseDir, merge ? 'msgnum' : 'next');
+      info.total = readNumber(rebaseDir, merge ? 'end' : 'last');
+      const onto = readOid(rebaseDir, 'onto');
+      if (onto) {
+        // The name NexusMD remembered counts only while it still points at the commit being rebased onto.
+        let name = null;
+        const remembered = (probe.readText(path.join(gitDir, BASE_MARKER)) || '').trim();
+        if (/^refs\/(heads|remotes)\/\S+$/.test(remembered)) {
+          const target = await git(worktreePath, ['rev-parse', '--verify', '--quiet', `${remembered}^{commit}`]);
+          if (target.code === 0 && target.stdout.trim() === onto) name = shortRef(remembered);
+        }
+        // Then the branch a terminal rebase named (it wins over "the only branch there": after
+        // `git rebase main`, origin/main is usually at the same commit), then that single branch.
+        if (!name) name = await reflogBase(worktreePath, onto);
+        info.onto = { oid: onto, name: name ?? await soleBranchAt(worktreePath, onto) };
+      }
+      const replaying = readOid(gitDir, 'REBASE_HEAD');
+      if (replaying) info.replaying = { oid: replaying, subject: await subjectOf(worktreePath, replaying) };
+      return info;
+    }
+    const merging = readOid(gitDir, 'MERGE_HEAD');
+    if (merging) return { ...info, kind: 'merge', merging: { oid: merging, name: await soleBranchAt(worktreePath, merging) } };
+    for (const [file, kind] of [['CHERRY_PICK_HEAD', 'cherry-pick'], ['REVERT_HEAD', 'revert']]) {
+      const picked = readOid(gitDir, file);
+      if (picked) return { ...info, kind, picked: { oid: picked, subject: await subjectOf(worktreePath, picked) } };
+    }
+    return null;
   }
 
   // Writes to one repository run one at a time; reads never wait.
@@ -494,6 +618,8 @@ function register(ipcMain, deps = {}) {
   const hgit = (cwd, args, opts = {}) => git(cwd, args, { ...opts, extraConfig: HISTORY_CONFIG });
 
   async function gitDirOf(wt) {
+    const fromDotGit = gitDirsFromDotGit(wt);
+    if (fromDotGit) return fromDotGit.gitDir;
     const r = await git(wt, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']);
     return r.code === 0 ? r.stdout.split(/\r?\n/)[0].trim() : '';
   }
@@ -539,11 +665,19 @@ function register(ipcMain, deps = {}) {
     const status = await git(worktreePath, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all']);
     if (status.code !== 0) return { error: status.stderr || `git status failed (exit ${status.code})` };
     // A gone upstream is detected in core from the missing `# branch.ab` line, so no extra spawn.
-    const dirs = await git(worktreePath, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']);
-    const [gitDir = '', commonDir = ''] = dirs.code === 0 ? dirs.stdout.split(/\r?\n/).map(s => s.trim()) : [];
+    // Starting git is the slow part on Windows: the git folders are read from .git when it's plain.
+    const read = gitDirsFromDotGit(worktreePath);
+    let gitDir = read?.gitDir ?? '';
+    let commonDir = read?.commonDir ?? '';
+    if (!read) {
+      const dirs = await git(worktreePath, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']);
+      [gitDir = '', commonDir = ''] = dirs.code === 0 ? dirs.stdout.split(/\r?\n/).map(s => s.trim()) : [];
+    }
+    const progress = await inProgress(gitDir);
     return {
       porcelain: status.stdout,
-      ...(await inProgress(gitDir)),
+      ...progress,
+      operationInfo: progress.operation ? await operationInfo(worktreePath, gitDir) : null,
       fetchedAt: commonDir ? probe.mtime(path.join(commonDir, 'FETCH_HEAD')) : null,
     };
   });
@@ -694,6 +828,15 @@ function register(ipcMain, deps = {}) {
     return found;
   });
 
+  // The user's aliases (global and the repository's own), for the command line's picker; core's parseAliases reads it.
+  handle('git:aliases', async (_e, repo, worktreePath, registered) => {
+    await requireExactWorktree(repo, worktreePath, registered);
+    const r = await hgit(worktreePath, ['config', '-z', '--get-regexp', '^alias\\.']);
+    // Exit 1 means no aliases are set.
+    if (r.code !== 0 && r.code !== 1) throw new Error(r.stderr || 'git config failed');
+    return r.code === 0 ? r.stdout : '';
+  });
+
   handle('git:refs', async (_e, repo, worktreePath, registered) => {
     await requireExactWorktree(repo, worktreePath, registered);
     const r = await hgit(worktreePath, ['for-each-ref', '--format=%(refname)%00%(objectname)%00%(upstream)%00%(HEAD)', 'refs/heads/', 'refs/remotes/', 'refs/tags/']);
@@ -816,6 +959,63 @@ function register(ipcMain, deps = {}) {
     editorCommand: deps.editorCommand, fsx: deps.fsx, longTimeoutMs: deps.longTimeoutMs, shortTimeoutMs: deps.shortTimeoutMs,
   });
 
+  // The Git Workspace file editor (git-files.cjs): list, read and write worktree files.
+  registerFiles(handle, { git, requireExactWorktree, requirePaths, withRepoLock });
+
+  // Reading and resolving conflicted files (git-conflicts.cjs).
+  registerConflicts(handle, { git, requireExactWorktree, requirePaths, withRepoLock, filesState, indexEntries, gitDirOf, result });
+
+  // DotFiles PowerShell scripts (g!, gstat, …) for the command line, in a pwsh kept open (git-shell.cjs).
+  const shell = registerShell(handle, { spawn, kill, requireExactWorktree, isRemoteOrDevicePath, fsx: deps.fsx, env, timeoutMs: deps.shellTimeoutMs });
+
+  // The command line. argv is a git subcommand and its arguments, typed by the user (the renderer
+  // confirms destructive ones first). It runs like a terminal (no literal pathspecs) but can't
+  // wait on an editor or a credential prompt, and it takes the repository's write lock.
+  handle('git:exec', async (_e, repo, worktreePath, registered, argv) => {
+    await requireExactWorktree(repo, worktreePath, registered, () => checkExecArgv(argv));
+    // Git's own colours, as in a terminal: the output drawer shows them in the theme's colours.
+    const r = await withRepoLock(repo, () => git(worktreePath, argv, { timeout: execTimeoutMs, literal: false, env: WRITE_ENV, extraConfig: EXEC_COLOR }));
+    const cap = s => (s.length > EXEC_CAP ? `${s.slice(0, EXEC_CAP)}\n[output truncated]` : s);
+    return { code: r.code, stdout: cap(r.stdout), stderr: cap(r.stderr) };
+  });
+
+  // The PowerShell profile scripts of a DotFiles folder (pwsh/profile.d/*.ps1, in load order), read
+  // only, for core's parseShellAliases. A missing folder reads as nothing.
+  handle('git:shellAliases', async (_e, folder) => {
+    if (typeof folder !== 'string' || !path.isAbsolute(folder) || isRemoteOrDevicePath(folder)) throw new Error('The DotFiles folder must be an absolute local path.');
+    const dir = path.join(folder, 'pwsh', 'profile.d');
+    let names;
+    try { names = fs.readdirSync(dir).filter(n => n.toLowerCase().endsWith('.ps1')).sort(); } catch { return ''; }
+    let text = '';
+    for (const n of names) {
+      // Each file is marked so core can tell the git scripts from the rest.
+      try { text += `# nexusmd-file: ${n}\n${fs.readFileSync(path.join(dir, n), 'utf8')}\n`; } catch { /* unreadable: skip it */ }
+      if (text.length > SHELL_ALIASES_CAP) break;
+    }
+    return text.slice(0, SHELL_ALIASES_CAP);
+  });
+
+  // Opens the user's own terminal in a worktree: Windows Terminal, else PowerShell 7, else Windows
+  // PowerShell (a detached console process gets its own window). Resolves once one has started.
+  handle('git:openTerminal', async (_e, repo, worktreePath, registered) => {
+    await requireExactWorktree(repo, worktreePath, registered);
+    const candidates = process.platform === 'win32'
+      ? [['wt.exe', ['-d', worktreePath]], ['pwsh.exe', ['-NoExit']], ['powershell.exe', ['-NoExit']]]
+      : process.platform === 'darwin' ? [['open', ['-a', 'Terminal', worktreePath]]] : [['x-terminal-emulator', []]];
+    let last = null;
+    for (const [exe, args] of candidates) {
+      try {
+        await new Promise((resolve, reject) => {
+          const child = spawn(exe, args, { cwd: worktreePath, detached: true, stdio: 'ignore', windowsHide: false, env });
+          child.once('spawn', () => { child.unref(); resolve(); });
+          child.once('error', reject);
+        });
+        return { opened: exe };
+      } catch (e) { last = e; }
+    }
+    throw new Error(`Couldn't open a terminal: ${last?.message ?? 'none found'}`);
+  });
+
   handle('git:checkFolders', async (_e, paths) =>
     (Array.isArray(paths) ? paths : []).map(p => ({ path: p, exists: typeof p === 'string' && path.isAbsolute(p) && !isRemoteOrDevicePath(p) && probe.isDirectory(p) })));
 
@@ -825,12 +1025,14 @@ function register(ipcMain, deps = {}) {
     async disposeAll() {
       disposed = true;
       commonDirs.clear();
+      listedPaths.clear();
       for (const w of waiting.splice(0)) w.reject(new Error('Git Workspace is shutting down'));
       const all = [...running];
       running.clear();
       await Promise.all(all.map(c => Promise.resolve(kill(c.pid)).catch(() => {})));
+      await shell.disposeAll();
     },
   };
 }
 
-module.exports = { register, gitEnv, isRepositoryRoot, findGit, extractHunk, checkQuery, logArgs, HISTORY_CONFIG };
+module.exports = { register, gitEnv, isRepositoryRoot, findGit, extractHunk, checkQuery, logArgs, checkExecArgv, HISTORY_CONFIG };

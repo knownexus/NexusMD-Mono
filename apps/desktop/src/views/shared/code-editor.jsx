@@ -1,21 +1,11 @@
 import React from 'react'
 import { EditorView, basicSetup } from 'codemirror'
 import { EditorState, Compartment, Annotation, Transaction } from '@codemirror/state'
-import { StreamLanguage } from '@codemirror/language'
-import { json } from '@codemirror/lang-json'
-import { yaml } from '@codemirror/lang-yaml'
-import { sql } from '@codemirror/lang-sql'
-import { markdown } from '@codemirror/lang-markdown'
-import { powerShell } from '@codemirror/legacy-modes/mode/powershell'
+import { syntaxHighlighting } from '@codemirror/language'
+import { classHighlighter } from '@lezer/highlight'
+import { languageExtension, languageForPath } from './languages.js'
 
-const LANGUAGES = {
-  json: () => json(),
-  yaml: () => yaml(),
-  sql: () => sql(),
-  markdown: () => markdown(),
-  powershell: () => StreamLanguage.define(powerShell),
-}
-const languageFor = name => LANGUAGES[name]?.() ?? []
+export { languageForPath }
 
 // Marks transactions that replace the document from props, so they are not echoed to onChange.
 const External = Annotation.define()
@@ -30,13 +20,16 @@ const THEME = EditorView.theme({
   '&.cm-focused': { outline: '1px solid var(--accent-border, var(--border))' },
 })
 
-export function CodeEditor({ value, language, onChange, ariaLabel }) {
+export function CodeEditor({ value, language, onChange, ariaLabel, line = null, readOnly = false }) {
   const host = React.useRef(null)
   const view = React.useRef(null)
   const lang = React.useRef(new Compartment())
+  const ro = React.useRef(new Compartment())
+  const replaced = React.useRef(false)
+  const jumped = React.useRef(null)
   const onChangeRef = React.useRef(onChange)
   onChangeRef.current = onChange
-  const initial = React.useRef({ value, language, ariaLabel })
+  const initial = React.useRef({ value, language, ariaLabel, readOnly })
 
   React.useEffect(() => {
     const v = new EditorView({
@@ -44,7 +37,8 @@ export function CodeEditor({ value, language, onChange, ariaLabel }) {
       state: EditorState.create({
         doc: normalize(initial.current.value),
         extensions: [
-          basicSetup, THEME, lang.current.of(languageFor(initial.current.language)),
+          basicSetup, THEME, syntaxHighlighting(classHighlighter), lang.current.of(languageExtension(initial.current.language)),
+          ro.current.of(EditorState.readOnly.of(!!initial.current.readOnly)),
           EditorView.contentAttributes.of({ 'aria-label': initial.current.ariaLabel }),
           EditorView.updateListener.of(u => {
             // Only user edits report back; documents replaced from outside are already known.
@@ -61,12 +55,33 @@ export function CodeEditor({ value, language, onChange, ariaLabel }) {
     const v = view.current
     const next = normalize(value)
     // Kept out of undo history: undoing a Revert/Reload would resurrect discarded text and report it as a user edit.
-    if (v && v.state.doc.toString() !== next) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next }, annotations: [External.of(true), Transaction.addToHistory.of(false)] })
+    if (v && v.state.doc.toString() !== next) {
+      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next }, annotations: [External.of(true), Transaction.addToHistory.of(false)] })
+      replaced.current = true
+    }
   }, [value])
 
   React.useEffect(() => {
-    view.current?.dispatch({ effects: lang.current.reconfigure(languageFor(language)) })
+    view.current?.dispatch({ effects: lang.current.reconfigure(languageExtension(language)) })
   }, [language])
+
+  React.useEffect(() => {
+    view.current?.dispatch({ effects: ro.current.reconfigure(EditorState.readOnly.of(!!readOnly)) })
+  }, [readOnly])
+
+  // `line` is a 1-based number, or a { line } object: a new object always jumps, even to the same line.
+  // Declared after the value effect so replaced text is in place first; typing alone never re-jumps.
+  React.useEffect(() => {
+    const v = view.current
+    const wanted = typeof line === 'object' && line ? line.line : line
+    const changed = jumped.current !== line
+    const wasReplaced = replaced.current
+    jumped.current = line
+    replaced.current = false
+    if (!v || !(changed || wasReplaced) || typeof wanted !== 'number' || !Number.isFinite(wanted)) return
+    const pos = v.state.doc.line(Math.min(Math.max(1, Math.floor(wanted)), v.state.doc.lines)).from
+    v.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) })
+  }, [line, value])
 
   return <div ref={host} style={{ flex: 1, minHeight: 240, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6 }} />
 }

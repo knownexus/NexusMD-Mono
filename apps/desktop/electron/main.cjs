@@ -212,7 +212,14 @@ function createMainWindow() {
   win.webContents.setWindowOpenHandler(createWindowOpenHandler({
     isAllowedUrl: linkWindow.isAllowedUrl,
     openLink:     linkWindow.openLink,
+    popoutOptions: { title: 'NexusMD output', icon: windowIconPath(isDark) },
   }));
+  // The pop-out stays blank apart from what the renderer writes into it: it can't
+  // navigate away or open windows of its own.
+  win.webContents.on('did-create-window', (child) => {
+    child.webContents.on('will-navigate', (e) => e.preventDefault());
+    child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  });
 
   // Right-click a link to choose where it opens: in-app (default left-click
   // behavior), the system browser, or copy the address. Handled centrally here
@@ -285,6 +292,10 @@ function createMainWindow() {
 
   win.once('ready-to-show', () => {
     win.show();
+    // Windows applies the launcher's show state to a process's first ShowWindow, so a
+    // launcher that starts us hidden (the portable build's) leaves the window hidden.
+    // The second call isn't overridden.
+    if (!win.isVisible()) win.show();
   });
 
   // Honour user's close preference (unless forceQuit is set by before-quit)
@@ -293,6 +304,17 @@ function createMainWindow() {
       e.preventDefault();
       win.hide();
     }
+  });
+
+  // The renderer blocks unload while it holds unsaved edits (the Git Workspace editor). Electron
+  // would then silently refuse to close or quit, so ask here; Discard lets the unload go ahead.
+  win.webContents.on('will-prevent-unload', e => {
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'question', buttons: ['Discard changes', 'Cancel'], defaultId: 1, cancelId: 1,
+      title: 'Unsaved changes', message: 'You have unsaved changes.', detail: 'Discard them and close?',
+    });
+    if (choice === 0) e.preventDefault();
+    else forceQuit = false;
   });
 
   return win;
@@ -447,9 +469,15 @@ ipcMain.on('window:close', () => {
 // ---------------------------------------------------------------------------
 // Clean shutdown
 // ---------------------------------------------------------------------------
+// before-quit only lets the windows close: a window with unsaved edits can still cancel the quit
+// (will-prevent-unload above), so the backends are shut down in will-quit, once every window has closed.
 app.on('before-quit', () => {
   log.scope('lifecycle').info('app quitting');
   forceQuit = true;
+});
+
+app.on('will-quit', () => {
+  log.scope('lifecycle').info('windows closed; shutting down backends');
   dbManagerIpc.closeAll().catch(err => log.scope('lifecycle').error('db-manager closeAll failed', err));
   devenvRuns?.disposeAll().catch(err => log.scope('lifecycle').error('devenv disposeAll failed', err));
   gitProcesses?.disposeAll().catch(err => log.scope('lifecycle').error('git disposeAll failed', err));

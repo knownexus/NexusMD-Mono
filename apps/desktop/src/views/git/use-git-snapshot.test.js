@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor, act, cleanup } from '@testing-library/react'
 import { useGitSnapshot, clearGitSnapshotCache } from './use-git-snapshot.js'
+import { getProfileKey } from '../../profile-keys.js'
 
 afterEach(() => { cleanup(); clearGitSnapshotCache() })
 
@@ -103,6 +104,49 @@ describe('useGitSnapshot', () => {
     expect(second.result.current.loading).toBe(false)
     await act(async () => { pending.resolve({ commonDir: 'refreshed' }) })
     await waitFor(() => expect(second.result.current.snapshot.worktrees[0].commonDir).toBe('refreshed'))
+  })
+
+  it('after a restart, shows the snapshot kept from the last run straight away, stale until a fresh read', async () => {
+    const adapter = adapterWith(async dir => ({ commonDir: `${dir}/.git` }))
+    const first = renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null }))
+    await waitFor(() => expect(first.result.current.snapshot?.worktrees).toHaveLength(1))
+    expect(first.result.current.stale).toBe(false)
+    first.unmount()
+    // A restart: memory is gone, the profile's storage isn't.
+    const kept = localStorage.getItem(getProfileKey('git.snapshot'))
+    clearGitSnapshotCache()
+    localStorage.setItem(getProfileKey('git.snapshot'), kept)
+    const pending = deferred()
+    adapter.resolve.mockImplementation(() => pending.promise)
+    const second = renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null }))
+    expect(second.result.current.snapshot.worktrees).toHaveLength(1)
+    expect(second.result.current).toMatchObject({ stale: true, loading: false })
+    await act(async () => { pending.resolve({ commonDir: 'refreshed' }) })
+    await waitFor(() => expect(second.result.current.stale).toBe(false))
+    expect(second.result.current.snapshot.worktrees[0].commonDir).toBe('refreshed')
+  })
+
+  it('ignores a kept snapshot for a different repo list or one that does not parse', () => {
+    const adapter = adapterWith(() => new Promise(() => {}))
+    localStorage.setItem(getProfileKey('git.snapshot'), JSON.stringify({ key: '[]', snapshot: { takenAt: 'x', worktrees: [] } }))
+    expect(renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null })).result.current).toMatchObject({ snapshot: null, stale: false })
+    localStorage.setItem(getProfileKey('git.snapshot'), '{nope')
+    expect(renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null })).result.current.snapshot).toBeNull()
+  })
+
+  it('a reload naming repos reads only those, keeping the others as they are', async () => {
+    const two = [...repos, { name: 'B', path: 'C:/repos/B' }]
+    const adapter = adapterWith(async dir => ({ commonDir: `${dir}/.git` }))
+    const { result } = renderHook(() => useGitSnapshot({ adapter, repos: two, intervalMs: null }))
+    await waitFor(() => expect(result.current.snapshot?.worktrees).toHaveLength(2))
+    adapter.resolve.mockClear()
+    const before = result.current.snapshot
+    await act(async () => { await result.current.reload(['B']) })
+    expect(adapter.resolve.mock.calls.map(c => c[0])).toEqual(['C:/repos/B'])
+    expect(result.current.snapshot).not.toBe(before)
+    expect(result.current.snapshot.worktrees[0]).toEqual(before.worktrees[0])
+    await act(async () => { await result.current.reload() })
+    expect(adapter.resolve.mock.calls.map(c => c[0])).toEqual(['C:/repos/B', 'C:/repos/A', 'C:/repos/B'])
   })
 
   it('starts empty when the registered repos changed since the last visit', async () => {

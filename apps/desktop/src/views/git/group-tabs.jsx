@@ -1,28 +1,31 @@
 import React from 'react'
 
-// `busy` (a reason string) disables New group until there is something to pick from.
+// Same props as before. `busy` (a reason string) disables New group until there is something to pick from.
 export function GroupTabs({ tabs, active, onSelect, onNew, onMenu, busy = null }) {
+  const strip = React.useRef(null)
   const refs = React.useRef({})
-  // The active tab must stay visible when the strip overflows.
-  React.useEffect(() => { refs.current[active]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }) }, [active])
+  // Keep the active pill visible when the strip overflows (scrollLeft, not scrollIntoView).
+  React.useEffect(() => {
+    const el = refs.current[active], box = strip.current
+    if (!el || !box) return
+    if (el.offsetLeft < box.scrollLeft) box.scrollLeft = el.offsetLeft
+    else if (el.offsetLeft + el.offsetWidth > box.scrollLeft + box.clientWidth) box.scrollLeft = el.offsetLeft + el.offsetWidth - box.clientWidth
+  }, [active])
+  const activeTab = tabs.find(t => t.name === active)
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      <div role="tablist" aria-label="Project groups" style={{ display: 'flex', gap: 4, overflowX: 'auto', flex: 1 }}>
+    <div className="nx-pills">
+      <div ref={strip} role="tablist" aria-label="Project groups" className="nx-pills" style={{ flexWrap: 'nowrap', overflowX: 'auto', minWidth: 0 }}>
         {tabs.map(t => (
-          <span key={t.name} style={{ display: 'inline-flex', flex: 'none' }}
-            onContextMenu={e => { if (t.editable) { e.preventDefault(); onMenu(t.name) } }}>
-            <button ref={el => { refs.current[t.name] = el }} role="tab" aria-selected={t.name === active}
-              className={`btn sm ${t.name === active ? '' : 'ghost'}`} onClick={() => onSelect(t.name)}>
-              {t.name}
-              {t.count > 0 && <span style={{ marginLeft: 6, color: 'var(--text-muted)' }}>{` ${t.count}`}</span>}
-            </button>
-            {t.editable && (
-              <button className="btn sm ghost" aria-label={`Group options for ${t.name}`} onClick={() => onMenu(t.name)}>⋯</button>
-            )}
-          </span>
+          <button key={t.name} ref={el => { refs.current[t.name] = el }} role="tab" aria-selected={t.name === active} className="nx-pill"
+            onClick={() => onSelect(t.name)} onContextMenu={e => { if (t.editable) { e.preventDefault(); onMenu(t.name) } }}>
+            {t.name}{t.count > 0 && <span className="n">{t.count}</span>}
+          </button>
         ))}
       </div>
-      <button className="btn sm ghost" aria-label="New group" title={busy ?? undefined} disabled={!!busy} onClick={onNew}>+</button>
+      <button className="nx-link" aria-label="New group" title={busy ?? undefined} disabled={!!busy} onClick={onNew} style={{ marginLeft: 6 }}>+ New group</button>
+      {activeTab?.editable && (
+        <button className="nx-link" style={{ color: 'var(--text-muted)' }} aria-label={`Group options for ${activeTab.name}`} onClick={() => onMenu(activeTab.name)}>Edit group</button>
+      )}
     </div>
   )
 }

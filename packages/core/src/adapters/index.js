@@ -212,4 +212,16 @@ export const IGitAdapter = {
   preview:       async (repo, worktreePath, registered, kind, options) => Promise.reject(new Error('IGitAdapter.preview not implemented')),
   // → { ok, detail, stale?, conflict?, operation? }
   run:           async (repo, worktreePath, registered, kind, options, stamp) => Promise.reject(new Error('IGitAdapter.run not implemented')),
+  // File editor. → { files: [rel], truncated }
+  files:         async (repo, worktreePath, registered) => Promise.reject(new Error('IGitAdapter.files not implemented')),
+  // → { text, bom, stamp } | { missing: true }; rejects for binary or over-1 MB files
+  readFile:      async (repo, worktreePath, registered, rel) => Promise.reject(new Error('IGitAdapter.readFile not implemented')),
+  // options = { expectedStamp, overwrite, bom } → { ok: true, stamp } | { ok: false, conflict: true, stamp } | { ok: false, missing: true }
+  writeFile:     async (repo, worktreePath, registered, rel, text, options) => Promise.reject(new Error('IGitAdapter.writeFile not implemented')),
+  // Left = git stage 2, right = stage 3. -> { kind, binary, stages: { base, left, right } (each { text, bom } | null), working: { text, bom, stamp } | null, stamp }; rejects when not conflicted
+  conflict:      async (repo, worktreePath, registered, rel) => Promise.reject(new Error('IGitAdapter.conflict not implemented')),
+  // resolution = { take: 'text', text, bom, force? } | { take: 'left' | 'right' | 'delete' }; expected = conflict().stamp -> { ok: true } | { ok: false, stale: true, detail } | { ok: false, detail }
+  resolveConflict: async (repo, worktreePath, registered, rel, resolution, expected) => Promise.reject(new Error('IGitAdapter.resolveConflict not implemented')),
+  // Puts the conflict back (git checkout -m); expected = a files stamp
+  unresolve:     async (repo, worktreePath, registered, rel, expected) => Promise.reject(new Error('IGitAdapter.unresolve not implemented')),
 }

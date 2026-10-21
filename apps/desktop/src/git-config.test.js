@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { getGitConfig, setGitConfig, DEFAULT_GIT_CONFIG, effectiveRoots, parseRoots, GIT_CONFIG_EVENT } from './git-config.js'
+import { getGitConfig, setGitConfig, DEFAULT_GIT_CONFIG, effectiveRoots, effectiveDotfiles, parseRoots, GIT_CONFIG_EVENT } from './git-config.js'
 import { getProfileKey } from './profile-keys.js'
 
 describe('git config', () => {
@@ -18,6 +18,22 @@ describe('git config', () => {
     expect(getGitConfig().repos).toEqual([{ name: 'A', path: 'C:/repos/A' }])
     expect(seen).toHaveBeenCalled()
     window.removeEventListener(GIT_CONFIG_EVENT, seen)
+  })
+
+  it('opens on Registered repos, and reads a view saved under the old All projects name as it', () => {
+    expect(getGitConfig().view.group).toBe('Registered repos')
+    localStorage.setItem(getProfileKey('git.config'), JSON.stringify({ view: { group: 'All projects' } }))
+    expect(getGitConfig().view.group).toBe('Registered repos')
+  })
+
+  it('uses the default DotFiles folder until one is saved, and an empty one turns it off', () => {
+    expect(effectiveDotfiles(getGitConfig())).toBe('C:/repos/DotFiles')
+    setGitConfig({ dotfiles: 'D:/dots' })
+    expect(effectiveDotfiles(getGitConfig())).toBe('D:/dots')
+    setGitConfig({ dotfiles: '' })
+    expect(effectiveDotfiles(getGitConfig())).toBe('')
+    localStorage.setItem(getProfileKey('git.config'), JSON.stringify({ dotfiles: 7 }))
+    expect(getGitConfig().dotfiles).toBeNull()
   })
 
   it('fills in missing fields of older or partial settings', () => {

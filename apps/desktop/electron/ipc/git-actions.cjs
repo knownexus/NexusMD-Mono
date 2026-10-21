@@ -26,6 +26,8 @@ const OPERATION_COMMANDS = {
   'Rebase in progress': 'rebase', 'Merge in progress': 'merge', 'Revert in progress': 'revert', 'Cherry-pick in progress': 'cherry-pick',
 };
 const PLAN_MARKER = 'nexusmd-rebase-plan';
+// The full ref name of the base of a rebase NexusMD started, so the conflict view can name it.
+const BASE_MARKER = 'nexusmd-rebase-onto';
 
 // Never in a stage 4 argv, whatever options arrive (the design's forbidden list).
 const FORBIDDEN_FLAGS = new Set(['--force', '-f', '--force-with-lease', '--force-if-includes', '--delete', '-d', '-D', '--mirror', '--all', '--tags', '--hard']);
@@ -47,6 +49,7 @@ const ownershipMessage = p => `Git refuses this repository because another user 
 const networkMessage = remote => `git timed out talking to ${remote} - a credential or SSH prompt may be waiting. Run git fetch once in a terminal to set it up.`;
 const sha = (...parts) => crypto.createHash('sha256').update(parts.join('\0')).digest('hex');
 const short = ref => ref.replace(/^refs\/(heads|remotes)\//, '');
+const refLabel = ref => ref.replace(/^refs\/(heads|remotes|tags)\//, '');
 const isOid = v => typeof v === 'string' && OID.test(v);
 
 // The same rules as core's checkBranchName, then git's own check-ref-format runs too.
@@ -87,23 +90,31 @@ function registerActions(handle, ctx) {
   // Network and hook-running actions get longer; both are injectable for tests.
   const LONG = ctx.longTimeoutMs ?? 120000;
   const SHORT = ctx.shortTimeoutMs ?? 30000;
+  const PROGRAMS_TTL = ctx.programsTtlMs ?? 60000;
 
   const w = (wt, args, opts = {}) => git(wt, assertSafeArgv(args), { ...opts, env: { ...WRITE_ENV, ...(opts.env || {}) } });
   const read = (wt, args) => git(wt, args);
   const out = r => (r.code === 0 ? r.stdout.trim() : null);
 
   async function targetState(wt) {
-    const status = await read(wt, ['status', '--porcelain=v2', '-z', '--untracked-files=all']);
+    // Each git process costs about half a second on Windows, so HEAD, the branch and its upstream
+    // come from status's own `# branch.*` headers. Only the upstream's commit needs another process.
+    const status = await read(wt, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all']);
     if (status.code !== 0) {
       if (/dubious ownership/.test(status.stderr)) throw Object.assign(new Error(ownershipMessage(wt)), { ownership: true });
       throw new Error(status.stderr || 'git status failed');
     }
-    const head = out(await read(wt, ['rev-parse', '--verify', '--quiet', 'HEAD']));
-    const symbolic = out(await read(wt, ['symbolic-ref', '--quiet', 'HEAD']));
-    const upstream = symbolic ? out(await read(wt, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'])) : null;
-    const upstreamOid = upstream ? out(await read(wt, ['rev-parse', '--verify', '--quiet', '@{upstream}'])) : null;
+    const all = status.stdout.split('\0').filter(Boolean);
+    const header = key => all.find(r => r.startsWith(`# branch.${key} `))?.slice(`# branch.${key} `.length) ?? null;
+    const oid = header('oid');
+    const name = header('head');
+    const head = oid && oid !== '(initial)' ? oid : null;
+    const symbolic = name && name !== '(detached)' ? `refs/heads/${name}` : null;
+    const upstream = symbolic ? header('upstream') : null;
+    // A gone upstream is still named, but without the ahead/behind line.
+    const upstreamOid = upstream && header('ab') ? out(await read(wt, ['rev-parse', '--verify', '--quiet', '@{upstream}'])) : null;
     const { operation } = await inProgress(await gitDirOf(wt));
-    const records = status.stdout.split('\0').filter(Boolean);
+    const records = all.filter(r => !r.startsWith('# '));
     return {
       head, symbolic, upstream, upstreamOid, operation, status: status.stdout,
       conflicts: records.some(r => r.startsWith('u ')),
@@ -115,7 +126,18 @@ function registerActions(handle, ctx) {
 
   const actionStamp = (state, extra) => sha(state.head ?? '', state.symbolic ?? '', state.upstream ?? '', state.upstreamOid ?? '', state.status, state.operation, extra ?? '');
 
+  // The hooks and config programs a worktree runs, kept for programsTtlMs: reading them takes three
+  // git processes, and every preview shows them.
+  const programsCache = new Map();
   async function programs(wt) {
+    const kept = programsCache.get(wt);
+    if (kept && Date.now() - kept.at < PROGRAMS_TTL) return kept.list;
+    const list = await readPrograms(wt);
+    programsCache.set(wt, { at: Date.now(), list });
+    return list;
+  }
+
+  async function readPrograms(wt) {
     const list = [];
     const hooksPath = out(await read(wt, ['config', '--get', 'core.hooksPath']));
     const common = out(await read(wt, ['rev-parse', '--path-format=absolute', '--git-common-dir']));
@@ -219,6 +241,7 @@ function registerActions(handle, ctx) {
         return [...fetch, merge];
       },
       network: o => o.remote,
+      before: async (wt, o, state) => { if (o.mode === 'rebase') await rememberBase(wt, state.upstream); },
     },
     push: {
       timeout: LONG,
@@ -353,6 +376,17 @@ function registerActions(handle, ctx) {
       preview: async (wt, o) => o,
       run: async (wt, o) => continueOrAbort(wt, o.command, 'continue'),
     },
+    skip: {
+      timeout: LONG,
+      check: async (wt, o, state) => {
+        const command = OPERATION_COMMANDS[state.operation];
+        if (!command) throw new Error('Nothing is in progress.');
+        if (command === 'merge') throw new Error("A merge can't skip; continue or abort it.");
+        return { command };
+      },
+      preview: async (wt, o) => ({ ...o, note: 'Drops this commit from the result.' }),
+      run: async (wt, o) => continueOrAbort(wt, o.command, 'skip'),
+    },
     abort: {
       timeout: SHORT,
       check: async (wt, o, state) => {
@@ -362,6 +396,47 @@ function registerActions(handle, ctx) {
       },
       preview: async (wt, o) => ({ ...o, note: 'Undoes everything this operation has done so far.' }),
       run: async (wt, o) => continueOrAbort(wt, o.command, 'abort'),
+    },
+    rebase: {
+      timeout: LONG,
+      check: async (wt, o, state) => {
+        notDuring(state);
+        const branch = branchOf(state);
+        if (state.tracked && !o.autostash) throw new Error('Rebase needs a clean worktree - stash first, or tick "Stash my changes".');
+        const onto = typeof o.onto === 'string' ? o.onto.trim() : '';
+        if (!onto || onto.startsWith('-')) throw new Error('Choose where to rebase onto.');
+        const known = await refNames(wt, 'refs/heads/', 'refs/remotes/', 'refs/tags/');
+        const oid = out(await read(wt, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${onto}^{commit}`]));
+        if (!oid) throw new Error(`${onto} isn't a branch, tag or commit in this repository.`);
+        if (onto === `refs/heads/${branch}` || onto === branch) throw new Error(`${branch} can't be rebased onto itself.`);
+        const ref = known.has(onto) ? onto : null;
+        const remote = ref?.startsWith('refs/remotes/') ? (await remotes(wt)).find(r => ref.startsWith(`refs/remotes/${r}/`)) ?? null : null;
+        const fetch = !!o.fetch && !!remote;
+        if (!fetch && !(await read(wt, ['rev-list', '--max-count=1', '--end-of-options', `HEAD..${oid}`])).stdout.trim()) {
+          throw new Error(`${branch} already contains everything in ${ref ? refLabel(ref) : onto}.`);
+        }
+        return { onto: ref ?? oid, name: onto, label: ref ? refLabel(ref) : onto, oid, branch, remote, fetch, autostash: !!o.autostash, rebaseMerges: !!o.rebaseMerges };
+      },
+      extra: async (wt, o) => `${o.oid}\0${o.fetch}\0${o.autostash}\0${o.rebaseMerges}`,
+      preview: async (wt, o, state) => {
+        const replay = await subjects(wt, [`${o.oid}..HEAD`]);
+        // One listing with parents gives both the count and the merges (a line with two or more parents).
+        const lines = (out(await read(wt, ['rev-list', '--parents', `${o.oid}..HEAD`])) || '').split('\n').filter(Boolean);
+        const count = lines.length;
+        const merges = lines.filter(l => l.split(' ').length > 2).length;
+        const unpushed = Number(out(await read(wt, ['rev-list', '--count', `${o.oid}..HEAD`, '--not', '--remotes'])) || 0);
+        return {
+          ...o, replay, count, pushed: count - unpushed, merges, dirty: state.tracked,
+          incoming: await subjects(wt, [`HEAD..${o.oid}`], 20), asOf: o.fetch ? 'before fetching' : o.remote ? 'as of the last fetch' : null,
+        };
+      },
+      steps: o => [
+        ...(o.fetch ? [['fetch', o.remote]] : []),
+        ['rebase', ...(o.autostash ? ['--autostash'] : []), ...(o.rebaseMerges ? ['--rebase-merges'] : []), '--end-of-options', o.onto],
+      ],
+      network: o => o.remote,
+      // A typed branch name is remembered too; a commit names nothing, so rememberBase skips it.
+      before: async (wt, o) => { await rememberBase(wt, o.name); },
     },
     rebaseInteractive: {
       timeout: LONG,
@@ -425,8 +500,29 @@ function registerActions(handle, ctx) {
     try { fsx.rmSync(markerFile, { force: true }); } catch { /* already gone */ }
   }
 
+  // Remembers which branch a rebase started here is rebasing onto; only a ref name is kept (an oid names nothing).
+  async function rememberBase(wt, base) {
+    if (!base || base.startsWith('-')) return;
+    const full = out(await read(wt, ['rev-parse', '--symbolic-full-name', base]));
+    const dir = await gitDirOf(wt);
+    if (!dir || !full || !/^refs\/(heads|remotes)\//.test(full)) return;
+    try { fsx.writeFileSync(path.join(dir, BASE_MARKER), `${full}\n`); } catch { /* the name just won't be shown */ }
+  }
+
+  // Shared by continue, abort and skip (through finish): once nothing is in progress the remembered base is stale.
+  async function forgetBaseIfIdle(wt) {
+    const dir = await gitDirOf(wt);
+    const { operation } = await inProgress(dir);
+    if (dir && !operation) {
+      try { fsx.rmSync(path.join(dir, BASE_MARKER), { force: true }); } catch { /* already gone */ }
+      // git-conflicts.cjs's record of resolved files is just as stale.
+      try { fsx.rmSync(path.join(dir, 'nexusmd-resolutions.json'), { force: true }); } catch { /* already gone */ }
+    }
+    return operation;
+  }
+
   async function finish(wt, r) {
-    const { operation } = await inProgress(await gitDirOf(wt));
+    const operation = await forgetBaseIfIdle(wt);
     const detail = [r.stdout.trim(), r.stderr].filter(Boolean).join('\n') || (r.code === 0 ? 'Done' : `git exited with code ${r.code}`);
     if (r.code === 0 && !operation) return { ok: true, detail };
     return { ok: false, detail, ...(operation ? { conflict: true, operation } : {}) };
@@ -437,6 +533,7 @@ function registerActions(handle, ctx) {
     fsx.writeFileSync(planFile, JSON.stringify({ todo: rebaseTodo(o.rows), messages: rebaseMessages(o.rows) }), { mode: 0o600 });
     const marker = await gitDirFile(wt);
     try {
+      await rememberBase(wt, o.base);
       const r = await w(wt, ['rebase', '-i', '--end-of-options', o.base], { timeout: LONG, env: editorEnv(planFile) });
       const res = await finish(wt, r);
       // Stopped on a conflict: keep the plan so Continue applies the remaining rewords.
@@ -452,13 +549,13 @@ function registerActions(handle, ctx) {
   async function continueOrAbort(wt, command, verb) {
     const marker = command === 'rebase' ? await gitDirFile(wt) : null;
     let env = {};
-    if (marker && verb === 'continue') {
+    if (marker && verb !== 'abort') {
       try {
         const planFile = fsx.readFileSync(marker, 'utf8').trim();
         if (planFile && fsx.existsSync(planFile)) env = editorEnv(planFile);
       } catch { /* a rebase NexusMD didn't start */ }
     }
-    const r = await w(wt, [command, `--${verb}`], { timeout: verb === 'continue' ? LONG : SHORT, env });
+    const r = await w(wt, [command, `--${verb}`], { timeout: verb === 'abort' ? SHORT : LONG, env });
     const res = await finish(wt, r);
     if (marker && (verb === 'abort' || res.ok)) cleanupPlan(marker);
     return res;
@@ -469,6 +566,7 @@ function registerActions(handle, ctx) {
     const cwd = a.cwd ? a.cwd(o) : wt;
     if (a.verb) return runStash(wt, a.verb, o);
     if (a.run) return a.run(wt, o, state);
+    if (a.before) await a.before(wt, o, state);
     const outputs = [];
     for (const args of a.steps(o, state)) {
       let r;
@@ -486,6 +584,7 @@ function registerActions(handle, ctx) {
         return special ? { ...res, detail: `${special}\n\n${res.detail}` } : res;
       }
     }
+    if (a.before) await forgetBaseIfIdle(wt);
     return { ok: true, detail: outputs.filter(Boolean).join('\n') || 'Done' };
   }
 
@@ -552,5 +651,5 @@ function registerActions(handle, ctx) {
 
 module.exports = {
   registerActions, assertSafeArgv, branchNameProblem, rebaseTodo, rebaseMessages,
-  WRITE_ENV, STALE, REJECTED, PUSHED_RANGE, MERGES_RANGE, ownershipMessage, networkMessage,
+  WRITE_ENV, BASE_MARKER, STALE, REJECTED, PUSHED_RANGE, MERGES_RANGE, ownershipMessage, networkMessage,
 };

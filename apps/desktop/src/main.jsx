@@ -622,6 +622,8 @@ function ViewBody({
   }
 }
 
+const FULL_BLEED = new Set(['markdown', 'devenv', 'git'])
+
 function WindowControls() {
   if (window.electronAPI?.platform === 'darwin') return null;
   const win = window.electronAPI?.window;
@@ -1016,8 +1018,9 @@ function App() {
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            overflow: view === 'markdown' ? 'hidden' : 'auto',
-            padding: view === 'markdown' ? 0 : 18,
+            // These views lay out their own padding and scrolling (a scrolling page beside a fixed drawer).
+            overflow: FULL_BLEED.has(view) ? 'hidden' : 'auto',
+            padding: FULL_BLEED.has(view) ? 0 : 18,
           }}>
             <ViewBody
               view={view} onOpenItem={openItem} onOpenPR={openPR} onOpenPerson={openPerson} onOpenBuild={openBuild}

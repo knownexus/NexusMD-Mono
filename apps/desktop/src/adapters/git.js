@@ -27,7 +27,24 @@ export const gitAdapter = {
   commitFiles(repo, worktreePath, registered, oid, parent) { return api().commitFiles(repo, worktreePath, registered, oid, parent) },
   commitDiff(repo, worktreePath, registered, oid, parent, paths) { return api().commitDiff(repo, worktreePath, registered, oid, parent, paths) },
   remotes(repo, worktreePath, registered) { return api().remotes(repo, worktreePath, registered) },
+  aliases(repo, worktreePath, registered) { return api().aliases(repo, worktreePath, registered) },
+  shellAliases(folder) { return api().shellAliases(folder) },
+  shellRun(repo, worktreePath, registered, folder, name, args) { return api().shellRun(repo, worktreePath, registered, folder, name, args) },
+  shellWarm(folder) { return api().shellWarm(folder) },
+  openTerminal(repo, worktreePath, registered) { return api().openTerminal(repo, worktreePath, registered) },
   stashes(repo, worktreePath, registered) { return api().stashes(repo, worktreePath, registered) },
   preview(repo, worktreePath, registered, kind, options) { return api().preview(repo, worktreePath, registered, kind, options) },
   run(repo, worktreePath, registered, kind, options, stamp) { return api().run(repo, worktreePath, registered, kind, options, stamp) },
+  files(repo, worktreePath, registered) { return api().files(repo, worktreePath, registered) },
+  readFile(repo, worktreePath, registered, rel) { return api().readFile(repo, worktreePath, registered, rel) },
+  writeFile(repo, worktreePath, registered, rel, text, options) { return api().writeFile(repo, worktreePath, registered, rel, text, options) },
+  conflict(repo, worktreePath, registered, rel) { return api().conflict(repo, worktreePath, registered, rel) },
+  resolveConflict(repo, worktreePath, registered, rel, resolution, expected) { return api().resolveConflict(repo, worktreePath, registered, rel, resolution, expected) },
+  unresolve(repo, worktreePath, registered, rel, expected) { return api().unresolve(repo, worktreePath, registered, rel, expected) },
+  // NEW: the Git Workspace command line. argv excludes the leading "git". Resolves { code, stdout, stderr }.
+  // Undefined until the IPC exists, so the UI can say so instead of throwing.
+  get exec() {
+    const fn = api()?.exec
+    return fn ? (repo, worktreePath, registered, argv) => fn(repo, worktreePath, registered, argv) : undefined
+  },
 }

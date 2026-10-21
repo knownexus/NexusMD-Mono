@@ -29,3 +29,18 @@ describe('createWindowOpenHandler', () => {
     expect(openLink).not.toHaveBeenCalled()
   })
 })
+
+describe('createWindowOpenHandler pop-out windows', () => {
+  it('allows only a blank window with the pop-out name', () => {
+    const openLink = vi.fn()
+    const handler = createWindowOpenHandler({ isAllowedUrl: allow, openLink })
+    const result = handler({ url: 'about:blank', frameName: 'nexusmd-popout' })
+    expect(result.action).toBe('allow')
+    expect(result.overrideBrowserWindowOptions.autoHideMenuBar).toBe(true)
+    expect(handler({ url: 'about:blank', frameName: 'nexusmd-popout-2' }).action).toBe('allow')
+    expect(handler({ url: 'about:blank', frameName: 'other' })).toEqual({ action: 'deny' })
+    expect(handler({ url: 'about:blank', frameName: 'nexusmd-popout-x' })).toEqual({ action: 'deny' })
+    expect(handler({ url: 'https://example.com/', frameName: 'nexusmd-popout' })).toEqual({ action: 'deny' })
+    expect(handler({ url: 'file:///C:/x.html', frameName: 'nexusmd-popout' })).toEqual({ action: 'deny' })
+  })
+})

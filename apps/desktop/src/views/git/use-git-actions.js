@@ -30,7 +30,8 @@ export function useGitActions({ adapter, registered, reload }) {
     running.current.delete(tree.path)
     setBusy(b => { const next = { ...b }; delete next[tree.path]; return next })
     setStatus(s => ({ ...s, [tree.path]: { ok: !!r.ok, text: r.detail } }))
-    reload()
+    // Only the repo written to has changed.
+    reload([tree.repo])
   }
 
   const openReview = (action, tree, selectedIds) => {
@@ -54,5 +55,14 @@ export function useGitActions({ adapter, registered, reload }) {
   const hunk = (tree, change, index, stamp, after) => guard(tree, () =>
     adapter[change.area === 'staged' ? 'unstageHunk' : 'stageHunk'](repoOf(tree), tree.path, registered, changePaths(change), index, stamp), after)
 
-  return { review, openReview, closeReview: () => setReview(null), confirm, hunk, busy, status }
+  // Take one side of a conflicted file whole. The stamp is read here, so a file changed since is refused (stale).
+  const resolve = (tree, change, take, onResolved) => guard(tree, async () => {
+    const repo = repoOf(tree)
+    const expected = await adapter.stamp(repo, tree.path, registered, { kind: 'files', paths: [change.path] })
+    const r = await adapter.resolveConflict(repo, tree.path, registered, change.path, { take }, expected)
+    if (r.ok) onResolved?.()
+    return r.ok ? r : { ok: false, detail: r.detail || (r.stale ? `${change.path} changed since it was listed. Refresh and try again.` : `Could not resolve ${change.path}.`) }
+  })
+
+  return { review, openReview, closeReview: () => setReview(null), confirm, hunk, resolve, busy, status }
 }

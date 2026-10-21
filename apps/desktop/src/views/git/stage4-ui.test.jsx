@@ -5,9 +5,19 @@ import { setGitConfig, getGitConfig } from '../../git-config.js'
 import { clearGitSnapshotCache } from './use-git-snapshot.js'
 import { historyCache } from './history-cache.js'
 import { RebaseDialog } from './rebase-dialog.jsx'
-import { OperationBanner } from './operation-banner.jsx'
+import { clearWorktreeDrafts, putWorktreeDraft, getWorktreeDraft, conflictDraftKey } from './use-worktree-file.js'
 
 afterEach(cleanup)
+// A kept draft for c.txt, as left by an editor that went away; stands in for one, since conflicted files have no Edit.
+const keptDraft = { on: false, discarded: [] }
+vi.mock('./use-worktree-file.js', async orig => {
+  const real = await orig()
+  return {
+    ...real,
+    worktreeDraftPaths: (...a) => (keptDraft.on ? ['c.txt'] : real.worktreeDraftPaths(...a)),
+    discardWorktreeDraft: (...a) => { keptDraft.discarded.push(a[2]); keptDraft.on = false; return real.discardWorktreeDraft(...a) },
+  }
+})
 beforeEach(() => {
   localStorage.clear()
   clearGitSnapshotCache()
@@ -59,9 +69,22 @@ describe('stage 4 in the Git Workspace view', () => {
     fireEvent.click(bar.getByRole('button', { name: 'Pull…' }))
     await waitFor(() => expect(git.preview).toHaveBeenCalledWith({ name: 'A', path: 'C:/repos/A' }, 'C:/repos/A', ['C:/repos/A', 'C:/repos/B'], 'pull', { mode: 'ff' }))
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(bar.getByRole('button', { name: 'Rebase…' }))
+    await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'rebase', {}))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     fireEvent.click(bar.getByRole('button', { name: 'Branch ▾' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Remove this worktree…' }))
     await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'worktreeRemove', { path: 'C:/repos/A' }))
+  })
+
+  it('Terminal opens one in the selected worktree, and says why when it cannot', async () => {
+    const git = adapter({ openTerminal: vi.fn().mockResolvedValueOnce({ opened: 'wt.exe' }).mockRejectedValueOnce(new Error("Error invoking remote method 'git:openTerminal': Error: Couldn't open a terminal: none found")) })
+    const bar = await openWorktree(git)
+    fireEvent.click(bar.getByRole('button', { name: 'Terminal' }))
+    await waitFor(() => expect(git.openTerminal).toHaveBeenCalledWith({ name: 'A', path: 'C:/repos/A' }, 'C:/repos/A', ['C:/repos/A', 'C:/repos/B']))
+    expect(bar.queryByRole('alert')).toBeNull()
+    fireEvent.click(bar.getByRole('button', { name: 'Terminal' }))
+    expect((await bar.findByRole('alert')).textContent).toBe("Couldn't open a terminal: none found")
   })
 
   it('Fetch all previews one target per repository in the group', async () => {
@@ -114,18 +137,237 @@ describe('stage 4 in the Git Workspace view', () => {
   })
 })
 
-describe('OperationBanner', () => {
-  it('offers Continue only once conflicts are resolved, and Abort', () => {
-    const onAction = vi.fn()
-    const tree = (changes = []) => ({ operation: 'Rebase in progress', changes })
-    const { rerender } = render(<OperationBanner tree={tree([{ area: 'conflict' }])} onAction={onAction} />)
-    expect(screen.getByRole('button', { name: 'Continue' }).disabled).toBe(true)
-    rerender(<OperationBanner tree={tree()} onAction={onAction} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Abort' }))
-    expect(onAction.mock.calls).toEqual([['continue', {}], ['abort', {}]])
-    rerender(<OperationBanner tree={{ operation: '', changes: [] }} onAction={onAction} />)
-    expect(screen.queryByRole('status')).toBeNull()
+describe('resolving a conflicted file whole', () => {
+  it('stamps the file, resolves it after confirming, and shows a refusal', async () => {
+    const h = 'f'.repeat(40)
+    const git = adapter({
+      status: vi.fn(async () => ({
+        porcelain: porcelain(`u UU N... 100644 100644 100644 100644 ${h} ${h} ${h} c.txt\0`),
+        operation: 'Rebase in progress', rebasingBranch: 'main', fetchedAt: null,
+        operationInfo: { kind: 'rebase', onto: { name: 'refs/heads/dev', oid: oid(1) }, step: 1, total: 2, replaying: null },
+      })),
+      stamp: vi.fn(async () => 'stamp-1'),
+      resolveConflict: vi.fn(async () => ({ ok: false, stale: true, detail: 'c.txt changed since it was listed.' })),
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await openWorktree(git)
+    fireEvent.click(await screen.findByRole('button', { name: "Take dev's for c.txt" }))
+    await waitFor(() => expect(git.resolveConflict).toHaveBeenCalledWith({ name: 'A', path: 'C:/repos/A' }, 'C:/repos/A', ['C:/repos/A', 'C:/repos/B'], 'c.txt', { take: 'left' }, 'stamp-1'))
+    expect(git.stamp).toHaveBeenCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), { kind: 'files', paths: ['c.txt'] })
+    expect((await screen.findByRole('alert')).textContent).toContain('c.txt changed since it was listed.')
+    window.confirm.mockRestore()
+  })
+})
+
+describe('resolving over a kept draft', () => {
+  const conflicted = over => adapter({
+    status: vi.fn(async () => ({
+      porcelain: porcelain(`u UU N... 100644 100644 100644 100644 ${'f'.repeat(40)} ${'f'.repeat(40)} ${'f'.repeat(40)} c.txt\0`),
+      operation: 'Rebase in progress', rebasingBranch: 'main', fetchedAt: null,
+      operationInfo: { kind: 'rebase', onto: { name: 'refs/heads/dev', oid: oid(1) }, step: 1, total: 2, replaying: null },
+    })),
+    stamp: vi.fn(async () => 'stamp-1'),
+    resolveConflict: vi.fn(async () => ({ ok: true, detail: 'Resolved' })),
+    ...over,
+  })
+  afterEach(() => { keptDraft.on = false; keptDraft.discarded = []; vi.restoreAllMocks() })
+
+  it('declining the discard does nothing', async () => {
+    keptDraft.on = true
+    const git = conflicted()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true).mockReturnValue(false)
+    await openWorktree(git)
+    fireEvent.click(await screen.findByRole('button', { name: "Take dev's for c.txt" }))
+    expect(confirm).toHaveBeenCalledWith('Discard unsaved changes to c.txt?')
+    expect(git.resolveConflict).not.toHaveBeenCalled()
+    expect(keptDraft.discarded).toEqual([])
+  })
+
+  it('accepting resolves the file and drops the draft', async () => {
+    keptDraft.on = true
+    const git = conflicted()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await openWorktree(git)
+    fireEvent.click(await screen.findByRole('button', { name: "Take dev's for c.txt" }))
+    await waitFor(() => expect(git.resolveConflict).toHaveBeenCalled())
+    await waitFor(() => expect(keptDraft.discarded).toEqual(['c.txt']))
+  })
+})
+
+describe('resolving a conflicted file in the panel', () => {
+  const h = 'f'.repeat(40)
+  const MARKED = '<<<<<<< HEAD\nL\n=======\nR\n>>>>>>> fix\n'
+  const conflicted = () => {
+    const state = { resolved: false }
+    const git = adapter({
+      status: vi.fn(async () => ({
+        porcelain: porcelain(state.resolved ? `1 M. N... 100644 100644 100644 ${h} ${h} c.txt\0` : `u UU N... 100644 100644 100644 100644 ${h} ${h} ${h} c.txt\0`),
+        operation: 'Rebase in progress', rebasingBranch: 'main', fetchedAt: null,
+        operationInfo: { kind: 'rebase', onto: { name: 'refs/heads/dev', oid: oid(1) }, step: 1, total: 2, replaying: { oid: oid(2), subject: 'Fix' } },
+      })),
+      conflict: vi.fn(async () => ({ kind: 'both-modified', binary: false, stages: { base: null, left: { text: 'L\n' }, right: { text: 'R\n' } }, working: { text: MARKED, bom: false, stamp: 'w1' }, stamp: 'c1' })),
+      resolveConflict: vi.fn(async () => { state.resolved = true; return { ok: true } }),
+      unresolve: vi.fn(async () => { state.resolved = false; return { ok: true } }),
+      stamp: vi.fn(async () => 'stamp-1'),
+    })
+    return git
+  }
+  afterEach(() => { vi.restoreAllMocks(); clearWorktreeDrafts() })
+
+  it('jumps to the next conflicted file, and offers it once one is resolved', async () => {
+    const resolved = new Set()
+    const both = p => (resolved.has(p) ? `1 M. N... 100644 100644 100644 ${h} ${h} ${p}\0` : `u UU N... 100644 100644 100644 100644 ${h} ${h} ${h} ${p}\0`)
+    const git = conflicted()
+    git.status.mockImplementation(async () => ({
+      porcelain: porcelain(both('a.txt') + both('b.txt')),
+      operation: 'Rebase in progress', rebasingBranch: 'main', fetchedAt: null,
+      operationInfo: { kind: 'rebase', onto: { name: 'refs/heads/dev', oid: oid(1) }, step: 1, total: 2, replaying: { oid: oid(2), subject: 'Fix' } },
+    }))
+    git.resolveConflict.mockImplementation(async (_r, _w, _g, p) => { resolved.add(p); return { ok: true } })
+    await openWorktree(git)
+    fireEvent.click(await screen.findByText('a.txt'))
+    await screen.findByRole('heading', { name: 'Resolve: a.txt' })
+    expect(within(screen.getByRole('group', { name: 'Conflicted files' })).getByText('File 1 of 2')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Next conflicted file' }))
+    expect(await screen.findByRole('heading', { name: 'Resolve: b.txt' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Previous conflicted file' }))
+    await screen.findByRole('heading', { name: 'Resolve: a.txt' })
+    await screen.findByText('1 of 1 left')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve a.txt' })).getByRole('button', { name: "Take dev's" }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mark resolved' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Next conflict: b.txt →' }))
+    expect(await screen.findByRole('heading', { name: 'Resolve: b.txt' })).toBeTruthy()
+  })
+
+  it('a focused conflict shows the resolve screen, and Undo stays after it is staged', async () => {
+    const git = conflicted()
+    await openWorktree(git)
+    fireEvent.click(await screen.findByText('c.txt'))
+    expect(await screen.findByRole('heading', { name: 'Resolve: c.txt' })).toBeTruthy()
+    expect(screen.queryByText('Resolve in your editor, then stage the file.')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Diff or edit' })).toBeNull()
+    await screen.findByText('1 of 1 left')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: "Take dev's" }))
+    const statusCalls = git.status.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Mark resolved' }))
+    await waitFor(() => expect(git.resolveConflict).toHaveBeenCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'c.txt', { take: 'text', text: 'L\n', bom: false, force: false }, 'c1'))
+    await waitFor(() => expect(git.status.mock.calls.length).toBeGreaterThan(statusCalls))
+    await waitFor(() => expect(screen.queryByRole('button', { name: "Take dev's for c.txt" })).toBeNull())
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo resolution' }))
+    await waitFor(() => expect(git.unresolve).toHaveBeenCalled())
+    expect(await screen.findByRole('button', { name: "Take dev's for c.txt" })).toBeTruthy()
+    expect(await screen.findByText('1 of 1 left')).toBeTruthy()
+  })
+
+  it('a file that conflicts again after being resolved shows its sides again', async () => {
+    const git = conflicted()
+    await openWorktree(git)
+    fireEvent.click(await screen.findByText('c.txt'))
+    await screen.findByText('1 of 1 left')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: "Take dev's" }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mark resolved' }))
+    await screen.findByRole('button', { name: 'Undo resolution' })
+    await waitFor(() => expect(screen.queryByRole('button', { name: "Take dev's for c.txt" })).toBeNull())
+    // The next step of the rebase (or something outside the app) puts c.txt back in conflict.
+    git.resolveConflict.mockClear()
+    git.status.mockImplementation(async () => ({
+      porcelain: porcelain(`u UU N... 100644 100644 100644 100644 ${h} ${h} ${h} c.txt\0`),
+      operation: 'Rebase in progress', rebasingBranch: 'main', fetchedAt: null,
+      operationInfo: { kind: 'rebase', onto: { name: 'refs/heads/dev', oid: oid(1) }, step: 2, total: 2, replaying: { oid: oid(3), subject: 'More' } },
+    }))
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    expect(await screen.findByText('1 of 1 left')).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: "Take dev's" })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Undo resolution' })).toBeNull()
+  })
+
+  it('leaving a half-resolved file asks first', async () => {
+    const git = conflicted()
+    await openWorktree(git)
+    fireEvent.click(await screen.findByText('c.txt'))
+    await screen.findByText('1 of 1 left')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: 'Take mine' }))
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    expect(confirm).toHaveBeenCalledWith('Discard unsaved changes to c.txt?')
+    expect(screen.getByRole('heading', { name: 'Resolve: c.txt' })).toBeTruthy()
+    confirm.mockReturnValue(true)
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Resolve: c.txt' })).toBeNull())
+  })
+})
+
+describe('unsaved resolve text is never stranded', () => {
+  const h = 'f'.repeat(40)
+  const MARKED = '<<<<<<< HEAD\nL\n=======\nR\n>>>>>>> fix\n'
+  const OP = { kind: 'rebase', onto: { name: 'refs/heads/dev', oid: oid(1) }, step: 1, total: 2, replaying: { oid: oid(2), subject: 'Fix' } }
+  const KEY = conflictDraftKey('C:/repos/A', 'C:/repos/A', 'c.txt')
+  const make = ({ conflicted = true } = {}) => adapter({
+    status: vi.fn(async () => ({
+      porcelain: porcelain(conflicted ? `u UU N... 100644 100644 100644 100644 ${h} ${h} ${h} c.txt\0` : `1 .M N... 100644 100644 100644 ${h} ${h} c.txt\0`),
+      operation: 'Rebase in progress', rebasingBranch: 'refs/heads/main', fetchedAt: null, operationInfo: OP,
+    })),
+    conflict: vi.fn(async () => ({ kind: 'both-modified', binary: false, stages: { base: null, left: { text: 'L\n' }, right: { text: 'R\n' } }, working: { text: MARKED, bom: false, stamp: 'w1' }, stamp: 'c1' })),
+    resolveConflict: vi.fn(async () => ({ ok: true })),
+    stamp: vi.fn(async () => 'stamp-1'),
+  })
+  const halfResolved = async git => {
+    await openWorktree(git)
+    fireEvent.click(await screen.findByText('c.txt'))
+    await screen.findByText('1 of 1 left')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: 'Take mine' }))
+    expect(getWorktreeDraft(KEY)).toBeTruthy()
+  }
+  const previewed = (git, kind) => git.preview.mock.calls.some(c => c[3] === kind)
+  afterEach(() => { vi.restoreAllMocks(); clearWorktreeDrafts() })
+  // jsdom has no layout; CodeMirror measures text ranges.
+  beforeEach(() => {
+    Range.prototype.getClientRects ??= () => []
+    Range.prototype.getBoundingClientRect ??= () => ({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 })
+  })
+
+  for (const kind of ['Skip', 'Abort']) {
+    it(`${kind} asks about unsaved resolve text first; declining opens nothing, confirming drops the draft`, async () => {
+      const git = make()
+      await halfResolved(git)
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      fireEvent.click(screen.getByRole('button', { name: kind }))
+      expect(confirm).toHaveBeenCalledWith('Discard unsaved changes to c.txt?')
+      expect(previewed(git, kind.toLowerCase())).toBe(false)
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(getWorktreeDraft(KEY)).toBeTruthy()
+      confirm.mockReturnValue(true)
+      fireEvent.click(screen.getByRole('button', { name: kind }))
+      await waitFor(() => expect(previewed(git, kind.toLowerCase())).toBe(true))
+      expect(getWorktreeDraft(KEY)).toBeUndefined()
+    })
+  }
+
+  it('a kept resolve draft of a still-conflicted file opens its resolve screen, with the edits restored', async () => {
+    putWorktreeDraft(KEY, { text: 'R\n', saved: MARKED, eol: '\n', bom: false, stamp: 'w1' })
+    const git = make()
+    await openWorktree(git)
+    const note = await screen.findByRole('note', { name: 'Unsaved edits' })
+    fireEvent.click(within(note).getByRole('button', { name: 'c.txt' }))
+    expect(await screen.findByRole('heading', { name: 'Resolve: c.txt' })).toBeTruthy()
+    expect(await screen.findByText('Unsaved changes from earlier were restored.')).toBeTruthy()
+  })
+
+  it('a kept resolve draft of a file no longer conflicted offers Discard, asking first', async () => {
+    putWorktreeDraft(KEY, { text: 'R\n', saved: MARKED, eol: '\n', bom: false, stamp: 'w1' })
+    const git = make({ conflicted: false })
+    await openWorktree(git)
+    const note = await screen.findByRole('note', { name: 'Unsaved edits' })
+    expect(within(note).queryByRole('button', { name: 'c.txt' })).toBeNull()
+    const discard = within(note).getByRole('button', { name: 'Discard unsaved resolve edits to c.txt' })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.click(discard)
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved resolve edits to c.txt? It isn't conflicted any more, so they can't be used.")
+    expect(getWorktreeDraft(KEY)).toBeTruthy()
+    confirm.mockReturnValue(true)
+    fireEvent.click(discard)
+    expect(getWorktreeDraft(KEY)).toBeUndefined()
+    await waitFor(() => expect(screen.queryByRole('note', { name: 'Unsaved edits' })).toBeNull())
   })
 })
 

@@ -83,10 +83,23 @@ describe('DiffPane', () => {
     const notes = (area, diff) => { cleanup(); render(<DiffPane change={change(area)} diff={diff} onHunk={vi.fn()} />); return screen.getAllByRole('note').map(n => n.textContent) }
     expect(notes('unstaged', loaded('Binary files a/f.txt and b/f.txt differ\n', { binary: true, size: 2048 }))).toEqual(['Binary file (2 KB). Stage or discard it as a whole.'])
     expect(notes('unstaged', loaded('', { truncated: true, size: 3 * 1024 * 1024 }))).toEqual(['This diff is too large to show (3.0 MB). Stage or discard the file as a whole.'])
-    expect(notes('conflict', loaded(''))).toEqual(['Resolve in your editor, then stage the file.'])
+    cleanup()
+    render(<DiffPane change={change('conflict')} diff={loaded('')} onHunk={vi.fn()} />)
+    expect(screen.queryAllByRole('note')).toEqual([])
     expect(notes('untracked', loaded(''))).toEqual(['Empty file.'])
     expect(notes('unstaged', loaded('', { gone: true }))).toEqual(['No longer changed.'])
     expect(screen.queryByRole('button', { name: /hunk/ })).toBeNull()
+  })
+
+  it('clicking a line calls onLine with its new line number', () => {
+    const onLine = vi.fn()
+    render(<DiffPane change={change('unstaged')} diff={loaded(TWO)} onHunk={vi.fn()} onLine={onLine} />)
+    const rows = screen.getAllByTestId('diff-line')
+    fireEvent.click(rows[1]) // deleted: no new-side line
+    expect(onLine).not.toHaveBeenCalled()
+    fireEvent.click(rows[0])
+    fireEvent.click(rows[4])
+    expect(onLine.mock.calls).toEqual([[1], [11]])
   })
 
   it('asks for a file when none is focused and shows load errors', () => {

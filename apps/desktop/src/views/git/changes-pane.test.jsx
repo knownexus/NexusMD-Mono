@@ -114,3 +114,55 @@ describe('ChangesPane', () => {
     expect(button('Commit…').disabled).toBe(true)
   })
 })
+
+describe('ChangesPane conflicts', () => {
+  const U = c('conflict', 'u.txt', { xy: 'UU' })
+  const D = c('conflict', 'd.txt', { xy: 'DU' })
+  const op = { kind: 'rebase', onto: { name: 'refs/heads/main', oid: 'a'.repeat(40) }, step: 1, total: 2, replaying: null }
+  const ctree = { path: 'C:/repos/A', branch: 'feat', operationInfo: op, changes: [A, B, U, D] }
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it('lists conflicts first with whole-file choices', () => {
+    renderPane({ tree: ctree, onResolve: vi.fn() })
+    const groups = screen.getAllByRole('group').filter(g => /\(\d+\)$/.test(g.getAttribute('aria-label')))
+    expect(groups[0].getAttribute('aria-label')).toBe('Conflicts (2)')
+    const row = within(groups[0])
+    expect(row.getAllByRole('button', { name: /^Take main's for / })).toHaveLength(1)
+    expect(row.getAllByRole('button', { name: /^Take mine for / })).toHaveLength(1)
+    expect(within(screen.getByRole('group', { name: 'Staged (1)' })).queryByRole('button', { name: /^Take/ })).toBeNull()
+  })
+
+  it('only text conflicts get row takes; a deletion conflict is resolved from its own screen', () => {
+    const AA = c('conflict', 'aa.txt', { xy: 'AA' })
+    const others = ['DU', 'UD', 'AU', 'UA', 'DD'].map(xy => c('conflict', `${xy}.txt`, { xy }))
+    renderPane({ tree: { ...ctree, changes: [U, AA, ...others] }, onResolve: vi.fn() })
+    expect(screen.getByRole('button', { name: "Take main's for u.txt" })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Take mine for aa.txt' })).toBeTruthy()
+    for (const o of others) expect(screen.queryByRole('button', { name: new RegExp(`for ${o.path}$`) })).toBeNull()
+  })
+
+  it('whole-file choice asks first and resolves', () => {
+    const onResolve = vi.fn()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValue(true)
+    renderPane({ tree: ctree, onResolve })
+    const take = screen.getByRole('button', { name: "Take main's for u.txt" })
+    fireEvent.click(take)
+    expect(confirm).toHaveBeenLastCalledWith("Use main's version for the whole of u.txt?")
+    expect(onResolve).not.toHaveBeenCalled()
+    fireEvent.click(take)
+    expect(onResolve).toHaveBeenCalledWith(U, 'left')
+  })
+
+  it('keys on a take button activate it and do not stage, select or commit', () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const h = renderPane({ tree: ctree, onResolve: vi.fn(), selected: [A.id] })
+    const take = screen.getByRole('button', { name: "Take main's for u.txt" })
+    for (const key of ['s', 'u', 'c', ' ']) fireEvent.keyDown(take, { key })
+    expect(h.onAction).not.toHaveBeenCalled()
+    expect(h.onCommit).not.toHaveBeenCalled()
+    expect(h.onSelectionChange).not.toHaveBeenCalled()
+    // Space's default action is the click, so the notification is not cancelled.
+    expect(fireEvent.keyDown(take, { key: ' ' })).toBe(true)
+  })
+})

@@ -52,7 +52,7 @@ describe('ViewGit history', () => {
     expect(git.log).toHaveBeenCalledWith({ name: 'A', path: 'C:/repos/A' }, 'C:/repos/A', ['C:/repos/A'], expect.objectContaining({ ref: 'HEAD' }))
     // The top commit is focused, so its files load.
     expect(await screen.findByRole('listbox', { name: 'Files in commit' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Changes' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Changes/ }))
     expect(getGitConfig().view.panel).toBe('changes')
     expect(screen.queryByRole('listbox', { name: 'Commits' })).toBeNull()
   })

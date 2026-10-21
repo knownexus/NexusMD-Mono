@@ -33,7 +33,7 @@ describe('useGitSync and the action dialog', () => {
     await screen.findByText('no upstream')
     expect(screen.getByText('missing')).toBeTruthy()
     expect(git.preview).toHaveBeenCalledTimes(2)
-    expect(screen.getAllByText('Runs: post-merge hook')).toHaveLength(1)
+    expect(screen.getAllByLabelText('Runs: post-merge hook')).toHaveLength(1)
     expect(screen.getByText('Each repository runs separately; if one fails the others are not undone.')).toBeTruthy()
   })
 
@@ -105,11 +105,67 @@ describe('useGitSync and the action dialog', () => {
     await waitFor(() => expect(git.preview.mock.calls.at(-1)[4]).toEqual({ ref: 'refs/remotes/origin/feature/x', path: 'C:/repos/A/feature-x' }))
   })
 
+  it('rebase starts on origin\'s default branch, fetching it, and can switch to a tag or a typed commit', async () => {
+    const details = { count: 2, branch: 'feat', label: 'origin/main', remote: 'origin', fetch: true, pushed: 1, merges: 0, dirty: false, asOf: 'before fetching', replay: [{ oid: 'aaa1111', subject: 'mine' }], incoming: [{ oid: 'bbb2222', subject: 'theirs' }] }
+    const git = adapter({
+      preview: vi.fn(async (_r, _w, _g, _k, o) => (o.onto ? { eligible: true, details, programs: [], stamp: 's' } : { eligible: false, reason: 'Choose where to rebase onto.', programs: [] })),
+      refs: vi.fn(async () => ({
+        refs: ['refs/heads/feat\0a\0\0*', 'refs/heads/main\0b\0\0 ', 'refs/remotes/origin/HEAD\0b\0\0 ', 'refs/remotes/origin/main\0b\0\0 ', 'refs/tags/v1\0c\0\0 '].join('\n') + '\n',
+        originHead: 'refs/remotes/origin/main', shallow: false,
+      })),
+    })
+    render(<Harness git={git} />)
+    act(() => sync().open('rebase', [target('A')], {}))
+    await waitFor(() => expect(git.preview.mock.calls.at(-1)[4]).toEqual({ onto: 'refs/remotes/origin/main', fetch: true }))
+    // The branch names are set apart as chips, so the sentence spans several elements.
+    const line = await screen.findByText((_, el) => el?.tagName === 'DIV' && el.textContent === 'Replays 2 commits of feat onto origin/main.')
+    expect([...line.querySelectorAll('.nx-ref')].map(r => r.textContent)).toEqual(['feat', 'origin/main'])
+    expect(screen.getByText(/1 of these commits is already pushed/)).toBeTruthy()
+    const onto = screen.getByRole('combobox', { name: 'Rebase onto' })
+    expect([...onto.options].map(o => o.textContent)).toEqual(['(choose)', 'main', 'origin/main', 'v1', 'Another commit, tag or branch…'])
+    expect(screen.getByRole('checkbox', { name: 'Fetch origin first' }).checked).toBe(true)
+
+    fireEvent.change(onto, { target: { value: 'refs/tags/v1' } })
+    await waitFor(() => expect(git.preview.mock.calls.at(-1)[4]).toEqual({ onto: 'refs/tags/v1', fetch: false }))
+    expect(screen.queryByRole('checkbox', { name: /Fetch/ })).toBeNull()
+
+    fireEvent.change(onto, { target: { value: '__other__' } })
+    const typed = screen.getByRole('textbox', { name: 'Commit, tag or branch' })
+    fireEvent.change(typed, { target: { value: 'abc1234' } })
+    fireEvent.blur(typed)
+    await waitFor(() => expect(git.preview.mock.calls.at(-1)[4]).toEqual({ onto: 'abc1234', fetch: false }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Stash my uncommitted changes and put them back afterwards' }))
+    await waitFor(() => expect(git.preview.mock.calls.at(-1)[4]).toEqual({ onto: 'abc1234', fetch: false, autostash: true }))
+  })
+
+  it('shows an interactive rebase\'s plan as one coloured step per commit', async () => {
+    const todo = `pick ${'a'.repeat(40)}\nsquash ${'b'.repeat(40)}\ndrop ${'c'.repeat(40)}\n`
+    const git = adapter({ preview: vi.fn(async () => ({ eligible: true, details: { todo }, programs: [], stamp: 's' })) })
+    render(<Harness git={git} />)
+    act(() => sync().open('rebaseInteractive', [target('A')], { base: 'x', rows: [] }))
+    const steps = await screen.findByRole('list', { name: 'Rebase steps' })
+    expect([...steps.querySelectorAll('li')].map(li => li.textContent)).toEqual(['pick aaaaaaa', 'squash bbbbbbb', 'drop ccccccc'])
+    expect([...steps.querySelectorAll('.nx-todo-action')].map(a => a.dataset.action)).toEqual(['pick', 'squash', 'drop'])
+  })
+
   it('the activity drawer expands to git\'s output', async () => {
     render(<Harness git={adapter()} />)
     act(() => sync().open('fetch', [target('A')]))
     fireEvent.click(await screen.findByRole('button', { name: 'Fetch' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Activity (1)' }))
     expect(screen.getByText(/Fetch · A › main → main - Done/)).toBeTruthy()
+  })
+
+  it('the activity drawer closes, and comes back when another action logs', async () => {
+    render(<Harness git={adapter()} />)
+    act(() => sync().open('fetch', [target('A')]))
+    fireEvent.click(await screen.findByRole('button', { name: 'Fetch' }))
+    await screen.findByRole('button', { name: 'Activity (1)' })
+    fireEvent.click(screen.getByRole('button', { name: 'Close activity' }))
+    expect(screen.queryByRole('region', { name: 'Activity' })).toBeNull()
+    act(() => sync().close())
+    act(() => sync().open('fetch', [target('B')]))
+    fireEvent.click(await screen.findByRole('button', { name: 'Fetch' }))
+    expect(await screen.findByRole('button', { name: 'Activity (2)' })).toBeTruthy()
   })
 })

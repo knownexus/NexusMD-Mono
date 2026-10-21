@@ -12,10 +12,37 @@ function adapter() {
     isAvailable: () => true,
     resolve: vi.fn(async dir => ({ commonDir: dir.includes('copy') ? 'C:/repos/A/.git' : `${dir}/.git` })),
     checkFolders: vi.fn(async paths => paths.map(p => ({ path: p, exists: !p.includes('missing') }))),
+    shellAliases: vi.fn(async folder => (folder.includes('empty') ? '' : 'function global:ga { git add @args }\nfunction global:gup { git reset HEAD~1 }\n')),
+    // Discovery reports which found repositories are registered right now.
+    discover: vi.fn(async (roots, repos) => ['A', 'Payments', 'Tools'].map(name => {
+      const path = `C:/repos/${name}`
+      return { name, path, commonDir: `${path}/.git`, registeredAs: repos.find(r => r.path === path)?.name ?? null }
+    })),
   }
 }
 
 describe('GitSettingsCard', () => {
+  it('saves the DotFiles folder, says how many git shortcuts it has, and turns them off when cleared', async () => {
+    const git = adapter()
+    render(<GitSettingsCard adapter={git} picker={{}} />)
+    const folder = screen.getByRole('textbox', { name: 'DotFiles folder' })
+    expect(folder.value).toBe('C:/repos/DotFiles')
+    fireEvent.change(folder, { target: { value: 'D:/dots' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save folder' }))
+    expect(await screen.findByText('Saved · 2 git shortcuts found')).toBeTruthy()
+    expect(getGitConfig().dotfiles).toBe('D:/dots')
+    fireEvent.change(folder, { target: { value: 'D:/empty' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save folder' }))
+    expect(await screen.findByText('Saved, but no git shortcuts were found in D:/empty/pwsh/profile.d')).toBeTruthy()
+    fireEvent.change(folder, { target: { value: 'dots' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save folder' }))
+    expect(await screen.findByText('Use one absolute folder: dots')).toBeTruthy()
+    fireEvent.change(folder, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save folder' }))
+    expect(await screen.findByText('DotFiles shortcuts turned off')).toBeTruthy()
+    expect(getGitConfig().dotfiles).toBe('')
+  })
+
   it('adds a repository from the folder picker and refuses the same repository twice', async () => {
     setGitConfig({ repos: [{ name: 'A', path: 'C:/repos/A' }] })
     const picker = { pickDirectory: vi.fn().mockResolvedValueOnce('D:\\src\\Payments').mockResolvedValueOnce('D:\\src\\a-copy') }
@@ -25,6 +52,33 @@ describe('GitSettingsCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add repository…' }))
     expect(await screen.findByText('That repository is already registered as A')).toBeTruthy()
     expect(getGitConfig().repos).toHaveLength(2)
+  })
+
+  it('lists discovered repositories in a dropdown, ticked when registered, and registers or unregisters on click', async () => {
+    setGitConfig({ repos: [{ name: 'A', path: 'C:/repos/A' }] })
+    const git = adapter()
+    render(<GitSettingsCard adapter={git} picker={{}} />)
+    const toggle = await screen.findByRole('button', { name: 'Discovered repositories (3)' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('checkbox', { name: 'Payments' })).toBeNull()
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('checkbox', { name: 'A' }).checked).toBe(true)
+    expect(screen.getByRole('checkbox', { name: 'Payments' }).checked).toBe(false)
+    expect(screen.getByText('C:/repos/Payments')).toBeTruthy()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Payments' }))
+    await waitFor(() => expect(getGitConfig().repos.map(r => r.name)).toEqual(['A', 'Payments']))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Payments' }).checked).toBe(true))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'A' }))
+    await waitFor(() => expect(getGitConfig().repos.map(r => r.name)).toEqual(['Payments']))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'A' }).checked).toBe(false))
+    expect(git.discover).toHaveBeenLastCalledWith(['C:/repos'], [{ name: 'Payments', path: 'C:/repos/Payments' }])
+  })
+
+  it('says when discovery is off or finds nothing', async () => {
+    setGitConfig({ roots: [] })
+    render(<GitSettingsCard adapter={adapter()} picker={{}} />)
+    expect(await screen.findByText('Set a search folder to list repositories found there.')).toBeTruthy()
   })
 
   it('removes a registration', () => {
@@ -47,7 +101,7 @@ describe('GitSettingsCard', () => {
     expect(getGitConfig().roots).toEqual(['C:/repos', 'D:/missing'])
     fireEvent.change(input, { target: { value: '' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save folders' }))
-    expect(await screen.findByText('No search folders · the group editor shows registered repositories only')).toBeTruthy()
+    expect(await screen.findByText('No search folders · add repositories by folder below')).toBeTruthy()
     expect(getGitConfig().roots).toEqual([])
   })
 
