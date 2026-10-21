@@ -157,6 +157,23 @@
 .nx-gw-diff-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; flex: 0 1 auto; min-width: 0; margin-left: auto; }
 .nx-gw-diff-actions .btn { white-space: nowrap; }
 
+/* branch detail header */
+.nx-gw-dhead { flex: none; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 20px; padding: 14px 24px 12px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.nx-gw-dhead-title { flex: 1 1 360px; min-width: min(100%, 360px); display: flex; flex-direction: column; gap: 5px; }
+.nx-gw-crumb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.nx-gw-crumb-link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.nx-gw-crumb-link:hover { text-decoration: underline; }
+.nx-gw-dhead-branch { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.nx-gw-branch-name { margin: 0; min-width: 0; font-size: 18px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-gw-switch { flex: none; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-muted); font-size: 11.5px; white-space: nowrap; cursor: pointer; }
+.nx-gw-switch:hover { border-color: var(--border-strong); color: var(--text); }
+.nx-gw-dhead-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; min-width: 0; font-size: 12px; color: var(--text-muted); }
+.nx-gw-dhead-meta > * { white-space: nowrap; }
+.nx-gw-path { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font: 11.5px var(--mono); }
+.nx-gw-dhead-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.nx-gw-dhead-actions .btn { white-space: nowrap; }
+.nx-gw-dhead-error { flex-basis: 100%; font-size: 12px; color: var(--danger); text-align: right; }
+
 /* popover menu */
 .nx-gw-pop { position: relative; display: inline-block; }
 .nx-gw-menu { position: absolute; top: calc(100% + 4px); z-index: 45; min-width: 220px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-pop); }

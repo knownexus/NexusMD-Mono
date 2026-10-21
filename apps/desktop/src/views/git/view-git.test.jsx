@@ -66,7 +66,7 @@ describe('ViewGit', () => {
     const region = await screen.findByRole('region', { name: 'A' })
     fireEvent.click(await within(region).findByRole('button', { name: /checkout → main/ }))
     const detail = screen.getByRole('complementary', { name: 'Details' })
-    expect(within(detail).getByText('C:/repos/A')).toBeTruthy()
+    expect(within(detail).getByText('C:/repos/A', { selector: '.nx-gw-path' })).toBeTruthy()
     // Testing Library trims text, so the ' M' status code is matched as 'M'.
     expect(within(detail).getByText('M')).toBeTruthy()
     expect(within(detail).getByText('f.txt')).toBeTruthy()

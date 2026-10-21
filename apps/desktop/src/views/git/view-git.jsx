@@ -224,7 +224,8 @@ function GitWorkspace({ adapter }) {
                 split={view.split} onSplit={split => setView({ split })}
                 panel={view.panel} onPanel={panel => setView({ panel })}
                 onSync={(kind, options) => sync.open(kind, actionTargets(kind, [selectedTree], treeKey), options)}
-                onExec={exec} onSaved={() => reload([selectedTree.repo])} />
+                onExec={exec} onSaved={() => reload([selectedTree.repo])}
+                onOverview={() => { if (mayLeave()) setView({ selected: null }) }} onSwitch={() => setSwitcher(true)} />
             )
             : selectedBranch
             ? (

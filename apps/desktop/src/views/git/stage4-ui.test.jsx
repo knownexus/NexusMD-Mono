@@ -59,7 +59,7 @@ async function openWorktree(git, config = {}) {
   render(<ViewGit adapters={{ git }} />)
   const region = await screen.findByRole('region', { name: 'A' })
   fireEvent.click(await within(region).findByRole('button', { name: /→ main/ }))
-  return within(screen.getByRole('group', { name: 'Sync' }))
+  return within(screen.getByRole('group', { name: 'Branch actions' }))
 }
 
 describe('stage 4 in the Git Workspace view', () => {
@@ -72,9 +72,27 @@ describe('stage 4 in the Git Workspace view', () => {
     fireEvent.click(bar.getByRole('button', { name: 'Rebase…' }))
     await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'rebase', {}))
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    fireEvent.click(bar.getByRole('button', { name: 'Branch ▾' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove this worktree…' }))
-    await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'worktreeRemove', { path: 'C:/repos/A' }))
+    fireEvent.click(bar.getByRole('button', { name: 'More ▾' }))
+    // The main worktree can't be removed; adding one previews from it.
+    expect(screen.getByRole('menuitem', { name: 'Remove this worktree…' }).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add worktree…' }))
+    await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'worktreeAdd', {}))
+  })
+
+  it('the header Switch chip opens the branch switcher and Overview goes back to nothing selected', async () => {
+    await openWorktree(adapter())
+    fireEvent.click(screen.getByRole('button', { name: 'Switch ▾' }))
+    expect(await screen.findByRole('combobox', { name: 'Branch name' })).toBeTruthy()
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Branch name' }), { key: 'Escape' })
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('button', { name: 'Overview' }))
+    expect(getGitConfig().view.selected).toBe(null)
+    expect(screen.queryByRole('group', { name: 'Branch actions' })).toBeNull()
+  })
+
+  it('Editor opens Go to file', async () => {
+    const bar = await openWorktree(adapter({ files: vi.fn(async () => ({ files: ['a.txt'], truncated: false })) }))
+    fireEvent.click(bar.getByRole('button', { name: 'Editor' }))
+    expect(await screen.findByRole('combobox', { name: 'File name' })).toBeTruthy()
   })
 
   it('Terminal opens one in the selected worktree, and says why when it cannot', async () => {
@@ -98,8 +116,8 @@ describe('stage 4 in the Git Workspace view', () => {
   it('the stash list applies, pops and drops by commit id', async () => {
     const git = adapter()
     const bar = await openWorktree(git)
-    fireEvent.click(bar.getByRole('button', { name: 'Branch ▾' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Stash…' }))
+    fireEvent.click(bar.getByRole('button', { name: 'More ▾' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Stashes…/ }))
     const entries = await screen.findByRole('list', { name: 'Stash entries' })
     await within(entries).findByText('stash@{0} · On main: wip')
     fireEvent.click(within(entries).getByRole('button', { name: 'Drop…' }))
