@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
 import { parseDiff } from '@nexusmd/core'
@@ -150,10 +151,10 @@ describe('git:worktrees and git:branches', () => {
     const { invoke, calls, api } = setup(commonDirResponder(() => ({ stdout: '' })), {}, { now: () => t })
     await invoke('git:worktrees', REPO, [REPO.path])
     await invoke('git:branches', REPO, [REPO.path])
-    t = 4999
+    t = 59999
     await invoke('git:worktrees', REPO, [REPO.path])
     expect(calls.filter(c => c.args[0] === 'rev-parse')).toHaveLength(1)
-    t = 5000
+    t = 60000
     await invoke('git:worktrees', REPO, [REPO.path])
     expect(calls.filter(c => c.args[0] === 'rev-parse')).toHaveLength(2)
     expect(api.cacheSize()).toBe(1)
@@ -177,13 +178,29 @@ describe('git:worktrees and git:branches', () => {
 })
 
 describe('git:status', () => {
-  it('returns porcelain, the operation in progress, the rebasing branch and fetch time from two git processes', async () => {
+  it('reads the git folders from a linked worktree\'s .git file, so status is one git process', async () => {
+    const wt = path.join(REPO.path, 'feature')
+    const gitDir = path.join(COMMON, 'worktrees', 'feature')
+    const { invoke, calls } = setup(() => ({ stdout: '# branch.head x\0' }), {
+      isDirectory: p => p !== path.join(wt, '.git'),
+      isFile: p => p === path.join(wt, '.git'),
+      exists: () => false,
+      readText: p => (p === path.join(wt, '.git') ? `gitdir: ${gitDir}\n` : p === path.join(gitDir, 'commondir') ? '../..\n' : null),
+      mtime: p => (p === path.join(COMMON, 'FETCH_HEAD') ? '2026-10-13T08:00:00.000Z' : null),
+    })
+    expect(await invoke('git:status', REPO, wt, [REPO.path])).toMatchObject({ porcelain: '# branch.head x\0', operation: '', fetchedAt: '2026-10-13T08:00:00.000Z' })
+    expect(calls.map(c => c.args[0])).toEqual(['status'])
+  })
+
+  it('returns porcelain, the operation in progress, the rebasing branch and fetch time, asking git for the folders when .git is not plain', async () => {
     const gitDir = path.join(COMMON, 'worktrees', 'feature')
     const { invoke, calls } = setup((args) => {
       if (args[0] === 'status') return { stdout: '# branch.head x\0' }
       if (args[0] === 'rev-parse') return { stdout: `${gitDir}\n${COMMON}\n` }
       return { stdout: '' }
     }, {
+      isDirectory: p => !p.endsWith('.git'),
+      isFile: () => false,
       exists: p => p === path.join(gitDir, 'rebase-merge'),
       readText: p => p === path.join(gitDir, 'rebase-merge', 'head-name') ? 'refs/heads/feature\n' : null,
       mtime: p => p === path.join(COMMON, 'FETCH_HEAD') ? '2026-10-13T08:00:00.000Z' : null,
@@ -263,6 +280,68 @@ describe('remote and device paths', () => {
     expect(await invoke('git:discover', bad, [])).toEqual([])
     expect(await invoke('git:checkFolders', bad)).toEqual(bad.map(p => ({ path: p, exists: false })))
     expect(deps.spawn).not.toHaveBeenCalled()
+  })
+})
+
+describe.skipIf(process.platform !== 'win32')('git:openTerminal', () => {
+  // git calls go to the usual fake; anything else is a terminal, which starts unless it's in `missing`.
+  function withTerminals(missing = []) {
+    const s = setup(commonDirResponder(() => ({ stdout: `worktree ${REPO.path}\0\0` })))
+    const gitSpawn = s.deps.spawn.getMockImplementation()
+    const launched = []
+    s.deps.spawn.mockImplementation((cmd, args, opts) => {
+      if (cmd === GIT) return gitSpawn(cmd, args, opts)
+      launched.push({ cmd, args, opts })
+      const child = new EventEmitter()
+      child.unref = vi.fn()
+      setImmediate(() => (missing.includes(cmd) ? child.emit('error', new Error(`spawn ${cmd} ENOENT`)) : child.emit('spawn')))
+      return child
+    })
+    return { ...s, launched }
+  }
+
+  it('opens Windows Terminal in the worktree, detached', async () => {
+    const { invoke, launched } = withTerminals()
+    expect(await invoke('git:openTerminal', REPO, REPO.path, [REPO.path])).toEqual({ opened: 'wt.exe' })
+    expect(launched).toHaveLength(1)
+    expect(launched[0]).toMatchObject({ cmd: 'wt.exe', args: ['-d', REPO.path], opts: { cwd: REPO.path, detached: true, stdio: 'ignore' } })
+  })
+
+  it('falls back to PowerShell 7, then Windows PowerShell, and says when none starts', async () => {
+    const one = withTerminals(['wt.exe'])
+    expect(await one.invoke('git:openTerminal', REPO, REPO.path, [REPO.path])).toEqual({ opened: 'pwsh.exe' })
+    const none = withTerminals(['wt.exe', 'pwsh.exe', 'powershell.exe'])
+    await expect(none.invoke('git:openTerminal', REPO, REPO.path, [REPO.path])).rejects.toThrow("Couldn't open a terminal: spawn powershell.exe ENOENT")
+  })
+
+  it('opens nothing for a folder that is not a registered worktree', async () => {
+    const { invoke, launched } = withTerminals()
+    await expect(invoke('git:openTerminal', REPO, 'C:\\elsewhere', [REPO.path])).rejects.toThrow()
+    expect(launched).toEqual([])
+  })
+})
+
+describe('git:shellAliases', () => {
+  it('reads the DotFiles PowerShell profile scripts in load order, and nothing from a missing folder', async () => {
+    const { invoke } = setup(() => ({ stdout: '' }))
+    const dots = fs.mkdtempSync(path.join(os.tmpdir(), 'nexusmd-dots-'))
+    try {
+      const dir = path.join(dots, 'pwsh', 'profile.d')
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(path.join(dir, '12-git-core.ps1'), 'function global:ga { git add @args }')
+      fs.writeFileSync(path.join(dir, '11-aliases.ps1'), 'function global:r { }')
+      fs.writeFileSync(path.join(dir, 'notes.txt'), 'not a script')
+      expect(await invoke('git:shellAliases', dots)).toBe('# nexusmd-file: 11-aliases.ps1\nfunction global:r { }\n# nexusmd-file: 12-git-core.ps1\nfunction global:ga { git add @args }\n')
+      expect(await invoke('git:shellAliases', path.join(dots, 'missing'))).toBe('')
+    } finally {
+      fs.rmSync(dots, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses a relative or network folder', async () => {
+    const { invoke } = setup(() => ({ stdout: '' }))
+    await expect(invoke('git:shellAliases', 'dots')).rejects.toThrow('The DotFiles folder must be an absolute local path.')
+    await expect(invoke('git:shellAliases', '\\\\server\\share\\dots')).rejects.toThrow('The DotFiles folder must be an absolute local path.')
   })
 })
 
@@ -829,6 +908,15 @@ describe('stage 3 history: refs and log', () => {
     expect(histCalls(calls, 'for-each-ref')[0]).toEqual(['for-each-ref', '--format=%(refname)%00%(objectname)%00%(upstream)%00%(HEAD)', 'refs/heads/', 'refs/remotes/', 'refs/tags/'])
   })
 
+  it('aliases returns git config\'s alias entries, and nothing when none are set', async () => {
+    const raw = 'alias.st\nstatus\0'
+    const { invoke, calls } = setup(hist({ config: { stdout: raw } }))
+    expect(await invoke('git:aliases', REPO, WT, REG)).toBe(raw)
+    expect(histCalls(calls, 'config')[0]).toEqual(['config', '-z', '--get-regexp', '^alias\\.'])
+    const none = setup(hist({ config: { code: 1 } }))
+    expect(await none.invoke('git:aliases', REPO, WT, REG)).toBe('')
+  })
+
   it('refuses an unregistered repository or a folder git does not list, spawning nothing for history', async () => {
     const { invoke, calls } = setup(hist())
     await expect(invoke('git:log', { name: 'X', path: path.join(ROOT, 'X') }, path.join(ROOT, 'X'), REG, q())).rejects.toThrow('Not a registered repository')
@@ -936,10 +1024,9 @@ describe('stage 4 actions (unit)', () => {
   // A plausible repository: on main, tracking origin/main, clean, one stash.
   const state = (over = {}) => args => {
     const a = args
-    if (a[0] === 'status') return { stdout: over.status ?? '' }
+    // HEAD, the branch and its upstream come from status's headers.
+    if (a[0] === 'status') return { stdout: `# branch.oid ${HEAD}\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +0 -1\0${over.status ?? ''}` }
     if (a[0] === 'rev-parse' && a.includes('HEAD') && a.includes('--verify')) return { stdout: `${HEAD}\n` }
-    if (a[0] === 'symbolic-ref') return { stdout: 'refs/heads/main\n' }
-    if (a[0] === 'rev-parse' && a.includes('--symbolic-full-name')) return { stdout: 'origin/main\n' }
     if (a[0] === 'rev-parse' && a.includes('@{upstream}')) return { stdout: `${'d'.repeat(40)}\n` }
     if (a[0] === 'rev-parse' && a.includes('--git-dir')) return { stdout: `${COMMON}\n${COMMON}\n` }
     if (a[0] === 'rev-parse' && a[2] === '--git-common-dir') return { stdout: `${COMMON}\n` }

@@ -31,8 +31,11 @@ function TreeRow({ tree, selected, onSelect }) {
   )
 }
 
-/** The group's repositories, one card each, with their worktrees and branches that aren't checked out. */
-export function RepoCards({ repos, scoped, errors, collapsed, onToggleRepo, selected, onSelect }) {
+/**
+ * The group's repositories, one card each, with their worktrees and branches that aren't checked out.
+ * The whole title bar folds a card; Expand all / Collapse all act on the cards shown here only.
+ */
+export function RepoCards({ repos, scoped, errors, collapsed, onToggleRepo, onSetCollapsed = () => {}, selected, onSelect }) {
   const groups = repos.map(r => ({
     name: r.name,
     trees: scoped.worktrees.filter(t => t.repo === r.name),
@@ -40,20 +43,25 @@ export function RepoCards({ repos, scoped, errors, collapsed, onToggleRepo, sele
     error: errors.find(e => e.repo === r.name),
   })).filter(g => g.trees.length || g.branches.length || g.error)
   if (!groups.length) return <div className="nx-empty">No repositories in this group yet.</div>
+  const shown = groups.map(g => g.name)
+  const allCollapsed = shown.every(n => collapsed.includes(n))
+  const noneCollapsed = !shown.some(n => collapsed.includes(n))
   return (
     <div className="nx-repo-list">
+      <div role="group" aria-label="Fold repositories" style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        <button className="btn sm ghost" disabled={noneCollapsed} onClick={() => onSetCollapsed(collapsed.filter(n => !shown.includes(n)))}>Expand all</button>
+        <button className="btn sm ghost" disabled={allCollapsed} onClick={() => onSetCollapsed([...collapsed, ...shown.filter(n => !collapsed.includes(n))])}>Collapse all</button>
+      </div>
       {groups.map(g => {
         const isCollapsed = collapsed.includes(g.name)
         const changed = g.trees.reduce((n, t) => n + worktreeSummary(t).changed, 0)
         return (
           <section key={g.name} aria-label={g.name} className="card" style={{ flex: 'none' }}>
-            <div className="nx-tile-head">
-              <button aria-expanded={!isCollapsed} onClick={() => onToggleRepo(g.name)}
-                style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit' }}>
-                {`${isCollapsed ? '▸' : '▾'} ${g.name}`}
-              </button>
+            <button className="nx-tile-head" aria-expanded={!isCollapsed} aria-label={g.name} onClick={() => onToggleRepo(g.name)}
+              style={{ width: '100%', border: 0, borderBottom: '1px solid var(--border)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+              <span>{`${isCollapsed ? '▸' : '▾'} ${g.name}`}</span>
               <span className="nx-tile-meta">{changed ? `${changed} changed` : 'clean'}</span>
-            </div>
+            </button>
             {g.error && <div role="alert" style={{ color: 'var(--danger)', padding: '8px 14px' }}>{g.error.message}</div>}
             {!isCollapsed && (g.trees.length > 0 || g.branches.length > 0) && (
               <div style={{ padding: 6 }}>

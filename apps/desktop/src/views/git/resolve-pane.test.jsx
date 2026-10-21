@@ -192,4 +192,52 @@ describe('ResolvePane', () => {
     fireEvent.click(screen.getByRole('button', { name: "Use main's version" }))
     await waitFor(() => expect(adapter.resolveConflict).toHaveBeenCalledWith(repo, tree.path, registered, 'f.txt', { take: 'left' }, 'c1'))
   })
+
+  describe('jumping between conflicted files', () => {
+    const files = { index: 0, total: 3, prev: 'z.txt', next: 'g.txt' }
+    const content = () => document.querySelector('.cm-content[aria-label="Result for f.txt"]')
+
+    it('goes on to the next file past the last conflict, and back past the first', async () => {
+      const onOpenFile = vi.fn()
+      await setup(mk(), { files, onOpenFile })
+      const next = screen.getByRole('button', { name: 'Next conflict' })
+      fireEvent.click(next)
+      expect(onOpenFile).not.toHaveBeenCalled()
+      expect(next.title).toBe('Alt+↓ · goes on to g.txt')
+      fireEvent.click(next)
+      expect(onOpenFile).toHaveBeenCalledWith('g.txt')
+      fireEvent.keyDown(content(), { key: 'ArrowUp', altKey: true })
+      fireEvent.keyDown(content(), { key: 'ArrowUp', altKey: true })
+      expect(onOpenFile).toHaveBeenLastCalledWith('z.txt')
+    })
+
+    it('has file buttons and Alt+Shift+↑/↓, with where this file sits', async () => {
+      const onOpenFile = vi.fn()
+      await setup(mk(), { files, onOpenFile })
+      const group = screen.getByRole('group', { name: 'Conflicted files' })
+      expect(within(group).getByText('File 1 of 3')).toBeTruthy()
+      fireEvent.click(within(group).getByRole('button', { name: 'Next conflicted file' }))
+      expect(onOpenFile).toHaveBeenLastCalledWith('g.txt')
+      fireEvent.click(within(group).getByRole('button', { name: 'Previous conflicted file' }))
+      expect(onOpenFile).toHaveBeenLastCalledWith('z.txt')
+      fireEvent.keyDown(content(), { key: 'ArrowDown', altKey: true, shiftKey: true })
+      expect(onOpenFile).toHaveBeenLastCalledWith('g.txt')
+    })
+
+    it('offers the next conflicted file once this one is resolved, or says none are left', async () => {
+      const onOpenFile = vi.fn()
+      await setup(mk(), { files, onOpenFile })
+      fireEvent.click(screen.getByRole('button', { name: 'Mark resolved' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Mark resolved anyway' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Next conflict: g.txt →' }))
+      expect(onOpenFile).toHaveBeenCalledWith('g.txt')
+      cleanup()
+      await setup(mk(), { files: { index: 0, total: 1, prev: null, next: null }, onOpenFile })
+      expect(screen.queryByRole('group', { name: 'Conflicted files' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Next conflict' }).disabled).toBe(false)
+      fireEvent.click(screen.getByRole('button', { name: 'Mark resolved' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Mark resolved anyway' }))
+      expect(await screen.findByText('f.txt is marked resolved. No conflicted files left: continue when ready.')).toBeTruthy()
+    })
+  })
 })

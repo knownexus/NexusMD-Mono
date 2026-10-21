@@ -1,5 +1,7 @@
 import React from 'react'
 import { diffSides } from '@nexusmd/core'
+import { languageForPath } from '../shared/languages.js'
+import { highlightLines, changedRange, markRange, Pieces } from '../shared/highlight.jsx'
 
 const LINE_STYLE = {
   add: { background: 'color-mix(in srgb, var(--success) 18%, transparent)' },
@@ -12,16 +14,64 @@ const GRID = { display: 'grid', gridTemplateColumns: '5ch 5ch 2ch 1fr', columnGa
 const size = n => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.ceil(n / 1024))} KB`)
 const note = text => <div role="note" style={{ color: 'var(--text-muted)', padding: 8 }}>{text}</div>
 
+/**
+ * Each line of a hunk as coloured pieces. The old side (context and removed lines) and the new side
+ * (context and added lines) are each coloured as the code they are, so a string or comment that
+ * opens on one line colours the next. A removed line followed by an added one also has the words
+ * that changed between them marked.
+ */
+export function hunkPieces(lines, language) {
+  const side = keep => highlightLines(lines.filter(l => l.kind !== 'meta' && l.kind !== keep).map(l => l.text).join('\n'), language)
+  const before = side('add')
+  const after = side('del')
+  let o = 0
+  let n = 0
+  const pieces = lines.map(l => {
+    if (l.kind === 'meta') return [[l.text, null]]
+    if (l.kind === 'del') return before[o++]
+    if (l.kind !== 'add') o++
+    return after[n++]
+  })
+  for (let i = 0; i < lines.length;) {
+    if (lines[i].kind !== 'del') { i++; continue }
+    let d = i
+    while (d < lines.length && lines[d].kind === 'del') d++
+    let a = d
+    while (a < lines.length && lines[a].kind === 'add') a++
+    for (let k = 0; k < Math.min(d - i, a - d); k++) {
+      const r = changedRange(lines[i + k].text, lines[d + k].text)
+      if (!r) continue
+      pieces[i + k] = markRange(pieces[i + k], r.before, 'nx-word-del')
+      pieces[d + k] = markRange(pieces[d + k], r.after, 'nx-word-add')
+    }
+    i = a
+  }
+  return pieces
+}
+
+// "@@ -1,3 +1,4 @@ function name()": the line ranges, then the code git names as the hunk's context.
+function HunkHeader({ header, children }) {
+  const m = /^(@@ [^@]* @@)\s?(.*)$/.exec(header)
+  return (
+    <div className="nx-hunk-head">
+      <span className="nx-hunk-range">{m ? m[1] : header}</span>
+      {m?.[2] && <span className="nx-hunk-context" title={m[2]}>{m[2]}</span>}
+      {children}
+    </div>
+  )
+}
+
 // One row per line; memoised on the hunk's lines, which useDiff keeps when a reload brings the same diff.
 // With `onLine`, a row that has a new-side number opens the file there when clicked.
-const HunkLines = React.memo(function HunkLines({ lines, onLine }) {
+const HunkLines = React.memo(function HunkLines({ lines, language, onLine }) {
+  const pieces = React.useMemo(() => hunkPieces(lines, language), [lines, language])
   return lines.map((l, li) => (
     <div key={li} data-testid="diff-line" data-kind={l.kind} style={{ ...GRID, ...LINE_STYLE[l.kind], ...(onLine && l.newNo != null ? { cursor: 'pointer' } : null) }}
       title={onLine && l.newNo != null ? `Edit at line ${l.newNo}` : undefined} onClick={onLine && l.newNo != null ? () => onLine(l.newNo) : undefined}>
       <span style={{ color: 'var(--text-muted)', textAlign: 'right' }}>{l.oldNo ?? ''}</span>
       <span style={{ color: 'var(--text-muted)', textAlign: 'right' }}>{l.newNo ?? ''}</span>
       <span>{SIGN[l.kind]}</span>
-      <span style={{ whiteSpace: 'pre' }}>{l.text}</span>
+      <span style={{ whiteSpace: 'pre' }}><Pieces pieces={pieces[li]} /></span>
     </div>
   ))
 })
@@ -73,14 +123,13 @@ export function DiffPane({ change, diff, onHunk, onLine = null, busy = false, si
           {f.meta.map((m, i) => <div key={i} style={LINE_STYLE.meta}>{m}</div>)}
           {f.hunks.map((h, hi) => (
             <div key={hi} role="group" aria-label={`Hunk ${hi + 1}`}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--text-muted)', paddingTop: 6 }}>
-                <span>{h.header}</span>
+              <HunkHeader header={h.header}>
                 {showHunks && (
                   // Disabled while the diff (re)loads too: its stamp may be from before the last write.
                   <button className="btn sm ghost" style={{ marginLeft: 'auto' }} disabled={busy || loading} onClick={() => onHunk(hi, result.stamp)}>{hunkLabel}</button>
                 )}
-              </div>
-              <HunkLines lines={h.lines} onLine={onLine ? clickLine : null} />
+              </HunkHeader>
+              <HunkLines lines={h.lines} language={languageForPath(f.path || change.path)} onLine={onLine ? clickLine : null} />
             </div>
           ))}
         </div>

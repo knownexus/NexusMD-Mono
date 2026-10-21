@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { loadSnapshot, applyStatus, worktreeSummary } from './snapshot.js'
+import { loadSnapshot, refreshRepos, applyStatus, worktreeSummary } from './snapshot.js'
 import { createNoOpAdapters } from '../../adapters/defaults.js'
 import { getRegistry } from '../../features/module-registry.js'
 import './index.js'
@@ -86,5 +86,23 @@ describe('git module registration', () => {
     const mod = getRegistry().find(m => m.id === 'git')
     expect(mod).toMatchObject({ name: 'Git Workspace', requiredAdapters: ['git'], defaultEnabled: false })
     expect(createNoOpAdapters().git).toBeUndefined()
+  })
+})
+
+describe('refreshRepos', () => {
+  it('reads only the named repos and keeps the rest of the snapshot, in registered order', async () => {
+    const adapter = fakeAdapter()
+    const before = await loadSnapshot(adapter, repos, { now: () => new Date('2026-10-20T10:00:00Z') })
+    adapter.resolve.mockClear(); adapter.worktrees.mockClear(); adapter.status.mockClear(); adapter.branches.mockClear()
+    adapter.branches.mockImplementation(async () => 'refs/heads/main\0a\0Init\0origin/main\nrefs/heads/new\0b\0New\0\n')
+    const after = await refreshRepos(adapter, repos, before, ['B'], { now: () => new Date('2026-10-20T10:01:00Z') })
+    expect(adapter.resolve.mock.calls.map(c => c[0])).toEqual(['C:/repos/B'])
+    expect(adapter.status).toHaveBeenCalledTimes(1)
+    expect(after.worktrees.map(t => t.repo)).toEqual(before.worktrees.map(t => t.repo))
+    expect(after.worktrees.filter(t => t.repo === 'A')).toEqual(before.worktrees.filter(t => t.repo === 'A'))
+    expect(after.branches.filter(b => b.repo === 'B').map(b => b.name)).toEqual(['main', 'new'])
+    expect(after.branches.filter(b => b.repo === 'A')).toEqual(before.branches.filter(b => b.repo === 'A'))
+    expect(after.errors).toEqual(before.errors)
+    expect(after.takenAt).toBe('2026-10-20T10:01:00.000Z')
   })
 })

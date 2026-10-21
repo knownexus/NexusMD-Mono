@@ -50,8 +50,35 @@ describe('RepoCards', () => {
     expect(onSelect).toHaveBeenLastCalledWith({ kind: 'worktree', id: expect.any(String) })
     fireEvent.click(screen.getByRole('button', { name: /◇ old/ }))
     expect(onSelect).toHaveBeenLastCalledWith({ kind: 'branch', id: 'A:refs/heads/old' })
-    fireEvent.click(screen.getByRole('button', { name: '▾ A' }))
+    fireEvent.click(screen.getByRole('button', { name: 'A' }))
     expect(onToggleRepo).toHaveBeenCalledWith('A')
+  })
+
+  it('folds a repository from anywhere on its title bar, not only the arrow', () => {
+    const onToggleRepo = vi.fn()
+    show([tree({ changes: [change('x')] })], { onToggleRepo })
+    const head = screen.getByRole('button', { name: 'A' })
+    expect(head.getAttribute('aria-expanded')).toBe('true')
+    // The change count on the right of the bar is part of the same button.
+    fireEvent.click(within(head).getByText('1 changed'))
+    expect(onToggleRepo).toHaveBeenCalledWith('A')
+  })
+
+  it('expands or collapses every repository shown, and disables whichever is already done', () => {
+    const repos = [{ name: 'A', path: 'C:/repos/A' }, { name: 'B', path: 'C:/repos/B' }]
+    const trees = [tree(), tree({ repo: 'B', repoRoot: 'C:/repos/B', path: 'C:/repos/B' })]
+    const onSetCollapsed = vi.fn()
+    const view = render(<RepoCards repos={repos} scoped={{ worktrees: trees, inactiveBranches: [] }} errors={[]} collapsed={['Hidden']}
+      onToggleRepo={() => {}} onSetCollapsed={onSetCollapsed} selected={null} onSelect={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Expand all' }).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
+    // Repositories outside this view keep their own state.
+    expect(onSetCollapsed).toHaveBeenLastCalledWith(['Hidden', 'A', 'B'])
+    view.rerender(<RepoCards repos={repos} scoped={{ worktrees: trees, inactiveBranches: [] }} errors={[]} collapsed={['Hidden', 'A', 'B']}
+      onToggleRepo={() => {}} onSetCollapsed={onSetCollapsed} selected={null} onSelect={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Collapse all' }).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+    expect(onSetCollapsed).toHaveBeenLastCalledWith(['Hidden'])
   })
 
   it('hides a folded repository\'s rows but keeps its error', () => {

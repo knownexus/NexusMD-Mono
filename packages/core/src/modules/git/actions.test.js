@@ -34,8 +34,9 @@ describe('actionTargets', () => {
     expect(t[0].unavailable).toBeNull()
   })
   it('knows every kind and refuses others', () => {
-    expect(ACTION_KINDS).toHaveLength(16)
+    expect(ACTION_KINDS).toHaveLength(17)
     expect(ACTION_KINDS).toContain('skip')
+    expect(ACTION_KINDS).toContain('rebase')
     expect(() => actionTargets('reset', trees, null)).toThrow('Unknown action')
   })
 })

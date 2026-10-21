@@ -3,7 +3,7 @@ import {
   ALL_PROJECTS, findGroup, scopeSnapshot, changeCount, renameGroup, duplicateGroup, deleteGroup, worktreeId, pruneSelection, commitTargets,
   actionTargets,
 } from '@nexusmd/core'
-import { setGitConfig, getGitConfig, effectiveRoots } from '../../git-config.js'
+import { setGitConfig, getGitConfig, effectiveRoots, effectiveDotfiles } from '../../git-config.js'
 import { useGitConfig } from './use-git-config.js'
 import { useGitSnapshot } from './use-git-snapshot.js'
 import { GroupTabs } from './group-tabs.jsx'
@@ -27,6 +27,13 @@ const card = (text, role) => <div className={role === 'alert' ? 'nx-alert' : 'ca
 const VIA_SYNC = { fetch: {}, pull: { mode: 'ff' }, push: {} }
 // Asked about before running: force flags (also bundled, as in -fd), --hard, -D, and commands that throw work away.
 const RISKY = /(^|\s)(--force\S*|-f\w*|-\w*f|--hard|-D)(\s|$)|^(clean|reset|restore)\b|^stash (drop|clear)\b/
+
+// When a snapshot was read: the time, with the day too when it wasn't today.
+function readAt(iso) {
+  const d = new Date(iso)
+  const today = d.toDateString() === new Date().toDateString()
+  return today ? d.toLocaleTimeString() : `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`
+}
 
 export function ViewGit({ adapters }) {
   const adapter = adapters?.git
@@ -56,7 +63,7 @@ function GitWorkspace({ adapter }) {
     adapter.version().then(v => { if (live) setGitVersion(v) }, () => { if (live) setGitVersion(null) })
     return () => { live = false }
   }, [adapter])
-  const { snapshot, error, loading, refresh, reload } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported })
+  const { snapshot, stale, error, loading, refresh, reload } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported })
   const actions = useGitActions({ adapter, registered, reload })
   const sync = useGitSync({ adapter, registered, reload })
 
@@ -89,23 +96,32 @@ function GitWorkspace({ adapter }) {
     ? commitTargets(scoped.worktrees, view.selected).map(t => (committing.tickedIds ? { ...t, ticked: !t.unavailable && committing.tickedIds.includes(t.id) } : t))
     : []
 
-  const exec = async (tree, argv) => {
+  const exec = async (tree, argv, alias = null) => {
     const [verb] = argv
-    if (Object.hasOwn(VIA_SYNC, verb) && argv.length === 1) return sync.open(verb, actionTargets(verb, [tree], worktreeId(tree)), VIA_SYNC[verb])
+    if (!alias && Object.hasOwn(VIA_SYNC, verb) && argv.length === 1) return sync.open(verb, actionTargets(verb, [tree], worktreeId(tree)), VIA_SYNC[verb])
     const line = argv.join(' ')
-    if (RISKY.test(line) && !window.confirm(`Run "git ${line}" in ${tree.path}? This can't be undone from NexusMD.`)) return
-    const title = `git ${line}`
-    const head = { text: `$ git ${line}`, tone: 'cmd' }
-    if (!adapter.exec) { setCmdRun({ title, status: 'failed', lines: [head, { text: "This version of NexusMD can't run git commands. Update the desktop app.", tone: 'bad' }] }); return }
+    // A DotFiles script (g!) runs in PowerShell as typed; anything else is a git command.
+    const script = !!alias?.script
+    // An alias is judged by what it runs: "undo" may well be reset --hard. A shell alias's own "git" goes too.
+    const expanded = alias && !script ? [alias.expansion.replace(/^!\s*(git\s+)?/, ''), ...argv.slice(1)].join(' ') : line
+    const shown = script ? line : `git ${line}`
+    if ((RISKY.test(line) || RISKY.test(expanded))
+      && !window.confirm(`Run "${shown}"${alias && !script ? ` (${alias.expansion})` : ''} in ${tree.path}? This can't be undone from NexusMD.`)) return
+    const title = shown
+    const head = { text: `$ ${shown}`, tone: 'cmd' }
+    if (!(script ? adapter.shellRun : adapter.exec)) { setCmdRun({ title, status: 'failed', lines: [head, { text: "This version of NexusMD can't run git commands. Update the desktop app.", tone: 'bad' }] }); return }
     setCmdRun({ title, status: 'running', lines: [head] })
     try {
-      const r = await adapter.exec({ name: tree.repo, path: tree.repoRoot }, tree.path, registered, argv)
+      const repo = { name: tree.repo, path: tree.repoRoot }
+      const r = script
+        ? await adapter.shellRun(repo, tree.path, registered, effectiveDotfiles(getGitConfig()), argv[0], argv.slice(1))
+        : await adapter.exec(repo, tree.path, registered, argv)
       const toLines = (s, tone) => (s ? s.replace(/\n$/, '').split('\n').map(text => ({ text, tone })) : [])
       setCmdRun({ title, status: r.code === 0 ? 'done' : 'failed', exitCode: r.code, lines: [head, ...toLines(r.stdout), ...toLines(r.stderr, r.code === 0 ? 'muted' : 'bad')] })
     } catch (e) {
       setCmdRun({ title, status: 'failed', lines: [head, { text: ipcMessage(e), tone: 'bad' }] })
     }
-    reload()
+    reload([tree.repo])
   }
 
   const listHidden = view.list === 'hidden'
@@ -119,7 +135,7 @@ function GitWorkspace({ adapter }) {
         </div>
         <div className="nx-head-actions">
           <span className="nx-subtle" style={{ fontSize: 12 }}>
-            {loading ? 'Refreshing…' : snapshot ? `Updated ${new Date(snapshot.takenAt).toLocaleTimeString()}` : ''}
+            {snapshot && stale ? `As of ${readAt(snapshot.takenAt)} · refreshing…` : loading ? 'Refreshing…' : snapshot ? `Updated ${readAt(snapshot.takenAt)}` : ''}
           </span>
           <button className="btn sm ghost" aria-pressed={!listHidden} title={listHidden ? 'Show the repository list beside the details' : 'Hide the repository list to give the details the full width'}
             onClick={() => setView({ list: listHidden ? 'shown' : 'hidden' })}>{listHidden ? 'Show repositories' : 'Hide repositories'}</button>
@@ -136,12 +152,13 @@ function GitWorkspace({ adapter }) {
       {snapshot && <GitSummary worktrees={scoped.worktrees} />}
       {error && card(error, 'alert')}
       {!config.repos.length && card(roots.length
-        ? `No repositories yet. Add one in Settings → Desktop → Git Workspace, or create a group to pick from ${roots.join('; ')}.`
-        : 'No repositories yet. Add repositories in Settings → Desktop → Git Workspace.')}
+        ? `No repositories registered yet. Pick them in Settings → Desktop → Git Workspace, which lists the repositories found in ${roots.join('; ')}.`
+        : 'No repositories registered yet. Add them in Settings → Desktop → Git Workspace.')}
 
       <div className="nx-split" data-list={listHidden ? 'hidden' : 'shown'}>
         {!listHidden && <RepoCards repos={config.repos} scoped={scoped} errors={snapshot?.errors || []} collapsed={view.collapsed}
           onToggleRepo={name => setView({ collapsed: view.collapsed.includes(name) ? view.collapsed.filter(n => n !== name) : [...view.collapsed, name] })}
+          onSetCollapsed={collapsed => setView({ collapsed })}
           selected={view.selected} onSelect={s => { if (s.id !== view.selected && mayLeave()) setView({ selected: s.id }) }} />}
         <aside aria-label="Details" className="card nx-panel">
           {selectedTree
@@ -156,7 +173,7 @@ function GitWorkspace({ adapter }) {
                 split={view.split} onSplit={split => setView({ split })}
                 panel={view.panel} onPanel={panel => setView({ panel })}
                 onSync={(kind, options) => sync.open(kind, actionTargets(kind, [selectedTree], treeKey), options)}
-                onExec={exec} onSaved={reload} />
+                onExec={exec} onSaved={() => reload([selectedTree.repo])} />
             )
             : (
               <div style={{ padding: 16 }}>
@@ -189,7 +206,7 @@ function GitWorkspace({ adapter }) {
             if (view.group === menuFor) setView({ group: ALL_PROJECTS, selected: null })
           }} />
       )}
-      <GroupEditor open={!!editing} config={config} snapshot={snapshot} existing={editingGroup} adapter={adapter}
+      <GroupEditor open={!!editing} config={config} snapshot={snapshot} existing={editingGroup}
         onClose={() => setEditing(null)}
         onDelete={editingGroup ? () => {
           if (view.group === editingGroup.name && !mayLeave()) return
@@ -200,12 +217,11 @@ function GitWorkspace({ adapter }) {
         onSaved={(next, saved) => {
           // Saving shows the group with nothing selected; declining keeps the dialog open and nothing saved.
           if (!mayLeave()) return
-          // A changed repo list already reloads the snapshot; refreshing too would poll twice.
-          const reposChanged = JSON.stringify(next.repos) !== JSON.stringify(getGitConfig().repos)
+          // Groups never change the registered list, so the snapshot isn't reloaded for the save itself.
           save(next)
           setView({ group: saved.name, selected: null })
           setEditing(null)
-          if (!reposChanged) refresh()
+          refresh()
         }} />
       <ReviewDialog key={actions.review?.id ?? 'none'} state={actions.review} onClose={actions.closeReview} onConfirm={actions.confirm} />
       {committing && (

@@ -37,12 +37,30 @@ function registerConflicts(handle, { git, requireExactWorktree, requirePaths, wi
 
   const stagesOf = (entries, rel) => entries.filter(e => e.path === rel && e.stage !== '0');
 
-  // A stage's text, or null when it is absent or not editable text (NUL, over 1 MB, not UTF-8).
-  async function blobText(wt, entry) {
-    if (!entry) return { text: null, binary: false };
-    const r = await git(wt, ['cat-file', 'blob', entry.oid]);
-    if (r.code !== 0) throw new Error(r.stderr || 'git cat-file failed');
-    const buf = r.raw;
+  // Each stage's text, or null when it is absent or not editable text (NUL, over 1 MB, not UTF-8).
+  // One `cat-file --batch` reads them all: each git process costs about half a second on Windows.
+  async function blobTexts(wt, entries) {
+    const present = entries.filter(Boolean);
+    const blobs = new Map();
+    if (present.length) {
+      const r = await git(wt, ['cat-file', '--batch'], { input: present.map(e => `${e.oid}\n`).join('') });
+      if (r.code !== 0) throw new Error(r.stderr || 'git cat-file failed');
+      // Each object is "<oid> <type> <size>\n<content>\n"; an unknown one is "<oid> missing\n".
+      let at = 0;
+      for (const e of present) {
+        const nl = r.raw.indexOf(0x0a, at);
+        const header = r.raw.subarray(at, nl < 0 ? undefined : nl).toString('utf8');
+        const m = /^\S+ blob (\d+)$/.exec(header);
+        if (nl < 0 || !m) throw new Error(`git cat-file failed: ${header}`);
+        const size = Number(m[1]);
+        blobs.set(e.oid, r.raw.subarray(nl + 1, nl + 1 + size));
+        at = nl + 1 + size + 1;
+      }
+    }
+    return entries.map(e => (e ? decode(blobs.get(e.oid)) : { text: null, binary: false }));
+  }
+
+  function decode(buf) {
     if (buf.length > MAX_READ_BYTES || buf.subarray(0, 8192).includes(0)) return { text: null, binary: true };
     const bom = buf.subarray(0, 3).equals(BOM);
     try {
@@ -58,7 +76,7 @@ function registerConflicts(handle, { git, requireExactWorktree, requirePaths, wi
     // A gitlink's stages are commits, not blobs: say what to do instead of cat-file's error.
     if (staged.some(e => e.mode === '160000')) throw new Error(SUBMODULE);
     const byStage = n => staged.find(e => e.stage === String(n)) || null;
-    const [base, left, right] = await Promise.all([1, 2, 3].map(n => blobText(wt, byStage(n))));
+    const [base, left, right] = await blobTexts(wt, [1, 2, 3].map(byStage));
     const symlink = staged.some(e => e.mode === '120000');
     let binary = symlink || base.binary || left.binary || right.binary;
     let working = null;

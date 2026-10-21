@@ -59,11 +59,14 @@ describe('checkExecArgv', () => {
 })
 
 describe('git:exec against a real repository', () => {
-  it('runs status in the worktree and returns its output', async () => {
+  it('runs status in the worktree and returns its output, in git\'s colours', async () => {
     fs.writeFileSync(path.join(repo().path, 'new.txt'), 'n\n')
     const r = await exec(['status', '--short'])
     expect(r).toMatchObject({ code: 0, stderr: '' })
-    expect(r.stdout).toContain('?? new.txt')
+    // eslint-disable-next-line no-control-regex
+    expect(r.stdout).toMatch(/\x1b\[3\dm/)
+    // eslint-disable-next-line no-control-regex
+    expect(r.stdout.replace(/\x1b\[[0-9;]*m/g, '')).toContain('?? new.txt')
     fs.rmSync(path.join(repo().path, 'new.txt'))
   })
 

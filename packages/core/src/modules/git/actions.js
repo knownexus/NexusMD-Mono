@@ -8,7 +8,7 @@ import { worktreeId, worktreeName, branchLabel } from './parse.js'
 
 export const ACTION_KINDS = [
   'fetch', 'pull', 'push', 'branch', 'checkout', 'worktreeAdd', 'worktreeRemove',
-  'stashPush', 'stashApply', 'stashPop', 'stashDrop', 'revert', 'continue', 'skip', 'abort', 'rebaseInteractive',
+  'stashPush', 'stashApply', 'stashPop', 'stashDrop', 'revert', 'continue', 'skip', 'abort', 'rebase', 'rebaseInteractive',
 ]
 export const BATCH_KINDS = ['fetch', 'pull']
 export const BATCH_NOTE = 'Each repository runs separately; if one fails the others are not undone.'
@@ -16,7 +16,7 @@ export const BATCH_NOTE = 'Each repository runs separately; if one fails the oth
 const TITLES = {
   fetch: 'Fetch', pull: 'Pull', push: 'Push', branch: 'New branch', checkout: 'Check out', worktreeAdd: 'New worktree',
   worktreeRemove: 'Remove worktree', stashPush: 'Stash changes', stashApply: 'Apply stash', stashPop: 'Pop stash',
-  stashDrop: 'Drop stash', revert: 'Revert', continue: 'Continue', skip: 'Skip', abort: 'Abort', rebaseInteractive: 'Interactive rebase',
+  stashDrop: 'Drop stash', revert: 'Revert', continue: 'Continue', skip: 'Skip', abort: 'Abort', rebase: 'Rebase', rebaseInteractive: 'Interactive rebase',
 }
 
 function unavailableFor(kind, tree) {

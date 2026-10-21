@@ -1,12 +1,14 @@
 import { worktreeId, activeBranchRef } from './parse.js'
 
-export const ALL_PROJECTS = 'All projects'
+export const ALL_PROJECTS = 'Registered repos'
+// The tab's name before it was renamed; saved views may still name it, and no group may take it.
+export const LEGACY_ALL_PROJECTS = 'All projects'
 
 const lower = s => String(s ?? '').toLowerCase()
 const samePath = (a, b) => lower(a).replace(/\\/g, '/').replace(/\/+$/, '') === lower(b).replace(/\\/g, '/').replace(/\/+$/, '')
 
 export function findGroup(config, name) {
-  if (name === ALL_PROJECTS) return null
+  if (name === ALL_PROJECTS || name === LEGACY_ALL_PROJECTS) return null
   return (config?.groups || []).find(g => g.name === name) || null
 }
 
@@ -47,7 +49,9 @@ export function uniqueName(name, taken) {
 export function groupNameError(config, name, existingName = null) {
   const trimmed = String(name ?? '').trim()
   if (!trimmed) return 'Choose a group name.'
-  if (lower(trimmed) === lower(ALL_PROJECTS)) return 'All projects is reserved — choose another name.'
+  for (const reserved of [ALL_PROJECTS, LEGACY_ALL_PROJECTS]) {
+    if (lower(trimmed) === lower(reserved)) return `${reserved} is reserved — choose another name.`
+  }
   if ((config.groups || []).some(g => g.name !== existingName && lower(g.name) === lower(trimmed))) return 'A group with that name already exists.'
   return null
 }

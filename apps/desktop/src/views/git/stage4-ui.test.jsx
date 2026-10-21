@@ -69,9 +69,22 @@ describe('stage 4 in the Git Workspace view', () => {
     fireEvent.click(bar.getByRole('button', { name: 'Pull…' }))
     await waitFor(() => expect(git.preview).toHaveBeenCalledWith({ name: 'A', path: 'C:/repos/A' }, 'C:/repos/A', ['C:/repos/A', 'C:/repos/B'], 'pull', { mode: 'ff' }))
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(bar.getByRole('button', { name: 'Rebase…' }))
+    await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'rebase', {}))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     fireEvent.click(bar.getByRole('button', { name: 'Branch ▾' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Remove this worktree…' }))
     await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'worktreeRemove', { path: 'C:/repos/A' }))
+  })
+
+  it('Terminal opens one in the selected worktree, and says why when it cannot', async () => {
+    const git = adapter({ openTerminal: vi.fn().mockResolvedValueOnce({ opened: 'wt.exe' }).mockRejectedValueOnce(new Error("Error invoking remote method 'git:openTerminal': Error: Couldn't open a terminal: none found")) })
+    const bar = await openWorktree(git)
+    fireEvent.click(bar.getByRole('button', { name: 'Terminal' }))
+    await waitFor(() => expect(git.openTerminal).toHaveBeenCalledWith({ name: 'A', path: 'C:/repos/A' }, 'C:/repos/A', ['C:/repos/A', 'C:/repos/B']))
+    expect(bar.queryByRole('alert')).toBeNull()
+    fireEvent.click(bar.getByRole('button', { name: 'Terminal' }))
+    expect((await bar.findByRole('alert')).textContent).toBe("Couldn't open a terminal: none found")
   })
 
   it('Fetch all previews one target per repository in the group', async () => {
@@ -200,6 +213,31 @@ describe('resolving a conflicted file in the panel', () => {
     return git
   }
   afterEach(() => { vi.restoreAllMocks(); clearWorktreeDrafts() })
+
+  it('jumps to the next conflicted file, and offers it once one is resolved', async () => {
+    const resolved = new Set()
+    const both = p => (resolved.has(p) ? `1 M. N... 100644 100644 100644 ${h} ${h} ${p}\0` : `u UU N... 100644 100644 100644 100644 ${h} ${h} ${h} ${p}\0`)
+    const git = conflicted()
+    git.status.mockImplementation(async () => ({
+      porcelain: porcelain(both('a.txt') + both('b.txt')),
+      operation: 'Rebase in progress', rebasingBranch: 'main', fetchedAt: null,
+      operationInfo: { kind: 'rebase', onto: { name: 'refs/heads/dev', oid: oid(1) }, step: 1, total: 2, replaying: { oid: oid(2), subject: 'Fix' } },
+    }))
+    git.resolveConflict.mockImplementation(async (_r, _w, _g, p) => { resolved.add(p); return { ok: true } })
+    await openWorktree(git)
+    fireEvent.click(await screen.findByText('a.txt'))
+    await screen.findByRole('heading', { name: 'Resolve: a.txt' })
+    expect(within(screen.getByRole('group', { name: 'Conflicted files' })).getByText('File 1 of 2')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Next conflicted file' }))
+    expect(await screen.findByRole('heading', { name: 'Resolve: b.txt' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Previous conflicted file' }))
+    await screen.findByRole('heading', { name: 'Resolve: a.txt' })
+    await screen.findByText('1 of 1 left')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve a.txt' })).getByRole('button', { name: "Take dev's" }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mark resolved' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Next conflict: b.txt →' }))
+    expect(await screen.findByRole('heading', { name: 'Resolve: b.txt' })).toBeTruthy()
+  })
 
   it('a focused conflict shows the resolve screen, and Undo stays after it is staged', async () => {
     const git = conflicted()

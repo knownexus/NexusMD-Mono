@@ -97,3 +97,73 @@ describe('the git command line', () => {
     expect(within(drawer).getByText(/can't run git commands/)).toBeTruthy()
   })
 })
+
+describe('aliases on the command line', () => {
+  const ALIASES = 'alias.undo\nreset --hard HEAD~1\0alias.st\nstatus -sb\0'
+  const PROFILE = 'function global:ga { git add @args }\r\nfunction global:grh2 { git reset --hard @args }\r\n'
+  async function openWith(git) {
+    setGitConfig({ repos: [REPO], groups: [] })
+    render(<ViewGit adapters={{ git }} />)
+    const region = await screen.findByRole('region', { name: 'A' })
+    fireEvent.click(await within(region).findByRole('button', { name: /checkout → main/ }))
+    await screen.findByRole('button', { name: 'My aliases (4) ▾' })
+    const input = screen.getByLabelText('git command')
+    return line => { fireEvent.change(input, { target: { value: line } }); fireEvent.keyDown(input, { key: 'Enter' }) }
+  }
+  const withAliases = () => adapter({ aliases: vi.fn(async () => ALIASES), shellAliases: vi.fn(async () => PROFILE) })
+
+  it('reads git\'s aliases for the worktree and the DotFiles shortcuts from the default folder', async () => {
+    const git = withAliases()
+    const type = await openWith(git)
+    expect(git.aliases).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG)
+    expect(git.shellAliases).toHaveBeenCalledWith('C:/repos/DotFiles')
+    type('ga x.txt')
+    await waitFor(() => expect(git.exec).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, ['add', 'x.txt']))
+    type('git st')
+    await waitFor(() => expect(git.exec).toHaveBeenLastCalledWith(REPO, 'C:/repos/A', REG, ['st']))
+  })
+
+  it('asks first when an alias or a shortcut runs something destructive', async () => {
+    const git = withAliases()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const type = await openWith(git)
+    type('git undo')
+    expect(confirm).toHaveBeenLastCalledWith('Run "git undo" (reset --hard HEAD~1) in C:/repos/A? This can\'t be undone from NexusMD.')
+    type('grh2')
+    expect(confirm).toHaveBeenLastCalledWith('Run "git reset --hard" in C:/repos/A? This can\'t be undone from NexusMD.')
+    expect(git.exec).not.toHaveBeenCalled()
+  })
+
+  it('runs a DotFiles script in PowerShell, warmed up beforehand, and shows it as typed', async () => {
+    const git = withAliases()
+    git.shellAliases = vi.fn(async () => `# nexusmd-file: 12-git-core.ps1
+${PROFILE}function global:g! { gstat }
+`)
+    git.shellWarm = vi.fn(async () => true)
+    git.shellRun = vi.fn(async () => ({ code: 0, stdout: 'branch: main a1b2c3d', stderr: '' }))
+    setGitConfig({ repos: [REPO], groups: [] })
+    render(<ViewGit adapters={{ git }} />)
+    const region = await screen.findByRole('region', { name: 'A' })
+    fireEvent.click(await within(region).findByRole('button', { name: /checkout → main/ }))
+    await screen.findByRole('button', { name: 'My aliases (5) ▾' })
+    expect(git.shellWarm).toHaveBeenCalledWith('C:/repos/DotFiles')
+    const input = screen.getByLabelText('git command')
+    fireEvent.change(input, { target: { value: 'g!' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(git.shellRun).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, 'C:/repos/DotFiles', 'g!', []))
+    const drawer = await screen.findByRole('dialog', { name: 'g!' })
+    await waitFor(() => expect(within(drawer).getByText('branch: main a1b2c3d')).toBeTruthy())
+    expect(git.exec).not.toHaveBeenCalled()
+  })
+
+  it('reads no DotFiles shortcuts once the folder is cleared', async () => {
+    const git = withAliases()
+    setGitConfig({ dotfiles: '' })
+    setGitConfig({ repos: [REPO], groups: [] })
+    render(<ViewGit adapters={{ git }} />)
+    const region = await screen.findByRole('region', { name: 'A' })
+    fireEvent.click(await within(region).findByRole('button', { name: /checkout → main/ }))
+    await screen.findByRole('button', { name: 'My aliases (2) ▾' })
+    expect(git.shellAliases).not.toHaveBeenCalled()
+  })
+})

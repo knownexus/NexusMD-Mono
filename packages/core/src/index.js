@@ -95,13 +95,13 @@ export {
 export {
   getGitAdapter, GIT_AREAS, parseStatus, parseWorktrees, parseBranches, statusCode,
   worktreeId, worktreeName, activeBranchRef, branchLabel, checkoutName,
-  loadSnapshot, applyStatus, worktreeSummary,
-  ALL_PROJECTS, findGroup, groupIncludesWorktree, groupIncludesBranch, scopeSnapshot, changeCount,
+  loadSnapshot, refreshRepos, applyStatus, worktreeSummary,
+  ALL_PROJECTS, LEGACY_ALL_PROJECTS, findGroup, groupIncludesWorktree, groupIncludesBranch, scopeSnapshot, changeCount,
   uniqueName, groupNameError, renameGroup, duplicateGroup, deleteGroup, registerRepo, unregisterRepo,
-  GroupDraft, GroupSaveError,
+  GroupDraft,
   parseDiff, diffSides, changePaths, isSubmodule, FILE_ACTIONS, actionsFor, groupChanges, toggleSelection, rangeSelection, pruneSelection,
   fileReview, commitTargets, commitReview, COMMIT_NOTE,
-  parseRefs, parseLog, graphCells, parseSearch, historyQuery, HISTORY_STEP, HISTORY_MAX, parseRefList, defaultBase, parseCommitDetails, parseNameStatus, parentLabel,
+  parseRefs, parseLog, graphCells, parseSearch, historyQuery, HISTORY_STEP, HISTORY_MAX, parseRefList, defaultBase, parseAliases, parseShellAliases, parseShellScripts, parseCommitDetails, parseNameStatus, parentLabel,
   ACTION_KINDS, BATCH_KINDS, BATCH_NOTE, actionTargets, previewModel, worktreeDefaultPath, checkBranchName, REBASE_ACTIONS, rebasePlan, moveRow, setRowAction, setRowMessage, rebaseTodo, squashGroups, rebaseMessages, messageRows, rebaseProblems, ACTIVITY_MAX, addActivity, failedTargets, filterFiles,
   parseConflicts, resolveRegion, hasMarkers, conflictKind, conflictLabels, operationText,
 } from './modules/git/index.js'

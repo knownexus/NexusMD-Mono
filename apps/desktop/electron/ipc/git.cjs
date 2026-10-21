@@ -17,6 +17,7 @@ const { withLogging } = require('./withLogging.cjs');
 const { registerActions, ownershipMessage, WRITE_ENV, BASE_MARKER } = require('./git-actions.cjs');
 const { registerFiles } = require('./git-files.cjs');
 const { registerConflicts } = require('./git-conflicts.cjs');
+const { registerShell } = require('./git-shell.cjs');
 
 const STRIP_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_PREFIX', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'];
 const BRANCH_FORMAT = '--format=%(refname)%00%(objectname)%00%(subject)%00%(upstream:short)';
@@ -108,6 +109,8 @@ const HISTORY_TIMEOUT = 'History took too long - narrow it with a search or a fi
 const OID = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
 const NOT_PARENT = 'Not a parent of that commit';
 const EXEC_CAP = 1024 * 1024;
+const SHELL_ALIASES_CAP = 1024 * 1024;
+const EXEC_COLOR = ['-c', 'color.ui=always'];
 const EXEC_MAX_ARGS = 256;
 
 // A command-line argv must start with a subcommand: git's global options (-C, -c, --git-dir,
@@ -245,7 +248,9 @@ function register(ipcMain, deps = {}) {
     logger,
     env = process.env,
     now = Date.now,
-    commonDirTtlMs = 5000,
+    // A repository's common folder only changes if it's moved or rebuilt; resolving it costs a git process.
+    commonDirTtlMs = 60000,
+    listedTtlMs = 30000,
     commitTimeoutMs = 120000,
     execTimeoutMs = 60000,
   } = deps;
@@ -256,6 +261,8 @@ function register(ipcMain, deps = {}) {
   const waiting = [];
   // normalised folder → { commonDir, at }: one poll asks resolve, worktrees and branches per repo.
   const commonDirs = new Map();
+  // commonDir → { stamp, at, paths }: the worktree paths requireListed last read from git.
+  const listedPaths = new Map();
   const locks = new Map();
   let disposed = false;
   let active = 0;
@@ -331,9 +338,19 @@ function register(ipcMain, deps = {}) {
     }
   }
 
+  // Every operation checks its worktree is one git lists, and each git process costs about half a
+  // second on Windows: the listed paths are kept per repository while its worktrees folder is
+  // unchanged, for listedTtlMs. A path not in the kept list is always checked with git again.
   async function requireListed(repo, worktreePath) {
+    const common = await resolveCommon(repo.path);
+    const stamp = probe.statKey(path.join(common, 'worktrees'));
+    const kept = listedPaths.get(common);
+    const fresh = kept && kept.stamp === stamp && now() - kept.at < listedTtlMs;
+    const match = paths => paths.some(p => samePath(p, worktreePath));
+    if (fresh && match(kept.paths)) return;
     const listed = (await worktreeList(repo.path)).split('\0').filter(f => f.startsWith('worktree ')).map(f => f.slice(9));
-    if (!listed.some(p => samePath(p, worktreePath))) throw new Error(`Not a worktree of ${repo.path}: ${worktreePath}`);
+    listedPaths.set(common, { stamp, at: now(), paths: listed });
+    if (!match(listed)) throw new Error(`Not a worktree of ${repo.path}: ${worktreePath}`);
   }
 
   // Status (stage 1) accepts any folder inside the repo.
@@ -478,6 +495,21 @@ function register(ipcMain, deps = {}) {
     throw new Error(`No repository at ${dir} (including .git-main and .bare)`);
   }
 
+  // A worktree's git folder and common folder, from its .git: a folder (a plain clone), or a file
+  // naming the folder (a linked worktree), whose `commondir` names the shared one. Null for
+  // anything else (a bare layout, an unreadable file), which is left to git rev-parse.
+  function gitDirsFromDotGit(worktreePath) {
+    const dotGit = path.join(worktreePath, '.git');
+    if (probe.isDirectory(dotGit)) return { gitDir: dotGit, commonDir: dotGit };
+    if (!probe.isFile(dotGit)) return null;
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(probe.readText(dotGit) || '');
+    if (!m) return null;
+    const gitDir = path.resolve(worktreePath, m[1]);
+    if (!probe.isDirectory(gitDir)) return null;
+    const common = (probe.readText(path.join(gitDir, 'commondir')) || '').trim();
+    return { gitDir, commonDir: common ? path.resolve(gitDir, common) : gitDir };
+  }
+
   async function worktreeList(repoPath) {
     const r = await git(await resolveCommon(repoPath), ['worktree', 'list', '--porcelain', '-z']);
     if (r.code !== 0) throw new Error(r.stderr || 'git worktree list failed');
@@ -586,6 +618,8 @@ function register(ipcMain, deps = {}) {
   const hgit = (cwd, args, opts = {}) => git(cwd, args, { ...opts, extraConfig: HISTORY_CONFIG });
 
   async function gitDirOf(wt) {
+    const fromDotGit = gitDirsFromDotGit(wt);
+    if (fromDotGit) return fromDotGit.gitDir;
     const r = await git(wt, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']);
     return r.code === 0 ? r.stdout.split(/\r?\n/)[0].trim() : '';
   }
@@ -631,8 +665,14 @@ function register(ipcMain, deps = {}) {
     const status = await git(worktreePath, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all']);
     if (status.code !== 0) return { error: status.stderr || `git status failed (exit ${status.code})` };
     // A gone upstream is detected in core from the missing `# branch.ab` line, so no extra spawn.
-    const dirs = await git(worktreePath, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']);
-    const [gitDir = '', commonDir = ''] = dirs.code === 0 ? dirs.stdout.split(/\r?\n/).map(s => s.trim()) : [];
+    // Starting git is the slow part on Windows: the git folders are read from .git when it's plain.
+    const read = gitDirsFromDotGit(worktreePath);
+    let gitDir = read?.gitDir ?? '';
+    let commonDir = read?.commonDir ?? '';
+    if (!read) {
+      const dirs = await git(worktreePath, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']);
+      [gitDir = '', commonDir = ''] = dirs.code === 0 ? dirs.stdout.split(/\r?\n/).map(s => s.trim()) : [];
+    }
     const progress = await inProgress(gitDir);
     return {
       porcelain: status.stdout,
@@ -788,6 +828,15 @@ function register(ipcMain, deps = {}) {
     return found;
   });
 
+  // The user's aliases (global and the repository's own), for the command line's picker; core's parseAliases reads it.
+  handle('git:aliases', async (_e, repo, worktreePath, registered) => {
+    await requireExactWorktree(repo, worktreePath, registered);
+    const r = await hgit(worktreePath, ['config', '-z', '--get-regexp', '^alias\\.']);
+    // Exit 1 means no aliases are set.
+    if (r.code !== 0 && r.code !== 1) throw new Error(r.stderr || 'git config failed');
+    return r.code === 0 ? r.stdout : '';
+  });
+
   handle('git:refs', async (_e, repo, worktreePath, registered) => {
     await requireExactWorktree(repo, worktreePath, registered);
     const r = await hgit(worktreePath, ['for-each-ref', '--format=%(refname)%00%(objectname)%00%(upstream)%00%(HEAD)', 'refs/heads/', 'refs/remotes/', 'refs/tags/']);
@@ -916,14 +965,55 @@ function register(ipcMain, deps = {}) {
   // Reading and resolving conflicted files (git-conflicts.cjs).
   registerConflicts(handle, { git, requireExactWorktree, requirePaths, withRepoLock, filesState, indexEntries, gitDirOf, result });
 
+  // DotFiles PowerShell scripts (g!, gstat, …) for the command line, in a pwsh kept open (git-shell.cjs).
+  const shell = registerShell(handle, { spawn, kill, requireExactWorktree, isRemoteOrDevicePath, fsx: deps.fsx, env, timeoutMs: deps.shellTimeoutMs });
+
   // The command line. argv is a git subcommand and its arguments, typed by the user (the renderer
   // confirms destructive ones first). It runs like a terminal (no literal pathspecs) but can't
   // wait on an editor or a credential prompt, and it takes the repository's write lock.
   handle('git:exec', async (_e, repo, worktreePath, registered, argv) => {
     await requireExactWorktree(repo, worktreePath, registered, () => checkExecArgv(argv));
-    const r = await withRepoLock(repo, () => git(worktreePath, argv, { timeout: execTimeoutMs, literal: false, env: WRITE_ENV }));
+    // Git's own colours, as in a terminal: the output drawer shows them in the theme's colours.
+    const r = await withRepoLock(repo, () => git(worktreePath, argv, { timeout: execTimeoutMs, literal: false, env: WRITE_ENV, extraConfig: EXEC_COLOR }));
     const cap = s => (s.length > EXEC_CAP ? `${s.slice(0, EXEC_CAP)}\n[output truncated]` : s);
     return { code: r.code, stdout: cap(r.stdout), stderr: cap(r.stderr) };
+  });
+
+  // The PowerShell profile scripts of a DotFiles folder (pwsh/profile.d/*.ps1, in load order), read
+  // only, for core's parseShellAliases. A missing folder reads as nothing.
+  handle('git:shellAliases', async (_e, folder) => {
+    if (typeof folder !== 'string' || !path.isAbsolute(folder) || isRemoteOrDevicePath(folder)) throw new Error('The DotFiles folder must be an absolute local path.');
+    const dir = path.join(folder, 'pwsh', 'profile.d');
+    let names;
+    try { names = fs.readdirSync(dir).filter(n => n.toLowerCase().endsWith('.ps1')).sort(); } catch { return ''; }
+    let text = '';
+    for (const n of names) {
+      // Each file is marked so core can tell the git scripts from the rest.
+      try { text += `# nexusmd-file: ${n}\n${fs.readFileSync(path.join(dir, n), 'utf8')}\n`; } catch { /* unreadable: skip it */ }
+      if (text.length > SHELL_ALIASES_CAP) break;
+    }
+    return text.slice(0, SHELL_ALIASES_CAP);
+  });
+
+  // Opens the user's own terminal in a worktree: Windows Terminal, else PowerShell 7, else Windows
+  // PowerShell (a detached console process gets its own window). Resolves once one has started.
+  handle('git:openTerminal', async (_e, repo, worktreePath, registered) => {
+    await requireExactWorktree(repo, worktreePath, registered);
+    const candidates = process.platform === 'win32'
+      ? [['wt.exe', ['-d', worktreePath]], ['pwsh.exe', ['-NoExit']], ['powershell.exe', ['-NoExit']]]
+      : process.platform === 'darwin' ? [['open', ['-a', 'Terminal', worktreePath]]] : [['x-terminal-emulator', []]];
+    let last = null;
+    for (const [exe, args] of candidates) {
+      try {
+        await new Promise((resolve, reject) => {
+          const child = spawn(exe, args, { cwd: worktreePath, detached: true, stdio: 'ignore', windowsHide: false, env });
+          child.once('spawn', () => { child.unref(); resolve(); });
+          child.once('error', reject);
+        });
+        return { opened: exe };
+      } catch (e) { last = e; }
+    }
+    throw new Error(`Couldn't open a terminal: ${last?.message ?? 'none found'}`);
   });
 
   handle('git:checkFolders', async (_e, paths) =>
@@ -935,10 +1025,12 @@ function register(ipcMain, deps = {}) {
     async disposeAll() {
       disposed = true;
       commonDirs.clear();
+      listedPaths.clear();
       for (const w of waiting.splice(0)) w.reject(new Error('Git Workspace is shutting down'));
       const all = [...running];
       running.clear();
       await Promise.all(all.map(c => Promise.resolve(kill(c.pid)).catch(() => {})));
+      await shell.disposeAll();
     },
   };
 }

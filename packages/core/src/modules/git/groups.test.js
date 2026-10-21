@@ -43,9 +43,11 @@ describe('group membership', () => {
     expect(changeCount(snapshot, group)).toBe(2)
   })
 
-  it('finds groups by name and treats All projects as no group', () => {
+  it('finds groups by name and treats Registered repos (and the old All projects) as no group', () => {
+    expect(ALL_PROJECTS).toBe('Registered repos')
     expect(findGroup(config, 'QR')).toBe(group)
     expect(findGroup(config, ALL_PROJECTS)).toBeNull()
+    expect(findGroup(config, 'All projects')).toBeNull()
     expect(findGroup(config, 'missing')).toBeNull()
   })
 })
@@ -53,7 +55,8 @@ describe('group membership', () => {
 describe('group names', () => {
   it('rejects blank, reserved and duplicate names case-insensitively', () => {
     expect(groupNameError(config, ' ')).toMatch(/name/)
-    expect(groupNameError(config, 'all PROJECTS')).toMatch(/All projects/)
+    expect(groupNameError(config, 'registered REPOS')).toMatch(/Registered repos is reserved/)
+    expect(groupNameError(config, 'all PROJECTS')).toMatch(/All projects is reserved/)
     expect(groupNameError(config, 'qr')).toMatch(/already exists/)
     expect(groupNameError(config, 'qr', 'QR')).toBeNull()
     expect(uniqueName('joiners', ['Joiners', 'joiners 2'])).toBe('joiners 3')
@@ -69,7 +72,7 @@ describe('group names', () => {
     copy.groups[1].branches.push({ repo: 'X', ref: 'y' })
     expect(group.branches).toHaveLength(2)
     expect(deleteGroup(config, 'QR').groups).toEqual([])
-    expect(() => renameGroup(config, 'QR', 'All projects')).toThrow(/All projects/)
+    expect(() => renameGroup(config, 'QR', 'All projects')).toThrow(/reserved/)
   })
 })
 

@@ -9,13 +9,13 @@ export {
   GIT_AREAS, parseStatus, parseWorktrees, parseBranches, statusCode,
   worktreeId, worktreeName, activeBranchRef, branchLabel, checkoutName,
 } from './parse.js'
-export { loadSnapshot, applyStatus, worktreeSummary } from './snapshot.js'
+export { loadSnapshot, refreshRepos, applyStatus, worktreeSummary } from './snapshot.js'
 export {
-  ALL_PROJECTS, findGroup, groupIncludesWorktree, groupIncludesBranch, scopeSnapshot, changeCount,
+  ALL_PROJECTS, LEGACY_ALL_PROJECTS, findGroup, groupIncludesWorktree, groupIncludesBranch, scopeSnapshot, changeCount,
   uniqueName, groupNameError, renameGroup, duplicateGroup, deleteGroup, registerRepo, unregisterRepo,
 } from './groups.js'
 
-export { GroupDraft, GroupSaveError } from './group-draft.js'
+export { GroupDraft } from './group-draft.js'
 export { parseDiff, diffSides } from './diff.js'
 export {
   changePaths, isSubmodule, isNestedRepo, FILE_ACTIONS, actionsFor, groupChanges, toggleSelection, rangeSelection, pruneSelection,
@@ -24,6 +24,7 @@ export { fileReview, commitTargets, commitReview, COMMIT_NOTE } from './review.j
 export {
   parseRefs, parseLog, graphCells, parseSearch, historyQuery, HISTORY_STEP, HISTORY_MAX, parseRefList, defaultBase, parseCommitDetails, parseNameStatus, parentLabel,
 } from './history.js'
+export { parseAliases, parseShellAliases, parseShellScripts } from './aliases.js'
 export { ACTION_KINDS, BATCH_KINDS, BATCH_NOTE, actionTargets, previewModel, worktreeDefaultPath, checkBranchName } from './actions.js'
 export { REBASE_ACTIONS, rebasePlan, moveRow, setRowAction, setRowMessage, rebaseTodo, squashGroups, rebaseMessages, messageRows, rebaseProblems } from './rebase-plan.js'
 export { ACTIVITY_MAX, addActivity, failedTargets } from './activity.js'

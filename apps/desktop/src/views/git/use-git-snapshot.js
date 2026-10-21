@@ -1,19 +1,45 @@
 import React from 'react'
-import { loadSnapshot } from '@nexusmd/core'
+import { loadSnapshot, refreshRepos } from '@nexusmd/core'
+import { getProfileKey } from '../../profile-keys.js'
 
-// The last snapshot outlives the screen, so coming back shows it at once while a quiet refresh
-// runs. Nothing polls while the screen is closed. Keyed by the repo list, so a change starts fresh.
+// The last snapshot outlives the screen and the app: coming back, or starting NexusMD, shows it at
+// once while a quiet refresh runs (each git process costs about half a second on Windows, so a full
+// read takes seconds). Nothing polls while the screen is closed. Keyed by the repo list, so a change
+// starts fresh. Kept in this profile's storage, unless it's too big to be worth it.
 let cached = null
+const STORE = () => getProfileKey('git.snapshot')
+const STORE_MAX = 2 * 1024 * 1024
+
+function stored(key) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE()) || 'null')
+    return saved?.key === key && saved.snapshot?.takenAt ? saved.snapshot : null
+  } catch {
+    return null
+  }
+}
+
+function remember(key, snapshot) {
+  cached = { key, snapshot }
+  try {
+    const text = JSON.stringify(cached)
+    if (text.length <= STORE_MAX) localStorage.setItem(STORE(), text)
+    else localStorage.removeItem(STORE())
+  } catch { /* storage full or unavailable: the in-memory copy still serves this session */ }
+}
 
 export function clearGitSnapshotCache() {
   cached = null
+  try { localStorage.removeItem(STORE()) } catch { /* nothing kept */ }
 }
 
 // Polls git status for every registered repo while the window is visible (devenv's query-hook
 // pattern): a poll is skipped while one is still running, and only the newest result is kept.
 export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10000 }) {
   const reposKey = JSON.stringify(repos || [])
-  const [snapshot, setSnapshot] = React.useState(() => (cached?.key === reposKey ? cached.snapshot : null))
+  const [snapshot, setSnapshot] = React.useState(() => (cached?.key === reposKey ? cached.snapshot : stored(reposKey)))
+  // True while the snapshot on screen is one kept from an earlier visit or run, not read just now.
+  const [stale, setStale] = React.useState(() => snapshot != null)
   const [error, setError] = React.useState(null)
   const [loading, setLoading] = React.useState(false)
   const live = React.useRef(true)
@@ -27,7 +53,8 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
   // StrictMode runs the cleanup and the effect again in dev, so liveness must be re-armed.
   React.useEffect(() => { live.current = true; return () => { live.current = false } }, [])
 
-  const load = React.useCallback(async (quiet, skipIfBusy = false) => {
+  // `only`: names of the repos to read again, keeping the rest of the snapshot on screen as it is.
+  const load = React.useCallback(async (quiet, skipIfBusy = false, only = null) => {
     if (!enabled) return
     if (skipIfBusy && inFlight.current > 0) return
     const seq = ++reqId.current
@@ -35,9 +62,12 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
     if (!quiet) setLoading(true)
     const current = () => live.current && seq === reqId.current
     try {
-      const next = await loadSnapshot(adapter, JSON.parse(reposKey))
-      cached = { key: reposKey, snapshot: next }
-      if (current()) { setSnapshot(next); setError(null); hasSnapshot.current = true }
+      const repos = JSON.parse(reposKey)
+      const base = only?.length && cached?.key === reposKey ? cached.snapshot : null
+      const next = base ? await refreshRepos(adapter, repos, base, only) : await loadSnapshot(adapter, repos)
+      remember(reposKey, next)
+      // Only a full read makes a kept snapshot current again.
+      if (current()) { setSnapshot(next); if (!base) setStale(false); setError(null); hasSnapshot.current = true }
     } catch (e) {
       if (current()) setError(e?.message || 'Could not read the repositories')
     } finally {
@@ -56,9 +86,10 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
   const refresh = React.useCallback(() => load(false, true), [load])
 
   // After a write: a running load may have read status before the write, so one quiet load is
-  // queued after it (never more than one), or starts at once when nothing is running.
-  const reload = React.useCallback(() => {
-    if (!inFlight.current) return load(true)
+  // queued after it (never more than one), or starts at once when nothing is running. Given the
+  // names of the repos written to, only those are read again (a queued load reads them all).
+  const reload = React.useCallback((only = null) => {
+    if (!inFlight.current) return load(true, false, Array.isArray(only) ? only : null)
     if (!queued.current) {
       let resolve
       const promise = new Promise(r => { resolve = r })
@@ -83,5 +114,5 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
     }
   }, [load, enabled, intervalMs])
 
-  return { snapshot, error, loading, refresh, reload }
+  return { snapshot, stale, error, loading, refresh, reload }
 }

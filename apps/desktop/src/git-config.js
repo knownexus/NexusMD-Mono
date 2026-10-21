@@ -1,12 +1,15 @@
 // Git Workspace settings (registered repos, groups, search roots, view state), per NexusMD profile.
+import { ALL_PROJECTS, LEGACY_ALL_PROJECTS } from '@nexusmd/core'
 import { getProfileKey } from './profile-keys.js'
 
 const KEY = () => getProfileKey('git.config')
 export const GIT_CONFIG_EVENT = 'nexusmd:git-config'
 export const DEFAULT_ROOTS = Object.freeze(['C:/repos'])
+// Where the DotFiles repository is, for its PowerShell git shortcuts; an empty string turns them off.
+export const DEFAULT_DOTFILES = 'C:/repos/DotFiles'
 export const DEFAULT_GIT_CONFIG = Object.freeze({
-  version: 1, repos: [], groups: [], roots: null,
-  view: Object.freeze({ group: 'All projects', collapsed: [], selected: null, split: 0.45, panel: 'changes', list: 'shown' }),
+  version: 1, repos: [], groups: [], roots: null, dotfiles: null,
+  view: Object.freeze({ group: ALL_PROJECTS, collapsed: [], selected: null, split: 0.45, panel: 'changes', list: 'shown' }),
 })
 
 const strings = v => Array.isArray(v) ? v.filter(x => typeof x === 'string') : []
@@ -22,8 +25,10 @@ function normalise(saved) {
       branches: (Array.isArray(g.branches) ? g.branches : []).filter(b => b && typeof b.repo === 'string' && typeof b.ref === 'string').map(b => ({ repo: b.repo, ref: b.ref })),
     })),
     roots: saved.roots == null ? null : strings(saved.roots),
+    dotfiles: typeof saved.dotfiles === 'string' ? saved.dotfiles : null,
     view: {
-      group: typeof view.group === 'string' ? view.group : DEFAULT_GIT_CONFIG.view.group,
+      // The tab was called All projects before it was renamed.
+      group: typeof view.group === 'string' && view.group !== LEGACY_ALL_PROJECTS ? view.group : DEFAULT_GIT_CONFIG.view.group,
       collapsed: strings(view.collapsed),
       selected: typeof view.selected === 'string' ? view.selected : null,
       split: typeof view.split === 'number' && view.split >= 0.2 && view.split <= 0.8 ? view.split : DEFAULT_GIT_CONFIG.view.split,
@@ -76,4 +81,8 @@ export function parseRoots(text) {
     else if (!roots.some(r => r.toLowerCase() === entry.toLowerCase())) roots.push(entry)
   }
   return { roots, invalid, network }
+}
+
+export function effectiveDotfiles(config) {
+  return config?.dotfiles ?? DEFAULT_DOTFILES
 }

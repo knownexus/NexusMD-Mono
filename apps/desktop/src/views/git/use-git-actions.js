@@ -30,7 +30,8 @@ export function useGitActions({ adapter, registered, reload }) {
     running.current.delete(tree.path)
     setBusy(b => { const next = { ...b }; delete next[tree.path]; return next })
     setStatus(s => ({ ...s, [tree.path]: { ok: !!r.ok, text: r.detail } }))
-    reload()
+    // Only the repo written to has changed.
+    reload([tree.repo])
   }
 
   const openReview = (action, tree, selectedIds) => {
