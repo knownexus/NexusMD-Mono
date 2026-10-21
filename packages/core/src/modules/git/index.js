@@ -29,6 +29,8 @@ export { ACTION_KINDS, BATCH_KINDS, BATCH_NOTE, actionTargets, previewModel, wor
 export { REBASE_ACTIONS, rebasePlan, moveRow, setRowAction, setRowMessage, rebaseTodo, squashGroups, rebaseMessages, messageRows, rebaseProblems } from './rebase-plan.js'
 export { ACTIVITY_MAX, addActivity, failedTargets } from './activity.js'
 export { filterFiles } from './file-filter.js'
+export { wordMatch, filterByWords, filterFilesByWords } from './word-match.js'
+export { BRANCH_FILTERS, branchState, matchesFilter, filterCounts, branchMeta, repoPills, primaryAction } from './status-meta.js'
 export { parseConflicts, resolveRegion, hasMarkers, conflictKind, conflictLabels, operationText } from './conflicts.js'
 
 let _adapter = null
