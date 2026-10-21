@@ -7,7 +7,7 @@ import { setGitConfig, getGitConfig, effectiveRoots, effectiveDotfiles } from '.
 import { useGitConfig } from './use-git-config.js'
 import { useGitSnapshot } from './use-git-snapshot.js'
 import { GroupTabs } from './group-tabs.jsx'
-import { RepoCards } from './repo-cards.jsx'
+import { BranchList } from './branch-list.jsx'
 import { FilterChips, BranchSearch } from './filter-chips.jsx'
 import { BranchSwitcher } from './branch-switcher.jsx'
 import { allFetchedText } from './fetched-ago.js'
@@ -195,7 +195,7 @@ function GitWorkspace({ adapter }) {
       <div className="nx-gw-body" data-list={listHidden ? 'hidden' : 'shown'}>
         {!listHidden && (
           <nav aria-label="Branches" className="nx-gw-aside">
-            <RepoCards repos={config.repos} scoped={scoped} errors={snapshot?.errors || []} collapsed={view.collapsed}
+            <BranchList repos={config.repos} scoped={scoped} query={query} filter={filter} onClearFilters={() => { setQuery(''); setFilter('all') }} errors={snapshot?.errors || []} collapsed={view.collapsed}
               onToggleRepo={name => setView({ collapsed: view.collapsed.includes(name) ? view.collapsed.filter(n => n !== name) : [...view.collapsed, name] })}
               onSetCollapsed={collapsed => setView({ collapsed })}
               selected={view.selected} onSelect={selectTree} />

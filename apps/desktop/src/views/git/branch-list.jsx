@@ -5,7 +5,8 @@ const TONE_BADGE = { bad: 'bad', warn: 'warn', info: 'info', ok: 'ok', muted: ''
 
 function BranchRow({ tree, selected, onSelect }) {
   const name = worktreeName(tree), branch = branchLabel(tree)
-  const meta = branchMeta(tree, { worktree: name !== branch ? name : null })
+  // A linked worktree's folder is named when it differs from the branch; the main checkout is the default, so it isn't.
+  const meta = branchMeta(tree, { worktree: name !== branch && name !== 'checkout' ? name : null })
   return (
     <button type="button" className="nx-gw-row" aria-current={selected ? 'true' : undefined}
       aria-label={`${name} → ${branch}, ${meta.map(m => m.text).join(', ')}`} title={`${tree.repo} → ${branch}`}
@@ -22,7 +23,7 @@ function BranchRow({ tree, selected, onSelect }) {
 }
 
 /**
- * Drop-in replacement for RepoCards (same props, plus query/filter/onClearFilters). Repo headers show
+ * The group's repositories and their branches, narrowed by query/filter. Repo headers show
  * "N branches" and status pills instead of a file count; rows show only non-default facts.
  * `query` word-matches "repo branch worktree"; `filter` is a BRANCH_FILTERS id.
  */

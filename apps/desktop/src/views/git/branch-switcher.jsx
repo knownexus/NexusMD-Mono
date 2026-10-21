@@ -26,7 +26,7 @@ export function BranchSwitcher({ trees, selected, onOpen, onClose }) {
         <div ref={listbox} id="branch-switcher-list" role="listbox" aria-label="Branches" className="nx-gw-pal-list">
           {results.map((t, i) => {
             const name = worktreeName(t), branch = branchLabel(t)
-            const meta = branchMeta(t, { worktree: name !== branch ? name : null })
+            const meta = branchMeta(t, { worktree: name !== branch && name !== 'checkout' ? name : null })
             return (
               <div key={worktreeId(t)} id={`branch-switcher-${i}`} role="option" aria-selected={i === current} aria-current={worktreeId(t) === selected ? 'true' : undefined}
                 className="nx-gw-pal-row" onClick={() => onOpen(t)} onMouseMove={() => { if (i !== current) setIndex(i) }}>

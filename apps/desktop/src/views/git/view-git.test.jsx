@@ -217,6 +217,24 @@ describe('ViewGit header', () => {
     expect(getGitConfig().view.selected).toBe('C:/repos/B')
   })
 
+  it('filters the branch list by text and by chip, and clears both from the empty state', async () => {
+    configure()
+    const BEHIND_B = '# branch.oid a\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +0 -2\0'
+    render(<ViewGit adapters={{ git: adapter({
+      status: vi.fn(async repo => ({ porcelain: repo.name === 'B' ? BEHIND_B : porcelain, operation: '', rebasingBranch: null, fetchedAt: null })),
+    }) }} />)
+    await screen.findByRole('region', { name: 'A' })
+    const chips = screen.getByRole('group', { name: 'Show branches' })
+    await waitFor(() => expect(within(chips).getByRole('button', { name: /^To pull/ }).textContent).toBe('To pull1'))
+    fireEvent.click(within(chips).getByRole('button', { name: /^To pull/ }))
+    expect(screen.queryByRole('region', { name: 'A' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'B' })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Filter branches and repos'), { target: { value: 'a' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(screen.getByLabelText('Filter branches and repos').value).toBe('')
+    expect(screen.getByRole('region', { name: 'A' })).toBeTruthy()
+  })
+
   it('offers the group menu as a popover for custom groups only', async () => {
     configure()
     render(<ViewGit adapters={{ git: adapter() }} />)
