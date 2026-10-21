@@ -623,6 +623,9 @@ function ViewBody({
 }
 
 const FULL_BLEED = new Set(['markdown', 'devenv', 'git'])
+// Views that hide the nav sidebar to give their own layout the width; the top bar's
+// nav button (or Ctrl+B) brings it back while on them.
+const NAV_HIDDEN = new Set(['git'])
 
 function WindowControls() {
   if (window.electronAPI?.platform === 'darwin') return null;
@@ -738,6 +741,10 @@ function App() {
   const iconsOnly  = effSidebar === 'icons'
   // Below the breakpoint the rail is icons whatever the preference, so the toggle can't expand it.
   const sidebarForced = winWidth < SIDEBAR_BREAKPOINT
+  // Shown by hand on a NAV_HIDDEN view; resets whenever the view changes.
+  const [navShown, setNavShown] = React.useState(false)
+  React.useEffect(() => { setNavShown(false) }, [view])
+  const navHidden = NAV_HIDDEN.has(view) && !navShown
 
   const setTweak = React.useCallback((key, value) => {
     setTweaksState(prev => {
@@ -850,11 +857,12 @@ function App() {
     const handler = e => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'b' || e.defaultPrevented) return
       e.preventDefault()
-      setTweak('sidebar', toggledSidebar(tweaks.sidebar))
+      if (NAV_HIDDEN.has(view)) setNavShown(v => !v)
+      else setTweak('sidebar', toggledSidebar(tweaks.sidebar))
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [tweaks.sidebar, setTweak])
+  }, [tweaks.sidebar, setTweak, view])
 
   React.useEffect(() => {
     refreshLeftRef.current = refreshInterval
@@ -899,7 +907,7 @@ function App() {
       notify={(title, body) => notificationAdapter.send(title, body, { tag: 'devenv-prompt' })}>
       <div data-density={tweaks.density} data-sidebar={effSidebar}
         style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-        <aside style={{
+        {!navHidden && <aside style={{
           width: iconsOnly ? ICON_RAIL_WIDTH : sidebarWidth,
           minWidth: iconsOnly ? ICON_RAIL_WIDTH : sidebarWidth,
           flexShrink: 0, borderRight: '1px solid var(--border)',
@@ -1011,13 +1019,19 @@ function App() {
               }}
             />
           )}
-        </aside>
+        </aside>}
 
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <header className="topbar" style={{
             display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 10px 18px',
             borderBottom: '1px solid var(--border)',
           }}>
+            {navHidden && (
+              <button className="btn sm ghost" aria-label="Show navigation" title="Show navigation (Ctrl+B)"
+                onClick={() => setNavShown(true)}>
+                <Icon name="list" size={14}/>
+              </button>
+            )}
             <Icon name={active.icon} size={16} />
             <h1 style={{ fontSize: 15, margin: 0 }}>{active.label}</h1>
             <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
