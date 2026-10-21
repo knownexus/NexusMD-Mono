@@ -17,7 +17,7 @@ import {
   WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
   ApiClientProvider, ApiClientView, ViewDbManager,
 } from '@nexusmd/ui'
-import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav } from './layout.js'
+import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav, SIDEBAR_BREAKPOINT, toggledSidebar } from './layout.js'
 import { useLocalItems } from './items-state.js'
 import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
@@ -736,6 +736,8 @@ function App() {
   }, [])
   const effSidebar = effectiveSidebar(winWidth, tweaks.sidebar)
   const iconsOnly  = effSidebar === 'icons'
+  // Below the breakpoint the rail is icons whatever the preference, so the toggle can't expand it.
+  const sidebarForced = winWidth < SIDEBAR_BREAKPOINT
 
   const setTweak = React.useCallback((key, value) => {
     setTweaksState(prev => {
@@ -842,6 +844,17 @@ function App() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
+
+  // Ctrl+B collapses the sidebar to icons, or expands it back to labels.
+  React.useEffect(() => {
+    const handler = e => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'b' || e.defaultPrevented) return
+      e.preventDefault()
+      setTweak('sidebar', toggledSidebar(tweaks.sidebar))
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [tweaks.sidebar, setTweak])
 
   React.useEffect(() => {
     refreshLeftRef.current = refreshInterval
@@ -958,6 +971,25 @@ function App() {
           >
             <Icon name={SETTINGS_NAV.icon} size={16} />
             {!iconsOnly && SETTINGS_NAV.label}
+          </button>
+          <button
+            className="nav-item"
+            onClick={() => setTweak('sidebar', toggledSidebar(tweaks.sidebar))}
+            disabled={sidebarForced}
+            aria-label={iconsOnly ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!iconsOnly}
+            title={sidebarForced ? 'Widen the window to show labels' : `${iconsOnly ? 'Expand sidebar' : 'Collapse sidebar to icons'} (Ctrl+B)`}
+            style={{
+              display: 'flex', alignItems: 'center',
+              justifyContent: iconsOnly ? 'center' : 'flex-start',
+              gap: 10, padding: iconsOnly ? '8px' : '8px 10px',
+              border: 'none', borderRadius: 8, cursor: sidebarForced ? 'default' : 'pointer', textAlign: 'left',
+              background: 'transparent', color: 'var(--text-subtle)', opacity: sidebarForced ? 0.4 : 1,
+              font: 'inherit', fontSize: 12,
+            }}
+          >
+            <Icon name={iconsOnly ? 'chevron-right' : 'chevron-left'} size={16} />
+            {!iconsOnly && 'Collapse'}
           </button>
           {!iconsOnly && (
             <div

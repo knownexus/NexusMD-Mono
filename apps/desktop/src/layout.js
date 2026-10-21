@@ -8,6 +8,9 @@ export function effectiveSidebar(width, pref, breakpoint = SIDEBAR_BREAKPOINT) {
   return width < breakpoint ? 'icons' : (pref || 'labels')
 }
 
+// The saved preference after the collapse/expand toggle (a missing preference means labels).
+export const toggledSidebar = pref => (pref === 'icons' ? 'labels' : 'icons')
+
 // Resolve the sidebar's nav order from a stored id list, tolerating drift:
 // items are returned in navOrder sequence, any nav items missing from the
 // stored order are appended (so newly added nav entries still appear), and
