@@ -203,3 +203,31 @@ describe('ChangesPane conflicts', () => {
     expect(fireEvent.keyDown(take, { key: ' ' })).toBe(true)
   })
 })
+
+describe('ChangesPane with very many changes', () => {
+  const many = Array.from({ length: 1000 }, (_, i) => c('untracked', `out/f${i}.js`))
+
+  it('draws only the first rows and says how many are not shown', () => {
+    renderPane({ tree: { ...tree, changes: many } })
+    const group = within(screen.getByRole('group', { name: 'Not staged (1000)' }))
+    expect(group.getAllByRole('checkbox', { name: /^Select out\// })).toHaveLength(300)
+    expect(group.getByRole('button', { name: 'Show 700 more (700 not shown)' })).toBeTruthy()
+  })
+
+  it('shows more on request', () => {
+    renderPane({ tree: { ...tree, changes: many } })
+    fireEvent.click(screen.getByRole('button', { name: /Show 700 more/ }))
+    expect(screen.getAllByRole('checkbox', { name: /^Select out\// })).toHaveLength(1000)
+  })
+
+  it('always draws the focused file, even past the cap', () => {
+    renderPane({ tree: { ...tree, changes: many }, focusId: many[900].id })
+    expect(screen.getByRole('checkbox', { name: 'Select out/f900.js' })).toBeTruthy()
+  })
+
+  it('Select all still covers the rows that are not drawn', () => {
+    const { onSelectionChange } = renderPane({ tree: { ...tree, changes: many } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all Not staged' }))
+    expect(onSelectionChange.mock.calls[0][0]).toHaveLength(1000)
+  })
+})

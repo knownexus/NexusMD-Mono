@@ -13,6 +13,9 @@ const NONE = {
   discard: 'Select unstaged changes to tracked files',
   delete: 'Select untracked files',
 }
+// A repository can have tens of thousands of changed files (build output). Rows past this many are
+// not drawn until asked for: every click re-renders the list, and drawing them all took tens of seconds.
+export const ROWS_SHOWN = 300
 const NOUN = { rebase: 'rebase', merge: 'merge', revert: 'revert', 'cherry-pick': 'cherry-pick' }
 
 /** One status letter per row: U conflict, ? untracked, otherwise the change's own letter (M, A, D, R…). */
@@ -86,8 +89,14 @@ function ChangeRow({ c, selected, focused, onFocus, onSelect, draft, labels, bus
 
 function Section({ section, selected, focusId, onFocus, onSelect, onSelectionChange, drafts, labels, busy, onResolve, onWrite }) {
   const { title, changes } = section
+  const [limit, setLimit] = React.useState(ROWS_SHOWN)
+  const chosenSet = React.useMemo(() => new Set(selected), [selected])
+  const draftSet = React.useMemo(() => new Set(drafts), [drafts])
+  // The focused row is always drawn, so keyboard moves and reviews never land on a hidden file.
+  const focusAt = focusId ? changes.findIndex(c => c.id === focusId) : -1
+  const shown = Math.min(changes.length, Math.max(limit, focusAt + 1))
   const ids = changes.filter(c => !isSubmodule(c)).map(c => c.id)
-  const chosen = ids.filter(id => selected.includes(id)).length
+  const chosen = ids.filter(id => chosenSet.has(id)).length
   const box = React.useRef(null)
   React.useEffect(() => { if (box.current) box.current.indeterminate = chosen > 0 && chosen < ids.length }, [chosen, ids.length])
   const toggleAll = () => onSelectionChange(chosen === ids.length
@@ -109,10 +118,15 @@ function Section({ section, selected, focusId, onFocus, onSelect, onSelectionCha
         )}
       </div>
       {section.note && <div className="nx-gw-sec-note">{section.note}</div>}
-      {changes.map(c => (
-        <ChangeRow key={c.id} c={c} selected={selected.includes(c.id)} focused={c.id === focusId} onFocus={onFocus} onSelect={onSelect}
-          draft={drafts.includes(c.path)} labels={labels} busy={busy} onResolve={onResolve} onWrite={onWrite} />
+      {changes.slice(0, shown).map(c => (
+        <ChangeRow key={c.id} c={c} selected={chosenSet.has(c.id)} focused={c.id === focusId} onFocus={onFocus} onSelect={onSelect}
+          draft={draftSet.has(c.path)} labels={labels} busy={busy} onResolve={onResolve} onWrite={onWrite} />
       ))}
+      {shown < changes.length && (
+        <button className="nx-gw-sec-btn" style={{ margin: '6px 8px' }} onClick={() => setLimit(shown + ROWS_SHOWN * 4)}>
+          {`Show ${Math.min(ROWS_SHOWN * 4, changes.length - shown)} more (${changes.length - shown} not shown)`}
+        </button>
+      )}
     </div>
   )
 }
