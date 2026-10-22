@@ -22,16 +22,32 @@ function BranchRow({ tree, selected, onSelect }) {
   )
 }
 
+const treeShown = (t, query, filter) => matchesFilter(t, filter) && wordMatch(`${t.repo} ${branchLabel(t)} ${worktreeName(t)}`, query)
+
+/**
+ * The worktrees the list shows, top to bottom, for j / k: narrowed by query/filter and, without a
+ * query, leaving out folded repositories (pass collapsed = [] to ignore folding).
+ */
+export function visibleTrees({ repos, scoped, query = '', filter = 'all', collapsed = [] }) {
+  const unfolded = !!query.trim()
+  return repos.flatMap(r => (unfolded || !collapsed.includes(r.name)
+    ? scoped.worktrees.filter(t => t.repo === r.name && treeShown(t, query, filter))
+    : []))
+}
+
 /**
  * The group's repositories and their branches, narrowed by query/filter. Repo headers show
  * "N branches" and status pills instead of a file count; rows show only non-default facts.
  * `query` word-matches "repo branch worktree"; `filter` is a BRANCH_FILTERS id.
  */
 export function BranchList({ repos, scoped, errors, collapsed, onToggleRepo, onSetCollapsed = () => {}, selected, onSelect, query = '', filter = 'all', onClearFilters = () => {} }) {
+  // The selected row stays in view when j / k move past the list's edge.
+  const listRef = React.useRef(null)
+  React.useEffect(() => { listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest' }) }, [selected])
   const narrowed = !!query.trim() || filter !== 'all'
   const groups = repos.map(r => {
     const all = scoped.worktrees.filter(t => t.repo === r.name)
-    const trees = all.filter(t => matchesFilter(t, filter) && wordMatch(`${t.repo} ${branchLabel(t)} ${worktreeName(t)}`, query))
+    const trees = all.filter(t => treeShown(t, query, filter))
     const branches = filter === 'all' ? scoped.inactiveBranches.filter(b => b.repo === r.name && wordMatch(`${b.repo} ${b.name}`, query)) : []
     return { name: r.name, all, trees, branches, error: errors.find(e => e.repo === r.name) }
   }).filter(g => g.trees.length || g.branches.length || (g.error && !narrowed))
@@ -45,8 +61,9 @@ export function BranchList({ repos, scoped, errors, collapsed, onToggleRepo, onS
   const allCollapsed = shown.every(n => collapsed.includes(n))
   const noneCollapsed = !shown.some(n => collapsed.includes(n))
   return (
-    <div className="nx-gw-list">
+    <div className="nx-gw-list" ref={listRef}>
       <div role="group" aria-label="Fold repositories" style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        <span className="nx-gw-list-keys" title="Next / previous branch"><span className="kbd">j</span><span className="kbd">k</span></span>
         <button className="btn sm ghost" disabled={noneCollapsed} onClick={() => onSetCollapsed(collapsed.filter(n => !shown.includes(n)))}>Expand all</button>
         <button className="btn sm ghost" disabled={allCollapsed} onClick={() => onSetCollapsed([...collapsed, ...shown.filter(n => !collapsed.includes(n))])}>Collapse all</button>
       </div>

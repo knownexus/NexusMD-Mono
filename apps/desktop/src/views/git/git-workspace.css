@@ -76,6 +76,7 @@
 
 /* branch list */
 .nx-gw-list { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.nx-gw-list-keys { display: inline-flex; align-items: center; gap: 3px; margin-right: auto; }
 .nx-gw-repo-head { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; text-align: left; font: inherit; }
 .nx-gw-repo-head:hover { background: var(--surface-2); }
 .nx-gw-repo-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

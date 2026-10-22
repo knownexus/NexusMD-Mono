@@ -7,7 +7,8 @@ import { setGitConfig, getGitConfig, effectiveRoots, effectiveDotfiles } from '.
 import { useGitConfig } from './use-git-config.js'
 import { useGitSnapshot } from './use-git-snapshot.js'
 import { GroupTabs } from './group-tabs.jsx'
-import { BranchList } from './branch-list.jsx'
+import { BranchList, visibleTrees } from './branch-list.jsx'
+import { useGitShortcuts } from './use-git-shortcuts.js'
 import { FilterChips, BranchSearch } from './filter-chips.jsx'
 import { BranchSwitcher } from './branch-switcher.jsx'
 import { AttentionOverview } from './attention-overview.jsx'
@@ -74,6 +75,11 @@ function GitWorkspace({ adapter }) {
   // The worktree panel asks before its unsaved edits would be lost to a change of worktree or group.
   const panelRef = React.useRef(null)
   const mayLeave = () => panelRef.current?.confirmDiscard() ?? true
+  // The page's keys. The handlers are filled in below, once the snapshot's state is worked out; until
+  // then (and on the error screens) there are none. Ctrl/⌘P stays with the worktree panel's Go to file.
+  const keys = React.useRef({}).current
+  useGitShortcuts(keys)
+  const detailsRef = React.useRef(null)
   React.useEffect(() => {
     let live = true
     adapter.version().then(v => { if (live) setGitVersion(v) }, () => { if (live) setGitVersion(null) })
@@ -83,6 +89,7 @@ function GitWorkspace({ adapter }) {
   const actions = useGitActions({ adapter, registered, reload })
   const sync = useGitSync({ adapter, registered, reload })
 
+  for (const k of Object.keys(keys)) delete keys[k]
   if (config.unsupported) return card(`These Git Workspace settings were saved by a newer NexusMD (version ${config.unsupported}). Update NexusMD to use them.`, 'alert')
   if (gitVersion === null) return card('Git not found. Install Git for Windows (git-scm.com) and make sure git is on PATH, then reopen this screen.', 'alert')
   if (gitVersion === undefined) return card('Checking for git…')
@@ -184,6 +191,22 @@ function GitWorkspace({ adapter }) {
     else if (kind === 'push') sync.open('push', actionTargets('push', [t], id), {})
     else if (kind === 'publish') sync.open('push', actionTargets('push', [t], id), { setUpstream: true })
   }
+  // j / k walk the worktrees the list shows (all that pass the filter when it's hidden), wrapping at the ends.
+  const step = by => {
+    const list = visibleTrees({ repos: config.repos, scoped, query, filter, collapsed: listHidden ? [] : view.collapsed })
+    if (!list.length) return
+    const i = list.findIndex(t => worktreeId(t) === view.selected)
+    const next = i < 0 ? (by > 0 ? 0 : list.length - 1) : (i + by + list.length) % list.length
+    selectTree({ kind: 'worktree', id: worktreeId(list[next]) })
+  }
+  Object.assign(keys, {
+    jumpToBranch: () => { if (scoped.worktrees.length) setSwitcher(true) },
+    focusFilter: () => { if (listHidden) setView({ list: 'shown' }); searchRef.current?.focus(); searchRef.current?.select() },
+    focusCommand: () => detailsRef.current?.querySelector('input[aria-label="git command"]')?.focus(),
+    next: () => step(1),
+    previous: () => step(-1),
+    newBranch: () => { if (selectedTree && !selectedTree.error) syncTree(selectedTree, 'branch', { start: 'HEAD', checkout: true }) },
+  })
   return (
     <div className="nx-shell">
     <div className="nx-gw-page">
@@ -234,7 +257,7 @@ function GitWorkspace({ adapter }) {
               selected={view.selected} onSelect={selectTree} />
           </nav>
         )}
-        <aside aria-label="Details" className="nx-gw-main">
+        <aside aria-label="Details" className="nx-gw-main" ref={detailsRef}>
           {selectedTree
             ? (
               <WorktreePanel ref={panelRef} adapter={adapter} repo={{ name: selectedTree.repo, path: selectedTree.repoRoot }} registered={registered}

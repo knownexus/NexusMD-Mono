@@ -247,6 +247,66 @@ describe('ViewGit header', () => {
   })
 })
 
+describe('ViewGit shortcuts', () => {
+  const press = (key, init = {}, target = document.activeElement ?? document.body) => fireEvent.keyDown(target, { key, ...init })
+
+  it('opens Jump to branch with Ctrl+K, but not over another dialog', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter() }} />)
+    await screen.findByRole('region', { name: 'A' })
+    press('k', { ctrlKey: true }, document.body)
+    expect(screen.getByRole('combobox', { name: 'Branch name' })).toBeTruthy()
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Branch name' }), { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    press('k', { metaKey: true }, document.body)
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+  })
+
+  it('walks the visible branches with j and k, never while typing or with a modifier', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter() }} />)
+    await screen.findByRole('region', { name: 'B' })
+    press('j', {}, document.body)
+    expect(getGitConfig().view.selected).toBe('C:/repos/A')
+    press('j', {}, document.body)
+    expect(getGitConfig().view.selected).toBe('C:/repos/B')
+    press('k', {}, document.body)
+    expect(getGitConfig().view.selected).toBe('C:/repos/A')
+    press('k', {}, document.body)
+    expect(getGitConfig().view.selected).toBe('C:/repos/B')
+    for (const init of [{ shiftKey: true }, { altKey: true }, { ctrlKey: true }]) press('j', init, document.body)
+    expect(getGitConfig().view.selected).toBe('C:/repos/B')
+    // / focuses the filter; j typed there is text, not a move.
+    press('/', {}, document.body)
+    const box = screen.getByLabelText('Filter branches and repos')
+    expect(document.activeElement).toBe(box)
+    press('j', {}, box)
+    expect(getGitConfig().view.selected).toBe('C:/repos/B')
+    // Only what the filter shows is walked.
+    fireEvent.change(box, { target: { value: 'a' } })
+    press('j', {}, document.body)
+    press('j', {}, document.body)
+    expect(getGitConfig().view.selected).toBe('C:/repos/A')
+    expect(screen.getAllByText('j', { selector: '.kbd' })).toHaveLength(1)
+  })
+
+  it('focuses the command line with ` and opens New branch with b', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter({ refs: vi.fn(async () => ({ refs: '', originHead: null })) }) }} />)
+    await screen.findByRole('region', { name: 'A' })
+    press('j', {}, document.body)
+    press('`', {}, document.body)
+    expect(document.activeElement).toBe(await screen.findByLabelText('git command'))
+    press('b', {}, document.activeElement)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    press('b', {}, document.body)
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+    // Inside a dialog the page's keys stay quiet.
+    press('j', {}, document.body)
+    expect(getGitConfig().view.selected).toBe('C:/repos/A')
+  })
+})
+
 describe('ViewGit overview', () => {
   const head = (ab, upstream = '# branch.upstream origin/main\0') => `# branch.oid a\0# branch.head main\0${upstream}# branch.ab ${ab}\0`
   const STAGED = '1 M. N... 100644 100644 100644 a a s.txt\0'
