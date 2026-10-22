@@ -6,7 +6,7 @@ import { ChangesPane } from './changes-pane.jsx'
 import { DiffPane } from './diff-pane.jsx'
 import { useDiff } from './use-diff.js'
 import { HistoryPanel } from './history-panel.jsx'
-import { OperationBar } from './operation-bar.jsx'
+import { OperationBanner } from './operation-banner.jsx'
 import { StashList } from './stash-list.jsx'
 import { GitCommandLine } from './git-command-line.jsx'
 import { FileEditor } from './file-editor.jsx'
@@ -237,7 +237,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
         </div>
       )}
       <div className="nx-panel-body">
-        {onSync && <OperationBar tree={tree} onAction={operation} />}
+        {onSync && <OperationBanner tree={tree} onAction={operation} />}
         {stashes && <StashList adapter={adapter} repo={repo} tree={tree} registered={registered} onAction={onSync} onClose={() => setStashes(false)} />}
         {history
           ? <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync} />

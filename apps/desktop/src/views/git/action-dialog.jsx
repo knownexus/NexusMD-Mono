@@ -39,7 +39,17 @@ function Todo({ text }) {
 }
 
 // What will happen, per kind, from the preview's details.
-function Details({ kind, details }) {
+function Details({ kind, details, options }) {
+  // Abort's copy is the renderer's own (the branch being rebased isn't checked out, so main can't name it).
+  if (kind === 'abort') {
+    const what = options?.operationName ?? 'operation'
+    return (
+      <div style={{ fontSize: 12, display: 'grid', gap: 4 }}>
+        <div>{'Puts '}{options?.branchLabel ? <Ref>{options.branchLabel}</Ref> : 'this worktree'}{` back exactly as it was before the ${what} started.`}</div>
+        <div role="note" style={{ color: 'var(--danger)' }}>{`Conflicts you've resolved so far are lost, along with the rest of the ${what}'s progress.`}</div>
+      </div>
+    )
+  }
   if (!details) return null
   if (kind === 'pull') {
     return (
@@ -273,7 +283,7 @@ export function ActionDialog({ sync, adapter, registered }) {
                     : !r.eligible && <span style={{ color: 'var(--text-muted)' }}>skipped</span>}
                 </div>
                 {!r.eligible && r.reason && <div role="note" style={{ color: 'var(--text-muted)', fontSize: 12 }}>{r.reason}</div>}
-                {r.eligible && !result && <Details kind={d.kind} details={r.details} />}
+                {r.eligible && !result && <Details kind={d.kind} details={r.details} options={d.options} />}
                 {r.eligible && r.programs.length > 0 && !result && (
                   <div aria-label={`Runs: ${r.programs.join(', ')}`} style={{ fontSize: 12, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>Runs:{r.programs.map(p => <Ref key={p}>{p}</Ref>)}</div>
                 )}

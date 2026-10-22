@@ -361,6 +361,17 @@ describe('unsaved resolve text is never stranded', () => {
     })
   }
 
+  it('Abort asks first: the preview says the branch goes back as it was and resolved conflicts are lost', async () => {
+    const git = make()
+    await openWorktree(git)
+    fireEvent.click(await screen.findByRole('button', { name: 'Abort' }))
+    await waitFor(() => expect(git.preview.mock.calls.at(-1)[3]).toBe('abort'))
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(dialog.textContent).toContain('Puts main back exactly as it was before the rebase started.'))
+    expect(within(dialog).getByRole('note').textContent).toContain("Conflicts you've resolved so far are lost")
+    expect(git.run).not.toHaveBeenCalled()
+  })
+
   it('a kept resolve draft of a still-conflicted file opens its resolve screen, with the edits restored', async () => {
     putWorktreeDraft(KEY, { text: 'R\n', saved: MARKED, eol: '\n', bom: false, stamp: 'w1' })
     const git = make()
