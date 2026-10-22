@@ -7,6 +7,7 @@ import {
   clipboardAdapter, shareAdapter, notificationAdapter,
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter } from './ado-client.js'
+import { webWorkItemSource } from './work-item-source.js'
 import { navigationAdapter }    from './adapters/navigation.js'
 import { deepLinkAdapter }      from './adapters/deepLink.js'
 import { pickerAdapter }        from './adapters/picker.js'
@@ -47,6 +48,7 @@ const nexusDataValue = {
   pushPref:      nexusMDPushPref,
   namespace:     'nexusmd',
   googleAuth:    GoogleAuth,
+  workItemSource: webWorkItemSource,
   // Web-only: after a planner week is saved, dispatch a DOM event so the new
   // cloud-sync engine (Task 3) can subscribe to nexusmd:planner-changed.
   plannerOnWeekSaved: (year, week) => document.dispatchEvent(new CustomEvent('nexusmd:planner-changed', { detail: { year, week } })),

@@ -2,6 +2,7 @@
 // @nexusmd/ui WorkItemDetail renders against a normalised shape; this talks to
 // Azure DevOps directly (Capacitor app, no ASP.NET host) and maps ADO → that shape.
 // Passed to <NexusDataProvider value={{ workItemSource: adoWorkItemSource }}>.
+import { adoMoveToCategory } from '@nexusmd/core';
 import { adoGet, adoPost, adoPatch } from './ado-client.js';
 import { HelmData } from './data.jsx';
 
@@ -51,5 +52,13 @@ export const adoWorkItemSource = {
   async loadRawFields(id) {
     const data = await adoGet(`_apis/wit/workitems/${id}?$expand=fields&api-version=7.0`);
     return data?.fields || {};
+  },
+
+  // Workflow-aware: resolves the project's real state for the category from the cached process metadata.
+  async moveToCategory(id, category, item) {
+    return adoMoveToCategory({
+      item, category, meta: HelmData._adoMeta,
+      saveState: (state) => adoWorkItemSource.saveField(id, 'System.State', state),
+    });
   },
 };
