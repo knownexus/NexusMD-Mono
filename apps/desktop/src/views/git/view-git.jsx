@@ -85,7 +85,7 @@ function GitWorkspace({ adapter }) {
     adapter.version().then(v => { if (live) setGitVersion(v) }, () => { if (live) setGitVersion(null) })
     return () => { live = false }
   }, [adapter])
-  const { snapshot, stale, error, loading, refresh, reload } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported })
+  const { snapshot, stale, error, loading, refresh, reload } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported, full: config.view.selected })
   const actions = useGitActions({ adapter, registered, reload })
   const sync = useGitSync({ adapter, registered, reload })
 

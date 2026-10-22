@@ -66,7 +66,7 @@ export function statusCode(c) {
 function newWorktree(repo, commonDir, path) {
   return {
     repo: repo.name, repoRoot: repo.path, path, commonDir,
-    branch: '(detached)', head: '', rebasingBranch: null, upstream: null, upstreamGone: false,
+    branch: '(detached)', head: '', rebasingBranch: null, upstream: null, upstreamGone: false, untrackedFull: false,
     ahead: 0, behind: 0, operation: '', error: '', locked: null, prunable: null, fetchedAt: null, changes: [],
   }
 }

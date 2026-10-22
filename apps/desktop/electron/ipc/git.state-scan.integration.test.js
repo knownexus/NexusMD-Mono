@@ -89,3 +89,26 @@ describe('reading the state of the files being reviewed or written', () => {
     expect(await stamp(['new name.txt'])).not.toBe(viaNew)
   })
 })
+
+describe('status for the overview poll', () => {
+  const status = options => call('git:status', repo, repo.path, REG(), options)
+  const untracked = r => r.porcelain.split('\0').filter(x => x.startsWith('? '))
+
+  it('lists an untracked folder as one entry when asked for normal', async () => {
+    const r = await status({ untracked: 'normal' })
+    expect(untracked(r)).toContain('? out/')
+    expect(untracked(r).some(x => x.startsWith('? out/g'))).toBe(false)
+  })
+
+  it('lists every untracked file by default and when asked for all', async () => {
+    for (const options of [undefined, { untracked: 'all' }]) {
+      const r = await status(options)
+      expect(untracked(r).filter(x => x.startsWith('? out/g')).length).toBe(200)
+    }
+  })
+
+  it('ignores any other value', async () => {
+    const r = await status({ untracked: '--ignored' })
+    expect(untracked(r).filter(x => x.startsWith('? out/g')).length).toBe(200)
+  })
+})

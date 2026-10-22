@@ -1,4 +1,4 @@
-import { parseStatus, parseWorktrees, parseBranches } from './parse.js'
+import { parseStatus, parseWorktrees, parseBranches, worktreeId } from './parse.js'
 
 async function mapLimit(items, limit, fn) {
   const results = new Array(items.length)
@@ -37,14 +37,18 @@ export function worktreeSummary(tree) {
 }
 
 // One repo's worktrees (with status) and branches; a failure is the repo's error, not a throw.
-async function loadRepo(adapter, repo, registered, concurrency) {
+// Untracked files are read collapsed (a new folder is one entry) unless the worktree is in `full`:
+// listing every untracked file of a repository with tens of thousands of them takes seconds.
+async function loadRepo(adapter, repo, registered, concurrency, full = new Set()) {
   try {
     const { commonDir } = await adapter.resolve(repo.path)
     const trees = parseWorktrees(await adapter.worktrees(repo, registered), repo, commonDir)
     await mapLimit(trees, concurrency, async tree => {
       let s
-      try { s = await adapter.status(repo, tree.path, registered) } catch (e) { s = { error: message(e) } }
+      const all = full.has(worktreeId(tree))
+      try { s = await adapter.status(repo, tree.path, registered, { untracked: all ? 'all' : 'normal' }) } catch (e) { s = { error: message(e) } }
       applyStatus(tree, s)
+      tree.untrackedFull = all
     })
     const branches = parseBranches(await adapter.branches(repo, registered), repo, commonDir)
     return { trees, branches, error: null }
@@ -67,11 +71,13 @@ function assemble(repos, partOf, takenAt) {
 /**
  * Reads every registered repo through the git adapter. A repo that fails is reported in
  * `errors`; a worktree whose status fails carries `error` — neither stops the others.
- * @param {{ concurrency?: number, now?: () => Date }} [options]
+ * `fullFor`: worktree ids (their paths, slashes forward) whose untracked files are listed one by one.
+ * @param {{ concurrency?: number, now?: () => Date, fullFor?: string[] }} [options]
  */
-export async function loadSnapshot(adapter, repos, { concurrency = 4, now = () => new Date() } = {}) {
+export async function loadSnapshot(adapter, repos, { concurrency = 4, now = () => new Date(), fullFor = [] } = {}) {
   const registered = repos.map(r => r.path)
-  const parts = await mapLimit(repos, concurrency, repo => loadRepo(adapter, repo, registered, concurrency))
+  const full = new Set(fullFor)
+  const parts = await mapLimit(repos, concurrency, repo => loadRepo(adapter, repo, registered, concurrency, full))
   return assemble(repos, (_r, i) => parts[i], now().toISOString())
 }
 
@@ -80,11 +86,12 @@ export async function loadSnapshot(adapter, repos, { concurrency = 4, now = () =
  * after a write, only the repo written to has changed, and reading every repo takes seconds.
  * @param {{ concurrency?: number, now?: () => Date }} [options]
  */
-export async function refreshRepos(adapter, repos, snapshot, names, { concurrency = 4, now = () => new Date() } = {}) {
+export async function refreshRepos(adapter, repos, snapshot, names, { concurrency = 4, now = () => new Date(), fullFor = [] } = {}) {
   const registered = repos.map(r => r.path)
+  const full = new Set(fullFor)
   const wanted = repos.filter(r => names.includes(r.name))
   const fresh = new Map(wanted.map((r, i) => [r.name, i]))
-  const parts = await mapLimit(wanted, concurrency, repo => loadRepo(adapter, repo, registered, concurrency))
+  const parts = await mapLimit(wanted, concurrency, repo => loadRepo(adapter, repo, registered, concurrency, full))
   const kept = name => ({
     trees: snapshot.worktrees.filter(t => t.repo === name),
     branches: snapshot.branches.filter(b => b.repo === name),

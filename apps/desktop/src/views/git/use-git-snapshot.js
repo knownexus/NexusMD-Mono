@@ -1,5 +1,5 @@
 import React from 'react'
-import { loadSnapshot, refreshRepos } from '@nexusmd/core'
+import { loadSnapshot, refreshRepos, worktreeId } from '@nexusmd/core'
 import { getProfileKey } from '../../profile-keys.js'
 
 // The last snapshot outlives the screen and the app: coming back, or starting NexusMD, shows it at
@@ -35,7 +35,11 @@ export function clearGitSnapshotCache() {
 
 // Polls git status for every registered repo while the window is visible (devenv's query-hook
 // pattern): a poll is skipped while one is still running, and only the newest result is kept.
-export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10000 }) {
+// `full`: the id of the worktree on screen. Its untracked files are listed one by one; every other
+// worktree reads them collapsed, which keeps a poll fast when a repo has tens of thousands.
+export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10000, full = null }) {
+  const fullRef = React.useRef(full)
+  fullRef.current = full
   const reposKey = JSON.stringify(repos || [])
   const [snapshot, setSnapshot] = React.useState(() => (cached?.key === reposKey ? cached.snapshot : stored(reposKey)))
   // True while the snapshot on screen is one kept from an earlier visit or run, not read just now.
@@ -64,7 +68,8 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
     try {
       const repos = JSON.parse(reposKey)
       const base = only?.length && cached?.key === reposKey ? cached.snapshot : null
-      const next = base ? await refreshRepos(adapter, repos, base, only) : await loadSnapshot(adapter, repos)
+      const fullFor = fullRef.current ? [fullRef.current] : []
+      const next = base ? await refreshRepos(adapter, repos, base, only, { fullFor }) : await loadSnapshot(adapter, repos, { fullFor })
       remember(reposKey, next)
       // Only a full read makes a kept snapshot current again.
       if (current()) { setSnapshot(next); if (!base) setStale(false); setError(null); hasSnapshot.current = true }
@@ -113,6 +118,11 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
       window.removeEventListener('focus', poll)
     }
   }, [load, enabled, intervalMs])
+
+  // Opening a worktree that was read collapsed reads it in full, quietly, without waiting for the next poll.
+  const shown = full && snapshot?.worktrees.find(t => worktreeId(t) === full)
+  const needsFull = !!shown && !shown.untrackedFull && !shown.error
+  React.useEffect(() => { if (needsFull) latestLoad.current(true, false, [shown.repo]) }, [needsFull, full]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return { snapshot, stale, error, loading, refresh, reload }
 }

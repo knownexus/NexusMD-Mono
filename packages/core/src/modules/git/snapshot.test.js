@@ -106,3 +106,37 @@ describe('refreshRepos', () => {
     expect(after.takenAt).toBe('2026-10-20T10:01:00.000Z')
   })
 })
+
+describe('untracked files in a snapshot', () => {
+  const statusCalls = adapter => adapter.status.mock.calls.map(([, path, , options]) => [path, options?.untracked])
+
+  it('reads untracked folders collapsed everywhere except the worktrees asked for in full', async () => {
+    const adapter = fakeAdapter()
+    await loadSnapshot(adapter, repos.filter(r => r.name !== 'C'), { fullFor: ['C:/repos/B'] })
+    expect(Object.fromEntries(statusCalls(adapter))).toEqual({
+      'C:/repos/A': 'normal', 'C:/repos/A/locked': 'normal', 'C:/repos/A/gone': 'normal', 'C:/repos/B': 'all',
+    })
+  })
+
+  it('reads everything collapsed when no worktree is asked for in full', async () => {
+    const adapter = fakeAdapter()
+    await loadSnapshot(adapter, repos.filter(r => r.name === 'B'))
+    expect(statusCalls(adapter)).toEqual([['C:/repos/B', 'normal']])
+  })
+
+  it('refreshRepos honours fullFor for the repos it reads again', async () => {
+    const adapter = fakeAdapter()
+    const first = await loadSnapshot(adapter, repos)
+    adapter.status.mockClear()
+    await refreshRepos(adapter, repos, first, ['B'], { fullFor: ['C:/repos/B'] })
+    expect(statusCalls(adapter)).toEqual([['C:/repos/B', 'all']])
+  })
+
+  it('marks a worktree read in full so the UI can tell', async () => {
+    const adapter = fakeAdapter()
+    const s = await loadSnapshot(adapter, repos.filter(r => r.name === 'B'), { fullFor: ['C:/repos/B'] })
+    expect(s.worktrees[0].untrackedFull).toBe(true)
+    const t = await loadSnapshot(adapter, repos.filter(r => r.name === 'B'))
+    expect(t.worktrees[0].untrackedFull).toBe(false)
+  })
+})

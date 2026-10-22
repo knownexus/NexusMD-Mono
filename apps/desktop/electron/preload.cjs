@@ -244,7 +244,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     version:      () => ipcRenderer.invoke('git:version'),
     resolve:      (dir) => ipcRenderer.invoke('git:resolve', dir),
     worktrees:    (repo, registered) => ipcRenderer.invoke('git:worktrees', repo, registered),
-    status:       (repo, worktreePath, registered) => ipcRenderer.invoke('git:status', repo, worktreePath, registered),
+    status:       (repo, worktreePath, registered, options) => ipcRenderer.invoke('git:status', repo, worktreePath, registered, options),
     branches:     (repo, registered) => ipcRenderer.invoke('git:branches', repo, registered),
     discover:     (roots, repos) => ipcRenderer.invoke('git:discover', roots, repos),
     checkFolders: (paths) => ipcRenderer.invoke('git:checkFolders', paths),

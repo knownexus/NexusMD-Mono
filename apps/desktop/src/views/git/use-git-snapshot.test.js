@@ -171,3 +171,30 @@ describe('useGitSnapshot', () => {
     expect(adapter.resolve.mock.calls.at(-1)[0]).toBe('C:/repos/B')
   })
 })
+
+describe('useGitSnapshot untracked listing', () => {
+  const modes = adapter => adapter.status.mock.calls.map(c => c[3]?.untracked)
+
+  it('polls collapsed when no worktree is on screen', async () => {
+    const adapter = adapterWith(async dir => ({ commonDir: `${dir}/.git` }))
+    const { result } = renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null }))
+    await waitFor(() => expect(result.current.snapshot?.worktrees).toHaveLength(1))
+    expect(modes(adapter)).toEqual(['normal'])
+  })
+
+  it('reads the worktree on screen in full', async () => {
+    const adapter = adapterWith(async dir => ({ commonDir: `${dir}/.git` }))
+    const { result } = renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: null, full: 'C:/repos/A' }))
+    await waitFor(() => expect(result.current.snapshot?.worktrees[0]?.untrackedFull).toBe(true))
+    expect(modes(adapter)).toEqual(['all'])
+  })
+
+  it('reads a worktree in full once it is opened, without waiting for the next poll', async () => {
+    const adapter = adapterWith(async dir => ({ commonDir: `${dir}/.git` }))
+    const { result, rerender } = renderHook(({ full }) => useGitSnapshot({ adapter, repos, intervalMs: null, full }), { initialProps: { full: null } })
+    await waitFor(() => expect(result.current.snapshot?.worktrees[0]?.untrackedFull).toBe(false))
+    rerender({ full: 'C:/repos/A' })
+    await waitFor(() => expect(result.current.snapshot?.worktrees[0]?.untrackedFull).toBe(true))
+    expect(modes(adapter)).toEqual(['normal', 'all'])
+  })
+})

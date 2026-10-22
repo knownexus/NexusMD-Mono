@@ -8,7 +8,7 @@ export const gitAdapter = {
   version() { return api().version() },
   resolve(dir) { return api().resolve(dir) },
   worktrees(repo, registered) { return api().worktrees(repo, registered) },
-  status(repo, worktreePath, registered) { return api().status(repo, worktreePath, registered) },
+  status(repo, worktreePath, registered, options) { return api().status(repo, worktreePath, registered, options) },
   branches(repo, registered) { return api().branches(repo, registered) },
   discover(roots, repos) { return api().discover(roots, repos) },
   checkFolders(paths) { return api().checkFolders(paths) },

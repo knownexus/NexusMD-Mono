@@ -688,10 +688,11 @@ function register(ipcMain, deps = {}) {
     return worktreeList(repo.path);
   });
 
-  handle('git:status', async (_e, repo, worktreePath, registered) => {
+  // options.untracked 'normal' lists an untracked folder as one entry (the overview poll); anything else lists every file.
+  handle('git:status', async (_e, repo, worktreePath, registered, options) => {
     await requireWorktree(repo, worktreePath, registered);
     if (!probe.isDirectory(worktreePath)) return { missing: true };
-    const status = await git(worktreePath, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all']);
+    const status = await git(worktreePath, ['status', '--porcelain=v2', '--branch', '-z', `--untracked-files=${options?.untracked === 'normal' ? 'normal' : 'all'}`]);
     if (status.code !== 0) return { error: status.stderr || `git status failed (exit ${status.code})` };
     // A gone upstream is detected in core from the missing `# branch.ab` line, so no extra spawn.
     // Starting git is the slow part on Windows: the git folders are read from .git when it's plain.
