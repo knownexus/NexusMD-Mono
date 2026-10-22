@@ -50,6 +50,7 @@ export { singleFlight } from './modules/sync/single-flight.js'
 export { exportBundle, importBundle } from './modules/sync/local-bundle.js'
 export { createSyncController } from './modules/sync/controller.js'
 export { graphFetch, graphJSON, graphList } from './modules/graph/client.js'
+export { makeGoogleDriveProvider, makeOneDriveProvider } from './modules/cloud/providers.js'
 export { filterTriageItems, buildTriageCsv } from './modules/triage/index.js'
 export {
   isAllDayEvent, getEventsForDay, sortEventsByTime,

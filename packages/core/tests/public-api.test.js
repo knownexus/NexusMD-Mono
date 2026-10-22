@@ -12,7 +12,7 @@ const EXPECTED = [
   'mergeRows', 'mergeKeyVal', 'mergeText', 'mergeSet', 'mergePlannerWeek', 'reconcileItem',
   'encryptSync', 'decryptSync', 'plannerCollection', 'notesCollection', 'teamCustomCollection',
   'teamRemovedCollection', 'tweaksCollection', 'createSyncRuntime', 'startAutoSync', 'singleFlight',
-  'exportBundle', 'importBundle', 'createSyncController', 'graphFetch', 'graphJSON', 'graphList',
+  'exportBundle', 'importBundle', 'createSyncController', 'graphFetch', 'graphJSON', 'graphList', 'makeGoogleDriveProvider', 'makeOneDriveProvider',
   'CURRENT_PROFILE_VERSION', 'IAuthAdapter', 'IBadgeAdapter', 'IClipboardAdapter',
   'IDeepLinkAdapter', 'IFileAdapter', 'IHttpAdapter', 'ILifecycleAdapter',
   'INavigationAdapter', 'INetworkAdapter', 'INotificationAdapter', 'IPickerAdapter',

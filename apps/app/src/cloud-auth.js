@@ -3,7 +3,7 @@
 // nexusmd://oauth/<provider>?provider=&otc=, captured via the deepLinkAdapter,
 // then redeemed for tokens. Tokens stored per-profile under the `helm` namespace.
 import { getProfileKey } from './profile-keys.js'
-import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/ui'
+import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/core'
 import { toast } from './toast.jsx'
 import { deepLinkAdapter } from './adapters/deepLink.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'

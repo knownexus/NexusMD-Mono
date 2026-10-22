@@ -3,7 +3,8 @@
 // redirects back via the nexusmd:// custom protocol with a one-time code, which
 // the renderer redeems for tokens. Requires VITE_API_BASE to point at the host.
 import { getProfileKey } from './profile-keys.js'
-import { makeGoogleDriveProvider, makeOneDriveProvider, toast } from '@nexusmd/ui'
+import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/core'
+import { toast } from '@nexusmd/ui'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'

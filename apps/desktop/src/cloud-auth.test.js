@@ -1,8 +1,11 @@
 // apps/desktop/src/cloud-auth.test.js
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+vi.mock('@nexusmd/core', async (importOriginal) => ({
+  ...(await importOriginal()), makeGoogleDriveProvider: (b) => b, makeOneDriveProvider: (b) => b,
+}))
 vi.mock('@nexusmd/ui', () => ({
-  makeGoogleDriveProvider: (b) => b, makeOneDriveProvider: (b) => b, toast: () => {},
+  toast: () => {},
 }))
 vi.mock('./profile-keys.js', () => ({ getProfileKey: (k) => k }))
 vi.mock('./adapters/secureStorage.js', () => ({ secureStorageAdapter: { get: async () => null, set: async () => {} } }))

@@ -2,7 +2,7 @@
 // Tokens are stored per-profile, mirroring google-auth.js:
 //   nexusmd.p.<id>.gdrive.auth / .onedrive.auth = { accessToken, refreshToken, email }
 import { getProfileKey } from './profile-keys.js'
-import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/ui'
+import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/core'
 import { toast } from './toast.jsx'
 
 // provider config: storage key suffix, backend route base, redirect marker.
