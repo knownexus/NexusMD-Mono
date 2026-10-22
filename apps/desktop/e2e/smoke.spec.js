@@ -1,4 +1,5 @@
-import { test, expect, _electron as electron } from '@playwright/test'
+import { test, expect } from '@playwright/test'
+import { launchApp } from './launch.js'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import http from 'node:http'
@@ -7,9 +8,7 @@ const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 test.describe('desktop shell smoke', () => {
   test('launches and renders the real shell (not the old placeholder)', async () => {
-    const app = await electron.launch({ args: [appDir] })
-    const win = await app.firstWindow()
-    await win.waitForLoadState('domcontentloaded')
+    const { win, close } = await launchApp()
 
     // The real shell shows the NexusMD brand and nav; the old placeholder said
     // "Phase 6 complete — adapter layer wired." which must NOT appear.
@@ -17,26 +16,22 @@ test.describe('desktop shell smoke', () => {
     await expect(win.getByText('Dashboard').first()).toBeVisible()
     await expect(win.getByText('Phase 6 complete')).toHaveCount(0)
 
-    await app.close()
+    await close()
   })
 
   test('navigates between views', async () => {
-    const app = await electron.launch({ args: [appDir] })
-    const win = await app.firstWindow()
-    await win.waitForLoadState('domcontentloaded')
+    const { win, close } = await launchApp()
 
     await win.getByText('Pull Requests').first().click()
     // Both the topbar and the PR view render a "Pull Requests" heading; .first()
     // keeps the locator unambiguous (strict mode) while still proving navigation.
     await expect(win.getByRole('heading', { name: 'Pull Requests' }).first()).toBeVisible()
 
-    await app.close()
+    await close()
   })
 
   test('Settings shows the profile registry and Backup & Restore', async () => {
-    const app = await electron.launch({ args: [appDir] })
-    const win = await app.firstWindow()
-    await win.waitForLoadState('domcontentloaded')
+    const { win, close } = await launchApp()
 
     await win.getByText('Settings').first().click()
     await win.getByText('Profiles', { exact: true }).click()
@@ -45,13 +40,11 @@ test.describe('desktop shell smoke', () => {
     await expect(win.getByText('Backup & Restore')).toBeVisible()
     await expect(win.getByText('Back up all profiles')).toBeVisible()
 
-    await app.close()
+    await close()
   })
 
   test('opens links as tabs in a shared link window', async () => {
-    const app = await electron.launch({ args: [appDir] })
-    const win = await app.firstWindow()
-    await win.waitForLoadState('domcontentloaded')
+    const { app, win, close } = await launchApp()
 
     // Drive the link-window manager directly (same singleton main.cjs wires up
     // to IPC) rather than depending on live ADO data being loaded in the UI.
@@ -88,14 +81,12 @@ test.describe('desktop shell smoke', () => {
     await tabStrip.locator('.tab-close').click()
     await linkWindowClosed
 
-    await app.close()
+    await close()
     server.close()
   })
 
   test('Git Workspace opens from the sidebar', async () => {
-    const app = await electron.launch({ args: [appDir] })
-    const win = await app.firstWindow()
-    await win.waitForLoadState('domcontentloaded')
+    const { win, close } = await launchApp()
 
     await win.getByText('Git Workspace').first().click()
     await expect(
@@ -103,6 +94,6 @@ test.describe('desktop shell smoke', () => {
         .or(win.getByText(/Git not found|Checking for git/)),
     ).toBeVisible({ timeout: 15_000 })
 
-    await app.close()
+    await close()
   })
 })

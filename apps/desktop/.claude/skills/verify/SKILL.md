@@ -13,30 +13,23 @@ description: How to (attempt to) verify apps/desktop changes at runtime
   Required before any Electron launch attempt (`electron/main.cjs` falls back
   to `process.resourcesPath/renderer` when `VITE_DEV_SERVER_URL` isn't set).
 
-## What's currently BLOCKED in this sandbox
+## Driving the real app (works in this sandbox)
 
-`npx playwright test` (the `e2e/*.spec.js` suite using `_electron.launch`)
-does not work in this shell environment — **not** a code regression, it fails
-identically on the pre-existing, unmodified `e2e/smoke.spec.js`.
+Use `e2e/launch.js` (`launchApp({ seed })`), not a bare `electron.launch`. It starts the app with
+a throwaway `--user-data-dir` and `--disable-gpu`. The earlier "BLOCKED" diagnosis (no window
+station) was wrong: the shared profile's cache folders gave "Access is denied" and Electron quit
+right after "app ready". With a clean profile the window renders and Playwright can drive it.
 
-Symptom: `electron.launch: Target page, context or browser has been closed`.
-Manually launching `node_modules/electron/dist/electron.exe .` (with or
-without `--remote-debugging-port`) shows in its own log that it gets to
-`app ready; creating main window`, logs GPU disk-cache "Access is denied"
-errors, then the process exits on its own shortly after (no crash dump, exit
-code 0) — consistent with `ready-to-show`/`win.show()` never actually
-succeeding because this shell has no interactive Windows window station /
-GPU access, which trips `window-all-closed` → `app.quit()`.
-
-If you hit this again: don't burn time re-diagnosing it as a regression.
-Confirm quickly by running the unmodified `smoke.spec.js` — if it also fails
-the same way, it's this environment limitation, not your change. Report the
-GUI surface as BLOCKED with this reason, rather than declaring PASS from
-unit tests alone.
+- `npx vite build` first, then `npx playwright test e2e/smoke.spec.js` (5 tests, ~10s).
+- `seed` writes localStorage before first render; a key starting with `profile:` goes under the
+  active profile (e.g. `'profile:git.config'` to register repos for the Git Workspace).
+- `scripts/git-click-timing.mjs <repo> <file>` and `scripts/git-poll-timing.mjs <repo...>` time the
+  Git Workspace in the real app (read-only; repos are looked up under C:/repos).
+- Main-process IPC can be wrapped for timing via `app.evaluate(({ ipcMain }) => ipcMain._invokeHandlers)`.
 
 ## Fallback verification strategy used
 
-When the Electron GUI can't be driven directly:
+If launching still fails (confirm with the unmodified smoke spec):
 1. Trace the exact prop-drilling / state-wiring path by hand (React
    component tree, `grep`-verified) — confirm the click handler chain is
    complete end-to-end, not just that a function exists.
