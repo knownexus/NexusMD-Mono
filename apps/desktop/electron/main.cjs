@@ -197,6 +197,8 @@ function createMainWindow() {
     // Hidden title bar allows custom window controls to be rendered
     titleBarStyle: 'hidden',
     webPreferences: {
+      // A hidden window must not have its timers and rendering throttled, or tests would crawl.
+      backgroundThrottling: process.env.NEXUSMD_HIDDEN !== '1',
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
@@ -291,6 +293,8 @@ function createMainWindow() {
   })
 
   win.once('ready-to-show', () => {
+    // Automated runs (e2e/launch.js) keep the window off screen; it still loads and renders.
+    if (process.env.NEXUSMD_HIDDEN === '1') return;
     win.show();
     // Windows applies the launcher's show state to a process's first ShowWindow, so a
     // launcher that starts us hidden (the portable build's) leaves the window hidden.

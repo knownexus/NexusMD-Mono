@@ -11,11 +11,14 @@ export const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
  * (the shared one's cache folders can be locked, which makes Electron quit right after
  * "app ready") and no GPU. `seed` is a { storageKey: value } map written to localStorage
  * before the first render (a key starting with "profile:" goes under the active profile), so a test can start with repositories already registered.
- * Returns { app, win, close }; close() removes the profile.
+ * The window stays off screen unless `headed` (or HEADED=1) is set. Returns { app, win, close }; close() removes the profile.
  */
-export async function launchApp({ seed = {}, args = [] } = {}) {
+export async function launchApp({ seed = {}, args = [], headed = process.env.HEADED === '1' } = {}) {
   const userData = mkdtempSync(join(tmpdir(), 'nexusmd-e2e-'))
-  const app = await electron.launch({ args: [appDir, `--user-data-dir=${userData}`, '--disable-gpu', ...args] })
+  const app = await electron.launch({
+    args: [appDir, `--user-data-dir=${userData}`, '--disable-gpu', ...args],
+    env: { ...process.env, ...(headed ? {} : { NEXUSMD_HIDDEN: '1' }) },
+  })
   const win = await app.firstWindow()
   await win.waitForLoadState('domcontentloaded')
   if (Object.keys(seed).length) {

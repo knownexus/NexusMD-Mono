@@ -20,7 +20,7 @@ a throwaway `--user-data-dir` and `--disable-gpu`. The earlier "BLOCKED" diagnos
 station) was wrong: the shared profile's cache folders gave "Access is denied" and Electron quit
 right after "app ready". With a clean profile the window renders and Playwright can drive it.
 
-- `npx vite build` first, then `npx playwright test e2e/smoke.spec.js` (5 tests, ~10s).
+- `npx vite build` first, then `npx playwright test e2e/smoke.spec.js` (5 tests, ~15s). The window stays hidden (NEXUSMD_HIDDEN=1); set HEADED=1 or `launchApp({ headed: true })` to watch it.
 - `seed` writes localStorage before first render; a key starting with `profile:` goes under the
   active profile (e.g. `'profile:git.config'` to register repos for the Git Workspace).
 - `scripts/git-click-timing.mjs <repo> <file>` and `scripts/git-poll-timing.mjs <repo...>` time the
