@@ -48,3 +48,7 @@ apps/web/server/data/profiles/
 
 .superpowers/
 .worktrees/
+
+# Session scratch and editor lock files
+.superpowers/
+.~lock.*#
