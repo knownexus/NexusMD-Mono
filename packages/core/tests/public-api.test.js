@@ -16,7 +16,7 @@ const EXPECTED = [
   'makeWorkItemTypeDefsStore', 'fetchWorkItemTypes', 'fetchProjectFieldTypes', 'fetchTypeFields',
   'fetchClassificationPaths', 'loadWorkItemTypeDefs', 'fieldBucket', 'fieldGroup', 'TYPE_LAYOUTS',
   'resolveTypeLayout', 'LINK_TYPES', 'buildFieldPatchOps', 'buildAttachmentRelationOps',
-  'buildLinkRelationOps', 'submitNewWorkItem',
+  'buildLinkRelationOps', 'submitNewWorkItem', 'makeAdoWorkItemSource', 'adoMoveToCategory', 'adoWorkItemUrl',
   'CURRENT_PROFILE_VERSION', 'IAuthAdapter', 'IBadgeAdapter', 'IClipboardAdapter',
   'IDeepLinkAdapter', 'IFileAdapter', 'IHttpAdapter', 'ILifecycleAdapter',
   'INavigationAdapter', 'INetworkAdapter', 'INotificationAdapter', 'IPickerAdapter',

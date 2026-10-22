@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { JIRA_CACHE_KEY, ADO_CACHE_KEY, WORK_ITEM_STATUS_KEY } from '@nexusmd/core'
-import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider, adoWorkItemUrl, useRoutedWorkItemSource, nextHiddenIds } from './work-item-data.js'
+import { buildSnapshot, refreshProviders, defaultCreateProvider, useRoutedWorkItemSource, nextHiddenIds } from './work-item-data.js'
 
 function storage(seed = {}) {
   const s = { ...seed }
@@ -63,23 +63,6 @@ describe('refreshProviders', () => {
   })
 })
 
-describe('adoMoveToCategory', () => {
-  const meta = { typeStates: { Bug: ['New', 'Active', 'Closed'] }, stateCategoryByName: { New: 'Proposed', Active: 'InProgress', Closed: 'Completed' } }
-  it('saves the first state in the category for the item type', async () => {
-    const saveState = vi.fn(async () => {})
-    expect(await adoMoveToCategory({ item: { type: 'bug' }, category: 'Completed', meta, saveState })).toEqual({ state: 'Closed', stateCategory: 'Completed' })
-    expect(saveState).toHaveBeenCalledWith('Closed')
-  })
-  it('falls back to "Done" for Completed when metadata is missing', async () => {
-    const saveState = vi.fn(async () => {})
-    expect(await adoMoveToCategory({ item: { type: 'bug' }, category: 'Completed', meta: {}, saveState })).toEqual({ state: 'Done', stateCategory: 'Completed' })
-  })
-  it('throws when no state fits', async () => {
-    await expect(adoMoveToCategory({ item: { type: 'bug' }, category: 'Resolved', meta, saveState: vi.fn() }))
-      .rejects.toThrow('No Resolved state for bug in ADO')
-  })
-})
-
 describe('defaultCreateProvider', () => {
   const reader = (values) => (k, d) => (k in values ? values[k] : d)
   it('uses the active tab in separate mode', () => {
@@ -91,17 +74,6 @@ describe('defaultCreateProvider', () => {
   it('falls back to whichever provider is available', () => {
     expect(defaultCreateProvider({ readJson: reader({ 'nexusmd.wi.createProvider': 'ado' }), adoAvailable: false, jiraAvailable: true })).toBe('jira')
     expect(defaultCreateProvider({ readJson: reader({ 'nexusmd.wi.createProvider': 'jira' }), adoAvailable: true, jiraAvailable: false })).toBe('ado')
-  })
-})
-
-describe('adoWorkItemUrl', () => {
-  it('title-cases the project and encodes it', () => {
-    expect(adoWorkItemUrl('org', { id: 1, project: 'my-proj-web' })).toBe('https://dev.azure.com/org/My%20Proj%20Web/_workitems/edit/1')
-  })
-  it('returns null without org or project', () => {
-    expect(adoWorkItemUrl('', { id: 1, project: 'p' })).toBeNull()
-    expect(adoWorkItemUrl('org', { id: 1 })).toBeNull()
-    expect(adoWorkItemUrl('org', null)).toBeNull()
   })
 })
 

@@ -28,3 +28,4 @@ export {
   resolveTypeLayout, LINK_TYPES, buildFieldPatchOps, buildAttachmentRelationOps,
   buildLinkRelationOps, submitNewWorkItem,
 } from './workitem-types.js'
+export { makeAdoWorkItemSource, adoMoveToCategory, adoWorkItemUrl } from './work-item-source.js'

@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import '@nexusmd/ui/styles.css'
 
 import {
-  initCore, createNoOpAdapters, core, loadCachedAdoData, loadAdoData,
+  initCore, createNoOpAdapters, core, loadCachedAdoData, loadAdoData, makeAdoWorkItemSource,
   loadCachedJiraData, loadJiraData, displayIdOf,
 } from '@nexusmd/core'
 import {
@@ -31,7 +31,7 @@ import {
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraHttpAdapter, createJiraWorkItemSource } from './jira-client.js'
-import { buildSnapshot, refreshProviders, adoMoveToCategory, defaultCreateProvider, adoWorkItemUrl, useRoutedWorkItemSource, nextHiddenIds } from './work-item-data.js'
+import { buildSnapshot, refreshProviders, defaultCreateProvider, useRoutedWorkItemSource, nextHiddenIds } from './work-item-data.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
@@ -180,81 +180,14 @@ if (window.electronAPI?.onRefreshData) {
 }
 
 // Direct-to-ADO work item source for the desktop (no ASP.NET proxy available).
-// Mirrors the shape expected by the shared WorkItemDetail component.
-const desktopWorkItemSource = {
-  async loadDetail(id) {
-    const adapter = createAdoHttpAdapter()
-    const res = await adapter.fetch(`_apis/wit/workitems/${id}?$expand=all&api-version=7.0`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = await res.json()
-    const f = data.fields || {}
-    return {
-      description:        f['System.Description']                       || null,
-      acceptanceCriteria: f['Microsoft.VSTS.Common.AcceptanceCriteria'] || null,
-      reproSteps:         f['Microsoft.VSTS.TCM.ReproSteps']            || null,
-    }
-  },
-  async loadComments(id, project) {
-    const adapter = createAdoHttpAdapter()
-    const proj = project || (getAdoConfig().projects || [])[0] || ''
-    if (!proj) return []
-    const res = await adapter.fetch(`${encodeURIComponent(proj)}/_apis/wit/workitems/${id}/comments?api-version=7.1-preview.3`)
-    if (!res.ok) return []
-    const data = await res.json()
-    return (data.comments || []).map(c => ({
-      id:          c.id,
-      author:      c.createdBy?.displayName || '',
-      text:        c.text || c.renderedText || '',
-      createdDate: c.createdDate || '',
-    }))
-  },
-  async saveField(itemId, field, html) {
-    const adapter = createAdoHttpAdapter()
-    const res = await adapter.fetch(`_apis/wit/workitems/${itemId}?api-version=7.0`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json-patch+json' },
-      body: JSON.stringify([{ op: 'add', path: `/fields/${field}`, value: html }]),
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  },
-  async addComment(id, project, html) {
-    const adapter = createAdoHttpAdapter()
-    const proj = encodeURIComponent(project || (getAdoConfig().projects || [])[0] || '')
-    const res = await adapter.fetch(
-      `${proj}/_apis/wit/workitems/${id}/comments?api-version=7.1-preview.3`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comments: [{ parentCommentId: 0, content: html, commentType: 1 }], status: 1 }),
-      },
-    )
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-    return {
-      id:          data.id,
-      author:      data.createdBy?.displayName || '',
-      text:        html,
-      createdDate: data.createdDate || new Date().toISOString(),
-    }
-  },
-  async loadRawFields(id) {
-    const adapter = createAdoHttpAdapter()
-    const res = await adapter.fetch(`_apis/wit/workitems/${id}?$expand=fields&api-version=7.0`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = await res.json()
-    return data.fields || {}
-  },
-  async createWorkItem(payload) {
-    return submitNewWorkItem(payload)
-  },
-  async moveToCategory(id, category, item) {
-    const meta = loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter })?._adoMeta
-    return adoMoveToCategory({ item, category, meta, saveState: (state) => this.saveField(id, 'System.State', state) })
-  },
-  webUrl(item) {
-    return adoWorkItemUrl(getAdoConfig().org, item)
-  },
-}
+// The logic lives in core; this supplies the desktop's connection, process cache and create flow.
+const desktopWorkItemSource = makeAdoWorkItemSource({
+  http: { fetch: (path, options) => createAdoHttpAdapter().fetch(path, options) },
+  getDefaultProject: () => (getAdoConfig().projects || [])[0] || '',
+  getOrg: () => getAdoConfig().org,
+  loadProcessMeta: () => loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter })?._adoMeta,
+  createWorkItem: submitNewWorkItem,
+})
 
 // Per-profile ids of people hidden from NexusMD (the Team view's "Remove").
 function readHiddenPeople() {

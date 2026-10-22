@@ -5,7 +5,7 @@ import React from 'react'
 import { createRoutedWorkItemSource } from '@nexusmd/ui'
 import {
   loadCachedAdoData, loadCachedJiraData, mergeWorkItemData,
-  readProviderStatus, recordProviderStatus, adoStateForCategory, applyHiddenPeople, CATEGORY_LABELS,
+  readProviderStatus, recordProviderStatus, applyHiddenPeople,
 } from '@nexusmd/core'
 
 // One routed source per (ado, jira) pair. Rebuilding it with every snapshot would
@@ -47,13 +47,6 @@ export async function refreshProviders({ storage, providers }) {
       )))
 }
 
-export async function adoMoveToCategory({ item, category, meta, saveState }) {
-  const state = adoStateForCategory(item, category, meta || {}) || (category === 'Completed' ? 'Done' : null)
-  if (!state) throw new Error(`No ${CATEGORY_LABELS[category] || category} state for ${item?.type || 'this type'} in ADO`)
-  await saveState(state)
-  return { state, stateCategory: category }
-}
-
 export function defaultCreateProvider({ readJson, adoAvailable, jiraAvailable }) {
   const preferred = readJson('nexusmd.wi.displayMode', 'merged') === 'separate'
     ? readJson('nexusmd.wi.sourceTab', 'ado')
@@ -63,8 +56,3 @@ export function defaultCreateProvider({ readJson, adoAvailable, jiraAvailable })
   return jiraAvailable ? 'jira' : 'ado'
 }
 
-export function adoWorkItemUrl(org, item) {
-  if (!org || !item?.project) return null
-  const proj = String(item.project).replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-  return `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(proj)}/_workitems/edit/${item.id}`
-}
