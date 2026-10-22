@@ -256,7 +256,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteUntracked: (repo, worktreePath, registered, paths, expected) => ipcRenderer.invoke('git:deleteUntracked', repo, worktreePath, registered, paths, expected),
     stageHunk:       (repo, worktreePath, registered, paths, index, expected) => ipcRenderer.invoke('git:stageHunk', repo, worktreePath, registered, paths, index, expected),
     unstageHunk:     (repo, worktreePath, registered, paths, index, expected) => ipcRenderer.invoke('git:unstageHunk', repo, worktreePath, registered, paths, index, expected),
-    commit:          (repo, worktreePath, registered, message, expected) => ipcRenderer.invoke('git:commit', repo, worktreePath, registered, message, expected),
+    commit:          (repo, worktreePath, registered, message, expected, options) => ipcRenderer.invoke('git:commit', repo, worktreePath, registered, message, expected, options),
     refs:            (repo, worktreePath, registered) => ipcRenderer.invoke('git:refs', repo, worktreePath, registered),
     log:             (repo, worktreePath, registered, query) => ipcRenderer.invoke('git:log', repo, worktreePath, registered, query),
     commitDetails:   (repo, worktreePath, registered, oid) => ipcRenderer.invoke('git:commitDetails', repo, worktreePath, registered, oid),

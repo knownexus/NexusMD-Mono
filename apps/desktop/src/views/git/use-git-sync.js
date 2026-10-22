@@ -42,12 +42,21 @@ export function useGitSync({ adapter, registered, reload }) {
     setDialog(d => (d && d.kind === kind ? { ...d, options, model: previewModel(kind, previews), loading: false } : d))
   }, [adapter, registered])
 
-  const open = React.useCallback((kind, targets, options = {}) => {
+  // `choices`: other targets the dialog may switch to (Cherry-pick's "Onto branch").
+  const open = React.useCallback((kind, targets, options = {}, { choices = null } = {}) => {
     const runId = String(++runs.current)
     runInfo.current.set(runId, { kind, targets, options })
-    setDialog({ runId, kind, targets, options, model: null, loading: true, results: null, running: false })
+    setDialog({ runId, kind, targets, options, choices, model: null, loading: true, results: null, running: false })
     preview(kind, targets, options)
   }, [preview])
+
+  // Runs the same action on a different one of the dialog's choices; previews again.
+  const retarget = React.useCallback(target => {
+    if (!dialog || dialog.running || !target) return
+    runInfo.current.set(dialog.runId, { kind: dialog.kind, targets: [target], options: dialog.options })
+    setDialog({ ...dialog, targets: [target], loading: true, results: null })
+    preview(dialog.kind, [target], dialog.options)
+  }, [dialog, preview])
 
   const setOptions = React.useCallback(options => {
     if (!dialog || dialog.running) return
@@ -97,5 +106,7 @@ export function useGitSync({ adapter, registered, reload }) {
     open(source.kind, source.targets.filter(t => failed.includes(t.id)), source.options)
   }, [activity, open])
 
-  return { dialog, open, setOptions, close, confirm, activity, retryFailed }
+  const clearActivity = React.useCallback(() => setActivity([]), [])
+
+  return { dialog, open, setOptions, retarget, close, confirm, activity, retryFailed, clearActivity }
 }

@@ -59,7 +59,7 @@ async function openWorktree(git, config = {}) {
   render(<ViewGit adapters={{ git }} />)
   const region = await screen.findByRole('region', { name: 'A' })
   fireEvent.click(await within(region).findByRole('button', { name: /→ main/ }))
-  return within(screen.getByRole('group', { name: 'Sync' }))
+  return within(screen.getByRole('group', { name: 'Branch actions' }))
 }
 
 describe('stage 4 in the Git Workspace view', () => {
@@ -72,9 +72,27 @@ describe('stage 4 in the Git Workspace view', () => {
     fireEvent.click(bar.getByRole('button', { name: 'Rebase…' }))
     await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'rebase', {}))
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    fireEvent.click(bar.getByRole('button', { name: 'Branch ▾' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove this worktree…' }))
-    await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'worktreeRemove', { path: 'C:/repos/A' }))
+    fireEvent.click(bar.getByRole('button', { name: 'More ▾' }))
+    // The main worktree can't be removed; adding one previews from it.
+    expect(screen.getByRole('menuitem', { name: 'Remove this worktree…' }).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add worktree…' }))
+    await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'worktreeAdd', {}))
+  })
+
+  it('the header Switch chip opens the branch switcher and Overview goes back to nothing selected', async () => {
+    await openWorktree(adapter())
+    fireEvent.click(screen.getByRole('button', { name: 'Switch ▾' }))
+    expect(await screen.findByRole('combobox', { name: 'Branch name' })).toBeTruthy()
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Branch name' }), { key: 'Escape' })
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('button', { name: 'Overview' }))
+    expect(getGitConfig().view.selected).toBe(null)
+    expect(screen.queryByRole('group', { name: 'Branch actions' })).toBeNull()
+  })
+
+  it('Editor opens Go to file', async () => {
+    const bar = await openWorktree(adapter({ files: vi.fn(async () => ({ files: ['a.txt'], truncated: false })) }))
+    fireEvent.click(bar.getByRole('button', { name: 'Editor' }))
+    expect(await screen.findByRole('combobox', { name: 'File name' })).toBeTruthy()
   })
 
   it('Terminal opens one in the selected worktree, and says why when it cannot', async () => {
@@ -98,8 +116,8 @@ describe('stage 4 in the Git Workspace view', () => {
   it('the stash list applies, pops and drops by commit id', async () => {
     const git = adapter()
     const bar = await openWorktree(git)
-    fireEvent.click(bar.getByRole('button', { name: 'Branch ▾' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Stash…' }))
+    fireEvent.click(bar.getByRole('button', { name: 'More ▾' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Stashes…/ }))
     const entries = await screen.findByRole('list', { name: 'Stash entries' })
     await within(entries).findByText('stash@{0} · On main: wip')
     fireEvent.click(within(entries).getByRole('button', { name: 'Drop…' }))
@@ -134,6 +152,58 @@ describe('stage 4 in the Git Workspace view', () => {
     const parent = await screen.findByRole('combobox', { name: 'Keep parent' })
     fireEvent.change(parent, { target: { value: '2' } })
     await waitFor(() => expect(git.preview.mock.calls.at(-1)[4]).toMatchObject({ oid: oid(6), parent: 2 }))
+  })
+
+  it('Reset to here… is off at the tip, previews a mixed reset, and a hard one needs RESET typed', async () => {
+    const git = adapter()
+    await openWorktree(git, { view: { ...getGitConfig().view, panel: 'history' } })
+    await screen.findByText('nine')
+    const detail = () => within(screen.getByRole('region', { name: 'Commit' }))
+    await waitFor(() => expect(detail().getByRole('button', { name: 'Reset to here…' }).disabled).toBe(true))
+    fireEvent.click(screen.getByText('seven'))
+    await waitFor(() => expect(detail().getByRole('button', { name: 'Reset to here…' }).disabled).toBe(false))
+    expect(detail().getAllByRole('button').slice(0, 4).map(b => b.textContent)).toEqual(['Copy hash', 'Cherry-pick…', 'Revert…', 'Reset to here…'])
+    fireEvent.click(detail().getByRole('button', { name: 'Reset to here…' }))
+    await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'reset', { oid: oid(7), mode: 'mixed' }))
+    const dialog = within(screen.getByRole('dialog'))
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Reset (mixed)' }).disabled).toBe(false))
+    expect(dialog.queryByRole('textbox', { name: 'Type RESET to confirm' })).toBeNull()
+    fireEvent.click(dialog.getByRole('radio', { name: 'Hard' }))
+    await waitFor(() => expect(git.preview.mock.calls.at(-1)[4]).toEqual({ oid: oid(7), mode: 'hard' }))
+    const run = await dialog.findByRole('button', { name: 'Reset (hard)' })
+    await waitFor(() => expect(dialog.getByRole('textbox', { name: 'Type RESET to confirm' })).toBeTruthy())
+    expect(run.disabled).toBe(true)
+    fireEvent.change(dialog.getByRole('textbox', { name: 'Type RESET to confirm' }), { target: { value: 'RESET' } })
+    expect(run.disabled).toBe(false)
+    fireEvent.click(run)
+    await waitFor(() => expect(git.run).toHaveBeenCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'reset', { oid: oid(7), mode: 'hard' }, 's'))
+  })
+
+  it('Cherry-pick… previews on another worktree of the repository, switchable in the dialog, with -x', async () => {
+    const git = adapter({
+      worktrees: vi.fn(async repo => (repo.name === 'A'
+        ? `worktree C:/repos/A\0HEAD ${HEAD}\0branch refs/heads/main\0\0worktree C:/repos/A/feat\0HEAD ${oid(2)}\0branch refs/heads/feat\0\0worktree C:/repos/A/other\0HEAD ${oid(3)}\0branch refs/heads/other\0\0`
+        : `worktree ${repo.path}\0HEAD ${HEAD}\0branch refs/heads/main\0\0`)),
+      status: vi.fn(async (_r, p) => {
+        const name = p.endsWith('/feat') ? 'feat' : p.endsWith('/other') ? 'other' : 'main'
+        return { porcelain: porcelain().replace('branch.head main', `branch.head ${name}`), operation: '', rebasingBranch: null, fetchedAt: null }
+      }),
+    })
+    await openWorktree(git, { view: { ...getGitConfig().view, panel: 'history' } })
+    await screen.findByText('nine')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Commit' })).getByRole('button', { name: 'Cherry-pick…' }))
+    await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A/feat', expect.anything(), 'cherryPick', { oid: oid(9), parents: 1 }))
+    const dialog = within(screen.getByRole('dialog'))
+    const onto = dialog.getByRole('combobox', { name: 'Onto branch' })
+    expect([...onto.options].map(o => o.textContent)).toEqual([expect.stringContaining('→ feat'), expect.stringContaining('→ other')])
+    fireEvent.change(onto, { target: { value: onto.options[1].value } })
+    await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A/other', expect.anything(), 'cherryPick', { oid: oid(9), parents: 1 }))
+    fireEvent.click(dialog.getByRole('checkbox', { name: 'Note where it came from (-x)' }))
+    await waitFor(() => expect(git.preview.mock.calls.at(-1)[4]).toEqual({ oid: oid(9), parents: 1, x: true }))
+    const run = dialog.getByRole('button', { name: 'Cherry-pick' })
+    await waitFor(() => expect(run.disabled).toBe(false))
+    fireEvent.click(run)
+    await waitFor(() => expect(git.run).toHaveBeenCalledWith(expect.anything(), 'C:/repos/A/other', expect.anything(), 'cherryPick', { oid: oid(9), parents: 1, x: true }, 's'))
   })
 })
 
@@ -214,7 +284,7 @@ describe('resolving a conflicted file in the panel', () => {
   }
   afterEach(() => { vi.restoreAllMocks(); clearWorktreeDrafts() })
 
-  it('jumps to the next conflicted file, and offers it once one is resolved', async () => {
+  it('jumps to the next conflicted file, and Mark resolved & next goes on to it', async () => {
     const resolved = new Set()
     const both = p => (resolved.has(p) ? `1 M. N... 100644 100644 100644 ${h} ${h} ${p}\0` : `u UU N... 100644 100644 100644 100644 ${h} ${h} ${h} ${p}\0`)
     const git = conflicted()
@@ -226,28 +296,31 @@ describe('resolving a conflicted file in the panel', () => {
     git.resolveConflict.mockImplementation(async (_r, _w, _g, p) => { resolved.add(p); return { ok: true } })
     await openWorktree(git)
     fireEvent.click(await screen.findByText('a.txt'))
-    await screen.findByRole('heading', { name: 'Resolve: a.txt' })
+    await screen.findByRole('heading', { name: 'Conflict a.txt' })
     expect(within(screen.getByRole('group', { name: 'Conflicted files' })).getByText('File 1 of 2')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Next conflicted file' }))
-    expect(await screen.findByRole('heading', { name: 'Resolve: b.txt' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Conflict b.txt' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Previous conflicted file' }))
-    await screen.findByRole('heading', { name: 'Resolve: a.txt' })
-    await screen.findByText('1 of 1 left')
-    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve a.txt' })).getByRole('button', { name: "Take dev's" }))
-    fireEvent.click(screen.getByRole('button', { name: 'Mark resolved' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Next conflict: b.txt →' }))
-    expect(await screen.findByRole('heading', { name: 'Resolve: b.txt' })).toBeTruthy()
+    await screen.findByRole('heading', { name: 'Conflict a.txt' })
+    await screen.findByText('1 conflict block left in this file')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve a.txt' })).getByRole('button', { name: 'Use theirs' }))
+    // Resolving goes straight on to the next conflicted file, without asking about the staged edits.
+    const confirm = vi.spyOn(window, 'confirm')
+    fireEvent.click(screen.getByRole('button', { name: 'Mark resolved & next' }))
+    await waitFor(() => expect(git.resolveConflict).toHaveBeenCalled())
+    expect(await screen.findByRole('heading', { name: 'Conflict b.txt' })).toBeTruthy()
+    expect(confirm).not.toHaveBeenCalled()
   })
 
   it('a focused conflict shows the resolve screen, and Undo stays after it is staged', async () => {
     const git = conflicted()
     await openWorktree(git)
     fireEvent.click(await screen.findByText('c.txt'))
-    expect(await screen.findByRole('heading', { name: 'Resolve: c.txt' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Conflict c.txt' })).toBeTruthy()
     expect(screen.queryByText('Resolve in your editor, then stage the file.')).toBeNull()
     expect(screen.queryByRole('group', { name: 'Diff or edit' })).toBeNull()
-    await screen.findByText('1 of 1 left')
-    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: "Take dev's" }))
+    await screen.findByText('1 conflict block left in this file')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: 'Use theirs' }))
     const statusCalls = git.status.mock.calls.length
     fireEvent.click(screen.getByRole('button', { name: 'Mark resolved' }))
     await waitFor(() => expect(git.resolveConflict).toHaveBeenCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'c.txt', { take: 'text', text: 'L\n', bom: false, force: false }, 'c1'))
@@ -256,15 +329,15 @@ describe('resolving a conflicted file in the panel', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Undo resolution' }))
     await waitFor(() => expect(git.unresolve).toHaveBeenCalled())
     expect(await screen.findByRole('button', { name: "Take dev's for c.txt" })).toBeTruthy()
-    expect(await screen.findByText('1 of 1 left')).toBeTruthy()
+    expect(await screen.findByText('1 conflict block left in this file')).toBeTruthy()
   })
 
   it('a file that conflicts again after being resolved shows its sides again', async () => {
     const git = conflicted()
     await openWorktree(git)
     fireEvent.click(await screen.findByText('c.txt'))
-    await screen.findByText('1 of 1 left')
-    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: "Take dev's" }))
+    await screen.findByText('1 conflict block left in this file')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: 'Use theirs' }))
     fireEvent.click(screen.getByRole('button', { name: 'Mark resolved' }))
     await screen.findByRole('button', { name: 'Undo resolution' })
     await waitFor(() => expect(screen.queryByRole('button', { name: "Take dev's for c.txt" })).toBeNull())
@@ -276,8 +349,8 @@ describe('resolving a conflicted file in the panel', () => {
       operationInfo: { kind: 'rebase', onto: { name: 'refs/heads/dev', oid: oid(1) }, step: 2, total: 2, replaying: { oid: oid(3), subject: 'More' } },
     }))
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-    expect(await screen.findByText('1 of 1 left')).toBeTruthy()
-    expect(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: "Take dev's" })).toBeTruthy()
+    expect(await screen.findByText('1 conflict block left in this file')).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: 'Use theirs' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Undo resolution' })).toBeNull()
   })
 
@@ -285,15 +358,15 @@ describe('resolving a conflicted file in the panel', () => {
     const git = conflicted()
     await openWorktree(git)
     fireEvent.click(await screen.findByText('c.txt'))
-    await screen.findByText('1 of 1 left')
-    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: 'Take mine' }))
+    await screen.findByText('1 conflict block left in this file')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: 'Use mine' }))
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }))
     expect(confirm).toHaveBeenCalledWith('Discard unsaved changes to c.txt?')
-    expect(screen.getByRole('heading', { name: 'Resolve: c.txt' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Conflict c.txt' })).toBeTruthy()
     confirm.mockReturnValue(true)
-    fireEvent.click(screen.getByRole('button', { name: 'History' }))
-    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Resolve: c.txt' })).toBeNull())
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Conflict c.txt' })).toBeNull())
   })
 })
 
@@ -314,8 +387,8 @@ describe('unsaved resolve text is never stranded', () => {
   const halfResolved = async git => {
     await openWorktree(git)
     fireEvent.click(await screen.findByText('c.txt'))
-    await screen.findByText('1 of 1 left')
-    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: 'Take mine' }))
+    await screen.findByText('1 conflict block left in this file')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Resolve c.txt' })).getByRole('button', { name: 'Use mine' }))
     expect(getWorktreeDraft(KEY)).toBeTruthy()
   }
   const previewed = (git, kind) => git.preview.mock.calls.some(c => c[3] === kind)
@@ -343,13 +416,24 @@ describe('unsaved resolve text is never stranded', () => {
     })
   }
 
+  it('Abort asks first: the preview says the branch goes back as it was and resolved conflicts are lost', async () => {
+    const git = make()
+    await openWorktree(git)
+    fireEvent.click(await screen.findByRole('button', { name: 'Abort' }))
+    await waitFor(() => expect(git.preview.mock.calls.at(-1)[3]).toBe('abort'))
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(dialog.textContent).toContain('Puts main back exactly as it was before the rebase started.'))
+    expect(within(dialog).getByRole('note').textContent).toContain("Conflicts you've resolved so far are lost")
+    expect(git.run).not.toHaveBeenCalled()
+  })
+
   it('a kept resolve draft of a still-conflicted file opens its resolve screen, with the edits restored', async () => {
     putWorktreeDraft(KEY, { text: 'R\n', saved: MARKED, eol: '\n', bom: false, stamp: 'w1' })
     const git = make()
     await openWorktree(git)
     const note = await screen.findByRole('note', { name: 'Unsaved edits' })
     fireEvent.click(within(note).getByRole('button', { name: 'c.txt' }))
-    expect(await screen.findByRole('heading', { name: 'Resolve: c.txt' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Conflict c.txt' })).toBeTruthy()
     expect(await screen.findByText('Unsaved changes from earlier were restored.')).toBeTruthy()
   })
 

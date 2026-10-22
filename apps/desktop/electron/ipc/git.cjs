@@ -746,20 +746,26 @@ function register(ipcMain, deps = {}) {
     return { ok: true, detail: `Deleted ${deleted} untracked file${deleted === 1 ? '' : 's'}.` };
   });
 
-  handle('git:commit', async (_e, repo, worktreePath, registered, message, expected) => {
+  // options.amend replaces the last commit (message and staged changes); it needs no staged changes.
+  handle('git:commit', async (_e, repo, worktreePath, registered, message, expected, options) => {
     await requireExactWorktree(repo, worktreePath, registered);
     if (typeof message !== 'string' || !message.trim()) return refuse('Enter a commit message.');
+    const amend = options?.amend === true;
     return withRepoLock(repo, async () => {
       const state = await commitState(worktreePath);
       if (state.stamp !== expected) return { ok: false, stale: true, detail: STALE };
       if (state.entries.some(e => e.stage !== '0')) return refuse('Resolve conflicts before committing.');
       const { operation } = await inProgress(await gitDirOf(worktreePath));
       if (operation) return refuse(`${operation}. Continue or abort it first.`);
-      const staged = await git(worktreePath, ['diff', '--cached', '--quiet', '--no-ext-diff']);
-      if (staged.code === 0) return refuse('No staged changes.');
-      if (staged.code !== 1) return refuse(staged.stderr || `git diff failed (exit ${staged.code})`);
+      if (amend) {
+        if (!state.head) return refuse('There is no commit to amend yet.');
+      } else {
+        const staged = await git(worktreePath, ['diff', '--cached', '--quiet', '--no-ext-diff']);
+        if (staged.code === 0) return refuse('No staged changes.');
+        if (staged.code !== 1) return refuse(staged.stderr || `git diff failed (exit ${staged.code})`);
+      }
       try {
-        return result(await git(worktreePath, ['commit', '-F', '-'], { input: message, timeout: commitTimeoutMs, literal: false }));
+        return result(await git(worktreePath, ['commit', ...(amend ? ['--amend'] : []), '-F', '-'], { input: message, timeout: commitTimeoutMs, literal: false }));
       } catch (e) {
         return refuse(`${e.message}. Hooks may have left partial output in the worktree.`);
       }
@@ -931,9 +937,11 @@ function register(ipcMain, deps = {}) {
     const args = parent === null
       ? ['diff-tree', '--no-commit-id', '--root', '-r', '-z', '-M', '--name-status', '--no-ext-diff', '--no-textconv', '--end-of-options', oid]
       : ['diff-tree', '--no-commit-id', '-r', '-z', '-M', '--name-status', '--no-ext-diff', '--no-textconv', '--end-of-options', parent, oid];
-    const r = await historyRead(worktreePath, args);
+    // Line counts come from a second listing alongside; a failure there only loses the counts.
+    const counts = args.map(a => (a === '--name-status' ? '--numstat' : a));
+    const [r, n] = await Promise.all([historyRead(worktreePath, args), historyRead(worktreePath, counts)]);
     if (r.code !== 0) throw new Error(r.stderr || 'git diff-tree failed');
-    return { files: r.stdout };
+    return { files: r.stdout, numstat: n.code === 0 ? n.stdout : null };
   });
 
   handle('git:commitDiff', async (_e, repo, worktreePath, registered, oid, parent, paths) => {

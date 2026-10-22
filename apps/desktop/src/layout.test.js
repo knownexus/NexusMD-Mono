@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { effectiveSidebar, SIDEBAR_BREAKPOINT, orderedNav } from './layout.js'
+import { effectiveSidebar, SIDEBAR_BREAKPOINT, orderedNav, toggledSidebar } from './layout.js'
 
 describe('effectiveSidebar', () => {
   it('forces icons below the breakpoint regardless of preference', () => {
@@ -13,6 +13,14 @@ describe('effectiveSidebar', () => {
   })
   it('defaults to labels when preference is missing', () => {
     expect(effectiveSidebar(1400, undefined)).toBe('labels')
+  })
+})
+
+describe('toggledSidebar', () => {
+  it('collapses labels to icons and expands icons back to labels', () => {
+    expect(toggledSidebar('labels')).toBe('icons')
+    expect(toggledSidebar('icons')).toBe('labels')
+    expect(toggledSidebar(undefined)).toBe('icons')
   })
 })
 

@@ -22,7 +22,7 @@ export {
 } from './selection.js'
 export { fileReview, commitTargets, commitReview, COMMIT_NOTE } from './review.js'
 export {
-  parseRefs, parseLog, graphCells, parseSearch, historyQuery, HISTORY_STEP, HISTORY_MAX, parseRefList, defaultBase, parseCommitDetails, parseNameStatus, parentLabel,
+  parseRefs, parseLog, graphCells, parseSearch, historyQuery, HISTORY_STEP, HISTORY_MAX, parseRefList, defaultBase, parseCommitDetails, parseNameStatus, parseNumstat, parentLabel,
 } from './history.js'
 export { parseAliases, parseShellAliases, parseShellScripts } from './aliases.js'
 export { ACTION_KINDS, BATCH_KINDS, BATCH_NOTE, actionTargets, previewModel, worktreeDefaultPath, checkBranchName } from './actions.js'

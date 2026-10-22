@@ -7,6 +7,7 @@ import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
 import { parseDiff } from '@nexusmd/core'
 import { register, gitEnv, isRepositoryRoot, findGit, extractHunk, logArgs, HISTORY_CONFIG } from './git.cjs'
+import { assertSafeArgv, assertResetArgv } from './git-actions.cjs'
 
 const ROOT = process.platform === 'win32' ? 'C:\\repos' : '/repos'
 const REPO = { name: 'App', path: path.join(ROOT, 'App') }
@@ -571,6 +572,18 @@ describe('stage 2 writes', () => {
     expect(s.calls.find(c => c.args[0] === 'diff').args).toEqual(['diff', '--cached', '--quiet', '--no-ext-diff'])
   })
 
+  it('amends the last commit, with or without staged changes, and refuses with no commit yet', async () => {
+    const s = setup(reads({ diff: { code: 0 }, commit: { stdout: '[main def5678] Reworded\n' } }))
+    const r = await s.invoke('git:commit', REPO, WT, REG, 'Reworded', await stampOf(s, { kind: 'commit' }), { amend: true })
+    expect(r).toEqual({ ok: true, detail: '[main def5678] Reworded' })
+    expect(s.calls.find(c => c.args[0] === 'commit').args).toEqual(['commit', '--amend', '-F', '-'])
+    expect(s.calls.some(c => c.args[0] === 'diff')).toBe(false)
+    const empty = setup(reads({ 'rev-parse': args => args.includes('HEAD') ? { code: 1 } : { stdout: `${COMMON}\n${COMMON}\n` } }))
+    const none = await empty.invoke('git:commit', REPO, WT, REG, 'Fix', await stampOf(empty, { kind: 'commit' }), { amend: true })
+    expect(none).toEqual({ ok: false, detail: 'There is no commit to amend yet.' })
+    expect(empty.calls.some(c => c.args[0] === 'commit')).toBe(false)
+  })
+
   it('runs the commit (and so its hooks) without literal pathspecs, while path-taking calls keep them', async () => {
     const s = setup(reads({ diff: { code: 1 } }))
     await s.invoke('git:commit', REPO, WT, REG, 'Fix', await stampOf(s, { kind: 'commit' }))
@@ -1052,7 +1065,8 @@ describe('stage 4 actions (unit)', () => {
     ['branch', { name: '--force' }], ['branch', { name: 'x', start: '--all' }], ['checkout', { branch: '--force' }],
     ['checkout', { oid: 'HEAD --force' }], ['revert', { oid: '-f' }], ['worktreeAdd', { ref: 'refs/heads/side', path: '-f' }],
     ['worktreeRemove', { path: '--force' }], ['stashDrop', { oid: '--all' }], ['pull', { mode: 'force' }],
-    ['rebaseInteractive', { base: '--root', rows: [] }],
+    ['rebaseInteractive', { base: '--root', rows: [] }], ['cherryPick', { oid: '-f' }], ['reset', { oid: '--hard' }],
+    ['reset', { oid: OID, mode: 'keep' }], ['reset', { oid: 'HEAD~1', mode: 'hard' }],
   ])('%s with hostile options %j: refused before any write, no forbidden flag anywhere', async (kind, options) => {
     const { invoke, calls } = setup(state())
     const p = await invoke('git:preview', REPO, WT, REG, kind, options)
@@ -1114,9 +1128,32 @@ describe('stage 4 actions (unit)', () => {
     fs.rmSync(hooks, { recursive: true, force: true })
   })
 
+  it('reset runs only its own exact argv; every other kind still refuses reset and --hard', async () => {
+    const { invoke, calls } = setup(state())
+    const p = await invoke('git:preview', REPO, WT, REG, 'reset', { oid: OID, mode: 'hard' })
+    expect(p.eligible).toBe(true)
+    expect(await invoke('git:run', REPO, WT, REG, 'reset', { oid: OID, mode: 'hard' }, p.stamp)).toMatchObject({ ok: true })
+    expect(writes(calls).map(c => c.args)).toEqual([['reset', '--hard', '--end-of-options', OID]])
+    expect(() => assertSafeArgv(['reset', '--soft', '--end-of-options', OID])).toThrow('Refusing git reset')
+    for (const bad of [['reset', '--hard', OID], ['reset', '--keep', '--end-of-options', OID], ['reset', '--hard', '--end-of-options', 'HEAD~1'],
+      ['reset', '--hard', '--end-of-options', OID, '--', 'f'], ['clean', '--hard', '--end-of-options', OID]]) {
+      expect(() => assertResetArgv(bad)).toThrow('Refusing git reset')
+    }
+  })
+
+  it('cherry-pick builds -x and -m from options and refuses a commit the branch already has', async () => {
+    const { invoke, calls } = setup(args => (args[0] === 'merge-base' && args[1] === '--is-ancestor' ? { code: 1 } : state()(args)))
+    const p = await invoke('git:preview', REPO, WT, REG, 'cherryPick', { oid: OID, x: true })
+    expect(p.eligible).toBe(true)
+    await invoke('git:run', REPO, WT, REG, 'cherryPick', { oid: OID, x: true }, p.stamp)
+    expect(writes(calls).map(c => c.args)).toEqual([['cherry-pick', '-x', '--end-of-options', OID]])
+    const has = setup(state())
+    expect((await has.invoke('git:preview', REPO, WT, REG, 'cherryPick', { oid: OID })).reason).toBe('main already has that commit.')
+  })
+
   it('refuses unknown kinds outright', async () => {
     const { invoke } = setup(state())
-    await expect(invoke('git:preview', REPO, WT, REG, 'reset', {})).rejects.toThrow('Unknown action: reset')
+    await expect(invoke('git:preview', REPO, WT, REG, 'clean', {})).rejects.toThrow('Unknown action: clean')
     await expect(invoke('git:run', REPO, WT, REG, '__proto__', {}, 'x')).rejects.toThrow('Unknown action')
   })
 })

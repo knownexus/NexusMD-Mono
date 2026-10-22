@@ -1,49 +1,40 @@
 import React from 'react'
-import { parseAliases, parseShellAliases, parseShellScripts } from '@nexusmd/core'
-import { effectiveDotfiles } from '../../git-config.js'
-import { useGitConfig } from './use-git-config.js'
-import { ipcMessage } from './use-git-actions.js'
 import { ChangesPane } from './changes-pane.jsx'
 import { DiffPane } from './diff-pane.jsx'
 import { useDiff } from './use-diff.js'
 import { HistoryPanel } from './history-panel.jsx'
-import { OperationBar } from './operation-bar.jsx'
+import { OperationBanner } from './operation-banner.jsx'
 import { StashList } from './stash-list.jsx'
-import { GitCommandLine } from './git-command-line.jsx'
 import { FileEditor } from './file-editor.jsx'
 import { ResolvePane } from './resolve-pane.jsx'
 import { GoToFile } from './go-to-file.jsx'
+import { BranchHeader } from './branch-header.jsx'
 import { discardWorktreeDraft, discardConflictDraft, worktreeDraftPaths, worktreeDraftsByEditor, useWorktreeDraftsVersion } from './use-worktree-file.js'
 
-const clamp = v => Math.min(0.8, Math.max(0.2, v))
-
-function trackText(tree) {
-  if (!tree.upstream) return `no upstream · ${tree.ahead} local commit${tree.ahead === 1 ? '' : 's'}`
-  return `${tree.upstream}${tree.upstreamGone ? ' (missing)' : ''} · ${tree.ahead} ahead, ${tree.behind} behind`
-}
-
 /**
- * The selected worktree: header with sync actions, git command line, then Changes or History (the
- * focused file's diff, or that file in an editor, below a divider). The ref exposes
+ * The selected worktree: header with sync actions, then Changes or History (the file column with the
+ * commit composer beside the focused file's diff, editor or resolve screen). The git command line is
+ * ViewGit's, docked below this panel.
+ * `onAction(action, ids?)` reviews a file action for the selection, or for `ids`. The ref exposes
  * `confirmDiscard()`, which asks before unsaved edits would be lost, and `openFile(path, line)`.
  */
 export const WorktreePanel = React.forwardRef(function WorktreePanel({
-  adapter, repo, registered, version, tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, onResolve = null, onHunk,
-  busy, status, split, onSplit, panel = 'changes', onPanel = () => {}, onSync = null, onExec = null, onSaved,
+  adapter, repo, registered, version, tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite, onCommit, onResolve = null, onHunk,
+  busy, status, split, onSplit, panel = 'changes', onPanel = () => {}, onSync = null, onSaved,
+  onOverview = () => {}, onSwitch = () => {},
 }, ref) {
   const [stashes, setStashes] = React.useState(false)
-  // The command line's aliases: git's own for this worktree, and the DotFiles PowerShell shortcuts.
-  const dotfiles = effectiveDotfiles(useGitConfig())
-  const loadAliases = React.useMemo(() => (adapter.aliases || adapter.shellAliases ? async () => {
-    const [git, profile] = await Promise.all([
-      adapter.aliases ? adapter.aliases(repo, tree.path, registered).then(parseAliases, () => []) : [],
-      adapter.shellAliases && dotfiles ? adapter.shellAliases(dotfiles).catch(() => '') : '',
-    ])
-    const scripts = adapter.shellRun ? parseShellScripts(profile) : []
-    // PowerShell takes seconds to start and load the profile: have it ready before a script is typed.
-    if (scripts.length) adapter.shellWarm?.(dotfiles).catch(() => {})
-    return { git, shell: parseShellAliases(profile), scripts }
-  } : null), [adapter, repo, tree.path, registered, dotfiles])
+  // How many stashes the worktree has, for the More menu; read again with each snapshot.
+  const [stashCount, setStashCount] = React.useState(null)
+  const canStash = !!onSync && !!adapter.stashes
+  React.useEffect(() => {
+    if (!canStash) return undefined
+    let live = true
+    setStashCount(null)
+    adapter.stashes(repo, tree.path, registered).then(raw => { if (live) setStashCount(String(raw ?? '').split('\n').filter(Boolean).length) }, () => {})
+    return () => { live = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- repo is a fresh object each render; its path is what matters
+  }, [adapter, canStash, repo.path, tree.path, registered, version])
   const history = panel === 'history'
   // The changes pane's diff isn't on screen in History, so it isn't loaded either.
   const change = history ? null : tree.changes.find(c => c.id === focusId) ?? null
@@ -177,58 +168,18 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     : tree.changes.find(c => c.path === editor.path && c.area !== 'staged') ?? tree.changes.find(c => c.path === editor.path) ?? null
   const diff = useDiff({ adapter, repo, worktreePath: tree.path, registered, change: diffChange, version })
   const canEdit = !!editor || (!!change && change.area !== 'conflict')
-  const box = React.useRef(null)
-  // While dragging, the ratio lives here; config (localStorage) is written once on release.
-  const [dragging, setDragging] = React.useState(null)
-  const shown = dragging ?? split
-  const drag = e => {
-    e.preventDefault()
-    const rect = box.current.getBoundingClientRect()
-    let last = null
-    const move = ev => { last = clamp((ev.clientY - rect.top) / rect.height); setDragging(last) }
-    const up = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      setDragging(null)
-      if (last != null) onSplit(last)
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-  }
-  const nudge = e => {
-    if (e.key === 'ArrowUp') onSplit(clamp(split - 0.05))
-    if (e.key === 'ArrowDown') onSplit(clamp(split + 0.05))
-  }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-      <div className="nx-panel-head">
-        {/* Grows to fill the row, and pushes the sync buttons onto their own line before getting too narrow to read. */}
-        <div style={{ flex: '1 1 260px', minWidth: 0 }}>
-          <div className="nx-panel-branch">{tree.branch}</div>
-          <div className="nx-panel-sub">{`${tree.path} · ${trackText(tree)}`}</div>
-          <div className="nx-panel-sub">{`Last fetch ${tree.fetchedAt ? new Date(tree.fetchedAt).toLocaleString() : 'unknown'}`}</div>
-          {(tree.operation || tree.locked || tree.prunable) && (
-            <div className="nx-pills" style={{ marginTop: 6 }}>
-              {tree.operation && <span className="nx-badge warn">{tree.operation}</span>}
-              {/* Both hold git's reason, or a plain default when it gave none. */}
-              {tree.locked && <span className="nx-badge">{tree.locked === 'Locked' ? 'Locked' : `Locked: ${tree.locked}`}</span>}
-              {tree.prunable && <span className="nx-badge bad">{tree.prunable === 'Stale registration' ? 'Stale registration' : `Stale: ${tree.prunable}`}</span>}
-            </div>
-          )}
-        </div>
-        <button className="btn sm ghost" title="Ctrl+P" style={{ alignSelf: 'flex-start' }} onClick={() => setGoTo(true)}>Go to file</button>
-        {onSync && <SyncBar tree={tree} onSync={onSync} onStashes={() => setStashes(true)}
-          onTerminal={adapter.openTerminal ? () => adapter.openTerminal(repo, tree.path, registered) : null} />}
-      </div>
+    <div className="nx-gw-detail">
+      <BranchHeader tree={tree} stashCount={stashCount} onSync={onSync ?? (() => {})} onStashes={() => setStashes(true)}
+        onOverview={onOverview} onSwitch={onSwitch} onEditor={() => setGoTo(true)}
+        onTerminal={adapter.openTerminal ? () => adapter.openTerminal(repo, tree.path, registered) : null} />
       {goTo && <GoToFile adapter={adapter} repo={repo} worktreePath={tree.path} registered={registered} onOpen={goToFile} onClose={() => setGoTo(false)} />}
       {tree.error && <div role="alert" className="nx-alert bad" style={{ margin: '10px 16px 0' }}>{tree.error}</div>}
-      {onExec && (
-        <div className="nx-panel-section" style={{ background: 'var(--surface-2)' }}>
-          <GitCommandLine path={tree.path} disabled={busy} onRun={(argv, alias) => onExec(tree, argv, alias)} loadAliases={loadAliases} />
-        </div>
-      )}
-      <div className="nx-panel-section" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <div className="nx-gw-tabs">
         <PanelSwitch panel={panel} onPanel={switchPanel} count={tree.changes.length} />
+        <span className="nx-gw-tabs-end">
+          <button className="nx-gw-goto" title="Ctrl+P" onClick={() => setGoTo(true)}>Go to file<span className="kbd">Ctrl P</span></button>
+        </span>
       </div>
       {elsewhere.length + keptResolves.length > 0 && (
         <div role="note" aria-label="Unsaved edits" className="nx-panel-section" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -244,18 +195,20 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
             )))}
         </div>
       )}
-      <div className="nx-panel-body">
-        {onSync && <OperationBar tree={tree} onAction={operation} />}
-        {stashes && <StashList adapter={adapter} repo={repo} tree={tree} registered={registered} onAction={onSync} onClose={() => setStashes(false)} />}
-        {history
-          ? <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync} />
-          : (
-            <div ref={box} style={{ display: 'grid', gridTemplateRows: `minmax(0, ${shown}fr) 6px minmax(0, ${1 - shown}fr)`, height: '64vh', minHeight: 320 }}>
+      {onSync && <div className="nx-gw-banner-slot"><OperationBanner tree={tree} onAction={operation} /></div>}
+      {stashes && <StashList adapter={adapter} repo={repo} tree={tree} registered={registered} onAction={onSync} onClose={() => setStashes(false)} />}
+      {history
+        ? (
+          <div className="nx-panel-body">
+            <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync}
+              upstream={tree.upstream && !tree.upstreamGone ? tree.upstream : null} rebasing={/^Rebase/.test(tree.operation ?? '')} />
+          </div>
+        )
+        : (
+            <div className="nx-gw-changes">
               <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={focus} drafts={drafts}
-                onAction={onAction} onCommit={onCommit} onResolve={onResolve && resolve} busy={busy} status={status} />
-              <div role="separator" aria-orientation="horizontal" aria-label="Resize changes and diff" aria-valuenow={Math.round(shown * 100)}
-                tabIndex={0} onPointerDown={drag} onKeyDown={nudge} style={{ cursor: 'row-resize', background: 'var(--border)', borderRadius: 3 }} />
-              <div style={{ display: 'grid', gridTemplateRows: canEdit ? 'auto minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: 6, minHeight: 0 }}>
+                onAction={onAction} onWrite={onWrite} onCommit={onCommit} onResolve={onResolve && resolve} busy={busy} status={status} />
+              <div className="nx-gw-changes-main" data-mode={canEdit ? 'edit' : 'plain'}>
                 {canEdit && <ModeSwitch editing={editing} onDiff={() => setMode('diff')} onEdit={edit} />}
                 {editor && (
                   <div style={{ display: editing ? 'flex' : 'none', flexDirection: 'column', minHeight: 0 }}>
@@ -271,11 +224,11 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
                   : editor && !diffChange
                   ? <div role="note" style={{ color: 'var(--text-muted)' }}>No changes yet.</div>
                   : <DiffPane change={diffChange} diff={diff} busy={busy} onHunk={(index, stamp) => onHunk(diffChange, index, stamp, diff.reload)}
+                      onFile={diffChange && (action => (action === 'stage' || action === 'unstage' ? onWrite(action, [diffChange.id]) : onAction(action, [diffChange.id])))}
                       onLine={diffChange && diffChange.area !== 'conflict' ? n => openFile(diffChange.path, n) : null} />)}
               </div>
             </div>
           )}
-      </div>
     </div>
   )
 })
@@ -291,45 +244,12 @@ function ModeSwitch({ editing, onDiff, onEdit }) {
 
 export function PanelSwitch({ panel, onPanel, count = 0 }) {
   return (
-    <div role="group" aria-label="Panel" className="nx-pills">
-      {[['changes', count ? `Changes (${count})` : 'Changes'], ['history', 'History']].map(([id, label]) => (
-        <button key={id} className="nx-pill" aria-pressed={panel === id} onClick={() => onPanel(id)}>{label}</button>
+    <div role="tablist" aria-label="Panel" style={{ display: 'contents' }}>
+      {[['changes', 'Changes', count], ['history', 'History', 0]].map(([id, label, n]) => (
+        <button key={id} role="tab" className="nx-gw-tab" aria-selected={panel === id} onClick={() => onPanel(id)}>
+          {label}{n > 0 && <>{' '}<span className="n">{n}</span></>}
+        </button>
       ))}
-    </div>
-  )
-}
-
-// Sync and branch actions for the selected worktree; each opens the preview dialog.
-function SyncBar({ tree, onSync, onStashes, onTerminal = null }) {
-  const [branchMenu, setBranchMenu] = React.useState(false)
-  const [terminalError, setTerminalError] = React.useState(null)
-  React.useEffect(() => { setTerminalError(null) }, [tree.path])
-  const terminal = () => { setTerminalError(null); onTerminal().catch(e => setTerminalError(ipcMessage(e))) }
-  const go = (kind, options = {}) => { setBranchMenu(false); onSync(kind, options) }
-  const detached = tree.branch === '(detached)'
-  return (
-    <div role="group" aria-label="Sync" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', position: 'relative' }}>
-      {onTerminal && <button className="btn sm ghost" title={`Open a terminal in ${tree.path}`} onClick={terminal}>Terminal</button>}
-      <button className="btn sm ghost" title="git fetch" onClick={() => go('fetch')}>Fetch</button>
-      <button className="btn sm" disabled={!tree.upstream} title={tree.upstream ? 'git pull --ff-only' : 'No upstream'} onClick={() => go('pull', { mode: 'ff' })}>
-        {tree.behind ? `Pull ${tree.behind}…` : 'Pull…'}
-      </button>
-      <button className={`btn sm ${tree.ahead || !tree.upstream ? 'accent' : ''}`} disabled={detached} title={tree.upstream ? 'git push' : `git push -u origin ${tree.branch}`} onClick={() => go('push', {})}>
-        {!tree.upstream ? 'Publish…' : tree.ahead ? `Push ${tree.ahead}…` : 'Push…'}
-      </button>
-      <button className="btn sm ghost" disabled={detached} title={detached ? 'Check out a branch first' : 'git rebase onto a branch, tag or commit you choose'} onClick={() => go('rebase', {})}>Rebase…</button>
-      <button className="btn sm ghost" aria-haspopup="menu" aria-expanded={branchMenu} onClick={() => setBranchMenu(m => !m)}>Branch ▾</button>
-      {branchMenu && (
-        <div role="menu" aria-label="Branch" className="card" onKeyDown={e => { if (e.key === 'Escape') setBranchMenu(false) }}
-          style={{ position: 'absolute', top: '100%', right: 0, zIndex: 5, display: 'grid', gap: 2, padding: 4, marginTop: 4, boxShadow: 'var(--shadow-lg)' }}>
-          <button role="menuitem" className="btn sm ghost" style={{ justifyContent: 'flex-start' }} onClick={() => go('branch', { start: 'HEAD', checkout: true })}>New branch…</button>
-          <button role="menuitem" className="btn sm ghost" style={{ justifyContent: 'flex-start' }} onClick={() => go('checkout', {})}>Check out…</button>
-          <button role="menuitem" className="btn sm ghost" style={{ justifyContent: 'flex-start' }} onClick={() => go('worktreeAdd', {})}>New worktree…</button>
-          <button role="menuitem" className="btn sm ghost" style={{ justifyContent: 'flex-start' }} onClick={() => go('worktreeRemove', { path: tree.path })}>Remove this worktree…</button>
-          <button role="menuitem" className="btn sm ghost" style={{ justifyContent: 'flex-start' }} onClick={() => { setBranchMenu(false); onStashes() }}>Stash…</button>
-        </div>
-      )}
-      {terminalError && <span role="alert" style={{ color: 'var(--danger)', fontSize: 12, flexBasis: '100%' }}>{terminalError}</span>}
     </div>
   )
 }

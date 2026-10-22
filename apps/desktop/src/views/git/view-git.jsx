@@ -7,7 +7,8 @@ import { setGitConfig, getGitConfig, effectiveRoots, effectiveDotfiles } from '.
 import { useGitConfig } from './use-git-config.js'
 import { useGitSnapshot } from './use-git-snapshot.js'
 import { GroupTabs } from './group-tabs.jsx'
-import { BranchList } from './branch-list.jsx'
+import { BranchList, visibleTrees } from './branch-list.jsx'
+import { useGitShortcuts } from './use-git-shortcuts.js'
 import { FilterChips, BranchSearch } from './filter-chips.jsx'
 import { BranchSwitcher } from './branch-switcher.jsx'
 import { AttentionOverview } from './attention-overview.jsx'
@@ -16,13 +17,15 @@ import { WorktreeDetail } from './worktree-detail.jsx'
 import { WorktreePanel } from './worktree-panel.jsx'
 import { HistoryPanel } from './history-panel.jsx'
 import { useGitSync } from './use-git-sync.js'
-import { ActionDialog, ActivityDrawer } from './action-dialog.jsx'
+import { ActionDialog, activityRows } from './action-dialog.jsx'
 import { GroupMenu, GroupMenuButton } from './group-menu.jsx'
 import { GroupEditor } from './group-editor.jsx'
 import { useGitActions, ipcMessage } from './use-git-actions.js'
 import { ReviewDialog } from './review-dialog.jsx'
 import { CommitDialog } from './commit-dialog.jsx'
-import { RunDrawer } from '../shared/run-drawer.jsx'
+import { OutputConsole } from './output-console.jsx'
+import { GitCommandLine } from './git-command-line.jsx'
+import { useCommandAliases } from './use-command-aliases.js'
 import '../devenv-git.css'
 import './git-workspace.css'
 
@@ -32,6 +35,8 @@ const card = (text, role) => <div className={role === 'alert' ? 'nx-alert' : 'ca
 const VIA_SYNC = { fetch: {}, pull: { mode: 'ff' }, push: {} }
 // Asked about before running: force flags (also bundled, as in -fd), --hard, -D, and commands that throw work away.
 const RISKY = /(^|\s)(--force\S*|-f\w*|-\w*f|--hard|-D)(\s|$)|^(clean|reset|restore)\b|^stash (drop|clear)\b/
+// The dock keeps this session's newest output lines, up to this many.
+const MAX_LINES = 5000
 
 // When a snapshot was read: the time, with the day too when it wasn't today.
 function readAt(iso) {
@@ -63,12 +68,18 @@ function GitWorkspace({ adapter }) {
   const [focus, setFocus] = React.useState({})
   // An open commit dialog: which worktrees start ticked (null = the selected one) and messages kept for a retry.
   const [committing, setCommitting] = React.useState(null)
-  // The command line's last run, shown in the drawer.
-  const [cmdRun, setCmdRun] = React.useState(null)
+  // This session's command line output (oldest first), and the command still running, for the dock.
+  const [cmdLines, setCmdLines] = React.useState([])
+  const [cmdRunning, setCmdRunning] = React.useState(null)
   const commits = React.useRef(0)
   // The worktree panel asks before its unsaved edits would be lost to a change of worktree or group.
   const panelRef = React.useRef(null)
   const mayLeave = () => panelRef.current?.confirmDiscard() ?? true
+  // The page's keys. The handlers are filled in below, once the snapshot's state is worked out; until
+  // then (and on the error screens) there are none. Ctrl/⌘P stays with the worktree panel's Go to file.
+  const keys = React.useRef({}).current
+  useGitShortcuts(keys)
+  const detailsRef = React.useRef(null)
   React.useEffect(() => {
     let live = true
     adapter.version().then(v => { if (live) setGitVersion(v) }, () => { if (live) setGitVersion(null) })
@@ -78,6 +89,7 @@ function GitWorkspace({ adapter }) {
   const actions = useGitActions({ adapter, registered, reload })
   const sync = useGitSync({ adapter, registered, reload })
 
+  for (const k of Object.keys(keys)) delete keys[k]
   if (config.unsupported) return card(`These Git Workspace settings were saved by a newer NexusMD (version ${config.unsupported}). Update NexusMD to use them.`, 'alert')
   if (gitVersion === null) return card('Git not found. Install Git for Windows (git-scm.com) and make sure git is on PATH, then reopen this screen.', 'alert')
   if (gitVersion === undefined) return card('Checking for git…')
@@ -117,7 +129,22 @@ function GitWorkspace({ adapter }) {
     : fetchedText ?? (snapshot ? `Updated ${readAt(snapshot.takenAt)}` : '')
   const activeTab = tabs.find(t => t.name === (group ? group.name : ALL_PROJECTS))
 
+  // A worktree's own actions. Cherry-pick runs on another worktree of the same repository, chosen in its dialog.
+  const syncTree = (tree, kind, options) => {
+    if (kind !== 'cherryPick') return sync.open(kind, actionTargets(kind, [tree], worktreeId(tree)), options)
+    const others = (snapshot?.worktrees ?? []).filter(t => t.repo === tree.repo && worktreeId(t) !== worktreeId(tree) && !t.prunable)
+    const choices = others.map(t => actionTargets(kind, [t], worktreeId(t))[0])
+    return sync.open(kind, choices.slice(0, 1), options, { choices })
+  }
   const openCommit = (tickedIds = null, messages = {}) => setCommitting({ id: ++commits.current, tickedIds, messages })
+  // The commit composer: commits this worktree, then (Commit & push) opens the push preview, publishing
+  // a branch with no upstream (or one whose upstream was deleted). Resolves false to keep the draft.
+  const commitHere = async (tree, { message, amend, push }) => {
+    const r = await actions.commit(tree, message, { amend })
+    if (!r?.ok) return false
+    if (push) sync.open('push', actionTargets('push', [tree], worktreeId(tree)), tree.upstream && !tree.upstreamGone ? {} : { setUpstream: true })
+    return true
+  }
   const commitList = committing
     ? commitTargets(scoped.worktrees, view.selected).map(t => (committing.tickedIds ? { ...t, ticked: !t.unavailable && committing.tickedIds.includes(t.id) } : t))
     : []
@@ -133,20 +160,23 @@ function GitWorkspace({ adapter }) {
     const shown = script ? line : `git ${line}`
     if ((RISKY.test(line) || RISKY.test(expanded))
       && !window.confirm(`Run "${shown}"${alias && !script ? ` (${alias.expansion})` : ''} in ${tree.path}? This can't be undone from NexusMD.`)) return
-    const title = shown
     const head = { text: `$ ${shown}`, tone: 'cmd' }
-    if (!(script ? adapter.shellRun : adapter.exec)) { setCmdRun({ title, status: 'failed', lines: [head, { text: "This version of NexusMD can't run git commands. Update the desktop app.", tone: 'bad' }] }); return }
-    setCmdRun({ title, status: 'running', lines: [head] })
+    // A run lands in the dock's output whole: its command line, stdout, then stderr (red when it failed;
+    // git writes progress and notes there, so a successful run's stderr is muted), then a failure's exit code.
+    const log = more => setCmdLines(l => [...l, head, ...more].slice(-MAX_LINES))
+    if (!(script ? adapter.shellRun : adapter.exec)) { log([{ text: "This version of NexusMD can't run git commands. Update the desktop app.", tone: 'bad' }]); return }
+    setCmdRunning(head)
     try {
       const repo = { name: tree.repo, path: tree.repoRoot }
       const r = script
         ? await adapter.shellRun(repo, tree.path, registered, effectiveDotfiles(getGitConfig()), argv[0], argv.slice(1))
         : await adapter.exec(repo, tree.path, registered, argv)
-      const toLines = (s, tone) => (s ? s.replace(/\n$/, '').split('\n').map(text => ({ text, tone })) : [])
-      setCmdRun({ title, status: r.code === 0 ? 'done' : 'failed', exitCode: r.code, lines: [head, ...toLines(r.stdout), ...toLines(r.stderr, r.code === 0 ? 'muted' : 'bad')] })
+      const toLines = (s, tone) => (s ? s.replace(/\r?\n$/, '').split(/\r?\n/).map(text => ({ text, tone })) : [])
+      log([...toLines(r.stdout), ...toLines(r.stderr, r.code === 0 ? 'muted' : 'bad'), ...(r.code === 0 ? [] : [{ text: `exit ${r.code}`, tone: 'bad' }])])
     } catch (e) {
-      setCmdRun({ title, status: 'failed', lines: [head, { text: ipcMessage(e), tone: 'bad' }] })
+      log([{ text: ipcMessage(e), tone: 'bad' }])
     }
+    setCmdRunning(null)
     reload([tree.repo])
   }
 
@@ -161,6 +191,22 @@ function GitWorkspace({ adapter }) {
     else if (kind === 'push') sync.open('push', actionTargets('push', [t], id), {})
     else if (kind === 'publish') sync.open('push', actionTargets('push', [t], id), { setUpstream: true })
   }
+  // j / k walk the worktrees the list shows (all that pass the filter when it's hidden), wrapping at the ends.
+  const step = by => {
+    const list = visibleTrees({ repos: config.repos, scoped, query, filter, collapsed: listHidden ? [] : view.collapsed })
+    if (!list.length) return
+    const i = list.findIndex(t => worktreeId(t) === view.selected)
+    const next = i < 0 ? (by > 0 ? 0 : list.length - 1) : (i + by + list.length) % list.length
+    selectTree({ kind: 'worktree', id: worktreeId(list[next]) })
+  }
+  Object.assign(keys, {
+    jumpToBranch: () => { if (scoped.worktrees.length) setSwitcher(true) },
+    focusFilter: () => { if (listHidden) setView({ list: 'shown' }); searchRef.current?.focus(); searchRef.current?.select() },
+    focusCommand: () => detailsRef.current?.querySelector('input[aria-label="git command"]')?.focus(),
+    next: () => step(1),
+    previous: () => step(-1),
+    newBranch: () => { if (selectedTree && !selectedTree.error) syncTree(selectedTree, 'branch', { start: 'HEAD', checkout: true }) },
+  })
   return (
     <div className="nx-shell">
     <div className="nx-gw-page">
@@ -211,26 +257,28 @@ function GitWorkspace({ adapter }) {
               selected={view.selected} onSelect={selectTree} />
           </nav>
         )}
-        <aside aria-label="Details" className="nx-gw-main">
+        <aside aria-label="Details" className="nx-gw-main" ref={detailsRef}>
           {selectedTree
             ? (
               <WorktreePanel ref={panelRef} adapter={adapter} repo={{ name: selectedTree.repo, path: selectedTree.repoRoot }} registered={registered}
                 version={snapshot?.takenAt} tree={selectedTree} selected={selectedIds} focusId={focusId}
                 onSelectionChange={ids => setSelections(s => ({ ...s, [treeKey]: ids }))}
                 onFocus={id => setFocus(f => ({ ...f, [treeKey]: id }))}
-                onAction={action => actions.openReview(action, selectedTree, selectedIds)} onCommit={() => openCommit()} onResolve={(change, take, onResolved) => actions.resolve(selectedTree, change, take, onResolved)}
+                onAction={(action, ids = selectedIds) => actions.openReview(action, selectedTree, ids)} onWrite={(action, ids) => actions.write(action, selectedTree, ids)}
+                onCommit={draft => commitHere(selectedTree, draft)} onResolve={(change, take, onResolved) => actions.resolve(selectedTree, change, take, onResolved)}
                 onHunk={(change, index, stamp, after) => actions.hunk(selectedTree, change, index, stamp, after)}
-                busy={!!actions.busy[selectedTree.path] || cmdRun?.status === 'running'} status={actions.status[selectedTree.path] ?? null}
-                split={view.split} onSplit={split => setView({ split })}
+                busy={!!actions.busy[selectedTree.path] || !!cmdRunning} status={actions.status[selectedTree.path] ?? null}
+                split={view.historySplit ?? HISTORY_SPLIT} onSplit={historySplit => setView({ historySplit })}
                 panel={view.panel} onPanel={panel => setView({ panel })}
-                onSync={(kind, options) => sync.open(kind, actionTargets(kind, [selectedTree], treeKey), options)}
-                onExec={exec} onSaved={() => reload([selectedTree.repo])} />
+                onSync={(kind, options) => syncTree(selectedTree, kind, options)}
+                onSaved={() => reload([selectedTree.repo])}
+                onOverview={() => { if (mayLeave()) setView({ selected: null }) }} onSwitch={() => setSwitcher(true)} />
             )
             : selectedBranch
             ? (
               <div style={{ padding: 16 }}>
                 <BranchHistory adapter={adapter} branch={selectedBranch} repos={config.repos} worktrees={snapshot?.worktrees ?? []}
-                  registered={registered} split={view.split} onSplit={split => setView({ split })} />
+                  registered={registered} split={view.historySplit ?? HISTORY_SPLIT} onSplit={historySplit => setView({ historySplit })} />
               </div>
             )
             : snapshot && (
@@ -238,6 +286,9 @@ function GitWorkspace({ adapter }) {
                 onOpen={openTree} onAction={overviewAction} onPullAll={pullAll}
                 onCommitAcross={() => openCommit(commitTargets(scoped.worktrees, null).filter(t => !t.unavailable).map(t => t.id))} />
             )}
+          <CommandDock adapter={adapter} tree={selectedTree ?? null} registered={registered} lines={cmdLines} running={cmdRunning}
+            activity={sync.activity} onClear={() => setCmdLines([])} onClearActivity={sync.clearActivity} onRetry={sync.retryFailed}
+            busy={!!cmdRunning || (!!selectedTree && !!actions.busy[selectedTree.path])} onRun={exec} />
         </aside>
       </div>
 
@@ -246,7 +297,6 @@ function GitWorkspace({ adapter }) {
           onOpen={t => { setSwitcher(false); selectTree({ kind: 'worktree', id: worktreeId(t) }) }} />
       )}
 
-      <ActivityDrawer sync={sync} />
       <ActionDialog sync={sync} adapter={adapter} registered={registered} />
       {menuFor && (
         <GroupMenu key={`${menuFor.name}|${menuFor.mode}`} name={menuFor.name} mode={menuFor.mode} onClose={() => setMenuFor(null)}
@@ -291,13 +341,15 @@ function GitWorkspace({ adapter }) {
           onRetry={async (failedIds, messages) => { setCommitting(null); await reload(); openCommit(failedIds, messages) }} />
       )}
     </div>
-      {cmdRun && <RunDrawer eyebrow="Git" title={cmdRun.title} status={cmdRun.status} lines={cmdRun.lines} exitCode={cmdRun.exitCode} onClose={() => setCmdRun(null)} />}
     </div>
   )
 }
 
 // A branch that isn't checked out has no changes, only history. git runs in any usable worktree
 // of its repository, or in the common dir (the bare entry) of a layout with none.
+// The History list's share of the width beside the commit detail (about 400px of detail on a wide window).
+const HISTORY_SPLIT = 0.7
+
 function BranchHistory({ adapter, branch, repos, worktrees, registered, split, onSplit }) {
   const repo = branch ? repos.find(r => r.name === branch.repo) : null
   if (!branch || !repo) return <WorktreeDetail tree={null} branch={branch} />
@@ -308,5 +360,19 @@ function BranchHistory({ adapter, branch, repos, worktrees, registered, split, o
       <HistoryPanel key={branch.id} adapter={adapter} repo={repo} cwd={cwd} registered={registered}
         target={{ ref: branch.ref, head: branch.head || null }} split={split} onSplit={onSplit} />
     </div>
+  )
+}
+
+// The command line docked at the bottom of the details, with this session's output and activity
+// floating above it. With no worktree selected only the output's chip shows, when there is any.
+function CommandDock({ adapter, tree, registered, lines, running, activity, onClear, onClearActivity, onRetry, busy, onRun }) {
+  const repo = tree ? { name: tree.repo, path: tree.repoRoot } : null
+  const loadAliases = useCommandAliases(adapter, repo, tree?.path ?? null, registered)
+  return (
+    <OutputConsole lines={lines} running={running} activity={activityRows(activity)} onClear={onClear} onClearActivity={onClearActivity} onRetry={onRetry}>
+      {tree ? chip => (
+        <GitCommandLine path={tree.path} disabled={busy} onRun={(argv, alias) => onRun(tree, argv, alias)} loadAliases={loadAliases} lead={chip} />
+      ) : null}
+    </OutputConsole>
   )
 }

@@ -44,9 +44,9 @@ describe('GitCommandLine', () => {
 
   it('runs a quick command at once, or fills one that needs a name', () => {
     const { onRun, input } = show()
-    fireEvent.click(screen.getByRole('button', { name: 'git stash' }))
+    fireEvent.click(screen.getByRole('button', { name: 'stash' }))
     expect(onRun).toHaveBeenCalledWith(['stash', 'push'])
-    fireEvent.click(screen.getByRole('button', { name: 'git switch -c' }))
+    fireEvent.click(screen.getByRole('button', { name: 'switch -c' }))
     expect(input.value).toBe('git switch -c ')
   })
 
@@ -93,7 +93,8 @@ describe('GitCommandLine aliases', () => {
     const { onRun, type } = await showAliases({ git: [], shell: [stash] })
     type('git stash pop')
     expect(onRun).toHaveBeenCalledWith(['stash', 'pop'])
-    fireEvent.click(screen.getByRole('button', { name: 'git stash' }))
+    // The quick chip runs git's stash, never the DotFiles shortcut of the same name.
+    fireEvent.click(screen.getByRole('button', { name: 'stash' }))
     expect(onRun).toHaveBeenLastCalledWith(['stash', 'push'])
   })
 

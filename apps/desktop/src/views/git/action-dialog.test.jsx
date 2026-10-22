@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, waitFor, renderHook, act } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor, within, renderHook, act } from '@testing-library/react'
 import { useGitSync } from './use-git-sync.js'
-import { ActionDialog, ActivityDrawer } from './action-dialog.jsx'
+import { ActionDialog, activityRows } from './action-dialog.jsx'
+import { OutputConsole } from './output-console.jsx'
 
 afterEach(cleanup)
 
@@ -21,7 +22,12 @@ function adapter(over = {}) {
 function Harness({ git, reload = () => {} }) {
   const sync = useGitSync({ adapter: git, registered, reload })
   globalThis.__sync = sync
-  return <><ActionDialog sync={sync} adapter={git} registered={registered} /><ActivityDrawer sync={sync} /></>
+  return (
+    <>
+      <ActionDialog sync={sync} adapter={git} registered={registered} />
+      <OutputConsole activity={activityRows(sync.activity)} onRetry={sync.retryFailed} onClearActivity={sync.clearActivity} />
+    </>
+  )
 }
 const sync = () => globalThis.__sync
 
@@ -74,6 +80,36 @@ describe('useGitSync and the action dialog', () => {
     expect(drop.disabled).toBe(true)
     fireEvent.change(screen.getByRole('textbox', { name: 'Type DROP to confirm' }), { target: { value: 'DROP' } })
     expect(drop.disabled).toBe(false)
+  })
+
+  it('reset lists what leaves the branch and warns about pushed commits and lost changes', async () => {
+    const details = { oid: 'f'.repeat(40), mode: 'hard', branch: 'main', subject: 'base', count: 2, pushed: 1, dirty: true, lost: ['f.txt', 'g.txt'], leaves: [{ oid: 'abc1234', subject: 'two' }, { oid: 'abc1233', subject: 'one' }] }
+    const git = adapter({ preview: vi.fn(async () => ({ eligible: true, details, programs: [], stamp: 's' })) })
+    render(<Harness git={git} />)
+    act(() => sync().open('reset', [target('A')], { oid: 'f'.repeat(40), mode: 'hard' }))
+    expect((await screen.findByText(/back to/)).textContent).toBe('Moves main back to fffffff “base”; 2 commits leave the branch.')
+    expect(screen.getByText('Leaves the branch')).toBeTruthy()
+    expect(screen.getByText(/1 of these commits is already pushed/)).toBeTruthy()
+    expect(screen.getByText(/these 2 files are thrown away for good/)).toBeTruthy()
+    expect(screen.getByRole('list', { name: 'Changes thrown away' }).textContent).toBe('f.txtg.txt')
+    expect(screen.getByRole('radio', { name: 'Hard' }).checked).toBe(true)
+    expect(screen.getByRole('button', { name: 'Reset (hard)' }).className).toContain('danger')
+  })
+
+  it('cherry-pick warns when the target branch changed the same files', async () => {
+    const details = { oid: 'e'.repeat(40), branch: 'feat', subject: 'fix', files: 2, overlap: ['a.js'], x: false }
+    const git = adapter({ preview: vi.fn(async () => ({ eligible: true, details, programs: [], stamp: 's' })) })
+    render(<Harness git={git} />)
+    act(() => sync().open('cherryPick', [target('A')], { oid: 'e'.repeat(40) }, { choices: [target('A')] }))
+    expect(await screen.findByText('feat has also changed a file this commit touches (a.js), so expect conflicts.')).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: 'Onto branch' }).value).toBe('C:/repos/A')
+  })
+
+  it('cherry-pick with nowhere to go says so', async () => {
+    render(<Harness git={adapter()} />)
+    act(() => sync().open('cherryPick', [], { oid: 'e'.repeat(40) }, { choices: [] }))
+    expect(await screen.findByText('No other worktree of this repository to pick onto. Add one first.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Cherry-pick' }).disabled).toBe(true)
   })
 
   it('changing an option previews again with it', async () => {
@@ -148,24 +184,33 @@ describe('useGitSync and the action dialog', () => {
     expect([...steps.querySelectorAll('.nx-todo-action')].map(a => a.dataset.action)).toEqual(['pick', 'squash', 'drop'])
   })
 
-  it('the activity drawer expands to git\'s output', async () => {
-    render(<Harness git={adapter()} />)
-    act(() => sync().open('fetch', [target('A')]))
+  it('the command dock\'s Activity tab lists each action with its verb and git\'s output, and retries failures', async () => {
+    const git = adapter({ run: vi.fn(async repo => (repo.name === 'B' ? { ok: false, detail: 'boom\nmore' } : { ok: true, detail: 'Done' })) })
+    render(<Harness git={git} />)
+    act(() => sync().open('fetch', [target('A'), target('B')]))
     fireEvent.click(await screen.findByRole('button', { name: 'Fetch' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Activity (1)' }))
-    expect(screen.getByText(/Fetch · A › main → main - Done/)).toBeTruthy()
+    await screen.findByRole('button', { name: 'Close' })
+    act(() => sync().close())
+    fireEvent.click(await screen.findByRole('button', { name: 'Show output' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity 2' }))
+    const out = screen.getByRole('region', { name: 'Command output' })
+    expect(out.textContent).toContain('Fetch · A › main → main — Done')
+    expect(out.textContent).toContain('Fetch · B › main → main — boom')
+    expect(out.textContent).toContain('more')
+    fireEvent.click(within(out).getByRole('button', { name: 'Retry failed' }))
+    await waitFor(() => expect(sync().dialog.targets.map(t => t.repo)).toEqual(['B']))
   })
 
-  it('the activity drawer closes, and comes back when another action logs', async () => {
+  it('Clear empties the activity', async () => {
     render(<Harness git={adapter()} />)
     act(() => sync().open('fetch', [target('A')]))
     fireEvent.click(await screen.findByRole('button', { name: 'Fetch' }))
-    await screen.findByRole('button', { name: 'Activity (1)' })
-    fireEvent.click(screen.getByRole('button', { name: 'Close activity' }))
-    expect(screen.queryByRole('region', { name: 'Activity' })).toBeNull()
+    await screen.findByRole('button', { name: 'Close' })
     act(() => sync().close())
-    act(() => sync().open('fetch', [target('B')]))
-    fireEvent.click(await screen.findByRole('button', { name: 'Fetch' }))
-    expect(await screen.findByRole('button', { name: 'Activity (2)' })).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: 'Show output' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(sync().activity).toEqual([])
+    expect(screen.queryByRole('button', { name: 'Show output' })).toBeNull()
   })
 })

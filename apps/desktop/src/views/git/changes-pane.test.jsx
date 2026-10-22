@@ -12,20 +12,40 @@ const NEW = c('untracked', 'new.txt')
 const tree = { path: 'C:/repos/A', changes: [A, B, NEW, LIB] }
 
 function renderPane(props = {}) {
-  const handlers = { onSelectionChange: vi.fn(), onFocus: vi.fn(), onAction: vi.fn(), onCommit: vi.fn() }
+  const handlers = { onSelectionChange: vi.fn(), onFocus: vi.fn(), onAction: vi.fn(), onWrite: vi.fn(), onCommit: vi.fn() }
   render(<ChangesPane tree={tree} selected={[]} focusId={null} {...handlers} {...props} />)
   return handlers
 }
 const button = name => screen.getByRole('button', { name })
 
 describe('ChangesPane', () => {
-  it('groups files as Staged, Changes and Untracked with coloured status codes', () => {
-    renderPane()
+  it('groups files as Staged and Not staged with coloured status letters, basename then folder', () => {
+    renderPane({ tree: { ...tree, changes: [A, B, NEW, LIB, c('unstaged', 'src/deep/file.cs', { xy: '.D' })] } })
     expect(screen.getByRole('group', { name: 'Staged (1)' })).toBeTruthy()
-    expect(within(screen.getByRole('group', { name: 'Changes (2)' })).getByText('b.txt')).toBeTruthy()
-    expect(screen.getByRole('group', { name: 'Untracked (1)' })).toBeTruthy()
+    const notStaged = within(screen.getByRole('group', { name: 'Not staged (4)' }))
+    expect(notStaged.getByText('b.txt')).toBeTruthy()
+    expect(notStaged.getByText('new.txt')).toBeTruthy()
+    expect(notStaged.getByText('submodule')).toBeTruthy()
+    expect(notStaged.getByText('file.cs').className).toBe('base')
+    expect(notStaged.getByText('src/deep').className).toBe('dir')
+    expect(notStaged.getByText('D').dataset.tone).toBe('bad')
     expect(screen.queryByRole('group', { name: /Conflicts/ })).toBeNull()
-    expect(within(screen.getByRole('group', { name: 'Changes (2)' })).getByText('submodule')).toBeTruthy()
+  })
+
+  it('stages, unstages and resolves from a row or a section, without the review', () => {
+    const h = renderPane()
+    fireEvent.click(button('Stage b.txt'))
+    expect(h.onWrite).toHaveBeenLastCalledWith('stage', [B.id])
+    fireEvent.click(button('Unstage a.txt'))
+    expect(h.onWrite).toHaveBeenLastCalledWith('unstage', [A.id])
+    // A submodule has no row action, and Stage all leaves it out.
+    expect(screen.queryByRole('button', { name: 'Stage lib' })).toBeNull()
+    fireEvent.click(button('Stage all'))
+    expect(h.onWrite).toHaveBeenLastCalledWith('stage', [B.id, NEW.id])
+    fireEvent.click(button('Unstage all'))
+    expect(h.onWrite).toHaveBeenLastCalledWith('unstage', [A.id])
+    expect(h.onFocus).not.toHaveBeenCalled()
+    expect(h.onAction).not.toHaveBeenCalled()
   })
 
   it('counts what each action would touch and runs it', () => {
@@ -36,8 +56,6 @@ describe('ChangesPane', () => {
     expect(button('Delete 1…').disabled).toBe(false)
     fireEvent.click(button('Stage 2'))
     expect(h.onAction).toHaveBeenCalledWith('stage')
-    fireEvent.click(button('Commit…'))
-    expect(h.onCommit).toHaveBeenCalled()
   })
 
   it('disables actions that do not apply, with a reason', () => {
@@ -45,7 +63,14 @@ describe('ChangesPane', () => {
     expect(button('Stage').disabled).toBe(true)
     expect(button('Stage').title).toBe('Select changes that can be staged')
     expect(button('Discard…').title).toBe('Select unstaged changes to tracked files')
-    expect(button('Commit…').disabled).toBe(false)
+  })
+
+  it('commits from the composer at the bottom of the column', async () => {
+    const h = renderPane()
+    h.onCommit.mockResolvedValue(true)
+    fireEvent.change(screen.getByLabelText('Commit summary'), { target: { value: 'Ship it' } })
+    fireEvent.click(button('Commit 1 file'))
+    expect(h.onCommit).toHaveBeenCalledWith({ message: 'Ship it', amend: false, push: false })
   })
 
   it('selects with checkboxes, shift-click ranges and group checkboxes, skipping submodules', () => {
@@ -54,8 +79,8 @@ describe('ChangesPane', () => {
     expect(h.onSelectionChange).toHaveBeenLastCalledWith([B.id])
     fireEvent.click(screen.getByLabelText('Select new.txt'), { shiftKey: true })
     expect(h.onSelectionChange).toHaveBeenLastCalledWith([A.id, B.id, LIB.id, NEW.id])
-    fireEvent.click(screen.getByLabelText('Select all Changes'))
-    expect(h.onSelectionChange).toHaveBeenLastCalledWith([B.id])
+    fireEvent.click(screen.getByLabelText('Select all Not staged'))
+    expect(h.onSelectionChange).toHaveBeenLastCalledWith([B.id, NEW.id])
     expect(screen.getByLabelText('Select lib').disabled).toBe(true)
   })
 
@@ -65,7 +90,7 @@ describe('ChangesPane', () => {
     expect(h.onFocus).toHaveBeenCalledWith(B.id)
   })
 
-  it('moves focus with the arrows, selects with Space and runs s, u and c', () => {
+  it('moves focus with the arrows, selects with Space, runs s and u, and c goes to the commit summary', () => {
     const h = renderPane({ selected: [B.id, A.id], focusId: B.id })
     const list = screen.getByLabelText('Changed files')
     fireEvent.keyDown(list, { key: 'ArrowDown' })
@@ -79,7 +104,8 @@ describe('ChangesPane', () => {
     fireEvent.keyDown(list, { key: 'u' })
     expect(h.onAction).toHaveBeenLastCalledWith('unstage')
     fireEvent.keyDown(list, { key: 'c' })
-    expect(h.onCommit).toHaveBeenCalled()
+    expect(document.activeElement).toBe(screen.getByLabelText('Commit summary'))
+    expect(h.onCommit).not.toHaveBeenCalled()
   })
 
   it('ignores keys held with Ctrl, Meta or Alt', () => {
@@ -103,15 +129,16 @@ describe('ChangesPane', () => {
   it('locks the toolbar while a write runs and shows the last result', () => {
     renderPane({ selected: [B.id], busy: true, status: { ok: false, text: 'fatal: nope' } })
     expect(button('Stage 1').disabled).toBe(true)
-    expect(button('Commit…').disabled).toBe(true)
-    expect(screen.getByText('Working…')).toBeTruthy()
+    expect(button('Commit 1 file').disabled).toBe(true)
+    expect(within(screen.getByRole('toolbar')).getByText('Working…')).toBeTruthy()
     expect(screen.getByRole('alert').textContent).toBe('fatal: nope')
   })
 
   it('says when there are no changes', () => {
     renderPane({ tree: { path: 'C:/repos/A', changes: [] } })
-    expect(screen.getByText('No changes.')).toBeTruthy()
-    expect(button('Commit…').disabled).toBe(true)
+    expect(screen.getByText('Working tree clean')).toBeTruthy()
+    expect(button('Commit').disabled).toBe(true)
+    expect(screen.getByText('Nothing to commit')).toBeTruthy()
   })
 })
 
@@ -122,6 +149,16 @@ describe('ChangesPane conflicts', () => {
   const ctree = { path: 'C:/repos/A', branch: 'feat', operationInfo: op, changes: [A, B, U, D] }
 
   afterEach(() => vi.restoreAllMocks())
+
+  it('notes how to finish, opens a conflict from its Resolve button, and pauses the composer', () => {
+    const h = renderPane({ tree: { ...ctree, operation: 'Rebase in progress' }, onResolve: vi.fn() })
+    const conflicts = within(screen.getByRole('group', { name: 'Conflicts (2)' }))
+    expect(conflicts.getByText('Resolve each file, then continue the rebase.')).toBeTruthy()
+    fireEvent.click(conflicts.getByRole('button', { name: 'Resolve d.txt' }))
+    expect(h.onFocus).toHaveBeenCalledWith(D.id)
+    expect(screen.queryByLabelText('Commit summary')).toBeNull()
+    expect(screen.getByRole('note').textContent).toBe('Committing is paused during the rebase — resolved files go into the replayed commit.')
+  })
 
   it('lists conflicts first with whole-file choices', () => {
     renderPane({ tree: ctree, onResolve: vi.fn() })

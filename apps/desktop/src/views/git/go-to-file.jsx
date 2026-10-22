@@ -1,8 +1,8 @@
 import React from 'react'
 import { PlModal } from '@nexusmd/ui'
-import { filterFiles } from '@nexusmd/core'
+import { filterFilesByWords } from '@nexusmd/core'
 
-/** Ctrl+P: type to narrow the worktree's files, ↑/↓ to move, Enter to open. */
+/** Ctrl+P: type to narrow the worktree's files by word starts, ↑/↓ to move, Enter to open. */
 export function GoToFile({ adapter, repo, worktreePath, registered, onOpen, onClose }) {
   const [list, setList] = React.useState(null)
   const [query, setQuery] = React.useState('')
@@ -22,7 +22,7 @@ export function GoToFile({ adapter, repo, worktreePath, registered, onOpen, onCl
     )
     return () => { live = false }
   }, [repoPath, repoName, worktreePath])
-  const results = React.useMemo(() => (list ? filterFiles(list.files, query) : []), [list, query])
+  const results = React.useMemo(() => (list ? filterFilesByWords(list.files, query) : []), [list, query])
   const current = Math.min(index, Math.max(0, results.length - 1))
   const listbox = React.useRef(null)
   React.useEffect(() => { listbox.current?.children[current]?.scrollIntoView?.({ block: 'nearest' }) }, [current, results])

@@ -137,6 +137,15 @@ describe('git workspace writes against real repositories', () => {
     expect(await call('git:commit', r, r.path, REG(), 'Again', await commitStamp(r, r.path))).toEqual({ ok: false, detail: 'No staged changes.' })
   }, 60000)
 
+  it('amends the last commit, rewording it with nothing staged', async () => {
+    const r = repo('Work')
+    const count = () => run(r.path, 'rev-list', '--count', 'HEAD')
+    const before = count()
+    expect(await call('git:commit', r, r.path, REG(), 'Change line 5, reworded', await commitStamp(r, r.path), { amend: true })).toMatchObject({ ok: true })
+    expect(run(r.path, 'log', '-1', '--format=%s')).toBe('Change line 5, reworded\n')
+    expect(count()).toBe(before)
+  }, 60000)
+
   it('stages and unstages on a branch with no commits', async () => {
     const r = repo('Fresh')
     write(r, 'a.txt', 'first\n')

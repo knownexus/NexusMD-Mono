@@ -277,5 +277,5 @@ select.nx-input { padding-right: 4px; }
 .nx-code-line { display: block; padding-right: 8px; }
 .nx-code-no { display: inline-block; width: 4ch; margin-right: 10px; padding-right: 6px; text-align: right; color: var(--text-subtle); border-right: 1px solid var(--border); user-select: none; }
 .nx-code-marked { background: color-mix(in srgb, var(--warning) 14%, transparent); }
-.nx-resolve-side[data-side="left"] { border-top: 3px solid var(--info); }
-.nx-resolve-side[data-side="right"] { border-top: 3px solid var(--violet); }
+.nx-resolve-side[data-role="theirs"] { border-top: 3px solid var(--info); }
+.nx-resolve-side[data-role="mine"] { border-top: 3px solid var(--violet); }

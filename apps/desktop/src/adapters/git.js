@@ -20,7 +20,7 @@ export const gitAdapter = {
   deleteUntracked(repo, worktreePath, registered, paths, expected) { return api().deleteUntracked(repo, worktreePath, registered, paths, expected) },
   stageHunk(repo, worktreePath, registered, paths, index, expected) { return api().stageHunk(repo, worktreePath, registered, paths, index, expected) },
   unstageHunk(repo, worktreePath, registered, paths, index, expected) { return api().unstageHunk(repo, worktreePath, registered, paths, index, expected) },
-  commit(repo, worktreePath, registered, message, expected) { return api().commit(repo, worktreePath, registered, message, expected) },
+  commit(repo, worktreePath, registered, message, expected, options) { return api().commit(repo, worktreePath, registered, message, expected, options) },
   refs(repo, worktreePath, registered) { return api().refs(repo, worktreePath, registered) },
   log(repo, worktreePath, registered, query) { return api().log(repo, worktreePath, registered, query) },
   commitDetails(repo, worktreePath, registered, oid) { return api().commitDetails(repo, worktreePath, registered, oid) },

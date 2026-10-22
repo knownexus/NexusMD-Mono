@@ -1,13 +1,22 @@
 import React from 'react'
-import { PlModal, Icon } from '@nexusmd/ui'
+import { PlModal } from '@nexusmd/ui'
 import { parseRefList, defaultBase, checkBranchName, worktreeDefaultPath } from '@nexusmd/core'
 
-const VERB = {
+// Each action's verb: dialog titles and buttons, and the command dock's Activity list.
+export const VERB = {
   fetch: 'Fetch', pull: 'Pull', push: 'Push', branch: 'Create branch', checkout: 'Check out', worktreeAdd: 'Add worktree',
   worktreeRemove: 'Remove worktree', stashPush: 'Stash', stashApply: 'Apply', stashPop: 'Pop', stashDrop: 'Drop',
-  revert: 'Revert', continue: 'Continue', skip: 'Skip', abort: 'Abort', rebase: 'Rebase', rebaseInteractive: 'Rebase',
+  revert: 'Revert', cherryPick: 'Cherry-pick', reset: 'Reset', continue: 'Continue', skip: 'Skip', abort: 'Abort', rebase: 'Rebase', rebaseInteractive: 'Rebase',
 }
-const TYPED = { stashDrop: 'DROP' }
+// The word to type before running; reset asks only for a hard reset.
+const TYPED = { stashDrop: () => 'DROP', reset: o => (o?.mode === 'hard' ? 'RESET' : null) }
+const RESET_MODES = [
+  ['soft', 'Soft', 'Keeps the changes from those commits, staged.'],
+  ['mixed', 'Mixed', 'Keeps the changes from those commits in your files, unstaged.'],
+  ['hard', 'Hard', "Throws away those commits' changes and any uncommitted changes to tracked files."],
+]
+const primaryLabel = (kind, options) => (kind === 'reset' ? `Reset (${options?.mode ?? 'mixed'})` : VERB[kind])
+const shortOid = oid => String(oid ?? '').slice(0, 7)
 const input = { padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-2)' }
 const shortRef = r => r.replace(/^refs\/(heads|remotes|tags)\//, '')
 
@@ -39,7 +48,17 @@ function Todo({ text }) {
 }
 
 // What will happen, per kind, from the preview's details.
-function Details({ kind, details }) {
+function Details({ kind, details, options }) {
+  // Abort's copy is the renderer's own (the branch being rebased isn't checked out, so main can't name it).
+  if (kind === 'abort') {
+    const what = options?.operationName ?? 'operation'
+    return (
+      <div style={{ fontSize: 12, display: 'grid', gap: 4 }}>
+        <div>{'Puts '}{options?.branchLabel ? <Ref>{options.branchLabel}</Ref> : 'this worktree'}{` back exactly as it was before the ${what} started.`}</div>
+        <div role="note" style={{ color: 'var(--danger)' }}>{`Conflicts you've resolved so far are lost, along with the rest of the ${what}'s progress.`}</div>
+      </div>
+    )
+  }
   if (!details) return null
   if (kind === 'pull') {
     return (
@@ -74,6 +93,43 @@ function Details({ kind, details }) {
     )
   }
   if (kind === 'rebaseInteractive') return <Todo text={details.todo} />
+  if (kind === 'reset') {
+    const n = details.count
+    return (
+      <div style={{ fontSize: 12, display: 'grid', gap: 4 }}>
+        <div>{'Moves '}<Ref>{details.branch}</Ref>{' back to '}<span className="nx-hash">{shortOid(details.oid)}</span>{` “${details.subject}”; ${n} commit${n === 1 ? '' : 's'} leave${n === 1 ? 's' : ''} the branch.`}</div>
+        {details.pushed > 0 && (
+          <div role="note" style={{ color: 'var(--danger)' }}>
+            {`${details.pushed} of these commits ${details.pushed === 1 ? 'is' : 'are'} already pushed. NexusMD's Push won't overwrite the remote - you'd have to force-push yourself.`}
+          </div>
+        )}
+        {details.mode === 'hard' && (details.lost?.length
+          ? (
+            <div role="note" style={{ color: 'var(--danger)' }}>
+              {`Uncommitted changes (staged and unstaged) to ${details.lost.length === 1 ? 'this file are' : `these ${details.lost.length} files are`} thrown away for good:`}
+              <ul aria-label="Changes thrown away" style={{ margin: 0, paddingLeft: 18, maxHeight: 140, overflow: 'auto' }}>
+                {details.lost.map(f => <li key={f}>{f}</li>)}
+              </ul>
+            </div>
+          )
+          : <div style={{ color: 'var(--text-muted)' }}>No uncommitted changes to tracked files; untracked files are left alone.</div>)}
+        <Commits list={details.leaves} label="Leaves the branch" />
+      </div>
+    )
+  }
+  if (kind === 'cherryPick') {
+    const o = details.overlap ?? []
+    return (
+      <div style={{ fontSize: 12, display: 'grid', gap: 4 }}>
+        <div>{'Copies '}<span className="nx-hash">{shortOid(details.oid)}</span>{` “${details.subject}” onto `}<Ref>{details.branch}</Ref>{'.'}</div>
+        {o.length > 0 && (
+          <div role="note" style={{ color: 'var(--warning)' }}>
+            {`${details.branch} has also changed ${o.length === 1 ? 'a file' : `${o.length} files`} this commit touches (${o.slice(0, 5).join(', ')}${o.length > 5 ? ', …' : ''}), so expect conflicts.`}
+          </div>
+        )}
+      </div>
+    )
+  }
   const text = details.note ?? (details.subject ? `“${details.subject}”` : null)
   return text ? <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{text}</div> : null
 }
@@ -169,6 +225,34 @@ function Options({ kind, options, onOptions, details, refInfo, target }) {
   if (kind === 'rebase') return <RebaseOptions options={options} onOptions={onOptions} details={details} refInfo={refInfo} box={box} />
   if (kind === 'stashPush') return <div style={{ display: 'grid', gap: 6 }}>{text('message', 'Message')}{box('includeUntracked', 'Include untracked files')}</div>
   if (kind === 'stashApply' || kind === 'stashPop') return box('index', 'Restore staged changes too')
+  if (kind === 'reset') {
+    const mode = options.mode ?? 'mixed'
+    return (
+      <div role="radiogroup" aria-label="Reset mode" style={{ display: 'grid', gap: 4 }}>
+        {RESET_MODES.map(([m, label, help]) => (
+          <label key={m} data-mode={m} style={{ display: 'flex', gap: 6, alignItems: 'baseline', color: m === 'hard' && mode === 'hard' ? 'var(--danger)' : undefined }}>
+            <input type="radio" name="reset-mode" aria-label={label} checked={mode === m} onChange={() => commit({ mode: m })} />
+            <span><strong>{label}</strong>{` - ${help}`}</span>
+          </label>
+        ))}
+      </div>
+    )
+  }
+  if (kind === 'cherryPick') {
+    return (
+      <div style={{ display: 'grid', gap: 6 }}>
+        {box('x', 'Note where it came from (-x)')}
+        {options.parents > 1 && (
+          <label style={{ display: 'grid', gap: 2 }}>
+            <span style={{ fontSize: 12 }}>Compare with parent</span>
+            <select aria-label="Compare with parent" style={input} value={String(options.parent ?? 1)} onChange={e => commit({ parent: Number(e.target.value) })}>
+              {Array.from({ length: options.parents }, (_, i) => <option key={i} value={String(i + 1)}>{i === 0 ? '1 (main line)' : String(i + 1)}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+    )
+  }
   if (kind === 'revert' && options.parents > 1) {
     // main wants the parent as a number (git's -m).
     return (
@@ -237,6 +321,22 @@ function RebaseOptions({ options, onOptions, details, refInfo, box }) {
   )
 }
 
+// Cherry-pick's "Onto branch": the other worktrees of the commit's repository.
+function OntoTarget({ dialog, onRetarget }) {
+  const choices = dialog.choices ?? []
+  if (!choices.length) return <div role="note" style={{ color: 'var(--text-muted)', fontSize: 12 }}>No other worktree of this repository to pick onto. Add one first.</div>
+  const current = dialog.targets[0]?.id ?? ''
+  return (
+    <label style={{ display: 'grid', gap: 2 }}>
+      <span style={{ fontSize: 12 }}>Onto branch</span>
+      <select aria-label="Onto branch" style={input} value={current} disabled={dialog.running}
+        onChange={e => onRetarget(choices.find(c => c.id === e.target.value))}>
+        {choices.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+      </select>
+    </label>
+  )
+}
+
 /** The stage 4 preview: options, what will happen per target, what runs, then per-target results. */
 export function ActionDialog({ sync, adapter, registered }) {
   const d = sync.dialog
@@ -246,7 +346,7 @@ export function ActionDialog({ sync, adapter, registered }) {
   const wantsRefs = !!d && ['branch', 'checkout', 'worktreeAdd', 'rebase'].includes(d.kind)
   const refInfo = useRefs(adapter, first, registered, wantsRefs)
   if (!d) return null
-  const word = TYPED[d.kind]
+  const word = TYPED[d.kind]?.(d.options) ?? null
   const rows = d.model?.rows ?? []
   const runnable = rows.filter(r => r.eligible)
   const done = !!d.results
@@ -256,10 +356,11 @@ export function ActionDialog({ sync, adapter, registered }) {
   const setOptions = o => sync.setOptions(o)
   const footer = done
     ? <>{failed && <button className="btn sm" onClick={() => sync.retryFailed(d.runId)}>Retry failed</button>}<button className="btn sm" onClick={sync.close}>Close</button></>
-    : <><button className="btn sm ghost" disabled={d.running} onClick={sync.close}>Cancel</button><button className={`btn sm${word || d.kind === 'abort' ? ' danger' : ''}`} disabled={!canRun} onClick={sync.confirm}>{d.running ? 'Running…' : VERB[d.kind]}</button></>
+    : <><button className="btn sm ghost" disabled={d.running} onClick={sync.close}>Cancel</button><button className={`btn sm${word || d.kind === 'abort' ? ' danger' : ''}`} disabled={!canRun} onClick={sync.confirm}>{d.running ? 'Running…' : primaryLabel(d.kind, d.options)}</button></>
   return (
     <PlModal open wide onClose={sync.close} title={d.model?.title ?? VERB[d.kind]} icon="git-branch" footer={footer} closeOnBackdrop={!d.running}>
       <div style={{ display: 'grid', gap: 10 }}>
+        {d.kind === 'cherryPick' && <OntoTarget dialog={d} onRetarget={t => sync.retarget?.(t)} />}
         <Options kind={d.kind} options={d.options} onOptions={setOptions} details={rows[0]?.details} refInfo={refInfo} target={first} />
         {d.loading && <div style={{ color: 'var(--text-muted)' }}>Checking the current state…</div>}
         <ul aria-label="Targets" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 }}>
@@ -273,7 +374,7 @@ export function ActionDialog({ sync, adapter, registered }) {
                     : !r.eligible && <span style={{ color: 'var(--text-muted)' }}>skipped</span>}
                 </div>
                 {!r.eligible && r.reason && <div role="note" style={{ color: 'var(--text-muted)', fontSize: 12 }}>{r.reason}</div>}
-                {r.eligible && !result && <Details kind={d.kind} details={r.details} />}
+                {r.eligible && !result && <Details kind={d.kind} details={r.details} options={d.options} />}
                 {r.eligible && r.programs.length > 0 && !result && (
                   <div aria-label={`Runs: ${r.programs.join(', ')}`} style={{ fontSize: 12, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>Runs:{r.programs.map(p => <Ref key={p}>{p}</Ref>)}</div>
                 )}
@@ -294,41 +395,5 @@ export function ActionDialog({ sync, adapter, registered }) {
   )
 }
 
-/** The session's actions, newest first, with git's output on expand. Closing hides it until the next entry. */
-export function ActivityDrawer({ sync }) {
-  const [open, setOpen] = React.useState(false)
-  // The newest entry when it was closed; the log is newest first.
-  const [closedAt, setClosedAt] = React.useState(null)
-  const newest = sync.activity[0]
-  if (!newest || newest === closedAt) return null
-  const runs = [...new Set(sync.activity.map(e => e.runId))]
-  const copy = () => navigator.clipboard?.writeText(sync.activity.map(e => `${new Date(e.at).toLocaleTimeString()} ${e.ok ? '✓' : '✗'} ${e.kind} ${e.label}\n${e.detail}`).join('\n\n')).catch(() => {})
-  return (
-    <section aria-label="Activity" className="card" style={{ padding: 8, flex: 'none' }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button className="btn sm ghost" aria-expanded={open} onClick={() => setOpen(o => !o)}>{`Activity (${sync.activity.length})`}</button>
-        {open && <button className="btn sm ghost" onClick={copy}>Copy</button>}
-        <button className="nx-icon-btn" style={{ marginLeft: 'auto' }} aria-label="Close activity" title="Close" onClick={() => { setOpen(false); setClosedAt(newest) }}>
-          <Icon name="x" size={14} />
-        </button>
-      </div>
-      {open && runs.map(runId => {
-        const entries = sync.activity.filter(e => e.runId === runId)
-        return (
-          <div key={runId} style={{ display: 'grid', gap: 2, padding: '4px 0', borderTop: '1px solid var(--border)' }}>
-            {entries.map((e, i) => (
-              <details key={i}>
-                <summary style={{ fontSize: 12 }}>
-                  <span style={{ color: e.ok ? 'var(--success)' : 'var(--danger)' }}>{e.ok ? '✓' : '✗'}</span>
-                  {` ${new Date(e.at).toLocaleTimeString()} ${VERB[e.kind] ?? e.kind} · ${e.label} - ${e.summary}`}
-                </summary>
-                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12 }}>{e.detail}</pre>
-              </details>
-            ))}
-            {entries.some(e => !e.ok) && <button className="btn sm ghost" style={{ justifySelf: 'start' }} onClick={() => sync.retryFailed(runId)}>Retry failed</button>}
-          </div>
-        )
-      })}
-    </section>
-  )
-}
+/** sync.activity for the command dock's Activity tab: each label led by its action's verb. */
+export const activityRows = activity => activity.map(e => ({ ...e, label: `${VERB[e.kind] ?? e.kind} · ${e.label}` }))

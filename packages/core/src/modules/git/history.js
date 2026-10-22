@@ -137,6 +137,24 @@ export function parseNameStatus(raw) {
   return out.filter(e => typeof e.path === 'string')
 }
 
+/**
+ * Parses `diff-tree -z --numstat` into { path → { added, removed } } (null counts for a binary file).
+ * A rename's record has an empty path field followed by the old and new paths; it is keyed by the new one.
+ */
+export function parseNumstat(raw) {
+  const f = String(raw ?? '').split('\0')
+  const out = new Map()
+  for (let i = 0; i < f.length; i++) {
+    const m = /^(-|\d+)\t(-|\d+)\t(.*)$/s.exec(f[i])
+    if (!m) continue
+    const count = v => (v === '-' ? null : Number(v))
+    let p = m[3]
+    if (!p) { p = f[i + 2]; i += 2 }
+    if (typeof p === 'string') out.set(p, { added: count(m[1]), removed: count(m[2]) })
+  }
+  return out
+}
+
 // An octopus has no single "merged in" parent, so only its first parent gets a name.
 export function parentLabel(details, index) {
   const oid = details?.parents?.[index]

@@ -38,29 +38,46 @@ async function typeCommand(git, line) {
 }
 
 describe('the git command line', () => {
-  it('runs in the selected worktree and shows the output in the drawer', async () => {
+  it('runs in the selected worktree and shows the output in the dock', async () => {
     const git = adapter()
     await typeCommand(git, 'status')
     await waitFor(() => expect(git.exec).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, ['status']))
-    const drawer = await screen.findByRole('dialog', { name: 'git status' })
-    await waitFor(() => expect(within(drawer).getByText('nothing to commit')).toBeTruthy())
-    expect(within(drawer).getByText('Finished')).toBeTruthy()
-    expect(within(drawer).getByText('$ git status')).toBeTruthy()
+    const out = await screen.findByRole('region', { name: 'Command output' })
+    await waitFor(() => expect(within(out).getByText('nothing to commit')).toBeTruthy())
+    expect(within(out).getByText('$ git status')).toBeTruthy()
+    expect(within(out).queryByText('Working…')).toBeNull()
+  })
+
+  it('sits at the bottom of the details and keeps every run of the session', async () => {
+    const git = adapter()
+    await typeCommand(git, 'status')
+    const details = screen.getByRole('complementary', { name: 'Details' })
+    expect(details.lastElementChild.contains(screen.getByLabelText('git command'))).toBe(true)
+    await screen.findByText('nothing to commit')
+    const input = screen.getByLabelText('git command')
+    await waitFor(() => expect(input.disabled).toBe(false))
+    fireEvent.change(input, { target: { value: 'log -1' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(git.exec).toHaveBeenCalledTimes(2))
+    const out = screen.getByRole('region', { name: 'Command output' })
+    await waitFor(() => expect(within(out).getAllByText('nothing to commit')).toHaveLength(2))
+    expect(within(out).getByText('$ git status')).toBeTruthy()
+    expect(within(out).getByText('$ git log -1')).toBeTruthy()
   })
 
   it('shows a failing command with its exit code and stderr', async () => {
     const git = adapter({ exec: vi.fn(async () => ({ code: 1, stdout: '', stderr: "git: 'nope' is not a git command." })) })
     await typeCommand(git, 'nope')
-    const drawer = await screen.findByRole('dialog', { name: 'git nope' })
-    await waitFor(() => expect(within(drawer).getByText('Failed (exit 1)')).toBeTruthy())
-    expect(within(drawer).getByText("git: 'nope' is not a git command.")).toBeTruthy()
+    const out = await screen.findByRole('region', { name: 'Command output' })
+    await waitFor(() => expect(within(out).getByText('exit 1')).toBeTruthy())
+    expect(within(out).getByText("git: 'nope' is not a git command.").closest('.l-bad')).toBeTruthy()
   })
 
   it('shows a refused command without Electron\'s remote-method prefix', async () => {
     const git = adapter({ exec: vi.fn(async () => { throw new Error("Error invoking remote method 'git:exec': Error: git -C is not allowed here") }) })
     await typeCommand(git, '-C x status')
-    const drawer = await screen.findByRole('dialog', { name: 'git -C x status' })
-    await waitFor(() => expect(within(drawer).getByText('git -C is not allowed here')).toBeTruthy())
+    const out = await screen.findByRole('region', { name: 'Command output' })
+    await waitFor(() => expect(within(out).getByText('git -C is not allowed here')).toBeTruthy())
   })
 
   it('opens the preview dialog for a bare fetch, pull or push instead of running it', async () => {
@@ -93,8 +110,8 @@ describe('the git command line', () => {
   it('says so when the desktop app has no command line channel', async () => {
     const git = adapter({ exec: undefined })
     await typeCommand(git, 'status')
-    const drawer = await screen.findByRole('dialog', { name: 'git status' })
-    expect(within(drawer).getByText(/can't run git commands/)).toBeTruthy()
+    const out = await screen.findByRole('region', { name: 'Command output' })
+    expect(within(out).getByText(/can't run git commands/)).toBeTruthy()
   })
 })
 
@@ -151,8 +168,9 @@ ${PROFILE}function global:g! { gstat }
     fireEvent.change(input, { target: { value: 'g!' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     await waitFor(() => expect(git.shellRun).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, 'C:/repos/DotFiles', 'g!', []))
-    const drawer = await screen.findByRole('dialog', { name: 'g!' })
-    await waitFor(() => expect(within(drawer).getByText('branch: main a1b2c3d')).toBeTruthy())
+    const out = await screen.findByRole('region', { name: 'Command output' })
+    await waitFor(() => expect(within(out).getByText('branch: main a1b2c3d')).toBeTruthy())
+    expect(within(out).getByText('$ g!')).toBeTruthy()
     expect(git.exec).not.toHaveBeenCalled()
   })
 

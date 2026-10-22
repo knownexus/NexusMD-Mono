@@ -117,7 +117,7 @@ describe('file actions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stage 1' }))
     state.porcelain = '# branch.oid a\0# branch.head main\0'
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-    await waitFor(() => expect(screen.getByText('No changes.')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Working tree clean')).toBeTruthy())
     expect(within(screen.getByRole('dialog')).getByText('f.txt', { exact: false })).toBeTruthy()
   })
 
@@ -197,35 +197,100 @@ describe('file actions', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('git add timed out after 30s'))
   })
 
-  it('saves the divider position once, when the drag ends', async () => {
-    setupView()
+  it('saves the History divider position once, when the drag ends', async () => {
+    setupView({ refs: vi.fn(() => new Promise(() => {})), log: vi.fn(() => new Promise(() => {})) })
     await openWorktree()
-    const divider = screen.getByRole('separator', { name: 'Resize changes and diff' })
-    divider.parentElement.getBoundingClientRect = () => ({ top: 0, height: 100 })
+    // Changes puts the file column beside the diff; only History has a resizable split (list | commit).
+    expect(screen.queryByRole('separator')).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }))
+    const divider = await screen.findByRole('separator', { name: 'Resize history and commit' })
+    divider.parentElement.getBoundingClientRect = () => ({ left: 0, width: 100 })
     const setItem = vi.spyOn(Storage.prototype, 'setItem')
     fireEvent.pointerDown(divider)
     // jsdom has no PointerEvent, so clientY is set on a plain event.
-    for (const y of [30, 40, 60]) act(() => { window.dispatchEvent(Object.assign(new Event('pointermove'), { clientY: y })) })
+    for (const x of [30, 40, 60]) act(() => { window.dispatchEvent(Object.assign(new Event('pointermove'), { clientX: x })) })
     expect(setItem).not.toHaveBeenCalled()
     expect(divider.getAttribute('aria-valuenow')).toBe('60')
     fireEvent.pointerUp(window)
     expect(setItem).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(setItem.mock.calls[0][1]).view.split).toBe(0.6)
+    expect(JSON.parse(setItem.mock.calls[0][1]).view.historySplit).toBe(0.6)
     setItem.mockRestore()
   })
 
-  it('opens the commit dialog from the toolbar with the selected worktree ticked', async () => {
-    const STAGED = '# branch.oid a\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +0 -0\x001 M. N... 100644 100644 100644 a b f.txt\0'
-    const { state, a } = setupView({ commit: vi.fn(async () => ({ ok: true, detail: 'ok' })) })
+  const STAGED = '# branch.oid a\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +0 -0\x001 M. N... 100644 100644 100644 a b f.txt\0'
+
+  it('commits this worktree from the composer, with a summary and description', async () => {
+    const { state, a } = setupView({ commit: vi.fn(async () => ({ ok: true, detail: '[main abc1234] Ship it' })) })
     state.porcelain = STAGED
     await openWorktree()
-    fireEvent.click(screen.getByRole('button', { name: 'Commit…' }))
+    const summary = screen.getByLabelText('Commit summary')
+    fireEvent.focus(summary)
+    fireEvent.change(summary, { target: { value: 'Ship it' } })
+    fireEvent.change(screen.getByLabelText('Commit description'), { target: { value: 'Body' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Commit 1 file' }))
+    await waitFor(() => expect(a.commit).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, 'Ship it\n\nBody', 'stamp-1'))
+    expect(a.stamp).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, { kind: 'commit' })
+    await waitFor(() => expect(screen.getByLabelText('Commit summary').value).toBe(''))
+    expect(screen.getByRole('status').textContent).toBe('[main abc1234] Ship it')
+  })
+
+  it('amends with nothing staged', async () => {
+    const { a } = setupView({ commit: vi.fn(async () => ({ ok: true, detail: 'ok' })) })
+    await openWorktree()
+    fireEvent.change(screen.getByLabelText('Commit summary'), { target: { value: 'Reworded' } })
+    fireEvent.click(screen.getByLabelText('Amend last commit'))
+    fireEvent.click(screen.getByRole('button', { name: 'Amend commit' }))
+    await waitFor(() => expect(a.commit).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, 'Reworded', 'stamp-1', { amend: true }))
+  })
+
+  it('keeps the draft when the commit fails', async () => {
+    const { state, a } = setupView({ commit: vi.fn(async () => ({ ok: false, detail: 'hook failed' })) })
+    state.porcelain = STAGED
+    await openWorktree()
+    fireEvent.change(screen.getByLabelText('Commit summary'), { target: { value: 'Ship it' } })
+    fireEvent.keyDown(screen.getByLabelText('Commit summary'), { key: 'Enter', ctrlKey: true })
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('hook failed'))
+    expect(a.commit).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('Commit summary').value).toBe('Ship it')
+  })
+
+  it('Commit & push commits, then opens the push preview for this worktree', async () => {
+    const { state, a } = setupView({
+      commit: vi.fn(async () => ({ ok: true, detail: 'ok' })),
+      preview: vi.fn(async () => ({ kind: 'push', stamp: 'p1', ok: true, summary: 'Push 1 commit', commits: [] })),
+    })
+    state.porcelain = STAGED
+    await openWorktree()
+    fireEvent.change(screen.getByLabelText('Commit summary'), { target: { value: 'Ship it' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Commit & push' }))
+    await waitFor(() => expect(a.preview).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, 'push', {}))
+    expect(a.commit).toHaveBeenCalledTimes(1)
+  })
+
+  it('stages a file straight from its row, and a whole section with Stage all', async () => {
+    const { a } = setupView()
+    await openWorktree()
+    fireEvent.click(screen.getByRole('button', { name: 'Stage f.txt' }))
+    await waitFor(() => expect(a.stage).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, ['f.txt'], 'stamp-1'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Stage all' }).disabled).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Stage all' }))
+    await waitFor(() => expect(a.stage).toHaveBeenLastCalledWith(REPO, 'C:/repos/A', REG, ['f.txt', 'new.txt'], 'stamp-1'))
+  })
+
+  it('stages the focused file from the diff header, and reviews only it for Discard…, whatever is selected', async () => {
+    const { a } = setupView()
+    await openWorktree()
+    fireEvent.click(screen.getByLabelText('Select new.txt'))
+    fireEvent.click(screen.getByText('f.txt'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Stage file' }))
+    await waitFor(() => expect(a.stage).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, ['f.txt'], 'stamp-1'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Discard file…' }).disabled).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Discard file…' }))
     const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByLabelText('A › checkout → main').checked).toBe(true)
-    fireEvent.change(within(dialog).getByLabelText('Commit message'), { target: { value: 'Ship it' } })
-    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Commit' }).disabled).toBe(false))
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Commit' }))
-    await waitFor(() => expect(a.commit).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, 'Ship it', 'stamp-1'))
+    expect(within(dialog).getByText('Discard changes in 1 file')).toBeTruthy()
+    await waitFor(() => expect(a.stamp).toHaveBeenLastCalledWith(REPO, 'C:/repos/A', REG, { kind: 'files', paths: ['f.txt'] }))
   })
 })
 
@@ -321,9 +386,9 @@ describe('editing files', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     fireEvent.click(changes().getByText('new.txt'))
     expect(confirm).toHaveBeenCalledWith('Discard unsaved changes to f.txt?')
-    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }))
     expect(confirm).toHaveBeenCalledTimes(2)
-    expect(screen.getByRole('button', { name: /^Changes/ }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('tab', { name: /^Changes/ }).getAttribute('aria-selected')).toBe('true')
     expect((await editorFor('f.txt')).state.doc.toString()).toBe(`mine ${NINE_PLUS}`)
     confirm.mockReturnValue(true)
     fireEvent.click(changes().getByText('new.txt'))
@@ -354,8 +419,8 @@ describe('editing files', () => {
     }
     // Changes → History → Changes.
     await editF()
-    fireEvent.click(screen.getByRole('button', { name: 'History' }))
-    fireEvent.click(screen.getByRole('button', { name: /^Changes/ }))
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }))
+    fireEvent.click(screen.getByRole('tab', { name: /^Changes/ }))
     await diffShown()
     // A conflicted file has no Edit; the next file opens in Diff.
     fireEvent.click(pills().getByRole('button', { name: 'Edit' }))
@@ -369,7 +434,7 @@ describe('editing files', () => {
     await editorFor('f.txt')
     const region = screen.getByRole('region', { name: 'A' })
     fireEvent.click(within(region).getByRole('button', { name: /^C:\/repos\/A-feat →/ }))
-    await screen.findByText(/^C:\/repos\/A-feat · /)
+    await screen.findByText('C:/repos/A-feat', { selector: '.nx-gw-path' })
     fireEvent.click(within(region).getByRole('button', { name: /checkout → main/ }))
     fireEvent.click(await changes().findByText('f.txt'))
     await diffShown()
@@ -517,7 +582,7 @@ describe('unsaved edits kept as drafts', () => {
     expect(screen.getByText('● Unsaved')).toBeTruthy()
     confirm.mockReturnValue(true)
     fireEvent.click(within(region).getByRole('button', { name: /^C:\/repos\/A-feat →/ }))
-    await screen.findByText(/^C:\/repos\/A-feat · /)
+    await screen.findByText('C:/repos/A-feat', { selector: '.nx-gw-path' })
     fireEvent.click(within(region).getByRole('button', { name: /checkout → main/ }))
     fireEvent.click(await (await changesShown()).findByText('f.txt'))
     fireEvent.click(pills().getByRole('button', { name: 'Edit' }))

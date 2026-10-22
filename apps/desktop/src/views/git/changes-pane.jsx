@@ -1,7 +1,7 @@
 import React from 'react'
 import { statusCode, groupChanges, actionsFor, toggleSelection, rangeSelection, isSubmodule, conflictLabels, conflictKind, checkoutName } from '@nexusmd/core'
+import { CommitComposer } from './commit-composer.jsx'
 
-const AREA_COLOUR = { staged: 'var(--success)', unstaged: 'var(--warning)', untracked: 'var(--warning)', conflict: 'var(--danger)' }
 const VERB = { stage: 'Stage', unstage: 'Unstage', discard: 'Discard', delete: 'Delete' }
 const DESTRUCTIVE = new Set(['discard', 'delete'])
 // Only a conflict both sides changed gets whole-file takes on its row; one where a side deleted or added the file
@@ -13,60 +13,127 @@ const NONE = {
   discard: 'Select unstaged changes to tracked files',
   delete: 'Select untracked files',
 }
+const NOUN = { rebase: 'rebase', merge: 'merge', revert: 'revert', 'cherry-pick': 'cherry-pick' }
 
-function ChangeGroup({ group, selected, focusId, onFocus, onSelect, onSelectionChange, drafts, labels, busy, onResolve }) {
-  const ids = group.changes.filter(c => !isSubmodule(c)).map(c => c.id)
+/** One status letter per row: U conflict, ? untracked, otherwise the change's own letter (M, A, D, R…). */
+function letter(c) {
+  if (c.area === 'conflict') return 'U'
+  if (c.area === 'untracked') return '?'
+  return statusCode(c).trim() || 'M'
+}
+const TONE = { U: 'bad', D: 'bad', A: 'ok', '?': 'ok' }
+
+const split = p => {
+  const i = p.lastIndexOf('/')
+  return i < 0 ? { name: p, dir: '' } : { name: p.slice(i + 1), dir: p.slice(0, i) }
+}
+
+/** Conflicts, Staged and Not staged (unstaged and untracked), in display order; empty ones are left out. */
+function sections(changes, operationKind) {
+  const groups = groupChanges(changes)
+  const of = area => groups.find(g => g.area === area)?.changes ?? []
+  const op = NOUN[operationKind]
+  return [
+    { id: 'conflict', title: 'Conflicts', tone: 'bad', note: op ? `Resolve each file, then continue the ${op}.` : 'Resolve each file.', changes: of('conflict') },
+    { id: 'staged', title: 'Staged', tone: 'ok', bulk: 'unstage', changes: of('staged') },
+    { id: 'unstaged', title: 'Not staged', tone: 'warn', bulk: 'stage', changes: [...of('unstaged'), ...of('untracked')] },
+  ].filter(s => s.changes.length)
+}
+
+function ChangeRow({ c, selected, focused, onFocus, onSelect, draft, labels, busy, onResolve, onWrite }) {
+  const { name, dir } = split(c.path)
+  const sub = isSubmodule(c)
+  const l = letter(c)
+  const takes = c.area === 'conflict' && labels && onResolve && ROW_TAKES.has(conflictKind(c.xy))
+  const act = c.area === 'conflict' ? { label: 'Resolve', title: `Resolve ${c.path}`, run: () => onFocus(c.id) }
+    : sub ? null
+    : c.area === 'staged' ? { label: 'Unstage', title: `Unstage ${c.path}`, run: () => onWrite('unstage', [c.id]) }
+    : { label: 'Stage', title: `Stage ${c.path}`, run: () => onWrite('stage', [c.id]) }
+  return (
+    <div className="nx-gw-file" aria-current={focused ? 'true' : undefined} title={c.path}
+      onClick={e => (e.shiftKey ? onSelect(c.id, true) : onFocus(c.id))}>
+      <input type="checkbox" aria-label={`Select ${c.path}`} checked={selected} disabled={sub}
+        onClick={e => e.stopPropagation()} onChange={e => onSelect(c.id, e.nativeEvent.shiftKey)} />
+      <span className="nx-gw-file-code" data-tone={TONE[l] ?? 'warn'} title={statusCode(c)}>{l}</span>
+      <span className="nx-gw-file-name">
+        <span className="base">{name}</span>
+        {dir && <span className="dir">{dir}</span>}
+        {draft && <span role="img" aria-label="Unsaved edits" title="Unsaved edits" className="nx-gw-t" data-tone="warn">●</span>}
+        {c.originalPath && <span className="dir">{`← ${c.originalPath}`}</span>}
+        {sub && <span className="dir">submodule</span>}
+      </span>
+      {act
+        ? (
+          <button className="btn sm nx-gw-file-act" disabled={busy && c.area !== 'conflict'} aria-label={act.title} title={act.title}
+            onClick={e => { e.stopPropagation(); act.run() }}>
+            {act.label}
+          </button>
+        )
+        : <span />}
+      {takes && (
+        <span className="nx-gw-file-takes" onClick={e => e.stopPropagation()}>
+          {['left', 'right'].map(side => (
+            <button key={side} className="btn sm ghost" disabled={busy} aria-label={`${labels[side].take} for ${c.path}`}
+              onClick={() => { if (window.confirm(`Use ${labels[side].version} for the whole of ${c.path}?`)) onResolve(c, side) }}>
+              {labels[side].take}
+            </button>
+          ))}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function Section({ section, selected, focusId, onFocus, onSelect, onSelectionChange, drafts, labels, busy, onResolve, onWrite }) {
+  const { title, changes } = section
+  const ids = changes.filter(c => !isSubmodule(c)).map(c => c.id)
   const chosen = ids.filter(id => selected.includes(id)).length
   const box = React.useRef(null)
   React.useEffect(() => { if (box.current) box.current.indeterminate = chosen > 0 && chosen < ids.length }, [chosen, ids.length])
   const toggleAll = () => onSelectionChange(chosen === ids.length
     ? selected.filter(id => !ids.includes(id))
     : [...selected, ...ids.filter(id => !selected.includes(id))])
-  const title = `${group.title} (${group.changes.length})`
+  const bulk = section.bulk && ids.length > 0
   return (
-    <div role="group" aria-label={title}>
-      <label style={{ display: 'flex', gap: 6, fontWeight: 600, padding: '4px 0' }}>
-        <input ref={box} type="checkbox" aria-label={`Select all ${group.title}`} checked={ids.length > 0 && chosen === ids.length}
+    <div role="group" aria-label={`${title} (${changes.length})`} className="nx-gw-sec">
+      <div className="nx-gw-sec-head">
+        <input ref={box} type="checkbox" aria-label={`Select all ${title}`} checked={ids.length > 0 && chosen === ids.length}
           disabled={!ids.length} onChange={toggleAll} />
-        {title}
-      </label>
-      {group.changes.map(c => (
-        <div key={c.id} aria-current={c.id === focusId ? 'true' : undefined}
-          onClick={e => (e.shiftKey ? onSelect(c.id, true) : onFocus(c.id))}
-          style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '2px 4px', cursor: 'pointer', background: c.id === focusId ? 'var(--accent-soft)' : undefined }}>
-          <input type="checkbox" aria-label={`Select ${c.path}`} checked={selected.includes(c.id)} disabled={isSubmodule(c)}
-            onClick={e => e.stopPropagation()} onChange={e => onSelect(c.id, e.nativeEvent.shiftKey)} />
-          <span style={{ color: AREA_COLOUR[c.area], whiteSpace: 'pre' }}>{statusCode(c)}</span>
-          <span>{c.path}</span>
-          {drafts.includes(c.path) && <span role="img" aria-label="Unsaved edits" title="Unsaved edits" style={{ color: 'var(--warning)' }}>●</span>}
-          {c.originalPath && <span style={{ color: 'var(--text-muted)' }}>{`← ${c.originalPath}`}</span>}
-          {isSubmodule(c) && <span style={{ color: 'var(--text-muted)' }}>submodule</span>}
-          {c.area === 'conflict' && labels && onResolve && ROW_TAKES.has(conflictKind(c.xy)) && (
-            <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-              {['left', 'right'].map(side => (
-                <button key={side} className="btn sm ghost" disabled={busy} aria-label={`${labels[side].take} for ${c.path}`}
-                  onClick={() => { if (window.confirm(`Use ${labels[side].version} for the whole of ${c.path}?`)) onResolve(c, side) }}>
-                  {labels[side].take}
-                </button>
-              ))}
-            </span>
-          )}
-        </div>
+        <span className="nx-gw-dot" data-tone={section.tone} />
+        <span className="nx-gw-sec-title">{title}</span>
+        <span className="nx-gw-sec-n">{changes.length}</span>
+        {bulk && (
+          <button className="nx-gw-sec-btn" disabled={busy} onClick={() => onWrite(section.bulk, ids)}>
+            {section.bulk === 'stage' ? 'Stage all' : 'Unstage all'}
+          </button>
+        )}
+      </div>
+      {section.note && <div className="nx-gw-sec-note">{section.note}</div>}
+      {changes.map(c => (
+        <ChangeRow key={c.id} c={c} selected={selected.includes(c.id)} focused={c.id === focusId} onFocus={onFocus} onSelect={onSelect}
+          draft={drafts.includes(c.path)} labels={labels} busy={busy} onResolve={onResolve} onWrite={onWrite} />
       ))}
     </div>
   )
 }
 
-/** A worktree's changed files with selection, the file-action toolbar and the last result. */
-export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, onResolve = null, busy = false, status = null, drafts = [] }) {
-  const groups = groupChanges(tree.changes)
+/**
+ * A worktree's changed files (the left column of the Changes tab): the selection toolbar, sections with
+ * per-row Stage / Unstage / Resolve, the last result, and the commit composer stuck to the bottom.
+ * `onAction(action)` reviews the selection; `onWrite(action, ids)` stages or unstages straight away;
+ * `onCommit({ message, amend, push })` commits this worktree.
+ */
+export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite = () => {}, onCommit, onResolve = null, busy = false, status = null, drafts = [] }) {
+  const list = sections(tree.changes, tree.operationInfo?.kind)
   const labels = conflictLabels(tree.operationInfo, checkoutName(tree))
-  const ordered = groups.flatMap(g => g.changes)
+  const ordered = list.flatMap(s => s.changes)
   const actions = actionsFor(tree.changes, selected)
-  const canCommit = tree.changes.some(c => c.area === 'staged')
+  const root = React.useRef(null)
   const select = (id, shift) => onSelectionChange(shift && focusId ? rangeSelection(ordered, selected, focusId, id) : toggleSelection(selected, id))
   const run = action => { if (!busy && actions[action].length) onAction(action) }
-  const commit = () => { if (!busy && canCommit) onCommit() }
+  const write = (action, ids) => { if (!busy && ids.length) onWrite(action, ids) }
+  // c goes to the commit summary (absent during an operation, when committing is paused).
+  const compose = () => root.current?.querySelector('input[aria-label="Commit summary"]')?.focus()
   const onKeyDown = e => {
     // Ctrl+C is copy, not Commit; and keys on a row's own checkbox belong to that checkbox.
     if (e.ctrlKey || e.metaKey || e.altKey) return
@@ -81,40 +148,41 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
       select(focusId, e.shiftKey)
     } else if (e.key === 's') run('stage')
     else if (e.key === 'u') run('unstage')
-    else if (e.key === 'c') commit()
+    else if (e.key === 'c') { e.preventDefault(); compose() }
   }
   return (
-    <section aria-label="Changes" style={{ display: 'grid', gridTemplateRows: 'auto auto 1fr', gap: 8, minHeight: 0 }}>
-      <div role="toolbar" aria-label="File actions" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+    <section ref={root} aria-label="Changes" className="nx-gw-files">
+      <div role="toolbar" aria-label="File actions" className="nx-gw-files-tools">
         {Object.keys(VERB).map(a => {
           const n = actions[a].length
           return (
-            <button key={a} className={`btn sm${DESTRUCTIVE.has(a) ? ' danger' : ''}`} disabled={busy || !n} title={n ? undefined : NONE[a]}
+            <button key={a} className={`btn sm ghost${DESTRUCTIVE.has(a) ? ' danger' : ''}`} disabled={busy || !n} title={n ? undefined : NONE[a]}
               onClick={() => run(a)}>
               {`${VERB[a]}${n ? ` ${n}` : ''}${DESTRUCTIVE.has(a) ? '…' : ''}`}
             </button>
           )
         })}
-        <button className="btn sm" disabled={busy || !canCommit} title={canCommit ? undefined : 'Stage changes to commit'} onClick={commit}>Commit…</button>
-        {busy && <span aria-live="polite" style={{ color: 'var(--text-muted)' }}>Working…</span>}
+        {busy && <span aria-live="polite" className="nx-gw-t" data-tone="muted">Working…</span>}
       </div>
-      <div>
-        {status && (
-          <div role={status.ok ? 'status' : 'alert'} style={{ color: status.ok ? 'var(--text-muted)' : 'var(--danger)', whiteSpace: 'pre-wrap' }}>
-            {status.text}
-          </div>
-        )}
+      {status && (
+        <div role={status.ok ? 'status' : 'alert'} className="nx-gw-files-status" data-tone={status.ok ? undefined : 'bad'}>
+          {status.text}
+        </div>
+      )}
+      <div tabIndex={0} aria-label="Changed files" onKeyDown={onKeyDown} className="nx-gw-files-list">
+        {!list.length
+          ? (
+            <div className="nx-gw-files-empty">
+              <strong>Working tree clean</strong>
+              <span>Nothing to stage or commit on this branch.</span>
+            </div>
+          )
+          : list.map(s => (
+            <Section key={s.id} section={s} selected={selected} focusId={focusId} onFocus={onFocus} onSelect={select} onSelectionChange={onSelectionChange}
+              drafts={drafts} labels={labels} busy={busy} onResolve={onResolve} onWrite={write} />
+          ))}
       </div>
-      {!groups.length
-        ? <div style={{ color: 'var(--text-muted)' }}>No changes.</div>
-        : (
-          <div tabIndex={0} aria-label="Changed files" onKeyDown={onKeyDown} style={{ overflow: 'auto', minHeight: 0, fontFamily: 'var(--font-mono, monospace)' }}>
-            {groups.map(g => (
-              <ChangeGroup key={g.area} group={g} selected={selected} focusId={focusId} onFocus={onFocus} onSelect={select} onSelectionChange={onSelectionChange} drafts={drafts}
-                labels={labels} busy={busy} onResolve={onResolve} />
-            ))}
-          </div>
-        )}
+      <CommitComposer tree={tree} busy={busy} onCommit={onCommit} />
     </section>
   )
 }

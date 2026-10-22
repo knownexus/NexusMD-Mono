@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import {
   parseRefs, parseLog, graphCells, parseSearch, historyQuery, HISTORY_STEP, HISTORY_MAX, parseRefList, defaultBase,
-  parseCommitDetails, parseNameStatus, parentLabel,
+  parseCommitDetails, parseNameStatus, parseNumstat, parentLabel,
 } from './history.js'
 
 const fixture = name => fs.readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'latin1')
@@ -183,6 +183,18 @@ describe('parseNameStatus', () => {
       { status: 'M', score: null, oldPath: null, path: 'm' },
     ])
     expect(parseNameStatus('')).toEqual([])
+  })
+})
+
+describe('parseNumstat', () => {
+  it('reads counts by path, renames by their new path, binaries as null', () => {
+    const m = parseNumstat('3\t1\ta b.txt\0' + '0\t0\t\0old\0new name\0' + '-\t-\timg.png\0')
+    expect([...m]).toEqual([
+      ['a b.txt', { added: 3, removed: 1 }],
+      ['new name', { added: 0, removed: 0 }],
+      ['img.png', { added: null, removed: null }],
+    ])
+    expect(parseNumstat(null).size).toBe(0)
   })
 })
 
