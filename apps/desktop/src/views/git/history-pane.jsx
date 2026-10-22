@@ -41,7 +41,7 @@ function Graph({ graph, tone = null }) {
 
 function RefChip({ r }) {
   return (
-    <span data-kind={r.kind} style={{ ...CHIP[r.kind], borderRadius: 4, padding: '0 4px', fontSize: 11, whiteSpace: 'nowrap' }}>
+    <span data-kind={r.kind} title={r.name} style={{ ...CHIP[r.kind], borderRadius: 4, padding: '0 4px', fontSize: 11, whiteSpace: 'nowrap' }}>
       {r.kind === 'tag' ? `tag: ${r.name}` : r.name}
     </span>
   )

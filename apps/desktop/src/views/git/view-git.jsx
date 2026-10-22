@@ -268,7 +268,7 @@ function GitWorkspace({ adapter }) {
                 onCommit={draft => commitHere(selectedTree, draft)} onResolve={(change, take, onResolved) => actions.resolve(selectedTree, change, take, onResolved)}
                 onHunk={(change, index, stamp, after) => actions.hunk(selectedTree, change, index, stamp, after)}
                 busy={!!actions.busy[selectedTree.path] || !!cmdRunning} status={actions.status[selectedTree.path] ?? null}
-                split={view.split} onSplit={split => setView({ split })}
+                split={view.historySplit ?? HISTORY_SPLIT} onSplit={historySplit => setView({ historySplit })}
                 panel={view.panel} onPanel={panel => setView({ panel })}
                 onSync={(kind, options) => syncTree(selectedTree, kind, options)}
                 onSaved={() => reload([selectedTree.repo])}
@@ -278,7 +278,7 @@ function GitWorkspace({ adapter }) {
             ? (
               <div style={{ padding: 16 }}>
                 <BranchHistory adapter={adapter} branch={selectedBranch} repos={config.repos} worktrees={snapshot?.worktrees ?? []}
-                  registered={registered} split={view.split} onSplit={split => setView({ split })} />
+                  registered={registered} split={view.historySplit ?? HISTORY_SPLIT} onSplit={historySplit => setView({ historySplit })} />
               </div>
             )
             : snapshot && (
@@ -347,6 +347,9 @@ function GitWorkspace({ adapter }) {
 
 // A branch that isn't checked out has no changes, only history. git runs in any usable worktree
 // of its repository, or in the common dir (the bare entry) of a layout with none.
+// The History list's share of the width beside the commit detail (about 400px of detail on a wide window).
+const HISTORY_SPLIT = 0.7
+
 function BranchHistory({ adapter, branch, repos, worktrees, registered, split, onSplit }) {
   const repo = branch ? repos.find(r => r.name === branch.repo) : null
   if (!branch || !repo) return <WorktreeDetail tree={null} branch={branch} />

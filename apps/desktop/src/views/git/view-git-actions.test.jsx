@@ -213,7 +213,7 @@ describe('file actions', () => {
     expect(divider.getAttribute('aria-valuenow')).toBe('60')
     fireEvent.pointerUp(window)
     expect(setItem).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(setItem.mock.calls[0][1]).view.split).toBe(0.6)
+    expect(JSON.parse(setItem.mock.calls[0][1]).view.historySplit).toBe(0.6)
     setItem.mockRestore()
   })
 
