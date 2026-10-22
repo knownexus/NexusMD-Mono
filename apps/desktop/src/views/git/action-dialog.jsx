@@ -102,7 +102,16 @@ function Details({ kind, details, options }) {
             {`${details.pushed} of these commits ${details.pushed === 1 ? 'is' : 'are'} already pushed. NexusMD's Push won't overwrite the remote - you'd have to force-push yourself.`}
           </div>
         )}
-        {details.mode === 'hard' && details.dirty && <div role="note" style={{ color: 'var(--danger)' }}>Your uncommitted changes to tracked files are thrown away too.</div>}
+        {details.mode === 'hard' && (details.lost?.length
+          ? (
+            <div role="note" style={{ color: 'var(--danger)' }}>
+              {`Uncommitted changes (staged and unstaged) to ${details.lost.length === 1 ? 'this file are' : `these ${details.lost.length} files are`} thrown away for good:`}
+              <ul aria-label="Changes thrown away" style={{ margin: 0, paddingLeft: 18, maxHeight: 140, overflow: 'auto' }}>
+                {details.lost.map(f => <li key={f}>{f}</li>)}
+              </ul>
+            </div>
+          )
+          : <div style={{ color: 'var(--text-muted)' }}>No uncommitted changes to tracked files; untracked files are left alone.</div>)}
         <Commits list={details.leaves} label="Leaves the branch" />
       </div>
     )

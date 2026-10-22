@@ -421,14 +421,25 @@ function registerActions(handle, ctx) {
         if ((await read(wt, ['merge-base', '--is-ancestor', o.oid, 'HEAD'])).code !== 0) throw new Error(`Reset only moves ${branch} back to one of its own commits.`);
         return { oid: o.oid, mode, branch };
       },
-      extra: async (wt, o) => `${o.oid}\0${o.mode}`,
+      // A hard reset throws away tracked content, so its stamp covers that content itself: status alone
+      // doesn't change when an already-modified file is edited again.
+      extra: async (wt, o) => {
+        if (o.mode !== 'hard') return `${o.oid}\0${o.mode}`;
+        const d = await read(wt, ['diff', 'HEAD', '--binary', '--no-ext-diff', '--no-textconv', '--no-color']);
+        if (d.code !== 0) throw new Error(d.stderr || 'git diff failed');
+        return `${o.oid}\0${o.mode}\0${sha(d.stdout)}`;
+      },
       preview: async (wt, o, state) => {
+        // The tracked files whose uncommitted changes (staged or not) a hard reset throws away.
+        const lost = o.mode === 'hard' && state.tracked
+          ? (out(await read(wt, ['diff', 'HEAD', '--name-only', '-z', '--no-ext-diff'])) ?? '').split('\0').filter(Boolean)
+          : [];
         const leaves = await subjects(wt, [`${o.oid}..HEAD`]);
         const count = Number(out(await read(wt, ['rev-list', '--count', `${o.oid}..HEAD`])) || 0);
         const unpushed = Number(out(await read(wt, ['rev-list', '--count', `${o.oid}..HEAD`, '--not', '--remotes'])) || 0);
         return {
           ...o, subject: (await subjects(wt, ['--max-count=1', o.oid], 1))[0]?.subject ?? '',
-          leaves, count, pushed: count - unpushed, dirty: state.tracked,
+          leaves, count, pushed: count - unpushed, dirty: state.tracked, lost,
         };
       },
       // Not through w(): reset is on the forbidden list for every other kind, so this argv has its own check.

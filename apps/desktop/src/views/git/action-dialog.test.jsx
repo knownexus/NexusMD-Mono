@@ -77,14 +77,15 @@ describe('useGitSync and the action dialog', () => {
   })
 
   it('reset lists what leaves the branch and warns about pushed commits and lost changes', async () => {
-    const details = { oid: 'f'.repeat(40), mode: 'hard', branch: 'main', subject: 'base', count: 2, pushed: 1, dirty: true, leaves: [{ oid: 'abc1234', subject: 'two' }, { oid: 'abc1233', subject: 'one' }] }
+    const details = { oid: 'f'.repeat(40), mode: 'hard', branch: 'main', subject: 'base', count: 2, pushed: 1, dirty: true, lost: ['f.txt', 'g.txt'], leaves: [{ oid: 'abc1234', subject: 'two' }, { oid: 'abc1233', subject: 'one' }] }
     const git = adapter({ preview: vi.fn(async () => ({ eligible: true, details, programs: [], stamp: 's' })) })
     render(<Harness git={git} />)
     act(() => sync().open('reset', [target('A')], { oid: 'f'.repeat(40), mode: 'hard' }))
     expect((await screen.findByText(/back to/)).textContent).toBe('Moves main back to fffffff “base”; 2 commits leave the branch.')
     expect(screen.getByText('Leaves the branch')).toBeTruthy()
     expect(screen.getByText(/1 of these commits is already pushed/)).toBeTruthy()
-    expect(screen.getByText('Your uncommitted changes to tracked files are thrown away too.')).toBeTruthy()
+    expect(screen.getByText(/these 2 files are thrown away for good/)).toBeTruthy()
+    expect(screen.getByRole('list', { name: 'Changes thrown away' }).textContent).toBe('f.txtg.txt')
     expect(screen.getByRole('radio', { name: 'Hard' }).checked).toBe(true)
     expect(screen.getByRole('button', { name: 'Reset (hard)' }).className).toContain('danger')
   })
