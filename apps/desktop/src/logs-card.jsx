@@ -1,4 +1,5 @@
 import React from 'react'
+import { logsAdapter } from './adapters/logs.js'
 import { VsCard, VsRow, Icon } from '@nexusmd/ui'
 import { parseLog, filterEntries, LOG_LEVELS, NO_AREA } from './log-parse.js'
 
@@ -32,7 +33,7 @@ export default function LogsCard() {
   const loadLogs = React.useCallback(async () => {
     setLoading(true)
     try {
-      const list = await window.electronAPI?.logs?.list?.()
+      const list = await logsAdapter.list()
       setLogs(list || [])
       if (list?.length > 0 && !selectedDate) setSelectedDate(list[0].date)
     } catch (err) {
@@ -46,7 +47,7 @@ export default function LogsCard() {
     if (!date) return
     setContentLoading(true)
     try {
-      const text = await window.electronAPI?.logs?.read?.(date)
+      const text = await logsAdapter.read(date)
       setContent(text || '')
     } catch (err) {
       console.error('[LogsCard] Failed to read log:', err)
@@ -101,7 +102,7 @@ export default function LogsCard() {
   const deleteLog = async () => {
     if (!selectedDate || !window.confirm(`Delete log for ${selectedDate}?`)) return
     try {
-      const success = await window.electronAPI?.logs?.delete?.(selectedDate)
+      const success = await logsAdapter.delete(selectedDate)
       if (success) { setContent(''); setSelectedDate(null); loadLogs() }
     } catch (err) {
       console.error('[LogsCard] Failed to delete log:', err)

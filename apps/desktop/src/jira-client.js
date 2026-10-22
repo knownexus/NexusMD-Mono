@@ -1,6 +1,7 @@
 // apps/desktop/src/jira-client.js — desktop binding for Jira Cloud: profile-scoped
 // config, an http adapter over the main-process proxy (Jira has no CORS), and the
 // Jira half of the routed workItemSource. Logic lives in @nexusmd/core.
+import { jiraAdapter } from './adapters/jira.js'
 import {
   makeJiraConfig, makeJiraClient, loadCachedJiraData, jiraKeyFromId,
   loadJiraDetail, loadJiraComments, addJiraComment, loadJiraRawFields,
@@ -23,7 +24,7 @@ export const { getJiraConfig, saveJiraConfig, isJiraConfigured, isJiraActive } =
 
 export function createJiraHttpAdapter({
   getConfig = getJiraConfig,
-  invoke = (req) => window.electronAPI.jira.request(req),
+  invoke = (req) => jiraAdapter.request(req),
 } = {}) {
   return {
     async fetch(path, options = {}) {

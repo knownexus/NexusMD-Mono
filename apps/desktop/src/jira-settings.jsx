@@ -1,4 +1,5 @@
 // apps/desktop/src/jira-settings.jsx — Jira Cloud connection + work-item display settings.
+import { linkAdapter } from './adapters/link.js'
 import React from 'react'
 import { CardFrame, Icon } from '@nexusmd/ui'
 import { makeJiraClient, fetchJiraBoards, JIRA_CACHE_KEY } from '@nexusmd/core'
@@ -103,7 +104,7 @@ export function JiraConnectionCard({ onRefreshData }) {
           <input aria-label="API token" type="password" value={token} onChange={e => setToken(e.target.value)}
             placeholder="Leave blank to keep existing token" style={settInputStyle} />
           <a href={TOKEN_URL} target="_blank" rel="noopener" style={{ fontSize: 11.5 }}
-            onClick={e => { if (window.electronAPI?.openLink) { e.preventDefault(); window.electronAPI.openLink(TOKEN_URL) } }}>
+            onClick={e => { if (linkAdapter.canOpenLink()) { e.preventDefault(); linkAdapter.openLink(TOKEN_URL) } }}>
             Create an API token
           </a>
         </SettField>

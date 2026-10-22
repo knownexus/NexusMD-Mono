@@ -1,6 +1,7 @@
 // apps/desktop/src/jira-create-form.jsx — generic Jira issue form driven by the
 // normalised create-meta from @nexusmd/core (core fields first, then required,
 // then optional extras under "More fields").
+import { linkAdapter } from './adapters/link.js'
 import React from 'react'
 import { mdToHtml } from '@nexusmd/ui'
 import { layoutCreateFields } from '@nexusmd/core'
@@ -179,7 +180,7 @@ export function JiraCreateForm({ source, projectKeys = [], people = [], site = '
         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
           This issue type needs {layout.unsupportedRequired.map(f => f.name).join(', ')}, which NexusMD can&apos;t set yet.{' '}
           <a href={`${site}/browse/${encodeURIComponent(projectKey)}`} target="_blank" rel="noopener"
-            onClick={e => { if (window.electronAPI?.openLink) { e.preventDefault(); window.electronAPI.openLink(`${site}/browse/${encodeURIComponent(projectKey)}`) } }}>
+            onClick={e => { if (linkAdapter.canOpenLink()) { e.preventDefault(); linkAdapter.openLink(`${site}/browse/${encodeURIComponent(projectKey)}`) } }}>
             Open project in Jira
           </a>
         </div>

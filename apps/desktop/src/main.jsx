@@ -31,6 +31,8 @@ import {
   clipboardAdapter, shareAdapter, notificationAdapter,
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
+import { linkAdapter } from './adapters/link.js'
+import { windowControlsAdapter } from './adapters/windowControls.js'
 import { getJiraConfig, isJiraActive, createJiraHttpAdapter, createJiraWorkItemSource } from './jira-client.js'
 import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
 import { desktopBuildSource } from './desktop-build-source.js'
@@ -176,9 +178,7 @@ async function refreshAllData() {
 // F5 (main process menu accelerator) sends 'refresh-data' instead of reloading
 // the window, so it triggers the same data refresh as the in-app Refresh
 // button rather than resetting navigation state back to the dashboard.
-if (window.electronAPI?.onRefreshData) {
-  window.electronAPI.onRefreshData(() => { refreshAllData() })
-}
+windowControlsAdapter.onRefreshData(() => { refreshAllData() })
 
 // Direct-to-ADO work item source for the desktop (no ASP.NET proxy available).
 // The logic lives in core; this supplies the desktop's connection, process cache and create flow.
@@ -314,7 +314,7 @@ function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
           )}
           {kind === 'person' && d && <PersonActions dev={d} />}
           {adoUrl && (
-            <button className="btn sm ghost" onClick={() => window.electronAPI.openLink(adoUrl)}>
+            <button className="btn sm ghost" onClick={() => linkAdapter.openLink(adoUrl)}>
               <Icon name="link" size={12}/> Open in {kind === 'wi' ? (d?.source === 'jira' ? 'Jira' : 'ADO') : kind === 'build' ? 'ADO' : 'browser'}
             </button>
           )}
@@ -350,7 +350,7 @@ function ViewBody({
   const { activeProfile } = useProfile() || {}
   // manual profiles don't require ADO config
   const configured = activeProfile?.type === 'manual' || (() => { try { return isAdoConfigured() || isJiraActive() } catch { return false } })()
-  const openExternal = (item) => { if (item?.url) window.electronAPI.openLink(item.url) }
+  const openExternal = (item) => { if (item?.url) linkAdapter.openLink(item.url) }
 
   const [needsMeCriteria, setNeedsMeCriteria] = usePersistedState('nexusmd.pr.needsMeCriteria', { votes: [0], includeDrafts: false })
   const [acknowledgedBuilds, setAcknowledgedBuilds] = usePersistedState('nexusmd.builds.acknowledged', [])
@@ -458,7 +458,7 @@ function ViewBody({
     case 'prs':
       return (
         <PRView prs={data.PRS || []} onOpen={onOpenPR}
-          onOpenLink={(u) => window.electronAPI.openLink(u)}
+          onOpenLink={(u) => linkAdapter.openLink(u)}
           needsMeCriteria={needsMeCriteria} setNeedsMeCriteria={setNeedsMeCriteria}
           newItemIds={newItemIds.pr} />
       )
@@ -561,21 +561,20 @@ function ViewBody({
 const NAV_HIDDEN = new Set([])
 
 function WindowControls() {
-  if (window.electronAPI?.platform === 'darwin') return null;
-  const win = window.electronAPI?.window;
+  if (windowControlsAdapter.platform() === 'darwin') return null;
   return (
     <div style={{ display: 'flex', alignSelf: 'stretch', marginLeft: 'auto', marginTop: -10, marginBottom: -10 }}>
-      <button className="wc-btn" onClick={() => win?.minimize()} title="Minimize">
+      <button className="wc-btn" onClick={() => windowControlsAdapter.minimize()} title="Minimize">
         <svg width="10" height="1" viewBox="0 0 10 1" aria-hidden="true">
           <rect width="10" height="1" fill="currentColor" />
         </svg>
       </button>
-      <button className="wc-btn" onClick={() => win?.maximize()} title="Maximize">
+      <button className="wc-btn" onClick={() => windowControlsAdapter.maximize()} title="Maximize">
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
           <path d="M0 0h10v10H0V0zm1 1v8h8V1H1z" fill="currentColor" />
         </svg>
       </button>
-      <button className="wc-btn wc-close" onClick={() => win?.close()} title="Close">
+      <button className="wc-btn wc-close" onClick={() => windowControlsAdapter.close()} title="Close">
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
           <line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" strokeWidth="1.2" />
           <line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" strokeWidth="1.2" />
@@ -988,7 +987,7 @@ function App() {
               <Icon name="alert" size={14} style={{ color: 'var(--warning)', flexShrink: 0 }}/>
               <span style={{ flex: 1, color: 'var(--warning-text)' }}>GitHub token expired — re-connect to restore PR and build data.</span>
               <button className="btn sm ghost" onClick={() => {
-                window.electronAPI?.openExternal?.('nexusmd://github-oauth')
+                if (linkAdapter.canOpenExternal()) linkAdapter.openExternal('nexusmd://github-oauth')
                 setGithubExpired(false)
               }}>Re-connect</button>
               <button className="btn sm ghost" onClick={() => setGithubExpired(false)}>

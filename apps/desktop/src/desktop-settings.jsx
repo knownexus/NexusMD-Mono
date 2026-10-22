@@ -7,6 +7,7 @@ import {
   CardsAndTablesSettings, toast, WI_TYPE_STATES_CACHE_KEY,
 } from '@nexusmd/ui'
 import { ADO_CACHE_KEY, JIRA_CACHE_KEY, buildConfig, resolveConnectionParams, buildConnectionString, graphJSON } from '@nexusmd/core'
+import { appPrefsAdapter } from './adapters/appPrefs.js'
 import { useProfile } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { NavOrderEditor } from './nav-order-editor.jsx'
@@ -561,14 +562,15 @@ export function DesktopAppCard() {
   })
 
   React.useEffect(() => {
-    window.electronAPI?.getLoginItemEnabled?.().then(setLoginItem).catch(() => {})
-    window.electronAPI?.getCloseToTray?.().then(setCloseToTray).catch(() => {})
+    if (!appPrefsAdapter.isAvailable()) return
+    Promise.resolve(appPrefsAdapter.getLoginItemEnabled()).then(v => { if (typeof v === 'boolean') setLoginItem(v) }).catch(() => {})
+    Promise.resolve(appPrefsAdapter.getCloseToTray()).then(v => { if (typeof v === 'boolean') setCloseToTray(v) }).catch(() => {})
   }, [])
 
-  if (!window.electronAPI) return null
+  if (!appPrefsAdapter.isAvailable()) return null
 
   const pickFolder = async () => {
-    const picked = await window.electronAPI.pickOutputFolder?.()
+    const picked = await appPrefsAdapter.pickOutputFolder()
     if (!picked) return
     setOutputPath(picked)
     try { localStorage.setItem('nexusmd.outputPath', picked) } catch {}
@@ -584,13 +586,13 @@ export function DesktopAppCard() {
       <VsRow title="Start NexusMD when I sign in to Windows" desc="Launch NexusMD automatically when you sign in">
         <PlToggle checked={loginItem} onChange={v => {
           setLoginItem(v)
-          window.electronAPI.setLoginItemEnabled?.(v)?.catch(() => {})
+          Promise.resolve(appPrefsAdapter.setLoginItemEnabled(v)).catch(() => {})
         }} />
       </VsRow>
       <VsRow title="Close to tray" desc="Minimise to the system tray instead of quitting when the window is closed">
         <PlToggle checked={closeToTray} onChange={v => {
           setCloseToTray(v)
-          window.electronAPI.setCloseToTray?.(v)?.catch(() => {})
+          Promise.resolve(appPrefsAdapter.setCloseToTray(v)).catch(() => {})
         }} />
       </VsRow>
       <VsRow title="Output folder" desc={outputPath || 'Default download location'}>

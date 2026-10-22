@@ -6,6 +6,9 @@ import { getProfileKey } from './profile-keys.js'
 import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/core'
 import { toast } from '@nexusmd/ui'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
+import { linkAdapter } from './adapters/link.js'
+import { oauthAdapter } from './adapters/oauth.js'
+import { deepLinkAdapter } from './adapters/deepLink.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'
 
@@ -46,7 +49,7 @@ function makeBinding(key) {
         }
         const { url } = await res.json()
         console.info(`[cloud-auth] Redirecting to ${key} OAuth provider`)
-        await window.electronAPI.openExternal(url)
+        await linkAdapter.openExternal(url)
       } catch (err) { 
         console.error(`[cloud-auth] Failed to initiate ${key} connection:`, err.message)
         toast?.('Sign-in failed. Please try again.', 'error') 
@@ -108,7 +111,7 @@ async function redeem(url) {
 }
 
 export function registerCloudDeepLink() {
-  if (window.electronAPI?.onDeepLink) window.electronAPI.onDeepLink(redeem)
+  if (deepLinkAdapter.isAvailable()) deepLinkAdapter.onLink(redeem)
 }
 
 // Native desktop OAuth binding for any provider whose flow runs in the Electron
@@ -120,7 +123,7 @@ export function makeNativeBinding({ provider, suffix }) {
     async connect() {
       try {
         console.info(`[cloud-auth] Initiating ${provider} OAuth connection (native)`)
-        const tokens = await window.electronAPI.oauth.start(provider)
+        const tokens = await oauthAdapter.start(provider)
         write(suffix, tokens)
         console.info(`[cloud-auth] ${provider} OAuth connected`)
         window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
@@ -136,7 +139,7 @@ export function makeNativeBinding({ provider, suffix }) {
       const expired = auth.expiresAt && Date.now() > auth.expiresAt - 60_000
       if (!force && !expired) return auth.accessToken
       try {
-        const next = await window.electronAPI.oauth.refresh(auth.refreshToken, provider)
+        const next = await oauthAdapter.refresh(auth.refreshToken, provider)
         if (!next?.accessToken) return force ? null : auth.accessToken
         write(suffix, { ...auth, ...next })   // ...next carries a rotated refreshToken when present
         return next.accessToken
@@ -206,7 +209,7 @@ export function makeDesktopOAuthService(from) {
         }
         const { url } = await res.json()
         console.info(`[cloud-auth] Redirecting to ${from} OAuth provider`)
-        await window.electronAPI.openExternal(url)
+        await linkAdapter.openExternal(url)
       } catch (err) { 
         console.error(`[cloud-auth] Failed to initiate ${from} connection:`, err.message)
         toast?.('Sign-in failed. Please try again.', 'error') 

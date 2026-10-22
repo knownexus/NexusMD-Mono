@@ -1,4 +1,5 @@
 import React from 'react'
+import { appPrefsAdapter } from './adapters/appPrefs.js'
 
 // Appearance-settings control for the native whole-app zoom. Zoom is owned by
 // the Electron main process (persisted as prefs.zoomFactor), so this holds the
@@ -10,26 +11,26 @@ import React from 'react'
 // shared TweakSlider, whose CSS only ships inside the floating tweaks panel and
 // is absent in the Settings view.
 export function ZoomSlider() {
-  const api = typeof window !== 'undefined' ? window.electronAPI : undefined
+  const available = appPrefsAdapter.isAvailable()
   const [percent, setPercent] = React.useState(100)
 
   React.useEffect(() => {
-    if (!api) return undefined
+    if (!available) return undefined
     let active = true
-    Promise.resolve(api.getZoomFactor()).then(f => {
+    Promise.resolve(appPrefsAdapter.getZoomFactor()).then(f => {
       if (active && typeof f === 'number') setPercent(Math.round(f * 100))
     })
-    const off = api.onZoomChanged(f => {
+    const off = appPrefsAdapter.onZoomChanged(f => {
       if (typeof f === 'number') setPercent(Math.round(f * 100))
     })
     return () => { active = false; if (typeof off === 'function') off() }
-  }, [api])
+  }, [available])
 
-  if (!api) return null
+  if (!available) return null
 
   const onChange = p => {
     setPercent(p)
-    api.setZoomFactor(p / 100)
+    appPrefsAdapter.setZoomFactor(p / 100)
   }
 
   return (
