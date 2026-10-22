@@ -17,7 +17,7 @@ import {
   WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
   ApiClientProvider, ApiClientView, ViewDbManager,
 } from '@nexusmd/ui'
-import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav, SIDEBAR_BREAKPOINT, toggledSidebar } from './layout.js'
+import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
 import { useLocalItems } from './items-state.js'
 import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
@@ -719,6 +719,9 @@ function DesktopProjectAreasModal({ open, onClose }) {
 
 function App() {
   const [view, setView]         = React.useState('dashboard')
+  // Every view visited this session, in order; mountedViews keeps the kept-alive ones mounted.
+  const [visited, setVisited]   = React.useState(['dashboard'])
+  React.useEffect(() => { setVisited(v => (v.includes(view) ? v : [...v, view])) }, [view])
   const [createWI, setCreateWI] = React.useState(null)
   const [areasOpen, setAreasOpen] = React.useState(false)
   const [drawer, setDrawer] = React.useState(null)
@@ -1068,8 +1071,10 @@ function App() {
             overflow: FULL_BLEED.has(view) ? 'hidden' : 'auto',
             padding: FULL_BLEED.has(view) ? 0 : 18,
           }}>
+            {mountedViews(visited, view).map(id => (
+            <div key={id} style={{ display: id === view ? 'contents' : 'none' }}>
             <ViewBody
-              view={view} onOpenItem={openItem} onOpenPR={openPR} onOpenPerson={openPerson} onOpenBuild={openBuild}
+              view={id} onOpenItem={openItem} onOpenPR={openPR} onOpenPerson={openPerson} onOpenBuild={openBuild}
               tweaks={tweaks} setTweak={setTweak}
               newItemIds={newItemIds}
               plannerData={plannerData} setPlannerData={setPlannerData}
@@ -1077,6 +1082,8 @@ function App() {
               refreshInterval={refreshInterval} onRefreshIntervalChange={setRefreshInterval}
               localItems={localItems} setLocalItems={setItemsResolved}
             />
+            </div>
+            ))}
           </section>
         </main>
       </div>

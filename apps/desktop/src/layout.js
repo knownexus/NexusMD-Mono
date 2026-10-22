@@ -8,6 +8,17 @@ export function effectiveSidebar(width, pref, breakpoint = SIDEBAR_BREAKPOINT) {
   return width < breakpoint ? 'icons' : (pref || 'labels')
 }
 
+// Views that stay mounted (hidden) after the first visit, so leaving them keeps their state —
+// the Database screen's open connection, query and results live only in its component.
+export const KEEP_ALIVE_VIEWS = new Set(['db-manager'])
+
+// The views to render: every kept-alive view visited so far (shown only when current), plus the
+// current view. Visit order is kept so a kept view's place in the tree never moves.
+export function mountedViews(visited, view, keepAlive = KEEP_ALIVE_VIEWS) {
+  const kept = visited.filter(id => keepAlive.has(id))
+  return kept.includes(view) ? kept : [...kept, view]
+}
+
 // The saved preference after the collapse/expand toggle (a missing preference means labels).
 export const toggledSidebar = pref => (pref === 'icons' ? 'labels' : 'icons')
 
