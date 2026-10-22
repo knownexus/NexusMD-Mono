@@ -100,7 +100,9 @@ function compareCells(a, b) {
 function toCsv(columns, rows) {
   const cell = v => {
     if (v === null || v === undefined) return ''
-    const s = String(v)
+    let s = String(v)
+    // Spreadsheets run text that starts like a formula; a leading quote keeps it text.
+    if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
   return [columns, ...rows].map(r => r.map(cell).join(',')).join('\r\n')
@@ -151,11 +153,30 @@ const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const tableRe = t => new RegExp(`(\\[${escapeRe(t)}\\]|"${escapeRe(t)}"|\`${escapeRe(t)}\`|(?<![\\w.])${escapeRe(t)}(?![\\w]))`, 'g')
 const mentionsTable = (sql, table) => !!table && tableRe(table).test(sql)
 const toTemplate = (sql, table) => sql.replace(tableRe(table), m => m.replace(table, TABLE_TOKEN))
-const fillTemplate = (sql, table) => sql.split(TABLE_TOKEN).join(table)
+// Plain names go in as they are; anything else (spaces, reserved words, quotes) is quoted for the
+// connection's dialect, so a table name can never end the statement. A token already inside quotes
+// only needs the quote character escaped.
+const PLAIN_NAME = /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/
+function quoteName(name, type) {
+  if (PLAIN_NAME.test(name)) return name
+  if (type === 'sqlserver') return name.split('.').map(p => `[${p.replace(/]/g, ']]')}]`).join('.')
+  return `"${name.replace(/"/g, '""')}"`
+}
+function fillTemplate(sql, table, type) {
+  return sql.split(TABLE_TOKEN).map((part, i, all) => {
+    if (i === all.length - 1) return part
+    const before = part.slice(-1), after = all[i + 1].slice(0, 1)
+    if (!['[]', '""', '``'].includes(before + after)) return part + quoteName(table, type)
+    const q = before === '[' ? /]/g : before === '`' ? /`/g : /"/g
+    return part + table.replace(q, m => m + m)
+  }).join('')
+}
 const isTemplate = q => q.sql.includes(TABLE_TOKEN)
 
 // Asked about before running: schema changes, and DELETE / UPDATE with no WHERE.
-const RISKY_SQL = /^\s*(drop|truncate|alter)\b|^\s*(delete|update)\b(?![\s\S]*\bwhere\b)/i
+const RISKY_STATEMENT = /^\s*(drop|truncate|alter)\b|^\s*(delete|update)\b(?![\s\S]*\bwhere\b)/i
+// Every statement is checked, not just the first: "select 1; drop table x" still asks.
+const RISKY_SQL = { test: sql => sql.split(';').some(st => RISKY_STATEMENT.test(st)) }
 const MUTATING_SQL = /^\s*(insert|update|delete|merge|drop|truncate|alter|create)\b/i
 
 const typing = el => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
@@ -625,7 +646,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
   // Runs a saved query against `table` (the open one by default) and shows the result in the Query tab.
   const runSaved = (q, table = dbState.selectedTable) => {
     if (isTemplate(q) && !table) { notify(`Open a table to run "${q.name}" on`, 'info'); return }
-    const sql = isTemplate(q) ? fillTemplate(q.sql, table) : q.sql
+    const sql = isTemplate(q) ? fillTemplate(q.sql, table, session?.type) : q.sql
     if (table && table !== dbState.selectedTable) openTable(table, 'query')
     setActiveTab('query')
     if (table) setQueryTable(table)
@@ -635,7 +656,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
   }
   const loadSaved = (q) => {
     const table = queryTable ?? dbState.selectedTable
-    setSqlQuery(isTemplate(q) && table ? fillTemplate(q.sql, table) : q.sql)
+    setSqlQuery(isTemplate(q) && table ? fillTemplate(q.sql, table, session?.type) : q.sql)
   }
 
   // ── Table list ─────────────────────────────────────────────────────────────
