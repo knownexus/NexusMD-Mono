@@ -571,6 +571,18 @@ describe('stage 2 writes', () => {
     expect(s.calls.find(c => c.args[0] === 'diff').args).toEqual(['diff', '--cached', '--quiet', '--no-ext-diff'])
   })
 
+  it('amends the last commit, with or without staged changes, and refuses with no commit yet', async () => {
+    const s = setup(reads({ diff: { code: 0 }, commit: { stdout: '[main def5678] Reworded\n' } }))
+    const r = await s.invoke('git:commit', REPO, WT, REG, 'Reworded', await stampOf(s, { kind: 'commit' }), { amend: true })
+    expect(r).toEqual({ ok: true, detail: '[main def5678] Reworded' })
+    expect(s.calls.find(c => c.args[0] === 'commit').args).toEqual(['commit', '--amend', '-F', '-'])
+    expect(s.calls.some(c => c.args[0] === 'diff')).toBe(false)
+    const empty = setup(reads({ 'rev-parse': args => args.includes('HEAD') ? { code: 1 } : { stdout: `${COMMON}\n${COMMON}\n` } }))
+    const none = await empty.invoke('git:commit', REPO, WT, REG, 'Fix', await stampOf(empty, { kind: 'commit' }), { amend: true })
+    expect(none).toEqual({ ok: false, detail: 'There is no commit to amend yet.' })
+    expect(empty.calls.some(c => c.args[0] === 'commit')).toBe(false)
+  })
+
   it('runs the commit (and so its hooks) without literal pathspecs, while path-taking calls keep them', async () => {
     const s = setup(reads({ diff: { code: 1 } }))
     await s.invoke('git:commit', REPO, WT, REG, 'Fix', await stampOf(s, { kind: 'commit' }))
