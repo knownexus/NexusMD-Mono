@@ -1,7 +1,8 @@
 // Desktop cloud-sync glue: the shared @nexusmd/ui controller with the encrypted
 // secureStorage key cache + scoped getProfileKey (nexusmd.p.<id>.* keys) + DOM
 // triggers. The engine lives in the controller.
-import { createSyncController, domDispatch, domSubscribeForeground, domSubscribeChange } from '@nexusmd/ui'
+import { createSyncController } from '@nexusmd/core'
+import { domDispatch, domSubscribeForeground, domSubscribeChange } from '@nexusmd/web-adapters'
 import { desktopCloudProviders } from './cloud-auth.js'
 import { getProfileKey, getActiveProfileId } from './profile-keys.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'

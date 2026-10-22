@@ -1,4 +1,4 @@
-// graph-client.js — shared, token-agnostic Microsoft Graph client. Both desktop
+// graph/client.js — shared, token-agnostic Microsoft Graph client. Both desktop
 // (native PKCE binding) and web (MSAL) pass a getToken({force}) => Promise<string>
 // callback; this module owns the request shape, 401-retry, and pagination —
 // callers don't re-derive fetch/retry logic per platform or per feature.

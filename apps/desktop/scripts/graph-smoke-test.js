@@ -7,7 +7,7 @@
 // consent. Not run in CI.
 // Run: GRAPH_TOKEN=eyJ... npm run graph:smoke
 
-import { graphJSON } from '../../../packages/ui/src/graph/graph-client.js';
+import { graphJSON } from '@nexusmd/core';
 
 async function main() {
   const token = process.env.GRAPH_TOKEN;

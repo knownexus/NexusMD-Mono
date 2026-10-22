@@ -22,6 +22,7 @@ vi.mock('./ado-client.js', () => ({
   isAdoConfigured: () => false,
 }))
 vi.mock('./logs-card.jsx', () => ({ default: () => <div data-testid="logs-card">LogsCard</div> }))
+vi.mock('@nexusmd/core', async (importOriginal) => ({ ...(await importOriginal()), graphJSON: vi.fn() }))
 vi.mock('@nexusmd/ui', () => ({
   VsCard: ({ title, children }) => <div data-testid={`vs-card-${(title || '').toLowerCase().replace(/[\s&]+/g, '-')}`}>{children}</div>,
   VsRow: ({ title, children }) => <div><span>{title}</span><div>{children}</div></div>,
@@ -42,7 +43,6 @@ vi.mock('@nexusmd/ui', () => ({
   loadConfidentialConfig: vi.fn(() => ({ sections: [], hash: null })),
   CardFrame: ({ title, children }) => <div><span>{title}</span>{children}</div>,
   Icon: () => null,
-  graphJSON: vi.fn(),
 }))
 
 vi.stubGlobal('electronAPI', {
@@ -141,7 +141,7 @@ describe('DesktopSettings tab navigation', () => {
 
 describe('GraphApiTestCard (Integrations tab)', () => {
   it('runs a preset and shows the JSON result', async () => {
-    const { graphJSON } = await import('@nexusmd/ui')
+    const { graphJSON } = await import('@nexusmd/core')
     graphJSON.mockResolvedValueOnce({ displayName: 'Test User' })
     render(<DesktopSettings {...defaultProps} />)
     fireEvent.click(screen.getByRole('button', { name: 'Integrations' }))
@@ -151,7 +151,7 @@ describe('GraphApiTestCard (Integrations tab)', () => {
   })
 
   it('shows an error message when the preset call fails', async () => {
-    const { graphJSON } = await import('@nexusmd/ui')
+    const { graphJSON } = await import('@nexusmd/core')
     graphJSON.mockRejectedValueOnce(new Error('Graph request failed (403): /me'))
     render(<DesktopSettings {...defaultProps} />)
     fireEvent.click(screen.getByRole('button', { name: 'Integrations' }))
@@ -163,7 +163,7 @@ describe('GraphApiTestCard (Integrations tab)', () => {
 
 describe('GraphPermissionsCard', () => {
   it('shows granted/not-granted per scope from the decoded token, and live check results', async () => {
-    const { graphJSON } = await import('@nexusmd/ui')
+    const { graphJSON } = await import('@nexusmd/core')
     const { decodeJwtClaims } = await import('./cloud-auth.js')
     decodeJwtClaims.mockReturnValue({ scp: 'User.Read Calendars.ReadWrite' })
     graphJSON.mockImplementation((getToken, path) => {
@@ -185,7 +185,7 @@ describe('GraphPermissionsCard', () => {
   })
 
   it('re-runs the diagnosis when Refresh is clicked', async () => {
-    const { graphJSON } = await import('@nexusmd/ui')
+    const { graphJSON } = await import('@nexusmd/core')
     const { decodeJwtClaims } = await import('./cloud-auth.js')
     decodeJwtClaims.mockReturnValue({ scp: '' })
     graphJSON.mockResolvedValue({ ok: true })
@@ -201,7 +201,7 @@ describe('GraphPermissionsCard', () => {
   })
 
   it('treats a getToken rejection as no granted scopes, and unsticks the Refresh button', async () => {
-    const { graphJSON } = await import('@nexusmd/ui')
+    const { graphJSON } = await import('@nexusmd/core')
     const { decodeJwtClaims } = await import('./cloud-auth.js')
     decodeJwtClaims.mockReturnValue({ scp: 'User.Read Calendars.ReadWrite' })
     graphJSON.mockResolvedValue({ ok: true })

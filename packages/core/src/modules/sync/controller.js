@@ -10,7 +10,7 @@ import {
   plannerCollection, notesCollection, teamCustomCollection,
   teamRemovedCollection, tweaksCollection,
 } from './collections.js';
-import { hashPassword } from '../planner/planner-confidential.js';
+import { hashPassword } from '../planner/confidential.js';
 
 export function createSyncController({
   storage, namespace, getProfileKey, getActiveProfileId,
@@ -92,20 +92,3 @@ export function createSyncController({
     getActiveProfileId, startAuto, stopAuto,
   };
 }
-
-// DOM trigger helpers for webview platforms (web/desktop/app all run in a DOM).
-export const domDispatch = (name, detail) =>
-  document.dispatchEvent(new CustomEvent(name, { detail }));
-export const domSubscribeForeground = (cb) => {
-  window.addEventListener('focus', cb);
-  return () => window.removeEventListener('focus', cb);
-};
-export const domSubscribeChange = (cb) => {
-  const h = () => cb();
-  document.addEventListener('nexusmd:planner-changed', h);
-  document.addEventListener('nexusmd:data-changed', h);
-  return () => {
-    document.removeEventListener('nexusmd:planner-changed', h);
-    document.removeEventListener('nexusmd:data-changed', h);
-  };
-};

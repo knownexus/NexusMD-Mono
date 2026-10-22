@@ -1,6 +1,6 @@
 // collections.js — sync collection adapters. Each adapter enumerates/reads/writes
 // a localStorage-backed data type and names its core merge strategy.
-import { mergePlannerWeek, mergeRows, mergeSet, mergeKeyVal } from '@nexusmd/core';
+import { mergePlannerWeek, mergeRows, mergeSet, mergeKeyVal } from './merge.js';
 
 export function plannerCollection({ storage, getProfileKey, namespace }) {
   const bare = (key) => `${namespace}.planner.week.${key}`;

@@ -1,7 +1,7 @@
 // ms-graph-calendar.js — desktop Outlook Calendar client. Calls through the
-// shared @nexusmd/ui graph-client, so it gets 401-retry-once for free — unlike
+// shared @nexusmd/core graph client, so it gets 401-retry-once for free — unlike
 // before this refactor, when it hand-rolled fetch with no retry.
-import { graphJSON, graphFetch } from '@nexusmd/ui'
+import { graphJSON, graphFetch } from '@nexusmd/core'
 
 export async function fetchCalendarEvents(getToken, startISO, endISO) {
   const path = [

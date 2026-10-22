@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { graphFetch, graphJSON, graphList } from './graph-client.js'
+import { graphFetch, graphJSON, graphList } from '../src/modules/graph/client.js'
 
 beforeEach(() => {
   global.fetch = vi.fn()

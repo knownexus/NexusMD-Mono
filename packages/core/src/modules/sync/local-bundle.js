@@ -3,7 +3,7 @@
 // as createSyncRuntime, so a file written by one instance imports (and merges)
 // cleanly into any other. Import is loss-free: each item is 3-way-merged into
 // local with base=null (keep-both union; keyval prefers local).
-import { contentHash } from '@nexusmd/core';
+import { contentHash } from './hash.js';
 import { encryptSync, decryptSync } from './crypto.js';
 import { badPassphrase } from './errors.js';
 

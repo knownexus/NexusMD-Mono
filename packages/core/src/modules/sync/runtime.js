@@ -1,7 +1,8 @@
 // runtime.js — generic sync orchestrator. Pulls an encrypted per-profile manifest,
 // reconciles each collection item (push/pull/merge/delete) via the core engine,
 // maintains per-item base snapshots, and re-uploads the manifest as the commit.
-import { reconcileItem, contentHash } from '@nexusmd/core';
+import { reconcileItem } from './reconcile.js';
+import { contentHash } from './hash.js';
 import { encryptSync, decryptSync } from './crypto.js';
 import { badPassphrase } from './errors.js';
 

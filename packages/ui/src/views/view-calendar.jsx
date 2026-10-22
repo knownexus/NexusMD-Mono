@@ -11,7 +11,7 @@ import React from 'react';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { Avatar } from '../app-components.jsx';
 import { Icon } from '../icons.jsx';
-import { graphJSON, graphFetch } from '../graph/graph-client.js';
+import { graphJSON, graphFetch } from '@nexusmd/core';
 
 // ── OutlookService — MSAL + shared Graph client ─────────────────
 const OutlookService = (() => {

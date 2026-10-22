@@ -5,9 +5,8 @@ import {
   VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView,
   PlToggle, VsPasswordModal, loadConfidentialConfig,
   CardsAndTablesSettings, toast, WI_TYPE_STATES_CACHE_KEY,
-  graphJSON,
 } from '@nexusmd/ui'
-import { ADO_CACHE_KEY, JIRA_CACHE_KEY, buildConfig, resolveConnectionParams, buildConnectionString } from '@nexusmd/core'
+import { ADO_CACHE_KEY, JIRA_CACHE_KEY, buildConfig, resolveConnectionParams, buildConnectionString, graphJSON } from '@nexusmd/core'
 import { useProfile } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { NavOrderEditor } from './nav-order-editor.jsx'

@@ -2,7 +2,8 @@
 // key cache + scoped getProfileKey (helm.p.<id>.* keys). Foreground trigger uses
 // window focus (the Android WebView fires it on resume); change triggers via the
 // shared DOM events. The engine lives in the controller.
-import { createSyncController, domDispatch, domSubscribeForeground, domSubscribeChange } from '@nexusmd/ui';
+import { createSyncController } from '@nexusmd/core';
+import { domDispatch, domSubscribeForeground, domSubscribeChange } from '@nexusmd/web-adapters';
 import { appCloudProviders } from './cloud-auth.js';
 import { getProfileKey, getActiveProfileId } from './profile-keys.js';
 import { secureStorageAdapter } from './adapters/secureStorage.js';

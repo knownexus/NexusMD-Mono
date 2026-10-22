@@ -6,7 +6,8 @@
 // so the five synced collections resolve to the bare keys web actually uses
 // (nexusmd.planner.week.*, nexusmd.planner.globalNotes, nexusmd.team.custom,
 // nexusmd.team.removed, nexusmd.tweaks).
-import { createSyncController, domDispatch, domSubscribeForeground, domSubscribeChange } from '@nexusmd/ui'
+import { createSyncController } from '@nexusmd/core';
+import { domDispatch, domSubscribeForeground, domSubscribeChange } from '@nexusmd/web-adapters';
 import { webCloudProviders } from './cloud-auth.js'
 import { getActiveProfileId } from './profile-keys.js'
 

@@ -40,6 +40,16 @@ export {
   mergeRows, mergeKeyVal, mergeText, mergeSet, mergePlannerWeek,
 } from './modules/sync/merge.js'
 export { reconcileItem } from './modules/sync/reconcile.js'
+export { encryptSync, decryptSync } from './modules/sync/crypto.js'
+export {
+  plannerCollection, notesCollection, teamCustomCollection, teamRemovedCollection, tweaksCollection,
+} from './modules/sync/collections.js'
+export { createSyncRuntime } from './modules/sync/runtime.js'
+export { startAutoSync } from './modules/sync/auto.js'
+export { singleFlight } from './modules/sync/single-flight.js'
+export { exportBundle, importBundle } from './modules/sync/local-bundle.js'
+export { createSyncController } from './modules/sync/controller.js'
+export { graphFetch, graphJSON, graphList } from './modules/graph/client.js'
 export { filterTriageItems, buildTriageCsv } from './modules/triage/index.js'
 export {
   isAllDayEvent, getEventsForDay, sortEventsByTime,

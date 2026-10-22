@@ -1,5 +1,5 @@
 // Encrypt/decrypt sync payloads with a pre-derived key (hex), reusing core AES-GCM.
-import { encryptConfidentialForServer, decryptConfidentialFromServer } from '@nexusmd/core';
+import { encryptConfidentialForServer, decryptConfidentialFromServer } from '../planner/confidential.js';
 
 const FORMAT = 'nexusmd-sync';
 const VERSION = 1;
