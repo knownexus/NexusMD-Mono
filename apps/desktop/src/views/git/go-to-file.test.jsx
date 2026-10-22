@@ -22,10 +22,20 @@ describe('GoToFile', () => {
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(3))
     expect(adapter.files).toHaveBeenCalledWith(repo, repo.path, registered)
     const box = screen.getByRole('combobox')
-    fireEvent.change(box, { target: { value: 'vgit' } })
+    fireEvent.change(box, { target: { value: 'view git' } })
     expect(screen.getAllByRole('option')).toHaveLength(1)
     fireEvent.keyDown(box, { key: 'Enter' })
     expect(onOpen).toHaveBeenCalledWith('src/views/git/view-git.jsx')
+  })
+
+  it('matches from the start of words only', async () => {
+    setup()
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(3))
+    const box = screen.getByRole('combobox')
+    fireEvent.change(box, { target: { value: 'ain' } })
+    expect(screen.queryAllByRole('option')).toHaveLength(0)
+    fireEvent.change(box, { target: { value: 'main' } })
+    expect(screen.getAllByRole('option').map(o => o.textContent)).toEqual(['src/app/main.jsx'])
   })
 
   it('moves with the arrow keys', async () => {

@@ -48,6 +48,16 @@ describe('GroupDraft', () => {
     expect(d.rows('qr').map(m => m.label)).toEqual(['AccessControl', 'qr → feature/qr'])
   })
 
+  it('filters rows by word starts only', () => {
+    const d = new GroupDraft(config, snapshot)
+    expect(d.rows('feat').map(m => m.label)).toEqual(['AccessControl', 'qr → feature/qr'])
+    expect(d.rows('access qr').map(m => m.label)).toEqual(['AccessControl', 'qr → feature/qr'])
+    expect(d.rows('join').map(m => m.repo)).toEqual(['Joiners', 'Joiners'])
+    // Mid-word text never matches.
+    expect(d.rows('ccess')).toEqual([])
+    expect(d.rows('eature')).toEqual([])
+  })
+
   it('keeps unavailable members of an existing group and replaces that group in place', () => {
     const existing = { name: 'Old', repos: ['Gone'], worktrees: ['C:/repos/Joiners', 'C:/elsewhere/missing'], branches: [{ repo: 'Joiners', ref: 'refs/heads/deleted' }] }
     const cfg = { ...config, groups: [{ name: 'First', repos: ['Joiners'], worktrees: [], branches: [] }, existing] }

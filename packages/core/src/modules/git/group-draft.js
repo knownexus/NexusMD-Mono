@@ -4,6 +4,7 @@
 
 import { worktreeId, worktreeName, branchLabel } from './parse.js'
 import { groupNameError } from './groups.js'
+import { wordMatch } from './word-match.js'
 
 const memberId = (kind, repo, value) => `${kind}\x00${repo}\x00${value}`
 const member = (kind, repo, value, label) => ({ kind, repo, value, label, id: memberId(kind, repo, value) })
@@ -64,11 +65,11 @@ export class GroupDraft {
   }
 
   rows(search = '', folded = new Set()) {
-    const q = search.trim().toLowerCase()
     const out = []
     for (const head of this.members.filter(m => m.kind === 'repo')) {
       const children = this.members.filter(m => m.repo === head.repo && (m.kind === 'worktree' || (m.kind === 'branch' && (this.branchesShown.has(head.repo) || this.checked.has(m.id)))))
-      const match = m => !q || `${head.label} ${m.label}`.toLowerCase().includes(q)
+      // By word starts: every term begins a word of the repo's or the member's label, never mid-word.
+      const match = m => wordMatch(`${head.label} ${m.label}`, search)
       if (!match(head) && !children.some(match)) continue
       out.push(head)
       if (!folded.has(head.repo)) out.push(...children.filter(match))
