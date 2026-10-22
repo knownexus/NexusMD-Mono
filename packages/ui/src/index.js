@@ -151,3 +151,8 @@ export { ProjectAreasModal } from './views/project-areas-modal.jsx'
 export {
   SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
 } from './views/shell-parts.jsx'
+export {
+  CreateWIModal, WIDetail, PersonDetail, DetailDrawer,
+  DataTagInput, DataAreaTreePicker,
+  DEFAULT_WI_TYPES, DEFAULT_PRIORITIES, PRIORITY_LABELS, settInputStyle,
+} from './views/work-item-shell.jsx'
