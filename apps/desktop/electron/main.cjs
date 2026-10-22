@@ -337,8 +337,8 @@ app.whenReady().then(async () => {
     updateWindowIcon(mainWindow, dark);
   });
 
-  // Notifications — IPC handler only (no polling; ADO data comes from core adapters)
-  initNotifications(mainWindow, ipcMain, null);
+  // Notifications — IPC handler for renderer-raised OS notifications
+  initNotifications(ipcMain);
 
   // Auto-updater (event wiring is packaged-only; the IPC contract is always registered)
   initUpdater(mainWindow);
