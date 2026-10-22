@@ -556,6 +556,7 @@ function ViewBody({
   }
 }
 
+const FULL_BLEED = new Set(['markdown', 'devenv', 'git', 'db-manager'])
 // Views that hide the nav sidebar to give their own layout the width; the top bar's
 // nav button (or Ctrl+B) brings it back while on them. None at the moment.
 const NAV_HIDDEN = new Set([])
