@@ -3,6 +3,9 @@ import { toast } from '../toast.jsx';
 import { HelmData } from '../data.jsx';
 import { TriageEvents, TriageExportButton, TriageStatusLine } from '../triage.jsx';
 import { Icon } from '../icons.jsx';
+import {
+  TriageRow as SharedTriageRow, TriageKpi, BUCKET_META, BUCKET_ORDER, PRIO_COLOR,
+} from '@nexusmd/ui';
 // view-triage.jsx — interactive "Unassigned To-Do Triage" tab.
 // Live view of open + unassigned work items from HelmData.WORK_ITEMS, with the same
 // area / bucket / priority model as the Unassigned_ToDo_Triage_Tracker spreadsheet.
@@ -12,17 +15,6 @@ function isTerminalState(state) {
   return ['Done', 'Closed', 'Resolved', 'Removed', 'Cancelled'].includes(state);
 }
 
-const BUCKET_META = {
-  'Decision':        { color: 'var(--danger)',  label: 'Needs decision' },
-  'Flesh out':       { color: 'var(--warning, #c98a1b)', label: 'Needs flesh out' },
-  'Ready to assign': { color: 'var(--success)', label: 'Ready to assign' },
-};
-const BUCKET_ORDER  = ['Decision', 'Flesh out', 'Ready to assign'];
-const PRIO_COLOR    = { High: 'var(--danger)', Medium: 'var(--info)', Low: 'var(--text-subtle)' };
-const AREA_OPTIONS  = ['Claims (FLI)', 'Invoicing (Cirrus)', 'Finance / Payments', 'CRM', 'Supportis', 'Quoting (Dual Drive)', 'Platform / Infra', 'Other'];
-const STATUS_OPTIONS = ['Not started', 'In progress', 'Specced', 'Assigned', 'Done'];
-const softBg = (c) => `color-mix(in srgb, ${c} 12%, var(--surface))`;
-
 const triageSelectStyle = {
   height: 44, padding: '0 8px',
   border: '1px solid var(--border)', borderRadius: 6,
@@ -30,211 +22,20 @@ const triageSelectStyle = {
   fontSize: 12, cursor: 'pointer', fontFamily: 'var(--sans)',
 };
 
-// ── TriageKpi ─────────────────────────────────────────────────────────────────
-
-function TriageKpi({ label, value, color, active, onClick }) {
-  return (
-    <button onClick={onClick}
-      style={{
-        flex: 1, minWidth: 120, textAlign: 'left', cursor: 'pointer',
-        border: `1px solid ${active ? color : 'var(--border)'}`,
-        background: active ? softBg(color) : 'var(--surface)',
-        borderRadius: 12, padding: '12px 14px', transition: 'all .12s',
-      }}>
-      <div style={{ fontSize: 22, fontWeight: 700, color, fontFamily: 'var(--mono)' }}>{value}</div>
-      <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginTop: 2 }}>{label}</div>
-    </button>
-  );
+// The app has no triage backend: edits are saved as annotations in local storage and
+// merged into the work items by TriageView. Touch-height selects come from triageSelectStyle.
+function saveTriage(id, changes) {
+  let annotations = [];
+  try { annotations = JSON.parse(localStorage.getItem('helm.android.triage') || '[]'); } catch (_) {}
+  const idx = annotations.findIndex(a => a.id === id);
+  const merged = { ...(idx >= 0 ? annotations[idx] : { id }), ...changes };
+  if (idx >= 0) annotations[idx] = merged;
+  else annotations.push(merged);
+  localStorage.setItem('helm.android.triage', JSON.stringify(annotations));
 }
 
-// ── TriageEditField ───────────────────────────────────────────────────────────
-// A labelled inline field used inside the expanded triage row.
-
-function TriageEditField({ label, children }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 120 }}>
-      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-subtle)' }}>{label}</span>
-      {children}
-    </div>
-  );
-}
-
-// ── TriageRow ─────────────────────────────────────────────────────────────────
-
-function TriageRow({ it, onUpdate }) {
-  const [expanded, setExpanded]   = React.useState(false);
-  const [saving,   setSaving]     = React.useState(false);
-  const [saveErr,  setSaveErr]    = React.useState('');
-
-  // Local editable copies of triage fields
-  const [bucket,  setBucket]  = React.useState(it.bucket);
-  const [priority, setPriority] = React.useState(it.priority);
-  const [area,    setArea]    = React.useState(it.area);
-  const [owner,   setOwner]   = React.useState(it.suggestedOwner || 'TBD');
-  const [status,  setStatus]  = React.useState(it.status || 'Not started');
-  const [action,  setAction]  = React.useState(it.action || '');
-
-  // Sync if parent refreshes data
-  React.useEffect(() => {
-    setBucket(it.bucket);
-    setPriority(it.priority);
-    setArea(it.area);
-    setOwner(it.suggestedOwner || 'TBD');
-    setStatus(it.status || 'Not started');
-    setAction(it.action || '');
-  }, [it.id]);
-
-  const TEAM = (HelmData?.TEAM || []);
-
-  const patch = (changes) => {
-    setSaving(true); setSaveErr('');
-    try {
-      let annotations = [];
-      try { annotations = JSON.parse(localStorage.getItem('helm.android.triage') || '[]'); } catch (_) {}
-      const idx = annotations.findIndex(a => a.id === it.id);
-      const merged = { ...(idx >= 0 ? annotations[idx] : { id: it.id }), ...changes };
-      if (idx >= 0) annotations[idx] = merged;
-      else annotations.push(merged);
-      localStorage.setItem('helm.android.triage', JSON.stringify(annotations));
-      onUpdate?.(it.id, changes);
-      toast?.('Triage updated', 'success');
-    } catch(e) {
-      setSaveErr(e.message || 'Save failed');
-      toast?.('Triage save failed', 'error', { duration: 5000 });
-    } finally { setSaving(false); }
-  };
-
-  const handleBucket   = v => { setBucket(v);   patch({ bucket: v }); };
-  const handlePriority = v => { setPriority(v); patch({ priority: v }); };
-  const handleArea     = v => { setArea(v);     patch({ area: v }); };
-  const handleOwner    = v => { setOwner(v);    patch({ suggestedOwner: v }); };
-  const handleStatus   = v => { setStatus(v);   patch({ status: v }); };
-
-  // Next action: save on blur to avoid a request per keystroke
-  const handleActionBlur = () => {
-    if (action !== it.action) patch({ nextAction: action });
-  };
-
-  const meta      = BUCKET_META[bucket] || { color: 'var(--text-muted)' };
-  const bucketColor = meta.color;
-
-  return (
-    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-      {/* ── Card header (always visible, click to expand) ── */}
-      <div
-        onClick={() => setExpanded(v => !v)}
-        style={{
-          padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start',
-          cursor: 'pointer', userSelect: 'none',
-          background: expanded ? 'var(--surface-2)' : 'var(--surface)',
-          transition: 'background .1s',
-        }}
-      >
-        <span title={priority} style={{
-          width: 8, height: 8, borderRadius: '50%',
-          background: PRIO_COLOR[priority] || 'var(--text-subtle)',
-          flexShrink: 0, marginTop: 6,
-        }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <a href={it.url} target="_blank" rel="noopener"
-              onClick={e => e.stopPropagation()}
-              style={{ fontSize: 11.5, fontFamily: 'var(--mono)', color: 'var(--accent)', textDecoration: 'none', flexShrink: 0 }}>
-              #{it.id}
-            </a>
-            <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{it.title}</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: softBg(bucketColor), color: bucketColor, border: `1px solid ${bucketColor}` }}>{bucket}</span>
-            <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>{area}</span>
-            <span style={{ fontSize: 10.5, color: 'var(--text-subtle)' }}>{it.type}</span>
-            {owner && owner !== 'TBD' && (
-              <span style={{ fontSize: 10.5, color: 'var(--accent)', fontWeight: 600 }}>→ {owner}</span>
-            )}
-            {status && status !== 'Not started' && (
-              <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, background: 'var(--surface-2)', color: 'var(--text-subtle)', border: '1px solid var(--border)' }}>{status}</span>
-            )}
-            {(it.tags || '').split(';').map(t => t.trim()).filter(Boolean).map(t => (
-              <span key={t} style={{ fontSize: 10, color: 'var(--text-subtle)', fontFamily: 'var(--mono)' }}>#{t}</span>
-            ))}
-          </div>
-          {action && !expanded && (
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, fontStyle: 'italic' }}>
-              {action.length > 100 ? action.slice(0, 100) + '…' : action}
-            </div>
-          )}
-        </div>
-        <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={13} style={{ flexShrink: 0, marginTop: 4, color: 'var(--text-subtle)' }} />
-      </div>
-
-      {/* ── Expanded panel ── */}
-      {expanded && (
-        <div style={{ borderTop: '1px solid var(--border)' }}>
-
-          {/* Triage edit fields */}
-          <div style={{ padding: '12px 14px', background: 'var(--surface-2)', display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-start' }}>
-            <TriageEditField label="Bucket">
-              <select value={bucket} onChange={e => handleBucket(e.target.value)} style={triageSelectStyle} disabled={saving}>
-                {BUCKET_ORDER.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </TriageEditField>
-
-            <TriageEditField label="Priority">
-              <select value={priority} onChange={e => handlePriority(e.target.value)} style={triageSelectStyle} disabled={saving}>
-                {['High', 'Medium', 'Low'].map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </TriageEditField>
-
-            <TriageEditField label="Area">
-              <select value={area} onChange={e => handleArea(e.target.value)} style={triageSelectStyle} disabled={saving}>
-                {AREA_OPTIONS.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </TriageEditField>
-
-            <TriageEditField label="Suggested owner">
-              <select value={owner} onChange={e => handleOwner(e.target.value)} style={triageSelectStyle} disabled={saving}>
-                <option value="TBD">TBD</option>
-                {TEAM.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-              </select>
-            </TriageEditField>
-
-            <TriageEditField label="Status">
-              <select value={status} onChange={e => handleStatus(e.target.value)} style={triageSelectStyle} disabled={saving}>
-                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </TriageEditField>
-
-            <TriageEditField label="Next action">
-              <textarea
-                value={action}
-                onChange={e => setAction(e.target.value)}
-                onBlur={handleActionBlur}
-                rows={2}
-                disabled={saving}
-                placeholder="What needs to happen…"
-                style={{
-                  ...triageSelectStyle, height: 'auto', padding: '4px 8px',
-                  resize: 'vertical', minWidth: 240, fontFamily: 'var(--sans)', lineHeight: 1.5,
-                }}
-              />
-            </TriageEditField>
-
-            {saving && (
-              <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', alignSelf: 'flex-end', marginBottom: 4 }}>Saving…</div>
-            )}
-            {saveErr && (
-              <div style={{ fontSize: 11.5, color: 'var(--danger)', alignSelf: 'flex-end', marginBottom: 4 }}>{saveErr}</div>
-            )}
-          </div>
-
-          {/* Work item rich content: description, AC, repro steps, discussion */}
-          {typeof WorkItemDetail !== 'undefined' && (
-            <WorkItemDetail id={it.id} project={it.project} />
-          )}
-        </div>
-      )}
-    </div>
-  );
+function TriageRow(props) {
+  return <SharedTriageRow {...props} saveTriage={saveTriage} selectStyle={triageSelectStyle}/>;
 }
 
 // ── TriageView ────────────────────────────────────────────────────────────────

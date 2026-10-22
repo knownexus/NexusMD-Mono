@@ -5,18 +5,9 @@ import { HelmData } from '../data.jsx';
 import { getProfileKey } from '../profile-keys.js';
 // view-team.jsx — Team / People view
 import { mergeTeamRoster, enrichTeamMember } from '@nexusmd/core';
+import { slugifyLocal, getInitials, NoteModal, ScheduleOneOnOneModal } from '@nexusmd/ui';
 
 const { useState: useStateT } = React;
-
-function slugifyLocal(name) {
-  return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unknown';
-}
-
-function getInitials(name) {
-  const parts = (name || '').trim().split(' ');
-  const first = parts[0] || '', last = parts[parts.length - 1] || '';
-  return ((first[0] || '') + (last[0] || first[1] || '')).toUpperCase() || '?';
-}
 
 function AddMemberModal({ open, onClose, onAdd }) {
   const [name, setName] = useStateT('');
@@ -107,117 +98,6 @@ function AddMemberModal({ open, onClose, onAdd }) {
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
           <button className="btn ghost" onClick={handleClose}>Cancel</button>
           <button className="btn primary" onClick={handleAdd}>Add member</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NoteModal({ open, dev, onClose, onSave }) {
-  const [text, setText] = React.useState('');
-  const [saving, setSaving] = React.useState(false);
-
-  React.useEffect(() => { if (open) setText(''); }, [open]);
-
-  const handleSave = async () => {
-    if (!text.trim()) return;
-    setSaving(true);
-    await onSave(dev, text.trim());
-    setSaving(false);
-    onClose();
-  };
-
-  if (!open || !dev) return null;
-  return (
-    <div id="modal-team-note" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16, boxShadow:'var(--shadow-pop)', padding:28, width:440, maxWidth:'90vw', display:'flex', flexDirection:'column', gap:16 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <h2 style={{ margin:0, fontSize:16, fontWeight:600, flex:1 }}>Add note — {dev.name}</h2>
-          <button className="btn icon ghost sm" onClick={onClose}><Icon name="x" size={14}/></button>
-        </div>
-        <textarea
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSave(); }}
-          placeholder="Write a note about this team member…"
-          autoFocus
-          rows={4}
-          style={{ width:'100%', padding:'8px 10px', border:'1px solid var(--border)', borderRadius:8, background:'var(--surface-2)', fontSize:13, outline:'none', resize:'vertical', color:'var(--text)', boxSizing:'border-box', fontFamily:'var(--sans)' }}
-        />
-        <div style={{ fontSize:11, color:'var(--text-subtle)' }}>Saved to this week's Planner under Team notes · ⌘↵ to save</div>
-        <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-          <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn primary" onClick={handleSave} disabled={saving || !text.trim()}>
-            {saving ? 'Saving…' : 'Save note'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ScheduleOneOnOneModal({ open, dev, onClose, onSave }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const [date, setDate] = React.useState(today);
-  const [time, setTime] = React.useState('10:00');
-  const [duration, setDuration] = React.useState('60');
-  const [points, setPoints] = React.useState('');
-  const [saving, setSaving] = React.useState(false);
-
-  React.useEffect(() => {
-    if (open) { setDate(today); setTime('10:00'); setDuration('60'); setPoints(''); }
-  }, [open]);
-
-  const handleSave = async () => {
-    if (!date || !time) return;
-    setSaving(true);
-    await onSave(dev, { date, time, duration: parseInt(duration, 10) || 60, points });
-    setSaving(false);
-    onClose();
-  };
-
-  const inputStyle = { height:34, padding:'0 10px', border:'1px solid var(--border)', borderRadius:6, background:'var(--surface-2)', fontSize:13, outline:'none', color:'var(--text)', boxSizing:'border-box', width:'100%' };
-
-  if (!open || !dev) return null;
-  return (
-    <div id="modal-schedule-1on1" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16, boxShadow:'var(--shadow-pop)', padding:28, width:440, maxWidth:'90vw', display:'flex', flexDirection:'column', gap:16 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <h2 style={{ margin:0, fontSize:16, fontWeight:600, flex:1 }}>Schedule 1:1 — {dev?.name}</h2>
-          <button className="btn icon ghost sm" onClick={onClose}><Icon name="x" size={14}/></button>
-        </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-            <label style={{ fontSize:12, fontWeight:500, color:'var(--text-muted)' }}>Date</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle}/>
-          </div>
-          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-            <label style={{ fontSize:12, fontWeight:500, color:'var(--text-muted)' }}>Time</label>
-            <input type="time" value={time} onChange={e => setTime(e.target.value)} style={inputStyle}/>
-          </div>
-          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-            <label style={{ fontSize:12, fontWeight:500, color:'var(--text-muted)' }}>Duration</label>
-            <select value={duration} onChange={e => setDuration(e.target.value)} style={{ ...inputStyle, appearance:'none' }}>
-              <option value="30">30 minutes</option>
-              <option value="45">45 minutes</option>
-              <option value="60">1 hour</option>
-              <option value="90">1.5 hours</option>
-            </select>
-          </div>
-        </div>
-        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-          <label style={{ fontSize:12, fontWeight:500, color:'var(--text-muted)' }}>Talking points (optional)</label>
-          <textarea value={points} onChange={e => setPoints(e.target.value)} rows={3}
-            placeholder="Topics to cover…"
-            style={{ ...inputStyle, height:'auto', padding:'8px 10px', resize:'vertical', fontFamily:'var(--sans)' }}/>
-        </div>
-        <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-          <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn primary" onClick={handleSave} disabled={saving || !date || !time}>
-            {saving ? 'Scheduling…' : 'Schedule 1:1'}
-          </button>
         </div>
       </div>
     </div>

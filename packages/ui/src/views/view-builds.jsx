@@ -583,7 +583,7 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
 }
 
 // ── Column header helper ──────────────────────────────────────
-function ColHead({ children, sortable, sortDir, onSort }) {
+export function ColHead({ children, sortable, sortDir, onSort }) {
   return (
     <div
       onClick={sortable ? onSort : undefined}

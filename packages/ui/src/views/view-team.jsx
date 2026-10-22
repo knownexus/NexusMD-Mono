@@ -11,11 +11,11 @@ import { useStopwatch } from '../use-timer.js'
 
 const { useState: useStateT } = React
 
-function slugifyLocal(name) {
+export function slugifyLocal(name) {
   return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unknown'
 }
 
-function getInitials(name) {
+export function getInitials(name) {
   const parts = (name || '').trim().split(' ')
   const first = parts[0] || '', last = parts[parts.length - 1] || ''
   return ((first[0] || '') + (last[0] || first[1] || '')).toUpperCase() || '?'
@@ -213,7 +213,7 @@ function AddMemberModal({ open, onClose, onAdd }) {
   )
 }
 
-function NoteModal({ open, dev, prefill = '', onClose, onSave }) {
+export function NoteModal({ open, dev, prefill = '', onClose, onSave }) {
   const [text, setText] = React.useState('')
   const [saving, setSaving] = React.useState(false)
 
@@ -257,7 +257,7 @@ function NoteModal({ open, dev, prefill = '', onClose, onSave }) {
   )
 }
 
-function ScheduleOneOnOneModal({ open, dev, onClose, onSave }) {
+export function ScheduleOneOnOneModal({ open, dev, onClose, onSave }) {
   const today = new Date().toISOString().slice(0, 10)
   const [date, setDate] = React.useState(today)
   const [time, setTime] = React.useState('10:00')

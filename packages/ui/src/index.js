@@ -104,9 +104,14 @@ export { DocumentsView } from './views/view-documents.jsx'
 // Shared, platform-agnostic views (data + actions via props / useNexusData).
 export { PRView } from './views/view-prs.jsx'
 export { TestsView } from './views/view-tests.jsx'
-export { BuildsView } from './views/view-builds.jsx'
-export { TeamView } from './views/view-team.jsx'
-export { TriageView, TriageRow } from './views/view-triage.jsx'
+export { BuildsView, ColHead } from './views/view-builds.jsx'
+export {
+  TeamView, slugifyLocal, getInitials, NoteModal, ScheduleOneOnOneModal,
+} from './views/view-team.jsx'
+export {
+  TriageView, TriageRow, TriageKpi, TriageEditField, softBg,
+  BUCKET_META, BUCKET_ORDER, PRIO_COLOR, AREA_OPTIONS, STATUS_OPTIONS,
+} from './views/view-triage.jsx'
 export { WorkItemsView, WorkItemIdLink, WI_TYPE_STATES_CACHE_KEY } from './views/view-workitems.jsx'
 export { DashboardView } from './views/view-dashboard.jsx'
 

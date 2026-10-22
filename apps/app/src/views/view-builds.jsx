@@ -3,6 +3,7 @@ import { Icon } from '../icons.jsx';
 import { adoGet, adoPost, adoPatch, getAdoConfig } from '../ado-client.js';
 import { toast } from '../toast.jsx';
 import { HelmData } from '../data.jsx';
+import { ColHead } from '@nexusmd/ui';
 // view-builds.jsx — Build pipelines status view
 
 // Grid template shared between header and every build row
@@ -487,33 +488,6 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
       </div>
       </div>
     </React.Fragment>
-  );
-}
-
-// ── Column header helper ──────────────────────────────────────
-function ColHead({ children, sortable, sortDir, onSort }) {
-  return (
-    <div
-      onClick={sortable ? onSort : undefined}
-      style={{
-        fontSize:11, fontWeight:600, color:'var(--text-muted)',
-        textTransform:'uppercase', letterSpacing:'0.05em',
-        padding:'8px 0', display:'flex', alignItems:'center', gap:4,
-        userSelect:'none',
-        cursor: sortable ? 'pointer' : 'default',
-        whiteSpace:'nowrap',
-      }}
-      onMouseEnter={e => { if (sortable) e.currentTarget.style.color = 'var(--text)'; }}
-      onMouseLeave={e => { if (sortable) e.currentTarget.style.color = 'var(--text-muted)'; }}>
-      {children}
-      {sortable && (
-        <Icon
-          name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'}
-          size={10}
-          style={{ opacity:0.7 }}
-        />
-      )}
-    </div>
   );
 }
 

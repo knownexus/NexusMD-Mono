@@ -14,16 +14,16 @@ import { toast } from '../toast.jsx';
 import { useNexusData } from '../data-context.jsx';
 import { displayIdOf } from '@nexusmd/core';
 
-const BUCKET_META = {
+export const BUCKET_META = {
   'Decision':        { color: 'var(--danger)',  label: 'Needs decision' },
   'Flesh out':       { color: 'var(--warning, #c98a1b)', label: 'Needs flesh out' },
   'Ready to assign': { color: 'var(--success)', label: 'Ready to assign' },
 };
-const BUCKET_ORDER  = ['Decision', 'Flesh out', 'Ready to assign'];
-const PRIO_COLOR    = { High: 'var(--danger)', Medium: 'var(--info)', Low: 'var(--text-subtle)' };
-const AREA_OPTIONS  = ['Claims (FLI)', 'Invoicing (Cirrus)', 'Finance / Payments', 'CRM', 'Supportis', 'Quoting (Dual Drive)', 'Platform / Infra', 'Other'];
-const STATUS_OPTIONS = ['Not started', 'In progress', 'Specced', 'Assigned', 'Done'];
-const softBg = (c) => `color-mix(in srgb, ${c} 12%, var(--surface))`;
+export const BUCKET_ORDER  = ['Decision', 'Flesh out', 'Ready to assign'];
+export const PRIO_COLOR    = { High: 'var(--danger)', Medium: 'var(--info)', Low: 'var(--text-subtle)' };
+export const AREA_OPTIONS  = ['Claims (FLI)', 'Invoicing (Cirrus)', 'Finance / Payments', 'CRM', 'Supportis', 'Quoting (Dual Drive)', 'Platform / Infra', 'Other'];
+export const STATUS_OPTIONS = ['Not started', 'In progress', 'Specced', 'Assigned', 'Done'];
+export const softBg = (c) => `color-mix(in srgb, ${c} 12%, var(--surface))`;
 
 const triageSelectStyle = {
   height: 28, padding: '0 8px',
@@ -34,7 +34,7 @@ const triageSelectStyle = {
 
 // ── TriageKpi ─────────────────────────────────────────────────────────────────
 
-function TriageKpi({ label, value, color, active, onClick }) {
+export function TriageKpi({ label, value, color, active, onClick }) {
   return (
     <button onClick={onClick}
       style={{
@@ -52,7 +52,7 @@ function TriageKpi({ label, value, color, active, onClick }) {
 // ── TriageEditField ───────────────────────────────────────────────────────────
 // A labelled inline field used inside the expanded triage row.
 
-function TriageEditField({ label, children }) {
+export function TriageEditField({ label, children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 120 }}>
       <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-subtle)' }}>{label}</span>
@@ -63,7 +63,9 @@ function TriageEditField({ label, children }) {
 
 // ── TriageRow ─────────────────────────────────────────────────────────────────
 
-export function TriageRow({ it, onUpdate }) {
+// saveTriage(id, changes) persists an edit and throws on failure; it defaults to the web host's
+// /api/triage. selectStyle lets a host enlarge the inline selects (touch targets).
+export function TriageRow({ it, onUpdate, saveTriage, selectStyle = triageSelectStyle }) {
   const [expanded, setExpanded]   = React.useState(false);
   const [saving,   setSaving]     = React.useState(false);
   const [saveErr,  setSaveErr]    = React.useState('');
@@ -92,13 +94,16 @@ export function TriageRow({ it, onUpdate }) {
   const patch = async (changes) => {
     setSaving(true); setSaveErr('');
     try {
-      const r = await fetch(`/api/triage/items/${it.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(changes),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      if (saveTriage) await saveTriage(it.id, changes);
+      else {
+        const r = await fetch(`/api/triage/items/${it.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(changes),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      }
       onUpdate?.(it.id, changes);
       toast?.('Triage updated', 'success');
     } catch(e) {
@@ -177,32 +182,32 @@ export function TriageRow({ it, onUpdate }) {
           {/* Triage edit fields */}
           <div style={{ padding: '12px 14px', background: 'var(--surface-2)', display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-start' }}>
             <TriageEditField label="Bucket">
-              <select value={bucket} onChange={e => handleBucket(e.target.value)} style={triageSelectStyle} disabled={saving}>
+              <select value={bucket} onChange={e => handleBucket(e.target.value)} style={selectStyle} disabled={saving}>
                 {BUCKET_ORDER.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             </TriageEditField>
 
             <TriageEditField label="Priority">
-              <select value={priority} onChange={e => handlePriority(e.target.value)} style={triageSelectStyle} disabled={saving}>
+              <select value={priority} onChange={e => handlePriority(e.target.value)} style={selectStyle} disabled={saving}>
                 {['High', 'Medium', 'Low'].map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </TriageEditField>
 
             <TriageEditField label="Area">
-              <select value={area} onChange={e => handleArea(e.target.value)} style={triageSelectStyle} disabled={saving}>
+              <select value={area} onChange={e => handleArea(e.target.value)} style={selectStyle} disabled={saving}>
                 {AREA_OPTIONS.map(a => <option key={a} value={a}>{a}</option>)}
               </select>
             </TriageEditField>
 
             <TriageEditField label="Suggested owner">
-              <select value={owner} onChange={e => handleOwner(e.target.value)} style={triageSelectStyle} disabled={saving}>
+              <select value={owner} onChange={e => handleOwner(e.target.value)} style={selectStyle} disabled={saving}>
                 <option value="TBD">TBD</option>
                 {TEAM.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
               </select>
             </TriageEditField>
 
             <TriageEditField label="Status">
-              <select value={status} onChange={e => handleStatus(e.target.value)} style={triageSelectStyle} disabled={saving}>
+              <select value={status} onChange={e => handleStatus(e.target.value)} style={selectStyle} disabled={saving}>
                 {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </TriageEditField>
@@ -216,7 +221,7 @@ export function TriageRow({ it, onUpdate }) {
                 disabled={saving}
                 placeholder="What needs to happen…"
                 style={{
-                  ...triageSelectStyle, height: 'auto', padding: '4px 8px',
+                  ...selectStyle, height: 'auto', padding: '4px 8px',
                   resize: 'vertical', minWidth: 240, fontFamily: 'var(--sans)', lineHeight: 1.5,
                 }}
               />
