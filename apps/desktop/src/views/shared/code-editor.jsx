@@ -1,6 +1,7 @@
 import React from 'react'
 import { EditorView, basicSetup } from 'codemirror'
 import { EditorState, Compartment, Annotation, Transaction } from '@codemirror/state'
+import { Decoration } from '@codemirror/view'
 import { syntaxHighlighting } from '@codemirror/language'
 import { classHighlighter } from '@lezer/highlight'
 import { languageExtension, languageForPath } from './languages.js'
@@ -20,11 +21,23 @@ const THEME = EditorView.theme({
   '&.cm-focused': { outline: '1px solid var(--accent-border, var(--border))' },
 })
 
-export function CodeEditor({ value, language, onChange, ariaLabel, line = null, readOnly = false }) {
+// `lineClasses` as line decorations: [[1-based line, className], …]; lines past the end are ignored.
+const lineDecorations = (doc, list) => {
+  const marks = (list ?? []).filter(([n]) => n >= 1 && n <= doc.lines).sort((a, b) => a[0] - b[0])
+    .map(([n, cls]) => Decoration.line({ class: cls }).range(doc.line(n).from))
+  return EditorView.decorations.of(Decoration.set(marks))
+}
+
+/**
+ * `lineClasses` tints whole lines ([[line, className], …]); they apply to the document as it is
+ * after `value`, so pass classes worked out from that same text.
+ */
+export function CodeEditor({ value, language, onChange, ariaLabel, line = null, readOnly = false, lineClasses = null }) {
   const host = React.useRef(null)
   const view = React.useRef(null)
   const lang = React.useRef(new Compartment())
   const ro = React.useRef(new Compartment())
+  const tints = React.useRef(new Compartment())
   const replaced = React.useRef(false)
   const jumped = React.useRef(null)
   const onChangeRef = React.useRef(onChange)
@@ -39,6 +52,7 @@ export function CodeEditor({ value, language, onChange, ariaLabel, line = null, 
         extensions: [
           basicSetup, THEME, syntaxHighlighting(classHighlighter), lang.current.of(languageExtension(initial.current.language)),
           ro.current.of(EditorState.readOnly.of(!!initial.current.readOnly)),
+          tints.current.of([]),
           EditorView.contentAttributes.of({ 'aria-label': initial.current.ariaLabel }),
           EditorView.updateListener.of(u => {
             // Only user edits report back; documents replaced from outside are already known.
@@ -64,6 +78,12 @@ export function CodeEditor({ value, language, onChange, ariaLabel, line = null, 
   React.useEffect(() => {
     view.current?.dispatch({ effects: lang.current.reconfigure(languageExtension(language)) })
   }, [language])
+
+  // After the value effect, so the classes land on the text they were worked out from.
+  React.useEffect(() => {
+    const v = view.current
+    v?.dispatch({ effects: tints.current.reconfigure(lineClasses?.length ? lineDecorations(v.state.doc, lineClasses) : []) })
+  }, [lineClasses, value])
 
   React.useEffect(() => {
     view.current?.dispatch({ effects: ro.current.reconfigure(EditorState.readOnly.of(!!readOnly)) })

@@ -1,6 +1,38 @@
 import React from 'react'
+import { PlModal } from '@nexusmd/ui'
+import { hasMarkers } from '@nexusmd/core'
 import { CodeEditor, languageForPath } from '../shared/code-editor.jsx'
 import { useWorktreeFile } from './use-worktree-file.js'
+
+/**
+ * The resolve screen's "Edit result…" dialog: the conflict result in an editor. Save result hands the
+ * text back through `onSave` (nothing is written to disk here; the resolve screen keeps it as its
+ * draft). The footer says whether conflict markers remain: saving with markers doesn't resolve.
+ */
+export function EditResultDialog({ path, text, onSave, onClose }) {
+  const [draft, setDraft] = React.useState(text)
+  const markers = hasMarkers(draft)
+  const save = () => onSave(draft)
+  const onKeyDown = e => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); save() }
+  }
+  const footer = (
+    <>
+      <button className="btn ghost" onClick={onClose}>Cancel</button>
+      <button className="btn accent" title="Ctrl+S" onClick={save}>Save result</button>
+    </>
+  )
+  const note = markers
+    ? <span style={{ color: 'var(--warning)' }}>Conflict markers remain: saving keeps them, and the file stays unresolved.</span>
+    : <span style={{ color: 'var(--success)' }}>No conflict markers left.</span>
+  return (
+    <PlModal open wide onClose={onClose} title="Edit result" sub={path} icon="git-branch" footer={footer} footerLeft={note} closeOnBackdrop={false}>
+      <div onKeyDown={onKeyDown} style={{ display: 'flex', flexDirection: 'column', height: 'min(60vh, 520px)' }}>
+        <CodeEditor value={text} language={languageForPath(path)} onChange={setDraft} ariaLabel={`Edit result for ${path}`} />
+      </div>
+    </PlModal>
+  )
+}
 
 /**
  * One worktree file in an editor: Save (or Ctrl+S) writes it back only if it is unchanged on
