@@ -92,7 +92,9 @@ export function TagInput({ value, onChange, knownTags = [], style }) {
         }}>
           {filtered.map(t => (
             <div key={t} onMouseDown={e => { e.preventDefault(); add(t); setOpen(false) }}
-              style={{ padding: '6px 12px', fontSize: 12.5, cursor: 'pointer', color: 'var(--text)' }}>
+              style={{ padding: '6px 12px', fontSize: 12.5, cursor: 'pointer', color: 'var(--text)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = '' }}>
               {t}
             </div>
           ))}
@@ -168,6 +170,8 @@ export function AreaTreePicker({ value, onChange, areas = [], compact = false })
             padding: `5px 8px 5px ${8 + depth * 14}px`,
             cursor: 'pointer', fontSize: 12.5, fontFamily: 'var(--sans)',
           }}
+          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--surface-2)' }}
+          onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
         >
           <span
             style={{ width: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle)' }}
@@ -197,6 +201,8 @@ export function AreaTreePicker({ value, onChange, areas = [], compact = false })
                     padding: `4px 8px 4px ${8 + itemDepth * 14}px`,
                     cursor: 'pointer', fontSize: 12, fontFamily: 'var(--sans)',
                   }}
+                  onMouseEnter={e => { if (!itemSel) e.currentTarget.style.background = 'var(--surface-2)' }}
+                  onMouseLeave={e => { if (!itemSel) e.currentTarget.style.background = 'transparent' }}
                 >
                   <span style={{ width: 14, flexShrink: 0 }}/>
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item}</span>
@@ -262,6 +268,8 @@ export function AreaTreePicker({ value, onChange, areas = [], compact = false })
                 background: 'transparent', color: 'var(--danger)',
                 padding: '5px 8px', cursor: 'pointer', fontSize: 12, fontFamily: 'var(--sans)', marginBottom: 2,
               }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-soft)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
             >
               <span style={{ width: 14 }}/>
               Clear all

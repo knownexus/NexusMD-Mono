@@ -92,7 +92,10 @@ export function createAdoHttpAdapter() {
         const data = typeof resp.data === 'string'
           ? (() => { try { return JSON.parse(resp.data) } catch { return resp.data } })()
           : resp.data
-        return { ok: resp.status < 400, status: resp.status, json: async () => data }
+        return {
+          ok: resp.status < 400, status: resp.status, json: async () => data,
+          text: async () => (typeof data === 'string' ? data : JSON.stringify(data, null, 2)),
+        }
       } else {
         const r = await window.fetch(url, {
           method, headers,

@@ -6,6 +6,7 @@ export function createAdoHttpAdapter() {
         ok: res.ok,
         status: res.status,
         json: () => res.json(),
+        text: () => res.text(),
       }
     },
   }
