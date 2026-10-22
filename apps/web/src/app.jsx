@@ -33,8 +33,7 @@ import { loadConfidentialConfig, hashPassword } from './confidential.jsx';
 import { loadStoredPlanner, loadStoredThemes, NexusMDData, NexusMDApi } from './data.js';
 import { isTerminalState, adoTypeToHelm, timeAgo, mergeTeamRoster } from '@nexusmd/core';
 import { BuildDetail } from '@nexusmd/ui';
-import './styles/nexusmd.css';
-import './styles/nexusmd-planner-v2.css';
+import '@nexusmd/ui/styles.css';
 
 const adoTypeToNexusMD = adoTypeToHelm;
 const DEFAULT_WI_TYPES = ['Bug', 'Task', 'User Story', 'Feature', 'Epic'];

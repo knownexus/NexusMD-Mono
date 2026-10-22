@@ -20,7 +20,7 @@ import { appSync } from '../sync.js';
 //   - HelmData.ME       → profile identity (name, email, org from Azure DevOps)
 //   - helm.planner.*           → planner view prefs (same keys the planner View menu writes)
 //   - window.helmConfidential  → password change (hashPassword/load/saveConfidentialConfig)
-// Requires planner-ui.jsx (PlFld, PlModal) + helm-planner-v2.css.
+// Requires planner-ui.jsx (PlFld, PlModal) + @nexusmd/ui planner-v2.css.
 const { useState: useStateVS, useMemo: useMemoVS, useRef: useRefVS } = React;
 
 // Local pref hook — persists to localStorage and pushes to server prefs.

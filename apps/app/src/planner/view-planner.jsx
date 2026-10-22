@@ -22,7 +22,7 @@ import {
 // confidential sections/rows (SHA-256 + AES-GCM sync), calendar picker,
 // NexusMDNav navigation, helm:create-wi context menu.
 // Requires (load before this file): planner-ui.jsx, planner-notes.jsx,
-// planner-editors.jsx, planner-glance.jsx, css/helm-planner-v2.css.
+// planner-editors.jsx, planner-glance.jsx, @nexusmd/ui planner-v2.css.
 
 // Version helpers (loadVersions/saveVersions/describeSnapshot) now live in
 // @nexusmd/ui — imported above, re-exported below.

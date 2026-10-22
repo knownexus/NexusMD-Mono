@@ -5,7 +5,7 @@
 //   - NexusMDData.ME       → profile identity (name, email, org from Azure DevOps)
 //   - nexusmd.planner.*        → planner view prefs (same keys the planner View menu writes)
 //   - confidential.jsx           → password change (hashPassword/load/saveConfidentialConfig)
-// Requires planner-ui.jsx (PlFld, PlModal) + nexusmd-planner-v2.css.
+// Requires planner-ui.jsx (PlFld, PlModal) + @nexusmd/ui planner-v2.css.
 import React, { useState as useStateVS, useEffect as useEffectVS, useRef as useRefVS, useCallback as useCallbackVS } from 'react'
 import { NexusMDData, NexusMDApi } from './data.js';
 import { Drawer, nexusMDPushPref } from './components.jsx'

@@ -1,5 +1,8 @@
 import './profile-migration.js';
 import 'flatpickr/dist/flatpickr.min.css';
+import '@nexusmd/ui/styles.css';
+import './styles/app-overrides.css';
+import './styles/helm-mobile.css';
 
 import { initCore, createNoOpAdapters } from '@nexusmd/core';
 import {

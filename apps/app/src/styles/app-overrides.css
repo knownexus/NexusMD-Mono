@@ -1,0 +1,138 @@
+/* App-only overrides layered on @nexusmd/ui/styles.css: touch density,
+   no horizontal scroll, viewport-sized shell, bottom nav and bottom sheets. */
+:root {
+  --row-h: 44px;
+  --side-w: 130px;
+  --side-w-icons: 56px;
+  --bottom-bar-h: 52px;
+}
+html { overflow-x: hidden; }
+body { overflow-x: hidden; }
+.app {
+  height: 100vh;
+  width: 100vw;
+  max-width: 100vw;
+  overflow: hidden;
+}
+.main { overflow: hidden; }
+.page { overflow-x: hidden; }
+[data-theme="cobalt"] { --text-subtle: #3e4d62; }
+
+/* ── Touch Targets (Android) ─────────────────────────────────────── */
+.btn { min-height: 44px; }
+.btn.sm { min-height: 36px; }
+.btn.icon { min-height: 44px; min-width: 44px; }
+.nav-item { min-height: 44px; }
+.nav-section-label { min-height: 32px; }
+button[style*="height: 30"],
+button[style*="height:30"] { min-height: 44px !important; }
+
+/* ── Bottom Nav Layout ───────────────────────────────────────────── */
+.bottom-bar {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: var(--bottom-bar-h);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  z-index: 100;
+  align-items: stretch;
+}
+
+.app[data-sidebar="bottom"] .sidebar { display: none; }
+.app[data-sidebar="bottom"] { grid-template-columns: 1fr; }
+.app[data-sidebar="bottom"] .bottom-bar { display: flex; }
+.app[data-sidebar="bottom"] .page { padding-bottom: var(--bottom-bar-h); }
+
+.bottom-bar-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: 9px;
+  font-family: var(--sans);
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  min-height: 52px;
+  position: relative;
+}
+.bottom-bar-item.active { color: var(--accent); }
+.bottom-bar-item svg { width: 20px; height: 20px; }
+
+.bottom-bar-badge {
+  position: absolute;
+  top: 6px; right: calc(50% - 18px);
+  background: var(--danger);
+  color: white;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  min-width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  font-family: var(--mono);
+}
+
+/* ── Drawer: bottom sheet on phone ──────────────────────────────── */
+@media (max-width: 600px) {
+  .drawer {
+    top: auto !important;
+    bottom: 0;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 88vh;
+    border-radius: 12px 12px 0 0;
+    transform: translateY(100%);
+  }
+  .drawer.open {
+    transform: translateY(0);
+  }
+  .drawer-resize-handle { display: none; }
+  .drawer-head { border-radius: 12px 12px 0 0; }
+
+  .drawer-head::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 3px;
+    background: var(--border-strong);
+    border-radius: 2px;
+    margin: 0 auto 10px;
+  }
+}
+
+/* ── Modals: bottom sheet on phone ─────────────────────────────── */
+@media (max-width: 600px) {
+  #modal-settings,
+  #modal-create-workitem {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  #modal-settings > div,
+  #modal-create-workitem > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 92vh !important;
+    border-radius: 12px 12px 0 0 !important;
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+  }
+
+  #modal-settings [style*="grid-template-columns: 1fr 1fr"],
+  #modal-settings [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+  #modal-create-workitem [style*="grid-template-columns: 1fr 1fr"],
+  #modal-create-workitem [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+}
+
+.fld input, .fld textarea, .fld select { padding: 8px 10px; }
