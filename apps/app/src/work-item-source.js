@@ -21,7 +21,10 @@ export const adoWorkItemSource = {
     const proj = project || (HelmData?.CONFIG_PROJECTS || [])[0] || '';
     if (!proj) return [];
     const projEnc = encodeURIComponent(proj);
-    const commentsData = await adoGet(`${projEnc}/_apis/wit/workitems/${id}/comments?api-version=7.1-preview.3`);
+    let commentsData;
+    try {
+      commentsData = await adoGet(`${projEnc}/_apis/wit/workitems/${id}/comments?api-version=7.1-preview.3`);
+    } catch { return []; }
     return (commentsData?.comments || []).map(c => ({
       id:          c.id,
       author:      c.createdBy?.displayName || '',

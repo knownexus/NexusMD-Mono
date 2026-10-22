@@ -36,3 +36,28 @@ describe('WorkItemDetail (shared via injected workItemSource)', () => {
     expect(container.textContent).toContain('Looks good')
   })
 })
+
+describe('WorkItemDetail failure handling', () => {
+  const wrap = (source, id = 43) => render(
+    <NexusDataProvider value={{ data: {}, workItemSource: source }}>
+      <WorkItemDetail id={id} project="Proj" />
+    </NexusDataProvider>,
+  )
+
+  it('still shows the item when only the comments fail to load', async () => {
+    const { container } = wrap({
+      loadDetail: vi.fn(async () => ({ description: 'Body survives', acceptanceCriteria: null, reproSteps: null })),
+      loadComments: vi.fn(async () => { throw new Error('comments down') }),
+    })
+    await waitFor(() => expect(container.textContent).toContain('Body survives'))
+    expect(container.textContent).not.toContain('comments down')
+  })
+
+  it('shows the error when the detail itself fails', async () => {
+    const { container } = wrap({
+      loadDetail: vi.fn(async () => { throw new Error('HTTP 404') }),
+      loadComments: vi.fn(async () => []),
+    }, 44)
+    await waitFor(() => expect(container.textContent).toContain('HTTP 404'))
+  })
+})

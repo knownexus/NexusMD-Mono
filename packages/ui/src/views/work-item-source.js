@@ -3,8 +3,13 @@
 //   loadDetail   → { description, acceptanceCriteria, reproSteps }
 //   loadComments → [{ id, author, text, createdDate }]
 //   addComment   → { id, author, text, createdDate }
-//   saveField    → void (throws on failure)
+//   saveField    → void
 //   loadRawFields→ the raw ADO fields object
+//
+// Failure contract every source follows: loadDetail, saveField, addComment and
+// loadRawFields THROW so the view can show the error. loadComments is secondary, so a
+// failed load (or no project to ask for) resolves to [] instead of hiding the item —
+// WorkItemDetail also guards this itself, so a source that throws still loads.
 //
 // Default = the ASP.NET host's /api/workitems/* proxy (web + desktop). The app
 // supplies an ado-client-backed source via NexusDataProvider. A module-level mirror
@@ -15,7 +20,8 @@ import { isJiraId } from '@nexusmd/core'
 export const apiWorkItemSource = {
   async loadDetail(id, _project) {
     const r = await fetch(`/api/workitems/${id}/detail`)
-    return r.ok ? await r.json() : null
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
   },
   async loadComments(id, project) {
     const url = project

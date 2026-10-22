@@ -28,7 +28,7 @@ async function prefetchWorkItem(id, project) {
     const source = getWorkItemSource();
     const [detail, comments] = await Promise.all([
       source.loadDetail(id, project),
-      source.loadComments(id, project),
+      source.loadComments(id, project).catch(() => []),
     ]);
     _wiPrefetch.set(key, { detail, comments, ts: Date.now() });
   } catch (_) {}
@@ -303,7 +303,7 @@ export function WorkItemDetail({ id, project }) {
 
       const [detailData, commentsData] = await Promise.all([
         workItemSource.loadDetail(id, project),
-        workItemSource.loadComments(id, project),
+        workItemSource.loadComments(id, project).catch(() => []),
       ]);
 
       _wiPrefetch.set(key, { detail: detailData, comments: commentsData ?? [], ts: Date.now() });
