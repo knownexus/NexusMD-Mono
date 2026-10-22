@@ -52,3 +52,6 @@ apps/web/server/data/profiles/
 # Session scratch and editor lock files
 .superpowers/
 .~lock.*#
+
+# Exported org work-item data (kept on disk, not in git)
+apps/web/triage-tracker/exports/
