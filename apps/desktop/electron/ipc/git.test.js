@@ -7,6 +7,7 @@ import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
 import { parseDiff } from '@nexusmd/core'
 import { register, gitEnv, isRepositoryRoot, findGit, extractHunk, logArgs, HISTORY_CONFIG } from './git.cjs'
+import { assertSafeArgv, assertResetArgv } from './git-actions.cjs'
 
 const ROOT = process.platform === 'win32' ? 'C:\\repos' : '/repos'
 const REPO = { name: 'App', path: path.join(ROOT, 'App') }
@@ -1064,7 +1065,8 @@ describe('stage 4 actions (unit)', () => {
     ['branch', { name: '--force' }], ['branch', { name: 'x', start: '--all' }], ['checkout', { branch: '--force' }],
     ['checkout', { oid: 'HEAD --force' }], ['revert', { oid: '-f' }], ['worktreeAdd', { ref: 'refs/heads/side', path: '-f' }],
     ['worktreeRemove', { path: '--force' }], ['stashDrop', { oid: '--all' }], ['pull', { mode: 'force' }],
-    ['rebaseInteractive', { base: '--root', rows: [] }],
+    ['rebaseInteractive', { base: '--root', rows: [] }], ['cherryPick', { oid: '-f' }], ['reset', { oid: '--hard' }],
+    ['reset', { oid: OID, mode: 'keep' }], ['reset', { oid: 'HEAD~1', mode: 'hard' }],
   ])('%s with hostile options %j: refused before any write, no forbidden flag anywhere', async (kind, options) => {
     const { invoke, calls } = setup(state())
     const p = await invoke('git:preview', REPO, WT, REG, kind, options)
@@ -1126,9 +1128,32 @@ describe('stage 4 actions (unit)', () => {
     fs.rmSync(hooks, { recursive: true, force: true })
   })
 
+  it('reset runs only its own exact argv; every other kind still refuses reset and --hard', async () => {
+    const { invoke, calls } = setup(state())
+    const p = await invoke('git:preview', REPO, WT, REG, 'reset', { oid: OID, mode: 'hard' })
+    expect(p.eligible).toBe(true)
+    expect(await invoke('git:run', REPO, WT, REG, 'reset', { oid: OID, mode: 'hard' }, p.stamp)).toMatchObject({ ok: true })
+    expect(writes(calls).map(c => c.args)).toEqual([['reset', '--hard', '--end-of-options', OID]])
+    expect(() => assertSafeArgv(['reset', '--soft', '--end-of-options', OID])).toThrow('Refusing git reset')
+    for (const bad of [['reset', '--hard', OID], ['reset', '--keep', '--end-of-options', OID], ['reset', '--hard', '--end-of-options', 'HEAD~1'],
+      ['reset', '--hard', '--end-of-options', OID, '--', 'f'], ['clean', '--hard', '--end-of-options', OID]]) {
+      expect(() => assertResetArgv(bad)).toThrow('Refusing git reset')
+    }
+  })
+
+  it('cherry-pick builds -x and -m from options and refuses a commit the branch already has', async () => {
+    const { invoke, calls } = setup(args => (args[0] === 'merge-base' && args[1] === '--is-ancestor' ? { code: 1 } : state()(args)))
+    const p = await invoke('git:preview', REPO, WT, REG, 'cherryPick', { oid: OID, x: true })
+    expect(p.eligible).toBe(true)
+    await invoke('git:run', REPO, WT, REG, 'cherryPick', { oid: OID, x: true }, p.stamp)
+    expect(writes(calls).map(c => c.args)).toEqual([['cherry-pick', '-x', '--end-of-options', OID]])
+    const has = setup(state())
+    expect((await has.invoke('git:preview', REPO, WT, REG, 'cherryPick', { oid: OID })).reason).toBe('main already has that commit.')
+  })
+
   it('refuses unknown kinds outright', async () => {
     const { invoke } = setup(state())
-    await expect(invoke('git:preview', REPO, WT, REG, 'reset', {})).rejects.toThrow('Unknown action: reset')
+    await expect(invoke('git:preview', REPO, WT, REG, 'clean', {})).rejects.toThrow('Unknown action: clean')
     await expect(invoke('git:run', REPO, WT, REG, '__proto__', {}, 'x')).rejects.toThrow('Unknown action')
   })
 })

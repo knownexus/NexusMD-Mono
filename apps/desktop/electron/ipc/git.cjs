@@ -937,9 +937,11 @@ function register(ipcMain, deps = {}) {
     const args = parent === null
       ? ['diff-tree', '--no-commit-id', '--root', '-r', '-z', '-M', '--name-status', '--no-ext-diff', '--no-textconv', '--end-of-options', oid]
       : ['diff-tree', '--no-commit-id', '-r', '-z', '-M', '--name-status', '--no-ext-diff', '--no-textconv', '--end-of-options', parent, oid];
-    const r = await historyRead(worktreePath, args);
+    // Line counts come from a second listing alongside; a failure there only loses the counts.
+    const counts = args.map(a => (a === '--name-status' ? '--numstat' : a));
+    const [r, n] = await Promise.all([historyRead(worktreePath, args), historyRead(worktreePath, counts)]);
     if (r.code !== 0) throw new Error(r.stderr || 'git diff-tree failed');
-    return { files: r.stdout };
+    return { files: r.stdout, numstat: n.code === 0 ? n.stdout : null };
   });
 
   handle('git:commitDiff', async (_e, repo, worktreePath, registered, oid, parent, paths) => {

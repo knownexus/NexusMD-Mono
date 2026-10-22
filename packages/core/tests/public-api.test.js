@@ -84,7 +84,7 @@ const EXPECTED = [
   'GroupDraft',
   'parseDiff', 'diffSides', 'changePaths', 'isSubmodule', 'FILE_ACTIONS', 'actionsFor', 'groupChanges',
   'toggleSelection', 'rangeSelection', 'pruneSelection', 'fileReview', 'commitTargets', 'commitReview', 'COMMIT_NOTE',
-  'parseRefs', 'parseLog', 'graphCells', 'parseSearch', 'historyQuery', 'HISTORY_STEP', 'HISTORY_MAX', 'parseRefList', 'defaultBase', 'parseAliases', 'parseShellAliases', 'parseShellScripts', 'parseCommitDetails', 'parseNameStatus', 'parentLabel',
+  'parseRefs', 'parseLog', 'graphCells', 'parseSearch', 'historyQuery', 'HISTORY_STEP', 'HISTORY_MAX', 'parseRefList', 'defaultBase', 'parseAliases', 'parseShellAliases', 'parseShellScripts', 'parseCommitDetails', 'parseNameStatus', 'parseNumstat', 'parentLabel',
   'ACTION_KINDS', 'BATCH_KINDS', 'BATCH_NOTE', 'actionTargets', 'previewModel', 'worktreeDefaultPath', 'checkBranchName', 'REBASE_ACTIONS', 'rebasePlan', 'moveRow', 'setRowAction', 'setRowMessage', 'rebaseTodo', 'squashGroups', 'rebaseMessages', 'messageRows', 'rebaseProblems', 'ACTIVITY_MAX', 'addActivity', 'failedTargets',
   'formatSqlValue', 'formatCondition',
   'buildSearchQuery', 'buildInsertQuery', 'buildUpdateQuery', 'buildDeleteQuery',

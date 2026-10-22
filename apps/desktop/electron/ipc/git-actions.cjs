@@ -33,6 +33,16 @@ const BASE_MARKER = 'nexusmd-rebase-onto';
 const FORBIDDEN_FLAGS = new Set(['--force', '-f', '--force-with-lease', '--force-if-includes', '--delete', '-d', '-D', '--mirror', '--all', '--tags', '--hard']);
 const FORBIDDEN_COMMANDS = new Set(['reset', 'clean']);
 
+const RESET_MODES = ['soft', 'mixed', 'hard'];
+
+// The one exception to the forbidden list: the reset kind's own argv, and nothing else shaped like it.
+// It never goes through assertSafeArgv; this checks its exact form instead.
+function assertResetArgv(args) {
+  const [cmd, mode, eoo, oid, ...rest] = args;
+  if (cmd !== 'reset' || !RESET_MODES.some(m => mode === `--${m}`) || eoo !== '--end-of-options' || !isOid(oid) || rest.length) throw new Error('Refusing git reset');
+  return args;
+}
+
 function assertSafeArgv(args) {
   if (FORBIDDEN_COMMANDS.has(args[0])) throw new Error(`Refusing git ${args[0]}`);
   for (const a of args) {
@@ -365,6 +375,65 @@ function registerActions(handle, ctx) {
       preview: async (wt, o) => ({ ...o, subject: (await subjects(wt, ['--max-count=1', o.oid], 1))[0]?.subject ?? '' }),
       steps: o => [['revert', '--no-edit', ...(o.parent ? ['-m', String(o.parent)] : []), '--end-of-options', o.oid]],
     },
+    cherryPick: {
+      timeout: LONG,
+      check: async (wt, o, state) => {
+        notDuring(state);
+        const branch = branchOf(state);
+        if (state.tracked) throw new Error('Cherry-pick needs a clean worktree - stash first.');
+        if (!isOid(o.oid)) throw new Error('Choose a commit to cherry-pick.');
+        const r = await read(wt, ['rev-list', '--parents', '--max-count=1', '--end-of-options', o.oid]);
+        if (r.code !== 0) throw new Error('That commit no longer exists.');
+        const parents = r.stdout.trim().split(' ').slice(1);
+        let parent = null;
+        if (parents.length > 1) {
+          if (!Number.isInteger(o.parent) || o.parent < 1 || o.parent > parents.length) throw new Error('Choose which parent of the merge to compare with.');
+          parent = o.parent;
+        }
+        if ((await read(wt, ['merge-base', '--is-ancestor', o.oid, 'HEAD'])).code === 0) throw new Error(`${branch} already has that commit.`);
+        return { oid: o.oid, parent, base: parents[(parent ?? 1) - 1] ?? null, x: !!o.x, branch };
+      },
+      extra: async (wt, o) => `${o.oid}\0${o.parent}\0${o.x}`,
+      preview: async (wt, o) => {
+        const names = r => (r.code === 0 ? r.stdout.split('\0').filter(Boolean) : []);
+        const picked = names(await read(wt, o.base
+          ? ['diff', '--name-only', '-z', '--no-ext-diff', '--end-of-options', o.base, o.oid]
+          : ['diff-tree', '--no-commit-id', '--root', '-r', '-z', '--name-only', '--end-of-options', o.oid]));
+        const since = out(await read(wt, ['merge-base', 'HEAD', o.oid]));
+        const mine = new Set(since ? names(await read(wt, ['diff', '--name-only', '-z', '--no-ext-diff', '--end-of-options', since, 'HEAD'])) : []);
+        return {
+          oid: o.oid, parent: o.parent, x: o.x, branch: o.branch,
+          subject: (await subjects(wt, ['--max-count=1', o.oid], 1))[0]?.subject ?? '',
+          files: picked.length, overlap: picked.filter(f => mine.has(f)),
+        };
+      },
+      steps: o => [['cherry-pick', ...(o.x ? ['-x'] : []), ...(o.parent ? ['-m', String(o.parent)] : []), '--end-of-options', o.oid]],
+    },
+    reset: {
+      timeout: SHORT,
+      check: async (wt, o, state) => {
+        notDuring(state);
+        const branch = branchOf(state);
+        const mode = o.mode ?? 'mixed';
+        if (!RESET_MODES.includes(mode)) throw new Error(`Unknown reset mode: ${String(mode)}`);
+        if (!isOid(o.oid) || !(await commitExists(wt, o.oid))) throw new Error('Choose a commit to reset to.');
+        if (o.oid === state.head) throw new Error(`${branch} is already at that commit.`);
+        if ((await read(wt, ['merge-base', '--is-ancestor', o.oid, 'HEAD'])).code !== 0) throw new Error(`Reset only moves ${branch} back to one of its own commits.`);
+        return { oid: o.oid, mode, branch };
+      },
+      extra: async (wt, o) => `${o.oid}\0${o.mode}`,
+      preview: async (wt, o, state) => {
+        const leaves = await subjects(wt, [`${o.oid}..HEAD`]);
+        const count = Number(out(await read(wt, ['rev-list', '--count', `${o.oid}..HEAD`])) || 0);
+        const unpushed = Number(out(await read(wt, ['rev-list', '--count', `${o.oid}..HEAD`, '--not', '--remotes'])) || 0);
+        return {
+          ...o, subject: (await subjects(wt, ['--max-count=1', o.oid], 1))[0]?.subject ?? '',
+          leaves, count, pushed: count - unpushed, dirty: state.tracked,
+        };
+      },
+      // Not through w(): reset is on the forbidden list for every other kind, so this argv has its own check.
+      run: async (wt, o) => finish(wt, await git(wt, assertResetArgv(['reset', `--${o.mode}`, '--end-of-options', o.oid]), { timeout: SHORT, env: { ...WRITE_ENV } })),
+    },
     continue: {
       timeout: LONG,
       check: async (wt, o, state) => {
@@ -650,6 +719,6 @@ function registerActions(handle, ctx) {
 }
 
 module.exports = {
-  registerActions, assertSafeArgv, branchNameProblem, rebaseTodo, rebaseMessages,
+  registerActions, assertSafeArgv, assertResetArgv, branchNameProblem, rebaseTodo, rebaseMessages,
   WRITE_ENV, BASE_MARKER, STALE, REJECTED, PUSHED_RANGE, MERGES_RANGE, ownershipMessage, networkMessage,
 };
