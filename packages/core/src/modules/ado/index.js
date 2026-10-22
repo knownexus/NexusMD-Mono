@@ -22,3 +22,9 @@ export {
   fetchPRThreads, postPRThread, postPRReply, setPRThreadStatus,
   fetchPRCommits, fetchPRFileChanges, fetchFileContent, updatePRDescription,
 } from './pr-collab.js'
+export {
+  makeWorkItemTypeDefsStore, fetchWorkItemTypes, fetchProjectFieldTypes, fetchTypeFields,
+  fetchClassificationPaths, loadWorkItemTypeDefs, fieldBucket, fieldGroup, TYPE_LAYOUTS,
+  resolveTypeLayout, LINK_TYPES, buildFieldPatchOps, buildAttachmentRelationOps,
+  buildLinkRelationOps, submitNewWorkItem,
+} from './workitem-types.js'
