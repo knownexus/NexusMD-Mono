@@ -1,5 +1,5 @@
 import React from 'react'
-import { parseCommitDetails, parseNameStatus, parseDiff } from '@nexusmd/core'
+import { parseCommitDetails, parseNameStatus, parseNumstat, parseDiff } from '@nexusmd/core'
 import { ipcMessage } from './use-git-actions.js'
 import { historyCache } from './history-cache.js'
 
@@ -49,7 +49,8 @@ export function useCommit({ adapter, repo, cwd, registered, oid, parentIndex = 0
       return cache.queue.run(k, async () => {
         const r = await adapter.commitFiles(c.repo, c.cwd, c.registered, o, parent)
         if (r?.missing) return MISSING
-        const list = parseNameStatus(r.files)
+        const counts = parseNumstat(r.numstat)
+        const list = parseNameStatus(r.files).map(f => ({ ...f, ...(counts.get(f.path) ?? { added: null, removed: null }) }))
         cache.files.set(k, list)
         return list
       }, { priority, tag: 'commit' })

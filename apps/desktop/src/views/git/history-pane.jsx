@@ -7,9 +7,9 @@ const LANES = [
   'var(--graph-3, var(--danger))', 'var(--graph-4, var(--text-muted))', 'var(--graph-5, var(--accent))',
 ]
 const CHIP = {
-  head: { fontWeight: 700, border: '1px solid var(--accent)', color: 'var(--accent)' },
-  branch: { background: 'color-mix(in srgb, var(--accent) 18%, transparent)' },
-  remote: { border: '1px solid var(--border)' },
+  head: { fontWeight: 700, background: 'var(--accent-soft)', color: 'var(--accent)' },
+  branch: { background: 'var(--accent-soft)' },
+  remote: { background: 'var(--info-soft)', color: 'var(--info)' },
   tag: { color: 'var(--text-muted)' },
   other: { color: 'var(--text-muted)' },
 }
@@ -25,10 +25,16 @@ export function relativeTime(ms, now = Date.now()) {
   return rtf ? rtf.format(0, 'minute') : 'just now'
 }
 
-function Graph({ graph }) {
+// The commit's own dot is coloured by whose it is: yours (not on any remote) violet, upstream info.
+function Graph({ graph, tone = null }) {
   return (
-    <span aria-hidden="true" style={{ ...mono, flex: 'none' }}>
-      {graphCells(graph).map((c, i) => <span key={i} style={{ color: LANES[c.lane % LANES.length] }}>{c.ch}</span>)}
+    <span aria-hidden="true" className="nx-gw-hgraph" style={{ ...mono, flex: 'none' }}>
+      {graphCells(graph).map((c, i) => {
+        // Straight lanes and dots sit on a rail drawn the row's full height, so taller rows stay joined.
+        if (c.ch === '│') return <span key={i} data-rail="" />
+        if (c.ch === '●') return <span key={i} data-rail="" className="nx-gw-hdot" data-tone={tone ?? undefined} style={tone ? undefined : { color: LANES[c.lane % LANES.length] }}>{c.ch}</span>
+        return <span key={i} style={{ color: LANES[c.lane % LANES.length] }}>{c.ch}</span>
+      })}
     </span>
   )
 }
@@ -46,9 +52,10 @@ const FILTERS = [['all', 'All'], ['unpushed', 'Unpushed'], ['sinceBase', 'Since'
 /**
  * The History toolbar and the commit list. Focus moves with ↑/↓; Enter hands focus to the file list.
  * `commitMenu(commit, index)` returns a row's actions ([{ label, onSelect }]), shown from its ⋯ button
- * or a right-click.
+ * or a right-click. With unpushed commits listed, dividers split yours ("Local commits", or
+ * "Your commits · being rebased" mid-rebase) from those already on `upstream`.
  */
-export function HistoryPane({ history: h, focusOid, onFocus, onOpenFiles, commitMenu = null }) {
+export function HistoryPane({ history: h, focusOid, onFocus, onOpenFiles, commitMenu = null, upstream = null, rebasing = false }) {
   const [input, setInput] = React.useState('')
   const [menuFor, setMenuFor] = React.useState(null)
   const searchRef = React.useRef(null)
@@ -56,6 +63,19 @@ export function HistoryPane({ history: h, focusOid, onFocus, onOpenFiles, commit
   const commits = h.rows.filter(r => r.commit)
   const index = commits.findIndex(r => r.commit.oid === focusOid)
   const noRemotes = h.loaded && h.unpushed === null && h.tip !== null
+  const sides = !!h.unpushed && commits.some(r => h.unpushed.has(r.commit.oid))
+  const toneOf = oid => (!h.unpushed ? null : h.unpushed.has(oid) ? 'yours' : 'upstream')
+  const dividerLabel = tone => (tone === 'yours' ? (rebasing ? 'Your commits · being rebased' : 'Local commits') : upstream ? `On ${upstream}` : 'Already pushed')
+  // A divider goes before the first commit of each run of yours / upstream commits.
+  const dividers = new Map()
+  if (sides) {
+    let last = null
+    for (const r of commits) {
+      const tone = toneOf(r.commit.oid)
+      if (tone !== last) dividers.set(r.commit.oid, tone)
+      last = tone
+    }
+  }
   const bases = h.refs.filter(r => r.ref.startsWith('refs/heads/') || r.ref.startsWith('refs/remotes/'))
 
   React.useEffect(() => {
@@ -112,21 +132,30 @@ export function HistoryPane({ history: h, focusOid, onFocus, onOpenFiles, commit
       {h.loading && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Loading…</span>}
       <div ref={listRef} role="listbox" aria-label="Commits" tabIndex={0} onKeyDown={onListKey}
         aria-activedescendant={focusOid ? `commit-${focusOid}` : undefined}
-        style={{ overflow: 'auto', minHeight: 0, flex: 1, fontSize: 13 }}>
+        className="nx-gw-hlist">
         {h.rows.map((r, i) => (r.commit
           ? (
             <React.Fragment key={r.commit.oid}>
+            {dividers.has(r.commit.oid) && (
+              <div role="presentation" className="nx-gw-hdivider" data-tone={dividers.get(r.commit.oid)}>{dividerLabel(dividers.get(r.commit.oid))}</div>
+            )}
             <div id={`commit-${r.commit.oid}`} data-oid={r.commit.oid} role="option" aria-selected={r.commit.oid === focusOid}
+              className="nx-gw-hrow" data-tone={toneOf(r.commit.oid) ?? undefined}
               onClick={() => onFocus(r.commit.oid)}
-              onContextMenu={commitMenu ? e => { e.preventDefault(); onFocus(r.commit.oid); setMenuFor(r.commit.oid) } : undefined}
-              style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', padding: '1px 4px',
-                background: r.commit.oid === focusOid ? 'color-mix(in srgb, var(--accent) 14%, transparent)' : undefined }}>
-              <Graph graph={r.graph} />
-              {r.commit.refs.map((ref, j) => <RefChip key={j} r={ref} />)}
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.commit.subject}</span>
+              onContextMenu={commitMenu ? e => { e.preventDefault(); onFocus(r.commit.oid); setMenuFor(r.commit.oid) } : undefined}>
+              <Graph graph={r.graph} tone={sides ? toneOf(r.commit.oid) : null} />
+              <div className="nx-gw-hrow-main">
+                <div className="nx-gw-hrow-top">
+                  {r.commit.refs.map((ref, j) => <RefChip key={j} r={ref} />)}
+                  <span className="nx-gw-hrow-subject">{r.commit.subject}</span>
+                </div>
+                <div className="nx-gw-hrow-meta">
+                  <span>{r.commit.author}</span>{' · '}
+                  <span title={new Date(r.commit.time).toLocaleString()}>{relativeTime(r.commit.time)}</span>
+                </div>
+              </div>
               {h.unpushed?.has(r.commit.oid) && <span aria-label="Not pushed" title="Not pushed" style={{ color: 'var(--warning)' }}>↑</span>}
-              <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{r.commit.author}</span>
-              <span title={new Date(r.commit.time).toLocaleString()} style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: 12 }}>{relativeTime(r.commit.time)}</span>
+              <span className="nx-gw-hrow-hash">{r.commit.oid.slice(0, 7)}</span>
               {commitMenu && (
                 <button className="btn sm ghost" aria-label={`Actions for ${r.commit.oid.slice(0, 7)}`} aria-haspopup="menu" aria-expanded={menuFor === r.commit.oid}
                   onClick={e => { e.stopPropagation(); setMenuFor(m => (m === r.commit.oid ? null : r.commit.oid)) }}>⋯</button>

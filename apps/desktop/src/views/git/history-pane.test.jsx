@@ -43,6 +43,20 @@ describe('HistoryPane', () => {
     expect(screen.getAllByLabelText('Not pushed')).toHaveLength(3)
   })
 
+  it('splits your commits from upstream ones with dividers and colours their dots', () => {
+    render(<HistoryPane history={history()} focusOid={null} onFocus={() => {}} upstream="origin/main" />)
+    const list = screen.getByRole('listbox', { name: 'Commits' })
+    expect([...list.querySelectorAll('.nx-gw-hdivider')].map(d => d.textContent)).toEqual(['Local commits', 'On origin/main'])
+    expect([...list.querySelectorAll('.nx-gw-hdot')].map(d => d.dataset.tone)).toEqual(['yours', 'yours', 'yours', 'upstream', 'upstream'])
+    cleanup()
+    render(<HistoryPane history={history()} focusOid={null} onFocus={() => {}} rebasing />)
+    expect(screen.getByText('Your commits · being rebased')).toBeTruthy()
+    expect(screen.getByText('Already pushed')).toBeTruthy()
+    cleanup()
+    setup({ unpushed: new Set() })
+    expect(document.querySelectorAll('.nx-gw-hdivider')).toHaveLength(0)
+  })
+
   it('↑/↓ move between commits and skip connector rows; Enter opens the files', () => {
     const { onFocus, onOpenFiles } = setup({}, { focusOid: commits[0].oid })
     const list = screen.getByRole('listbox', { name: 'Commits' })
@@ -122,9 +136,11 @@ describe('CommitDetail', () => {
     return handlers
   }
 
-  it('shows who, when, the message and the parents as links', () => {
+  it('shows the short hash, subject, who, when, the message body and the parents as links', () => {
     const { onJump } = show()
-    expect(screen.getByText(merge.oid)).toBeTruthy()
+    expect(screen.getByText(merge.oid.slice(0, 7)).title).toBe(merge.oid)
+    expect(screen.getByRole('heading', { name: 'Merge side' })).toBeTruthy()
+    expect(screen.getByText(/^Ana Ñ committed /)).toBeTruthy()
     expect(screen.getByText(/Committed by Bot/)).toBeTruthy()
     expect(screen.getByText(/Body/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '2222222' }))
@@ -139,8 +155,10 @@ describe('CommitDetail', () => {
     expect(onParent).toHaveBeenCalledWith(1)
   })
 
-  it('lists the files with renames and focuses one', () => {
-    const { onFile } = show()
+  it('lists the files with renames and line counts, and focuses one', () => {
+    const { onFile } = show({ files: [{ status: 'A', score: null, oldPath: null, path: 's', added: 3, removed: 0 }, { status: 'R', score: 90, oldPath: 'old', path: 'new', added: null, removed: null }] })
+    expect(screen.getByText('2 files changed')).toBeTruthy()
+    expect(screen.getByLabelText('3 added, 0 removed').textContent).toBe('+3 −0')
     const list = screen.getByRole('listbox', { name: 'Files in commit' })
     expect(within(list).getByText('← old')).toBeTruthy()
     fireEvent.click(within(list).getByText('s'))
@@ -156,6 +174,19 @@ describe('CommitDetail', () => {
     expect(screen.queryByRole('button', { name: /hunk/ })).toBeNull()
   })
 
+  it('offers the actions it is given after Copy hash; a danger one is marked', () => {
+    const onSelect = vi.fn()
+    render(<CommitDetail commit={commit()} oid={merge.oid} parentIndex={0} focusedPath={null} onParent={() => {}} onFile={() => {}} onJump={() => {}}
+      actions={[{ label: 'Cherry-pick…', onSelect }, { label: 'Reset to here…', danger: true, disabled: true, title: 'The branch is already at this commit', onSelect }]} />)
+    const buttons = within(screen.getByRole('region', { name: 'Commit' })).getAllByRole('button').map(b => b.textContent)
+    expect(buttons.slice(0, 3)).toEqual(['Copy hash', 'Cherry-pick…', 'Reset to here…'])
+    fireEvent.click(screen.getByRole('button', { name: 'Cherry-pick…' }))
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    const reset = screen.getByRole('button', { name: 'Reset to here…' })
+    expect(reset.disabled).toBe(true)
+    expect(reset.className).toContain('danger')
+  })
+
   it('says when the commit is gone', () => {
     show({ missing: true })
     expect(screen.getByText('This commit no longer exists - refresh.')).toBeTruthy()
@@ -165,7 +196,7 @@ describe('CommitDetail', () => {
     const writeText = vi.fn(async () => {})
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     show()
-    fireEvent.click(screen.getByRole('button', { name: 'Copy' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy hash' }))
     expect(writeText).toHaveBeenCalledWith(merge.oid)
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeTruthy()
   })

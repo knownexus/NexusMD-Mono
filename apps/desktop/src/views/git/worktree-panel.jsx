@@ -220,7 +220,8 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
       {history
         ? (
           <div className="nx-panel-body">
-            <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync} />
+            <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync}
+              upstream={tree.upstream && !tree.upstreamGone ? tree.upstream : null} rebasing={/^Rebase/.test(tree.operation ?? '')} />
           </div>
         )
         : (

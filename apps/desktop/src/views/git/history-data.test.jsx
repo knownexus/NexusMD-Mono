@@ -147,12 +147,18 @@ describe('useCommit', () => {
   it('loads details, then files against the first parent, then a focused file\'s diff', async () => {
     const adapter = commitAdapter()
     const { result, rerender } = render(adapter, { oid: oid(1) })
-    await waitFor(() => expect(result.current.files).toEqual([{ status: 'M', score: null, oldPath: null, path: 'f' }]))
+    await waitFor(() => expect(result.current.files).toEqual([{ status: 'M', score: null, oldPath: null, path: 'f', added: null, removed: null }]))
     expect(adapter.commitFiles).toHaveBeenCalledWith(repo, repo.path, registered, oid(1), oid(98))
     rerender({ oid: oid(1), focusedPath: 'f' })
     await waitFor(() => expect(result.current.diff?.files?.[0]?.hunks).toHaveLength(1))
     rerender({ oid: oid(1), focusedPath: 'f', parentIndex: 1 })
     await waitFor(() => expect(adapter.commitFiles).toHaveBeenLastCalledWith(repo, repo.path, registered, oid(1), oid(99)))
+  })
+
+  it('adds each file\'s line counts from the numstat listing', async () => {
+    const adapter = commitAdapter({ commitFiles: vi.fn(async () => ({ files: 'M\0f\0R100\0old\0new\0', numstat: '4\t2\tf\0' + '0\t0\t\0old\0new\0' })) })
+    const { result } = render(adapter, { oid: oid(3) })
+    await waitFor(() => expect(result.current.files?.map(f => [f.path, f.added, f.removed])).toEqual([['f', 4, 2], ['new', 0, 0]]))
   })
 
   it('diffs a renamed file with both of its names', async () => {

@@ -10,9 +10,10 @@ const PREFETCH = 5
 
 /**
  * History for one target (a worktree's HEAD, or a branch that isn't checked out): the commit list
- * above the shared divider, the focused commit below it.
+ * left of the shared divider, the focused commit right of it. `upstream` names the branch's
+ * upstream for the list's divider; `rebasing` says the worktree is mid-rebase.
  */
-export function HistoryPanel({ adapter, repo, cwd, registered, target, split, onSplit, onAction = null }) {
+export function HistoryPanel({ adapter, repo, cwd, registered, target, split, onSplit, onAction = null, upstream = null, rebasing = false }) {
   const history = useHistory({ adapter, repo, cwd, registered, target })
   const [focusOid, setFocusOid] = React.useState(null)
   const [parentIndex, setParentIndex] = React.useState(0)
@@ -37,10 +38,22 @@ export function HistoryPanel({ adapter, repo, cwd, registered, target, split, on
   const unpushed = history.unpushed
   const canRebaseFrom = index => target.ref === 'HEAD' && !!unpushed && index >= 0 && commits[index].parents.length > 0 &&
     commits.slice(0, index + 1).every(c => unpushed.has(c.oid) && c.parents.length === 1)
+  const revert = c => onAction('revert', { oid: c.oid, parents: c.parents.length, ...(c.parents.length > 1 ? { parent: 1 } : {}) })
+  const focused = at >= 0 ? commits[at] : null
+  // The detail panel's actions on the focused commit, after Copy hash.
+  const detailActions = onAction && target.ref === 'HEAD' && focused ? [
+    { label: 'Cherry-pick…', onSelect: () => onAction('cherryPick', { oid: focused.oid, parents: focused.parents.length, ...(focused.parents.length > 1 ? { parent: 1 } : {}) }) },
+    { label: 'Revert…', onSelect: () => revert(focused) },
+    {
+      label: 'Reset to here…', danger: true, disabled: at === 0,
+      title: at === 0 ? 'The branch is already at this commit' : 'Move this branch back to this commit',
+      onSelect: () => onAction('reset', { oid: focused.oid, mode: 'mixed' }),
+    },
+  ] : []
   const commitMenu = onAction ? (c, index) => [
     { label: 'New branch here…', onSelect: () => onAction('branch', { start: c.oid, startLabel: `${c.oid.slice(0, 7)} ${c.subject}`, checkout: false }) },
     { label: 'Check out (detached)…', onSelect: () => onAction('checkout', { oid: c.oid }) },
-    { label: 'Revert…', onSelect: () => onAction('revert', { oid: c.oid, parents: c.parents.length, ...(c.parents.length > 1 ? { parent: 1 } : {}) }) },
+    { label: 'Revert…', onSelect: () => revert(c) },
     ...(canRebaseFrom(index) ? [{
       label: 'Rebase from here…',
       onSelect: () => setRebase({ base: c.parents[0], commits: commits.slice(0, index + 1).reverse().map(x => ({ oid: x.oid, subject: x.subject })) }),
@@ -52,7 +65,7 @@ export function HistoryPanel({ adapter, repo, cwd, registered, target, split, on
     e.preventDefault()
     const rect = box.current.getBoundingClientRect()
     let last = null
-    const move = ev => { last = clamp((ev.clientY - rect.top) / rect.height); setDragging(last) }
+    const move = ev => { last = clamp((ev.clientX - rect.left) / rect.width); setDragging(last) }
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
@@ -63,17 +76,18 @@ export function HistoryPanel({ adapter, repo, cwd, registered, target, split, on
     window.addEventListener('pointerup', up)
   }
   const nudge = e => {
-    if (e.key === 'ArrowUp') onSplit(clamp(split - 0.05))
-    if (e.key === 'ArrowDown') onSplit(clamp(split + 0.05))
+    if (e.key === 'ArrowLeft') onSplit(clamp(split - 0.05))
+    if (e.key === 'ArrowRight') onSplit(clamp(split + 0.05))
   }
 
   return (
-    <div ref={box} style={{ display: 'grid', gridTemplateRows: `minmax(0, ${shownSplit}fr) 6px minmax(0, ${1 - shownSplit}fr)`, height: '70vh', minHeight: 320 }}>
-      <HistoryPane history={history} focusOid={current} onFocus={oid => focus(oid)} onOpenFiles={() => filesRef.current?.focus()} commitMenu={commitMenu} />
-      <div role="separator" aria-orientation="horizontal" aria-label="Resize history and commit" aria-valuenow={Math.round(shownSplit * 100)}
-        tabIndex={0} onPointerDown={drag} onKeyDown={nudge} style={{ cursor: 'row-resize', background: 'var(--border)' }} />
+    <div ref={box} className="nx-gw-history" style={{ gridTemplateColumns: `minmax(0, ${shownSplit}fr) 6px minmax(0, ${1 - shownSplit}fr)` }}>
+      <HistoryPane history={history} focusOid={current} onFocus={oid => focus(oid)} onOpenFiles={() => filesRef.current?.focus()} commitMenu={commitMenu}
+        upstream={upstream} rebasing={rebasing} />
+      <div role="separator" aria-orientation="vertical" aria-label="Resize history and commit" aria-valuenow={Math.round(shownSplit * 100)}
+        tabIndex={0} onPointerDown={drag} onKeyDown={nudge} style={{ cursor: 'col-resize', background: 'linear-gradient(var(--border), var(--border)) center / 1px 100% no-repeat' }} />
       <CommitDetail commit={commit} oid={current} parentIndex={parentIndex} onParent={setParentIndex}
-        focusedPath={focusedPath} onFile={setFocusedPath} onJump={jump} filesRef={filesRef} />
+        focusedPath={focusedPath} onFile={setFocusedPath} onJump={jump} filesRef={filesRef} actions={detailActions} />
       {rebase && (
         <RebaseDialog commits={rebase.commits} base={rebase.base} onClose={() => setRebase(null)}
           onRun={options => { setRebase(null); onAction('rebaseInteractive', options) }} />

@@ -117,6 +117,13 @@ function GitWorkspace({ adapter }) {
     : fetchedText ?? (snapshot ? `Updated ${readAt(snapshot.takenAt)}` : '')
   const activeTab = tabs.find(t => t.name === (group ? group.name : ALL_PROJECTS))
 
+  // A worktree's own actions. Cherry-pick runs on another worktree of the same repository, chosen in its dialog.
+  const syncTree = (tree, kind, options) => {
+    if (kind !== 'cherryPick') return sync.open(kind, actionTargets(kind, [tree], worktreeId(tree)), options)
+    const others = (snapshot?.worktrees ?? []).filter(t => t.repo === tree.repo && worktreeId(t) !== worktreeId(tree) && !t.prunable)
+    const choices = others.map(t => actionTargets(kind, [t], worktreeId(t))[0])
+    return sync.open(kind, choices.slice(0, 1), options, { choices })
+  }
   const openCommit = (tickedIds = null, messages = {}) => setCommitting({ id: ++commits.current, tickedIds, messages })
   // The commit composer: commits this worktree, then (Commit & push) opens the push preview, publishing
   // a branch with no upstream (or one whose upstream was deleted). Resolves false to keep the draft.
@@ -232,7 +239,7 @@ function GitWorkspace({ adapter }) {
                 busy={!!actions.busy[selectedTree.path] || cmdRun?.status === 'running'} status={actions.status[selectedTree.path] ?? null}
                 split={view.split} onSplit={split => setView({ split })}
                 panel={view.panel} onPanel={panel => setView({ panel })}
-                onSync={(kind, options) => sync.open(kind, actionTargets(kind, [selectedTree], treeKey), options)}
+                onSync={(kind, options) => syncTree(selectedTree, kind, options)}
                 onExec={exec} onSaved={() => reload([selectedTree.repo])}
                 onOverview={() => { if (mayLeave()) setView({ selected: null }) }} onSwitch={() => setSwitcher(true)} />
             )

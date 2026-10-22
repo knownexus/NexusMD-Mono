@@ -76,6 +76,35 @@ describe('useGitSync and the action dialog', () => {
     expect(drop.disabled).toBe(false)
   })
 
+  it('reset lists what leaves the branch and warns about pushed commits and lost changes', async () => {
+    const details = { oid: 'f'.repeat(40), mode: 'hard', branch: 'main', subject: 'base', count: 2, pushed: 1, dirty: true, leaves: [{ oid: 'abc1234', subject: 'two' }, { oid: 'abc1233', subject: 'one' }] }
+    const git = adapter({ preview: vi.fn(async () => ({ eligible: true, details, programs: [], stamp: 's' })) })
+    render(<Harness git={git} />)
+    act(() => sync().open('reset', [target('A')], { oid: 'f'.repeat(40), mode: 'hard' }))
+    expect((await screen.findByText(/back to/)).textContent).toBe('Moves main back to fffffff “base”; 2 commits leave the branch.')
+    expect(screen.getByText('Leaves the branch')).toBeTruthy()
+    expect(screen.getByText(/1 of these commits is already pushed/)).toBeTruthy()
+    expect(screen.getByText('Your uncommitted changes to tracked files are thrown away too.')).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'Hard' }).checked).toBe(true)
+    expect(screen.getByRole('button', { name: 'Reset (hard)' }).className).toContain('danger')
+  })
+
+  it('cherry-pick warns when the target branch changed the same files', async () => {
+    const details = { oid: 'e'.repeat(40), branch: 'feat', subject: 'fix', files: 2, overlap: ['a.js'], x: false }
+    const git = adapter({ preview: vi.fn(async () => ({ eligible: true, details, programs: [], stamp: 's' })) })
+    render(<Harness git={git} />)
+    act(() => sync().open('cherryPick', [target('A')], { oid: 'e'.repeat(40) }, { choices: [target('A')] }))
+    expect(await screen.findByText('feat has also changed a file this commit touches (a.js), so expect conflicts.')).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: 'Onto branch' }).value).toBe('C:/repos/A')
+  })
+
+  it('cherry-pick with nowhere to go says so', async () => {
+    render(<Harness git={adapter()} />)
+    act(() => sync().open('cherryPick', [], { oid: 'e'.repeat(40) }, { choices: [] }))
+    expect(await screen.findByText('No other worktree of this repository to pick onto. Add one first.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Cherry-pick' }).disabled).toBe(true)
+  })
+
   it('changing an option previews again with it', async () => {
     const git = adapter()
     render(<Harness git={git} />)

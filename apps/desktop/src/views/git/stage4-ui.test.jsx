@@ -153,6 +153,58 @@ describe('stage 4 in the Git Workspace view', () => {
     fireEvent.change(parent, { target: { value: '2' } })
     await waitFor(() => expect(git.preview.mock.calls.at(-1)[4]).toMatchObject({ oid: oid(6), parent: 2 }))
   })
+
+  it('Reset to here… is off at the tip, previews a mixed reset, and a hard one needs RESET typed', async () => {
+    const git = adapter()
+    await openWorktree(git, { view: { ...getGitConfig().view, panel: 'history' } })
+    await screen.findByText('nine')
+    const detail = () => within(screen.getByRole('region', { name: 'Commit' }))
+    await waitFor(() => expect(detail().getByRole('button', { name: 'Reset to here…' }).disabled).toBe(true))
+    fireEvent.click(screen.getByText('seven'))
+    await waitFor(() => expect(detail().getByRole('button', { name: 'Reset to here…' }).disabled).toBe(false))
+    expect(detail().getAllByRole('button').slice(0, 4).map(b => b.textContent)).toEqual(['Copy hash', 'Cherry-pick…', 'Revert…', 'Reset to here…'])
+    fireEvent.click(detail().getByRole('button', { name: 'Reset to here…' }))
+    await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'reset', { oid: oid(7), mode: 'mixed' }))
+    const dialog = within(screen.getByRole('dialog'))
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Reset (mixed)' }).disabled).toBe(false))
+    expect(dialog.queryByRole('textbox', { name: 'Type RESET to confirm' })).toBeNull()
+    fireEvent.click(dialog.getByRole('radio', { name: 'Hard' }))
+    await waitFor(() => expect(git.preview.mock.calls.at(-1)[4]).toEqual({ oid: oid(7), mode: 'hard' }))
+    const run = await dialog.findByRole('button', { name: 'Reset (hard)' })
+    await waitFor(() => expect(dialog.getByRole('textbox', { name: 'Type RESET to confirm' })).toBeTruthy())
+    expect(run.disabled).toBe(true)
+    fireEvent.change(dialog.getByRole('textbox', { name: 'Type RESET to confirm' }), { target: { value: 'RESET' } })
+    expect(run.disabled).toBe(false)
+    fireEvent.click(run)
+    await waitFor(() => expect(git.run).toHaveBeenCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'reset', { oid: oid(7), mode: 'hard' }, 's'))
+  })
+
+  it('Cherry-pick… previews on another worktree of the repository, switchable in the dialog, with -x', async () => {
+    const git = adapter({
+      worktrees: vi.fn(async repo => (repo.name === 'A'
+        ? `worktree C:/repos/A\0HEAD ${HEAD}\0branch refs/heads/main\0\0worktree C:/repos/A/feat\0HEAD ${oid(2)}\0branch refs/heads/feat\0\0worktree C:/repos/A/other\0HEAD ${oid(3)}\0branch refs/heads/other\0\0`
+        : `worktree ${repo.path}\0HEAD ${HEAD}\0branch refs/heads/main\0\0`)),
+      status: vi.fn(async (_r, p) => {
+        const name = p.endsWith('/feat') ? 'feat' : p.endsWith('/other') ? 'other' : 'main'
+        return { porcelain: porcelain().replace('branch.head main', `branch.head ${name}`), operation: '', rebasingBranch: null, fetchedAt: null }
+      }),
+    })
+    await openWorktree(git, { view: { ...getGitConfig().view, panel: 'history' } })
+    await screen.findByText('nine')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Commit' })).getByRole('button', { name: 'Cherry-pick…' }))
+    await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A/feat', expect.anything(), 'cherryPick', { oid: oid(9), parents: 1 }))
+    const dialog = within(screen.getByRole('dialog'))
+    const onto = dialog.getByRole('combobox', { name: 'Onto branch' })
+    expect([...onto.options].map(o => o.textContent)).toEqual([expect.stringContaining('→ feat'), expect.stringContaining('→ other')])
+    fireEvent.change(onto, { target: { value: onto.options[1].value } })
+    await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A/other', expect.anything(), 'cherryPick', { oid: oid(9), parents: 1 }))
+    fireEvent.click(dialog.getByRole('checkbox', { name: 'Note where it came from (-x)' }))
+    await waitFor(() => expect(git.preview.mock.calls.at(-1)[4]).toEqual({ oid: oid(9), parents: 1, x: true }))
+    const run = dialog.getByRole('button', { name: 'Cherry-pick' })
+    await waitFor(() => expect(run.disabled).toBe(false))
+    fireEvent.click(run)
+    await waitFor(() => expect(git.run).toHaveBeenCalledWith(expect.anything(), 'C:/repos/A/other', expect.anything(), 'cherryPick', { oid: oid(9), parents: 1, x: true }, 's'))
+  })
 })
 
 describe('resolving a conflicted file whole', () => {

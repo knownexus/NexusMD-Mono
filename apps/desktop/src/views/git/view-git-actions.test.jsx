@@ -200,15 +200,15 @@ describe('file actions', () => {
   it('saves the History divider position once, when the drag ends', async () => {
     setupView({ refs: vi.fn(() => new Promise(() => {})), log: vi.fn(() => new Promise(() => {})) })
     await openWorktree()
-    // Changes puts the file column beside the diff; only History splits top and bottom.
+    // Changes puts the file column beside the diff; only History has a resizable split (list | commit).
     expect(screen.queryByRole('separator')).toBeNull()
     fireEvent.click(screen.getByRole('tab', { name: 'History' }))
     const divider = await screen.findByRole('separator', { name: 'Resize history and commit' })
-    divider.parentElement.getBoundingClientRect = () => ({ top: 0, height: 100 })
+    divider.parentElement.getBoundingClientRect = () => ({ left: 0, width: 100 })
     const setItem = vi.spyOn(Storage.prototype, 'setItem')
     fireEvent.pointerDown(divider)
     // jsdom has no PointerEvent, so clientY is set on a plain event.
-    for (const y of [30, 40, 60]) act(() => { window.dispatchEvent(Object.assign(new Event('pointermove'), { clientY: y })) })
+    for (const x of [30, 40, 60]) act(() => { window.dispatchEvent(Object.assign(new Event('pointermove'), { clientX: x })) })
     expect(setItem).not.toHaveBeenCalled()
     expect(divider.getAttribute('aria-valuenow')).toBe('60')
     fireEvent.pointerUp(window)
