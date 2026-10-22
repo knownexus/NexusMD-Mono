@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "vitest run",
     "android": "vite build && cap sync && cap open android"
   },
   "dependencies": {

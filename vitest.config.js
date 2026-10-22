@@ -9,6 +9,8 @@ export default defineConfig({
       'packages/web-adapters',
       'packages/ui',
       'apps/desktop',
+      'apps/web',
+      'apps/app',
     ],
   },
 })
