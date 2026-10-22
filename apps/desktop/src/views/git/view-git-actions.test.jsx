@@ -277,6 +277,21 @@ describe('file actions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stage all' }))
     await waitFor(() => expect(a.stage).toHaveBeenLastCalledWith(REPO, 'C:/repos/A', REG, ['f.txt', 'new.txt'], 'stamp-1'))
   })
+
+  it('stages the focused file from the diff header, and reviews only it for Discard…, whatever is selected', async () => {
+    const { a } = setupView()
+    await openWorktree()
+    fireEvent.click(screen.getByLabelText('Select new.txt'))
+    fireEvent.click(screen.getByText('f.txt'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Stage file' }))
+    await waitFor(() => expect(a.stage).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, ['f.txt'], 'stamp-1'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Discard file…' }).disabled).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Discard file…' }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('Discard changes in 1 file')).toBeTruthy()
+    await waitFor(() => expect(a.stamp).toHaveBeenLastCalledWith(REPO, 'C:/repos/A', REG, { kind: 'files', paths: ['f.txt'] }))
+  })
 })
 
 describe('editing files', () => {

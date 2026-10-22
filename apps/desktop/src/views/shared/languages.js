@@ -36,6 +36,13 @@ export function languageForPath(path) {
   return dot < 0 ? null : BY_EXTENSION.get(base.slice(dot + 1).toLowerCase()) ?? null
 }
 
+const LABELS = {
+  json: 'JSON', yaml: 'YAML', sql: 'SQL', markdown: 'Markdown', powershell: 'PowerShell', javascript: 'JavaScript',
+  typescript: 'TypeScript', css: 'CSS', html: 'HTML', csharp: 'C#',
+}
+// A language's display name (the diff header's tag), or null for plain text.
+export const languageLabel = name => LABELS[name] ?? null
+
 // The CodeMirror extension for a language name, or nothing for plain text.
 export const languageExtension = name => LANGUAGES[name]?.() ?? []
 

@@ -17,7 +17,8 @@ import { discardWorktreeDraft, discardConflictDraft, worktreeDraftPaths, worktre
 
 /**
  * The selected worktree: header with sync actions, git command line, then Changes or History (the
- * file column with the commit composer beside the focused file's diff, editor or resolve screen). The ref exposes
+ * file column with the commit composer beside the focused file's diff, editor or resolve screen).
+ * `onAction(action, ids?)` reviews a file action for the selection, or for `ids`. The ref exposes
  * `confirmDiscard()`, which asks before unsaved edits would be lost, and `openFile(path, line)`.
  */
 export const WorktreePanel = React.forwardRef(function WorktreePanel({
@@ -242,6 +243,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
                   : editor && !diffChange
                   ? <div role="note" style={{ color: 'var(--text-muted)' }}>No changes yet.</div>
                   : <DiffPane change={diffChange} diff={diff} busy={busy} onHunk={(index, stamp) => onHunk(diffChange, index, stamp, diff.reload)}
+                      onFile={diffChange && (action => (action === 'stage' || action === 'unstage' ? onWrite(action, [diffChange.id]) : onAction(action, [diffChange.id])))}
                       onLine={diffChange && diffChange.area !== 'conflict' ? n => openFile(diffChange.path, n) : null} />)}
               </div>
             </div>

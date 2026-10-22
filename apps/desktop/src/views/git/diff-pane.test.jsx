@@ -111,6 +111,55 @@ describe('DiffPane', () => {
   })
 })
 
+describe('DiffPane header and side by side', () => {
+  it('shows the path, its language and the lines added and removed', () => {
+    render(<DiffPane change={change('unstaged', 'src/App.tsx')} diff={loaded(TWO)} onHunk={vi.fn()} />)
+    expect(screen.getByTitle('src/App.tsx').textContent).toBe('src/App.tsx')
+    expect(screen.getByText('TypeScript').className).toBe('nx-gw-lang')
+    expect(screen.getByLabelText('2 added').textContent).toBe('+2')
+    expect(screen.getByLabelText('1 removed').textContent).toBe('−1')
+    cleanup()
+    render(<DiffPane change={change('unstaged', 'notes')} diff={loaded(TWO)} onHunk={vi.fn()} />)
+    expect(document.querySelector('.nx-gw-lang')).toBeNull()
+  })
+
+  it('switches to side by side: removed and added lines paired, the shorter side left empty', () => {
+    const onLine = vi.fn()
+    render(<DiffPane change={change('unstaged')} diff={loaded(TWO)} onHunk={vi.fn()} onLine={onLine} />)
+    const unified = screen.getByRole('button', { name: 'Unified' })
+    expect(unified.getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Side by side' }))
+    expect(screen.queryAllByTestId('diff-line')).toEqual([])
+    const pairs = screen.getAllByTestId('diff-pair').map(r => [...r.children].map(c => c.textContent))
+    expect(pairs).toEqual([
+      ['1', 'keep', '1', 'keep'], ['2', 'old line', '2', 'new line'], ['10', 'ten', '10', 'ten'], ['', '', '11', 'added'],
+    ])
+    // Hunk buttons stay, and a new-side cell opens the file there.
+    expect(screen.getAllByRole('button', { name: 'Stage hunk' })).toHaveLength(2)
+    fireEvent.click(screen.getByText('added'))
+    expect(onLine).toHaveBeenCalledWith(11)
+  })
+
+  it('offers Stage file and Discard… for an unstaged change, Unstage file for a staged one, none for a conflict', () => {
+    const onFile = vi.fn()
+    render(<DiffPane change={change('unstaged')} diff={loaded(TWO)} onHunk={vi.fn()} onFile={onFile} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Stage file' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Discard file…' }))
+    expect(onFile.mock.calls).toEqual([['stage'], ['discard']])
+    cleanup()
+    render(<DiffPane change={change('staged')} diff={loaded(TWO)} onHunk={vi.fn()} onFile={onFile} />)
+    expect(screen.getByRole('button', { name: 'Unstage file' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Discard file…' })).toBeNull()
+    cleanup()
+    render(<DiffPane change={change('untracked', 'n.txt')} diff={loaded('')} onHunk={vi.fn()} onFile={onFile} busy />)
+    expect(screen.getByRole('button', { name: 'Stage file' }).disabled).toBe(true)
+    expect(screen.getByRole('button', { name: 'Delete file…' })).toBeTruthy()
+    cleanup()
+    render(<DiffPane change={change('conflict')} diff={loaded('')} onHunk={vi.fn()} onFile={onFile} />)
+    expect(screen.queryByRole('button', { name: /file|…/ })).toBeNull()
+  })
+})
+
 describe('DiffPane in the history (read-only)', () => {
   const TEXT = 'diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1 +1 @@\n-a\n+b\n'
   const change = { id: 'commit\0f', area: 'commit', path: 'f' }
