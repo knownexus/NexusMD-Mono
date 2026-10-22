@@ -6,3 +6,4 @@ export { WORK_ITEM_STATUS_KEY, readProviderStatus, recordProviderStatus, describ
 export { PROVIDER_LABELS, mergeTeam, mergeWorkItemData } from './merge.js'
 export { applyHiddenPeople } from './people.js'
 export { isDoneItem, isBlockedItem, isReviewItem, isActiveItem } from './classify.js'
+export { buildSnapshot, nextHiddenIds, refreshProviders, defaultCreateProvider } from './snapshot.js'

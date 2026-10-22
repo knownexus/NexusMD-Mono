@@ -17,6 +17,7 @@ const EXPECTED = [
   'fetchClassificationPaths', 'loadWorkItemTypeDefs', 'fieldBucket', 'fieldGroup', 'TYPE_LAYOUTS',
   'resolveTypeLayout', 'LINK_TYPES', 'buildFieldPatchOps', 'buildAttachmentRelationOps',
   'buildLinkRelationOps', 'submitNewWorkItem', 'makeAdoWorkItemSource', 'adoMoveToCategory', 'adoWorkItemUrl',
+  'buildSnapshot', 'nextHiddenIds', 'refreshProviders', 'defaultCreateProvider',
   'CURRENT_PROFILE_VERSION', 'IAuthAdapter', 'IBadgeAdapter', 'IClipboardAdapter',
   'IDeepLinkAdapter', 'IFileAdapter', 'IHttpAdapter', 'ILifecycleAdapter',
   'INavigationAdapter', 'INetworkAdapter', 'INotificationAdapter', 'IPickerAdapter',

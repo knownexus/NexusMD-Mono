@@ -1,19 +1,11 @@
-// apps/desktop/src/work-item-data.js — combine provider caches into the snapshot the
-// shared views read, and refresh providers independently (one failing never blocks
-// the other; its last cache stays visible, marked stale).
-import React from 'react'
-import { createRoutedWorkItemSource } from '@nexusmd/ui'
-import {
-  loadCachedAdoData, loadCachedJiraData, mergeWorkItemData,
-  readProviderStatus, recordProviderStatus, applyHiddenPeople,
-} from '@nexusmd/core'
-
-// One routed source per (ado, jira) pair. Rebuilding it with every snapshot would
-// give workItemSource a new identity on each data refresh, making WorkItemDetail
-// reload and drop in-progress edits and comment drafts.
-export function useRoutedWorkItemSource(ado, jira) {
-  return React.useMemo(() => createRoutedWorkItemSource({ ado, jira }), [ado, jira])
-}
+// snapshot.js — combine the per-provider (ADO, Jira) caches into the snapshot the shared
+// views read, refresh providers independently (one failing never blocks the other; its
+// last cache stays visible, marked stale), and keep the hidden-people list in step.
+import { loadCachedAdoData } from '../ado/loader.js'
+import { loadCachedJiraData } from '../jira/loader.js'
+import { mergeWorkItemData } from './merge.js'
+import { readProviderStatus, recordProviderStatus } from './status.js'
+import { applyHiddenPeople } from './people.js'
 
 export function buildSnapshot({ adoConfig, adoConfigured, jiraConfig, jiraActive, storage, empty, hiddenIds = [] }) {
   const ado = loadCachedAdoData(adoConfig, { storage })
@@ -55,4 +47,3 @@ export function defaultCreateProvider({ readJson, adoAvailable, jiraAvailable })
   if (adoAvailable) return 'ado'
   return jiraAvailable ? 'jira' : 'ado'
 }
-

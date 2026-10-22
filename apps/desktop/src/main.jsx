@@ -5,6 +5,7 @@ import '@nexusmd/ui/styles.css'
 import {
   initCore, createNoOpAdapters, core, loadCachedAdoData, loadAdoData, makeAdoWorkItemSource,
   loadCachedJiraData, loadJiraData, displayIdOf,
+  buildSnapshot, refreshProviders, defaultCreateProvider, nextHiddenIds,
 } from '@nexusmd/core'
 import {
   Icon, CardFrame,
@@ -31,7 +32,7 @@ import {
 } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraHttpAdapter, createJiraWorkItemSource } from './jira-client.js'
-import { buildSnapshot, refreshProviders, defaultCreateProvider, useRoutedWorkItemSource, nextHiddenIds } from './work-item-data.js'
+import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
