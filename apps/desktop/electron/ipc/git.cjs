@@ -399,12 +399,10 @@ function register(ipcMain, deps = {}) {
     });
   }
 
-  // Porcelain v2 records for the given paths (a rename matches on either name).
-  async function statusFor(wt, paths) {
-    const r = await git(wt, ['status', '--porcelain=v2', '-z', '--untracked-files=all']);
-    if (r.code !== 0) throw new Error(r.stderr || 'git status failed');
+  // The porcelain v2 records in `stdout` that concern `paths` (a rename matches on either name).
+  function recordsFor(stdout, paths) {
     const want = new Set(paths);
-    const records = r.stdout.split('\0');
+    const records = stdout.split('\0');
     const found = [];
     for (let i = 0; i < records.length; i++) {
       const raw = records[i];
@@ -424,11 +422,42 @@ function register(ipcMain, deps = {}) {
     return found;
   }
 
+  async function statusOutput(wt, flags, pathspec = []) {
+    const r = await git(wt, ['status', '--porcelain=v2', '-z', ...flags, ...(pathspec.length ? ['--', ...pathspec] : [])]);
+    if (r.code !== 0) throw new Error(r.stderr || 'git status failed');
+    return r.stdout;
+  }
+
+  // Few enough, short enough names to put on a command line.
+  const fitsCommandLine = names => names.length <= 50 && names.join('').length <= 4000;
+
+  // Status records for the given paths. Tracked changes (renames included) need no scan for
+  // untracked files, and that scan is what makes a big repository slow: tens of thousands of
+  // untracked files cost seconds to read, to look at one tracked file. So only the paths that are
+  // neither in the index nor a tracked change are scanned for, and only those paths. A submodule
+  // path, or a list too long for a command line, takes the whole-repository read instead.
+  async function statusFor(wt, paths, entriesRead) {
+    const [tracked, entries] = await Promise.all([statusOutput(wt, ['--untracked-files=no']), entriesRead]);
+    const wholeRepo = async () => recordsFor(await statusOutput(wt, ['--untracked-files=all']), paths);
+    const want = new Set(paths);
+    if (entries.some(e => want.has(e.path) && e.mode === '160000')) return wholeRepo();
+    const found = recordsFor(tracked, paths);
+    const known = new Set(entries.map(e => e.path));
+    for (const r of found) { known.add(r.path); if (r.orig) known.add(r.orig); }
+    const unknown = paths.filter(p => !known.has(p));
+    if (!unknown.length) return found;
+    if (!fitsCommandLine(unknown)) return wholeRepo();
+    const seen = new Set(found.map(r => r.raw));
+    const scanned = recordsFor(await statusOutput(wt, ['--untracked-files=all'], unknown), unknown);
+    return [...found, ...scanned.filter(r => !seen.has(r.raw))];
+  }
+
   // What a whole-file review promises: HEAD, the paths' index entries, their status records and
   // each path's size and mtime, so an edit made after the review (same XY) is still caught.
   async function filesState(wt, paths) {
     const want = new Set(paths);
-    const [h, entries, records] = await Promise.all([head(wt), indexEntries(wt), statusFor(wt, paths)]);
+    const entriesRead = indexEntries(wt);
+    const [h, entries, records] = await Promise.all([head(wt), entriesRead, statusFor(wt, paths, entriesRead)]);
     const mine = entries.filter(e => want.has(e.path));
     const stats = paths.map(p => `${p}\0${probe.statKey(path.resolve(wt, p))}`);
     return { head: h, entries: mine, records, stamp: sha(h, ...mine.map(e => e.raw), ...records.map(r => r.raw), ...stats) };
