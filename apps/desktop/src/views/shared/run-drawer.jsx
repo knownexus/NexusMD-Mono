@@ -4,7 +4,8 @@ import { ansiToSpans, stripAnsi } from '@nexusmd/core'
 import { Icon } from '@nexusmd/ui'
 import { usePopoutWindow } from './popout-window.js'
 
-const COLOR_VARS = {
+// ansiToSpans colour names on the theme; the git command dock uses them too.
+export const ANSI_COLORS = {
   red: 'var(--danger)', green: 'var(--success)', yellow: 'var(--warning)', blue: 'var(--info)',
   cyan: 'var(--info)', magenta: 'var(--violet)', gray: 'var(--text-muted)', white: 'var(--text)', black: 'var(--text)',
 }
@@ -154,7 +155,7 @@ function Output({ lines, step, running, error }) {
       {lines.map((l, i) => (
         <div key={i} className={l.tone ? `t-${l.tone}` : l.stream === 'stderr' ? 't-bad' : undefined}>
           {ansiToSpans(l.text).map((s, j) => (
-            <span key={j} style={{ color: s.color ? COLOR_VARS[s.color] : undefined, fontWeight: s.bold ? 600 : undefined }}>{s.text}</span>
+            <span key={j} style={{ color: s.color ? ANSI_COLORS[s.color] : undefined, fontWeight: s.bold ? 600 : undefined }}>{s.text}</span>
           ))}
         </div>
       ))}

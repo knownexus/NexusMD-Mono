@@ -106,5 +106,7 @@ export function useGitSync({ adapter, registered, reload }) {
     open(source.kind, source.targets.filter(t => failed.includes(t.id)), source.options)
   }, [activity, open])
 
-  return { dialog, open, setOptions, retarget, close, confirm, activity, retryFailed }
+  const clearActivity = React.useCallback(() => setActivity([]), [])
+
+  return { dialog, open, setOptions, retarget, close, confirm, activity, retryFailed, clearActivity }
 }

@@ -16,13 +16,15 @@ import { WorktreeDetail } from './worktree-detail.jsx'
 import { WorktreePanel } from './worktree-panel.jsx'
 import { HistoryPanel } from './history-panel.jsx'
 import { useGitSync } from './use-git-sync.js'
-import { ActionDialog, ActivityDrawer } from './action-dialog.jsx'
+import { ActionDialog, activityRows } from './action-dialog.jsx'
 import { GroupMenu, GroupMenuButton } from './group-menu.jsx'
 import { GroupEditor } from './group-editor.jsx'
 import { useGitActions, ipcMessage } from './use-git-actions.js'
 import { ReviewDialog } from './review-dialog.jsx'
 import { CommitDialog } from './commit-dialog.jsx'
-import { RunDrawer } from '../shared/run-drawer.jsx'
+import { OutputConsole } from './output-console.jsx'
+import { GitCommandLine } from './git-command-line.jsx'
+import { useCommandAliases } from './use-command-aliases.js'
 import '../devenv-git.css'
 import './git-workspace.css'
 
@@ -32,6 +34,8 @@ const card = (text, role) => <div className={role === 'alert' ? 'nx-alert' : 'ca
 const VIA_SYNC = { fetch: {}, pull: { mode: 'ff' }, push: {} }
 // Asked about before running: force flags (also bundled, as in -fd), --hard, -D, and commands that throw work away.
 const RISKY = /(^|\s)(--force\S*|-f\w*|-\w*f|--hard|-D)(\s|$)|^(clean|reset|restore)\b|^stash (drop|clear)\b/
+// The dock keeps this session's newest output lines, up to this many.
+const MAX_LINES = 5000
 
 // When a snapshot was read: the time, with the day too when it wasn't today.
 function readAt(iso) {
@@ -63,8 +67,9 @@ function GitWorkspace({ adapter }) {
   const [focus, setFocus] = React.useState({})
   // An open commit dialog: which worktrees start ticked (null = the selected one) and messages kept for a retry.
   const [committing, setCommitting] = React.useState(null)
-  // The command line's last run, shown in the drawer.
-  const [cmdRun, setCmdRun] = React.useState(null)
+  // This session's command line output (oldest first), and the command still running, for the dock.
+  const [cmdLines, setCmdLines] = React.useState([])
+  const [cmdRunning, setCmdRunning] = React.useState(null)
   const commits = React.useRef(0)
   // The worktree panel asks before its unsaved edits would be lost to a change of worktree or group.
   const panelRef = React.useRef(null)
@@ -148,20 +153,23 @@ function GitWorkspace({ adapter }) {
     const shown = script ? line : `git ${line}`
     if ((RISKY.test(line) || RISKY.test(expanded))
       && !window.confirm(`Run "${shown}"${alias && !script ? ` (${alias.expansion})` : ''} in ${tree.path}? This can't be undone from NexusMD.`)) return
-    const title = shown
     const head = { text: `$ ${shown}`, tone: 'cmd' }
-    if (!(script ? adapter.shellRun : adapter.exec)) { setCmdRun({ title, status: 'failed', lines: [head, { text: "This version of NexusMD can't run git commands. Update the desktop app.", tone: 'bad' }] }); return }
-    setCmdRun({ title, status: 'running', lines: [head] })
+    // A run lands in the dock's output whole: its command line, stdout, then stderr (red when it failed;
+    // git writes progress and notes there, so a successful run's stderr is muted), then a failure's exit code.
+    const log = more => setCmdLines(l => [...l, head, ...more].slice(-MAX_LINES))
+    if (!(script ? adapter.shellRun : adapter.exec)) { log([{ text: "This version of NexusMD can't run git commands. Update the desktop app.", tone: 'bad' }]); return }
+    setCmdRunning(head)
     try {
       const repo = { name: tree.repo, path: tree.repoRoot }
       const r = script
         ? await adapter.shellRun(repo, tree.path, registered, effectiveDotfiles(getGitConfig()), argv[0], argv.slice(1))
         : await adapter.exec(repo, tree.path, registered, argv)
-      const toLines = (s, tone) => (s ? s.replace(/\n$/, '').split('\n').map(text => ({ text, tone })) : [])
-      setCmdRun({ title, status: r.code === 0 ? 'done' : 'failed', exitCode: r.code, lines: [head, ...toLines(r.stdout), ...toLines(r.stderr, r.code === 0 ? 'muted' : 'bad')] })
+      const toLines = (s, tone) => (s ? s.replace(/\r?\n$/, '').split(/\r?\n/).map(text => ({ text, tone })) : [])
+      log([...toLines(r.stdout), ...toLines(r.stderr, r.code === 0 ? 'muted' : 'bad'), ...(r.code === 0 ? [] : [{ text: `exit ${r.code}`, tone: 'bad' }])])
     } catch (e) {
-      setCmdRun({ title, status: 'failed', lines: [head, { text: ipcMessage(e), tone: 'bad' }] })
+      log([{ text: ipcMessage(e), tone: 'bad' }])
     }
+    setCmdRunning(null)
     reload([tree.repo])
   }
 
@@ -236,11 +244,11 @@ function GitWorkspace({ adapter }) {
                 onAction={(action, ids = selectedIds) => actions.openReview(action, selectedTree, ids)} onWrite={(action, ids) => actions.write(action, selectedTree, ids)}
                 onCommit={draft => commitHere(selectedTree, draft)} onResolve={(change, take, onResolved) => actions.resolve(selectedTree, change, take, onResolved)}
                 onHunk={(change, index, stamp, after) => actions.hunk(selectedTree, change, index, stamp, after)}
-                busy={!!actions.busy[selectedTree.path] || cmdRun?.status === 'running'} status={actions.status[selectedTree.path] ?? null}
+                busy={!!actions.busy[selectedTree.path] || !!cmdRunning} status={actions.status[selectedTree.path] ?? null}
                 split={view.split} onSplit={split => setView({ split })}
                 panel={view.panel} onPanel={panel => setView({ panel })}
                 onSync={(kind, options) => syncTree(selectedTree, kind, options)}
-                onExec={exec} onSaved={() => reload([selectedTree.repo])}
+                onSaved={() => reload([selectedTree.repo])}
                 onOverview={() => { if (mayLeave()) setView({ selected: null }) }} onSwitch={() => setSwitcher(true)} />
             )
             : selectedBranch
@@ -255,6 +263,9 @@ function GitWorkspace({ adapter }) {
                 onOpen={openTree} onAction={overviewAction} onPullAll={pullAll}
                 onCommitAcross={() => openCommit(commitTargets(scoped.worktrees, null).filter(t => !t.unavailable).map(t => t.id))} />
             )}
+          <CommandDock adapter={adapter} tree={selectedTree ?? null} registered={registered} lines={cmdLines} running={cmdRunning}
+            activity={sync.activity} onClear={() => setCmdLines([])} onClearActivity={sync.clearActivity} onRetry={sync.retryFailed}
+            busy={!!cmdRunning || (!!selectedTree && !!actions.busy[selectedTree.path])} onRun={exec} />
         </aside>
       </div>
 
@@ -263,7 +274,6 @@ function GitWorkspace({ adapter }) {
           onOpen={t => { setSwitcher(false); selectTree({ kind: 'worktree', id: worktreeId(t) }) }} />
       )}
 
-      <ActivityDrawer sync={sync} />
       <ActionDialog sync={sync} adapter={adapter} registered={registered} />
       {menuFor && (
         <GroupMenu key={`${menuFor.name}|${menuFor.mode}`} name={menuFor.name} mode={menuFor.mode} onClose={() => setMenuFor(null)}
@@ -308,7 +318,6 @@ function GitWorkspace({ adapter }) {
           onRetry={async (failedIds, messages) => { setCommitting(null); await reload(); openCommit(failedIds, messages) }} />
       )}
     </div>
-      {cmdRun && <RunDrawer eyebrow="Git" title={cmdRun.title} status={cmdRun.status} lines={cmdRun.lines} exitCode={cmdRun.exitCode} onClose={() => setCmdRun(null)} />}
     </div>
   )
 }
@@ -325,5 +334,19 @@ function BranchHistory({ adapter, branch, repos, worktrees, registered, split, o
       <HistoryPanel key={branch.id} adapter={adapter} repo={repo} cwd={cwd} registered={registered}
         target={{ ref: branch.ref, head: branch.head || null }} split={split} onSplit={onSplit} />
     </div>
+  )
+}
+
+// The command line docked at the bottom of the details, with this session's output and activity
+// floating above it. With no worktree selected only the output's chip shows, when there is any.
+function CommandDock({ adapter, tree, registered, lines, running, activity, onClear, onClearActivity, onRetry, busy, onRun }) {
+  const repo = tree ? { name: tree.repo, path: tree.repoRoot } : null
+  const loadAliases = useCommandAliases(adapter, repo, tree?.path ?? null, registered)
+  return (
+    <OutputConsole lines={lines} running={running} activity={activityRows(activity)} onClear={onClear} onClearActivity={onClearActivity} onRetry={onRetry}>
+      {tree ? chip => (
+        <GitCommandLine path={tree.path} disabled={busy} onRun={(argv, alias) => onRun(tree, argv, alias)} loadAliases={loadAliases} lead={chip} />
+      ) : null}
+    </OutputConsole>
   )
 }

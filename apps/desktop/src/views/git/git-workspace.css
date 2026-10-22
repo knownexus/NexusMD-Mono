@@ -236,9 +236,19 @@
 .nx-gw-menu-item[disabled] { opacity: .45; cursor: default; }
 .nx-gw-menu-item .hint { margin-left: auto; font: 11px var(--mono); color: var(--text-muted); }
 
-/* command dock + floating output */
-.nx-gw-dock { position: relative; flex: none; padding: 8px 20px 10px; border-top: 1px solid var(--border); background: var(--surface); }
-.nx-gw-out { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 6px); height: 200px; z-index: 25; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-pop); overflow: hidden; }
+/* command dock + floating output. The dock is the last child of .nx-gw-main and sticks to its bottom
+   edge while the details scroll; the output floats above it, capped to the details' height (main is a
+   size container), so neither moves the layout. */
+.nx-gw-main { container: nx-main / size; }
+.nx-gw-dock { position: sticky; bottom: 0; z-index: 20; margin-top: auto; flex: none; padding: 8px 20px 10px; border-top: 1px solid var(--border); background: var(--surface); }
+.nx-gw-dock .nx-cmd { align-items: center; background: var(--bg); }
+.nx-cmd-prompt { flex: none; padding-left: 10px; font: 600 13px var(--mono); color: var(--accent); white-space: nowrap; }
+.nx-cmd-kbd { flex: none; margin: 0 2px 0 4px; }
+.nx-gw-dock .nx-cmd-hint { flex-wrap: nowrap; }
+.nx-gw-dock .nx-cmd-hint > * { flex: none; }
+.nx-gw-dock .nx-cmd-hint > .nx-cmd-where { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-gw-act-retry { justify-self: start; margin: 2px 0 6px 92px; }
+.nx-gw-out { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 6px); height: 200px; max-height: max(96px, calc(100cqh - 100px)); z-index: 25; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-pop); overflow: hidden; }
 .nx-gw-out[data-big] { height: min(64vh, 620px); }
 .nx-gw-out-head { flex: none; display: flex; align-items: center; gap: 2px; padding: 0 6px 0 8px; border-bottom: 1px solid var(--border); background: var(--bg); }
 .nx-gw-out-tab { height: 32px; padding: 0 10px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: transparent; font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; cursor: pointer; }

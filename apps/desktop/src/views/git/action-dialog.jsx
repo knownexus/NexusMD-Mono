@@ -1,8 +1,9 @@
 import React from 'react'
-import { PlModal, Icon } from '@nexusmd/ui'
+import { PlModal } from '@nexusmd/ui'
 import { parseRefList, defaultBase, checkBranchName, worktreeDefaultPath } from '@nexusmd/core'
 
-const VERB = {
+// Each action's verb: dialog titles and buttons, and the command dock's Activity list.
+export const VERB = {
   fetch: 'Fetch', pull: 'Pull', push: 'Push', branch: 'Create branch', checkout: 'Check out', worktreeAdd: 'Add worktree',
   worktreeRemove: 'Remove worktree', stashPush: 'Stash', stashApply: 'Apply', stashPop: 'Pop', stashDrop: 'Drop',
   revert: 'Revert', cherryPick: 'Cherry-pick', reset: 'Reset', continue: 'Continue', skip: 'Skip', abort: 'Abort', rebase: 'Rebase', rebaseInteractive: 'Rebase',
@@ -394,41 +395,5 @@ export function ActionDialog({ sync, adapter, registered }) {
   )
 }
 
-/** The session's actions, newest first, with git's output on expand. Closing hides it until the next entry. */
-export function ActivityDrawer({ sync }) {
-  const [open, setOpen] = React.useState(false)
-  // The newest entry when it was closed; the log is newest first.
-  const [closedAt, setClosedAt] = React.useState(null)
-  const newest = sync.activity[0]
-  if (!newest || newest === closedAt) return null
-  const runs = [...new Set(sync.activity.map(e => e.runId))]
-  const copy = () => navigator.clipboard?.writeText(sync.activity.map(e => `${new Date(e.at).toLocaleTimeString()} ${e.ok ? '✓' : '✗'} ${e.kind} ${e.label}\n${e.detail}`).join('\n\n')).catch(() => {})
-  return (
-    <section aria-label="Activity" className="card" style={{ padding: 8, flex: 'none' }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button className="btn sm ghost" aria-expanded={open} onClick={() => setOpen(o => !o)}>{`Activity (${sync.activity.length})`}</button>
-        {open && <button className="btn sm ghost" onClick={copy}>Copy</button>}
-        <button className="nx-icon-btn" style={{ marginLeft: 'auto' }} aria-label="Close activity" title="Close" onClick={() => { setOpen(false); setClosedAt(newest) }}>
-          <Icon name="x" size={14} />
-        </button>
-      </div>
-      {open && runs.map(runId => {
-        const entries = sync.activity.filter(e => e.runId === runId)
-        return (
-          <div key={runId} style={{ display: 'grid', gap: 2, padding: '4px 0', borderTop: '1px solid var(--border)' }}>
-            {entries.map((e, i) => (
-              <details key={i}>
-                <summary style={{ fontSize: 12 }}>
-                  <span style={{ color: e.ok ? 'var(--success)' : 'var(--danger)' }}>{e.ok ? '✓' : '✗'}</span>
-                  {` ${new Date(e.at).toLocaleTimeString()} ${VERB[e.kind] ?? e.kind} · ${e.label} - ${e.summary}`}
-                </summary>
-                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12 }}>{e.detail}</pre>
-              </details>
-            ))}
-            {entries.some(e => !e.ok) && <button className="btn sm ghost" style={{ justifySelf: 'start' }} onClick={() => sync.retryFailed(runId)}>Retry failed</button>}
-          </div>
-        )
-      })}
-    </section>
-  )
-}
+/** sync.activity for the command dock's Activity tab: each label led by its action's verb. */
+export const activityRows = activity => activity.map(e => ({ ...e, label: `${VERB[e.kind] ?? e.kind} · ${e.label}` }))

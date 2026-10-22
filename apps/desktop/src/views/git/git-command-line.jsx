@@ -15,12 +15,12 @@ export function splitArgs(line) {
   return out
 }
 
-// Each starts with "git", so a DotFiles shortcut of the same name (stash) never takes it over.
+// Each command starts with "git", so a DotFiles shortcut of the same name (stash) never takes it over.
 const QUICK = [
-  ['git status', 'git status'],
-  ['git log --oneline -5', 'git log --oneline -5'],
-  ['git stash', 'git stash push'],
-  ['git switch -c', null, 'git switch -c '],
+  ['status', 'git status'],
+  ['log -5', 'git log --oneline -5'],
+  ['stash', 'git stash push'],
+  ['switch -c', null, 'git switch -c '],
 ]
 const NO_ALIASES = { git: [], shell: [], scripts: [] }
 // A menu row spans the menu's two columns and shares them (subgrid), so every alias and every
@@ -36,9 +36,10 @@ const ROW = {
  * PowerShell, and anything else is git's, with or without a leading "git". Calls onRun(argv) without
  * the "git", plus the git alias when argv starts with one, or { script: true } for a script.
  * loadAliases() resolves to { git, shell, scripts }: core's parseAliases, parseShellAliases and
- * parseShellScripts lists. Up / Down step through this session's history.
+ * parseShellScripts lists. Up / Down step through this session's history. `lead` goes first in the
+ * hint row (the dock's "Output ▴" chip).
  */
-export function GitCommandLine({ path, onRun, disabled = false, loadAliases = null }) {
+export function GitCommandLine({ path, onRun, disabled = false, loadAliases = null, lead = null }) {
   const [value, setValue] = React.useState('')
   const [aliases, setAliases] = React.useState(NO_ALIASES)
   // The open menu's fixed position, or null. It's drawn on document.body so the panel's overflow can't clip it.
@@ -126,15 +127,18 @@ export function GitCommandLine({ path, onRun, disabled = false, loadAliases = nu
   return (
     <div>
       <div className="nx-cmd">
+        <span className="nx-cmd-prompt" aria-hidden="true">git ›</span>
         <input ref={input} aria-label="git command" value={value} disabled={disabled} spellCheck={false}
-          placeholder="status, ga ., uncommit, git log -5" onChange={e => setValue(e.target.value)} onKeyDown={onKeyDown} />
+          placeholder="status, ga ., uncommit, log -5" onChange={e => setValue(e.target.value)} onKeyDown={onKeyDown} />
+        <span className="kbd nx-cmd-kbd" title="Press ` to focus the command line">`</span>
         <button className="btn sm" disabled={disabled || !value.trim()} onClick={() => submit()}>Run</button>
       </div>
       <div className="nx-cmd-hint">
-        <span>Runs git in <span className="nx-mono" style={{ color: 'var(--text)' }}>{path}</span> · Enter to run · ↑ for previous</span>
+        {lead}
+        <span className="nx-cmd-where" title={path}>in <span className="nx-mono" style={{ color: 'var(--text)' }}>{path}</span> · Enter to run · ↑ previous · Esc minimises output</span>
         <span style={{ flex: 1 }} />
         {QUICK.map(([label, cmd, text]) => (
-          <button key={label} className="nx-chip" disabled={disabled}
+          <button key={label} className="nx-chip" disabled={disabled} title={cmd ?? text.trim()}
             onClick={() => (cmd ? submit(cmd) : (setValue(text), input.current?.focus()))}>{label}</button>
         ))}
         {loadAliases && (

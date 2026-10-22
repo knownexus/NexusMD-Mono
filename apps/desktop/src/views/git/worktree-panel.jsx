@@ -1,14 +1,10 @@
 import React from 'react'
-import { parseAliases, parseShellAliases, parseShellScripts } from '@nexusmd/core'
-import { effectiveDotfiles } from '../../git-config.js'
-import { useGitConfig } from './use-git-config.js'
 import { ChangesPane } from './changes-pane.jsx'
 import { DiffPane } from './diff-pane.jsx'
 import { useDiff } from './use-diff.js'
 import { HistoryPanel } from './history-panel.jsx'
 import { OperationBanner } from './operation-banner.jsx'
 import { StashList } from './stash-list.jsx'
-import { GitCommandLine } from './git-command-line.jsx'
 import { FileEditor } from './file-editor.jsx'
 import { ResolvePane } from './resolve-pane.jsx'
 import { GoToFile } from './go-to-file.jsx'
@@ -16,14 +12,15 @@ import { BranchHeader } from './branch-header.jsx'
 import { discardWorktreeDraft, discardConflictDraft, worktreeDraftPaths, worktreeDraftsByEditor, useWorktreeDraftsVersion } from './use-worktree-file.js'
 
 /**
- * The selected worktree: header with sync actions, git command line, then Changes or History (the
- * file column with the commit composer beside the focused file's diff, editor or resolve screen).
+ * The selected worktree: header with sync actions, then Changes or History (the file column with the
+ * commit composer beside the focused file's diff, editor or resolve screen). The git command line is
+ * ViewGit's, docked below this panel.
  * `onAction(action, ids?)` reviews a file action for the selection, or for `ids`. The ref exposes
  * `confirmDiscard()`, which asks before unsaved edits would be lost, and `openFile(path, line)`.
  */
 export const WorktreePanel = React.forwardRef(function WorktreePanel({
   adapter, repo, registered, version, tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite, onCommit, onResolve = null, onHunk,
-  busy, status, split, onSplit, panel = 'changes', onPanel = () => {}, onSync = null, onExec = null, onSaved,
+  busy, status, split, onSplit, panel = 'changes', onPanel = () => {}, onSync = null, onSaved,
   onOverview = () => {}, onSwitch = () => {},
 }, ref) {
   const [stashes, setStashes] = React.useState(false)
@@ -38,18 +35,6 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     return () => { live = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- repo is a fresh object each render; its path is what matters
   }, [adapter, canStash, repo.path, tree.path, registered, version])
-  // The command line's aliases: git's own for this worktree, and the DotFiles PowerShell shortcuts.
-  const dotfiles = effectiveDotfiles(useGitConfig())
-  const loadAliases = React.useMemo(() => (adapter.aliases || adapter.shellAliases ? async () => {
-    const [git, profile] = await Promise.all([
-      adapter.aliases ? adapter.aliases(repo, tree.path, registered).then(parseAliases, () => []) : [],
-      adapter.shellAliases && dotfiles ? adapter.shellAliases(dotfiles).catch(() => '') : '',
-    ])
-    const scripts = adapter.shellRun ? parseShellScripts(profile) : []
-    // PowerShell takes seconds to start and load the profile: have it ready before a script is typed.
-    if (scripts.length) adapter.shellWarm?.(dotfiles).catch(() => {})
-    return { git, shell: parseShellAliases(profile), scripts }
-  } : null), [adapter, repo, tree.path, registered, dotfiles])
   const history = panel === 'history'
   // The changes pane's diff isn't on screen in History, so it isn't loaded either.
   const change = history ? null : tree.changes.find(c => c.id === focusId) ?? null
@@ -190,11 +175,6 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
         onTerminal={adapter.openTerminal ? () => adapter.openTerminal(repo, tree.path, registered) : null} />
       {goTo && <GoToFile adapter={adapter} repo={repo} worktreePath={tree.path} registered={registered} onOpen={goToFile} onClose={() => setGoTo(false)} />}
       {tree.error && <div role="alert" className="nx-alert bad" style={{ margin: '10px 16px 0' }}>{tree.error}</div>}
-      {onExec && (
-        <div className="nx-panel-section" style={{ background: 'var(--surface-2)' }}>
-          <GitCommandLine path={tree.path} disabled={busy} onRun={(argv, alias) => onExec(tree, argv, alias)} loadAliases={loadAliases} />
-        </div>
-      )}
       <div className="nx-gw-tabs">
         <PanelSwitch panel={panel} onPanel={switchPanel} count={tree.changes.length} />
         <span className="nx-gw-tabs-end">

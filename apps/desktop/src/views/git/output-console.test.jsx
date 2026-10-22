@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { OutputConsole } from './output-console.jsx'
 
@@ -31,6 +31,47 @@ describe('OutputConsole', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expand ▴' }))
     expect(screen.getByLabelText('Command output').hasAttribute('data-big')).toBe(true)
     expect(screen.getByLabelText('git command')).toBeTruthy()
+  })
+
+  it('keeps ANSI colours on the theme and copies the text without the codes', () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    render(<OutputConsole lines={[{ text: '$ git log', tone: 'cmd' }, { text: '\u001b[33mabc1234\u001b[m subject' }]} />)
+    const hash = screen.getByText('abc1234')
+    expect(hash.style.color).toBe('var(--warning)')
+    expect(screen.getByLabelText('Command output').textContent).not.toContain('\u001b')
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }))
+    expect(writeText).toHaveBeenCalledWith('$ git log\nabc1234 subject')
+  })
+
+  it('opens for a command that starts, showing it as still working', () => {
+    const { rerender } = render(<OutputConsole lines={[]} />)
+    rerender(<OutputConsole lines={[]} running={{ text: '$ git fetch', tone: 'cmd' }} />)
+    const out = screen.getByLabelText('Command output')
+    expect(out.textContent).toContain('$ git fetch')
+    expect(out.textContent).toContain('Working…')
+  })
+
+  it('hands its chip to a command line that places it in its own hint row', () => {
+    render(<OutputConsole lines={run(1)}>{chip => <div data-testid="bar">{chip}</div>}</OutputConsole>)
+    fireEvent.click(screen.getByLabelText('Minimise output'))
+    expect(screen.getByTestId('bar').textContent).toBe('Output ▴')
+  })
+
+  it('renders nothing with no command line and nothing to show', () => {
+    const { container } = render(<OutputConsole lines={[]} />)
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('offers Retry failed under a run with a failure', () => {
+    const onRetry = vi.fn()
+    const activity = [{ runId: '2', at: 3, ok: true, kind: 'fetch', label: 'C', summary: 'Done' }, { runId: '1', at: 2, ok: false, kind: 'push', label: 'B', summary: 'boom' }, { runId: '1', at: 1, ok: true, kind: 'push', label: 'A', summary: 'Done' }]
+    render(<OutputConsole lines={run(1)} activity={activity} onRetry={onRetry} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity 3' }))
+    const retries = screen.getAllByRole('button', { name: 'Retry failed' })
+    expect(retries).toHaveLength(1)
+    fireEvent.click(retries[0])
+    expect(onRetry).toHaveBeenCalledWith('1')
   })
 
   it('lists activity oldest first', () => {
