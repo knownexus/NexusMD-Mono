@@ -21,7 +21,7 @@ export function useGitActions({ adapter, registered, reload }) {
 
   // `after` runs before busy clears, so a hunk's diff is already reloading when its buttons re-enable.
   const guard = async (tree, write, after) => {
-    if (running.current.has(tree.path)) return
+    if (running.current.has(tree.path)) return { ok: false, detail: 'Another write is running.' }
     running.current.add(tree.path)
     setBusy(b => ({ ...b, [tree.path]: true }))
     let r
@@ -32,6 +32,7 @@ export function useGitActions({ adapter, registered, reload }) {
     setStatus(s => ({ ...s, [tree.path]: { ok: !!r.ok, text: r.detail } }))
     // Only the repo written to has changed.
     reload([tree.repo])
+    return r
   }
 
   const openReview = (action, tree, selectedIds) => {
@@ -52,6 +53,27 @@ export function useGitActions({ adapter, registered, reload }) {
     guard(cur.tree, () => adapter[METHOD[cur.review.action]](repoOf(cur.tree), cur.tree.path, registered, cur.review.paths, cur.stamp))
   }
 
+  // Stage or unstage straight away (a row's button, Stage all / Unstage all): nothing is lost, so no review.
+  // The stamp is read here, so a file changed since it was listed is refused (stale) rather than written.
+  const write = (action, tree, ids) => {
+    const r = fileReview(action, tree.changes, ids)
+    if (!r.files.length) return Promise.resolve(null)
+    return guard(tree, async () => {
+      const repo = repoOf(tree)
+      const stamp = await adapter.stamp(repo, tree.path, registered, { kind: 'files', paths: r.paths })
+      return adapter[METHOD[action]](repo, tree.path, registered, r.paths, stamp)
+    })
+  }
+
+  // The commit composer: this worktree only. Resolves to the result, so the caller can push after it.
+  const commit = (tree, message, { amend = false } = {}) => guard(tree, async () => {
+    const repo = repoOf(tree)
+    const stamp = await adapter.stamp(repo, tree.path, registered, { kind: 'commit' })
+    return amend
+      ? adapter.commit(repo, tree.path, registered, message, stamp, { amend: true })
+      : adapter.commit(repo, tree.path, registered, message, stamp)
+  })
+
   const hunk = (tree, change, index, stamp, after) => guard(tree, () =>
     adapter[change.area === 'staged' ? 'unstageHunk' : 'stageHunk'](repoOf(tree), tree.path, registered, changePaths(change), index, stamp), after)
 
@@ -64,5 +86,5 @@ export function useGitActions({ adapter, registered, reload }) {
     return r.ok ? r : { ok: false, detail: r.detail || (r.stale ? `${change.path} changed since it was listed. Refresh and try again.` : `Could not resolve ${change.path}.`) }
   })
 
-  return { review, openReview, closeReview: () => setReview(null), confirm, hunk, resolve, busy, status }
+  return { review, openReview, closeReview: () => setReview(null), confirm, write, commit, hunk, resolve, busy, status }
 }

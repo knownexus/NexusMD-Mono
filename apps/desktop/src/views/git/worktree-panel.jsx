@@ -15,15 +15,13 @@ import { GoToFile } from './go-to-file.jsx'
 import { BranchHeader } from './branch-header.jsx'
 import { discardWorktreeDraft, discardConflictDraft, worktreeDraftPaths, worktreeDraftsByEditor, useWorktreeDraftsVersion } from './use-worktree-file.js'
 
-const clamp = v => Math.min(0.8, Math.max(0.2, v))
-
 /**
  * The selected worktree: header with sync actions, git command line, then Changes or History (the
- * focused file's diff, or that file in an editor, below a divider). The ref exposes
+ * file column with the commit composer beside the focused file's diff, editor or resolve screen). The ref exposes
  * `confirmDiscard()`, which asks before unsaved edits would be lost, and `openFile(path, line)`.
  */
 export const WorktreePanel = React.forwardRef(function WorktreePanel({
-  adapter, repo, registered, version, tree, selected, onSelectionChange, focusId, onFocus, onAction, onCommit, onResolve = null, onHunk,
+  adapter, repo, registered, version, tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite, onCommit, onResolve = null, onHunk,
   busy, status, split, onSplit, panel = 'changes', onPanel = () => {}, onSync = null, onExec = null, onSaved,
   onOverview = () => {}, onSwitch = () => {},
 }, ref) {
@@ -184,30 +182,8 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     : tree.changes.find(c => c.path === editor.path && c.area !== 'staged') ?? tree.changes.find(c => c.path === editor.path) ?? null
   const diff = useDiff({ adapter, repo, worktreePath: tree.path, registered, change: diffChange, version })
   const canEdit = !!editor || (!!change && change.area !== 'conflict')
-  const box = React.useRef(null)
-  // While dragging, the ratio lives here; config (localStorage) is written once on release.
-  const [dragging, setDragging] = React.useState(null)
-  const shown = dragging ?? split
-  const drag = e => {
-    e.preventDefault()
-    const rect = box.current.getBoundingClientRect()
-    let last = null
-    const move = ev => { last = clamp((ev.clientY - rect.top) / rect.height); setDragging(last) }
-    const up = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      setDragging(null)
-      if (last != null) onSplit(last)
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-  }
-  const nudge = e => {
-    if (e.key === 'ArrowUp') onSplit(clamp(split - 0.05))
-    if (e.key === 'ArrowDown') onSplit(clamp(split + 0.05))
-  }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+    <div className="nx-gw-detail">
       <BranchHeader tree={tree} stashCount={stashCount} onSync={onSync ?? (() => {})} onStashes={() => setStashes(true)}
         onOverview={onOverview} onSwitch={onSwitch} onEditor={() => setGoTo(true)}
         onTerminal={adapter.openTerminal ? () => adapter.openTerminal(repo, tree.path, registered) : null} />
@@ -218,9 +194,11 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
           <GitCommandLine path={tree.path} disabled={busy} onRun={(argv, alias) => onExec(tree, argv, alias)} loadAliases={loadAliases} />
         </div>
       )}
-      <div className="nx-panel-section" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <div className="nx-gw-tabs">
         <PanelSwitch panel={panel} onPanel={switchPanel} count={tree.changes.length} />
-        <button className="btn sm ghost" title="Ctrl+P" style={{ marginLeft: 'auto' }} onClick={() => setGoTo(true)}>Go to file</button>
+        <span className="nx-gw-tabs-end">
+          <button className="nx-gw-goto" title="Ctrl+P" onClick={() => setGoTo(true)}>Go to file<span className="kbd">Ctrl P</span></button>
+        </span>
       </div>
       {elsewhere.length + keptResolves.length > 0 && (
         <div role="note" aria-label="Unsaved edits" className="nx-panel-section" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -236,18 +214,19 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
             )))}
         </div>
       )}
-      <div className="nx-panel-body">
-        {onSync && <OperationBanner tree={tree} onAction={operation} />}
-        {stashes && <StashList adapter={adapter} repo={repo} tree={tree} registered={registered} onAction={onSync} onClose={() => setStashes(false)} />}
-        {history
-          ? <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync} />
-          : (
-            <div ref={box} style={{ display: 'grid', gridTemplateRows: `minmax(0, ${shown}fr) 6px minmax(0, ${1 - shown}fr)`, height: '64vh', minHeight: 320 }}>
+      {onSync && <div className="nx-gw-banner-slot"><OperationBanner tree={tree} onAction={operation} /></div>}
+      {stashes && <StashList adapter={adapter} repo={repo} tree={tree} registered={registered} onAction={onSync} onClose={() => setStashes(false)} />}
+      {history
+        ? (
+          <div className="nx-panel-body">
+            <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync} />
+          </div>
+        )
+        : (
+            <div className="nx-gw-changes">
               <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={focus} drafts={drafts}
-                onAction={onAction} onCommit={onCommit} onResolve={onResolve && resolve} busy={busy} status={status} />
-              <div role="separator" aria-orientation="horizontal" aria-label="Resize changes and diff" aria-valuenow={Math.round(shown * 100)}
-                tabIndex={0} onPointerDown={drag} onKeyDown={nudge} style={{ cursor: 'row-resize', background: 'var(--border)', borderRadius: 3 }} />
-              <div style={{ display: 'grid', gridTemplateRows: canEdit ? 'auto minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: 6, minHeight: 0 }}>
+                onAction={onAction} onWrite={onWrite} onCommit={onCommit} onResolve={onResolve && resolve} busy={busy} status={status} />
+              <div className="nx-gw-changes-main" data-mode={canEdit ? 'edit' : 'plain'}>
                 {canEdit && <ModeSwitch editing={editing} onDiff={() => setMode('diff')} onEdit={edit} />}
                 {editor && (
                   <div style={{ display: editing ? 'flex' : 'none', flexDirection: 'column', minHeight: 0 }}>
@@ -267,7 +246,6 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
               </div>
             </div>
           )}
-      </div>
     </div>
   )
 })
@@ -283,9 +261,11 @@ function ModeSwitch({ editing, onDiff, onEdit }) {
 
 export function PanelSwitch({ panel, onPanel, count = 0 }) {
   return (
-    <div role="group" aria-label="Panel" className="nx-pills">
-      {[['changes', count ? `Changes (${count})` : 'Changes'], ['history', 'History']].map(([id, label]) => (
-        <button key={id} className="nx-pill" aria-pressed={panel === id} onClick={() => onPanel(id)}>{label}</button>
+    <div role="tablist" aria-label="Panel" style={{ display: 'contents' }}>
+      {[['changes', 'Changes', count], ['history', 'History', 0]].map(([id, label, n]) => (
+        <button key={id} role="tab" className="nx-gw-tab" aria-selected={panel === id} onClick={() => onPanel(id)}>
+          {label}{n > 0 && <>{' '}<span className="n">{n}</span></>}
+        </button>
       ))}
     </div>
   )

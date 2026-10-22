@@ -172,7 +172,7 @@ describe('ViewGit', () => {
     now = '# branch.oid a\0# branch.head main\0'
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stage' }).disabled).toBe(true))
-    expect(screen.getByText('No changes.')).toBeTruthy()
+    expect(screen.getByText('Working tree clean')).toBeTruthy()
   })
 })
 

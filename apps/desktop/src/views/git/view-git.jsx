@@ -118,6 +118,14 @@ function GitWorkspace({ adapter }) {
   const activeTab = tabs.find(t => t.name === (group ? group.name : ALL_PROJECTS))
 
   const openCommit = (tickedIds = null, messages = {}) => setCommitting({ id: ++commits.current, tickedIds, messages })
+  // The commit composer: commits this worktree, then (Commit & push) opens the push preview, publishing
+  // a branch with no upstream (or one whose upstream was deleted). Resolves false to keep the draft.
+  const commitHere = async (tree, { message, amend, push }) => {
+    const r = await actions.commit(tree, message, { amend })
+    if (!r?.ok) return false
+    if (push) sync.open('push', actionTargets('push', [tree], worktreeId(tree)), tree.upstream && !tree.upstreamGone ? {} : { setUpstream: true })
+    return true
+  }
   const commitList = committing
     ? commitTargets(scoped.worktrees, view.selected).map(t => (committing.tickedIds ? { ...t, ticked: !t.unavailable && committing.tickedIds.includes(t.id) } : t))
     : []
@@ -218,7 +226,8 @@ function GitWorkspace({ adapter }) {
                 version={snapshot?.takenAt} tree={selectedTree} selected={selectedIds} focusId={focusId}
                 onSelectionChange={ids => setSelections(s => ({ ...s, [treeKey]: ids }))}
                 onFocus={id => setFocus(f => ({ ...f, [treeKey]: id }))}
-                onAction={action => actions.openReview(action, selectedTree, selectedIds)} onCommit={() => openCommit()} onResolve={(change, take, onResolved) => actions.resolve(selectedTree, change, take, onResolved)}
+                onAction={action => actions.openReview(action, selectedTree, selectedIds)} onWrite={(action, ids) => actions.write(action, selectedTree, ids)}
+                onCommit={draft => commitHere(selectedTree, draft)} onResolve={(change, take, onResolved) => actions.resolve(selectedTree, change, take, onResolved)}
                 onHunk={(change, index, stamp, after) => actions.hunk(selectedTree, change, index, stamp, after)}
                 busy={!!actions.busy[selectedTree.path] || cmdRun?.status === 'running'} status={actions.status[selectedTree.path] ?? null}
                 split={view.split} onSplit={split => setView({ split })}
