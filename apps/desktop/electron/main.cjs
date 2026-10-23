@@ -141,7 +141,8 @@ function buildAppMenu(win) {
         { label: 'Zoom Out',   accelerator: 'CmdOrCtrl+-', click: () => applyZoom(win, nextZoom(win.webContents.getZoomFactor(), 'out')) },
         { type: 'separator' },
         { role: 'togglefullscreen' },
-        ...(!app.isPackaged ? [{ type: 'separator' }, { role: 'toggleDevTools' }] : []),
+        // Dev builds only: Ctrl+R picks up a rebuilt renderer without restarting the app.
+        ...(!app.isPackaged ? [{ type: 'separator' }, { role: 'reload' }, { role: 'toggleDevTools' }] : []),
       ],
     },
     {
@@ -365,6 +366,15 @@ app.whenReady().then(async () => {
   devenvProfileIpc.register(ipcMain);
   gitProcesses = gitIpc.register(ipcMain);
   loginItemIpc.register(ipcMain, { app });
+  // Start-on-login keeps the exe that turned it on; a packaged build takes it over from an older
+  // copy (which may open only to the tray). Not in dev, where execPath is electron.exe itself.
+  if (app.isPackaged && process.platform === 'win32') {
+    try {
+      if (loginItemIpc.repointLoginItem({ app })) log.scope('lifecycle').info('start-on-login now opens this copy');
+    } catch (err) {
+      log.scope('lifecycle').warn('could not update start-on-login', err);
+    }
+  }
   linkWindow.register(ipcMain);
 
   app.on('activate', () => {
