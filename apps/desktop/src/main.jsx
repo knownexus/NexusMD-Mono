@@ -59,7 +59,7 @@ import { rawHttpAdapter }       from './adapters/rawHttp.js'
 import { dbManagerAdapter }     from './adapters/db-manager.js'
 import { devenvAdapter }        from './adapters/devenv.js'
 import { gitAdapter }           from './adapters/git.js'
-import { listSavedConnections, getConnectionSecret } from './db-manager-config.js'
+import { listSavedConnections, getConnectionSecret, saveConnection } from './db-manager-config.js'
 
 const adapters = {
   ...createNoOpAdapters(),
@@ -249,6 +249,26 @@ function NotConfigured() {
         dashboard with work items, pull requests, builds and sprint metrics.
       </p>
     </CardFrame>
+  )
+}
+
+// The Database screen, with this profile's saved connections. A connection saved from its
+// connect dialog goes in the same list as Settings (password in secure storage); the list is
+// read again afterwards so the new one shows straight away.
+function DesktopDbManager({ adapters }) {
+  const [, refresh] = React.useReducer(n => n + 1, 0)
+  const onSaveConnection = React.useCallback(async (meta, secret) => {
+    const id = await saveConnection(secureStorageAdapter, meta, secret)
+    refresh()
+    return id
+  }, [])
+  return (
+    <ViewDbManager
+      adapters={adapters}
+      savedConnections={listSavedConnections()}
+      onResolveSecret={id => getConnectionSecret(secureStorageAdapter, id)}
+      onSaveConnection={onSaveConnection}
+    />
   )
 }
 
@@ -535,13 +555,8 @@ function ViewBody({
         </ApiClientProvider>
       )
     case 'db-manager':
-      return (
-        <ViewDbManager
-          adapters={adapters}
-          savedConnections={listSavedConnections()}
-          onResolveSecret={id => getConnectionSecret(secureStorageAdapter, id)}
-        />
-      )
+      return <DesktopDbManager adapters={adapters} />
+
     case 'devenv':
       return <DevenvView adapters={adapters} />
     case 'git':

@@ -50,8 +50,8 @@ export const dbManagerAdapter = {
    * @param {'sqlserver'|'sqlite'} type
    * @param {object} config
    * @param {string} table
-   * @param {string} primaryKey   Column name used as the PK
-   * @param {any[]}  values       PK values to delete
+   * @param {string|string[]} primaryKey   Key column, or every column of a composite key
+   * @param {any[]}  values       One key per row to delete (an array per row for a composite key)
    * @returns {Promise<{ ok: boolean, affected: number }>}
    */
   deleteRows(type, config, table, primaryKey, values) {
@@ -63,14 +63,26 @@ export const dbManagerAdapter = {
    * @param {'sqlserver'|'sqlite'} type
    * @param {object} config
    * @param {string} table
-   * @param {string} primaryKey
-   * @param {any}    primaryValue  The PK value identifying the row
+   * @param {string|string[]} primaryKey  Key column, or every column of a composite key
+   * @param {any}    primaryValue  The key identifying the row (an array for a composite key)
    * @param {string} column        Column to update
    * @param {any}    value         New value
    * @returns {Promise<{ ok: boolean, affected: number }>}
    */
   updateCell(type, config, table, primaryKey, primaryValue, column, value) {
     return api().updateCell(type, config, table, primaryKey, primaryValue, column, value)
+  },
+
+  /**
+   * Add a row. Columns left out of `values` get their default.
+   * @param {'sqlserver'|'sqlite'} type
+   * @param {object} config
+   * @param {string} table
+   * @param {Record<string, any>} values  Column name → value
+   * @returns {Promise<{ ok: boolean, affected: number }>}
+   */
+  insertRow(type, config, table, values) {
+    return api().insertRow(type, config, table, values)
   },
 
   /**

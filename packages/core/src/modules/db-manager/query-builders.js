@@ -6,6 +6,16 @@
 // getColumns() (schema-derived), never freeform user text.
 
 /**
+ * A table or column name in square brackets, so reserved words (Key, User,
+ * Order…), spaces and other odd characters can't break the statement. SQL
+ * Server and SQLite both read [name]; a ] inside the name is doubled.
+ */
+export function quoteIdent(name) {
+  if (name === '*') return name
+  return `[${String(name).replace(/]/g, ']]')}]`
+}
+
+/**
  * Format a raw form value as a SQL literal. Blank/nullish input becomes
  * NULL (a guided form field left empty means "no value", not the string
  * "undefined"); integer/decimal-looking strings are left unquoted so
@@ -20,8 +30,8 @@ export function formatSqlValue(raw) {
 
 /** Format one WHERE-clause condition row. */
 export function formatCondition({ column, operator, value }) {
-  if (operator === 'IS NULL') return `${column} IS NULL`
-  return `${column} ${operator} ${formatSqlValue(value)}`
+  if (operator === 'IS NULL') return `${quoteIdent(column)} IS NULL`
+  return `${quoteIdent(column)} ${operator} ${formatSqlValue(value)}`
 }
 
 function whereClause(conditions, combinator) {
@@ -30,34 +40,36 @@ function whereClause(conditions, combinator) {
 }
 
 export function buildSearchQuery(table, conditions = [], combinator = 'AND') {
-  return `SELECT * FROM ${table}${whereClause(conditions, combinator)}`
+  return `SELECT * FROM ${quoteIdent(table)}${whereClause(conditions, combinator)}`
 }
 
 export function buildInsertQuery(table, columns) {
-  const names  = columns.map(c => c.name).join(', ')
+  const names  = columns.map(c => quoteIdent(c.name)).join(', ')
   const values = columns.map(c => formatSqlValue(c.value)).join(', ')
-  return `INSERT INTO ${table} (${names}) VALUES (${values})`
+  return `INSERT INTO ${quoteIdent(table)} (${names}) VALUES (${values})`
 }
 
 export function buildUpdateQuery(table, setColumns, conditions = [], combinator = 'AND') {
-  const setClause = setColumns.map(c => `${c.name} = ${formatSqlValue(c.value)}`).join(', ')
-  return `UPDATE ${table} SET ${setClause}${whereClause(conditions, combinator)}`
+  const setClause = setColumns.map(c => `${quoteIdent(c.name)} = ${formatSqlValue(c.value)}`).join(', ')
+  return `UPDATE ${quoteIdent(table)} SET ${setClause}${whereClause(conditions, combinator)}`
 }
 
 export function buildDeleteQuery(table, conditions = [], combinator = 'AND') {
-  return `DELETE FROM ${table}${whereClause(conditions, combinator)}`
+  return `DELETE FROM ${quoteIdent(table)}${whereClause(conditions, combinator)}`
 }
 
 export function buildJoinQuery(leftTable, rightTable, joinType, leftColumn, rightColumn) {
-  return `SELECT * FROM ${leftTable}\n${joinType} JOIN ${rightTable} ON `
-    + `${leftTable}.${leftColumn} = ${rightTable}.${rightColumn}`
+  const [l, r] = [quoteIdent(leftTable), quoteIdent(rightTable)]
+  return `SELECT * FROM ${l}\n${joinType} JOIN ${r} ON `
+    + `${l}.${quoteIdent(leftColumn)} = ${r}.${quoteIdent(rightColumn)}`
 }
 
 export function buildAggregateQuery(table, aggregates, groupByColumns = []) {
+  const groupBy = groupByColumns.map(quoteIdent)
   const selectCols = [
-    ...aggregates.map(a => `${a.fn}(${a.column})`),
-    ...groupByColumns,
+    ...aggregates.map(a => `${a.fn}(${quoteIdent(a.column)})`),
+    ...groupBy,
   ].join(', ')
-  const base = `SELECT ${selectCols} FROM ${table}`
-  return groupByColumns.length ? `${base}\nGROUP BY ${groupByColumns.join(', ')}` : base
+  const base = `SELECT ${selectCols} FROM ${quoteIdent(table)}`
+  return groupBy.length ? `${base}\nGROUP BY ${groupBy.join(', ')}` : base
 }

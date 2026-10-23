@@ -14,6 +14,26 @@ export function getDbManagerAdapter() {
   return _adapter
 }
 
+// ─── SQL Server authentication modes ─────────────────────────────────────────
+// 'sql' is a SQL login (user + password). 'azure-ad-interactive' signs in to
+// Microsoft Entra ID (Azure AD) in the browser, like SSMS's "Active Directory -
+// Universal with MFA"; the user name, if given, is only a login hint.
+
+export const SQL_AUTH = 'sql'
+export const AZURE_AD_INTERACTIVE = 'azure-ad-interactive'
+
+// The ADO.NET `Authentication=` value for each mode (and what buildConnectionString writes).
+const AUTH_KEYWORDS = { [SQL_AUTH]: 'Sql Password', [AZURE_AD_INTERACTIVE]: 'Active Directory Interactive' }
+
+// Accepts the ADO.NET spelling ("Active Directory Interactive") and the JDBC
+// one ("ActiveDirectoryInteractive"), in any case.
+function parseAuthentication(val) {
+  const v = val.toLowerCase().replace(/[\s_-]/g, '')
+  if (v === 'sqlpassword') return SQL_AUTH
+  if (v === 'activedirectoryinteractive') return AZURE_AD_INTERACTIVE
+  throw new Error(`Authentication "${val}" isn't supported — use "Active Directory Interactive" or "Sql Password".`)
+}
+
 // ─── Connection string parsing (pure, platform-agnostic) ─────────────────────
 
 // Applies `;key=value` pairs (ADO.NET and JDBC both use this shape after
@@ -25,7 +45,8 @@ function applyKeyValuePairs(cfg, str) {
     const key = pair.slice(0, eq).trim().toLowerCase().replace(/\s+/g, '')
     const val = pair.slice(eq + 1).trim()
     if (key === 'server' || key === 'datasource' || key === 'servername') {
-      const [host, port] = val.split(',')
+      // "tcp:host,1433" (as the Azure portal writes it) names the protocol first; only TCP applies here.
+      const [host, port] = val.replace(/^(tcp|np|lpc):/i, '').split(',')
       cfg.server = host.trim()
       if (port) cfg.port = parseInt(port.trim(), 10)
     }
@@ -34,6 +55,7 @@ function applyKeyValuePairs(cfg, str) {
     if (key === 'password' || key === 'pwd') cfg.password = val
     if (key === 'encrypt') cfg.encrypt = val.toLowerCase() !== 'false'
     if (key === 'trustservercertificate') cfg.trustServerCertificate = val.toLowerCase() === 'true'
+    if (key === 'authentication') cfg.authentication = parseAuthentication(val)
   })
 }
 
@@ -68,6 +90,7 @@ export function parseConnectionString(type, connectionString) {
         password: url.password ? decodeURIComponent(url.password) : undefined,
         encrypt:  true,
         trustServerCertificate: false,
+        authentication: SQL_AUTH,
       }
     }
 
@@ -79,14 +102,14 @@ export function parseConnectionString(type, connectionString) {
       const cfg = {
         type: 'sqlserver', server: host.trim(),
         port: port ? parseInt(port, 10) : 1433,
-        encrypt: true, trustServerCertificate: false,
+        encrypt: true, trustServerCertificate: false, authentication: SQL_AUTH,
       }
       applyKeyValuePairs(cfg, rest || '')
       return cfg
     }
 
     // ADO.NET key=value; style
-    const cfg = { type: 'sqlserver', port: 1433, encrypt: true, trustServerCertificate: false }
+    const cfg = { type: 'sqlserver', port: 1433, encrypt: true, trustServerCertificate: false, authentication: SQL_AUTH }
     applyKeyValuePairs(cfg, cs)
     return cfg
   }
@@ -102,15 +125,18 @@ export function buildConfig(type, fields) {
   // fields.port comes from a form text input, so it arrives as a string (or
   // ''/undefined) — the mssql driver requires options.port to be a number.
   const parsedPort = parseInt(fields.port, 10)
+  const interactive = fields.authentication === AZURE_AD_INTERACTIVE
   return {
     type:                  'sqlserver',
     server:                fields.host ?? '',
     port:                  Number.isFinite(parsedPort) ? parsedPort : 1433,
     database:              fields.database ?? '',
     user:                  fields.user ?? undefined,
-    password:              fields.password ?? undefined,
+    // Interactive sign-in never uses a password, even one left over in the form.
+    password:              interactive ? undefined : (fields.password ?? undefined),
     encrypt:               fields.encrypt !== false,
     trustServerCertificate: fields.trustServerCertificate ?? false,
+    authentication:        interactive ? AZURE_AD_INTERACTIVE : SQL_AUTH,
   }
 }
 
@@ -137,13 +163,38 @@ export function buildConnectionString(type, fields) {
   if (type === 'sqlite') return fields.filePath || ''
 
   const port = fields.port || '1433'
+  const interactive = fields.authentication === AZURE_AD_INTERACTIVE
   const parts = [`Server=${fields.host || ''},${port}`]
   if (fields.database) parts.push(`Database=${fields.database}`)
+  if (interactive)     parts.push(`Authentication=${AUTH_KEYWORDS[AZURE_AD_INTERACTIVE]}`)
   if (fields.user)     parts.push(`User Id=${fields.user}`)
-  if (fields.password) parts.push(`Password=${fields.password}`)
+  if (fields.password && !interactive) parts.push(`Password=${fields.password}`)
   parts.push(`Encrypt=${fields.encrypt === false ? 'false' : 'true'}`)
   parts.push(`TrustServerCertificate=${fields.trustServerCertificate ? 'true' : 'false'}`)
   return parts.join(';') + ';'
+}
+
+/**
+ * The reverse of buildConnectionString: parse a connection string (any dialect
+ * parseConnectionString accepts) into the manual fields a form edits, so a
+ * pasted string can fill the form in. Throws what parseConnectionString throws.
+ * @param {'sqlserver'|'sqlite'} type
+ * @param {string} connectionString
+ * @returns {object}  Same shape buildConfig() accepts; port is a string, as a text input holds it.
+ */
+export function connectionStringToFields(type, connectionString) {
+  const cfg = parseConnectionString(type, connectionString)
+  if (type === 'sqlite') return { filePath: cfg.filePath }
+  return {
+    host:                   cfg.server ?? '',
+    port:                   String(cfg.port ?? 1433),
+    database:               cfg.database ?? '',
+    user:                   cfg.user ?? '',
+    password:               cfg.password ?? '',
+    encrypt:                cfg.encrypt !== false,
+    trustServerCertificate: !!cfg.trustServerCertificate,
+    authentication:         cfg.authentication ?? SQL_AUTH,
+  }
 }
 
 // ─── Saved-connection list helpers (pure — no storage I/O) ───────────────────

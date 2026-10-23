@@ -5,6 +5,7 @@ import {
   buildConfig,
   resolveConnectionParams,
   buildConnectionString,
+  connectionStringToFields,
   createInitialState,
   applyConnected,
   applyDisconnected,
@@ -140,7 +141,81 @@ describe('parseConnectionString', () => {
 
 // ─── buildConfig ──────────────────────────────────────────────────────────────
 
+describe('parseConnectionString — authentication', () => {
+  it('defaults to SQL authentication', () => {
+    expect(parseConnectionString('sqlserver', 'Server=h;Database=d;').authentication).toBe('sql')
+    expect(parseConnectionString('sqlserver', 'mssql://u:p@h/d').authentication).toBe('sql')
+  })
+
+  it('parses ADO.NET Authentication=Active Directory Interactive', () => {
+    const cfg = parseConnectionString('sqlserver', 'Server=h;Database=d;Authentication=Active Directory Interactive;User Id=me@corp.com;')
+    expect(cfg).toMatchObject({ authentication: 'azure-ad-interactive', user: 'me@corp.com' })
+  })
+
+  it('parses JDBC authentication=ActiveDirectoryInteractive', () => {
+    const cfg = parseConnectionString('sqlserver', 'jdbc:sqlserver://h:1433;databaseName=d;authentication=ActiveDirectoryInteractive')
+    expect(cfg.authentication).toBe('azure-ad-interactive')
+  })
+
+  it('parses Authentication=Sql Password as SQL authentication', () => {
+    expect(parseConnectionString('sqlserver', 'Server=h;Authentication=SqlPassword;').authentication).toBe('sql')
+  })
+
+  it('rejects authentication modes it cannot perform', () => {
+    expect(() => parseConnectionString('sqlserver', 'Server=h;Authentication=Active Directory Integrated;'))
+      .toThrow(/isn't supported/)
+  })
+})
+
+describe('connectionStringToFields', () => {
+  it('fills SQL Server fields from an ADO.NET string', () => {
+    expect(connectionStringToFields('sqlserver', 'Server=myhost,5050;Database=mydb;User Id=sa;Password=pw;Encrypt=false;TrustServerCertificate=true;'))
+      .toEqual({
+        host: 'myhost', port: '5050', database: 'mydb', user: 'sa', password: 'pw',
+        encrypt: false, trustServerCertificate: true, authentication: 'sql',
+      })
+  })
+
+  it('fills SQL Server fields from a URL, defaulting the port', () => {
+    expect(connectionStringToFields('sqlserver', 'mssql://u:p%40ss@host/db')).toMatchObject({
+      host: 'host', port: '1433', database: 'db', user: 'u', password: 'p@ss',
+    })
+  })
+
+  it('drops the tcp: prefix Azure portal strings put on the server', () => {
+    const f = connectionStringToFields('sqlserver', 'Server=tcp:reports.database.windows.net,1433;Initial Catalog=reporting;')
+    expect(f).toMatchObject({ host: 'reports.database.windows.net', port: '1433', database: 'reporting' })
+  })
+
+  it('carries interactive authentication', () => {
+    const f = connectionStringToFields('sqlserver', 'Server=h;Authentication=Active Directory Interactive;User Id=me@corp.com;')
+    expect(f).toMatchObject({ authentication: 'azure-ad-interactive', user: 'me@corp.com', password: '' })
+  })
+
+  it('round-trips through buildConnectionString', () => {
+    const fields = {
+      host: 'h', port: '1444', database: 'd', user: 'u', password: 'p',
+      encrypt: true, trustServerCertificate: false, authentication: 'sql',
+    }
+    expect(connectionStringToFields('sqlserver', buildConnectionString('sqlserver', fields))).toEqual(fields)
+  })
+
+  it('gives SQLite its file path', () => {
+    expect(connectionStringToFields('sqlite', 'sqlite:///data/app.db')).toEqual({ filePath: 'data/app.db' })
+  })
+})
+
 describe('buildConfig', () => {
+  it('carries interactive authentication and never a password with it', () => {
+    const cfg = buildConfig('sqlserver', { host: 'h', user: 'me@corp.com', password: 'stale', authentication: 'azure-ad-interactive' })
+    expect(cfg).toMatchObject({ authentication: 'azure-ad-interactive', user: 'me@corp.com' })
+    expect(cfg.password).toBeUndefined()
+  })
+
+  it('defaults to SQL authentication', () => {
+    expect(buildConfig('sqlserver', { host: 'h' }).authentication).toBe('sql')
+  })
+
   it('coerces a string port (as arrives from a form text input) to a number', () => {
     const cfg = buildConfig('sqlserver', {
       host: 'myhost', port: '1433', database: 'mydb', user: 'sa', password: 'pass',
@@ -210,6 +285,18 @@ describe('buildConnectionString', () => {
 
   it('returns the bare file path for sqlite', () => {
     expect(buildConnectionString('sqlite', { filePath: '/data/app.db' })).toBe('/data/app.db')
+  })
+
+  it('writes Authentication=Active Directory Interactive and drops the password for interactive sign-in', () => {
+    const cs = buildConnectionString('sqlserver', {
+      host: 'srv.database.windows.net', port: '1433', database: 'mydb', user: 'me@corp.com', password: 'stale',
+      authentication: 'azure-ad-interactive',
+    })
+    expect(cs).toBe('Server=srv.database.windows.net,1433;Database=mydb;Authentication=Active Directory Interactive;User Id=me@corp.com;Encrypt=true;TrustServerCertificate=false;')
+    expect(parseConnectionString('sqlserver', cs)).toMatchObject({
+      server: 'srv.database.windows.net', database: 'mydb', user: 'me@corp.com',
+      authentication: 'azure-ad-interactive',
+    })
   })
 
   it('round-trips through parseConnectionString', () => {

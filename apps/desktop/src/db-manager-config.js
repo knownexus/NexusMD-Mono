@@ -18,7 +18,8 @@ const secretKey = (id) => getProfileKey('dbManager.secret.' + id)
  * All saved connections' metadata (no secrets), in save order.
  * @returns {{id: string, name: string, type: 'sqlserver'|'sqlite', inputMode: 'fields'|'connstr',
  *            host: string, port: string, database: string, filePath: string, user: string,
- *            encrypt: boolean, trustServerCertificate: boolean}[]}
+ *            encrypt: boolean, trustServerCertificate: boolean,
+ *            authentication?: 'sql'|'azure-ad-interactive'}[]}
  */
 export function listSavedConnections() {
   try {

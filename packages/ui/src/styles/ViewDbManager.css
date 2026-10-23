@@ -17,6 +17,9 @@
 
 /* page: header, then the table list beside the details */
 .nx-db-page { position: relative; flex: 1; height: 100%; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg); color: var(--text); font-size: 13px; container: nx-db / inline-size; }
+/* one per open connection; only the active one shows */
+.nx-db-session { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.nx-db-session[hidden] { display: none; }
 .nx-db-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr); }
 .nx-db-body[data-list="hidden"] { grid-template-columns: minmax(0, 1fr); }
 .nx-db-aside { min-height: 0; overflow: auto; padding: 12px 10px 24px; border-right: 1px solid var(--border); background: var(--bg); }
@@ -46,6 +49,16 @@
 .nx-db-seg-tabs > button[disabled]:not([aria-selected="true"]) { opacity: .6; cursor: default; }
 .nx-db-seg.sm { padding: 2px; border-radius: var(--radius-sm); }
 .nx-db-seg.sm > button { height: 24px; padding: 0 10px; font-size: 12px; border-radius: 4px; }
+/* an open connection: its tab plus a close button */
+.nx-db-conn { display: flex; align-items: center; flex: none; border-radius: var(--radius-sm); }
+.nx-db-conn[data-active] { background: var(--surface); box-shadow: var(--shadow-sm); }
+.nx-db-conn > button[role="tab"] { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 4px 0 10px; border: 0; background: transparent; color: var(--text-muted); font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.nx-db-conn > button[role="tab"]:hover, .nx-db-conn[data-active] > button[role="tab"] { color: var(--text); }
+.nx-db-conn-x { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-right: 3px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer; opacity: .55; }
+.nx-db-conn:hover .nx-db-conn-x, .nx-db-conn[data-active] .nx-db-conn-x, .nx-db-conn-x:focus-visible { opacity: 1; }
+.nx-db-conn-x:hover { background: var(--surface-3); color: var(--text); }
+/* a saved connection that isn't open yet */
+.nx-db-seg-tabs > button[data-closed] { font-style: italic; }
 .nx-db-seg > .nx-db-plus { height: 26px; padding: 0 10px; color: var(--accent); }
 .nx-db-seg > .nx-db-plus:hover { background: var(--surface-3); color: var(--accent); }
 
@@ -314,3 +327,49 @@
 .nx-db-saved-empty { margin: 0; padding: 6px 8px 8px; line-height: 1.5; white-space: normal; }
 .nx-db-select.sm { min-width: 120px; height: 26px; font-size: 12px; }
 .nx-db-ov-open[disabled] { cursor: default; }
+
+/* table and group menus: group a table, hide it, rename or ungroup a group */
+.nx-db-rowmenu { flex: none; }
+.nx-db-rowmenu > summary { width: 26px; height: 26px; margin-right: 4px; padding: 0; justify-content: center; border: 0; background: transparent; color: var(--text-subtle); opacity: 0; }
+.nx-db-row:hover .nx-db-rowmenu > summary, .nx-db-group-bar:hover .nx-db-rowmenu > summary, .nx-db-rowmenu[open] > summary,
+.nx-db-rowmenu > summary:focus-visible, .nx-db-dhead-name .nx-db-rowmenu > summary { opacity: 1; }
+.nx-db-rowmenu > summary:hover { background: var(--surface-2); color: var(--text); }
+.nx-db-history-pop.nx-db-menu { width: 250px; max-height: 360px; }
+.nx-db-menu-item { width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.nx-db-menu-item:hover:not([disabled]) { background: var(--surface-2); }
+.nx-db-menu-item[disabled] { color: var(--accent); cursor: default; }
+.nx-db-menu-form { display: flex; gap: 6px; padding: 4px 8px 6px; }
+.nx-db-menu-form .db-input { height: 28px; }
+.nx-db-menu-sep { height: 1px; margin: 4px 0; background: var(--border); }
+.nx-db-group-bar { display: flex; align-items: center; }
+.nx-db-group-bar > .nx-db-group-head { flex: 1; width: auto; min-width: 0; }
+.nx-db-tag[data-tone="muted"] { background: var(--surface-2); color: var(--text-muted); }
+.nx-db-fill { margin-top: 8px; gap: 10px; }
+.db-hint[data-tone="bad"] { color: var(--danger); }
+.nx-db-save-conn { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.nx-db-save-conn .db-hint { grid-column: 1 / -1; }
+.nx-db-list-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+
+/* typed cell editing, bit checkboxes, add row */
+.nx-db-coltype { margin-left: 6px; font: 500 10px var(--mono); letter-spacing: 0; text-transform: none; color: var(--text-subtle); }
+.nx-db-table td.bool { text-align: center; }
+.nx-db-table td.bool input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+.nx-db-table td.bool input:disabled { cursor: default; }
+.nx-db-cell-edit { position: relative; display: flex; align-items: center; gap: 4px; }
+.nx-db-cell-edit .nx-db-cell-input { flex: 1; min-width: 90px; }
+.nx-db-table td[data-invalid] .nx-db-cell-input, .nx-db-addrow-field[data-invalid] .db-input { border-color: var(--danger) !important; outline-color: var(--danger); }
+.nx-db-null-btn { flex: none; height: 22px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-muted); font: 600 10px var(--mono); cursor: pointer; }
+.nx-db-null-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.nx-db-cell-error { position: absolute; left: 0; top: calc(100% + 4px); z-index: 5; max-width: 320px; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--danger); color: #fff; font-size: 11.5px; white-space: normal; box-shadow: var(--shadow-pop); }
+.nx-db-addrow-field .nx-db-cell-error { position: static; display: block; margin-top: 4px; background: none; color: var(--danger); box-shadow: none; padding: 0; }
+/* Deleting a row is always on show (copy still waits for a hover). */
+.nx-db-row-act.danger { opacity: .55; }
+.nx-db-table tbody tr:hover .nx-db-row-act.danger { opacity: 1; }
+.nx-db-row-act:disabled { opacity: .25 !important; cursor: not-allowed; }
+.nx-db-addrow-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px 16px; }
+.nx-db-addrow-form > .nx-db-alert { grid-column: 1 / -1; }
+.nx-db-addrow-field .db-label { display: flex; align-items: baseline; gap: 2px; text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--text); }
+.nx-db-addrow-field .db-label .req { color: var(--danger); }
+.nx-db-addrow-field .db-label .nx-db-coltype { margin-left: auto; }
+.nx-db-null-toggle { margin-top: 4px; font-size: 11.5px; color: var(--text-muted); }
+.nx-db-result-set + .nx-db-result-set { margin-top: 14px; }

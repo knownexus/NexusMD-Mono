@@ -78,12 +78,18 @@ export {
 } from './modules/timer/index.js'
 export {
   getDbManagerAdapter, parseConnectionString, buildConfig, resolveConnectionParams, buildConnectionString,
+  SQL_AUTH, AZURE_AD_INTERACTIVE, connectionStringToFields,
   createInitialState, applyConnected, applyDisconnected,
   applyTableSelected, applyTableLoaded, applyRowsDeleted, applyCellUpdated, applyError,
   generateConnectionId, upsertConnection, removeConnection,
 } from './modules/db-manager/index.js'
 export {
-  formatSqlValue, formatCondition,
+  normalizeTablePrefs, toggleTableStarred, toggleTableHidden, setTableGroup, renameTableGroup,
+  removeTableGroup, toggleSectionCollapsed, tableSections, groupSectionKey, schemaSectionKey,
+} from './modules/db-manager/table-prefs.js'
+export { columnKind, isPartialInput, cellToInput, parseCellInput } from './modules/db-manager/cell-types.js'
+export {
+  formatSqlValue, formatCondition, quoteIdent,
   buildSearchQuery, buildInsertQuery, buildUpdateQuery, buildDeleteQuery,
   buildJoinQuery, buildAggregateQuery,
 } from './modules/db-manager/query-builders.js'

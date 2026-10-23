@@ -14,7 +14,6 @@ import {
   buildConfig,
   createInitialState,
   applyConnected,
-  applyDisconnected,
   applyTableSelected,
   applyTableLoaded,
   applyRowsDeleted,
@@ -26,9 +25,26 @@ import {
   buildUpdateQuery,
   buildJoinQuery,
   buildAggregateQuery,
+  SQL_AUTH,
+  AZURE_AD_INTERACTIVE,
+  connectionStringToFields,
+  normalizeTablePrefs,
+  toggleTableStarred,
+  toggleTableHidden,
+  setTableGroup,
+  renameTableGroup,
+  removeTableGroup,
+  toggleSectionCollapsed,
+  tableSections,
+  quoteIdent,
+  columnKind,
+  isPartialInput,
+  cellToInput,
+  parseCellInput,
 } from '@nexusmd/core'
 import { PlModal } from '../planner-chips.jsx'
 import { Icon } from '../icons.jsx'
+import { FoldAllButton } from '../fold-all-button.jsx'
 
 // ─── Demo data (shown when no real DB is connected) ───────────────────────────
 
@@ -88,6 +104,14 @@ function writePref(key, value) {
   try { window.localStorage.setItem(key, JSON.stringify(value)) } catch { /* storage unavailable */ }
 }
 
+// How a connection's table list is arranged (favourites, hidden tables, groups, folded sections).
+// Stars saved before groups existed are picked up from their old key.
+const tablePrefsKey = conn => `nx-db:tables:${conn}`
+function readTablePrefs(conn) {
+  const saved = readPref(tablePrefsKey(conn), null)
+  return normalizeTablePrefs(saved ?? { starred: readPref(`nx-db:starred:${conn}`, []) })
+}
+
 const isNumeric = v => typeof v === 'number' || typeof v === 'bigint'
 // Nulls sort last; numbers numerically; everything else as natural text.
 function compareCells(a, b) {
@@ -122,17 +146,6 @@ async function copyText(text) {
   try { await navigator.clipboard.writeText(text); return true } catch { return false }
 }
 
-// "dbo.Users" groups under dbo; names without a schema group under "Tables".
-function groupTables(tables) {
-  const groups = new Map()
-  for (const t of tables) {
-    const dot = t.indexOf('.')
-    const schema = dot > 0 ? t.slice(0, dot) : ''
-    if (!groups.has(schema)) groups.set(schema, [])
-    groups.get(schema).push(t)
-  }
-  return [...groups].map(([schema, names]) => ({ schema, label: schema || 'Tables', names }))
-}
 
 // Word-start matching, like the Git Workspace filter: "pat app" finds "patient_appointments".
 function matchesWords(text, query) {
@@ -153,20 +166,14 @@ const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const tableRe = t => new RegExp(`(\\[${escapeRe(t)}\\]|"${escapeRe(t)}"|\`${escapeRe(t)}\`|(?<![\\w.])${escapeRe(t)}(?![\\w]))`, 'g')
 const mentionsTable = (sql, table) => !!table && tableRe(table).test(sql)
 const toTemplate = (sql, table) => sql.replace(tableRe(table), m => m.replace(table, TABLE_TOKEN))
-// Plain names go in as they are; anything else (spaces, reserved words, quotes) is quoted for the
-// connection's dialect, so a table name can never end the statement. A token already inside quotes
-// only needs the quote character escaped.
-const PLAIN_NAME = /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/
-function quoteName(name, type) {
-  if (PLAIN_NAME.test(name)) return name
-  if (type === 'sqlserver') return name.split('.').map(p => `[${p.replace(/]/g, ']]')}]`).join('.')
-  return `"${name.replace(/"/g, '""')}"`
-}
-function fillTemplate(sql, table, type) {
+// Names always go in square brackets (SQL Server and SQLite both read them), so a reserved word
+// such as Key, a space or a quote can never end the statement. A token already inside quotes only
+// needs the quote character escaped.
+function fillTemplate(sql, table) {
   return sql.split(TABLE_TOKEN).map((part, i, all) => {
     if (i === all.length - 1) return part
     const before = part.slice(-1), after = all[i + 1].slice(0, 1)
-    if (!['[]', '""', '``'].includes(before + after)) return part + quoteName(table, type)
+    if (!['[]', '""', '``'].includes(before + after)) return part + quoteIdent(table)
     const q = before === '[' ? /]/g : before === '`' ? /`/g : /"/g
     return part + table.replace(q, m => m + m)
   }).join('')
@@ -212,9 +219,282 @@ function useDbShortcuts(rootRef, handlers) {
 }
 
 // ─── Root view ────────────────────────────────────────────────────────────────
+// Several connections can be open at once, one tab each. Every open connection keeps its own
+// DbSession mounted (only the active one shows), so switching tabs keeps the open table, the
+// query, its history and the filters.
 
-export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret }) {
-  const [dbState, setDbState]         = useState(createInitialState)
+// Identifies an open connection, so connecting to one that's already open just switches to it.
+function sessionKey({ type, config, connectionId }) {
+  if (connectionId) return `saved:${connectionId}`
+  if (type === 'demo') return 'demo'
+  if (type === 'sqlite') return `sqlite:${config.filePath}`
+  return `sqlserver:${config.server}:${config.port}/${config.database}/${config.user ?? ''}/${config.authentication ?? ''}`
+}
+
+// The saved connections that were open (and which was showing), so they reopen next time.
+const OPEN_KEY = 'nx-db:open-connections'
+
+// What a connection saved from the connect dialog keeps: the same metadata Settings saves, with
+// the password (or the whole connection string, which may hold one) kept apart as the secret.
+function connectionToSave(type, fields, name) {
+  if (fields.connectionString?.trim()) {
+    return { meta: { name, type, inputMode: 'connstr' }, secret: fields.connectionString.trim() }
+  }
+  const { host = '', port = '', database = '', user = '', filePath = '', encrypt = true, trustServerCertificate = false, authentication = SQL_AUTH } = fields
+  const meta = { name, type, inputMode: 'fields', host, port, database, user, filePath, encrypt, trustServerCertificate, authentication }
+  // Interactive sign-in has no password to keep.
+  return { meta, secret: authentication === AZURE_AD_INTERACTIVE ? '' : (fields.password || '') }
+}
+
+export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret, onSaveConnection }) {
+  const [sessions, setSessions]       = useState([])          // { key, type, config, tables, connectionId?, name? }, in tab order
+  const [activeKey, setActiveKey]     = useState(null)
+  const [connecting, setConnecting]   = useState(null)        // saved connection id, 'new', or null
+  // Saved connections that were open last time but sign in through the browser, so they wait
+  // for a click rather than open a sign-in window on their own.
+  const [deferred, setDeferred]       = useState([])
+  const [restoring, setRestoring]     = useState(false)
+  const restored = useRef(false)
+  const restoringRef = useRef(false)
+  const [toast, setToast]             = useState(null)
+  const [showConnectDialog, setShowConnectDialog] = useState(false)
+  const [connectError, setConnectError] = useState(null)
+  const toastTimer = useRef(null)
+  const dialogOpen = useRef(false)
+  dialogOpen.current = showConnectDialog
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
+
+  const db = adapters?.dbManager
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+
+  const notify = useCallback((msg, type = 'success') => {
+    clearTimeout(toastTimer.current)
+    setToast({ msg, type, id: Date.now() })
+    toastTimer.current = setTimeout(() => setToast(null), type === 'error' ? 7000 : 3000)
+  }, [])
+  useEffect(() => () => clearTimeout(toastTimer.current), [])
+
+  // A connect failure shows inside the connect dialog when it's open, else as a toast.
+  const connectFailed = useCallback((message) => {
+    if (dialogOpen.current) setConnectError(message)
+    else notify(message, 'error')
+  }, [notify])
+
+  // ── Connect ────────────────────────────────────────────────────────────────
+
+  // Switches to the connection if it's already open; returns whether it was.
+  const focusOpen = useCallback((key) => {
+    if (!sessionsRef.current.some(s => s.key === key)) return false
+    setActiveKey(key)
+    setShowConnectDialog(false)
+    setConnectError(null)
+    return true
+  }, [])
+
+  const addSession = useCallback((next) => {
+    const key = sessionKey(next)
+    setSessions(list => (list.some(s => s.key === key) ? list : [...list, { ...next, key }]))
+    setActiveKey(key)
+    setShowConnectDialog(false)
+    setConnectError(null)
+  }, [])
+
+  // `saveAs` ({ name }) also saves the connection, so it shows with the saved ones and reopens next time.
+  const handleConnect = useCallback(async (connType, connFields, saveAs = null) => {
+    setConnectError(null)
+    if (connType === 'demo') {
+      if (focusOpen('demo')) return
+      addSession({ type: 'demo', config: {}, tables: DEMO.tables })
+      notify('Demo database loaded')
+      return
+    }
+
+    try {
+      const config = resolveConnectionParams(connType, connFields)
+      if (!saveAs && focusOpen(sessionKey({ type: connType, config }))) return
+      setConnecting('new')
+      const result = await db.connect(connType, config)
+      const tables = plural(result.tables.length, 'table')
+      if (!saveAs || !onSaveConnection) {
+        addSession({ type: connType, config, tables: result.tables })
+        notify(`Connected · ${tables}`)
+        return
+      }
+      // Saving under a name that's already saved replaces that connection.
+      const { meta, secret } = connectionToSave(connType, connFields, saveAs.name)
+      const same = savedConnections.find(c => c.name.toLowerCase() === saveAs.name.toLowerCase())
+      try {
+        const id = await onSaveConnection(same ? { ...meta, id: same.id } : meta, secret)
+        if (focusOpen(sessionKey({ connectionId: id }))) return
+        addSession({ type: connType, config, tables: result.tables, connectionId: id, name: saveAs.name })
+        notify(`Connected and saved as ${saveAs.name} · ${tables}`)
+      } catch (err) {
+        addSession({ type: connType, config, tables: result.tables })
+        notify(`Connected, but couldn't save it: ${err.message}`, 'error')
+      }
+    } catch (err) {
+      connectFailed(err.message)
+    } finally {
+      setConnecting(null)
+    }
+  }, [db, notify, focusOpen, addSession, connectFailed, onSaveConnection, savedConnections])
+
+  // A saved connection's config, with its secret (password or connection string) resolved on
+  // demand via onResolveSecret — the saved metadata passed in never carries the secret itself.
+  const configFor = useCallback(async (entry) => {
+    const secret = (await onResolveSecret?.(entry.id)) || ''
+    return entry.inputMode === 'connstr'
+      ? resolveConnectionParams(entry.type, { connectionString: secret })
+      : buildConfig(entry.type, { ...entry, password: secret })
+  }, [onResolveSecret])
+
+  // One-click connect using a connection saved elsewhere (e.g. desktop Settings).
+  const handleConnectSaved = useCallback(async (entry) => {
+    setConnectError(null)
+    if (focusOpen(sessionKey({ connectionId: entry.id }))) return
+    setConnecting(entry.id)
+    try {
+      const config = await configFor(entry)
+      const result = await db.connect(entry.type, config)
+      addSession({ type: entry.type, config, tables: result.tables, connectionId: entry.id, name: entry.name })
+      setDeferred(d => d.filter(id => id !== entry.id))
+      notify(`Connected to ${entry.name} · ${plural(result.tables.length, 'table')}`)
+    } catch (err) {
+      connectFailed(err.message)
+    } finally {
+      setConnecting(null)
+    }
+  }, [db, notify, configFor, focusOpen, addSession, connectFailed])
+
+  // ── Reopen what was open last time ─────────────────────────────────────────
+  // Saved connections only: one-off ones and the demo start fresh. Each reconnects in its old
+  // place; one that fails is reported and left closed.
+  useEffect(() => {
+    if (restored.current) return
+    restored.current = true
+    const last = readPref(OPEN_KEY, null)
+    const entries = (Array.isArray(last?.ids) ? last.ids : [])
+      .map(id => savedConnections.find(c => c.id === id)).filter(Boolean)
+    if (!entries.length || !db?.isAvailable?.()) return
+    // Set straight away (state only lands next render), so the list isn't saved over as empty meanwhile.
+    restoringRef.current = true
+    setRestoring(true)
+    ;(async () => {
+      const results = await Promise.all(entries.map(async (entry) => {
+        try {
+          const config = await configFor(entry)
+          if (config.authentication === AZURE_AD_INTERACTIVE) return { entry, deferred: true }
+          const result = await db.connect(entry.type, config)
+          return { entry, session: { type: entry.type, config, tables: result.tables, connectionId: entry.id, name: entry.name } }
+        } catch (err) {
+          return { entry, error: err.message }
+        }
+      }))
+      const reopened = results.filter(r => r.session).map(r => ({ ...r.session, key: sessionKey(r.session) }))
+      setSessions(list => [...reopened.filter(s => !list.some(x => x.key === s.key)), ...list])
+      setActiveKey(key => key ?? (reopened.find(s => s.connectionId === last.active) ?? reopened[0])?.key ?? null)
+      setDeferred(results.filter(r => r.deferred).map(r => r.entry.id))
+      const failed = results.filter(r => r.error)
+      if (failed.length) notify(`Couldn't reopen ${failed.map(r => r.entry.name).join(', ')}: ${failed[0].error}`, 'error')
+      restoringRef.current = false
+      setRestoring(false)
+    })()
+  }, [db, savedConnections, configFor, notify])
+
+  // Remembers the open saved connections (and any still waiting to sign in) for next time.
+  useEffect(() => {
+    if (restoringRef.current || !restored.current) return
+    const ids = [...new Set([...sessions.map(s => s.connectionId).filter(Boolean), ...deferred])]
+    writePref(OPEN_KEY, { ids, active: sessions.find(s => s.key === activeKey)?.connectionId ?? null })
+  }, [sessions, activeKey, deferred, restoring])
+
+  const forgetDeferred = useCallback(id => setDeferred(d => d.filter(x => x !== id)), [])
+
+  // Closing the active tab moves to its neighbour; closing the last one shows the welcome pane.
+  const closeSession = useCallback((key) => {
+    const list = sessionsRef.current
+    const i = list.findIndex(s => s.key === key)
+    if (i === -1) return
+    const rest = list.filter(s => s.key !== key)
+    setSessions(rest)
+    setActiveKey(active => (active !== key ? active : (rest[Math.min(i, rest.length - 1)]?.key ?? null)))
+  }, [])
+
+  const openConnectDialog = useCallback(() => { setConnectError(null); setShowConnectDialog(true) }, [])
+
+  const tabs = (
+    <ConnectionTabs
+      sessions={sessions}
+      activeKey={activeKey}
+      savedConnections={savedConnections}
+      connectingId={connecting}
+      onSelect={setActiveKey}
+      onOpenSaved={handleConnectSaved}
+      onClose={closeSession}
+      deferred={deferred}
+      onForget={forgetDeferred}
+      onNew={openConnectDialog}
+    />
+  )
+
+  return (
+    <div className="view-db-manager nx-db-page">
+      {!sessions.length ? (
+        <WelcomePane
+          onOpenConnect={openConnectDialog}
+          onDemo={() => handleConnect('demo', {})}
+          savedConnections={savedConnections}
+          onConnectSaved={handleConnectSaved}
+          connectingId={showConnectDialog ? null : connecting}
+          hasAdapter={!!db?.isAvailable?.()}
+          restoring={restoring}
+          deferred={deferred}
+        />
+      ) : sessions.map(s => (
+        <DbSession
+          key={s.key}
+          session={s}
+          active={s.key === activeKey}
+          db={db}
+          tabs={tabs}
+          connecting={connecting != null}
+          notify={notify}
+          onDisconnect={() => closeSession(s.key)}
+        />
+      ))}
+
+      {/* Toast */}
+      {toast && (
+        <div key={toast.id} className="nx-db-toast" data-tone={toast.type} role={toast.type === 'error' ? 'alert' : 'status'}>
+          <span className="nx-db-dot" data-tone={toast.type === 'success' ? 'ok' : toast.type === 'error' ? 'bad' : 'info'} />
+          <span className="msg">{toast.msg}</span>
+          <button type="button" className="nx-db-toast-x" aria-label="Dismiss" onClick={() => setToast(null)}><Icon name="x" size={12} /></button>
+        </div>
+      )}
+
+      {/* Connect dialog */}
+      {showConnectDialog && (
+        <ConnectDialog
+          onConnect={handleConnect}
+          savedConnections={savedConnections}
+          onConnectSaved={handleConnectSaved}
+          openConnectionIds={sessions.map(s => s.connectionId).filter(Boolean)}
+          onClose={() => { setShowConnectDialog(false); setConnectError(null) }}
+          loading={connecting != null}
+          error={connectError}
+          canSave={!!onSaveConnection}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── One open connection ──────────────────────────────────────────────────────
+
+function DbSession({ session: openedSession, active, db, tabs, connecting, notify, onDisconnect }) {
+  const [dbState, setDbState]         = useState(() => applyConnected(createInitialState(), openedSession))
   const [activeTab, setActiveTab]     = useState('browse')
   const [search, setSearch]           = useState('')
   const [sort, setSort]               = useState(null)        // { col, dir: 'asc' | 'desc' } | null
@@ -230,44 +510,26 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
   const [tableColumns, setTableColumns] = useState({})        // { [table]: Column[] }
   const [columnsLoading, setColumnsLoading] = useState(false)
   const [activeBuilder, setActiveBuilder] = useState(null)    // 'search' | 'insert' | 'update' | 'delete' | 'join' | 'aggregate' | null
-  const [toast, setToast]             = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [showConnectDialog, setShowConnectDialog] = useState(false)
-  const [connectError, setConnectError] = useState(null)
-  const [connectingId, setConnectingId] = useState(null)
   const [tableFilter, setTableFilter] = useState('')
-  const [listFilter, setListFilter]   = useState('all')       // all | starred | opened
+  const [listFilter, setListFilter]   = useState('all')       // all | starred | opened | hidden
   const [listHidden, setListHidden]   = useState(() => readPref('nx-db:list-hidden', false))
-  const [collapsed, setCollapsed]     = useState([])          // schema groups folded in the list
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [starred, setStarred]         = useState([])
+  // Favourites, hidden tables, the user's groups and folded sections, kept for this connection.
+  const [prefs, setPrefs]             = useState(() => readTablePrefs(connectionKey(openedSession)))
   const [recent, setRecent]           = useState([])          // tables opened this session, newest first
   const [tableMeta, setTableMeta]     = useState({})          // { [table]: { rows, cols, at } }
-  const demoData   = useRef(null)
+  // Each demo tab edits its own copy of the sample data.
+  const demoData   = useRef(openedSession.type === 'demo' ? structuredClone(DEMO.data) : null)
   const rootRef    = useRef(null)
   const filterRef  = useRef(null)
   const rowSearchRef = useRef(null)
-  const toastTimer = useRef(null)
-  // Bumped on every connect / disconnect / table switch so a slow reply from before can't land late.
-  const epoch      = useRef(0)
   const loadSeq    = useRef(0)
   const columnsRef = useRef(tableColumns)
   columnsRef.current = tableColumns
-  const dialogOpen = useRef(false)
-  dialogOpen.current = showConnectDialog
 
-  const db = adapters?.dbManager
   const session = dbState.session
   const isDemo = session?.type === 'demo'
-
-  // ── Toast ──────────────────────────────────────────────────────────────────
-
-  const notify = useCallback((msg, type = 'success') => {
-    clearTimeout(toastTimer.current)
-    setToast({ msg, type, id: Date.now() })
-    toastTimer.current = setTimeout(() => setToast(null), type === 'error' ? 7000 : 3000)
-  }, [])
-  useEffect(() => () => clearTimeout(toastTimer.current), [])
 
   // The Saved / Recent / Run saved menus close on a click elsewhere, on Esc, or when another opens.
   useEffect(() => {
@@ -281,103 +543,11 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
   }, [])
 
-  // A connect failure shows inside the connect dialog when it's open, else as a toast.
-  const connectFailed = useCallback((message) => {
-    if (dialogOpen.current) setConnectError(message)
-    else notify(message, 'error')
-  }, [notify])
-
-  // ── Connect ────────────────────────────────────────────────────────────────
-
-  // Column metadata, the in-progress query, and any open builder are all
-  // scoped to a single connection's set of tables. Switching connections (or
-  // disconnecting) must wipe them — otherwise a table name that happens to
-  // exist in both DB A and DB B shows DB A's stale columns while querying B.
-  const resetQueryState = useCallback(() => {
-    epoch.current++
-    setTableColumns({})
-    setQueryTable(null)
-    setSqlQuery('')
-    setQueryResult(null)
-    setActiveBuilder(null)
-    setColumnsLoading(false)
-    setSelectedRows(new Set())
-    setSearch('')
-    setSort(null)
-    setEditingCell(null)
-    setActiveTab('browse')
-    setRecent([])
-    setTableMeta({})
-    setTableFilter('')
-    setCollapsed([])
-  }, [])
-
-  const afterConnect = useCallback((next) => {
-    resetQueryState()
-    setDbState(s => applyConnected(s, next))
-    setStarred(readPref(`nx-db:starred:${connectionKey(next)}`, []))
-    setShowConnectDialog(false)
-    setConnectError(null)
-  }, [resetQueryState])
-
-  const handleConnect = useCallback(async (connType, connFields) => {
-    setConnectError(null)
-    if (connType === 'demo') {
-      demoData.current = structuredClone(DEMO.data)
-      afterConnect({ type: 'demo', config: {}, tables: DEMO.tables })
-      notify('Demo database loaded')
-      return
-    }
-
-    setDbState(s => ({ ...s, loading: true, error: null }))
-    try {
-      const config = resolveConnectionParams(connType, connFields)
-      const result = await db.connect(connType, config)
-      afterConnect({ type: connType, config, tables: result.tables })
-      notify(`Connected · ${plural(result.tables.length, 'table')}`)
-    } catch (err) {
-      setDbState(s => ({ ...s, loading: false }))
-      connectFailed(err.message)
-    }
-  }, [db, notify, afterConnect, connectFailed])
-
-  // One-click connect using a connection saved elsewhere (e.g. desktop Settings).
-  // Its secret (password or connection string) is resolved on demand via
-  // onResolveSecret — the saved metadata passed in never carries the secret itself.
-  const handleConnectSaved = useCallback(async (entry) => {
-    setConnectError(null)
-    setConnectingId(entry.id)
-    setDbState(s => ({ ...s, loading: true, error: null }))
-    try {
-      const secret = (await onResolveSecret?.(entry.id)) || ''
-      const config = entry.inputMode === 'connstr'
-        ? resolveConnectionParams(entry.type, { connectionString: secret })
-        : buildConfig(entry.type, { ...entry, password: secret })
-      const result = await db.connect(entry.type, config)
-      afterConnect({ type: entry.type, config, tables: result.tables, connectionId: entry.id, name: entry.name })
-      notify(`Connected to ${entry.name} · ${plural(result.tables.length, 'table')}`)
-    } catch (err) {
-      setDbState(s => ({ ...s, loading: false }))
-      connectFailed(err.message)
-    } finally {
-      setConnectingId(null)
-    }
-  }, [db, notify, onResolveSecret, afterConnect, connectFailed])
-
-  const disconnect = useCallback(() => {
-    setDbState(applyDisconnected)
-    demoData.current = null
-    resetQueryState()
-    setStarred([])
-  }, [resetQueryState])
-
   // Re-reads the table list (a table created from the Query tab shows up).
   const refreshTables = useCallback(async () => {
     if (!session || isDemo) return
     try {
-      const at = epoch.current
       const result = await db.connect(session.type, session.config)
-      if (at !== epoch.current) return
       setDbState(s => (s.session ? { ...s, session: { ...s.session, tables: result.tables } } : s))
     } catch (err) {
       notify(err.message, 'error')
@@ -388,27 +558,25 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
 
   const ensureColumnsLoaded = useCallback(async (table, { quiet = false } = {}) => {
     if (!table || columnsRef.current[table] || !session) return
-    const at = epoch.current
     if (!quiet) setColumnsLoading(true)
     try {
       if (isDemo) {
         // Demo tables carry only column names — treat the first as the primary key,
         // close enough to the real getColumns() shape for the builders.
         const demoCols = (demoData.current[table]?.columns ?? []).map((name, i) => ({
-          name, dataType: 'TEXT', isPrimaryKey: i === 0,
+          name, dataType: 'TEXT', isPrimaryKey: i === 0, nullable: i !== 0,
         }))
         setTableColumns(prev => ({ ...prev, [table]: demoCols }))
         return
       }
       const result = await db.getColumns(session.type, session.config, table)
-      if (at !== epoch.current) return
       setTableColumns(prev => ({ ...prev, [table]: result.columns }))
     } catch (err) {
       if (quiet) return
       notify(err.message, 'error')
       setActiveBuilder(null)
     } finally {
-      if (!quiet && at === epoch.current) setColumnsLoading(false)
+      if (!quiet) setColumnsLoading(false)
     }
   }, [db, session, isDemo, notify])
 
@@ -434,7 +602,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
     setActiveTab(tab)
     if (tab === 'query') {
       setQueryTable(name)
-      setSqlQuery(`SELECT * FROM ${name}`)
+      setSqlQuery(`SELECT * FROM ${quoteIdent(name)}`)
       setActiveBuilder(null)
     }
     setDbState(s => applyTableSelected(s, name))
@@ -486,13 +654,21 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
     return [...hits].sort((a, b) => compareCells(a.row[sort.col], b.row[sort.col]) * dir || a.i - b.i)
   }, [tableData, search, sort])
 
-  // The primary key: the column getColumns() marks, else the first.
-  const pkIndex = useMemo(() => {
+  // Each shown column's metadata from getColumns() (type, nullability, length…), or null until it loads.
+  const columnInfo = useMemo(() => {
     const cols = tableColumns[dbState.selectedTable]
-    const pk = cols?.find(c => c.isPrimaryKey)?.name
-    const i = pk ? (tableData?.columns ?? []).indexOf(pk) : -1
-    return i >= 0 ? i : 0
+    return (tableData?.columns ?? []).map(name => cols?.find(c => c.name === name) ?? null)
   }, [tableColumns, dbState.selectedTable, tableData])
+  // A row is edited or deleted by every column of its primary key, so no other row can match.
+  // Without a key (or before the columns load) there's no safe way to pick out one row.
+  const keyIdx = useMemo(() => columnInfo.flatMap((c, i) => (c?.isPrimaryKey ? [i] : [])), [columnInfo])
+  const columnsKnown = !!tableColumns[dbState.selectedTable]
+  const canWrite = keyIdx.length > 0
+  const pkIndex = keyIdx[0] ?? -1
+  const keyNames = keyIdx.map(i => tableData?.columns[i])
+  // The key argument the adapter takes: a column name, or every name of a composite key.
+  const keyArg = () => (keyNames.length === 1 ? keyNames[0] : keyNames)
+  const keyOf = row => (keyIdx.length === 1 ? row[keyIdx[0]] : keyIdx.map(i => row[i]))
 
   const changeSearch = (value) => { setSearch(value); setSelectedRows(new Set()) }
   const cycleSort = (col) => setSort(s => (!s || s.col !== col ? { col, dir: 'asc' } : s.dir === 'asc' ? { col, dir: 'desc' } : null))
@@ -517,11 +693,10 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
     const indices = [...selectedRows]
     const rows = tableData.rows
     const name = dbState.selectedTable
+    if (!canWrite) { setShowDeleteConfirm(false); return }
     try {
       if (!isDemo) {
-        const pk = tableData.columns[pkIndex]
-        const values = indices.map(i => rows[i][pkIndex])
-        await db.deleteRows(session.type, session.config, name, pk, values)
+        await db.deleteRows(session.type, session.config, name, keyArg(), indices.map(i => keyOf(rows[i])))
       }
       const gone = new Set(indices)
       syncDemo(name, d => ({ ...d, rows: d.rows.filter((_, i) => !gone.has(i)) }))
@@ -535,43 +710,84 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
       notify(err.message, 'error')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, session, isDemo, tableData, dbState.selectedTable, pkIndex, selectedRows, notify])
+  }, [db, session, isDemo, tableData, dbState.selectedTable, keyIdx, canWrite, selectedRows, notify])
 
   // ── Cell edit ──────────────────────────────────────────────────────────────
 
-  const startEdit = (ri, ci, val) => { setEditingCell({ ri, ci }); setEditValue(val === null || val === undefined ? '' : String(val)) }
+  // Only columns a person can set open an editor; the editor shows the value as its type reads it.
+  const startEdit = (ri, ci, val) => {
+    if (!canWrite || columnKind(columnInfo[ci]) === 'readonly') return
+    setEditingCell({ ri, ci })
+    setEditValue(cellToInput(columnInfo[ci], val))
+  }
+
+  // Writes one cell's checked value (see parseCellInput) and shows it.
+  const commitCell = useCallback(async (ri, ci, value) => {
+    const name = dbState.selectedTable
+    if (!canWrite) return false
+    try {
+      if (!isDemo) {
+        await db.updateCell(session.type, session.config, name, keyArg(), keyOf(tableData.rows[ri]), tableData.columns[ci], value)
+      }
+      syncDemo(name, d => ({ ...d, rows: d.rows.map((r, i) => (i === ri ? r.map((c, j) => (j === ci ? value : c)) : r)) }))
+      setDbState(s => applyCellUpdated(s, { rowIndex: ri, colIndex: ci, value }))
+      notify(`Updated ${tableData.columns[ci]}`)
+      return true
+    } catch (err) {
+      notify(err.message, 'error')
+      return false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, session, isDemo, tableData, dbState.selectedTable, keyIdx, canWrite, notify])
 
   // Saves the open cell (nothing is written when it didn't change), then optionally opens `next`.
-  const saveEdit = useCallback(async (next = null) => {
+  // A value the column can't hold isn't written: the editor stays open, or on leaving it the
+  // change is dropped with a note saying why.
+  const saveEdit = useCallback(async (next = null, { leaving = false, isNull = false } = {}) => {
     if (!editingCell) return
     const { ri, ci } = editingCell
-    const name = dbState.selectedTable
+    const col = columnInfo[ci]
     const before = tableData.rows[ri]?.[ci]
-    const unchanged = (before === null || before === undefined ? '' : String(before)) === editValue
-    setEditingCell(null)
-    if (!unchanged) {
-      try {
-        if (!isDemo) {
-          const pk = tableData.columns[pkIndex]
-          await db.updateCell(session.type, session.config, name, pk, tableData.rows[ri][pkIndex], tableData.columns[ci], editValue)
-        }
-        syncDemo(name, d => ({ ...d, rows: d.rows.map((r, i) => (i === ri ? r.map((c, j) => (j === ci ? editValue : c)) : r)) }))
-        setDbState(s => applyCellUpdated(s, { rowIndex: ri, colIndex: ci, value: editValue }))
-        notify(`Updated ${tableData.columns[ci]}`)
-      } catch (err) {
-        notify(err.message, 'error')
-        return
-      }
+    const unchanged = !isNull && cellToInput(col, before) === editValue
+    const parsed = unchanged ? null : parseCellInput(col, editValue, { isNull })
+    if (parsed?.error) {
+      if (leaving) { setEditingCell(null); notify(`Not saved: ${parsed.error}`, 'error') }
+      return
     }
-    if (next) startEdit(next.ri, next.ci, next.ri === ri && next.ci === ci ? editValue : tableData.rows[next.ri][next.ci])
+    setEditingCell(null)
+    if (!unchanged && !(await commitCell(ri, ci, parsed.value))) return
+    if (next) startEdit(next.ri, next.ci, next.ri === ri && next.ci === ci ? parsed?.value ?? before : tableData.rows[next.ri][next.ci])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, session, isDemo, tableData, dbState.selectedTable, pkIndex, editingCell, editValue, notify])
+  }, [tableData, columnInfo, editingCell, editValue, commitCell, notify])
+
+  // ── Add row ────────────────────────────────────────────────────────────────
+
+  const [addingRow, setAddingRow] = useState(false)
+  // `values` maps column names to checked values; columns left out get their default.
+  const addRow = useCallback(async (values) => {
+    const name = dbState.selectedTable
+    try {
+      if (isDemo) {
+        const row = tableData.columns.map(c => (c in values ? values[c] : null))
+        syncDemo(name, d => ({ ...d, rows: [...d.rows, row] }))
+      } else {
+        await db.insertRow(session.type, session.config, name, values)
+      }
+      setAddingRow(false)
+      notify(`Added a row to ${name}`)
+      refreshTable()
+      return null
+    } catch (err) {
+      return err.message
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, session, isDemo, tableData, dbState.selectedTable, notify, refreshTable])
 
   // ── Query ──────────────────────────────────────────────────────────────────
 
   const handleQueryTableSelect = useCallback((name) => {
     setQueryTable(name)
-    setSqlQuery(`SELECT * FROM ${name}`)
+    setSqlQuery(`SELECT * FROM ${quoteIdent(name)}`)
   }, [])
 
   const toggleBuilder = useCallback(async (name) => {
@@ -599,7 +815,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
     try {
       let result
       if (isDemo) {
-        const m = sql.match(/FROM\s+(\w+)/i)
+        const m = sql.match(/FROM\s+\[?(\w+)\]?/i)
         result = m && demoData.current[m[1]]
           ? { ...structuredClone(demoData.current[m[1]]), affected: null }
           : { error: 'Table not found in demo data' }
@@ -646,7 +862,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
   // Runs a saved query against `table` (the open one by default) and shows the result in the Query tab.
   const runSaved = (q, table = dbState.selectedTable) => {
     if (isTemplate(q) && !table) { notify(`Open a table to run "${q.name}" on`, 'info'); return }
-    const sql = isTemplate(q) ? fillTemplate(q.sql, table, session?.type) : q.sql
+    const sql = isTemplate(q) ? fillTemplate(q.sql, table) : q.sql
     if (table && table !== dbState.selectedTable) openTable(table, 'query')
     setActiveTab('query')
     if (table) setQueryTable(table)
@@ -656,25 +872,44 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
   }
   const loadSaved = (q) => {
     const table = queryTable ?? dbState.selectedTable
-    setSqlQuery(isTemplate(q) && table ? fillTemplate(q.sql, table, session?.type) : q.sql)
+    setSqlQuery(isTemplate(q) && table ? fillTemplate(q.sql, table) : q.sql)
   }
 
   // ── Table list ─────────────────────────────────────────────────────────────
 
   const tables = session?.tables ?? []
-  const starredSet = useMemo(() => new Set(starred), [starred])
-  const toggleStar = (name) => setStarred(prev => {
-    const next = prev.includes(name) ? prev.filter(t => t !== name) : [...prev, name]
-    writePref(`nx-db:starred:${connectionKey(session)}`, next)
+  const updatePrefs = (fn) => setPrefs(prev => {
+    const next = fn(prev)
+    writePref(tablePrefsKey(connectionKey(session)), next)
     return next
   })
+  const { starred, collapsed } = prefs
+  const starredSet = useMemo(() => new Set(starred), [starred])
+  const hiddenSet = useMemo(() => new Set(prefs.hidden), [prefs.hidden])
+  const toggleStar = (name) => updatePrefs(p => toggleTableStarred(p, name))
+  const tableActions = {
+    groups: prefs.groups,
+    groupOf: name => prefs.assigned[name] ?? null,
+    isHidden: name => hiddenSet.has(name),
+    onMove: (name, group) => updatePrefs(p => setTableGroup(p, name, group)),
+    onToggleHidden: (name) => {
+      notify(hiddenSet.has(name) ? `Showing ${name} in the list` : `Hid ${name} · find it under Hidden`, 'info')
+      updatePrefs(p => toggleTableHidden(p, name))
+    },
+    onRenameGroup: (from, to) => updatePrefs(p => renameTableGroup(p, from, to)),
+    onRemoveGroup: (group) => updatePrefs(p => removeTableGroup(p, group)),
+  }
+  // Hidden tables only show under the Hidden filter.
   const listed = useMemo(() => tables.filter(t => matchesWords(t, tableFilter)
-    && (listFilter === 'all' || (listFilter === 'starred' ? starredSet.has(t) : !!tableMeta[t]))), [tables, tableFilter, listFilter, starredSet, tableMeta])
+    && (listFilter === 'hidden' ? hiddenSet.has(t) : !hiddenSet.has(t)
+      && (listFilter === 'all' || (listFilter === 'starred' ? starredSet.has(t) : !!tableMeta[t])))),
+  [tables, tableFilter, listFilter, starredSet, hiddenSet, tableMeta])
+  const hiddenCount = tables.filter(t => hiddenSet.has(t)).length
   const setHidden = (v) => { setListHidden(v); writePref('nx-db:list-hidden', v) }
 
   // j / k walk the listed tables, wrapping at the ends.
   const step = (by) => {
-    const list = listHidden ? listed : groupTables(listed).flatMap(g => (collapsed.includes(g.schema) ? [] : g.names))
+    const list = listHidden ? listed : tableSections(listed, prefs).flatMap(s => (collapsed.includes(s.key) ? [] : s.names))
     if (!list.length) return
     const i = list.indexOf(dbState.selectedTable)
     openTable(list[i < 0 ? (by > 0 ? 0 : list.length - 1) : (i + by + list.length) % list.length], activeTab)
@@ -698,234 +933,221 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
   const exportRows = () => visible.map(v => v.row)
 
   return (
-    <div className="view-db-manager nx-db-page" ref={rootRef}>
-      {!session ? (
-        <WelcomePane
-          onOpenConnect={() => { setConnectError(null); setShowConnectDialog(true) }}
-          onDemo={() => handleConnect('demo', {})}
-          savedConnections={savedConnections}
-          onConnectSaved={handleConnectSaved}
-          connectingId={showConnectDialog ? null : connectingId}
-          hasAdapter={!!db?.isAvailable?.()}
-        />
-      ) : (
-        <>
-          <header className="nx-db-head">
-            <div className="nx-db-head-row">
-              <h2 className="nx-db-title">Database</h2>
-              <ConnectionTabs
-                session={session}
-                savedConnections={savedConnections}
-                connectingId={connectingId}
-                onSelect={entry => { if (entry.id !== session.connectionId) handleConnectSaved(entry) }}
-                onNew={() => { setConnectError(null); setShowConnectDialog(true) }}
-              />
-              <span className="nx-db-spacer" />
-              <span className="nx-db-status">
-                <span className="nx-db-dot" data-tone={dbState.loading ? 'info' : 'ok'} />
-                {dbState.loading ? 'Connecting…' : connectedLabel}
-              </span>
-              <button type="button" className="nx-db-jumpbtn" disabled={!tables.length} onClick={() => setPaletteOpen(true)}>
-                <Icon name="search" size={13} />Jump to table…<span className="kbd">Ctrl K</span>
+    // Hidden while another connection's tab is showing; it stays mounted so nothing is lost.
+    <div className="nx-db-session" ref={rootRef} hidden={!active}>
+      <header className="nx-db-head">
+        <div className="nx-db-head-row">
+          <h2 className="nx-db-title">Database</h2>
+          {tabs}
+          <span className="nx-db-spacer" />
+          <span className="nx-db-status">
+            <span className="nx-db-dot" data-tone={connecting ? 'info' : 'ok'} />
+            {connecting ? 'Connecting…' : connectedLabel}
+          </span>
+          <button type="button" className="nx-db-jumpbtn" disabled={!tables.length} onClick={() => setPaletteOpen(true)}>
+            <Icon name="search" size={13} />Jump to table…<span className="kbd">Ctrl K</span>
+          </button>
+          <button type="button" className="btn sm ghost" title="Close this connection" onClick={onDisconnect}>Disconnect</button>
+        </div>
+        <div className="nx-db-head-row">
+          <TableFilter ref={filterRef} value={tableFilter} onChange={setTableFilter} />
+          <span className="nx-db-divider" />
+          <span className="nx-db-show">Show</span>
+          <div className="nx-db-chips" role="group" aria-label="Show tables">
+            {[
+              ['all', 'All', tables.length - hiddenCount, 'muted', hiddenCount ? 'Every table you haven\'t hidden' : 'Every table in this database'],
+              ['starred', 'Starred', starred.filter(t => tables.includes(t) && !hiddenSet.has(t)).length, 'warn', 'Tables you starred · remembered for this connection'],
+              ['opened', 'Opened', Object.keys(tableMeta).filter(t => !hiddenSet.has(t)).length, 'info', 'Tables opened this session'],
+              // Only offered once something is hidden (or while it's the filter in use).
+              ...(hiddenCount || listFilter === 'hidden' ? [['hidden', 'Hidden', hiddenCount, undefined, 'Tables you hid from the list · remembered for this connection']] : []),
+            ].map(([id, label, n, tone, title]) => (
+              <button key={id} type="button" className="nx-db-chip" aria-pressed={listFilter === id} title={title}
+                onClick={() => setListFilter(listFilter === id && id !== 'all' ? 'all' : id)}>
+                <span className="nx-db-dot" data-tone={tone} />{label}<span className="n">{n}</span>
               </button>
-              <button type="button" className="btn sm ghost" title="Close this connection" onClick={disconnect}>Disconnect</button>
-            </div>
-            <div className="nx-db-head-row">
-              <TableFilter ref={filterRef} value={tableFilter} onChange={setTableFilter} />
-              <span className="nx-db-divider" />
-              <span className="nx-db-show">Show</span>
-              <div className="nx-db-chips" role="group" aria-label="Show tables">
-                {[
-                  ['all', 'All', tables.length, 'muted', 'Every table in this database'],
-                  ['starred', 'Starred', starred.filter(t => tables.includes(t)).length, 'warn', 'Tables you starred · remembered for this connection'],
-                  ['opened', 'Opened', Object.keys(tableMeta).length, 'info', 'Tables opened this session'],
-                ].map(([id, label, n, tone, title]) => (
-                  <button key={id} type="button" className="nx-db-chip" aria-pressed={listFilter === id} title={title}
-                    onClick={() => setListFilter(listFilter === id && id !== 'all' ? 'all' : id)}>
-                    <span className="nx-db-dot" data-tone={tone} />{label}<span className="n">{n}</span>
+            ))}
+          </div>
+          <span className="nx-db-spacer" />
+          <button type="button" className="btn sm ghost" aria-pressed={!listHidden}
+            title={listHidden ? 'Show the table list beside the details' : 'Hide the table list to give the details the full width'}
+            onClick={() => setHidden(!listHidden)}>{listHidden ? 'Show tables' : 'Hide tables'}</button>
+          {!isDemo && <button type="button" className="btn sm ghost" title="Read the table list again" onClick={refreshTables}>Reload tables</button>}
+        </div>
+      </header>
+
+      <div className="nx-db-body" data-list={listHidden ? 'hidden' : 'shown'}>
+        {!listHidden && (
+          <nav aria-label="Table list" className="nx-db-aside">
+            <TableList
+              tables={listed}
+              total={tables.length}
+              selected={dbState.selectedTable}
+              starred={starredSet}
+              meta={tableMeta}
+              prefs={prefs}
+              actions={tableActions}
+              onToggleGroup={key => updatePrefs(p => toggleSectionCollapsed(p, key))}
+              onSetCollapsed={keys => updatePrefs(p => ({ ...p, collapsed: keys }))}
+              onOpen={name => openTable(name, activeTab)}
+              onStar={toggleStar}
+              onClearFilters={() => { setTableFilter(''); setListFilter('all') }}
+            />
+          </nav>
+        )}
+
+        <section aria-label="Details" className="nx-db-main">
+          {!dbState.selectedTable ? (
+            <Overview
+              session={session}
+              tables={tables}
+              starred={starred.filter(t => tables.includes(t))}
+              recent={recent}
+              meta={tableMeta}
+              history={queryHistory}
+              onOpen={openTable}
+              onUseQuery={q => {
+                const m = q.sql.match(/\bFROM\s+([\w.[\]"]+)/i)
+                const t = m && tables.find(x => x === m[1].replace(/[[\]"]/g, ''))
+                if (t) { openTable(t, 'query'); setTimeout(() => setSqlQuery(q.sql)) }
+                else notify('Open a table first, then pick the query from Recent in the Query tab', 'info')
+              }}
+              onJump={() => setPaletteOpen(true)}
+              saved={savedHere}
+              onRunSaved={(q, t) => runSaved(q, t)}
+            />
+          ) : (
+            <div className="nx-db-detail">
+              <div className="nx-db-dhead">
+                <div className="nx-db-dhead-title">
+                  <div className="nx-db-crumb">
+                    <button type="button" className="nx-db-crumb-link" onClick={closeTable}>{sessionName(session)}</button>
+                    {typeLabel(session.type) !== sessionName(session) && (
+                      <><Icon name="chevron-right" size={11} /><span>{typeLabel(session.type)}</span></>
+                    )}
+                  </div>
+                  <div className="nx-db-dhead-name">
+                    <h2 className="nx-db-table-name" title={dbState.selectedTable}>{dbState.selectedTable}</h2>
+                    <StarButton on={starredSet.has(dbState.selectedTable)} onClick={() => toggleStar(dbState.selectedTable)} name={dbState.selectedTable} />
+                    {tableActions.groupOf(dbState.selectedTable) && <span className="nx-db-tag">{tableActions.groupOf(dbState.selectedTable)}</span>}
+                    {hiddenSet.has(dbState.selectedTable) && <span className="nx-db-tag" data-tone="muted">Hidden</span>}
+                    <TableMenu name={dbState.selectedTable} actions={tableActions} />
+                  </div>
+                  <div className="nx-db-dhead-meta">
+                    {tableData && !dbState.tableLoading ? (
+                      <>
+                        <span>{plural(tableData.rows.length, 'row')}</span>
+                        <span>{plural(tableData.columns.length, 'column')}</span>
+                        {keyNames.length > 0
+                          ? <span>key <code>{keyNames.join(', ')}</code></span>
+                          : columnsKnown && !isDemo && <span title="Without a primary key a change can't be kept to one row">no primary key</span>}
+                        {meta && <span>read {clock(meta.at)}</span>}
+                      </>
+                    ) : dbState.tableLoading ? <span>Loading…</span> : null}
+                  </div>
+                </div>
+                <div className="nx-db-dhead-actions">
+                  <SavedMenu queries={savedHere} table={dbState.selectedTable} onRun={q => runSaved(q)} />
+                  <button type="button" className="btn sm ghost" title="Read this table again (r)" onClick={refreshTable} disabled={dbState.tableLoading}>
+                    <Icon name="refresh" size={13} />Refresh
+                  </button>
+                  <button type="button" className="btn sm ghost" disabled={!tableData || dbState.tableLoading}
+                    title="Copy the rows shown (after search and sort) as CSV"
+                    onClick={async () => notify((await copyText(toCsv(tableData.columns, exportRows()))) ? `Copied ${plural(visible.length, 'row')} as CSV` : "Couldn't reach the clipboard", 'success')}>
+                    <Icon name="copy" size={13} />Copy CSV
+                  </button>
+                  <button type="button" className="btn sm ghost" disabled={!tableData || dbState.tableLoading}
+                    title="Save the rows shown (after search and sort) as a .csv file"
+                    onClick={() => { if (!downloadCsv(dbState.selectedTable, tableData.columns, exportRows())) notify("Couldn't save the file", 'error') }}>
+                    <Icon name="download" size={13} />Export
+                  </button>
+                </div>
+              </div>
+
+              <div className="nx-db-tabs" role="tablist" aria-label="View mode">
+                {[['browse', 'Browse', tableData && !dbState.tableLoading ? tableData.rows.length : null], ['query', 'Query', null]].map(([id, label, n]) => (
+                  <button key={id} type="button" role="tab" aria-selected={activeTab === id} className="nx-db-tab"
+                    title={`${label} (${id[0]})`} onClick={() => setActiveTab(id)}>
+                    {label}{n != null && <span className="n" aria-hidden="true">{n}</span>}
                   </button>
                 ))}
               </div>
-              <span className="nx-db-spacer" />
-              <button type="button" className="btn sm ghost" aria-pressed={!listHidden}
-                title={listHidden ? 'Show the table list beside the details' : 'Hide the table list to give the details the full width'}
-                onClick={() => setHidden(!listHidden)}>{listHidden ? 'Show tables' : 'Hide tables'}</button>
-              {!isDemo && <button type="button" className="btn sm ghost" title="Read the table list again" onClick={refreshTables}>Reload tables</button>}
-            </div>
-          </header>
 
-          <div className="nx-db-body" data-list={listHidden ? 'hidden' : 'shown'}>
-            {!listHidden && (
-              <nav aria-label="Table list" className="nx-db-aside">
-                <TableList
-                  tables={listed}
-                  total={tables.length}
-                  selected={dbState.selectedTable}
-                  starred={starredSet}
-                  meta={tableMeta}
-                  collapsed={collapsed}
-                  onToggleGroup={g => setCollapsed(c => (c.includes(g) ? c.filter(x => x !== g) : [...c, g]))}
-                  onOpen={name => openTable(name, activeTab)}
-                  onStar={toggleStar}
-                  onClearFilters={() => { setTableFilter(''); setListFilter('all') }}
-                />
-              </nav>
-            )}
+              {dbState.tableLoading && (
+                <div className="nx-db-state"><span className="nx-db-spinner" aria-hidden="true" />Reading {dbState.selectedTable}…</div>
+              )}
 
-            <section aria-label="Details" className="nx-db-main">
-              {!dbState.selectedTable ? (
-                <Overview
-                  session={session}
-                  tables={tables}
-                  starred={starred.filter(t => tables.includes(t))}
-                  recent={recent}
-                  meta={tableMeta}
-                  history={queryHistory}
-                  onOpen={openTable}
-                  onUseQuery={q => {
-                    const m = q.sql.match(/\bFROM\s+([\w.[\]"]+)/i)
-                    const t = m && tables.find(x => x === m[1].replace(/[[\]"]/g, ''))
-                    if (t) { openTable(t, 'query'); setTimeout(() => setSqlQuery(q.sql)) }
-                    else notify('Open a table first, then pick the query from Recent in the Query tab', 'info')
-                  }}
-                  onJump={() => setPaletteOpen(true)}
-                  saved={savedHere}
-                  onRunSaved={(q, t) => runSaved(q, t)}
-                />
-              ) : (
-                <div className="nx-db-detail">
-                  <div className="nx-db-dhead">
-                    <div className="nx-db-dhead-title">
-                      <div className="nx-db-crumb">
-                        <button type="button" className="nx-db-crumb-link" onClick={closeTable}>{sessionName(session)}</button>
-                        {typeLabel(session.type) !== sessionName(session) && (
-                          <><Icon name="chevron-right" size={11} /><span>{typeLabel(session.type)}</span></>
-                        )}
-                      </div>
-                      <div className="nx-db-dhead-name">
-                        <h2 className="nx-db-table-name" title={dbState.selectedTable}>{dbState.selectedTable}</h2>
-                        <StarButton on={starredSet.has(dbState.selectedTable)} onClick={() => toggleStar(dbState.selectedTable)} name={dbState.selectedTable} />
-                      </div>
-                      <div className="nx-db-dhead-meta">
-                        {tableData && !dbState.tableLoading ? (
-                          <>
-                            <span>{plural(tableData.rows.length, 'row')}</span>
-                            <span>{plural(tableData.columns.length, 'column')}</span>
-                            {tableData.columns[pkIndex] && <span>key <code>{tableData.columns[pkIndex]}</code></span>}
-                            {meta && <span>read {clock(meta.at)}</span>}
-                          </>
-                        ) : dbState.tableLoading ? <span>Loading…</span> : null}
-                      </div>
-                    </div>
-                    <div className="nx-db-dhead-actions">
-                      <SavedMenu queries={savedHere} table={dbState.selectedTable} onRun={q => runSaved(q)} />
-                      <button type="button" className="btn sm ghost" title="Read this table again (r)" onClick={refreshTable} disabled={dbState.tableLoading}>
-                        <Icon name="refresh" size={13} />Refresh
-                      </button>
-                      <button type="button" className="btn sm ghost" disabled={!tableData || dbState.tableLoading}
-                        title="Copy the rows shown (after search and sort) as CSV"
-                        onClick={async () => notify((await copyText(toCsv(tableData.columns, exportRows()))) ? `Copied ${plural(visible.length, 'row')} as CSV` : "Couldn't reach the clipboard", 'success')}>
-                        <Icon name="copy" size={13} />Copy CSV
-                      </button>
-                      <button type="button" className="btn sm ghost" disabled={!tableData || dbState.tableLoading}
-                        title="Save the rows shown (after search and sort) as a .csv file"
-                        onClick={() => { if (!downloadCsv(dbState.selectedTable, tableData.columns, exportRows())) notify("Couldn't save the file", 'error') }}>
-                        <Icon name="download" size={13} />Export
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="nx-db-tabs" role="tablist" aria-label="View mode">
-                    {[['browse', 'Browse', tableData && !dbState.tableLoading ? tableData.rows.length : null], ['query', 'Query', null]].map(([id, label, n]) => (
-                      <button key={id} type="button" role="tab" aria-selected={activeTab === id} className="nx-db-tab"
-                        title={`${label} (${id[0]})`} onClick={() => setActiveTab(id)}>
-                        {label}{n != null && <span className="n" aria-hidden="true">{n}</span>}
-                      </button>
-                    ))}
-                  </div>
-
-                  {dbState.tableLoading && (
-                    <div className="nx-db-state"><span className="nx-db-spinner" aria-hidden="true" />Reading {dbState.selectedTable}…</div>
-                  )}
-
-                  {!dbState.tableLoading && !tableData && dbState.error && activeTab === 'browse' && (
-                    <div className="nx-db-state">
-                      <div className="nx-db-alert" role="alert">{dbState.error}</div>
-                      <button type="button" className="btn sm" onClick={refreshTable}>Try again</button>
-                    </div>
-                  )}
-
-                  {activeTab === 'browse' && tableData && !dbState.tableLoading && (
-                    <BrowsePanel
-                      ref={rowSearchRef}
-                      tableData={tableData}
-                      visible={visible}
-                      pkIndex={pkIndex}
-                      search={search}
-                      onSearchChange={changeSearch}
-                      sort={sort}
-                      onSort={cycleSort}
-                      selectedRows={selectedRows}
-                      allSelected={allVisibleSelected}
-                      onToggleRow={toggleRow}
-                      onToggleAll={toggleAll}
-                      onClearSelection={() => setSelectedRows(new Set())}
-                      onDeleteSelected={() => setShowDeleteConfirm(true)}
-                      onDeleteRow={(ri) => { setSelectedRows(new Set([ri])); setShowDeleteConfirm(true) }}
-                      onCopyCell={async (v) => { if (await copyText(v === null || v === undefined ? '' : String(v))) notify('Copied cell') }}
-                      editingCell={editingCell}
-                      editValue={editValue}
-                      onEditValueChange={setEditValue}
-                      onStartEdit={startEdit}
-                      onSaveEdit={saveEdit}
-                      onCancelEdit={() => setEditingCell(null)}
-                    />
-                  )}
-
-                  {activeTab === 'query' && (
-                    <QueryPanel
-                      tables={tables}
-                      queryTable={queryTable ?? dbState.selectedTable}
-                      onSelectTable={handleQueryTableSelect}
-                      sqlQuery={sqlQuery}
-                      onSqlChange={setSqlQuery}
-                      queryResult={queryResult}
-                      running={queryRunning}
-                      onRun={runQuery}
-                      history={queryHistory}
-                      onPickHistory={q => setSqlQuery(q.sql)}
-                      onClearHistory={() => setQueryHistory([])}
-                      saved={savedHere}
-                      onSave={saveQuery}
-                      onRunSaved={q => runSaved(q, queryTable ?? dbState.selectedTable)}
-                      onLoadSaved={loadSaved}
-                      onDeleteSaved={deleteSaved}
-                      onCopyResult={async () => notify((await copyText(toCsv(queryResult.columns, queryResult.rows))) ? `Copied ${plural(queryResult.rows.length, 'row')} as CSV` : "Couldn't reach the clipboard")}
-                      onExportResult={() => downloadCsv(`${queryTable ?? dbState.selectedTable}-query`, queryResult.columns, queryResult.rows)}
-                      activeBuilder={activeBuilder}
-                      onToggleBuilder={toggleBuilder}
-                      columns={tableColumns[queryTable ?? dbState.selectedTable] ?? []}
-                      columnsLoading={columnsLoading}
-                      onBuildSql={applyBuiltSql}
-                      allColumns={tableColumns}
-                      onLoadColumnsFor={ensureColumnsLoaded}
-                    />
-                  )}
+              {!dbState.tableLoading && !tableData && dbState.error && activeTab === 'browse' && (
+                <div className="nx-db-state">
+                  <div className="nx-db-alert" role="alert">{dbState.error}</div>
+                  <button type="button" className="btn sm" onClick={refreshTable}>Try again</button>
                 </div>
               )}
-            </section>
-          </div>
-        </>
-      )}
 
-      {/* Toast */}
-      {toast && (
-        <div key={toast.id} className="nx-db-toast" data-tone={toast.type} role={toast.type === 'error' ? 'alert' : 'status'}>
-          <span className="nx-db-dot" data-tone={toast.type === 'success' ? 'ok' : toast.type === 'error' ? 'bad' : 'info'} />
-          <span className="msg">{toast.msg}</span>
-          <button type="button" className="nx-db-toast-x" aria-label="Dismiss" onClick={() => setToast(null)}><Icon name="x" size={12} /></button>
-        </div>
-      )}
+              {activeTab === 'browse' && tableData && !dbState.tableLoading && (
+                <BrowsePanel
+                  ref={rowSearchRef}
+                  tableData={tableData}
+                  visible={visible}
+                  keyIdx={keyIdx}
+                  columnInfo={columnInfo}
+                  canWrite={canWrite}
+                  columnsKnown={columnsKnown || isDemo}
+                  onSetCell={commitCell}
+                  onAddRow={() => setAddingRow(true)}
+                  search={search}
+                  onSearchChange={changeSearch}
+                  sort={sort}
+                  onSort={cycleSort}
+                  selectedRows={selectedRows}
+                  allSelected={allVisibleSelected}
+                  onToggleRow={toggleRow}
+                  onToggleAll={toggleAll}
+                  onClearSelection={() => setSelectedRows(new Set())}
+                  onDeleteSelected={() => setShowDeleteConfirm(true)}
+                  onDeleteRow={(ri) => { setSelectedRows(new Set([ri])); setShowDeleteConfirm(true) }}
+                  onCopyCell={async (v) => { if (await copyText(v === null || v === undefined ? '' : String(v))) notify('Copied cell') }}
+                  editingCell={editingCell}
+                  editValue={editValue}
+                  onEditValueChange={setEditValue}
+                  onStartEdit={startEdit}
+                  onSaveEdit={saveEdit}
+                  onCancelEdit={() => setEditingCell(null)}
+                />
+              )}
+
+              {activeTab === 'query' && (
+                <QueryPanel
+                  tables={tables}
+                  queryTable={queryTable ?? dbState.selectedTable}
+                  onSelectTable={handleQueryTableSelect}
+                  sqlQuery={sqlQuery}
+                  onSqlChange={setSqlQuery}
+                  queryResult={queryResult}
+                  running={queryRunning}
+                  onRun={runQuery}
+                  history={queryHistory}
+                  onPickHistory={q => setSqlQuery(q.sql)}
+                  onClearHistory={() => setQueryHistory([])}
+                  saved={savedHere}
+                  onSave={saveQuery}
+                  onRunSaved={q => runSaved(q, queryTable ?? dbState.selectedTable)}
+                  onLoadSaved={loadSaved}
+                  onDeleteSaved={deleteSaved}
+                  onCopyResult={async set => notify((await copyText(toCsv(set.columns, set.rows))) ? `Copied ${plural(set.rows.length, 'row')} as CSV` : "Couldn't reach the clipboard")}
+                  onExportResult={(set, i) => downloadCsv(`${queryTable ?? dbState.selectedTable}-query${i ? `-${i + 1}` : ''}`, set.columns, set.rows)}
+                  activeBuilder={activeBuilder}
+                  onToggleBuilder={toggleBuilder}
+                  columns={tableColumns[queryTable ?? dbState.selectedTable] ?? []}
+                  columnsLoading={columnsLoading}
+                  onBuildSql={applyBuiltSql}
+                  allColumns={tableColumns}
+                  onLoadColumnsFor={ensureColumnsLoaded}
+                />
+              )}
+            </div>
+          )}
+        </section>
+      </div>
 
       {paletteOpen && (
         <TablePalette
@@ -938,16 +1160,13 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
         />
       )}
 
-      {/* Connect dialog */}
-      {showConnectDialog && (
-        <ConnectDialog
-          onConnect={handleConnect}
-          savedConnections={savedConnections}
-          onConnectSaved={handleConnectSaved}
-          activeConnectionId={session?.connectionId}
-          onClose={() => { setShowConnectDialog(false); setConnectError(null) }}
-          loading={dbState.loading}
-          error={connectError}
+      {addingRow && tableData && (
+        <AddRowDialog
+          table={dbState.selectedTable}
+          columns={tableData.columns}
+          columnInfo={columnInfo}
+          onSave={addRow}
+          onClose={() => setAddingRow(false)}
         />
       )}
 
@@ -957,7 +1176,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
           title={`Delete ${plural(selectedRows.size, 'row')}?`}
           body={isDemo
             ? 'Removes them from the demo data for this session. This action cannot be undone.'
-            : `Deletes them from ${dbState.selectedTable} by ${tableData?.columns[pkIndex] ?? 'key'}. This action cannot be undone.`}
+            : `Deletes them from ${dbState.selectedTable} by ${keyNames.join(', ') || 'key'}. This action cannot be undone.`}
           confirmLabel="Delete"
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
@@ -969,7 +1188,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
 
 // ─── Welcome pane ─────────────────────────────────────────────────────────────
 
-function WelcomePane({ onOpenConnect, onDemo, savedConnections, onConnectSaved, connectingId, hasAdapter }) {
+function WelcomePane({ onOpenConnect, onDemo, savedConnections, onConnectSaved, connectingId, hasAdapter, restoring = false, deferred = [] }) {
   return (
     <div className="nx-db-welcome">
       <div className="nx-db-welcome-mark"><Icon name="database" size={26} /></div>
@@ -980,6 +1199,9 @@ function WelcomePane({ onOpenConnect, onDemo, savedConnections, onConnectSaved, 
           Running outside of the desktop shell — database connections are unavailable.
           Use the demo to explore the interface.
         </p>
+      )}
+      {restoring && (
+        <p className="nx-db-muted" role="status"><span className="nx-db-spinner" aria-hidden="true" /> Reopening the connections you had open…</p>
       )}
       <div className="nx-db-welcome-actions">
         <button type="button" className="btn accent" onClick={onOpenConnect}>
@@ -992,7 +1214,7 @@ function WelcomePane({ onOpenConnect, onDemo, savedConnections, onConnectSaved, 
           <div className="nx-db-card-head">
             <span className="nx-db-dot" data-tone="ok" />
             <span className="nx-db-card-title">Quick connect</span>
-            <span className="hint">from Settings</span>
+            <span className="hint">saved connections</span>
           </div>
           {savedConnections.map(entry => (
             <button key={entry.id} type="button" className="nx-db-saved-row" disabled={connectingId != null}
@@ -1000,6 +1222,7 @@ function WelcomePane({ onOpenConnect, onDemo, savedConnections, onConnectSaved, 
               <Icon name="database" size={14} />
               <span className="name">{entry.name}</span>
               <span className="type">{typeLabel(entry.type)}</span>
+              {deferred.includes(entry.id) && <span className="nx-db-tag" title="Open last time · signs in through your browser, so it waits for you">Was open</span>}
               {connectingId === entry.id ? <span className="nx-db-spinner" aria-hidden="true" /> : <Icon name="arrow-right" size={13} />}
             </button>
           ))}
@@ -1011,23 +1234,52 @@ function WelcomePane({ onOpenConnect, onDemo, savedConnections, onConnectSaved, 
 
 // ─── Header pieces ────────────────────────────────────────────────────────────
 
-// Saved connections as a segmented control; the current connection is a tab even when it isn't saved.
-function ConnectionTabs({ session, savedConnections, connectingId, onSelect, onNew }) {
-  const current = session.connectionId && savedConnections.some(c => c.id === session.connectionId)
+// Open connections as tabs, each with a close button, then any saved connections that aren't
+// open yet; clicking one of those connects it in a new tab alongside the others.
+function ConnectionTabs({ sessions, activeKey, savedConnections, connectingId, onSelect, onOpenSaved, onClose, deferred = [], onForget, onNew }) {
+  const openIds = new Set(sessions.map(s => s.connectionId).filter(Boolean))
+  // A saved connection's tab follows its current name from Settings.
+  const nameOf = s => savedConnections.find(c => c.id === s.connectionId)?.name ?? sessionName(s)
   return (
     <div className="nx-db-seg" style={{ minWidth: 0, maxWidth: '100%', flex: '0 1 auto' }}>
       <div role="tablist" aria-label="Connections" className="nx-db-seg-tabs">
-        {!current && (
-          <button type="button" role="tab" aria-selected="true">{sessionName(session)}</button>
-        )}
-        {savedConnections.map(entry => (
-          <button key={entry.id} type="button" role="tab" aria-selected={entry.id === session.connectionId}
-            title={`${typeLabel(entry.type)}${entry.id === session.connectionId ? ' · connected' : ' · switch to this connection'}`}
-            disabled={connectingId != null} onClick={() => onSelect(entry)}>
+        {sessions.map(s => (
+          <span key={s.key} className="nx-db-conn" role="presentation" data-active={s.key === activeKey || undefined}>
+            <button type="button" role="tab" aria-selected={s.key === activeKey}
+              title={`${typeLabel(s.type)} · ${s.key === activeKey ? 'showing' : 'connected · switch to this connection'}`}
+              onClick={() => onSelect(s.key)}>
+              <span className="nx-db-dot" data-tone="ok" aria-hidden="true" />
+              {nameOf(s)}
+            </button>
+            <button type="button" className="nx-db-conn-x" aria-label={`Close ${nameOf(s)}`} title="Close this connection"
+              onClick={() => onClose(s.key)}>
+              <Icon name="x" size={11} />
+            </button>
+          </span>
+        ))}
+        {savedConnections.filter(entry => !openIds.has(entry.id)).map(entry => (deferred.includes(entry.id) ? (
+          // Open last time, but it signs in through the browser, so it waits for a click.
+          <span key={entry.id} className="nx-db-conn" role="presentation" data-closed="">
+            <button type="button" role="tab" aria-selected={false}
+              title={`${typeLabel(entry.type)} · open last time · click to sign in and reopen`}
+              disabled={connectingId != null} onClick={() => onOpenSaved(entry)}>
+              <span className="nx-db-dot" data-tone="info" aria-hidden="true" />
+              {entry.name}
+              {connectingId === entry.id && <span className="nx-db-spinner sm" aria-hidden="true" />}
+            </button>
+            <button type="button" className="nx-db-conn-x" aria-label={`Don't reopen ${entry.name}`} title="Don't reopen this next time"
+              onClick={() => onForget?.(entry.id)}>
+              <Icon name="x" size={11} />
+            </button>
+          </span>
+        ) : (
+          <button key={entry.id} type="button" role="tab" aria-selected={false} data-closed=""
+            title={`${typeLabel(entry.type)} · not connected · connect in a new tab`}
+            disabled={connectingId != null} onClick={() => onOpenSaved(entry)}>
             {entry.name}
             {connectingId === entry.id && <span className="nx-db-spinner sm" aria-hidden="true" />}
           </button>
-        ))}
+        )))}
       </div>
       <button type="button" className="nx-db-plus" aria-label="New connection" title="Connect to another database" onClick={onNew}>+ Connect</button>
     </div>
@@ -1056,8 +1308,9 @@ function StarButton({ on, onClick, name }) {
 
 // ─── Table list (sidebar) ─────────────────────────────────────────────────────
 
-function TableList({ tables, total, selected, starred, meta, collapsed, onToggleGroup, onOpen, onStar, onClearFilters }) {
-  const groups = groupTables(tables)
+function TableList({ tables, total, selected, starred, meta, prefs, actions, onToggleGroup, onSetCollapsed, onOpen, onStar, onClearFilters }) {
+  const sections = tableSections(tables, prefs)
+  const shownKeys = sections.map(s => s.key)
   const pinned = tables.filter(t => starred.has(t))
   if (!total) return <div className="nx-db-list-empty">This database has no tables.</div>
   if (!tables.length) {
@@ -1068,25 +1321,35 @@ function TableList({ tables, total, selected, starred, meta, collapsed, onToggle
       </div>
     )
   }
-  const row = (name, inStarred = false) => {
+  // Under its schema a table shows without the schema; in a group of your own it keeps it.
+  const row = (name, { inStarred = false, fullName = false } = {}) => {
     const m = meta[name]
     return (
       <div key={`${inStarred ? 's' : 'g'}:${name}`} className="nx-db-row" aria-current={name === selected ? 'true' : undefined}>
         <button type="button" className="nx-db-row-open" onClick={() => onOpen(name)} title={name}>
           <span className="nx-db-dot" data-tone={name === selected ? 'ok' : m ? 'info' : undefined} />
           <span className="nx-db-row-body">
-            <span className="nx-db-row-title">{name.includes('.') ? name.slice(name.indexOf('.') + 1) : name}</span>
+            <span className="nx-db-row-title">{fullName || !name.includes('.') ? name : name.slice(name.indexOf('.') + 1)}</span>
             {m && <span className="nx-db-row-meta">{`${plural(m.rows, 'row')} · ${plural(m.cols, 'col')}`}</span>}
           </span>
         </button>
         <StarButton on={starred.has(name)} onClick={() => onStar(name)} name={name} />
+        <TableMenu name={name} actions={actions} />
       </div>
     )
   }
   return (
     <div className="nx-db-list">
-      <div className="nx-db-list-keys" title="j / k move through the tables">
-        <span className="kbd">j</span><span className="kbd">k</span><span>to move</span>
+      <div className="nx-db-list-bar">
+        <div className="nx-db-list-keys" title="j / k move through the tables">
+          <span className="kbd">j</span><span className="kbd">k</span><span>to move</span>
+        </div>
+        {/* Folds the sections shown; ones the filter hides keep their own state. */}
+        {shownKeys.length > 1 && (
+          <FoldAllButton what="groups" allCollapsed={shownKeys.every(k => prefs.collapsed.includes(k))}
+            onExpandAll={() => onSetCollapsed(prefs.collapsed.filter(k => !shownKeys.includes(k)))}
+            onCollapseAll={() => onSetCollapsed([...prefs.collapsed, ...shownKeys.filter(k => !prefs.collapsed.includes(k))])} />
+        )}
       </div>
       {pinned.length > 0 && (
         <div className="nx-db-group">
@@ -1094,23 +1357,92 @@ function TableList({ tables, total, selected, starred, meta, collapsed, onToggle
             <span className="nx-db-group-name" data-tone="warn">Starred</span>
             <span className="nx-db-group-count">{pinned.length}</span>
           </div>
-          <div className="nx-db-rows">{pinned.map(t => row(t, true))}</div>
+          <div className="nx-db-rows">{pinned.map(t => row(t, { inStarred: true, fullName: true }))}</div>
         </div>
       )}
-      {groups.map(g => {
-        const open = !collapsed.includes(g.schema)
+      {sections.map(s => {
+        const open = !prefs.collapsed.includes(s.key)
         return (
-          <div key={g.schema} className="nx-db-group">
-            <button type="button" className="nx-db-group-head" aria-expanded={open} onClick={() => onToggleGroup(g.schema)}>
-              <Icon name={open ? 'chevron-down' : 'chevron-right'} size={11} />
-              <span className="nx-db-group-name">{g.label}</span>
-              <span className="nx-db-group-count">{g.names.length}</span>
-            </button>
-            {open && <div className="nx-db-rows">{g.names.map(t => row(t))}</div>}
+          <div key={s.key} className="nx-db-group" data-kind={s.kind}>
+            <div className="nx-db-group-bar">
+              <button type="button" className="nx-db-group-head" aria-expanded={open} onClick={() => onToggleGroup(s.key)}>
+                <Icon name={open ? 'chevron-down' : 'chevron-right'} size={11} />
+                {s.kind === 'group' && <Icon name="folder" size={12} />}
+                <span className="nx-db-group-name">{s.label}</span>
+                <span className="nx-db-group-count">{s.names.length}</span>
+              </button>
+              {s.kind === 'group' && <GroupMenu name={s.name} onRename={to => actions.onRenameGroup(s.name, to)} onRemove={() => actions.onRemoveGroup(s.name)} />}
+            </div>
+            {open && <div className="nx-db-rows">{s.names.map(t => row(t, { fullName: s.kind === 'group' }))}</div>}
           </div>
         )
       })}
     </div>
+  )
+}
+
+// A name typed into a menu (Electron has no window.prompt): Enter saves, Esc leaves the menu.
+function NameField({ label, placeholder, initial = '', submitLabel, onSubmit }) {
+  const [value, setValue] = useState(initial)
+  const submit = (e) => {
+    e.preventDefault()
+    if (!value.trim()) return
+    onSubmit(value.trim())
+    closeDetails(e)
+    setValue(initial)
+  }
+  return (
+    <form className="nx-db-menu-form" onSubmit={submit}>
+      <input className="db-input" aria-label={label} placeholder={placeholder} value={value} onChange={e => setValue(e.target.value)} />
+      <button type="submit" className="btn sm" disabled={!value.trim()}>{submitLabel}</button>
+    </form>
+  )
+}
+
+// One table's menu: move it into a group of your own (or out of one), and hide or show it.
+function TableMenu({ name, actions }) {
+  const current = actions.groupOf(name)
+  const hidden = actions.isHidden(name)
+  const item = (label, onClick, extra = {}) => (
+    <button type="button" className="nx-db-menu-item" onClick={e => { onClick(); closeDetails(e) }} {...extra}>{label}</button>
+  )
+  return (
+    <details className="nx-db-history nx-db-rowmenu" onClick={e => e.stopPropagation()}>
+      <summary aria-label={`More for ${name}`} title="Group or hide this table">
+        <Icon name="more" size={14} />
+      </summary>
+      <div className="nx-db-history-pop nx-db-menu" data-align="right">
+        <div className="nx-db-history-head"><span>Move to group</span></div>
+        {actions.groups.map(g => item(
+          <><Icon name={g === current ? 'check' : 'folder'} size={12} />{g}</>,
+          () => actions.onMove(name, g),
+          { key: g, 'aria-pressed': g === current, disabled: g === current },
+        ))}
+        <NameField label="New group name" placeholder="New group…" submitLabel="Add" onSubmit={g => actions.onMove(name, g)} />
+        {current && item(<><Icon name="x" size={12} />{`Remove from ${current}`}</>, () => actions.onMove(name, null))}
+        <div className="nx-db-menu-sep" role="separator" />
+        {item(<><Icon name="eye" size={12} />{hidden ? 'Show in the table list' : 'Hide from the table list'}</>, () => actions.onToggleHidden(name))}
+      </div>
+    </details>
+  )
+}
+
+// A group of your own: rename it, or ungroup its tables (they go back under their schema).
+function GroupMenu({ name, onRename, onRemove }) {
+  return (
+    <details className="nx-db-history nx-db-rowmenu">
+      <summary aria-label={`Edit group ${name}`} title="Rename or ungroup">
+        <Icon name="more" size={14} />
+      </summary>
+      <div className="nx-db-history-pop nx-db-menu" data-align="right">
+        <div className="nx-db-history-head"><span>Rename group</span></div>
+        <NameField label="Group name" initial={name} submitLabel="Rename" onSubmit={onRename} />
+        <div className="nx-db-menu-sep" role="separator" />
+        <button type="button" className="nx-db-menu-item" onClick={e => { onRemove(); closeDetails(e) }}>
+          <Icon name="trash" size={12} />Ungroup tables
+        </button>
+      </div>
+    </details>
   )
 }
 
@@ -1238,17 +1570,48 @@ function TablePalette({ tables, starred, meta, selected, onOpen, onClose }) {
 
 // ─── Connect dialog ───────────────────────────────────────────────────────────
 
-function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, activeConnectionId, onClose, loading, error }) {
+const AUTH_OPTIONS = [[SQL_AUTH, 'SQL Server authentication'], [AZURE_AD_INTERACTIVE, 'Microsoft Entra ID (Azure AD) interactive']]
+
+function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openConnectionIds = [], onClose, loading, error, canSave = false }) {
   const [dbType, setDbType]       = useState(() => readPref('nx-db:last-type', 'demo'))
   const [inputMode, setInputMode] = useState('fields')
   const [connStr, setConnStr]     = useState('')
   const [fields, setFields]       = useState({
     host: '', port: '1433', database: '', user: '', password: '',
-    encrypt: true, trustServerCertificate: false, filePath: '',
+    encrypt: true, trustServerCertificate: false, filePath: '', authentication: SQL_AUTH,
   })
   const [connectingId, setConnectingId] = useState(null)
 
+  const [fillError, setFillError] = useState(null)
+  // Saved connections show as tabs and in Settings, and reopen next time; a one-off one doesn't.
+  const [saveIt, setSaveIt]       = useState(true)
+  const [saveName, setSaveName]   = useState('')
+
   const setField = (k, v) => setFields(f => ({ ...f, [k]: v }))
+  const interactive = fields.authentication === AZURE_AD_INTERACTIVE
+
+  // The name a saved connection gets unless one is typed: the database, else the server or file.
+  const suggestedName = (() => {
+    const fileName = path => (path || '').split(/[\\/]/).pop()
+    let f = fields
+    if (inputMode === 'connstr') {
+      try { f = connStr.trim() ? connectionStringToFields(dbType, connStr) : {} } catch { f = {} }
+    }
+    return (dbType === 'sqlite' ? fileName(f.filePath) : f.database || f.host) || ''
+  })()
+  const nameTaken = saveIt && savedConnections.some(c => c.name.toLowerCase() === (saveName.trim() || suggestedName).toLowerCase())
+
+  // Parses the pasted connection string into the form, then shows the Fields tab.
+  const fillFromConnStr = () => {
+    try {
+      const parsed = connectionStringToFields(dbType, connStr)
+      setFields(f => ({ ...f, ...parsed }))
+      setFillError(null)
+      setInputMode('fields')
+    } catch (err) {
+      setFillError(`Couldn't read that connection string: ${err.message}`)
+    }
+  }
 
   const submit = (e) => {
     e?.preventDefault?.()
@@ -1256,7 +1619,7 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, activ
     writePref('nx-db:last-type', dbType)
     if (dbType === 'demo') { onConnect('demo', {}); return }
     const params = inputMode === 'connstr' ? { connectionString: connStr } : fields
-    onConnect(dbType, params)
+    onConnect(dbType, params, canSave && saveIt ? { name: saveName.trim() || suggestedName || typeLabel(dbType) } : null)
   }
 
   const connectSaved = async (entry) => {
@@ -1269,6 +1632,7 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, activ
     '',
     'or ADO.NET style:',
     'Server=myhost;Database=mydb;User Id=sa;Password=secret;',
+    'Server=myserver.database.windows.net;Database=mydb;Authentication=Active Directory Interactive;',
   ].join('\n')
 
   return (
@@ -1279,7 +1643,9 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, activ
       title="Connect to database"
       wide
       className="nx-db-connect"
-      footerLeft={dbType !== 'demo' ? <span className="nx-db-muted">Enter to connect</span> : null}
+      footerLeft={dbType !== 'demo'
+        ? <span className="nx-db-muted">{loading && dbType === 'sqlserver' && interactive && inputMode === 'fields' ? 'Finish signing in in your browser…' : 'Enter to connect'}</span>
+        : null}
       footer={(
         <>
           <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
@@ -1304,7 +1670,7 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, activ
                 key={entry.id}
                 type="button"
                 className="nx-db-saved-row"
-                aria-current={entry.id === activeConnectionId ? 'true' : undefined}
+                aria-current={openConnectionIds.includes(entry.id) ? 'true' : undefined}
                 onClick={() => connectSaved(entry)}
                 disabled={connectingId != null}
               >
@@ -1313,6 +1679,7 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, activ
                 <span className="type">
                   {entry.type === 'sqlite' ? 'SQLite' : 'SQL Server'}
                 </span>
+                {openConnectionIds.includes(entry.id) && <span className="nx-db-tag">Open</span>}
                 {connectingId === entry.id && <span className="nx-db-spinner" aria-hidden="true" />}
               </button>
             ))}
@@ -1326,7 +1693,7 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, activ
               key={id}
               type="button"
               className="nx-db-type"
-              onClick={() => { setDbType(id); setInputMode('fields'); setConnStr('') }}
+              onClick={() => { setDbType(id); setInputMode('fields'); setConnStr(''); setFillError(null) }}
               aria-pressed={dbType === id}
             >
               <span className="t">{label}</span>
@@ -1365,12 +1732,20 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, activ
               id="db-connstr"
               className="db-input db-textarea--mono"
               value={connStr}
-              onChange={e => setConnStr(e.target.value)}
+              onChange={e => { setConnStr(e.target.value); setFillError(null) }}
               onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submit(e) }}
               rows={4}
               autoFocus
               placeholder={dbType === 'sqlserver' ? sqlserverPlaceholder : 'sqlite:///absolute/path/to/file.db\nor just: /path/to/file.db'}
             />
+            <div className="db-field--row nx-db-fill">
+              <button type="button" className="btn sm" disabled={!connStr.trim()} onClick={fillFromConnStr}>
+                <Icon name="wand" size={12} />Fill in fields
+              </button>
+              {fillError
+                ? <span className="db-hint" data-tone="bad" role="alert">{fillError}</span>
+                : <span className="db-hint">Reads the string into the Fields tab, so you can check or change it.</span>}
+            </div>
           </div>
         )}
 
@@ -1400,16 +1775,34 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, activ
               <input id="db-database" className="db-input" type="text" placeholder="my_database"
                 value={fields.database} onChange={e => setField('database', e.target.value)} />
             </div>
-            <div className="db-field">
-              <label className="db-label" htmlFor="db-user">Username</label>
-              <input id="db-user" className="db-input" type="text" placeholder="sa" autoComplete="username"
-                value={fields.user} onChange={e => setField('user', e.target.value)} />
+            <div className="db-field db-field--span2">
+              <label className="db-label" htmlFor="db-auth">Authentication</label>
+              <select id="db-auth" className="db-input" value={fields.authentication}
+                onChange={e => setField('authentication', e.target.value)}>
+                {AUTH_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+              </select>
             </div>
-            <div className="db-field">
-              <label className="db-label" htmlFor="db-password">Password</label>
-              <input id="db-password" className="db-input" type="password" autoComplete="current-password"
-                value={fields.password} onChange={e => setField('password', e.target.value)} />
-            </div>
+            {interactive ? (
+              <div className="db-field db-field--span2">
+                <label className="db-label" htmlFor="db-user">Account (optional)</label>
+                <input id="db-user" className="db-input" type="email" placeholder="name@company.com" autoComplete="username"
+                  value={fields.user} onChange={e => setField('user', e.target.value)} />
+                <p className="db-hint">Connecting opens your browser to sign in with Microsoft Entra ID, with multi-factor authentication if your organisation requires it.</p>
+              </div>
+            ) : (
+              <>
+                <div className="db-field">
+                  <label className="db-label" htmlFor="db-user">Username</label>
+                  <input id="db-user" className="db-input" type="text" placeholder="sa" autoComplete="username"
+                    value={fields.user} onChange={e => setField('user', e.target.value)} />
+                </div>
+                <div className="db-field">
+                  <label className="db-label" htmlFor="db-password">Password</label>
+                  <input id="db-password" className="db-input" type="password" autoComplete="current-password"
+                    value={fields.password} onChange={e => setField('password', e.target.value)} />
+                </div>
+              </>
+            )}
             <div className="db-field db-field--span2 db-field--row">
               <label className="db-checkbox-label">
                 <input type="checkbox" checked={fields.encrypt}
@@ -1424,6 +1817,26 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, activ
             </div>
           </div>
         )}
+
+        {dbType !== 'demo' && canSave && (
+          <div className="nx-db-save-conn">
+            <label className="db-checkbox-label">
+              <input type="checkbox" checked={saveIt} onChange={e => setSaveIt(e.target.checked)} />
+              Save this connection
+            </label>
+            {saveIt && (
+              <input className="db-input" aria-label="Connection name" placeholder={suggestedName || 'Name, e.g. UAT'}
+                value={saveName} onChange={e => setSaveName(e.target.value)} />
+            )}
+            <p className="db-hint">
+              {!saveIt
+                ? 'Just for now: it closes with the app and won’t be in your saved connections.'
+                : nameTaken
+                  ? 'Replaces the saved connection with this name.'
+                  : 'Kept with your saved connections (and in Settings), password in secure storage, and reopened next time.'}
+            </p>
+          </div>
+        )}
       </form>
     </PlModal>
   )
@@ -1431,8 +1844,46 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, activ
 
 // ─── Browse panel ─────────────────────────────────────────────────────────────
 
+// A column's type as the header shows it: int, nvarchar(50), decimal(8,2), nvarchar(max).
+function typeLabelOf(col) {
+  const t = String(col.dataType ?? '').toLowerCase()
+  if (col.maxLength === -1) return `${t}(max)`
+  if (col.maxLength > 0 && /char|binary/.test(t)) return `${t}(${col.maxLength})`
+  if (col.precision != null && col.scale != null) return `${t}(${col.precision},${col.scale})`
+  return t
+}
+const typeTitle = col => [
+  typeLabelOf(col),
+  col.nullable ? 'allows NULL' : 'required',
+  col.isIdentity && 'set by the database (identity)',
+  col.isComputed && 'computed',
+  col.hasDefault && !col.isIdentity && 'has a default',
+].filter(Boolean).join(' · ')
+
+const INPUT_TYPES = { date: 'date', time: 'time', datetime: 'datetime-local' }
+
+// The box a value is typed into, shaped by the column's type: number boxes only take what a
+// number may hold, dates and times use pickers, text stops at the column's length.
+const CellInput = forwardRef(function CellInput({ col, value, onChange, className = 'nx-db-cell-input', ...rest }, ref) {
+  const kind = columnKind(col)
+  return (
+    <input
+      ref={ref}
+      className={className}
+      type={INPUT_TYPES[kind] ?? 'text'}
+      step={kind === 'time' || kind === 'datetime' ? 1 : undefined}
+      inputMode={kind === 'integer' ? 'numeric' : kind === 'decimal' ? 'decimal' : undefined}
+      maxLength={kind === 'text' && col?.maxLength > 0 ? col.maxLength : undefined}
+      spellCheck={kind === 'text' ? undefined : false}
+      value={value}
+      onChange={e => { if (isPartialInput(kind, e.target.value)) onChange(e.target.value) }}
+      {...rest}
+    />
+  )
+})
+
 const BrowsePanel = forwardRef(function BrowsePanel({
-  tableData, visible, pkIndex, search, onSearchChange, sort, onSort,
+  tableData, visible, keyIdx, columnInfo, canWrite, columnsKnown, onSetCell, onAddRow, search, onSearchChange, sort, onSort,
   selectedRows, allSelected, onToggleRow, onToggleAll, onClearSelection, onDeleteSelected, onDeleteRow, onCopyCell,
   editingCell, editValue, onEditValueChange, onStartEdit, onSaveEdit, onCancelEdit,
 }, ref) {
@@ -1447,6 +1898,8 @@ const BrowsePanel = forwardRef(function BrowsePanel({
     if (c >= cols) { c = 0; p++ } else if (c < 0) { c = cols - 1; p-- }
     return p >= 0 && p < visible.length ? { ri: visible[p].i, ci: c } : null
   }
+  const editError = editingCell ? parseCellInput(columnInfo[editingCell.ci], editValue).error : null
+  const readOnly = !canWrite && columnsKnown
   return (
     <div className="nx-db-browse">
       <div className="nx-db-browse-tools">
@@ -1471,13 +1924,24 @@ const BrowsePanel = forwardRef(function BrowsePanel({
           <>
             <span className="nx-db-count">{`${selectedRows.size} selected`}</span>
             <button type="button" className="btn sm ghost" onClick={onClearSelection}>Clear</button>
-            <button type="button" className="btn sm danger" onClick={onDeleteSelected}>
+            <button type="button" className="btn sm danger" onClick={onDeleteSelected} disabled={!canWrite}>
               <Icon name="trash" size={13} />
               Delete {plural(selectedRows.size, 'row')}
             </button>
           </>
         )}
+        <button type="button" className="btn sm" onClick={onAddRow} disabled={!columnsKnown}
+          title={columnsKnown ? 'Add a row to this table' : 'Reading the table’s columns…'}>
+          <Icon name="plus" size={13} />Add row
+        </button>
       </div>
+
+      {readOnly && (
+        <p className="nx-db-alert" role="note">
+          This table has no primary key, so a change can’t be kept to one row: editing and deleting are off.
+          You can still add rows, or change rows from the Query tab.
+        </p>
+      )}
 
       <div className="nx-db-table-wrap" role="region" aria-label="Table data" tabIndex={0}>
         <table className="nx-db-table">
@@ -1497,7 +1961,8 @@ const BrowsePanel = forwardRef(function BrowsePanel({
                   <th key={col} data-num={numericCol[ci] || undefined} aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : undefined}>
                     <button type="button" className="nx-db-th" onClick={() => onSort(ci)} title={`Sort by ${col}`}>
                       <span>{col}</span>
-                      {ci === pkIndex && <span className="pk" title="Key used for edits and deletes">key</span>}
+                      {keyIdx.includes(ci) && <span className="pk" title="Key used for edits and deletes">key</span>}
+                      {columnInfo[ci] && <span className="nx-db-coltype" title={typeTitle(columnInfo[ci])}>{typeLabelOf(columnInfo[ci])}</span>}
                       <Icon name={dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={11} className={`sort${dir ? ' on' : ''}`} />
                     </button>
                   </th>
@@ -1518,30 +1983,59 @@ const BrowsePanel = forwardRef(function BrowsePanel({
                   />
                 </td>
                 {row.map((cell, ci) => {
+                  const col = columnInfo[ci]
+                  const kind = columnKind(col)
                   const editing = editingCell?.ri === ri && editingCell?.ci === ci
+                  const editable = canWrite && kind !== 'readonly'
+                  // A bit is a checkbox in the cell itself: one click writes the other value.
+                  if (kind === 'boolean') {
+                    return (
+                      <td key={ci} className="bool">
+                        <input
+                          type="checkbox"
+                          checked={cell === true || cell === 1}
+                          ref={el => { if (el) el.indeterminate = cell === null || cell === undefined }}
+                          disabled={!editable}
+                          onChange={e => onSetCell(ri, ci, e.target.checked)}
+                          aria-label={`${tableData.columns[ci]} for row ${vi + 1}`}
+                          title={cell === null || cell === undefined ? 'NULL' : undefined}
+                        />
+                      </td>
+                    )
+                  }
                   return (
                     <td
                       key={ci}
                       data-num={isNumeric(cell) || undefined}
                       data-editing={editing || undefined}
-                      onDoubleClick={() => !editing && onStartEdit(ri, ci, cell)}
-                      title={editing ? undefined : `${cell === null || cell === undefined ? 'null' : String(cell)}\nDouble-click to edit`}
+                      data-invalid={(editing && editError) || undefined}
+                      onDoubleClick={() => !editing && editable && onStartEdit(ri, ci, cell)}
+                      title={editing ? undefined : `${cell === null || cell === undefined ? 'NULL' : String(cell)}${editable ? '\nDouble-click to edit' : kind === 'readonly' ? '\nSet by the database' : ''}`}
                     >
                       {editing ? (
-                        <input
-                          className="nx-db-cell-input"
-                          autoFocus
-                          onFocus={e => e.target.select()}
-                          value={editValue}
-                          onChange={e => onEditValueChange(e.target.value)}
-                          onBlur={() => onSaveEdit()}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') { e.preventDefault(); onSaveEdit() }
-                            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancelEdit() }
-                            else if (e.key === 'Tab') { e.preventDefault(); onSaveEdit(neighbour(ri, ci, e.shiftKey ? -1 : 1)) }
-                          }}
-                          aria-label={`Edit ${tableData.columns[ci]}`}
-                        />
+                        <div className="nx-db-cell-edit">
+                          <CellInput
+                            col={col}
+                            autoFocus
+                            onFocus={e => e.target.select?.()}
+                            value={editValue}
+                            onChange={onEditValueChange}
+                            onBlur={() => onSaveEdit(null, { leaving: true })}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') { e.preventDefault(); onSaveEdit() }
+                              else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancelEdit() }
+                              else if (e.key === 'Tab') { e.preventDefault(); onSaveEdit(neighbour(ri, ci, e.shiftKey ? -1 : 1)) }
+                            }}
+                            aria-label={`Edit ${tableData.columns[ci]}`}
+                            aria-invalid={!!editError || undefined}
+                          />
+                          {col?.nullable && (
+                            // mousedown so the box's blur (which saves what's typed) doesn't fire first.
+                            <button type="button" className="nx-db-null-btn" title="Set to NULL"
+                              onMouseDown={e => { e.preventDefault(); onSaveEdit(null, { isNull: true }) }}>NULL</button>
+                          )}
+                          {editError && <span className="nx-db-cell-error" role="alert">{editError}</span>}
+                        </div>
                       ) : (
                         <CellValue value={cell} />
                       )}
@@ -1562,8 +2056,9 @@ const BrowsePanel = forwardRef(function BrowsePanel({
                     type="button"
                     className="nx-db-row-act danger"
                     onClick={() => onDeleteRow(ri)}
+                    disabled={!canWrite}
                     aria-label={`Delete row ${vi + 1}`}
-                    title="Delete row"
+                    title={canWrite ? 'Delete row' : 'No primary key, so this row can’t be deleted on its own'}
                   >
                     <Icon name="trash" size={13} />
                   </button>
@@ -1589,6 +2084,101 @@ const BrowsePanel = forwardRef(function BrowsePanel({
     </div>
   )
 })
+
+// ─── Add row ──────────────────────────────────────────────────────────────────
+
+// One field per column, typed like the grid's editor. Identity and computed columns are left
+// to the database; a field left blank gets the column's default, or NULL where that's allowed.
+function AddRowDialog({ table, columns, columnInfo, onSave, onClose }) {
+  const fields = columns.map((name, i) => ({ name, col: columnInfo[i] ?? { name, dataType: 'text', nullable: true } }))
+  const [values, setValues] = useState({})   // name → { text, isNull, touched }
+  const [errors, setErrors] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [failure, setFailure] = useState(null)
+  const set = (name, patch) => {
+    setValues(v => ({ ...v, [name]: { text: '', isNull: false, ...v[name], ...patch, touched: true } }))
+    setErrors(e => ({ ...e, [name]: undefined }))
+  }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    const out = {}, errs = {}
+    for (const { name, col } of fields) {
+      const kind = columnKind(col)
+      if (kind === 'readonly') continue
+      const v = values[name]
+      if (!v?.touched) {
+        // Untouched: the database fills it in. A checkbox left alone means false.
+        if (kind === 'boolean' && !col.nullable && !col.hasDefault) out[name] = false
+        else if (!col.nullable && !col.hasDefault) errs[name] = 'Required'
+        continue
+      }
+      const parsed = parseCellInput(col, kind === 'boolean' ? !!v.checked : v.text, { isNull: v.isNull })
+      if (parsed.error) errs[name] = parsed.error
+      else out[name] = parsed.value
+    }
+    setErrors(errs)
+    if (Object.keys(errs).length) return
+    setSaving(true)
+    setFailure(await onSave(out))
+    setSaving(false)
+  }
+
+  return (
+    <PlModal
+      open
+      onClose={onClose}
+      icon="plus"
+      title={`Add a row to ${table}`}
+      sub="Blank fields get the column's default, or NULL where it's allowed."
+      wide
+      className="nx-db-addrow"
+      footer={(
+        <>
+          <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" form="nx-db-addrow-form" className="btn accent" disabled={saving}>{saving ? 'Adding…' : 'Add row'}</button>
+        </>
+      )}
+    >
+      <form id="nx-db-addrow-form" className="nx-db-addrow-form" onSubmit={submit} noValidate>
+        {failure && <div className="nx-db-alert bad" role="alert">{failure}</div>}
+        {fields.map(({ name, col }, i) => {
+          const kind = columnKind(col)
+          const v = values[name] ?? { text: '', isNull: false, touched: false }
+          const id = `db-add-${i}`
+          const required = kind !== 'readonly' && !col.nullable && !col.hasDefault
+          return (
+            <div key={name} className="db-field nx-db-addrow-field" data-invalid={errors[name] ? true : undefined}>
+              <label className="db-label" htmlFor={id}>
+                {name}{required && <span className="req" aria-hidden="true"> *</span>}
+                <span className="nx-db-coltype">{typeLabelOf(col)}</span>
+              </label>
+              {kind === 'readonly' ? (
+                <input id={id} className="db-input" disabled value="" placeholder="Set by the database" />
+              ) : kind === 'boolean' ? (
+                <label className="db-checkbox-label">
+                  <input id={id} type="checkbox" checked={!!v.checked} disabled={v.isNull}
+                    onChange={e => set(name, { checked: e.target.checked, isNull: false })} />
+                  {v.isNull ? 'NULL' : v.checked ? 'True' : 'False'}
+                </label>
+              ) : (
+                <CellInput id={id} col={col} className="db-input" value={v.isNull ? '' : v.text} disabled={v.isNull}
+                  placeholder={v.isNull ? 'NULL' : col.hasDefault ? 'Default' : col.nullable ? 'NULL' : ''}
+                  onChange={text => set(name, { text, isNull: false })} aria-invalid={!!errors[name] || undefined} />
+              )}
+              {kind !== 'readonly' && col.nullable && (
+                <label className="db-checkbox-label nx-db-null-toggle">
+                  <input type="checkbox" checked={!!v.isNull} onChange={e => set(name, { isNull: e.target.checked })} />NULL
+                </label>
+              )}
+              {errors[name] && <span className="nx-db-cell-error" role="alert">{errors[name]}</span>}
+            </div>
+          )
+        })}
+      </form>
+    </PlModal>
+  )
+}
 
 // ─── Saved query pieces ───────────────────────────────────────────────────────
 
@@ -1705,6 +2295,9 @@ function QueryPanel({
   allColumns, onLoadColumnsFor,
 }) {
   const [saving, setSaving] = useState(false)
+  // Older results (and the demo) carry one set as columns/rows; a real run lists them all in `sets`.
+  const resultSets = queryResult?.sets?.filter(s => s.columns?.length)
+    ?? (queryResult?.columns?.length ? [{ columns: queryResult.columns, rows: queryResult.rows }] : [])
   return (
     <div className="nx-db-query">
       <div className="nx-db-query-editor">
@@ -1801,31 +2394,38 @@ function QueryPanel({
               <Icon name="alert" size={14} />
               <span className="pre">{queryResult.error}</span>
             </div>
-          ) : queryResult.columns?.length > 0 ? (
-            <>
-              <div className="nx-db-results-head">
-                <span className="nx-db-dot" data-tone="ok" />
-                <span className="nx-db-count strong">{plural(queryResult.rows.length, 'row')} returned</span>
-                {queryResult.ms != null && <span className="nx-db-count">{`${queryResult.ms} ms`}</span>}
-                <span className="nx-db-spacer" />
-                <button type="button" className="btn sm ghost" onClick={onCopyResult}><Icon name="copy" size={13} />Copy CSV</button>
-                <button type="button" className="btn sm ghost" onClick={onExportResult}><Icon name="download" size={13} />Export</button>
+          ) : resultSets.length > 0 ? (
+            // Every result set the batch returned, headers included even when a set has no rows.
+            resultSets.map((set, si) => (
+              <div key={si} className="nx-db-result-set">
+                <div className="nx-db-results-head">
+                  <span className="nx-db-dot" data-tone="ok" />
+                  {resultSets.length > 1 && <span className="nx-db-count">{`Result ${si + 1} of ${resultSets.length}`}</span>}
+                  <span className="nx-db-count strong">{plural(set.rows.length, 'row')} returned</span>
+                  {si === 0 && queryResult.ms != null && <span className="nx-db-count">{`${queryResult.ms} ms`}</span>}
+                  <span className="nx-db-spacer" />
+                  <button type="button" className="btn sm ghost" onClick={() => onCopyResult(set)}><Icon name="copy" size={13} />Copy CSV</button>
+                  <button type="button" className="btn sm ghost" onClick={() => onExportResult(set, si)}><Icon name="download" size={13} />Export</button>
+                </div>
+                <div className="nx-db-table-wrap boxed">
+                  <table className="nx-db-table">
+                    <thead>
+                      <tr>{set.columns.map((c, ci) => <th key={ci}><span className="nx-db-th static">{c}</span></th>)}</tr>
+                    </thead>
+                    <tbody>
+                      {set.rows.map((row, i) => (
+                        <tr key={i}>
+                          {row.map((cell, j) => <td key={j} data-num={isNumeric(cell) || undefined}><CellValue value={cell} /></td>)}
+                        </tr>
+                      ))}
+                      {set.rows.length === 0 && (
+                        <tr><td colSpan={set.columns.length} className="empty">No rows</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div className="nx-db-table-wrap boxed">
-                <table className="nx-db-table">
-                  <thead>
-                    <tr>{queryResult.columns.map(c => <th key={c}><span className="nx-db-th static">{c}</span></th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {queryResult.rows.map((row, i) => (
-                      <tr key={i}>
-                        {row.map((cell, j) => <td key={j} data-num={isNumeric(cell) || undefined}><CellValue value={cell} /></td>)}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
+            ))
           ) : (
             <div className="nx-db-alert ok" role="status">
               <Icon name="check" size={14} />

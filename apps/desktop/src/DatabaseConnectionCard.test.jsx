@@ -264,6 +264,32 @@ describe('DatabaseConnectionCard — connection form', () => {
     expect(textarea.value).toContain('User Id=admin')
     expect(textarea.value).toContain('Password=hunter2')
   })
+
+  it('fills in the fields from a pasted connection string', () => {
+    openNewForm()
+    fireEvent.click(screen.getByText('Connection string'))
+    fireEvent.change(screen.getByPlaceholderText('mssql://username:password@host:1433/database'), {
+      target: { value: 'Server=pasted.example,1500;Database=sales;User Id=app;Password=pw;' },
+    })
+    fireEvent.click(screen.getByText('Fill in fields'))
+
+    expect(screen.getByPlaceholderText('myserver.database.windows.net').value).toBe('pasted.example')
+    expect(screen.getByPlaceholderText('1433').value).toBe('1500')
+    expect(screen.getByPlaceholderText('my_database').value).toBe('sales')
+    expect(screen.getByPlaceholderText('sa').value).toBe('app')
+    expect(document.querySelector('input[type="password"]').value).toBe('pw')
+  })
+
+  it('says why a connection string cannot be read into the fields', () => {
+    openNewForm()
+    fireEvent.click(screen.getByText('Connection string'))
+    fireEvent.change(screen.getByPlaceholderText('mssql://username:password@host:1433/database'), {
+      target: { value: 'Server=x;Authentication=Active Directory Integrated;' },
+    })
+    fireEvent.click(screen.getByText('Fill in fields'))
+    expect(screen.getByText(/couldn.t read that connection string/)).toBeTruthy()
+    expect(screen.getByPlaceholderText('mssql://username:password@host:1433/database')).toBeTruthy()
+  })
 })
 
 describe('DatabaseConnectionCard — editing prefills the saved secret', () => {

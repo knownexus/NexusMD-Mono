@@ -6,7 +6,7 @@ import {
   PlToggle, VsPasswordModal, loadConfidentialConfig,
   CardsAndTablesSettings, toast, WI_TYPE_STATES_CACHE_KEY,
 } from '@nexusmd/ui'
-import { ADO_CACHE_KEY, JIRA_CACHE_KEY, buildConfig, resolveConnectionParams, buildConnectionString, graphJSON } from '@nexusmd/core'
+import { ADO_CACHE_KEY, JIRA_CACHE_KEY, buildConfig, resolveConnectionParams, buildConnectionString, graphJSON, SQL_AUTH, AZURE_AD_INTERACTIVE, connectionStringToFields } from '@nexusmd/core'
 import { appPrefsAdapter } from './adapters/appPrefs.js'
 import { useProfile } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -140,6 +140,8 @@ const DB_TYPES = [['sqlserver', 'SQL Server'], ['sqlite', 'SQLite']]
 
 const DB_INPUT_MODES = [['fields', 'Fields'], ['connstr', 'Connection string']]
 
+const DB_AUTH_MODES = [[SQL_AUTH, 'SQL login'], [AZURE_AD_INTERACTIVE, 'Entra ID (Azure AD) interactive']]
+
 // One saved connection's editor — used both for "Add connection" (initial === null)
 // and "Edit" (initial === the saved metadata, no secret included).
 function ConnectionForm({ initial, onSaved, onCancel }) {
@@ -155,6 +157,7 @@ function ConnectionForm({ initial, onSaved, onCancel }) {
   const [filePath, setFilePath] = React.useState(initial?.filePath || '')
   const [encrypt, setEncrypt]   = React.useState(initial?.encrypt ?? true)
   const [trustCert, setTrustCert] = React.useState(initial?.trustServerCertificate ?? false)
+  const [authentication, setAuthentication] = React.useState(initial?.authentication || SQL_AUTH)
   const [status, setStatus]     = React.useState('')
   const [saving, setSaving]     = React.useState(false)
   const [testing, setTesting]   = React.useState(false)
@@ -162,8 +165,9 @@ function ConnectionForm({ initial, onSaved, onCancel }) {
 
   const currentFields = () => ({
     host, port, database, user, filePath,
-    encrypt, trustServerCertificate: trustCert,
+    encrypt, trustServerCertificate: trustCert, authentication,
   })
+  const interactive = authentication === AZURE_AD_INTERACTIVE
 
   // When editing, load the connection's real saved secret into the form so
   // it's both editable and included in the generated connection string below
@@ -198,7 +202,24 @@ function ConnectionForm({ initial, onSaved, onCancel }) {
     if (inputMode !== 'fields') return
     setConnStr(buildConnectionString(dbType, { ...currentFields(), password }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inputMode, dbType, host, port, database, user, password, filePath, encrypt, trustCert])
+  }, [inputMode, dbType, host, port, database, user, password, filePath, encrypt, trustCert, authentication])
+
+  // Parses the connection string into the form's fields, then shows the Fields tab.
+  const fillFromConnStr = () => {
+    try {
+      const f = connectionStringToFields(dbType, connStr)
+      if (dbType === 'sqlite') {
+        setFilePath(f.filePath)
+      } else {
+        setHost(f.host); setPort(f.port); setDatabase(f.database); setUser(f.user); setPassword(f.password)
+        setEncrypt(f.encrypt); setTrustCert(f.trustServerCertificate); setAuthentication(f.authentication)
+      }
+      setInputMode('fields')
+      setStatus('')
+    } catch (e) {
+      setStatus('Error: couldn\'t read that connection string: ' + e.message)
+    }
+  }
 
   const resolveConfig = async () => {
     if (inputMode === 'connstr') {
@@ -231,7 +252,8 @@ function ConnectionForm({ initial, onSaved, onCancel }) {
     setStatus('Saving…')
     try {
       const meta   = { id: initial?.id, name: name.trim(), type: dbType, inputMode, ...currentFields() }
-      const secret = inputMode === 'connstr' ? connStr.trim() : password
+      // Interactive sign-in has no password to keep.
+      const secret = inputMode === 'connstr' ? connStr.trim() : (interactive && dbType === 'sqlserver' ? '' : password)
       await saveConnection(secureStorageAdapter, meta, secret)
       onSaved()
     } catch (e) {
@@ -271,6 +293,10 @@ function ConnectionForm({ initial, onSaved, onCancel }) {
                 ? 'mssql://username:password@host:1433/database'
                 : 'sqlite:///absolute/path/to/file.db'}
               style={{ ...settInputStyle, resize: 'vertical', paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+              <button className="btn sm ghost" onClick={fillFromConnStr} disabled={!connStr.trim()}>Fill in fields</button>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Reads the string into the Fields tab, so you can check or change it.</span>
+            </div>
           </SettField>
         ) : (
           <>
@@ -301,23 +327,36 @@ function ConnectionForm({ initial, onSaved, onCancel }) {
                   <input value={database} onChange={e => setDatabase(e.target.value)}
                     placeholder="my_database" style={settInputStyle} />
                 </SettField>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <SettField label="Username">
-                      <input value={user} onChange={e => setUser(e.target.value)}
-                        placeholder="sa" style={settInputStyle} />
-                    </SettField>
+                <SettField label="Authentication">
+                  <VsSeg value={authentication} options={DB_AUTH_MODES} onChange={setAuthentication} />
+                </SettField>
+                {interactive ? (
+                  <SettField
+                    label="Account (optional)"
+                    hint="Connecting opens your browser to sign in with Microsoft Entra ID, with multi-factor authentication if your organisation requires it."
+                  >
+                    <input type="email" value={user} onChange={e => setUser(e.target.value)}
+                      placeholder="name@company.com" style={settInputStyle} />
+                  </SettField>
+                ) : (
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <SettField label="Username">
+                        <input value={user} onChange={e => setUser(e.target.value)}
+                          placeholder="sa" style={settInputStyle} />
+                      </SettField>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <SettField
+                        label="Password"
+                        hint={initial ? (secretLoaded ? 'Loaded from the saved connection.' : 'Loading saved password…') : undefined}
+                      >
+                        <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                          style={settInputStyle} />
+                      </SettField>
+                    </div>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <SettField
-                      label="Password"
-                      hint={initial ? (secretLoaded ? 'Loaded from the saved connection.' : 'Loading saved password…') : undefined}
-                    >
-                      <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                        style={settInputStyle} />
-                    </SettField>
-                  </div>
-                </div>
+                )}
                 <div style={{ display: 'flex', gap: 16 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
                     <input type="checkbox" checked={encrypt} onChange={e => setEncrypt(e.target.checked)} />

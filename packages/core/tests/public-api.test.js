@@ -66,9 +66,12 @@ const EXPECTED = [
   'appendHistoryEntry', 'readHistory', 'clearHistory',
   // Database Manager module (desktop-only: requires the `dbManager` adapter)
   'IDbManagerAdapter', 'getDbManagerAdapter', 'parseConnectionString', 'buildConfig',
-  'resolveConnectionParams', 'buildConnectionString', 'createInitialState', 'applyConnected', 'applyDisconnected',
+  'resolveConnectionParams', 'buildConnectionString', 'SQL_AUTH', 'AZURE_AD_INTERACTIVE', 'connectionStringToFields', 'createInitialState', 'applyConnected', 'applyDisconnected',
   'applyTableSelected', 'applyTableLoaded', 'applyRowsDeleted', 'applyCellUpdated', 'applyError',
   'generateConnectionId', 'upsertConnection', 'removeConnection',
+  'normalizeTablePrefs', 'toggleTableStarred', 'toggleTableHidden', 'setTableGroup', 'renameTableGroup',
+  'removeTableGroup', 'toggleSectionCollapsed', 'tableSections', 'groupSectionKey', 'schemaSectionKey',
+  'columnKind', 'isPartialInput', 'cellToInput', 'parseCellInput',
   // Dev Environment module (desktop-only: requires the `devenv` adapter)
   'IDevenvAdapter', 'getDevenvAdapter', 'DEVENV_CONTROL_PREFIX', 'DEVENV_PROTOCOL_VERSION', 'parseDevenvLine',
   'ansiToSpans', 'stripAnsi',
@@ -94,7 +97,7 @@ const EXPECTED = [
   'toggleSelection', 'rangeSelection', 'pruneSelection', 'fileReview', 'commitTargets', 'commitReview', 'COMMIT_NOTE',
   'parseRefs', 'parseLog', 'graphCells', 'parseSearch', 'historyQuery', 'HISTORY_STEP', 'HISTORY_MAX', 'parseRefList', 'defaultBase', 'parseAliases', 'parseShellAliases', 'parseShellScripts', 'parseCommitDetails', 'parseNameStatus', 'parseNumstat', 'parentLabel',
   'ACTION_KINDS', 'BATCH_KINDS', 'BATCH_NOTE', 'actionTargets', 'previewModel', 'worktreeDefaultPath', 'checkBranchName', 'REBASE_ACTIONS', 'rebasePlan', 'moveRow', 'setRowAction', 'setRowMessage', 'rebaseTodo', 'squashGroups', 'rebaseMessages', 'messageRows', 'rebaseProblems', 'ACTIVITY_MAX', 'addActivity', 'failedTargets',
-  'formatSqlValue', 'formatCondition',
+  'formatSqlValue', 'formatCondition', 'quoteIdent',
   'buildSearchQuery', 'buildInsertQuery', 'buildUpdateQuery', 'buildDeleteQuery',
   'buildJoinQuery', 'buildAggregateQuery',
   // Work items module (ADO + Jira merged)

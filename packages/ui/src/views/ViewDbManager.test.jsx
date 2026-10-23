@@ -182,7 +182,7 @@ describe('ViewDbManager', () => {
     const queryTableSelect = tableSelects[tableSelects.length - 1]
     fireEvent.change(queryTableSelect, { target: { value: 'staff' } })
 
-    expect(screen.getByLabelText('SQL query').value).toBe('SELECT * FROM staff')
+    expect(screen.getByLabelText('SQL query').value).toBe('SELECT * FROM [staff]')
   })
 
   it('switches to query tab and runs a query', async () => {
@@ -392,6 +392,87 @@ describe('ViewDbManager — table list and connection tabs', () => {
   })
 })
 
+describe('ViewDbManager — several open connections', () => {
+  let adapters
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter() }
+  })
+
+  afterEach(() => { cleanup() })
+
+  const saved = [
+    { id: 'a', name: 'UAT', type: 'sqlite', inputMode: 'fields', filePath: '/a.db' },
+    { id: 'b', name: 'Prod', type: 'sqlite', inputMode: 'fields', filePath: '/b.db' },
+  ]
+  const connTabs = () => within(screen.getByRole('tablist', { name: 'Connections' }))
+
+  // Opens UAT from the welcome screen, then Prod from the header, so both are open.
+  async function openBoth() {
+    adapters.dbManager.connect
+      .mockResolvedValueOnce({ ok: true, tables: ['uat_orders'] })
+      .mockResolvedValueOnce({ ok: true, tables: ['prod_orders'] })
+    render(<ViewDbManager adapters={adapters} savedConnections={saved} onResolveSecret={vi.fn().mockResolvedValue('')} />)
+    fireEvent.click(within(screen.getByRole('region', { name: 'Quick connect' })).getByText('UAT'))
+    await waitFor(() => expect(connTabs().getByRole('tab', { name: 'UAT', selected: true })).toBeTruthy())
+    fireEvent.click(connTabs().getByRole('tab', { name: 'Prod' }))
+    await waitFor(() => expect(connTabs().getByRole('tab', { name: 'Prod', selected: true })).toBeTruthy())
+  }
+
+  it('keeps the first connection open when a second one connects', async () => {
+    await openBoth()
+    expect(adapters.dbManager.connect).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('navigation', { name: 'Table list' }).textContent).toContain('prod_orders')
+    expect(screen.getByRole('button', { name: 'Close UAT' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Close Prod' })).toBeTruthy()
+  })
+
+  it('switches between open connections without reconnecting, keeping the open table', async () => {
+    await openBoth()
+    fireEvent.click(connTabs().getByRole('tab', { name: 'UAT' }))
+    openTable('uat_orders')
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'uat_orders' })).toBeTruthy())
+
+    fireEvent.click(connTabs().getByRole('tab', { name: 'Prod' }))
+    expect(screen.queryByRole('heading', { name: 'uat_orders' })).not.toBeTruthy()
+    expect(screen.getByRole('navigation', { name: 'Table list' }).textContent).toContain('prod_orders')
+
+    fireEvent.click(connTabs().getByRole('tab', { name: 'UAT' }))
+    expect(screen.getByRole('heading', { name: 'uat_orders' })).toBeTruthy()
+    expect(adapters.dbManager.connect).toHaveBeenCalledTimes(2)
+  })
+
+  it('switches to an already-open connection picked in the connect dialog instead of connecting again', async () => {
+    await openBoth()
+    fireEvent.click(screen.getByRole('button', { name: 'New connection' }))
+    fireEvent.click(dialog().getByText('UAT'))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeTruthy())
+    expect(connTabs().getByRole('tab', { name: 'UAT', selected: true })).toBeTruthy()
+    expect(adapters.dbManager.connect).toHaveBeenCalledTimes(2)
+  })
+
+  it('closes one connection and shows its neighbour; closing the last shows the welcome pane', async () => {
+    await openBoth()
+    fireEvent.click(screen.getByRole('button', { name: 'Close Prod' }))
+    expect(connTabs().getByRole('tab', { name: 'UAT', selected: true })).toBeTruthy()
+    // Prod is still saved, so it stays in the strip, ready to connect again.
+    expect(connTabs().getByRole('tab', { name: 'Prod', selected: false })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Close Prod' })).not.toBeTruthy()
+
+    fireEvent.click(screen.getByText('Disconnect'))
+    expect(screen.getByText('Database Manager')).toBeTruthy()
+  })
+
+  it('opens the demo alongside a real connection', async () => {
+    render(<ViewDbManager adapters={adapters} savedConnections={saved} onResolveSecret={vi.fn().mockResolvedValue('')} />)
+    fireEvent.click(screen.getByText('Try the demo'))
+    await waitFor(() => screen.getByText('patients'))
+    fireEvent.click(connTabs().getByRole('tab', { name: 'UAT' }))
+    await waitFor(() => expect(connTabs().getByRole('tab', { name: 'UAT', selected: true })).toBeTruthy())
+    expect(connTabs().getByRole('tab', { name: 'Demo', selected: false })).toBeTruthy()
+  })
+})
+
 describe('ViewDbManager — browsing rows', () => {
   let adapters
 
@@ -551,7 +632,7 @@ describe('ViewDbManager — query command builders', () => {
     fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'active' } })
     fireEvent.click(screen.getByText('Build'))
 
-    expect(screen.getByLabelText('SQL query').value).toBe("SELECT * FROM patients\nWHERE status = 'active'")
+    expect(screen.getByLabelText('SQL query').value).toBe("SELECT * FROM [patients]\nWHERE [status] = 'active'")
   })
 
   it('fetches column metadata through the adapter for a real (non-demo) connection', async () => {
@@ -612,7 +693,7 @@ describe('ViewDbManager — query command builders', () => {
     fireEvent.click(screen.getByText('Build'))
 
     expect(screen.getByLabelText('SQL query').value).toBe(
-      'SELECT * FROM patients\nLEFT JOIN staff ON patients.id = staff.name',
+      'SELECT * FROM [patients]\nLEFT JOIN [staff] ON [patients].[id] = [staff].[name]',
     )
   })
 
@@ -627,7 +708,7 @@ describe('ViewDbManager — query command builders', () => {
     fireEvent.change(screen.getByLabelText('Value'), { target: { value: '1' } })
     fireEvent.click(screen.getByText('Build'))
 
-    expect(screen.getByLabelText('SQL query').value).toBe('DELETE FROM patients\nWHERE id = 1')
+    expect(screen.getByLabelText('SQL query').value).toBe('DELETE FROM [patients]\nWHERE [id] = 1')
   })
 
   it('builds an INSERT query from checked columns', async () => {
@@ -640,7 +721,7 @@ describe('ViewDbManager — query command builders', () => {
     fireEvent.change(screen.getByLabelText('Value for name'), { target: { value: 'Alice' } })
     fireEvent.click(screen.getByText('Build'))
 
-    expect(screen.getByLabelText('SQL query').value).toBe("INSERT INTO patients (name) VALUES ('Alice')")
+    expect(screen.getByLabelText('SQL query').value).toBe("INSERT INTO [patients] ([name]) VALUES ('Alice')")
   })
 
   it('builds an UPDATE query with SET and WHERE clauses', async () => {
@@ -656,7 +737,7 @@ describe('ViewDbManager — query command builders', () => {
     fireEvent.change(screen.getByLabelText('Value'), { target: { value: '1' } })
     fireEvent.click(screen.getByText('Build'))
 
-    expect(screen.getByLabelText('SQL query').value).toBe("UPDATE patients SET status = 'inactive'\nWHERE id = 1")
+    expect(screen.getByLabelText('SQL query').value).toBe("UPDATE [patients] SET [status] = 'inactive'\nWHERE [id] = 1")
   })
 
   it('builds a JOIN query across two tables', async () => {
@@ -673,7 +754,7 @@ describe('ViewDbManager — query command builders', () => {
     fireEvent.click(screen.getByText('Build'))
 
     expect(screen.getByLabelText('SQL query').value).toBe(
-      'SELECT * FROM patients\nLEFT JOIN staff ON patients.id = staff.name',
+      'SELECT * FROM [patients]\nLEFT JOIN [staff] ON [patients].[id] = [staff].[name]',
     )
   })
 
@@ -688,7 +769,7 @@ describe('ViewDbManager — query command builders', () => {
     fireEvent.click(screen.getByLabelText('Group by status'))
     fireEvent.click(screen.getByText('Build'))
 
-    expect(screen.getByLabelText('SQL query').value).toBe('SELECT COUNT(id), status FROM patients\nGROUP BY status')
+    expect(screen.getByLabelText('SQL query').value).toBe('SELECT COUNT([id]), [status] FROM [patients]\nGROUP BY [status]')
   })
 
   it('clears cached columns and the in-progress query when switching connections', async () => {
@@ -794,7 +875,7 @@ describe('ViewDbManager — saved queries', () => {
     fireEvent.click(menu.getByText('Active rows'))
 
     await waitFor(() => expect(screen.getByText(/rows returned/i)).toBeTruthy())
-    expect(screen.getByLabelText('SQL query').value).toBe("SELECT * FROM appointments WHERE status = 'active'")
+    expect(screen.getByLabelText('SQL query').value).toBe("SELECT * FROM [appointments] WHERE status = 'active'")
     expect(screen.getByRole('tab', { name: 'Query', selected: true })).toBeTruthy()
   })
 
@@ -805,7 +886,7 @@ describe('ViewDbManager — saved queries', () => {
     fireEvent.change(screen.getByLabelText('Tables'), { target: { value: 'staff' } })
     fireEvent.click(screen.getByRole('button', { name: 'Run Everything' }))
     await waitFor(() => expect(screen.getByText(/3 rows returned/i)).toBeTruthy())
-    expect(screen.getByLabelText('SQL query').value).toBe('SELECT * FROM staff')
+    expect(screen.getByLabelText('SQL query').value).toBe('SELECT * FROM [staff]')
   })
 
   it('keeps saved queries after the page is opened again, and removes them', async () => {
@@ -859,6 +940,535 @@ describe('ViewDbManager — saved queries', () => {
     fireEvent.change(screen.getByLabelText('Table for Count'), { target: { value: 'staff' } })
     fireEvent.click(within(screen.getByRole('region', { name: 'Saved queries' })).getByRole('button', { name: /^Run$/ }))
     await waitFor(() => expect(screen.getByText(/3 rows returned/i)).toBeTruthy())
-    expect(screen.getByLabelText('SQL query').value).toBe('SELECT * FROM staff')
+    expect(screen.getByLabelText('SQL query').value).toBe('SELECT * FROM [staff]')
+  })
+})
+
+describe('ViewDbManager — grouping, favourites and hiding tables', () => {
+  let adapters
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter() }
+  })
+
+  afterEach(() => { cleanup() })
+
+  const saved = [{ id: 'uat', name: 'UAT', type: 'sqlite', inputMode: 'fields', filePath: '/a.db' }]
+  const list = () => within(screen.getByRole('navigation', { name: 'Table list' }))
+  const prefsOf = conn => JSON.parse(window.localStorage.getItem(`nx-db:tables:${conn}`))
+  const menuOf = label => within(list().getByLabelText(label).closest('details'))
+
+  async function connectUat() {
+    render(<ViewDbManager adapters={adapters} savedConnections={saved} onResolveSecret={vi.fn().mockResolvedValue('')} />)
+    fireEvent.click(within(screen.getByRole('region', { name: 'Quick connect' })).getByText('UAT'))
+    await waitFor(() => expect(list().getAllByText('patients').length).toBeGreaterThan(0))
+  }
+
+  // Types a new group name into a table's menu and adds the table to it.
+  function moveToNewGroup(table, group) {
+    const menu = menuOf(`More for ${table}`)
+    fireEvent.change(menu.getByLabelText('New group name'), { target: { value: group } })
+    fireEvent.click(menu.getByRole('button', { name: 'Add' }))
+  }
+
+  it('moves a table into a new group of its own and saves it for the connection', async () => {
+    await connectUat()
+    moveToNewGroup('staff', 'People')
+
+    const group = list().getByRole('button', { name: /People/, expanded: true })
+    expect(within(group.closest('.nx-db-group')).getByText('staff')).toBeTruthy()
+    expect(prefsOf('uat')).toMatchObject({ groups: ['People'], assigned: { staff: 'People' } })
+  })
+
+  it('moves a table into an existing group, then back out', async () => {
+    await connectUat()
+    moveToNewGroup('staff', 'People')
+    fireEvent.click(menuOf('More for patients').getByRole('button', { name: 'People' }))
+    expect(prefsOf('uat').assigned).toEqual({ staff: 'People', patients: 'People' })
+
+    fireEvent.click(menuOf('More for staff').getByRole('button', { name: 'Remove from People' }))
+    expect(prefsOf('uat').assigned).toEqual({ patients: 'People' })
+  })
+
+  it('renames and ungroups a group from its menu', async () => {
+    await connectUat()
+    moveToNewGroup('staff', 'People')
+    const menu = menuOf('Edit group People')
+    fireEvent.change(menu.getByLabelText('Group name'), { target: { value: 'Team' } })
+    fireEvent.click(menu.getByRole('button', { name: 'Rename' }))
+    expect(prefsOf('uat')).toMatchObject({ groups: ['Team'], assigned: { staff: 'Team' } })
+
+    fireEvent.click(menuOf('Edit group Team').getByRole('button', { name: 'Ungroup tables' }))
+    expect(prefsOf('uat')).toMatchObject({ groups: [], assigned: {} })
+    expect(list().queryByLabelText('Edit group Team')).not.toBeTruthy()
+  })
+
+  it('hides a table from the list and shows it under Hidden, then brings it back', async () => {
+    await connectUat()
+    fireEvent.click(menuOf('More for staff').getByRole('button', { name: 'Hide from the table list' }))
+
+    expect(list().queryByText('staff')).not.toBeTruthy()
+    expect(prefsOf('uat').hidden).toEqual(['staff'])
+    fireEvent.click(within(screen.getByRole('group', { name: 'Show tables' })).getByRole('button', { name: /^Hidden/ }))
+    expect(list().getByText('staff')).toBeTruthy()
+    expect(list().queryByText('patients')).not.toBeTruthy()
+
+    fireEvent.click(menuOf('More for staff').getByRole('button', { name: 'Show in the table list' }))
+    expect(prefsOf('uat').hidden).toEqual([])
+  })
+
+  it('remembers favourites, groups, hidden tables and folded groups the next time the connection opens', async () => {
+    window.localStorage.setItem('nx-db:tables:uat', JSON.stringify({
+      starred: ['patients'], hidden: ['staff'], groups: ['Clinical'], assigned: { patients: 'Clinical' }, collapsed: [],
+    }))
+    await connectUat()
+    expect(list().getByText('Starred')).toBeTruthy()
+    expect(list().queryByText('staff')).not.toBeTruthy()
+
+    fireEvent.click(list().getByRole('button', { name: /Clinical/, expanded: true }))
+    expect(prefsOf('uat').collapsed).toEqual(['group:Clinical'])
+  })
+
+  it('picks up stars saved before groups existed', async () => {
+    window.localStorage.setItem('nx-db:starred:uat', JSON.stringify(['staff']))
+    await connectUat()
+    expect(screen.getAllByRole('button', { name: 'Unstar staff' }).length).toBeGreaterThan(0)
+  })
+
+  it('folds every group with one button, which then unfolds them all, and remembers it', async () => {
+    window.localStorage.setItem('nx-db:tables:uat', JSON.stringify({ groups: ['People'], assigned: { staff: 'People' }, collapsed: [] }))
+    await connectUat()
+    expect(list().queryByRole('button', { name: 'Expand all' })).not.toBeTruthy()
+    fireEvent.click(list().getByRole('button', { name: 'Collapse all' }))
+    expect(prefsOf('uat').collapsed).toEqual(['group:People', 'schema:'])
+    expect(list().queryByText('patients')).not.toBeTruthy()
+
+    fireEvent.click(list().getByRole('button', { name: 'Expand all' }))
+    expect(prefsOf('uat').collapsed).toEqual([])
+    expect(list().getByText('patients')).toBeTruthy()
+  })
+
+  it('offers no fold-all button when the list has a single section', async () => {
+    await connectUat()
+    expect(list().queryByRole('button', { name: /Collapse all|Expand all/ })).not.toBeTruthy()
+  })
+
+  it('keeps preferences apart per connection', async () => {
+    window.localStorage.setItem('nx-db:tables:other', JSON.stringify({ hidden: ['staff'] }))
+    await connectUat()
+    expect(list().getByText('staff')).toBeTruthy()
+  })
+})
+
+describe('ViewDbManager — filling fields from a connection string', () => {
+  afterEach(() => { cleanup() })
+
+  function openSqlServerConnStr(value) {
+    render(<ViewDbManager adapters={{ dbManager: makeAdapter() }} />)
+    fireEvent.click(screen.getByText(/Connect to database/i))
+    fireEvent.click(dialog().getByText('SQL Server'))
+    fireEvent.click(dialog().getByRole('tab', { name: 'Connection string' }))
+    fireEvent.change(dialog().getByLabelText('Connection string'), { target: { value } })
+    fireEvent.click(dialog().getByRole('button', { name: 'Fill in fields' }))
+  }
+
+  it('fills the SQL Server fields from a pasted string and shows them', () => {
+    openSqlServerConnStr('Server=db.example,1500;Database=sales;User Id=app;Password=pw;Encrypt=false;TrustServerCertificate=true;')
+
+    expect(dialog().getByRole('tab', { name: 'Fields', selected: true })).toBeTruthy()
+    expect(dialog().getByLabelText('Server / Host').value).toBe('db.example')
+    expect(dialog().getByLabelText('Port').value).toBe('1500')
+    expect(dialog().getByLabelText('Database').value).toBe('sales')
+    expect(dialog().getByLabelText('Username').value).toBe('app')
+    expect(dialog().getByLabelText('Password').value).toBe('pw')
+    expect(dialog().getByLabelText('Encrypt connection').checked).toBe(false)
+    expect(dialog().getByLabelText('Trust server certificate').checked).toBe(true)
+  })
+
+  it('picks interactive sign-in from the string', () => {
+    openSqlServerConnStr('Server=x.database.windows.net;Authentication=Active Directory Interactive;User Id=me@corp.com;')
+    expect(dialog().getByLabelText('Authentication').value).toBe('azure-ad-interactive')
+    expect(dialog().getByLabelText('Account (optional)').value).toBe('me@corp.com')
+  })
+
+  it('says why when the string cannot be read, and stays on it', () => {
+    openSqlServerConnStr('Server=x;Authentication=Active Directory Integrated;')
+    expect(dialog().getByRole('alert').textContent).toMatch(/Couldn.t read that connection string/)
+    expect(dialog().getByRole('tab', { name: 'Connection string', selected: true })).toBeTruthy()
+  })
+})
+
+describe('ViewDbManager — saving connections from the connect dialog', () => {
+  let adapters, onSaveConnection
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter() }
+    onSaveConnection = vi.fn().mockResolvedValue('new-id')
+  })
+
+  afterEach(() => { cleanup() })
+
+  function fillSqlServer() {
+    fireEvent.click(screen.getByText(/Connect to database/i))
+    fireEvent.click(within(dialog().getByRole('group', { name: 'Database type' })).getByText('SQL Server'))
+    fireEvent.change(dialog().getByLabelText('Server / Host'), { target: { value: 'uat.example' } })
+    fireEvent.change(dialog().getByLabelText('Database'), { target: { value: 'sales' } })
+    fireEvent.change(dialog().getByLabelText('Username'), { target: { value: 'app' } })
+    fireEvent.change(dialog().getByLabelText('Password'), { target: { value: 'pw' } })
+  }
+
+  it('saves the connection by default, named after its database, with the password kept as the secret', async () => {
+    render(<ViewDbManager adapters={adapters} onSaveConnection={onSaveConnection} />)
+    fillSqlServer()
+    expect(dialog().getByLabelText('Save this connection').checked).toBe(true)
+    expect(dialog().getByLabelText('Connection name').placeholder).toBe('sales')
+    fireEvent.click(dialog().getByRole('button', { name: 'Connect' }))
+
+    await waitFor(() => expect(onSaveConnection).toHaveBeenCalledOnce())
+    const [meta, secret] = onSaveConnection.mock.calls[0]
+    expect(meta).toMatchObject({ name: 'sales', type: 'sqlserver', inputMode: 'fields', host: 'uat.example', database: 'sales', user: 'app' })
+    expect(meta.password).toBeUndefined()
+    expect(secret).toBe('pw')
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'sales', selected: true })).toBeTruthy())
+  })
+
+  it('uses the name typed in, and replaces a saved connection with the same name', async () => {
+    const saved = [{ id: 'old', name: 'UAT', type: 'sqlserver', inputMode: 'fields', host: 'old.example' }]
+    render(<ViewDbManager adapters={adapters} savedConnections={saved} onSaveConnection={onSaveConnection} />)
+    fillSqlServer()
+    fireEvent.change(dialog().getByLabelText('Connection name'), { target: { value: 'uat' } })
+    expect(dialog().getByText(/Replaces the saved connection/)).toBeTruthy()
+    fireEvent.click(dialog().getByRole('button', { name: 'Connect' }))
+    await waitFor(() => expect(onSaveConnection).toHaveBeenCalledOnce())
+    expect(onSaveConnection.mock.calls[0][0]).toMatchObject({ id: 'old', name: 'uat' })
+  })
+
+  it('saves a connection string whole, as the secret', async () => {
+    render(<ViewDbManager adapters={adapters} onSaveConnection={onSaveConnection} />)
+    fireEvent.click(screen.getByText(/Connect to database/i))
+    fireEvent.click(dialog().getByText('SQL Server'))
+    fireEvent.click(dialog().getByRole('tab', { name: 'Connection string' }))
+    fireEvent.change(dialog().getByLabelText('Connection string'), { target: { value: 'Server=h;Database=reports;User Id=u;Password=p;' } })
+    expect(dialog().getByLabelText('Connection name').placeholder).toBe('reports')
+    fireEvent.click(dialog().getByRole('button', { name: 'Connect' }))
+    await waitFor(() => expect(onSaveConnection).toHaveBeenCalledOnce())
+    expect(onSaveConnection).toHaveBeenCalledWith(
+      { name: 'reports', type: 'sqlserver', inputMode: 'connstr' },
+      'Server=h;Database=reports;User Id=u;Password=p;',
+    )
+  })
+
+  it('connects without saving when the box is unticked', async () => {
+    render(<ViewDbManager adapters={adapters} onSaveConnection={onSaveConnection} />)
+    fillSqlServer()
+    fireEvent.click(dialog().getByLabelText('Save this connection'))
+    fireEvent.click(dialog().getByRole('button', { name: 'Connect' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeTruthy())
+    expect(onSaveConnection).not.toHaveBeenCalled()
+  })
+
+  it('stays connected and says so when saving fails', async () => {
+    onSaveConnection.mockRejectedValue(new Error('disk full'))
+    render(<ViewDbManager adapters={adapters} onSaveConnection={onSaveConnection} />)
+    fillSqlServer()
+    fireEvent.click(dialog().getByRole('button', { name: 'Connect' }))
+    await waitFor(() => expect(screen.getByText(/Connected, but couldn.t save it: disk full/)).toBeTruthy())
+    expect(screen.getByRole('navigation', { name: 'Table list' })).toBeTruthy()
+  })
+
+  it('offers no save option when the host has nowhere to save', () => {
+    render(<ViewDbManager adapters={adapters} />)
+    fillSqlServer()
+    expect(dialog().queryByLabelText('Save this connection')).not.toBeTruthy()
+  })
+})
+
+describe('ViewDbManager — reopening connections from last time', () => {
+  let adapters
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter() }
+  })
+
+  afterEach(() => { cleanup() })
+
+  const saved = [
+    { id: 'a', name: 'UAT', type: 'sqlite', inputMode: 'fields', filePath: '/a.db' },
+    { id: 'b', name: 'Prod', type: 'sqlite', inputMode: 'fields', filePath: '/b.db' },
+    { id: 'c', name: 'Azure', type: 'sqlserver', inputMode: 'fields', host: 'x.database.windows.net', authentication: 'azure-ad-interactive' },
+  ]
+  const connTabs = () => within(screen.getByRole('tablist', { name: 'Connections' }))
+  const remembered = () => JSON.parse(window.localStorage.getItem('nx-db:open-connections'))
+  const renderView = () => render(<ViewDbManager adapters={adapters} savedConnections={saved} onResolveSecret={vi.fn().mockResolvedValue('')} />)
+
+  it('reconnects the saved connections that were open, showing the one that was showing', async () => {
+    window.localStorage.setItem('nx-db:open-connections', JSON.stringify({ ids: ['a', 'b'], active: 'b' }))
+    renderView()
+    await waitFor(() => expect(connTabs().getByRole('tab', { name: 'Prod', selected: true })).toBeTruthy())
+    expect(connTabs().getByRole('tab', { name: 'UAT', selected: false })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Close UAT' })).toBeTruthy()
+    expect(adapters.dbManager.connect).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves a browser sign-in connection waiting for a click instead of opening a sign-in window', async () => {
+    window.localStorage.setItem('nx-db:open-connections', JSON.stringify({ ids: ['a', 'c'], active: 'a' }))
+    renderView()
+    await waitFor(() => expect(connTabs().getByRole('tab', { name: 'UAT', selected: true })).toBeTruthy())
+    expect(adapters.dbManager.connect).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: 'Close Azure' })).not.toBeTruthy()
+    expect(screen.getByRole('button', { name: "Don't reopen Azure" })).toBeTruthy()
+    // Still remembered until it's reopened or dismissed.
+    expect(remembered().ids).toEqual(['a', 'c'])
+
+    fireEvent.click(screen.getByRole('button', { name: "Don't reopen Azure" }))
+    expect(remembered().ids).toEqual(['a'])
+  })
+
+  it('marks waiting connections on the welcome screen when nothing else reopened', async () => {
+    window.localStorage.setItem('nx-db:open-connections', JSON.stringify({ ids: ['c'], active: 'c' }))
+    renderView()
+    await waitFor(() => expect(within(screen.getByRole('region', { name: 'Quick connect' })).getByText('Was open')).toBeTruthy())
+    expect(adapters.dbManager.connect).not.toHaveBeenCalled()
+  })
+
+  it('remembers saved connections as they open and close', async () => {
+    renderView()
+    fireEvent.click(within(screen.getByRole('region', { name: 'Quick connect' })).getByText('UAT'))
+    await waitFor(() => expect(connTabs().getByRole('tab', { name: 'UAT', selected: true })).toBeTruthy())
+    expect(remembered()).toEqual({ ids: ['a'], active: 'a' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close UAT' }))
+    expect(remembered()).toEqual({ ids: [], active: null })
+  })
+
+  it('skips saved connections that no longer exist, and reports ones that fail', async () => {
+    window.localStorage.setItem('nx-db:open-connections', JSON.stringify({ ids: ['gone', 'a', 'b'], active: 'a' }))
+    adapters.dbManager.connect.mockImplementation(async (_type, config) => {
+      if (config.filePath === '/b.db') throw new Error('file locked')
+      return { ok: true, tables: ['patients'] }
+    })
+    renderView()
+    await waitFor(() => expect(screen.getByText("Couldn't reopen Prod: file locked")).toBeTruthy())
+    expect(connTabs().getByRole('tab', { name: 'UAT', selected: true })).toBeTruthy()
+    expect(remembered().ids).toEqual(['a'])
+  })
+
+  it('does not reopen one-off connections', async () => {
+    window.localStorage.setItem('nx-db:open-connections', JSON.stringify({ ids: [], active: null }))
+    renderView()
+    expect(screen.getByText('Database Manager')).toBeTruthy()
+    expect(adapters.dbManager.connect).not.toHaveBeenCalled()
+  })
+})
+
+describe('ViewDbManager — editing by column type, adding and deleting rows', () => {
+  let adapters
+  const typed = [
+    { name: 'id', dataType: 'int', isPrimaryKey: true, nullable: false, isIdentity: true },
+    { name: 'qty', dataType: 'tinyint', isPrimaryKey: false, nullable: true },
+    { name: 'active', dataType: 'bit', isPrimaryKey: false, nullable: false },
+    { name: 'name', dataType: 'nvarchar', isPrimaryKey: false, nullable: false, maxLength: 5 },
+    { name: 'joined', dataType: 'date', isPrimaryKey: false, nullable: true },
+  ]
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter({
+      connect: vi.fn().mockResolvedValue({ ok: true, tables: ['members'] }),
+      getRows: vi.fn().mockResolvedValue({
+        columns: ['id', 'qty', 'active', 'name', 'joined'],
+        rows: [[1, 5, true, 'Al', null], [2, null, false, 'Bo', null]],
+      }),
+      getColumns: vi.fn().mockResolvedValue({ ok: true, columns: typed }),
+      insertRow: vi.fn().mockResolvedValue({ ok: true, affected: 1 }),
+    }) }
+  })
+
+  afterEach(() => { cleanup() })
+
+  async function openMembers() {
+    render(<ViewDbManager adapters={adapters} />)
+    fireEvent.click(screen.getByText(/Connect to database/i))
+    fireEvent.click(screen.getByText('SQLite'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Connection string' }))
+    fireEvent.change(screen.getByLabelText(/connection string/i), { target: { value: '/m.db' } })
+    fireEvent.click(screen.getByText('Connect'))
+    await waitFor(() => screen.getByText('members'))
+    openTable('members')
+    await waitFor(() => screen.getByRole('table'))
+    await waitFor(() => expect(adapters.dbManager.getColumns).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getAllByText('tinyint').length).toBeGreaterThan(0))
+  }
+  const grid = () => within(screen.getByRole('region', { name: 'Table data' }))
+  const cell = (text) => grid().getByText(text).closest('td')
+
+  it('shows each column’s type in its header', async () => {
+    await openMembers()
+    expect(grid().getByText('nvarchar(5)')).toBeTruthy()
+    expect(grid().getByText('bit')).toBeTruthy()
+  })
+
+  it('keeps letters out of a whole-number cell and refuses a number out of range', async () => {
+    await openMembers()
+    fireEvent.doubleClick(cell('5'))
+    const input = grid().getByLabelText('Edit qty')
+    fireEvent.change(input, { target: { value: '4x' } })
+    expect(input.value).toBe('5')
+    fireEvent.change(input, { target: { value: '300' } })
+    expect(grid().getByRole('alert').textContent).toMatch(/0 to 255/)
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(adapters.dbManager.updateCell).not.toHaveBeenCalled()
+    expect(grid().getByLabelText('Edit qty')).toBeTruthy()
+
+    fireEvent.change(input, { target: { value: '42' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(adapters.dbManager.updateCell).toHaveBeenCalledWith('sqlite', expect.anything(), 'members', 'id', 1, 'qty', 42))
+  })
+
+  it('drops a value the column can’t hold when the editor is left, and says why', async () => {
+    await openMembers()
+    fireEvent.doubleClick(cell('5'))
+    fireEvent.change(grid().getByLabelText('Edit qty'), { target: { value: '999' } })
+    fireEvent.blur(grid().getByLabelText('Edit qty'))
+    await waitFor(() => expect(screen.getByText(/Not saved: Must be a whole number from 0 to 255/)).toBeTruthy())
+    expect(adapters.dbManager.updateCell).not.toHaveBeenCalled()
+  })
+
+  it('writes a bit straight from its checkbox', async () => {
+    await openMembers()
+    fireEvent.click(grid().getByLabelText('active for row 2'))
+    await waitFor(() => expect(adapters.dbManager.updateCell).toHaveBeenCalledWith('sqlite', expect.anything(), 'members', 'id', 2, 'active', true))
+    expect(grid().getByLabelText('active for row 2').checked).toBe(true)
+  })
+
+  it('sets a nullable cell to NULL from its editor', async () => {
+    await openMembers()
+    fireEvent.doubleClick(cell('5'))
+    fireEvent.mouseDown(grid().getByRole('button', { name: 'NULL' }))
+    await waitFor(() => expect(adapters.dbManager.updateCell).toHaveBeenCalledWith('sqlite', expect.anything(), 'members', 'id', 1, 'qty', null))
+  })
+
+  it('gives text its length limit and dates a date picker, and leaves identity columns alone', async () => {
+    await openMembers()
+    fireEvent.doubleClick(cell('Al'))
+    expect(grid().getByLabelText('Edit name').maxLength).toBe(5)
+    fireEvent.keyDown(grid().getByLabelText('Edit name'), { key: 'Escape' })
+
+    const joined = grid().getAllByText('null')[0].closest('td')
+    fireEvent.doubleClick(joined)
+    expect(grid().getByLabelText('Edit joined').type).toBe('date')
+    fireEvent.keyDown(grid().getByLabelText('Edit joined'), { key: 'Escape' })
+
+    fireEvent.doubleClick(cell('1'))
+    expect(grid().queryByLabelText('Edit id')).not.toBeTruthy()
+  })
+
+  it('edits and deletes by every column of a composite key', async () => {
+    adapters.dbManager.getColumns.mockResolvedValue({ ok: true, columns: typed.map(c => (c.name === 'name' ? { ...c, isPrimaryKey: true } : c)) })
+    await openMembers()
+    fireEvent.click(grid().getByLabelText('active for row 1'))
+    await waitFor(() => expect(adapters.dbManager.updateCell).toHaveBeenCalledWith('sqlite', expect.anything(), 'members', ['id', 'name'], [1, 'Al'], 'active', false))
+
+    fireEvent.click(grid().getByRole('button', { name: 'Delete row 2' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(adapters.dbManager.deleteRows).toHaveBeenCalledWith('sqlite', expect.anything(), 'members', ['id', 'name'], [[2, 'Bo']]))
+  })
+
+  it('turns editing and deleting off for a table with no primary key, but still adds rows', async () => {
+    adapters.dbManager.getColumns.mockResolvedValue({ ok: true, columns: typed.map(c => ({ ...c, isPrimaryKey: false })) })
+    await openMembers()
+    expect(screen.getByRole('note').textContent).toMatch(/no primary key/)
+    expect(grid().getByRole('button', { name: 'Delete row 1' }).disabled).toBe(true)
+    expect(grid().getByLabelText('active for row 1').disabled).toBe(true)
+    fireEvent.doubleClick(cell('Al'))
+    expect(grid().queryByLabelText('Edit name')).not.toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Add row' }).disabled).toBe(false)
+  })
+
+  it('adds a row: identity left to the database, required fields checked, blanks left to defaults', async () => {
+    await openMembers()
+    fireEvent.click(screen.getByRole('button', { name: 'Add row' }))
+    const form = within(screen.getByRole('dialog'))
+    expect(form.getByLabelText(/^id/).disabled).toBe(true)
+
+    fireEvent.click(form.getByRole('button', { name: 'Add row' }))
+    expect(form.getByText('Required')).toBeTruthy()
+    expect(adapters.dbManager.insertRow).not.toHaveBeenCalled()
+
+    fireEvent.change(form.getByLabelText(/^name/), { target: { value: 'Cy' } })
+    fireEvent.change(form.getByLabelText(/^qty/), { target: { value: '7' } })
+    fireEvent.click(form.getByRole('button', { name: 'Add row' }))
+    await waitFor(() => expect(adapters.dbManager.insertRow).toHaveBeenCalledWith('sqlite', expect.anything(), 'members', { qty: 7, active: false, name: 'Cy' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeTruthy())
+    expect(adapters.dbManager.getRows).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the add-row form open with the database’s reason when the insert fails', async () => {
+    adapters.dbManager.insertRow.mockRejectedValue(new Error('Violation of UNIQUE KEY constraint'))
+    await openMembers()
+    fireEvent.click(screen.getByRole('button', { name: 'Add row' }))
+    const form = within(screen.getByRole('dialog'))
+    fireEvent.change(form.getByLabelText(/^name/), { target: { value: 'Al' } })
+    fireEvent.click(form.getByRole('button', { name: 'Add row' }))
+    await waitFor(() => expect(form.getByRole('alert').textContent).toMatch(/UNIQUE KEY/))
+  })
+
+  it('adds a row to the demo data too', async () => {
+    cleanup()
+    render(<ViewDbManager adapters={adapters} />)
+    fireEvent.click(screen.getByText('Try the demo'))
+    await waitFor(() => screen.getByText('patients'))
+    openTable('staff')
+    await waitFor(() => screen.getByRole('table'))
+    fireEvent.click(screen.getByRole('button', { name: 'Add row' }))
+    const form = within(screen.getByRole('dialog'))
+    fireEvent.change(form.getByLabelText(/^staff_id/), { target: { value: '9' } })
+    fireEvent.change(form.getByLabelText(/^name/), { target: { value: 'New Person' } })
+    fireEvent.click(form.getByRole('button', { name: 'Add row' }))
+    await waitFor(() => expect(grid().getByText('New Person')).toBeTruthy())
+  })
+})
+
+describe('ViewDbManager — query results', () => {
+  let adapters
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter() }
+  })
+
+  afterEach(() => { cleanup() })
+
+  async function queryTab() {
+    render(<ViewDbManager adapters={adapters} />)
+    fireEvent.click(screen.getByText(/Connect to database/i))
+    fireEvent.click(screen.getByText('SQLite'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Connection string' }))
+    fireEvent.change(screen.getByLabelText(/connection string/i), { target: { value: '/q.db' } })
+    fireEvent.click(screen.getByText('Connect'))
+    await waitFor(() => screen.getByText('patients'))
+    openTable('patients')
+    await waitFor(() => screen.getByRole('table'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Query' }))
+    fireEvent.change(screen.getByLabelText('SQL query'), { target: { value: 'SELECT [id], [Key] FROM [patients] WHERE 1 = 0' } })
+  }
+
+  it('shows an empty result’s column headers and says no rows came back', async () => {
+    adapters.dbManager.runQuery.mockResolvedValue({ columns: ['id', 'Key'], rows: [], sets: [{ columns: ['id', 'Key'], rows: [] }], affected: null })
+    await queryTab()
+    fireEvent.click(screen.getByText('Run query'))
+    await waitFor(() => expect(screen.getByText('0 rows returned')).toBeTruthy())
+    expect(screen.getByText('Key')).toBeTruthy()
+    expect(screen.getByText('No rows')).toBeTruthy()
+  })
+
+  it('shows every result set a batch returns', async () => {
+    adapters.dbManager.runQuery.mockResolvedValue({
+      columns: ['a'], rows: [[1]], affected: null,
+      sets: [{ columns: ['a'], rows: [[1]] }, { columns: ['b', 'c'], rows: [[2, 3], [4, 5]] }],
+    })
+    await queryTab()
+    fireEvent.click(screen.getByText('Run query'))
+    await waitFor(() => expect(screen.getByText('Result 2 of 2')).toBeTruthy())
+    expect(screen.getByText('1 row returned')).toBeTruthy()
+    expect(screen.getByText('2 rows returned')).toBeTruthy()
   })
 })

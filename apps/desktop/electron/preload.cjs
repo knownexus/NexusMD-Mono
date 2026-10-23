@@ -142,6 +142,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('db-manager:delete-rows', { type, config, table, primaryKey, values }),
     updateCell: (type, config, table, primaryKey, primaryValue, column, value) =>
       ipcRenderer.invoke('db-manager:update-cell', { type, config, table, primaryKey, primaryValue, column, value }),
+    insertRow:  (type, config, table, values) =>
+      ipcRenderer.invoke('db-manager:insert-row',  { type, config, table, values }),
     runQuery:   (type, config, sql) =>
       ipcRenderer.invoke('db-manager:run-query',  { type, config, sql }),
     getColumns: (type, config, table) =>
