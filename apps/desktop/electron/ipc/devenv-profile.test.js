@@ -73,8 +73,12 @@ describe('read', () => {
   it('reads text with its stamp, strips and reports a BOM, and reports a missing file', async () => {
     fs.writeFileSync(path.join(dir, 'bom.ps1'), Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('Write-Host hi\r\n')]))
     expect(await call('devenv:profile-read', cfg(), 'bom.ps1')).toMatchObject({ text: 'Write-Host hi\r\n', bom: true })
-    expect((await call('devenv:profile-read', cfg(), 'docker\\services.compose.yml')).text).toBe('services: {}\n')
+    expect((await call('devenv:profile-read', cfg(), 'docker/services.compose.yml')).text).toBe('services: {}\n')
     expect(await call('devenv:profile-read', cfg(), 'mac.json')).toEqual({ missing: true })
+  })
+  // A backslash only separates folders on Windows.
+  it.skipIf(process.platform !== 'win32')('reads a file named with backslashes', async () => {
+    expect((await call('devenv:profile-read', cfg(), 'docker\\services.compose.yml')).text).toBe('services: {}\n')
   })
   it('refuses binary and oversized files', async () => {
     fs.writeFileSync(path.join(dir, 'b.bin'), Buffer.from([1, 0, 2]))

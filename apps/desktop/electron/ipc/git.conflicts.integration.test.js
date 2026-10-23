@@ -415,6 +415,9 @@ describe('git:unresolve and special files', { timeout: 60000 }, () => {
     const dir = path.join(root, 'Link')
     fs.mkdirSync(dir)
     run(dir, 'init', '-q')
+    // Windows git writes a link as a plain file. Where links are real, a dangling one is refused by the
+    // worktree path check before the conflict can be described, so the test pins the Windows behaviour.
+    run(dir, 'config', 'core.symlinks', 'false')
     write(dir, 'x', 'x\n'); commit(dir, 'base')
     const setLink = target => {
       const oid = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: dir, input: target }).toString().trim()
