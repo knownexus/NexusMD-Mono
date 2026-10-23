@@ -104,7 +104,7 @@ Electron-builder publishes to GitHub Releases using `GH_TOKEN`.
 GH_TOKEN=<token> npm -w apps/desktop run build:win    # or :mac / :linux
 ```
 
-Releases go to `github.com/Knownexus/NexusMD-Desktop`. Auto-update checks that repo on startup.
+Releases go to `github.com/knownexus/NexusMD-Mono` (Releases tab); the workflow's built-in token is enough. Auto-update checks that repo on startup. Builds before 1.0.1 looked at the old `Knownexus/NexusMD-Desktop` repo, so they won't see updates from here; install 1.0.1 once by hand.
 
 ### E2E tests
 

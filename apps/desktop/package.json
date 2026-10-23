@@ -124,8 +124,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "Knownexus",
-      "repo": "NexusMD-Desktop"
+      "owner": "knownexus",
+      "repo": "NexusMD-Mono"
     }
   }
 }

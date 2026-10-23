@@ -8,6 +8,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# electron-builder creates the GitHub Release on this repo with the built-in token.
+permissions:
+  contents: write
+
 jobs:
   build:
     name: ${{ matrix.os }}
