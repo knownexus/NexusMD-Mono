@@ -1,5 +1,6 @@
 import React from 'react'
 import { worktreeName, branchLabel, worktreeId, wordMatch, matchesFilter, branchState, branchMeta, repoPills } from '@nexusmd/core'
+import { FoldAllButton } from '@nexusmd/ui'
 
 const TONE_BADGE = { bad: 'bad', warn: 'warn', info: 'info', ok: 'ok', muted: '' }
 
@@ -59,13 +60,14 @@ export function BranchList({ repos, scoped, errors, collapsed, onToggleRepo, onS
   }
   const shown = groups.map(g => g.name)
   const allCollapsed = shown.every(n => collapsed.includes(n))
-  const noneCollapsed = !shown.some(n => collapsed.includes(n))
   return (
     <div className="nx-gw-list" ref={listRef}>
       <div role="group" aria-label="Fold repositories" style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <span className="nx-gw-list-keys" title="Next / previous branch"><span className="kbd">j</span><span className="kbd">k</span></span>
-        <button className="btn sm ghost" disabled={noneCollapsed} onClick={() => onSetCollapsed(collapsed.filter(n => !shown.includes(n)))}>Expand all</button>
-        <button className="btn sm ghost" disabled={allCollapsed} onClick={() => onSetCollapsed([...collapsed, ...shown.filter(n => !collapsed.includes(n))])}>Collapse all</button>
+        {/* Repositories outside this view keep their own state. */}
+        <FoldAllButton what="repositories" allCollapsed={allCollapsed}
+          onExpandAll={() => onSetCollapsed(collapsed.filter(n => !shown.includes(n)))}
+          onCollapseAll={() => onSetCollapsed([...collapsed, ...shown.filter(n => !collapsed.includes(n))])} />
       </div>
       {groups.map(g => {
         // A search unfolds everything it found.

@@ -74,18 +74,19 @@ describe('BranchList', () => {
     expect(onToggleRepo).toHaveBeenCalledWith('A')
   })
 
-  it('expands or collapses every repository shown, and disables whichever is already done', () => {
+  it('folds every repository shown with one button, which then unfolds them all', () => {
     const repos = [{ name: 'A', path: 'C:/repos/A' }, { name: 'B', path: 'C:/repos/B' }]
     const trees = [tree(), tree({ repo: 'B', repoRoot: 'C:/repos/B', path: 'C:/repos/B' })]
     const onSetCollapsed = vi.fn()
-    const view = show(trees, { repos, collapsed: ['Hidden'], onSetCollapsed })
-    expect(screen.getByRole('button', { name: 'Expand all' }).disabled).toBe(true)
+    const view = show(trees, { repos, collapsed: ['Hidden', 'A'], onSetCollapsed })
+    // Anything still open: the button folds.
+    expect(screen.queryByRole('button', { name: 'Expand all' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
     // Repositories outside this view keep their own state.
     expect(onSetCollapsed).toHaveBeenLastCalledWith(['Hidden', 'A', 'B'])
     view.rerender(<BranchList repos={repos} scoped={{ worktrees: trees, inactiveBranches: [] }} errors={[]} collapsed={['Hidden', 'A', 'B']}
       onToggleRepo={() => {}} onSetCollapsed={onSetCollapsed} selected={null} onSelect={() => {}} />)
-    expect(screen.getByRole('button', { name: 'Collapse all' }).disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Collapse all' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Expand all' }))
     expect(onSetCollapsed).toHaveBeenLastCalledWith(['Hidden'])
   })

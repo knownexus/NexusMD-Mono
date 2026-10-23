@@ -6,6 +6,7 @@
 // Stylesheet:  import '@nexusmd/ui/styles.css'
 
 export { Icon } from './icons.jsx'
+export { FoldAllButton } from './fold-all-button.jsx'
 export {
   StatusChip, PrioChip, PlModal, PlFld, DueLabel,
 } from './planner-chips.jsx'
