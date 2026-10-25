@@ -18,7 +18,7 @@ import {
   WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
   ApiClientProvider, ApiClientView, ViewDbManager,
 } from '@nexusmd/ui'
-import { effectiveSidebar, ICON_RAIL_WIDTH, orderedNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
+import { effectiveSidebar, ICON_RAIL_WIDTH, visibleNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
 import { useLocalItems } from './items-state.js'
 import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
@@ -113,6 +113,7 @@ const DEFAULT_TWEAKS = {
   density: 'balanced', sidebar: 'labels', typeLabels: false,
   widgetOrder: DASH_WIDGET_ORDER,
   navOrder: DEFAULT_NAV_ORDER,
+  navHidden: [],
   quickLinks: [
     { label: 'UAT Testing', url: 'https://cirrus.uat.msl.co.uk/', color: 'var(--info)' },
     { label: 'Dev Testing', url: 'https://cirrus.dev.msl.co.uk/', color: 'var(--success)' },
@@ -791,13 +792,17 @@ function App() {
     return () => window.removeEventListener('nexusmd:create-wi', handler)
   }, [])
 
+  // What the sidebar shows, in its order; the number keys jump to the entry with that number.
+  const shownNav = visibleNav(tweaks.navOrder, tweaks.navHidden, NAV)
+  const shownNavRef = React.useRef(shownNav)
+  shownNavRef.current = shownNav
   React.useEffect(() => {
     const handler = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const idx = parseInt(e.key, 10)
       if (idx >= 1 && idx <= 9) {
-        const target = NAV[idx - 1]
+        const target = shownNavRef.current[idx - 1]
         if (target) setView(target.id)
       }
     }
@@ -871,7 +876,7 @@ function App() {
             <Icon name="dashboard" size={18} />
             {!iconsOnly && <strong style={{ fontSize: 14 }}>NexusMD</strong>}
           </div>
-          {orderedNav(tweaks.navOrder, NAV).map((item, idx) => (
+          {shownNav.map((item, idx) => (
             <button
               key={item.id}
               onClick={() => setView(item.id)}

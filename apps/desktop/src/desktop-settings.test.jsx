@@ -95,7 +95,20 @@ describe('DesktopSettings tab navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Appearance' }))
     expect(screen.getByLabelText('Zoom')).toBeTruthy()
     expect(screen.getAllByTestId('nav-order-row').length).toBe(3)
-    expect(screen.getByRole('button', { name: 'Reset order' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Reset sidebar' })).toBeTruthy()
+  })
+
+  it('hides and shows sidebar entries, and Reset sidebar restores order and visibility', () => {
+    const setTweak = vi.fn()
+    const props = { ...defaultProps, setTweak, tweaks: { ...defaultProps.tweaks, navHidden: ['calendar'] } }
+    render(<DesktopSettings {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }))
+    expect(screen.getByRole('checkbox', { name: 'Show Calendar in the sidebar' }).checked).toBe(false)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Show Work Items in the sidebar' }))
+    expect(setTweak).toHaveBeenLastCalledWith('navHidden', ['calendar', 'work'])
+    fireEvent.click(screen.getByRole('button', { name: 'Reset sidebar' }))
+    expect(setTweak).toHaveBeenCalledWith('navOrder', ['dashboard', 'calendar', 'work'])
+    expect(setTweak).toHaveBeenLastCalledWith('navHidden', [])
   })
 
   it('shows Planner tab content when clicked', () => {

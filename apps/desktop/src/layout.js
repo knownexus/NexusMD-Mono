@@ -34,3 +34,10 @@ export function orderedNav(navOrder, nav) {
   const rest = nav.filter(item => !seen.has(item.id))
   return [...ordered, ...rest]
 }
+
+// The entries the sidebar shows: orderedNav without the ids the user hid in Settings. A hidden entry
+// stays in the Settings list (so it can be shown again) and is still reachable by view id.
+export function visibleNav(navOrder, hidden, nav) {
+  const gone = new Set(Array.isArray(hidden) ? hidden : [])
+  return orderedNav(navOrder, nav).filter(item => !gone.has(item.id))
+}

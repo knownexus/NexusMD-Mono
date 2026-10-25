@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { effectiveSidebar, SIDEBAR_BREAKPOINT, orderedNav, toggledSidebar, mountedViews } from './layout.js'
+import { effectiveSidebar, SIDEBAR_BREAKPOINT, orderedNav, visibleNav, toggledSidebar, mountedViews } from './layout.js'
 
 describe('effectiveSidebar', () => {
   it('forces icons below the breakpoint regardless of preference', () => {
@@ -54,5 +54,23 @@ describe('orderedNav', () => {
   it('falls back to full nav order when navOrder is missing', () => {
     expect(orderedNav(undefined, NAV).map(i => i.id)).toEqual(['a', 'b', 'c'])
     expect(orderedNav([], NAV).map(i => i.id)).toEqual(['a', 'b', 'c'])
+  })
+})
+
+describe('visibleNav', () => {
+  const NAV = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+
+  it('leaves out hidden entries and keeps the stored order of the rest', () => {
+    expect(visibleNav(['c', 'a', 'b'], ['a'], NAV).map(i => i.id)).toEqual(['c', 'b'])
+  })
+  it('shows everything when nothing is hidden, or the list is missing or malformed', () => {
+    for (const hidden of [[], undefined, null, 'a']) expect(visibleNav(['b', 'a', 'c'], hidden, NAV).map(i => i.id)).toEqual(['b', 'a', 'c'])
+  })
+  it('ignores hidden ids that are no longer entries, and can hide them all', () => {
+    expect(visibleNav(undefined, ['gone'], NAV).map(i => i.id)).toEqual(['a', 'b', 'c'])
+    expect(visibleNav(undefined, ['a', 'b', 'c'], NAV)).toEqual([])
+  })
+  it('shows a newly added entry even though the stored order lacks it', () => {
+    expect(visibleNav(['b'], ['b'], NAV).map(i => i.id)).toEqual(['a', 'c'])
   })
 })
