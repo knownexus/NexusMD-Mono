@@ -233,7 +233,8 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
                       onResolved={() => { setJustResolved({ tree: tree.path, path: resolvePath }); onSaved?.() }} />
                   : editor && !diffChange
                   ? <div role="note" style={{ color: 'var(--text-muted)' }}>No changes yet.</div>
-                  : <DiffPane change={diffChange} diff={diff} busy={busy} onHunk={(index, stamp) => onHunk(diffChange, index, stamp, diff.reload)}
+                  : <DiffPane change={diffChange} diff={diff} busy={busy}
+                      images={adapter.readImage ? { load: (side, rel) => adapter.readImage(repo, tree.path, registered, rel, side), key: `${tree.path}|${diff.result?.stamp ?? ''}` } : null} onHunk={(index, stamp) => onHunk(diffChange, index, stamp, diff.reload)}
                       onFile={diffChange && (action => (action === 'stage' || action === 'unstage' ? onWrite(action, [diffChange.id]) : onAction(action, [diffChange.id])))}
                       onLine={diffChange && diffChange.area !== 'conflict' ? n => openFile(diffChange.path, n) : null} />)}
               </div>

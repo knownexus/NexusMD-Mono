@@ -43,6 +43,7 @@ export const gitAdapter = {
   // Tells the other windows a repository was written to; onChanged(cb) hears that and returns its unsubscribe.
   notifyChanged(repoPath) { window.electronAPI?.popout?.changed(repoPath) },
   onChanged(callback) { return window.electronAPI?.popout?.onChanged(callback) ?? (() => {}) },
+  readImage(repo, worktreePath, registered, rel, side) { return api().readImage(repo, worktreePath, registered, rel, side) },
   reveal(repo, worktreePath, registered, rel) { return api().reveal(repo, worktreePath, registered, rel) },
   importFiles(repo, worktreePath, registered, destDir, sources, options) { return api().importFiles(repo, worktreePath, registered, destDir, sources, options) },
   pathForFile(file) { return api()?.pathForFile?.(file) || '' },

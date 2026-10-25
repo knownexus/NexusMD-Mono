@@ -14,6 +14,12 @@ const { resolveInside, readText, checkText, writeAtomic, sha256, BOM } = require
 const MAX_LIST = 50000;
 const MAX_READ_BYTES = 1024 * 1024;
 const MAX_WRITE_BYTES = 2 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+// Kept in step with views/git/image-types.js.
+const IMAGE_TYPES = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+  bmp: 'image/bmp', ico: 'image/x-icon', svg: 'image/svg+xml', avif: 'image/avif',
+};
 
 const notWorktreeFile = rel => new Error(`Not a worktree file: ${rel}`);
 
@@ -68,6 +74,33 @@ function registerFiles(handle, { git, requireExactWorktree, requirePaths, withRe
     const full = rel ? (await target(repo, wt, registered, rel)).full : await fsp.realpath(wt);
     if (!(await fsp.stat(full).catch(() => null))) throw new Error(`${rel} no longer exists.`);
     await reveal(full, !rel);
+  });
+
+  // An image of the worktree as a data URL, from the working tree, the index or HEAD, for the editor
+  // and the diff. Only known image extensions; the bytes are never run, just shown by an <img>.
+  handle('git:readImage', async (_e, repo, wt, registered, rel, side) => {
+    const mime = typeof rel === 'string' ? IMAGE_TYPES[path.extname(rel).slice(1).toLowerCase()] : null;
+    if (!mime) throw new Error(`${rel} isn't an image type that can be shown.`);
+    if (!['working', 'index', 'head'].includes(side)) throw new Error(`Unknown image side: ${side}`);
+    const { real } = await target(repo, wt, registered, rel);
+    const tooBig = n => new Error(`${rel} is too large to show here (${Math.round(n / 1024 / 1024)} MB).`);
+    let bytes;
+    if (side === 'working') {
+      const st = await fsp.stat(real).catch(() => null);
+      if (!st) return { missing: true };
+      if (!st.isFile()) throw new Error(`Not a file: ${rel}`);
+      if (st.size > MAX_IMAGE_BYTES) throw tooBig(st.size);
+      bytes = await fsp.readFile(real);
+    } else {
+      const spec = side === 'head' ? `HEAD:${rel}` : `:0:${rel}`;
+      const sized = await git(wt, ['cat-file', '-s', spec]);
+      if (sized.code !== 0) return { missing: true };
+      if (Number(sized.stdout) > MAX_IMAGE_BYTES) throw tooBig(Number(sized.stdout));
+      const blob = await git(wt, ['cat-file', 'blob', spec]);
+      if (blob.code !== 0) return { missing: true };
+      bytes = blob.raw;
+    }
+    return { mime, size: bytes.length, url: `data:${mime};base64,${bytes.toString('base64')}` };
   });
 
   handle('git:readFile', async (_e, repo, wt, registered, rel) => {

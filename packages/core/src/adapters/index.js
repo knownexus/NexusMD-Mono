@@ -219,6 +219,8 @@ export const IGitAdapter = {
   readFile:      async (repo, worktreePath, registered, rel) => Promise.reject(new Error('IGitAdapter.readFile not implemented')),
   // options = { expectedStamp, overwrite, bom } → { ok: true, stamp } | { ok: false, conflict: true, stamp } | { ok: false, missing: true }
   writeFile:     async (repo, worktreePath, registered, rel, text, options) => Promise.reject(new Error('IGitAdapter.writeFile not implemented')),
+  // An image as a data URL; side: 'working' | 'index' | 'head'. -> { mime, size, url } | { missing: true }; rejects when over 10 MB or not an image type
+  readImage:     async (repo, worktreePath, registered, rel, side) => Promise.reject(new Error('IGitAdapter.readImage not implemented')),
   // Pop-out windows (desktop). spec = { kind: 'editor' | 'conflict' | 'diff', repo, worktree, path, registered, changeId? }.
   openWindow:    async (spec) => Promise.reject(new Error('IGitAdapter.openWindow not implemented')),
   // Tells the other windows a repository was written to; onChanged(cb) hears that and returns its unsubscribe.

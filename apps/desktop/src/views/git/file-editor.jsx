@@ -3,6 +3,8 @@ import { PlModal } from '@nexusmd/ui'
 import { hasMarkers } from '@nexusmd/core'
 import { CodeEditor, languageForPath } from '../shared/code-editor.jsx'
 import { useWorktreeFile } from './use-worktree-file.js'
+import { isImagePath } from './image-types.js'
+import { ImageFile } from './image-view.jsx'
 
 /**
  * The resolve screen's "Edit result…" dialog: the conflict result in an editor. Save result hands the
@@ -35,11 +37,21 @@ export function EditResultDialog({ path, text, onSave, onClose }) {
 }
 
 /**
- * One worktree file in an editor: Save (or Ctrl+S) writes it back only if it is unchanged on
+ * One worktree file in an editor, or the picture itself for an image (nothing to edit or save there).
+ * See TextFileEditor for the editor's behaviour.
+ */
+export function FileEditor(props) {
+  return isImagePath(props.path) && props.adapter.readImage
+    ? <ImageFile adapter={props.adapter} repo={props.repo} worktreePath={props.worktreePath} registered={props.registered} path={props.path} />
+    : <TextFileEditor {...props} />
+}
+
+/**
+ * Save (or Ctrl+S) writes it back only if it is unchanged on
  * disk since it was read, otherwise it offers Reload or Overwrite. A file that can't be edited
  * (binary, too large, gone) shows main's reason instead. `line` is passed to CodeEditor as is.
  */
-export function FileEditor({ adapter, repo, worktreePath, registered, path, line = null, onSaved, onDirtyChange }) {
+function TextFileEditor({ adapter, repo, worktreePath, registered, path, line = null, onSaved, onDirtyChange }) {
   const f = useWorktreeFile({ adapter, repo, worktreePath, registered, path })
   const save = async opts => { if (await f.save(opts)) onSaved?.() }
   const canSave = f.dirty && !f.saving

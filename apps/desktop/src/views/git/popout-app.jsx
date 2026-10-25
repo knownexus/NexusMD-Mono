@@ -73,5 +73,6 @@ function DiffBody({ adapter, repo, tree, registered, changeId, path, version }) 
   const change = tree.changes.find(c => c.id === changeId) ?? null
   const diff = useDiff({ adapter, repo, worktreePath: tree.path, registered, change, version })
   if (!change) return <div role="note" style={{ color: 'var(--text-muted)' }}>{`${path} has no changes any more.`}</div>
-  return <DiffPane change={change} diff={diff} onHunk={NOOP} readOnly />
+  const images = adapter.readImage ? { load: (side, rel) => adapter.readImage(repo, tree.path, registered, rel, side), key: `${tree.path}|${diff.result?.stamp ?? ''}` } : null
+  return <DiffPane change={change} diff={diff} onHunk={NOOP} readOnly images={images} />
 }

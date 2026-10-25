@@ -207,6 +207,19 @@
 .nx-gw-tree-root { font-weight: 600; }
 .nx-alert.good { background: var(--success-soft, var(--surface-2)); color: var(--success); }
 
+/* Images (image-view.jsx): on a checkerboard so transparency shows; fitted, or actual size on click */
+.nx-img { margin: 0; display: grid; gap: 4px; justify-items: start; }
+.nx-img-frame { max-width: 100%; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); line-height: 0;
+  background: repeating-conic-gradient(color-mix(in srgb, var(--text) 8%, transparent) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px; }
+.nx-img-frame img { max-width: 100%; max-height: 60vh; object-fit: contain; cursor: zoom-in; }
+.nx-img-frame[data-actual] img { max-width: none; max-height: none; cursor: zoom-out; }
+.nx-img figcaption { color: var(--text-muted); font-size: 12px; }
+.nx-img-diff { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; padding: 8px 0; font-family: var(--sans); }
+.nx-img-diff > section { min-width: 0; display: grid; gap: 4px; align-content: start; }
+.nx-img-label { font-size: 12px; }
+.nx-img-label[data-side="old"] { color: var(--danger); }
+.nx-img-label[data-side="new"] { color: var(--success); }
+
 /* A pop-out window (popout-app.jsx): one screen filling the window */
 .nx-popout { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--surface); color: var(--text); }
 .nx-popout-head { flex: none; display: flex; align-items: baseline; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); }

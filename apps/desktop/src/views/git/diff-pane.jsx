@@ -2,6 +2,8 @@ import React from 'react'
 import { diffSides, actionsFor } from '@nexusmd/core'
 import { languageForPath, languageLabel } from '../shared/languages.js'
 import { highlightLines, changedRange, markRange, Pieces } from '../shared/highlight.jsx'
+import { isImagePath } from './image-types.js'
+import { ImageDiff } from './image-view.jsx'
 
 const LINE_STYLE = {
   add: { background: 'color-mix(in srgb, var(--success) 18%, transparent)' },
@@ -158,9 +160,10 @@ function wholeFileOnly(file, area) {
  * view switch and file buttons; a legend naming the old and new sides; line numbers; hunk buttons.
  * `onFile(action)` runs a header file button (stage | unstage | discard | delete); without it there are none.
  * The history passes its own `sides` (parent and commit ids) and `readOnly`, which drops the hunk
- * and file buttons and the staging advice.
+ * and file buttons and the staging advice. `images` ({ load(side, rel), key }) shows a changed image as
+ * before and after above the text (an SVG's source still follows); without it a binary file is just noted.
  */
-export function DiffPane({ change, diff, onHunk, onLine = null, onFile = null, busy = false, sides: sidesOverride = null, readOnly = false }) {
+export function DiffPane({ change, diff, onHunk, onLine = null, onFile = null, busy = false, sides: sidesOverride = null, readOnly = false, images = null }) {
   // Stable for the memoised rows, which would otherwise re-render on every parent render.
   const lineRef = React.useRef(onLine)
   lineRef.current = onLine
@@ -210,6 +213,7 @@ export function DiffPane({ change, diff, onHunk, onLine = null, onFile = null, b
       {sides?.old && !split && <div aria-hidden="true" style={{ ...GRID, color: 'var(--text-muted)' }}><span>old</span><span>new</span></div>}
       {error && <div role="alert" style={{ color: 'var(--danger)' }}>{error}</div>}
       {result?.gone && note('No longer changed.')}
+      {images && isImagePath(change.path) && result && !result.gone && <ImageDiff change={change} load={images.load} loadKey={images.key} />}
       {result?.binary && note(`Binary file${result.size ? ` (${size(result.size)})` : ''}.${readOnly ? '' : ' Stage or discard it as a whole.'}`)}
       {result?.truncated && note(`This diff is too large to show (${size(result.size)}).${readOnly ? '' : ' Stage or discard the file as a whole.'}`)}
       {empty && change.area !== 'conflict' && note(readOnly ? 'No textual changes.' : change.area === 'untracked' ? 'Empty file.' : 'No longer changed.')}

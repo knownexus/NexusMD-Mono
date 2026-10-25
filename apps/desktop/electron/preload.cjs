@@ -288,6 +288,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     files:           (repo, worktreePath, registered) => ipcRenderer.invoke('git:files', repo, worktreePath, registered),
     readFile:        (repo, worktreePath, registered, rel) => ipcRenderer.invoke('git:readFile', repo, worktreePath, registered, rel),
     writeFile:       (repo, worktreePath, registered, rel, text, options) => ipcRenderer.invoke('git:writeFile', repo, worktreePath, registered, rel, text, options),
+    readImage:       (repo, worktreePath, registered, rel, side) => ipcRenderer.invoke('git:readImage', repo, worktreePath, registered, rel, side),
     reveal:          (repo, worktreePath, registered, rel) => ipcRenderer.invoke('git:reveal', repo, worktreePath, registered, rel),
     importFiles:     (repo, worktreePath, registered, destDir, sources, options) => ipcRenderer.invoke('git:importFiles', repo, worktreePath, registered, destDir, sources, options),
     // Dropped File objects have no path in the renderer since Electron 32; webUtils resolves it here.
