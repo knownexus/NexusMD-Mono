@@ -2,6 +2,8 @@
 
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
+let installedInfo;
+
 // Expose a safe, narrow API to the renderer process.
 // The React SPA can call window.electronAPI.* for native features.
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -244,6 +246,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Git Workspace module (git adapter) ─────────────────────────────────────
   // Git Workspace pop-out windows. open(spec) shows an editor, conflict or diff in its own window;
   // changed(repoPath) tells the other windows a repository was written to; onChanged(cb) hears that.
+  // Which apps are installed on this machine. Answered once by the main process and kept; the
+  // renderer reads it at startup to build the sidebar and Settings.
+  registry: {
+    get: () => (installedInfo ??= ipcRenderer.sendSync('registry:get')),
+  },
+
   popout: {
     open:      (spec) => ipcRenderer.invoke('popout:open', spec),
     changed:   (repoPath) => ipcRenderer.send('popout:changed', repoPath),

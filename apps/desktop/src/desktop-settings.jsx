@@ -21,6 +21,7 @@ import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
 import { dbManagerAdapter } from './adapters/db-manager.js'
 import { DevenvSettingsCard } from './devenv-settings-card.jsx'
 import { GitSettingsCard } from './git-settings-card.jsx'
+import { registry } from './shell/registry.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 import {
   listSavedConnections, saveConnection, getConnectionSecret, deleteConnection,
@@ -1148,8 +1149,8 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
           {tab === 'desktop' && (
             <>
               <DesktopAppCard />
-              <DevenvSettingsCard />
-              <GitSettingsCard />
+              {registry.isInstalled('devenv') && <DevenvSettingsCard />}
+              {registry.isInstalled('git') && <GitSettingsCard />}
               <DesktopQuickLinksCard
                 links={tweaks.quickLinks || []}
                 onChange={links => setTweak('quickLinks', links)}

@@ -4,6 +4,10 @@
 const log = require('electron-log');
 const path = require('path');
 const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeTheme, shell } = require('electron');
+const { pinUserData } = require('./user-data.cjs');
+
+// Must run before anything reads app.getPath('userData') (logs, prefs, stores).
+pinUserData(app);
 
 // Configure electron-log — 'silly' is the lowest (most verbose) level, so
 // every log/info/warn/error/debug/verbose/silly call is written to file.
@@ -54,6 +58,7 @@ const { createTray, updateTrayIcon } = require('./tray.cjs');
 const { initNotifications } = require('./notifications.cjs');
 const { initUpdater, registerUpdaterIpc } = require('./updater.cjs');
 
+const appRegistry    = require('./app-registry.cjs');
 const fileIpc        = require('./ipc/file.cjs');
 const pickerIpc      = require('./ipc/picker.cjs');
 const badgeIpc       = require('./ipc/badge.cjs');
@@ -356,6 +361,7 @@ app.whenReady().then(async () => {
   registerUpdaterIpc();
 
   // Register Phase 6 IPC handlers
+  appRegistry.register(ipcMain);
   fileIpc.register(ipcMain);
   pickerIpc.register(ipcMain, () => mainWindow);
   badgeIpc.register(ipcMain);

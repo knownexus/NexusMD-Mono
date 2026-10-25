@@ -8,7 +8,7 @@ let ipcRenderer
 const origRequire = Module.prototype.require
 
 beforeAll(() => {
-  ipcRenderer = { invoke: vi.fn(), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
+  ipcRenderer = { invoke: vi.fn(), sendSync: vi.fn(() => ({ installedIds: ['git'] })), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
   const fakeElectron = {
     contextBridge: { exposeInMainWorld: (_name, obj) => { exposed = obj } },
     ipcRenderer,
@@ -50,6 +50,13 @@ describe('preload bridge', () => {
     exposed.devenv.profileRead(cfg, 'mac.json'); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile-read', cfg, 'mac.json')
     exposed.devenv.profileWrite(cfg, 'mac.json', '{}', { create: true }); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile-write', cfg, 'mac.json', '{}', { create: true })
     exposed.devenv.profileCreate(cfg); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile-create', cfg)
+  })
+
+  it('asks the main process which apps are installed once, then remembers', () => {
+    expect(exposed.registry.get()).toEqual({ installedIds: ['git'] })
+    exposed.registry.get()
+    expect(ipcRenderer.sendSync).toHaveBeenCalledTimes(1)
+    expect(ipcRenderer.sendSync).toHaveBeenCalledWith('registry:get')
   })
 
   it('bridges the start-on-login setting to its IPC channels', () => {

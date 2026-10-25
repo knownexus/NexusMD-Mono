@@ -25,7 +25,8 @@ import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './p
 import { getProfileKey } from './profile-keys.js'
 import { desktopCloudProviders, registerCloudDeepLink, makeDesktopOAuthService } from './cloud-auth.js'
 import { startDesktopAutoSync, desktopSync } from './sync.js'
-import { NAV, SETTINGS_NAV, ALL_NAV, DEFAULT_NAV_ORDER } from './nav-config.js'
+import { INSTALLED_NAV, SETTINGS_NAV, ALL_NAV, DEFAULT_NAV_ORDER } from './nav-config.js'
+import { isUninstalledView } from './shell/registry.js'
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
@@ -441,6 +442,9 @@ function ViewBody({
     window.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: 'planner' }))
   }
 
+  // A view from an app that isn't installed on this machine (stale saved view, deep link, tray).
+  if (isUninstalledView(view)) return <Placeholder label={(ALL_NAV.find(n => n.id === view) || ALL_NAV[0]).label} />
+
   switch (view) {
     case 'dashboard': {
       if (!configured) return <NotConfigured />
@@ -566,13 +570,15 @@ function ViewBody({
       return <ViewGit adapters={adapters} />
     case 'settings':
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
-        nav={NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder}
+        nav={INSTALLED_NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder}
         refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange}
         onRefreshData={refreshAllData} />
     default:
       return <Placeholder label={(ALL_NAV.find(n => n.id === view) || ALL_NAV[0]).label} />
   }
 }
+
+const FIRST_VIEW = INSTALLED_NAV[0]?.id || 'dashboard'
 
 const FULL_BLEED = new Set(['markdown', 'devenv', 'git', 'db-manager'])
 // Views that hide the nav sidebar to give their own layout the width; the top bar's
@@ -669,9 +675,10 @@ function DesktopProjectAreasModal({ open, onClose }) {
 }
 
 function App() {
-  const [view, setView]         = React.useState('dashboard')
+  // Start on the first installed app's first view (Dashboard in a full install).
+  const [view, setView]         = React.useState(FIRST_VIEW)
   // Every view visited this session, in order; mountedViews keeps the kept-alive ones mounted.
-  const [visited, setVisited]   = React.useState(['dashboard'])
+  const [visited, setVisited]   = React.useState([FIRST_VIEW])
   React.useEffect(() => { setVisited(v => (v.includes(view) ? v : [...v, view])) }, [view])
   const [createWI, setCreateWI] = React.useState(null)
   const [areasOpen, setAreasOpen] = React.useState(false)
@@ -775,7 +782,7 @@ function App() {
       // { view, filter } object payload used by shared @nexusmd/ui components.
       const next = typeof detail === 'string' ? detail : detail?.view
       const filter = (detail && typeof detail === 'object') ? (detail.filter || null) : null
-      if (next) {
+      if (next && !isUninstalledView(next)) {
         // Stash the filter so views (e.g. PRView's focused work item) can consume it,
         // mirroring the web host's window.NexusMDNav mechanism.
         window.NexusMDNav = { pendingFilter: filter, view: next }
@@ -793,7 +800,7 @@ function App() {
   }, [])
 
   // What the sidebar shows, in its order; the number keys jump to the entry with that number.
-  const shownNav = visibleNav(tweaks.navOrder, tweaks.navHidden, NAV)
+  const shownNav = visibleNav(tweaks.navOrder, tweaks.navHidden, INSTALLED_NAV)
   const shownNavRef = React.useRef(shownNav)
   shownNavRef.current = shownNav
   React.useEffect(() => {
