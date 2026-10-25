@@ -401,3 +401,16 @@
 .nx-gw-cfile-counts { font: 11.5px var(--mono, monospace); white-space: nowrap; }
 .nx-gw-cfile-counts .add { color: var(--success); }
 .nx-gw-cfile-counts .del { color: var(--danger); }
+
+/* Syntax colouring for git output (git-output.jsx): diffstat bars, paths, hashes, refs, file operations. */
+.nx-go-dir, .nx-go-muted { color: var(--text-muted); }
+.nx-go-file { color: var(--text); }
+.nx-go-count { color: var(--text); font-weight: 600; }
+.nx-go-add, .nx-go-ok { color: var(--success); }
+.nx-go-del, .nx-go-bad { color: var(--danger); }
+.nx-go-warn { color: var(--warning); }
+.nx-go-ok, .nx-go-verb { font-weight: 600; }
+.nx-go-verb { color: var(--info); }
+.nx-go-url { color: var(--info); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--info) 40%, transparent); }
+.nx-go-hash { color: var(--warning); }
+.nx-go-ref { color: var(--accent); }
