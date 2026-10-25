@@ -48,57 +48,5 @@
         "order": 7
       }
     ]
-  },
-  {
-    "id": "notes",
-    "label": "Notes",
-    "productName": "NexusMD Notes",
-    "order": 9,
-    "nav": [
-      {
-        "id": "notes",
-        "label": "Notes",
-        "icon": "pin"
-      }
-    ]
-  },
-  {
-    "id": "documents",
-    "label": "Documents",
-    "productName": "NexusMD Documents",
-    "order": 10,
-    "nav": [
-      {
-        "id": "markdown",
-        "label": "Documents",
-        "icon": "pin"
-      }
-    ]
-  },
-  {
-    "id": "api-client",
-    "label": "API Client",
-    "productName": "NexusMD API Client",
-    "order": 11,
-    "nav": [
-      {
-        "id": "api-client",
-        "label": "API Client",
-        "icon": "link"
-      }
-    ]
-  },
-  {
-    "id": "database",
-    "label": "Database",
-    "productName": "NexusMD Database",
-    "order": 12,
-    "nav": [
-      {
-        "id": "db-manager",
-        "label": "Database",
-        "icon": "database"
-      }
-    ]
   }
 ]

@@ -2,30 +2,14 @@ import React from 'react'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-vi.mock('./profile-keys.js', () => ({ getProfileKey: k => k }))
-vi.mock('./profile-context.jsx', () => ({ useProfile: () => ({}) }))
-vi.mock('./cloud-auth.js', () => ({
-  desktopCloudProviders: [],
-  makeDesktopOAuthService: () => ({ isConnected: false, connect: vi.fn(), disconnect: vi.fn() }),
-}))
-vi.mock('./sync.js', () => ({ desktopSync: {} }))
-vi.mock('./file-io.js', () => ({ desktopFileIO: {} }))
-vi.mock('./ado-client.js', () => ({
-  getAdoConfig: vi.fn(() => ({ org: '', pat: '', projects: [] })),
-  saveAdoConfig: vi.fn(),
-  createAdoHttpAdapter: vi.fn(),
-  isAdoConfigured: () => false,
-}))
-vi.mock('./logs-card.jsx', () => ({ default: () => <div>LogsCard</div> }))
 
 const mockConnect = vi.fn()
-vi.mock('./adapters/db-manager.js', () => ({
+vi.mock('./db-manager-adapter.js', () => ({
   dbManagerAdapter: {
     isAvailable: () => true,
     connect: (...args) => mockConnect(...args),
   },
 }))
-vi.mock('./adapters/secureStorage.js', () => ({ secureStorageAdapter: {} }))
 
 const mockList = vi.fn(() => [])
 const mockSaveConnection = vi.fn(async () => 'new-id')
@@ -60,7 +44,12 @@ vi.mock('@nexusmd/ui', () => ({
   loadConfidentialConfig: vi.fn(() => ({ sections: [], hash: null })),
   CardFrame: ({ title, children }) => <div><span>{title}</span>{children}</div>,
   Icon: () => null,
+  SettField: ({ label, hint, children }) => <div><label>{label}</label>{children}{hint && <span>{hint}</span>}</div>,
+  settInputStyle: {},
 }))
+
+// The shell hands the card its secure storage through the host.
+const host = { adapters: { secureStorage: {} } }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -71,11 +60,11 @@ beforeEach(() => {
 
 afterEach(() => { cleanup() })
 
-import { DatabaseConnectionCard } from './desktop-settings.jsx'
+import { DatabaseConnectionCard } from './database-settings.jsx'
 
 describe('DatabaseConnectionCard — connection list', () => {
   it('shows an empty-state message when no connections are saved', () => {
-    render(<DatabaseConnectionCard />)
+    render(<DatabaseConnectionCard host={host} />)
     expect(screen.getByText(/No saved connections yet/)).toBeTruthy()
   })
 
@@ -84,7 +73,7 @@ describe('DatabaseConnectionCard — connection list', () => {
       { id: 'a', name: 'UAT', type: 'sqlserver', inputMode: 'fields' },
       { id: 'b', name: 'Local', type: 'sqlite', inputMode: 'fields' },
     ])
-    render(<DatabaseConnectionCard />)
+    render(<DatabaseConnectionCard host={host} />)
     expect(screen.getByText('UAT')).toBeTruthy()
     expect(screen.getByText('Local')).toBeTruthy()
     expect(screen.getByText('SQLite')).toBeTruthy()
@@ -94,7 +83,7 @@ describe('DatabaseConnectionCard — connection list', () => {
     mockList.mockReturnValue([{ id: 'a', name: 'UAT', type: 'sqlserver', inputMode: 'fields', host: 'h', database: 'd' }])
     mockGetSecret.mockResolvedValue('pw')
     mockConnect.mockResolvedValue({ ok: true, tables: ['t1', 't2'] })
-    render(<DatabaseConnectionCard />)
+    render(<DatabaseConnectionCard host={host} />)
     fireEvent.click(screen.getByText('Test'))
     await waitFor(() => expect(screen.getByText(/found 2 tables/)).toBeTruthy())
     expect(mockConnect).toHaveBeenCalledWith('sqlserver', expect.objectContaining({ server: 'h', database: 'd', password: 'pw' }))
@@ -102,7 +91,7 @@ describe('DatabaseConnectionCard — connection list', () => {
 
   it('deletes a saved connection', async () => {
     mockList.mockReturnValue([{ id: 'a', name: 'UAT', type: 'sqlserver' }])
-    render(<DatabaseConnectionCard />)
+    render(<DatabaseConnectionCard host={host} />)
     fireEvent.click(screen.getByText('Delete'))
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith({}, 'a'))
   })
@@ -110,7 +99,7 @@ describe('DatabaseConnectionCard — connection list', () => {
   it('clones a saved connection, copying its metadata and secret under a new name', async () => {
     mockList.mockReturnValue([{ id: 'a', name: 'UAT', type: 'sqlserver', inputMode: 'fields', host: 'h' }])
     mockGetSecret.mockResolvedValue('secret-a')
-    render(<DatabaseConnectionCard />)
+    render(<DatabaseConnectionCard host={host} />)
     fireEvent.click(screen.getByText('Clone'))
     await waitFor(() => expect(mockSaveConnection).toHaveBeenCalled())
     expect(mockGetSecret).toHaveBeenCalledWith({}, 'a')
@@ -124,7 +113,7 @@ describe('DatabaseConnectionCard — connection list', () => {
   })
 
   it('opens the form in "new" mode from Add connection, and back to the list on Cancel', () => {
-    render(<DatabaseConnectionCard />)
+    render(<DatabaseConnectionCard host={host} />)
     fireEvent.click(screen.getByText('Add connection'))
     expect(screen.getByText('New Connection')).toBeTruthy()
     fireEvent.click(screen.getByText('Cancel'))
@@ -133,7 +122,7 @@ describe('DatabaseConnectionCard — connection list', () => {
 
   it('opens the form pre-filled in "edit" mode from a row\'s Edit button', () => {
     mockList.mockReturnValue([{ id: 'a', name: 'UAT', type: 'sqlserver', inputMode: 'fields', host: 'saved-host' }])
-    render(<DatabaseConnectionCard />)
+    render(<DatabaseConnectionCard host={host} />)
     fireEvent.click(screen.getByText('Edit'))
     expect(screen.getByText('Edit Connection')).toBeTruthy()
     expect(screen.getByDisplayValue('saved-host')).toBeTruthy()
@@ -142,7 +131,7 @@ describe('DatabaseConnectionCard — connection list', () => {
 
 describe('DatabaseConnectionCard — connection form', () => {
   const openNewForm = () => {
-    render(<DatabaseConnectionCard />)
+    render(<DatabaseConnectionCard host={host} />)
     fireEvent.click(screen.getByText('Add connection'))
   }
 
@@ -295,7 +284,7 @@ describe('DatabaseConnectionCard — connection form', () => {
 describe('DatabaseConnectionCard — editing prefills the saved secret', () => {
   const openEditForm = (entry) => {
     mockList.mockReturnValue([entry])
-    render(<DatabaseConnectionCard />)
+    render(<DatabaseConnectionCard host={host} />)
     fireEvent.click(screen.getByText('Edit'))
   }
 

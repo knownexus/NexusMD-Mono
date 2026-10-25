@@ -110,3 +110,38 @@ test('Planner and Calendar each work as the only installed app', async () => {
     })
   }
 })
+
+test('Database and API Client bring their own bridge and nothing else', async () => {
+  await withApps('database', async win => {
+    await expect(item(win, 'Database')).toHaveClass(/active/)
+    expect(await win.evaluate(() => [typeof window.electronAPI.dbManager.connect, typeof window.electronAPI.apiClient])).toEqual(['function', 'undefined'])
+  })
+  await withApps('api-client', async win => {
+    await expect(item(win, 'API Client')).toHaveClass(/active/)
+    expect(await win.evaluate(() => [typeof window.electronAPI.apiClient.script.run, typeof window.electronAPI.dbManager])).toEqual(['function', 'undefined'])
+  })
+})
+
+test('Notes and Documents each work as the only installed app', async () => {
+  for (const [apps, label] of [['notes', 'Notes'], ['documents', 'Documents']]) {
+    await withApps(apps, async win => {
+      await expect(item(win, label)).toHaveClass(/active/)
+      const errors = []
+      win.on('pageerror', e => errors.push(String(e)))
+      await win.waitForTimeout(1000)
+      expect(errors).toEqual([])
+      await expect(win.locator('body')).not.toContainText('Something went wrong')
+    })
+  }
+})
+
+test('the Database connections card appears in Settings only with the Database app', async () => {
+  const hasCard = async win => {
+    await item(win, 'Settings').evaluate(b => b.click())
+    await win.getByRole('button', { name: 'Integrations' }).evaluate(b => b.click())
+    await expect(win.locator('body')).toContainText('Integrations', { timeout: 15_000 })
+    return win.getByText('Database Connections').count()
+  }
+  await withApps('database', async win => { expect(await hasCard(win)).toBeGreaterThan(0) })
+  await withApps('git', async win => { expect(await hasCard(win)).toBe(0) })
+})

@@ -66,8 +66,6 @@ const deepLinkIpc    = require('./ipc/deepLink.cjs');
 const trayIpc        = require('./ipc/tray-ipc.cjs');
 const logsIpc        = require('./ipc/logs.cjs');
 const oauthIpc       = require('./ipc/oauth.cjs');
-const apiClientScriptIpc = require('./ipc/api-client-script.cjs');
-const dbManagerIpc   = require('./ipc/db-manager.cjs');
 const jiraIpc        = require('./ipc/jira.cjs');
 const loginItemIpc   = require('./ipc/login-item.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
@@ -367,8 +365,6 @@ app.whenReady().then(async () => {
   trayIpc.register(ipcMain, () => mainWindow, () => tray);
   logsIpc.register(ipcMain);
   oauthIpc.register(ipcMain);
-  apiClientScriptIpc.register(ipcMain);
-  dbManagerIpc.register(ipcMain);
   jiraIpc.register(ipcMain);
   // Apps split into their own package (Git Workspace, ...): each registers its own IPC and windows.
   appModules = appRegistry.registerModules({
@@ -505,7 +501,6 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   log.scope('lifecycle').info('windows closed; shutting down backends');
-  dbManagerIpc.closeAll().catch(err => log.scope('lifecycle').error('db-manager closeAll failed', err));
   appModules?.disposeAll().catch(err => log.scope('lifecycle').error('apps disposeAll failed', err));
 });
 

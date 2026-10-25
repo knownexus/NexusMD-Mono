@@ -4,13 +4,15 @@ import Module from 'module'
 import path from 'path'
 import gitManifest from '@nexusmd/app-git/manifest'
 import devenvManifest from '@nexusmd/app-devenv/manifest'
+import databaseManifest from '@nexusmd/app-database/manifest'
+import apiClientManifest from '@nexusmd/app-api-client/manifest'
 
 let exposed
 let ipcRenderer
 const origRequire = Module.prototype.require
 
 beforeAll(() => {
-  ipcRenderer = { invoke: vi.fn(), sendSync: vi.fn(channel => (channel === 'registry:preload-descriptors' ? { ...gitManifest.ipc.preload, ...devenvManifest.ipc.preload } : { installedIds: ['git'] })), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
+  ipcRenderer = { invoke: vi.fn(), sendSync: vi.fn(channel => (channel === 'registry:preload-descriptors' ? { ...gitManifest.ipc.preload, ...devenvManifest.ipc.preload, ...databaseManifest.ipc.preload, ...apiClientManifest.ipc.preload } : { installedIds: ['git'] })), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
   const fakeElectron = {
     contextBridge: { exposeInMainWorld: (_name, obj) => { exposed = obj } },
     ipcRenderer,
@@ -35,6 +37,20 @@ describe('preload bridge', () => {
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('popout:open', { kind: 'editor' })
     exposed.popout.changed('C:\\repos\\a')
     expect(ipcRenderer.send).toHaveBeenLastCalledWith('popout:changed', 'C:\\repos\\a')
+  })
+
+  it('sends packed arguments as one object, the way the database handlers expect', () => {
+    exposed.dbManager.connect('sqlserver', { server: 's' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('db-manager:connect', { type: 'sqlserver', config: { server: 's' } })
+    exposed.dbManager.getRows('sqlite', { file: 'a.db' }, 'users', 50, 100)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('db-manager:get-rows', { type: 'sqlite', config: { file: 'a.db' }, table: 'users', limit: 50, offset: 100 })
+    exposed.dbManager.updateCell('sqlite', {}, 't', 'id', 7, 'name', 'x')
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('db-manager:update-cell', { type: 'sqlite', config: {}, table: 't', primaryKey: 'id', primaryValue: 7, column: 'name', value: 'x' })
+  })
+
+  it('builds a nested method from a dotted name', () => {
+    exposed.apiClient.script.run('return 1', { env: {} })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('api-client:script:run', 'return 1', { env: {} })
   })
 
   it('subscribes and unsubscribes event methods', () => {

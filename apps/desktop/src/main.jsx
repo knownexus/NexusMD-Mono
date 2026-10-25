@@ -12,11 +12,9 @@ import {
   NexusDataProvider, useNexusData, ToastHost, toast,
   PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
   DashboardView, WorkItemsView, TriageView,
-  DocumentsView,
   WorkItemDetail, BuildDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
   WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
-  ApiClientProvider, ApiClientView, ViewDbManager,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH, visibleNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
 import { useLocalItems } from './items-state.js'
@@ -39,7 +37,6 @@ import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
-import DesktopNotesView from './desktop-notes-view.jsx'
 import { submitNewWorkItem } from './ado-workitem-types.js'
 import { navigationAdapter }    from './adapters/navigation.js'
 import { authAdapter }          from './adapters/auth.js'
@@ -50,12 +47,8 @@ import { trayAdapter }          from './adapters/tray.js'
 import { deepLinkAdapter }      from './adapters/deepLink.js'
 import { updateAdapter }        from './adapters/update.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
-import { scriptRunnerAdapter }  from './adapters/scriptRunner.js'
-import { rawHttpAdapter }       from './adapters/rawHttp.js'
-import { dbManagerAdapter }     from './adapters/db-manager.js'
 import { moduleAdapters, moduleView, findPopout, ModuleProviders } from './shell/modules.js'
 import { host, capabilities } from './shell/host.js'
-import { listSavedConnections, getConnectionSecret, saveConnection } from './db-manager-config.js'
 
 const adapters = {
   ...createNoOpAdapters(),
@@ -76,14 +69,7 @@ const adapters = {
   deepLink:      deepLinkAdapter,
   update:        updateAdapter,
   secureStorage: secureStorageAdapter,
-  // Desktop-only — their absence on web/app is what keeps the api-client
-  // module from registering there (see module-registry.js hasRequiredAdapters).
-  scriptRunner:  scriptRunnerAdapter,
-  apiHttp:       rawHttpAdapter,
-  // Desktop-only — its absence on web/app is what keeps the db-manager
-  // module from registering there.
-  dbManager:     dbManagerAdapter,
-  // Adapters the installed apps bring (e.g. git, devenv: run in the main process and gate their core modules).
+  // Adapters the installed apps bring (e.g. git, devenv, dbManager, scriptRunner: they run in the main process and gate their core modules).
   ...moduleAdapters(),
 }
 
@@ -244,26 +230,6 @@ function NotConfigured() {
         dashboard with work items, pull requests, builds and sprint metrics.
       </p>
     </CardFrame>
-  )
-}
-
-// The Database screen, with this profile's saved connections. A connection saved from its
-// connect dialog goes in the same list as Settings (password in secure storage); the list is
-// read again afterwards so the new one shows straight away.
-function DesktopDbManager({ adapters }) {
-  const [, refresh] = React.useReducer(n => n + 1, 0)
-  const onSaveConnection = React.useCallback(async (meta, secret) => {
-    const id = await saveConnection(secureStorageAdapter, meta, secret)
-    refresh()
-    return id
-  }, [])
-  return (
-    <ViewDbManager
-      adapters={adapters}
-      savedConnections={listSavedConnections()}
-      onResolveSecret={id => getConnectionSecret(secureStorageAdapter, id)}
-      onSaveConnection={onSaveConnection}
-    />
   )
 }
 
@@ -496,19 +462,6 @@ function ViewBody({
       )
     case 'triage':
       return <TriageView />
-    case 'notes':
-      return <DesktopNotesView />
-    case 'markdown':
-      return <DocumentsView />
-    case 'api-client':
-      return (
-        <ApiClientProvider adapters={adapters}>
-          <ApiClientView />
-        </ApiClientProvider>
-      )
-    case 'db-manager':
-      return <DesktopDbManager adapters={adapters} />
-
     case 'settings':
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
         nav={INSTALLED_NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder}

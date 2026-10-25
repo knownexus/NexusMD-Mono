@@ -9,7 +9,7 @@
 // packages/core/src/modules/api-client/var-resolve.js), just keyed by
 // connection id instead of collection/env/var name.
 import { upsertConnection, removeConnection, generateConnectionId } from '@nexusmd/core'
-import { getProfileKey } from './profile-keys.js'
+import { getProfileKey } from '@nexusmd/shell-sdk'
 
 const LIST_KEY = () => getProfileKey('dbManager.connections')
 const secretKey = (id) => getProfileKey('dbManager.secret.' + id)

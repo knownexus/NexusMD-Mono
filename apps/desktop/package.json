@@ -21,7 +21,6 @@
     "build:linux": "vite build && electron-builder --linux"
   },
   "dependencies": {
-    "@azure/identity": "^4.13.1",
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-html": "^6.4.12",
     "@codemirror/lang-javascript": "^6.2.5",
@@ -34,9 +33,13 @@
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.14",
     "@lezer/highlight": "^1.2.5",
+    "@nexusmd/app-api-client": "*",
     "@nexusmd/app-calendar": "*",
+    "@nexusmd/app-database": "*",
     "@nexusmd/app-devenv": "*",
+    "@nexusmd/app-documents": "*",
     "@nexusmd/app-git": "*",
+    "@nexusmd/app-notes": "*",
     "@nexusmd/app-planner": "*",
     "@nexusmd/core": "*",
     "@nexusmd/editor-kit": "*",
@@ -46,8 +49,7 @@
     "@nexusmd/web-adapters": "*",
     "codemirror": "^6.0.2",
     "electron-log": "^5.0.0",
-    "electron-updater": "^6.0.0",
-    "mssql": "^12.7.0"
+    "electron-updater": "^6.0.0"
   },
   "devDependencies": {
     "@testing-library/react": "^16.0.0",
@@ -71,7 +73,9 @@
       "electron/**/*",
       "assets/**/*"
     ],
-    "asarUnpack": ["node_modules/@nexusmd/app-git/src/main/git-editor.cjs"],
+    "asarUnpack": [
+      "node_modules/@nexusmd/app-git/src/main/git-editor.cjs"
+    ],
     "extraResources": [
       {
         "from": "../../dist/desktop/renderer",

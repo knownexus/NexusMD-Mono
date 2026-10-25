@@ -1,0 +1,10 @@
+{
+  "id": "notes",
+  "label": "Notes",
+  "productName": "NexusMD Notes",
+  "order": 9,
+  "nav": [{ "id": "notes", "label": "Notes", "icon": "pin" }],
+  "entries": {
+    "renderer": "src/renderer/index.js"
+  }
+}

@@ -87,3 +87,42 @@ describe('api-client-script ipc', () => {
     expect(result.error).toBeNull()
   })
 })
+
+describe('runScript: nothing from the host realm reaches the script', () => {
+  // The context object used to be built by JSON.parse in the host, so its constructor chain led to
+  // the host's Function constructor, which the context's codeGeneration setting does not govern.
+  const escapes = [
+    ['context.constructor.constructor', 'context.leak = typeof context.constructor.constructor("return process")()'],
+    ['a nested object', 'context.leak = typeof context.vars.constructor.constructor("return process")()'],
+    ['an array', 'context.leak = typeof context.list.constructor.constructor("return process")()'],
+    ['an array element', 'context.leak = typeof context.list[0].constructor.constructor("return process")()'],
+    ['__proto__', 'context.leak = typeof Object.getPrototypeOf(context).constructor.constructor("return process")()'],
+  ]
+  const input = { vars: { a: 1 }, list: [{ b: 2 }] }
+
+  for (const [name, script] of escapes) {
+    it(`cannot reach the host process through ${name}`, () => {
+      const r = runScript(script, input)
+      expect(r.context?.leak).not.toBe('object')
+      expect(r.error).toMatch(/code generation/i)
+    })
+  }
+
+  it('still hands back what the script changed, as plain data', () => {
+    const r = runScript('context.vars.token = "abc"; context.list.push({ c: 3 })', input)
+    expect(r.error).toBeNull()
+    expect(r.context).toEqual({ vars: { a: 1, token: 'abc' }, list: [{ b: 2 }, { c: 3 }] })
+    expect(Object.getPrototypeOf(r.context)).toBe(Object.prototype)   // host objects, not the script's
+  })
+
+  it('reports a script that leaves a context which cannot be turned back into data', () => {
+    const r = runScript('const a = {}; a.self = a; context = a', {})
+    expect(r.context).toBeNull()
+    expect(typeof r.error).toBe('string')
+  })
+
+  it('treats missing or null context as empty', () => {
+    expect(runScript('context.x = 1', undefined).context).toEqual({ x: 1 })
+    expect(runScript('context.x = 1', null).context).toEqual({ x: 1 })
+  })
+})

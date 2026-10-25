@@ -6,6 +6,8 @@ let installedInfo;
 
 // Turns an app's bridge description into functions. Each method is described by one of:
 //   { invoke: channel }   ipcRenderer.invoke(channel, ...args)  -> Promise
+//   { invoke, pack: [names] }  the same, but the arguments go as one object keyed by `pack`
+//                         (db-manager style: invoke(channel, { type, config }))
 //   { send: channel }     ipcRenderer.send(channel, ...args)
 //   { on: channel }       subscribe(callback) -> unsubscribe; callback gets the event's arguments
 //   { webUtils: name }    a webUtils helper (e.g. the real path of a dropped File)
@@ -14,17 +16,23 @@ function buildAppApi(descriptors) {
   const api = {};
   for (const [ns, methods] of Object.entries(descriptors || {})) {
     api[ns] = {};
-    for (const [name, spec] of Object.entries(methods)) {
-      if (spec.invoke) api[ns][name] = (...args) => ipcRenderer.invoke(spec.invoke, ...args);
-      else if (spec.send) api[ns][name] = (...args) => ipcRenderer.send(spec.send, ...args);
+    for (const [fullName, spec] of Object.entries(methods)) {
+      // "script.run" becomes api[ns].script.run
+      const path = fullName.split('.');
+      const name = path.pop();
+      const target = path.reduce((obj, key) => (obj[key] ??= {}), api[ns]);
+      if (spec.invoke && spec.pack) {
+        target[name] = (...args) => ipcRenderer.invoke(spec.invoke, Object.fromEntries(spec.pack.map((key, i) => [key, args[i]])));
+      } else if (spec.invoke) target[name] = (...args) => ipcRenderer.invoke(spec.invoke, ...args);
+      else if (spec.send) target[name] = (...args) => ipcRenderer.send(spec.send, ...args);
       else if (spec.on) {
-        api[ns][name] = (callback) => {
+        target[name] = (callback) => {
           const handler = (_event, ...args) => callback(...args);
           ipcRenderer.on(spec.on, handler);
           return () => ipcRenderer.removeListener(spec.on, handler);
         };
       } else if (spec.webUtils && typeof webUtils[spec.webUtils] === 'function') {
-        api[ns][name] = (...args) => webUtils[spec.webUtils](...args);
+        target[name] = (...args) => webUtils[spec.webUtils](...args);
       }
     }
   }
@@ -161,23 +169,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
 
-  // ── Database Manager adapter IPC ───────────────────────────────────────────
-  dbManager: {
-    connect:    (type, config) =>
-      ipcRenderer.invoke('db-manager:connect',    { type, config }),
-    getRows:    (type, config, table, limit, offset) =>
-      ipcRenderer.invoke('db-manager:get-rows',   { type, config, table, limit, offset }),
-    deleteRows: (type, config, table, primaryKey, values) =>
-      ipcRenderer.invoke('db-manager:delete-rows', { type, config, table, primaryKey, values }),
-    updateCell: (type, config, table, primaryKey, primaryValue, column, value) =>
-      ipcRenderer.invoke('db-manager:update-cell', { type, config, table, primaryKey, primaryValue, column, value }),
-    insertRow:  (type, config, table, values) =>
-      ipcRenderer.invoke('db-manager:insert-row',  { type, config, table, values }),
-    runQuery:   (type, config, sql) =>
-      ipcRenderer.invoke('db-manager:run-query',  { type, config, sql }),
-    getColumns: (type, config, table) =>
-      ipcRenderer.invoke('db-manager:get-columns', { type, config, table }),
-  },
 
   // ── Jira proxy IPC ──────────────────────────────────────────────────────────
   jira: {
@@ -235,12 +226,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     refresh: (refreshToken, provider = 'google') => ipcRenderer.invoke('oauth:refresh', { provider, refreshToken }),
   },
 
-  // ── API client module (scriptRunner adapter) ───────────────────────────────
-  apiClient: {
-    script: {
-      run: (script, context) => ipcRenderer.invoke('api-client:script:run', script, context),
-    },
-  },
 
   // Which apps are installed on this machine. Answered once by the main process and kept; the
   // renderer reads it at startup to build the sidebar and Settings.

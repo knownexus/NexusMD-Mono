@@ -50,7 +50,7 @@ describe('installedModuleIds and getPreloadDescriptors', () => {
     expect(getPreloadDescriptors({ NEXUSMD_APPS: 'planner' }, modules)).toEqual({})
   })
   it('knows the real split-out apps', () => {
-    expect(Object.keys(MODULES)).toEqual(expect.arrayContaining(['git', 'devenv']))
+    expect(Object.keys(MODULES)).toEqual(expect.arrayContaining(['git', 'devenv', 'database', 'api-client']))
   })
 })
 

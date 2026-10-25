@@ -35,12 +35,21 @@ const DEFAULT_TIMEOUT_MS = 5000;
 // what's passed in, so this isn't a control we can rely on either way); `logs`
 // is always [] — kept in the return shape for adapter-contract stability (see
 // IScriptRunnerAdapter).
+//
+// No host-realm object may enter the context either. The context data used to be built here with
+// JSON.parse, so `context.constructor.constructor("return process")()` reached the HOST's Function
+// constructor — which codeGeneration (a per-context setting) does not restrict. Now the data is
+// created by the context's own JSON.parse from a string, and the result comes back out as a JSON
+// string parsed here, so only primitives cross the boundary in either direction.
 function runScript(script, context = {}, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-  const sandbox = { context: JSON.parse(JSON.stringify(context ?? {})) };
-  vm.createContext(sandbox, { codeGeneration: { strings: false, wasm: false } });
+  const sandbox = vm.createContext({}, { codeGeneration: { strings: false, wasm: false } });
   try {
+    const source = JSON.stringify(JSON.stringify(context ?? {}));
+    vm.runInContext(`var context = JSON.parse(${source});`, sandbox, { timeout: timeoutMs });
     vm.runInContext(script, sandbox, { timeout: timeoutMs });
-    return { context: sandbox.context, logs: [], error: null };
+    const out = vm.runInContext('JSON.stringify(context)', sandbox, { timeout: timeoutMs });
+    if (typeof out !== 'string') throw new Error('The script left a context that is not plain data.');
+    return { context: JSON.parse(out), logs: [], error: null };
   } catch (err) {
     return { context: null, logs: [], error: err?.message || String(err) };
   }

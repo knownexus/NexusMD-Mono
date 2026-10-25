@@ -12,6 +12,14 @@
 // required. Each app's manifest names the preload bridge it needs (ipc.preload) and its main-process
 // register(ctx) is called once at startup.
 const MODULES = {
+  'api-client': {
+    manifest: () => require('@nexusmd/app-api-client/manifest'),
+    main: () => require('@nexusmd/app-api-client/main'),
+  },
+  database: {
+    manifest: () => require('@nexusmd/app-database/manifest'),
+    main: () => require('@nexusmd/app-database/main'),
+  },
   devenv: {
     manifest: () => require('@nexusmd/app-devenv/manifest'),
     main: () => require('@nexusmd/app-devenv/main'),
