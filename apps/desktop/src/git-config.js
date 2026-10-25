@@ -32,7 +32,7 @@ function normalise(saved) {
       collapsed: strings(view.collapsed),
       selected: typeof view.selected === 'string' ? view.selected : null,
       split: typeof view.split === 'number' && view.split >= 0.2 && view.split <= 0.8 ? view.split : DEFAULT_GIT_CONFIG.view.split,
-      panel: view.panel === 'history' ? 'history' : 'changes',
+      panel: view.panel === 'history' || view.panel === 'files' ? view.panel : 'changes',
       list: view.list === 'hidden' ? 'hidden' : 'shown',
     },
   }

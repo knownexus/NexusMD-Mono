@@ -219,6 +219,14 @@ export const IGitAdapter = {
   readFile:      async (repo, worktreePath, registered, rel) => Promise.reject(new Error('IGitAdapter.readFile not implemented')),
   // options = { expectedStamp, overwrite, bom } → { ok: true, stamp } | { ok: false, conflict: true, stamp } | { ok: false, missing: true }
   writeFile:     async (repo, worktreePath, registered, rel, text, options) => Promise.reject(new Error('IGitAdapter.writeFile not implemented')),
+  // Shows a worktree file (selected) or folder in the OS file manager; rel '' is the worktree root.
+  reveal:        async (repo, worktreePath, registered, rel) => Promise.reject(new Error('IGitAdapter.reveal not implemented')),
+  // Copies dropped files/folders (absolute source paths) into destDir ('' = the worktree root).
+  // options = { dryRun, replace: [rel] }. dryRun -> { total, conflicts: [rel], failed }; otherwise
+  // -> { added, replaced, skipped, failed: [{ rel, error }] }. Existing names are replaced only if listed in `replace`.
+  importFiles:   async (repo, worktreePath, registered, destDir, sources, options) => Promise.reject(new Error('IGitAdapter.importFiles not implemented')),
+  // The file-system path of a File dropped on the window ('' when unknown).
+  pathForFile:   (file) => '',
   // Left = git stage 2, right = stage 3. -> { kind, binary, stages: { base, left, right } (each { text, bom } | null), working: { text, bom, stamp } | null, stamp }; rejects when not conflicted
   conflict:      async (repo, worktreePath, registered, rel) => Promise.reject(new Error('IGitAdapter.conflict not implemented')),
   // resolution = { take: 'text', text, bom, force? } | { take: 'left' | 'right' | 'delete' }; expected = conflict().stamp -> { ok: true } | { ok: false, stale: true, detail } | { ok: false, detail }

@@ -3,6 +3,7 @@ import { ChangesPane } from './changes-pane.jsx'
 import { DiffPane } from './diff-pane.jsx'
 import { useDiff } from './use-diff.js'
 import { HistoryPanel } from './history-panel.jsx'
+import { FilesPane } from './files-pane.jsx'
 import { OperationBanner } from './operation-banner.jsx'
 import { StashList } from './stash-list.jsx'
 import { FileEditor } from './file-editor.jsx'
@@ -36,8 +37,9 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- repo is a fresh object each render; its path is what matters
   }, [adapter, canStash, repo.path, tree.path, registered, version])
   const history = panel === 'history'
-  // The changes pane's diff isn't on screen in History, so it isn't loaded either.
-  const change = history ? null : tree.changes.find(c => c.id === focusId) ?? null
+  const filesTab = panel === 'files'
+  // The changes pane's diff isn't on screen in History or Files, so it isn't loaded either.
+  const change = history || filesTab ? null : tree.changes.find(c => c.id === focusId) ?? null
   // The file in the editor, for the worktree it was opened in. `line` is a fresh { line } per request
   // so the editor jumps again even to the same line, and stays put while typing. Kept (hidden) in Diff.
   const [opened, setOpened] = React.useState(null)
@@ -50,11 +52,11 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   // Another worktree starts in Diff with nothing open (ViewGit asked about the edits before switching).
   const [shownTree, setShownTree] = React.useState(tree.path)
   if (shownTree !== tree.path) { setShownTree(tree.path); close() }
-  const editor = !history && opened?.tree === tree.path ? opened : null
+  const editor = !history && !filesTab && opened?.tree === tree.path ? opened : null
   const editing = mode === 'edit' && !!editor
   const dirty = React.useRef(false)
   // The conflicted file being resolved (focused, or just resolved), when no editor is open.
-  const resolvePath = history || editor ? null
+  const resolvePath = history || filesTab || editor ? null
     : change?.area === 'conflict' ? change.path
     : !change && tree.operation && justResolved?.tree === tree.path ? justResolved.path : null
   const resolveDirty = React.useRef(false)
@@ -108,7 +110,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     return () => window.removeEventListener('keydown', key)
   }, [])
   const goToFile = path => {
-    if (history) onPanel('changes')
+    if (history || filesTab) onPanel('changes')
     if (openFile(path)) setGoTo(false)
   }
   // Edits kept from an editor that went away (another app view, a refresh that briefly lost this
@@ -134,10 +136,10 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     onFocus(id)
   }
   const openResolve = c => {
-    if (history || c.path !== resolvePath) {
+    if (history || filesTab || c.path !== resolvePath) {
       if (!confirmDiscard()) return
       close()
-      if (history) onPanel('changes')
+      if (history || filesTab) onPanel('changes')
     }
     setJustResolved(null)
     onFocus(c.id)
@@ -197,7 +199,13 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
       )}
       {onSync && <div className="nx-gw-banner-slot"><OperationBanner tree={tree} onAction={operation} /></div>}
       {stashes && <StashList adapter={adapter} repo={repo} tree={tree} registered={registered} onAction={onSync} onClose={() => setStashes(false)} />}
-      {history
+      {filesTab
+        ? (
+          <div className="nx-gw-files-body">
+            <FilesPane adapter={adapter} repo={repo} worktreePath={tree.path} registered={registered} version={version} onImported={onSaved} onOpenFile={goToFile} />
+          </div>
+        )
+        : history
         ? (
           <div className="nx-panel-body">
             <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync}
@@ -245,7 +253,7 @@ function ModeSwitch({ editing, onDiff, onEdit }) {
 export function PanelSwitch({ panel, onPanel, count = 0 }) {
   return (
     <div role="tablist" aria-label="Panel" style={{ display: 'contents' }}>
-      {[['changes', 'Changes', count], ['history', 'History', 0]].map(([id, label, n]) => (
+      {[['changes', 'Changes', count], ['history', 'History', 0], ['files', 'Files', 0]].map(([id, label, n]) => (
         <button key={id} role="tab" className="nx-gw-tab" aria-selected={panel === id} onClick={() => onPanel(id)}>
           {label}{n > 0 && <>{' '}<span className="n">{n}</span></>}
         </button>

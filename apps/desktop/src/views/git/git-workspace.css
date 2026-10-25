@@ -192,6 +192,21 @@
 .nx-gw-goto { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font-size: 12.5px; white-space: nowrap; cursor: pointer; }
 .nx-gw-goto:hover { background: var(--surface-2); color: var(--text); }
 
+/* Files tab (files-pane.jsx): the folder tree, and the target for files dragged in from outside */
+/* The tree scrolls inside the detail area (which is min-height: 0), so a long one never spills under the dock. */
+.nx-gw-files-body { flex: 1; min-height: 240px; overflow: auto; }
+.nx-gw-files-tab { display: grid; gap: 8px; align-content: start; padding: 12px 20px; min-height: 100%; box-sizing: border-box; border: 2px dashed transparent; border-radius: var(--radius); }
+.nx-gw-files-tab[data-dropping] { border-color: var(--accent); }
+.nx-gw-files-hint { color: var(--text-muted); font-size: 12.5px; }
+.nx-gw-tree { display: grid; font-family: var(--font-mono, monospace); font-size: 13px; }
+.nx-gw-tree-row { display: flex; gap: 6px; padding: 2px 8px; border-radius: var(--radius-sm); cursor: default; user-select: none; }
+.nx-gw-tree-row > span:first-child { width: 12px; flex: none; color: var(--text-muted); }
+.nx-gw-tree-row[aria-expanded] { cursor: pointer; }
+.nx-gw-tree-row:hover { background: var(--surface-2); }
+.nx-gw-tree-row[data-drop] { background: var(--accent-soft, var(--surface-2)); outline: 2px solid var(--accent); }
+.nx-gw-tree-root { font-weight: 600; }
+.nx-alert.good { background: var(--success-soft, var(--surface-2)); color: var(--success); }
+
 /* the diff (or editor, or resolve screen) beside the file column */
 .nx-gw-changes-main { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 6px; min-width: 0; min-height: 0; padding: 10px 16px; overflow: auto; }
 .nx-gw-changes-main[data-mode="plain"] { grid-template-rows: minmax(0, 1fr); }

@@ -243,7 +243,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Git Workspace module (git adapter) ─────────────────────────────────────
   git: {
-    version:      () => ipcRenderer.invoke('git:version'),
+    version:     () => ipcRenderer.invoke('git:version'),
     resolve:      (dir) => ipcRenderer.invoke('git:resolve', dir),
     worktrees:    (repo, registered) => ipcRenderer.invoke('git:worktrees', repo, registered),
     status:       (repo, worktreePath, registered, options) => ipcRenderer.invoke('git:status', repo, worktreePath, registered, options),
@@ -277,6 +277,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     files:           (repo, worktreePath, registered) => ipcRenderer.invoke('git:files', repo, worktreePath, registered),
     readFile:        (repo, worktreePath, registered, rel) => ipcRenderer.invoke('git:readFile', repo, worktreePath, registered, rel),
     writeFile:       (repo, worktreePath, registered, rel, text, options) => ipcRenderer.invoke('git:writeFile', repo, worktreePath, registered, rel, text, options),
+    reveal:          (repo, worktreePath, registered, rel) => ipcRenderer.invoke('git:reveal', repo, worktreePath, registered, rel),
+    importFiles:     (repo, worktreePath, registered, destDir, sources, options) => ipcRenderer.invoke('git:importFiles', repo, worktreePath, registered, destDir, sources, options),
+    // Dropped File objects have no path in the renderer since Electron 32; webUtils resolves it here.
+    pathForFile:     (file) => webUtils.getPathForFile(file),
     conflict:        (repo, worktreePath, registered, rel) => ipcRenderer.invoke('git:conflict', repo, worktreePath, registered, rel),
     resolveConflict: (repo, worktreePath, registered, rel, resolution, expected) => ipcRenderer.invoke('git:resolveConflict', repo, worktreePath, registered, rel, resolution, expected),
     unresolve:       (repo, worktreePath, registered, rel, expected) => ipcRenderer.invoke('git:unresolve', repo, worktreePath, registered, rel, expected),

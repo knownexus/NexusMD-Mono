@@ -38,7 +38,18 @@ async function requireWorktreeFile(wt, rel) {
   return { full, real, realDir };
 }
 
-function registerFiles(handle, { git, requireExactWorktree, requirePaths, withRepoLock }) {
+// Every entry is shown selected in its parent folder, which never runs it; openPath would launch a
+// worktree folder named like an app bundle (x.app) on macOS. Only the worktree root, a folder the
+// user registered, is opened itself. The electron require is lazy so this module still loads under
+// plain node (tests inject their own reveal).
+async function defaultReveal(full, isRoot) {
+  const { shell } = require('electron');
+  if (!isRoot) { shell.showItemInFolder(full); return; }
+  const error = await shell.openPath(full);
+  if (error) throw new Error(error);
+}
+
+function registerFiles(handle, { git, requireExactWorktree, requirePaths, withRepoLock, reveal = defaultReveal }) {
   const target = (repo, wt, registered, rel) =>
     requireExactWorktree(repo, wt, registered, () => requirePaths(wt, [rel])).then(() => requireWorktreeFile(wt, rel));
 
@@ -49,6 +60,14 @@ function registerFiles(handle, { git, requireExactWorktree, requirePaths, withRe
     // A nested repository lists as "dir/", which isn't a file.
     const all = [...new Set(r.stdout.split('\0').filter(p => p && !p.endsWith('/')))].sort();
     return { files: all.slice(0, MAX_LIST), truncated: all.length > MAX_LIST };
+  });
+
+  // Shows a file or folder of the worktree, selected, in the OS file manager; '' opens the worktree itself.
+  handle('git:reveal', async (_e, repo, wt, registered, rel) => {
+    await requireExactWorktree(repo, wt, registered);
+    const full = rel ? (await target(repo, wt, registered, rel)).full : await fsp.realpath(wt);
+    if (!(await fsp.stat(full).catch(() => null))) throw new Error(`${rel} no longer exists.`);
+    await reveal(full, !rel);
   });
 
   handle('git:readFile', async (_e, repo, wt, registered, rel) => {

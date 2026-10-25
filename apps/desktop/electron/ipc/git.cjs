@@ -16,6 +16,7 @@ const { spawn: nodeSpawn, execFile } = require('child_process');
 const { withLogging } = require('./withLogging.cjs');
 const { registerActions, ownershipMessage, WRITE_ENV, BASE_MARKER } = require('./git-actions.cjs');
 const { registerFiles } = require('./git-files.cjs');
+const { registerImport } = require('./git-import.cjs');
 const { registerConflicts } = require('./git-conflicts.cjs');
 const { registerShell } = require('./git-shell.cjs');
 
@@ -998,7 +999,10 @@ function register(ipcMain, deps = {}) {
   });
 
   // The Git Workspace file editor (git-files.cjs): list, read and write worktree files.
-  registerFiles(handle, { git, requireExactWorktree, requirePaths, withRepoLock });
+  registerFiles(handle, { git, requireExactWorktree, requirePaths, withRepoLock, reveal: deps.reveal });
+
+  // Copying dropped files into a worktree folder (git-import.cjs).
+  registerImport(handle, { requireExactWorktree, withRepoLock });
 
   // Reading and resolving conflicted files (git-conflicts.cjs).
   registerConflicts(handle, { git, requireExactWorktree, requirePaths, withRepoLock, filesState, indexEntries, gitDirOf, result });
