@@ -1,0 +1,10 @@
+{
+  "id": "planner",
+  "label": "Planner",
+  "productName": "NexusMD Planner",
+  "order": 8,
+  "nav": [{ "id": "planner", "label": "Planner", "icon": "planner" }],
+  "entries": {
+    "renderer": "src/renderer/index.js"
+  }
+}

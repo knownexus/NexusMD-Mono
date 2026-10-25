@@ -1,12 +1,20 @@
 // google-calendar.js — desktop Google Calendar client. Uses the existing native
 // Google OAuth binding (already scoped for Calendar alongside Drive/Gmail — see
 // apps/desktop/electron/oauth/config.cjs) for its token; no separate auth flow.
-import { makeNativeGoogleBinding } from './cloud-auth.js'
-
-const googleAuth = makeNativeGoogleBinding()
+// The shell supplies the binding (see index.js activate); it is created on first use.
+let makeBinding = null
+let googleAuth = null
+export function configureGoogleCalendar(factory) { makeBinding = factory; googleAuth = null }
+function auth() {
+  if (!googleAuth) {
+    if (!makeBinding) throw new Error('Google Calendar is not configured.')
+    googleAuth = makeBinding()
+  }
+  return googleAuth
+}
 
 export async function fetchGoogleCalendarEvents(startISO, endISO) {
-  const token = await googleAuth.getToken({})
+  const token = await auth().getToken({})
   if (!token) return []
   const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(startISO)}&timeMax=${encodeURIComponent(endISO)}&singleEvents=true&orderBy=startTime`
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
@@ -27,7 +35,7 @@ export async function fetchGoogleCalendarEvents(startISO, endISO) {
 }
 
 export async function createGoogleCalendarEvent({ title, start, end, description = '' }) {
-  const token = await googleAuth.getToken({})
+  const token = await auth().getToken({})
   if (!token) throw new Error('Not connected to Google.')
   const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
     method: 'POST',
@@ -39,7 +47,7 @@ export async function createGoogleCalendarEvent({ title, start, end, description
 }
 
 export async function deleteGoogleCalendarEvent(eventId) {
-  const token = await googleAuth.getToken({})
+  const token = await auth().getToken({})
   if (!token) throw new Error('Not connected to Google.')
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
     method: 'DELETE',
@@ -49,5 +57,5 @@ export async function deleteGoogleCalendarEvent(eventId) {
 }
 
 export function isGoogleConnected() {
-  return googleAuth.isConnected()
+  return auth().isConnected()
 }

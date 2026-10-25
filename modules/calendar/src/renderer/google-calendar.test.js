@@ -1,19 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-var mockBindingInstance
+const mockBindingInstance = {
+  isConnected: vi.fn(() => true),
+  getToken: vi.fn(async () => 'fake-google-token'),
+}
 
-vi.mock('./cloud-auth.js', () => {
-  const binding = {
-    isConnected: vi.fn(() => true),
-    getToken: vi.fn(async () => 'fake-google-token'),
-  }
-  mockBindingInstance = binding
-  return {
-    makeNativeGoogleBinding: vi.fn(() => binding),
-  }
-})
+import { configureGoogleCalendar, fetchGoogleCalendarEvents, createGoogleCalendarEvent, deleteGoogleCalendarEvent, isGoogleConnected } from './google-calendar.js'
 
-import { fetchGoogleCalendarEvents, createGoogleCalendarEvent, deleteGoogleCalendarEvent, isGoogleConnected } from './google-calendar.js'
+beforeEach(() => configureGoogleCalendar(() => mockBindingInstance))
 
 beforeEach(() => {
   global.fetch = vi.fn()

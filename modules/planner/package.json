@@ -1,0 +1,30 @@
+{
+  "name": "@nexusmd/app-planner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "description": "NexusMD Planner: weekly planning, notes and confidential sections",
+  "exports": {
+    "./manifest": "./app.manifest.json",
+    "./renderer": "./src/renderer/index.js"
+  },
+  "files": [
+    "app.manifest.json",
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nexusmd/core": "*",
+    "@nexusmd/shell-sdk": "*",
+    "@nexusmd/ui": "*"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

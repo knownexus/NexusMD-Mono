@@ -2,15 +2,18 @@ import React from 'react'
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 
-vi.mock('../google-calendar.js', () => ({
+vi.mock('./google-calendar.js', () => ({
   createGoogleCalendarEvent: vi.fn(),
   isGoogleConnected: vi.fn(() => true),
   fetchGoogleCalendarEvents: vi.fn(async () => []),
   deleteGoogleCalendarEvent: vi.fn(),
 }))
 
-import * as googleCalendar from '../google-calendar.js'
+import * as googleCalendar from './google-calendar.js'
 import { MicrosoftCalendarBanner, GoogleCalendarBanner, NewGoogleEventModal, CalendarView } from './view-calendar.jsx'
+
+// Not signed in to Microsoft: the shell's sign-in, as CalendarView receives it.
+const noMicrosoft = { isConnected: () => false, getToken: async () => null }
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 // vi.clearAllMocks() resets call history but NOT mockReturnValue/mockImplementation
@@ -85,19 +88,19 @@ describe('NewGoogleEventModal', () => {
 
 describe('CalendarView (local events only)', () => {
   it('defaults to week view and shows a Today button', () => {
-    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    render(<CalendarView msAuth={noMicrosoft} calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
     expect(screen.getByText('Today')).toBeTruthy()
   })
 
   it('switches to month view when the Month button is clicked', () => {
-    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    render(<CalendarView msAuth={noMicrosoft} calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
     fireEvent.click(screen.getByText('Month'))
     expect(document.querySelector('.cal-view-btn.active').textContent).toBe('Month')
   })
 
   it('renders a local event chip and opens the detail modal on click', () => {
     const events = [{ id: 'local-1', title: 'Retro', start: `${new Date().toISOString().slice(0, 10)}T14:00:00.000Z`, end: `${new Date().toISOString().slice(0, 10)}T15:00:00.000Z`, source: 'local' }]
-    render(<CalendarView calendarEvents={events} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    render(<CalendarView msAuth={noMicrosoft} calendarEvents={events} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
     fireEvent.click(screen.getByText('Retro'))
     // EventDetailModal's root has id="modal-event-detail" — check for it directly rather than
     // re-querying the event title text, which now appears twice (chip + modal) and would throw.
@@ -107,7 +110,7 @@ describe('CalendarView (local events only)', () => {
   it('deletes a local event via the detail modal and updates calendarEvents', () => {
     const setCalendarEvents = vi.fn()
     const events = [{ id: 'local-1', title: 'Retro', start: `${new Date().toISOString().slice(0, 10)}T14:00:00.000Z`, end: `${new Date().toISOString().slice(0, 10)}T15:00:00.000Z`, source: 'local' }]
-    render(<CalendarView calendarEvents={events} setCalendarEvents={setCalendarEvents} onNavigatePlanner={() => {}} />)
+    render(<CalendarView msAuth={noMicrosoft} calendarEvents={events} setCalendarEvents={setCalendarEvents} onNavigatePlanner={() => {}} />)
     fireEvent.click(screen.getByText('Retro'))
     // The modal's Delete button requires a two-step confirm: first click reveals
     // "Delete this event?" with a second Delete button; only the second click deletes.
@@ -117,26 +120,18 @@ describe('CalendarView (local events only)', () => {
   })
 })
 
-vi.mock('../ms-graph-calendar.js', () => ({
+vi.mock('./ms-graph-calendar.js', () => ({
   fetchCalendarEvents: vi.fn(async () => []),
   createCalendarEvent: vi.fn(),
 }))
-vi.mock('../cloud-auth.js', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    makeDesktopOAuthService: vi.fn(() => ({
-      isConnected: vi.fn(() => true),
-      getToken: vi.fn(async () => 'ms-token'),
-    })),
-  }
-})
+import * as msGraphCalendar from './ms-graph-calendar.js'
 
-import * as msGraphCalendar from '../ms-graph-calendar.js'
+// Signed in to Microsoft: the shell's sign-in, as CalendarView receives it.
+const connectedMicrosoft = { isConnected: () => true, getToken: async () => 'ms-token' }
 
 describe('CalendarView Outlook + Google wiring', () => {
   it('fetches Outlook events on mount when Microsoft is connected', async () => {
-    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    render(<CalendarView msAuth={connectedMicrosoft} calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
     await waitFor(() => expect(msGraphCalendar.fetchCalendarEvents).toHaveBeenCalled())
     const passedGetToken = msGraphCalendar.fetchCalendarEvents.mock.calls[0][0]
     expect(typeof passedGetToken).toBe('function')
@@ -144,7 +139,7 @@ describe('CalendarView Outlook + Google wiring', () => {
   })
 
   it('fetches Google events on mount when Google is connected', async () => {
-    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    render(<CalendarView msAuth={connectedMicrosoft} calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
     await waitFor(() => expect(googleCalendar.fetchGoogleCalendarEvents).toHaveBeenCalled())
   })
 
@@ -153,19 +148,19 @@ describe('CalendarView Outlook + Google wiring', () => {
     msGraphCalendar.fetchCalendarEvents.mockResolvedValueOnce([
       { id: 'outlook-1', title: 'All-Hands', start: `${todayIso}T13:00:00.000Z`, end: `${todayIso}T14:00:00.000Z`, type: 'meeting', personId: null, personName: null, plannerSection: null, description: '', source: 'outlook' },
     ])
-    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    render(<CalendarView msAuth={connectedMicrosoft} calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
     expect(await screen.findByText('All-Hands')).toBeTruthy()
   })
 
   it('shows the New event button and opens the modal when Google is connected', async () => {
-    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    render(<CalendarView msAuth={connectedMicrosoft} calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
     fireEvent.click(screen.getByTitle('New Google Calendar event'))
     expect(screen.getByText('New Google Calendar event', { selector: 'div' })).toBeTruthy()
   })
 
   it('does not show the New event button when Google is not connected', () => {
     googleCalendar.isGoogleConnected.mockReturnValue(false)
-    render(<CalendarView calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
+    render(<CalendarView msAuth={connectedMicrosoft} calendarEvents={[]} setCalendarEvents={() => {}} onNavigatePlanner={() => {}} />)
     expect(screen.queryByTitle('New Google Calendar event')).toBe(null)
   })
 })

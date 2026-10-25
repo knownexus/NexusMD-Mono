@@ -9,9 +9,8 @@ import {
   getWeekDays, getMonthGrid, getYearMonths, getAgendaDays,
   nowTopPx, todayStr, isoDate, MONTH_NAMES, MONTH_SHORT,
 } from '@nexusmd/ui'
-import { createGoogleCalendarEvent, isGoogleConnected, fetchGoogleCalendarEvents, deleteGoogleCalendarEvent } from '../google-calendar.js'
-import { fetchCalendarEvents } from '../ms-graph-calendar.js'
-import { makeDesktopOAuthService } from '../cloud-auth.js'
+import { createGoogleCalendarEvent, isGoogleConnected, fetchGoogleCalendarEvents, deleteGoogleCalendarEvent } from './google-calendar.js'
+import { fetchCalendarEvents } from './ms-graph-calendar.js'
 
 export function MicrosoftCalendarBanner({ connected, syncing, error, onRefresh }) {
   if (!connected) return null
@@ -160,7 +159,9 @@ const VIEWS = [
   { id: 'agenda', label: 'Agenda' },
 ]
 
-export function CalendarView({ calendarEvents, setCalendarEvents, onNavigatePlanner }) {
+// msAuth: the shell's Microsoft sign-in ({ isConnected, getToken }). onNavigatePlanner: omitted when
+// the Planner isn't installed, which hides "Open in Planner".
+export function CalendarView({ calendarEvents, setCalendarEvents, onNavigatePlanner, msAuth }) {
   const [calView, setCalView] = React.useState('week')
   const [offset, setOffset] = React.useState(0)
   const [selectedEvent, setSelectedEvent] = React.useState(null)
@@ -181,8 +182,6 @@ export function CalendarView({ calendarEvents, setCalendarEvents, onNavigatePlan
   const [newGoogleOpen, setNewGoogleOpen] = React.useState(false)
   const [newGoogleDate, setNewGoogleDate] = React.useState(null)
   const [newGoogleTime, setNewGoogleTime] = React.useState(null)
-
-  const msAuth = React.useMemo(() => makeDesktopOAuthService('microsoft'), [])
 
   const today = todayStr()
 
@@ -352,7 +351,7 @@ export function CalendarView({ calendarEvents, setCalendarEvents, onNavigatePlan
   return (
     <div>
       {selectedEvent && (
-        <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} onOpenPlanner={(ev) => onNavigatePlanner?.(ev)}
+        <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} onOpenPlanner={onNavigatePlanner ? (ev) => onNavigatePlanner(ev) : undefined}
           onUpdate={updateLocalEvent} onDelete={handleDeleteEvent} />
       )}
 

@@ -50,32 +50,6 @@
     ]
   },
   {
-    "id": "calendar",
-    "label": "Calendar",
-    "productName": "NexusMD Calendar",
-    "order": 1,
-    "nav": [
-      {
-        "id": "calendar",
-        "label": "Calendar",
-        "icon": "clock"
-      }
-    ]
-  },
-  {
-    "id": "planner",
-    "label": "Planner",
-    "productName": "NexusMD Planner",
-    "order": 8,
-    "nav": [
-      {
-        "id": "planner",
-        "label": "Planner",
-        "icon": "planner"
-      }
-    ]
-  },
-  {
     "id": "notes",
     "label": "Notes",
     "productName": "NexusMD Notes",

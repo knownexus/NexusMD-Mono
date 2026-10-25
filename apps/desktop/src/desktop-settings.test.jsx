@@ -74,7 +74,8 @@ const defaultProps = {
   onRefreshData: vi.fn(),
 }
 
-import { DesktopSettings } from './desktop-settings.jsx'
+import { DesktopSettings, visibleSettingsTabs } from './desktop-settings.jsx'
+import { buildRegistry } from './shell/registry.js'
 
 describe('DesktopSettings tab navigation', () => {
   it('shows Profile tab content by default', () => {
@@ -230,5 +231,24 @@ describe('GraphPermissionsCard', () => {
     // Refresh button must not be stuck showing "Checking…".
     expect(await screen.findByRole('button', { name: 'Refresh' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Checking…' })).toBeNull()
+  })
+})
+
+describe('Settings tabs follow the installed apps', () => {
+  const ids = installed => visibleSettingsTabs(buildRegistry(installed)).map(t => t.id)
+
+  it('shows every tab when everything is installed', () => {
+    expect(ids(null)).toEqual(['profile', 'appearance', 'planner', 'cards', 'profiles', 'confidential', 'data', 'integrations', 'desktop'])
+  })
+  it('drops the Planner and Confidential tabs when neither Planner nor Work is installed', () => {
+    expect(ids(['git'])).not.toContain('planner')
+    expect(ids(['git'])).not.toContain('confidential')
+  })
+  it('keeps the Planner tab for Work (its board columns) but not Confidential, which is the Planner\'s', () => {
+    expect(ids(['work'])).toContain('planner')
+    expect(ids(['work'])).not.toContain('confidential')
+  })
+  it('shows both for the Planner alone', () => {
+    expect(ids(['planner'])).toEqual(expect.arrayContaining(['planner', 'confidential']))
   })
 })

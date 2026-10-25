@@ -61,3 +61,15 @@ describe('installedIdsFromHost', () => {
     expect(installedIdsFromHost({ registry: { get: () => { throw new Error('x') } } })).toBeNull()
   })
 })
+
+describe('Calendar and Planner as apps of their own', () => {
+  it('own their views, separate from Work', () => {
+    const r = buildRegistry()
+    expect(r.appForView('calendar').id).toBe('calendar')
+    expect(r.appForView('planner').id).toBe('planner')
+  })
+  it('can be installed without Work, and Work without them', () => {
+    expect(buildRegistry(['planner', 'calendar']).nav.map(n => n.id)).toEqual(['calendar', 'planner'])
+    expect(buildRegistry(['work']).nav.map(n => n.id)).toEqual(['dashboard', 'work', 'prs', 'builds', 'tests', 'team', 'triage'])
+  })
+})

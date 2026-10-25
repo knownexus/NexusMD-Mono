@@ -1,23 +1,10 @@
 import React from 'react'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
+
+vi.mock('@nexusmd/shell-sdk', () => ({ getProfileKey: k => k }))
 import { loadConfidentialConfig } from '@nexusmd/ui'
 
-vi.mock('./profile-keys.js', () => ({ getProfileKey: k => k }))
-vi.mock('./profile-context.jsx', () => ({ useProfile: () => ({}) }))
-vi.mock('./cloud-auth.js', () => ({
-  desktopCloudProviders: [],
-  makeDesktopOAuthService: () => ({ isConnected: false, connect: vi.fn(), disconnect: vi.fn() }),
-}))
-vi.mock('./sync.js', () => ({ desktopSync: {} }))
-vi.mock('./file-io.js', () => ({ desktopFileIO: {} }))
-vi.mock('./ado-client.js', () => ({
-  getAdoConfig: () => ({ org: '', projects: [] }),
-  saveAdoConfig: vi.fn(),
-  createAdoHttpAdapter: () => ({}),
-  isAdoConfigured: () => false,
-}))
-vi.mock('./logs-card.jsx', () => ({ default: () => <div>LogsCard</div> }))
 vi.mock('@nexusmd/ui', () => ({
   VsCard: ({ children }) => <div>{children}</div>,
   VsRow: ({ title, children }) => <div><span>{title}</span><div>{children}</div></div>,
@@ -46,7 +33,7 @@ afterEach(() => {
   vi.mocked(loadConfidentialConfig).mockReturnValue({ sections: [], hash: null })
 })
 
-import { DesktopConfidentialCard } from './desktop-settings.jsx'
+import { DesktopConfidentialCard } from './planner-settings.jsx'
 
 describe('DesktopConfidentialCard', () => {
   it('shows "Set password" button when no hash is set', () => {

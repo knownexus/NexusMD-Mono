@@ -12,7 +12,7 @@ import {
   NexusDataProvider, useNexusData, ToastHost, toast,
   PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
   DashboardView, WorkItemsView, TriageView,
-  PlannerView, DocumentsView, plannerExportDocx,
+  DocumentsView,
   WorkItemDetail, BuildDetail, Drawer, TypeIcon, Prio,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
   WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
@@ -24,7 +24,7 @@ import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
 import { desktopCloudProviders, registerCloudDeepLink, makeDesktopOAuthService } from './cloud-auth.js'
-import { startDesktopAutoSync, desktopSync } from './sync.js'
+import { startDesktopAutoSync } from './sync.js'
 import { INSTALLED_NAV, SETTINGS_NAV, ALL_NAV, DEFAULT_NAV_ORDER } from './nav-config.js'
 import { isUninstalledView } from './shell/registry.js'
 import {
@@ -40,8 +40,6 @@ import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
 import DesktopNotesView from './desktop-notes-view.jsx'
-import { CalendarView } from './views/view-calendar.jsx'
-import { createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
 import { navigationAdapter }    from './adapters/navigation.js'
 import { authAdapter }          from './adapters/auth.js'
@@ -56,6 +54,7 @@ import { scriptRunnerAdapter }  from './adapters/scriptRunner.js'
 import { rawHttpAdapter }       from './adapters/rawHttp.js'
 import { dbManagerAdapter }     from './adapters/db-manager.js'
 import { moduleAdapters, moduleView, findPopout, ModuleProviders } from './shell/modules.js'
+import { host, capabilities } from './shell/host.js'
 import { listSavedConnections, getConnectionSecret, saveConnection } from './db-manager-config.js'
 
 const adapters = {
@@ -357,8 +356,6 @@ function ViewBody({
   view, onOpenItem, onOpenPR, onOpenPerson = () => {}, onOpenBuild = () => {},
   tweaks = DEFAULT_TWEAKS, setTweak = () => {},
   newItemIds = { work: new Set(), pr: new Set(), builds: new Set(), tests: new Set() },
-  plannerData = {}, setPlannerData = () => {},
-  plannerThemes = {}, setPlannerThemes = () => {},
   refreshInterval = 300, onRefreshIntervalChange = () => {},
   localItems = null, setLocalItems = () => {},
 }) {
@@ -373,7 +370,6 @@ function ViewBody({
   const [acknowledgedTests, setAcknowledgedTests]   = usePersistedState('nexusmd.tests.acknowledged', [])
   const [widgetWidths, setWidgetWidths] = usePersistedState('nexusmd.dash.widgetWidths', {})
   const [widgetHeights, setWidgetHeights] = usePersistedState('nexusmd.dash.widgetHeights', {})
-  const [calendarEvents, setCalendarEvents] = usePersistedState('nexusmd.calendar.events', [])
   const items = localItems ?? (data.WORK_ITEMS || [])
 
   const [customTeam, setCustomTeam] = React.useState(() => {
@@ -418,28 +414,23 @@ function ViewBody({
     }
   }
 
-  const handleScheduleOneOnOne = (dev) => {
+  // "Schedule 1:1" is the Calendar app's job, so the button exists only when it's installed; the
+  // Planner is opened afterwards only if it is installed too.
+  const handleScheduleOneOnOne = capabilities.has('calendar.scheduleMeeting') ? (dev) => {
     const start = new Date()
     start.setHours(10, 0, 0, 0)
     start.setDate(start.getDate() + 1)
     const end = new Date(start.getTime() + 60 * 60000)
-    const msAuth = makeDesktopOAuthService('microsoft')
-    if (msAuth.isConnected()) {
-      createCalendarEvent(msAuth.getToken, {
-        title: `1:1 with ${dev.name}`,
-        start: toLocalDateTimeString(start),
-        end: toLocalDateTimeString(end),
-      }).catch(console.error)
-    }
-    window.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: 'planner' }))
-  }
+    Promise.resolve(capabilities.call('calendar.scheduleMeeting', { title: `1:1 with ${dev.name}`, start, end })).catch(console.error)
+    if (host.isInstalled('planner')) host.navigate('planner')
+  } : undefined
 
   // A view from an app that isn't installed on this machine (stale saved view, deep link, tray).
   if (isUninstalledView(view)) return <Placeholder label={(ALL_NAV.find(n => n.id === view) || ALL_NAV[0]).label} />
 
   // Views that live in an installable app's own module.
   const ModuleView = moduleView(view)
-  if (ModuleView) return <ModuleView adapters={adapters} />
+  if (ModuleView) return <ModuleView adapters={adapters} host={host} />
 
   switch (view) {
     case 'dashboard': {
@@ -451,7 +442,8 @@ function ViewBody({
           widgetOrder={tweaks.widgetOrder || DASH_WIDGET_ORDER} setWidgetOrder={arr => setTweak('widgetOrder', arr)}
           widgetWidths={widgetWidths} setWidgetWidths={setWidgetWidths}
           widgetHeights={widgetHeights} setWidgetHeights={setWidgetHeights}
-          needsMeCriteria={needsMeCriteria} setPlannerData={setPlannerData}
+          needsMeCriteria={needsMeCriteria}
+          setPlannerData={capabilities.has('planner.updateData') ? (updater => capabilities.call('planner.updateData', updater)) : undefined}
           quickLinks={tweaks.quickLinks || []}
           density={tweaks.density}
           team={effectiveTeam}
@@ -459,14 +451,6 @@ function ViewBody({
         />
       )
     }
-    case 'calendar':
-      return (
-        <CalendarView
-          calendarEvents={calendarEvents}
-          setCalendarEvents={setCalendarEvents}
-          onNavigatePlanner={() => window.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: 'planner' }))}
-        />
-      )
     case 'work':
       return (
         <WorkItemsView
@@ -512,41 +496,6 @@ function ViewBody({
       )
     case 'triage':
       return <TriageView />
-    case 'planner': {
-      const pk = k => { try { return getProfileKey(k) } catch { return k } }
-      const readPref = (key, def) => { try { return localStorage.getItem(pk(key)) || def } catch { return def } }
-      const plannerPrefs = {
-        landing:     readPref('nexusmd.planner.landing', 'glance'),
-        nav:         readPref('nexusmd.planner.nav', 'rail'),
-        entry:       readPref('nexusmd.planner.entry', 'inline'),
-        carryPrompt: readPref('nexusmd.planner.carryPrompt', '1') === '1',
-      }
-      const handlePlannerCloudSync = async () => {
-        try {
-          const r = await desktopSync.syncOnce()
-          if (r.skipped === 'no-key') toast?.('Set a sync passphrase in Settings first.', 'info')
-          else if (r.skipped === 'no-provider') toast?.('Select a cloud provider in Settings first.', 'info')
-          else if (r.skipped === 'not-connected') toast?.('Connect your cloud provider in Settings first.', 'info')
-          else if (r.skipped === 'bad-passphrase') toast?.('Wrong passphrase — fix it in Settings.', 'error')
-          else if (!r.skipped) toast?.(`Backed up — pushed ${r.pushed}, pulled ${r.pulled}, merged ${r.merged}.`, 'success')
-        } catch (err) { toast?.('Cloud sync failed: ' + (err?.message || 'unknown error'), 'error') }
-      }
-      return (
-        <PlannerView
-          data={plannerData}
-          setData={setPlannerData}
-          themes={plannerThemes}
-          setThemes={setPlannerThemes}
-          onExportDocx={plannerExportDocx}
-          landing={plannerPrefs.landing}
-          navStyle={plannerPrefs.nav}
-          entryStyle={plannerPrefs.entry}
-          carryPrompt={plannerPrefs.carryPrompt}
-          showGlobalNotesTab={false}
-          onCloudSync={handlePlannerCloudSync}
-        />
-      )
-    }
     case 'notes':
       return <DesktopNotesView />
     case 'markdown':
@@ -724,8 +673,6 @@ function App() {
 
   const [githubExpired, setGithubExpired] = React.useState(false)
 
-  const [plannerData, setPlannerData]     = React.useState({})
-  const [plannerThemes, setPlannerThemes] = React.useState({})
 
   const [refreshInterval, setRefreshInterval] = React.useState(() => {
     try { return parseInt(localStorage.getItem('nexusmd.refreshInterval') || '300', 10) } catch { return 300 }
@@ -1030,8 +977,6 @@ function App() {
               view={id} onOpenItem={openItem} onOpenPR={openPR} onOpenPerson={openPerson} onOpenBuild={openBuild}
               tweaks={tweaks} setTweak={setTweak}
               newItemIds={newItemIds}
-              plannerData={plannerData} setPlannerData={setPlannerData}
-              plannerThemes={plannerThemes} setPlannerThemes={setPlannerThemes}
               refreshInterval={refreshInterval} onRefreshIntervalChange={setRefreshInterval}
               localItems={localItems} setLocalItems={setItemsResolved}
             />

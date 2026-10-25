@@ -338,7 +338,7 @@ function EventDetailModal({ event, onClose, onOpenPlanner, onUpdate, onDelete })
                   ) : (
                     <React.Fragment>
                       <button className="btn sm ghost" onClick={()=>setConfirmDel(true)} style={{ color:'var(--danger)',marginRight:'auto',gap:6 }}><Icon name="trash" size={12}/> Delete</button>
-                      {event.plannerSection && (
+                      {event.plannerSection && onOpenPlanner && (
                         <button className="btn sm ghost" onClick={() => { onOpenPlanner(event); onClose(); }} style={{ gap:6 }}>
                           <Icon name="planner" size={12}/> Open in Planner
                         </button>
@@ -349,7 +349,7 @@ function EventDetailModal({ event, onClose, onOpenPlanner, onUpdate, onDelete })
                 )}
                 {!isLocal && event.source !== 'google' && (
                   <React.Fragment>
-                    {event.plannerSection && (
+                    {event.plannerSection && onOpenPlanner && (
                       <button className="btn sm ghost" onClick={() => { onOpenPlanner(event); onClose(); }} style={{ gap:6 }}>
                         <Icon name="planner" size={12}/> Open in Planner
                       </button>

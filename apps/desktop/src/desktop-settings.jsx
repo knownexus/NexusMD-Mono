@@ -3,7 +3,7 @@ import {
   Icon, CardFrame,
   VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker, BoardColumnsCard,
   VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView,
-  PlToggle, VsPasswordModal, loadConfidentialConfig,
+  PlToggle,
   CardsAndTablesSettings, toast, WI_TYPE_STATES_CACHE_KEY,
 } from '@nexusmd/ui'
 import { ADO_CACHE_KEY, JIRA_CACHE_KEY, buildConfig, resolveConnectionParams, buildConnectionString, graphJSON, SQL_AUTH, AZURE_AD_INTERACTIVE, connectionStringToFields } from '@nexusmd/core'
@@ -19,7 +19,8 @@ import { desktopSync } from './sync.js'
 import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
 import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
 import { dbManagerAdapter } from './adapters/db-manager.js'
-import { moduleSettingsCards } from './shell/modules.js'
+import { moduleSettingsCards, modulePanels } from './shell/modules.js'
+import { registry } from './shell/registry.js'
 import { pickerAdapter } from './adapters/picker.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 import {
@@ -527,72 +528,6 @@ export function DesktopProfileCard() {
   )
 }
 
-export function DesktopPlannerPrefsCard() {
-  const pk = k => { try { return getProfileKey(k) } catch { return k } }
-  const readPref = (key, def) => { try { return localStorage.getItem(pk(key)) || def } catch { return def } }
-  const savePref = (key, val) => { try { localStorage.setItem(pk(key), val) } catch {} }
-
-  const [landing, setLanding] = React.useState(() => readPref('nexusmd.planner.landing', 'glance'))
-  const [nav,     setNav]     = React.useState(() => readPref('nexusmd.planner.nav', 'rail'))
-  const [entry,   setEntry]   = React.useState(() => readPref('nexusmd.planner.entry', 'inline'))
-  const [carry,   setCarry]   = React.useState(() => readPref('nexusmd.planner.carryPrompt', '1'))
-
-  return (
-    <VsCard title="Planner" icon="planner">
-      <VsRow title="Landing view" desc="First view when opening the Planner">
-        <VsSeg value={landing}
-          options={[['glance','Glance'],['week','Week'],['month','Month']]}
-          onChange={v => { setLanding(v); savePref('nexusmd.planner.landing', v) }} />
-      </VsRow>
-      <VsRow title="Navigation style" desc="How the planner nav is displayed">
-        <VsSeg value={nav}
-          options={[['rail','Rail'],['tabs','Tabs']]}
-          onChange={v => { setNav(v); savePref('nexusmd.planner.nav', v) }} />
-      </VsRow>
-      <VsRow title="Entry style" desc="How new planner entries are created">
-        <VsSeg value={entry}
-          options={[['inline','Inline'],['modal','Modal']]}
-          onChange={v => { setEntry(v); savePref('nexusmd.planner.entry', v) }} />
-      </VsRow>
-      <VsRow title="Carry-over prompt" desc="Prompt to carry unfinished tasks forward each week">
-        <PlToggle checked={carry === '1'}
-          onChange={v => { const s = v ? '1' : '0'; setCarry(s); savePref('nexusmd.planner.carryPrompt', s) }} />
-      </VsRow>
-    </VsCard>
-  )
-}
-
-export function DesktopConfidentialCard() {
-  const [pwOpen, setPwOpen] = React.useState(false)
-  const [autoRelock, setAutoRelock] = React.useState(() => {
-    try { return localStorage.getItem('nexusmd.confidential.autoRelock') || '0' } catch { return '0' }
-  })
-  const cfg = loadConfidentialConfig() || { sections: [], hash: null }
-  const lockedCount = (cfg.sections || []).filter(s => s.locked).length
-
-  return (
-    <VsCard title="Confidential" icon="lock">
-      <VsRow title="Password" desc={cfg.hash ? 'A password is set for confidential sections' : 'No password set — anyone can view confidential rows'}>
-        <button className="btn sm ghost" onClick={() => setPwOpen(true)}>
-          {cfg.hash ? 'Change password' : 'Set password'}
-        </button>
-      </VsRow>
-      <VsRow title="Auto re-lock" desc="Re-lock confidential sections when the app loses focus">
-        <PlToggle checked={autoRelock === '1'} onChange={v => {
-          const s = v ? '1' : '0'; setAutoRelock(s)
-          try { localStorage.setItem('nexusmd.confidential.autoRelock', s) } catch {}
-        }} />
-      </VsRow>
-      {lockedCount > 0 && (
-        <VsRow title="Locked sections" desc={`${lockedCount} section${lockedCount !== 1 ? 's' : ''} currently locked in the planner`}>
-          <span className="pill">{lockedCount}</span>
-        </VsRow>
-      )}
-      <VsPasswordModal open={pwOpen} onClose={() => setPwOpen(false)} />
-    </VsCard>
-  )
-}
-
 export function DesktopAppCard() {
   const [loginItem, setLoginItem] = React.useState(false)
   const [closeToTray, setCloseToTray] = React.useState(true)
@@ -1035,6 +970,12 @@ const SETTINGS_TABS = [
   { id: 'desktop',      label: 'Desktop',      icon: 'dashboard' },
 ]
 
+// A tab shows only when it has something to hold: 'planner' needs the Planner or Work apps (its board
+// columns are Work's), 'confidential' is the Planner's.
+const TAB_NEEDS = { planner: ['planner', 'work'], confidential: ['planner'] }
+export const visibleSettingsTabs = (reg = registry) =>
+  SETTINGS_TABS.filter(t => !TAB_NEEDS[t.id] || TAB_NEEDS[t.id].some(id => reg.isInstalled(id)))
+
 export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refreshInterval, onRefreshIntervalChange, onRefreshData }) {
   const profileApi = useProfile()
   const [tab, setTab] = React.useState('profile')
@@ -1047,7 +988,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
         padding: '16px 8px',
         borderRight: '1px solid var(--border)',
       }}>
-        {SETTINGS_TABS.map(t => (
+        {visibleSettingsTabs().map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
@@ -1111,7 +1052,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
 
           {tab === 'planner' && (
             <>
-              <DesktopPlannerPrefsCard />
+              {modulePanels('planner').map(({ id, Panel }) => <Panel key={id} />)}
               <BoardColumnsCard />
             </>
           )}
@@ -1126,7 +1067,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
             </>
           )}
 
-          {tab === 'confidential' && <DesktopConfidentialCard />}
+          {tab === 'confidential' && modulePanels('confidential').map(({ id, Panel }) => <Panel key={id} />)}
 
           {tab === 'data' && (
             <>

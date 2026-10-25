@@ -67,3 +67,46 @@ test('Dev Environment works as the only installed app', async () => {
     await expect(win.locator('body')).not.toContainText('Something went wrong')
   })
 })
+
+test('the Dashboard\'s Quick note needs the Planner', async () => {
+  await withApps(null, async win => {
+    await item(win, 'Dashboard').click()
+    await expect(win.getByRole('button', { name: /Quick note/ })).toHaveCount(1)
+  })
+  await withApps('work', async win => {
+    await expect(item(win, 'Dashboard')).toHaveClass(/active/)
+    await expect(win.getByRole('button', { name: /New work item/ })).toHaveCount(1)   // the Dashboard did render
+    await expect(win.getByRole('button', { name: /Quick note/ })).toHaveCount(0)
+  })
+})
+
+test('the Planner and Confidential Settings tabs follow the apps that own them', async () => {
+  const settingsTabs = async win => {
+    await item(win, 'Settings').evaluate(b => b.click())
+    await expect(win.getByRole('button', { name: 'Appearance' })).toBeVisible({ timeout: 15_000 })
+    return win.locator('nav button').allInnerTexts()
+  }
+  await withApps('git', async win => {
+    const tabs = await settingsTabs(win)
+    expect(tabs.join('|')).not.toMatch(/Planner|Confidential/)
+  })
+  await withApps('planner', async win => {
+    const tabs = (await settingsTabs(win)).join('|')
+    expect(tabs).toMatch(/Planner/)
+    expect(tabs).toMatch(/Confidential/)
+  })
+})
+
+test('Planner and Calendar each work as the only installed app', async () => {
+  for (const [apps, label] of [['planner', 'Planner'], ['calendar', 'Calendar']]) {
+    await withApps(apps, async win => {
+      await expect(item(win, label)).toHaveClass(/active/)
+      const errors = []
+      win.on('pageerror', e => errors.push(String(e)))
+      await win.waitForTimeout(1000)
+      expect(errors).toEqual([])
+      await expect(win.locator('body')).not.toContainText('Something went wrong')
+      expect(await win.locator('main, .page, [class*="planner"], [class*="cal"]').count()).toBeGreaterThan(0)
+    })
+  }
+})

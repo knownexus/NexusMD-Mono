@@ -1,5 +1,6 @@
 import React from 'react'
 import { registry } from './registry.js'
+import { host } from './host.js'
 
 // Renderer code of every installable app. While all apps are still bundled together, Vite pulls
 // each modules/<id>/src/renderer/index.js in here; only the ones the registry says are installed
@@ -12,6 +13,9 @@ export function loadModules(reg = registry, all = Object.values(found)) {
 
 export const modules = loadModules()
 
+// Lets each installed app register what it offers the others (capabilities) before anything renders.
+for (const m of modules) m.activate?.(host)
+
 // Adapters the installed apps add to the core adapter set (must be merged before initCore).
 export function moduleAdapters(mods = modules) {
   return Object.assign({}, ...mods.map(m => m.adapters || {}))
@@ -20,6 +24,11 @@ export function moduleAdapters(mods = modules) {
 // The component an installed app renders for a view id, or undefined if no app module owns it.
 export function moduleView(viewId, mods = modules) {
   return mods.find(m => m.views?.[viewId])?.views[viewId]
+}
+
+// Settings panels that installed apps put into a named tab (e.g. 'planner').
+export function modulePanels(tabId, mods = modules) {
+  return mods.filter(m => m.settingsPanels?.[tabId]).map(m => ({ id: m.id, Panel: m.settingsPanels[tabId] }))
 }
 
 export function moduleSettingsCards(mods = modules) {
