@@ -58,6 +58,7 @@
         "writeFile": { "invoke": "git:writeFile" },
         "readImage": { "invoke": "git:readImage" },
         "reveal": { "invoke": "git:reveal" },
+        "openExternal": { "invoke": "git:openExternal" },
         "importFiles": { "invoke": "git:importFiles" },
         "conflict": { "invoke": "git:conflict" },
         "resolveConflict": { "invoke": "git:resolveConflict" },

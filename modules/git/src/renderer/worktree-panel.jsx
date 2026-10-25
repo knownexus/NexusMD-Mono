@@ -21,7 +21,7 @@ import { discardWorktreeDraft, discardConflictDraft, worktreeDraftPaths, worktre
  * `confirmDiscard()`, which asks before unsaved edits would be lost, and `openFile(path, line)`.
  */
 export const WorktreePanel = React.forwardRef(function WorktreePanel({
-  adapter, repo, registered, version, tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite, onCommit, onResolve = null, onHunk,
+  adapter, host = null, repo, registered, version, tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite, onCommit, onResolve = null, onHunk,
   busy, status, split, onSplit, panel = 'changes', onPanel = () => {}, onSync = null, onSaved,
   onOverview = () => {}, onSwitch = () => {},
 }, ref) {
@@ -203,7 +203,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
       {filesTab
         ? (
           <div className="nx-gw-files-body">
-            <FilesPane adapter={adapter} repo={repo} worktreePath={tree.path} registered={registered} version={version} onImported={onSaved} onOpenFile={goToFile} />
+            <FilesPane adapter={adapter} host={host} repo={repo} worktreePath={tree.path} registered={registered} version={version} onImported={onSaved} onOpenFile={goToFile} />
           </div>
         )
         : history

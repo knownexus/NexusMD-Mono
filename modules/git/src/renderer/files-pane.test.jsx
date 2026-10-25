@@ -135,6 +135,58 @@ describe('FilesPane', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('docs/x no longer exists.')
   })
 
+  describe('opening a file in another app', () => {
+    const adapterWith = extra => ({ files: vi.fn(async () => ({ files, truncated: false })), pathForFile: vi.fn(), importFiles: vi.fn(), reveal: vi.fn(), ...extra })
+    const hostWith = provided => {
+      const calls = []
+      return { calls, host: { capabilities: { has: n => provided.includes(n), call: (...a) => { calls.push(a); return Promise.resolve(true) } } } }
+    }
+
+    it('uses the Editor app when it is installed', async () => {
+      const adapter = adapterWith({ openExternal: vi.fn() })
+      const { host, calls } = hostWith(['editor.openPath'])
+      render(<FilesPane adapter={adapter} host={host} repo={repo} worktreePath={'C:\\repos\\A'} registered={registered} version={1} />)
+      fireEvent.contextMenu(await row('docs'))
+      fireEvent.click(await row('docs'))
+      fireEvent.contextMenu(await row('guide.md'))
+      expect(screen.queryByRole('menuitem', { name: 'Open with default app' })).toBeNull()
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Editor' }))
+      await waitFor(() => expect(calls).toEqual([['editor.openPath', 'C:\\repos\\A\\docs\\guide.md']]))
+      expect(adapter.openExternal).not.toHaveBeenCalled()
+    })
+
+    it('falls back to the system default app when there is no Editor', async () => {
+      const adapter = adapterWith({ openExternal: vi.fn(async () => {}) })
+      render(<FilesPane adapter={adapter} host={hostWith([]).host} repo={repo} worktreePath={repo.path} registered={registered} version={1} />)
+      fireEvent.contextMenu(await row('README.md'))
+      expect(screen.queryByRole('menuitem', { name: 'Open in Editor' })).toBeNull()
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Open with default app' }))
+      await waitFor(() => expect(adapter.openExternal).toHaveBeenCalledWith(repo, repo.path, registered, 'README.md'))
+    })
+
+    it('also falls back when there is no host at all', async () => {
+      const adapter = adapterWith({ openExternal: vi.fn(async () => {}) })
+      render(<FilesPane adapter={adapter} repo={repo} worktreePath={repo.path} registered={registered} version={1} />)
+      fireEvent.contextMenu(await row('README.md'))
+      expect(screen.getByRole('menuitem', { name: 'Open with default app' })).toBeTruthy()
+    })
+
+    it('says why the default app was not used, e.g. for a script', async () => {
+      const adapter = adapterWith({ openExternal: vi.fn(async () => { throw new Error('run.bat is a kind of file that can run something, so it isn\'t opened from here.') }) })
+      render(<FilesPane adapter={adapter} repo={repo} worktreePath={repo.path} registered={registered} version={1} />)
+      fireEvent.contextMenu(await row('README.md'))
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Open with default app' }))
+      expect((await screen.findByRole('alert')).textContent).toMatch(/can run something/)
+    })
+
+    it('offers neither for a folder', async () => {
+      render(<FilesPane adapter={adapterWith({})} host={hostWith(['editor.openPath']).host} repo={repo} worktreePath={repo.path} registered={registered} version={1} />)
+      fireEvent.contextMenu(await row('docs'))
+      expect(screen.queryByRole('menuitem', { name: 'Open in Editor' })).toBeNull()
+      expect(screen.queryByRole('menuitem', { name: 'Open with default app' })).toBeNull()
+    })
+  })
+
   it('opens a file in a window of its own from the menu, and a folder has no such item', async () => {
     const adapter = { files: vi.fn(async () => ({ files, truncated: false })), pathForFile: vi.fn(), importFiles: vi.fn(), reveal: vi.fn(), openWindow: vi.fn(async () => ({ reused: false })) }
     render(<FilesPane adapter={adapter} repo={repo} worktreePath={repo.path} registered={registered} version={1} />)

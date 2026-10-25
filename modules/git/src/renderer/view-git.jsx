@@ -45,13 +45,13 @@ function readAt(iso) {
   return today ? d.toLocaleTimeString() : `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`
 }
 
-export function ViewGit({ adapters }) {
+export function ViewGit({ adapters, host = null }) {
   const adapter = adapters?.git
   if (!adapter?.isAvailable()) return <div className="nx-empty" style={{ padding: 16 }}>Git Workspace needs the desktop app.</div>
-  return <GitWorkspace adapter={adapter} />
+  return <GitWorkspace adapter={adapter} host={host} />
 }
 
-function GitWorkspace({ adapter }) {
+function GitWorkspace({ adapter, host }) {
   const config = useGitConfig()
   const registered = React.useMemo(() => config.repos.map(r => r.path), [config.repos])
   const [gitVersion, setGitVersion] = React.useState(undefined)
@@ -267,7 +267,7 @@ function GitWorkspace({ adapter }) {
         <aside aria-label="Details" className="nx-gw-main" ref={detailsRef}>
           {selectedTree
             ? (
-              <WorktreePanel ref={panelRef} adapter={adapter} repo={{ name: selectedTree.repo, path: selectedTree.repoRoot }} registered={registered}
+              <WorktreePanel ref={panelRef} adapter={adapter} host={host} repo={{ name: selectedTree.repo, path: selectedTree.repoRoot }} registered={registered}
                 version={snapshot?.takenAt} tree={selectedTree} selected={selectedIds} focusId={focusId}
                 onSelectionChange={ids => setSelections(s => ({ ...s, [treeKey]: ids }))}
                 onFocus={id => setFocus(f => ({ ...f, [treeKey]: id }))}

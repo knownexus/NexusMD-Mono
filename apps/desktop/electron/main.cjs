@@ -76,14 +76,19 @@ const { clampZoomFactor, nextZoom, ZOOM_DEFAULT } = require('./zoom.cjs')
 // ---------------------------------------------------------------------------
 // Single-instance lock
 // ---------------------------------------------------------------------------
+const secondInstanceListeners = new Set();
 const gotLock = app.requestSingleInstanceLock();
 
 if (!gotLock) {
   // Another instance is already running — quit immediately.
   app.quit();
 } else {
-  // A second launch attempt focused the existing window.
-  app.on('second-instance', () => {
+  // A second launch attempt focuses the existing window, and tells the installed apps what it was
+  // launched with (e.g. the Editor opens a file given on the command line).
+  app.on('second-instance', (_event, argv) => {
+    for (const listener of secondInstanceListeners) {
+      try { listener(argv); } catch (err) { log.error('second-instance listener failed', err); }
+    }
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
@@ -369,6 +374,8 @@ app.whenReady().then(async () => {
   // Apps split into their own package (Git Workspace, ...): each registers its own IPC and windows.
   appModules = appRegistry.registerModules({
     ipcMain, BrowserWindow, dialog,
+    argv: process.argv,
+    onSecondInstance: (fn) => { secondInstanceListeners.add(fn); return () => secondInstanceListeners.delete(fn); },
     send: (channel, msg) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, msg); },
     preloadPath: path.join(__dirname, 'preload.cjs'),
     windowIcon: () => windowIconPath(nativeTheme.shouldUseDarkColors),

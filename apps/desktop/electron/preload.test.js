@@ -6,13 +6,14 @@ import gitManifest from '@nexusmd/app-git/manifest'
 import devenvManifest from '@nexusmd/app-devenv/manifest'
 import databaseManifest from '@nexusmd/app-database/manifest'
 import apiClientManifest from '@nexusmd/app-api-client/manifest'
+import editorManifest from '@nexusmd/app-editor/manifest'
 
 let exposed
 let ipcRenderer
 const origRequire = Module.prototype.require
 
 beforeAll(() => {
-  ipcRenderer = { invoke: vi.fn(), sendSync: vi.fn(channel => (channel === 'registry:preload-descriptors' ? { ...gitManifest.ipc.preload, ...devenvManifest.ipc.preload, ...databaseManifest.ipc.preload, ...apiClientManifest.ipc.preload } : { installedIds: ['git'] })), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
+  ipcRenderer = { invoke: vi.fn(), sendSync: vi.fn(channel => (channel === 'registry:preload-descriptors' ? { ...gitManifest.ipc.preload, ...devenvManifest.ipc.preload, ...databaseManifest.ipc.preload, ...apiClientManifest.ipc.preload, ...editorManifest.ipc.preload } : { installedIds: ['git'] })), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
   const fakeElectron = {
     contextBridge: { exposeInMainWorld: (_name, obj) => { exposed = obj } },
     ipcRenderer,
@@ -46,6 +47,20 @@ describe('preload bridge', () => {
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('db-manager:get-rows', { type: 'sqlite', config: { file: 'a.db' }, table: 'users', limit: 50, offset: 100 })
     exposed.dbManager.updateCell('sqlite', {}, 't', 'id', 7, 'name', 'x')
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('db-manager:update-cell', { type: 'sqlite', config: {}, table: 't', primaryKey: 'id', primaryValue: 7, column: 'name', value: 'x' })
+  })
+
+  it('bridges the Editor\'s file calls and its open-request event', () => {
+    exposed.editor.read('C:\\a.txt')
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('editor:read', 'C:\\a.txt')
+    exposed.editor.write('C:\\a.txt', 'x', { expectedStamp: 's' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('editor:write', 'C:\\a.txt', 'x', { expectedStamp: 's' })
+    const cb = vi.fn()
+    const off = exposed.editor.onOpenRequest(cb)
+    const [channel, handler] = ipcRenderer.on.mock.calls.at(-1)
+    expect(channel).toBe('editor:open-request')
+    handler({}, ['C:\\a.txt'])
+    expect(cb).toHaveBeenCalledWith(['C:\\a.txt'])
+    off()
   })
 
   it('builds a nested method from a dotted name', () => {

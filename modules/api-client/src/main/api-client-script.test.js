@@ -97,6 +97,10 @@ describe('runScript: nothing from the host realm reaches the script', () => {
     ['an array', 'context.leak = typeof context.list.constructor.constructor("return process")()'],
     ['an array element', 'context.leak = typeof context.list[0].constructor.constructor("return process")()'],
     ['__proto__', 'context.leak = typeof Object.getPrototypeOf(context).constructor.constructor("return process")()'],
+    // The sandbox's own global: contextifying a host object used to leak the host's Object/Function.
+    ['this', 'context.leak = typeof this.constructor.constructor("return process")()'],
+    ['globalThis', 'context.leak = typeof globalThis.constructor.constructor("return process")()'],
+    ['a method of the global', 'context.leak = typeof this.toString.constructor("return process")()'],
   ]
   const input = { vars: { a: 1 }, list: [{ b: 2 }] }
 
@@ -107,6 +111,13 @@ describe('runScript: nothing from the host realm reaches the script', () => {
       expect(r.error).toMatch(/code generation/i)
     })
   }
+
+  it('has no host object behind its global scope', () => {
+    // Whatever the script can name on the global must be the sandbox's own.
+    const r = runScript('context.sameObject = this.constructor === Object; context.proto = Object.getPrototypeOf(this) === Object.prototype', {})
+    expect(r.error).toBeNull()
+    expect(r.context.sameObject).toBe(true)   // the sandbox's Object, not the host's (checked from inside)
+  })
 
   it('still hands back what the script changed, as plain data', () => {
     const r = runScript('context.vars.token = "abc"; context.list.push({ c: 3 })', input)

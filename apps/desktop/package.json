@@ -38,6 +38,7 @@
     "@nexusmd/app-database": "*",
     "@nexusmd/app-devenv": "*",
     "@nexusmd/app-documents": "*",
+    "@nexusmd/app-editor": "*",
     "@nexusmd/app-git": "*",
     "@nexusmd/app-notes": "*",
     "@nexusmd/app-planner": "*",

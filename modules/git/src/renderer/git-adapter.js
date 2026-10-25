@@ -45,6 +45,7 @@ export const gitAdapter = {
   onChanged(callback) { return window.electronAPI?.popout?.onChanged(callback) ?? (() => {}) },
   readImage(repo, worktreePath, registered, rel, side) { return api().readImage(repo, worktreePath, registered, rel, side) },
   reveal(repo, worktreePath, registered, rel) { return api().reveal(repo, worktreePath, registered, rel) },
+  openExternal(repo, worktreePath, registered, rel) { return api().openExternal(repo, worktreePath, registered, rel) },
   importFiles(repo, worktreePath, registered, destDir, sources, options) { return api().importFiles(repo, worktreePath, registered, destDir, sources, options) },
   pathForFile(file) { return api()?.pathForFile?.(file) || '' },
   conflict(repo, worktreePath, registered, rel) { return api().conflict(repo, worktreePath, registered, rel) },

@@ -16,10 +16,23 @@ import { pickerAdapter } from '../adapters/picker.js'
 //   adapters       the shell's own adapters apps may use: secureStorage (saved passwords), picker (file dialogs)
 export const capabilities = createCapabilities()
 
+// An app can ask for a view while the page is still loading (the Editor does, for a file the app was
+// launched with), before the shell has mounted and started listening. The latest such request waits
+// here for the shell to pick up when it starts (and is cleared whenever it hears one).
+let waitingView = null
+export function takeWaitingNavigation() {
+  const view = waitingView
+  waitingView = null
+  return view
+}
+
 export const host = {
   capabilities,
   isInstalled: id => registry.isInstalled(id),
-  navigate: view => window.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: view })),
+  navigate: view => {
+    waitingView = view
+    window.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: view }))
+  },
   // Looked up when called, not when this file loads.
   cloud: {
     makeOAuthService: (...args) => makeDesktopOAuthService(...args),

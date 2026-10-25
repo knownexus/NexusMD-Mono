@@ -999,7 +999,7 @@ function register(ipcMain, deps = {}) {
   });
 
   // The Git Workspace file editor (git-files.cjs): list, read and write worktree files.
-  registerFiles(handle, { git, requireExactWorktree, requirePaths, withRepoLock, reveal: deps.reveal });
+  registerFiles(handle, { git, requireExactWorktree, requirePaths, withRepoLock, reveal: deps.reveal, openExternal: deps.openExternal });
 
   // Copying dropped files into a worktree folder (git-import.cjs).
   registerImport(handle, { requireExactWorktree, withRepoLock });

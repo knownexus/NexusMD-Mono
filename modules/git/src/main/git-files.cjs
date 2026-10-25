@@ -55,7 +55,53 @@ async function defaultReveal(full, isRoot) {
   if (error) throw new Error(error);
 }
 
-function registerFiles(handle, { git, requireExactWorktree, requirePaths, withRepoLock, reveal = defaultReveal }) {
+// Opening a worktree file with its default app is allowed only for kinds that are plain text AND that
+// no common handler runs, interprets or evaluates. This is an allowlist on purpose: a list of what
+// to refuse can never be complete (scripts, installers, shortcuts, macro documents, .html/.svg that
+// run script, .csv that a spreadsheet evaluates, and new ones every year). Anything else, including
+// unknown and extensionless files, needs the Editor app. Source files for languages that need a
+// compiler first (C, Go, Rust, ...) are fine; those that run directly (js, py, sh, ps1) are not.
+const PASSIVE_EXTENSIONS = new Set([
+  'txt', 'md', 'markdown', 'rst', 'adoc', 'log',
+  'json', 'jsonc', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'properties', 'env', 'gitignore', 'gitattributes', 'editorconfig',
+  'css', 'scss', 'less',
+  'c', 'h', 'cpp', 'hpp', 'cc', 'cs', 'go', 'rs', 'java', 'kt', 'swift', 'sql',
+]);
+// Plain files with no extension that are conventionally documentation.
+const PASSIVE_NAMES = new Set([
+  'readme', 'license', 'licence', 'notice', 'authors', 'contributors', 'changelog', 'contributing', 'codeowners', 'copying',
+  '.gitignore', '.gitattributes', '.editorconfig',
+]);
+
+// Judged on the final name only: "invoice.txt.bat" is a .bat, "archive.exe.txt" is a text file.
+function isPassiveTextName(rel) {
+  if (typeof rel !== 'string') return false;
+  const name = path.basename(rel).toLowerCase();
+  // A trailing dot or space is dropped by Windows, so "a.txt " would open as "a.txt".
+  if (!name || /[. ]$/.test(name)) return false;
+  if (PASSIVE_NAMES.has(name)) return true;
+  const ext = path.extname(name).slice(1);
+  return ext !== '' && PASSIVE_EXTENSIONS.has(ext);
+}
+
+// Opens a worktree file with the system's default app. The electron require is lazy so this module
+// still loads under plain node (tests inject their own openExternal).
+async function defaultOpenExternal(full) {
+  const { shell } = require('electron');
+  const error = await shell.openPath(full);
+  if (error) throw new Error(error);
+}
+
+async function looksLikeText(file) {
+  const handle = await fsp.open(file, 'r');
+  try {
+    const buf = Buffer.alloc(8192);
+    const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
+    return !buf.subarray(0, bytesRead).includes(0);
+  } finally { await handle.close(); }
+}
+
+function registerFiles(handle, { git, requireExactWorktree, requirePaths, withRepoLock, reveal = defaultReveal, openExternal = defaultOpenExternal }) {
   const target = (repo, wt, registered, rel) =>
     requireExactWorktree(repo, wt, registered, () => requirePaths(wt, [rel])).then(() => requireWorktreeFile(wt, rel));
 
@@ -74,6 +120,23 @@ function registerFiles(handle, { git, requireExactWorktree, requirePaths, withRe
     const full = rel ? (await target(repo, wt, registered, rel)).full : await fsp.realpath(wt);
     if (!(await fsp.stat(full).catch(() => null))) throw new Error(`${rel} no longer exists.`);
     await reveal(full, !rel);
+  });
+
+  // Opens a text file of the worktree with the system's default app: what Git offers when the Editor
+  // app isn't installed. Only plain files inside the worktree that could not run anything.
+  handle('git:openExternal', async (_e, repo, wt, registered, rel) => {
+    await requireExactWorktree(repo, wt, registered);
+    const { real } = await target(repo, wt, registered, rel);
+    const st = await fsp.stat(real).catch(() => null);
+    if (!st) throw new Error(`${rel} no longer exists.`);
+    if (!st.isFile()) throw new Error(`${rel} isn't a file.`);
+    // Both the name the user sees and where it really lives (a link can point at a program).
+    if (!isPassiveTextName(rel) || !isPassiveTextName(real)) {
+      throw new Error(`${rel} isn't one of the plain-text kinds that can be opened from here. Install the Editor app to open any file.`);
+    }
+    if (process.platform !== 'win32' && (st.mode & 0o111)) throw new Error(`${rel} is executable, so it isn't opened from here.`);
+    if (!(await looksLikeText(real))) throw new Error(`${rel} isn't a text file, so it isn't opened from here.`);
+    await openExternal(real);
   });
 
   // An image of the worktree as a data URL, from the working tree, the index or HEAD, for the editor
@@ -126,4 +189,4 @@ function registerFiles(handle, { git, requireExactWorktree, requirePaths, withRe
   });
 }
 
-module.exports = { registerFiles, requireWorktreeFile, MAX_LIST };
+module.exports = { registerFiles, requireWorktreeFile, MAX_LIST, isPassiveTextName, PASSIVE_EXTENSIONS };

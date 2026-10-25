@@ -41,8 +41,19 @@ const DEFAULT_TIMEOUT_MS = 5000;
 // constructor — which codeGeneration (a per-context setting) does not restrict. Now the data is
 // created by the context's own JSON.parse from a string, and the result comes back out as a JSON
 // string parsed here, so only primitives cross the boundary in either direction.
+//
+// The same applies to the sandbox's global itself. Contextifying a host object (even `{}`) lets
+// `this.constructor.constructor("return process")()` (and globalThis.*, this.toString.constructor)
+// find the HOST's Object/Function through the global's lookups, so the global must have no host
+// object behind it: DONT_CONTEXTIFY gives the context a global of its own, and a null-prototype
+// object is the equivalent on a Node without it. Checked against Node 26 and Electron 43's Node 24.
+function newSandbox() {
+  const options = { codeGeneration: { strings: false, wasm: false } };
+  return vm.createContext(vm.constants?.DONT_CONTEXTIFY ?? Object.create(null), options);
+}
+
 function runScript(script, context = {}, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-  const sandbox = vm.createContext({}, { codeGeneration: { strings: false, wasm: false } });
+  const sandbox = newSandbox();
   try {
     const source = JSON.stringify(JSON.stringify(context ?? {}));
     vm.runInContext(`var context = JSON.parse(${source});`, sandbox, { timeout: timeoutMs });

@@ -24,6 +24,10 @@ const MODULES = {
     manifest: () => require('@nexusmd/app-devenv/manifest'),
     main: () => require('@nexusmd/app-devenv/main'),
   },
+  editor: {
+    manifest: () => require('@nexusmd/app-editor/manifest'),
+    main: () => require('@nexusmd/app-editor/main'),
+  },
   git: {
     manifest: () => require('@nexusmd/app-git/manifest'),
     main: () => require('@nexusmd/app-git/main'),

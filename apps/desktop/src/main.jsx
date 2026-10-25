@@ -48,7 +48,7 @@ import { deepLinkAdapter }      from './adapters/deepLink.js'
 import { updateAdapter }        from './adapters/update.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 import { moduleAdapters, moduleView, findPopout, ModuleProviders } from './shell/modules.js'
-import { host, capabilities } from './shell/host.js'
+import { host, capabilities, takeWaitingNavigation } from './shell/host.js'
 
 const adapters = {
   ...createNoOpAdapters(),
@@ -474,7 +474,7 @@ function ViewBody({
 
 const FIRST_VIEW = INSTALLED_NAV[0]?.id || 'dashboard'
 
-const FULL_BLEED = new Set(['markdown', 'devenv', 'git', 'db-manager'])
+const FULL_BLEED = new Set(['markdown', 'devenv', 'git', 'db-manager', 'editor'])
 // Views that hide the nav sidebar to give their own layout the width; the top bar's
 // nav button (or Ctrl+B) brings it back while on them. None at the moment.
 const NAV_HIDDEN = new Set([])
@@ -570,9 +570,9 @@ function DesktopProjectAreasModal({ open, onClose }) {
 
 function App() {
   // Start on the first installed app's first view (Dashboard in a full install).
-  const [view, setView]         = React.useState(FIRST_VIEW)
+  const [view, setView]         = React.useState(() => takeWaitingNavigation() || FIRST_VIEW)
   // Every view visited this session, in order; mountedViews keeps the kept-alive ones mounted.
-  const [visited, setVisited]   = React.useState([FIRST_VIEW])
+  const [visited, setVisited]   = React.useState(() => [view])
   React.useEffect(() => { setVisited(v => (v.includes(view) ? v : [...v, view])) }, [view])
   const [createWI, setCreateWI] = React.useState(null)
   const [areasOpen, setAreasOpen] = React.useState(false)
@@ -669,6 +669,7 @@ function App() {
 
   React.useEffect(() => {
     const handler = e => {
+      takeWaitingNavigation()   // heard live, so nothing is left waiting
       const detail = e.detail
       // Accept both the string payload (desktop-internal dispatches) and the
       // { view, filter } object payload used by shared @nexusmd/ui components.

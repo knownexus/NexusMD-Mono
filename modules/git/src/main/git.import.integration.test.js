@@ -9,6 +9,7 @@ import { register } from './git.cjs'
 let root
 let outside
 const revealed = []
+const opened = []
 const handlers = {}
 const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM }
 const run = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString()
@@ -31,6 +32,16 @@ beforeAll(() => {
   run(repo.path, 'init', '-b', 'main')
   fs.mkdirSync(disk('docs'))
   fs.writeFileSync(disk('docs/readme.txt'), 'original\n')
+  fs.writeFileSync(disk('docs/notes.md'), '# notes\n')
+  fs.writeFileSync(disk('docs/run.bat'), '@echo off\n')
+  fs.writeFileSync(disk('docs/tool.js'), 'run()\n')
+  fs.writeFileSync(disk('docs/blob.dat'), Buffer.from([1, 2, 0, 3]))
+  fs.writeFileSync(disk('docs/page.html'), '<script>alert(1)</script>\n')
+  fs.writeFileSync(disk('docs/sheet.csv'), '=1+1\n')
+  fs.writeFileSync(disk('docs/Makefile'), 'all:\n')
+  fs.writeFileSync(disk('docs/macro.docm'), 'not really a document\n')
+  fs.writeFileSync(disk('docs/LICENSE'), 'MIT\n')
+  fs.writeFileSync(disk('.gitignore'), 'node_modules\n')
   run(repo.path, 'add', '.')
   run(repo.path, 'commit', '-m', 'Initial')
 
@@ -46,6 +57,7 @@ beforeAll(() => {
   register({ handle: (channel, fn) => { handlers[channel] = fn } }, {
     logger: { scope: () => ({ error: () => {}, info: () => {} }) },
     reveal: async (full, isRoot) => { revealed.push({ full, isRoot }) },
+    openExternal: async full => { opened.push(full) },
   })
 }, 60000)
 
@@ -124,6 +136,51 @@ describe('git workspace drag-and-drop import against a real repository', { timeo
     await expect(call('git:reveal', repo, repo.path, REG(), 'docs/gone.txt')).rejects.toThrow('no longer exists')
     await expect(call('git:reveal', repo, repo.path, [path.join(root, 'Other')], 'docs')).rejects.toThrow('Not a registered repository')
     expect(revealed.length).toBe(before)
+  })
+
+  it('opens a plain text file with the default app, at its real path', async () => {
+    await call('git:openExternal', repo, repo.path, REG(), 'docs/notes.md')
+    await call('git:openExternal', repo, repo.path, REG(), 'docs/readme.txt')
+    expect(opened).toEqual([disk('docs/notes.md'), disk('docs/readme.txt')])
+  })
+
+  it('never opens anything that could run: scripts, programs, binaries, folders', async () => {
+    const before = opened.length
+    const open = rel => call('git:openExternal', repo, repo.path, REG(), rel)
+    // Anything that is not on the short list of passive text kinds, whatever its content.
+    for (const rel of ['docs/run.bat', 'docs/tool.js', 'docs/blob.dat', 'docs/page.html', 'docs/sheet.csv', 'docs/Makefile', 'docs/macro.docm']) {
+      await expect(open(rel)).rejects.toThrow(/isn't one of the plain-text kinds/)
+    }
+    await expect(open('docs')).rejects.toThrow(/isn't a file/)
+    expect(opened.length).toBe(before)
+  })
+
+  it('opens the well-known plain files that have no extension, and dot files', async () => {
+    const before = opened.length
+    await call('git:openExternal', repo, repo.path, REG(), 'docs/LICENSE')
+    await call('git:openExternal', repo, repo.path, REG(), '.gitignore')
+    expect(opened.slice(before)).toEqual([disk('docs/LICENSE'), disk('.gitignore')])
+  })
+
+  it('still refuses a passive-looking name whose content is binary', async () => {
+    fs.writeFileSync(disk('docs/fake.txt'), Buffer.from([0x4d, 0x5a, 0, 0]))
+    const before = opened.length
+    await expect(call('git:openExternal', repo, repo.path, REG(), 'docs/fake.txt')).rejects.toThrow(/isn't a text file/)
+    expect(opened.length).toBe(before)
+  })
+
+  it('refuses .git, paths outside the worktree, missing files and unregistered repositories when opening', async () => {
+    const before = opened.length
+    await expect(call('git:openExternal', repo, repo.path, REG(), '.git/config')).rejects.toThrow('Not a worktree file')
+    await expect(call('git:openExternal', repo, repo.path, REG(), '../Outside/readme.txt')).rejects.toThrow('Invalid file path')
+    await expect(call('git:openExternal', repo, repo.path, REG(), 'docs/gone.txt')).rejects.toThrow('no longer exists')
+    await expect(call('git:openExternal', repo, repo.path, [path.join(root, 'Other')], 'docs/notes.md')).rejects.toThrow('Not a registered repository')
+    expect(opened.length).toBe(before)
+  })
+
+  it('looks through a link: a text-named link to a program is not opened', async () => {
+    try { fs.symlinkSync(disk('docs/run.bat'), disk('docs/innocent.txt')) } catch { return }   // no symlink rights here
+    await expect(call('git:openExternal', repo, repo.path, REG(), 'docs/innocent.txt')).rejects.toThrow(/isn't one of the plain-text kinds/)
   })
 
   it('skips a file dropped onto itself', async () => {

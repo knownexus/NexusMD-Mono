@@ -6,10 +6,12 @@ const ORIGINAL_NAV_ORDER = [
   'dashboard', 'calendar', 'work', 'prs', 'builds', 'tests', 'team', 'triage',
   'planner', 'notes', 'markdown', 'api-client', 'db-manager', 'devenv', 'git',
 ]
+// The Editor is new, so it comes after everything users already have.
+const WITH_EDITOR = [...ORIGINAL_NAV_ORDER, 'editor']
 
 describe('bundled apps', () => {
   it('reproduces the original sidebar order when everything is installed', () => {
-    expect(buildRegistry().nav.map(n => n.id)).toEqual(ORIGINAL_NAV_ORDER)
+    expect(buildRegistry().nav.map(n => n.id)).toEqual(WITH_EDITOR)
   })
   it('gives every view to exactly one app', () => {
     const owners = BUNDLED_MANIFESTS.flatMap(a => a.nav.map(n => n.id))

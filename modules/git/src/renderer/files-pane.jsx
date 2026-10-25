@@ -4,6 +4,7 @@ import { ImportDialog } from './import-dialog.jsx'
 import { ContextMenu, menuPoint } from './context-menu.jsx'
 import { popoutSpec } from './popout-spec.js'
 import { ipcMessage } from './use-git-actions.js'
+import { openElsewhere } from './open-elsewhere.js'
 
 // The tree flattened to the rows that are showing: folders open in `open`, in tree order.
 function visibleRows(node, open, depth, out) {
@@ -22,7 +23,7 @@ function visibleRows(node, open, depth, out) {
  * first (ImportDialog). Nothing is staged: new files appear as untracked, replaced ones as unstaged.
  * `onImported()` asks the workspace to read the changes again.
  */
-export function FilesPane({ adapter, repo, worktreePath, registered, version, onImported = () => {}, onOpenFile = null }) {
+export function FilesPane({ adapter, host = null, repo, worktreePath, registered, version, onImported = () => {}, onOpenFile = null }) {
   // The right-click menu: { x, y, label, items } for the row it was opened on.
   const [menu, setMenu] = React.useState(null)
   const [list, setList] = React.useState(null)
@@ -117,6 +118,10 @@ export function FilesPane({ adapter, repo, worktreePath, registered, version, on
         label: 'Open in new window',
         onSelect: () => attempt(() => deps.current.adapter.openWindow(popoutSpec('editor', { repo: deps.current.repo, worktree: worktreePath, registered: deps.current.registered, path: r.path }))),
       })
+    }
+    if (file) {
+      const elsewhere = openElsewhere({ host, adapter: deps.current.adapter, repo: deps.current.repo, worktreePath, registered: deps.current.registered })
+      items.push({ label: elsewhere.label, onSelect: () => attempt(() => elsewhere.run(r.path)) })
     }
     items.push({ label: 'Show in Explorer', onSelect: () => reveal(r.path) })
     setMenu({ ...menuPoint(e), label: r.path || 'Repository root', items })

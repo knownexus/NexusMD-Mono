@@ -14,6 +14,7 @@ export default defineConfig({
       'modules/calendar',
       'modules/database',
       'modules/documents',
+      'modules/editor',
       'modules/notes',
       'modules/devenv',
       'modules/git',
