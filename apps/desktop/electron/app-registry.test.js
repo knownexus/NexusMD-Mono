@@ -49,8 +49,8 @@ describe('installedModuleIds and getPreloadDescriptors', () => {
   it('exposes nothing when none of the split-out apps are installed', () => {
     expect(getPreloadDescriptors({ NEXUSMD_APPS: 'planner' }, modules)).toEqual({})
   })
-  it('knows the real Git app', () => {
-    expect(Object.keys(MODULES)).toContain('git')
+  it('knows the real split-out apps', () => {
+    expect(Object.keys(MODULES)).toEqual(expect.arrayContaining(['git', 'devenv']))
   })
 })
 

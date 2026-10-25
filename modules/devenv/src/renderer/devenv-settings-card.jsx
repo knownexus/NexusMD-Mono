@@ -2,15 +2,14 @@ import React from 'react'
 import { VsCard, VsRow } from '@nexusmd/ui'
 import { normaliseCatalog, isCompatibleCatalog } from '@nexusmd/core'
 import { getDevenvConfig, setDevenvConfig } from './devenv-config.js'
-import { devenvAdapter } from './adapters/devenv.js'
-import { pickerAdapter } from './adapters/picker.js'
+import { devenvAdapter } from './devenv-adapter.js'
 
 const inputStyle = {
   width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6,
   background: 'var(--surface-2)', outline: 'none', fontSize: 13,
 }
 
-export function DevenvSettingsCard({ adapter = devenvAdapter, picker = pickerAdapter }) {
+export function DevenvSettingsCard({ adapter = devenvAdapter, picker }) {
   const [cfg, setCfg] = React.useState(getDevenvConfig)
   const [check, setCheck] = React.useState(null)
 

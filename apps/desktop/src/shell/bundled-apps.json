@@ -126,18 +126,5 @@
         "icon": "database"
       }
     ]
-  },
-  {
-    "id": "devenv",
-    "label": "Dev Environment",
-    "productName": "NexusMD Dev Environment",
-    "order": 13,
-    "nav": [
-      {
-        "id": "devenv",
-        "label": "Dev Environment",
-        "icon": "build"
-      }
-    ]
   }
 ]

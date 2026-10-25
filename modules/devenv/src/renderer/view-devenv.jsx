@@ -26,7 +26,7 @@ export function DevenvView({ adapters }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <LeftoverRunsBanner leftover={run.leftover} />
-      <DevenvDashboard adapter={adapter} />
+      <DevenvDashboard adapter={adapter} picker={adapters.picker} />
     </div>
   )
 }

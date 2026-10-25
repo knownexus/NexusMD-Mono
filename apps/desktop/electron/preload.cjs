@@ -242,34 +242,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
 
-  // ── Dev Environment module (devenv adapter) ────────────────────────────────
-  devenv: {
-    run:     (config, argv, opts) => ipcRenderer.invoke('devenv:run', config, argv, opts),
-    answer:  (runId, answer) => ipcRenderer.invoke('devenv:answer', runId, answer),
-    cancel:  (runId) => ipcRenderer.invoke('devenv:cancel', runId),
-    catalog: (config) => ipcRenderer.invoke('devenv:catalog', config),
-    open:    (target) => ipcRenderer.invoke('devenv:open', target),
-    active:  () => ipcRenderer.invoke('devenv:active'),
-    query:   (config, argv) => ipcRenderer.invoke('devenv:query', config, argv),
-    profileInfo:   (config) => ipcRenderer.invoke('devenv:profile-info', config),
-    profileList:   (config) => ipcRenderer.invoke('devenv:profile-list', config),
-    profileRead:   (config, path) => ipcRenderer.invoke('devenv:profile-read', config, path),
-    profileWrite:  (config, path, text, opts) => ipcRenderer.invoke('devenv:profile-write', config, path, text, opts),
-    profileCreate: (config) => ipcRenderer.invoke('devenv:profile-create', config),
-    // Dropped File objects have no path in the renderer since Electron 32; webUtils resolves it here.
-    pathForFile: (file) => webUtils.getPathForFile(file),
-    onLine: (callback) => {
-      const handler = (_event, msg) => callback(msg);
-      ipcRenderer.on('devenv:line', handler);
-      return () => ipcRenderer.removeListener('devenv:line', handler);
-    },
-    onExit: (callback) => {
-      const handler = (_event, msg) => callback(msg);
-      ipcRenderer.on('devenv:exit', handler);
-      return () => ipcRenderer.removeListener('devenv:exit', handler);
-    },
-  },
-
   // Which apps are installed on this machine. Answered once by the main process and kept; the
   // renderer reads it at startup to build the sidebar and Settings.
   registry: {

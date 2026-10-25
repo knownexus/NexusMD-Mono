@@ -41,8 +41,6 @@ import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
 import DesktopNotesView from './desktop-notes-view.jsx'
 import { CalendarView } from './views/view-calendar.jsx'
-import { DevenvView } from './views/devenv/view-devenv.jsx'
-import { DevenvRunProvider } from './views/devenv/devenv-run-context.jsx'
 import { createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
 import { navigationAdapter }    from './adapters/navigation.js'
@@ -57,8 +55,7 @@ import { secureStorageAdapter } from './adapters/secureStorage.js'
 import { scriptRunnerAdapter }  from './adapters/scriptRunner.js'
 import { rawHttpAdapter }       from './adapters/rawHttp.js'
 import { dbManagerAdapter }     from './adapters/db-manager.js'
-import { devenvAdapter }        from './adapters/devenv.js'
-import { moduleAdapters, moduleView, findPopout } from './shell/modules.js'
+import { moduleAdapters, moduleView, findPopout, ModuleProviders } from './shell/modules.js'
 import { listSavedConnections, getConnectionSecret, saveConnection } from './db-manager-config.js'
 
 const adapters = {
@@ -87,9 +84,7 @@ const adapters = {
   // Desktop-only — its absence on web/app is what keeps the db-manager
   // module from registering there.
   dbManager:     dbManagerAdapter,
-  // Desktop-only — runs pwsh in the main process; gates the devenv module.
-  devenv:        devenvAdapter,
-  // Adapters the installed apps bring (e.g. git: runs git in the main process and gates the git module).
+  // Adapters the installed apps bring (e.g. git, devenv: run in the main process and gate their core modules).
   ...moduleAdapters(),
 }
 
@@ -565,8 +560,6 @@ function ViewBody({
     case 'db-manager':
       return <DesktopDbManager adapters={adapters} />
 
-    case 'devenv':
-      return <DevenvView adapters={adapters} />
     case 'settings':
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
         nav={INSTALLED_NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder}
@@ -866,9 +859,8 @@ function App() {
 
   return (
     <NexusDataProvider value={nexusDataValue}>
-    {/* Above ViewBody so a devenv run (and its prompts) outlives leaving its screen. */}
-    <DevenvRunProvider adapter={adapters.devenv}
-      notify={(title, body) => notificationAdapter.send(title, body, { tag: 'devenv-prompt' })}>
+    {/* Above ViewBody so what an app owns (e.g. a devenv run and its prompts) outlives leaving its screen. */}
+    <ModuleProviders adapters={adapters} notify={(title, body, opts) => notificationAdapter.send(title, body, opts)}>
       <div data-density={tweaks.density} data-sidebar={effSidebar}
         style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
         {!navHidden && <aside style={{
@@ -1102,7 +1094,7 @@ function App() {
         }}
       />
       <DesktopProjectAreasModal open={areasOpen} onClose={() => setAreasOpen(false)} />
-    </DevenvRunProvider>
+    </ModuleProviders>
     </NexusDataProvider>
   )
 }

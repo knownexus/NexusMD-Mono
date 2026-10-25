@@ -3,13 +3,14 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import Module from 'module'
 import path from 'path'
 import gitManifest from '@nexusmd/app-git/manifest'
+import devenvManifest from '@nexusmd/app-devenv/manifest'
 
 let exposed
 let ipcRenderer
 const origRequire = Module.prototype.require
 
 beforeAll(() => {
-  ipcRenderer = { invoke: vi.fn(), sendSync: vi.fn(channel => (channel === 'registry:preload-descriptors' ? gitManifest.ipc.preload : { installedIds: ['git'] })), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
+  ipcRenderer = { invoke: vi.fn(), sendSync: vi.fn(channel => (channel === 'registry:preload-descriptors' ? { ...gitManifest.ipc.preload, ...devenvManifest.ipc.preload } : { installedIds: ['git'] })), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
   const fakeElectron = {
     contextBridge: { exposeInMainWorld: (_name, obj) => { exposed = obj } },
     ipcRenderer,

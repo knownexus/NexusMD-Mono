@@ -10,6 +10,7 @@ export default defineConfig({
       'packages/shell-sdk',
       'packages/main-kit',
       'packages/editor-kit',
+      'modules/devenv',
       'modules/git',
       'packages/ui',
       'apps/desktop',

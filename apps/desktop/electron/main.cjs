@@ -69,8 +69,6 @@ const oauthIpc       = require('./ipc/oauth.cjs');
 const apiClientScriptIpc = require('./ipc/api-client-script.cjs');
 const dbManagerIpc   = require('./ipc/db-manager.cjs');
 const jiraIpc        = require('./ipc/jira.cjs');
-const devenvIpc      = require('./ipc/devenv.cjs');
-const devenvProfileIpc = require('./ipc/devenv-profile.cjs');
 const loginItemIpc   = require('./ipc/login-item.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
@@ -100,7 +98,6 @@ if (!gotLock) {
 // State
 // ---------------------------------------------------------------------------
 let mainWindow = null;
-let devenvRuns = null;
 let appModules = null;
 let tray = null;
 let forceQuit = false;
@@ -373,13 +370,10 @@ app.whenReady().then(async () => {
   apiClientScriptIpc.register(ipcMain);
   dbManagerIpc.register(ipcMain);
   jiraIpc.register(ipcMain);
-  devenvRuns = devenvIpc.register(ipcMain, {
-    send: (channel, msg) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, msg); },
-  });
-  devenvProfileIpc.register(ipcMain);
   // Apps split into their own package (Git Workspace, ...): each registers its own IPC and windows.
   appModules = appRegistry.registerModules({
     ipcMain, BrowserWindow, dialog,
+    send: (channel, msg) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, msg); },
     preloadPath: path.join(__dirname, 'preload.cjs'),
     windowIcon: () => windowIconPath(nativeTheme.shouldUseDarkColors),
     loadRenderer,
@@ -512,7 +506,6 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   log.scope('lifecycle').info('windows closed; shutting down backends');
   dbManagerIpc.closeAll().catch(err => log.scope('lifecycle').error('db-manager closeAll failed', err));
-  devenvRuns?.disposeAll().catch(err => log.scope('lifecycle').error('devenv disposeAll failed', err));
   appModules?.disposeAll().catch(err => log.scope('lifecycle').error('apps disposeAll failed', err));
 });
 

@@ -19,8 +19,6 @@ import { desktopSync } from './sync.js'
 import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
 import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
 import { dbManagerAdapter } from './adapters/db-manager.js'
-import { DevenvSettingsCard } from './devenv-settings-card.jsx'
-import { registry } from './shell/registry.js'
 import { moduleSettingsCards } from './shell/modules.js'
 import { pickerAdapter } from './adapters/picker.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
@@ -1150,7 +1148,6 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
           {tab === 'desktop' && (
             <>
               <DesktopAppCard />
-              {registry.isInstalled('devenv') && <DevenvSettingsCard />}
               {moduleSettingsCards().map(({ id, Card }) => <Card key={id} picker={pickerAdapter} />)}
               <DesktopQuickLinksCard
                 links={tweaks.quickLinks || []}

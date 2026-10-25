@@ -1,7 +1,6 @@
 import React from 'react'
 import { PlModal } from '@nexusmd/ui'
 import { normaliseBuilds, buildBuildArgv, buildTestUpArgv, buildTestRunArgv } from '@nexusmd/core'
-import { pickerAdapter } from '../../adapters/picker.js'
 import { useDevenvRunContext } from './devenv-run-context.jsx'
 import { useDevenvStatus } from './use-devenv-status.js'
 import { useDevenvQuery } from './use-devenv-query.js'
@@ -68,7 +67,7 @@ function Line({ state, children, meta }) {
   )
 }
 
-export function DevenvDashboard({ adapter }) {
+export function DevenvDashboard({ adapter, picker }) {
   const run = useDevenvRunContext()
   useProfileDraftsVersion()
   const busy = run.state.status === 'starting' || run.state.status === 'running'
@@ -264,7 +263,7 @@ export function DevenvDashboard({ adapter }) {
         <PlModal open title={mTitle} icon={MODAL_ICONS[modal] || 'build'} onClose={() => setModal(null)} className={size === 'lg' ? 'nx-modal-lg' : size === 'xl-auto' ? 'nx-modal-xl auto' : 'nx-modal-xl'}>
           <div className={size === 'lg' ? undefined : size === 'xl-pad' ? 'nx-modal-fill nx-modal-pad' : 'nx-modal-fill'}
             style={size === 'lg' ? { minHeight: 360, display: 'flex', flexDirection: 'column' } : undefined}>
-            <ModalView adapter={adapter} picker={pickerAdapter} />
+            <ModalView adapter={adapter} picker={picker} />
           </div>
         </PlModal>
       )}

@@ -1,3 +1,4 @@
+import React from 'react'
 import { registry } from './registry.js'
 
 // Renderer code of every installable app. While all apps are still bundled together, Vite pulls
@@ -32,4 +33,12 @@ export function findPopout(hash, mods = modules) {
     if (spec) return { Component: m.popout.Component, adapter: m.popout.adapter, spec }
   }
   return null
+}
+
+// Wraps children in every installed app's provider (outermost = first app). An app uses one when
+// something it owns must outlive its screen, e.g. a running script.
+export function ModuleProviders({ adapters, notify, children, mods = modules }) {
+  return mods
+    .filter(m => m.provider)
+    .reduceRight((inner, m) => React.createElement(m.provider, { adapters, notify }, inner), children)
 }

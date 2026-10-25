@@ -1,5 +1,5 @@
 import React from 'react'
-import { getDevenvConfig } from '../../devenv-config.js'
+import { getDevenvConfig } from './devenv-config.js'
 
 export function useDevenvConfig() {
   const [cfg, setCfg] = React.useState(getDevenvConfig)

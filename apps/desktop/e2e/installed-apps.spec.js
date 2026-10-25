@@ -48,3 +48,22 @@ test('an app that is not installed gets no preload bridge', async () => {
     expect(await win.evaluate(() => typeof window.electronAPI.popout.open)).toBe('function')
   })
 })
+
+test('Dev Environment works as the only installed app', async () => {
+  await withApps('devenv', async win => {
+    await expect(item(win, 'Dev Environment')).toHaveClass(/active/)
+    for (const label of ['Git Workspace', 'Dashboard']) await expect(item(win, label)).toHaveCount(0)
+    const api = await win.evaluate(() => ({
+      run: typeof window.electronAPI.devenv.run,
+      onLine: typeof window.electronAPI.devenv.onLine,
+      git: typeof window.electronAPI.git,
+    }))
+    expect(api).toEqual({ run: 'function', onLine: 'function', git: 'undefined' })
+    // Its run provider wraps the shell, and the screen renders under it without errors.
+    const errors = []
+    win.on('pageerror', e => errors.push(String(e)))
+    await win.waitForTimeout(800)
+    expect(errors).toEqual([])
+    await expect(win.locator('body')).not.toContainText('Something went wrong')
+  })
+})

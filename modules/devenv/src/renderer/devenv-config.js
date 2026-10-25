@@ -1,5 +1,5 @@
 // Where devenv lives and how to run it, per NexusMD profile.
-import { getProfileKey } from './profile-keys.js'
+import { getProfileKey } from '@nexusmd/shell-sdk'
 
 const KEY = () => getProfileKey('devenv.config')
 
