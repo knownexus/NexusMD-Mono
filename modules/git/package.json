@@ -1,0 +1,33 @@
+{
+  "name": "@nexusmd/app-git",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "description": "NexusMD Git Workspace: status, staging, history, diff, conflict resolution, file editing and pop-out windows",
+  "exports": {
+    "./manifest": "./app.manifest.json",
+    "./main": "./src/main/index.cjs",
+    "./renderer": "./src/renderer/index.js"
+  },
+  "files": [
+    "app.manifest.json",
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nexusmd/core": "*",
+    "@nexusmd/editor-kit": "*",
+    "@nexusmd/main-kit": "*",
+    "@nexusmd/shell-sdk": "*",
+    "@nexusmd/ui": "*"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

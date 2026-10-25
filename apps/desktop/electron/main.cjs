@@ -71,8 +71,6 @@ const dbManagerIpc   = require('./ipc/db-manager.cjs');
 const jiraIpc        = require('./ipc/jira.cjs');
 const devenvIpc      = require('./ipc/devenv.cjs');
 const devenvProfileIpc = require('./ipc/devenv-profile.cjs');
-const gitIpc         = require('./ipc/git.cjs');
-const { createPopouts } = require('./popout.cjs');
 const loginItemIpc   = require('./ipc/login-item.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
@@ -103,7 +101,7 @@ if (!gotLock) {
 // ---------------------------------------------------------------------------
 let mainWindow = null;
 let devenvRuns = null;
-let gitProcesses = null;
+let appModules = null;
 let tray = null;
 let forceQuit = false;
 
@@ -341,6 +339,10 @@ function createMainWindow() {
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
   log.scope('lifecycle').info('app ready; creating main window');
+  // The preload asks which apps are installed (and what bridge they need) while it loads, so this
+  // must be answerable before the first window exists.
+  appRegistry.register(ipcMain);
+
   // Create renderer window (loads from Vite dev server or dist/renderer/)
   mainWindow = createMainWindow();
 
@@ -361,7 +363,6 @@ app.whenReady().then(async () => {
   registerUpdaterIpc();
 
   // Register Phase 6 IPC handlers
-  appRegistry.register(ipcMain);
   fileIpc.register(ipcMain);
   pickerIpc.register(ipcMain, () => mainWindow);
   badgeIpc.register(ipcMain);
@@ -376,13 +377,13 @@ app.whenReady().then(async () => {
     send: (channel, msg) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, msg); },
   });
   devenvProfileIpc.register(ipcMain);
-  gitProcesses = gitIpc.register(ipcMain);
-  // Git Workspace pop-out windows (popout.cjs): the editor, conflict and diff screens in a window of their own.
-  const popouts = createPopouts({
-    BrowserWindow, dialog, preload: path.join(__dirname, 'preload.cjs'), icon: windowIconPath(nativeTheme.shouldUseDarkColors), load: loadRenderer,
-  });
-  ipcMain.handle('popout:open', (_e, spec) => popouts.open(spec));
-  ipcMain.on('popout:changed', (e, repoPath) => popouts.changed(e.sender, repoPath));
+  // Apps split into their own package (Git Workspace, ...): each registers its own IPC and windows.
+  appModules = appRegistry.registerModules({
+    ipcMain, BrowserWindow, dialog,
+    preloadPath: path.join(__dirname, 'preload.cjs'),
+    windowIcon: () => windowIconPath(nativeTheme.shouldUseDarkColors),
+    loadRenderer,
+  }, process.env, undefined, log.scope('apps'));
   loginItemIpc.register(ipcMain, { app });
   // Start-on-login keeps the exe that turned it on; a packaged build takes it over from an older
   // copy (which may open only to the tray). Not in dev, where execPath is electron.exe itself.
@@ -512,7 +513,7 @@ app.on('will-quit', () => {
   log.scope('lifecycle').info('windows closed; shutting down backends');
   dbManagerIpc.closeAll().catch(err => log.scope('lifecycle').error('db-manager closeAll failed', err));
   devenvRuns?.disposeAll().catch(err => log.scope('lifecycle').error('devenv disposeAll failed', err));
-  gitProcesses?.disposeAll().catch(err => log.scope('lifecycle').error('git disposeAll failed', err));
+  appModules?.disposeAll().catch(err => log.scope('lifecycle').error('apps disposeAll failed', err));
 });
 
 // On macOS it is common to keep the app running even with no windows

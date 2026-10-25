@@ -1,9 +1,13 @@
 import { createRegistry } from '@nexusmd/shell-sdk'
 import bundledApps from './bundled-apps.json'
 
-// All apps this build knows about. While everything is still bundled in one
-// renderer, the main process tells us which of them are actually installed.
-export const BUNDLED_MANIFESTS = bundledApps
+// Apps that have moved into their own modules/<id> package declare themselves in
+// modules/<id>/app.manifest.json; the rest are still listed in bundled-apps.json.
+const moduleManifests = import.meta.glob('../../../../modules/*/app.manifest.json', { eager: true, import: 'default' })
+
+// All apps this build knows about. While everything is still bundled in one renderer, the main
+// process tells us which of them are actually installed.
+export const BUNDLED_MANIFESTS = [...bundledApps, ...Object.values(moduleManifests)]
 
 // Registry for an installed set (null = all, as in dev, tests and Mac/Linux).
 export function buildRegistry(installedIds = null) {

@@ -14,7 +14,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn: nodeSpawn, execFile } = require('child_process');
 const { StringDecoder } = require('string_decoder');
-const { withLogging } = require('./withLogging.cjs');
+const { withLogging } = require('@nexusmd/main-kit/with-logging');
 
 const PREFIX = '@@devenv ';
 // Files the module may open (reports, logs); never executables or scripts.

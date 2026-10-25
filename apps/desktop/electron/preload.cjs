@@ -4,6 +4,33 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 let installedInfo;
 
+// Turns an app's bridge description into functions. Each method is described by one of:
+//   { invoke: channel }   ipcRenderer.invoke(channel, ...args)  -> Promise
+//   { send: channel }     ipcRenderer.send(channel, ...args)
+//   { on: channel }       subscribe(callback) -> unsubscribe; callback gets the event's arguments
+//   { webUtils: name }    a webUtils helper (e.g. the real path of a dropped File)
+// A sandboxed preload can't load other files, so this lives here rather than in a shared module.
+function buildAppApi(descriptors) {
+  const api = {};
+  for (const [ns, methods] of Object.entries(descriptors || {})) {
+    api[ns] = {};
+    for (const [name, spec] of Object.entries(methods)) {
+      if (spec.invoke) api[ns][name] = (...args) => ipcRenderer.invoke(spec.invoke, ...args);
+      else if (spec.send) api[ns][name] = (...args) => ipcRenderer.send(spec.send, ...args);
+      else if (spec.on) {
+        api[ns][name] = (callback) => {
+          const handler = (_event, ...args) => callback(...args);
+          ipcRenderer.on(spec.on, handler);
+          return () => ipcRenderer.removeListener(spec.on, handler);
+        };
+      } else if (spec.webUtils && typeof webUtils[spec.webUtils] === 'function') {
+        api[ns][name] = (...args) => webUtils[spec.webUtils](...args);
+      }
+    }
+  }
+  return api;
+}
+
 // Expose a safe, narrow API to the renderer process.
 // The React SPA can call window.electronAPI.* for native features.
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -243,66 +270,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
 
-  // ── Git Workspace module (git adapter) ─────────────────────────────────────
-  // Git Workspace pop-out windows. open(spec) shows an editor, conflict or diff in its own window;
-  // changed(repoPath) tells the other windows a repository was written to; onChanged(cb) hears that.
   // Which apps are installed on this machine. Answered once by the main process and kept; the
   // renderer reads it at startup to build the sidebar and Settings.
   registry: {
     get: () => (installedInfo ??= ipcRenderer.sendSync('registry:get')),
   },
 
-  popout: {
-    open:      (spec) => ipcRenderer.invoke('popout:open', spec),
-    changed:   (repoPath) => ipcRenderer.send('popout:changed', repoPath),
-    onChanged: (callback) => {
-      const handler = (_event, repoPath) => callback(repoPath);
-      ipcRenderer.on('popout:changed', handler);
-      return () => ipcRenderer.removeListener('popout:changed', handler);
-    },
-  },
-  git: {
-    version:     () => ipcRenderer.invoke('git:version'),
-    resolve:      (dir) => ipcRenderer.invoke('git:resolve', dir),
-    worktrees:    (repo, registered) => ipcRenderer.invoke('git:worktrees', repo, registered),
-    status:       (repo, worktreePath, registered, options) => ipcRenderer.invoke('git:status', repo, worktreePath, registered, options),
-    branches:     (repo, registered) => ipcRenderer.invoke('git:branches', repo, registered),
-    discover:     (roots, repos) => ipcRenderer.invoke('git:discover', roots, repos),
-    checkFolders: (paths) => ipcRenderer.invoke('git:checkFolders', paths),
-    diff:            (repo, worktreePath, registered, change) => ipcRenderer.invoke('git:diff', repo, worktreePath, registered, change),
-    stamp:           (repo, worktreePath, registered, request) => ipcRenderer.invoke('git:stamp', repo, worktreePath, registered, request),
-    stage:           (repo, worktreePath, registered, paths, expected) => ipcRenderer.invoke('git:stage', repo, worktreePath, registered, paths, expected),
-    unstage:         (repo, worktreePath, registered, paths, expected) => ipcRenderer.invoke('git:unstage', repo, worktreePath, registered, paths, expected),
-    discard:         (repo, worktreePath, registered, paths, expected) => ipcRenderer.invoke('git:discard', repo, worktreePath, registered, paths, expected),
-    deleteUntracked: (repo, worktreePath, registered, paths, expected) => ipcRenderer.invoke('git:deleteUntracked', repo, worktreePath, registered, paths, expected),
-    stageHunk:       (repo, worktreePath, registered, paths, index, expected) => ipcRenderer.invoke('git:stageHunk', repo, worktreePath, registered, paths, index, expected),
-    unstageHunk:     (repo, worktreePath, registered, paths, index, expected) => ipcRenderer.invoke('git:unstageHunk', repo, worktreePath, registered, paths, index, expected),
-    commit:          (repo, worktreePath, registered, message, expected, options) => ipcRenderer.invoke('git:commit', repo, worktreePath, registered, message, expected, options),
-    refs:            (repo, worktreePath, registered) => ipcRenderer.invoke('git:refs', repo, worktreePath, registered),
-    log:             (repo, worktreePath, registered, query) => ipcRenderer.invoke('git:log', repo, worktreePath, registered, query),
-    commitDetails:   (repo, worktreePath, registered, oid) => ipcRenderer.invoke('git:commitDetails', repo, worktreePath, registered, oid),
-    commitFiles:     (repo, worktreePath, registered, oid, parent) => ipcRenderer.invoke('git:commitFiles', repo, worktreePath, registered, oid, parent),
-    commitDiff:      (repo, worktreePath, registered, oid, parent, paths) => ipcRenderer.invoke('git:commitDiff', repo, worktreePath, registered, oid, parent, paths),
-    remotes:         (repo, worktreePath, registered) => ipcRenderer.invoke('git:remotes', repo, worktreePath, registered),
-    aliases:         (repo, worktreePath, registered) => ipcRenderer.invoke('git:aliases', repo, worktreePath, registered),
-    shellAliases:    folder => ipcRenderer.invoke('git:shellAliases', folder),
-    shellRun:        (repo, worktreePath, registered, folder, name, args) => ipcRenderer.invoke('git:shellRun', repo, worktreePath, registered, folder, name, args),
-    shellWarm:       folder => ipcRenderer.invoke('git:shellWarm', folder),
-    openTerminal:    (repo, worktreePath, registered) => ipcRenderer.invoke('git:openTerminal', repo, worktreePath, registered),
-    stashes:         (repo, worktreePath, registered) => ipcRenderer.invoke('git:stashes', repo, worktreePath, registered),
-    preview:         (repo, worktreePath, registered, kind, options) => ipcRenderer.invoke('git:preview', repo, worktreePath, registered, kind, options),
-    run:             (repo, worktreePath, registered, kind, options, stamp) => ipcRenderer.invoke('git:run', repo, worktreePath, registered, kind, options, stamp),
-    exec:            (repo, worktreePath, registered, argv) => ipcRenderer.invoke('git:exec', repo, worktreePath, registered, argv),
-    files:           (repo, worktreePath, registered) => ipcRenderer.invoke('git:files', repo, worktreePath, registered),
-    readFile:        (repo, worktreePath, registered, rel) => ipcRenderer.invoke('git:readFile', repo, worktreePath, registered, rel),
-    writeFile:       (repo, worktreePath, registered, rel, text, options) => ipcRenderer.invoke('git:writeFile', repo, worktreePath, registered, rel, text, options),
-    readImage:       (repo, worktreePath, registered, rel, side) => ipcRenderer.invoke('git:readImage', repo, worktreePath, registered, rel, side),
-    reveal:          (repo, worktreePath, registered, rel) => ipcRenderer.invoke('git:reveal', repo, worktreePath, registered, rel),
-    importFiles:     (repo, worktreePath, registered, destDir, sources, options) => ipcRenderer.invoke('git:importFiles', repo, worktreePath, registered, destDir, sources, options),
-    // Dropped File objects have no path in the renderer since Electron 32; webUtils resolves it here.
-    pathForFile:     (file) => webUtils.getPathForFile(file),
-    conflict:        (repo, worktreePath, registered, rel) => ipcRenderer.invoke('git:conflict', repo, worktreePath, registered, rel),
-    resolveConflict: (repo, worktreePath, registered, rel, resolution, expected) => ipcRenderer.invoke('git:resolveConflict', repo, worktreePath, registered, rel, resolution, expected),
-    unresolve:       (repo, worktreePath, registered, rel, expected) => ipcRenderer.invoke('git:unresolve', repo, worktreePath, registered, rel, expected),
-  },
+  // Namespaces (git, popout, ...) that the installed apps ask for, built from their manifests.
+  ...buildAppApi(ipcRenderer.sendSync('registry:preload-descriptors')),
 });

@@ -12,6 +12,9 @@
   "files": [
     "src"
   ],
+  "dependencies": {
+    "@nexusmd/core": "*"
+  },
   "scripts": {
     "test": "vitest run"
   }

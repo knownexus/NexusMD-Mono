@@ -34,7 +34,10 @@
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.14",
     "@lezer/highlight": "^1.2.5",
+    "@nexusmd/app-git": "*",
     "@nexusmd/core": "*",
+    "@nexusmd/editor-kit": "*",
+    "@nexusmd/main-kit": "*",
     "@nexusmd/shell-sdk": "*",
     "@nexusmd/ui": "*",
     "@nexusmd/web-adapters": "*",
@@ -65,7 +68,7 @@
       "electron/**/*",
       "assets/**/*"
     ],
-    "asarUnpack": ["electron/ipc/git-editor.cjs"],
+    "asarUnpack": ["node_modules/@nexusmd/app-git/src/main/git-editor.cjs"],
     "extraResources": [
       {
         "from": "../../dist/desktop/renderer",

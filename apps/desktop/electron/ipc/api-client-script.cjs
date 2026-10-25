@@ -1,7 +1,7 @@
 'use strict';
 const vm = require('vm');
 const defaultLog = require('electron-log');
-const { withLogging } = require('./withLogging.cjs');
+const { withLogging } = require('@nexusmd/main-kit/with-logging');
 
 const DEFAULT_TIMEOUT_MS = 5000;
 

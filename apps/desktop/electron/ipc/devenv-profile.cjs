@@ -10,8 +10,8 @@
 
 const path = require('path');
 const fsp = require('fs/promises');
-const { withLogging } = require('./withLogging.cjs');
-const { resolveInside, readText, writeAtomic, sha256, BOM, TMP_FILE } = require('./safe-file.cjs');
+const { withLogging } = require('@nexusmd/main-kit/with-logging');
+const { resolveInside, readText, writeAtomic, sha256, BOM, TMP_FILE } = require('@nexusmd/main-kit/safe-file');
 
 const MAX_READ = 1024 * 1024;
 const MAX_WRITE = 2 * 1024 * 1024;

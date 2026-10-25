@@ -20,8 +20,9 @@ vi.mock('./ado-client.js', () => ({
 vi.mock('./logs-card.jsx', () => ({ default: () => <div>LogsCard</div> }))
 vi.mock('@nexusmd/core', async importOriginal => {
   // Settings modules read constants from core when they load (e.g. git-config's tab name).
-  const { ALL_PROJECTS, LEGACY_ALL_PROJECTS, SQL_AUTH, AZURE_AD_INTERACTIVE } = await importOriginal()
-  return { ALL_PROJECTS, LEGACY_ALL_PROJECTS, SQL_AUTH, AZURE_AD_INTERACTIVE, ADO_CACHE_KEY: 'nexusmd.ado.cache.v1', JIRA_CACHE_KEY: 'nexusmd.jira.cache.v1' }
+  // makeProfileKeys: @nexusmd/shell-sdk builds getProfileKey from it when the Git app's settings card loads.
+  const { ALL_PROJECTS, LEGACY_ALL_PROJECTS, SQL_AUTH, AZURE_AD_INTERACTIVE, makeProfileKeys } = await importOriginal()
+  return { ALL_PROJECTS, LEGACY_ALL_PROJECTS, SQL_AUTH, AZURE_AD_INTERACTIVE, makeProfileKeys, ADO_CACHE_KEY: 'nexusmd.ado.cache.v1', JIRA_CACHE_KEY: 'nexusmd.jira.cache.v1' }
 })
 vi.mock('@nexusmd/ui', () => ({
   VsCard: ({ children }) => <div>{children}</div>,

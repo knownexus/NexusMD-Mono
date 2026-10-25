@@ -16,6 +16,8 @@ function resolveUserDataDir({ isPackaged, appData }) {
 }
 
 function pinUserData(app) {
+  // An explicit --user-data-dir (tests, portable setups) is the caller's choice; don't override it.
+  if (app.commandLine?.hasSwitch('user-data-dir')) return null;
   const dir = resolveUserDataDir({
     isPackaged: app.isPackaged,
     appData: app.getPath('appData'),

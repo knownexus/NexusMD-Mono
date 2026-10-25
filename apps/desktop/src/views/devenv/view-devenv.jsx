@@ -1,7 +1,7 @@
 import React from 'react'
 import { useDevenvRunContext } from './devenv-run-context.jsx'
 import { DevenvDashboard } from './devenv-dashboard.jsx'
-import '../devenv-git.css'
+import '@nexusmd/editor-kit/devenv-git.css'
 
 // A run started before the window reloaded can't be watched or answered any more (its
 // output and any open question went to the old window), so the only safe offer is Cancel.

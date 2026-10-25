@@ -1,10 +1,3 @@
-// profile-keys.js — thin platform binding over @nexusmd/core's makeProfileKeys.
-// Desktop uses the canonical `nexusmd.` namespace; the key logic lives in core.
-import { makeProfileKeys } from '@nexusmd/core'
-
-export const { getProfileKey, getActiveProfileId } = makeProfileKeys({
-  namespace: 'nexusmd',
-  getActiveId: () => {
-    try { return localStorage.getItem('nexusmd.activeProfileId') } catch { return '' }
-  },
-})
+// The profile-key binding lives in @nexusmd/shell-sdk so installable apps can use it without
+// importing the shell; this re-export keeps the shell's own imports unchanged.
+export { getProfileKey, getActiveProfileId } from '@nexusmd/shell-sdk'

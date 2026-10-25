@@ -5,13 +5,48 @@
     "productName": "NexusMD Work",
     "order": 0,
     "nav": [
-      { "id": "dashboard", "label": "Dashboard",     "icon": "dashboard", "order": 0 },
-      { "id": "work",      "label": "Work Items",    "icon": "work",      "order": 2 },
-      { "id": "prs",       "label": "Pull Requests", "icon": "pr",        "order": 3 },
-      { "id": "builds",    "label": "Builds",        "icon": "build",     "order": 4 },
-      { "id": "tests",     "label": "Tests",         "icon": "check",     "order": 5 },
-      { "id": "team",      "label": "Team",          "icon": "team",      "order": 6 },
-      { "id": "triage",    "label": "Triage",        "icon": "work",      "order": 7 }
+      {
+        "id": "dashboard",
+        "label": "Dashboard",
+        "icon": "dashboard",
+        "order": 0
+      },
+      {
+        "id": "work",
+        "label": "Work Items",
+        "icon": "work",
+        "order": 2
+      },
+      {
+        "id": "prs",
+        "label": "Pull Requests",
+        "icon": "pr",
+        "order": 3
+      },
+      {
+        "id": "builds",
+        "label": "Builds",
+        "icon": "build",
+        "order": 4
+      },
+      {
+        "id": "tests",
+        "label": "Tests",
+        "icon": "check",
+        "order": 5
+      },
+      {
+        "id": "team",
+        "label": "Team",
+        "icon": "team",
+        "order": 6
+      },
+      {
+        "id": "triage",
+        "label": "Triage",
+        "icon": "work",
+        "order": 7
+      }
     ]
   },
   {
@@ -19,55 +54,90 @@
     "label": "Calendar",
     "productName": "NexusMD Calendar",
     "order": 1,
-    "nav": [{ "id": "calendar", "label": "Calendar", "icon": "clock" }]
+    "nav": [
+      {
+        "id": "calendar",
+        "label": "Calendar",
+        "icon": "clock"
+      }
+    ]
   },
   {
     "id": "planner",
     "label": "Planner",
     "productName": "NexusMD Planner",
     "order": 8,
-    "nav": [{ "id": "planner", "label": "Planner", "icon": "planner" }]
+    "nav": [
+      {
+        "id": "planner",
+        "label": "Planner",
+        "icon": "planner"
+      }
+    ]
   },
   {
     "id": "notes",
     "label": "Notes",
     "productName": "NexusMD Notes",
     "order": 9,
-    "nav": [{ "id": "notes", "label": "Notes", "icon": "pin" }]
+    "nav": [
+      {
+        "id": "notes",
+        "label": "Notes",
+        "icon": "pin"
+      }
+    ]
   },
   {
     "id": "documents",
     "label": "Documents",
     "productName": "NexusMD Documents",
     "order": 10,
-    "nav": [{ "id": "markdown", "label": "Documents", "icon": "pin" }]
+    "nav": [
+      {
+        "id": "markdown",
+        "label": "Documents",
+        "icon": "pin"
+      }
+    ]
   },
   {
     "id": "api-client",
     "label": "API Client",
     "productName": "NexusMD API Client",
     "order": 11,
-    "nav": [{ "id": "api-client", "label": "API Client", "icon": "link" }]
+    "nav": [
+      {
+        "id": "api-client",
+        "label": "API Client",
+        "icon": "link"
+      }
+    ]
   },
   {
     "id": "database",
     "label": "Database",
     "productName": "NexusMD Database",
     "order": 12,
-    "nav": [{ "id": "db-manager", "label": "Database", "icon": "database" }]
+    "nav": [
+      {
+        "id": "db-manager",
+        "label": "Database",
+        "icon": "database"
+      }
+    ]
   },
   {
     "id": "devenv",
     "label": "Dev Environment",
     "productName": "NexusMD Dev Environment",
     "order": 13,
-    "nav": [{ "id": "devenv", "label": "Dev Environment", "icon": "build" }]
-  },
-  {
-    "id": "git",
-    "label": "Git Workspace",
-    "productName": "NexusMD Git Workspace",
-    "order": 14,
-    "nav": [{ "id": "git", "label": "Git Workspace", "icon": "git-branch" }]
+    "nav": [
+      {
+        "id": "devenv",
+        "label": "Dev Environment",
+        "icon": "build"
+      }
+    ]
   }
 ]

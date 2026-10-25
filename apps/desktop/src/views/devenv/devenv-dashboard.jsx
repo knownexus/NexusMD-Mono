@@ -15,8 +15,8 @@ import { EmulatorView } from './emulator-view.jsx'
 import { MacView } from './mac-view.jsx'
 import { ProfileView } from './profile-view.jsx'
 import { CommandsView } from './commands-view.jsx'
-import { RunDrawer } from '../shared/run-drawer.jsx'
-import '../devenv-git.css'
+import { RunDrawer } from '@nexusmd/editor-kit/run-drawer.jsx'
+import '@nexusmd/editor-kit/devenv-git.css'
 
 const BUILD_ARGV = ['build', 'status', '--json']
 const short = c => (c ? c.slice(0, 8) : '')

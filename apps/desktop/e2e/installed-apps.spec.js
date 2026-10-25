@@ -36,3 +36,15 @@ test('only the installed apps appear, and the app opens on one of them', async (
     await expect(item(win, 'Planner')).toHaveClass(/active/)
   })
 })
+
+test('an app that is not installed gets no preload bridge', async () => {
+  await withApps('planner', async win => {
+    expect(await win.evaluate(() => typeof window.electronAPI.git)).toBe('undefined')
+    expect(await win.evaluate(() => typeof window.electronAPI.popout)).toBe('undefined')
+    expect(await win.evaluate(() => typeof window.electronAPI.file)).toBe('object')   // the shell's own bridge stays
+  })
+  await withApps('git', async win => {
+    expect(await win.evaluate(() => typeof window.electronAPI.git.status)).toBe('function')
+    expect(await win.evaluate(() => typeof window.electronAPI.popout.open)).toBe('function')
+  })
+})

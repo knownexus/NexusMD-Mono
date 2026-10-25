@@ -23,6 +23,11 @@ describe('pinUserData', () => {
     pinUserData(app)
     expect(app.setPath).toHaveBeenCalledWith('userData', path.join(appData, 'NexusMD'))
   })
+  it('leaves an explicit --user-data-dir alone', () => {
+    const app = { isPackaged: true, commandLine: { hasSwitch: vi.fn(name => name === 'user-data-dir') }, getPath: vi.fn(() => appData), setPath: vi.fn() }
+    expect(pinUserData(app)).toBeNull()
+    expect(app.setPath).not.toHaveBeenCalled()
+  })
   it('does not touch userData in dev', () => {
     const app = { isPackaged: false, getPath: vi.fn(() => appData), setPath: vi.fn() }
     pinUserData(app)

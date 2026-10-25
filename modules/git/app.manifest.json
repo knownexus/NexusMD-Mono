@@ -1,0 +1,69 @@
+{
+  "id": "git",
+  "label": "Git Workspace",
+  "productName": "NexusMD Git Workspace",
+  "order": 14,
+  "nav": [
+    {
+      "id": "git",
+      "label": "Git Workspace",
+      "icon": "git-branch"
+    }
+  ],
+  "entries": {
+    "main": "src/main/index.cjs",
+    "renderer": "src/renderer/index.js"
+  },
+  "ipc": {
+    "preload": {
+      "popout": {
+        "open": { "invoke": "popout:open" },
+        "changed": { "send": "popout:changed" },
+        "onChanged": { "on": "popout:changed" }
+      },
+      "git": {
+        "version": { "invoke": "git:version" },
+        "resolve": { "invoke": "git:resolve" },
+        "worktrees": { "invoke": "git:worktrees" },
+        "status": { "invoke": "git:status" },
+        "branches": { "invoke": "git:branches" },
+        "discover": { "invoke": "git:discover" },
+        "checkFolders": { "invoke": "git:checkFolders" },
+        "diff": { "invoke": "git:diff" },
+        "stamp": { "invoke": "git:stamp" },
+        "stage": { "invoke": "git:stage" },
+        "unstage": { "invoke": "git:unstage" },
+        "discard": { "invoke": "git:discard" },
+        "deleteUntracked": { "invoke": "git:deleteUntracked" },
+        "stageHunk": { "invoke": "git:stageHunk" },
+        "unstageHunk": { "invoke": "git:unstageHunk" },
+        "commit": { "invoke": "git:commit" },
+        "refs": { "invoke": "git:refs" },
+        "log": { "invoke": "git:log" },
+        "commitDetails": { "invoke": "git:commitDetails" },
+        "commitFiles": { "invoke": "git:commitFiles" },
+        "commitDiff": { "invoke": "git:commitDiff" },
+        "remotes": { "invoke": "git:remotes" },
+        "aliases": { "invoke": "git:aliases" },
+        "shellAliases": { "invoke": "git:shellAliases" },
+        "shellRun": { "invoke": "git:shellRun" },
+        "shellWarm": { "invoke": "git:shellWarm" },
+        "openTerminal": { "invoke": "git:openTerminal" },
+        "stashes": { "invoke": "git:stashes" },
+        "preview": { "invoke": "git:preview" },
+        "run": { "invoke": "git:run" },
+        "exec": { "invoke": "git:exec" },
+        "files": { "invoke": "git:files" },
+        "readFile": { "invoke": "git:readFile" },
+        "writeFile": { "invoke": "git:writeFile" },
+        "readImage": { "invoke": "git:readImage" },
+        "reveal": { "invoke": "git:reveal" },
+        "importFiles": { "invoke": "git:importFiles" },
+        "conflict": { "invoke": "git:conflict" },
+        "resolveConflict": { "invoke": "git:resolveConflict" },
+        "unresolve": { "invoke": "git:unresolve" },
+        "pathForFile": { "webUtils": "getPathForFile" }
+      }
+    }
+  }
+}

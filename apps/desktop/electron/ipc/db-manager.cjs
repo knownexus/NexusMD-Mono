@@ -19,7 +19,7 @@
 
 'use strict'
 
-const { withLogging } = require('./withLogging.cjs')
+const { withLogging } = require('@nexusmd/main-kit/with-logging')
 
 // ─── Connection/db caches (process-lifetime) ──────────────────────────────────
 

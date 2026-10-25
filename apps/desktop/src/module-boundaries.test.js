@@ -11,6 +11,7 @@ const SHARED = [
   '@nexusmd/ui',
   '@nexusmd/core',
   '@nexusmd/editor-kit',
+  '@nexusmd/main-kit',
   '@nexusmd/web-adapters',
 ]
 const SOURCE = /\.(js|jsx|mjs|cjs)$/

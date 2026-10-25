@@ -42,7 +42,6 @@ import { PersonSummary, PersonActions } from './person-summary.jsx'
 import DesktopNotesView from './desktop-notes-view.jsx'
 import { CalendarView } from './views/view-calendar.jsx'
 import { DevenvView } from './views/devenv/view-devenv.jsx'
-import { ViewGit } from './views/git/view-git.jsx'
 import { DevenvRunProvider } from './views/devenv/devenv-run-context.jsx'
 import { createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
@@ -59,9 +58,7 @@ import { scriptRunnerAdapter }  from './adapters/scriptRunner.js'
 import { rawHttpAdapter }       from './adapters/rawHttp.js'
 import { dbManagerAdapter }     from './adapters/db-manager.js'
 import { devenvAdapter }        from './adapters/devenv.js'
-import { gitAdapter }           from './adapters/git.js'
-import { PopoutApp }            from './views/git/popout-app.jsx'
-import { parsePopoutHash }      from './views/git/popout-spec.js'
+import { moduleAdapters, moduleView, findPopout } from './shell/modules.js'
 import { listSavedConnections, getConnectionSecret, saveConnection } from './db-manager-config.js'
 
 const adapters = {
@@ -92,8 +89,8 @@ const adapters = {
   dbManager:     dbManagerAdapter,
   // Desktop-only — runs pwsh in the main process; gates the devenv module.
   devenv:        devenvAdapter,
-  // Desktop-only — runs git in the main process; gates the git module.
-  git:           gitAdapter,
+  // Adapters the installed apps bring (e.g. git: runs git in the main process and gates the git module).
+  ...moduleAdapters(),
 }
 
 const NEXUSMD_THEMES = [
@@ -445,6 +442,10 @@ function ViewBody({
   // A view from an app that isn't installed on this machine (stale saved view, deep link, tray).
   if (isUninstalledView(view)) return <Placeholder label={(ALL_NAV.find(n => n.id === view) || ALL_NAV[0]).label} />
 
+  // Views that live in an installable app's own module.
+  const ModuleView = moduleView(view)
+  if (ModuleView) return <ModuleView adapters={adapters} />
+
   switch (view) {
     case 'dashboard': {
       if (!configured) return <NotConfigured />
@@ -566,8 +567,6 @@ function ViewBody({
 
     case 'devenv':
       return <DevenvView adapters={adapters} />
-    case 'git':
-      return <ViewGit adapters={adapters} />
     case 'settings':
       return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
         nav={INSTALLED_NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder}
@@ -1141,17 +1140,17 @@ class AppErrorBoundary extends React.Component {
   }
 }
 
-// A Git Workspace pop-out window (electron/popout.cjs) shows one screen; it isn't the app.
-const popoutSpec = parsePopoutHash(window.location.hash)
+// An app's pop-out window (e.g. a Git editor, diff or conflict screen) shows one screen; it isn't the app.
+const popout = findPopout(window.location.hash)
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AppErrorBoundary>
       <ProfileProvider>
-        {popoutSpec ? <PopoutApp spec={popoutSpec} adapter={gitAdapter} /> : <App />}
+        {popout ? <popout.Component spec={popout.spec} adapter={popout.adapter} /> : <App />}
       </ProfileProvider>
     </AppErrorBoundary>
   </React.StrictMode>
 )
 
-if (!popoutSpec) startDesktopAutoSync()
+if (!popout) startDesktopAutoSync()

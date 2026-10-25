@@ -2,13 +2,14 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import Module from 'module'
 import path from 'path'
+import gitManifest from '@nexusmd/app-git/manifest'
 
 let exposed
 let ipcRenderer
 const origRequire = Module.prototype.require
 
 beforeAll(() => {
-  ipcRenderer = { invoke: vi.fn(), sendSync: vi.fn(() => ({ installedIds: ['git'] })), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
+  ipcRenderer = { invoke: vi.fn(), sendSync: vi.fn(channel => (channel === 'registry:preload-descriptors' ? gitManifest.ipc.preload : { installedIds: ['git'] })), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
   const fakeElectron = {
     contextBridge: { exposeInMainWorld: (_name, obj) => { exposed = obj } },
     ipcRenderer,
@@ -27,6 +28,29 @@ beforeAll(() => {
 afterAll(() => { Module.prototype.require = origRequire })
 
 describe('preload bridge', () => {
+  it('builds each app\'s namespaces from the descriptors the main process hands over', () => {
+    expect(ipcRenderer.sendSync).toHaveBeenCalledWith('registry:preload-descriptors')
+    exposed.popout.open({ kind: 'editor' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('popout:open', { kind: 'editor' })
+    exposed.popout.changed('C:\\repos\\a')
+    expect(ipcRenderer.send).toHaveBeenLastCalledWith('popout:changed', 'C:\\repos\\a')
+  })
+
+  it('subscribes and unsubscribes event methods', () => {
+    const cb = vi.fn()
+    const off = exposed.popout.onChanged(cb)
+    const [channel, handler] = ipcRenderer.on.mock.calls.at(-1)
+    expect(channel).toBe('popout:changed')
+    handler({}, 'C:\\repos\\a')
+    expect(cb).toHaveBeenCalledWith('C:\\repos\\a')
+    off()
+    expect(ipcRenderer.removeListener).toHaveBeenLastCalledWith('popout:changed', handler)
+  })
+
+  it('resolves a dropped file\'s real path through webUtils', () => {
+    expect(exposed.git.pathForFile({ name: 'photo.jpg' })).toBe('C:\\Users\\me\\photo.jpg')
+  })
+
   it('exposes oauth and logs at the top level (not nested under update)', () => {
     expect(typeof exposed.oauth.start).toBe('function')
     expect(typeof exposed.oauth.refresh).toBe('function')
@@ -55,8 +79,8 @@ describe('preload bridge', () => {
   it('asks the main process which apps are installed once, then remembers', () => {
     expect(exposed.registry.get()).toEqual({ installedIds: ['git'] })
     exposed.registry.get()
-    expect(ipcRenderer.sendSync).toHaveBeenCalledTimes(1)
-    expect(ipcRenderer.sendSync).toHaveBeenCalledWith('registry:get')
+    const asked = ipcRenderer.sendSync.mock.calls.filter(([channel]) => channel === 'registry:get')
+    expect(asked).toHaveLength(1)
   })
 
   it('bridges the start-on-login setting to its IPC channels', () => {
