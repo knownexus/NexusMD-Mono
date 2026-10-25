@@ -21,6 +21,10 @@ export function DevenvSettingsCard({ adapter = devenvAdapter, picker = pickerAda
     const dir = await picker.pickDirectory()
     if (dir) update({ [key]: dir })
   }
+  const browseExe = async () => {
+    const picked = await picker.pickFile({ ext: '.exe' })
+    if (picked?.path) update({ pwsh: picked.path })
+  }
   const runCheck = async () => {
     setCheck({ ok: null, text: 'Checking…' })
     try {
@@ -50,8 +54,11 @@ export function DevenvSettingsCard({ adapter = devenvAdapter, picker = pickerAda
     <VsCard title="Dev Environment" icon="build">
       {folderRow('root', 'devenv folder', 'The folder that contains devenv.ps1', 'C:\\repos\\dev-environment')}
       <VsRow title="PowerShell" desc="pwsh 7 - a name on PATH or a full path to pwsh.exe">
-        <input aria-label="PowerShell" value={cfg.pwsh} style={{ ...inputStyle, minWidth: 360 }}
-          onChange={e => update({ pwsh: e.target.value })} />
+        <div style={{ display: 'flex', gap: 8, minWidth: 360 }}>
+          <input aria-label="PowerShell" value={cfg.pwsh} style={inputStyle}
+            onChange={e => update({ pwsh: e.target.value })} />
+          <button className="btn sm ghost" onClick={browseExe}>Browse…</button>
+        </div>
       </VsRow>
       {folderRow('profile', 'Profile folder', 'Optional - empty uses devenv\'s own profile/ folder (DEVENV_PROFILE)', '(devenv folder)\\profile')}
       <VsRow title="Check" desc={check ? check.text : 'Asks devenv for its command list'}>

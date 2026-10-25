@@ -47,4 +47,12 @@ describe('DevenvSettingsCard', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Browse…' })[0])
     await waitFor(() => expect(screen.getByLabelText('devenv folder').value).toBe('E:\\devenv'))
   })
+
+  it('Browse fills the PowerShell path from the file picker', async () => {
+    const picker = { pickFile: vi.fn(async () => ({ path: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe', name: 'pwsh.exe', text: '' })) }
+    render(<DevenvSettingsCard adapter={adapterWith(async () => catalog())} picker={picker} />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Browse…' })[1])
+    await waitFor(() => expect(screen.getByLabelText('PowerShell').value).toBe('C:\\Program Files\\PowerShell\\7\\pwsh.exe'))
+    expect(getDevenvConfig().pwsh).toBe('C:\\Program Files\\PowerShell\\7\\pwsh.exe')
+  })
 })
