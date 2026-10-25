@@ -4,6 +4,7 @@ import { DiffPane } from './diff-pane.jsx'
 import { useDiff } from './use-diff.js'
 import { HistoryPanel } from './history-panel.jsx'
 import { FilesPane } from './files-pane.jsx'
+import { popoutSpec } from './popout-spec.js'
 import { OperationBanner } from './operation-banner.jsx'
 import { StashList } from './stash-list.jsx'
 import { FileEditor } from './file-editor.jsx'
@@ -215,7 +216,8 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
         : (
             <div className="nx-gw-changes">
               <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={focus} drafts={drafts}
-                onAction={onAction} onWrite={onWrite} onCommit={onCommit} onResolve={onResolve && resolve} busy={busy} status={status} />
+                onAction={onAction} onWrite={onWrite} onCommit={onCommit} onResolve={onResolve && resolve} busy={busy} status={status}
+                onPopout={adapter.openWindow ? (kind, c) => adapter.openWindow(popoutSpec(kind, { repo, worktree: tree.path, registered, path: c.path, change: c })) : null} />
               <div className="nx-gw-changes-main" data-mode={canEdit ? 'edit' : 'plain'}>
                 {canEdit && <ModeSwitch editing={editing} onDiff={() => setMode('diff')} onEdit={edit} />}
                 {editor && (

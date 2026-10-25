@@ -88,6 +88,13 @@ function GitWorkspace({ adapter }) {
   const { snapshot, stale, error, loading, refresh, reload } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported, full: config.view.selected })
   const actions = useGitActions({ adapter, registered, reload })
   const sync = useGitSync({ adapter, registered, reload })
+  // A pop-out window saved or resolved a file: read that repository again.
+  const reposRef = React.useRef(config.repos)
+  reposRef.current = config.repos
+  React.useEffect(() => adapter.onChanged?.(repoPath => {
+    const repo = reposRef.current.find(r => r.path === repoPath)
+    if (repo) reload([repo.name])
+  }), [adapter, reload])
 
   for (const k of Object.keys(keys)) delete keys[k]
   if (config.unsupported) return card(`These Git Workspace settings were saved by a newer NexusMD (version ${config.unsupported}). Update NexusMD to use them.`, 'alert')

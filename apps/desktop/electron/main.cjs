@@ -67,6 +67,7 @@ const jiraIpc        = require('./ipc/jira.cjs');
 const devenvIpc      = require('./ipc/devenv.cjs');
 const devenvProfileIpc = require('./ipc/devenv-profile.cjs');
 const gitIpc         = require('./ipc/git.cjs');
+const { createPopouts } = require('./popout.cjs');
 const loginItemIpc   = require('./ipc/login-item.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
@@ -184,6 +185,19 @@ function applyZoom(win, factor) {
   try { win.webContents.send('zoom:changed', f) } catch { /* best-effort */ }
 }
 
+// Loads the app's page into a window; `hash` (no leading #) is how a pop-out says what to show.
+function loadRenderer(win, hash = '') {
+  if (process.env.VITE_DEV_SERVER_URL) {
+    win.loadURL(hash ? `${process.env.VITE_DEV_SERVER_URL}#${hash}` : process.env.VITE_DEV_SERVER_URL);
+  } else {
+    // Packaged: extraResources/renderer. Unpackaged (npm start, e2e): vite's outDir.
+    const rendererDir = app.isPackaged
+      ? path.join(process.resourcesPath, 'renderer')
+      : path.join(__dirname, '..', '..', '..', 'dist', 'desktop', 'renderer');
+    win.loadFile(path.join(rendererDir, 'index.html'), hash ? { hash } : undefined);
+  }
+}
+
 function createMainWindow() {
   const isDark = nativeTheme.shouldUseDarkColors;
 
@@ -245,15 +259,7 @@ function createMainWindow() {
     menu.popup({ window: win });
   });
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(process.env.VITE_DEV_SERVER_URL);
-  } else {
-    // Packaged: extraResources/renderer. Unpackaged (npm start, e2e): vite's outDir.
-    const rendererDir = app.isPackaged
-      ? path.join(process.resourcesPath, 'renderer')
-      : path.join(__dirname, '..', '..', '..', 'dist', 'desktop', 'renderer');
-    win.loadFile(path.join(rendererDir, 'index.html'));
-  }
+  loadRenderer(win);
 
   win.webContents.on('did-finish-load', () => {
     win.webContents.setZoomFactor(clampZoomFactor(prefs.zoomFactor ?? ZOOM_DEFAULT))
@@ -365,6 +371,12 @@ app.whenReady().then(async () => {
   });
   devenvProfileIpc.register(ipcMain);
   gitProcesses = gitIpc.register(ipcMain);
+  // Git Workspace pop-out windows (popout.cjs): the editor, conflict and diff screens in a window of their own.
+  const popouts = createPopouts({
+    BrowserWindow, dialog, preload: path.join(__dirname, 'preload.cjs'), icon: windowIconPath(nativeTheme.shouldUseDarkColors), load: loadRenderer,
+  });
+  ipcMain.handle('popout:open', (_e, spec) => popouts.open(spec));
+  ipcMain.on('popout:changed', (e, repoPath) => popouts.changed(e.sender, repoPath));
   loginItemIpc.register(ipcMain, { app });
   // Start-on-login keeps the exe that turned it on; a packaged build takes it over from an older
   // copy (which may open only to the tray). Not in dev, where execPath is electron.exe itself.

@@ -207,6 +207,13 @@
 .nx-gw-tree-root { font-weight: 600; }
 .nx-alert.good { background: var(--success-soft, var(--surface-2)); color: var(--success); }
 
+/* A pop-out window (popout-app.jsx): one screen filling the window */
+.nx-popout { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--surface); color: var(--text); }
+.nx-popout-head { flex: none; display: flex; align-items: baseline; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+.nx-popout-title { font-weight: 600; min-width: 0; }
+.nx-popout-where { color: var(--text-muted); font-size: 12px; min-width: 0; margin-left: auto; }
+.nx-popout-body { flex: 1; min-height: 0; overflow: auto; padding: 10px 16px; display: flex; flex-direction: column; }
+
 /* the diff (or editor, or resolve screen) beside the file column */
 .nx-gw-changes-main { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 6px; min-width: 0; min-height: 0; padding: 10px 16px; overflow: auto; }
 .nx-gw-changes-main[data-mode="plain"] { grid-template-rows: minmax(0, 1fr); }

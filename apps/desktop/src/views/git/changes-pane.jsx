@@ -1,6 +1,7 @@
 import React from 'react'
 import { statusCode, groupChanges, actionsFor, toggleSelection, rangeSelection, isSubmodule, conflictLabels, conflictKind, checkoutName } from '@nexusmd/core'
 import { CommitComposer } from './commit-composer.jsx'
+import { ContextMenu, menuPoint } from './context-menu.jsx'
 
 const VERB = { stage: 'Stage', unstage: 'Unstage', discard: 'Discard', delete: 'Delete' }
 const DESTRUCTIVE = new Set(['discard', 'delete'])
@@ -43,7 +44,7 @@ function sections(changes, operationKind) {
   ].filter(s => s.changes.length)
 }
 
-function ChangeRow({ c, selected, focused, onFocus, onSelect, draft, labels, busy, onResolve, onWrite }) {
+function ChangeRow({ c, selected, focused, onFocus, onSelect, draft, labels, busy, onResolve, onWrite, onContext }) {
   const { name, dir } = split(c.path)
   const sub = isSubmodule(c)
   const l = letter(c)
@@ -54,7 +55,7 @@ function ChangeRow({ c, selected, focused, onFocus, onSelect, draft, labels, bus
     : { label: 'Stage', title: `Stage ${c.path}`, run: () => onWrite('stage', [c.id]) }
   return (
     <div className="nx-gw-file" aria-current={focused ? 'true' : undefined} title={c.path}
-      onClick={e => (e.shiftKey ? onSelect(c.id, true) : onFocus(c.id))}>
+      onClick={e => (e.shiftKey ? onSelect(c.id, true) : onFocus(c.id))} onContextMenu={onContext ? e => onContext(e, c) : undefined}>
       <input type="checkbox" aria-label={`Select ${c.path}`} checked={selected} disabled={sub}
         onClick={e => e.stopPropagation()} onChange={e => onSelect(c.id, e.nativeEvent.shiftKey)} />
       <span className="nx-gw-file-code" data-tone={TONE[l] ?? 'warn'} title={statusCode(c)}>{l}</span>
@@ -87,7 +88,7 @@ function ChangeRow({ c, selected, focused, onFocus, onSelect, draft, labels, bus
   )
 }
 
-function Section({ section, selected, focusId, onFocus, onSelect, onSelectionChange, drafts, labels, busy, onResolve, onWrite }) {
+function Section({ section, selected, focusId, onFocus, onSelect, onSelectionChange, drafts, labels, busy, onResolve, onWrite, onContext }) {
   const { title, changes } = section
   const [limit, setLimit] = React.useState(ROWS_SHOWN)
   const chosenSet = React.useMemo(() => new Set(selected), [selected])
@@ -120,7 +121,7 @@ function Section({ section, selected, focusId, onFocus, onSelect, onSelectionCha
       {section.note && <div className="nx-gw-sec-note">{section.note}</div>}
       {changes.slice(0, shown).map(c => (
         <ChangeRow key={c.id} c={c} selected={chosenSet.has(c.id)} focused={c.id === focusId} onFocus={onFocus} onSelect={onSelect}
-          draft={draftSet.has(c.path)} labels={labels} busy={busy} onResolve={onResolve} onWrite={onWrite} />
+          draft={draftSet.has(c.path)} labels={labels} busy={busy} onResolve={onResolve} onWrite={onWrite} onContext={onContext} />
       ))}
       {shown < changes.length && (
         <button className="nx-gw-sec-btn" style={{ margin: '6px 8px' }} onClick={() => setLimit(shown + ROWS_SHOWN * 4)}>
@@ -135,9 +136,29 @@ function Section({ section, selected, focusId, onFocus, onSelect, onSelectionCha
  * A worktree's changed files (the left column of the Changes tab): the selection toolbar, sections with
  * per-row Stage / Unstage / Resolve, the last result, and the commit composer stuck to the bottom.
  * `onAction(action)` reviews the selection; `onWrite(action, ids)` stages or unstages straight away;
- * `onCommit({ message, amend, push })` commits this worktree.
+ * `onCommit({ message, amend, push })` commits this worktree. `onPopout(kind, change)` (editor | conflict | diff),
+ * when given, adds the right-click menu that opens a change in a window of its own.
  */
-export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite = () => {}, onCommit, onResolve = null, busy = false, status = null, drafts = [] }) {
+export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite = () => {}, onCommit, onResolve = null, busy = false, status = null, drafts = [], onPopout = null }) {
+  const [menu, setMenu] = React.useState(null)
+  const [popError, setPopError] = React.useState(null)
+  const closeMenu = React.useCallback(() => setMenu(null), [])
+  const popout = async (kind, c) => {
+    setPopError(null)
+    try { await onPopout(kind, c) } catch (e) { setPopError(String(e?.message || e).replace(/^Error invoking remote method '[^']*': (?:[A-Za-z]*Error: )?/, '')) }
+  }
+  // A conflicted file is resolved, not edited, and a deleted one has nothing to edit; a submodule has neither.
+  const onContext = onPopout ? (e, c) => {
+    if (isSubmodule(c)) return
+    const items = c.area === 'conflict'
+      ? [{ label: 'Resolve in new window', onSelect: () => popout('conflict', c) }]
+      : [
+        ...(letter(c) === 'D' ? [] : [{ label: 'Edit in new window', onSelect: () => popout('editor', c) }]),
+        { label: 'Diff in new window', onSelect: () => popout('diff', c) },
+      ]
+    e.preventDefault()
+    setMenu({ ...menuPoint(e), label: c.path, items })
+  } : undefined
   const list = sections(tree.changes, tree.operationInfo?.kind)
   const labels = conflictLabels(tree.operationInfo, checkoutName(tree))
   const ordered = list.flatMap(s => s.changes)
@@ -183,6 +204,8 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
           {status.text}
         </div>
       )}
+      {popError && <div role="alert" className="nx-gw-files-status" data-tone="bad">{popError}</div>}
+      <ContextMenu menu={menu} onClose={closeMenu} />
       <div tabIndex={0} aria-label="Changed files" onKeyDown={onKeyDown} className="nx-gw-files-list">
         {!list.length
           ? (
@@ -193,7 +216,7 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
           )
           : list.map(s => (
             <Section key={s.id} section={s} selected={selected} focusId={focusId} onFocus={onFocus} onSelect={select} onSelectionChange={onSelectionChange}
-              drafts={drafts} labels={labels} busy={busy} onResolve={onResolve} onWrite={write} />
+              drafts={drafts} labels={labels} busy={busy} onResolve={onResolve} onWrite={write} onContext={onContext} />
           ))}
       </div>
       <CommitComposer tree={tree} busy={busy} onCommit={onCommit} />

@@ -19,8 +19,10 @@ function stored(key) {
   }
 }
 
-function remember(key, snapshot) {
+function remember(key, snapshot, persist = true) {
   cached = { key, snapshot }
+  // A pop-out window reads one repository; keeping that would replace the main window's kept snapshot.
+  if (!persist) return
   try {
     const text = JSON.stringify(cached)
     if (text.length <= STORE_MAX) localStorage.setItem(STORE(), text)
@@ -37,11 +39,11 @@ export function clearGitSnapshotCache() {
 // pattern): a poll is skipped while one is still running, and only the newest result is kept.
 // `full`: the id of the worktree on screen. Its untracked files are listed one by one; every other
 // worktree reads them collapsed, which keeps a poll fast when a repo has tens of thousands.
-export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10000, full = null }) {
+export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10000, full = null, persist = true }) {
   const fullRef = React.useRef(full)
   fullRef.current = full
   const reposKey = JSON.stringify(repos || [])
-  const [snapshot, setSnapshot] = React.useState(() => (cached?.key === reposKey ? cached.snapshot : stored(reposKey)))
+  const [snapshot, setSnapshot] = React.useState(() => (cached?.key === reposKey ? cached.snapshot : persist ? stored(reposKey) : null))
   // True while the snapshot on screen is one kept from an earlier visit or run, not read just now.
   const [stale, setStale] = React.useState(() => snapshot != null)
   const [error, setError] = React.useState(null)
@@ -70,7 +72,7 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
       const base = only?.length && cached?.key === reposKey ? cached.snapshot : null
       const fullFor = fullRef.current ? [fullRef.current] : []
       const next = base ? await refreshRepos(adapter, repos, base, only, { fullFor }) : await loadSnapshot(adapter, repos, { fullFor })
-      remember(reposKey, next)
+      remember(reposKey, next, persist)
       // Only a full read makes a kept snapshot current again.
       if (current()) { setSnapshot(next); if (!base) setStale(false); setError(null); hasSnapshot.current = true }
     } catch (e) {
@@ -84,7 +86,7 @@ export function useGitSnapshot({ adapter, repos, enabled = true, intervalMs = 10
         latestLoad.current(true).then(q.resolve, q.resolve)
       }
     }
-  }, [adapter, reposKey, enabled])
+  }, [adapter, reposKey, enabled, persist])
   latestLoad.current = load
 
   // A manual refresh while a load is running would only queue a duplicate poll.

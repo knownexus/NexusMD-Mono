@@ -135,6 +135,19 @@ describe('FilesPane', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('docs/x no longer exists.')
   })
 
+  it('opens a file in a window of its own from the menu, and a folder has no such item', async () => {
+    const adapter = { files: vi.fn(async () => ({ files, truncated: false })), pathForFile: vi.fn(), importFiles: vi.fn(), reveal: vi.fn(), openWindow: vi.fn(async () => ({ reused: false })) }
+    render(<FilesPane adapter={adapter} repo={repo} worktreePath={repo.path} registered={registered} version={1} />)
+    fireEvent.contextMenu(await row('docs'))
+    expect(screen.queryByRole('menuitem', { name: 'Open in new window' })).toBeNull()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.contextMenu(await row('README.md'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in new window' }))
+    await waitFor(() => expect(adapter.openWindow).toHaveBeenCalledWith({
+      kind: 'editor', repo: { name: 'A', path: 'C:/repos/A' }, worktree: repo.path, path: 'README.md', registered,
+    }))
+  })
+
   it('ignores drags that are not files', async () => {
     const { adapter } = setup()
     fireEvent.drop(await row('docs'), { dataTransfer: { types: ['text/plain'], files: [] } })

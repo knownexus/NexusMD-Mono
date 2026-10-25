@@ -231,3 +231,49 @@ describe('ChangesPane with very many changes', () => {
     expect(onSelectionChange.mock.calls[0][0]).toHaveLength(1000)
   })
 })
+
+describe('ChangesPane pop-out menu', () => {
+  const DEL = c('unstaged', 'gone.txt', { xy: '.D' })
+  const CON = c('conflict', 'clash.txt', { xy: 'UU' })
+  const open = async (path, onPopout = vi.fn()) => {
+    renderPane({ tree: { ...tree, changes: [A, B, DEL, CON, LIB] }, onPopout })
+    fireEvent.contextMenu(screen.getByTitle(path))
+    return onPopout
+  }
+
+  it('offers an editor and a diff for a changed file, each in a window of its own', async () => {
+    const onPopout = await open('b.txt')
+    expect(screen.getAllByRole('menuitem').map(i => i.textContent)).toEqual(['Edit in new window', 'Diff in new window'])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Diff in new window' }))
+    expect(onPopout).toHaveBeenLastCalledWith('diff', B)
+    expect(screen.queryByRole('menu')).toBeNull()
+    fireEvent.contextMenu(screen.getByTitle('b.txt'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit in new window' }))
+    expect(onPopout).toHaveBeenLastCalledWith('editor', B)
+  })
+
+  it('offers only the diff for a deleted file, and only Resolve for a conflict', async () => {
+    await open('gone.txt')
+    expect(screen.getAllByRole('menuitem').map(i => i.textContent)).toEqual(['Diff in new window'])
+    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.contextMenu(screen.getByTitle('clash.txt'))
+    expect(screen.getAllByRole('menuitem').map(i => i.textContent)).toEqual(['Resolve in new window'])
+  })
+
+  it('has no menu for a submodule, or when pop-outs are not available', async () => {
+    await open('lib')
+    expect(screen.queryByRole('menu')).toBeNull()
+    cleanup()
+    renderPane()
+    const row = screen.getByTitle('b.txt')
+    expect(fireEvent.contextMenu(row)).toBe(true)
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('shows why a window could not be opened', async () => {
+    const onPopout = vi.fn(async () => { throw new Error("Error invoking remote method 'popout:open': Error: Can't open that window: no file.") })
+    await open('b.txt', onPopout)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Diff in new window' }))
+    expect((await screen.findByRole('alert')).textContent).toBe("Can't open that window: no file.")
+  })
+})

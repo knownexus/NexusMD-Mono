@@ -242,6 +242,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // ── Git Workspace module (git adapter) ─────────────────────────────────────
+  // Git Workspace pop-out windows. open(spec) shows an editor, conflict or diff in its own window;
+  // changed(repoPath) tells the other windows a repository was written to; onChanged(cb) hears that.
+  popout: {
+    open:      (spec) => ipcRenderer.invoke('popout:open', spec),
+    changed:   (repoPath) => ipcRenderer.send('popout:changed', repoPath),
+    onChanged: (callback) => {
+      const handler = (_event, repoPath) => callback(repoPath);
+      ipcRenderer.on('popout:changed', handler);
+      return () => ipcRenderer.removeListener('popout:changed', handler);
+    },
+  },
   git: {
     version:     () => ipcRenderer.invoke('git:version'),
     resolve:      (dir) => ipcRenderer.invoke('git:resolve', dir),

@@ -59,6 +59,8 @@ import { rawHttpAdapter }       from './adapters/rawHttp.js'
 import { dbManagerAdapter }     from './adapters/db-manager.js'
 import { devenvAdapter }        from './adapters/devenv.js'
 import { gitAdapter }           from './adapters/git.js'
+import { PopoutApp }            from './views/git/popout-app.jsx'
+import { parsePopoutHash }      from './views/git/popout-spec.js'
 import { listSavedConnections, getConnectionSecret, saveConnection } from './db-manager-config.js'
 
 const adapters = {
@@ -1127,14 +1129,17 @@ class AppErrorBoundary extends React.Component {
   }
 }
 
+// A Git Workspace pop-out window (electron/popout.cjs) shows one screen; it isn't the app.
+const popoutSpec = parsePopoutHash(window.location.hash)
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AppErrorBoundary>
       <ProfileProvider>
-        <App />
+        {popoutSpec ? <PopoutApp spec={popoutSpec} adapter={gitAdapter} /> : <App />}
       </ProfileProvider>
     </AppErrorBoundary>
   </React.StrictMode>
 )
 
-startDesktopAutoSync()
+if (!popoutSpec) startDesktopAutoSync()

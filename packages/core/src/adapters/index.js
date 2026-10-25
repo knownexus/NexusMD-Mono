@@ -219,6 +219,11 @@ export const IGitAdapter = {
   readFile:      async (repo, worktreePath, registered, rel) => Promise.reject(new Error('IGitAdapter.readFile not implemented')),
   // options = { expectedStamp, overwrite, bom } → { ok: true, stamp } | { ok: false, conflict: true, stamp } | { ok: false, missing: true }
   writeFile:     async (repo, worktreePath, registered, rel, text, options) => Promise.reject(new Error('IGitAdapter.writeFile not implemented')),
+  // Pop-out windows (desktop). spec = { kind: 'editor' | 'conflict' | 'diff', repo, worktree, path, registered, changeId? }.
+  openWindow:    async (spec) => Promise.reject(new Error('IGitAdapter.openWindow not implemented')),
+  // Tells the other windows a repository was written to; onChanged(cb) hears that and returns its unsubscribe.
+  notifyChanged: (repoPath) => {},
+  onChanged:     (callback) => () => {},
   // Shows a worktree file (selected) or folder in the OS file manager; rel '' is the worktree root.
   reveal:        async (repo, worktreePath, registered, rel) => Promise.reject(new Error('IGitAdapter.reveal not implemented')),
   // Copies dropped files/folders (absolute source paths) into destDir ('' = the worktree root).

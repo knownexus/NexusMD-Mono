@@ -38,6 +38,11 @@ export const gitAdapter = {
   files(repo, worktreePath, registered) { return api().files(repo, worktreePath, registered) },
   readFile(repo, worktreePath, registered, rel) { return api().readFile(repo, worktreePath, registered, rel) },
   writeFile(repo, worktreePath, registered, rel, text, options) { return api().writeFile(repo, worktreePath, registered, rel, text, options) },
+  // Pop-out windows. spec = { kind: 'editor' | 'conflict' | 'diff', repo, worktree, path, registered, changeId? }.
+  openWindow(spec) { return window.electronAPI.popout.open(spec) },
+  // Tells the other windows a repository was written to; onChanged(cb) hears that and returns its unsubscribe.
+  notifyChanged(repoPath) { window.electronAPI?.popout?.changed(repoPath) },
+  onChanged(callback) { return window.electronAPI?.popout?.onChanged(callback) ?? (() => {}) },
   reveal(repo, worktreePath, registered, rel) { return api().reveal(repo, worktreePath, registered, rel) },
   importFiles(repo, worktreePath, registered, destDir, sources, options) { return api().importFiles(repo, worktreePath, registered, destDir, sources, options) },
   pathForFile(file) { return api()?.pathForFile?.(file) || '' },
