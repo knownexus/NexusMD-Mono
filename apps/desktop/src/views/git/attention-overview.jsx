@@ -1,5 +1,5 @@
 import React from 'react'
-import { branchState, branchLabel, worktreeId } from '@nexusmd/core'
+import { branchState, branchLabel, worktreeId, commitsOff } from '@nexusmd/core'
 
 const plural = (n, w) => `${n} ${n === 1 ? w : `${w}s`}`
 const many = n => `${n} ${n === 1 ? 'branch' : 'branches'}`
@@ -15,7 +15,7 @@ const CATEGORIES = [
   { id: 'changes', title: 'Uncommitted work', tone: 'warn', hint: n => `${n} with changed files`,
     when: (t, s) => !s.busy && s.changed > 0, desc: (t, s) => `${plural(s.changed, 'file')} changed${s.staged ? ` · ${s.staged} staged` : ''}`, action: () => ({ kind: 'review', label: 'Review & commit' }) },
   { id: 'local', title: 'Not published', tone: 'muted', hint: n => `${n} without an upstream`,
-    when: (t, s) => s.unpublished, desc: t => (t.upstreamGone ? 'Its branch on origin was deleted — re-publish it or delete it locally' : 'Only exists on this machine'), action: () => ({ kind: 'publish', label: 'Push' }) },
+    when: (t, s) => s.unpublished, desc: t => `${commitsOff(t)}${t.upstreamGone ? 'Its branch on origin was deleted — re-publish it or delete it locally' : 'Only exists on this machine'}`, action: () => ({ kind: 'publish', label: 'Push' }) },
 ]
 
 /**

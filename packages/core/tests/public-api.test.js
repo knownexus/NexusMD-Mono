@@ -32,7 +32,7 @@ const EXPECTED = [
   'derivePrSparkline', 'deriveProjects', 'deriveSprint', 'effectiveNeedsMe', 'effectiveTeamActivity',
   'elapsedMs', 'encryptConfidentialForServer',
   'filterFiles', 'wordMatch', 'filterByWords', 'filterFilesByWords',
-  'BRANCH_FILTERS', 'branchState', 'matchesFilter', 'filterCounts', 'branchMeta', 'repoPills', 'primaryAction',
+  'BRANCH_FILTERS', 'branchState', 'matchesFilter', 'filterCounts', 'branchMeta', 'commitsOff', 'repoPills', 'primaryAction', 'rewordProblem', 'squashPreviousProblem', 'squashSelectedProblem', 'editPlan', 'squashMessage',
   'parseConflicts', 'resolveRegion', 'hasMarkers', 'conflictKind', 'conflictLabels', 'operationText',
   'enrichTeam', 'enrichTeamMember', 'exportProfile', 'fetchAdoProcessMetadata', 'filterTriageItems',
   'fmtDateShort', 'formatClock', 'formatDateTime', 'formatDuration', 'generateProfileId', 'getActiveLanes', 'getEventsForDay', 'getIsoWeek',

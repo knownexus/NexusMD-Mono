@@ -76,3 +76,16 @@ describe('primaryAction', () => {
     expect(primaryAction(tree())).toBeNull()
   })
 })
+
+describe('branchMeta commits off the source', () => {
+  const src = count => ({ ref: 'refs/heads/master', count })
+  it('prefixes not published with the commits off the source', () => {
+    expect(branchMeta(tree({ upstream: null, source: src(3) }))).toContainEqual({ text: '3 commits off master · not published', tone: 'muted' })
+    expect(branchMeta(tree({ upstream: null, source: src(1) }))).toContainEqual({ text: '1 commit off master · not published', tone: 'muted' })
+  })
+  it('is unchanged with no commits, no source or a published branch', () => {
+    expect(branchMeta(tree({ upstream: null, source: src(0) }))).toContainEqual({ text: 'not published', tone: 'muted' })
+    expect(branchMeta(tree({ upstream: null }))).toContainEqual({ text: 'not published', tone: 'muted' })
+    expect(branchMeta(tree({ ahead: 2, source: src(3) }))).toEqual([{ text: '↑2 to push', tone: 'info' }])
+  })
+})
