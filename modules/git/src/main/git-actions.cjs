@@ -12,7 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
-const { defaultBranch, isOwnRemote, createSourceReader } = require('./git-source.cjs');
+const { defaultBranchOf, isOwnRemote, createSourceReader } = require('./git-source.cjs');
 
 // ':' is git's own "no editor": nothing can wait on an editor. Interactive rebase swaps in the helper.
 const WRITE_ENV = { GIT_EDITOR: ':', GIT_SEQUENCE_EDITOR: ':', GIT_MERGE_AUTOEDIT: 'no' };
@@ -317,7 +317,7 @@ function registerActions(handle, ctx) {
         if (!ref || ref === `refs/heads/${o.name}`) return;
         if (await isOwnRemote(args => read(wt, args), o.name, ref)) return;
         const dir = await commonDirOf(wt);
-        if (!dir || o.name === defaultBranch(dir, fsx)) return;
+        if (!dir || o.name === await defaultBranchOf(args => read(wt, args), dir, fsx)) return;
         await createSourceReader({ run: args => read(wt, args), commonDir: dir, fsx }).write(o.name, ref);
       },
     },
@@ -326,7 +326,7 @@ function registerActions(handle, ctx) {
       check: async (wt, o) => {
         const refs = await refNames(wt, 'refs/heads/', 'refs/remotes/');
         const dir = await commonDirOf(wt);
-        if (typeof o.branch !== 'string' || !refs.has(`refs/heads/${o.branch}`) || o.branch === defaultBranch(dir, fsx)) throw new Error('Choose a branch other than the default.');
+        if (typeof o.branch !== 'string' || !refs.has(`refs/heads/${o.branch}`) || o.branch === await defaultBranchOf(args => read(wt, args), dir, fsx)) throw new Error('Choose a branch other than the default.');
         if (typeof o.ref !== 'string' || !refs.has(o.ref) || o.ref === `refs/heads/${o.branch}`) throw new Error('Choose a different branch as the source.');
         return { branch: o.branch, ref: o.ref };
       },

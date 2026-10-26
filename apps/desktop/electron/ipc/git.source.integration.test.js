@@ -20,15 +20,24 @@ const stored = (dir, b) => { try { return git(dir, 'config', '--get', `branch.${
 const tip = (dir, ref = 'HEAD') => git(dir, 'rev-parse', ref).trim()
 const dropReflogs = dir => git(dir, 'reflog', 'expire', '--expire=now', '--all')
 
-// A fresh repo on main with three commits, plus a reader whose spawns are counted.
-function repo() {
+// git 2.45+ can keep refs in a reftable, where the reader can't see them on disk.
+const reftableSupported = (() => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexusmd-reftable-'))
+  try { execFileSync('git', ['init', '-q', '--ref-format=reftable', dir], { stdio: 'pipe' }); return true } catch { return false } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+})()
+
+// A fresh repo on main with three commits, plus a reader whose spawns are counted. `intercept(args)` may
+// answer a spawn itself (return a result) instead of running git.
+function repo({ reftable = false, intercept = () => null } = {}) {
   const dir = path.join(root, 'r' + n++)
   fs.mkdirSync(dir)
-  git(dir, 'init', '-q')
+  git(dir, 'init', '-q', ...(reftable ? ['--ref-format=reftable'] : []))
   for (const m of ['c1', 'c2', 'c3']) commit(dir, m)
   const calls = []
   const run = args => new Promise(resolve => {
     calls.push(args)
+    const answer = intercept(args)
+    if (answer) { resolve(answer); return }
     execFile('git', args, { cwd: dir }, (err, stdout) => resolve({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, stdout: String(stdout).replace(/\r\n/g, '\n') }))
   })
   const reader = createSourceReader({ run, commonDir: path.join(dir, '.git') })
@@ -197,6 +206,73 @@ describe('source branch detection and storage', { timeout: 60000 }, () => {
     calls.length = 0
     expect((await reader.get('feat', { head, count: true })).count).toBe(3)
     expect(calls).toHaveLength(0)
+  })
+
+  it('counts again on the next poll after a failed count', async () => {
+    let fail = true
+    const intercept = args => {
+      if (!fail || args[0] !== 'rev-list' || args[1] !== '--count' || args[args.length - 1] !== '--') return null
+      fail = false
+      return { code: 128, stdout: '' }
+    }
+    const { dir, reader } = repo({ intercept })
+    git(dir, 'switch', '-q', '-c', 'feat'); commit(dir, 'a')
+    const head = tip(dir)
+    expect(await reader.get('feat', { head, count: true })).toEqual({ ref: 'refs/heads/main', count: null })
+    expect(await reader.get('feat', { head, count: true })).toEqual({ ref: 'refs/heads/main', count: 1 })
+  })
+
+  it('spends one spawn per candidate branch when detecting', async () => {
+    const { dir, calls, reader } = repo()
+    for (let i = 0; i < 10; i++) git(dir, 'branch', `b${i}`)
+    git(dir, 'switch', '-q', '-c', 'feat'); commit(dir, 'f1')
+    dropReflogs(dir)
+    calls.length = 0
+    expect((await reader.get('feat', {})).ref).toBe('refs/heads/main')
+    expect(calls.filter(a => a[0] === 'merge-base')).toHaveLength(0)
+    expect(calls.length).toBeLessThanOrEqual(11 + 6)
+  })
+
+  it('runs one detection for overlapping polls', async () => {
+    const { dir, calls, reader } = repo()
+    git(dir, 'switch', '-q', '-c', 'feat'); commit(dir, 'f1')
+    dropReflogs(dir)
+    calls.length = 0
+    const [a, b] = await Promise.all([reader.get('feat', {}), reader.get('feat', {})])
+    expect(a.ref).toBe('refs/heads/main')
+    expect(b.ref).toBe('refs/heads/main')
+    expect(calls.filter(c => c[0] === 'for-each-ref' && c.includes('refs/heads'))).toHaveLength(1)
+  })
+})
+
+describe.skipIf(!reftableSupported)('a reftable repository', { timeout: 60000 }, () => {
+  it('detects once and then trusts the stored value without spawning', async () => {
+    const { dir, calls, reader } = repo({ reftable: true })
+    git(dir, 'switch', '-q', '-c', 'feat'); commit(dir, 'f1')
+    expect((await reader.get('feat', {})).ref).toBe('refs/heads/main')
+    expect(stored(dir, 'feat')).toBe('refs/heads/main')
+    calls.length = 0
+    expect((await reader.get('feat', {})).ref).toBe('refs/heads/main')
+    expect(calls).toHaveLength(0)
+  })
+
+  it('gives the default branch no source, asking git for it only once', async () => {
+    const { dir, calls, reader } = repo({ reftable: true })
+    git(dir, 'branch', 'other')
+    expect(await reader.get('main', {})).toBeNull()
+    calls.length = 0
+    expect(await reader.get('main', {})).toBeNull()
+    expect(calls).toHaveLength(0)
+    expect(stored(dir, 'main')).toBeNull()
+  })
+
+  it('counts again when the source moves', async () => {
+    const { dir, reader } = repo({ reftable: true })
+    git(dir, 'switch', '-q', '-c', 'feat'); commit(dir, 'f1')
+    const head = tip(dir)
+    expect(await reader.get('feat', { head, count: true })).toEqual({ ref: 'refs/heads/main', count: 1 })
+    git(dir, 'branch', '-f', 'main', 'feat')
+    expect(await reader.get('feat', { head, count: true })).toEqual({ ref: 'refs/heads/main', count: 0 })
   })
 })
 

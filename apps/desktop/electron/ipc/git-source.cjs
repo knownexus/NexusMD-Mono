@@ -17,8 +17,12 @@ const lines = text => String(text).split(/\r?\n/);
 
 // A module-level cache of "commits ahead" counts. The ref's oid is in the key, so it never goes stale.
 const counts = new Map();
-// Detection results (including "found nothing") by branch tip, so a poll never re-detects the same state.
+// Detection results (including "found nothing") by branch tip, so a poll never re-detects the same state,
+// and the detection under way for a key, so overlapping polls share it.
 const detected = new Map();
+const detecting = new Map();
+// Default branch names by common dir, for repositories whose refs aren't files (asked of git once).
+const defaults = new Map();
 
 function readConfigSource(configText, branch) {
   let inBranch = false;
@@ -64,6 +68,11 @@ function defaultBranch(commonDir, fsx = fs) {
   return null;
 }
 
+// A reftable repository keeps its refs where readRefOid can't see them, so git is asked instead.
+function isReftable(commonDir, fsx = fs) {
+  try { return fsx.existsSync(path.join(commonDir, 'reftable')); } catch { return false; }
+}
+
 const outOf = run => async args => { const r = await run(args); return r.code === 0 ? r.stdout.replace(/\r/g, '').trim() : ''; };
 
 // The branch's own copy on a remote (its upstream, or any refs/remotes/<remote>/<same name>) is where it
@@ -73,6 +82,17 @@ async function isOwnRemote(run, branch, ref) {
   const out = outOf(run);
   if (ref === await out(['for-each-ref', '--format=%(upstream)', `refs/heads/${branch}`])) return true;
   return (await out(['remote'])).split('\n').some(remote => remote && ref === `refs/remotes/${remote}/${branch}`);
+}
+
+async function defaultBranchOf(run, commonDir, fsx = fs) {
+  if (!isReftable(commonDir, fsx)) return defaultBranch(commonDir, fsx);
+  if (!defaults.has(commonDir)) {
+    const out = outOf(run);
+    const m = /^refs\/remotes\/origin\/(.+)$/.exec(await out(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']));
+    const heads = m ? [] : (await out(['for-each-ref', '--format=%(refname)', 'refs/heads/main', 'refs/heads/master'])).split('\n');
+    defaults.set(commonDir, m ? m[1] : ['main', 'master'].find(name => heads.includes(`refs/heads/${name}`)) ?? null);
+  }
+  return defaults.get(commonDir);
 }
 
 async function detectSource(run, branch, commonDir) {
@@ -108,19 +128,21 @@ async function detectSource(run, branch, commonDir) {
   }
 
   // 3. Otherwise the nearest branch: fewest commits between it and this branch, skipping descendants.
-  const def = defaultBranch(commonDir);
+  const def = await defaultBranchOf(run, commonDir);
   const defLocal = def ? `refs/heads/${def}` : null;
   const defRemote = def ? `refs/remotes/origin/${def}` : null;
-  const refs = (await out(['for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads', ...(def ? [defRemote] : [])]))
-    .split('\n').filter(Boolean).map(l => { const i = l.indexOf(' '); return { oid: l.slice(0, i), ref: l.slice(i + 1) }; })
-    .filter(c => c.ref !== self);
-  const myTip = await out(['rev-parse', '--verify', '--quiet', '--end-of-options', self]);
+  const listed = (await out(['for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads', ...(def ? [defRemote] : [])]))
+    .split('\n').filter(Boolean).map(l => { const i = l.indexOf(' '); return { oid: l.slice(0, i), ref: l.slice(i + 1) }; });
+  const myTip = listed.find(c => c.ref === self)?.oid;
   if (!myTip) return null;
   const scored = [];
-  for (const c of refs) {
-    if (c.oid !== myTip && (await run(['merge-base', '--is-ancestor', self, c.ref])).code === 0) continue;
-    const n = Number(await out(['rev-list', '--count', `${c.ref}..${self}`]));
-    if (Number.isFinite(n)) scored.push({ ref: c.ref, n });
+  for (const c of listed) {
+    if (c.ref === self) continue;
+    const r = await run(['rev-list', '--count', `${c.ref}..${self}`]);
+    const n = r.code === 0 ? Number(r.stdout.trim()) : NaN;
+    // Nothing of this branch missing from a candidate at another commit: the candidate was made from it.
+    if (!Number.isFinite(n) || (n === 0 && c.oid !== myTip)) continue;
+    scored.push({ ref: c.ref, n });
   }
   const rank = ref => (ref === defLocal ? 0 : ref === defRemote ? 1 : 2);
   scored.sort((a, b) => a.n - b.n || rank(a.ref) - rank(b.ref) || (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0));
@@ -132,30 +154,42 @@ function createSourceReader({ run, commonDir, fsx = fs }) {
     const r = await run(['config', '--local', `branch.${branch}.${KEY}`, ref]);
     if (r.code !== 0) throw new Error(`Could not store the source branch of ${branch}`);
   };
-  const valid = (branch, ref) => isBranchRef(ref) && ref !== `refs/heads/${branch}` && readRefOid(commonDir, ref, fsx) !== null;
 
   async function get(branch, { head, count } = {}) {
-    if (branch === defaultBranch(commonDir, fsx)) return null;
+    if (branch === await defaultBranchOf(run, commonDir, fsx)) return null;
+    const self = `refs/heads/${branch}`;
+    const tipOid = isReftable(commonDir, fsx) ? null : readRefOid(commonDir, self, fsx);
+    // When the refs can't be read from disk a stored ref is trusted as it is, and detection is keyed by the
+    // head the poll saw, so a poll never re-detects (or re-writes) while that is unchanged.
+    const onDisk = tipOid !== null;
+    const valid = ref => isBranchRef(ref) && ref !== self && (!onDisk || readRefOid(commonDir, ref, fsx) !== null);
     let ref = null;
     try { ref = readConfigSource(fsx.readFileSync(path.join(commonDir, 'config'), 'utf8'), branch); } catch { /* no config */ }
-    if (!valid(branch, ref)) {
-      const key = `${commonDir}\0${branch}\0${readRefOid(commonDir, `refs/heads/${branch}`, fsx)}`;
-      if (!detected.has(key) || (detected.get(key) && !valid(branch, detected.get(key)))) {
-        const found = await detectSource(run, branch, commonDir);
-        detected.set(key, found);
-        // A failed write still leaves the answer cached above, so the next poll doesn't detect again.
-        if (found) { try { await write(branch, found); } catch { /* retried when the tip or ref changes */ } }
+    if (!valid(ref)) {
+      const key = `${commonDir}\0${branch}\0${onDisk ? tipOid : head ?? null}`;
+      if (!detected.has(key) || (detected.get(key) && !valid(detected.get(key)))) {
+        if (!detecting.has(key)) {
+          detecting.set(key, (async () => {
+            const found = await detectSource(run, branch, commonDir);
+            detected.set(key, found);
+            // A failed write still leaves the answer cached above, so the next poll doesn't detect again.
+            if (found) { try { await write(branch, found); } catch { /* retried when the tip or ref changes */ } }
+          })().finally(() => detecting.delete(key)));
+        }
+        await detecting.get(key);
       }
       ref = detected.get(key);
       if (!ref) return null;
     }
     if (!count) return { ref, count: null };
-    const oid = readRefOid(commonDir, ref, fsx);
-    const tipRef = head || `refs/heads/${branch}`;
+    const oid = onDisk ? readRefOid(commonDir, ref, fsx) : (await outOf(run)(['rev-parse', '--verify', '--quiet', '--end-of-options', ref])) || null;
+    const tipRef = head || self;
     const key = `${commonDir}\0${branch}\0${tipRef}\0${oid}`;
     if (!counts.has(key)) {
       const r = await run(['rev-list', '--count', `${ref}..${tipRef}`, '--']);
-      counts.set(key, r.code === 0 ? Number(r.stdout.trim()) : null);
+      // A failed count isn't kept, so the next poll tries again.
+      if (r.code !== 0) return { ref, count: null };
+      counts.set(key, Number(r.stdout.trim()));
     }
     return { ref, count: counts.get(key) };
   }
@@ -163,4 +197,4 @@ function createSourceReader({ run, commonDir, fsx = fs }) {
   return { get, write };
 }
 
-module.exports = { readConfigSource, readRefOid, defaultBranch, isOwnRemote, detectSource, createSourceReader };
+module.exports = { readConfigSource, readRefOid, defaultBranch, defaultBranchOf, isOwnRemote, detectSource, createSourceReader };
