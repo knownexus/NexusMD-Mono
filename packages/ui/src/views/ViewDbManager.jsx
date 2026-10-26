@@ -434,6 +434,43 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
 
   const openConnectDialog = useCallback(() => { setConnectError(null); setShowConnectDialog(true) }, [])
 
+  // ── Editing a saved connection ─────────────────────────────────────────────
+  // The connect form, filled from the saved entry and its secret. Saving keeps the same id, so
+  // Settings and any open tab follow; an open connection reconnects with the new settings, and one
+  // that can't is closed with the reason rather than left open on the old ones.
+  const [editing, setEditing] = useState(null)                // { entry, secret } | null
+  const openEdit = useCallback(async (entry) => {
+    setConnectError(null)
+    setEditing({ entry, secret: (await onResolveSecret?.(entry.id)) || '' })
+  }, [onResolveSecret])
+
+  const handleSaveEdit = useCallback(async (entry, connType, connFields, name) => {
+    setConnectError(null)
+    let config
+    try {
+      config = resolveConnectionParams(connType, connFields)
+      const { meta, secret } = connectionToSave(connType, connFields, name)
+      await onSaveConnection({ ...meta, id: entry.id }, secret)
+    } catch (err) {
+      setConnectError(err.message)
+      return
+    }
+    setEditing(null)
+    const key = sessionKey({ connectionId: entry.id })
+    if (!sessionsRef.current.some(s => s.key === key)) { notify(`Saved ${name}`); return }
+    setConnecting(entry.id)
+    try {
+      const result = await db.connect(connType, config)
+      setSessions(list => list.map(s => (s.key === key ? { ...s, type: connType, config, name, tables: result.tables, views: result.views ?? [], generation: (s.generation ?? 0) + 1 } : s)))
+      notify(`Saved and reconnected ${name} · ${plural(result.tables.length, 'table')}`)
+    } catch (err) {
+      closeSession(key)
+      notify(`Saved ${name}, but couldn't reconnect: ${err.message}`, 'error')
+    } finally {
+      setConnecting(null)
+    }
+  }, [db, notify, onSaveConnection, closeSession])
+
   const tabs = (
     <ConnectionTabs
       sessions={sessions}
@@ -446,6 +483,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
       deferred={deferred}
       onForget={forgetDeferred}
       onNew={openConnectDialog}
+      onEdit={onSaveConnection ? openEdit : null}
     />
   )
 
@@ -464,7 +502,8 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
         />
       ) : sessions.map(s => (
         <DbSession
-          key={s.key}
+          // A reconnect after an edit may be another database: its view starts afresh.
+          key={`${s.key}:${s.generation ?? 0}`}
           session={s}
           active={s.key === activeKey}
           db={db}
@@ -495,6 +534,19 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
           loading={connecting != null}
           error={connectError}
           canSave={!!onSaveConnection}
+        />
+      )}
+
+      {editing && (
+        <ConnectDialog
+          editing={editing}
+          editingOpen={sessions.some(s => s.connectionId === editing.entry.id)}
+          onSaveEdit={(type, fields, name) => handleSaveEdit(editing.entry, type, fields, name)}
+          savedConnections={savedConnections}
+          onClose={() => { setEditing(null); setConnectError(null) }}
+          loading={connecting != null}
+          error={connectError}
+          canSave
         />
       )}
     </div>
@@ -887,7 +939,15 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
 
   // ── Table list ─────────────────────────────────────────────────────────────
 
-  const tables = session?.tables ?? []
+  // SQL Server tables outside dbo are listed as schema.table; they can be left out of the list,
+  // Jump to table and the Query tab's pickers, remembered for this connection.
+  const allTables = session?.tables ?? []
+  const otherSchema = t => session?.type === 'sqlserver' && t.includes('.')
+  const otherSchemaCount = allTables.filter(otherSchema).length
+  const schemasKey = `nx-db:other-schemas:${connectionKey(openedSession)}`
+  const [showSchemas, setShowSchemasState] = useState(() => readPref(schemasKey, true))
+  const setShowSchemas = (v) => { setShowSchemasState(v); writePref(schemasKey, v) }
+  const tables = showSchemas ? allTables : allTables.filter(t => !otherSchema(t))
   const updatePrefs = (fn) => setPrefs(prev => {
     const next = fn(prev)
     writePref(tablePrefsKey(connectionKey(session)), next)
@@ -1113,6 +1173,13 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
               </button>
             ))}
           </div>
+          {otherSchemaCount > 0 && (
+            <button type="button" className="nx-db-chip" aria-pressed={showSchemas}
+              title={showSchemas ? 'Showing tables outside dbo · click to list only dbo' : 'Listing only dbo · click to show tables in other schemas too'}
+              onClick={() => setShowSchemas(!showSchemas)}>
+              <span className="nx-db-dot" data-tone={showSchemas ? 'muted' : undefined} />Other schemas<span className="n">{otherSchemaCount}</span>
+            </button>
+          )}
           {listFilter === 'opened' && openedTables.length > 0 && (
             <button type="button" className="btn sm ghost" title="Close every opened table" onClick={() => { closeTables(openedTables); setListFilter('all') }}>
               <Icon name="x" size={12} />Close all
@@ -1416,8 +1483,11 @@ function WelcomePane({ onOpenConnect, onDemo, savedConnections, onConnectSaved, 
 
 // Open connections as tabs, each with a close button, then any saved connections that aren't
 // open yet; clicking one of those connects it in a new tab alongside the others.
-function ConnectionTabs({ sessions, activeKey, savedConnections, connectingId, onSelect, onOpenSaved, onClose, deferred = [], onForget, onNew }) {
+function ConnectionTabs({ sessions, activeKey, savedConnections, connectingId, onSelect, onOpenSaved, onClose, deferred = [], onForget, onNew, onEdit = null }) {
   const openIds = new Set(sessions.map(s => s.connectionId).filter(Boolean))
+  // A saved connection is edited from its tab: the pencil, or a right-click on the tab itself.
+  const entryOf = s => (s.connectionId ? savedConnections.find(c => c.id === s.connectionId) : null)
+  const editOnRightClick = entry => (onEdit && entry ? e => { e.preventDefault(); onEdit(entry) } : undefined)
   // A saved connection's tab follows its current name from Settings.
   const nameOf = s => savedConnections.find(c => c.id === s.connectionId)?.name ?? sessionName(s)
   return (
@@ -1427,10 +1497,16 @@ function ConnectionTabs({ sessions, activeKey, savedConnections, connectingId, o
           <span key={s.key} className="nx-db-conn" role="presentation" data-active={s.key === activeKey || undefined}>
             <button type="button" role="tab" aria-selected={s.key === activeKey}
               title={`${typeLabel(s.type)} · ${s.key === activeKey ? 'showing' : 'connected · switch to this connection'}`}
-              onClick={() => onSelect(s.key)}>
+              onClick={() => onSelect(s.key)} onContextMenu={editOnRightClick(entryOf(s))}>
               <span className="nx-db-dot" data-tone="ok" aria-hidden="true" />
               {nameOf(s)}
             </button>
+            {onEdit && entryOf(s) && (
+              <button type="button" className="nx-db-conn-x" aria-label={`Edit ${nameOf(s)}`} title="Edit this connection"
+                onClick={() => onEdit(entryOf(s))}>
+                <Icon name="edit" size={11} />
+              </button>
+            )}
             <button type="button" className="nx-db-conn-x" aria-label={`Close ${nameOf(s)}`} title="Close this connection"
               onClick={() => onClose(s.key)}>
               <Icon name="x" size={11} />
@@ -1442,7 +1518,7 @@ function ConnectionTabs({ sessions, activeKey, savedConnections, connectingId, o
           <span key={entry.id} className="nx-db-conn" role="presentation" data-closed="">
             <button type="button" role="tab" aria-selected={false}
               title={`${typeLabel(entry.type)} · open last time · click to sign in and reopen`}
-              disabled={connectingId != null} onClick={() => onOpenSaved(entry)}>
+              disabled={connectingId != null} onClick={() => onOpenSaved(entry)} onContextMenu={editOnRightClick(entry)}>
               <span className="nx-db-dot" data-tone="info" aria-hidden="true" />
               {entry.name}
               {connectingId === entry.id && <span className="nx-db-spinner sm" aria-hidden="true" />}
@@ -1454,8 +1530,8 @@ function ConnectionTabs({ sessions, activeKey, savedConnections, connectingId, o
           </span>
         ) : (
           <button key={entry.id} type="button" role="tab" aria-selected={false} data-closed=""
-            title={`${typeLabel(entry.type)} · not connected · connect in a new tab`}
-            disabled={connectingId != null} onClick={() => onOpenSaved(entry)}>
+            title={`${typeLabel(entry.type)} · not connected · connect in a new tab${onEdit ? ' · right-click to edit' : ''}`}
+            disabled={connectingId != null} onClick={() => onOpenSaved(entry)} onContextMenu={editOnRightClick(entry)}>
             {entry.name}
             {connectingId === entry.id && <span className="nx-db-spinner sm" aria-hidden="true" />}
           </button>
@@ -1715,20 +1791,28 @@ function TablePalette({ tables, starred, meta, selected, onOpen, onClose }) {
 
 const AUTH_OPTIONS = [[SQL_AUTH, 'SQL Server authentication'], [AZURE_AD_INTERACTIVE, 'Microsoft Entra ID (Azure AD) interactive']]
 
-function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openConnectionIds = [], onClose, loading, error, canSave = false }) {
-  const [dbType, setDbType]       = useState(() => readPref('nx-db:last-type', 'demo'))
-  const [inputMode, setInputMode] = useState('fields')
-  const [connStr, setConnStr]     = useState('')
-  const [fields, setFields]       = useState({
-    host: '', port: '1433', database: '', user: '', password: '',
-    encrypt: true, trustServerCertificate: false, filePath: '', authentication: SQL_AUTH,
+// `editing` ({ entry, secret }) turns it into the editor for that saved connection: filled in from
+// it, always saved (under the same id, by onSaveEdit), and without the saved list or the demo.
+function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openConnectionIds = [], onClose, loading, error, canSave = false, editing = null, editingOpen = false, onSaveEdit }) {
+  const entry = editing?.entry
+  const [dbType, setDbType]       = useState(() => entry?.type ?? readPref('nx-db:last-type', 'demo'))
+  const [inputMode, setInputMode] = useState(entry?.inputMode === 'connstr' ? 'connstr' : 'fields')
+  const [connStr, setConnStr]     = useState(entry?.inputMode === 'connstr' ? editing.secret : '')
+  const [fields, setFields]       = useState(() => {
+    const blank = {
+      host: '', port: '1433', database: '', user: '', password: '',
+      encrypt: true, trustServerCertificate: false, filePath: '', authentication: SQL_AUTH,
+    }
+    if (!entry || entry.inputMode === 'connstr') return blank
+    const pick = Object.fromEntries(Object.keys(blank).filter(k => entry[k] != null && entry[k] !== '').map(k => [k, entry[k]]))
+    return { ...blank, ...pick, password: editing.secret }
   })
   const [connectingId, setConnectingId] = useState(null)
 
   const [fillError, setFillError] = useState(null)
   // Saved connections show as tabs and in Settings, and reopen next time; a one-off one doesn't.
   const [saveIt, setSaveIt]       = useState(true)
-  const [saveName, setSaveName]   = useState('')
+  const [saveName, setSaveName]   = useState(entry?.name ?? '')
 
   const setField = (k, v) => setFields(f => ({ ...f, [k]: v }))
   const interactive = fields.authentication === AZURE_AD_INTERACTIVE
@@ -1742,7 +1826,7 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openC
     }
     return (dbType === 'sqlite' ? fileName(f.filePath) : f.database || f.host) || ''
   })()
-  const nameTaken = saveIt && savedConnections.some(c => c.name.toLowerCase() === (saveName.trim() || suggestedName).toLowerCase())
+  const nameTaken = saveIt && savedConnections.some(c => c.id !== entry?.id && c.name.toLowerCase() === (saveName.trim() || suggestedName).toLowerCase())
 
   // Parses the pasted connection string into the form, then shows the Fields tab.
   const fillFromConnStr = () => {
@@ -1759,9 +1843,11 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openC
   const submit = (e) => {
     e?.preventDefault?.()
     if (loading) return
+    const params = inputMode === 'connstr' ? { connectionString: connStr } : fields
+    // Editing can't take another saved connection's name: that would be two with one name.
+    if (entry) { if (!nameTaken) onSaveEdit(dbType, params, saveName.trim() || suggestedName || entry.name); return }
     writePref('nx-db:last-type', dbType)
     if (dbType === 'demo') { onConnect('demo', {}); return }
-    const params = inputMode === 'connstr' ? { connectionString: connStr } : fields
     onConnect(dbType, params, canSave && saveIt ? { name: saveName.trim() || suggestedName || typeLabel(dbType) } : null)
   }
 
@@ -1783,7 +1869,7 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openC
       open
       onClose={onClose}
       icon="database"
-      title="Connect to database"
+      title={entry ? 'Edit connection' : 'Connect to database'}
       wide
       className="nx-db-connect"
       footerLeft={dbType !== 'demo'
@@ -1792,8 +1878,8 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openC
       footer={(
         <>
           <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-          <button type="submit" form="nx-db-connect-form" className="btn accent" disabled={loading}>
-            {loading ? 'Connecting…' : dbType === 'demo' ? 'Load demo' : 'Connect'}
+          <button type="submit" form="nx-db-connect-form" className="btn accent" disabled={loading || (!!entry && nameTaken)}>
+            {entry ? (editingOpen ? 'Save and reconnect' : 'Save') : loading ? 'Connecting…' : dbType === 'demo' ? 'Load demo' : 'Connect'}
           </button>
         </>
       )}
@@ -1805,7 +1891,7 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openC
         {error && <div className="nx-db-alert bad" role="alert">{error}</div>}
 
         {/* Saved connections (configured in Settings → Integrations) */}
-        {savedConnections.length > 0 && (
+        {!entry && savedConnections.length > 0 && (
           <div className="nx-db-saved">
             <p className="nx-db-label">Saved connections</p>
             {savedConnections.map(entry => (
@@ -1831,7 +1917,7 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openC
 
         {/* Type selector */}
         <div className="nx-db-types" role="group" aria-label="Database type">
-          {[['demo', 'Demo', 'Sample data'], ['sqlite', 'SQLite', 'A local .db file'], ['sqlserver', 'SQL Server', 'Host or connection string']].map(([id, label, hint]) => (
+          {[...(entry ? [] : [['demo', 'Demo', 'Sample data']]), ['sqlite', 'SQLite', 'A local .db file'], ['sqlserver', 'SQL Server', 'Host or connection string']].map(([id, label, hint]) => (
             <button
               key={id}
               type="button"
@@ -1963,16 +2049,20 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openC
 
         {dbType !== 'demo' && canSave && (
           <div className="nx-db-save-conn">
-            <label className="db-checkbox-label">
-              <input type="checkbox" checked={saveIt} onChange={e => setSaveIt(e.target.checked)} />
-              Save this connection
-            </label>
+            {!entry && (
+              <label className="db-checkbox-label">
+                <input type="checkbox" checked={saveIt} onChange={e => setSaveIt(e.target.checked)} />
+                Save this connection
+              </label>
+            )}
             {saveIt && (
               <input className="db-input" aria-label="Connection name" placeholder={suggestedName || 'Name, e.g. UAT'}
                 value={saveName} onChange={e => setSaveName(e.target.value)} />
             )}
-            <p className="db-hint">
-              {!saveIt
+            <p className="db-hint" data-tone={entry && nameTaken ? 'bad' : undefined}>
+              {entry
+                ? (nameTaken ? 'Another saved connection already has this name.' : 'Saved here and in Settings. Leave the password blank to keep the saved one.')
+                : !saveIt
                 ? 'Just for now: it closes with the app and won’t be in your saved connections.'
                 : nameTaken
                   ? 'Replaces the saved connection with this name.'
