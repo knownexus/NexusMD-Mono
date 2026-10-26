@@ -2,6 +2,7 @@ import React from 'react'
 import { parseLog, historyQuery, sourceName } from '@nexusmd/core'
 import { ipcMessage } from './use-git-actions.js'
 import { buildEditItems, useCommitEdit } from './commit-edit-items.js'
+import { relativeTime } from './history-pane.jsx'
 
 const COLLAPSED_KEY = 'nx-gw-branch-commits-collapsed'
 // The strip lists this many; the rest are one click away in History.
@@ -46,11 +47,15 @@ export function useBranchCommits({ adapter, repo, cwd, registered, sourceRef, he
 
 /**
  * "N commits off <source>": the branch's own commits, collapsible, under the header. Click a row to
- * open it in History; right-click for Reword / Squash. `data` is useBranchCommits' result.
+ * open it in History; right-click for Reword / Squash. Ctrl/Shift-click select several the way History
+ * does, for Squash selected…. `data` is useBranchCommits' result.
  */
 export function BranchCommits({ tree, adapter, repo, registered, data, onOpenCommit, onShowAll, onAction }) {
   const [collapsed, setCollapsedState] = React.useState(readCollapsed)
   const [menuFor, setMenuFor] = React.useState(null)
+  // The last row clicked, and a Ctrl/Shift-click selection (empty means just that row).
+  const [anchor, setAnchor] = React.useState(null)
+  const [selection, setSelection] = React.useState(() => new Set())
   const edit = useCommitEdit({ adapter, repo, cwd: tree.path, registered, onAction })
   const box = React.useRef(null)
   React.useEffect(() => {
@@ -81,8 +86,25 @@ export function BranchCommits({ tree, adapter, repo, registered, data, onOpenCom
   const { commits, unpushed, truncated, error } = data
   const own = new Set(commits.map(c => c.oid))
   const setCollapsed = v => { setCollapsedState(v); writeCollapsed(v) }
+  const selected = selection.size ? selection : new Set(anchor ? [anchor] : [])
+  const pick = (oid, reset = true) => { setAnchor(oid); if (reset) setSelection(new Set()) }
+  const click = (e, oid) => {
+    if (e.shiftKey) {
+      const from = commits.findIndex(c => c.oid === anchor)
+      const to = commits.findIndex(c => c.oid === oid)
+      if (from >= 0 && to >= 0) { setSelection(new Set(commits.slice(Math.min(from, to), Math.max(from, to) + 1).map(c => c.oid))); return }
+    } else if (e.ctrlKey || e.metaKey) {
+      const next = new Set(selected)
+      if (!next.delete(oid)) { next.add(oid); setAnchor(oid) }
+      setSelection(next)
+      return
+    }
+    pick(oid)
+    onOpenCommit(oid)
+  }
   const items = index => buildEditItems({
-    commits, index, unpushed, own, source, searching: false, selected: new Set([commits[index].oid]),
+    commits, index, unpushed, own, source, searching: false,
+    selected: selected.has(commits[index].oid) ? selected : new Set([commits[index].oid]),
     onEdit: e => edit.start(e, commits),
   })
   return (
@@ -102,10 +124,12 @@ export function BranchCommits({ tree, adapter, repo, registered, data, onOpenCom
           {commits.slice(0, SHOWN).map((c, i) => {
             const short = c.oid.slice(0, 7)
             return (
-              <li key={c.oid} onContextMenu={e => { e.preventDefault(); setMenuFor(c.oid) }}>
+              <li key={c.oid} data-selected={selected.has(c.oid)}
+                onContextMenu={e => { e.preventDefault(); if (!selected.has(c.oid)) pick(c.oid); setMenuFor(c.oid) }}>
                 <div className="nx-gw-bc-row">
-                  <button type="button" className="nx-gw-bc-open" title="Open in History" onClick={() => onOpenCommit(c.oid)}>
+                  <button type="button" className="nx-gw-bc-open" title="Open in History" aria-pressed={selection.size ? selected.has(c.oid) : undefined} onClick={e => click(e, c.oid)}>
                     <span className="nx-gw-bc-subject">{c.subject}</span>
+                    <span className="nx-gw-bc-age" title={new Date(c.time).toLocaleString()}>{relativeTime(c.time)}</span>
                     {unpushed?.has(c.oid) && <span aria-label="Not pushed" title="Not pushed" style={{ color: 'var(--warning)' }}>↑</span>}
                     <span className="nx-gw-hrow-hash">{short}</span>
                   </button>
