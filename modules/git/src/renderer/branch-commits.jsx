@@ -86,8 +86,9 @@ export function BranchCommits({ tree, adapter, repo, registered, data, onOpenCom
   const { commits, unpushed, truncated, error } = data
   const own = new Set(commits.map(c => c.oid))
   const setCollapsed = v => { setCollapsedState(v); writeCollapsed(v) }
-  const selected = selection.size ? selection : new Set(anchor ? [anchor] : [])
-  const pick = (oid, reset = true) => { setAnchor(oid); if (reset) setSelection(new Set()) }
+  // Only rows still listed count: a squash or another worktree leaves the old oids behind.
+  const selected = new Set([...(selection.size ? selection : anchor ? [anchor] : [])].filter(oid => own.has(oid)))
+  const pick = oid => { setAnchor(oid); setSelection(new Set()) }
   const click = (e, oid) => {
     if (e.shiftKey) {
       const from = commits.findIndex(c => c.oid === anchor)
