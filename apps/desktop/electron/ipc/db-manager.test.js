@@ -407,14 +407,17 @@ describe('db-manager IPC — SQL Server statements', () => {
     expect(requests[3].sql).toBe('DELETE FROM [maintenance].[DirectDebitEmailHistory] WHERE ([Id] = @v0_0)')
   })
 
-  it('get-columns looks the table up in its schema, or the default schema for a bare name', async () => {
+  // A bare name resolves as [name] does in the row queries: the login's default schema, then dbo.
+  // Matching SCHEMA_NAME() alone found no columns for a dbo table when the default schema was another.
+  it('get-columns finds the table the row queries read', async () => {
     await ipc._invoke('db-manager:get-columns', { ...cfg, table: 'maintenance.updatemember' })
-    expect(requests[0].inputs).toEqual({ schema: 'maintenance', table: 'updatemember' })
-    expect(requests[0].sql).toMatch(/c\.TABLE_SCHEMA = ISNULL\(@schema, SCHEMA_NAME\(\)\)/)
+    expect(requests[0].inputs).toEqual({ object: '[maintenance].[updatemember]', table: 'updatemember' })
+    expect(requests[0].sql).toMatch(/OBJECT_ID\(QUOTENAME\(c\.TABLE_SCHEMA\) \+ '\.' \+ QUOTENAME\(c\.TABLE_NAME\)\) = OBJECT_ID\(@object\)/)
+    expect(requests[0].sql).not.toMatch(/SCHEMA_NAME\(\)/)
     // The primary key is matched within the same schema, so a namesake elsewhere can't lend or hide one.
     expect(requests[0].sql).toMatch(/pk\.TABLE_SCHEMA = c\.TABLE_SCHEMA/)
     await ipc._invoke('db-manager:get-columns', { ...cfg, table: 'Member' })
-    expect(requests[1].inputs).toEqual({ schema: null, table: 'Member' })
+    expect(requests[1].inputs).toEqual({ object: '[Member]', table: 'Member' })
   })
 
   it.each(['a.b.c', 'maintenance.', '.Member', 'bad;schema.T'])('rejects the table name %s', async (table) => {

@@ -335,7 +335,7 @@ function makeHandlers(drivers) {
     if (type === 'sqlserver') {
       const pool = await getSqlPool(config, drivers)
       const result = await pool.request()
-        .input('schema', t.schema)
+        .input('object', t.sql)
         .input('table', t.name)
         .query(`
           SELECT c.COLUMN_NAME AS name, c.DATA_TYPE AS dataType,
@@ -356,8 +356,10 @@ function makeHandlers(drivers) {
              AND tc.TABLE_NAME = ku.TABLE_NAME
             WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
           ) pk ON pk.COLUMN_NAME = c.COLUMN_NAME AND pk.TABLE_NAME = c.TABLE_NAME AND pk.TABLE_SCHEMA = c.TABLE_SCHEMA
-          -- A bare name is the table the login's default schema resolves it to, as [name] does in the other queries.
-          WHERE c.TABLE_SCHEMA = ISNULL(@schema, SCHEMA_NAME()) AND c.TABLE_NAME = @table
+          -- The table OBJECT_ID resolves the name to, as [name] does in the other queries: for a bare
+          -- name the login's default schema, then dbo.
+          WHERE c.TABLE_NAME = @table
+            AND OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME)) = OBJECT_ID(@object)
           ORDER BY c.ORDINAL_POSITION
         `)
       // Precision and scale only mean something for decimal / numeric (float reports them too).
