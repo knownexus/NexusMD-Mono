@@ -59,6 +59,14 @@ export function editPlan(commits, edit) {
   const oids = edit.kind === 'squash' ? edit.oids : [edit.oid]
   const indexes = oids.map(oid => commits.findIndex(c => c.oid === oid))
   if (!oids.length || indexes.some(i => i < 0)) throw new Error('That commit is no longer in the list')
+  if (edit.kind === 'squash') {
+    // The rows only squash the right commits when the chosen ones are a run with nothing between them.
+    if (oids.length < 2 || new Set(oids).size !== oids.length) throw new Error('Pick at least two different commits')
+    const sorted = [...indexes].sort((a, b) => a - b)
+    if (sorted.some((at, k) => k > 0 && (at !== sorted[k - 1] + 1 || commits[sorted[k - 1]].parents?.[0] !== commits[at].oid))) {
+      throw new Error('Pick commits that are next to each other')
+    }
+  }
   const oldest = Math.max(...indexes)
   const base = commits[oldest].parents?.[0]
   if (!base) throw new Error("The first commit on a branch can't be edited here")
