@@ -69,7 +69,7 @@ describe('BranchHeader', () => {
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeTruthy()
   })
 
-  it('offers the contextual primary: Pull before Push before Publish', () => {
+  it('offers the contextual primary: Pull before Push, then a Push that sets the upstream', () => {
     let h = setup(tree({ ahead: 1, behind: 3 }))
     fireEvent.click(h.bar.getByRole('button', { name: 'Pull ↓3' }))
     expect(h.onSync).toHaveBeenLastCalledWith('pull', { mode: 'ff' })

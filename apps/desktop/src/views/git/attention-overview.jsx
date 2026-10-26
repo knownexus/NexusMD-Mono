@@ -15,7 +15,7 @@ const CATEGORIES = [
   { id: 'changes', title: 'Uncommitted work', tone: 'warn', hint: n => `${n} with changed files`,
     when: (t, s) => !s.busy && s.changed > 0, desc: (t, s) => `${plural(s.changed, 'file')} changed${s.staged ? ` · ${s.staged} staged` : ''}`, action: () => ({ kind: 'review', label: 'Review & commit' }) },
   { id: 'local', title: 'Not published', tone: 'muted', hint: n => `${n} without an upstream`,
-    when: (t, s) => s.unpublished, desc: t => `${commitsOff(t)}${t.upstreamGone ? 'Its branch on origin was deleted — re-publish it or delete it locally' : 'Only exists on this machine'}`, action: () => ({ kind: 'publish', label: 'Push' }) },
+    when: (t, s) => s.unpublished, desc: t => `${commitsOff(t)}${t.upstreamGone ? 'Its branch on origin was deleted — push it again or delete it locally' : 'Only exists on this machine'}`, action: () => ({ kind: 'publish', label: 'Push' }) },
 ]
 
 /**
