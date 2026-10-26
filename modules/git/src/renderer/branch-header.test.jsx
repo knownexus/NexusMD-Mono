@@ -32,6 +32,18 @@ describe('BranchHeader', () => {
     expect(screen.getByText('Never fetched')).toBeTruthy()
   })
 
+  it('shows from <source> only with a source, and opens the picker', () => {
+    const { onSource } = setup(tree({ source: { ref: 'refs/heads/master', count: 2 } }), { onSource: vi.fn() })
+    fireEvent.click(screen.getByRole('button', { name: 'from master ▾' }))
+    expect(onSource).toHaveBeenCalled()
+    cleanup()
+    setup(tree({ source: null }), { onSource: vi.fn() })
+    expect(screen.queryByText(/^from /)).toBeNull()
+    cleanup()
+    setup(tree({ branch: '(detached)', source: { ref: 'refs/heads/master', count: 2 } }), { onSource: vi.fn() })
+    expect(screen.queryByText(/^from /)).toBeNull()
+  })
+
   it('omits the worktree from the breadcrumb for the main checkout or a folder named like the branch', () => {
     setup(tree({ path: 'C:/repos/Joiners' }))
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' }).textContent).toBe('Overview›Joiners')

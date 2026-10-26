@@ -11,6 +11,9 @@ import { FileEditor } from './file-editor.jsx'
 import { ResolvePane } from './resolve-pane.jsx'
 import { GoToFile } from './go-to-file.jsx'
 import { BranchHeader } from './branch-header.jsx'
+import { BranchCommits, useBranchCommits } from './branch-commits.jsx'
+import { SourcePicker } from './source-picker.jsx'
+import { sourceName, checkoutName } from '@nexusmd/core'
 import { discardWorktreeDraft, discardConflictDraft, worktreeDraftPaths, worktreeDraftsByEditor, useWorktreeDraftsVersion } from './use-worktree-file.js'
 
 /**
@@ -39,6 +42,15 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   }, [adapter, canStash, repo.path, tree.path, registered, version])
   const history = panel === 'history'
   const filesTab = panel === 'files'
+  // The branch's own commits (off its source), for the strip and for History's squash limits.
+  const detached = tree.branch === '(detached)'
+  const sourceRef = tree.source && !detached && tree.source.count ? tree.source.ref : null
+  const branchCommits = useBranchCommits({ adapter, repo, cwd: tree.path, registered, sourceRef, head: tree.head || null })
+  const own = React.useMemo(() => (sourceRef ? new Set(branchCommits.commits.map(c => c.oid)) : null), [sourceRef, branchCommits.commits])
+  const sourceShort = tree.source && !detached ? sourceName(tree.source.ref) : null
+  // A click in the strip asks History to focus a commit or filter to the branch's own; the nonce makes a repeat count.
+  const [request, setRequest] = React.useState(null)
+  const [picking, setPicking] = React.useState(false)
   // The changes pane's diff isn't on screen in History or Files, so it isn't loaded either.
   const change = history || filesTab ? null : tree.changes.find(c => c.id === focusId) ?? null
   // The file in the editor, for the worktree it was opened in. `line` is a fresh { line } per request
@@ -153,6 +165,11 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     if ((kind === 'skip' || kind === 'abort') && !confirmDiscard()) return
     onSync(kind, options)
   }
+  const showInHistory = r => {
+    if (panel !== 'history') { if (!confirmDiscard()) return; close() }
+    setRequest({ ...r, nonce: (request?.nonce ?? 0) + 1 })
+    onPanel('history')
+  }
   const switchPanel = id => {
     if (id === panel) return
     if (!confirmDiscard()) return
@@ -174,10 +191,18 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   return (
     <div className="nx-gw-detail">
       <BranchHeader tree={tree} stashCount={stashCount} onSync={onSync ?? (() => {})} onStashes={() => setStashes(true)}
-        onOverview={onOverview} onSwitch={onSwitch} onEditor={() => setGoTo(true)}
+        onOverview={onOverview} onSwitch={onSwitch} onEditor={() => setGoTo(true)} onSource={() => setPicking(true)}
         onTerminal={adapter.openTerminal ? () => adapter.openTerminal(repo, tree.path, registered) : null} />
       {goTo && <GoToFile adapter={adapter} repo={repo} worktreePath={tree.path} registered={registered} onOpen={goToFile} onClose={() => setGoTo(false)} />}
       {tree.error && <div role="alert" className="nx-alert bad" style={{ margin: '10px 16px 0' }}>{tree.error}</div>}
+      {picking && (
+        <SourcePicker adapter={adapter} repo={repo} cwd={tree.path} registered={registered} branch={checkoutName(tree) ?? tree.branch} current={tree.source?.ref ?? null}
+          onClose={() => setPicking(false)} onPicked={() => { setPicking(false); onSaved?.() }} />
+      )}
+      {onSync && (
+        <BranchCommits tree={tree} adapter={adapter} repo={repo} registered={registered} data={branchCommits}
+          onOpenCommit={oid => showInHistory({ oid })} onShowAll={() => showInHistory({ sinceBase: tree.source.ref })} onAction={onSync} />
+      )}
       <div className="nx-gw-tabs">
         <PanelSwitch panel={panel} onPanel={switchPanel} count={tree.changes.length} />
         <span className="nx-gw-tabs-end">
@@ -210,7 +235,8 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
         ? (
           <div className="nx-panel-body">
             <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync}
-              upstream={tree.upstream && !tree.upstreamGone ? tree.upstream : null} rebasing={/^Rebase/.test(tree.operation ?? '')} />
+              upstream={tree.upstream && !tree.upstreamGone ? tree.upstream : null} rebasing={/^Rebase/.test(tree.operation ?? '')}
+              own={own} source={sourceShort} request={request} />
           </div>
         )
         : (

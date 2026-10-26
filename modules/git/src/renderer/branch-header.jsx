@@ -1,5 +1,5 @@
 import React from 'react'
-import { primaryAction, worktreeName, checkoutName } from '@nexusmd/core'
+import { primaryAction, worktreeName, checkoutName, sourceName } from '@nexusmd/core'
 import { PopoverMenu } from './popover-menu.jsx'
 import { fetchedAgo } from './fetched-ago.js'
 import { ipcMessage } from './use-git-actions.js'
@@ -31,7 +31,7 @@ function tracking(tree) {
  * and its actions (contextual primary, Fetch, Pull…, Rebase…, More ▾, Terminal, Editor). Each git
  * action goes through `onSync(kind, options)`, which opens its preview dialog.
  */
-export function BranchHeader({ tree, stashCount = null, onSync, onStashes, onOverview, onSwitch, onEditor, onTerminal = null }) {
+export function BranchHeader({ tree, stashCount = null, onSync, onStashes, onOverview, onSwitch, onEditor, onSource = () => {}, onTerminal = null }) {
   const [copied, setCopied] = React.useState(false)
   const [terminalError, setTerminalError] = React.useState(null)
   React.useEffect(() => { setTerminalError(null); setCopied(false) }, [tree.path])
@@ -90,7 +90,10 @@ export function BranchHeader({ tree, stashCount = null, onSync, onStashes, onOve
           <span className="nx-gw-path" title={tree.path}>{tree.path}</span>
           <button type="button" className="nx-gw-crumb-link" onClick={copy}>{copied ? 'Copied' : 'Copy path'}</button>
           {tracking(tree).map(t => <span key={t.text} className="nx-gw-t" data-tone={t.tone}>{t.text}</span>)}
-          <span>{ago ? `Fetched ${ago}` : 'Never fetched'}</span>
+          {tree.source && !detached && (
+            <button type="button" className="nx-gw-crumb-link" title="The branch this one was cut from" onClick={onSource}>from {sourceName(tree.source.ref)} ▾</button>
+          )}
+          <span>{ago ?`Fetched ${ago}` : 'Never fetched'}</span>
         </div>
         {(tree.operation || tree.locked || tree.prunable) && (
           <div className="nx-pills">
