@@ -72,7 +72,7 @@ describe('primaryAction', () => {
     expect(primaryAction(tree({ behind: 1, ahead: 1 }))).toEqual({ kind: 'pull', label: 'Pull ↓1' })
     expect(primaryAction(tree({ ahead: 4 }))).toEqual({ kind: 'push', label: 'Push ↑4' })
     expect(primaryAction(tree({ changes: files('unstaged') })).kind).toBe('review')
-    expect(primaryAction(tree({ upstreamGone: true }))).toEqual({ kind: 'publish', label: 'Re-publish' })
+    expect(primaryAction(tree({ upstreamGone: true }))).toEqual({ kind: 'publish', label: 'Push' })
     expect(primaryAction(tree())).toBeNull()
   })
 })

@@ -64,7 +64,7 @@ export function BranchHeader({ tree, stashCount = null, onSync, onStashes, onOve
     { label: 'New branch…', hint: 'b', onSelect: () => onSync('branch', { start: 'HEAD', checkout: true }) },
     { label: 'Check out another branch…', onSelect: () => onSync('checkout', {}) },
     { heading: 'Remote' },
-    { label: published ? 'Push…' : 'Publish…', disabled: detached, reason: 'Check out a branch first', onSelect: () => onSync('push', published ? {} : { setUpstream: true }) },
+    { label: 'Push…', disabled: detached, reason: 'Check out a branch first', onSelect: () => onSync('push', published ? {} : { setUpstream: true }) },
     { heading: 'Stash' },
     { label: 'Stash changes…', onSelect: () => onSync('stashPush', {}) },
     { label: 'Stashes…', hint: stashCount || null, onSelect: onStashes },

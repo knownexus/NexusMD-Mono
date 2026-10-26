@@ -67,11 +67,11 @@ describe('BranchHeader', () => {
     expect(h.onSync).toHaveBeenLastCalledWith('push', {})
     cleanup()
     h = setup(tree({ upstream: null }))
-    fireEvent.click(h.bar.getByRole('button', { name: 'Publish' }))
+    fireEvent.click(h.bar.getByRole('button', { name: 'Push' }))
     expect(h.onSync).toHaveBeenLastCalledWith('push', { setUpstream: true })
     cleanup()
     h = setup(tree())
-    expect(h.bar.queryByRole('button', { name: /↑|↓|^Publish$/ })).toBeNull()
+    expect(h.bar.queryByRole('button', { name: /↑|↓|^Push$/ })).toBeNull()
   })
 
   it('hides the primary and disables Pull… and Rebase… during an operation', () => {
@@ -141,7 +141,7 @@ describe('BranchHeader', () => {
     const remove = screen.getByRole('menuitem', { name: 'Remove this worktree…' })
     expect(remove.disabled).toBe(true)
     expect(remove.title).toBe("The main worktree can't be removed")
-    expect(screen.getByRole('menuitem', { name: 'Publish…' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Push…' })).toBeTruthy()
   })
 
   it('Terminal reports a failure; Editor calls its handler', async () => {
