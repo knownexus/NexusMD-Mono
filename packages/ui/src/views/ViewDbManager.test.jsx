@@ -1728,3 +1728,106 @@ describe('ViewDbManager — query results', () => {
     expect(screen.getByText('2 rows returned')).toBeTruthy()
   })
 })
+
+describe('ViewDbManager — editing a saved connection', () => {
+  let adapters, onSaveConnection
+  const saved = [{ id: 'uat', name: 'UAT', type: 'sqlite', inputMode: 'fields', filePath: '/a.db' }]
+  const dialog = () => within(screen.getByRole('dialog'))
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter() }
+    onSaveConnection = vi.fn().mockResolvedValue('uat')
+  })
+  afterEach(() => { cleanup() })
+
+  const renderView = () => render(<ViewDbManager adapters={adapters} savedConnections={saved}
+    onResolveSecret={vi.fn().mockResolvedValue('')} onSaveConnection={onSaveConnection} />)
+
+  it('edits an open connection, saves it under the same id and reconnects with the new settings', async () => {
+    renderView()
+    fireEvent.click(within(screen.getByRole('region', { name: 'Quick connect' })).getByText('UAT'))
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'UAT', selected: true })).toBeTruthy())
+    adapters.dbManager.connect.mockResolvedValueOnce({ ok: true, tables: ['orders'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit UAT' }))
+    await waitFor(() => expect(dialog().getByText('Edit connection')).toBeTruthy())
+    expect(dialog().getByLabelText('File path').value).toBe('/a.db')
+    expect(dialog().getByLabelText('Connection name').value).toBe('UAT')
+    fireEvent.change(dialog().getByLabelText('File path'), { target: { value: '/b.db' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'Save and reconnect' }))
+
+    await waitFor(() => expect(onSaveConnection).toHaveBeenCalledWith(expect.objectContaining({ id: 'uat', name: 'UAT', filePath: '/b.db' }), ''))
+    await waitFor(() => expect(adapters.dbManager.connect).toHaveBeenLastCalledWith('sqlite', expect.objectContaining({ filePath: '/b.db' })))
+    await waitFor(() => expect(screen.getByText('orders')).toBeTruthy())
+    expect(screen.getAllByRole('tab', { name: 'UAT' })).toHaveLength(1)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('closes the connection and says why when it can no longer connect', async () => {
+    renderView()
+    fireEvent.click(within(screen.getByRole('region', { name: 'Quick connect' })).getByText('UAT'))
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'UAT', selected: true })).toBeTruthy())
+    adapters.dbManager.connect.mockRejectedValueOnce(new Error('no such file'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit UAT' }))
+    await waitFor(() => expect(dialog().getByText('Edit connection')).toBeTruthy())
+    fireEvent.change(dialog().getByLabelText('File path'), { target: { value: '/gone.db' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'Save and reconnect' }))
+
+    await waitFor(() => expect(screen.getByText(/Saved UAT, but couldn.t reconnect: no such file/)).toBeTruthy())
+    expect(onSaveConnection).toHaveBeenCalled()
+    expect(screen.queryByRole('tab', { name: 'UAT', selected: true })).toBeNull()
+  })
+
+  it('edits a saved connection that is not open from a right-click, without connecting', async () => {
+    renderView()
+    // Closed saved connections show as tabs beside an open one.
+    fireEvent.click(screen.getByText('Try the demo'))
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'UAT' })).toBeTruthy())
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'UAT' }))
+    await waitFor(() => expect(dialog().getByText('Edit connection')).toBeTruthy())
+    fireEvent.change(dialog().getByLabelText('Connection name'), { target: { value: 'UAT 2' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onSaveConnection).toHaveBeenCalledWith(expect.objectContaining({ id: 'uat', name: 'UAT 2' }), ''))
+    expect(adapters.dbManager.connect).not.toHaveBeenCalled()
+  })
+})
+
+describe('ViewDbManager — tables in other schemas', () => {
+  let adapters
+  const saved = [{ id: 'prod', name: 'Prod', type: 'sqlserver', inputMode: 'fields', host: 'h', port: '1433', database: 'd', user: 'u' }]
+  const list = () => within(screen.getByRole('navigation', { name: 'Table list' }))
+
+  beforeEach(() => {
+    window.localStorage.clear()
+    adapters = { dbManager: makeAdapter({ connect: vi.fn().mockResolvedValue({ ok: true, tables: ['Member', 'maintenance.updatemember', 'Staging.V_Site'], views: ['Staging.V_Site'] }) }) }
+  })
+  afterEach(() => { cleanup() })
+
+  async function connectProd() {
+    render(<ViewDbManager adapters={adapters} savedConnections={saved} onResolveSecret={vi.fn().mockResolvedValue('p')} />)
+    fireEvent.click(within(screen.getByRole('region', { name: 'Quick connect' })).getByText('Prod'))
+    await waitFor(() => expect(list().getAllByText('Member').length).toBeGreaterThan(0))
+  }
+
+  it('shows other schemas until they are hidden, and remembers that for the connection', async () => {
+    await connectProd()
+    expect(list().getByRole('button', { name: 'More for maintenance.updatemember' })).toBeTruthy()
+    const toggle = screen.getByRole('button', { name: /Other schemas/ })
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(toggle)
+    await waitFor(() => expect(list().queryByRole('button', { name: 'More for maintenance.updatemember' })).toBeNull())
+    expect(list().queryByRole('button', { name: 'More for Staging.V_Site' })).toBeNull()
+    expect(list().getByText('Member')).toBeTruthy()
+    cleanup()
+    await connectProd()
+    expect(list().queryByRole('button', { name: 'More for maintenance.updatemember' })).toBeNull()
+    expect(screen.getByRole('button', { name: /Other schemas/ }).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('offers no schema toggle when every table is in the default schema', async () => {
+    adapters.dbManager.connect.mockResolvedValue({ ok: true, tables: ['Member', 'Site'] })
+    await connectProd()
+    expect(screen.queryByRole('button', { name: /Other schemas/ })).toBeNull()
+  })
+})
