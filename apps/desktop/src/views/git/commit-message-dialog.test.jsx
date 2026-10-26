@@ -23,6 +23,13 @@ describe('CommitMessageDialog', () => {
     expect(onSave).toHaveBeenCalledWith('New subject\n\nBody')
   })
 
+  it('a prefilled message can be saved unchanged when a change is not required', () => {
+    const { onSave } = show({ requireChange: false })
+    expect(save().disabled).toBe(false)
+    fireEvent.click(save())
+    expect(onSave).toHaveBeenCalledWith('Old subject\n\nBody')
+  })
+
   it('disables Save while the subject is blank', () => {
     show()
     fireEvent.change(box(), { target: { value: '  \n\nBody' } })
