@@ -461,7 +461,11 @@ function makeHandlers(drivers) {
         ok: true,
         columns,
         foreignKeys: group(outgoing, r => ({ refTable: listName(r.refSchema, r.refTable) })),
-        referencedBy: group(incoming, r => ({ table: listName(r.ownerSchema, r.ownerTable) })),
+        // Constraint names are unique per schema only, so a key from another schema carries it.
+        referencedBy: group(incoming, r => ({
+          table: listName(r.ownerSchema, r.ownerTable),
+          name: r.ownerSchema === (t.schema ?? 'dbo') ? r.name : listName(r.ownerSchema, r.name),
+        })),
         indexes: [...indexes.values()],
       }
     }
@@ -485,11 +489,11 @@ function makeHandlers(drivers) {
       const primaryKeyOf = name => db.prepare(`PRAGMA table_info(${q(name)})`).all()
         .filter(c => c.pk > 0).sort((a, b) => a.pk - b.pk).map(c => c.name)
       const targetColumns = k => (k.to.every(c => c != null) ? k.to : primaryKeyOf(k.table))
-      // SQLite names no constraint, so the key id is its owner and columns.
-      const keyName = (owner, columns) => `${owner}(${columns.join(', ')})`
+      // SQLite names no constraint, so the key id is its owner, columns and target.
+      const keyName = (owner, columns, target) => `${owner}(${columns.join(', ')}) → ${target}`
 
       const foreignKeys = keysOf(t.name).map(k => ({
-        name: keyName(t.name, k.columns), columns: k.columns, refTable: k.table, refColumns: targetColumns(k), onDelete: k.onDelete, onUpdate: k.onUpdate,
+        name: keyName(t.name, k.columns, k.table), columns: k.columns, refTable: k.table, refColumns: targetColumns(k), onDelete: k.onDelete, onUpdate: k.onUpdate,
       }))
 
       const referencedBy = []
@@ -498,7 +502,7 @@ function makeHandlers(drivers) {
         for (const k of keysOf(name)) {
           if (k.table.toLowerCase() !== t.name.toLowerCase()) continue
           referencedBy.push({
-            name: keyName(name, k.columns), table: name, columns: k.columns, refColumns: targetColumns(k), onDelete: k.onDelete, onUpdate: k.onUpdate,
+            name: keyName(name, k.columns, k.table), table: name, columns: k.columns, refColumns: targetColumns(k), onDelete: k.onDelete, onUpdate: k.onUpdate,
           })
         }
       }

@@ -263,14 +263,14 @@ describe('db-manager IPC — SQLite', () => {
       expect(child.ok).toBe(true)
       expect(child.columns.map(c => c.name)).toEqual(['pid'])
       expect(child.foreignKeys).toEqual([
-        { name: 'C(pid)', columns: ['pid'], refTable: 'P', refColumns: ['id'], onDelete: 'CASCADE', onUpdate: 'NO ACTION' },
+        { name: 'C(pid) → P', columns: ['pid'], refTable: 'P', refColumns: ['id'], onDelete: 'CASCADE', onUpdate: 'NO ACTION' },
       ])
       expect(child.referencedBy).toEqual([])
 
       const parent = await ipc._invoke('db-manager:get-structure', { ...cfg, table: 'p' })
       expect(parent.foreignKeys).toEqual([])
       expect(parent.referencedBy).toEqual([
-        { name: 'C(pid)', table: 'C', columns: ['pid'], refColumns: ['id'], onDelete: 'CASCADE', onUpdate: 'NO ACTION' },
+        { name: 'C(pid) → P', table: 'C', columns: ['pid'], refColumns: ['id'], onDelete: 'CASCADE', onUpdate: 'NO ACTION' },
       ])
     } finally { restoreSqlite() }
   })
@@ -285,7 +285,7 @@ describe('db-manager IPC — SQLite', () => {
     ])
     try {
       const result = await ipc._invoke('db-manager:get-structure', { ...cfg, table: 'Node' })
-      const key = { name: 'Node(pid, ps)', columns: ['pid', 'ps'], refColumns: ['id', 'site'], onDelete: 'SET NULL', onUpdate: 'RESTRICT' }
+      const key = { name: 'Node(pid, ps) → Node', columns: ['pid', 'ps'], refColumns: ['id', 'site'], onDelete: 'SET NULL', onUpdate: 'RESTRICT' }
       expect(result.foreignKeys).toEqual([{ ...key, refTable: 'Node' }])
       expect(result.referencedBy).toEqual([{ ...key, table: 'Node' }])
     } finally { restoreSqlite() }
@@ -313,6 +313,19 @@ describe('db-manager IPC — SQLite', () => {
         { name: 'sqlite_autoindex_t_1', columns: [{ name: 'id', desc: false }], unique: true, primaryKey: true, filter: null },
         { name: 'ix_t_a', columns: [{ name: 'a', desc: true }, { name: 'b', desc: false }], unique: false, primaryKey: false, filter: null },
       ])
+    } finally { restoreSqlite() }
+  })
+
+  it('get-structure keeps two keys on the same columns apart by their target', async () => {
+    routeSqlite([
+      [/foreign_key_list\("C"\)/, [
+        { id: 0, seq: 0, table: 'P', from: 'pid', to: 'id', on_delete: 'NO ACTION', on_update: 'NO ACTION' },
+        { id: 1, seq: 0, table: 'Q', from: 'pid', to: 'id', on_delete: 'NO ACTION', on_update: 'NO ACTION' },
+      ]],
+    ])
+    try {
+      const result = await ipc._invoke('db-manager:get-structure', { ...cfg, table: 'C' })
+      expect(result.foreignKeys.map(k => k.name)).toEqual(['C(pid) → P', 'C(pid) → Q'])
     } finally { restoreSqlite() }
   })
 
@@ -552,7 +565,7 @@ describe('db-manager IPC — SQL Server statements', () => {
       { name: 'FK_M_T', refTable: 'Type', columns: ['TypeID'], refColumns: ['ID'], onDelete: 'NO ACTION', onUpdate: 'SET NULL' },
     ])
     expect(result.referencedBy).toEqual([
-      { name: 'FK_N_M', table: 'audit.Note', columns: ['MemberID'], refColumns: ['Id'], onDelete: 'NO ACTION', onUpdate: 'NO ACTION' },
+      { name: 'audit.FK_N_M', table: 'audit.Note', columns: ['MemberID'], refColumns: ['Id'], onDelete: 'NO ACTION', onUpdate: 'NO ACTION' },
     ])
     expect(result.indexes).toEqual([
       { name: 'IX_A', columns: [{ name: 'A', desc: true }], unique: true, primaryKey: false, filter: '([A]>(0))' },
@@ -563,6 +576,16 @@ describe('db-manager IPC — SQL Server statements', () => {
     expect(requests[1].sql).toMatch(/parent_object_id = OBJECT_ID\(@object\)/)
     expect(requests[2].sql).toMatch(/referenced_object_id = OBJECT_ID\(@object\)/)
     expect(requests.map(r => r.inputs.object)).toEqual(['[Member]', '[Member]', '[Member]', '[Member]'])
+  })
+
+  it('get-structure gives same-named keys from different schemas distinct names', async () => {
+    const key = { name: 'FK_Note_Member', ownerTable: 'Note', col: 'MemberID', refSchema: 'dbo', refTable: 'Member', refCol: 'Id', onDelete: 'NO ACTION', onUpdate: 'NO ACTION' }
+    queuedResults = [
+      { recordset: [] }, { recordset: [] },
+      { recordset: [{ ...key, ownerSchema: 'audit' }, { ...key, ownerSchema: 'dbo' }] },
+    ]
+    const result = await ipc._invoke('db-manager:get-structure', { ...cfg, table: 'Member' })
+    expect(result.referencedBy.map(k => [k.name, k.table])).toEqual([['audit.FK_Note_Member', 'audit.Note'], ['FK_Note_Member', 'Note']])
   })
 
   it('get-structure scopes a schema-qualified table', async () => {
