@@ -66,6 +66,31 @@ describe('HistoryPane', () => {
     expect(onOpenFiles).toHaveBeenCalled()
   })
 
+  it('a disabled menu item renders disabled with its reason as the title', () => {
+    const commitMenu = () => [{ label: 'Reword…', onSelect: vi.fn(), disabled: true, reason: 'Already pushed' }, { label: 'Revert…', onSelect: vi.fn() }]
+    render(<HistoryPane history={history()} focusOid={null} onFocus={() => {}} commitMenu={commitMenu} />)
+    fireEvent.contextMenu(screen.getAllByRole('option')[0])
+    const reword = screen.getByRole('menuitem', { name: 'Reword…' })
+    expect(reword.disabled).toBe(true)
+    expect(reword.title).toBe('Already pushed')
+    expect(screen.getByRole('menuitem', { name: 'Revert…' }).disabled).toBe(false)
+  })
+
+  it('Ctrl-click and Shift-click go to onSelect; a plain click still focuses', () => {
+    const onSelect = vi.fn()
+    const onFocus = vi.fn()
+    render(<HistoryPane history={history()} focusOid={commits[0].oid} onFocus={onFocus} onSelect={onSelect} selected={new Set([commits[0].oid, commits[1].oid])} />)
+    const options = screen.getAllByRole('option')
+    expect(options.map(o => o.getAttribute('aria-selected'))).toEqual(['true', 'true', 'false', 'false', 'false'])
+    fireEvent.click(options[2], { ctrlKey: true })
+    expect(onSelect).toHaveBeenLastCalledWith(commits[2].oid, { additive: true, range: false })
+    fireEvent.click(options[3], { shiftKey: true })
+    expect(onSelect).toHaveBeenLastCalledWith(commits[3].oid, { additive: false, range: true })
+    expect(onFocus).not.toHaveBeenCalled()
+    fireEvent.click(options[1])
+    expect(onFocus).toHaveBeenCalledWith(commits[1].oid)
+  })
+
   it('/ focuses the search; Enter runs it and Escape clears it', () => {
     const h = history()
     render(<HistoryPane history={h} focusOid={null} onFocus={() => {}} />)
