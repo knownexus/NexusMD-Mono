@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, within, waitFor } from '@testing-library/react'
 import { BranchCommits, useBranchCommits } from './branch-commits.jsx'
+import { relativeTime } from './history-pane.jsx'
+import { editPlan, parseLog } from '@nexusmd/core'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 beforeEach(() => localStorage.clear())
@@ -148,6 +150,60 @@ describe('BranchCommits', () => {
     await screen.findByText('Subject 1')
     rerender(<Harness adapter={adapter} t={{ ...tree(), path: 'C:/s' }} />)
     expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+  })
+
+  describe('selecting several', () => {
+    // A chain: each commit's parent is the next one down, so neighbours can be squashed.
+    const chain = n => Array.from({ length: n }, (_, i) => `* \x1e${oid(i + 1)}\x1f${oid(i + 2)}\x1fAna\x1fa@b\x1f1\x1f\x1fSubject ${i + 1}`).join('\n') + '\n'
+    const chained = n => adapterFor(n, {
+      log: vi.fn(async (_r, _c, _g, q) => ({ text: chain(n), tip: oid(1), unpushed: Array.from({ length: n }, (_, i) => oid(i + 1)), truncated: false, limit: q.limit })),
+      commitDetails: vi.fn(async (_r, _c, _g, o) => ({ details: [o, '', 'Ana', 'a@b', 'd', 'Ana', 'a@b', 'd', '', `message of ${o[0]}`].join('\0') })),
+    })
+    const row = name => screen.getByText(name).closest('li')
+    const picked = () => ['Subject 1', 'Subject 2', 'Subject 3'].map(name => row(name).getAttribute('data-selected') === 'true')
+
+    it('Ctrl-click adds rows without opening them, and Squash selected… squashes them', async () => {
+      const onOpenCommit = vi.fn()
+      const onAction = vi.fn()
+      render(<Harness adapter={chained(3)} handlers={{ onOpenCommit, onAction }} />)
+      fireEvent.click(await screen.findByText('Subject 1'))
+      expect(onOpenCommit).toHaveBeenCalledTimes(1)
+      fireEvent.click(screen.getByText('Subject 2'), { ctrlKey: true })
+      expect(onOpenCommit).toHaveBeenCalledTimes(1)
+      expect(picked()).toEqual([true, true, false])
+      fireEvent.contextMenu(screen.getByText('Subject 2'))
+      expect(picked()).toEqual([true, true, false]) // right-click inside keeps the selection
+      const squash = within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Squash selected…' })
+      expect(squash.disabled).toBe(false)
+      fireEvent.click(squash)
+      const box = await screen.findByRole('textbox', { name: 'Commit message' })
+      fireEvent.change(box, { target: { value: 'one and two' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      const commits = parseLog(chain(3)).filter(r => r.commit).map(r => r.commit)
+      await waitFor(() => expect(onAction).toHaveBeenCalledWith('rebaseInteractive', editPlan(commits, { kind: 'squash', oids: [oid(1), oid(2)], message: 'one and two' })))
+    })
+
+    it('Ctrl-click again removes a row; Shift-click selects a range; a plain click or a right-click outside resets', async () => {
+      render(<Harness adapter={chained(3)} />)
+      fireEvent.click(await screen.findByText('Subject 1'))
+      fireEvent.click(screen.getByText('Subject 2'), { ctrlKey: true })
+      fireEvent.click(screen.getByText('Subject 2'), { ctrlKey: true })
+      expect(picked()).toEqual([true, false, false])
+      fireEvent.click(screen.getByText('Subject 3'), { shiftKey: true })
+      expect(picked()).toEqual([false, true, true]) // from the last row Ctrl-clicked, as in History
+      fireEvent.click(screen.getByText('Subject 2'))
+      expect(picked()).toEqual([false, true, false])
+      fireEvent.click(screen.getByText('Subject 3'), { ctrlKey: true })
+      fireEvent.contextMenu(screen.getByText('Subject 1'))
+      expect(picked()).toEqual([true, false, false])
+    })
+  })
+
+  it('shows each commit\'s age', async () => {
+    render(<Harness adapter={adapterFor(1)} t={tree(1)} />)
+    await screen.findByText('Subject 1')
+    const time = parseLog(rec(1) + '\n').find(r => r.commit).commit.time
+    expect(within(screen.getByRole('listitem')).getByText(relativeTime(time))).toBeTruthy()
   })
 
   it('shows a read error', async () => {
