@@ -8,6 +8,7 @@ import { execFileSync, execFile } from 'child_process'
 import { createRequire } from 'module'
 
 const { createSourceReader } = createRequire(import.meta.url)('./git-source.cjs')
+const { register } = createRequire(import.meta.url)('./git.cjs')
 
 let root
 let n = 0
@@ -150,5 +151,50 @@ describe('source branch detection and storage', { timeout: 60000 }, () => {
     calls.length = 0
     expect((await reader.get('feat', { head, count: true })).count).toBe(3)
     expect(calls).toHaveLength(0)
+  })
+})
+
+describe('git:status source', { timeout: 60000 }, () => {
+  const handlers = {}
+  const status = (dir, options) => handlers['git:status'](null, { name: 'r', path: dir }, dir, [dir], options)
+  beforeAll(() => {
+    register({ handle: (channel, fn) => { handlers[channel] = fn } }, {
+      logger: { scope: () => ({ error: () => {}, info: () => {} }) },
+      editorCommand: { exe: process.execPath, helper: path.join(__dirname, 'git-editor.cjs') },
+    })
+  })
+
+  it('reports the source and its commit count for an unpublished branch', async () => {
+    const { dir } = repo()
+    git(dir, 'switch', '-q', '-c', 'feat'); commit(dir, 'f1'); commit(dir, 'f2')
+    const s = await status(dir)
+    expect(s.source).toEqual({ ref: 'refs/heads/main', count: 2 })
+  })
+
+  it('counts a published branch only when asked', async () => {
+    const { dir } = repo()
+    const remote = path.join(root, 'remote' + n++ + '.git')
+    git(root, 'init', '-q', '--bare', remote)
+    git(dir, 'remote', 'add', 'origin', remote)
+    git(dir, 'switch', '-q', '-c', 'feat'); commit(dir, 'f1')
+    git(dir, 'push', '-q', '-u', 'origin', 'feat')
+    expect((await status(dir)).source).toEqual({ ref: 'refs/heads/main', count: null })
+    const counted = (await status(dir, { countSource: true })).source
+    expect(counted.ref).toBe('refs/heads/main')
+    expect(typeof counted.count).toBe('number')
+  })
+
+  it('has no source on the default branch or a detached HEAD', async () => {
+    const { dir } = repo()
+    expect((await status(dir)).source).toBeNull()
+    git(dir, 'switch', '-q', '--detach')
+    expect((await status(dir)).source).toBeNull()
+  })
+
+  it('has no source before the first commit', async () => {
+    const dir = path.join(root, 'r' + n++)
+    fs.mkdirSync(dir)
+    git(dir, 'init', '-q')
+    expect((await status(dir)).source).toBeNull()
   })
 })

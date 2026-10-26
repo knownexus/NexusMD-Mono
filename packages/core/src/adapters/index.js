@@ -180,7 +180,7 @@ export const IGitAdapter = {
   resolve:      async (dir) => Promise.reject(new Error('IGitAdapter.resolve not implemented')),
   worktrees:    async (repo, registered) => Promise.reject(new Error('IGitAdapter.worktrees not implemented')),
   // → { porcelain, operation, rebasingBranch, fetchedAt } | { missing: true } | { error }
-  status:       async (repo, worktreePath, registered, options) => Promise.reject(new Error('IGitAdapter.status not implemented')), // options.untracked: 'normal' | 'all'
+  status:       async (repo, worktreePath, registered, options) => Promise.reject(new Error('IGitAdapter.status not implemented')), // options.untracked: 'normal' | 'all'; options.countSource: count commits off the source branch even when published
   branches:     async (repo, registered) => Promise.reject(new Error('IGitAdapter.branches not implemented')),
   discover:     async (roots, repos) => [],
   checkFolders: async (paths) => [],

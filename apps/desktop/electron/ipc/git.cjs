@@ -18,6 +18,7 @@ const { registerActions, ownershipMessage, WRITE_ENV, BASE_MARKER } = require('.
 const { registerFiles } = require('./git-files.cjs');
 const { registerConflicts } = require('./git-conflicts.cjs');
 const { registerShell } = require('./git-shell.cjs');
+const { createSourceReader } = require('./git-source.cjs');
 
 const STRIP_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_PREFIX', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'];
 const BRANCH_FORMAT = '--format=%(refname)%00%(objectname)%00%(subject)%00%(upstream:short)';
@@ -689,6 +690,24 @@ function register(ipcMain, deps = {}) {
   });
 
   // options.untracked 'normal' lists an untracked folder as one entry (the overview poll); anything else lists every file.
+  // The branch's source branch for the status poll. Counting spawns git, so it is only done for an
+  // unpublished branch (or when asked); a failure here is `null`, never a failed status.
+  async function sourceOf(worktreePath, commonDir, porcelain, countSource) {
+    try {
+      if (!commonDir) return null;
+      const header = key => {
+        const line = porcelain.split(/\0|\r?\n/).find(l => l.startsWith(`# branch.${key} `));
+        return line ? line.slice(`# branch.${key} `.length) : null;
+      };
+      const branch = header('head');
+      const oid = header('oid');
+      if (!branch || branch === '(detached)' || !oid || oid === '(initial)') return null;
+      const unpublished = !header('upstream') || header('ab') === null;
+      const reader = createSourceReader({ run: args => git(worktreePath, args), commonDir });
+      return await reader.get(branch, { head: oid, count: unpublished || countSource });
+    } catch { return null; }
+  }
+
   handle('git:status', async (_e, repo, worktreePath, registered, options) => {
     await requireWorktree(repo, worktreePath, registered);
     if (!probe.isDirectory(worktreePath)) return { missing: true };
@@ -706,6 +725,7 @@ function register(ipcMain, deps = {}) {
     const progress = await inProgress(gitDir);
     return {
       porcelain: status.stdout,
+      source: await sourceOf(worktreePath, commonDir, status.stdout, !!options?.countSource),
       ...progress,
       operationInfo: progress.operation ? await operationInfo(worktreePath, gitDir) : null,
       fetchedAt: commonDir ? probe.mtime(path.join(commonDir, 'FETCH_HEAD')) : null,
