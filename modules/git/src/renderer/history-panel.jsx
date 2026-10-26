@@ -89,11 +89,11 @@ export function HistoryPanel({ adapter, repo, cwd, registered, target, split, on
       label: 'Rebase from here…',
       onSelect: () => setRebase({ base: c.parents[0], commits: commits.slice(0, index + 1).reverse().map(x => ({ oid: x.oid, subject: x.subject })) }),
     }] : []),
-    ...buildEditItems({
+    ...(target.ref === 'HEAD' ? buildEditItems({
       commits, index, unpushed, own, source, searching: !!history.search,
       selected: selected.has(c.oid) ? selected : new Set([c.oid]),
       onEdit: e => edit.start(e, commits),
-    }),
+    }) : []),
   ] : null
 
   const shownSplit = dragging ?? split

@@ -67,7 +67,7 @@ export function useCommitEdit({ adapter, repo, cwd, registered, onAction }) {
   }
 
   const dialog = open
-    ? React.createElement(CommitMessageDialog, { key: token.current, title: open.title, initial: open.initial, error: open.error, onSave: save, onClose: close })
+    ? React.createElement(CommitMessageDialog, { key: token.current, title: open.title, initial: open.initial, error: open.error, requireChange: open.edit.kind === 'reword', onSave: save, onClose: close })
     : null
   return { start, dialog }
 }

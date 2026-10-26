@@ -3,12 +3,12 @@ import { PlModal } from '@nexusmd/ui'
 
 /**
  * Edit a commit message (reword, or the combined message of a squash). Save needs a non-blank
- * subject and a change from `initial`. `error` (a message that couldn't be loaded) disables Save.
+ * subject and, with `requireChange` (a reword), a change from `initial`. `error` (a message that couldn't be loaded) disables Save.
  */
-export function CommitMessageDialog({ title, initial, onSave, onClose, error = null }) {
+export function CommitMessageDialog({ title, initial, onSave, onClose, error = null, requireChange = true }) {
   const [text, setText] = React.useState(initial)
   const subject = text.split('\n')[0].trim()
-  const canSave = !error && subject !== '' && text !== initial
+  const canSave = !error && subject !== '' && (!requireChange || text !== initial)
   const save = () => { if (canSave) onSave(text) }
   const footer = (
     <>

@@ -163,13 +163,36 @@ describe('ViewGit history', () => {
     it('Shift-click selects the range from the focused commit; right-click outside it resets', async () => {
       await open()
       fireEvent.click(row(3))
-      fireEvent.click(row(1), { shiftKey: true })
-      expect([3, 2, 1].map(n => row(n).getAttribute('aria-selected'))).toEqual(['true', 'true', 'true'])
-      expect(item(menuOf(2), 'Squash selected…').disabled).toBe(true) // includes a pushed commit
-      fireEvent.keyDown(document.body, { key: 'Escape' })
-      fireEvent.contextMenu(row(3))
+      fireEvent.click(row(2), { shiftKey: true })
+      expect([3, 2, 1].map(n => row(n).getAttribute('aria-selected'))).toEqual(['true', 'true', 'false'])
+      expect(item(menuOf(2), 'Squash selected…').disabled).toBe(false) // right-click inside keeps the selection
+      expect([3, 2, 1].map(n => row(n).getAttribute('aria-selected'))).toEqual(['true', 'true', 'false'])
+      fireEvent.contextMenu(row(1))
+      expect([3, 2, 1].map(n => row(n).getAttribute('aria-selected'))).toEqual(['false', 'false', 'true'])
+    })
+
+    it('saves a squash without editing the combined message', async () => {
+      const git = await open()
       fireEvent.click(row(3))
-      expect([3, 2, 1].map(n => row(n).getAttribute('aria-selected'))).toEqual(['true', 'false', 'false'])
+      fireEvent.click(row(2), { ctrlKey: true })
+      fireEvent.click(item(menuOf(3), 'Squash selected…'))
+      const box = await screen.findByRole('textbox', { name: 'Commit message' })
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Save' }).disabled).toBe(false))
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(git.preview).toHaveBeenLastCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), 'rebaseInteractive',
+        editPlan(commits, { kind: 'squash', oids: [oid(3), oid(2)], message: box.value })))
+    })
+
+    it('offers no edit items on a branch that is not checked out', async () => {
+      const git = adapter()
+      const props = { adapter: git, repo: { name: 'A', path: 'C:/repos/A' }, cwd: 'C:/repos/A', registered: ['C:/repos/A'], target: { ref: 'refs/heads/side', head: SIDE }, split: 0.5, onSplit: () => {}, onAction: vi.fn() }
+      render(<HistoryPanel {...props} />)
+      await screen.findByText('Side work', { selector: '[role=option] span' })
+      fireEvent.contextMenu(document.querySelector('[role=option]'))
+      const labels = within(screen.getByRole('menu')).getAllByRole('menuitem').map(b => b.textContent)
+      expect(labels).toContain('Revert…')
+      expect(labels).not.toContain('Reword…')
+      expect(labels).not.toContain('Squash selected…')
     })
 
     it('Squash into previous… is enabled on a commit whose previous one is unpushed', async () => {
