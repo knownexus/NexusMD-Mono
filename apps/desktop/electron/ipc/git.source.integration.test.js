@@ -61,6 +61,24 @@ describe('source branch detection and storage', { timeout: 60000 }, () => {
     expect((await reader.get('feat', {})).ref).toBe('refs/heads/dev')
   })
 
+  it('ignores a "Created from HEAD" entry once another branch is checked out', async () => {
+    const { dir, reader } = repo()
+    git(dir, 'switch', '-q', '-c', 'dev'); commit(dir, 'd1')
+    git(dir, 'switch', '-q', '-c', 'feat')
+    git(dir, 'switch', '-q', 'main')
+    expect((await reader.get('feat', {})).ref).toBe('refs/heads/dev')
+  })
+
+  it('does not detect again after finding nothing', async () => {
+    const { dir, calls, reader } = repo()
+    git(dir, 'switch', '-q', '--orphan', 'solo'); commit(dir, 's1'); git(dir, 'branch', '-D', 'main')
+    dropReflogs(dir)
+    expect(await reader.get('solo', {})).toBeNull()
+    calls.length = 0
+    expect(await reader.get('solo', {})).toBeNull()
+    expect(calls).toHaveLength(0)
+  })
+
   it('picks the nearest branch when there is no reflog', async () => {
     const { dir, reader } = repo()
     git(dir, 'switch', '-q', '-c', 'dev')

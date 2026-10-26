@@ -17,6 +17,8 @@ const lines = text => String(text).split(/\r?\n/);
 
 // A module-level cache of "commits ahead" counts. The ref's oid is in the key, so it never goes stale.
 const counts = new Map();
+// Detection results (including "found nothing") by branch tip, so a poll never re-detects the same state.
+const detected = new Map();
 
 function readConfigSource(configText, branch) {
   let inBranch = false;
@@ -77,7 +79,8 @@ async function detectSource(run, branch, commonDir) {
   const own = (await out(['reflog', 'show', '--format=%gs', self, '--'])).split('\n');
   for (let i = own.length - 1; i >= 0; i--) {
     const m = /^branch: Created from (.+)$/.exec(own[i]);
-    if (m) { const ref = await accept(m[1]); if (ref) return ref; break; }
+    // "Created from HEAD" names whatever is checked out now, not where the branch came from.
+    if (m) { const ref = m[1] === 'HEAD' || m[1] === '@' ? null : await accept(m[1]); if (ref) return ref; break; }
   }
   // 2. HEAD's reflog remembers the checkout that first moved onto it.
   const headLog = (await out(['reflog', 'show', '--format=%gs', 'HEAD', '--'])).split('\n');
@@ -108,7 +111,8 @@ async function detectSource(run, branch, commonDir) {
 
 function createSourceReader({ run, commonDir, fsx = fs }) {
   const write = async (branch, ref) => {
-    await run(['config', '--local', `branch.${branch}.${KEY}`, ref]);
+    const r = await run(['config', '--local', `branch.${branch}.${KEY}`, ref]);
+    if (r.code !== 0) throw new Error(`Could not store the source branch of ${branch}`);
   };
   const valid = (branch, ref) => isBranchRef(ref) && ref !== `refs/heads/${branch}` && readRefOid(commonDir, ref, fsx) !== null;
 
@@ -117,9 +121,15 @@ function createSourceReader({ run, commonDir, fsx = fs }) {
     let ref = null;
     try { ref = readConfigSource(fsx.readFileSync(path.join(commonDir, 'config'), 'utf8'), branch); } catch { /* no config */ }
     if (!valid(branch, ref)) {
-      ref = await detectSource(run, branch, commonDir);
+      const key = `${commonDir}\0${branch}\0${readRefOid(commonDir, `refs/heads/${branch}`, fsx)}`;
+      if (!detected.has(key) || (detected.get(key) && !valid(branch, detected.get(key)))) {
+        const found = await detectSource(run, branch, commonDir);
+        detected.set(key, found);
+        // A failed write still leaves the answer cached above, so the next poll doesn't detect again.
+        if (found) { try { await write(branch, found); } catch { /* retried when the tip or ref changes */ } }
+      }
+      ref = detected.get(key);
       if (!ref) return null;
-      await write(branch, ref);
     }
     if (!count) return { ref, count: null };
     const oid = readRefOid(commonDir, ref, fsx);
