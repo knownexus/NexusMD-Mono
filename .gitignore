@@ -61,3 +61,6 @@ apps/web/triage-tracker/exports/
 # Generated entry modules for the split build (apps/desktop/build)
 apps/desktop/build/.shared/
 apps/desktop/installer/apps.generated.nsh
+
+# Claude Code worktrees
+.claude/worktrees/
