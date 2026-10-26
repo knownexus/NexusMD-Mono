@@ -100,7 +100,8 @@ const EXPECTED = [
   'ACTION_KINDS', 'BATCH_KINDS', 'BATCH_NOTE', 'actionTargets', 'previewModel', 'worktreeDefaultPath', 'checkBranchName', 'REBASE_ACTIONS', 'rebasePlan', 'moveRow', 'setRowAction', 'setRowMessage', 'rebaseTodo', 'squashGroups', 'rebaseMessages', 'messageRows', 'rebaseProblems', 'ACTIVITY_MAX', 'addActivity', 'failedTargets',
   'formatSqlValue', 'formatCondition', 'quoteIdent', 'quoteTable',
   'buildSearchQuery', 'buildInsertQuery', 'buildUpdateQuery', 'buildDeleteQuery',
-  'buildJoinQuery', 'buildAggregateQuery',
+  'buildJoinQuery', 'buildAggregateQuery', 'sqlLiteral', 'buildInsertStatements',
+  'followTargets', 'referencingTargets', 'whereLabel',
   // Work items module (ADO + Jira merged)
   'JIRA_ID_PREFIX', 'isJiraId', 'toJiraId', 'jiraKeyFromId', 'sourceOfId', 'displayIdOf',
   'CATEGORY_LANES', 'CATEGORY_LABELS', 'itemCategory', 'adoStateForCategory',

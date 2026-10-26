@@ -94,8 +94,9 @@ export { columnKind, isPartialInput, cellToInput, parseCellInput } from './modul
 export {
   formatSqlValue, formatCondition, quoteIdent, quoteTable,
   buildSearchQuery, buildInsertQuery, buildUpdateQuery, buildDeleteQuery,
-  buildJoinQuery, buildAggregateQuery,
+  buildJoinQuery, buildAggregateQuery, sqlLiteral, buildInsertStatements,
 } from './modules/db-manager/query-builders.js'
+export { followTargets, referencingTargets, whereLabel } from './modules/db-manager/foreign-keys.js'
 export {
   getDevenvAdapter, DEVENV_CONTROL_PREFIX, DEVENV_PROTOCOL_VERSION, parseDevenvLine,
   ansiToSpans, stripAnsi,

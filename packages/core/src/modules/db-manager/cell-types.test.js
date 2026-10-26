@@ -14,7 +14,7 @@ describe('columnKind', () => {
     expect(['datetime', 'datetime2', 'smalldatetime'].map(t => columnKind(col(t)))).toEqual(['datetime', 'datetime', 'datetime'])
     expect(columnKind(col('time'))).toBe('time')
     expect(columnKind(col('uniqueidentifier'))).toBe('guid')
-    expect(['nvarchar', 'varchar', 'TEXT', 'xml', 'datetimeoffset'].map(t => columnKind(col(t)))).toEqual(['text', 'text', 'text', 'text', 'text'])
+    expect(['nvarchar', 'varchar', 'TEXT', 'xml'].map(t => columnKind(col(t)))).toEqual(['text', 'text', 'text', 'text'])
   })
 
   it('makes identity, computed, rowversion and binary columns read-only', () => {
@@ -112,5 +112,27 @@ describe('parseCellInput', () => {
 
   it('refuses read-only columns', () => {
     expect(parseCellInput(col('int', { isIdentity: true }), '5').error).toMatch(/database sets/)
+  })
+})
+
+describe('datetimeoffset', () => {
+  const dto = { dataType: 'datetimeoffset', nullable: false }
+  it('is its own kind', () => {
+    expect(columnKind({ dataType: 'datetimeoffset' })).toBe('datetimeoffset')
+  })
+  it('keeps an offset and defaults a missing or Z one to +00:00', () => {
+    expect(parseCellInput(dto, '2026-10-26T09:30:00+10:00')).toEqual({ value: '2026-10-26T09:30:00+10:00' })
+    expect(parseCellInput(dto, '2026-10-26 09:30')).toEqual({ value: '2026-10-26T09:30:00+00:00' })
+    expect(parseCellInput(dto, '2026-10-26T09:30:00.123Z')).toEqual({ value: '2026-10-26T09:30:00.123+00:00' })
+  })
+  it('rejects an impossible date', () => {
+    expect(parseCellInput(dto, '2026-02-30T00:00+01:00')).toHaveProperty('error')
+  })
+  it('lets offset text be typed but not letters', () => {
+    expect(isPartialInput('datetimeoffset', '2026-10-26T09:30+1')).toBe(true)
+    expect(isPartialInput('datetimeoffset', 'abc')).toBe(false)
+  })
+  it('shows a Date with a +00:00 offset', () => {
+    expect(cellToInput(dto, new Date(Date.UTC(2026, 9, 26, 9, 30)))).toBe('2026-10-26T09:30:00+00:00')
   })
 })

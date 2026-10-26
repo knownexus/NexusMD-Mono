@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   formatSqlValue, formatCondition, quoteIdent, quoteTable,
   buildSearchQuery, buildInsertQuery, buildUpdateQuery, buildDeleteQuery,
-  buildJoinQuery, buildAggregateQuery,
+  buildJoinQuery, buildAggregateQuery, sqlLiteral, buildInsertStatements,
 } from './query-builders.js'
 
 describe('formatSqlValue', () => {
@@ -155,5 +155,36 @@ describe('quoteTable', () => {
     expect(buildSearchQuery('Staging.V_Member')).toBe('SELECT * FROM [Staging].[V_Member]')
     expect(buildDeleteQuery('maintenance.need_Refunds')).toBe('DELETE FROM [maintenance].[need_Refunds]')
     expect(buildJoinQuery('a.L', 'b.R', 'INNER', 'Id', 'LId')).toContain('[a].[L].[Id] = [b].[R].[LId]')
+  })
+})
+
+describe('sqlLiteral', () => {
+  it('prefixes N for national types on SQL Server only', () => {
+    expect(sqlLiteral({ dataType: 'nvarchar' }, "O'Neil", 'sqlserver')).toBe("N'O''Neil'")
+    expect(sqlLiteral({ dataType: 'nvarchar' }, 'a', 'sqlite')).toBe("'a'")
+  })
+  it('keeps leading zeros in text columns', () => {
+    expect(sqlLiteral({ dataType: 'varchar' }, '007', 'sqlserver')).toBe("'007'")
+  })
+  it('writes numbers, booleans and NULL bare', () => {
+    expect(sqlLiteral({ dataType: 'int' }, 7, 'sqlite')).toBe('7')
+    expect(sqlLiteral({ dataType: 'bit' }, true, 'sqlserver')).toBe('1')
+    expect(sqlLiteral({ dataType: 'bit' }, false, 'sqlserver')).toBe('0')
+    expect(sqlLiteral({ dataType: 'int' }, null, 'sqlserver')).toBe('NULL')
+    expect(sqlLiteral({ dataType: 'int' }, undefined, 'sqlserver')).toBe('NULL')
+  })
+  it('quotes a Date as its editor text', () => {
+    expect(sqlLiteral({ dataType: 'datetime' }, new Date(Date.UTC(2026, 9, 26, 9, 30)), 'sqlserver')).toBe("'2026-10-26T09:30:00'")
+  })
+})
+
+describe('buildInsertStatements', () => {
+  it('writes one INSERT per row and leaves out read-only columns', () => {
+    const out = buildInsertStatements('maintenance.T', ['Id', 'Name'], [[1, 'a'], [2, null]],
+      [{ name: 'Id', isIdentity: true }, { name: 'Name', dataType: 'nvarchar' }], 'sqlserver')
+    expect(out.split('\n')).toEqual([
+      "INSERT INTO [maintenance].[T] ([Name]) VALUES (N'a');",
+      'INSERT INTO [maintenance].[T] ([Name]) VALUES (NULL);',
+    ])
   })
 })

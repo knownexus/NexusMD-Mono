@@ -5,6 +5,8 @@
 // and column names passed in are expected to come from session.tables /
 // getColumns() (schema-derived), never freeform user text.
 
+import { columnKind, cellToInput } from './cell-types.js'
+
 /**
  * A table or column name in square brackets, so reserved words (Key, User,
  * Order…), spaces and other odd characters can't break the statement. SQL
@@ -82,4 +84,29 @@ export function buildAggregateQuery(table, aggregates, groupByColumns = []) {
   ].join(', ')
   const base = `SELECT ${selectCols} FROM ${quoteTable(table)}`
   return groupBy.length ? `${base}\nGROUP BY ${groupBy.join(', ')}` : base
+}
+
+/**
+ * A stored value as a SQL literal for its column. Unlike formatSqlValue this goes by the column's
+ * type, so a text column keeps '007' quoted. SQL Server needs N before national-character text.
+ * @param {'sqlserver'|'sqlite'} dialect
+ */
+export function sqlLiteral(col, value, dialect) {
+  if (value === null || value === undefined) return 'NULL'
+  if (typeof value === 'boolean') return value ? '1' : '0'
+  const kind = columnKind(col)
+  if (kind === 'integer' || kind === 'decimal') return String(value)
+  const text = value instanceof Date ? cellToInput(col, value) : String(value)
+  const national = dialect === 'sqlserver' && /^n/i.test(String(col?.dataType ?? ''))
+  return `${national ? 'N' : ''}'${text.replace(/'/g, "''")}'`
+}
+
+/** One INSERT per row, for pasting elsewhere; columns the database writes itself are left out. */
+export function buildInsertStatements(table, columns, rows, columnInfo, dialect) {
+  const info = new Map(columnInfo.map(c => [c.name, c]))
+  const keep = columns.map((name, i) => ({ name, i, col: info.get(name) })).filter(c => columnKind(c.col) !== 'readonly')
+  const names = keep.map(c => quoteIdent(c.name)).join(', ')
+  return rows
+    .map(row => `INSERT INTO ${quoteTable(table)} (${names}) VALUES (${keep.map(c => sqlLiteral(c.col, row[c.i], dialect)).join(', ')});`)
+    .join('\n')
 }

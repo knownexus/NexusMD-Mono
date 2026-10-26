@@ -19,7 +19,7 @@ const baseType = col => String(col?.dataType ?? '').toLowerCase().replace(/\(.*$
 
 /**
  * The editor a column gets.
- * @returns {'integer'|'decimal'|'boolean'|'date'|'datetime'|'time'|'guid'|'text'|'readonly'}
+ * @returns {'integer'|'decimal'|'boolean'|'date'|'datetime'|'datetimeoffset'|'time'|'guid'|'text'|'readonly'}
  */
 export function columnKind(col) {
   if (!col) return 'text'
@@ -30,6 +30,7 @@ export function columnKind(col) {
   if (t in INT_RANGES || t === 'integer' || t === 'mediumint') return 'integer'
   if (DECIMAL_TYPES.test(t)) return 'decimal'
   if (t === 'date') return 'date'
+  if (t === 'datetimeoffset') return 'datetimeoffset'
   if (t === 'datetime' || t === 'datetime2' || t === 'smalldatetime') return 'datetime'
   if (t === 'time') return 'time'
   if (t === 'uniqueidentifier') return 'guid'
@@ -40,6 +41,7 @@ export function columnKind(col) {
 export function isPartialInput(kind, text) {
   if (kind === 'integer') return /^-?\d*$/.test(text)
   if (kind === 'decimal') return /^-?\d*\.?\d*$/.test(text)
+  if (kind === 'datetimeoffset') return /^[\d\-T: .:+Z]*$/.test(text)
   return true
 }
 
@@ -55,7 +57,7 @@ export function cellToInput(col, value) {
     const iso = isoParts(value)
     if (kind === 'date') return iso.slice(0, 10)
     if (kind === 'time') return iso.slice(11)
-    return iso
+    return kind === 'datetimeoffset' ? `${iso}+00:00` : iso
   }
   if (kind === 'datetime' && typeof value === 'string') return value.replace(' ', 'T').replace(/\.\d+$/, '').replace(/Z$/, '')
   return String(value)
@@ -126,6 +128,17 @@ export function parseCellInput(col, input, { isNull = false } = {}) {
       return { error: 'Enter a real date and time.' }
     }
     return { value: `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] ?? '00'}${m[7] ?? ''}` }
+  }
+
+  if (kind === 'datetimeoffset') {
+    // No offset (or Z) means UTC, so what's stored is never a guess at the viewer's zone.
+    const m = v.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(\.\d+)?)?\s*(Z|[+-]\d{2}:?\d{2})?$/i)
+    const off = m && (!m[8] || /^z$/i.test(m[8]) ? '+00:00' : m[8].replace(/^([+-]\d{2})(\d{2})$/, '$1:$2'))
+    if (!m || !isRealDate(+m[1], +m[2], +m[3]) || +m[4] > 23 || +m[5] > 59 || +(m[6] ?? 0) > 59
+      || +off.slice(1, 3) > 14 || +off.slice(4) > 59) {
+      return { error: 'Enter a real date, time and offset (YYYY-MM-DDTHH:MM:SS+HH:MM).' }
+    }
+    return { value: `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] ?? '00'}${m[7] ?? ''}${off}` }
   }
 
   if (kind === 'time') {
