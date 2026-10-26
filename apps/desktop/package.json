@@ -126,7 +126,8 @@
     "publish": {
       "provider": "github",
       "owner": "knownexus",
-      "repo": "NexusMD-Mono"
+      "repo": "NexusMD-Mono",
+      "releaseType": "release"
     }
   }
 }
