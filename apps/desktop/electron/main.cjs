@@ -347,7 +347,7 @@ app.whenReady().then(async () => {
 
   // Auto-updater (event wiring is packaged-only; the IPC contract is always registered)
   initUpdater(mainWindow);
-  registerUpdaterIpc();
+  registerUpdaterIpc(() => mainWindow);
 
   // Register Phase 6 IPC handlers
   fileIpc.register(ipcMain);
