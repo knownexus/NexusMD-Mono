@@ -36,7 +36,7 @@ import {
   removeTableGroup,
   toggleSectionCollapsed,
   tableSections,
-  quoteIdent,
+  quoteTable,
   columnTypes,
   validateTableSpec,
   buildCreateTable,
@@ -168,10 +168,14 @@ function matchesWords(text, query) {
 const SAVED_KEY = 'nx-db:saved-queries'
 const TABLE_TOKEN = '{table}'
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-// The table name as a whole identifier, bare or quoted ([t], "t", `t`).
-const tableRe = t => new RegExp(`(\\[${escapeRe(t)}\\]|"${escapeRe(t)}"|\`${escapeRe(t)}\`|(?<![\\w.])${escapeRe(t)}(?![\\w]))`, 'g')
+// The table name as a whole identifier, bare or quoted ([t], "t", `t`), and a schema table as
+// quoteTable writes it ([schema].[t]).
+const tableRe = t => {
+  const parts = quoteTable(t) === `[${t}]` ? '' : `${escapeRe(quoteTable(t))}|`
+  return new RegExp(`(${parts}\\[${escapeRe(t)}\\]|"${escapeRe(t)}"|\`${escapeRe(t)}\`|(?<![\\w.])${escapeRe(t)}(?![\\w]))`, 'g')
+}
 const mentionsTable = (sql, table) => !!table && tableRe(table).test(sql)
-const toTemplate = (sql, table) => sql.replace(tableRe(table), m => m.replace(table, TABLE_TOKEN))
+const toTemplate = (sql, table) => sql.replace(tableRe(table), m => (m === quoteTable(table) ? TABLE_TOKEN : m.replace(table, TABLE_TOKEN)))
 // Names always go in square brackets (SQL Server and SQLite both read them), so a reserved word
 // such as Key, a space or a quote can never end the statement. A token already inside quotes only
 // needs the quote character escaped.
@@ -179,7 +183,7 @@ function fillTemplate(sql, table) {
   return sql.split(TABLE_TOKEN).map((part, i, all) => {
     if (i === all.length - 1) return part
     const before = part.slice(-1), after = all[i + 1].slice(0, 1)
-    if (!['[]', '""', '``'].includes(before + after)) return part + quoteIdent(table)
+    if (!['[]', '""', '``'].includes(before + after)) return part + quoteTable(table)
     const q = before === '[' ? /]/g : before === '`' ? /`/g : /"/g
     return part + table.replace(q, m => m + m)
   }).join('')
@@ -608,7 +612,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     setActiveTab(tab)
     if (tab === 'query') {
       setQueryTable(name)
-      setSqlQuery(`SELECT * FROM ${quoteIdent(name)}`)
+      setSqlQuery(`SELECT * FROM ${quoteTable(name)}`)
       setActiveBuilder(null)
     }
     setDbState(s => applyTableSelected(s, name))
@@ -793,7 +797,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
 
   const handleQueryTableSelect = useCallback((name) => {
     setQueryTable(name)
-    setSqlQuery(`SELECT * FROM ${quoteIdent(name)}`)
+    setSqlQuery(`SELECT * FROM ${quoteTable(name)}`)
   }, [])
 
   const toggleBuilder = useCallback(async (name) => {
@@ -972,14 +976,14 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const showMenu = (items, label, point) => setMenu({ items, label, ...point })
 
   const selectSql = name => (session?.type === 'sqlserver'
-    ? `SELECT TOP 100 * FROM ${quoteIdent(name)}`
-    : `SELECT * FROM ${quoteIdent(name)} LIMIT 100`)
+    ? `SELECT TOP 100 * FROM ${quoteTable(name)}`
+    : `SELECT * FROM ${quoteTable(name)} LIMIT 100`)
   const copy = async (text, what) => notify((await copyText(text)) ? `Copied ${what}` : "Couldn't reach the clipboard", 'info')
   const countRows = async (name) => {
     try {
       const n = isDemo
         ? demoData.current[name]?.rows.length ?? 0
-        : (await db.runQuery(session.type, session.config, `SELECT COUNT(*) AS n FROM ${quoteIdent(name)}`)).rows?.[0]?.[0]
+        : (await db.runQuery(session.type, session.config, `SELECT COUNT(*) AS n FROM ${quoteTable(name)}`)).rows?.[0]?.[0]
       notify(`${name}: ${typeof n === 'number' ? n.toLocaleString() : n} ${n === 1 ? 'row' : 'rows'}`, 'info')
     } catch (err) {
       notify(err.message, 'error')
@@ -1012,7 +1016,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
       { label: 'Count rows', icon: 'info', onSelect: () => countRows(name) },
       { separator: true },
       { label: 'New view from this…', icon: 'eye', disabled: !canDdl, title: canDdl ? undefined : 'Not in the demo',
-        onSelect: () => setDdl({ kind: 'view', sql: `SELECT * FROM ${quoteIdent(name)}` }) },
+        onSelect: () => setDdl({ kind: 'view', sql: `SELECT * FROM ${quoteTable(name)}` }) },
       { label: viewSet.has(name) ? 'Drop view…' : 'Drop table…', icon: 'trash', danger: true, disabled: !canDdl, title: canDdl ? undefined : 'Not in the demo',
         onSelect: () => setDdl({ kind: 'drop', name, view: viewSet.has(name) }) },
       ...(isOpened(name) || others.length ? [{ separator: true }] : []),

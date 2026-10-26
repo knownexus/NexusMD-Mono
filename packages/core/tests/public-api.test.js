@@ -98,7 +98,7 @@ const EXPECTED = [
   'toggleSelection', 'rangeSelection', 'pruneSelection', 'fileReview', 'commitTargets', 'commitReview', 'COMMIT_NOTE',
   'parseRefs', 'parseLog', 'graphCells', 'parseSearch', 'historyQuery', 'HISTORY_STEP', 'HISTORY_MAX', 'parseRefList', 'defaultBase', 'parseAliases', 'parseShellAliases', 'parseShellScripts', 'parseCommitDetails', 'parseNameStatus', 'parseNumstat', 'parentLabel',
   'ACTION_KINDS', 'BATCH_KINDS', 'BATCH_NOTE', 'actionTargets', 'previewModel', 'worktreeDefaultPath', 'checkBranchName', 'REBASE_ACTIONS', 'rebasePlan', 'moveRow', 'setRowAction', 'setRowMessage', 'rebaseTodo', 'squashGroups', 'rebaseMessages', 'messageRows', 'rebaseProblems', 'ACTIVITY_MAX', 'addActivity', 'failedTargets',
-  'formatSqlValue', 'formatCondition', 'quoteIdent',
+  'formatSqlValue', 'formatCondition', 'quoteIdent', 'quoteTable',
   'buildSearchQuery', 'buildInsertQuery', 'buildUpdateQuery', 'buildDeleteQuery',
   'buildJoinQuery', 'buildAggregateQuery',
   // Work items module (ADO + Jira merged)
