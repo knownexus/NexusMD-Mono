@@ -328,23 +328,58 @@ describe('rebasing with editPlan', { timeout: 60000 }, () => {
     })
   })
 
+  const branchCommits = dir => git(dir, 'log', '--format=%H %P|%s', 'main..HEAD').split('\n').filter(Boolean).map(l => {
+    const [ids, subject] = l.split('|')
+    const [oid, ...parents] = ids.split(' ')
+    return { oid, subject, parents }
+  })
+  const runPlan = async (dir, plan) => {
+    const options = { base: plan.base, rows: plan.rows }
+    const repoArg = { name: 'r', path: dir }
+    const p = await handlers['git:preview'](null, repoArg, dir, [dir], 'rebaseInteractive', options)
+    expect(p.eligible).toBe(true)
+    return handlers['git:run'](null, repoArg, dir, [dir], 'rebaseInteractive', options, p.stamp)
+  }
+
   it('rewords a middle commit of an unpublished branch and keeps the tree', async () => {
     const { dir } = repo()
     git(dir, 'switch', '-q', '-c', 'feat')
     for (const m of ['f1', 'f2', 'f3']) commit(dir, m)
     const treeBefore = git(dir, 'rev-parse', 'HEAD^{tree}').trim()
-    const commits = git(dir, 'log', '--format=%H %P|%s', 'main..HEAD').split('\n').filter(Boolean).map(l => {
-      const [ids, subject] = l.split('|')
-      const [oid, ...parents] = ids.split(' ')
-      return { oid, subject, parents }
-    })
-    const plan = editPlan(commits, { kind: 'reword', oid: commits[1].oid, message: 'f2 reworded' })
-    const options = { base: plan.base, rows: plan.rows }
-    const repoArg = { name: 'r', path: dir }
-    const p = await handlers['git:preview'](null, repoArg, dir, [dir], 'rebaseInteractive', options)
-    expect(p.eligible).toBe(true)
-    expect(await handlers['git:run'](null, repoArg, dir, [dir], 'rebaseInteractive', options, p.stamp)).toMatchObject({ ok: true })
+    const commits = branchCommits(dir)
+    expect(await runPlan(dir, editPlan(commits, { kind: 'reword', oid: commits[1].oid, message: 'f2 reworded' }))).toMatchObject({ ok: true })
     expect(git(dir, 'log', '--format=%s', 'main..HEAD').trim().split('\n')).toEqual(['f3', 'f2 reworded', 'f1'])
     expect(git(dir, 'rev-parse', 'HEAD^{tree}').trim()).toBe(treeBefore)
+  })
+
+  it('keeps lines starting with # in a reworded message', async () => {
+    const { dir } = repo()
+    git(dir, 'switch', '-q', '-c', 'feat')
+    for (const m of ['f1', 'f2']) commit(dir, m)
+    const commits = branchCommits(dir)
+    expect(await runPlan(dir, editPlan(commits, { kind: 'reword', oid: commits[1].oid, message: '#42 fix login\n\nBody line' }))).toMatchObject({ ok: true })
+    expect(git(dir, 'log', '-1', '--format=%B', 'HEAD~1').trim()).toBe('#42 fix login\n\nBody line')
+  })
+
+  it('refuses a squash that leaves git\'s template as the message', async () => {
+    const { dir } = repo()
+    git(dir, 'switch', '-q', '-c', 'feat')
+    for (const m of ['f1', 'f2']) commit(dir, m)
+    const commits = branchCommits(dir)
+    const plan = editPlan(commits, { kind: 'squash', oids: [commits[0].oid, commits[1].oid], message: null })
+    const p = await handlers['git:preview'](null, { name: 'r', path: dir }, dir, [dir], 'rebaseInteractive', { base: plan.base, rows: plan.rows })
+    expect(p.eligible).toBe(false)
+    expect(p.reason).toMatch(/message/)
+  })
+
+  it('keeps lines starting with # in a squashed message', async () => {
+    const { dir } = repo()
+    git(dir, 'switch', '-q', '-c', 'feat')
+    for (const m of ['f1', 'f2', 'f3']) commit(dir, m)
+    const commits = branchCommits(dir)
+    const message = 'f2 and f3\n\n# heading\nmore'
+    expect(await runPlan(dir, editPlan(commits, { kind: 'squash', oids: [commits[0].oid, commits[1].oid], message }))).toMatchObject({ ok: true })
+    expect(git(dir, 'log', '-1', '--format=%B', 'HEAD').trim()).toBe(message)
+    expect(git(dir, 'log', '--format=%s', 'main..HEAD').trim().split('\n')).toEqual(['f2 and f3', 'f1'])
   })
 })

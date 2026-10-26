@@ -16,6 +16,8 @@ const { defaultBranch, isOwnRemote, createSourceReader } = require('./git-source
 
 // ':' is git's own "no editor": nothing can wait on an editor. Interactive rebase swaps in the helper.
 const WRITE_ENV = { GIT_EDITOR: ':', GIT_SEQUENCE_EDITOR: ':', GIT_MERGE_AUTOEDIT: 'no' };
+// A rebase NexusMD plans writes every message itself, so a line the user starts with '#' is theirs to keep.
+const KEEP_HASH_LINES = ['-c', 'commit.cleanup=whitespace'];
 const STALE = 'Changed since the preview. Preview again.';
 const REJECTED = "The remote has commits you don't have - pull first.";
 const PUSHED_RANGE = "Interactive rebase only rewrites commits that haven't been pushed.";
@@ -79,22 +81,36 @@ function branchNameProblem(n) {
 
 // Mirrors core's rebaseTodo / rebaseMessages (shared fixtures keep them in step).
 function rebaseTodo(rows) { return rows.map(r => `${r.action} ${r.oid}\n`).join(''); }
-function rebaseMessages(rows) {
+function squashGroups(rows) {
   const groups = [];
   for (const r of rows) {
     if (r.action === 'drop') continue;
     if ((r.action === 'squash' || r.action === 'fixup') && groups.length) groups[groups.length - 1].push(r);
     else groups.push([r]);
   }
+  return groups;
+}
+function rebaseMessages(rows) {
   const out = {};
-  for (const g of groups) {
+  for (const g of squashGroups(rows)) {
     const head = g[0];
     const last = g[g.length - 1];
-    if (g.length === 1) { if (head.action === 'reword' && head.message) out[head.oid] = head.message; continue; }
+    // git asks for a reworded commit's message before folding anything into it.
+    if (head.action === 'reword' && head.message) out[head.oid] = head.message;
+    if (g.length === 1) continue;
     const message = last.message || (head.action === 'reword' ? head.message : null);
     if (message) out[last.oid] = message;
   }
   return out;
+}
+// Rebases run with commit.cleanup=whitespace so a '#' line the user wrote is kept, which also keeps git's
+// own '#' template lines whenever the editor is left alone. So every reword, and every group with a
+// squash (fixup-only groups keep the first message without asking), must come with a message.
+function rebaseMessagesMissing(rows) {
+  const messages = rebaseMessages(rows);
+  const given = oid => typeof messages[oid] === 'string' && messages[oid].trim() !== '';
+  return squashGroups(rows).some(g => (g[0].action === 'reword' && !given(g[0].oid))
+    || (g.slice(1).some(r => r.action === 'squash') && !given(g[g.length - 1].oid)));
 }
 
 function registerActions(handle, ctx) {
@@ -562,6 +578,7 @@ function registerActions(handle, ctx) {
         const kept = rows.filter(r => r.action !== 'drop');
         if (!kept.length) throw new Error('Keep at least one commit.');
         if (kept[0].action === 'squash' || kept[0].action === 'fixup') throw new Error("The first commit can't be squashed or fixed up.");
+        if (rebaseMessagesMissing(rows)) throw new Error('Give every reworded or squashed commit a message.');
         return { base: o.base, rows: rows.map(r => ({ oid: r.oid, action: r.action, message: r.message ?? null })), range };
       },
       extra: async (wt, o) => o.range.join(','),
@@ -644,7 +661,7 @@ function registerActions(handle, ctx) {
     const marker = await gitDirFile(wt);
     try {
       await rememberBase(wt, o.base);
-      const r = await w(wt, ['rebase', '-i', '--end-of-options', o.base], { timeout: LONG, env: editorEnv(planFile) });
+      const r = await w(wt, [...KEEP_HASH_LINES, 'rebase', '-i', '--end-of-options', o.base], { timeout: LONG, env: editorEnv(planFile) });
       const res = await finish(wt, r);
       // Stopped on a conflict: keep the plan so Continue applies the remaining rewords.
       if (res.conflict && marker) fsx.writeFileSync(marker, planFile);
@@ -659,13 +676,14 @@ function registerActions(handle, ctx) {
   async function continueOrAbort(wt, command, verb) {
     const marker = command === 'rebase' ? await gitDirFile(wt) : null;
     let env = {};
+    let config = [];
     if (marker && verb !== 'abort') {
       try {
         const planFile = fsx.readFileSync(marker, 'utf8').trim();
-        if (planFile && fsx.existsSync(planFile)) env = editorEnv(planFile);
+        if (planFile && fsx.existsSync(planFile)) { env = editorEnv(planFile); config = KEEP_HASH_LINES; }
       } catch { /* a rebase NexusMD didn't start */ }
     }
-    const r = await w(wt, [command, `--${verb}`], { timeout: verb === 'abort' ? SHORT : LONG, env });
+    const r = await w(wt, [...config, command, `--${verb}`], { timeout: verb === 'abort' ? SHORT : LONG, env });
     const res = await finish(wt, r);
     if (marker && (verb === 'abort' || res.ok)) cleanupPlan(marker);
     return res;
