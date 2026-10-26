@@ -51,11 +51,12 @@ const FILTERS = [['all', 'All'], ['unpushed', 'Unpushed'], ['sinceBase', 'Since'
 
 /**
  * The History toolbar and the commit list. Focus moves with ↑/↓; Enter hands focus to the file list.
- * `commitMenu(commit, index)` returns a row's actions ([{ label, onSelect }]), shown from its ⋯ button
- * or a right-click. With unpushed commits listed, dividers split yours ("Local commits", or
+ * `commitMenu(commit, index)` returns a row's actions ([{ label, onSelect, disabled?, reason? }]; a disabled
+ * item shows its reason as a tooltip), shown from its ⋯ button or a right-click. `selected` (a Set of oids)
+ * marks a multi-selection; Ctrl/Shift-click go to `onSelect(oid, { additive, range })`. With unpushed commits listed, dividers split yours ("Local commits", or
  * "Your commits · being rebased" mid-rebase) from those already on `upstream`.
  */
-export function HistoryPane({ history: h, focusOid, onFocus, onOpenFiles, commitMenu = null, upstream = null, rebasing = false }) {
+export function HistoryPane({ history: h, focusOid, onFocus, onOpenFiles, commitMenu = null, upstream = null, rebasing = false, selected = null, onSelect = null }) {
   const [input, setInput] = React.useState('')
   const [menuFor, setMenuFor] = React.useState(null)
   const searchRef = React.useRef(null)
@@ -139,10 +140,14 @@ export function HistoryPane({ history: h, focusOid, onFocus, onOpenFiles, commit
             {dividers.has(r.commit.oid) && (
               <div role="presentation" className="nx-gw-hdivider" data-tone={dividers.get(r.commit.oid)}>{dividerLabel(dividers.get(r.commit.oid))}</div>
             )}
-            <div id={`commit-${r.commit.oid}`} data-oid={r.commit.oid} role="option" aria-selected={r.commit.oid === focusOid}
+            <div id={`commit-${r.commit.oid}`} data-oid={r.commit.oid} role="option" aria-selected={selected ? selected.has(r.commit.oid) : r.commit.oid === focusOid}
               className="nx-gw-hrow" data-tone={toneOf(r.commit.oid) ?? undefined}
-              onClick={() => onFocus(r.commit.oid)}
-              onContextMenu={commitMenu ? e => { e.preventDefault(); onFocus(r.commit.oid); setMenuFor(r.commit.oid) } : undefined}>
+              onClick={e => {
+                const additive = e.ctrlKey || e.metaKey
+                if (onSelect && (additive || e.shiftKey)) onSelect(r.commit.oid, { additive, range: e.shiftKey })
+                else onFocus(r.commit.oid)
+              }}
+              onContextMenu={commitMenu ? e => { e.preventDefault(); if (!selected?.has(r.commit.oid)) onFocus(r.commit.oid); setMenuFor(r.commit.oid) } : undefined}>
               <Graph graph={r.graph} tone={sides ? toneOf(r.commit.oid) : null} />
               <div className="nx-gw-hrow-main">
                 <div className="nx-gw-hrow-top">
@@ -167,6 +172,7 @@ export function HistoryPane({ history: h, focusOid, onFocus, onOpenFiles, commit
                 style={{ display: 'grid', gap: 2, padding: 4, margin: '2px 0 4px 32px', justifySelf: 'start' }}>
                 {commitMenu(r.commit, commits.findIndex(c => c.commit.oid === r.commit.oid)).map(item => (
                   <button key={item.label} role="menuitem" className="btn sm ghost" style={{ justifyContent: 'flex-start' }}
+                    disabled={item.disabled} title={item.disabled ? item.reason : undefined}
                     onClick={() => { setMenuFor(null); item.onSelect() }}>{item.label}</button>
                 ))}
               </div>

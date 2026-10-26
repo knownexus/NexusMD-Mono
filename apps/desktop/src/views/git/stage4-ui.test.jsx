@@ -131,7 +131,7 @@ describe('stage 4 in the Git Workspace view', () => {
     await screen.findByText('nine')
     fireEvent.click(screen.getByRole('button', { name: `Actions for ${oid(8).slice(0, 7)}` }))
     let menu = screen.getByRole('menu', { name: `Actions for ${oid(8).slice(0, 7)}` })
-    expect(within(menu).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['New branch here…', 'Check out (detached)…', 'Revert…', 'Rebase from here…'])
+    expect(within(menu).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['New branch here…', 'Check out (detached)…', 'Revert…', 'Rebase from here…', 'Reword…', 'Squash into previous…', 'Squash selected…'])
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Rebase from here…' }))
     const plan = await screen.findByRole('list', { name: 'Rebase plan' })
     expect(within(plan).getAllByRole('listitem').map(li => li.textContent)).toEqual([expect.stringContaining('eight'), expect.stringContaining('nine')])
