@@ -78,6 +78,38 @@ describe('BranchCommits', () => {
     expect(onAction).toHaveBeenCalledWith('rebaseInteractive', expect.anything())
   })
 
+  it('opens a commit from the keyboard-focusable row button', async () => {
+    const onOpenCommit = vi.fn()
+    render(<Harness adapter={adapterFor(3)} handlers={{ onOpenCommit }} />)
+    const open = (await screen.findByText('Subject 3')).closest('button')
+    expect(open.tagName).toBe('BUTTON')
+    fireEvent.click(open)
+    expect(onOpenCommit).toHaveBeenCalledWith(oid(3))
+  })
+
+  it('the actions button opens the same items, focuses the first and Escape returns focus', async () => {
+    render(<Harness adapter={adapterFor(3)} />)
+    await screen.findByText('Subject 2')
+    const more = screen.getAllByRole('button', { name: /^Actions for/ })[1]
+    fireEvent.click(more)
+    const menu = screen.getByRole('menu')
+    expect(within(menu).getAllByRole('menuitem').map(m => m.textContent)).toEqual(['Reword…', 'Squash into previous…', 'Squash selected…'])
+    await waitFor(() => expect(document.activeElement.textContent).toBe('Reword…'))
+    fireEvent.keyDown(document.activeElement, { key: 'ArrowUp' })
+    expect(document.activeElement.textContent).toBe('Squash into previous…') // Squash selected is disabled for one commit
+    fireEvent.keyDown(document.activeElement, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(document.activeElement).toBe(more)
+  })
+
+  it('an outside click closes the menu', async () => {
+    render(<Harness adapter={adapterFor(3)} />)
+    fireEvent.contextMenu(await screen.findByText('Subject 1'))
+    expect(screen.getByRole('menu')).toBeTruthy()
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
   it('remembers collapsing across a remount', async () => {
     const adapter = adapterFor(3)
     const { unmount } = render(<Harness adapter={adapter} />)

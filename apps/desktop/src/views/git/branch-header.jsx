@@ -93,7 +93,7 @@ export function BranchHeader({ tree, stashCount = null, onSync, onStashes, onOve
           {tree.source && !detached && (
             <button type="button" className="nx-gw-crumb-link" title="The branch this one was cut from" onClick={onSource}>from {sourceName(tree.source.ref)} ▾</button>
           )}
-          <span>{ago ?`Fetched ${ago}` : 'Never fetched'}</span>
+          <span>{ago ? `Fetched ${ago}` : 'Never fetched'}</span>
         </div>
         {(tree.operation || tree.locked || tree.prunable) && (
           <div className="nx-pills">

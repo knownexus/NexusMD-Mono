@@ -48,12 +48,29 @@ export function BranchCommits({ tree, adapter, repo, registered, data, onOpenCom
   const [collapsed, setCollapsedState] = React.useState(readCollapsed)
   const [menuFor, setMenuFor] = React.useState(null)
   const edit = useCommitEdit({ adapter, repo, cwd: tree.path, registered, onAction })
+  const box = React.useRef(null)
   React.useEffect(() => {
     if (menuFor == null) return undefined
-    const away = e => { if (!e.target.closest?.('.nx-gw-bc-menu')) setMenuFor(null) }
+    const away = e => { if (!e.target.closest?.('.nx-gw-bc-menu, .nx-gw-bc-more')) setMenuFor(null) }
     window.addEventListener('mousedown', away)
+    box.current?.querySelector('.nx-gw-bc-menu [role="menuitem"]:not([disabled])')?.focus()
     return () => window.removeEventListener('mousedown', away)
   }, [menuFor])
+  // Esc closes and puts focus back on the row's ⋯ button; ↑/↓ wrap between the enabled items.
+  const menuKey = e => {
+    if (e.key === 'Escape') {
+      e.stopPropagation()
+      const more = e.currentTarget.parentElement.querySelector('.nx-gw-bc-more')
+      setMenuFor(null)
+      more?.focus()
+      return
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    e.preventDefault()
+    const list = [...e.currentTarget.querySelectorAll('[role="menuitem"]:not([disabled])')]
+    const at = list.indexOf(document.activeElement)
+    list[(at + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length]?.focus()
+  }
   const count = tree.source?.count
   if (!count || tree.branch === '(detached)') return null
   const source = sourceName(tree.source.ref)
@@ -77,24 +94,32 @@ export function BranchCommits({ tree, adapter, repo, registered, data, onOpenCom
       </div>
       {error && <div role="alert" className="nx-gw-dhead-error">{error}</div>}
       {!collapsed && (
-        <ul className="nx-gw-bc-list">
-          {commits.slice(0, SHOWN).map((c, i) => (
-            <li key={c.oid} className="nx-gw-bc-row" onClick={() => onOpenCommit(c.oid)}
-              onContextMenu={e => { e.preventDefault(); setMenuFor(c.oid) }}>
-              <span className="nx-gw-bc-subject">{c.subject}</span>
-              {unpushed?.has(c.oid) && <span aria-label="Not pushed" title="Not pushed" style={{ color: 'var(--warning)' }}>↑</span>}
-              <span className="nx-gw-hrow-hash">{c.oid.slice(0, 7)}</span>
-              {menuFor === c.oid && (
-                <div role="menu" aria-label={`Actions for ${c.oid.slice(0, 7)}`} className="nx-gw-menu nx-gw-bc-menu" data-align="left"
-                  onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setMenuFor(null) } }}>
-                  {items(i).map(item => (
-                    <button key={item.label} type="button" role="menuitem" className="nx-gw-menu-item" disabled={item.disabled} title={item.disabled ? item.reason : undefined}
-                      onClick={() => { setMenuFor(null); item.onSelect() }}>{item.label}</button>
-                  ))}
+        <ul ref={box} className="nx-gw-bc-list">
+          {commits.slice(0, SHOWN).map((c, i) => {
+            const short = c.oid.slice(0, 7)
+            return (
+              <li key={c.oid} onContextMenu={e => { e.preventDefault(); setMenuFor(c.oid) }}>
+                <div className="nx-gw-bc-row">
+                  <button type="button" className="nx-gw-bc-open" title="Open in History" onClick={() => onOpenCommit(c.oid)}>
+                    <span className="nx-gw-bc-subject">{c.subject}</span>
+                    {unpushed?.has(c.oid) && <span aria-label="Not pushed" title="Not pushed" style={{ color: 'var(--warning)' }}>↑</span>}
+                    <span className="nx-gw-hrow-hash">{short}</span>
+                  </button>
+                  <button type="button" className="btn sm ghost nx-gw-bc-more" aria-label={`Actions for ${short}`} aria-haspopup="menu" aria-expanded={menuFor === c.oid}
+                    onClick={() => setMenuFor(m => (m === c.oid ? null : c.oid))}>⋯</button>
                 </div>
-              )}
-            </li>
-          ))}
+                {menuFor === c.oid && (
+                  <div role="menu" aria-label={`Actions for ${short}`} className="card nx-gw-bc-menu" onKeyDown={menuKey}>
+                    {items(i).map(item => (
+                      <button key={item.label} type="button" role="menuitem" className="btn sm ghost" style={{ justifyContent: 'flex-start' }}
+                        disabled={item.disabled} title={item.disabled ? item.reason : undefined}
+                        onClick={() => { setMenuFor(null); item.onSelect() }}>{item.label}</button>
+                    ))}
+                  </div>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
       {edit.dialog}
