@@ -956,7 +956,10 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
   const saved = [{ id: 'uat', name: 'UAT', type: 'sqlite', inputMode: 'fields', filePath: '/a.db' }]
   const list = () => within(screen.getByRole('navigation', { name: 'Table list' }))
   const prefsOf = conn => JSON.parse(window.localStorage.getItem(`nx-db:tables:${conn}`))
-  const menuOf = label => within(list().getByLabelText(label).closest('details'))
+  // The newest open menu (a flyout opens on top of its parent).
+  const topMenu = () => within(screen.getAllByRole('menu').at(-1))
+  const openMenu = label => { fireEvent.click(list().getByRole('button', { name: label })); return topMenu() }
+  const openSub = (menu, item) => { fireEvent.click(menu.getByRole('menuitem', { name: item })); return topMenu() }
 
   async function connectUat() {
     render(<ViewDbManager adapters={adapters} savedConnections={saved} onResolveSecret={vi.fn().mockResolvedValue('')} />)
@@ -964,17 +967,18 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
     await waitFor(() => expect(list().getAllByText('patients').length).toBeGreaterThan(0))
   }
 
-  // Types a new group name into a table's menu and adds the table to it.
+  // Types a new group name into a table's "Move to group" flyout and adds the table to it.
   function moveToNewGroup(table, group) {
-    const menu = menuOf(`More for ${table}`)
-    fireEvent.change(menu.getByLabelText('New group name'), { target: { value: group } })
-    fireEvent.click(menu.getByRole('button', { name: 'Add' }))
+    const sub = openSub(openMenu(`More for ${table}`), /^Move to group/)
+    fireEvent.change(sub.getByLabelText('New group name'), { target: { value: group } })
+    fireEvent.click(sub.getByRole('button', { name: 'Add' }))
   }
 
   it('moves a table into a new group of its own and saves it for the connection', async () => {
     await connectUat()
     moveToNewGroup('staff', 'People')
 
+    expect(screen.queryByRole('menu')).not.toBeTruthy()
     const group = list().getByRole('button', { name: /People/, expanded: true })
     expect(within(group.closest('.nx-db-group')).getByText('staff')).toBeTruthy()
     expect(prefsOf('uat')).toMatchObject({ groups: ['People'], assigned: { staff: 'People' } })
@@ -983,29 +987,31 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
   it('moves a table into an existing group, then back out', async () => {
     await connectUat()
     moveToNewGroup('staff', 'People')
-    fireEvent.click(menuOf('More for patients').getByRole('button', { name: 'People' }))
+    fireEvent.click(openSub(openMenu('More for patients'), /^Move to group/).getByRole('menuitemcheckbox', { name: 'People' }))
     expect(prefsOf('uat').assigned).toEqual({ staff: 'People', patients: 'People' })
 
-    fireEvent.click(menuOf('More for staff').getByRole('button', { name: 'Remove from People' }))
+    const sub = openSub(openMenu('More for staff'), /^Move to group · People/)
+    expect(sub.getByRole('menuitemcheckbox', { name: 'People' }).getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(sub.getByRole('menuitem', { name: 'Remove from People' }))
     expect(prefsOf('uat').assigned).toEqual({ patients: 'People' })
   })
 
   it('renames and ungroups a group from its menu', async () => {
     await connectUat()
     moveToNewGroup('staff', 'People')
-    const menu = menuOf('Edit group People')
-    fireEvent.change(menu.getByLabelText('Group name'), { target: { value: 'Team' } })
-    fireEvent.click(menu.getByRole('button', { name: 'Rename' }))
+    const rename = openSub(openMenu('Edit group People'), 'Rename group')
+    fireEvent.change(rename.getByLabelText('Group name'), { target: { value: 'Team' } })
+    fireEvent.click(rename.getByRole('button', { name: 'Rename' }))
     expect(prefsOf('uat')).toMatchObject({ groups: ['Team'], assigned: { staff: 'Team' } })
 
-    fireEvent.click(menuOf('Edit group Team').getByRole('button', { name: 'Ungroup tables' }))
+    fireEvent.click(openMenu('Edit group Team').getByRole('menuitem', { name: 'Ungroup tables' }))
     expect(prefsOf('uat')).toMatchObject({ groups: [], assigned: {} })
     expect(list().queryByLabelText('Edit group Team')).not.toBeTruthy()
   })
 
   it('hides a table from the list and shows it under Hidden, then brings it back', async () => {
     await connectUat()
-    fireEvent.click(menuOf('More for staff').getByRole('button', { name: 'Hide from the table list' }))
+    fireEvent.click(openMenu('More for staff').getByRole('menuitem', { name: 'Hide from the table list' }))
 
     expect(list().queryByText('staff')).not.toBeTruthy()
     expect(prefsOf('uat').hidden).toEqual(['staff'])
@@ -1013,8 +1019,52 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
     expect(list().getByText('staff')).toBeTruthy()
     expect(list().queryByText('patients')).not.toBeTruthy()
 
-    fireEvent.click(menuOf('More for staff').getByRole('button', { name: 'Show in the table list' }))
+    fireEvent.click(openMenu('More for staff').getByRole('menuitem', { name: 'Show in the table list' }))
     expect(prefsOf('uat').hidden).toEqual([])
+  })
+
+  it('opens the same menu with a right-click, and closes it with Escape', async () => {
+    await connectUat()
+    fireEvent.contextMenu(list().getByText('staff').closest('.nx-db-row'))
+    const menu = topMenu()
+    expect(menu.getByText('staff')).toBeTruthy()
+    expect(menu.getByRole('menuitem', { name: /^Move to group/ }).getAttribute('aria-haspopup')).toBe('menu')
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+    expect(screen.queryByRole('menu')).not.toBeTruthy()
+  })
+
+  it('opens a section menu with a right-click on its header: fold it, fold the others, group or hide its tables', async () => {
+    window.localStorage.setItem('nx-db:tables:uat', JSON.stringify({ groups: ['People'], assigned: { staff: 'People' } }))
+    await connectUat()
+    fireEvent.contextMenu(list().getByRole('button', { name: /People/, expanded: true }))
+    fireEvent.click(topMenu().getByRole('menuitem', { name: 'Collapse the others' }))
+    expect(prefsOf('uat').collapsed).toEqual(['schema:'])
+
+    fireEvent.contextMenu(list().getByRole('button', { name: /Tables/, expanded: false }))
+    fireEvent.click(topMenu().getByRole('menuitem', { name: 'Hide all 1' }))
+    expect(prefsOf('uat').hidden).toEqual(['patients'])
+  })
+
+  it('moves every table in a schema section into a group at once', async () => {
+    await connectUat()
+    const sub = openSub(openMenu('More for Tables'), 'Move all 2 to group')
+    fireEvent.change(sub.getByLabelText('New group name'), { target: { value: 'Core' } })
+    fireEvent.click(sub.getByRole('button', { name: 'Add' }))
+    expect(prefsOf('uat').assigned).toEqual({ patients: 'Core', staff: 'Core' })
+  })
+
+  it('copies a table’s name and a SELECT for it, and counts its rows', async () => {
+    const writeText = vi.fn().mockResolvedValue()
+    Object.assign(navigator, { clipboard: { writeText } })
+    adapters.dbManager.runQuery.mockResolvedValue({ columns: ['n'], rows: [[1234]], affected: null })
+    await connectUat()
+    fireEvent.click(openMenu('More for staff').getByRole('menuitem', { name: 'Copy name' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('staff'))
+    fireEvent.click(openMenu('More for staff').getByRole('menuitem', { name: 'Copy SELECT statement' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('SELECT * FROM [staff] LIMIT 100'))
+    fireEvent.click(openMenu('More for staff').getByRole('menuitem', { name: 'Count rows' }))
+    await waitFor(() => expect(screen.getByText(/staff: 1,234 rows/)).toBeTruthy())
+    expect(adapters.dbManager.runQuery).toHaveBeenCalledWith('sqlite', expect.anything(), 'SELECT COUNT(*) AS n FROM [staff]')
   })
 
   it('remembers favourites, groups, hidden tables and folded groups the next time the connection opens', async () => {
@@ -1057,6 +1107,199 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
     window.localStorage.setItem('nx-db:tables:other', JSON.stringify({ hidden: ['staff'] }))
     await connectUat()
     expect(list().getByText('staff')).toBeTruthy()
+  })
+})
+
+describe('ViewDbManager — creating and dropping tables and views', () => {
+  let adapters
+  const saved = [{ id: 'uat', name: 'UAT', type: 'sqlite', inputMode: 'fields', filePath: '/a.db' }]
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter({
+      connect: vi.fn().mockResolvedValue({ ok: true, tables: ['active_staff', 'patients', 'staff'], views: ['active_staff'] }),
+      runDdl: vi.fn().mockResolvedValue({ ok: true }),
+    }) }
+  })
+
+  afterEach(() => { cleanup() })
+
+  const list = () => within(screen.getByRole('navigation', { name: 'Table list' }))
+  const topMenu = () => within(screen.getAllByRole('menu').at(-1))
+  const dialog = () => within(screen.getByRole('dialog'))
+
+  async function connectUat() {
+    render(<ViewDbManager adapters={adapters} savedConnections={saved} onResolveSecret={vi.fn().mockResolvedValue('')} />)
+    fireEvent.click(within(screen.getByRole('region', { name: 'Quick connect' })).getByText('UAT'))
+    await waitFor(() => expect(list().getAllByText('patients').length).toBeGreaterThan(0))
+  }
+
+  it('lists views in their own section, tagged', async () => {
+    await connectUat()
+    const views = list().getByRole('button', { name: /Views/, expanded: true }).closest('.nx-db-group')
+    expect(within(views).getByText('active_staff')).toBeTruthy()
+    expect(within(views).getByText('view')).toBeTruthy()
+  })
+
+  it('designs a table, shows the SQL it will run, creates it and opens it', async () => {
+    adapters.dbManager.connect
+      .mockResolvedValueOnce({ ok: true, tables: ['patients'], views: [] })
+      .mockResolvedValueOnce({ ok: true, tables: ['note', 'patients'], views: [] })
+    await connectUat()
+    fireEvent.click(screen.getByRole('button', { name: 'New' }))
+    fireEvent.click(topMenu().getByRole('menuitem', { name: 'New table…' }))
+    fireEvent.change(dialog().getByLabelText('Table name'), { target: { value: 'note' } })
+    fireEvent.change(dialog().getByLabelText('Column 2 name'), { target: { value: 'body' } })
+    fireEvent.click(dialog().getByLabelText('Column 2 allows NULL'))
+    const sql = 'CREATE TABLE [note] (\n  [id] INTEGER PRIMARY KEY AUTOINCREMENT,\n  [body] TEXT NOT NULL\n)'
+    expect(dialog().getByLabelText('SQL to run').textContent).toBe(sql)
+
+    fireEvent.click(dialog().getByRole('button', { name: 'Create table' }))
+    await waitFor(() => expect(adapters.dbManager.runDdl).toHaveBeenCalledWith('sqlite', expect.anything(), sql))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'note' })).toBeTruthy())
+    expect(screen.queryByRole('dialog')).not.toBeTruthy()
+  })
+
+  it('won’t create a table whose name is taken, or one with a bad design', async () => {
+    await connectUat()
+    fireEvent.click(screen.getByRole('button', { name: 'New' }))
+    fireEvent.click(topMenu().getByRole('menuitem', { name: 'New table…' }))
+    fireEvent.change(dialog().getByLabelText('Table name'), { target: { value: 'Staff' } })
+    fireEvent.change(dialog().getByLabelText('Column 2 name'), { target: { value: 'id' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'Create table' }))
+    const errors = dialog().getByRole('alert').textContent
+    expect(errors).toMatch(/already a table or view called Staff/)
+    expect(errors).toMatch(/must be different: id/)
+    expect(adapters.dbManager.runDdl).not.toHaveBeenCalled()
+  })
+
+  it('shows the database’s reason when creating fails, and keeps the design', async () => {
+    adapters.dbManager.runDdl.mockRejectedValue(new Error('CREATE TABLE permission denied'))
+    await connectUat()
+    fireEvent.click(screen.getByRole('button', { name: 'New' }))
+    fireEvent.click(topMenu().getByRole('menuitem', { name: 'New table…' }))
+    fireEvent.change(dialog().getByLabelText('Table name'), { target: { value: 'note' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'Create table' }))
+    await waitFor(() => expect(dialog().getByText(/permission denied/)).toBeTruthy())
+    expect(dialog().getByLabelText('Table name').value).toBe('note')
+  })
+
+  it('makes a view from a table’s menu', async () => {
+    await connectUat()
+    fireEvent.click(list().getByRole('button', { name: 'More for staff' }))
+    fireEvent.click(topMenu().getByRole('menuitem', { name: 'New view from this…' }))
+    expect(dialog().getByLabelText('SELECT query').value).toBe('SELECT * FROM [staff]')
+    fireEvent.change(dialog().getByLabelText('View name'), { target: { value: 'all_staff' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'Create view' }))
+    await waitFor(() => expect(adapters.dbManager.runDdl).toHaveBeenCalledWith('sqlite', expect.anything(), 'CREATE VIEW [all_staff] AS\nSELECT * FROM [staff]'))
+  })
+
+  it('makes a view from the query in the Query tab', async () => {
+    await connectUat()
+    openTable('staff')
+    await waitFor(() => screen.getByRole('table'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Query' }))
+    fireEvent.change(screen.getByLabelText('SQL query'), { target: { value: 'SELECT [name] FROM [staff]' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create view…' }))
+    expect(dialog().getByLabelText('SELECT query').value).toBe('SELECT [name] FROM [staff]')
+  })
+
+  it('drops a table only once its name is typed, and forgets its stars and group', async () => {
+    window.localStorage.setItem('nx-db:tables:uat', JSON.stringify({ starred: ['staff'], groups: ['People'], assigned: { staff: 'People' } }))
+    await connectUat()
+    fireEvent.click(list().getAllByRole('button', { name: 'More for staff' })[0])
+    fireEvent.click(topMenu().getByRole('menuitem', { name: 'Drop table…' }))
+    const drop = dialog().getByRole('button', { name: 'Drop table' })
+    expect(drop.disabled).toBe(true)
+    fireEvent.change(dialog().getByLabelText(/Type staff to confirm/), { target: { value: 'staf' } })
+    expect(drop.disabled).toBe(true)
+    fireEvent.change(dialog().getByLabelText(/Type staff to confirm/), { target: { value: 'staff' } })
+    fireEvent.click(drop)
+    await waitFor(() => expect(adapters.dbManager.runDdl).toHaveBeenCalledWith('sqlite', expect.anything(), 'DROP TABLE [staff]'))
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem('nx-db:tables:uat'))).toMatchObject({ starred: [], assigned: {}, groups: [] }))
+  })
+
+  it('drops a view with DROP VIEW', async () => {
+    await connectUat()
+    fireEvent.click(list().getByRole('button', { name: 'More for active_staff' }))
+    fireEvent.click(topMenu().getByRole('menuitem', { name: 'Drop view…' }))
+    fireEvent.change(dialog().getByLabelText(/Type active_staff to confirm/), { target: { value: 'active_staff' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'Drop view' }))
+    await waitFor(() => expect(adapters.dbManager.runDdl).toHaveBeenCalledWith('sqlite', expect.anything(), 'DROP VIEW [active_staff]'))
+  })
+
+  it('shows a view read-only, without adding rows', async () => {
+    adapters.dbManager.getColumns.mockResolvedValue({ ok: true, columns: [{ name: 'id', dataType: 'INTEGER', isPrimaryKey: false }, { name: 'name', dataType: 'TEXT', isPrimaryKey: false }] })
+    await connectUat()
+    openTable('active_staff')
+    await waitFor(() => expect(screen.getByRole('note').textContent).toMatch(/This is a view/))
+    expect(screen.getByRole('button', { name: 'Add row' }).disabled).toBe(true)
+  })
+
+  it('offers no creating or dropping in the demo', async () => {
+    render(<ViewDbManager adapters={adapters} />)
+    fireEvent.click(screen.getByText('Try the demo'))
+    await waitFor(() => screen.getByText('patients'))
+    expect(screen.queryByRole('button', { name: 'New' })).not.toBeTruthy()
+    fireEvent.click(list().getByRole('button', { name: 'More for staff' }))
+    expect(topMenu().getByRole('menuitem', { name: 'Drop table…' }).disabled).toBe(true)
+  })
+})
+
+describe('ViewDbManager — closing opened tables', () => {
+  afterEach(() => { cleanup() })
+
+  const list = () => within(screen.getByRole('navigation', { name: 'Table list' }))
+  const openedCount = () => within(screen.getByRole('group', { name: 'Show tables' })).getByRole('button', { name: /^Opened/ }).textContent
+
+  async function demoWithTwoOpened() {
+    render(<ViewDbManager adapters={{ dbManager: makeAdapter() }} />)
+    fireEvent.click(screen.getByText('Try the demo'))
+    await waitFor(() => screen.getByText('patients'))
+    openTable('staff')
+    await waitFor(() => screen.getByRole('heading', { name: 'staff' }))
+    openTable('patients')
+    await waitFor(() => screen.getByRole('heading', { name: 'patients' }))
+    expect(openedCount()).toBe('Opened2')
+  }
+
+  it('closes a table from its × in the list, taking it out of Opened', async () => {
+    await demoWithTwoOpened()
+    fireEvent.click(list().getByRole('button', { name: 'Close staff' }))
+    expect(openedCount()).toBe('Opened1')
+    // The open one stays open.
+    expect(screen.getByRole('heading', { name: 'patients' })).toBeTruthy()
+  })
+
+  it('closing the table that’s showing goes back to the overview', async () => {
+    await demoWithTwoOpened()
+    fireEvent.click(screen.getByRole('button', { name: 'Close table' }))
+    expect(screen.queryByRole('heading', { name: 'patients' })).not.toBeTruthy()
+    expect(openedCount()).toBe('Opened1')
+    expect(within(screen.getByRole('region', { name: 'Recently opened' })).queryByText('patients')).not.toBeTruthy()
+  })
+
+  it('closes the other opened tables from a table’s menu', async () => {
+    await demoWithTwoOpened()
+    fireEvent.click(list().getByRole('button', { name: 'More for patients' }))
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Close other tables (1)' }))
+    expect(openedCount()).toBe('Opened1')
+    expect(screen.getByRole('heading', { name: 'patients' })).toBeTruthy()
+  })
+
+  it('closes them all from the Opened filter, and from Recently opened', async () => {
+    await demoWithTwoOpened()
+    fireEvent.click(within(screen.getByRole('group', { name: 'Show tables' })).getByRole('button', { name: /^Opened/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close all' }))
+    expect(openedCount()).toBe('Opened0')
+
+    openTable('staff')
+    await waitFor(() => screen.getByRole('heading', { name: 'staff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close table' }))
+    openTable('patients')
+    await waitFor(() => screen.getByRole('heading', { name: 'patients' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close table' }))
+    // Closing each took it out, so Recently opened has nothing left to show.
+    expect(screen.queryByRole('region', { name: 'Recently opened' })).not.toBeTruthy()
   })
 })
 

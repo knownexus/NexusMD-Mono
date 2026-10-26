@@ -77,19 +77,24 @@ export function toggleSectionCollapsed(prefs, key) {
 // Section keys keep a group called "dbo" apart from the dbo schema.
 export const groupSectionKey = name => `group:${name}`
 export const schemaSectionKey = schema => `schema:${schema}`
+export const VIEWS_SECTION_KEY = 'views:'
 
 /**
  * The table list's sections, in display order: the user's groups, then each schema's
- * ungrouped tables ("dbo.Users" goes under dbo; names without a schema under "Tables").
- * Only sections that have one of `tables` in them are returned.
- * @returns {{ key: string, kind: 'group'|'schema', name: string, label: string, names: string[] }[]}
+ * ungrouped tables ("dbo.Users" goes under dbo; names without a schema under "Tables"), then
+ * any views not in a group. Only sections that have one of `tables` in them are returned.
+ * @param {{ views?: Iterable<string> }} [opts]  Which of `tables` are views.
+ * @returns {{ key: string, kind: 'group'|'schema'|'views', name: string, label: string, names: string[] }[]}
  */
-export function tableSections(tables, prefs) {
+export function tableSections(tables, prefs, { views = [] } = {}) {
   const byGroup = new Map(prefs.groups.map(g => [g, []]))
   const bySchema = new Map()
+  const isView = new Set(views)
+  const viewNames = []
   for (const t of tables) {
     const g = prefs.assigned[t]
     if (g && byGroup.has(g)) { byGroup.get(g).push(t); continue }
+    if (isView.has(t)) { viewNames.push(t); continue }
     const dot = t.indexOf('.')
     const schema = dot > 0 ? t.slice(0, dot) : ''
     if (!bySchema.has(schema)) bySchema.set(schema, [])
@@ -99,5 +104,6 @@ export function tableSections(tables, prefs) {
     ...[...byGroup].filter(([, names]) => names.length)
       .map(([name, names]) => ({ key: groupSectionKey(name), kind: 'group', name, label: name, names })),
     ...[...bySchema].map(([schema, names]) => ({ key: schemaSectionKey(schema), kind: 'schema', name: schema, label: schema || 'Tables', names })),
+    ...(viewNames.length ? [{ key: VIEWS_SECTION_KEY, kind: 'views', name: '', label: 'Views', names: viewNames }] : []),
   ]
 }

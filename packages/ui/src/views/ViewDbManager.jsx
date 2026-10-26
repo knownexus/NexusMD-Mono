@@ -37,6 +37,11 @@ import {
   toggleSectionCollapsed,
   tableSections,
   quoteIdent,
+  columnTypes,
+  validateTableSpec,
+  buildCreateTable,
+  buildCreateView,
+  buildDropStatement,
   columnKind,
   isPartialInput,
   cellToInput,
@@ -45,6 +50,7 @@ import {
 import { PlModal } from '../planner-chips.jsx'
 import { Icon } from '../icons.jsx'
 import { FoldAllButton } from '../fold-all-button.jsx'
+import { DbMenu, menuPointFor } from './db-menu.jsx'
 
 // ─── Demo data (shown when no real DB is connected) ───────────────────────────
 
@@ -318,7 +324,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
       const result = await db.connect(connType, config)
       const tables = plural(result.tables.length, 'table')
       if (!saveAs || !onSaveConnection) {
-        addSession({ type: connType, config, tables: result.tables })
+        addSession({ type: connType, config, tables: result.tables, views: result.views ?? [] })
         notify(`Connected · ${tables}`)
         return
       }
@@ -328,10 +334,10 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
       try {
         const id = await onSaveConnection(same ? { ...meta, id: same.id } : meta, secret)
         if (focusOpen(sessionKey({ connectionId: id }))) return
-        addSession({ type: connType, config, tables: result.tables, connectionId: id, name: saveAs.name })
+        addSession({ type: connType, config, tables: result.tables, views: result.views ?? [], connectionId: id, name: saveAs.name })
         notify(`Connected and saved as ${saveAs.name} · ${tables}`)
       } catch (err) {
-        addSession({ type: connType, config, tables: result.tables })
+        addSession({ type: connType, config, tables: result.tables, views: result.views ?? [] })
         notify(`Connected, but couldn't save it: ${err.message}`, 'error')
       }
     } catch (err) {
@@ -358,7 +364,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
     try {
       const config = await configFor(entry)
       const result = await db.connect(entry.type, config)
-      addSession({ type: entry.type, config, tables: result.tables, connectionId: entry.id, name: entry.name })
+      addSession({ type: entry.type, config, tables: result.tables, views: result.views ?? [], connectionId: entry.id, name: entry.name })
       setDeferred(d => d.filter(id => id !== entry.id))
       notify(`Connected to ${entry.name} · ${plural(result.tables.length, 'table')}`)
     } catch (err) {
@@ -387,7 +393,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
           const config = await configFor(entry)
           if (config.authentication === AZURE_AD_INTERACTIVE) return { entry, deferred: true }
           const result = await db.connect(entry.type, config)
-          return { entry, session: { type: entry.type, config, tables: result.tables, connectionId: entry.id, name: entry.name } }
+          return { entry, session: { type: entry.type, config, tables: result.tables, views: result.views ?? [], connectionId: entry.id, name: entry.name } }
         } catch (err) {
           return { entry, error: err.message }
         }
@@ -548,7 +554,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     if (!session || isDemo) return
     try {
       const result = await db.connect(session.type, session.config)
-      setDbState(s => (s.session ? { ...s, session: { ...s.session, tables: result.tables } } : s))
+      setDbState(s => (s.session ? { ...s, session: { ...s.session, tables: result.tables, views: result.views ?? [] } } : s))
     } catch (err) {
       notify(err.message, 'error')
     }
@@ -907,9 +913,145 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const hiddenCount = tables.filter(t => hiddenSet.has(t)).length
   const setHidden = (v) => { setListHidden(v); writePref('nx-db:list-hidden', v) }
 
+  // ── Opened tables ──────────────────────────────────────────────────────────
+  // A table opened this session counts under "Opened" and Recently opened until it's closed;
+  // closing the one that's showing goes back to the overview.
+  const openedTables = Object.keys(tableMeta)
+  const isOpened = name => !!tableMeta[name] || name === dbState.selectedTable
+  const closeTables = (names) => {
+    const gone = new Set(names)
+    setTableMeta(m => Object.fromEntries(Object.entries(m).filter(([t]) => !gone.has(t))))
+    setRecent(r => r.filter(t => !gone.has(t)))
+    if (gone.has(dbState.selectedTable)) closeTable()
+  }
+
+  // ── New table / view, drop ─────────────────────────────────────────────────
+  // The demo has no database behind it, so there's nothing to create or drop there.
+  const viewSet = useMemo(() => new Set(session?.views ?? []), [session])
+  const [ddl, setDdl] = useState(null) // { kind: 'table' | 'view' | 'drop', name?, sql?, view? }
+  const canDdl = !isDemo
+  // Runs the statement, reads the table list again and opens what was made. Returns an error
+  // message for the dialog to show, or null.
+  const create = async (sql, name, what) => {
+    try {
+      await db.runDdl(session.type, session.config, sql)
+      setDdl(null)
+      await refreshTables()
+      notify(`Created ${what} ${name}`)
+      openTable(name)
+      return null
+    } catch (err) {
+      return err.message
+    }
+  }
+  const drop = async (name, view) => {
+    try {
+      await db.runDdl(session.type, session.config, buildDropStatement(name, { view }))
+      setDdl(null)
+      closeTables([name])
+      // Nothing left to star, group or hide (a group it leaves empty goes too).
+      updatePrefs(p => {
+        const q = setTableGroup(p, name, null)
+        return { ...q, starred: q.starred.filter(t => t !== name), hidden: q.hidden.filter(t => t !== name) }
+      })
+      await refreshTables()
+      notify(`Dropped ${view ? 'view' : 'table'} ${name}`)
+      return null
+    } catch (err) {
+      return err.message
+    }
+  }
+  const newMenu = [
+    { label: 'New table…', icon: 'plus', onSelect: () => setDdl({ kind: 'table' }) },
+    { label: 'New view…', icon: 'eye', onSelect: () => setDdl({ kind: 'view', sql: '' }) },
+  ]
+
+  // ── Table and section menus (the "⋯" buttons and right-clicks) ─────────────
+  const [menu, setMenu] = useState(null) // { items, x, y, alignRight, label }
+  const closeMenu = useCallback(() => setMenu(null), [])
+  const showMenu = (items, label, point) => setMenu({ items, label, ...point })
+
+  const selectSql = name => (session?.type === 'sqlserver'
+    ? `SELECT TOP 100 * FROM ${quoteIdent(name)}`
+    : `SELECT * FROM ${quoteIdent(name)} LIMIT 100`)
+  const copy = async (text, what) => notify((await copyText(text)) ? `Copied ${what}` : "Couldn't reach the clipboard", 'info')
+  const countRows = async (name) => {
+    try {
+      const n = isDemo
+        ? demoData.current[name]?.rows.length ?? 0
+        : (await db.runQuery(session.type, session.config, `SELECT COUNT(*) AS n FROM ${quoteIdent(name)}`)).rows?.[0]?.[0]
+      notify(`${name}: ${typeof n === 'number' ? n.toLocaleString() : n} ${n === 1 ? 'row' : 'rows'}`, 'info')
+    } catch (err) {
+      notify(err.message, 'error')
+    }
+  }
+  // Moving into a group: the existing groups, a new one, or out of the current one.
+  const moveSubmenu = (names, current) => [
+    ...prefs.groups.map(g => ({ label: g, icon: 'folder', checked: names.length === 1 ? g === current : undefined, disabled: names.length === 1 && g === current,
+      onSelect: () => updatePrefs(p => names.reduce((q, n) => setTableGroup(q, n, g), p)) })),
+    ...(prefs.groups.length ? [{ separator: true }] : []),
+    { input: { label: 'New group name', placeholder: 'New group…', submitLabel: 'Add', autoFocus: !prefs.groups.length,
+      onSubmit: g => updatePrefs(p => names.reduce((q, n) => setTableGroup(q, n, g), p)) } },
+    ...(current ? [{ separator: true }, { label: `Remove from ${current}`, icon: 'x', onSelect: () => updatePrefs(p => names.reduce((q, n) => setTableGroup(q, n, null), p)) }] : []),
+  ]
+
+  const tableMenu = (name) => {
+    const group = prefs.assigned[name] ?? null
+    const others = openedTables.filter(t => t !== name)
+    return [
+      { heading: viewSet.has(name) ? `${name} · view` : name },
+      { label: 'Browse', icon: 'list', hint: 'b', onSelect: () => openTable(name, 'browse') },
+      { label: 'Query', icon: 'play', hint: 'q', onSelect: () => openTable(name, 'query') },
+      { separator: true },
+      { label: starredSet.has(name) ? 'Unstar' : 'Star', icon: 'star', onSelect: () => toggleStar(name) },
+      { label: group ? `Move to group · ${group}` : 'Move to group', icon: 'folder', submenu: moveSubmenu([name], group) },
+      { label: hiddenSet.has(name) ? 'Show in the table list' : 'Hide from the table list', icon: 'eye', onSelect: () => tableActions.onToggleHidden(name) },
+      { separator: true },
+      { label: 'Copy name', icon: 'copy', onSelect: () => copy(name, 'the table name') },
+      { label: 'Copy SELECT statement', icon: 'copy', onSelect: () => copy(selectSql(name), 'a SELECT statement') },
+      { label: 'Count rows', icon: 'info', onSelect: () => countRows(name) },
+      { separator: true },
+      { label: 'New view from this…', icon: 'eye', disabled: !canDdl, title: canDdl ? undefined : 'Not in the demo',
+        onSelect: () => setDdl({ kind: 'view', sql: `SELECT * FROM ${quoteIdent(name)}` }) },
+      { label: viewSet.has(name) ? 'Drop view…' : 'Drop table…', icon: 'trash', danger: true, disabled: !canDdl, title: canDdl ? undefined : 'Not in the demo',
+        onSelect: () => setDdl({ kind: 'drop', name, view: viewSet.has(name) }) },
+      ...(isOpened(name) || others.length ? [{ separator: true }] : []),
+      ...(isOpened(name) ? [{ label: 'Close table', icon: 'x', onSelect: () => closeTables([name]) }] : []),
+      ...(others.length ? [{ label: `Close other tables (${others.length})`, icon: 'x', onSelect: () => closeTables(others) }] : []),
+      ...(openedTables.length > 1 || (openedTables.length && !isOpened(name)) ? [{ label: 'Close all tables', icon: 'x', onSelect: () => closeTables(openedTables) }] : []),
+    ]
+  }
+
+  // A section header (a group of your own, or a schema): fold it or the rest, group or hide its tables.
+  const sectionMenu = (s, shownKeys) => {
+    const folded = prefs.collapsed.includes(s.key)
+    const setFolded = keys => updatePrefs(p => ({ ...p, collapsed: keys }))
+    const othersOpen = shownKeys.some(k => k !== s.key && !prefs.collapsed.includes(k))
+    return [
+      { heading: s.kind === 'group' ? `${s.label} · your group` : s.label },
+      { label: folded ? 'Expand' : 'Collapse', icon: folded ? 'chevron-down' : 'chevron-right', onSelect: () => updatePrefs(p => toggleSectionCollapsed(p, s.key)) },
+      { label: 'Collapse the others', icon: 'collapse', disabled: !othersOpen,
+        onSelect: () => setFolded([...new Set([...prefs.collapsed.filter(k => !shownKeys.includes(k)), ...shownKeys.filter(k => k !== s.key)])]) },
+      { label: 'Expand all', icon: 'expand', disabled: !shownKeys.some(k => prefs.collapsed.includes(k)),
+        onSelect: () => setFolded(prefs.collapsed.filter(k => !shownKeys.includes(k))) },
+      { separator: true },
+      ...(s.kind === 'group' ? [
+        { label: 'Rename group', icon: 'edit', submenu: [{ input: { label: 'Group name', initial: s.name, submitLabel: 'Rename', autoFocus: true, onSubmit: to => tableActions.onRenameGroup(s.name, to) } }] },
+        { label: 'Ungroup tables', icon: 'trash', onSelect: () => tableActions.onRemoveGroup(s.name) },
+      ] : [
+        { label: `Move all ${s.names.length} to group`, icon: 'folder', submenu: moveSubmenu(s.names, null) },
+      ]),
+      { label: `Star all ${s.names.length}`, icon: 'star', disabled: s.names.every(t => starredSet.has(t)),
+        onSelect: () => updatePrefs(p => ({ ...p, starred: [...new Set([...p.starred, ...s.names])] })) },
+      { label: `Hide all ${s.names.length}`, icon: 'eye',
+        onSelect: () => { updatePrefs(p => ({ ...p, hidden: [...new Set([...p.hidden, ...s.names])] })); notify(`Hid ${plural(s.names.length, 'table')} · find them under Hidden`, 'info') } },
+      ...(s.names.some(isOpened) ? [{ separator: true }, { label: 'Close its opened tables', icon: 'x', onSelect: () => closeTables(s.names.filter(isOpened)) }] : []),
+    ]
+  }
+
   // j / k walk the listed tables, wrapping at the ends.
   const step = (by) => {
-    const list = listHidden ? listed : tableSections(listed, prefs).flatMap(s => (collapsed.includes(s.key) ? [] : s.names))
+    const list = listHidden ? listed : tableSections(listed, prefs, { views: viewSet }).flatMap(s => (collapsed.includes(s.key) ? [] : s.names))
     if (!list.length) return
     const i = list.indexOf(dbState.selectedTable)
     openTable(list[i < 0 ? (by > 0 ? 0 : list.length - 1) : (i + by + list.length) % list.length], activeTab)
@@ -967,10 +1109,21 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
               </button>
             ))}
           </div>
+          {listFilter === 'opened' && openedTables.length > 0 && (
+            <button type="button" className="btn sm ghost" title="Close every opened table" onClick={() => { closeTables(openedTables); setListFilter('all') }}>
+              <Icon name="x" size={12} />Close all
+            </button>
+          )}
           <span className="nx-db-spacer" />
           <button type="button" className="btn sm ghost" aria-pressed={!listHidden}
             title={listHidden ? 'Show the table list beside the details' : 'Hide the table list to give the details the full width'}
             onClick={() => setHidden(!listHidden)}>{listHidden ? 'Show tables' : 'Hide tables'}</button>
+          {canDdl && (
+            <button type="button" className="btn sm ghost" aria-haspopup="menu" title="Create a table or a view"
+              onClick={e => showMenu(newMenu, 'New', menuPointFor(e.currentTarget))}>
+              <Icon name="plus" size={12} />New
+            </button>
+          )}
           {!isDemo && <button type="button" className="btn sm ghost" title="Read the table list again" onClick={refreshTables}>Reload tables</button>}
         </div>
       </header>
@@ -985,7 +1138,10 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
               starred={starredSet}
               meta={tableMeta}
               prefs={prefs}
-              actions={tableActions}
+              views={viewSet}
+              onTableMenu={(name, point) => showMenu(tableMenu(name), `${name} options`, point)}
+              onSectionMenu={(s, keys, point) => showMenu(sectionMenu(s, keys), `${s.label} options`, point)}
+              onCloseTable={name => closeTables([name])}
               onToggleGroup={key => updatePrefs(p => toggleSectionCollapsed(p, key))}
               onSetCollapsed={keys => updatePrefs(p => ({ ...p, collapsed: keys }))}
               onOpen={name => openTable(name, activeTab)}
@@ -1005,6 +1161,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
               meta={tableMeta}
               history={queryHistory}
               onOpen={openTable}
+              onCloseRecent={names => closeTables(names)}
               onUseQuery={q => {
                 const m = q.sql.match(/\bFROM\s+([\w.[\]"]+)/i)
                 const t = m && tables.find(x => x === m[1].replace(/[[\]"]/g, ''))
@@ -1030,7 +1187,8 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                     <StarButton on={starredSet.has(dbState.selectedTable)} onClick={() => toggleStar(dbState.selectedTable)} name={dbState.selectedTable} />
                     {tableActions.groupOf(dbState.selectedTable) && <span className="nx-db-tag">{tableActions.groupOf(dbState.selectedTable)}</span>}
                     {hiddenSet.has(dbState.selectedTable) && <span className="nx-db-tag" data-tone="muted">Hidden</span>}
-                    <TableMenu name={dbState.selectedTable} actions={tableActions} />
+                    <MenuButton label={`More for ${dbState.selectedTable}`} title="More options"
+                      onOpen={point => showMenu(tableMenu(dbState.selectedTable), `${dbState.selectedTable} options`, point)} />
                   </div>
                   <div className="nx-db-dhead-meta">
                     {tableData && !dbState.tableLoading ? (
@@ -1059,6 +1217,10 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                     title="Save the rows shown (after search and sort) as a .csv file"
                     onClick={() => { if (!downloadCsv(dbState.selectedTable, tableData.columns, exportRows())) notify("Couldn't save the file", 'error') }}>
                     <Icon name="download" size={13} />Export
+                  </button>
+                  <button type="button" className="btn sm ghost" title="Close this table (takes it out of Opened)" aria-label="Close table"
+                    onClick={() => closeTables([dbState.selectedTable])}>
+                    <Icon name="x" size={13} />
                   </button>
                 </div>
               </div>
@@ -1092,6 +1254,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                   columnInfo={columnInfo}
                   canWrite={canWrite}
                   columnsKnown={columnsKnown || isDemo}
+                  isView={viewSet.has(dbState.selectedTable)}
                   onSetCell={commitCell}
                   onAddRow={() => setAddingRow(true)}
                   search={search}
@@ -1142,6 +1305,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                   onBuildSql={applyBuiltSql}
                   allColumns={tableColumns}
                   onLoadColumnsFor={ensureColumnsLoaded}
+                  onCreateView={canDdl ? sql => setDdl({ kind: 'view', sql }) : undefined}
                 />
               )}
             </div>
@@ -1158,6 +1322,18 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
           onClose={() => setPaletteOpen(false)}
           onOpen={(name, tab) => { setPaletteOpen(false); openTable(name, tab) }}
         />
+      )}
+
+      {menu && <DbMenu items={menu.items} x={menu.x} y={menu.y} alignRight={menu.alignRight} label={menu.label} onClose={closeMenu} />}
+
+      {ddl?.kind === 'table' && (
+        <NewTableDialog dialect={session.type} taken={tables} onClose={() => setDdl(null)} onCreate={(sql, name) => create(sql, name, 'table')} />
+      )}
+      {ddl?.kind === 'view' && (
+        <NewViewDialog initialSql={ddl.sql} taken={tables} onClose={() => setDdl(null)} onCreate={(sql, name) => create(sql, name, 'view')} />
+      )}
+      {ddl?.kind === 'drop' && (
+        <DropDialog name={ddl.name} view={ddl.view} onClose={() => setDdl(null)} onDrop={() => drop(ddl.name, ddl.view)} />
       )}
 
       {addingRow && tableData && (
@@ -1308,8 +1484,8 @@ function StarButton({ on, onClick, name }) {
 
 // ─── Table list (sidebar) ─────────────────────────────────────────────────────
 
-function TableList({ tables, total, selected, starred, meta, prefs, actions, onToggleGroup, onSetCollapsed, onOpen, onStar, onClearFilters }) {
-  const sections = tableSections(tables, prefs)
+function TableList({ tables, total, selected, starred, meta, prefs, views, onToggleGroup, onSetCollapsed, onOpen, onStar, onClearFilters, onTableMenu, onSectionMenu, onCloseTable }) {
+  const sections = tableSections(tables, prefs, { views })
   const shownKeys = sections.map(s => s.key)
   const pinned = tables.filter(t => starred.has(t))
   if (!total) return <div className="nx-db-list-empty">This database has no tables.</div>
@@ -1325,16 +1501,26 @@ function TableList({ tables, total, selected, starred, meta, prefs, actions, onT
   const row = (name, { inStarred = false, fullName = false } = {}) => {
     const m = meta[name]
     return (
-      <div key={`${inStarred ? 's' : 'g'}:${name}`} className="nx-db-row" aria-current={name === selected ? 'true' : undefined}>
+      <div key={`${inStarred ? 's' : 'g'}:${name}`} className="nx-db-row" aria-current={name === selected ? 'true' : undefined}
+        onContextMenu={e => { e.preventDefault(); onTableMenu(name, { x: e.clientX, y: e.clientY }) }}>
         <button type="button" className="nx-db-row-open" onClick={() => onOpen(name)} title={name}>
           <span className="nx-db-dot" data-tone={name === selected ? 'ok' : m ? 'info' : undefined} />
           <span className="nx-db-row-body">
-            <span className="nx-db-row-title">{fullName || !name.includes('.') ? name : name.slice(name.indexOf('.') + 1)}</span>
+            <span className="nx-db-row-title">
+              {fullName || !name.includes('.') ? name : name.slice(name.indexOf('.') + 1)}
+              {views?.has(name) && <span className="nx-db-tag" data-tone="muted">view</span>}
+            </span>
             {m && <span className="nx-db-row-meta">{`${plural(m.rows, 'row')} · ${plural(m.cols, 'col')}`}</span>}
           </span>
         </button>
+        {(m || name === selected) && (
+          <button type="button" className="nx-db-row-close" aria-label={`Close ${name}`} title="Close this table (takes it out of Opened)"
+            onClick={e => { e.stopPropagation(); onCloseTable(name) }}>
+            <Icon name="x" size={11} />
+          </button>
+        )}
         <StarButton on={starred.has(name)} onClick={() => onStar(name)} name={name} />
-        <TableMenu name={name} actions={actions} />
+        <MenuButton label={`More for ${name}`} title="More options (or right-click the table)" onOpen={point => onTableMenu(name, point)} />
       </div>
     )
   }
@@ -1364,14 +1550,15 @@ function TableList({ tables, total, selected, starred, meta, prefs, actions, onT
         const open = !prefs.collapsed.includes(s.key)
         return (
           <div key={s.key} className="nx-db-group" data-kind={s.kind}>
-            <div className="nx-db-group-bar">
+            <div className="nx-db-group-bar" onContextMenu={e => { e.preventDefault(); onSectionMenu(s, shownKeys, { x: e.clientX, y: e.clientY }) }}>
               <button type="button" className="nx-db-group-head" aria-expanded={open} onClick={() => onToggleGroup(s.key)}>
                 <Icon name={open ? 'chevron-down' : 'chevron-right'} size={11} />
                 {s.kind === 'group' && <Icon name="folder" size={12} />}
                 <span className="nx-db-group-name">{s.label}</span>
                 <span className="nx-db-group-count">{s.names.length}</span>
               </button>
-              {s.kind === 'group' && <GroupMenu name={s.name} onRename={to => actions.onRenameGroup(s.name, to)} onRemove={() => actions.onRemoveGroup(s.name)} />}
+              <MenuButton label={s.kind === 'group' ? `Edit group ${s.name}` : `More for ${s.label}`} title="More options (or right-click the header)"
+                onOpen={point => onSectionMenu(s, shownKeys, point)} />
             </div>
             {open && <div className="nx-db-rows">{s.names.map(t => row(t, { fullName: s.kind === 'group' }))}</div>}
           </div>
@@ -1381,75 +1568,20 @@ function TableList({ tables, total, selected, starred, meta, prefs, actions, onT
   )
 }
 
-// A name typed into a menu (Electron has no window.prompt): Enter saves, Esc leaves the menu.
-function NameField({ label, placeholder, initial = '', submitLabel, onSubmit }) {
-  const [value, setValue] = useState(initial)
-  const submit = (e) => {
-    e.preventDefault()
-    if (!value.trim()) return
-    onSubmit(value.trim())
-    closeDetails(e)
-    setValue(initial)
-  }
+// The "⋯" button that opens a table's or section's menu, under itself.
+function MenuButton({ label, title, onOpen }) {
   return (
-    <form className="nx-db-menu-form" onSubmit={submit}>
-      <input className="db-input" aria-label={label} placeholder={placeholder} value={value} onChange={e => setValue(e.target.value)} />
-      <button type="submit" className="btn sm" disabled={!value.trim()}>{submitLabel}</button>
-    </form>
-  )
-}
-
-// One table's menu: move it into a group of your own (or out of one), and hide or show it.
-function TableMenu({ name, actions }) {
-  const current = actions.groupOf(name)
-  const hidden = actions.isHidden(name)
-  const item = (label, onClick, extra = {}) => (
-    <button type="button" className="nx-db-menu-item" onClick={e => { onClick(); closeDetails(e) }} {...extra}>{label}</button>
-  )
-  return (
-    <details className="nx-db-history nx-db-rowmenu" onClick={e => e.stopPropagation()}>
-      <summary aria-label={`More for ${name}`} title="Group or hide this table">
-        <Icon name="more" size={14} />
-      </summary>
-      <div className="nx-db-history-pop nx-db-menu" data-align="right">
-        <div className="nx-db-history-head"><span>Move to group</span></div>
-        {actions.groups.map(g => item(
-          <><Icon name={g === current ? 'check' : 'folder'} size={12} />{g}</>,
-          () => actions.onMove(name, g),
-          { key: g, 'aria-pressed': g === current, disabled: g === current },
-        ))}
-        <NameField label="New group name" placeholder="New group…" submitLabel="Add" onSubmit={g => actions.onMove(name, g)} />
-        {current && item(<><Icon name="x" size={12} />{`Remove from ${current}`}</>, () => actions.onMove(name, null))}
-        <div className="nx-db-menu-sep" role="separator" />
-        {item(<><Icon name="eye" size={12} />{hidden ? 'Show in the table list' : 'Hide from the table list'}</>, () => actions.onToggleHidden(name))}
-      </div>
-    </details>
-  )
-}
-
-// A group of your own: rename it, or ungroup its tables (they go back under their schema).
-function GroupMenu({ name, onRename, onRemove }) {
-  return (
-    <details className="nx-db-history nx-db-rowmenu">
-      <summary aria-label={`Edit group ${name}`} title="Rename or ungroup">
-        <Icon name="more" size={14} />
-      </summary>
-      <div className="nx-db-history-pop nx-db-menu" data-align="right">
-        <div className="nx-db-history-head"><span>Rename group</span></div>
-        <NameField label="Group name" initial={name} submitLabel="Rename" onSubmit={onRename} />
-        <div className="nx-db-menu-sep" role="separator" />
-        <button type="button" className="nx-db-menu-item" onClick={e => { onRemove(); closeDetails(e) }}>
-          <Icon name="trash" size={12} />Ungroup tables
-        </button>
-      </div>
-    </details>
+    <button type="button" className="nx-db-rowmenu-btn" aria-label={label} aria-haspopup="menu" title={title}
+      onClick={e => { e.stopPropagation(); onOpen(menuPointFor(e.currentTarget)) }}>
+      <Icon name="more" size={14} />
+    </button>
   )
 }
 
 // ─── Overview (nothing open) ──────────────────────────────────────────────────
 
-function Overview({ session, tables, starred, recent, meta, history, onOpen, onUseQuery, onJump, saved = [], onRunSaved }) {
-  const tableRow = (name, desc) => (
+function Overview({ session, tables, starred, recent, meta, history, onOpen, onCloseRecent, onUseQuery, onJump, saved = [], onRunSaved }) {
+  const tableRow = (name, desc, closable = false) => (
     <div key={name} className="nx-db-ov-row">
       <button type="button" className="nx-db-ov-open" onClick={() => onOpen(name)}>
         <span className="name">{name}</span>
@@ -1458,6 +1590,11 @@ function Overview({ session, tables, starred, recent, meta, history, onOpen, onU
       <div className="nx-db-ov-actions">
         <button type="button" className="btn sm ghost" onClick={() => onOpen(name, 'query')}>Query</button>
         <button type="button" className="btn sm accent" onClick={() => onOpen(name)}>Browse</button>
+        {closable && (
+          <button type="button" className="btn sm ghost" aria-label={`Close ${name}`} title="Close this table (takes it out of Opened)" onClick={() => onCloseRecent([name])}>
+            <Icon name="x" size={12} />
+          </button>
+        )}
       </div>
     </div>
   )
@@ -1484,8 +1621,10 @@ function Overview({ session, tables, starred, recent, meta, history, onOpen, onU
             <span className="nx-db-dot" data-tone="info" />
             <span className="nx-db-card-title">Recently opened</span>
             <span className="hint">this session</span>
+            <span className="nx-db-spacer" />
+            <button type="button" className="btn sm ghost" onClick={() => onCloseRecent(recent)}>Close all</button>
           </div>
-          {recent.map(t => tableRow(t, described(t)))}
+          {recent.map(t => tableRow(t, described(t), true))}
         </section>
       )}
       {saved.length > 0 && (
@@ -1883,7 +2022,7 @@ const CellInput = forwardRef(function CellInput({ col, value, onChange, classNam
 })
 
 const BrowsePanel = forwardRef(function BrowsePanel({
-  tableData, visible, keyIdx, columnInfo, canWrite, columnsKnown, onSetCell, onAddRow, search, onSearchChange, sort, onSort,
+  tableData, visible, keyIdx, columnInfo, canWrite, columnsKnown, isView = false, onSetCell, onAddRow, search, onSearchChange, sort, onSort,
   selectedRows, allSelected, onToggleRow, onToggleAll, onClearSelection, onDeleteSelected, onDeleteRow, onCopyCell,
   editingCell, editValue, onEditValueChange, onStartEdit, onSaveEdit, onCancelEdit,
 }, ref) {
@@ -1930,16 +2069,17 @@ const BrowsePanel = forwardRef(function BrowsePanel({
             </button>
           </>
         )}
-        <button type="button" className="btn sm" onClick={onAddRow} disabled={!columnsKnown}
-          title={columnsKnown ? 'Add a row to this table' : 'Reading the table’s columns…'}>
+        <button type="button" className="btn sm" onClick={onAddRow} disabled={!columnsKnown || isView}
+          title={isView ? 'A view shows rows from its tables; add rows there' : columnsKnown ? 'Add a row to this table' : 'Reading the table’s columns…'}>
           <Icon name="plus" size={13} />Add row
         </button>
       </div>
 
       {readOnly && (
         <p className="nx-db-alert" role="note">
-          This table has no primary key, so a change can’t be kept to one row: editing and deleting are off.
-          You can still add rows, or change rows from the Query tab.
+          {isView
+            ? 'This is a view: it shows rows from other tables, so it’s read-only here. Change the rows in their own tables.'
+            : 'This table has no primary key, so a change can’t be kept to one row: editing and deleting are off. You can still add rows, or change rows from the Query tab.'}
         </p>
       )}
 
@@ -2084,6 +2224,193 @@ const BrowsePanel = forwardRef(function BrowsePanel({
     </div>
   )
 })
+
+// ─── New table, new view, drop ────────────────────────────────────────────────
+
+const blankColumn = (dialect, extra = {}) => ({
+  key: Math.random().toString(36).slice(2), name: '', type: dialect === 'sqlite' ? 'TEXT' : 'nvarchar',
+  length: '100', precision: '18', scale: '2', nullable: true, primaryKey: false, identity: false, default: '', ...extra,
+})
+
+// Designs a table column by column, with the CREATE TABLE it will run shown as it's built.
+function NewTableDialog({ dialect, taken, onCreate, onClose }) {
+  const types = columnTypes(dialect)
+  const integer = name => types.find(t => t.name === name)?.integer
+  const [name, setName] = useState('')
+  const [columns, setColumns] = useState(() => [
+    blankColumn(dialect, { name: dialect === 'sqlite' ? 'id' : 'Id', type: dialect === 'sqlite' ? 'INTEGER' : 'int', nullable: false, primaryKey: true, identity: true }),
+    blankColumn(dialect, { name: dialect === 'sqlite' ? 'name' : 'Name' }),
+  ])
+  const [failure, setFailure] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [tried, setTried] = useState(false)
+  const set = (key, patch) => setColumns(cs => cs.map(c => {
+    if (c.key !== key) return c
+    const next = { ...c, ...patch }
+    if (next.primaryKey) next.nullable = false
+    if (next.identity && !integer(next.type)) next.identity = false
+    return next
+  }))
+  const errors = validateTableSpec(dialect, name, columns)
+  if (name.trim() && taken.some(t => t.toLowerCase() === name.trim().toLowerCase())) errors.unshift(`There's already a table or view called ${name.trim()}.`)
+  const sql = errors.length ? null : buildCreateTable(dialect, name, columns)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setTried(true)
+    if (errors.length) return
+    setSaving(true)
+    setFailure(await onCreate(sql, name.trim()))
+    setSaving(false)
+  }
+
+  return (
+    <PlModal open onClose={onClose} icon="plus" title="New table" sub="Design its columns; the SQL it runs is shown below." wide className="nx-db-ddl"
+      footer={(
+        <>
+          <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" form="nx-db-newtable" className="btn accent" disabled={saving}>{saving ? 'Creating…' : 'Create table'}</button>
+        </>
+      )}>
+      <form id="nx-db-newtable" className="nx-db-ddl-form" onSubmit={submit} noValidate>
+        {failure && <div className="nx-db-alert bad" role="alert">{failure}</div>}
+        <div className="db-field">
+          <label className="db-label" htmlFor="db-newtable-name">Table name</label>
+          <input id="db-newtable-name" className="db-input" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="e.g. MemberNote" />
+        </div>
+        <table className="nx-db-coldesign" aria-label="Columns">
+          <thead>
+            <tr><th>Column</th><th>Type</th><th>Size</th><th title="Primary key">Key</th><th title={dialect === 'sqlite' ? 'Numbers itself (AUTOINCREMENT)' : 'Numbers itself (IDENTITY)'}>Auto</th><th>Nullable</th><th>Default</th><th><span className="sr-only">Remove</span></th></tr>
+          </thead>
+          <tbody>
+            {columns.map((c, i) => {
+              const t = types.find(x => x.name === c.type)
+              return (
+                <tr key={c.key}>
+                  <td><input className="db-input" aria-label={`Column ${i + 1} name`} value={c.name} onChange={e => set(c.key, { name: e.target.value })} /></td>
+                  <td>
+                    <select className="db-input" aria-label={`Column ${i + 1} type`} value={c.type} onChange={e => set(c.key, { type: e.target.value })}>
+                      {types.map(x => <option key={x.name} value={x.name}>{x.name}</option>)}
+                    </select>
+                  </td>
+                  <td className="size">
+                    {t?.size === 'length' && (
+                      <input className="db-input" aria-label={`Column ${i + 1} length`} value={c.length} placeholder={t.allowMax ? 'max' : ''}
+                        title={`1 to ${t.max}${t.allowMax ? ', or max' : ''}`} onChange={e => set(c.key, { length: e.target.value })} />
+                    )}
+                    {t?.size === 'precision' && (
+                      <span className="pair">
+                        <input className="db-input" aria-label={`Column ${i + 1} precision`} title="Digits in all" value={c.precision} onChange={e => set(c.key, { precision: e.target.value })} />
+                        <input className="db-input" aria-label={`Column ${i + 1} scale`} title="Digits after the point" value={c.scale} onChange={e => set(c.key, { scale: e.target.value })} />
+                      </span>
+                    )}
+                  </td>
+                  <td className="chk"><input type="checkbox" aria-label={`Column ${i + 1} is the primary key`} checked={c.primaryKey} onChange={e => set(c.key, { primaryKey: e.target.checked })} /></td>
+                  <td className="chk"><input type="checkbox" aria-label={`Column ${i + 1} numbers itself`} checked={c.identity} disabled={!t?.integer} onChange={e => set(c.key, { identity: e.target.checked })} /></td>
+                  <td className="chk"><input type="checkbox" aria-label={`Column ${i + 1} allows NULL`} checked={c.nullable} disabled={c.primaryKey} onChange={e => set(c.key, { nullable: e.target.checked })} /></td>
+                  <td><input className="db-input" aria-label={`Column ${i + 1} default`} value={c.default} disabled={c.identity} placeholder="none"
+                    title="A number, text, NULL, or e.g. GETDATE() / NEWID() / CURRENT_TIMESTAMP" onChange={e => set(c.key, { default: e.target.value })} /></td>
+                  <td>
+                    <button type="button" className="nx-db-row-act danger" aria-label={`Remove column ${i + 1}`} title="Remove this column"
+                      onClick={() => setColumns(cs => cs.filter(x => x.key !== c.key))}><Icon name="x" size={12} /></button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        <div>
+          <button type="button" className="btn sm" onClick={() => setColumns(cs => [...cs, blankColumn(dialect)])}><Icon name="plus" size={12} />Add column</button>
+        </div>
+        {tried && errors.length > 0 && (
+          <ul className="nx-db-ddl-errors" role="alert">{errors.map(e => <li key={e}>{e}</li>)}</ul>
+        )}
+        <div className="db-field">
+          <span className="db-label">SQL</span>
+          <pre className="nx-db-ddl-preview" aria-label="SQL to run">{sql ?? (tried ? 'Fix the points above to see the SQL.' : 'Name the table and its columns to see the SQL.')}</pre>
+        </div>
+      </form>
+    </PlModal>
+  )
+}
+
+// A view: a name and the SELECT it shows, run as CREATE VIEW … AS ….
+function NewViewDialog({ initialSql = '', taken, onCreate, onClose }) {
+  const [name, setName] = useState('')
+  const [select, setSelect] = useState(initialSql)
+  const [failure, setFailure] = useState(null)
+  const [saving, setSaving] = useState(false)
+  let sql = null, problem = null
+  try { sql = buildCreateView(name, select) } catch (err) { problem = err.message }
+  if (!problem && taken.some(t => t.toLowerCase() === name.trim().toLowerCase())) { problem = `There's already a table or view called ${name.trim()}.`; sql = null }
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!sql) return
+    setSaving(true)
+    setFailure(await onCreate(sql, name.trim()))
+    setSaving(false)
+  }
+  return (
+    <PlModal open onClose={onClose} icon="eye" title="New view" sub="A saved SELECT you can browse and query like a table." wide className="nx-db-ddl"
+      footer={(
+        <>
+          <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" form="nx-db-newview" className="btn accent" disabled={saving || !sql}>{saving ? 'Creating…' : 'Create view'}</button>
+        </>
+      )}>
+      <form id="nx-db-newview" className="nx-db-ddl-form" onSubmit={submit} noValidate>
+        {failure && <div className="nx-db-alert bad" role="alert">{failure}</div>}
+        <div className="db-field">
+          <label className="db-label" htmlFor="db-newview-name">View name</label>
+          <input id="db-newview-name" className="db-input" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="e.g. ActiveMembers" />
+        </div>
+        <div className="db-field">
+          <label className="db-label" htmlFor="db-newview-sql">SELECT query</label>
+          <textarea id="db-newview-sql" className="db-input db-textarea--mono" rows={7} value={select} onChange={e => setSelect(e.target.value)}
+            placeholder="SELECT [Id], [Name] FROM [Member] WHERE [Active] = 1" />
+        </div>
+        <div className="db-field">
+          <span className="db-label">SQL</span>
+          <pre className="nx-db-ddl-preview" aria-label="SQL to run">{sql ?? problem}</pre>
+        </div>
+      </form>
+    </PlModal>
+  )
+}
+
+// Dropping can't be undone, so the name is typed to confirm it.
+function DropDialog({ name, view, onDrop, onClose }) {
+  const [typed, setTyped] = useState('')
+  const [failure, setFailure] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const what = view ? 'view' : 'table'
+  const submit = async (e) => {
+    e.preventDefault()
+    if (typed !== name) return
+    setSaving(true)
+    setFailure(await onDrop())
+    setSaving(false)
+  }
+  return (
+    <PlModal open onClose={onClose} icon="trash" title={`Drop ${what} ${name}?`} className="nx-db-ddl"
+      sub={view ? 'Removes the view; the tables it reads are untouched.' : 'Deletes the table and every row in it. This can’t be undone.'}
+      footer={(
+        <>
+          <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" form="nx-db-drop" className="btn danger" disabled={saving || typed !== name}>{saving ? 'Dropping…' : `Drop ${what}`}</button>
+        </>
+      )}>
+      <form id="nx-db-drop" className="nx-db-ddl-form" onSubmit={submit} noValidate>
+        {failure && <div className="nx-db-alert bad" role="alert">{failure}</div>}
+        <div className="db-field">
+          <label className="db-label" htmlFor="db-drop-confirm">Type <code>{name}</code> to confirm</label>
+          <input id="db-drop-confirm" className="db-input" autoFocus autoComplete="off" value={typed} onChange={e => setTyped(e.target.value)} />
+        </div>
+        <pre className="nx-db-ddl-preview" aria-label="SQL to run">{buildDropStatement(name, { view })}</pre>
+      </form>
+    </PlModal>
+  )
+}
 
 // ─── Add row ──────────────────────────────────────────────────────────────────
 
@@ -2292,7 +2619,7 @@ function QueryPanel({
   history, onPickHistory, onClearHistory, onCopyResult, onExportResult,
   saved = [], onSave, onRunSaved, onLoadSaved, onDeleteSaved,
   activeBuilder, onToggleBuilder, columns, columnsLoading, onBuildSql,
-  allColumns, onLoadColumnsFor,
+  allColumns, onLoadColumnsFor, onCreateView,
 }) {
   const [saving, setSaving] = useState(false)
   // Older results (and the demo) carry one set as columns/rows; a real run lists them all in `sets`.
@@ -2376,6 +2703,12 @@ function QueryPanel({
           <span className="nx-db-spacer" />
           <span className="nx-db-muted"><span className="kbd">Ctrl Enter</span> to run</span>
           <button type="button" className="btn sm" onClick={() => onSqlChange('')} disabled={!sqlQuery}>Clear</button>
+          {onCreateView && (
+            <button type="button" className="btn sm" onClick={() => onCreateView(sqlQuery)} disabled={!/^\s*(select|with)\b/i.test(sqlQuery)}
+              title="Save this SELECT in the database as a view">
+              <Icon name="eye" size={12} />Create view…
+            </button>
+          )}
           <button type="button" className="btn sm" onClick={() => setSaving(v => !v)} disabled={!sqlQuery.trim()} aria-expanded={saving}
             title="Save this query to run it again in one click (Ctrl+S)">
             <Icon name="star" size={12} />Save…
