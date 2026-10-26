@@ -1,7 +1,11 @@
 'use strict';
 
-const { autoUpdater } = require('electron-updater');
 const { app, dialog, ipcMain } = require('electron');
+
+// Loaded on first use: electron-updater reads the app's version as soon as it loads, which only
+// works inside Electron (and isn't needed at all in a development build).
+let updater = null;
+const getAutoUpdater = () => (updater ??= require('electron-updater').autoUpdater);
 
 /**
  * Initialize auto-update behaviour.
@@ -14,6 +18,7 @@ function initUpdater(win) {
   // Skip entirely in development — app-update.yml doesn't exist and
   // checkForUpdatesAndNotify() would throw or print confusing errors.
   if (!app.isPackaged) return;
+  const autoUpdater = getAutoUpdater();
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
@@ -69,23 +74,54 @@ function initUpdater(win) {
       win.webContents.send('updater:available', { available: true, version: info?.version });
     }
   });
-
-  // Allow renderer / tray to trigger a manual check
-  ipcMain.on('check-for-updates', () => {
-    autoUpdater.checkForUpdates();
-  });
 }
 
 /**
- * Register the IUpdateAdapter IPC contract used by the renderer's update.js adapter.
- * Registered unconditionally (incl. dev) so renderer invoke() calls never hang; in dev
- * or when no feed is configured, they resolve to a safe "no update available".
+ * The tray's "Check for Updates": unlike the silent check at launch it always answers — up to
+ * date, couldn't check (and why), or a development build that doesn't update. A newer version
+ * is left to the 'update-available' prompt above, so it isn't announced twice.
+ * Dependencies are injectable so it can be tested without Electron.
  */
-function registerUpdaterIpc() {
+async function checkForUpdatesManually({
+  app: a = app, dialog: d = dialog, autoUpdater, getWin = () => null,
+} = {}) {
+  const win = getWin();
+  const show = opts => (win && !win.isDestroyed() ? d.showMessageBox(win, opts) : d.showMessageBox(opts));
+  const title = 'Check for Updates';
+  if (!a.isPackaged) {
+    await show({ type: 'info', title, message: 'This is a development build', detail: `Version ${a.getVersion()}. Updates are only checked in the installed app.` });
+    return { available: false };
+  }
+  try {
+    const result = await (autoUpdater ?? getAutoUpdater()).checkForUpdates();
+    const version = result?.updateInfo?.version;
+    const available = result?.isUpdateAvailable ?? (!!version && version !== a.getVersion());
+    if (!available) {
+      await show({ type: 'info', title, message: "You're up to date", detail: `NexusMD ${a.getVersion()} is the latest version.` });
+    }
+    return { available, version };
+  } catch (err) {
+    console.error('[updater] manual check failed:', err.message);
+    await show({ type: 'error', title, message: "Couldn't check for updates", detail: err.message });
+    return { available: false, error: err.message };
+  }
+}
+
+/**
+ * Register the IUpdateAdapter IPC contract used by the renderer's update.js adapter, and the
+ * tray's manual check. Registered unconditionally (incl. dev) so renderer invoke() calls never
+ * hang and the tray item always answers; in dev, or when no feed is configured, they resolve to
+ * a safe "no update available".
+ *
+ * @param {() => Electron.BrowserWindow | null} [getWin]
+ */
+function registerUpdaterIpc(getWin = () => null) {
+  ipcMain.on('check-for-updates', () => { checkForUpdatesManually({ getWin }); });
+
   ipcMain.handle('updater:check', async () => {
     if (!app.isPackaged) return { available: false };
     try {
-      const result = await autoUpdater.checkForUpdates();
+      const result = await getAutoUpdater().checkForUpdates();
       const info = result?.updateInfo;
       const available = !!info && info.version !== app.getVersion();
       return { available, version: info?.version };
@@ -97,12 +133,12 @@ function registerUpdaterIpc() {
   ipcMain.handle('updater:install', async () => {
     if (!app.isPackaged) return;
     try {
-      await autoUpdater.downloadUpdate();
-      autoUpdater.quitAndInstall();
+      await getAutoUpdater().downloadUpdate();
+      getAutoUpdater().quitAndInstall();
     } catch (err) {
       console.error('[updater] install failed:', err.message);
     }
   });
 }
 
-module.exports = { initUpdater, registerUpdaterIpc };
+module.exports = { initUpdater, registerUpdaterIpc, checkForUpdatesManually };
