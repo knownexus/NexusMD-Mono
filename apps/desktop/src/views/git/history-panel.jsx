@@ -14,9 +14,10 @@ const PREFETCH = 5
  * left of the shared divider, the focused commit right of it. `upstream` names the branch's
  * upstream for the list's divider; `rebasing` says the worktree is mid-rebase. `own` (oids in
  * source..HEAD) and `source` (its short name) say where "Squash into previous" must stop.
- * A new `request` ({ oid?, sinceBase?, nonce }) filters since a base and/or focuses a commit.
+ * A new `request` ({ oid?, sinceBase?, nonce }) filters since a base and/or focuses a commit; `onRequestDone`
+ * is called once it has been applied.
  */
-export function HistoryPanel({ adapter, repo, cwd, registered, target, split, onSplit, onAction = null, upstream = null, rebasing = false, own = null, source = null, request = null }) {
+export function HistoryPanel({ adapter, repo, cwd, registered, target, split, onSplit, onAction = null, upstream = null, rebasing = false, own = null, source = null, request = null, onRequestDone = null }) {
   const history = useHistory({ adapter, repo, cwd, registered, target })
   const [focusOid, setFocusOid] = React.useState(null)
   const [parentIndex, setParentIndex] = React.useState(0)
@@ -62,6 +63,7 @@ export function HistoryPanel({ adapter, repo, cwd, registered, target, split, on
     handled.current = request.nonce
     if (request.sinceBase) { history.setFilter('sinceBase'); history.setBase(request.sinceBase) }
     if (request.oid) focus(request.oid, true)
+    onRequestDone?.()
   }, [request]) // eslint-disable-line react-hooks/exhaustive-deps
   const jump = oid => focus(oid, !commits.some(c => c.oid === oid))
 

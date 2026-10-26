@@ -14,30 +14,34 @@ function writeCollapsed(v) {
   try { localStorage.setItem(COLLAPSED_KEY, v ? '1' : '0') } catch { /* storage unavailable: the choice lasts until reload */ }
 }
 
+const EMPTY = { key: null, commits: [], unpushed: null, truncated: false, error: null, loaded: false }
+
 /**
  * The commits between `sourceRef` and HEAD (newest first), re-read when `head` changes. The log is
  * asked for a full page, the smallest the query allows; `commits` is all of them and also says which
- * commits are the branch's own. Nothing is read without a `sourceRef`.
- * @returns {{ commits: object[], unpushed: Set<string>|null, truncated: boolean, error: string|null }}
+ * commits are the branch's own, once `loaded`. Nothing is read without a `sourceRef`, and another
+ * worktree or source starts empty rather than showing the last one's commits.
+ * @returns {{ commits: object[], unpushed: Set<string>|null, truncated: boolean, error: string|null, loaded: boolean }}
  */
 export function useBranchCommits({ adapter, repo, cwd, registered, sourceRef, head }) {
   const ctx = JSON.stringify({ repo: { name: repo.name, path: repo.path }, cwd, registered })
-  const [state, setState] = React.useState({ commits: [], unpushed: null, truncated: false, error: null })
+  const key = sourceRef ? `${ctx}\0${sourceRef}` : null
+  const [state, setState] = React.useState(EMPTY)
   React.useEffect(() => {
-    if (!sourceRef) { setState(s => (s.commits.length || s.error ? { commits: [], unpushed: null, truncated: false, error: null } : s)); return undefined }
+    if (!key) { setState(EMPTY); return undefined }
     let live = true
     const c = JSON.parse(ctx)
     adapter.log(c.repo, c.cwd, c.registered, historyQuery({ ref: 'HEAD', filter: 'sinceBase', base: sourceRef })).then(
       r => {
         if (!live) return
         const commits = parseLog(r.text).filter(row => row.commit).map(row => row.commit)
-        setState({ commits, unpushed: Array.isArray(r.unpushed) ? new Set(r.unpushed) : null, truncated: !!r.truncated || commits.length > SHOWN, error: null })
+        setState({ key, commits, unpushed: Array.isArray(r.unpushed) ? new Set(r.unpushed) : null, truncated: !!r.truncated || commits.length > SHOWN, error: null, loaded: true })
       },
-      e => { if (live) setState(s => ({ ...s, error: ipcMessage(e) })) },
+      e => { if (live) setState(s => ({ ...(s.key === key ? s : EMPTY), key, error: ipcMessage(e) })) },
     )
     return () => { live = false }
-  }, [adapter, ctx, sourceRef, head])
-  return state
+  }, [adapter, ctx, key, sourceRef, head])
+  return state.key === key ? state : EMPTY
 }
 
 /**

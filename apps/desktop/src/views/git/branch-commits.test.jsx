@@ -19,8 +19,8 @@ function adapterFor(n, extra = {}) {
   }
 }
 
-function Harness({ adapter, t = tree(), handlers = {} }) {
-  const data = useBranchCommits({ adapter, repo: { name: 'r', path: 'C:/r' }, cwd: t.path, registered: ['C:/r'], sourceRef: t.source?.count ? t.source.ref : null, head: 'H1' })
+function Harness({ adapter, t = tree(), handlers = {}, head = 'H1' }) {
+  const data = useBranchCommits({ adapter, repo: { name: 'r', path: 'C:/r' }, cwd: t.path, registered: ['C:/r'], sourceRef: t.source?.count ? t.source.ref : null, head })
   return <BranchCommits tree={t} adapter={adapter} repo={{ name: 'r', path: 'C:/r' }} registered={['C:/r']} data={data}
     onOpenCommit={vi.fn()} onShowAll={vi.fn()} onAction={vi.fn()} {...handlers} />
 }
@@ -129,6 +129,24 @@ describe('BranchCommits', () => {
     await screen.findByText('3 commits off master')
     expect(screen.getAllByRole('listitem')).toHaveLength(3)
     fireEvent.click(screen.getByRole('button', { name: /3 commits off master/ }))
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+  })
+
+  it('reads again when the head moves', async () => {
+    const adapter = adapterFor(3)
+    const { rerender } = render(<Harness adapter={adapter} />)
+    await screen.findByText('3 commits off master')
+    expect(adapter.log).toHaveBeenCalledTimes(1)
+    rerender(<Harness adapter={adapter} head="H2" />)
+    await waitFor(() => expect(adapter.log).toHaveBeenCalledTimes(2))
+  })
+
+  it('starts empty in another worktree instead of showing the last one\'s commits', async () => {
+    const loaded = adapterFor(3)
+    const adapter = { ...loaded, log: vi.fn((r, c, g, q) => (c === 'C:/r' ? loaded.log(r, c, g, q) : new Promise(() => {}))) }
+    const { rerender } = render(<Harness adapter={adapter} />)
+    await screen.findByText('Subject 1')
+    rerender(<Harness adapter={adapter} t={{ ...tree(), path: 'C:/s' }} />)
     expect(screen.queryAllByRole('listitem')).toHaveLength(0)
   })
 
