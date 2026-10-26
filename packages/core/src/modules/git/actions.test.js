@@ -109,6 +109,21 @@ describe('rebase plan', () => {
     expect(rebaseProblems(commits.reduce((rows, c) => setRowAction(rows, c.oid, 'drop'), rebasePlan(commits)))).toEqual(['Keep at least one commit.'])
     expect(rebaseProblems(setRowAction(rebasePlan(commits), o('2'), 'reword'))).toEqual(['Give 2222222 a message.'])
   })
+  // Rebases keep '#' lines (commit.cleanup=whitespace), so git's squash template must never be left as is.
+  it('needs a message for a squash group, not for a fixup-only one', () => {
+    const squashed = setRowAction(rebasePlan(commits), o('2'), 'squash')
+    expect(rebaseProblems(squashed)).toEqual(['Give 2222222 a message for the combined commit.'])
+    expect(rebaseProblems(setRowMessage(squashed, o('2'), 'one and two'))).toEqual([])
+    expect(rebaseProblems(setRowAction(rebasePlan(commits), o('2'), 'fixup'))).toEqual([])
+  })
+  it('keys a reworded group head by its own commit too', () => {
+    let rows = setRowAction(rebasePlan(commits), o('1'), 'reword')
+    rows = setRowMessage(rows, o('1'), 'one, renamed')
+    rows = setRowAction(rows, o('2'), 'fixup')
+    expect(rebaseMessages(rows)).toEqual({ [o('1')]: 'one, renamed', [o('2')]: 'one, renamed' })
+    expect([...messageRows(rows)]).toEqual([o('1'), o('2')])
+    expect(rebaseProblems(rows)).toEqual([])
+  })
 })
 
 describe('activity', () => {

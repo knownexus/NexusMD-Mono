@@ -32,7 +32,7 @@ export function RebaseDialog({ commits, base, onClose, onRun }) {
             </div>
             {withMessage.has(r.oid) && (
               <textarea aria-label={`Message for ${r.oid.slice(0, 7)}`} rows={2} style={{ width: '100%', marginTop: 4 }}
-                placeholder={r.action === 'reword' ? 'New message' : 'Message for the combined commit (empty keeps git\'s)'}
+                placeholder={r.action === 'reword' ? 'New message' : 'Message for the combined commit'}
                 value={r.message ?? ''} onChange={e => setRows(setRowMessage(rows, r.oid, e.target.value))} />
             )}
           </li>

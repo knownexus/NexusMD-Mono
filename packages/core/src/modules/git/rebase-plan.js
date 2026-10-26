@@ -48,10 +48,9 @@ export function rebaseMessages(rows) {
   const out = {}
   for (const group of squashGroups(rows)) {
     const head = group[0]
-    if (group.length === 1) {
-      if (head.action === 'reword' && head.message) out[head.oid] = head.message
-      continue
-    }
+    // git asks for a reworded commit's message before folding anything into it.
+    if (head.action === 'reword' && head.message) out[head.oid] = head.message
+    if (group.length === 1) continue
     const last = group[group.length - 1]
     const message = last.message ?? (head.action === 'reword' ? head.message : null)
     if (message) out[last.oid] = message
@@ -63,8 +62,8 @@ export function rebaseMessages(rows) {
 export function messageRows(rows) {
   const ids = new Set()
   for (const group of squashGroups(rows)) {
+    if (group[0].action === 'reword') ids.add(group[0].oid)
     if (group.length > 1) ids.add(group[group.length - 1].oid)
-    else if (group[0].action === 'reword') ids.add(group[0].oid)
   }
   return ids
 }
@@ -76,6 +75,15 @@ export function rebaseProblems(rows) {
   if (kept.length && (kept[0].action === 'squash' || kept[0].action === 'fixup')) problems.push("The first commit can't be squashed or fixed up.")
   for (const r of rows) {
     if (r.action === 'reword' && !(r.message && r.message.trim())) problems.push(`Give ${r.oid.slice(0, 7)} a message.`)
+  }
+  // Rebases keep lines starting with '#' (commit.cleanup=whitespace), so git's squash template can't be
+  // left as it is. A fixup-only group keeps its first message without asking.
+  const messages = rebaseMessages(rows)
+  for (const group of squashGroups(rows)) {
+    const last = group[group.length - 1]
+    if (group.slice(1).some(r => r.action === 'squash') && !(messages[last.oid] && messages[last.oid].trim())) {
+      problems.push(`Give ${last.oid.slice(0, 7)} a message for the combined commit.`)
+    }
   }
   return problems
 }
