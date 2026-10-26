@@ -62,6 +62,13 @@ describe('editPlan', () => {
   it('throws on an unknown oid', () => {
     expect(() => editPlan(commits, { kind: 'reword', oid: 'zz', message: 'x' })).toThrow()
   })
+  it('throws for a squash of commits that are not next to each other, repeated, or too few', () => {
+    expect(() => editPlan(commits, { kind: 'squash', oids: ['d', 'b'], message: 'x' })).toThrow('next to each other')
+    expect(() => editPlan(commits, { kind: 'squash', oids: ['c', 'c'], message: 'x' })).toThrow()
+    expect(() => editPlan(commits, { kind: 'squash', oids: ['c'], message: 'x' })).toThrow()
+    expect(() => editPlan(commits, { kind: 'squash', oids: ['c', 'zz'], message: 'x' })).toThrow()
+    expect(editPlan(commits, { kind: 'squash', oids: ['b', 'd', 'c'], message: 'x' }).base).toBe('a')
+  })
 })
 
 describe('squashMessage', () => {
