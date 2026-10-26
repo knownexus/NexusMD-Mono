@@ -71,6 +71,22 @@ describe('source branch detection and storage', { timeout: 60000 }, () => {
     expect((await reader.get('feat', {})).ref).toBe('refs/heads/dev')
   })
 
+  // Only the reflog can say dev here: nearest-branch ties dev with main and picks the default branch.
+  it('reads the branch reflog over a nearest-branch tie', async () => {
+    const { dir, reader } = repo()
+    git(dir, 'branch', 'dev', 'main')
+    git(dir, 'branch', 'feat', 'dev')
+    git(dir, 'switch', '-q', 'feat'); commit(dir, 'f1')
+    expect((await reader.get('feat', {})).ref).toBe('refs/heads/dev')
+  })
+
+  it('reads the HEAD reflog over a nearest-branch tie', async () => {
+    const { dir, reader } = repo()
+    git(dir, 'switch', '-q', '-c', 'dev')
+    git(dir, 'switch', '-q', '-c', 'feat'); commit(dir, 'f1')
+    expect((await reader.get('feat', {})).ref).toBe('refs/heads/dev')
+  })
+
   it('does not detect again after finding nothing', async () => {
     const { dir, calls, reader } = repo()
     git(dir, 'switch', '-q', '--orphan', 'solo'); commit(dir, 's1'); git(dir, 'branch', '-D', 'main')

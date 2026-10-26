@@ -70,7 +70,8 @@ async function detectSource(run, branch, commonDir) {
   // A ref is a usable source if it is a branch ref other than the branch itself and still resolves.
   const accept = async name => {
     if (!name) return null;
-    const full = (await out(['rev-parse', '--symbolic-full-name', '--end-of-options', name])).split('\n')[0];
+    // --verify keeps rev-parse from echoing --end-of-options and fails for an unknown name.
+    const full = await out(['rev-parse', '--verify', '--quiet', '--symbolic-full-name', '--end-of-options', name]);
     if (!isBranchRef(full) || full === self) return null;
     return (await out(['rev-parse', '--verify', '--quiet', '--end-of-options', `${full}^{commit}`])) ? full : null;
   };
