@@ -12,6 +12,10 @@ describe('AttentionOverview not published card', () => {
     show(tree({ source: { ref: 'refs/heads/master', count: 3 } }))
     expect(screen.getByText('3 commits off master · Only exists on this machine')).toBeTruthy()
   })
+  it('says to push again when the branch on origin was deleted', () => {
+    show(tree({ upstream: 'origin/feat', upstreamGone: true }))
+    expect(screen.getByText('Its branch on origin was deleted — push it again or delete it locally')).toBeTruthy()
+  })
   it('is unchanged without commits off the source', () => {
     show(tree({ source: { ref: 'refs/heads/master', count: 0 } }))
     expect(screen.getByText('Only exists on this machine')).toBeTruthy()
