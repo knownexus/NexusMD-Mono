@@ -40,8 +40,8 @@ export function DatabaseView({ adapter }) {
     <div className="nx-modal-fill nx-modal-pad">
       {alerts.map((a, i) => <div key={i} className="nx-alert bad" role="alert">{a}</div>)}
 
-      <div className="nx-db">
-        <div className="nx-db-col">
+      <div className="nx-devdb">
+        <div className="nx-devdb-col">
           <Section title="Server" meta={db ? STATE_TEXT[db.state] ?? db.state : null}>
             {db
               ? <>
@@ -67,13 +67,13 @@ export function DatabaseView({ adapter }) {
           </Section>
         </div>
 
-        <div className="nx-db-col">
+        <div className="nx-devdb-col">
           <Section title="Baselines" meta={baselines.data ? `${list.length} saved` : null}>
             <div className="nx-section-note">
               Restore fills databases that don't exist yet. To replace data, use the Start plan (wipe and restore) or Clean.
             </div>
             {list.length > 0 && (
-              <table className="nx-db-table">
+              <table className="nx-devdb-table">
                 <thead><tr><th>Baseline</th><th>Created</th><th>Size</th><th>Databases</th><th><span className="nx-sr">Actions</span></th></tr></thead>
                 <tbody>
                   {list.map(b => (
@@ -105,7 +105,7 @@ export function DatabaseView({ adapter }) {
               <input className="nx-input mono" aria-label="Database" value={database ?? ''} onChange={e => setDatabase(e.target.value)} />
             </label>
             {scriptList.length > 0 && (
-              <table className="nx-db-table">
+              <table className="nx-devdb-table">
                 <thead><tr><th>Script</th><th>What it does</th><th><span className="nx-sr">Actions</span></th></tr></thead>
                 <tbody>
                   {scriptList.map(s => (

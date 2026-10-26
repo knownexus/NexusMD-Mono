@@ -184,15 +184,15 @@ select.nx-input { padding-right: 4px; }
 .nx-checks input { accent-color: var(--accent); }
 
 /* database */
-.nx-db { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
-@container nx-modal (max-width: 760px) { .nx-db { grid-template-columns: minmax(0, 1fr); } }
-.nx-db-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.nx-db-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.nx-db-table th { text-align: left; font-size: 11.5px; font-weight: 500; color: var(--text-muted); padding: 0 10px 6px 0; border-bottom: 1px solid var(--border); }
-.nx-db-table td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
-.nx-db-table tr:last-child td { border-bottom: 0; }
-.nx-db-table td:last-child, .nx-db-table th:last-child { padding-right: 0; text-align: right; }
-.nx-db-table .num { font-feature-settings: 'tnum'; white-space: nowrap; color: var(--text-muted); }
+.nx-devdb { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@container nx-modal (max-width: 760px) { .nx-devdb { grid-template-columns: minmax(0, 1fr); } }
+.nx-devdb-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.nx-devdb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.nx-devdb-table th { text-align: left; font-size: 11.5px; font-weight: 500; color: var(--text-muted); padding: 0 10px 6px 0; border-bottom: 1px solid var(--border); }
+.nx-devdb-table td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.nx-devdb-table tr:last-child td { border-bottom: 0; }
+.nx-devdb-table td:last-child, .nx-devdb-table th:last-child { padding-right: 0; text-align: right; }
+.nx-devdb-table .num { font-feature-settings: 'tnum'; white-space: nowrap; color: var(--text-muted); }
 
 /* profile editor: file list beside the open file */
 .nx-profile { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
