@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  formatSqlValue, formatCondition, quoteIdent,
+  formatSqlValue, formatCondition, quoteIdent, quoteTable,
   buildSearchQuery, buildInsertQuery, buildUpdateQuery, buildDeleteQuery,
   buildJoinQuery, buildAggregateQuery,
 } from './query-builders.js'
@@ -139,5 +139,21 @@ describe('buildAggregateQuery', () => {
       ['status'],
     )
     expect(sql).toBe('SELECT COUNT([appt_id]), [status] FROM [appointments]\nGROUP BY [status]')
+  })
+})
+
+describe('quoteTable', () => {
+  it('brackets a table in its default schema as one name', () => {
+    expect(quoteTable('Member')).toBe('[Member]')
+  })
+
+  it('brackets the schema and the table separately', () => {
+    expect(quoteTable('maintenance.DirectDebitEmailHistory')).toBe('[maintenance].[DirectDebitEmailHistory]')
+  })
+
+  it('is used for the table in the guided builders', () => {
+    expect(buildSearchQuery('Staging.V_Member')).toBe('SELECT * FROM [Staging].[V_Member]')
+    expect(buildDeleteQuery('maintenance.need_Refunds')).toBe('DELETE FROM [maintenance].[need_Refunds]')
+    expect(buildJoinQuery('a.L', 'b.R', 'INNER', 'Id', 'LId')).toContain('[a].[L].[Id] = [b].[R].[LId]')
   })
 })

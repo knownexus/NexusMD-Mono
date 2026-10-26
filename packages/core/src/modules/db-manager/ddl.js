@@ -4,7 +4,7 @@
 // new table's design, and the CREATE / DROP statements (shown to the person before they run).
 // Pure — names are bracketed with quoteIdent, which SQL Server and SQLite both read.
 
-import { quoteIdent } from './query-builders.js'
+import { quoteIdent, quoteTable } from './query-builders.js'
 
 // size: what the type takes in brackets — a length ("max" allowed where marked), or precision/scale.
 const SQLSERVER_TYPES = [
@@ -142,5 +142,5 @@ export function buildCreateView(name, select) {
 
 /** DROP TABLE, or DROP VIEW. */
 export function buildDropStatement(name, { view = false } = {}) {
-  return `DROP ${view ? 'VIEW' : 'TABLE'} ${quoteIdent(name)}`
+  return `DROP ${view ? 'VIEW' : 'TABLE'} ${quoteTable(name)}`
 }

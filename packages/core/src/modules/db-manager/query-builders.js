@@ -16,6 +16,16 @@ export function quoteIdent(name) {
 }
 
 /**
+ * A table as the session lists it: `Member` in the default schema, `maintenance.Member` in
+ * another, bracketed part by part ([maintenance].[Member]) so it names the right table.
+ */
+export function quoteTable(name) {
+  const s = String(name)
+  const dot = s.indexOf('.')
+  return dot < 0 ? quoteIdent(s) : `${quoteIdent(s.slice(0, dot))}.${quoteIdent(s.slice(dot + 1))}`
+}
+
+/**
  * Format a raw form value as a SQL literal. Blank/nullish input becomes
  * NULL (a guided form field left empty means "no value", not the string
  * "undefined"); integer/decimal-looking strings are left unquoted so
@@ -40,26 +50,26 @@ function whereClause(conditions, combinator) {
 }
 
 export function buildSearchQuery(table, conditions = [], combinator = 'AND') {
-  return `SELECT * FROM ${quoteIdent(table)}${whereClause(conditions, combinator)}`
+  return `SELECT * FROM ${quoteTable(table)}${whereClause(conditions, combinator)}`
 }
 
 export function buildInsertQuery(table, columns) {
   const names  = columns.map(c => quoteIdent(c.name)).join(', ')
   const values = columns.map(c => formatSqlValue(c.value)).join(', ')
-  return `INSERT INTO ${quoteIdent(table)} (${names}) VALUES (${values})`
+  return `INSERT INTO ${quoteTable(table)} (${names}) VALUES (${values})`
 }
 
 export function buildUpdateQuery(table, setColumns, conditions = [], combinator = 'AND') {
   const setClause = setColumns.map(c => `${quoteIdent(c.name)} = ${formatSqlValue(c.value)}`).join(', ')
-  return `UPDATE ${quoteIdent(table)} SET ${setClause}${whereClause(conditions, combinator)}`
+  return `UPDATE ${quoteTable(table)} SET ${setClause}${whereClause(conditions, combinator)}`
 }
 
 export function buildDeleteQuery(table, conditions = [], combinator = 'AND') {
-  return `DELETE FROM ${quoteIdent(table)}${whereClause(conditions, combinator)}`
+  return `DELETE FROM ${quoteTable(table)}${whereClause(conditions, combinator)}`
 }
 
 export function buildJoinQuery(leftTable, rightTable, joinType, leftColumn, rightColumn) {
-  const [l, r] = [quoteIdent(leftTable), quoteIdent(rightTable)]
+  const [l, r] = [quoteTable(leftTable), quoteTable(rightTable)]
   return `SELECT * FROM ${l}\n${joinType} JOIN ${r} ON `
     + `${l}.${quoteIdent(leftColumn)} = ${r}.${quoteIdent(rightColumn)}`
 }
@@ -70,6 +80,6 @@ export function buildAggregateQuery(table, aggregates, groupByColumns = []) {
     ...aggregates.map(a => `${a.fn}(${quoteIdent(a.column)})`),
     ...groupBy,
   ].join(', ')
-  const base = `SELECT ${selectCols} FROM ${quoteIdent(table)}`
+  const base = `SELECT ${selectCols} FROM ${quoteTable(table)}`
   return groupBy.length ? `${base}\nGROUP BY ${groupBy.join(', ')}` : base
 }

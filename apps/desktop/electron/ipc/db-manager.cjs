@@ -58,6 +58,21 @@ function validateIdentifier(name) {
   if (!SAFE_ID.test(name)) throw new Error(`Invalid identifier: "${name}"`)
 }
 
+// A table as connect lists it. SQL Server names one outside dbo by its schema (maintenance.Member),
+// and it must be queried as [maintenance].[Member]: a bare [Member] only looks in the login's default
+// schema. `schema` is null for a bare name. SQLite names have no schema part.
+function tableName(type, table) {
+  if (type !== 'sqlserver' || typeof table !== 'string' || !table.includes('.')) {
+    validateIdentifier(table)
+    return { schema: null, name: table, sql: `[${table}]` }
+  }
+  const [schema, name, ...rest] = table.split('.')
+  if (rest.length) throw new Error(`Invalid identifier: "${table}"`)
+  validateIdentifier(schema)
+  validateIdentifier(name)
+  return { schema, name, sql: `[${schema}].[${name}]` }
+}
+
 // ─── SQL Server pool factory ──────────────────────────────────────────────────
 
 /** @type {Map<string, import('@azure/identity').TokenCredential>} */
@@ -151,13 +166,16 @@ function makeHandlers(drivers) {
     if (type === 'sqlserver') {
       const pool = await getSqlPool(config, drivers)
       const result = await pool.request().query(`
-        SELECT TABLE_NAME, TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_TYPE IN ('BASE TABLE', 'VIEW') ORDER BY TABLE_NAME
+        SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND TABLE_SCHEMA NOT IN ('sys', 'INFORMATION_SCHEMA')
+        ORDER BY TABLE_NAME
       `)
+      // dbo tables keep their bare name (and so their saved stars and groups); others carry their schema.
+      const named = r => (!r.TABLE_SCHEMA || r.TABLE_SCHEMA === 'dbo' ? r.TABLE_NAME : `${r.TABLE_SCHEMA}.${r.TABLE_NAME}`)
       return {
         ok: true,
-        tables: result.recordset.map(r => r.TABLE_NAME),
-        views: result.recordset.filter(r => r.TABLE_TYPE === 'VIEW').map(r => r.TABLE_NAME),
+        tables: result.recordset.map(named),
+        views: result.recordset.filter(r => r.TABLE_TYPE === 'VIEW').map(named),
       }
     }
 
@@ -195,14 +213,14 @@ function makeHandlers(drivers) {
   }
 
   async function handleGetRows(_e, { type, config, table, limit = 500, offset = 0 }) {
-    validateIdentifier(table)
+    const t = tableName(type, table)
     const safeLimit  = Math.min(Math.max(parseInt(limit,  10) || 500,  1), 10_000)
     const safeOffset = Math.max(parseInt(offset, 10) || 0, 0)
 
     if (type === 'sqlserver') {
       const pool = await getSqlPool(config, drivers)
       const result = await pool.request().query(`
-        SELECT * FROM [${table}]
+        SELECT * FROM ${t.sql}
         ORDER BY (SELECT NULL)
         OFFSET ${safeOffset} ROWS FETCH NEXT ${safeLimit} ROWS ONLY
       `)
@@ -232,7 +250,7 @@ function makeHandlers(drivers) {
   const keyValues = (keys, v) => (keys.length === 1 && !Array.isArray(v) ? [v] : v)
 
   async function handleDeleteRows(_e, { type, config, table, primaryKey, values }) {
-    validateIdentifier(table)
+    const t = tableName(type, table)
     const keys = keyColumns(primaryKey)
     if (!Array.isArray(values) || values.length === 0) throw new Error('values must be a non-empty array')
     const rows = values.map(v => keyValues(keys, v))
@@ -242,7 +260,7 @@ function makeHandlers(drivers) {
       const pool    = await getSqlPool(config, drivers)
       const request = pool.request()
       const where   = rows.map((r, i) => `(${keys.map((k, j) => { request.input(`v${i}_${j}`, r[j]); return `[${k}] = @v${i}_${j}` }).join(' AND ')})`)
-      const result  = await request.query(`DELETE FROM [${table}] WHERE ${where.join(' OR ')}`)
+      const result  = await request.query(`DELETE FROM ${t.sql} WHERE ${where.join(' OR ')}`)
       return { ok: true, affected: result.rowsAffected[0] }
     }
 
@@ -257,7 +275,7 @@ function makeHandlers(drivers) {
   }
 
   async function handleUpdateCell(_e, { type, config, table, primaryKey, primaryValue, column, value }) {
-    validateIdentifier(table)
+    const t = tableName(type, table)
     validateIdentifier(column)
     const keys = keyColumns(primaryKey)
     const key  = keyValues(keys, primaryValue)
@@ -267,7 +285,7 @@ function makeHandlers(drivers) {
       const pool    = await getSqlPool(config, drivers)
       const request = pool.request().input('val', value ?? null)
       const where   = keys.map((k, j) => { request.input(`pk${j}`, key[j]); return `[${k}] = @pk${j}` }).join(' AND ')
-      const result  = await request.query(`UPDATE [${table}] SET [${column}] = @val WHERE ${where}`)
+      const result  = await request.query(`UPDATE ${t.sql} SET [${column}] = @val WHERE ${where}`)
       return { ok: true, affected: result.rowsAffected[0] }
     }
 
@@ -284,7 +302,7 @@ function makeHandlers(drivers) {
   // Adds a row. `values` maps column names to values; columns left out get their default
   // (identity and computed columns are always left out by the caller).
   async function handleInsertRow(_e, { type, config, table, values = {} }) {
-    validateIdentifier(table)
+    const t = tableName(type, table)
     const cols = Object.keys(values)
     cols.forEach(validateIdentifier)
 
@@ -293,8 +311,8 @@ function makeHandlers(drivers) {
       const request = pool.request()
       cols.forEach((c, i) => request.input(`v${i}`, values[c] ?? null))
       const sql = cols.length
-        ? `INSERT INTO [${table}] (${cols.map(c => `[${c}]`).join(', ')}) VALUES (${cols.map((_, i) => `@v${i}`).join(', ')})`
-        : `INSERT INTO [${table}] DEFAULT VALUES`
+        ? `INSERT INTO ${t.sql} (${cols.map(c => `[${c}]`).join(', ')}) VALUES (${cols.map((_, i) => `@v${i}`).join(', ')})`
+        : `INSERT INTO ${t.sql} DEFAULT VALUES`
       const result = await request.query(sql)
       return { ok: true, affected: result.rowsAffected[0] }
     }
@@ -312,12 +330,13 @@ function makeHandlers(drivers) {
   }
 
   async function handleGetColumns(_e, { type, config, table }) {
-    validateIdentifier(table)
+    const t = tableName(type, table)
 
     if (type === 'sqlserver') {
       const pool = await getSqlPool(config, drivers)
       const result = await pool.request()
-        .input('table', table)
+        .input('schema', t.schema)
+        .input('table', t.name)
         .query(`
           SELECT c.COLUMN_NAME AS name, c.DATA_TYPE AS dataType,
                  CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS isPrimaryKey,
@@ -329,14 +348,16 @@ function makeHandlers(drivers) {
                  COLUMNPROPERTY(OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME)), c.COLUMN_NAME, 'IsComputed') AS isComputed
           FROM INFORMATION_SCHEMA.COLUMNS c
           LEFT JOIN (
-            SELECT ku.COLUMN_NAME, ku.TABLE_NAME
+            SELECT ku.COLUMN_NAME, ku.TABLE_NAME, ku.TABLE_SCHEMA
             FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
             JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
               ON tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+             AND tc.CONSTRAINT_SCHEMA = ku.CONSTRAINT_SCHEMA
              AND tc.TABLE_NAME = ku.TABLE_NAME
             WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-          ) pk ON pk.COLUMN_NAME = c.COLUMN_NAME AND pk.TABLE_NAME = c.TABLE_NAME
-          WHERE c.TABLE_NAME = @table
+          ) pk ON pk.COLUMN_NAME = c.COLUMN_NAME AND pk.TABLE_NAME = c.TABLE_NAME AND pk.TABLE_SCHEMA = c.TABLE_SCHEMA
+          -- A bare name is the table the login's default schema resolves it to, as [name] does in the other queries.
+          WHERE c.TABLE_SCHEMA = ISNULL(@schema, SCHEMA_NAME()) AND c.TABLE_NAME = @table
           ORDER BY c.ORDINAL_POSITION
         `)
       // Precision and scale only mean something for decimal / numeric (float reports them too).
