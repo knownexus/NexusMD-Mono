@@ -330,7 +330,7 @@
 @container nx-page (max-width: 720px) { .nx-resolve-options { grid-template-columns: minmax(0, 1fr); } }
 
 /* History (history-pane.jsx, history-panel.jsx, commit-detail.jsx): yours = --violet, upstream = --info */
-.nx-gw-history { display: grid; height: 70vh; min-height: 320px; }
+.nx-gw-history { display: grid; grid-template-rows: minmax(0, 1fr); height: 70vh; min-height: 320px; }
 .nx-gw-hlist { overflow: auto; min-height: 0; flex: 1; font-size: 13px; }
 .nx-gw-hdivider { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); padding: 8px 6px 4px; border-top: 1px solid var(--border); }
 .nx-gw-hdivider:first-child { border-top: 0; }
