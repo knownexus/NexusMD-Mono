@@ -70,7 +70,8 @@ const EXPECTED = [
   'applyTableSelected', 'applyTableLoaded', 'applyRowsDeleted', 'applyCellUpdated', 'applyError',
   'generateConnectionId', 'upsertConnection', 'removeConnection',
   'normalizeTablePrefs', 'toggleTableStarred', 'toggleTableHidden', 'setTableGroup', 'renameTableGroup',
-  'removeTableGroup', 'toggleSectionCollapsed', 'tableSections', 'groupSectionKey', 'schemaSectionKey',
+  'removeTableGroup', 'toggleSectionCollapsed', 'tableSections', 'groupSectionKey', 'schemaSectionKey', 'VIEWS_SECTION_KEY',
+  'columnTypes', 'validateTableSpec', 'buildCreateTable', 'buildCreateView', 'buildDropStatement', 'formatDefault', 'isSingleStatement',
   'columnKind', 'isPartialInput', 'cellToInput', 'parseCellInput',
   // Dev Environment module (desktop-only: requires the `devenv` adapter)
   'IDevenvAdapter', 'getDevenvAdapter', 'DEVENV_CONTROL_PREFIX', 'DEVENV_PROTOCOL_VERSION', 'parseDevenvLine',

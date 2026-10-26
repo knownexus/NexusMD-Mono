@@ -139,6 +139,7 @@ export const IDbManagerAdapter = {
   updateCell:  async (type, config, table, primaryKey, primaryValue, column, value) => Promise.reject(new Error('IDbManagerAdapter.updateCell not implemented')),
   runQuery:    async (type, config, sql) => Promise.reject(new Error('IDbManagerAdapter.runQuery not implemented')),
   insertRow:   async (type, config, table, values) => Promise.reject(new Error('IDbManagerAdapter.insertRow not implemented')),
+  runDdl:      async (type, config, sql) => Promise.reject(new Error('IDbManagerAdapter.runDdl not implemented')),
 }
 
 // Dev Environment — desktop-only (pwsh runs in the Electron main process). Absence from

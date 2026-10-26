@@ -86,6 +86,17 @@ export const dbManagerAdapter = {
   },
 
   /**
+   * Create or drop a table or view: one CREATE TABLE, CREATE VIEW, DROP TABLE or DROP VIEW.
+   * @param {'sqlserver'|'sqlite'} type
+   * @param {object} config
+   * @param {string} sql
+   * @returns {Promise<{ ok: boolean }>}
+   */
+  runDdl(type, config, sql) {
+    return api().runDdl(type, config, sql)
+  },
+
+  /**
    * Run a raw SQL query (SELECT / DELETE / WITH only).
    * @param {'sqlserver'|'sqlite'} type
    * @param {object} config

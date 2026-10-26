@@ -125,29 +125,70 @@ function recordsetToRows(recordset) {
   return { columns, rows }
 }
 
+// One statement only: semicolons inside strings, [names], "names" and comments don't count, nor
+// does a trailing one. (The same rule as isSingleStatement in @nexusmd/core's ddl.js, which this
+// CommonJS file can't import.)
+function isSingleStatement(sql) {
+  const bare = String(sql)
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/'(?:[^']|'')*'/g, "''")
+    .replace(/\[(?:[^\]]|\]\])*\]/g, '[]')
+    .replace(/"(?:[^"]|"")*"/g, '""')
+    .trim()
+    .replace(/;\s*$/, '')
+  return !bare.includes(';')
+}
+
 // better-sqlite3 binds numbers, strings, bigints, buffers and null only; a bit arrives as a boolean.
 const sqliteValue = v => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v)
 
 // ─── Handlers (factory so each carries its own `drivers`) ────────────────────
 
 function makeHandlers(drivers) {
+  // Tables and views together (both can be browsed and queried); `views` says which are views.
   async function handleConnect(_e, { type, config }) {
     if (type === 'sqlserver') {
       const pool = await getSqlPool(config, drivers)
       const result = await pool.request().query(`
-        SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME
+        SELECT TABLE_NAME, TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_TYPE IN ('BASE TABLE', 'VIEW') ORDER BY TABLE_NAME
       `)
-      return { ok: true, tables: result.recordset.map(r => r.TABLE_NAME) }
+      return {
+        ok: true,
+        tables: result.recordset.map(r => r.TABLE_NAME),
+        views: result.recordset.filter(r => r.TABLE_TYPE === 'VIEW').map(r => r.TABLE_NAME),
+      }
     }
 
     if (type === 'sqlite') {
       const db = getSqliteDb(config.filePath, drivers)
-      const tables = db
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+      const rows = db
+        .prepare("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name")
         .all()
-        .map(r => r.name)
-      return { ok: true, tables }
+      return { ok: true, tables: rows.map(r => r.name), views: rows.filter(r => r.type === 'view').map(r => r.name) }
+    }
+
+    throw new Error(`Unknown database type: ${type}`)
+  }
+
+  // Creates or drops a table or view. Only those four statements, one at a time: the renderer
+  // builds them (and shows them first), so anything else is a mistake, not a feature.
+  const DDL = /^\s*(CREATE\s+TABLE|CREATE\s+VIEW|DROP\s+TABLE|DROP\s+VIEW)\s/i
+  async function handleRunDdl(_e, { type, config, sql }) {
+    if (typeof sql !== 'string' || !DDL.test(sql)) throw new Error('Only CREATE TABLE, CREATE VIEW, DROP TABLE and DROP VIEW can be run this way.')
+    if (!isSingleStatement(sql)) throw new Error('Run one statement at a time.')
+
+    if (type === 'sqlserver') {
+      const pool = await getSqlPool(config, drivers)
+      await pool.request().query(sql)
+      return { ok: true }
+    }
+
+    if (type === 'sqlite') {
+      const db = getSqliteDb(config.filePath, drivers)
+      db.prepare(sql).run()
+      return { ok: true }
     }
 
     throw new Error(`Unknown database type: ${type}`)
@@ -381,7 +422,7 @@ function makeHandlers(drivers) {
     throw new Error(`Unknown database type: ${type}`)
   }
 
-  return { handleConnect, handleGetRows, handleDeleteRows, handleUpdateCell, handleInsertRow, handleGetColumns, handleRunQuery }
+  return { handleConnect, handleRunDdl, handleGetRows, handleDeleteRows, handleUpdateCell, handleInsertRow, handleGetColumns, handleRunQuery }
 }
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
@@ -417,6 +458,7 @@ function register(ipcMain, opts = {}) {
   handle('db-manager:delete-rows', handlers.handleDeleteRows)
   handle('db-manager:update-cell', handlers.handleUpdateCell)
   handle('db-manager:insert-row',  handlers.handleInsertRow)
+  handle('db-manager:run-ddl',     handlers.handleRunDdl)
   handle('db-manager:get-columns', handlers.handleGetColumns)
   handle('db-manager:run-query',  handlers.handleRunQuery)
 

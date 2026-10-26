@@ -85,8 +85,11 @@ export {
 } from './modules/db-manager/index.js'
 export {
   normalizeTablePrefs, toggleTableStarred, toggleTableHidden, setTableGroup, renameTableGroup,
-  removeTableGroup, toggleSectionCollapsed, tableSections, groupSectionKey, schemaSectionKey,
+  removeTableGroup, toggleSectionCollapsed, tableSections, groupSectionKey, schemaSectionKey, VIEWS_SECTION_KEY,
 } from './modules/db-manager/table-prefs.js'
+export {
+  columnTypes, validateTableSpec, buildCreateTable, buildCreateView, buildDropStatement, formatDefault, isSingleStatement,
+} from './modules/db-manager/ddl.js'
 export { columnKind, isPartialInput, cellToInput, parseCellInput } from './modules/db-manager/cell-types.js'
 export {
   formatSqlValue, formatCondition, quoteIdent,

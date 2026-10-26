@@ -101,6 +101,28 @@ describe('db-manager IPC — SQLite', () => {
     ).rejects.toThrow('non-empty array')
   })
 
+  it('connect lists views with the tables, and says which are views', async () => {
+    mockSqliteStmt.all.mockReturnValueOnce([{ name: 'active_users', type: 'view' }, { name: 'users', type: 'table' }])
+    const result = await ipc._invoke('db-manager:connect', cfg)
+    expect(result).toEqual({ ok: true, tables: ['active_users', 'users'], views: ['active_users'] })
+    expect(mockSqliteDb.prepare.mock.calls.at(-1)[0]).toMatch(/type IN \('table', 'view'\)/)
+  })
+
+  it('run-ddl creates and drops tables and views', async () => {
+    for (const sql of ['CREATE TABLE [t] (\n  [id] INTEGER\n)', 'CREATE VIEW [v] AS\nSELECT 1', 'DROP TABLE [t]', 'DROP VIEW [v];']) {
+      await expect(ipc._invoke('db-manager:run-ddl', { ...cfg, sql })).resolves.toEqual({ ok: true })
+      expect(mockSqliteDb.prepare.mock.calls.at(-1)[0]).toBe(sql)
+    }
+  })
+
+  it('run-ddl refuses anything else, and more than one statement', async () => {
+    await expect(ipc._invoke('db-manager:run-ddl', { ...cfg, sql: 'DELETE FROM users' })).rejects.toThrow('Only CREATE TABLE')
+    await expect(ipc._invoke('db-manager:run-ddl', { ...cfg, sql: 'ALTER TABLE users ADD x INT' })).rejects.toThrow('Only CREATE TABLE')
+    await expect(ipc._invoke('db-manager:run-ddl', { ...cfg, sql: 'DROP TABLE [a]; DROP TABLE [b]' })).rejects.toThrow('one statement')
+    // A semicolon in a string or a bracketed name is fine.
+    await expect(ipc._invoke('db-manager:run-ddl', { ...cfg, sql: "CREATE VIEW [v;1] AS SELECT ';' AS x" })).resolves.toEqual({ ok: true })
+  })
+
   it('delete-rows matches every column of a composite key', async () => {
     await ipc._invoke('db-manager:delete-rows', {
       ...cfg, table: 'enrolment', primaryKey: ['student', 'course'], values: [[1, 'a'], [2, 'b']],

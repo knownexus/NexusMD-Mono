@@ -93,6 +93,17 @@ describe('tableSections', () => {
     expect(sections.at(-1).label).toBe('Tables')
   })
 
+  it('puts views in a Views section last, unless they’re in a group', () => {
+    let p = setTableGroup(empty(), 'ActiveMembers', 'People')
+    const sections = tableSections(['Member', 'ActiveMembers', 'Lapsed'], p, { views: ['ActiveMembers', 'Lapsed'] })
+    expect(sections.map(s => [s.key, s.names])).toEqual([
+      [groupSectionKey('People'), ['ActiveMembers']],
+      [schemaSectionKey(''), ['Member']],
+      ['views:', ['Lapsed']],
+    ])
+    expect(sections.at(-1)).toMatchObject({ kind: 'views', label: 'Views' })
+  })
+
   it('keeps a group called like a schema apart from that schema', () => {
     const p = setTableGroup(empty(), 'dbo.Invoices', 'dbo')
     const keys = tableSections(['dbo.Invoices', 'dbo.Users'], p).map(s => s.key)
