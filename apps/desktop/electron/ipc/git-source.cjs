@@ -64,27 +64,44 @@ function defaultBranch(commonDir, fsx = fs) {
   return null;
 }
 
+const outOf = run => async args => { const r = await run(args); return r.code === 0 ? r.stdout.replace(/\r/g, '').trim() : ''; };
+
+// The branch's own copy on a remote (its upstream, or any refs/remotes/<remote>/<same name>) is where it
+// was checked out from, never the branch it was cut from.
+async function isOwnRemote(run, branch, ref) {
+  if (!ref.startsWith('refs/remotes/')) return false;
+  const out = outOf(run);
+  if (ref === await out(['for-each-ref', '--format=%(upstream)', `refs/heads/${branch}`])) return true;
+  return (await out(['remote'])).split('\n').some(remote => remote && ref === `refs/remotes/${remote}/${branch}`);
+}
+
 async function detectSource(run, branch, commonDir) {
   const self = `refs/heads/${branch}`;
-  const out = async args => { const r = await run(args); return r.code === 0 ? r.stdout.replace(/\r/g, '').trim() : ''; };
+  const out = outOf(run);
   // A ref is a usable source if it is a branch ref other than the branch itself and still resolves.
-  const accept = async name => {
+  const resolve = async name => {
     if (!name) return null;
     // --verify keeps rev-parse from echoing --end-of-options and fails for an unknown name.
     const full = await out(['rev-parse', '--verify', '--quiet', '--symbolic-full-name', '--end-of-options', name]);
     if (!isBranchRef(full) || full === self) return null;
     return (await out(['rev-parse', '--verify', '--quiet', '--end-of-options', `${full}^{commit}`])) ? full : null;
   };
+  const accept = async name => { const ref = await resolve(name); return ref && !(await isOwnRemote(run, branch, ref)) ? ref : null; };
 
   // 1. The branch's own reflog says where it was created from (unless that was just "HEAD").
   const own = (await out(['reflog', 'show', '--format=%gs', self, '--'])).split('\n');
+  let fromOwnRemote = false;
   for (let i = own.length - 1; i >= 0; i--) {
     const m = /^branch: Created from (.+)$/.exec(own[i]);
+    if (!m) continue;
     // "Created from HEAD" names whatever is checked out now, not where the branch came from.
-    if (m) { const ref = m[1] === 'HEAD' || m[1] === '@' ? null : await accept(m[1]); if (ref) return ref; break; }
+    const ref = m[1] === 'HEAD' || m[1] === '@' ? null : await resolve(m[1]);
+    if (ref && !(fromOwnRemote = await isOwnRemote(run, branch, ref))) return ref;
+    break;
   }
-  // 2. HEAD's reflog remembers the checkout that first moved onto it.
-  const headLog = (await out(['reflog', 'show', '--format=%gs', 'HEAD', '--'])).split('\n');
+  // 2. HEAD's reflog remembers the checkout that first moved onto it. After checking out the branch's own
+  // remote branch, "moving from X" only names whatever was checked out before, so it is skipped.
+  const headLog = fromOwnRemote ? [] : (await out(['reflog', 'show', '--format=%gs', 'HEAD', '--'])).split('\n');
   for (let i = headLog.length - 1; i >= 0; i--) {
     const m = /^checkout: moving from (\S+) to (.+)$/.exec(headLog[i]);
     if (m && m[2] === branch) { const ref = await accept(m[1]); if (ref) return ref; break; }
@@ -146,4 +163,4 @@ function createSourceReader({ run, commonDir, fsx = fs }) {
   return { get, write };
 }
 
-module.exports = { readConfigSource, readRefOid, defaultBranch, detectSource, createSourceReader };
+module.exports = { readConfigSource, readRefOid, defaultBranch, isOwnRemote, detectSource, createSourceReader };

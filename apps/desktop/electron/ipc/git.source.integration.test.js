@@ -35,6 +35,21 @@ function repo() {
   return { dir, calls, reader }
 }
 
+// A teammate's branch pushed from another clone and fetched here, with dev (at main's tip) checked out,
+// so the HEAD reflog would wrongly name dev and nearest-branch picks main.
+function teammateBranch(dir) {
+  const remote = path.join(root, 'remote' + n++ + '.git')
+  git(root, 'init', '-q', '--bare', remote)
+  git(dir, 'remote', 'add', 'origin', remote)
+  git(dir, 'push', '-q', 'origin', 'main')
+  const other = path.join(root, 'clone' + n++)
+  git(root, 'clone', '-q', remote, other)
+  git(other, 'switch', '-q', '-c', 'teammate'); commit(other, 't1')
+  git(other, 'push', '-q', 'origin', 'teammate')
+  git(dir, 'fetch', '-q', 'origin')
+  git(dir, 'switch', '-q', '-c', 'dev')
+}
+
 beforeAll(() => {
   root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'nexusmd-gsrc-')))
   const globalConfig = path.join(root, 'gitconfig')
@@ -85,6 +100,20 @@ describe('source branch detection and storage', { timeout: 60000 }, () => {
     git(dir, 'switch', '-q', '-c', 'dev')
     git(dir, 'switch', '-q', '-c', 'feat'); commit(dir, 'f1')
     expect((await reader.get('feat', {})).ref).toBe('refs/heads/dev')
+  })
+
+  it('never takes a branch\'s own remote branch as its source', async () => {
+    const { dir, reader } = repo()
+    teammateBranch(dir)
+    git(dir, 'switch', '-q', 'teammate')
+    expect((await reader.get('teammate', {})).ref).toBe('refs/heads/main')
+  })
+
+  it('never takes a branch\'s upstream as its source', async () => {
+    const { dir, reader } = repo()
+    teammateBranch(dir)
+    git(dir, 'branch', '--track', 'mine', 'origin/teammate')
+    expect((await reader.get('mine', {})).ref).toBe('refs/heads/main')
   })
 
   it('does not detect again after finding nothing', async () => {
@@ -259,6 +288,14 @@ describe('recording the source at creation', { timeout: 60000 }, () => {
     git(dir, 'switch', '-q', '--detach')
     expect(await act(dir, 'branch', { name: 'f4', start: oid })).toMatchObject({ ok: true })
     expect(stored(dir, 'f4')).toBeNull()
+  })
+
+  it('records nothing when tracking the branch\'s own remote branch', async () => {
+    const { dir, reader } = repo()
+    teammateBranch(dir)
+    expect(await act(dir, 'branch', { name: 'teammate', start: 'refs/remotes/origin/teammate', checkout: true })).toMatchObject({ ok: true })
+    expect(stored(dir, 'teammate')).toBeNull()
+    expect((await reader.get('teammate', {})).ref).toBe('refs/heads/main')
   })
 
   it('setSource writes the source', async () => {

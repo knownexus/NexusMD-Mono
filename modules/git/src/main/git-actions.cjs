@@ -12,7 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
-const { defaultBranch, createSourceReader } = require('./git-source.cjs');
+const { defaultBranch, isOwnRemote, createSourceReader } = require('./git-source.cjs');
 
 // ':' is git's own "no editor": nothing can wait on an editor. Interactive rebase swaps in the helper.
 const WRITE_ENV = { GIT_EDITOR: ':', GIT_SEQUENCE_EDITOR: ':', GIT_MERGE_AUTOEDIT: 'no' };
@@ -294,10 +294,12 @@ function registerActions(handle, ctx) {
         ? ['switch', ...(o.remote ? ['--track'] : []), '-c', o.name, o.start]
         : ['branch', '--no-track', o.name, o.start]],
       // The new branch's source is the branch it was cut from: the start ref, or else the branch checked out now.
+      // Tracking the branch's own remote branch says nothing about where it was cut from, so nothing is recorded.
       after: async (wt, o, state) => {
         const start = /^refs\/(heads|remotes)\//.test(o.start) ? o.start : null;
         const ref = start ?? (state.symbolic?.startsWith('refs/heads/') ? state.symbolic : null);
         if (!ref || ref === `refs/heads/${o.name}`) return;
+        if (await isOwnRemote(args => read(wt, args), o.name, ref)) return;
         const dir = await commonDirOf(wt);
         if (!dir || o.name === defaultBranch(dir, fsx)) return;
         await createSourceReader({ run: args => read(wt, args), commonDir: dir, fsx }).write(o.name, ref);
