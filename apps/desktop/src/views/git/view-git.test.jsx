@@ -343,7 +343,7 @@ describe('ViewGit overview', () => {
 
   it('publishes an unpublished branch as a push that sets the upstream', async () => {
     const a = withStatus({ A: head('+0 -0'), B: '# branch.oid a\0# branch.head main\0' })
-    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Push' }))
     await waitFor(() => expect(a.preview).toHaveBeenCalled())
     expect(a.preview.mock.calls[0][3]).toBe('push')
     expect(a.preview.mock.calls[0][4]).toEqual({ setUpstream: true })

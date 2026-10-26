@@ -103,6 +103,6 @@ export function primaryAction(tree) {
   if (s.behind) return { kind: 'pull', label: `Pull ↓${s.behind}` }
   if (s.ahead) return { kind: 'push', label: `Push ↑${s.ahead}` }
   if (s.changed) return { kind: 'review', label: 'Review & commit' }
-  if (s.unpublished) return { kind: 'publish', label: tree.upstreamGone ? 'Re-publish' : 'Publish' }
+  if (s.unpublished) return { kind: 'publish', label: 'Push' }
   return null
 }
