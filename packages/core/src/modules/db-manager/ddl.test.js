@@ -116,3 +116,10 @@ describe('isSingleStatement', () => {
     expect(isSingleStatement('SELECT 1; SELECT 2')).toBe(false)
   })
 })
+
+describe('buildDropStatement with a schema', () => {
+  it('drops the table in its own schema', () => {
+    expect(buildDropStatement('maintenance.updatemember')).toBe('DROP TABLE [maintenance].[updatemember]')
+    expect(buildDropStatement('Staging.V_Site', { view: true })).toBe('DROP VIEW [Staging].[V_Site]')
+  })
+})

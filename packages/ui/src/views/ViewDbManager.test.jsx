@@ -1067,6 +1067,19 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
     expect(adapters.dbManager.runQuery).toHaveBeenCalledWith('sqlite', expect.anything(), 'SELECT COUNT(*) AS n FROM [staff]')
   })
 
+  it('quotes a table in another schema as [schema].[table]', async () => {
+    const writeText = vi.fn().mockResolvedValue()
+    Object.assign(navigator, { clipboard: { writeText } })
+    adapters.dbManager.connect.mockResolvedValue({ ok: true, tables: ['patients', 'maintenance.DirectDebitEmailHistory'] })
+    adapters.dbManager.runQuery.mockResolvedValue({ columns: ['n'], rows: [[4]], affected: null })
+    await connectUat()
+    const more = 'More for maintenance.DirectDebitEmailHistory'
+    fireEvent.click(openMenu(more).getByRole('menuitem', { name: 'Copy SELECT statement' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('SELECT * FROM [maintenance].[DirectDebitEmailHistory] LIMIT 100'))
+    fireEvent.click(openMenu(more).getByRole('menuitem', { name: 'Count rows' }))
+    await waitFor(() => expect(adapters.dbManager.runQuery).toHaveBeenCalledWith('sqlite', expect.anything(), 'SELECT COUNT(*) AS n FROM [maintenance].[DirectDebitEmailHistory]'))
+  })
+
   it('remembers favourites, groups, hidden tables and folded groups the next time the connection opens', async () => {
     window.localStorage.setItem('nx-db:tables:uat', JSON.stringify({
       starred: ['patients'], hidden: ['staff'], groups: ['Clinical'], assigned: { patients: 'Clinical' }, collapsed: [],

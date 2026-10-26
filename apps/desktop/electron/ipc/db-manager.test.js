@@ -383,6 +383,44 @@ describe('db-manager IPC — SQL Server statements', () => {
     expect(result).toMatchObject({ columns: [], rows: [], sets: [], affected: 3 })
   })
 
+  it('connect names tables outside dbo by their schema and leaves out system schemas', async () => {
+    nextResult = { recordset: [
+      { TABLE_SCHEMA: 'dbo', TABLE_NAME: 'Member', TABLE_TYPE: 'BASE TABLE' },
+      { TABLE_SCHEMA: 'maintenance', TABLE_NAME: 'DirectDebitEmailHistory', TABLE_TYPE: 'BASE TABLE' },
+      { TABLE_SCHEMA: 'Staging', TABLE_NAME: 'V_Member', TABLE_TYPE: 'VIEW' },
+    ] }
+    const result = await ipc._invoke('db-manager:connect', cfg)
+    expect(requests[0].sql).toMatch(/TABLE_SCHEMA NOT IN \('sys', 'INFORMATION_SCHEMA'\)/)
+    expect(result.tables).toEqual(['Member', 'maintenance.DirectDebitEmailHistory', 'Staging.V_Member'])
+    expect(result.views).toEqual(['Staging.V_Member'])
+  })
+
+  it('reads and changes a table in its own schema', async () => {
+    const table = 'maintenance.DirectDebitEmailHistory'
+    await ipc._invoke('db-manager:get-rows', { ...cfg, table })
+    expect(requests[0].sql).toContain('SELECT * FROM [maintenance].[DirectDebitEmailHistory]')
+    await ipc._invoke('db-manager:insert-row', { ...cfg, table, values: { Id: 1 } })
+    expect(requests[1].sql).toBe('INSERT INTO [maintenance].[DirectDebitEmailHistory] ([Id]) VALUES (@v0)')
+    await ipc._invoke('db-manager:update-cell', { ...cfg, table, primaryKey: 'Id', primaryValue: 1, column: 'Sent', value: 1 })
+    expect(requests[2].sql).toBe('UPDATE [maintenance].[DirectDebitEmailHistory] SET [Sent] = @val WHERE [Id] = @pk0')
+    await ipc._invoke('db-manager:delete-rows', { ...cfg, table, primaryKey: 'Id', values: [1] })
+    expect(requests[3].sql).toBe('DELETE FROM [maintenance].[DirectDebitEmailHistory] WHERE ([Id] = @v0_0)')
+  })
+
+  it('get-columns looks the table up in its schema, or the default schema for a bare name', async () => {
+    await ipc._invoke('db-manager:get-columns', { ...cfg, table: 'maintenance.updatemember' })
+    expect(requests[0].inputs).toEqual({ schema: 'maintenance', table: 'updatemember' })
+    expect(requests[0].sql).toMatch(/c\.TABLE_SCHEMA = ISNULL\(@schema, SCHEMA_NAME\(\)\)/)
+    // The primary key is matched within the same schema, so a namesake elsewhere can't lend or hide one.
+    expect(requests[0].sql).toMatch(/pk\.TABLE_SCHEMA = c\.TABLE_SCHEMA/)
+    await ipc._invoke('db-manager:get-columns', { ...cfg, table: 'Member' })
+    expect(requests[1].inputs).toEqual({ schema: null, table: 'Member' })
+  })
+
+  it.each(['a.b.c', 'maintenance.', '.Member', 'bad;schema.T'])('rejects the table name %s', async (table) => {
+    await expect(ipc._invoke('db-manager:get-rows', { ...cfg, table })).rejects.toThrow('Invalid identifier')
+  })
+
   it('get-columns reports nullability, length, precision, defaults and identity', async () => {
     nextResult = { recordset: [
       { name: 'Id', dataType: 'int', isPrimaryKey: 1, nullable: 0, maxLength: null, numericPrecision: 10, numericScale: 0, hasDefault: 0, isIdentity: 1, isComputed: 0 },

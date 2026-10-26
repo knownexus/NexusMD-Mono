@@ -92,7 +92,7 @@ export {
 } from './modules/db-manager/ddl.js'
 export { columnKind, isPartialInput, cellToInput, parseCellInput } from './modules/db-manager/cell-types.js'
 export {
-  formatSqlValue, formatCondition, quoteIdent,
+  formatSqlValue, formatCondition, quoteIdent, quoteTable,
   buildSearchQuery, buildInsertQuery, buildUpdateQuery, buildDeleteQuery,
   buildJoinQuery, buildAggregateQuery,
 } from './modules/db-manager/query-builders.js'
