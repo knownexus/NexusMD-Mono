@@ -30,7 +30,8 @@ export { REBASE_ACTIONS, rebasePlan, moveRow, setRowAction, setRowMessage, rebas
 export { ACTIVITY_MAX, addActivity, failedTargets } from './activity.js'
 export { filterFiles } from './file-filter.js'
 export { wordMatch, filterByWords, filterFilesByWords } from './word-match.js'
-export { BRANCH_FILTERS, branchState, matchesFilter, filterCounts, branchMeta, repoPills, primaryAction } from './status-meta.js'
+export { BRANCH_FILTERS, branchState, matchesFilter, filterCounts, branchMeta, commitsOff, repoPills, primaryAction } from './status-meta.js'
+export { rewordProblem, squashPreviousProblem, squashSelectedProblem, editPlan, squashMessage } from './commit-edit.js'
 export { parseConflicts, resolveRegion, hasMarkers, conflictKind, conflictLabels, operationText } from './conflicts.js'
 
 let _adapter = null

@@ -6,6 +6,7 @@ import os from 'os'
 import path from 'path'
 import { execFileSync, execFile } from 'child_process'
 import { createRequire } from 'module'
+import { editPlan } from '@nexusmd/core'
 
 const { createSourceReader } = createRequire(import.meta.url)('./git-source.cjs')
 const { register } = createRequire(import.meta.url)('./git.cjs')
@@ -262,5 +263,35 @@ describe('recording the source at creation', { timeout: 60000 }, () => {
       { branch: 'main', ref: 'refs/heads/feat' },
     ]) expect((await act(dir, 'setSource', options)).previewRefused).toBeTruthy()
     expect(stored(dir, 'feat')).toBeNull()
+  })
+})
+
+describe('rebasing with editPlan', { timeout: 60000 }, () => {
+  const handlers = {}
+  beforeAll(() => {
+    register({ handle: (channel, fn) => { handlers[channel] = fn } }, {
+      logger: { scope: () => ({ error: () => {}, info: () => {} }) },
+      editorCommand: { exe: process.execPath, helper: path.join(__dirname, 'git-editor.cjs') },
+    })
+  })
+
+  it('rewords a middle commit of an unpublished branch and keeps the tree', async () => {
+    const { dir } = repo()
+    git(dir, 'switch', '-q', '-c', 'feat')
+    for (const m of ['f1', 'f2', 'f3']) commit(dir, m)
+    const treeBefore = git(dir, 'rev-parse', 'HEAD^{tree}').trim()
+    const commits = git(dir, 'log', '--format=%H %P|%s', 'main..HEAD').split('\n').filter(Boolean).map(l => {
+      const [ids, subject] = l.split('|')
+      const [oid, ...parents] = ids.split(' ')
+      return { oid, subject, parents }
+    })
+    const plan = editPlan(commits, { kind: 'reword', oid: commits[1].oid, message: 'f2 reworded' })
+    const options = { base: plan.base, rows: plan.rows }
+    const repoArg = { name: 'r', path: dir }
+    const p = await handlers['git:preview'](null, repoArg, dir, [dir], 'rebaseInteractive', options)
+    expect(p.eligible).toBe(true)
+    expect(await handlers['git:run'](null, repoArg, dir, [dir], 'rebaseInteractive', options, p.stamp)).toMatchObject({ ok: true })
+    expect(git(dir, 'log', '--format=%s', 'main..HEAD').trim().split('\n')).toEqual(['f3', 'f2 reworded', 'f1'])
+    expect(git(dir, 'rev-parse', 'HEAD^{tree}').trim()).toBe(treeBefore)
   })
 })

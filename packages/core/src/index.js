@@ -125,5 +125,6 @@ export {
   ACTION_KINDS, BATCH_KINDS, BATCH_NOTE, actionTargets, previewModel, worktreeDefaultPath, checkBranchName, REBASE_ACTIONS, rebasePlan, moveRow, setRowAction, setRowMessage, rebaseTodo, squashGroups, rebaseMessages, messageRows, rebaseProblems, ACTIVITY_MAX, addActivity, failedTargets, filterFiles,
   parseConflicts, resolveRegion, hasMarkers, conflictKind, conflictLabels, operationText,
   wordMatch, filterByWords, filterFilesByWords,
-  BRANCH_FILTERS, branchState, matchesFilter, filterCounts, branchMeta, repoPills, primaryAction,
+  BRANCH_FILTERS, branchState, matchesFilter, filterCounts, branchMeta, commitsOff, repoPills, primaryAction,
+  rewordProblem, squashPreviousProblem, squashSelectedProblem, editPlan, squashMessage,
 } from './modules/git/index.js'

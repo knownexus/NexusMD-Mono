@@ -5,6 +5,8 @@
 // summary pills, and the one action that moves it forward. Pure; works on snapshot worktrees
 // ({ repo, branch, upstream, upstreamGone, ahead, behind, changes: [{ area }], operation, operationInfo, error }).
 
+import { sourceName } from './snapshot.js'
+
 const DETACHED = '(detached)'
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`
 
@@ -59,6 +61,12 @@ function operationLabel(tree) {
   return verb || tree.operation
 }
 
+/** "3 commits off master · " for a branch with commits beyond its source; '' otherwise. */
+export function commitsOff(tree) {
+  const n = tree.source?.count
+  return n > 0 ? `${plural(n, 'commit')} off ${sourceName(tree.source.ref)} · ` : ''
+}
+
 /**
  * The facts a branch row shows, most urgent first: [{ text, tone, strong? }]. Only non-default facts;
  * a clean, synced, published branch is just "Up to date". `worktree` is shown when it differs from the branch.
@@ -73,7 +81,7 @@ export function branchMeta(tree, { worktree = null } = {}) {
   if (s.ahead) out.push({ text: `↑${s.ahead} to push`, tone: 'info' })
   if (s.behind) out.push({ text: `↓${s.behind} to pull`, tone: 'info' })
   if (tree.upstreamGone) out.push({ text: 'upstream deleted', tone: 'warn' })
-  else if (s.unpublished) out.push({ text: 'not published', tone: 'muted' })
+  else if (s.unpublished) out.push({ text: `${commitsOff(tree)}not published`, tone: 'muted' })
   if (!out.length || (out.length === 1 && worktree)) out.push({ text: 'Up to date', tone: 'ok' })
   return out
 }
