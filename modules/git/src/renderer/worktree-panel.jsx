@@ -46,10 +46,13 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   const detached = tree.branch === '(detached)'
   const sourceRef = tree.source && !detached && tree.source.count ? tree.source.ref : null
   const branchCommits = useBranchCommits({ adapter, repo, cwd: tree.path, registered, sourceRef, head: tree.head || null })
-  const own = React.useMemo(() => (sourceRef ? new Set(branchCommits.commits.map(c => c.oid)) : null), [sourceRef, branchCommits.commits])
+  // Unknown (null) until the commits have loaded, so History falls back to its unpushed check meanwhile.
+  const own = React.useMemo(() => (sourceRef && branchCommits.loaded ? new Set(branchCommits.commits.map(c => c.oid)) : null), [sourceRef, branchCommits.loaded, branchCommits.commits])
   const sourceShort = tree.source && !detached ? sourceName(tree.source.ref) : null
-  // A click in the strip asks History to focus a commit or filter to the branch's own; the nonce makes a repeat count.
+  // A click in the strip asks History to focus a commit or filter to the branch's own; the nonce makes a repeat
+  // count. History says when it has applied one, and it is dropped then, so it never applies again later.
   const [request, setRequest] = React.useState(null)
+  const nonce = React.useRef(0)
   const [picking, setPicking] = React.useState(false)
   // The changes pane's diff isn't on screen in History or Files, so it isn't loaded either.
   const change = history || filesTab ? null : tree.changes.find(c => c.id === focusId) ?? null
@@ -64,7 +67,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   const close = () => { setOpened(null); setMode('diff'); setJustResolved(null) }
   // Another worktree starts in Diff with nothing open (ViewGit asked about the edits before switching).
   const [shownTree, setShownTree] = React.useState(tree.path)
-  if (shownTree !== tree.path) { setShownTree(tree.path); close() }
+  if (shownTree !== tree.path) { setShownTree(tree.path); close(); setRequest(null) }
   const editor = !history && !filesTab && opened?.tree === tree.path ? opened : null
   const editing = mode === 'edit' && !!editor
   const dirty = React.useRef(false)
@@ -167,7 +170,8 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   }
   const showInHistory = r => {
     if (panel !== 'history') { if (!confirmDiscard()) return; close() }
-    setRequest({ ...r, nonce: (request?.nonce ?? 0) + 1 })
+    nonce.current += 1
+    setRequest({ ...r, nonce: nonce.current })
     onPanel('history')
   }
   const switchPanel = id => {
@@ -236,7 +240,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
           <div className="nx-panel-body nx-gw-history-fill">
             <HistoryPanel adapter={adapter} repo={repo} cwd={tree.path} registered={registered} target={{ ref: 'HEAD', head: tree.head || null }} split={split} onSplit={onSplit} onAction={onSync}
               upstream={tree.upstream && !tree.upstreamGone ? tree.upstream : null} rebasing={/^Rebase/.test(tree.operation ?? '')}
-              own={own} source={sourceShort} request={request} />
+              own={own} source={sourceShort} request={request} onRequestDone={() => setRequest(null)} />
           </div>
         )
         : (
