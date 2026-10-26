@@ -660,7 +660,7 @@ function registerActions(handle, ctx) {
     const marker = await gitDirFile(wt);
     try {
       await rememberBase(wt, o.base);
-      const r = await w(wt, [...KEEP_HASH_LINES, 'rebase', '-i', '--end-of-options', o.base], { timeout: LONG, env: editorEnv(planFile) });
+      const r = await w(wt, ['rebase', '-i', '--end-of-options', o.base], { timeout: LONG, env: editorEnv(planFile), extraConfig: KEEP_HASH_LINES });
       const res = await finish(wt, r);
       // Stopped on a conflict: keep the plan so Continue applies the remaining rewords.
       if (res.conflict && marker) fsx.writeFileSync(marker, planFile);
@@ -682,7 +682,7 @@ function registerActions(handle, ctx) {
         if (planFile && fsx.existsSync(planFile)) { env = editorEnv(planFile); config = KEEP_HASH_LINES; }
       } catch { /* a rebase NexusMD didn't start */ }
     }
-    const r = await w(wt, [...config, command, `--${verb}`], { timeout: verb === 'abort' ? SHORT : LONG, env });
+    const r = await w(wt, [command, `--${verb}`], { timeout: verb === 'abort' ? SHORT : LONG, env, extraConfig: config });
     const res = await finish(wt, r);
     if (marker && (verb === 'abort' || res.ok)) cleanupPlan(marker);
     return res;
