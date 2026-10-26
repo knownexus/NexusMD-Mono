@@ -198,3 +198,69 @@ describe('git:status source', { timeout: 60000 }, () => {
     expect((await status(dir)).source).toBeNull()
   })
 })
+
+describe('recording the source at creation', { timeout: 60000 }, () => {
+  const handlers = {}
+  const call = (channel, ...args) => handlers[channel](null, ...args)
+  const act = async (dir, kind, options = {}) => {
+    const repoArg = { name: 'r', path: dir }
+    const p = await call('git:preview', repoArg, dir, [dir], kind, options)
+    if (!p.eligible) return { previewRefused: p.reason }
+    return call('git:run', repoArg, dir, [dir], kind, options, p.stamp)
+  }
+  beforeAll(() => {
+    register({ handle: (channel, fn) => { handlers[channel] = fn } }, {
+      logger: { scope: () => ({ error: () => {}, info: () => {} }) },
+      editorCommand: { exe: process.execPath, helper: path.join(__dirname, 'git-editor.cjs') },
+    })
+  })
+
+  it('remembers the checked-out branch for a new branch', async () => {
+    const { dir } = repo()
+    git(dir, 'switch', '-q', '-c', 'dev'); commit(dir, 'd1')
+    expect(await act(dir, 'branch', { name: 'feat', checkout: true })).toMatchObject({ ok: true })
+    expect(stored(dir, 'feat')).toBe('refs/heads/dev')
+  })
+
+  it('remembers a branch start ref', async () => {
+    const { dir } = repo()
+    git(dir, 'switch', '-q', '-c', 'dev')
+    expect(await act(dir, 'branch', { name: 'f2', start: 'refs/heads/main' })).toMatchObject({ ok: true })
+    expect(stored(dir, 'f2')).toBe('refs/heads/main')
+  })
+
+  it('remembers the checked-out branch when the start is a commit', async () => {
+    const { dir } = repo()
+    git(dir, 'switch', '-q', '-c', 'dev')
+    expect(await act(dir, 'branch', { name: 'f3', start: tip(dir, 'main~1') })).toMatchObject({ ok: true })
+    expect(stored(dir, 'f3')).toBe('refs/heads/dev')
+  })
+
+  it('records nothing for a commit start from a detached HEAD', async () => {
+    const { dir } = repo()
+    const oid = tip(dir)
+    git(dir, 'switch', '-q', '--detach')
+    expect(await act(dir, 'branch', { name: 'f4', start: oid })).toMatchObject({ ok: true })
+    expect(stored(dir, 'f4')).toBeNull()
+  })
+
+  it('setSource writes the source', async () => {
+    const { dir } = repo()
+    git(dir, 'switch', '-q', '-c', 'dev')
+    await act(dir, 'branch', { name: 'feat', checkout: true })
+    expect(await act(dir, 'setSource', { branch: 'feat', ref: 'refs/heads/main' })).toMatchObject({ ok: true })
+    expect(stored(dir, 'feat')).toBe('refs/heads/main')
+  })
+
+  it('setSource refuses tags, missing refs, the branch itself and the default branch', async () => {
+    const { dir } = repo()
+    git(dir, 'branch', 'feat'); git(dir, 'tag', 'v1')
+    for (const options of [
+      { branch: 'feat', ref: 'refs/tags/v1' },
+      { branch: 'feat', ref: 'refs/heads/nope' },
+      { branch: 'feat', ref: 'refs/heads/feat' },
+      { branch: 'main', ref: 'refs/heads/feat' },
+    ]) expect((await act(dir, 'setSource', options)).previewRefused).toBeTruthy()
+    expect(stored(dir, 'feat')).toBeNull()
+  })
+})

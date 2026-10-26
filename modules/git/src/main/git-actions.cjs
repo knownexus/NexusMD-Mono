@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+const { defaultBranch, createSourceReader } = require('./git-source.cjs');
 
 // ':' is git's own "no editor": nothing can wait on an editor. Interactive rebase swaps in the helper.
 const WRITE_ENV = { GIT_EDITOR: ':', GIT_SEQUENCE_EDITOR: ':', GIT_MERGE_AUTOEDIT: 'no' };
@@ -292,6 +293,28 @@ function registerActions(handle, ctx) {
       steps: o => [o.checkout
         ? ['switch', ...(o.remote ? ['--track'] : []), '-c', o.name, o.start]
         : ['branch', '--no-track', o.name, o.start]],
+      // The new branch's source is the branch it was cut from: the start ref, or else the branch checked out now.
+      after: async (wt, o, state) => {
+        const start = /^refs\/(heads|remotes)\//.test(o.start) ? o.start : null;
+        const ref = start ?? (state.symbolic?.startsWith('refs/heads/') ? state.symbolic : null);
+        if (!ref || ref === `refs/heads/${o.name}`) return;
+        const dir = await commonDirOf(wt);
+        if (!dir || o.name === defaultBranch(dir, fsx)) return;
+        await createSourceReader({ run: args => read(wt, args), commonDir: dir, fsx }).write(o.name, ref);
+      },
+    },
+    setSource: {
+      timeout: SHORT,
+      check: async (wt, o) => {
+        const refs = await refNames(wt, 'refs/heads/', 'refs/remotes/');
+        const dir = await commonDirOf(wt);
+        if (typeof o.branch !== 'string' || !refs.has(`refs/heads/${o.branch}`) || o.branch === defaultBranch(dir, fsx)) throw new Error('Choose a branch other than the default.');
+        if (typeof o.ref !== 'string' || !refs.has(o.ref) || o.ref === `refs/heads/${o.branch}`) throw new Error('Choose a different branch as the source.');
+        return { branch: o.branch, ref: o.ref };
+      },
+      preview: async (wt, o) => o,
+      steps: o => [['config', '--local', `branch.${o.branch}.nexusBase`, o.ref]],
+      stamp: () => 'setSource',
     },
     checkout: {
       timeout: LONG,
@@ -568,6 +591,10 @@ function registerActions(handle, ctx) {
     return { NEXUSMD_REBASE_PLAN: planFile, GIT_SEQUENCE_EDITOR: cmd('sequence'), GIT_EDITOR: cmd('message') };
   }
 
+  async function commonDirOf(wt) {
+    return out(await read(wt, ['rev-parse', '--path-format=absolute', '--git-common-dir']));
+  }
+
   async function gitDirFile(wt) {
     const dir = await gitDirOf(wt);
     return dir ? path.join(dir, PLAN_MARKER) : null;
@@ -666,6 +693,8 @@ function registerActions(handle, ctx) {
       }
     }
     if (a.before) await forgetBaseIfIdle(wt);
+    // The action itself worked, so a source that can't be recorded isn't worth reporting a failure for.
+    if (a.after) { try { await a.after(wt, o, state); } catch { /* status detects the source again later */ } }
     return { ok: true, detail: outputs.filter(Boolean).join('\n') || 'Done' };
   }
 
