@@ -338,6 +338,9 @@
 
 /* History (history-pane.jsx, history-panel.jsx, commit-detail.jsx): yours = --violet, upstream = --info */
 .nx-gw-history { display: grid; grid-template-rows: minmax(0, 1fr); height: 70vh; min-height: 320px; }
+/* In the worktree detail the History box fills what is left under the header and tabs (like .nx-gw-changes) so both columns scroll on screen. */
+.nx-gw-history-fill { flex: 1; min-height: 320px; grid-template-rows: minmax(0, 1fr); }
+.nx-gw-history-fill > .nx-gw-history { height: auto; min-height: 0; }
 .nx-gw-hlist { overflow: auto; min-height: 0; flex: 1; font-size: 13px; }
 .nx-gw-hdivider { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); padding: 8px 6px 4px; border-top: 1px solid var(--border); }
 .nx-gw-hdivider:first-child { border-top: 0; }
