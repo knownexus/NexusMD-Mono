@@ -2747,7 +2747,11 @@ function QueryPanel({
                 <div className="nx-db-table-wrap boxed">
                   <table className="nx-db-table">
                     <thead>
-                      <tr>{set.columns.map((c, ci) => <th key={ci}><span className="nx-db-th static">{c}</span></th>)}</tr>
+                      <tr>{set.columns.map((c, ci) => (
+                        <th key={ci} data-num={isNumeric(set.rows.find(r => r[ci] !== null && r[ci] !== undefined)?.[ci]) || undefined}>
+                          <span className="nx-db-th static">{c}</span>
+                        </th>
+                      ))}</tr>
                     </thead>
                     <tbody>
                       {set.rows.map((row, i) => (
