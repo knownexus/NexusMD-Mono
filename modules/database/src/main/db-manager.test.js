@@ -240,6 +240,87 @@ describe('db-manager IPC — SQLite', () => {
       ipc._invoke('db-manager:get-columns', { ...cfg, table: 'users; DROP TABLE users--' }),
     ).rejects.toThrow('Invalid identifier')
   })
+
+  // Answers each prepared statement by its SQL text: `routes` maps a pattern to the rows `.all()` gives.
+  function routeSqlite(routes) {
+    mockSqliteDb.prepare.mockImplementation((sql) => ({
+      ...mockSqliteStmt,
+      all: () => routes.find(([pattern]) => pattern.test(sql))?.[1] ?? [],
+    }))
+  }
+  const restoreSqlite = () => mockSqliteDb.prepare.mockImplementation(() => mockSqliteStmt)
+
+  it('get-structure resolves a key to the target primary key, and finds the keys that point here', async () => {
+    const fk = { id: 0, seq: 0, table: 'P', from: 'pid', to: null, on_delete: 'CASCADE', on_update: 'NO ACTION' }
+    routeSqlite([
+      [/PRAGMA table_info\("C"\)/, [{ name: 'pid', type: 'INTEGER', notnull: 0, dflt_value: null, pk: 0 }]],
+      [/PRAGMA table_info\("P"\)/, [{ name: 'id', type: 'INTEGER', notnull: 1, dflt_value: null, pk: 1 }]],
+      [/FROM sqlite_master/, [{ name: 'C' }, { name: 'P' }]],
+      [/foreign_key_list\("C"\)/, [fk]],
+    ])
+    try {
+      const child = await ipc._invoke('db-manager:get-structure', { ...cfg, table: 'C' })
+      expect(child.ok).toBe(true)
+      expect(child.columns.map(c => c.name)).toEqual(['pid'])
+      expect(child.foreignKeys).toEqual([
+        { name: 'C(pid)', columns: ['pid'], refTable: 'P', refColumns: ['id'], onDelete: 'CASCADE', onUpdate: 'NO ACTION' },
+      ])
+      expect(child.referencedBy).toEqual([])
+
+      const parent = await ipc._invoke('db-manager:get-structure', { ...cfg, table: 'p' })
+      expect(parent.foreignKeys).toEqual([])
+      expect(parent.referencedBy).toEqual([
+        { name: 'C(pid)', table: 'C', columns: ['pid'], refColumns: ['id'], onDelete: 'CASCADE', onUpdate: 'NO ACTION' },
+      ])
+    } finally { restoreSqlite() }
+  })
+
+  it('get-structure orders a composite key by seq and lists a self-reference both ways', async () => {
+    routeSqlite([
+      [/FROM sqlite_master/, [{ name: 'Node' }]],
+      [/foreign_key_list\("Node"\)/, [
+        { id: 0, seq: 1, table: 'Node', from: 'ps', to: 'site', on_delete: 'SET NULL', on_update: 'RESTRICT' },
+        { id: 0, seq: 0, table: 'Node', from: 'pid', to: 'id', on_delete: 'SET NULL', on_update: 'RESTRICT' },
+      ]],
+    ])
+    try {
+      const result = await ipc._invoke('db-manager:get-structure', { ...cfg, table: 'Node' })
+      const key = { name: 'Node(pid, ps)', columns: ['pid', 'ps'], refColumns: ['id', 'site'], onDelete: 'SET NULL', onUpdate: 'RESTRICT' }
+      expect(result.foreignKeys).toEqual([{ ...key, refTable: 'Node' }])
+      expect(result.referencedBy).toEqual([{ ...key, table: 'Node' }])
+    } finally { restoreSqlite() }
+  })
+
+  it('get-structure reads indexes in key order and marks the primary key', async () => {
+    routeSqlite([
+      [/index_list\("t"\)/, [
+        { seq: 0, name: 'sqlite_autoindex_t_1', unique: 1, origin: 'pk', partial: 0 },
+        { seq: 1, name: 'ix_t_a', unique: 0, origin: 'c', partial: 0 },
+      ]],
+      [/index_xinfo\("sqlite_autoindex_t_1"\)/, [
+        { seqno: 0, cid: 0, name: 'id', desc: 0, key: 1 },
+        { seqno: 1, cid: -1, name: null, desc: 0, key: 0 },
+      ]],
+      [/index_xinfo\("ix_t_a"\)/, [
+        { seqno: 1, cid: 2, name: 'b', desc: 0, key: 1 },
+        { seqno: 0, cid: 1, name: 'a', desc: 1, key: 1 },
+        { seqno: 2, cid: -1, name: null, desc: 0, key: 0 },
+      ]],
+    ])
+    try {
+      const result = await ipc._invoke('db-manager:get-structure', { ...cfg, table: 't' })
+      expect(result.indexes).toEqual([
+        { name: 'sqlite_autoindex_t_1', columns: [{ name: 'id', desc: false }], unique: true, primaryKey: true, filter: null },
+        { name: 'ix_t_a', columns: [{ name: 'a', desc: true }, { name: 'b', desc: false }], unique: false, primaryKey: false, filter: null },
+      ])
+    } finally { restoreSqlite() }
+  })
+
+  it('get-structure rejects invalid table identifier', async () => {
+    await expect(
+      ipc._invoke('db-manager:get-structure', { ...cfg, table: 'users; DROP TABLE users--' }),
+    ).rejects.toThrow('Invalid identifier')
+  })
 })
 
 describe('identifier validation', () => {
@@ -327,18 +408,20 @@ describe('db-manager IPC — SQL Server authentication', () => {
 })
 
 describe('db-manager IPC — SQL Server statements', () => {
-  let ipc, requests, nextResult
+  let ipc, requests, nextResult, queuedResults
 
   // Each request records its parameters, its SQL and whether it asked for array rows.
+  // It gets the next queued result if a test queued any, else `nextResult`.
   function fakeRequest() {
     const req = { inputs: {}, sql: null, arrayRowMode: false }
     req.input = (name, value) => { req.inputs[name] = value; return req }
-    req.query = async (sql) => { req.sql = sql; requests.push(req); return nextResult }
+    req.query = async (sql) => { req.sql = sql; requests.push(req); return queuedResults.length ? queuedResults.shift() : nextResult }
     return req
   }
 
   beforeEach(() => {
     requests = []
+    queuedResults = []
     nextResult = { recordset: [], recordsets: [], rowsAffected: [1] }
     ipc = makeFakeIpcMain()
     register(ipc, { drivers: { requireMssql: () => ({ connect: async () => ({ request: fakeRequest }) }) } })
@@ -442,6 +525,49 @@ describe('db-manager IPC — SQL Server statements', () => {
     expect(requests[0].sql).toMatch(/pk\.TABLE_SCHEMA = c\.TABLE_SCHEMA/)
     await ipc._invoke('db-manager:get-columns', { ...cfg, table: 'Member' })
     expect(requests[1].inputs).toEqual({ object: '[Member]', table: 'Member' })
+  })
+
+  it('get-structure groups composite keys, names targets like the table list, and reads indexes', async () => {
+    const own = { ownerSchema: 'dbo', ownerTable: 'Member' }
+    queuedResults = [
+      { recordset: [{ name: 'Id', dataType: 'int', isPrimaryKey: 1, nullable: 0, numericPrecision: 10, numericScale: 0, hasDefault: 0, isIdentity: 1, isComputed: 0 }] },
+      { recordset: [
+        { name: 'FK_M_B', ...own, col: 'BookingID', refSchema: 'maintenance', refTable: 'Booking', refCol: 'ID', onDelete: 'CASCADE', onUpdate: 'NO ACTION' },
+        { name: 'FK_M_B', ...own, col: 'Site', refSchema: 'maintenance', refTable: 'Booking', refCol: 'Site', onDelete: 'CASCADE', onUpdate: 'NO ACTION' },
+        { name: 'FK_M_T', ...own, col: 'TypeID', refSchema: 'dbo', refTable: 'Type', refCol: 'ID', onDelete: 'NO ACTION', onUpdate: 'SET NULL' },
+      ] },
+      { recordset: [
+        { name: 'FK_N_M', ownerSchema: 'audit', ownerTable: 'Note', col: 'MemberID', refSchema: 'dbo', refTable: 'Member', refCol: 'Id', onDelete: 'NO ACTION', onUpdate: 'NO ACTION' },
+      ] },
+      { recordset: [
+        { name: 'IX_A', isUnique: 1, isPrimaryKey: 0, filter: '([A]>(0))', col: 'A', isDesc: 1 },
+        { name: 'PK_M', isUnique: 1, isPrimaryKey: 1, filter: null, col: 'Id', isDesc: 0 },
+        { name: 'PK_M', isUnique: 1, isPrimaryKey: 1, filter: null, col: 'Site', isDesc: 0 },
+      ] },
+    ]
+    const result = await ipc._invoke('db-manager:get-structure', { ...cfg, table: 'Member' })
+    expect(result.columns.map(c => c.name)).toEqual(['Id'])
+    expect(result.foreignKeys).toEqual([
+      { name: 'FK_M_B', refTable: 'maintenance.Booking', columns: ['BookingID', 'Site'], refColumns: ['ID', 'Site'], onDelete: 'CASCADE', onUpdate: 'NO ACTION' },
+      { name: 'FK_M_T', refTable: 'Type', columns: ['TypeID'], refColumns: ['ID'], onDelete: 'NO ACTION', onUpdate: 'SET NULL' },
+    ])
+    expect(result.referencedBy).toEqual([
+      { name: 'FK_N_M', table: 'audit.Note', columns: ['MemberID'], refColumns: ['Id'], onDelete: 'NO ACTION', onUpdate: 'NO ACTION' },
+    ])
+    expect(result.indexes).toEqual([
+      { name: 'IX_A', columns: [{ name: 'A', desc: true }], unique: true, primaryKey: false, filter: '([A]>(0))' },
+      { name: 'PK_M', columns: [{ name: 'Id', desc: false }, { name: 'Site', desc: false }], unique: true, primaryKey: true, filter: null },
+    ])
+    // columns, outgoing keys, incoming keys, indexes: one request each, all scoped to the same object.
+    expect(requests).toHaveLength(4)
+    expect(requests[1].sql).toMatch(/parent_object_id = OBJECT_ID\(@object\)/)
+    expect(requests[2].sql).toMatch(/referenced_object_id = OBJECT_ID\(@object\)/)
+    expect(requests.map(r => r.inputs.object)).toEqual(['[Member]', '[Member]', '[Member]', '[Member]'])
+  })
+
+  it('get-structure scopes a schema-qualified table', async () => {
+    await ipc._invoke('db-manager:get-structure', { ...cfg, table: 'maintenance.Member' })
+    expect(requests.map(r => r.inputs.object)).toEqual(Array(4).fill('[maintenance].[Member]'))
   })
 
   it.each(['a.b.c', 'maintenance.', '.Member', 'bad;schema.T'])('rejects the table name %s', async (table) => {

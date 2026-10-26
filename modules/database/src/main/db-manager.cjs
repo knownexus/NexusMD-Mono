@@ -73,6 +73,10 @@ function tableName(type, table) {
   return { schema, name, sql: `[${schema}].[${name}]` }
 }
 
+// How connect lists a table: dbo tables keep their bare name (and so their saved stars and groups);
+// others carry their schema.
+const listName = (schema, name) => (!schema || schema === 'dbo' ? name : `${schema}.${name}`)
+
 // ─── SQL Server pool factory ──────────────────────────────────────────────────
 
 /** @type {Map<string, import('@azure/identity').TokenCredential>} */
@@ -170,8 +174,7 @@ function makeHandlers(drivers) {
         WHERE TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND TABLE_SCHEMA NOT IN ('sys', 'INFORMATION_SCHEMA')
         ORDER BY TABLE_NAME
       `)
-      // dbo tables keep their bare name (and so their saved stars and groups); others carry their schema.
-      const named = r => (!r.TABLE_SCHEMA || r.TABLE_SCHEMA === 'dbo' ? r.TABLE_NAME : `${r.TABLE_SCHEMA}.${r.TABLE_NAME}`)
+      const named = r => listName(r.TABLE_SCHEMA, r.TABLE_NAME)
       return {
         ok: true,
         tables: result.recordset.map(named),
@@ -405,6 +408,113 @@ function makeHandlers(drivers) {
     throw new Error(`Unknown database type: ${type}`)
   }
 
+  // Foreign keys both ways and indexes, for the Structure tab. Each SQL Server query is one request;
+  // its rows (one per key column) are grouped here.
+  async function handleGetStructure(e, { type, config, table }) {
+    const t = tableName(type, table)
+    const { columns } = await handleGetColumns(e, { type, config, table })
+
+    if (type === 'sqlserver') {
+      const pool = await getSqlPool(config, drivers)
+      const run = sql => pool.request().input('object', t.sql).query(sql).then(r => r.recordset)
+      const keyRows = where => run(`
+        SELECT fk.name AS name,
+               OBJECT_SCHEMA_NAME(fk.parent_object_id) AS ownerSchema, OBJECT_NAME(fk.parent_object_id) AS ownerTable,
+               COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS col,
+               OBJECT_SCHEMA_NAME(fk.referenced_object_id) AS refSchema, OBJECT_NAME(fk.referenced_object_id) AS refTable,
+               COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) AS refCol,
+               REPLACE(fk.delete_referential_action_desc, '_', ' ') AS onDelete,
+               REPLACE(fk.update_referential_action_desc, '_', ' ') AS onUpdate
+        FROM sys.foreign_keys fk
+        JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+        WHERE ${where}
+        ORDER BY fk.name, fkc.constraint_column_id
+      `)
+      const group = (rows, target) => {
+        const keys = new Map()
+        for (const r of rows) {
+          const id = `${r.ownerSchema}.${r.name}`
+          let k = keys.get(id)
+          if (!k) keys.set(id, k = { name: r.name, ...target(r), columns: [], refColumns: [], onDelete: r.onDelete, onUpdate: r.onUpdate })
+          k.columns.push(r.col)
+          k.refColumns.push(r.refCol)
+        }
+        return [...keys.values()]
+      }
+      const outgoing = await keyRows('fk.parent_object_id = OBJECT_ID(@object)')
+      const incoming = await keyRows('fk.referenced_object_id = OBJECT_ID(@object)')
+      const indexRows = await run(`
+        SELECT i.name AS name, i.is_unique AS isUnique, i.is_primary_key AS isPrimaryKey, i.filter_definition AS filter,
+               COL_NAME(ic.object_id, ic.column_id) AS col, ic.is_descending_key AS isDesc
+        FROM sys.indexes i
+        JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+        WHERE i.object_id = OBJECT_ID(@object) AND i.type > 0 AND ic.key_ordinal > 0
+        ORDER BY i.name, ic.key_ordinal
+      `)
+      const indexes = new Map()
+      for (const r of indexRows) {
+        let ix = indexes.get(r.name)
+        if (!ix) indexes.set(r.name, ix = { name: r.name, columns: [], unique: !!r.isUnique, primaryKey: !!r.isPrimaryKey, filter: r.filter ?? null })
+        ix.columns.push({ name: r.col, desc: !!r.isDesc })
+      }
+      return {
+        ok: true,
+        columns,
+        foreignKeys: group(outgoing, r => ({ refTable: listName(r.refSchema, r.refTable) })),
+        referencedBy: group(incoming, r => ({ table: listName(r.ownerSchema, r.ownerTable) })),
+        indexes: [...indexes.values()],
+      }
+    }
+
+    if (type === 'sqlite') {
+      const db = getSqliteDb(config.filePath, drivers)
+      const q = name => `"${name.replace(/"/g, '""')}"`
+      const keysOf = name => {
+        const keys = new Map()
+        for (const r of db.prepare(`PRAGMA foreign_key_list(${q(name)})`).all()) {
+          let k = keys.get(r.id)
+          if (!k) keys.set(r.id, k = { table: r.table, parts: [], onDelete: r.on_delete, onUpdate: r.on_update })
+          k.parts.push({ seq: r.seq, from: r.from, to: r.to })
+        }
+        return [...keys.values()].map(k => {
+          const parts = k.parts.sort((a, b) => a.seq - b.seq)
+          return { table: k.table, columns: parts.map(p => p.from), to: parts.map(p => p.to), onDelete: k.onDelete, onUpdate: k.onUpdate }
+        })
+      }
+      // `to` is null when the key points at the target's primary key.
+      const primaryKeyOf = name => db.prepare(`PRAGMA table_info(${q(name)})`).all()
+        .filter(c => c.pk > 0).sort((a, b) => a.pk - b.pk).map(c => c.name)
+      const targetColumns = k => (k.to.every(c => c != null) ? k.to : primaryKeyOf(k.table))
+      // SQLite names no constraint, so the key id is its owner and columns.
+      const keyName = (owner, columns) => `${owner}(${columns.join(', ')})`
+
+      const foreignKeys = keysOf(t.name).map(k => ({
+        name: keyName(t.name, k.columns), columns: k.columns, refTable: k.table, refColumns: targetColumns(k), onDelete: k.onDelete, onUpdate: k.onUpdate,
+      }))
+
+      const referencedBy = []
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()
+      for (const { name } of tables) {
+        for (const k of keysOf(name)) {
+          if (k.table.toLowerCase() !== t.name.toLowerCase()) continue
+          referencedBy.push({
+            name: keyName(name, k.columns), table: name, columns: k.columns, refColumns: targetColumns(k), onDelete: k.onDelete, onUpdate: k.onUpdate,
+          })
+        }
+      }
+
+      const indexes = db.prepare(`PRAGMA index_list(${q(t.name)})`).all().map(ix => ({
+        name: ix.name,
+        columns: db.prepare(`PRAGMA index_xinfo(${q(ix.name)})`).all()
+          .filter(c => c.key === 1).sort((a, b) => a.seqno - b.seqno).map(c => ({ name: c.name, desc: !!c.desc })),
+        unique: !!ix.unique, primaryKey: ix.origin === 'pk', filter: null,
+      }))
+      return { ok: true, columns, foreignKeys, referencedBy, indexes }
+    }
+
+    throw new Error(`Unknown database type: ${type}`)
+  }
+
   async function handleRunQuery(_e, { type, config, sql }) {
     const trimmed = sql.trimStart().toUpperCase()
     const ALLOWED = ['SELECT', 'WITH', 'DELETE', 'INSERT', 'UPDATE']
@@ -457,7 +567,7 @@ function makeHandlers(drivers) {
     throw new Error(`Unknown database type: ${type}`)
   }
 
-  return { handleConnect, handleRunDdl, handleGetRows, handleDeleteRows, handleUpdateCell, handleInsertRow, handleGetColumns, handleRunQuery }
+  return { handleConnect, handleRunDdl, handleGetRows, handleDeleteRows, handleUpdateCell, handleInsertRow, handleGetColumns, handleGetStructure, handleRunQuery }
 }
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
@@ -495,6 +605,7 @@ function register(ipcMain, opts = {}) {
   handle('db-manager:insert-row',  handlers.handleInsertRow)
   handle('db-manager:run-ddl',     handlers.handleRunDdl)
   handle('db-manager:get-columns', handlers.handleGetColumns)
+  handle('db-manager:get-structure', handlers.handleGetStructure)
   handle('db-manager:run-query',  handlers.handleRunQuery)
 
   // Hook into Electron's quit lifecycle so connections are cleanly closed.

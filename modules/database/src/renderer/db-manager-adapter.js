@@ -117,4 +117,15 @@ export const dbManagerAdapter = {
   getColumns(type, config, table) {
     return api().getColumns(type, config, table)
   },
+
+  /**
+   * Columns, foreign keys (both ways) and indexes of a table.
+   * @param {'sqlserver'|'sqlite'} type
+   * @param {object} config
+   * @param {string} table
+   * @returns {Promise<{ ok: boolean, columns: object[], foreignKeys: object[], referencedBy: object[], indexes: object[] }>}
+   */
+  getStructure(type, config, table) {
+    return api().getStructure(type, config, table)
+  },
 }
