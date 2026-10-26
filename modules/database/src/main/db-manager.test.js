@@ -85,6 +85,12 @@ describe('db-manager IPC — SQLite', () => {
     expect(mockSqliteStmt.all).toHaveBeenLastCalledWith(10_000, 0)
   })
 
+  it('get-rows filters by a parameterised where, binding values before limit and offset', async () => {
+    await ipc._invoke('db-manager:get-rows', { ...cfg, table: 'users', where: [{ column: 'id', value: 2 }] })
+    expect(mockSqliteDb.prepare.mock.calls.at(-1)[0]).toMatch(/WHERE "id" = \? LIMIT \? OFFSET \?/)
+    expect(mockSqliteStmt.all).toHaveBeenLastCalledWith(2, 500, 0)
+  })
+
   it('delete-rows calls DELETE and returns affected count', async () => {
     const result = await ipc._invoke('db-manager:delete-rows', {
       ...cfg, table: 'users', primaryKey: 'id', values: [1, 2],
@@ -393,6 +399,24 @@ describe('db-manager IPC — SQL Server statements', () => {
     expect(requests[0].sql).toMatch(/TABLE_SCHEMA NOT IN \('sys', 'INFORMATION_SCHEMA'\)/)
     expect(result.tables).toEqual(['Member', 'maintenance.DirectDebitEmailHistory', 'Staging.V_Member'])
     expect(result.views).toEqual(['Staging.V_Member'])
+  })
+
+  it('get-rows filters by a parameterised where, with null as IS NULL', async () => {
+    await ipc._invoke('db-manager:get-rows', { ...cfg, table: 'maintenance.Member', where: [{ column: 'BookingID', value: '9007199254740993' }, { column: 'Note', value: null }] })
+    expect(requests[0].sql).toContain('FROM [maintenance].[Member]')
+    expect(requests[0].sql).toContain('WHERE [BookingID] = @w0 AND [Note] IS NULL')
+    expect(requests[0].sql).toContain('ORDER BY (SELECT NULL)')
+    expect(requests[0].inputs).toEqual({ w0: '9007199254740993' })
+  })
+
+  it('get-rows passes a Date filter value through as the same instance', async () => {
+    const when = new Date('2026-01-02T03:04:05Z')
+    await ipc._invoke('db-manager:get-rows', { ...cfg, table: 'Member', where: [{ column: 'Joined', value: when }] })
+    expect(requests[0].inputs.w0).toBe(when)
+  })
+
+  it('get-rows rejects an invalid where column', async () => {
+    await expect(ipc._invoke('db-manager:get-rows', { ...cfg, table: 'Member', where: [{ column: 'a]; DROP', value: 1 }] })).rejects.toThrow('Invalid identifier')
   })
 
   it('reads and changes a table in its own schema', async () => {

@@ -212,15 +212,24 @@ function makeHandlers(drivers) {
     throw new Error(`Unknown database type: ${type}`)
   }
 
-  async function handleGetRows(_e, { type, config, table, limit = 500, offset = 0 }) {
+  // `where` is a list of { column, value } ANDed together; a null or undefined value matches IS NULL.
+  async function handleGetRows(_e, { type, config, table, limit = 500, offset = 0, where }) {
     const t = tableName(type, table)
+    const filters = (where ?? []).map(({ column, value }) => { validateIdentifier(column); return { column, value: value ?? null } })
     const safeLimit  = Math.min(Math.max(parseInt(limit,  10) || 500,  1), 10_000)
     const safeOffset = Math.max(parseInt(offset, 10) || 0, 0)
 
     if (type === 'sqlserver') {
       const pool = await getSqlPool(config, drivers)
-      const result = await pool.request().query(`
+      const request = pool.request()
+      const clause  = filters.map(({ column, value }, i) => {
+        if (value === null) return `[${column}] IS NULL`
+        request.input(`w${i}`, value)
+        return `[${column}] = @w${i}`
+      })
+      const result = await request.query(`
         SELECT * FROM ${t.sql}
+        ${clause.length ? `WHERE ${clause.join(' AND ')}` : ''}
         ORDER BY (SELECT NULL)
         OFFSET ${safeOffset} ROWS FETCH NEXT ${safeLimit} ROWS ONLY
       `)
@@ -229,7 +238,10 @@ function makeHandlers(drivers) {
 
     if (type === 'sqlite') {
       const db = getSqliteDb(config.filePath, drivers)
-      const rawRows = db.prepare(`SELECT * FROM "${table}" LIMIT ? OFFSET ?`).all(safeLimit, safeOffset)
+      const clause  = filters.map(({ column, value }) => value === null ? `"${column}" IS NULL` : `"${column}" = ?`)
+      const whereSql  = clause.length ? ` WHERE ${clause.join(' AND ')}` : ''
+      const rawRows = db.prepare(`SELECT * FROM "${table}"${whereSql} LIMIT ? OFFSET ?`)
+        .all(...filters.filter(f => f.value !== null).map(f => f.value), safeLimit, safeOffset)
       if (!rawRows.length) return { columns: [], rows: [] }
       const columns = Object.keys(rawRows[0])
       const rows    = rawRows.map(r => columns.map(c => r[c] ?? null))

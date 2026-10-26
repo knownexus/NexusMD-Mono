@@ -12,7 +12,7 @@
     "preload": {
       "dbManager": {
         "connect": { "invoke": "db-manager:connect", "pack": ["type", "config"] },
-        "getRows": { "invoke": "db-manager:get-rows", "pack": ["type", "config", "table", "limit", "offset"] },
+        "getRows": { "invoke": "db-manager:get-rows", "pack": ["type", "config", "table", "limit", "offset", "where"] },
         "deleteRows": { "invoke": "db-manager:delete-rows", "pack": ["type", "config", "table", "primaryKey", "values"] },
         "updateCell": { "invoke": "db-manager:update-cell", "pack": ["type", "config", "table", "primaryKey", "primaryValue", "column", "value"] },
         "runDdl": { "invoke": "db-manager:run-ddl", "pack": ["type", "config", "sql"] },

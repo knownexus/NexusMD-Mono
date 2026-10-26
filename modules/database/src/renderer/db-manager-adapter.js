@@ -41,8 +41,8 @@ export const dbManagerAdapter = {
    * @param {number} [offset=0]
    * @returns {Promise<{ columns: string[], rows: any[][] }>}
    */
-  getRows(type, config, table, limit = 500, offset = 0) {
-    return api().getRows(type, config, table, limit, offset)
+  getRows(type, config, table, limit = 500, offset = 0, where = null) {
+    return api().getRows(type, config, table, limit, offset, where)
   },
 
   /**
