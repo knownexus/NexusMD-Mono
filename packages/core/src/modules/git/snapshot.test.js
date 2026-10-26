@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { loadSnapshot, refreshRepos, applyStatus, worktreeSummary } from './snapshot.js'
+import { loadSnapshot, refreshRepos, applyStatus, worktreeSummary, sourceName } from './snapshot.js'
 import { createNoOpAdapters } from '../../adapters/defaults.js'
 import { getRegistry } from '../../features/module-registry.js'
 import './index.js'
@@ -41,6 +41,17 @@ describe('applyStatus', () => {
 
   it('never marks a branch without an upstream as gone', () => {
     expect(applyStatus(tree(), status('# branch.head main\0')).upstreamGone).toBe(false)
+  })
+
+  it('carries the source onto the tree, or null', () => {
+    const source = { ref: 'refs/heads/main', count: 2 }
+    expect(applyStatus(tree(), { ...status('# branch.head feat\0'), source }).source).toEqual(source)
+    expect(applyStatus(tree(), status('# branch.head feat\0')).source).toBeNull()
+  })
+
+  it('sourceName strips the ref prefix', () => {
+    expect(sourceName('refs/remotes/origin/main')).toBe('origin/main')
+    expect(sourceName('refs/heads/dev')).toBe('dev')
   })
 
   it('applyStatus copies operationInfo', () => {

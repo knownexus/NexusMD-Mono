@@ -9,7 +9,7 @@ export {
   GIT_AREAS, parseStatus, parseWorktrees, parseBranches, statusCode,
   worktreeId, worktreeName, activeBranchRef, branchLabel, checkoutName,
 } from './parse.js'
-export { loadSnapshot, refreshRepos, applyStatus, worktreeSummary } from './snapshot.js'
+export { loadSnapshot, refreshRepos, applyStatus, worktreeSummary, sourceName } from './snapshot.js'
 export {
   ALL_PROJECTS, LEGACY_ALL_PROJECTS, findGroup, groupIncludesWorktree, groupIncludesBranch, scopeSnapshot, changeCount,
   uniqueName, groupNameError, renameGroup, duplicateGroup, deleteGroup, registerRepo, unregisterRepo,

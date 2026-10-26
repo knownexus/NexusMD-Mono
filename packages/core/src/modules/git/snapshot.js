@@ -25,8 +25,15 @@ export function applyStatus(tree, s) {
     // Porcelain v2 omits branch.ab when the configured upstream ref no longer exists.
     upstreamGone: !!p.upstream && !p.hasAb,
     operation: s.operation || '', rebasingBranch: s.rebasingBranch || null, operationInfo: s.operationInfo || null, fetchedAt: s.fetchedAt || null,
+    // The branch it was cut from and the commits ahead of it, or null (default branch, detached, unknown).
+    source: s.source || null,
   })
   return tree
+}
+
+/** A source ref without its `refs/heads/` or `refs/remotes/` prefix. */
+export function sourceName(ref) {
+  return String(ref).replace(/^refs\/(?:heads|remotes)\//, '')
 }
 
 export function worktreeSummary(tree) {
@@ -46,7 +53,7 @@ async function loadRepo(adapter, repo, registered, concurrency, full = new Set()
     await mapLimit(trees, concurrency, async tree => {
       let s
       const all = full.has(worktreeId(tree))
-      try { s = await adapter.status(repo, tree.path, registered, { untracked: all ? 'all' : 'normal' }) } catch (e) { s = { error: message(e) } }
+      try { s = await adapter.status(repo, tree.path, registered, { untracked: all ? 'all' : 'normal', countSource: all }) } catch (e) { s = { error: message(e) } }
       applyStatus(tree, s)
       tree.untrackedFull = all
     })
