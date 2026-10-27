@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // host.js pulls in the shell's sign-in and sync modules; only navigation is under test here.
-vi.mock('../cloud-auth.js', () => ({ makeDesktopOAuthService: vi.fn(), makeNativeGoogleBinding: vi.fn() }))
+vi.mock('../cloud-auth.js', () => ({ makeShellOAuthService: vi.fn(), makeNativeGoogleBinding: vi.fn() }))
 vi.mock('../sync.js', () => ({ desktopSync: {} }))
 vi.mock('../adapters/secureStorage.js', () => ({ secureStorageAdapter: {} }))
 vi.mock('../adapters/picker.js', () => ({ pickerAdapter: {} }))

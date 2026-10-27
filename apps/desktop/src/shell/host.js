@@ -1,6 +1,6 @@
 import { createCapabilities } from '@nexusmd/shell-sdk'
 import { registry } from './registry.js'
-import { makeDesktopOAuthService, makeNativeGoogleBinding } from '../cloud-auth.js'
+import { makeShellOAuthService, makeNativeGoogleBinding } from '../cloud-auth.js'
 import { desktopSync } from '../sync.js'
 import { secureStorageAdapter } from '../adapters/secureStorage.js'
 import { pickerAdapter } from '../adapters/picker.js'
@@ -36,7 +36,7 @@ export const host = {
   },
   // Looked up when called, not when this file loads.
   cloud: {
-    makeOAuthService: (...args) => makeDesktopOAuthService(...args),
+    makeOAuthService: (...args) => makeShellOAuthService(...args),
     makeNativeGoogleBinding: (...args) => makeNativeGoogleBinding(...args),
   },
   sync: { syncOnce: () => desktopSync.syncOnce() },

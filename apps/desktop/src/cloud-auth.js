@@ -265,3 +265,10 @@ export function makeDesktopOAuthService(from) {
     },
   }
 }
+
+// What apps get as host.cloud.makeOAuthService. Settings signs in to Microsoft natively (PKCE in the
+// main process), so its tokens must be renewed natively too — the web backend's /refresh rejects a
+// native refresh token, which left the Calendar sending an expired token after the first hour.
+export function makeShellOAuthService(from) {
+  return from === 'microsoft' ? makeNativeMicrosoftBinding() : makeDesktopOAuthService(from)
+}

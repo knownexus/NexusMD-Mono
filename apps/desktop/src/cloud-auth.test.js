@@ -10,7 +10,7 @@ vi.mock('@nexusmd/ui', () => ({
 vi.mock('./profile-keys.js', () => ({ getProfileKey: (k) => k }))
 vi.mock('./adapters/secureStorage.js', () => ({ secureStorageAdapter: { get: async () => null, set: async () => {} } }))
 
-import { makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken, decodeJwtClaims, redeem } from './cloud-auth.js'
+import { makeNativeGoogleBinding, makeNativeMicrosoftBinding, makeShellOAuthService, setManualMicrosoftToken, decodeJwtClaims, redeem } from './cloud-auth.js'
 import { beginSignIn } from './oauth-pending.js'
 
 // Build a minimal JWT (header.payload.signature) with the given exp claim.
@@ -74,6 +74,43 @@ describe('makeNativeMicrosoftBinding', () => {
     expect(window.electronAPI.oauth.refresh).toHaveBeenCalledWith('RT1', 'microsoft')
     expect(tok).toBe('new')
     expect(JSON.parse(localStorage.getItem(KEY)).refreshToken).toBe('RT2')
+  })
+})
+
+// What apps get from host.cloud.makeOAuthService. Settings signs in to Microsoft natively, so apps
+// (the Calendar) must renew that sign-in natively too: the web backend can't renew a native token.
+describe('makeShellOAuthService', () => {
+  const KEY = 'nexusmd.microsoft.auth'
+  let fetchMock
+  beforeEach(() => {
+    localStorage.clear()
+    window.electronAPI = { oauth: { start: vi.fn(), refresh: vi.fn() } }
+    fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({}) })
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  it('renews an expired Microsoft sign-in natively, not through the web backend', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ accessToken: 'stale', refreshToken: 'RT1', expiresAt: Date.now() - 1000 }))
+    window.electronAPI.oauth.refresh.mockResolvedValue({ accessToken: 'fresh', refreshToken: 'RT2', expiresAt: Date.now() + 3_600_000 })
+    const ms = makeShellOAuthService('microsoft')
+    expect(ms.isConnected()).toBe(true)
+    expect(await ms.getToken()).toBe('fresh')
+    expect(window.electronAPI.oauth.refresh).toHaveBeenCalledWith('RT1', 'microsoft')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('renews natively when Graph rejects the token (force)', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ accessToken: 'revoked', refreshToken: 'RT1', expiresAt: Date.now() + 3_600_000 }))
+    window.electronAPI.oauth.refresh.mockResolvedValue({ accessToken: 'fresh', expiresAt: Date.now() + 3_600_000 })
+    expect(await makeShellOAuthService('microsoft').getToken({ force: true })).toBe('fresh')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps the web-backend sign-in for other providers', async () => {
+    localStorage.setItem('nexusmd.github.auth', JSON.stringify({ accessToken: 'gh', refreshToken: 'r' }))
+    const gh = makeShellOAuthService('github')
+    expect(await gh.getToken()).toBe('gh')
+    expect(typeof gh.loadCreds).toBe('function')
   })
 })
 
