@@ -45,20 +45,30 @@ function install(ids) {
   const apps = join(root, 'apps')
   mkdirSync(apps)
   for (const id of ids) cpSync(join(appsBuilt, id), join(apps, id), { recursive: true })
-  return { root, apps }
+  // Where downloaded app updates go (userData/apps in an installed build); empty unless a test fills it.
+  const updates = join(root, 'updates')
+  mkdirSync(updates)
+  return { root, apps, updates }
 }
 
 async function withInstalled(ids, fn, { prepare, launch = {} } = {}) {
   const installed = install(ids)
   prepare?.(installed)
-  const saved = { apps: process.env.NEXUSMD_APPS_DIR, shell: process.env.NEXUSMD_SHELL_DIR, narrow: process.env.NEXUSMD_APPS }
+  const saved = {
+    apps: process.env.NEXUSMD_APPS_DIR, shell: process.env.NEXUSMD_SHELL_DIR, narrow: process.env.NEXUSMD_APPS,
+    updates: process.env.NEXUSMD_APP_UPDATES_DIR,
+  }
   process.env.NEXUSMD_APPS_DIR = installed.apps
   process.env.NEXUSMD_SHELL_DIR = shellDir
+  process.env.NEXUSMD_APP_UPDATES_DIR = installed.updates
   delete process.env.NEXUSMD_APPS
   const launched = await launchApp(launch)
   try { await fn({ ...launched, ...installed }) } finally {
     await launched.close()
-    for (const [key, value] of [['NEXUSMD_APPS_DIR', saved.apps], ['NEXUSMD_SHELL_DIR', saved.shell], ['NEXUSMD_APPS', saved.narrow]]) {
+    for (const [key, value] of [
+      ['NEXUSMD_APPS_DIR', saved.apps], ['NEXUSMD_SHELL_DIR', saved.shell], ['NEXUSMD_APPS', saved.narrow],
+      ['NEXUSMD_APP_UPDATES_DIR', saved.updates],
+    ]) {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
     }
@@ -174,6 +184,92 @@ test('an app whose code fails to load is left out, and the others carry on', asy
     await expect(heading(win)).toHaveText('Git Workspace', { timeout: 30_000 })
     await expect(win.locator('button.nav-item')).toHaveCount(0)
   }, { prepare: ({ apps }) => writeFileSync(join(apps, 'notes', 'renderer', 'index.js'), 'throw new Error("this app is broken")') })
+})
+
+// A downloaded version of an installed app: its folder, with the manifest changed as given.
+function download(updates, id, version, change = m => m) {
+  const dir = join(updates, id, version)
+  cpSync(join(appsBuilt, id), dir, { recursive: true })
+  const manifest = JSON.parse(readFileSync(join(dir, 'app.manifest.json'), 'utf8'))
+  writeFileSync(join(dir, 'app.manifest.json'), JSON.stringify(change({ ...manifest, version })))
+}
+const relabel = label => m => ({ ...m, nav: m.nav.map(n => ({ ...n, label })) })
+
+test('an installed app runs its newest downloaded version, unless that needs a newer shell', async () => {
+  await withInstalled(['git', 'notes'], async ({ win }) => {
+    await expect(item(win, 'Notes')).toBeVisible({ timeout: 30_000 })
+    await expect(item(win, 'Git Updated')).toHaveCount(1)
+    await expect(item(win, 'Git Too New')).toHaveCount(0)
+    // Its code, stylesheet and preload bridge came from the downloaded folder.
+    expect(await win.evaluate(() => [...document.styleSheets].some(s => (s.href || '').includes('/updates/git/1.0.1/renderer/')))).toBe(true)
+    expect(await win.evaluate(() => typeof window.electronAPI.git?.status)).toBe('function')
+  }, {
+    prepare: ({ updates }) => {
+      download(updates, 'git', '1.0.1', relabel('Git Updated'))
+      download(updates, 'git', '9.0.0', m => ({ ...relabel('Git Too New')(m), requires: { shellApi: 99 } }))
+      download(updates, 'notes', '0.0.1', relabel('Notes Older'))      // older than installed: not used
+    },
+  })
+})
+
+test('a downloaded version marked bad is passed over for the installed one', async () => {
+  await withInstalled(['git', 'notes'], async ({ win }) => {
+    await expect(item(win, 'Notes')).toBeVisible({ timeout: 30_000 })
+    await expect(item(win, 'Git Workspace')).toHaveCount(1)
+    await expect(item(win, 'Git Updated')).toHaveCount(0)
+  }, {
+    prepare: ({ updates }) => {
+      download(updates, 'git', '1.0.1', relabel('Git Updated'))
+      writeFileSync(join(updates, 'state.json'), JSON.stringify({ apps: { git: { bad: ['1.0.1'] } } }))
+    },
+  })
+})
+
+test('a published app update is downloaded, checked, and run from the next launch', async () => {
+  const { createServer } = await import('node:http')
+  const { generateKeyPairSync } = await import('node:crypto')
+  const { emptyIndex, setShell, addApp } = await import('../build/app-release.mjs')
+  const { signIndex } = (await import('../electron/app-package.cjs')).default
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519')
+
+  // What release-apps.yml would publish for Git 1.0.1, served the way the apps-latest release is.
+  const site = realpathSync.native(mkdtempSync(join(tmpdir(), 'nexusmd-apps-site-')))
+  const release = join(site, 'built-git')
+  download(site, 'git', '1.0.1', relabel('Git Updated'))
+  cpSync(join(site, 'git', '1.0.1'), release, { recursive: true })
+  const added = addApp(setShell(emptyIndex(), '1.2.5', 1), 'git', { dir: release, version: '1.0.1' })
+  const files = { [`/${added.entry.file}`]: added.data, '/apps-index.json': Buffer.from(JSON.stringify(added.index)) }
+  files['/apps-index.json.sig'] = Buffer.from(signIndex(files['/apps-index.json'], privateKey.export({ type: 'pkcs8', format: 'pem' })))
+  const server = createServer((req, res) => {
+    const body = files[req.url]
+    res.writeHead(body ? 200 : 404).end(body)
+  })
+  await new Promise(done => server.listen(0, '127.0.0.1', done))
+
+  const env = {
+    NEXUSMD_APPS_INDEX_URL: `http://127.0.0.1:${server.address().port}/apps-index.json`,
+    NEXUSMD_APPS_PUBLIC_KEY: publicKey.export({ type: 'spki', format: 'pem' }),
+    NEXUSMD_APP_UPDATE_DELAY_MS: '0',
+  }
+  Object.assign(process.env, env)
+  const installed = install(['git', 'notes'])
+  try {
+    // First launch: the installed Git runs, and 1.0.1 arrives in the updates folder.
+    await withInstalled(['git', 'notes'], async ({ win, updates }) => {
+      await expect(item(win, 'Git Workspace')).toHaveCount(1, { timeout: 30_000 })
+      await expect.poll(() => existsSync(join(updates, 'git', '1.0.1', 'app.manifest.json')), { timeout: 30_000 }).toBe(true)
+      cpSync(updates, installed.updates, { recursive: true })
+    })
+    // Next launch, the same installation: Git 1.0.1 runs.
+    await withInstalled(['git', 'notes'], async ({ win }) => {
+      await expect(item(win, 'Git Updated')).toHaveCount(1, { timeout: 30_000 })
+    }, { prepare: ({ updates }) => cpSync(installed.updates, updates, { recursive: true }) })
+  } finally {
+    for (const key of Object.keys(env)) delete process.env[key]
+    server.close()
+    rmSync(site, { recursive: true, force: true })
+    rmSync(installed.root, { recursive: true, force: true })
+  }
 })
 
 test('a folder that is not an app, and an app with a mismatched manifest, are ignored', async () => {

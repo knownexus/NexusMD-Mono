@@ -3,7 +3,7 @@
 
 const log = require('electron-log');
 const path = require('path');
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeTheme, net, shell } = require('electron');
 const { pinUserData } = require('./user-data.cjs');
 
 // Must run before anything reads app.getPath('userData') (logs, prefs, stores).
@@ -57,12 +57,18 @@ log.errorHandler.startCatching();
 const { createTray, updateTrayIcon } = require('./tray.cjs');
 const { initNotifications } = require('./notifications.cjs');
 const { initUpdater, registerUpdaterIpc } = require('./updater.cjs');
+const { startAppUpdater } = require('./app-updater.cjs');
 
 const appRegistry    = require('./app-registry.cjs');
 
 // All-in-one, or apps installed as folders of their own (see app-registry.cjs).
-const appLayout = appRegistry.getLayout(process.env, { isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
-const splitApps = appLayout.appsDir ? appRegistry.scanApps(appLayout.appsDir, { log: log.scope('apps') }) : null;
+const appLayout = appRegistry.getLayout(process.env, {
+  isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, userDataPath: app.getPath('userData'),
+});
+// Each installed app at its newest usable version: a downloaded update where there is one.
+const splitApps = appLayout.appsDir
+  ? appRegistry.resolveApps(appLayout.appsDir, { updatesDir: appLayout.updatesDir, log: log.scope('apps') })
+  : null;
 // The one app of a single-app install: it gives the window and the tray their name and icon.
 const standaloneApp = splitApps && splitApps.length === 1 ? splitApps[0] : null;
 // Windows groups the taskbar and routes notifications by this id. A single-app install has its own, which its
@@ -390,6 +396,20 @@ app.whenReady().then(async () => {
   // Auto-updater (event wiring is packaged-only; the IPC contract is always registered)
   initUpdater(mainWindow);
   registerUpdaterIpc(() => mainWindow);
+
+  // App updates: newer versions of the installed apps, downloaded to run from the next launch. In an
+  // installed split build; elsewhere only when pointed at an index (and only there with another key).
+  if (splitApps && appLayout.updatesDir && (app.isPackaged || process.env.NEXUSMD_APPS_INDEX_URL)) {
+    startAppUpdater({
+      apps: splitApps,
+      updatesDir: appLayout.updatesDir,
+      fetch: url => net.fetch(url),
+      indexUrl: process.env.NEXUSMD_APPS_INDEX_URL || undefined,
+      publicKey: (!app.isPackaged && process.env.NEXUSMD_APPS_PUBLIC_KEY) || undefined,
+      delayMs: process.env.NEXUSMD_APP_UPDATE_DELAY_MS ? Number(process.env.NEXUSMD_APP_UPDATE_DELAY_MS) : undefined,
+      log: log.scope('app-updates'),
+    });
+  }
 
   // Register Phase 6 IPC handlers
   fileIpc.register(ipcMain);

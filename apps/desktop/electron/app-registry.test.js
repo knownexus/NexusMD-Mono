@@ -6,7 +6,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   parseInstalledIds, getRegistryInfo, installedModuleIds, getPreloadDescriptors, register, registerModules, MODULES,
-  getLayout, scanApps, modulesFromScan,
+  getLayout, scanApps, modulesFromScan, resolveApps, compareVersions,
 } from './app-registry.cjs'
 
 const fakeModule = (preload, main) => ({ manifest: () => ({ ipc: { preload } }), main: () => main })
@@ -106,18 +106,22 @@ describe('getLayout', () => {
   const yes = () => true
   const no = () => false
   it('is all-in-one with nothing set', () => {
-    expect(getLayout({}, { isPackaged: false })).toEqual({ appsDir: null, shellDir: null })
-    expect(getLayout({}, { isPackaged: true, resourcesPath: 'R', exists: no })).toEqual({ appsDir: null, shellDir: null })
+    expect(getLayout({}, { isPackaged: false })).toEqual({ appsDir: null, shellDir: null, updatesDir: null })
+    expect(getLayout({}, { isPackaged: true, resourcesPath: 'R', userDataPath: 'U', exists: no })).toEqual({ appsDir: null, shellDir: null, updatesDir: null })
   })
   it('takes the folders named by the environment', () => {
-    expect(getLayout({ NEXUSMD_APPS_DIR: 'A', NEXUSMD_SHELL_DIR: 'S' }, {})).toEqual({ appsDir: 'A', shellDir: 'S' })
+    expect(getLayout({ NEXUSMD_APPS_DIR: 'A', NEXUSMD_SHELL_DIR: 'S', NEXUSMD_APP_UPDATES_DIR: 'D' }, {}))
+      .toEqual({ appsDir: 'A', shellDir: 'S', updatesDir: 'D' })
   })
-  it('uses resources/apps and resources/renderer in an installed build that has an apps folder', () => {
-    const layout = getLayout({}, { isPackaged: true, resourcesPath: path.join('R'), exists: yes })
-    expect(layout).toEqual({ appsDir: path.join('R', 'apps'), shellDir: path.join('R', 'renderer') })
+  it('uses resources/apps and resources/renderer in an installed build that has an apps folder, and keeps app updates in userData/apps', () => {
+    const layout = getLayout({}, { isPackaged: true, resourcesPath: path.join('R'), userDataPath: path.join('U'), exists: yes })
+    expect(layout).toEqual({ appsDir: path.join('R', 'apps'), shellDir: path.join('R', 'renderer'), updatesDir: path.join('U', 'apps') })
   })
   it('lets the environment override an installed layout', () => {
     expect(getLayout({ NEXUSMD_APPS_DIR: 'A' }, { isPackaged: true, resourcesPath: 'R', exists: yes }).appsDir).toBe('A')
+  })
+  it('takes no app updates outside an installed build unless told where they are', () => {
+    expect(getLayout({ NEXUSMD_APPS_DIR: 'A' }, { isPackaged: false, userDataPath: 'U' }).updatesDir).toBeNull()
   })
 })
 
@@ -225,5 +229,125 @@ describe('scanApps', () => {
     const started = registerModules({}, {}, table, silent)
     expect(silent.error).not.toHaveBeenCalled()
     return expect(started.disposeAll()).resolves.toBeDefined()
+  })
+})
+
+describe('compareVersions', () => {
+  it('orders versions by number, part by part', () => {
+    expect(compareVersions('1.2.10', '1.2.9')).toBeGreaterThan(0)
+    expect(compareVersions('1.10.0', '1.9.9')).toBeGreaterThan(0)
+    expect(compareVersions('2.0.0', '10.0.0')).toBeLessThan(0)
+    expect(compareVersions('1.2.3', '1.2.3')).toBe(0)
+  })
+  it('counts a missing version as older than any other', () => {
+    expect(compareVersions('0.0.1', undefined)).toBeGreaterThan(0)
+    expect(compareVersions(null, undefined)).toBe(0)
+  })
+})
+
+// --------------------------------------------------------------------------------------------
+// App updates: newer versions of an installed app, downloaded beside the installed folders.
+// --------------------------------------------------------------------------------------------
+describe('resolveApps', () => {
+  let root, installedDir, updatesDir
+  const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn() }
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'nexusmd-updates-'))
+    installedDir = path.join(root, 'installed')
+    updatesDir = path.join(root, 'updates')
+    fs.mkdirSync(installedDir)
+    fs.mkdirSync(updatesDir)
+    for (const fn of Object.values(log)) fn.mockClear()
+  })
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  function writeApp(dir, manifest, { main = false } = {}) {
+    fs.mkdirSync(path.join(dir, 'renderer'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'app.manifest.json'), JSON.stringify(manifest))
+    fs.writeFileSync(path.join(dir, 'renderer', 'index.js'), 'export default {}')
+    if (main) { fs.mkdirSync(path.join(dir, 'main')); fs.writeFileSync(path.join(dir, 'main', 'index.cjs'), 'exports.register = () => ({})') }
+    return dir
+  }
+  const installed = (id, version, extra = {}) => writeApp(path.join(installedDir, id), { id, version, ...extra })
+  const downloaded = (id, version, extra = {}, opts) => writeApp(path.join(updatesDir, id, version), { id, version, ...extra }, opts)
+  const writeState = state => fs.writeFileSync(path.join(updatesDir, 'state.json'), typeof state === 'string' ? state : JSON.stringify(state))
+  const resolve = (opts = {}) => resolveApps(installedDir, { updatesDir, shellApi: 2, log, ...opts })
+
+  it('is the installed apps when there is nowhere for updates', () => {
+    installed('git', '1.0.0')
+    downloaded('git', '1.1.0')
+    expect(resolve({ updatesDir: null }).map(a => [a.id, a.version])).toEqual([['git', '1.0.0']])
+  })
+
+  it('runs the newest downloaded version of an installed app, from its own folder', () => {
+    installed('git', '1.0.0', { requires: { shellApi: 1 } })
+    installed('notes', '1.0.0')
+    downloaded('git', '1.0.1')
+    downloaded('git', '1.2.0', { requires: { shellApi: 2 } }, { main: true })
+    const apps = resolve()
+    expect(apps.map(a => [a.id, a.version, a.installedVersion])).toEqual([['git', '1.2.0', '1.0.0'], ['notes', '1.0.0', '1.0.0']])
+    const dir = path.join(updatesDir, 'git', '1.2.0')
+    expect(apps[0]).toMatchObject({
+      dir,
+      rendererUrl: pathToFileURL(path.join(dir, 'renderer', 'index.js')).href,
+      mainFile: path.join(dir, 'main', 'index.cjs'),
+    })
+    expect(log.info).toHaveBeenCalledWith(expect.stringMatching(/git.*1\.2\.0.*1\.0\.0/))
+  })
+
+  it('keeps the installed version when no download is newer', () => {
+    installed('git', '1.2.0')
+    downloaded('git', '1.1.0')
+    downloaded('git', '1.2.0')
+    expect(resolve()[0].dir).toBe(path.join(installedDir, 'git'))
+  })
+
+  it('treats an installed app with no version as older than any download', () => {
+    installed('git', undefined)
+    downloaded('git', '0.0.1')
+    expect(resolve()[0].version).toBe('0.0.1')
+  })
+
+  it('skips, and says why, a version that needs a newer shell, falling back to the next newest', () => {
+    installed('git', '1.0.0')
+    downloaded('git', '1.1.0', { requires: { shellApi: 2 } })
+    downloaded('git', '2.0.0', { requires: { shellApi: 3 } })
+    expect(resolve()[0].version).toBe('1.1.0')
+    expect(log.warn).toHaveBeenCalledWith(expect.stringMatching(/git.*2\.0\.0.*shell/))
+  })
+
+  it('skips a version marked bad', () => {
+    installed('git', '1.0.0')
+    downloaded('git', '1.1.0')
+    downloaded('git', '1.2.0')
+    writeState({ apps: { git: { bad: ['1.2.0'] } } })
+    expect(resolve()[0].version).toBe('1.1.0')
+  })
+
+  it('reads an unreadable state file as empty, and says so', () => {
+    installed('git', '1.0.0')
+    downloaded('git', '1.1.0')
+    writeState('{nope')
+    expect(resolve()[0].version).toBe('1.1.0')
+    expect(log.error).toHaveBeenCalledWith(expect.stringMatching(/state\.json/))
+  })
+
+  it('skips a download that is not a usable app, or is not the version its folder says', () => {
+    installed('git', '1.0.0')
+    downloaded('git', '1.1.0')
+    downloaded('git', '1.3.0', { version: '1.9.9' })
+    fs.mkdirSync(path.join(updatesDir, 'git', '1.4.0'))
+    writeApp(path.join(updatesDir, 'git', '.tmp-1.5.0'), { id: 'git', version: '1.5.0' })
+    expect(resolve()[0].version).toBe('1.1.0')
+    const reasons = log.error.mock.calls.map(c => c[0]).join('\n')
+    expect(reasons).toMatch(/1\.3\.0.*1\.9\.9/)
+    expect(reasons).toMatch(/1\.4\.0/)
+    expect(reasons).not.toMatch(/tmp/)
+  })
+
+  it('never starts an app that is only downloaded, not installed', () => {
+    installed('git', '1.0.0')
+    downloaded('notes', '1.0.0')
+    expect(resolve().map(a => a.id)).toEqual(['git'])
   })
 })
