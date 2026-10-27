@@ -15,6 +15,15 @@ async function withApps(apps, fn) {
 }
 
 const item = (win, label) => win.locator('button.nav-item', { hasText: label })
+// The screen showing, by the top bar's title. One app with one screen has no sidebar (isBareStandalone),
+// so its sidebar entry can't be the check.
+const showing = (win, label) => expect(win.locator('header.topbar h1')).toHaveText(label, { timeout: 15_000 })
+// Settings is a sidebar entry, or with no sidebar the top bar's Settings button.
+async function openSettings(win) {
+  const nav = item(win, 'Settings')
+  if (await nav.count()) await nav.evaluate(b => b.click())
+  else await win.getByRole('button', { name: 'Settings', exact: true }).click()
+}
 
 test('with every app installed the sidebar is unchanged', async () => {
   await withApps(null, async win => {
@@ -49,9 +58,20 @@ test('an app that is not installed gets no preload bridge', async () => {
   })
 })
 
+test('one app with one screen has no sidebar, and Settings opens from the top bar', async () => {
+  await withApps('devenv', async win => {
+    await showing(win, 'Dev Environment')
+    await expect(win.locator('button.nav-item')).toHaveCount(0)
+    await openSettings(win)
+    await showing(win, 'Settings')
+    await win.getByRole('button', { name: 'Back to Dev Environment' }).click()
+    await showing(win, 'Dev Environment')
+  })
+})
+
 test('Dev Environment works as the only installed app', async () => {
   await withApps('devenv', async win => {
-    await expect(item(win, 'Dev Environment')).toHaveClass(/active/)
+    await showing(win, 'Dev Environment')
     for (const label of ['Git Workspace', 'Dashboard']) await expect(item(win, label)).toHaveCount(0)
     const api = await win.evaluate(() => ({
       run: typeof window.electronAPI.devenv.run,
@@ -82,7 +102,7 @@ test('the Dashboard\'s Quick note needs the Planner', async () => {
 
 test('the Planner and Confidential Settings tabs follow the apps that own them', async () => {
   const settingsTabs = async win => {
-    await item(win, 'Settings').evaluate(b => b.click())
+    await openSettings(win)
     await expect(win.getByRole('button', { name: 'Appearance' })).toBeVisible({ timeout: 15_000 })
     return win.locator('nav button').allInnerTexts()
   }
@@ -100,7 +120,7 @@ test('the Planner and Confidential Settings tabs follow the apps that own them',
 test('Planner and Calendar each work as the only installed app', async () => {
   for (const [apps, label] of [['planner', 'Planner'], ['calendar', 'Calendar']]) {
     await withApps(apps, async win => {
-      await expect(item(win, label)).toHaveClass(/active/)
+      await showing(win, label)
       const errors = []
       win.on('pageerror', e => errors.push(String(e)))
       await win.waitForTimeout(1000)
@@ -113,11 +133,11 @@ test('Planner and Calendar each work as the only installed app', async () => {
 
 test('Database and API Client bring their own bridge and nothing else', async () => {
   await withApps('database', async win => {
-    await expect(item(win, 'Database')).toHaveClass(/active/)
+    await showing(win, 'Database')
     expect(await win.evaluate(() => [typeof window.electronAPI.dbManager.connect, typeof window.electronAPI.apiClient])).toEqual(['function', 'undefined'])
   })
   await withApps('api-client', async win => {
-    await expect(item(win, 'API Client')).toHaveClass(/active/)
+    await showing(win, 'API Client')
     expect(await win.evaluate(() => [typeof window.electronAPI.apiClient.script.run, typeof window.electronAPI.dbManager])).toEqual(['function', 'undefined'])
   })
 })
@@ -125,7 +145,7 @@ test('Database and API Client bring their own bridge and nothing else', async ()
 test('Notes and Documents each work as the only installed app', async () => {
   for (const [apps, label] of [['notes', 'Notes'], ['documents', 'Documents']]) {
     await withApps(apps, async win => {
-      await expect(item(win, label)).toHaveClass(/active/)
+      await showing(win, label)
       const errors = []
       win.on('pageerror', e => errors.push(String(e)))
       await win.waitForTimeout(1000)
@@ -137,7 +157,7 @@ test('Notes and Documents each work as the only installed app', async () => {
 
 test('the Database connections card appears in Settings only with the Database app', async () => {
   const hasCard = async win => {
-    await item(win, 'Settings').evaluate(b => b.click())
+    await openSettings(win)
     await win.getByRole('button', { name: 'Integrations' }).evaluate(b => b.click())
     await expect(win.locator('body')).toContainText('Integrations', { timeout: 15_000 })
     return win.getByText('Database Connections').count()
