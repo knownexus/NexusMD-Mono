@@ -51,6 +51,7 @@ import { PlModal } from '../planner-chips.jsx'
 import { Icon } from '../icons.jsx'
 import { FoldAllButton } from '../fold-all-button.jsx'
 import { DbMenu, menuPointFor } from './db-menu.jsx'
+import { readMinCols, writeMinCols } from './db-min-cols.js'
 
 // ─── Demo data (shown when no real DB is connected) ───────────────────────────
 
@@ -916,6 +917,20 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   // ── Saved queries ──────────────────────────────────────────────────────────
 
   const connKey = connectionKey(session)
+
+  // Minimised Browse columns, remembered per connection and table. Read again whenever another table opens.
+  const minTable = dbState.selectedTable
+  const minId = `${connKey}\n${minTable}`
+  const [minState, setMinState] = useState({ id: null, names: [] })
+  let minCols = minState.names
+  if (minState.id !== minId) {
+    minCols = minTable ? readMinCols(connKey, minTable) : []
+    setMinState({ id: minId, names: minCols })
+  }
+  const setMinCols = (names) => { setMinState({ id: minId, names }); writeMinCols(connKey, minTable, names) }
+  // Only names the open table still has count; a stale one stays remembered but does nothing.
+  const minimised = useMemo(() => new Set((tableData?.columns ?? []).filter(c => minCols.includes(c))), [tableData, minCols])
+
   // Templates show everywhere; fixed queries only on the connection they were saved from.
   const savedHere = useMemo(() => savedQueries.filter(q => isTemplate(q) || q.conn === connKey), [savedQueries, connKey])
   const persistSaved = (next) => { setSavedQueries(next); writePref(SAVED_KEY, next) }
@@ -1334,6 +1349,10 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                   visible={visible}
                   keyIdx={keyIdx}
                   columnInfo={columnInfo}
+                  minimised={minimised}
+                  onMinimise={name => setMinCols([...minCols.filter(n => n !== name), name])}
+                  onRestore={name => setMinCols(minCols.filter(n => n !== name))}
+                  onRestoreAll={() => setMinCols([])}
                   canWrite={canWrite}
                   columnsKnown={columnsKnown || isDemo}
                   typesUnreadable={typesUnreadable}
@@ -2130,7 +2149,7 @@ const CellInput = forwardRef(function CellInput({ col, value, onChange, classNam
 })
 
 const BrowsePanel = forwardRef(function BrowsePanel({
-  tableData, visible, keyIdx, columnInfo, canWrite, columnsKnown, typesUnreadable = false, isView = false, onSetCell, onAddRow, search, onSearchChange, sort, onSort,
+  tableData, visible, keyIdx, columnInfo, minimised, onMinimise, onRestore, onRestoreAll, canWrite, columnsKnown, typesUnreadable = false, isView = false, onSetCell, onAddRow, search, onSearchChange, sort, onSort,
   selectedRows, allSelected, onToggleRow, onToggleAll, onClearSelection, onDeleteSelected, onDeleteRow, onCopyCell,
   editingCell, editValue, onEditValueChange, onStartEdit, onSaveEdit, onCancelEdit,
 }, ref) {
@@ -2138,12 +2157,16 @@ const BrowsePanel = forwardRef(function BrowsePanel({
   const cols = tableData.columns.length
   // A column whose first value is a number lines its header up with its right-aligned values.
   const numericCol = tableData.columns.map((_, ci) => isNumeric(tableData.rows.find(r => r[ci] !== null && r[ci] !== undefined)?.[ci]))
-  // Tab / Shift+Tab move the editor along the row (and on to the next / previous row) after saving.
+  // Tab / Shift+Tab move the editor along the row (and on to the next / previous row) after saving,
+  // passing over minimised columns.
   const neighbour = (ri, ci, by) => {
-    const pos = visible.findIndex(v => v.i === ri)
-    let p = pos, c = ci + by
-    if (c >= cols) { c = 0; p++ } else if (c < 0) { c = cols - 1; p-- }
-    return p >= 0 && p < visible.length ? { ri: visible[p].i, ci: c } : null
+    let p = visible.findIndex(v => v.i === ri), c = ci + by
+    for (;;) {
+      if (c >= cols) { c = 0; p++ } else if (c < 0) { c = cols - 1; p-- }
+      if (p < 0 || p >= visible.length) return null
+      if (!minimised.has(tableData.columns[c])) return { ri: visible[p].i, ci: c }
+      c += by
+    }
   }
   const editError = editingCell ? parseCellInput(columnInfo[editingCell.ci], editValue).error : null
   const readOnly = !canWrite && (columnsKnown || typesUnreadable)
@@ -2167,6 +2190,11 @@ const BrowsePanel = forwardRef(function BrowsePanel({
         <span className="nx-db-count" aria-live="polite">
           {search ? `${visible.length} of ${total} matching` : `${total} total`}
         </span>
+        {minimised.size > 0 && (
+          <button type="button" className="btn sm ghost" onClick={onRestoreAll} aria-label="Show all minimised columns">
+            {`${minimised.size} minimised · Show all`}
+          </button>
+        )}
         <span className="nx-db-spacer" />
         {selectedRows.size > 0 && (
           <>
@@ -2208,6 +2236,13 @@ const BrowsePanel = forwardRef(function BrowsePanel({
               </th>
               {tableData.columns.map((col, ci) => {
                 const dir = sort?.col === ci ? sort.dir : null
+                if (minimised.has(col)) {
+                  return (
+                    <th key={col} className="min">
+                      <button type="button" className="nx-db-th-min" onClick={() => onRestore(col)} aria-label={`Show ${col}`} title={`Show ${col}`}>{col}</button>
+                    </th>
+                  )
+                }
                 return (
                   <th key={col} data-num={numericCol[ci] || undefined} aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : undefined}>
                     <button type="button" className="nx-db-th" onClick={() => onSort(ci)} title={`Sort by ${col}`}>
@@ -2215,6 +2250,9 @@ const BrowsePanel = forwardRef(function BrowsePanel({
                       {keyIdx.includes(ci) && <span className="pk" title="Key used for edits and deletes">key</span>}
                       {columnInfo[ci] && <span className="nx-db-coltype" title={typeTitle(columnInfo[ci])}>{typeLabelOf(columnInfo[ci])}</span>}
                       <Icon name={dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={11} className={`sort${dir ? ' on' : ''}`} />
+                    </button>
+                    <button type="button" className="nx-db-th-hide" onClick={() => onMinimise(col)} aria-label={`Minimise ${col}`} title={`Minimise ${col}`}>
+                      <Icon name="x" size={11} />
                     </button>
                   </th>
                 )
@@ -2236,6 +2274,7 @@ const BrowsePanel = forwardRef(function BrowsePanel({
                 {row.map((cell, ci) => {
                   const col = columnInfo[ci]
                   const kind = columnKind(col)
+                  if (minimised.has(tableData.columns[ci])) return <td key={ci} className="min" />
                   const editing = editingCell?.ri === ri && editingCell?.ci === ci
                   const editable = canWrite && kind !== 'readonly'
                   // A bit is a checkbox in the cell itself: one click writes the other value.

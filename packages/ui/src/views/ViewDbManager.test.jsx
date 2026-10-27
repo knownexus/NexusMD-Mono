@@ -600,6 +600,76 @@ describe('ViewDbManager — browsing rows', () => {
   })
 })
 
+describe('ViewDbManager — minimised columns', () => {
+  let adapters
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter() }
+  })
+
+  afterEach(() => { cleanup() })
+
+  const saved = [{ id: 'uat', name: 'UAT', type: 'sqlite', inputMode: 'fields', filePath: '/a.db' }]
+  const openUatPatients = async () => {
+    render(<ViewDbManager adapters={adapters} savedConnections={saved} onResolveSecret={vi.fn().mockResolvedValue('')} />)
+    fireEvent.click(within(screen.getByRole('region', { name: 'Quick connect' })).getByText('UAT'))
+    await waitFor(() => within(screen.getByRole('navigation', { name: 'Table list' })).getByText('patients'))
+    openTable('patients')
+    await waitFor(() => screen.getByRole('table'))
+  }
+
+  it('minimises a column to a sideways header; search and Copy row still use its values', async () => {
+    const writeText = vi.fn().mockResolvedValue()
+    Object.assign(navigator, { clipboard: { writeText } })
+    await openUatPatients()
+    fireEvent.click(screen.getByRole('button', { name: 'Minimise name' }))
+
+    expect(screen.getByRole('button', { name: 'Show name' }).closest('th').className).toContain('min')
+    expect(screen.queryByRole('button', { name: /^name/i })).toBeNull()
+    fireEvent.change(screen.getByPlaceholderText('Search rows…'), { target: { value: 'Bob' } })
+    expect(screen.getByText('1 of 2 matching')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Copy row 1' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('2\tBob'))
+  })
+
+  it('is still minimised when the table is reopened', async () => {
+    await openUatPatients()
+    fireEvent.click(screen.getByRole('button', { name: 'Minimise name' }))
+    fireEvent.click(screen.getByRole('button', { name: 'UAT' }))
+    expect(screen.queryByRole('table')).toBeNull()
+    openTable('patients')
+    await waitFor(() => screen.getByRole('table'))
+    expect(screen.getByRole('button', { name: 'Show name' })).toBeTruthy()
+    expect(JSON.parse(window.localStorage.getItem('nx-db:min-cols:uat:patients'))).toEqual(['name'])
+  })
+
+  it('ignores remembered names the table no longer has', async () => {
+    window.localStorage.setItem('nx-db:min-cols:uat:patients', JSON.stringify(['gone', 'name']))
+    await openUatPatients()
+    expect(screen.getByRole('button', { name: 'Show name' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Show gone' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Show all minimised columns' }).textContent).toBe('1 minimised · Show all')
+  })
+
+  it('shows every column again from the toolbar', async () => {
+    await openUatPatients()
+    expect(screen.queryByRole('button', { name: 'Show all minimised columns' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Minimise name' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Minimise id' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show all minimised columns' }))
+    expect(screen.queryByRole('button', { name: /^Show (name|id)$/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /^name/i })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Show all minimised columns' })).toBeNull()
+  })
+
+  it('shows one column again by clicking its header', async () => {
+    await openUatPatients()
+    fireEvent.click(screen.getByRole('button', { name: 'Minimise name' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show name' }))
+    expect(screen.getByRole('button', { name: /^name/i })).toBeTruthy()
+  })
+})
+
 describe('ViewDbManager — query command builders', () => {
   let adapters
 
