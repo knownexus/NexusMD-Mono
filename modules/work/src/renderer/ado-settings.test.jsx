@@ -65,7 +65,25 @@ describe('AdoConnectionCard', () => {
       org: 'myorg',
       pat: 'mytoken',
       projects: [],
+      workItems: true,
     }))
+  })
+
+  it('can switch off Azure DevOps work items, keeping the rest', async () => {
+    vi.mocked(getAdoConfig).mockReturnValue({ org: 'myorg', pat: 'p', projects: ['A'], workItems: true })
+    render(<AdoConnectionCard onRefreshData={vi.fn()} />)
+    const box = screen.getByLabelText('Load Azure DevOps work items')
+    expect(box.checked).toBe(true)
+    fireEvent.click(box)
+    expect(screen.getByText(/Pull requests, builds and tests still come from Azure DevOps/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Save & connect' }))
+    await waitFor(() => expect(saveAdoConfig).toHaveBeenCalledWith(expect.objectContaining({ workItems: false })))
+  })
+
+  it('shows the switch off when it was saved off', async () => {
+    vi.mocked(getAdoConfig).mockReturnValue({ org: 'myorg', pat: 'p', projects: ['A'], workItems: false })
+    render(<AdoConnectionCard onRefreshData={vi.fn()} />)
+    await waitFor(() => expect(screen.getByLabelText('Load Azure DevOps work items').checked).toBe(false))
   })
 
   it('calls onRefreshData after successful save', async () => {

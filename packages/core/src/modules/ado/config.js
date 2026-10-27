@@ -29,6 +29,9 @@ export function makeAdoConfig({ storage, key, defaults = {} }) {
       uatPipelineId: parseInt(get('uatPipelineId') || '0', 10),
       uatBranch:     get('uatBranch')   || defaults.uatBranch || 'refs/heads/uat',
       refreshSecs:   parseInt(get('refreshSecs') || String(defaults.refreshSecs ?? 30), 10),
+      // Off: ADO still supplies PRs, builds and tests, but its work items aren't loaded or shown
+      // (for a profile whose work items live in Jira).
+      workItems:     get('workItems') !== '0',
     }
   }
 
@@ -42,6 +45,7 @@ export function makeAdoConfig({ storage, key, defaults = {} }) {
     if (values.uatPipelineId !== undefined) set('uatPipelineId', String(values.uatPipelineId))
     if (values.uatBranch     !== undefined) set('uatBranch',     values.uatBranch)
     if (values.refreshSecs   !== undefined) set('refreshSecs',   String(values.refreshSecs))
+    if (values.workItems     !== undefined) set('workItems',     values.workItems ? '1' : '0')
   }
 
   function isAdoConfigured() {
@@ -49,5 +53,8 @@ export function makeAdoConfig({ storage, key, defaults = {} }) {
     return !!(c.org && c.pat && c.projects.length > 0)
   }
 
-  return { getAdoConfig, saveAdoConfig, isAdoConfigured }
+  // Connected, and its work items are wanted.
+  const usesAdoWorkItems = () => isAdoConfigured() && getAdoConfig().workItems
+
+  return { getAdoConfig, saveAdoConfig, isAdoConfigured, usesAdoWorkItems }
 }

@@ -65,6 +65,21 @@ describe('makeAdoConfig', () => {
     expect(cfg.isAdoConfigured()).toBe(true)
   })
 
+  it('uses ADO work items by default, and not once they are switched off', () => {
+    cfg.saveAdoConfig({ org: 'acme', pat: 'p', projects: ['A'] })
+    expect(cfg.getAdoConfig().workItems).toBe(true)
+    expect(cfg.usesAdoWorkItems()).toBe(true)
+    cfg.saveAdoConfig({ workItems: false })
+    expect(storage.get('nexusmd.ado.workItems')).toBe('0')
+    expect(cfg.getAdoConfig().workItems).toBe(false)
+    expect(cfg.usesAdoWorkItems()).toBe(false)
+    expect(cfg.isAdoConfigured()).toBe(true)
+  })
+
+  it('does not use ADO work items while ADO is not connected', () => {
+    expect(cfg.usesAdoWorkItems()).toBe(false)
+  })
+
   it('respects injected defaults', () => {
     const c = makeAdoConfig({ storage: memStorage(), key, defaults: { uatBranch: 'refs/heads/qa', refreshSecs: 15 } })
     const out = c.getAdoConfig()

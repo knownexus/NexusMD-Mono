@@ -6,7 +6,7 @@ import {
 import { EMPTY_NEXUS_DATA } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { localStorageAdapter } from '@nexusmd/web-adapters'
-import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
+import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured, usesAdoWorkItems } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraHttpAdapter } from './jira-client.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
 import { skippedFetches } from './work-screens.js'
@@ -28,7 +28,7 @@ export function makeRefreshAllData(cloud) {
                 getAdoConfig(),
                 { http: createAdoHttpAdapter(), storage: localStorageAdapter },
                 // Switched-off screens (Settings > Desktop > Work screens) aren't fetched.
-                { isRefresh: !!priorData && (priorData.TEAM?.length ?? 0) > 0, priorData, skip: skippedFetches() },
+                { isRefresh: !!priorData && (priorData.TEAM?.length ?? 0) > 0, priorData, skip: { ...skippedFetches(), workItems: !usesAdoWorkItems() } },
               )
             },
           },
@@ -81,7 +81,7 @@ export function useNexusSnapshot() {
   const refresh = React.useCallback(() => {
     try {
       setSnapshot(buildSnapshot({
-        adoConfig: getAdoConfig(), adoConfigured: isAdoConfigured(),
+        adoConfig: getAdoConfig(), adoConfigured: isAdoConfigured(), adoWorkItems: usesAdoWorkItems(),
         jiraConfig: getJiraConfig(), jiraActive: isJiraActive(),
         storage: localStorageAdapter, empty: EMPTY_NEXUS_DATA,
         hiddenIds: readHiddenPeople(),
