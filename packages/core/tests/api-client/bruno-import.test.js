@@ -209,8 +209,35 @@ describe('importBrunoCollection', () => {
       expect(req.postResponseScript).toBe('')
       expect(req.tests).toBe('')
     }
-    expect(warnings.some(w => w.includes('Create order') && w.includes('pre-request script'))).toBe(true)
-    expect(warnings.some(w => w.includes('Get user') && w.includes('tests'))).toBe(true)
+    // One grouped line naming both requests, not a line per script.
+    const scriptLines = warnings.filter(w => w.startsWith('Scripts and tests were not imported'))
+    expect(scriptLines).toHaveLength(1)
+    expect(scriptLines[0]).toContain('2 affected')
+    expect(scriptLines[0]).toContain('"Create order"')
+    expect(scriptLines[0]).toContain('"Get user"')
+  })
+
+  it('groups a repeated problem into one line, listing a few names and counting the rest', async () => {
+    const files = { '/bru/bruno.json': JSON.stringify({ name: 'Big' }) }
+    for (let i = 1; i <= 8; i++) {
+      files[`/bru/r${i}.bru`] = `meta {\n  name: R${i}\n  seq: ${i}\n}\n\nget {\n  url: /r${i}\n  body: none\n  auth: none\n}\n\ntests {\n  test("x", () => {});\n}\n`
+    }
+    const { warnings } = await importBrunoCollection(memFile(files), '/bru', { idPrefix: 'b' })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('8 affected: "R1", "R2", "R3", "R4", "R5" and 3 more')
+  })
+
+  it('warns once about collection- and folder-level scripts', async () => {
+    const file = memFile({
+      '/bru/bruno.json': JSON.stringify({ name: 'X' }),
+      '/bru/collection.bru': 'script:pre-request {\n  bru.setVar("a", 1);\n}\n',
+      '/bru/f/folder.bru': 'meta {\n  name: F\n}\n\nscript:pre-request {\n  req.setHeader("a", "b");\n}\n',
+      '/bru/f/a.bru': 'meta {\n  name: A\n  seq: 1\n}\n\nget {\n  url: /a\n  body: none\n  auth: none\n}\n',
+    })
+    const { warnings } = await importBrunoCollection(file, '/bru', { idPrefix: 'b' })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(/^Collection- and folder-level scripts/)
+    expect(warnings[0]).toContain('2 affected: "X", "f"')
   })
 
   it('imports environments, with secret vars marked secret and disabled vars skipped', async () => {
@@ -226,16 +253,106 @@ describe('importBrunoCollection', () => {
     })
   })
 
-  it('warns about inherited auth and unsupported request types', async () => {
+  it('treats inherited auth as none when nothing up the tree sets auth, without a warning', async () => {
     const file = memFile({
       '/bru/bruno.json': JSON.stringify({ name: 'X' }),
       '/bru/a.bru': 'meta {\n  name: A\n  type: http\n  seq: 1\n}\n\nget {\n  url: /a\n  body: none\n  auth: inherit\n}\n',
-      '/bru/g.bru': 'meta {\n  name: G\n  type: graphql\n  seq: 2\n}\n\npost {\n  url: /gql\n  body: graphql\n  auth: none\n}\n\nbody:graphql {\n  { me { id } }\n}\n',
     })
     const { requests, warnings } = await importBrunoCollection(file, '/bru', { idPrefix: 'b' })
-    expect(Object.values(requests).find(r => r.url === '/a').auth).toEqual({ type: 'none' })
-    expect(warnings.some(w => w.includes('"A"') && w.includes('inherit'))).toBe(true)
-    expect(warnings.some(w => w.includes('"G"') && w.includes('GraphQL'))).toBe(true)
+    expect(Object.values(requests)[0].auth).toEqual({ type: 'none' })
+    expect(warnings).toEqual([])
+  })
+
+  it('warns about GraphQL requests and bodies', async () => {
+    const file = memFile({
+      '/bru/bruno.json': JSON.stringify({ name: 'X' }),
+      '/bru/g.bru': 'meta {\n  name: G\n  type: graphql\n  seq: 2\n}\n\npost {\n  url: /gql\n  body: graphql\n  auth: none\n}\n\nbody:graphql {\n  { me { id } }\n}\n',
+    })
+    const { warnings } = await importBrunoCollection(file, '/bru', { idPrefix: 'b' })
+    expect(warnings.some(w => w.startsWith('GraphQL requests') && w.includes('"G"'))).toBe(true)
+    expect(warnings.some(w => w.startsWith('GraphQL bodies') && w.includes('"G"'))).toBe(true)
+  })
+
+  describe('inheritance from collection.bru and folder.bru', () => {
+    const req = (name, auth, extra = '') =>
+      `meta {\n  name: ${name}\n  seq: 1\n}\n\nget {\n  url: /${name}\n  body: none\n  auth: ${auth}\n}\n${extra}`
+
+    function inheritFixture() {
+      return memFile({
+        '/bru/bruno.json': JSON.stringify({ name: 'X' }),
+        '/bru/collection.bru': 'auth {\n  mode: bearer\n}\n\nauth:bearer {\n  token: {{token}}\n}\n\nheaders {\n  Content-Type: application/json\n  X-Scope: collection\n}\n',
+        '/bru/root.bru': req('root', 'inherit'),
+        '/bru/own.bru': req('own', 'none', '\nheaders {\n  X-Scope: request\n}\n'),
+        '/bru/keyed/folder.bru': 'meta {\n  name: Keyed\n}\n\nauth {\n  mode: apikey\n}\n\nauth:apikey {\n  key: X-Api-Key\n  value: {{serviceApiKey}}\n  placement: header\n}\n\nheaders {\n  X-Scope: folder\n}\n',
+        '/bru/keyed/nested/deep.bru': req('deep', 'inherit'),
+        '/bru/plain/inner.bru': req('inner', 'inherit'),
+      })
+    }
+    const byUrl = (requests, url) => Object.values(requests).find(r => r.url === url)
+
+    it('gives inherit requests the collection auth', async () => {
+      const { requests } = await importBrunoCollection(inheritFixture(), '/bru', { idPrefix: 'b' })
+      expect(byUrl(requests, '/root').auth).toEqual({ type: 'bearer', token: '{{token}}' })
+      // A folder with no auth of its own passes the collection's through.
+      expect(byUrl(requests, '/inner').auth).toEqual({ type: 'bearer', token: '{{token}}' })
+    })
+
+    it('lets the nearest folder that sets auth win over the collection', async () => {
+      const { requests } = await importBrunoCollection(inheritFixture(), '/bru', { idPrefix: 'b' })
+      expect(byUrl(requests, '/deep').auth).toEqual({ type: 'apikey', key: 'X-Api-Key', value: '{{serviceApiKey}}', in: 'header' })
+    })
+
+    it('leaves a request with its own auth mode alone', async () => {
+      const { requests } = await importBrunoCollection(inheritFixture(), '/bru', { idPrefix: 'b' })
+      expect(byUrl(requests, '/own').auth).toEqual({ type: 'none' })
+    })
+
+    it('layers headers collection, then folder, then request', async () => {
+      const { requests } = await importBrunoCollection(inheritFixture(), '/bru', { idPrefix: 'b' })
+      expect(byUrl(requests, '/root').headers).toEqual({ 'Content-Type': 'application/json', 'X-Scope': 'collection' })
+      expect(byUrl(requests, '/deep').headers).toEqual({ 'Content-Type': 'application/json', 'X-Scope': 'folder' })
+      expect(byUrl(requests, '/own').headers).toEqual({ 'Content-Type': 'application/json', 'X-Scope': 'request' })
+    })
+  })
+
+  describe('folders', () => {
+    const req = (name) => `meta {\n  name: ${name}\n  seq: 1\n}\n\nget {\n  url: /${name}\n  body: none\n  auth: none\n}\n`
+
+    it('orders by directory name when only some folders have a seq', async () => {
+      const file = memFile({
+        '/bru/bruno.json': JSON.stringify({ name: 'X' }),
+        '/bru/01-auth/a.bru': req('a'),
+        '/bru/07-secure/folder.bru': 'meta {\n  name: Secure\n  seq: 7\n}\n',
+        '/bru/07-secure/s.bru': req('s'),
+        '/bru/90-surface/z.bru': req('z'),
+      })
+      const { tree } = await importBrunoCollection(file, '/bru', { idPrefix: 'b' })
+      expect(tree.map(n => n.name)).toEqual(['01-auth', 'Secure', '90-surface'])
+    })
+
+    it('orders by seq when every folder has one', async () => {
+      const file = memFile({
+        '/bru/bruno.json': JSON.stringify({ name: 'X' }),
+        '/bru/a/folder.bru': 'meta {\n  name: A\n  seq: 2\n}\n',
+        '/bru/a/a.bru': req('a'),
+        '/bru/b/folder.bru': 'meta {\n  name: B\n  seq: 1\n}\n',
+        '/bru/b/b.bru': req('b'),
+      })
+      const { tree } = await importBrunoCollection(file, '/bru', { idPrefix: 'b' })
+      expect(tree.map(n => n.name)).toEqual(['B', 'A'])
+    })
+
+    it('skips folders that hold no requests', async () => {
+      const file = memFile({
+        '/bru/bruno.json': JSON.stringify({ name: 'X' }),
+        '/bru/tools/seed.sql': 'select 1',
+        '/bru/requests/bruno-1.json': '{}',
+        '/bru/empty/inner/notes.md': 'hi',
+        '/bru/api/a.bru': req('a'),
+      })
+      const { tree } = await importBrunoCollection(file, '/bru', { idPrefix: 'b' })
+      expect(tree.map(n => n.name)).toEqual(['api'])
+    })
   })
 
   it('rejects a folder that is not a Bruno collection', async () => {

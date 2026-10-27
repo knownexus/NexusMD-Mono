@@ -8,7 +8,13 @@
 //   <dir>/environments/<name>.bru  one file per environment
 //
 // Same spirit as postman-import.js: best-effort, with anything that can't be
-// confidently converted pushed to `warnings` rather than failing outright.
+// confidently converted reported in `warnings` rather than failing outright.
+// A real collection trips the same few problems on hundreds of requests, so
+// warnings are grouped: one line per kind of problem, with a count and a few
+// example names, never one line per request.
+//
+// Auth set to "inherit" and headers are resolved the way Bruno does: from the
+// nearest folder.bru that sets them, then collection.bru.
 
 const TEXT_BLOCK = /^(body:(?!form-urlencoded$|multipart-form$).+|script:.+|tests|docs)$/
 const SKIP_FILES = new Set(['collection.bru', 'folder.bru'])
@@ -69,6 +75,48 @@ function enabledObject(entries) {
 const enabledPairs = (entries) => (entries || []).filter(e => e.enabled).map(({ key, value }) => ({ key, value }))
 
 const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
+const SCRIPT_BLOCKS = ['script:pre-request', 'script:post-response', 'tests']
+const EXAMPLE_NAMES = 5
+
+const WARNING_TEXT = {
+  scripts:        'Scripts and tests were not imported: they run arbitrary code, and they use Bruno\'s bru/res/expect API, which this client doesn\'t provide',
+  folderScripts:  'Collection- and folder-level scripts were not imported (same reason as request scripts)',
+  pathParams:     'Path params (:name) were not converted; replace them with {{vars}} or literal values',
+  multipartFiles: 'Multipart file fields were imported as their file path text; re-attach the files manually',
+  graphqlBody:    'GraphQL bodies were imported as raw text; wrap them as a JSON { "query": ... } body before running',
+  graphqlRequest: 'GraphQL requests aren\'t natively supported; imported as plain HTTP requests',
+  oauth2:         'OAuth2 auth was imported as an empty access-token placeholder; reconfigure it manually',
+}
+
+/** Collects (kind, name) problems and renders one summary line per kind. */
+function makeWarnings() {
+  const byKind = new Map()
+  return {
+    add(kind, name, text = WARNING_TEXT[kind]) {
+      if (!byKind.has(kind)) byKind.set(kind, { text, names: [] })
+      byKind.get(kind).names.push(name)
+    },
+    lines() {
+      return [...byKind.values()].map(({ text, names }) => {
+        const unique = [...new Set(names)]
+        const shown = unique.slice(0, EXAMPLE_NAMES).map(n => `"${n}"`).join(', ')
+        const more = unique.length > EXAMPLE_NAMES ? ` and ${unique.length - EXAMPLE_NAMES} more` : ''
+        return `${text} (${names.length} affected: ${shown}${more})`
+      })
+    },
+  }
+}
+
+const ROOT_INHERITED = { auth: { mode: 'none', blocks: {} }, headers: {} }
+
+/** What a folder (or the collection) passes down: its auth if it sets one, and its headers on top of its parent's. */
+function inheritFrom(parent, blocks) {
+  const mode = dictGet(blocks.auth, 'mode')
+  return {
+    auth:    mode && mode !== 'inherit' ? { mode, blocks } : parent.auth,
+    headers: { ...parent.headers, ...enabledObject(blocks.headers) },
+  }
+}
 
 function mapBody(blocks, mode, warnings, name) {
   switch (mode) {
@@ -83,16 +131,14 @@ function mapBody(blocks, mode, warnings, name) {
       return { bodyType: 'urlencoded', bodyLanguage: 'json', body: enabledPairs(blocks['body:form-urlencoded']) }
     case 'multipartForm': {
       const pairs = enabledPairs(blocks['body:multipart-form'])
-      if (pairs.some(p => p.value.startsWith('@file('))) {
-        warnings.push(`"${name}": multipart file fields were imported as their file path text — re-attach the files manually`)
-      }
+      if (pairs.some(p => p.value.startsWith('@file('))) warnings.add('multipartFiles', name)
       return { bodyType: 'formdata', bodyLanguage: 'json', body: pairs }
     }
     case 'graphql':
-      warnings.push(`"${name}": GraphQL body imported as raw text — wrap it as a JSON { "query": ... } body before running`)
+      warnings.add('graphqlBody', name)
       return { bodyType: 'raw', bodyLanguage: 'text', body: blocks['body:graphql'] ?? '' }
     default:
-      warnings.push(`"${name}": unsupported body mode "${mode}" — left empty`)
+      warnings.add(`body:${mode}`, name, `Unsupported body mode "${mode}"; left empty`)
       return { bodyType: 'none', bodyLanguage: 'json', body: '' }
   }
 }
@@ -101,9 +147,7 @@ function mapAuth(blocks, mode, warnings, name) {
   switch (mode) {
     case undefined:
     case 'none':
-      return { type: 'none' }
-    case 'inherit':
-      warnings.push(`"${name}": auth was set to inherit from the collection/folder — set it on the request manually`)
+    case 'inherit': // only reached when nothing up the tree sets auth
       return { type: 'none' }
     case 'bearer':
       return { type: 'bearer', token: dictGet(blocks['auth:bearer'], 'token') || '' }
@@ -123,19 +167,17 @@ function mapAuth(blocks, mode, warnings, name) {
       }
     }
     case 'oauth2':
-      warnings.push(`"${name}": OAuth2 auth imported as an empty access-token placeholder — reconfigure manually`)
+      warnings.add('oauth2', name)
       return { type: 'oauth2', accessToken: '' }
     default:
-      warnings.push(`"${name}": unsupported auth type "${mode}" — set to none`)
+      warnings.add(`auth:${mode}`, name, `Unsupported auth type "${mode}"; set to none`)
       return { type: 'none' }
   }
 }
 
-function convertRequest(blocks, fallbackName, warnings) {
+function convertRequest(blocks, fallbackName, warnings, inherited) {
   const name = dictGet(blocks.meta, 'name') || fallbackName
-  if (dictGet(blocks.meta, 'type') === 'graphql') {
-    warnings.push(`"${name}": GraphQL requests aren't natively supported — imported as a plain HTTP request`)
-  }
+  if (dictGet(blocks.meta, 'type') === 'graphql') warnings.add('graphqlRequest', name)
 
   const method = HTTP_METHODS.find(m => blocks[m]) || 'get'
   const http = blocks[method]
@@ -145,18 +187,17 @@ function convertRequest(blocks, fallbackName, warnings) {
   // request builder appends params to the URL, so keep only one copy.
   if (blocks['params:query'] && url.includes('?')) url = url.slice(0, url.indexOf('?'))
 
-  if (blocks['params:path']?.length) {
-    warnings.push(`"${name}": path params (:name) were not converted — replace them with {{vars}} or literal values`)
-  }
+  if (blocks['params:path']?.length) warnings.add('pathParams', name)
 
   // Scripts run arbitrary code and the collection may come from someone else,
   // so — as with the Postman importer — they're never copied into an
   // executable field; we only flag that one existed.
-  for (const [block, label] of [['script:pre-request', 'pre-request script'], ['script:post-response', 'post-response script'], ['tests', 'tests']]) {
-    if (blocks[block]) {
-      warnings.push(`"${name}": ${label} was not imported (scripts run arbitrary code) — review the source collection and add it manually if you trust it`)
-    }
-  }
+  if (SCRIPT_BLOCKS.some(b => blocks[b])) warnings.add('scripts', name)
+
+  const authMode = dictGet(http, 'auth')
+  const auth = authMode === 'inherit'
+    ? mapAuth(inherited.auth.blocks, inherited.auth.mode, warnings, name)
+    : mapAuth(blocks, authMode, warnings, name)
 
   return {
     name,
@@ -165,9 +206,9 @@ function convertRequest(blocks, fallbackName, warnings) {
       method:  method.toUpperCase(),
       url,
       params,
-      headers: enabledObject(blocks.headers),
+      headers: { ...inherited.headers, ...enabledObject(blocks.headers) },
       ...mapBody(blocks, dictGet(http, 'body'), warnings, name),
-      auth:    mapAuth(blocks, dictGet(http, 'auth'), warnings, name),
+      auth,
       preRequestScript:   '',
       postResponseScript: '',
       tests:              '',
@@ -197,28 +238,43 @@ export async function importBrunoCollection(file, dir, { idPrefix = `bruno-${Dat
     throw new Error(`Not a Bruno collection: no readable bruno.json in ${dir}`)
   }
 
-  const warnings = []
+  const warnings = makeWarnings()
   const requests = {}
   let counter = 0
 
-  async function walk(folderDir, isRoot) {
+  // collection.bru and folder.bru are optional; a missing one just inherits.
+  async function readSettings(path, label) {
+    let blocks
+    try { blocks = parseBru(await file.read(path)) } catch { return {} }
+    if (SCRIPT_BLOCKS.some(b => blocks[b])) warnings.add('folderScripts', label)
+    return blocks
+  }
+
+  async function walk(folderDir, isRoot, inherited) {
     const folders = []
     for (const sub of (await file.listDirs(folderDir)).sort()) {
       if (isRoot && sub === ENVIRONMENTS_DIR) continue
       if (sub.startsWith('.') || sub === 'node_modules') continue
       const subDir = join(folderDir, sub)
-      let folderMeta = {}
-      try { folderMeta = parseBru(await file.read(join(subDir, 'folder.bru'))) } catch { /* folder.bru is optional */ }
+      const folderBlocks = await readSettings(join(subDir, 'folder.bru'), sub)
+      const children = await walk(subDir, false, inheritFrom(inherited, folderBlocks))
+      if (!children.length) continue // tooling/asset folders with no requests
       folders.push({
-        seq:  Number(dictGet(folderMeta.meta, 'seq')) || 0,
-        node: { type: 'folder', name: dictGet(folderMeta.meta, 'name') || sub, children: await walk(subDir, false) },
+        dir:  sub,
+        seq:  Number(dictGet(folderBlocks.meta, 'seq')) || null,
+        node: { type: 'folder', name: dictGet(folderBlocks.meta, 'name') || sub, children },
       })
     }
+    // seq only orders folders when every one at this level has it; otherwise
+    // the directory names (often numbered, like 01-auth) are the order.
+    if (folders.every(f => f.seq !== null)) folders.sort((a, b) => a.seq - b.seq)
+    else folders.sort((a, b) => a.dir.localeCompare(b.dir))
 
     const items = []
     for (const fileName of bruFiles(await file.list(folderDir)).sort()) {
       if (SKIP_FILES.has(fileName)) continue
-      const { name, seq, request } = convertRequest(parseBru(await file.read(join(folderDir, fileName))), fileName.slice(0, -4), warnings)
+      const blocks = parseBru(await file.read(join(folderDir, fileName)))
+      const { name, seq, request } = convertRequest(blocks, fileName.slice(0, -4), warnings, inherited)
       counter += 1
       const refId = `${idPrefix}-${counter}`
       requests[refId] = request
@@ -226,10 +282,11 @@ export async function importBrunoCollection(file, dir, { idPrefix = `bruno-${Dat
     }
 
     const bySeq = (a, b) => a.seq - b.seq
-    return [...folders.sort(bySeq), ...items.sort(bySeq)].map(x => x.node)
+    return [...folders, ...items.sort(bySeq)].map(x => x.node)
   }
 
-  const tree = await walk(dir, true)
+  const collectionBlocks = await readSettings(join(dir, 'collection.bru'), config?.name || 'collection')
+  const tree = await walk(dir, true, inheritFrom(ROOT_INHERITED, collectionBlocks))
 
   const environments = {}
   for (const fileName of bruFiles(await file.list(join(dir, ENVIRONMENTS_DIR)))) {
@@ -241,6 +298,6 @@ export async function importBrunoCollection(file, dir, { idPrefix = `bruno-${Dat
     tree,
     requests,
     environments,
-    warnings,
+    warnings: warnings.lines(),
   }
 }
