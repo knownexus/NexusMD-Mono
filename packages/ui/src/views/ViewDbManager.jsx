@@ -570,6 +570,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const [queryHistory, setQueryHistory] = useState([])        // newest first: { sql, at, ok, summary }
   const [savedQueries, setSavedQueries] = useState(() => readPref(SAVED_KEY, [])) // { id, name, sql, conn | null, at }
   const [tableColumns, setTableColumns] = useState({})        // { [table]: Column[] }
+  const [columnsFailed, setColumnsFailed] = useState({})      // { [table]: true } once its column types couldn't be read
   const [columnsLoading, setColumnsLoading] = useState(false)
   const [activeBuilder, setActiveBuilder] = useState(null)    // 'search' | 'insert' | 'update' | 'delete' | 'join' | 'aggregate' | null
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -632,9 +633,18 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
         return
       }
       const result = await db.getColumns(session.type, session.config, table)
+      // A table always has columns, so none back means they couldn't be read (a permissions gap, say).
+      if (!result.columns?.length) {
+        setColumnsFailed(prev => ({ ...prev, [table]: true }))
+        return
+      }
+      setColumnsFailed(prev => (prev[table] ? { ...prev, [table]: false } : prev))
       setTableColumns(prev => ({ ...prev, [table]: result.columns }))
     } catch (err) {
-      if (quiet) return
+      if (quiet) {
+        setColumnsFailed(prev => ({ ...prev, [table]: true }))
+        return
+      }
       notify(err.message, 'error')
       setActiveBuilder(null)
     } finally {
@@ -725,6 +735,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   // Without a key (or before the columns load) there's no safe way to pick out one row.
   const keyIdx = useMemo(() => columnInfo.flatMap((c, i) => (c?.isPrimaryKey ? [i] : [])), [columnInfo])
   const columnsKnown = !!tableColumns[dbState.selectedTable]
+  const typesUnreadable = !columnsKnown && !!columnsFailed[dbState.selectedTable]
   const canWrite = keyIdx.length > 0
   const pkIndex = keyIdx[0] ?? -1
   const keyNames = keyIdx.map(i => tableData?.columns[i])
@@ -1325,6 +1336,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                   columnInfo={columnInfo}
                   canWrite={canWrite}
                   columnsKnown={columnsKnown || isDemo}
+                  typesUnreadable={typesUnreadable}
                   isView={viewSet.has(dbState.selectedTable)}
                   onSetCell={commitCell}
                   onAddRow={() => setAddingRow(true)}
@@ -2094,6 +2106,7 @@ const typeTitle = col => [
 ].filter(Boolean).join(' · ')
 
 const INPUT_TYPES = { date: 'date', time: 'time', datetime: 'datetime-local' }
+const OFFSET_FORMAT = 'YYYY-MM-DDTHH:MM:SS+HH:MM'
 
 // The box a value is typed into, shaped by the column's type: number boxes only take what a
 // number may hold, dates and times use pickers, text stops at the column's length.
@@ -2108,6 +2121,7 @@ const CellInput = forwardRef(function CellInput({ col, value, onChange, classNam
       inputMode={kind === 'integer' ? 'numeric' : kind === 'decimal' ? 'decimal' : undefined}
       maxLength={kind === 'text' && col?.maxLength > 0 ? col.maxLength : undefined}
       spellCheck={kind === 'text' ? undefined : false}
+      placeholder={kind === 'datetimeoffset' ? OFFSET_FORMAT : undefined}
       value={value}
       onChange={e => { if (isPartialInput(kind, e.target.value)) onChange(e.target.value) }}
       {...rest}
@@ -2116,7 +2130,7 @@ const CellInput = forwardRef(function CellInput({ col, value, onChange, classNam
 })
 
 const BrowsePanel = forwardRef(function BrowsePanel({
-  tableData, visible, keyIdx, columnInfo, canWrite, columnsKnown, isView = false, onSetCell, onAddRow, search, onSearchChange, sort, onSort,
+  tableData, visible, keyIdx, columnInfo, canWrite, columnsKnown, typesUnreadable = false, isView = false, onSetCell, onAddRow, search, onSearchChange, sort, onSort,
   selectedRows, allSelected, onToggleRow, onToggleAll, onClearSelection, onDeleteSelected, onDeleteRow, onCopyCell,
   editingCell, editValue, onEditValueChange, onStartEdit, onSaveEdit, onCancelEdit,
 }, ref) {
@@ -2132,7 +2146,8 @@ const BrowsePanel = forwardRef(function BrowsePanel({
     return p >= 0 && p < visible.length ? { ri: visible[p].i, ci: c } : null
   }
   const editError = editingCell ? parseCellInput(columnInfo[editingCell.ci], editValue).error : null
-  const readOnly = !canWrite && columnsKnown
+  const readOnly = !canWrite && (columnsKnown || typesUnreadable)
+  const canAdd = columnsKnown || typesUnreadable
   return (
     <div className="nx-db-browse">
       <div className="nx-db-browse-tools">
@@ -2163,8 +2178,8 @@ const BrowsePanel = forwardRef(function BrowsePanel({
             </button>
           </>
         )}
-        <button type="button" className="btn sm" onClick={onAddRow} disabled={!columnsKnown || isView}
-          title={isView ? 'A view shows rows from its tables; add rows there' : columnsKnown ? 'Add a row to this table' : 'Reading the table’s columns…'}>
+        <button type="button" className="btn sm" onClick={onAddRow} disabled={!canAdd || isView}
+          title={isView ? 'A view shows rows from its tables; add rows there' : canAdd ? 'Add a row to this table' : 'Reading the table’s columns…'}>
           <Icon name="plus" size={13} />Add row
         </button>
       </div>
@@ -2173,7 +2188,9 @@ const BrowsePanel = forwardRef(function BrowsePanel({
         <p className="nx-db-alert" role="note">
           {isView
             ? 'This is a view: it shows rows from other tables, so it’s read-only here. Change the rows in their own tables.'
-            : 'This table has no primary key, so a change can’t be kept to one row: editing and deleting are off. You can still add rows, or change rows from the Query tab.'}
+            : typesUnreadable
+              ? "Couldn't read this table's column types, so editing and deleting are off. You can still add rows, or change rows from the Query tab."
+              : 'This table has no primary key, so a change can’t be kept to one row: editing and deleting are off. You can still add rows, or change rows from the Query tab.'}
         </p>
       )}
 
@@ -2511,6 +2528,8 @@ function DropDialog({ name, view, onDrop, onClose }) {
 // One field per column, typed like the grid's editor. Identity and computed columns are left
 // to the database; a field left blank gets the column's default, or NULL where that's allowed.
 function AddRowDialog({ table, columns, columnInfo, onSave, onClose }) {
+  // With no column metadata at all, every field is plain text and its type is unknown.
+  const typesUnknown = columnInfo.length > 0 && columnInfo.every(c => !c)
   const fields = columns.map((name, i) => ({ name, col: columnInfo[i] ?? { name, dataType: 'text', nullable: true } }))
   const [values, setValues] = useState({})   // name → { text, isNull, touched }
   const [errors, setErrors] = useState({})
@@ -2563,6 +2582,7 @@ function AddRowDialog({ table, columns, columnInfo, onSave, onClose }) {
     >
       <form id="nx-db-addrow-form" className="nx-db-addrow-form" onSubmit={submit} noValidate>
         {failure && <div className="nx-db-alert bad" role="alert">{failure}</div>}
+        {typesUnknown && <div className="nx-db-alert" role="note">{"Couldn't read this table's column types; values go in as typed"}</div>}
         {fields.map(({ name, col }, i) => {
           const kind = columnKind(col)
           const v = values[name] ?? { text: '', isNull: false, touched: false }
@@ -2572,7 +2592,7 @@ function AddRowDialog({ table, columns, columnInfo, onSave, onClose }) {
             <div key={name} className="db-field nx-db-addrow-field" data-invalid={errors[name] ? true : undefined}>
               <label className="db-label" htmlFor={id}>
                 {name}{required && <span className="req" aria-hidden="true"> *</span>}
-                <span className="nx-db-coltype">{typeLabelOf(col)}</span>
+                {!typesUnknown && <span className="nx-db-coltype">{typeLabelOf(col)}</span>}
               </label>
               {kind === 'readonly' ? (
                 <input id={id} className="db-input" disabled value="" placeholder="Set by the database" />
@@ -2584,7 +2604,7 @@ function AddRowDialog({ table, columns, columnInfo, onSave, onClose }) {
                 </label>
               ) : (
                 <CellInput id={id} col={col} className="db-input" value={v.isNull ? '' : v.text} disabled={v.isNull}
-                  placeholder={v.isNull ? 'NULL' : col.hasDefault ? 'Default' : col.nullable ? 'NULL' : ''}
+                  placeholder={v.isNull ? 'NULL' : col.hasDefault ? 'Default' : kind === 'datetimeoffset' ? OFFSET_FORMAT : col.nullable ? 'NULL' : ''}
                   onChange={text => set(name, { text, isNull: false })} aria-invalid={!!errors[name] || undefined} />
               )}
               {kind !== 'readonly' && col.nullable && (

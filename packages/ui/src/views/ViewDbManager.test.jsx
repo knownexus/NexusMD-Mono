@@ -1542,6 +1542,10 @@ describe('ViewDbManager — editing by column type, adding and deleting rows', (
   afterEach(() => { cleanup() })
 
   async function openMembers() {
+    await openMembersBare()
+    await waitFor(() => expect(screen.getAllByText('tinyint').length).toBeGreaterThan(0))
+  }
+  async function openMembersBare() {
     render(<ViewDbManager adapters={adapters} />)
     fireEvent.click(screen.getByText(/Connect to database/i))
     fireEvent.click(screen.getByText('SQLite'))
@@ -1552,7 +1556,6 @@ describe('ViewDbManager — editing by column type, adding and deleting rows', (
     openTable('members')
     await waitFor(() => screen.getByRole('table'))
     await waitFor(() => expect(adapters.dbManager.getColumns).toHaveBeenCalled())
-    await waitFor(() => expect(screen.getAllByText('tinyint').length).toBeGreaterThan(0))
   }
   const grid = () => within(screen.getByRole('region', { name: 'Table data' }))
   const cell = (text) => grid().getByText(text).closest('td')
@@ -1638,6 +1641,32 @@ describe('ViewDbManager — editing by column type, adding and deleting rows', (
     fireEvent.doubleClick(cell('Al'))
     expect(grid().queryByLabelText('Edit name')).not.toBeTruthy()
     expect(screen.getByRole('button', { name: 'Add row' }).disabled).toBe(false)
+  })
+
+  it('says when the column types could not be read, and still lets rows be added', async () => {
+    adapters.dbManager.getColumns.mockResolvedValue({ ok: true, columns: [] })
+    await openMembersBare()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add row' }).disabled).toBe(false))
+    expect(screen.getByRole('note').textContent).toMatch(/^Couldn't read this table's column types, so editing and deleting are off/)
+    expect(screen.getByRole('note').textContent).not.toMatch(/primary key/)
+    fireEvent.click(screen.getByRole('button', { name: 'Add row' }))
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getByText("Couldn't read this table's column types; values go in as typed")).toBeTruthy()
+    expect(dialog.queryByText('text')).not.toBeTruthy()
+  })
+
+  it('shows a datetimeoffset field as text with its format, and refuses stray characters', async () => {
+    const cols = [...typed, { name: 'seen', dataType: 'datetimeoffset', isPrimaryKey: false, nullable: true }]
+    adapters.dbManager.getColumns.mockResolvedValue({ ok: true, columns: cols })
+    adapters.dbManager.getRows.mockResolvedValue({ columns: ['id', 'qty', 'active', 'name', 'joined', 'seen'], rows: [] })
+    await openMembersBare()
+    await waitFor(() => expect(screen.getAllByText('datetimeoffset').length).toBeGreaterThan(0))
+    fireEvent.click(screen.getByRole('button', { name: 'Add row' }))
+    const input = within(screen.getByRole('dialog')).getByLabelText(/^seen/)
+    expect(input.type).toBe('text')
+    expect(input.placeholder).toBe('YYYY-MM-DDTHH:MM:SS+HH:MM')
+    fireEvent.change(input, { target: { value: 'x' } })
+    expect(input.value).toBe('')
   })
 
   it('adds a row: identity left to the database, required fields checked, blanks left to defaults', async () => {
