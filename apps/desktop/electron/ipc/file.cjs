@@ -31,6 +31,13 @@ function register(ipcMain) {
     } catch { return []; }
   });
 
+  ipcMain.handle('file:listDirs', async (_e, dirPath) => {
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      return entries.filter(e => e.isDirectory()).map(e => e.name);
+    } catch { return []; }
+  });
+
   ipcMain.handle('file:delete', async (_e, filePath) => {
     try { await fs.unlink(filePath); } catch { /* ignore missing */ }
   });

@@ -8,6 +8,7 @@ export const IFileAdapter = {
   write:             async (path, text) => Promise.reject(new Error('IFileAdapter.write not implemented')),
   exists:            async (path) => Promise.reject(new Error('IFileAdapter.exists not implemented')),
   list:              async (dirPath) => Promise.reject(new Error('IFileAdapter.list not implemented')),
+  listDirs:          async (dirPath) => Promise.reject(new Error('IFileAdapter.listDirs not implemented')),
   delete:            async (path) => Promise.reject(new Error('IFileAdapter.delete not implemented')),
   mkdir:             async (dirPath) => Promise.reject(new Error('IFileAdapter.mkdir not implemented')),
   defaultProfileDir: async () => Promise.reject(new Error('IFileAdapter.defaultProfileDir not implemented')),
