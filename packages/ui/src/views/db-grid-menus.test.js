@@ -71,7 +71,8 @@ describe('rowMenuItems', () => {
 
   it('disables Edit cell and Set to NULL with the reason when editing is off', () => {
     const reason = 'This table has no primary key'
-    const items = row({ canEdit: false, editReason: reason, canDelete: false })
+    // Before the column details load, nullability isn't known either: still listed, disabled.
+    const items = row({ canEdit: false, editReason: reason, canDelete: false, nullable: null })
     expect(find(items, 'Edit cell')).toMatchObject({ disabled: true, title: reason })
     expect(find(items, 'Set to NULL')).toMatchObject({ disabled: true, title: reason })
     expect(find(items, 'Delete row')).toMatchObject({ disabled: true, title: 'No primary key, so this row can’t be deleted on its own' })
@@ -79,6 +80,7 @@ describe('rowMenuItems', () => {
 
   it('offers Set to NULL only on a nullable column the database doesn’t write', () => {
     expect(find(row({ nullable: false }), 'Set to NULL')).toBeUndefined()
+    expect(find(row({ nullable: null }), 'Set to NULL')).toBeDefined()
     expect(find(row({ columnReadonly: true }), 'Set to NULL')).toBeUndefined()
   })
 

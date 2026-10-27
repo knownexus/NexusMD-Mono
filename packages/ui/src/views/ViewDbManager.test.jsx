@@ -2313,13 +2313,32 @@ describe('ViewDbManager — right-click menus on the grid', () => {
     expect(screen.queryByRole('menuitem', { name: 'Delete row' })).toBeNull()
   })
 
-  it('closes the editor when its column is minimised', async () => {
+  // Minimising takes focus from the editor (the button, or the menu as it opens), and the editor saves on leaving.
+  const editName = (who, to) => {
+    fireEvent.doubleClick(screen.getByText(who).closest('td'))
+    const box = screen.getByRole('textbox', { name: 'Edit name' })
+    expect(document.activeElement).toBe(box)
+    fireEvent.change(box, { target: { value: to } })
+  }
+
+  it('saves the cell being edited when its column is minimised from the hover button', async () => {
     await openPatients()
-    fireEvent.doubleClick(screen.getByText('Bob').closest('td'))
-    expect(screen.getByRole('textbox', { name: 'Edit name' })).toBeTruthy()
+    editName('Bob', 'Bobby')
+    const button = screen.getByRole('button', { name: 'Minimise name' })
+    button.focus()
+    fireEvent.click(button)
+    await waitFor(() => expect(adapters.dbManager.updateCell).toHaveBeenCalledWith('sqlite', expect.anything(), 'patients', 'id', 2, 'name', 'Bobby'))
+    expect(screen.queryByRole('textbox', { name: /^Edit / })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Show name' })).toBeTruthy()
+  })
+
+  it('saves the cell being edited when its column is minimised from the header menu', async () => {
+    await openPatients()
+    editName('Alice', 'Alicia')
     fireEvent.contextMenu(header('name'))
     await pick('Minimise column')
-    expect(screen.queryByRole('textbox', { name: 'Edit name' })).toBeNull()
+    await waitFor(() => expect(adapters.dbManager.updateCell).toHaveBeenCalledWith('sqlite', expect.anything(), 'patients', 'id', 1, 'name', 'Alicia'))
+    expect(screen.queryByRole('textbox', { name: /^Edit / })).toBeNull()
     expect(screen.getByRole('button', { name: 'Show name' })).toBeTruthy()
   })
 

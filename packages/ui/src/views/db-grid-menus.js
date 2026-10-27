@@ -35,7 +35,7 @@ export function headerMenuItems(ctx) {
  * (the ticked rows, when the click was on one of several); edit, Set to NULL, duplicate and follow
  * act on the clicked row only. A view gets the copy items alone.
  * @param {{ canEdit: boolean, editReason: string|null, columnReadonly: boolean, columnBoolean: boolean,
- *   nullable: boolean, isView: boolean, count: number, canDelete: boolean, deleteReason: string,
+ *   nullable: boolean|null (null: not known yet), isView: boolean, count: number, canDelete: boolean, deleteReason: string,
  *   canDuplicate: boolean, follows: object[], references: object[],
  *   onEdit(), onSetNull(), onCopyCell(), onCopyRows(), onCopyInsert(), onDuplicate(), onFollow(target), onDelete() }} ctx
  */
@@ -62,7 +62,8 @@ export function rowMenuItems(ctx) {
   ]
   return [
     { label: 'Edit cell', icon: 'edit', disabled: !!editOff, title: editOff ?? undefined, onSelect: ctx.onEdit },
-    ...(nullable && !columnReadonly ? [{ label: 'Set to NULL', icon: 'x', disabled: !!nullOff, title: nullOff ?? undefined, onSelect: ctx.onSetNull }] : []),
+    // Left out only where the column is known not to take NULL; unknown, it's offered (and checked on save).
+    ...(nullable !== false && !columnReadonly ? [{ label: 'Set to NULL', icon: 'x', disabled: !!nullOff, title: nullOff ?? undefined, onSelect: ctx.onSetNull }] : []),
     SEP,
     ...copies,
     { label: 'Duplicate row…', icon: 'plus', disabled: !ctx.canDuplicate, title: ctx.canDuplicate ? undefined : 'Reading the table’s columns…', onSelect: ctx.onDuplicate },

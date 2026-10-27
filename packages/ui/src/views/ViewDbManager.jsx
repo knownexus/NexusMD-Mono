@@ -1240,11 +1240,9 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   }
 
   // ── Grid menus (right-click on a header or a cell) ──────────────────────────
-  const minimise = (name) => {
-    // The editor would be left open in a column no longer drawn.
-    if (editingCell && tableData?.columns[editingCell.ci] === name) setEditingCell(null)
-    setMinCols([...minCols.filter(n => n !== name), name])
-  }
+  // A cell being edited in that column saves first: pressing Minimise (or opening the menu) takes
+  // focus from the editor, whose blur saves and closes it, as clicking away does.
+  const minimise = (name) => setMinCols([...minCols.filter(n => n !== name), name])
   const isViewOpen = viewSet.has(dbState.selectedTable)
   const openStructure = structures[dbState.selectedTable]
   const shownKeys = isViewOpen ? [] : openStructure?.foreignKeys ?? []
@@ -1287,7 +1285,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
       editReason,
       columnReadonly: kind === 'readonly',
       columnBoolean: kind === 'boolean',
-      nullable: !!col?.nullable,
+      nullable: col ? !!col.nullable : null,
       isView: isViewOpen,
       count: rows.length,
       canDelete: canWrite,
