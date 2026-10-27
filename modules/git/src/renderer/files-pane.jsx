@@ -5,6 +5,31 @@ import { ContextMenu, menuPoint } from './context-menu.jsx'
 import { popoutSpec } from './popout-spec.js'
 import { ipcMessage } from './use-git-actions.js'
 import { openElsewhere } from './open-elsewhere.js'
+import { fileMarks } from './file-marks.js'
+
+// A row's name, marked when the file is changed (its letter after it) or the folder holds changes (a dot).
+function RowName({ row, marks }) {
+  if (row.kind === 'dir') {
+    const n = marks.dirs.get(row.path)
+    return (
+      <>
+        <span className="nx-gw-tree-name" data-changed={n ? '' : undefined}>{row.name}</span>
+        {n > 0 && (
+          <span className="nx-gw-tree-dot" title={`${n} changed file${n === 1 ? '' : 's'} inside`}>
+            <span className="nx-sr-only">{`, ${n} changed inside`}</span>
+          </span>
+        )}
+      </>
+    )
+  }
+  const m = marks.files.get(row.path)
+  return (
+    <>
+      <span className="nx-gw-tree-name" data-tone={m?.tone}>{row.name}</span>
+      {m && <span className="nx-gw-file-code nx-gw-tree-code" data-tone={m.tone} title={m.label}>{m.letter}</span>}
+    </>
+  )
+}
 
 // The tree flattened to the rows that are showing: folders open in `open`, in tree order.
 function visibleRows(node, open, depth, out) {
@@ -21,9 +46,10 @@ function visibleRows(node, open, depth, out) {
  * Dropping on a folder row copies the files into that folder; on a file row, into its folder; on the
  * empty space or the root row, into the repository root. Names that already exist are asked about
  * first (ImportDialog). Nothing is staged: new files appear as untracked, replaced ones as unstaged.
- * `onImported()` asks the workspace to read the changes again.
+ * `onImported()` asks the workspace to read the changes again. `changes` (the worktree's) marks each
+ * changed file A, M, D or U as the Changes tab does, and each folder holding one with a dot.
  */
-export function FilesPane({ adapter, host = null, repo, worktreePath, registered, version, onImported = () => {}, onOpenFile = null }) {
+export function FilesPane({ adapter, host = null, repo, worktreePath, registered, version, onImported = () => {}, onOpenFile = null, changes = [] }) {
   // The right-click menu: { x, y, label, items } for the row it was opened on.
   const [menu, setMenu] = React.useState(null)
   const [list, setList] = React.useState(null)
@@ -49,6 +75,7 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
 
   const root = React.useMemo(() => buildFileTree(list?.files ?? []), [list])
   const rows = React.useMemo(() => visibleRows(root, open, 0, []), [root, open])
+  const marks = React.useMemo(() => fileMarks(changes), [changes])
   const toggle = path => setOpen(prev => { const next = new Set(prev); if (!next.delete(path)) next.add(path); return next })
 
   const finish = async (dir, sources, replace) => {
@@ -158,7 +185,7 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
               onDoubleClick={r.kind === 'file' && onOpenFile ? () => onOpenFile(r.path) : undefined}
               onContextMenu={e => openMenu(e, r)} onKeyDown={e => onRowKey(e, r)}>
               <span aria-hidden="true">{r.kind === 'dir' ? (r.expanded ? '▾' : '▸') : ''}</span>
-              <span>{r.name}</span>
+              <RowName row={r} marks={marks} />
             </div>
           ))}
           {list.truncated && <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Showing the first 50,000 files.</div>}

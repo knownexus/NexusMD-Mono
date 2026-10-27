@@ -232,7 +232,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
       {filesTab
         ? (
           <div className="nx-gw-files-body">
-            <FilesPane adapter={adapter} host={host} repo={repo} worktreePath={tree.path} registered={registered} version={version} onImported={onSaved} onOpenFile={goToFile} />
+            <FilesPane adapter={adapter} host={host} repo={repo} worktreePath={tree.path} registered={registered} version={version} onImported={onSaved} onOpenFile={goToFile} changes={tree.changes} />
           </div>
         )
         : history

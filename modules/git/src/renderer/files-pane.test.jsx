@@ -9,14 +9,14 @@ const registered = ['C:/repos/A']
 const files = ['README.md', 'docs/guide.md', 'src/app.jsx']
 const dropped = name => ({ name })
 
-function setup({ plan = { total: 1, conflicts: [], failed: [] }, result = { added: 1, replaced: 0, skipped: 0, failed: [] } } = {}) {
+function setup({ plan = { total: 1, conflicts: [], failed: [] }, result = { added: 1, replaced: 0, skipped: 0, failed: [] }, changes } = {}) {
   const adapter = {
     files: vi.fn(async () => ({ files, truncated: false })),
     pathForFile: vi.fn(f => (f.name === 'unknown' ? '' : `D:\\in\\${f.name}`)),
     importFiles: vi.fn(async (_r, _w, _g, _d, _s, options) => (options?.dryRun ? plan : result)),
   }
   const onImported = vi.fn()
-  render(<FilesPane adapter={adapter} repo={repo} worktreePath={repo.path} registered={registered} version={1} onImported={onImported} />)
+  render(<FilesPane adapter={adapter} repo={repo} worktreePath={repo.path} registered={registered} version={1} onImported={onImported} changes={changes} />)
   return { adapter, onImported }
 }
 const dropOn = (el, names) => fireEvent.drop(el, { dataTransfer: { types: ['Files'], files: names.map(dropped) } })
@@ -204,5 +204,28 @@ describe('FilesPane', () => {
     const { adapter } = setup()
     fireEvent.drop(await row('docs'), { dataTransfer: { types: ['text/plain'], files: [] } })
     expect(adapter.importFiles).not.toHaveBeenCalled()
+  })
+
+  it('marks changed files with their letter and folders holding changes with a dot', async () => {
+    setup({ changes: [
+      { path: 'README.md', area: 'unstaged', xy: '.M' },
+      { path: 'docs/guide.md', area: 'untracked', xy: '??' },
+    ] })
+    const readme = await row('README.md')
+    expect(readme.querySelector('.nx-gw-tree-code').textContent).toBe('M')
+    expect(readme.querySelector('.nx-gw-tree-code').title).toBe('Modified')
+    const docs = await row('docs')
+    expect(docs.querySelector('.nx-gw-tree-dot').title).toBe('1 changed file inside')
+    expect((await row('src')).querySelector('.nx-gw-tree-dot')).toBeNull()
+    fireEvent.click(docs)
+    expect((await row('guide.md')).querySelector('.nx-gw-tree-code').textContent).toBe('A')
+    fireEvent.click(await row('src'))
+    expect((await row('app.jsx')).querySelector('.nx-gw-tree-code')).toBeNull()
+  })
+
+  it('shows no marks for a clean worktree', async () => {
+    setup()
+    await row('README.md')
+    expect(document.querySelector('.nx-gw-tree-code, .nx-gw-tree-dot')).toBeNull()
   })
 })

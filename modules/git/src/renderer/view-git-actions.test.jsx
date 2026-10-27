@@ -201,7 +201,9 @@ describe('file actions', () => {
     setupView({ refs: vi.fn(() => new Promise(() => {})), log: vi.fn(() => new Promise(() => {})) })
     await openWorktree()
     // Changes puts the file column beside the diff; only History has a resizable split (list | commit).
-    expect(screen.queryByRole('separator')).toBeNull()
+    // (The branch list's own divider is there on every tab.)
+    expect(screen.queryByRole('separator', { name: 'Resize history and commit' })).toBeNull()
+    expect(screen.getByRole('separator', { name: 'Resize branch list' })).toBeTruthy()
     fireEvent.click(screen.getByRole('tab', { name: 'History' }))
     const divider = await screen.findByRole('separator', { name: 'Resize history and commit' })
     divider.parentElement.getBoundingClientRect = () => ({ left: 0, width: 100 })

@@ -5,6 +5,22 @@ import { getProfileKey } from '@nexusmd/shell-sdk'
 describe('git config', () => {
   beforeEach(() => localStorage.clear())
 
+  it('keeps the History divider and the branch list width the user dragged to', () => {
+    setGitConfig({ view: { ...getGitConfig().view, historySplit: 0.55, listWidth: 412.6 } })
+    expect(getGitConfig().view.historySplit).toBe(0.55)
+    expect(getGitConfig().view.listWidth).toBe(413)
+  })
+
+  it('keeps the branch list width readable, and drops sizes it cannot use', () => {
+    setGitConfig({ view: { ...getGitConfig().view, listWidth: 40, historySplit: 0.95 } })
+    expect(getGitConfig().view.listWidth).toBe(220)
+    expect(getGitConfig().view.historySplit).toBeUndefined()
+    setGitConfig({ view: { ...getGitConfig().view, listWidth: 5000 } })
+    expect(getGitConfig().view.listWidth).toBe(720)
+    setGitConfig({ view: { ...getGitConfig().view, listWidth: 'wide' } })
+    expect(getGitConfig().view.listWidth).toBeUndefined()
+  })
+
   it('starts empty with the default search root', () => {
     expect(getGitConfig()).toEqual(DEFAULT_GIT_CONFIG)
     expect(effectiveRoots(getGitConfig())).toEqual(['C:/repos'])

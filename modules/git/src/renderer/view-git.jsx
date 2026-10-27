@@ -3,7 +3,8 @@ import {
   ALL_PROJECTS, findGroup, scopeSnapshot, renameGroup, duplicateGroup, deleteGroup, worktreeId, pruneSelection, commitTargets,
   actionTargets, branchState,
 } from '@nexusmd/core'
-import { setGitConfig, getGitConfig, effectiveRoots, effectiveDotfiles } from './git-config.js'
+import { setGitConfig, getGitConfig, effectiveRoots, effectiveDotfiles, LIST_WIDTH } from './git-config.js'
+import { ListResizer } from './list-resizer.jsx'
 import { useGitConfig } from './use-git-config.js'
 import { useGitSnapshot } from './use-git-snapshot.js'
 import { GroupTabs } from './group-tabs.jsx'
@@ -80,6 +81,9 @@ function GitWorkspace({ adapter, host }) {
   const keys = React.useRef({}).current
   useGitShortcuts(keys)
   const detailsRef = React.useRef(null)
+  // The branch list's width while its divider is being dragged (saved to the view when let go).
+  const bodyRef = React.useRef(null)
+  const [draggedWidth, setDraggedWidth] = React.useState(null)
   React.useEffect(() => {
     let live = true
     adapter.version().then(v => { if (live) setGitVersion(v) }, () => { if (live) setGitVersion(null) })
@@ -102,6 +106,7 @@ function GitWorkspace({ adapter, host }) {
   if (gitVersion === undefined) return card('Checking for git…')
 
   const view = config.view
+  const listWidth = draggedWidth ?? view.listWidth ?? LIST_WIDTH
   const editingGroup = editing?.name ? config.groups.find(g => g.name === editing.name) ?? null : null
   const group = findGroup(config, view.group)
   const scoped = scopeSnapshot(snapshot, group)
@@ -255,7 +260,7 @@ function GitWorkspace({ adapter, host }) {
           : 'No repositories registered yet. Add them in Settings → Desktop → Git Workspace.')}
       </div>
 
-      <div className="nx-gw-body" data-list={listHidden ? 'hidden' : 'shown'}>
+      <div className="nx-gw-body" data-list={listHidden ? 'hidden' : 'shown'} ref={bodyRef} style={{ '--gw-list': `${listWidth}px` }}>
         {!listHidden && (
           <nav aria-label="Branches" className="nx-gw-aside">
             <BranchList repos={config.repos} scoped={scoped} query={query} filter={filter} onClearFilters={() => { setQuery(''); setFilter('all') }} errors={snapshot?.errors || []} collapsed={view.collapsed}
@@ -263,6 +268,9 @@ function GitWorkspace({ adapter, host }) {
               onSetCollapsed={collapsed => setView({ collapsed })}
               selected={view.selected} onSelect={selectTree} />
           </nav>
+        )}
+        {!listHidden && (
+          <ListResizer width={listWidth} bodyRef={bodyRef} onDrag={setDraggedWidth} onDone={w => setView({ listWidth: w })} />
         )}
         <aside aria-label="Details" className="nx-gw-main" ref={detailsRef}>
           {selectedTree

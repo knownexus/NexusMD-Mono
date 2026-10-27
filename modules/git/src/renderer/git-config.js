@@ -12,6 +12,11 @@ export const DEFAULT_GIT_CONFIG = Object.freeze({
   view: Object.freeze({ group: ALL_PROJECTS, collapsed: [], selected: null, split: 0.45, panel: 'changes', list: 'shown' }),
 })
 
+// The branch list's width: 330px unless dragged, never so narrow its rows are unreadable or so wide it
+// squeezes out the changes beside it (the page also caps it at half its width, in view-git.jsx).
+export const LIST_WIDTH = 330
+export const clampListWidth = w => Math.round(Math.min(720, Math.max(220, w)))
+
 const strings = v => Array.isArray(v) ? v.filter(x => typeof x === 'string') : []
 const fresh = () => ({ ...DEFAULT_GIT_CONFIG, repos: [], groups: [], view: { ...DEFAULT_GIT_CONFIG.view, collapsed: [] } })
 
@@ -34,6 +39,11 @@ function normalise(saved) {
       split: typeof view.split === 'number' && view.split >= 0.2 && view.split <= 0.8 ? view.split : DEFAULT_GIT_CONFIG.view.split,
       panel: view.panel === 'history' || view.panel === 'files' ? view.panel : 'changes',
       list: view.list === 'hidden' ? 'hidden' : 'shown',
+      // Where the History tab's divider was dragged to, and the branch list's width in pixels. Left out
+      // when not set, so the screens use their own defaults. Anything not listed here is dropped on
+      // read, which used to lose historySplit.
+      ...(typeof view.historySplit === 'number' && view.historySplit >= 0.2 && view.historySplit <= 0.8 ? { historySplit: view.historySplit } : {}),
+      ...(Number.isFinite(view.listWidth) ? { listWidth: clampListWidth(view.listWidth) } : {}),
     },
   }
 }
