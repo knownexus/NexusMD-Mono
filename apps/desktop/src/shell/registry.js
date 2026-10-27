@@ -37,6 +37,11 @@ export function disabledFromHost(host = typeof window !== 'undefined' ? window.e
 const disabled = disabledFromHost()
 export const registry = buildRegistry(installedIdsFromHost(), disabled.ids, disabled.manifests)
 
+// The web app's names for views the desktop calls something else. Shared screens (@nexusmd/ui) were
+// written for the web app, so their links use its names: the Dashboard's PR tile asks for 'pr'.
+const VIEW_ALIASES = { pr: 'prs' }
+export const resolveView = viewId => VIEW_ALIASES[viewId] || viewId
+
 // True for a view that no installed app owns: an app that isn't on this machine (a saved view, a
 // deep link, the tray), or an id nobody has heard of. Settings is the shell's own.
 export function isUninstalledView(viewId, reg = registry) {

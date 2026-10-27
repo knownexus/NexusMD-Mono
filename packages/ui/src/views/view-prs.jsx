@@ -127,6 +127,9 @@ function TeamActivityCriteriaPopover({ criteria, onChange, onClose }) {
   )
 }
 
+// The filter tabs a link can open the PR list on (`{ preset }` in its filter).
+const PR_PRESETS = new Set(['needsMe', 'teamActivity', 'active', 'drafts', 'merged', 'stale', 'failing'])
+
 export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCriteria, newItemIds = new Set() }) {
   const { data: NexusMDData, api: NexusMDApi } = useNexusData()
   const effectiveNeedsMe = useEffectiveNeedsMe()
@@ -146,6 +149,10 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
     if (nav?.pendingFilter?.workItemId != null) {
       setFocusedWI(nav.pendingFilter.workItemId)
       window.NexusMDNav = null   // consume, like the planner view does
+    } else if (PR_PRESETS.has(nav?.pendingFilter?.preset)) {
+      // The Dashboard's PR tile and its segments open the matching tab.
+      setFilter(nav.pendingFilter.preset)
+      window.NexusMDNav = null
     }
   }, [])
   const criteria = needsMeCriteria || { votes: [0], includeDrafts: false }

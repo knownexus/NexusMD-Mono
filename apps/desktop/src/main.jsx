@@ -15,7 +15,7 @@ import { redeem } from './cloud-auth.js'
 import { registerDeepLinks } from './shell/deep-links.js'
 import { startDesktopAutoSync } from './sync.js'
 import { INSTALLED_NAV, SETTINGS_NAV, ALL_NAV, DEFAULT_NAV_ORDER } from './nav-config.js'
-import { isUninstalledView, registry } from './shell/registry.js'
+import { isUninstalledView, registry, resolveView } from './shell/registry.js'
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
@@ -165,7 +165,7 @@ function WindowControls() {
 
 function App() {
   // Start on the first installed app's first view (Dashboard in a full install).
-  const [view, setView]         = React.useState(() => takeWaitingNavigation() || FIRST_VIEW)
+  const [view, setView]         = React.useState(() => resolveView(takeWaitingNavigation()) || FIRST_VIEW)
   // Every view visited this session, in order; mountedViews keeps the kept-alive ones mounted.
   const [visited, setVisited]   = React.useState(() => [view])
   React.useEffect(() => { setVisited(v => (v.includes(view) ? v : [...v, view])) }, [view])
@@ -223,7 +223,7 @@ function App() {
       const detail = e.detail
       // Accept both the string payload (desktop-internal dispatches) and the
       // { view, filter } object payload used by shared @nexusmd/ui components.
-      const next = typeof detail === 'string' ? detail : detail?.view
+      const next = resolveView(typeof detail === 'string' ? detail : detail?.view)
       const filter = (detail && typeof detail === 'object') ? (detail.filter || null) : null
       if (next && !isUninstalledView(next) && !offViewsRef.current.includes(next)) {
         // Stash the filter so views (e.g. PRView's focused work item) can consume it,

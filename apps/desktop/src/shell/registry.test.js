@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildRegistry, installedIdsFromHost, isUninstalledView, BUNDLED_MANIFESTS } from './registry.js'
+import { buildRegistry, installedIdsFromHost, isUninstalledView, resolveView, BUNDLED_MANIFESTS } from './registry.js'
 
 // The sidebar order users have always had; the manifests must reproduce it exactly.
 const ORIGINAL_NAV_ORDER = [
@@ -75,5 +75,17 @@ describe('Calendar and Planner as apps of their own', () => {
   it('can be installed without Work, and Work without them', () => {
     expect(buildRegistry(['planner', 'calendar']).nav.map(n => n.id)).toEqual(['calendar', 'planner'])
     expect(buildRegistry(['work']).nav.map(n => n.id)).toEqual(['dashboard', 'work', 'prs', 'builds', 'tests', 'team', 'triage'])
+  })
+})
+
+describe('resolveView', () => {
+  it('turns the web app\'s view names into the desktop\'s, and leaves the rest', () => {
+    expect(resolveView('pr')).toBe('prs')
+    expect(resolveView('prs')).toBe('prs')
+    expect(resolveView('triage')).toBe('triage')
+    expect(resolveView(null)).toBeNull()
+  })
+  it('only ever names a view an app owns', () => {
+    expect(isUninstalledView(resolveView('pr'))).toBe(false)
   })
 })

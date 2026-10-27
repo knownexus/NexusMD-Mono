@@ -56,3 +56,13 @@ test('switching off the screen the app starts on opens the next one instead', as
     expect(first.startsWith(shown)).toBe(true)
   } finally { await close() }
 })
+
+test('the Dashboard PR tile\'s link (the web app\'s "pr") opens Pull Requests', async () => {
+  const { win, close } = await launchApp()
+  try {
+    await expect(item(win, 'Dashboard')).toHaveClass(/active/, { timeout: 15_000 })
+    await win.evaluate(() => window.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: { view: 'pr', filter: { preset: 'needsMe' } } })))
+    await expect(heading(win)).toHaveText('Pull Requests')
+    await expect(item(win, 'Pull Requests')).toHaveClass(/active/)
+  } finally { await close() }
+})
