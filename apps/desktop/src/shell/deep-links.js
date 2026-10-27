@@ -15,13 +15,18 @@ export function viewFromLink(url) {
   return /^[a-z0-9-]+$/.test(view) ? view : null
 }
 
+// A sign-in link; anything else (a link that is none of ours) is dropped.
+export function isOAuthLink(url) {
+  try { const u = new URL(url); return u.protocol === 'nexusmd:' && u.hostname === 'oauth' } catch { return false }
+}
+
 // One listener for all links (the bridge keeps a single one), and the link the app was started with.
 export function registerDeepLinks({ redeem, navigate, adapter = deepLinkAdapter }) {
   if (!adapter.isAvailable()) return
   const handle = url => {
     const view = viewFromLink(url)
     if (view) navigate(view)
-    else redeem(url)
+    else if (isOAuthLink(url)) redeem(url)
   }
   adapter.onLink(handle)
   adapter.takeInitial().then(url => { if (url) handle(url) }).catch(() => {})
