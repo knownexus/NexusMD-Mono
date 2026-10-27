@@ -57,3 +57,15 @@ describe('installer.nsh', () => {
     expect(nsh).toContain('ShortcutName "$NxOneName"')
   })
 })
+
+describe('publishing the Windows build', () => {
+  // Left as a draft, electron-builder skips the upload when Mac or Linux has already published the
+  // release, so Windows went missing from 1.2.0.
+  it('publishes the same kind of release as Mac and Linux', async () => {
+    const { createRequire } = await import('node:module')
+    const require = createRequire(import.meta.url)
+    const win = require('../electron-builder.win.cjs')
+    const pkg = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8'))
+    expect(win.publish).toEqual(pkg.build.publish)
+  })
+})

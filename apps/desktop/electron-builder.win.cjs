@@ -47,5 +47,8 @@ module.exports = {
   // nexusmd:// links open this install; the uninstaller removes the registration. Not for the test
   // installer, which must not take the links over from a real install.
   ...(test ? {} : { protocols: [{ name: 'NexusMD', schemes: ['nexusmd'] }] }),
-  publish: { provider: 'github', owner: 'knownexus', repo: 'NexusMD-Mono' },
+  // A published release, as package.json's config makes for Mac and Linux. Left out, this defaults to a
+  // draft, and electron-builder skips the upload (with only a warning) when another platform has
+  // already created the release as published.
+  publish: { provider: 'github', owner: 'knownexus', repo: 'NexusMD-Mono', releaseType: 'release' },
 };
