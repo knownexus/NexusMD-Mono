@@ -2,7 +2,6 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { linkAdapter } from './link.js'
 import { oauthAdapter } from './oauth.js'
 import { windowControlsAdapter } from './windowControls.js'
-import { jiraAdapter } from './jira.js'
 import { logsAdapter } from './logs.js'
 import { appPrefsAdapter } from './appPrefs.js'
 
@@ -47,14 +46,6 @@ describe('windowControlsAdapter', () => {
   it('does nothing without a bridge', () => {
     expect(windowControlsAdapter.platform()).toBeUndefined()
     expect(() => { windowControlsAdapter.minimize(); windowControlsAdapter.onRefreshData(() => {}) }).not.toThrow()
-  })
-})
-
-describe('jiraAdapter', () => {
-  it('proxies a request through the main process', async () => {
-    window.electronAPI = { jira: { request: vi.fn(async () => ({ status: 200 })) } }
-    expect(await jiraAdapter.request({ path: '/x' })).toEqual({ status: 200 })
-    expect(window.electronAPI.jira.request).toHaveBeenCalledWith({ path: '/x' })
   })
 })
 

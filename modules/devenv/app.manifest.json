@@ -1,0 +1,32 @@
+{
+  "id": "devenv",
+  "label": "Dev Environment",
+  "productName": "NexusMD Dev Environment",
+  "order": 13,
+  "nav": [{ "id": "devenv", "label": "Dev Environment", "icon": "build" }],
+  "entries": {
+    "main": "src/main/index.cjs",
+    "renderer": "src/renderer/index.js"
+  },
+  "ipc": {
+    "preload": {
+      "devenv": {
+        "run": { "invoke": "devenv:run" },
+        "answer": { "invoke": "devenv:answer" },
+        "cancel": { "invoke": "devenv:cancel" },
+        "catalog": { "invoke": "devenv:catalog" },
+        "open": { "invoke": "devenv:open" },
+        "active": { "invoke": "devenv:active" },
+        "query": { "invoke": "devenv:query" },
+        "profileInfo": { "invoke": "devenv:profile-info" },
+        "profileList": { "invoke": "devenv:profile-list" },
+        "profileRead": { "invoke": "devenv:profile-read" },
+        "profileWrite": { "invoke": "devenv:profile-write" },
+        "profileCreate": { "invoke": "devenv:profile-create" },
+        "pathForFile": { "webUtils": "getPathForFile" },
+        "onLine": { "on": "devenv:line" },
+        "onExit": { "on": "devenv:exit" }
+      }
+    }
+  }
+}

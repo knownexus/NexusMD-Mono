@@ -7,6 +7,40 @@ contracts), not just pointers to go read them. Web and Capacitor app support
 are noted where they differ, but nothing here requires wiring them up in the
 same change.
 
+> **Desktop apps are installable units now.** A page of the desktop app (Git Workspace, Editor,
+> Planner...) is an *app* in `modules/<id>`, not a view wired into `apps/desktop`. This guide covers the
+> core/adapter layers underneath; for adding an app, read [Adding an app](#adding-an-app) first.
+
+## Adding an app
+
+An app is one folder, `modules/<id>/`, a workspace package named `@nexusmd/app-<id>`:
+
+```
+modules/<id>/
+  app.manifest.json         id, label, productName, order, nav[{id,label,icon}], entries, ipc.preload, mainFiles?
+  assets/icon.png, icon.ico its shortcut/window/tray icon when it is the only app (scripts/create-app-icons.cjs)
+  src/renderer/index.js     default export { id, views, settingsCard?, provider?, topbar?, popout?, activate(host), ... }
+  src/main/index.cjs        register(ctx) -> { dispose }   (optional)
+```
+
+- The preload builds `window.electronAPI.<namespace>` from the manifest's `ipc.preload`; a test per
+  app checks every listed channel has a handler.
+- Apps never import each other (`apps/desktop/src/module-boundaries.test.js`). They talk through
+  capabilities on the host: `host.capabilities.has('editor.openPath')`, and hide the feature when
+  the other app is not installed.
+- Import shared code only from `@nexusmd/{core,ui,shell-sdk,web-adapters,editor-kit,main-kit}`.
+- Screens that only your app uses may live in `packages/ui` (web and mobile import them from there);
+  the split build (`apps/desktop/build/ui-split.mjs`) works out which app owns which file and builds
+  it into that app's folder. A file two apps use stays in the shared UI.
+- Strings only your app contains let `apps/desktop/e2e/split.spec.js` prove it is absent from an
+  install without it: add one to `MARKERS`.
+- Nothing else lists the app: the sidebar, Settings, the split build and the Windows installer's
+  checklist (`installer/gen-apps-nsh.mjs`) all read the manifests.
+
+How it ships: `npm -w apps/desktop run build:split` builds the shell and one folder per app; the
+Windows installer (`apps/desktop/installer/README.md`) copies only the ticked ones. Mac, Linux and
+dev runs still load every app from the one bundle. `NEXUSMD_APPS=git,editor npm start` runs a subset.
+
 ## 0. Repo layout and setup
 
 This is an npm-workspaces monorepo (`node >= 20`):

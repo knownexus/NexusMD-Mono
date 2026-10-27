@@ -1,12 +1,12 @@
 import React from 'react'
 import {
-  Icon, CardFrame,
-  VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker, BoardColumnsCard,
+  Icon,
+  VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker,
   VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView,
-  PlToggle, VsPasswordModal, loadConfidentialConfig,
-  CardsAndTablesSettings, toast, WI_TYPE_STATES_CACHE_KEY,
+  PlToggle,
+  toast,
 } from '@nexusmd/ui'
-import { ADO_CACHE_KEY, JIRA_CACHE_KEY, buildConfig, resolveConnectionParams, buildConnectionString, graphJSON, SQL_AUTH, AZURE_AD_INTERACTIVE, connectionStringToFields } from '@nexusmd/core'
+import { graphJSON } from '@nexusmd/core'
 import { appPrefsAdapter } from './adapters/appPrefs.js'
 import { useProfile } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -16,481 +16,16 @@ import { desktopFileIO } from './file-io.js'
 import LogsCard from './logs-card.jsx'
 import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken, decodeJwtClaims } from './cloud-auth.js'
 import { desktopSync } from './sync.js'
-import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
-import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
-import { dbManagerAdapter } from './adapters/db-manager.js'
-import { DevenvSettingsCard } from './devenv-settings-card.jsx'
-import { GitSettingsCard } from './git-settings-card.jsx'
-import { secureStorageAdapter } from './adapters/secureStorage.js'
-import {
-  listSavedConnections, saveConnection, getConnectionSecret, deleteConnection,
-} from './db-manager-config.js'
+import { moduleSettingsCards, modulePanels } from './shell/modules.js'
+import { registry } from './shell/registry.js'
+import { host } from './shell/host.js'
+import { pickerAdapter } from './adapters/picker.js'
 
-export const settInputStyle = {
+const settInputStyle = {
   width: '100%', padding: '7px 10px',
   border: '1px solid var(--border)', borderRadius: 6,
   background: 'var(--surface-2)', outline: 'none', fontSize: 13,
   color: 'var(--text)', boxSizing: 'border-box',
-}
-
-export function SettField({ label, hint, children }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)' }}>{label}</label>
-      {children}
-      {hint && <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{hint}</span>}
-    </div>
-  )
-}
-
-export function AdoConnectionCard({ onRefreshData }) {
-  const [org, setOrg]           = React.useState('')
-  const [pat, setPat]           = React.useState('')
-  const [projects, setProjects] = React.useState('')
-  const [status, setStatus]     = React.useState('')
-  const [saving, setSaving]     = React.useState(false)
-  const [discovering, setDiscovering] = React.useState(false)
-
-  React.useEffect(() => {
-    const c = getAdoConfig()
-    setOrg(c.org || '')
-    setProjects((c.projects || []).join(', '))
-  }, [])
-
-  const save = async () => {
-    setSaving(true)
-    setStatus('Saving…')
-    try {
-      const projectList = projects.split(/[,\n]+/).map(p => p.trim()).filter(Boolean)
-      saveAdoConfig({
-        org: org.trim(),
-        ...(pat.trim() ? { pat: pat.trim() } : {}),
-        projects: projectList,
-      })
-      setStatus('Saved! Loading data…')
-      setPat('')
-      onRefreshData?.().catch(() => {})
-      setTimeout(() => setStatus(''), 3000)
-    } catch (e) {
-      setStatus('Error: ' + e.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const discoverProjects = async () => {
-    const currentOrg = org.trim()
-    const currentPat = pat.trim() || getAdoConfig().pat
-    if (!currentOrg || !currentPat) { setStatus('Enter org and PAT first.'); return }
-    setDiscovering(true)
-    setStatus('Discovering…')
-    try {
-      saveAdoConfig({ org: currentOrg, pat: currentPat })
-      const adapter = createAdoHttpAdapter()
-      const res = await adapter.fetch('_apis/projects?api-version=7.0')
-      const j   = await res.json()
-      const names = (j.value || []).map(p => p.name).filter(Boolean)
-      if (!names.length) { setStatus('No projects returned.'); return }
-      setProjects(names.join(', '))
-      setStatus(`Discovered ${names.length} project${names.length === 1 ? '' : 's'}.`)
-    } catch (e) {
-      setStatus('Error: ' + e.message)
-    } finally {
-      setDiscovering(false)
-    }
-  }
-
-  const isError = status.startsWith('Error')
-
-  return (
-    <CardFrame title="Azure DevOps Connection" icon={<Icon name="settings" size={16} />}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <SettField label="Organisation" hint="The subdomain from dev.azure.com/your-org">
-          <input value={org} onChange={e => setOrg(e.target.value)}
-            placeholder="your-org-name" style={settInputStyle} />
-        </SettField>
-        <SettField label="Personal Access Token" hint="Needs Work Items (Read & Write), Code (Read & Write), Build (Read & Execute), Test Management (Read), and Project and Team (Read) scopes. Leave blank to keep existing.">
-          <input type="password" value={pat} onChange={e => setPat(e.target.value)}
-            placeholder="Leave blank to keep existing PAT" style={settInputStyle} />
-        </SettField>
-        <SettField label="Projects" hint="Comma-separated project names.">
-          <textarea value={projects} onChange={e => setProjects(e.target.value)}
-            placeholder="Project1, Project2" rows={2}
-            style={{ ...settInputStyle, resize: 'vertical', paddingTop: 8, paddingBottom: 8 }} />
-        </SettField>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="btn sm ghost" onClick={discoverProjects} disabled={discovering || saving}>
-            {discovering ? 'Discovering…' : 'Discover projects'}
-          </button>
-          <button className="btn primary" onClick={save} disabled={saving || discovering}>
-            {saving ? 'Saving…' : 'Save & connect'}
-          </button>
-          {status && (
-            <span style={{ fontSize: 12.5, color: isError ? 'var(--danger)' : 'var(--success)' }}>
-              {status}
-            </span>
-          )}
-        </div>
-      </div>
-    </CardFrame>
-  )
-}
-
-const DB_TYPES = [['sqlserver', 'SQL Server'], ['sqlite', 'SQLite']]
-
-const DB_INPUT_MODES = [['fields', 'Fields'], ['connstr', 'Connection string']]
-
-const DB_AUTH_MODES = [[SQL_AUTH, 'SQL login'], [AZURE_AD_INTERACTIVE, 'Entra ID (Azure AD) interactive']]
-
-// One saved connection's editor — used both for "Add connection" (initial === null)
-// and "Edit" (initial === the saved metadata, no secret included).
-function ConnectionForm({ initial, onSaved, onCancel }) {
-  const [name, setName]           = React.useState(initial?.name || '')
-  const [dbType, setDbType]       = React.useState(initial?.type || 'sqlserver')
-  const [inputMode, setInputMode] = React.useState(initial?.inputMode || 'fields')
-  const [connStr, setConnStr]     = React.useState('')
-  const [host, setHost]         = React.useState(initial?.host || '')
-  const [port, setPort]         = React.useState(initial?.port || '1433')
-  const [database, setDatabase] = React.useState(initial?.database || '')
-  const [user, setUser]         = React.useState(initial?.user || '')
-  const [password, setPassword] = React.useState('')
-  const [filePath, setFilePath] = React.useState(initial?.filePath || '')
-  const [encrypt, setEncrypt]   = React.useState(initial?.encrypt ?? true)
-  const [trustCert, setTrustCert] = React.useState(initial?.trustServerCertificate ?? false)
-  const [authentication, setAuthentication] = React.useState(initial?.authentication || SQL_AUTH)
-  const [status, setStatus]     = React.useState('')
-  const [saving, setSaving]     = React.useState(false)
-  const [testing, setTesting]   = React.useState(false)
-  const [secretLoaded, setSecretLoaded] = React.useState(!initial)
-
-  const currentFields = () => ({
-    host, port, database, user, filePath,
-    encrypt, trustServerCertificate: trustCert, authentication,
-  })
-  const interactive = authentication === AZURE_AD_INTERACTIVE
-
-  // When editing, load the connection's real saved secret into the form so
-  // it's both editable and included in the generated connection string below
-  // (rather than the field staying blank and the preview silently omitting it).
-  // Seeds `connStr` directly here too (not just `password`) so the string is
-  // correct even if the user has already switched to the Connection string
-  // tab before this resolves — the "keep in sync" effect below only re-derives
-  // connStr while the Fields tab is active.
-  React.useEffect(() => {
-    if (!initial) return
-    let cancelled = false
-    ;(async () => {
-      const secret = await getConnectionSecret(secureStorageAdapter, initial.id)
-      if (cancelled) return
-      if (initial.inputMode === 'connstr') {
-        setConnStr(secret)
-      } else {
-        setPassword(secret)
-        setConnStr(buildConnectionString(dbType, { ...currentFields(), password: secret }))
-      }
-      setSecretLoaded(true)
-    })()
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initial?.id])
-
-  // Keep the "Connection string" tab in sync while editing on the "Fields" tab,
-  // so switching tabs shows the string those fields would produce (including
-  // the password). Only runs while Fields is the active tab, so it never
-  // clobbers a connection string being hand-edited directly.
-  React.useEffect(() => {
-    if (inputMode !== 'fields') return
-    setConnStr(buildConnectionString(dbType, { ...currentFields(), password }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inputMode, dbType, host, port, database, user, password, filePath, encrypt, trustCert, authentication])
-
-  // Parses the connection string into the form's fields, then shows the Fields tab.
-  const fillFromConnStr = () => {
-    try {
-      const f = connectionStringToFields(dbType, connStr)
-      if (dbType === 'sqlite') {
-        setFilePath(f.filePath)
-      } else {
-        setHost(f.host); setPort(f.port); setDatabase(f.database); setUser(f.user); setPassword(f.password)
-        setEncrypt(f.encrypt); setTrustCert(f.trustServerCertificate); setAuthentication(f.authentication)
-      }
-      setInputMode('fields')
-      setStatus('')
-    } catch (e) {
-      setStatus('Error: couldn\'t read that connection string: ' + e.message)
-    }
-  }
-
-  const resolveConfig = async () => {
-    if (inputMode === 'connstr') {
-      const cs = connStr.trim() || (initial ? await getConnectionSecret(secureStorageAdapter, initial.id) : '')
-      if (!cs) throw new Error('Enter a connection string first.')
-      return resolveConnectionParams(dbType, { connectionString: cs })
-    }
-    const pwd = password || (initial ? await getConnectionSecret(secureStorageAdapter, initial.id) : '')
-    return buildConfig(dbType, { ...currentFields(), password: pwd })
-  }
-
-  const test = async () => {
-    if (!dbManagerAdapter.isAvailable()) { setStatus('Error: database connections require the desktop app.'); return }
-    setTesting(true)
-    setStatus('Testing…')
-    try {
-      const config = await resolveConfig()
-      const result = await dbManagerAdapter.connect(dbType, config)
-      setStatus(`Connected — found ${result.tables.length} table${result.tables.length === 1 ? '' : 's'}.`)
-    } catch (e) {
-      setStatus('Error: ' + e.message)
-    } finally {
-      setTesting(false)
-    }
-  }
-
-  const save = async () => {
-    if (!name.trim()) { setStatus('Error: give this connection a name.'); return }
-    setSaving(true)
-    setStatus('Saving…')
-    try {
-      const meta   = { id: initial?.id, name: name.trim(), type: dbType, inputMode, ...currentFields() }
-      // Interactive sign-in has no password to keep.
-      const secret = inputMode === 'connstr' ? connStr.trim() : (interactive && dbType === 'sqlserver' ? '' : password)
-      await saveConnection(secureStorageAdapter, meta, secret)
-      onSaved()
-    } catch (e) {
-      setStatus('Error: ' + e.message)
-      setSaving(false)
-    }
-  }
-
-  const isError = status.startsWith('Error')
-
-  return (
-    <CardFrame title={initial ? 'Edit Connection' : 'New Connection'} icon={<Icon name="database" size={16} />}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <SettField label="Name">
-          <input value={name} onChange={e => setName(e.target.value)}
-            placeholder="e.g. UAT, Production" style={settInputStyle} />
-        </SettField>
-
-        <SettField label="Type">
-          <VsSeg value={dbType} options={DB_TYPES} onChange={setDbType} />
-        </SettField>
-
-        <SettField label="Input mode">
-          <VsSeg value={inputMode} options={DB_INPUT_MODES} onChange={setInputMode} />
-        </SettField>
-
-        {inputMode === 'connstr' ? (
-          <SettField
-            label={dbType === 'sqlite' ? 'File path or connection string' : 'Connection string'}
-            hint={initial
-              ? (secretLoaded ? 'Loaded from the saved connection, including its password.' : 'Loading saved connection string…')
-              : (dbType === 'sqlserver' ? 'e.g. mssql://user:pass@host:1433/database' : undefined)}
-          >
-            <textarea value={connStr} onChange={e => setConnStr(e.target.value)}
-              rows={3}
-              placeholder={dbType === 'sqlserver'
-                ? 'mssql://username:password@host:1433/database'
-                : 'sqlite:///absolute/path/to/file.db'}
-              style={{ ...settInputStyle, resize: 'vertical', paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
-              <button className="btn sm ghost" onClick={fillFromConnStr} disabled={!connStr.trim()}>Fill in fields</button>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Reads the string into the Fields tab, so you can check or change it.</span>
-            </div>
-          </SettField>
-        ) : (
-          <>
-            {dbType === 'sqlite' && (
-              <SettField label="File path" hint="Path as it appears on the machine running the desktop app.">
-                <input value={filePath} onChange={e => setFilePath(e.target.value)}
-                  placeholder="/absolute/path/to/file.db" style={settInputStyle} />
-              </SettField>
-            )}
-
-            {dbType === 'sqlserver' && (
-              <>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <div style={{ flex: 2 }}>
-                    <SettField label="Server / Host">
-                      <input value={host} onChange={e => setHost(e.target.value)}
-                        placeholder="myserver.database.windows.net" style={settInputStyle} />
-                    </SettField>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <SettField label="Port">
-                      <input value={port} onChange={e => setPort(e.target.value)}
-                        placeholder="1433" style={settInputStyle} />
-                    </SettField>
-                  </div>
-                </div>
-                <SettField label="Database">
-                  <input value={database} onChange={e => setDatabase(e.target.value)}
-                    placeholder="my_database" style={settInputStyle} />
-                </SettField>
-                <SettField label="Authentication">
-                  <VsSeg value={authentication} options={DB_AUTH_MODES} onChange={setAuthentication} />
-                </SettField>
-                {interactive ? (
-                  <SettField
-                    label="Account (optional)"
-                    hint="Connecting opens your browser to sign in with Microsoft Entra ID, with multi-factor authentication if your organisation requires it."
-                  >
-                    <input type="email" value={user} onChange={e => setUser(e.target.value)}
-                      placeholder="name@company.com" style={settInputStyle} />
-                  </SettField>
-                ) : (
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <div style={{ flex: 1 }}>
-                      <SettField label="Username">
-                        <input value={user} onChange={e => setUser(e.target.value)}
-                          placeholder="sa" style={settInputStyle} />
-                      </SettField>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <SettField
-                        label="Password"
-                        hint={initial ? (secretLoaded ? 'Loaded from the saved connection.' : 'Loading saved password…') : undefined}
-                      >
-                        <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                          style={settInputStyle} />
-                      </SettField>
-                    </div>
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: 16 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                    <input type="checkbox" checked={encrypt} onChange={e => setEncrypt(e.target.checked)} />
-                    Encrypt connection
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                    <input type="checkbox" checked={trustCert} onChange={e => setTrustCert(e.target.checked)} />
-                    Trust server certificate
-                  </label>
-                </div>
-              </>
-            )}
-          </>
-        )}
-
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="btn sm ghost" onClick={test} disabled={testing || saving}>
-            {testing ? 'Testing…' : 'Test connection'}
-          </button>
-          <button className="btn primary" onClick={save} disabled={saving || testing}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button className="btn sm ghost" onClick={onCancel} disabled={saving}>Cancel</button>
-          {status && (
-            <span style={{ fontSize: 12.5, color: isError ? 'var(--danger)' : 'var(--success)' }}>
-              {status}
-            </span>
-          )}
-        </div>
-      </div>
-    </CardFrame>
-  )
-}
-
-export function DatabaseConnectionCard() {
-  const [connections, setConnections] = React.useState(() => listSavedConnections())
-  const [formState, setFormState]     = React.useState(null) // null | 'new' | <saved entry>
-  const [rowStatus, setRowStatus]     = React.useState({})   // id -> status string
-  const [rowTesting, setRowTesting]   = React.useState({})   // id -> bool
-
-  const refresh = () => setConnections(listSavedConnections())
-
-  const testRow = async (entry) => {
-    if (!dbManagerAdapter.isAvailable()) {
-      setRowStatus(s => ({ ...s, [entry.id]: 'Error: database connections require the desktop app.' }))
-      return
-    }
-    setRowTesting(s => ({ ...s, [entry.id]: true }))
-    setRowStatus(s => ({ ...s, [entry.id]: 'Testing…' }))
-    try {
-      const secret = await getConnectionSecret(secureStorageAdapter, entry.id)
-      const config = entry.inputMode === 'connstr'
-        ? resolveConnectionParams(entry.type, { connectionString: secret })
-        : buildConfig(entry.type, { ...entry, password: secret })
-      const result = await dbManagerAdapter.connect(entry.type, config)
-      setRowStatus(s => ({ ...s, [entry.id]: `Connected — found ${result.tables.length} table${result.tables.length === 1 ? '' : 's'}.` }))
-    } catch (e) {
-      setRowStatus(s => ({ ...s, [entry.id]: 'Error: ' + e.message }))
-    } finally {
-      setRowTesting(s => ({ ...s, [entry.id]: false }))
-    }
-  }
-
-  const removeRow = async (id) => {
-    await deleteConnection(secureStorageAdapter, id)
-    refresh()
-  }
-
-  const cloneRow = async (entry) => {
-    setRowStatus(s => ({ ...s, [entry.id]: 'Cloning…' }))
-    try {
-      const secret = await getConnectionSecret(secureStorageAdapter, entry.id)
-      const { id, ...meta } = entry
-      await saveConnection(secureStorageAdapter, { ...meta, name: `${entry.name} (copy)` }, secret)
-      refresh()
-    } catch (e) {
-      setRowStatus(s => ({ ...s, [entry.id]: 'Error: ' + e.message }))
-    }
-  }
-
-  if (formState) {
-    return (
-      <ConnectionForm
-        initial={formState === 'new' ? null : formState}
-        onCancel={() => setFormState(null)}
-        onSaved={() => {
-          setFormState(null)
-          refresh()
-          window.dispatchEvent(new CustomEvent('nexusmd:navigate', { detail: 'db-manager' }))
-        }}
-      />
-    )
-  }
-
-  return (
-    <CardFrame title="Database Connections" icon={<Icon name="database" size={16} />}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {connections.length === 0 && (
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            No saved connections yet. Saved connections appear here and in the Database Manager's connect dialog.
-          </p>
-        )}
-        {connections.map(entry => (
-          <div key={entry.id} style={{
-            display: 'flex', flexDirection: 'column', gap: 6,
-            padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Icon name="database" size={14} />
-              <strong style={{ fontSize: 13 }}>{entry.name}</strong>
-              <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                {entry.type === 'sqlite' ? 'SQLite' : 'SQL Server'}
-              </span>
-              <div style={{ flex: 1 }} />
-              <button className="btn sm ghost" onClick={() => testRow(entry)} disabled={rowTesting[entry.id]}>
-                {rowTesting[entry.id] ? 'Testing…' : 'Test'}
-              </button>
-              <button className="btn sm ghost" onClick={() => setFormState(entry)}>Edit</button>
-              <button className="btn sm ghost" onClick={() => cloneRow(entry)}>Clone</button>
-              <button className="btn sm ghost" onClick={() => removeRow(entry.id)}>Delete</button>
-            </div>
-            {rowStatus[entry.id] && (
-              <span style={{ fontSize: 12, color: rowStatus[entry.id].startsWith('Error') ? 'var(--danger)' : 'var(--success)' }}>
-                {rowStatus[entry.id]}
-              </span>
-            )}
-          </div>
-        ))}
-        <div>
-          <button className="btn primary" onClick={() => setFormState('new')}>Add connection</button>
-        </div>
-      </div>
-    </CardFrame>
-  )
 }
 
 export function DesktopProfileCard() {
@@ -523,72 +58,6 @@ export function DesktopProfileCard() {
         <input value={tz} style={inp}
           onChange={e => { setTz(e.target.value); savePref('nexusmd.profile.timeZone', e.target.value) }} />
       </VsRow>
-    </VsCard>
-  )
-}
-
-export function DesktopPlannerPrefsCard() {
-  const pk = k => { try { return getProfileKey(k) } catch { return k } }
-  const readPref = (key, def) => { try { return localStorage.getItem(pk(key)) || def } catch { return def } }
-  const savePref = (key, val) => { try { localStorage.setItem(pk(key), val) } catch {} }
-
-  const [landing, setLanding] = React.useState(() => readPref('nexusmd.planner.landing', 'glance'))
-  const [nav,     setNav]     = React.useState(() => readPref('nexusmd.planner.nav', 'rail'))
-  const [entry,   setEntry]   = React.useState(() => readPref('nexusmd.planner.entry', 'inline'))
-  const [carry,   setCarry]   = React.useState(() => readPref('nexusmd.planner.carryPrompt', '1'))
-
-  return (
-    <VsCard title="Planner" icon="planner">
-      <VsRow title="Landing view" desc="First view when opening the Planner">
-        <VsSeg value={landing}
-          options={[['glance','Glance'],['week','Week'],['month','Month']]}
-          onChange={v => { setLanding(v); savePref('nexusmd.planner.landing', v) }} />
-      </VsRow>
-      <VsRow title="Navigation style" desc="How the planner nav is displayed">
-        <VsSeg value={nav}
-          options={[['rail','Rail'],['tabs','Tabs']]}
-          onChange={v => { setNav(v); savePref('nexusmd.planner.nav', v) }} />
-      </VsRow>
-      <VsRow title="Entry style" desc="How new planner entries are created">
-        <VsSeg value={entry}
-          options={[['inline','Inline'],['modal','Modal']]}
-          onChange={v => { setEntry(v); savePref('nexusmd.planner.entry', v) }} />
-      </VsRow>
-      <VsRow title="Carry-over prompt" desc="Prompt to carry unfinished tasks forward each week">
-        <PlToggle checked={carry === '1'}
-          onChange={v => { const s = v ? '1' : '0'; setCarry(s); savePref('nexusmd.planner.carryPrompt', s) }} />
-      </VsRow>
-    </VsCard>
-  )
-}
-
-export function DesktopConfidentialCard() {
-  const [pwOpen, setPwOpen] = React.useState(false)
-  const [autoRelock, setAutoRelock] = React.useState(() => {
-    try { return localStorage.getItem('nexusmd.confidential.autoRelock') || '0' } catch { return '0' }
-  })
-  const cfg = loadConfidentialConfig() || { sections: [], hash: null }
-  const lockedCount = (cfg.sections || []).filter(s => s.locked).length
-
-  return (
-    <VsCard title="Confidential" icon="lock">
-      <VsRow title="Password" desc={cfg.hash ? 'A password is set for confidential sections' : 'No password set — anyone can view confidential rows'}>
-        <button className="btn sm ghost" onClick={() => setPwOpen(true)}>
-          {cfg.hash ? 'Change password' : 'Set password'}
-        </button>
-      </VsRow>
-      <VsRow title="Auto re-lock" desc="Re-lock confidential sections when the app loses focus">
-        <PlToggle checked={autoRelock === '1'} onChange={v => {
-          const s = v ? '1' : '0'; setAutoRelock(s)
-          try { localStorage.setItem('nexusmd.confidential.autoRelock', s) } catch {}
-        }} />
-      </VsRow>
-      {lockedCount > 0 && (
-        <VsRow title="Locked sections" desc={`${lockedCount} section${lockedCount !== 1 ? 's' : ''} currently locked in the planner`}>
-          <span className="pill">{lockedCount}</span>
-        </VsRow>
-      )}
-      <VsPasswordModal open={pwOpen} onClose={() => setPwOpen(false)} />
     </VsCard>
   )
 }
@@ -646,60 +115,7 @@ export function DesktopAppCard() {
   )
 }
 
-export function DesktopQuickLinksCard({ links, onChange }) {
-  const [editing, setEditing] = React.useState(null)
-  const [form, setForm] = React.useState({ label: '', url: '', color: 'var(--accent)' })
-
-  const open = (idx) => {
-    if (idx === 'new') {
-      setForm({ label: '', url: '', color: 'var(--accent)' })
-    } else {
-      setForm({ ...links[idx] })
-    }
-    setEditing(idx)
-  }
-  const save = () => {
-    if (!form.label || !form.url) return
-    if (!/^https?:\/\//i.test(form.url)) return
-    const next = editing === 'new'
-      ? [...links, form]
-      : links.map((l, i) => i === editing ? form : l)
-    onChange(next)
-    setEditing(null)
-  }
-  const remove = (idx) => onChange(links.filter((_, i) => i !== idx))
-
-  const inp = { width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }
-
-  return (
-    <VsCard title="Quick links" icon="link">
-      {links.map((l, i) => (
-        <VsRow key={i} title={l.label} desc={l.url}>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn sm ghost" onClick={() => open(i)}>Edit</button>
-            <button className="btn sm ghost danger" onClick={() => remove(i)}>Remove</button>
-          </div>
-        </VsRow>
-      ))}
-      <div style={{ padding: '8px 16px' }}>
-        <button className="btn sm" onClick={() => open('new')}>+ Add link</button>
-      </div>
-      {editing !== null && (
-        <div style={{ padding: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <input placeholder="Label" value={form.label} style={inp} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} />
-          <input placeholder="URL" value={form.url} style={inp} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} />
-          <input placeholder="Colour (CSS var or hex)" value={form.color} style={inp} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} />
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
-            <button className="btn sm primary" onClick={save} disabled={!form.label || !form.url}>Save</button>
-          </div>
-        </div>
-      )}
-    </VsCard>
-  )
-}
-
-export function DesktopDataSyncCard({ refreshInterval, onRefreshIntervalChange, onRefreshData }) {
+export function DesktopDataSyncCard() {
   const [kbUsed, setKbUsed] = React.useState(0)
 
   React.useEffect(() => {
@@ -726,37 +142,13 @@ export function DesktopDataSyncCard({ refreshInterval, onRefreshIntervalChange, 
     } catch {}
   }
 
-  const clearCache = () => {
-    try {
-      localStorage.removeItem(ADO_CACHE_KEY)
-      localStorage.removeItem(JIRA_CACHE_KEY)
-      localStorage.removeItem(WI_TYPE_STATES_CACHE_KEY)
-    } catch {}
-    toast?.('Cache cleared — refreshing…', 'success')
-    onRefreshData?.().catch(() => {})
-  }
-
   return (
     <VsCard title="Data & sync" icon="dashboard">
       <VsRow title="Local storage used" desc="Approximate size of all NexusMD data in this profile">
         <span style={{ fontSize: 13, fontFamily: 'var(--mono)' }}>{kbUsed} KB</span>
       </VsRow>
-      <VsRow title="Auto-refresh interval" desc="Seconds between automatic ADO data refreshes (10–3600)">
-        <input type="number" min={10} max={3600} step={10}
-          value={refreshInterval}
-          style={{ width: 80, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
-          onChange={e => {
-            const v = Math.max(10, Math.min(3600, parseInt(e.target.value, 10) || 300))
-            onRefreshIntervalChange(v)
-            try { localStorage.setItem('nexusmd.refreshInterval', String(v)) } catch {}
-          }}
-        />
-      </VsRow>
-      {onRefreshData && (
-        <VsRow title="Clear cache" desc="Drop the cached ADO and Jira data and re-fetch — keeps profiles, settings, and planner notes">
-          <button className="btn sm ghost" onClick={clearCache}>Clear cache</button>
-        </VsRow>
-      )}
+      {/* Rows the installed apps add: Work's refresh interval and cache. */}
+      {modulePanels('data-sync').map(({ id, Panel }) => <Panel key={id} host={host} />)}
       <VsRow title="Clear local data" desc="Remove all locally stored NexusMD data and reload">
         <button className="btn sm ghost danger" onClick={clearLocal}>Clear data…</button>
       </VsRow>
@@ -1035,7 +427,13 @@ const SETTINGS_TABS = [
   { id: 'desktop',      label: 'Desktop',      icon: 'dashboard' },
 ]
 
-export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refreshInterval, onRefreshIntervalChange, onRefreshData }) {
+// A tab shows only when it has something to hold: 'planner' needs the Planner or Work apps (its board
+// columns are Work's), 'cards' is Work's, 'confidential' is the Planner's.
+const TAB_NEEDS = { planner: ['planner', 'work'], cards: ['work'], confidential: ['planner'] }
+export const visibleSettingsTabs = (reg = registry) =>
+  SETTINGS_TABS.filter(t => !TAB_NEEDS[t.id] || TAB_NEEDS[t.id].some(id => reg.isInstalled(id)))
+
+export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
   const profileApi = useProfile()
   const [tab, setTab] = React.useState('profile')
 
@@ -1047,7 +445,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
         padding: '16px 8px',
         borderRight: '1px solid var(--border)',
       }}>
-        {SETTINGS_TABS.map(t => (
+        {visibleSettingsTabs().map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
@@ -1111,12 +509,11 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
 
           {tab === 'planner' && (
             <>
-              <DesktopPlannerPrefsCard />
-              <BoardColumnsCard />
+              {modulePanels('planner').map(({ id, Panel }) => <Panel key={id} host={host} />)}
             </>
           )}
 
-          {tab === 'cards' && <CardsAndTablesSettings />}
+          {tab === 'cards' && modulePanels('cards').map(({ id, Panel }) => <Panel key={id} host={host} tweaks={tweaks} setTweak={setTweak} />)}
 
           {tab === 'profiles' && (
             <>
@@ -1126,21 +523,18 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
             </>
           )}
 
-          {tab === 'confidential' && <DesktopConfidentialCard />}
+          {tab === 'confidential' && modulePanels('confidential').map(({ id, Panel }) => <Panel key={id} host={host} />)}
 
           {tab === 'data' && (
             <>
-              <DesktopDataSyncCard refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange} onRefreshData={onRefreshData} />
+              <DesktopDataSyncCard />
               <LogsCard />
             </>
           )}
 
           {tab === 'integrations' && (
             <>
-              <AdoConnectionCard onRefreshData={onRefreshData} />
-              <JiraConnectionCard onRefreshData={onRefreshData} />
-              <WorkItemsDisplayCard />
-              <DatabaseConnectionCard />
+              {modulePanels('integrations').map(({ id, Panel }) => <Panel key={id} host={host} />)}
               <IntegrationsPanel />
             </>
           )}
@@ -1148,12 +542,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
           {tab === 'desktop' && (
             <>
               <DesktopAppCard />
-              <DevenvSettingsCard />
-              <GitSettingsCard />
-              <DesktopQuickLinksCard
-                links={tweaks.quickLinks || []}
-                onChange={links => setTweak('quickLinks', links)}
-              />
+              {moduleSettingsCards().map(({ id, Card }) => <Card key={id} picker={pickerAdapter} />)}
             </>
           )}
 

@@ -2,13 +2,19 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import Module from 'module'
 import path from 'path'
+import gitManifest from '@nexusmd/app-git/manifest'
+import devenvManifest from '@nexusmd/app-devenv/manifest'
+import databaseManifest from '@nexusmd/app-database/manifest'
+import apiClientManifest from '@nexusmd/app-api-client/manifest'
+import editorManifest from '@nexusmd/app-editor/manifest'
+import workManifest from '@nexusmd/app-work/manifest'
 
 let exposed
 let ipcRenderer
 const origRequire = Module.prototype.require
 
 beforeAll(() => {
-  ipcRenderer = { invoke: vi.fn(), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
+  ipcRenderer = { invoke: vi.fn(), sendSync: vi.fn(channel => (channel === 'registry:preload-descriptors' ? { ...gitManifest.ipc.preload, ...devenvManifest.ipc.preload, ...databaseManifest.ipc.preload, ...apiClientManifest.ipc.preload, ...editorManifest.ipc.preload, ...workManifest.ipc.preload } : { installedIds: ['git'] })), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
   const fakeElectron = {
     contextBridge: { exposeInMainWorld: (_name, obj) => { exposed = obj } },
     ipcRenderer,
@@ -27,6 +33,62 @@ beforeAll(() => {
 afterAll(() => { Module.prototype.require = origRequire })
 
 describe('preload bridge', () => {
+  it('builds each app\'s namespaces from the descriptors the main process hands over', () => {
+    expect(ipcRenderer.sendSync).toHaveBeenCalledWith('registry:preload-descriptors')
+    exposed.popout.open({ kind: 'editor' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('popout:open', { kind: 'editor' })
+    exposed.popout.changed('C:\\repos\\a')
+    expect(ipcRenderer.send).toHaveBeenLastCalledWith('popout:changed', 'C:\\repos\\a')
+  })
+
+  it('sends packed arguments as one object, the way the database handlers expect', () => {
+    exposed.dbManager.connect('sqlserver', { server: 's' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('db-manager:connect', { type: 'sqlserver', config: { server: 's' } })
+    exposed.dbManager.getRows('sqlite', { file: 'a.db' }, 'users', 50, 100)
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('db-manager:get-rows', { type: 'sqlite', config: { file: 'a.db' }, table: 'users', limit: 50, offset: 100 })
+    exposed.dbManager.updateCell('sqlite', {}, 't', 'id', 7, 'name', 'x')
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('db-manager:update-cell', { type: 'sqlite', config: {}, table: 't', primaryKey: 'id', primaryValue: 7, column: 'name', value: 'x' })
+  })
+
+  it('bridges the Editor\'s file calls and its open-request event', () => {
+    exposed.editor.read('C:\\a.txt')
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('editor:read', 'C:\\a.txt')
+    exposed.editor.write('C:\\a.txt', 'x', { expectedStamp: 's' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('editor:write', 'C:\\a.txt', 'x', { expectedStamp: 's' })
+    const cb = vi.fn()
+    const off = exposed.editor.onOpenRequest(cb)
+    const [channel, handler] = ipcRenderer.on.mock.calls.at(-1)
+    expect(channel).toBe('editor:open-request')
+    handler({}, ['C:\\a.txt'])
+    expect(cb).toHaveBeenCalledWith(['C:\\a.txt'])
+    off()
+  })
+
+  it('bridges the Jira proxy', () => {
+    exposed.jira.request({ url: 'https://acme.atlassian.net/rest/api/3/myself' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('jira:request', { url: 'https://acme.atlassian.net/rest/api/3/myself' })
+  })
+
+  it('builds a nested method from a dotted name', () => {
+    exposed.apiClient.script.run('return 1', { env: {} })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('api-client:script:run', 'return 1', { env: {} })
+  })
+
+  it('subscribes and unsubscribes event methods', () => {
+    const cb = vi.fn()
+    const off = exposed.popout.onChanged(cb)
+    const [channel, handler] = ipcRenderer.on.mock.calls.at(-1)
+    expect(channel).toBe('popout:changed')
+    handler({}, 'C:\\repos\\a')
+    expect(cb).toHaveBeenCalledWith('C:\\repos\\a')
+    off()
+    expect(ipcRenderer.removeListener).toHaveBeenLastCalledWith('popout:changed', handler)
+  })
+
+  it('resolves a dropped file\'s real path through webUtils', () => {
+    expect(exposed.git.pathForFile({ name: 'photo.jpg' })).toBe('C:\\Users\\me\\photo.jpg')
+  })
+
   it('exposes oauth and logs at the top level (not nested under update)', () => {
     expect(typeof exposed.oauth.start).toBe('function')
     expect(typeof exposed.oauth.refresh).toBe('function')
@@ -50,6 +112,13 @@ describe('preload bridge', () => {
     exposed.devenv.profileRead(cfg, 'mac.json'); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile-read', cfg, 'mac.json')
     exposed.devenv.profileWrite(cfg, 'mac.json', '{}', { create: true }); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile-write', cfg, 'mac.json', '{}', { create: true })
     exposed.devenv.profileCreate(cfg); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('devenv:profile-create', cfg)
+  })
+
+  it('asks the main process which apps are installed once, then remembers', () => {
+    expect(exposed.registry.get()).toEqual({ installedIds: ['git'] })
+    exposed.registry.get()
+    const asked = ipcRenderer.sendSync.mock.calls.filter(([channel]) => channel === 'registry:get')
+    expect(asked).toHaveLength(1)
   })
 
   it('bridges the start-on-login setting to its IPC channels', () => {

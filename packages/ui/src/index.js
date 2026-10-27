@@ -99,7 +99,8 @@ export {
   TriageView, TriageRow, TriageKpi, TriageEditField, softBg,
   BUCKET_META, BUCKET_ORDER, PRIO_COLOR, AREA_OPTIONS, STATUS_OPTIONS,
 } from './views/view-triage.jsx'
-export { WorkItemsView, WorkItemIdLink, WI_TYPE_STATES_CACHE_KEY } from './views/view-workitems.jsx'
+export { WorkItemsView, WorkItemIdLink } from './views/view-workitems.jsx'
+export { WI_TYPE_STATES_CACHE_KEY } from './views/wi-cache-key.js'
 export { DashboardView } from './views/view-dashboard.jsx'
 
 // Planner v2 subsystem (shared web + app). Chips (StatusChip/PrioChip/PlModal/

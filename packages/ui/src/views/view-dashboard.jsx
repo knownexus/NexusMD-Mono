@@ -328,7 +328,7 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
           <TriageStatusLine style={{ marginRight: 4 }} />
           <button className="btn sm ghost" onClick={() => NexusMDApi?.load().catch(() => {})}><Icon name="refresh" size={13}/> Refresh</button>
           <TriageExportButton />
-          <QuickNotePopover setPlannerData={setPlannerData}/>
+          {setPlannerData && <QuickNotePopover setPlannerData={setPlannerData}/>}
           <AddWidgetPopover widgetOrder={widgetOrder} onAdd={id => setWidgetOrder(widgetOrder.includes(id) ? widgetOrder : [...widgetOrder, id])}/>
           <button className="btn sm primary" onClick={() => window.dispatchEvent(new CustomEvent('nexusmd:create-wi'))}><Icon name="plus" size={13}/> New work item</button>
         </div>

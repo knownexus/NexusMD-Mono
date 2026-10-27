@@ -2,6 +2,13 @@
 
 const { app } = require('electron');
 
+const SCHEME = 'nexusmd://';
+
+// The nexusmd:// link among a process's arguments, if any.
+function linkIn(argv) {
+  return (argv || []).find(arg => typeof arg === 'string' && arg.startsWith(SCHEME)) || null;
+}
+
 function register(ipcMain, getMainWindow) {
   // Register the protocol at app startup (must be called before app is ready on some platforms)
   if (process.defaultApp) {
@@ -13,6 +20,15 @@ function register(ipcMain, getMainWindow) {
     app.setAsDefaultProtocolClient('nexusmd');
   }
 
+  // A link that started the app: Windows and Linux pass it as an argument. The page asks for it once
+  // it is listening, so it cannot be sent too early.
+  let initial = linkIn(process.argv);
+  ipcMain.handle('deepLink:take-initial', () => {
+    const url = initial;
+    initial = null;
+    return url;
+  });
+
   // macOS: open-url event
   app.on('open-url', (event, url) => {
     event.preventDefault();
@@ -22,7 +38,7 @@ function register(ipcMain, getMainWindow) {
 
   // Windows/Linux: second-instance with protocol URL in argv
   app.on('second-instance', (_event, commandLine) => {
-    const url = commandLine.find(arg => arg.startsWith('nexusmd://'));
+    const url = linkIn(commandLine);
     if (url) {
       const win = getMainWindow();
       if (win) {
@@ -35,4 +51,4 @@ function register(ipcMain, getMainWindow) {
   });
 }
 
-module.exports = { register };
+module.exports = { register, linkIn };

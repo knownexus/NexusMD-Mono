@@ -1,0 +1,10 @@
+{
+  "id": "calendar",
+  "label": "Calendar",
+  "productName": "NexusMD Calendar",
+  "order": 1,
+  "nav": [{ "id": "calendar", "label": "Calendar", "icon": "clock" }],
+  "entries": {
+    "renderer": "src/renderer/index.js"
+  }
+}

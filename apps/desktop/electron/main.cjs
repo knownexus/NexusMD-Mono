@@ -4,6 +4,10 @@
 const log = require('electron-log');
 const path = require('path');
 const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeTheme, shell } = require('electron');
+const { pinUserData } = require('./user-data.cjs');
+
+// Must run before anything reads app.getPath('userData') (logs, prefs, stores).
+pinUserData(app);
 
 // Configure electron-log — 'silly' is the lowest (most verbose) level, so
 // every log/info/warn/error/debug/verbose/silly call is written to file.
@@ -54,6 +58,19 @@ const { createTray, updateTrayIcon } = require('./tray.cjs');
 const { initNotifications } = require('./notifications.cjs');
 const { initUpdater, registerUpdaterIpc } = require('./updater.cjs');
 
+const appRegistry    = require('./app-registry.cjs');
+
+// All-in-one, or apps installed as folders of their own (see app-registry.cjs).
+const appLayout = appRegistry.getLayout(process.env, { isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
+const splitApps = appLayout.appsDir ? appRegistry.scanApps(appLayout.appsDir, { log: log.scope('apps') }) : null;
+// The one app of a single-app install: it gives the window and the tray their name and icon.
+const standaloneApp = splitApps && splitApps.length === 1 ? splitApps[0] : null;
+// Windows groups the taskbar and routes notifications by this id. A single-app install has its own, which its
+// shortcuts carry too (installer.nsh), so it pins and groups as that app; everything else is NexusMD.
+if (process.platform === 'win32' && app.isPackaged) {
+  app.setAppUserModelId(standaloneApp ? `com.knownexus.nexusmd.${standaloneApp.id}` : 'com.knownexus.nexusmd');
+}
+const appTable = splitApps ? appRegistry.modulesFromScan(splitApps) : undefined;
 const fileIpc        = require('./ipc/file.cjs');
 const pickerIpc      = require('./ipc/picker.cjs');
 const badgeIpc       = require('./ipc/badge.cjs');
@@ -61,13 +78,6 @@ const deepLinkIpc    = require('./ipc/deepLink.cjs');
 const trayIpc        = require('./ipc/tray-ipc.cjs');
 const logsIpc        = require('./ipc/logs.cjs');
 const oauthIpc       = require('./ipc/oauth.cjs');
-const apiClientScriptIpc = require('./ipc/api-client-script.cjs');
-const dbManagerIpc   = require('./ipc/db-manager.cjs');
-const jiraIpc        = require('./ipc/jira.cjs');
-const devenvIpc      = require('./ipc/devenv.cjs');
-const devenvProfileIpc = require('./ipc/devenv-profile.cjs');
-const gitIpc         = require('./ipc/git.cjs');
-const { createPopouts } = require('./popout.cjs');
 const loginItemIpc   = require('./ipc/login-item.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
@@ -77,14 +87,19 @@ const { clampZoomFactor, nextZoom, ZOOM_DEFAULT } = require('./zoom.cjs')
 // ---------------------------------------------------------------------------
 // Single-instance lock
 // ---------------------------------------------------------------------------
+const secondInstanceListeners = new Set();
 const gotLock = app.requestSingleInstanceLock();
 
 if (!gotLock) {
   // Another instance is already running — quit immediately.
   app.quit();
 } else {
-  // A second launch attempt focused the existing window.
-  app.on('second-instance', () => {
+  // A second launch attempt focuses the existing window, and tells the installed apps what it was
+  // launched with (e.g. the Editor opens a file given on the command line).
+  app.on('second-instance', (_event, argv) => {
+    for (const listener of secondInstanceListeners) {
+      try { listener(argv); } catch (err) { log.error('second-instance listener failed', err); }
+    }
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
@@ -97,8 +112,7 @@ if (!gotLock) {
 // State
 // ---------------------------------------------------------------------------
 let mainWindow = null;
-let devenvRuns = null;
-let gitProcesses = null;
+let appModules = null;
 let tray = null;
 let forceQuit = false;
 
@@ -168,6 +182,7 @@ function buildAppMenu(win) {
 // Window icon utility
 // ---------------------------------------------------------------------------
 function windowIconPath(isDark) {
+  if (standaloneApp?.iconPath) return standaloneApp.iconPath;
   const name = isDark ? 'icon-light.png' : 'icon.png';
   return path.join(__dirname, '..', 'assets', name);
 }
@@ -191,9 +206,12 @@ function loadRenderer(win, hash = '') {
     win.loadURL(hash ? `${process.env.VITE_DEV_SERVER_URL}#${hash}` : process.env.VITE_DEV_SERVER_URL);
   } else {
     // Packaged: extraResources/renderer. Unpackaged (npm start, e2e): vite's outDir.
-    const rendererDir = app.isPackaged
-      ? path.join(process.resourcesPath, 'renderer')
-      : path.join(__dirname, '..', '..', '..', 'dist', 'desktop', 'renderer');
+    // A split layout names its shell folder; otherwise: installed = extraResources/renderer,
+    // unpackaged (npm start, e2e) = vite's outDir.
+    const rendererDir = appLayout.shellDir
+      || (app.isPackaged
+        ? path.join(process.resourcesPath, 'renderer')
+        : path.join(__dirname, '..', '..', '..', 'dist', 'desktop', 'renderer'));
     win.loadFile(path.join(rendererDir, 'index.html'), hash ? { hash } : undefined);
   }
 }
@@ -336,11 +354,16 @@ function createMainWindow() {
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
   log.scope('lifecycle').info('app ready; creating main window');
+  // The preload asks which apps are installed (and what bridge they need) while it loads, so this
+  // must be answerable before the first window exists.
+  appRegistry.register(ipcMain, process.env, appTable, splitApps);
+
   // Create renderer window (loads from Vite dev server or dist/renderer/)
   mainWindow = createMainWindow();
 
   // System tray
-  tray = createTray(mainWindow, nativeTheme.shouldUseDarkColors);
+  tray = createTray(mainWindow, nativeTheme.shouldUseDarkColors,
+    standaloneApp ? { iconPath: standaloneApp.iconPath, tooltip: standaloneApp.manifest.productName } : undefined);
 
   nativeTheme.on('updated', () => {
     const dark = nativeTheme.shouldUseDarkColors;
@@ -363,20 +386,16 @@ app.whenReady().then(async () => {
   trayIpc.register(ipcMain, () => mainWindow, () => tray);
   logsIpc.register(ipcMain);
   oauthIpc.register(ipcMain);
-  apiClientScriptIpc.register(ipcMain);
-  dbManagerIpc.register(ipcMain);
-  jiraIpc.register(ipcMain);
-  devenvRuns = devenvIpc.register(ipcMain, {
+  // Apps split into their own package (Git Workspace, ...): each registers its own IPC and windows.
+  appModules = appRegistry.registerModules({
+    ipcMain, BrowserWindow, dialog,
+    argv: process.argv,
+    onSecondInstance: (fn) => { secondInstanceListeners.add(fn); return () => secondInstanceListeners.delete(fn); },
     send: (channel, msg) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, msg); },
-  });
-  devenvProfileIpc.register(ipcMain);
-  gitProcesses = gitIpc.register(ipcMain);
-  // Git Workspace pop-out windows (popout.cjs): the editor, conflict and diff screens in a window of their own.
-  const popouts = createPopouts({
-    BrowserWindow, dialog, preload: path.join(__dirname, 'preload.cjs'), icon: windowIconPath(nativeTheme.shouldUseDarkColors), load: loadRenderer,
-  });
-  ipcMain.handle('popout:open', (_e, spec) => popouts.open(spec));
-  ipcMain.on('popout:changed', (e, repoPath) => popouts.changed(e.sender, repoPath));
+    preloadPath: path.join(__dirname, 'preload.cjs'),
+    windowIcon: () => windowIconPath(nativeTheme.shouldUseDarkColors),
+    loadRenderer,
+  }, process.env, appTable, log.scope('apps'));
   loginItemIpc.register(ipcMain, { app });
   // Start-on-login keeps the exe that turned it on; a packaged build takes it over from an older
   // copy (which may open only to the tray). Not in dev, where execPath is electron.exe itself.
@@ -504,9 +523,7 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   log.scope('lifecycle').info('windows closed; shutting down backends');
-  dbManagerIpc.closeAll().catch(err => log.scope('lifecycle').error('db-manager closeAll failed', err));
-  devenvRuns?.disposeAll().catch(err => log.scope('lifecycle').error('devenv disposeAll failed', err));
-  gitProcesses?.disposeAll().catch(err => log.scope('lifecycle').error('git disposeAll failed', err));
+  appModules?.disposeAll().catch(err => log.scope('lifecycle').error('apps disposeAll failed', err));
 });
 
 // On macOS it is common to keep the app running even with no windows

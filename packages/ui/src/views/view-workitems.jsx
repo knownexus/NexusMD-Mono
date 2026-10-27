@@ -52,7 +52,8 @@ export async function patchWorkItem(workItemSource, id, ops) {
   }
 }
 
-export const WI_TYPE_STATES_CACHE_KEY = 'nexusmd.wi.wiTypeStates.cache';
+import { WI_TYPE_STATES_CACHE_KEY } from './wi-cache-key.js';
+export { WI_TYPE_STATES_CACHE_KEY };
 
 // Local aliases matching legacy global names used in this file
 const adoTypeToNexusMD  = adoTypeToHelm;

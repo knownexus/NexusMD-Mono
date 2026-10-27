@@ -1,23 +1,14 @@
 // Pure sidebar nav configuration, extracted from main.jsx (which renders and
 // starts sync at import, so it can't be imported by tests). Settings is kept OUT
 // of the reorderable NAV and pinned separately at the sidebar bottom.
-export const NAV = [
-  { id: 'dashboard', label: 'Dashboard',     icon: 'dashboard' },
-  { id: 'calendar',  label: 'Calendar',      icon: 'clock' },
-  { id: 'work',      label: 'Work Items',    icon: 'work' },
-  { id: 'prs',       label: 'Pull Requests', icon: 'pr' },
-  { id: 'builds',    label: 'Builds',        icon: 'build' },
-  { id: 'tests',     label: 'Tests',         icon: 'check' },
-  { id: 'team',      label: 'Team',          icon: 'team' },
-  { id: 'triage',    label: 'Triage',        icon: 'work' },
-  { id: 'planner',   label: 'Planner',       icon: 'planner' },
-  { id: 'notes',     label: 'Notes',         icon: 'pin' },
-  { id: 'markdown',  label: 'Documents',     icon: 'pin' },
-  { id: 'api-client', label: 'API Client',   icon: 'link' },
-  { id: 'db-manager', label: 'Database',     icon: 'database' },
-  { id: 'devenv',    label: 'Dev Environment', icon: 'build' },
-  { id: 'git',       label: 'Git Workspace',  icon: 'git-branch' },
-]
+//
+// The entries now come from the app manifests (shell/bundled-apps.json). NAV is every
+// app's entries, which fixes the default order; INSTALLED_NAV is only the apps installed
+// on this machine, and is what the sidebar and Settings actually show.
+import { buildRegistry, registry } from './shell/registry.js'
+
+export const NAV = buildRegistry().nav
+export const INSTALLED_NAV = registry.nav
 
 export const SETTINGS_NAV = { id: 'settings', label: 'Settings', icon: 'settings' }
 

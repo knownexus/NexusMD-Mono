@@ -1,0 +1,30 @@
+{
+  "name": "@nexusmd/app-documents",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "description": "NexusMD Documents: markdown documents, JSON editor and regex tester",
+  "exports": {
+    "./manifest": "./app.manifest.json",
+    "./renderer": "./src/renderer/index.js"
+  },
+  "files": [
+    "app.manifest.json",
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nexusmd/core": "*",
+    "@nexusmd/shell-sdk": "*",
+    "@nexusmd/ui": "*"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

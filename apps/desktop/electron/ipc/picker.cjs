@@ -14,6 +14,8 @@ function register(ipcMain, getMainWindow) {
     });
     if (canceled || !filePaths.length) return null;
     const filePath = filePaths[0];
+    // pathOnly: the caller reads the file itself (the Editor), so don't read it here.
+    if (filter?.pathOnly) return { path: filePath, name: path.basename(filePath) };
     const text = await fs.readFile(filePath, 'utf8');
     return { path: filePath, name: path.basename(filePath), text };
   });

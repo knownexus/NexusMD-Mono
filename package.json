@@ -5,6 +5,7 @@
   "description": "NexusMD monorepo — shared core + platform apps (web, desktop, mobile)",
   "workspaces": [
     "packages/*",
+    "modules/*",
     "apps/*"
   ],
   "engines": {

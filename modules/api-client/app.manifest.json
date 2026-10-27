@@ -1,0 +1,18 @@
+{
+  "id": "api-client",
+  "label": "API Client",
+  "productName": "NexusMD API Client",
+  "order": 11,
+  "nav": [{ "id": "api-client", "label": "API Client", "icon": "link" }],
+  "entries": {
+    "main": "src/main/index.cjs",
+    "renderer": "src/renderer/index.js"
+  },
+  "ipc": {
+    "preload": {
+      "apiClient": {
+        "script.run": { "invoke": "api-client:script:run" }
+      }
+    }
+  }
+}

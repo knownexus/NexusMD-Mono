@@ -1,0 +1,26 @@
+{
+  "id": "work",
+  "label": "Work",
+  "productName": "NexusMD Work",
+  "order": 0,
+  "nav": [
+    { "id": "dashboard", "label": "Dashboard", "icon": "dashboard", "order": 0 },
+    { "id": "work", "label": "Work Items", "icon": "work", "order": 2 },
+    { "id": "prs", "label": "Pull Requests", "icon": "pr", "order": 3 },
+    { "id": "builds", "label": "Builds", "icon": "build", "order": 4 },
+    { "id": "tests", "label": "Tests", "icon": "check", "order": 5 },
+    { "id": "team", "label": "Team", "icon": "team", "order": 6 },
+    { "id": "triage", "label": "Triage", "icon": "work", "order": 7 }
+  ],
+  "entries": {
+    "main": "src/main/index.cjs",
+    "renderer": "src/renderer/index.js"
+  },
+  "ipc": {
+    "preload": {
+      "jira": {
+        "request": { "invoke": "jira:request" }
+      }
+    }
+  }
+}

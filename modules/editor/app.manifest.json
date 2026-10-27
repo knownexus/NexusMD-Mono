@@ -1,0 +1,23 @@
+{
+  "id": "editor",
+  "label": "Editor",
+  "productName": "NexusMD Editor",
+  "order": 15,
+  "nav": [{ "id": "editor", "label": "Editor", "icon": "edit" }],
+  "entries": {
+    "main": "src/main/index.cjs",
+    "renderer": "src/renderer/index.js"
+  },
+  "ipc": {
+    "preload": {
+      "editor": {
+        "stat": { "invoke": "editor:stat" },
+        "read": { "invoke": "editor:read" },
+        "write": { "invoke": "editor:write" },
+        "list": { "invoke": "editor:list" },
+        "takePending": { "invoke": "editor:take-pending" },
+        "onOpenRequest": { "on": "editor:open-request" }
+      }
+    }
+  }
+}

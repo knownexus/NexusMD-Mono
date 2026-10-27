@@ -1,0 +1,24 @@
+{
+  "id": "database",
+  "label": "Database",
+  "productName": "NexusMD Database",
+  "order": 12,
+  "nav": [{ "id": "db-manager", "label": "Database", "icon": "database" }],
+  "entries": {
+    "main": "src/main/index.cjs",
+    "renderer": "src/renderer/index.js"
+  },
+  "ipc": {
+    "preload": {
+      "dbManager": {
+        "connect": { "invoke": "db-manager:connect", "pack": ["type", "config"] },
+        "getRows": { "invoke": "db-manager:get-rows", "pack": ["type", "config", "table", "limit", "offset"] },
+        "deleteRows": { "invoke": "db-manager:delete-rows", "pack": ["type", "config", "table", "primaryKey", "values"] },
+        "updateCell": { "invoke": "db-manager:update-cell", "pack": ["type", "config", "table", "primaryKey", "primaryValue", "column", "value"] },
+        "insertRow": { "invoke": "db-manager:insert-row", "pack": ["type", "config", "table", "values"] },
+        "runQuery": { "invoke": "db-manager:run-query", "pack": ["type", "config", "sql"] },
+        "getColumns": { "invoke": "db-manager:get-columns", "pack": ["type", "config", "table"] }
+      }
+    }
+  }
+}
