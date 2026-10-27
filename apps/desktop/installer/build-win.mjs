@@ -3,7 +3,7 @@
 //
 //   node installer/build-win.mjs [--publish never|always] [nsis|portable ...]
 import { spawnSync } from 'node:child_process'
-import { join, dirname, resolve } from 'node:path'
+import { join, dirname, resolve, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { stage } from './stage.mjs'
 import { writeAppsNsh } from './gen-apps-nsh.mjs'
@@ -11,8 +11,11 @@ import { writeAppsNsh } from './gen-apps-nsh.mjs'
 const here = dirname(fileURLToPath(import.meta.url))
 const desktop = resolve(here, '..')
 
+// Windows needs a shell to run npx (a .cmd), but not an executable given by its full path: through the
+// shell, a path with a space (C:\Program Files\nodejs\node.exe) would be split at the space.
 function run(command, args, env = {}) {
-  const result = spawnSync(command, args, { cwd: desktop, stdio: 'inherit', shell: process.platform === 'win32', env: { ...process.env, ...env } })
+  const shell = process.platform === 'win32' && !isAbsolute(command)
+  const result = spawnSync(command, args, { cwd: desktop, stdio: 'inherit', shell, env: { ...process.env, ...env } })
   if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed (${result.status})`)
 }
 
