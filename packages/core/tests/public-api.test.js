@@ -110,6 +110,8 @@ const EXPECTED = [
   'GithubError', 'classifyGithubError', 'makeGithubClient', 'discoverGithubRepos',
   'githubTypeFromLabels', 'mapGithubIssue', 'mapGithubPR', 'mapGithubRun', 'extractIssueRefs',
   'GITHUB_CACHE_KEY', 'loadCachedGithubData', 'loadGithubData',
+  'loadGithubDetail', 'loadGithubComments', 'addGithubComment', 'updateGithubIssue',
+  'githubPatchFromAdoField', 'fetchGithubCreateMeta', 'createGithubIssue', 'makeGithubWorkItemSource',
   'CATEGORY_LANES', 'CATEGORY_LABELS', 'itemCategory', 'adoStateForCategory',
   'WORK_ITEM_STATUS_KEY', 'readProviderStatus', 'recordProviderStatus', 'describeProviderError',
   'PROVIDER_LABELS', 'mergeTeam', 'mergeWorkItemData', 'applyHiddenPeople',

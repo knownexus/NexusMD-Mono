@@ -55,11 +55,13 @@ export async function refreshProviders({ storage, providers }) {
       )))
 }
 
-export function defaultCreateProvider({ readJson, adoAvailable, jiraAvailable }) {
+export function defaultCreateProvider({ readJson, adoAvailable, jiraAvailable, githubAvailable = false }) {
   const preferred = readJson('nexusmd.wi.displayMode', 'merged') === 'separate'
     ? readJson('nexusmd.wi.sourceTab', 'ado')
     : readJson('nexusmd.wi.createProvider', 'ado')
   if (preferred === 'jira' && jiraAvailable) return 'jira'
+  if (preferred === 'github' && githubAvailable) return 'github'
   if (adoAvailable) return 'ado'
-  return jiraAvailable ? 'jira' : 'ado'
+  if (jiraAvailable) return 'jira'
+  return githubAvailable ? 'github' : 'ado'
 }
