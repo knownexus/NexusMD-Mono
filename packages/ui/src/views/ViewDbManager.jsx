@@ -48,6 +48,8 @@ import {
   cellToInput,
   parseCellInput,
   followTargets,
+  referencingTargets,
+  buildInsertStatements,
   whereLabel,
 } from '@nexusmd/core'
 import { PlModal } from '../planner-chips.jsx'
@@ -56,6 +58,7 @@ import { FoldAllButton } from '../fold-all-button.jsx'
 import { DbMenu, menuPointFor } from './db-menu.jsx'
 import { readMinCols, writeMinCols } from './db-min-cols.js'
 import { pushNav, popNav } from './db-nav.js'
+import { headerMenuItems, rowMenuItems } from './db-grid-menus.js'
 import { StructurePanel, typeLabelOf } from './db-structure-panel.jsx'
 
 // ─── Demo data (shown when no real DB is connected) ───────────────────────────
@@ -588,6 +591,8 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const [structureState, setStructureState] = useState({})    // { [table]: { loading } | { error } }
   const [rowWhere, setRowWhere]       = useState(null)        // [{ column, value }] the open table is filtered to, or null
   const [navStack, setNavStack]       = useState([])          // where Back goes: { table, where, search, sort, scrollTop }
+  const [nullFilter, setNullFilter]   = useState(null)        // { col, empty }: only the loaded rows whose col is (or isn't) NULL
+  const [structureFocus, setStructureFocus] = useState(null)  // the foreign key Structure scrolls to and marks
   const [activeBuilder, setActiveBuilder] = useState(null)    // 'search' | 'insert' | 'update' | 'delete' | 'join' | 'aggregate' | null
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [tableFilter, setTableFilter] = useState('')
@@ -734,6 +739,8 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     setSearch(keep)
     setSort(order)
     setRowWhere(where)
+    setNullFilter(null)
+    setStructureFocus(null)
     pendingScroll.current = scrollTop
     setEditingCell(null)
     setActiveTab(tab)
@@ -823,11 +830,14 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const visible = useMemo(() => {
     const all = (tableData?.rows ?? []).map((row, i) => ({ row, i }))
     const t = search.trim().toLowerCase()
-    const hits = t ? all.filter(({ row }) => row.some(c => String(c ?? '').toLowerCase().includes(t))) : all
+    // The empty / not-empty filter works on the loaded rows, unlike a followed key's WHERE.
+    const nc = nullFilter ? tableData?.columns.indexOf(nullFilter.col) ?? -1 : -1
+    const kept = nc < 0 ? all : all.filter(({ row }) => (row[nc] === null || row[nc] === undefined) === nullFilter.empty)
+    const hits = t ? kept.filter(({ row }) => row.some(c => String(c ?? '').toLowerCase().includes(t))) : kept
     if (!sort) return hits
     const dir = sort.dir === 'asc' ? 1 : -1
     return [...hits].sort((a, b) => compareCells(a.row[sort.col], b.row[sort.col]) * dir || a.i - b.i)
-  }, [tableData, search, sort])
+  }, [tableData, search, sort, nullFilter])
 
   // Each shown column's metadata from getColumns() (type, nullability, length…), or null until it loads.
   const columnInfo = useMemo(() => {
@@ -847,6 +857,9 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const keyOf = row => (keyIdx.length === 1 ? row[keyIdx[0]] : keyIdx.map(i => row[i]))
 
   const changeSearch = (value) => { setSearch(value); setSelectedRows(new Set()) }
+  // Ticks go with a filter change, as with a search, so the ticked rows stay among those shown.
+  const changeNullFilter = (value) => { setNullFilter(value); setSelectedRows(new Set()) }
+  const nullFilterLabel = nullFilter ? `${nullFilter.col} is ${nullFilter.empty ? 'empty' : 'not empty'}` : null
   const cycleSort = (col) => setSort(s => (!s || s.col !== col ? { col, dir: 'asc' } : s.dir === 'asc' ? { col, dir: 'desc' } : null))
 
   // ── Row selection ──────────────────────────────────────────────────────────
@@ -950,7 +963,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
 
   // ── Add row ────────────────────────────────────────────────────────────────
 
-  const [addingRow, setAddingRow] = useState(false)
+  const [addingRow, setAddingRow] = useState(null) // { initial? } while Add row is open; Duplicate fills `initial`
   // `values` maps column names to checked values; columns left out get their default.
   const addRow = useCallback(async (values) => {
     const name = dbState.selectedTable
@@ -961,7 +974,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
       } else {
         await db.insertRow(session.type, session.config, name, values)
       }
-      setAddingRow(false)
+      setAddingRow(null)
       notify(`Added a row to ${name}`)
       refreshTable()
       return null
@@ -1226,6 +1239,74 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     ]
   }
 
+  // ── Grid menus (right-click on a header or a cell) ──────────────────────────
+  const minimise = (name) => {
+    // The editor would be left open in a column no longer drawn.
+    if (editingCell && tableData?.columns[editingCell.ci] === name) setEditingCell(null)
+    setMinCols([...minCols.filter(n => n !== name), name])
+  }
+  const isViewOpen = viewSet.has(dbState.selectedTable)
+  const openStructure = structures[dbState.selectedTable]
+  const shownKeys = isViewOpen ? [] : openStructure?.foreignKeys ?? []
+  const cellText = v => (v === null || v === undefined ? '' : String(v))
+  const rowText = row => row.map(cellText).join('\t')
+  // Why editing is off, as the grid's notice puts it.
+  const editReason = canWrite ? null
+    : typesUnreadable ? "Couldn't read this table's column types, so editing is off"
+      : !columnsKnown && !isDemo ? 'Reading the table’s columns…'
+        : 'No primary key, so a change can’t be kept to one row'
+
+  const headerMenu = (ci) => {
+    const col = tableData.columns[ci]
+    return headerMenuItems({
+      column: col,
+      sorted: sort?.col === ci ? sort.dir : null,
+      anyMinimised: minimised.size > 0,
+      foreignKey: shownKeys.find(fk => fk.columns.includes(col)) ?? null,
+      onSort: dir => setSort(dir ? { col: ci, dir } : null),
+      onMinimise: () => minimise(col),
+      onRestoreAll: () => setMinCols([]),
+      onCopyName: () => copy(col, 'the column name'),
+      onCopyValues: () => copy(visible.map(v => cellText(v.row[ci])).join('\n'), plural(visible.length, 'value')),
+      onFilterEmpty: empty => changeNullFilter({ col, empty }),
+      onGoToKey: fk => { setStructureFocus(fk.name); setActiveTab('structure'); ensureStructureLoaded(dbState.selectedTable) },
+    })
+  }
+
+  const rowMenu = (ri, ci) => {
+    const row = tableData.rows[ri]
+    const col = columnInfo[ci]
+    const kind = columnKind(col)
+    // A click on one of several ticked rows copies or deletes them all, in the order shown.
+    const many = selectedRows.has(ri) && selectedRows.size > 1
+    const rows = many ? visible.filter(v => selectedRows.has(v.i)).map(v => v.row) : [row]
+    const dialect = session.type === 'sqlserver' ? 'sqlserver' : 'sqlite'
+    const structure = isViewOpen ? null : openStructure
+    return rowMenuItems({
+      canEdit: canWrite,
+      editReason,
+      columnReadonly: kind === 'readonly',
+      columnBoolean: kind === 'boolean',
+      nullable: !!col?.nullable,
+      isView: isViewOpen,
+      count: rows.length,
+      canDelete: canWrite,
+      deleteReason: 'No primary key, so this row can’t be deleted on its own',
+      canDuplicate: columnsKnown || typesUnreadable || isDemo,
+      follows: structure ? followTargets(structure, tableData.columns, row) : [],
+      references: structure ? referencingTargets(structure, tableData.columns, row) : [],
+      onEdit: () => startEdit(ri, ci, row[ci]),
+      onSetNull: () => commitCell(ri, ci, null),
+      onCopyCell: () => copy(cellText(row[ci]), 'cell'),
+      onCopyRows: () => copy(rows.map(rowText).join('\n'), many ? plural(rows.length, 'row') : 'row'),
+      onCopyInsert: () => copy(buildInsertStatements(dbState.selectedTable, tableData.columns, rows, columnInfo.filter(Boolean), dialect),
+        rows.length > 1 ? `${rows.length} INSERT statements` : 'an INSERT statement'),
+      onDuplicate: () => setAddingRow({ initial: Object.fromEntries(tableData.columns.map((c, i) => [c, row[i]])) }),
+      onFollow: follow,
+      onDelete: () => { if (!many) setSelectedRows(new Set([ri])); setShowDeleteConfirm(true) },
+    })
+  }
+
   // A section header (a group of your own, or a schema): fold it or the rest, group or hide its tables.
   const sectionMenu = (s, shownKeys) => {
     const folded = prefs.collapsed.includes(s.key)
@@ -1444,7 +1525,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
               <div className="nx-db-tabs" role="tablist" aria-label="View mode">
                 {[['browse', 'Browse', tableData && !dbState.tableLoading ? tableData.rows.length : null], ['structure', 'Structure', null], ['query', 'Query', null]].map(([id, label, n]) => (
                   <button key={id} type="button" role="tab" aria-selected={activeTab === id} className="nx-db-tab"
-                    title={`${label} (${id[0]})`} onClick={() => setActiveTab(id)}>
+                    title={`${label} (${id[0]})`} onClick={() => { setActiveTab(id); setStructureFocus(null) }}>
                     {label}{n != null && <span className="n" aria-hidden="true">{n}</span>}
                   </button>
                 ))}
@@ -1474,16 +1555,20 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                   keyIdx={keyIdx}
                   columnInfo={columnInfo}
                   minimised={minimised}
-                  onMinimise={name => setMinCols([...minCols.filter(n => n !== name), name])}
+                  onMinimise={minimise}
                   onRestore={name => setMinCols(minCols.filter(n => n !== name))}
                   onRestoreAll={() => setMinCols([])}
                   canWrite={canWrite}
                   columnsKnown={columnsKnown || isDemo}
                   typesUnreadable={typesUnreadable}
-                  isView={viewSet.has(dbState.selectedTable)}
-                  foreignKeys={structures[dbState.selectedTable]?.foreignKeys}
+                  isView={isViewOpen}
+                  foreignKeys={openStructure?.foreignKeys}
+                  nullFilter={nullFilterLabel}
+                  onClearNullFilter={() => changeNullFilter(null)}
+                  onHeaderMenu={(ci, point) => showMenu(headerMenu(ci), `${tableData.columns[ci]} options`, point)}
+                  onRowMenu={(ri, ci, point) => showMenu(rowMenu(ri, ci), 'Row options', point)}
                   onSetCell={commitCell}
-                  onAddRow={() => setAddingRow(true)}
+                  onAddRow={() => setAddingRow({})}
                   search={search}
                   onSearchChange={changeSearch}
                   sort={sort}
@@ -1511,6 +1596,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                   isView={viewSet.has(dbState.selectedTable)}
                   loading={!!structureState[dbState.selectedTable]?.loading}
                   error={structureState[dbState.selectedTable]?.error ?? null}
+                  focusKey={structureFocus}
                   onOpenTable={name => openTable(name, 'structure')}
                   onRefresh={() => ensureStructureLoaded(dbState.selectedTable, { force: true })}
                 />
@@ -1579,8 +1665,9 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
           table={dbState.selectedTable}
           columns={tableData.columns}
           columnInfo={columnInfo}
+          initial={addingRow.initial}
           onSave={addRow}
-          onClose={() => setAddingRow(false)}
+          onClose={() => setAddingRow(null)}
         />
       )}
 
@@ -2290,7 +2377,7 @@ function FollowButton({ fk, targets, column, value, onFollow }) {
 
 const BrowsePanel = forwardRef(function BrowsePanel({
   tableData, visible, keyIdx, columnInfo, minimised, onMinimise, onRestore, onRestoreAll, canWrite, columnsKnown, typesUnreadable = false, isView = false, foreignKeys = [], onSetCell, onAddRow,
-  table, where = null, onClearFilter, onFollow, gridRef, search, onSearchChange, sort, onSort,
+  table, where = null, onClearFilter, onFollow, nullFilter = null, onClearNullFilter, onHeaderMenu, onRowMenu, gridRef, search, onSearchChange, sort, onSort,
   selectedRows, allSelected, onToggleRow, onToggleAll, onClearSelection, onDeleteSelected, onDeleteRow, onCopyCell,
   editingCell, editValue, onEditValueChange, onStartEdit, onSaveEdit, onCancelEdit,
 }, ref) {
@@ -2314,6 +2401,23 @@ const BrowsePanel = forwardRef(function BrowsePanel({
   const canAdd = columnsKnown || typesUnreadable
   // A view has no keys of its own to follow.
   const followable = isView ? [] : foreignKeys
+  // A right-click, or the ContextMenu key / Shift+F10 on whatever has focus: that has no mouse
+  // point, so the menu opens under the element instead.
+  const menuPoint = (e, el) => {
+    if (e.clientX || e.clientY) return { x: e.clientX, y: e.clientY }
+    const r = el.getBoundingClientRect()
+    return { x: r.left, y: r.bottom + 4 }
+  }
+  const firstShown = tableData.columns.findIndex(c => !minimised.has(c))
+  // A row's menu is for the cell clicked; from the tick box or the row's buttons, its first shown column.
+  const rowContextMenu = (e, ri) => {
+    if (e.target.closest?.('.nx-db-cell-edit')) return // the editor keeps the browser's own cut / paste menu
+    const td = e.target.closest?.('td')
+    const ci = td?.dataset.ci != null ? Number(td.dataset.ci) : firstShown
+    if (ci < 0) return
+    e.preventDefault()
+    onRowMenu(ri, ci, menuPoint(e, td ?? e.currentTarget))
+  }
   return (
     <div className="nx-db-browse">
       <div className="nx-db-browse-tools">
@@ -2331,10 +2435,13 @@ const BrowsePanel = forwardRef(function BrowsePanel({
           {!search && <span className="kbd">Ctrl F</span>}
         </div>
         <span className="nx-db-count" aria-live="polite">
-          {search ? `${visible.length} of ${total} matching` : `${total} total`}
+          {search || nullFilter ? `${visible.length} of ${total} matching` : `${total} total`}
         </span>
         {where && (
           <span className="nx-db-chip">{whereLabel(where)}<button type="button" aria-label="Clear filter" title="Show the table's rows again" onClick={onClearFilter}>✕</button></span>
+        )}
+        {nullFilter && (
+          <span className="nx-db-chip">{nullFilter}<button type="button" aria-label={`Clear ${nullFilter}`} title="Show every loaded row again" onClick={onClearNullFilter}>✕</button></span>
         )}
         {minimised.size > 0 && (
           <button type="button" className="btn sm ghost" onClick={onRestoreAll} aria-label="Show all minimised columns">
@@ -2390,8 +2497,9 @@ const BrowsePanel = forwardRef(function BrowsePanel({
                   )
                 }
                 return (
-                  <th key={col} data-num={numericCol[ci] || undefined} aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : undefined}>
-                    <button type="button" className="nx-db-th" onClick={() => onSort(ci)} title={`Sort by ${col}`}>
+                  <th key={col} data-num={numericCol[ci] || undefined} aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : undefined}
+                    onContextMenu={e => { e.preventDefault(); onHeaderMenu(ci, menuPoint(e, e.currentTarget)) }}>
+                    <button type="button" className="nx-db-th" onClick={() => onSort(ci)} title={`Sort by ${col} · right-click for more`}>
                       <span>{col}</span>
                       {keyIdx.includes(ci) && <span className="pk" title="Key used for edits and deletes">key</span>}
                       {foreignKeys.filter(fk => fk.columns.includes(col)).map(fk => {
@@ -2415,7 +2523,7 @@ const BrowsePanel = forwardRef(function BrowsePanel({
               // Keys with a NULL part are left out, so only a value that's there can be followed.
               const targets = followable.length ? followTargets({ foreignKeys: followable }, tableData.columns, row) : []
               return (
-                <tr key={ri} aria-selected={selectedRows.has(ri) || undefined}>
+                <tr key={ri} aria-selected={selectedRows.has(ri) || undefined} onContextMenu={e => rowContextMenu(e, ri)}>
                   <td className="check">
                     <input
                       type="checkbox"
@@ -2433,7 +2541,7 @@ const BrowsePanel = forwardRef(function BrowsePanel({
                     // A bit is a checkbox in the cell itself: one click writes the other value.
                     if (kind === 'boolean') {
                       return (
-                        <td key={ci} className="bool">
+                        <td key={ci} className="bool" data-ci={ci}>
                           <input
                             type="checkbox"
                             checked={cell === true || cell === 1}
@@ -2449,6 +2557,7 @@ const BrowsePanel = forwardRef(function BrowsePanel({
                     return (
                       <td
                         key={ci}
+                        data-ci={ci}
                         data-num={isNumeric(cell) || undefined}
                         data-editing={editing || undefined}
                         data-invalid={(editing && editError) || undefined}
@@ -2516,7 +2625,7 @@ const BrowsePanel = forwardRef(function BrowsePanel({
             {visible.length === 0 && (
               <tr>
                 <td colSpan={cols + 2} className="empty">
-                  {total > 0 ? 'No rows match your search' : where ? `No row in ${table} has ${whereLabel(where)}` : 'This table is empty'}
+                  {total > 0 ? (nullFilter ? `No rows where ${nullFilter}${search ? ' match your search' : ''}` : 'No rows match your search') : where ? `No row in ${table} has ${whereLabel(where)}` : 'This table is empty'}
                 </td>
               </tr>
             )}
@@ -2527,7 +2636,7 @@ const BrowsePanel = forwardRef(function BrowsePanel({
       <div className="nx-db-foot-hint">
         <span>Double-click a cell to edit</span>
         <span><span className="kbd">Enter</span> save · <span className="kbd">Tab</span> next cell · <span className="kbd">Esc</span> cancel</span>
-        <span>Click a column to sort</span>
+        <span>Click a column to sort · right-click a column or row for more</span>
       </div>
     </div>
   )
@@ -2722,13 +2831,31 @@ function DropDialog({ name, view, onDrop, onClose }) {
 
 // ─── Add row ──────────────────────────────────────────────────────────────────
 
+// The fields filled from a row's values (Duplicate row), leaving out the columns the database writes.
+function filledFrom(fields, initial) {
+  if (!initial) return {}
+  const out = {}
+  for (const { name, col } of fields) {
+    const kind = columnKind(col)
+    if (kind === 'readonly' || !(name in initial)) continue
+    const v = initial[name]
+    if (v === null || v === undefined) {
+      // A NULL the column can't hold is left for the default (or the Required check) to settle.
+      if (col.nullable) out[name] = { text: '', isNull: true, touched: true }
+    } else if (kind === 'boolean') out[name] = { text: '', checked: v === true || v === 1, isNull: false, touched: true }
+    else out[name] = { text: cellToInput(col, v), isNull: false, touched: true }
+  }
+  return out
+}
+
 // One field per column, typed like the grid's editor. Identity and computed columns are left
 // to the database; a field left blank gets the column's default, or NULL where that's allowed.
-function AddRowDialog({ table, columns, columnInfo, onSave, onClose }) {
+// `initial` (Duplicate row) starts the fields with a row's values.
+function AddRowDialog({ table, columns, columnInfo, initial = null, onSave, onClose }) {
   // With no column metadata at all, every field is plain text and its type is unknown.
   const typesUnknown = columnInfo.length > 0 && columnInfo.every(c => !c)
   const fields = columns.map((name, i) => ({ name, col: columnInfo[i] ?? { name, dataType: 'text', nullable: true } }))
-  const [values, setValues] = useState({})   // name → { text, isNull, touched }
+  const [values, setValues] = useState(() => filledFrom(fields, initial))   // name → { text, checked?, isNull, touched }
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
   const [failure, setFailure] = useState(null)

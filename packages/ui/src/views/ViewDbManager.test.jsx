@@ -2220,3 +2220,121 @@ describe('ViewDbManager — following foreign keys', () => {
     expect(back().disabled).toBe(true)
   })
 })
+
+describe('ViewDbManager — right-click menus on the grid', () => {
+  let adapters, writeText
+  const structure = {
+    ok: true,
+    columns: [
+      { name: 'id', dataType: 'INTEGER', isPrimaryKey: true },
+      { name: 'name', dataType: 'TEXT', isPrimaryKey: false, nullable: true },
+    ],
+    foreignKeys: [{ name: 'FK_name', columns: ['name'], refTable: 'staff', refColumns: ['id'], onDelete: 'NO ACTION', onUpdate: 'NO ACTION' }],
+    referencedBy: [],
+    indexes: [],
+  }
+  const plain = { ok: true, columns: [{ name: 'id', dataType: 'INTEGER', isPrimaryKey: true }], foreignKeys: [], referencedBy: [], indexes: [] }
+
+  beforeEach(() => {
+    writeText = vi.fn().mockResolvedValue()
+    Object.assign(navigator, { clipboard: { writeText } })
+    adapters = { dbManager: makeAdapter({
+      getStructure: vi.fn().mockImplementation((type, config, table) => Promise.resolve(table === 'patients' ? structure : plain)),
+      getColumns: vi.fn().mockResolvedValue({ ok: true, columns: structure.columns }),
+      getRows: vi.fn().mockImplementation((type, config, table) => Promise.resolve(table === 'patients'
+        ? { columns: ['id', 'name'], rows: [[1, 'Alice'], [2, 'Bob']] }
+        : { columns: ['id', 'role'], rows: [['Alice', 'Physician']] })),
+    }) }
+  })
+
+  afterEach(() => { cleanup() })
+
+  const saved = [{ id: 'uat', name: 'UAT', type: 'sqlite', inputMode: 'fields', filePath: '/a.db' }]
+  const openPatients = async () => {
+    render(<ViewDbManager adapters={adapters} savedConnections={saved} onResolveSecret={vi.fn().mockResolvedValue('')} />)
+    fireEvent.click(within(screen.getByRole('region', { name: 'Quick connect' })).getByText('UAT'))
+    await waitFor(() => within(screen.getByRole('navigation', { name: 'Table list' })).getByText('patients'))
+    openTable('patients')
+    await waitFor(() => screen.getByRole('table'))
+    // The foreign key marker shows once the structure is in.
+    await waitFor(() => screen.getByRole('button', { name: 'Follow name Alice to staff' }))
+  }
+  const header = name => screen.getByRole('button', { name: new RegExp(`^${name}`) }).closest('th')
+  const pick = async label => fireEvent.click(await waitFor(() => screen.getByRole('menuitem', { name: label })))
+  const firstNames = () => [...document.querySelectorAll('tbody tr')].map(tr => tr.querySelectorAll('td')[2]?.textContent)
+
+  it('sorts descending from the header menu', async () => {
+    await openPatients()
+    fireEvent.contextMenu(header('name'))
+    await pick('Sort descending')
+    await waitFor(() => expect(firstNames()[0]).toContain('Bob'))
+  })
+
+  it('shows only empty values, says when none are, and clearing the chip shows every row again', async () => {
+    await openPatients()
+    fireEvent.contextMenu(header('name'))
+    await pick('Show only empty (NULL)')
+    await waitFor(() => expect(screen.getByText('No rows where name is empty')).toBeTruthy())
+    expect(document.querySelector('span.nx-db-chip').textContent).toContain('name is empty')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear name is empty' }))
+    await waitFor(() => expect(screen.getByText('Bob')).toBeTruthy())
+    expect(screen.getByText('Alice')).toBeTruthy()
+  })
+
+  it('copies a row as an INSERT statement', async () => {
+    await openPatients()
+    fireEvent.contextMenu(screen.getByText('Alice').closest('td'))
+    await pick('Copy as INSERT')
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("INSERT INTO [patients] ([id], [name]) VALUES (1, 'Alice');"))
+  })
+
+  it('duplicates a row into Add row', async () => {
+    await openPatients()
+    fireEvent.contextMenu(screen.getByText('Alice').closest('td'))
+    await pick('Duplicate row…')
+    await waitFor(() => screen.getByRole('dialog'))
+    expect(dialog().getByLabelText(/^name/).value).toBe('Alice')
+  })
+
+  it('follows a key from the row menu', async () => {
+    await openPatients()
+    fireEvent.contextMenu(screen.getByText('Alice').closest('td'))
+    await pick('Follow name → staff')
+    await waitFor(() => expect(adapters.dbManager.getRows).toHaveBeenCalledWith('sqlite', expect.anything(), 'staff', 500, 0, [{ column: 'id', value: 'Alice' }]))
+    await waitFor(() => expect(document.querySelector('.nx-db-table-name').textContent).toBe('staff'))
+  })
+
+  it('copies every ticked row when the click is on one of them', async () => {
+    await openPatients()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all rows' }))
+    fireEvent.contextMenu(screen.getByText('Bob').closest('td'))
+    await pick('Copy 2 rows')
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('1\tAlice\n2\tBob'))
+    expect(screen.queryByRole('menuitem', { name: 'Delete row' })).toBeNull()
+  })
+
+  it('closes the editor when its column is minimised', async () => {
+    await openPatients()
+    fireEvent.doubleClick(screen.getByText('Bob').closest('td'))
+    expect(screen.getByRole('textbox', { name: 'Edit name' })).toBeTruthy()
+    fireEvent.contextMenu(header('name'))
+    await pick('Minimise column')
+    expect(screen.queryByRole('textbox', { name: 'Edit name' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Show name' })).toBeTruthy()
+  })
+
+  it('opens the header menu from the keyboard, at the header', async () => {
+    await openPatients()
+    const button = screen.getByRole('button', { name: /^name/ })
+    button.focus()
+    fireEvent.contextMenu(button)
+    expect(await screen.findByRole('menu', { name: 'name options' })).toBeTruthy()
+  })
+
+  it('opens Structure at the key from the header menu', async () => {
+    await openPatients()
+    fireEvent.contextMenu(header('name'))
+    await pick('Go to foreign key target…')
+    await waitFor(() => expect(document.querySelector('[data-focus="true"]')?.getAttribute('data-key')).toBe('FK_name'))
+  })
+})
