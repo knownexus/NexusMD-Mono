@@ -11,7 +11,8 @@ import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, visibleNav, SIDEBA
 import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey, usePersistedState } from '@nexusmd/shell-sdk'
-import { registerCloudDeepLink } from './cloud-auth.js'
+import { redeem } from './cloud-auth.js'
+import { registerDeepLinks } from './shell/deep-links.js'
 import { startDesktopAutoSync } from './sync.js'
 import { INSTALLED_NAV, SETTINGS_NAV, ALL_NAV, DEFAULT_NAV_ORDER } from './nav-config.js'
 import { isUninstalledView, registry } from './shell/registry.js'
@@ -91,8 +92,8 @@ function loadTweaks() {
 // (now profile-scoped) getProfileKey.
 ensureDefaultProfileAndMigrate()
 
-// Subscribe to nexusmd:// deep links so cloud OAuth one-time codes are redeemed.
-registerCloudDeepLink()
+// nexusmd:// deep links: open a screen, or redeem a cloud OAuth one-time code.
+registerDeepLinks({ redeem, navigate: view => host.navigate(view) })
 
 // Fire-and-forget: enables modules + inits adapters. The shell reads cached data
 // and re-renders on core's 'data:updated' events.

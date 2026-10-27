@@ -44,5 +44,8 @@ module.exports = {
     createStartMenuShortcut: true,
     include: path.join(__dirname, 'installer', 'installer.nsh'),
   },
+  // nexusmd:// links open this install; the uninstaller removes the registration. Not for the test
+  // installer, which must not take the links over from a real install.
+  ...(test ? {} : { protocols: [{ name: 'NexusMD', schemes: ['nexusmd'] }] }),
   publish: { provider: 'github', owner: 'knownexus', repo: 'NexusMD-Mono' },
 };

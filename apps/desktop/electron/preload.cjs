@@ -156,6 +156,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('deepLink:url', (_event, url) => callback(url));
   },
   removeDeepLinkListener: () => ipcRenderer.removeAllListeners('deepLink:url'),
+  // The link the app was started with (Windows passes it as an argument), once.
+  takeInitialDeepLink: () => ipcRenderer.invoke('deepLink:take-initial'),
 
   // ── Tray adapter IPC ────────────────────────────────────────────────────────
   tray: {

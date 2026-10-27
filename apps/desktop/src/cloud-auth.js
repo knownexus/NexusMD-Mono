@@ -84,7 +84,7 @@ const BY_FROM = {
 }
 
 // Redeem the one-time code delivered via the nexusmd:// deep link.
-async function redeem(url) {
+export async function redeem(url) {
   let u
   try { u = new URL(url) } catch { return }
   console.info('[cloud-auth] Redeeming OAuth code')

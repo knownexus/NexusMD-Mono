@@ -3,6 +3,7 @@ import { VsCard, VsRow, BoardColumnsCard, CardsAndTablesSettings, toast, WI_TYPE
 import { ADO_CACHE_KEY, JIRA_CACHE_KEY } from '@nexusmd/core'
 import { AdoConnectionCard } from './ado-settings.jsx'
 import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
+import { QuickLinksCard } from './quick-links-card.jsx'
 import { useOptionalWork } from './work-context.js'
 
 // Settings → Integrations: where Azure DevOps and Jira are connected.
@@ -25,8 +26,13 @@ export function WorkBoardPanel() {
 }
 
 // Settings → Cards & Tables.
-export function WorkCardsPanel() {
-  return <CardsAndTablesSettings />
+export function WorkCardsPanel({ tweaks, setTweak }) {
+  return (
+    <>
+      <CardsAndTablesSettings />
+      {setTweak && <QuickLinksCard links={tweaks?.quickLinks || []} onChange={links => setTweak('quickLinks', links)} />}
+    </>
+  )
 }
 
 // Rows for the shell's "Data & sync" card: how often the data refreshes, and dropping its cache.

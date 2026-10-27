@@ -136,6 +136,12 @@ test('apps loaded from separate folders still work together: Git opens a file in
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
 
+test('a nexusmd://open link the app was started with opens that app\'s screen', async () => {
+  await withInstalled(['git', 'notes'], async ({ win }) => {
+    await expect(item(win, 'Notes')).toHaveClass(/active/, { timeout: 30_000 })
+  }, { launch: { args: ['nexusmd://open/notes'] } })
+})
+
 test('Work, Planner and Calendar find each other across folders, and only when installed', async () => {
   await withInstalled(['work', 'planner'], async ({ win }) => {
     await item(win, 'Dashboard').click()
