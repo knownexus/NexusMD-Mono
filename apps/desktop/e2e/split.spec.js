@@ -19,17 +19,20 @@ test.beforeAll(() => {
   execFileSync(process.execPath, [join(desktop, 'build', 'build-split.mjs')], { cwd: desktop, stdio: 'ignore', timeout: 300_000 })
 })
 
-// Something only that app's code contains, so finding it elsewhere would mean the app leaked.
+// Something only that app's code contains, so finding it elsewhere would mean the app leaked. The
+// second kind of string sits in the app's screens, which live in @nexusmd/ui's source.
 const MARKERS = {
-  git: 'git:resolveConflict',
-  devenv: 'devenv:profile-write',
-  editor: 'editor:take-pending',
-  database: 'db-manager:run-query',
-  'api-client': 'api-client:script:run',
-  work: 'Auto-refresh interval',
-  planner: 'Carry-over prompt',
-  calendar: 'Google Calendar is not configured.',
+  git: ['git:resolveConflict'],
+  devenv: ['devenv:profile-write'],
+  editor: ['editor:take-pending'],
+  database: ['db-manager:run-query', 'Table not found in demo data'],
+  'api-client': ['api-client:script:run', 'Choose a collection folder first.'],
+  work: ['Auto-refresh interval', 'Rise and shine, Phillip.'],
+  planner: ['Carry-over prompt'],
+  calendar: ['Google Calendar is not configured.', 'OutlookService not initialised'],
+  documents: ['Global — find all matches'],
 }
+const markerList = () => Object.entries(MARKERS).flatMap(([id, markers]) => markers.map(marker => [id, marker]))
 
 function filesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true, recursive: true }).filter(e => e.isFile()).map(e => join(e.parentPath, e.name))
@@ -66,13 +69,13 @@ async function withInstalled(ids, fn, { prepare, launch = {} } = {}) {
 const item = (win, label) => win.locator('button.nav-item', { hasText: label })
 
 test('every marker is really in the app that owns it (so the absence checks below cannot pass by accident)', () => {
-  for (const [id, marker] of Object.entries(MARKERS)) {
+  for (const [id, marker] of markerList()) {
     expect(mentions(join(appsBuilt, id), marker), `${id} should contain "${marker}"`).toBe(true)
   }
 })
 
 test('the shell carries no app code, and no app carries another\'s', () => {
-  for (const [id, marker] of Object.entries(MARKERS)) {
+  for (const [id, marker] of markerList()) {
     expect(mentions(shellDir, marker), `the shell should not contain ${id}'s "${marker}"`).toBe(false)
     for (const other of Object.keys(MARKERS).filter(o => o !== id)) {
       expect(mentions(join(appsBuilt, other), marker), `${other} should not contain ${id}'s "${marker}"`).toBe(false)
@@ -84,10 +87,10 @@ test('installing only Git puts only Git on the disk, and the app runs on just th
   await withInstalled(['git'], async ({ win, root, apps }) => {
     // On the disk: one app folder, and none of the other apps' code anywhere in the installation.
     expect(readdirSync(apps)).toEqual(['git'])
-    for (const [id, marker] of Object.entries(MARKERS).filter(([id]) => id !== 'git')) {
+    for (const [id, marker] of markerList().filter(([id]) => id !== 'git')) {
       expect(mentions(root, marker), `${id} should not be installed`).toBe(false)
     }
-    expect(mentions(root, MARKERS.git)).toBe(true)
+    expect(mentions(root, MARKERS.git[0])).toBe(true)
 
     // In the window: Git is the whole app.
     await expect(item(win, 'Git Workspace')).toHaveClass(/active/, { timeout: 30_000 })
@@ -175,5 +178,23 @@ test('a folder that is not an app, and an app with a mismatched manifest, are ig
       writeFileSync(join(apps, 'junk.txt'), 'x')
       cpSync(join(apps, 'git'), join(apps, 'impostor'), { recursive: true })   // its manifest still says "git"
     },
+  })
+})
+
+test('with every app installed, every app loads and its screens render (no name is missing from the shared UI)', async () => {
+  const ids = readdirSync(appsBuilt)
+  const labels = ids.flatMap(id => JSON.parse(readFileSync(join(appsBuilt, id, 'app.manifest.json'), 'utf8')).nav.map(n => n.label))
+  await withInstalled(ids, async ({ win }) => {
+    await expect(item(win, labels[0])).toBeVisible({ timeout: 30_000 })
+    for (const label of labels) await expect(item(win, label), `${label} should be in the sidebar`).toHaveCount(1)
+    // Open each screen: a screen whose code imports something the shell does not share fails when it renders.
+    const errors = []
+    win.on('pageerror', e => errors.push(e.message))
+    for (const label of labels) {
+      await item(win, label).evaluate(b => b.click())
+      await win.waitForTimeout(400)
+      await expect(win.locator('#root > *').first(), `${label} should render`).toBeVisible()
+    }
+    expect(errors).toEqual([])
   })
 })
