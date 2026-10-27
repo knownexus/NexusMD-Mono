@@ -30,6 +30,14 @@ describe('registerDeepLinks', () => {
     expect(redeem).toHaveBeenCalledExactlyOnceWith('nexusmd://oauth/gdrive?otc=1')
   })
 
+  it('does not treat other links as sign-ins', () => {
+    const adapter = make(null), redeem = vi.fn()
+    registerDeepLinks({ redeem, navigate: vi.fn(), adapter })
+    adapter.emit('nexusmd://something/else?provider=gdrive&otc=1')
+    adapter.emit('https://oauth/gdrive?otc=1')
+    expect(redeem).not.toHaveBeenCalled()
+  })
+
   it('acts on the link the app was started with', async () => {
     const navigate = vi.fn()
     registerDeepLinks({ redeem: vi.fn(), navigate, adapter: make('nexusmd://open/editor') })

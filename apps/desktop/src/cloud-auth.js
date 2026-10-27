@@ -9,6 +9,7 @@ import { secureStorageAdapter } from './adapters/secureStorage.js'
 import { linkAdapter } from './adapters/link.js'
 import { oauthAdapter } from './adapters/oauth.js'
 import { deepLinkAdapter } from './adapters/deepLink.js'
+import { beginSignIn, finishSignIn } from './oauth-pending.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'
 
@@ -40,7 +41,7 @@ function makeBinding(key) {
     async connect() {
       try {
         console.info(`[cloud-auth] Initiating ${key} OAuth connection`)
-        const returnUri = `nexusmd://oauth/${cfg.from}`
+        const returnUri = beginSignIn(cfg.from)
         const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
         if (!res.ok) { 
           console.warn(`[cloud-auth] ${key} sign-in not configured on server`)
@@ -92,7 +93,13 @@ export async function redeem(url) {
   const from = params.get('provider')
   const otc = params.get('otc')
   const cfg = from && BY_FROM[from]
-  if (!cfg || !otc) return
+  if (u.hostname !== 'oauth' || !cfg || !otc) return
+  // Only a sign-in this app started: the link carries the nonce given when it began.
+  // (keyed by the link's own path, as the server may name the provider differently)
+  if (!finishSignIn(u.pathname.replace(/^\/+|\/+$/g, ''), params.get('n'))) {
+    console.warn('[cloud-auth] Ignoring an OAuth link that no sign-in is waiting for')
+    return
+  }
   try {
     const res = await fetch(`${API_BASE}${cfg.api}/exchange`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -200,7 +207,7 @@ export function makeDesktopOAuthService(from) {
     async connect() {
       try {
         console.info(`[cloud-auth] Initiating ${from} OAuth connection`)
-        const returnUri = `nexusmd://oauth/${cfg.from}`
+        const returnUri = beginSignIn(cfg.from)
         const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
         if (!res.ok) { 
           console.warn(`[cloud-auth] ${from} sign-in not configured on server`)

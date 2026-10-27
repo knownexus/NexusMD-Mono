@@ -10,7 +10,8 @@ vi.mock('@nexusmd/ui', () => ({
 vi.mock('./profile-keys.js', () => ({ getProfileKey: (k) => k }))
 vi.mock('./adapters/secureStorage.js', () => ({ secureStorageAdapter: { get: async () => null, set: async () => {} } }))
 
-import { makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken, decodeJwtClaims } from './cloud-auth.js'
+import { makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken, decodeJwtClaims, redeem } from './cloud-auth.js'
+import { beginSignIn } from './oauth-pending.js'
 
 // Build a minimal JWT (header.payload.signature) with the given exp claim.
 const b64url = (obj) => btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
@@ -102,6 +103,44 @@ describe('setManualMicrosoftToken', () => {
   it('ignores empty input', () => {
     setManualMicrosoftToken('   ')
     expect(localStorage.getItem(KEY)).toBeNull()
+  })
+})
+
+describe('redeem (the nexusmd://oauth link)', () => {
+  const nonceOf = uri => new URL(uri).searchParams.get('n')
+  let fetchMock
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ accessToken: 'AT', refreshToken: 'RT' }), text: async () => '' })
+    vi.stubGlobal('fetch', fetchMock)
+    // reloading the page is what follows a good sign-in
+    vi.stubGlobal('location', { ...window.location, reload: vi.fn() })
+  })
+
+  it('redeems the code of a sign-in this app started, once', async () => {
+    const n = nonceOf(beginSignIn('gdrive'))
+    const link = `nexusmd://oauth/gdrive?n=${n}&provider=gdrive&otc=CODE`
+    await redeem(link)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(localStorage.getItem('nexusmd.gdrive.auth'))).toMatchObject({ accessToken: 'AT' })
+    await redeem(link)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts the server naming the provider differently from the link\'s path', async () => {
+    const n = nonceOf(beginSignIn('microsoft'))
+    await redeem(`nexusmd://oauth/microsoft?n=${n}&provider=onedrive&otc=CODE`)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores a code nobody asked for: no sign-in waiting, no nonce, a wrong nonce, another host', async () => {
+    await redeem('nexusmd://oauth/gdrive?provider=gdrive&otc=EVIL')
+    beginSignIn('gdrive')
+    await redeem('nexusmd://oauth/gdrive?provider=gdrive&otc=EVIL')
+    await redeem(`nexusmd://oauth/gdrive?n=${'0'.repeat(32)}&provider=gdrive&otc=EVIL`)
+    const n = nonceOf(beginSignIn('gdrive'))
+    await redeem(`nexusmd://elsewhere/gdrive?n=${n}&provider=gdrive&otc=EVIL`)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(localStorage.getItem('nexusmd.gdrive.auth')).toBeNull()
   })
 })
 
