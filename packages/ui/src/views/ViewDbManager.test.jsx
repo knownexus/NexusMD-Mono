@@ -2158,6 +2158,58 @@ describe('ViewDbManager — following foreign keys', () => {
     expect(adapters.dbManager.getRows).toHaveBeenCalledTimes(1)
   })
 
+  it('reads a filtered view again after a cell is saved, with the same filter', async () => {
+    await openPatients()
+    await follow('Follow name Alice to staff')
+    await waitFor(() => screen.getByText('Physician'))
+    const filtered = () => adapters.dbManager.getRows.mock.calls.filter(c => c[2] === 'staff' && JSON.stringify(c[5]) === JSON.stringify(toAlice)).length
+    expect(filtered()).toBe(1)
+    fireEvent.doubleClick(screen.getByText('Physician').closest('td'))
+    const box = screen.getByRole('textbox', { name: 'Edit role' })
+    fireEvent.change(box, { target: { value: 'Nurse' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() => expect(adapters.dbManager.updateCell).toHaveBeenCalled())
+    await waitFor(() => expect(filtered()).toBe(2))
+    expect(chip()?.textContent).toContain('id = Alice')
+  })
+
+  it('does not paint a save that finishes after following into the table now showing', async () => {
+    let finish
+    adapters.dbManager.updateCell.mockImplementation(() => new Promise(r => { finish = r }))
+    adapters.dbManager.getRows.mockImplementation((type, config, table) => Promise.resolve(table === 'patients'
+      ? { columns: ['id', 'name'], rows: [[1, 'Alice'], [2, 'Bob']] }
+      : { columns: ['id', 'role'], rows: [['Alice', 'Physician'], ['Bob', 'Nurse']] }))
+    await openPatients()
+    fireEvent.doubleClick(screen.getByText('Bob').closest('td'))
+    const box = screen.getByRole('textbox', { name: 'Edit name' })
+    fireEvent.change(box, { target: { value: 'Bobby' } })
+    fireEvent.blur(box)
+    await waitFor(() => expect(adapters.dbManager.updateCell).toHaveBeenCalled())
+    await follow('Follow name Alice to staff')
+    await waitFor(() => screen.getByText('Nurse'))
+    finish({ ok: true, affected: 1 })
+    await waitFor(() => expect(screen.getByText('Updated name')).toBeTruthy())
+    expect(screen.queryByText('Bobby')).toBeNull()
+    expect(screen.getByText('Nurse')).toBeTruthy()
+  })
+
+  it('forgets the history when the table is closed', async () => {
+    await openPatients()
+    await follow('Follow name Alice to staff')
+    await waitFor(() => expect(heading().textContent).toBe('staff'))
+    fireEvent.click(screen.getByRole('button', { name: 'Close table' }))
+    await waitFor(() => expect(heading()).toBeNull())
+    adapters.dbManager.getRows.mockClear()
+    onScreen()
+    fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true })
+    await new Promise(r => setTimeout(r, 20))
+    expect(adapters.dbManager.getRows).not.toHaveBeenCalled()
+    expect(heading()).toBeNull()
+    openTable('staff')
+    await waitFor(() => expect(heading().textContent).toBe('staff'))
+    expect(back().disabled).toBe(true)
+  })
+
   it('goes Back on Alt+←', async () => {
     await openPatients()
     await follow('Follow name Alice to staff')

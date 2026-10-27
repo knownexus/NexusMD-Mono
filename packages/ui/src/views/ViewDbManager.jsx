@@ -798,13 +798,15 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     openTable(table, 'browse', { where })
   }, [dbState.selectedTable, rowWhere, search, sort, openTable])
 
-  // The entry is used up even if its table then fails to load: the error shows there.
+  // The entry is used up even if its table then fails to load: the error shows there. With no
+  // table open (the history went when it closed) there's nowhere to go back from.
   const goBack = useCallback(() => {
+    if (!dbState.selectedTable) return
     const [entry, rest] = popNav(navStack)
     if (!entry) return
     setNavStack(rest)
     openTable(entry.table, 'browse', entry)
-  }, [navStack, openTable])
+  }, [dbState.selectedTable, navStack, openTable])
 
   // Puts back the scroll position Back saved, once the rows are on screen.
   useEffect(() => {
@@ -813,7 +815,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     pendingScroll.current = null
   }, [dbState.tableData, dbState.tableLoading])
 
-  const closeTable = () => { loadSeq.current++; setRowWhere(null); setDbState(s => ({ ...s, selectedTable: null, tableData: null, tableLoading: false, error: null })) }
+  const closeTable = () => { loadSeq.current++; setRowWhere(null); setNavStack([]); setDbState(s => ({ ...s, selectedTable: null, tableData: null, tableLoading: false, error: null })) }
 
   // ── Visible rows: search, then sort; each keeps its index into tableData.rows ──
 
@@ -860,6 +862,8 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const syncDemo = (name, fn) => {
     if (isDemo && demoData.current?.[name]) demoData.current[name] = fn(demoData.current[name])
   }
+  // A shown row's place in the demo's own copy, found by its key: the shown rows may be filtered.
+  const demoIndex = (d, row) => d.rows.findIndex(r => keyIdx.every(k => r[k] === row[k]))
 
   // ── Delete ─────────────────────────────────────────────────────────────────
 
@@ -872,8 +876,10 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
       if (!isDemo) {
         await db.deleteRows(session.type, session.config, name, keyArg(), indices.map(i => keyOf(rows[i])))
       }
-      const gone = new Set(indices)
-      syncDemo(name, d => ({ ...d, rows: d.rows.filter((_, i) => !gone.has(i)) }))
+      syncDemo(name, d => {
+        const at = new Set(indices.map(i => demoIndex(d, rows[i])))
+        return { ...d, rows: d.rows.filter((_, i) => !at.has(i)) }
+      })
       setDbState(s => applyRowsDeleted(s, indices))
       setTableMeta(m => (m[name] ? { ...m, [name]: { ...m[name], rows: m[name].rows - indices.length } } : m))
       setSelectedRows(new Set())
@@ -899,20 +905,28 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const commitCell = useCallback(async (ri, ci, value) => {
     const name = dbState.selectedTable
     if (!canWrite) return false
+    const seq = loadSeq.current
     try {
       if (!isDemo) {
         await db.updateCell(session.type, session.config, name, keyArg(), keyOf(tableData.rows[ri]), tableData.columns[ci], value)
       }
-      syncDemo(name, d => ({ ...d, rows: d.rows.map((r, i) => (i === ri ? r.map((c, j) => (j === ci ? value : c)) : r)) }))
-      setDbState(s => applyCellUpdated(s, { rowIndex: ri, colIndex: ci, value }))
       notify(`Updated ${tableData.columns[ci]}`)
+      // Another table (or filter) opened while it saved: these row and column numbers aren't its.
+      if (seq !== loadSeq.current) return true
+      syncDemo(name, d => {
+        const at = demoIndex(d, tableData.rows[ri])
+        return { ...d, rows: d.rows.map((r, i) => (i === at ? r.map((c, j) => (j === ci ? value : c)) : r)) }
+      })
+      setDbState(s => applyCellUpdated(s, { rowIndex: ri, colIndex: ci, value }))
+      // A filtered view reads its rows again, so a row that no longer matches drops out.
+      if (rowWhere) reloadRows(rowWhere)
       return true
     } catch (err) {
       notify(err.message, 'error')
       return false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, session, isDemo, tableData, dbState.selectedTable, keyIdx, canWrite, notify])
+  }, [db, session, isDemo, tableData, dbState.selectedTable, keyIdx, canWrite, rowWhere, reloadRows, notify])
 
   // Saves the open cell (nothing is written when it didn't change), then optionally opens `next`.
   // A value the column can't hold isn't written: the editor stays open, or on leaving it the
@@ -2401,102 +2415,102 @@ const BrowsePanel = forwardRef(function BrowsePanel({
               // Keys with a NULL part are left out, so only a value that's there can be followed.
               const targets = followable.length ? followTargets({ foreignKeys: followable }, tableData.columns, row) : []
               return (
-              <tr key={ri} aria-selected={selectedRows.has(ri) || undefined}>
-                <td className="check">
-                  <input
-                    type="checkbox"
-                    checked={selectedRows.has(ri)}
-                    onChange={() => onToggleRow(ri)}
-                    aria-label={`Select row ${vi + 1}`}
-                  />
-                </td>
-                {row.map((cell, ci) => {
-                  const col = columnInfo[ci]
-                  const kind = columnKind(col)
-                  if (minimised.has(tableData.columns[ci])) return <td key={ci} className="min" />
-                  const editing = editingCell?.ri === ri && editingCell?.ci === ci
-                  const editable = canWrite && kind !== 'readonly'
-                  // A bit is a checkbox in the cell itself: one click writes the other value.
-                  if (kind === 'boolean') {
+                <tr key={ri} aria-selected={selectedRows.has(ri) || undefined}>
+                  <td className="check">
+                    <input
+                      type="checkbox"
+                      checked={selectedRows.has(ri)}
+                      onChange={() => onToggleRow(ri)}
+                      aria-label={`Select row ${vi + 1}`}
+                    />
+                  </td>
+                  {row.map((cell, ci) => {
+                    const col = columnInfo[ci]
+                    const kind = columnKind(col)
+                    if (minimised.has(tableData.columns[ci])) return <td key={ci} className="min" />
+                    const editing = editingCell?.ri === ri && editingCell?.ci === ci
+                    const editable = canWrite && kind !== 'readonly'
+                    // A bit is a checkbox in the cell itself: one click writes the other value.
+                    if (kind === 'boolean') {
+                      return (
+                        <td key={ci} className="bool">
+                          <input
+                            type="checkbox"
+                            checked={cell === true || cell === 1}
+                            ref={el => { if (el) el.indeterminate = cell === null || cell === undefined }}
+                            disabled={!editable}
+                            onChange={e => onSetCell(ri, ci, e.target.checked)}
+                            aria-label={`${tableData.columns[ci]} for row ${vi + 1}`}
+                            title={cell === null || cell === undefined ? 'NULL' : undefined}
+                          />
+                        </td>
+                      )
+                    }
                     return (
-                      <td key={ci} className="bool">
-                        <input
-                          type="checkbox"
-                          checked={cell === true || cell === 1}
-                          ref={el => { if (el) el.indeterminate = cell === null || cell === undefined }}
-                          disabled={!editable}
-                          onChange={e => onSetCell(ri, ci, e.target.checked)}
-                          aria-label={`${tableData.columns[ci]} for row ${vi + 1}`}
-                          title={cell === null || cell === undefined ? 'NULL' : undefined}
-                        />
+                      <td
+                        key={ci}
+                        data-num={isNumeric(cell) || undefined}
+                        data-editing={editing || undefined}
+                        data-invalid={(editing && editError) || undefined}
+                        onDoubleClick={() => !editing && editable && onStartEdit(ri, ci, cell)}
+                        title={editing ? undefined : `${cell === null || cell === undefined ? 'NULL' : String(cell)}${editable ? '\nDouble-click to edit' : kind === 'readonly' ? '\nSet by the database' : ''}`}
+                      >
+                        {editing ? (
+                          <div className="nx-db-cell-edit">
+                            <CellInput
+                              col={col}
+                              autoFocus
+                              onFocus={e => e.target.select?.()}
+                              value={editValue}
+                              onChange={onEditValueChange}
+                              onBlur={() => onSaveEdit(null, { leaving: true })}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') { e.preventDefault(); onSaveEdit() }
+                                else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancelEdit() }
+                                else if (e.key === 'Tab') { e.preventDefault(); onSaveEdit(neighbour(ri, ci, e.shiftKey ? -1 : 1)) }
+                              }}
+                              aria-label={`Edit ${tableData.columns[ci]}`}
+                              aria-invalid={!!editError || undefined}
+                            />
+                            {col?.nullable && (
+                              // mousedown so the box's blur (which saves what's typed) doesn't fire first.
+                              <button type="button" className="nx-db-null-btn" title="Set to NULL"
+                                onMouseDown={e => { e.preventDefault(); onSaveEdit(null, { isNull: true }) }}>NULL</button>
+                            )}
+                            {editError && <span className="nx-db-cell-error" role="alert">{editError}</span>}
+                          </div>
+                        ) : (
+                          <>
+                            <CellValue value={cell} />
+                            <FollowButton fk={followable.find(k => k.columns[0] === tableData.columns[ci])} targets={targets}
+                              column={tableData.columns[ci]} value={cell} onFollow={onFollow} />
+                          </>
+                        )}
                       </td>
                     )
-                  }
-                  return (
-                    <td
-                      key={ci}
-                      data-num={isNumeric(cell) || undefined}
-                      data-editing={editing || undefined}
-                      data-invalid={(editing && editError) || undefined}
-                      onDoubleClick={() => !editing && editable && onStartEdit(ri, ci, cell)}
-                      title={editing ? undefined : `${cell === null || cell === undefined ? 'NULL' : String(cell)}${editable ? '\nDouble-click to edit' : kind === 'readonly' ? '\nSet by the database' : ''}`}
+                  })}
+                  <td className="actions">
+                    <button
+                      type="button"
+                      className="nx-db-row-act"
+                      onClick={() => onCopyCell(row.map(c => (c === null || c === undefined ? '' : String(c))).join('\t'))}
+                      aria-label={`Copy row ${vi + 1}`}
+                      title="Copy row (tab-separated)"
                     >
-                      {editing ? (
-                        <div className="nx-db-cell-edit">
-                          <CellInput
-                            col={col}
-                            autoFocus
-                            onFocus={e => e.target.select?.()}
-                            value={editValue}
-                            onChange={onEditValueChange}
-                            onBlur={() => onSaveEdit(null, { leaving: true })}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') { e.preventDefault(); onSaveEdit() }
-                              else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancelEdit() }
-                              else if (e.key === 'Tab') { e.preventDefault(); onSaveEdit(neighbour(ri, ci, e.shiftKey ? -1 : 1)) }
-                            }}
-                            aria-label={`Edit ${tableData.columns[ci]}`}
-                            aria-invalid={!!editError || undefined}
-                          />
-                          {col?.nullable && (
-                            // mousedown so the box's blur (which saves what's typed) doesn't fire first.
-                            <button type="button" className="nx-db-null-btn" title="Set to NULL"
-                              onMouseDown={e => { e.preventDefault(); onSaveEdit(null, { isNull: true }) }}>NULL</button>
-                          )}
-                          {editError && <span className="nx-db-cell-error" role="alert">{editError}</span>}
-                        </div>
-                      ) : (
-                        <>
-                          <CellValue value={cell} />
-                          <FollowButton fk={followable.find(k => k.columns[0] === tableData.columns[ci])} targets={targets}
-                            column={tableData.columns[ci]} value={cell} onFollow={onFollow} />
-                        </>
-                      )}
-                    </td>
-                  )
-                })}
-                <td className="actions">
-                  <button
-                    type="button"
-                    className="nx-db-row-act"
-                    onClick={() => onCopyCell(row.map(c => (c === null || c === undefined ? '' : String(c))).join('\t'))}
-                    aria-label={`Copy row ${vi + 1}`}
-                    title="Copy row (tab-separated)"
-                  >
-                    <Icon name="copy" size={13} />
-                  </button>
-                  <button
-                    type="button"
-                    className="nx-db-row-act danger"
-                    onClick={() => onDeleteRow(ri)}
-                    disabled={!canWrite}
-                    aria-label={`Delete row ${vi + 1}`}
-                    title={canWrite ? 'Delete row' : 'No primary key, so this row can’t be deleted on its own'}
-                  >
-                    <Icon name="trash" size={13} />
-                  </button>
-                </td>
-              </tr>
+                      <Icon name="copy" size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="nx-db-row-act danger"
+                      onClick={() => onDeleteRow(ri)}
+                      disabled={!canWrite}
+                      aria-label={`Delete row ${vi + 1}`}
+                      title={canWrite ? 'Delete row' : 'No primary key, so this row can’t be deleted on its own'}
+                    >
+                      <Icon name="trash" size={13} />
+                    </button>
+                  </td>
+                </tr>
               )
             })}
             {visible.length === 0 && (
