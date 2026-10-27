@@ -321,8 +321,16 @@ function createMainWindow() {
   // Show the window as soon as it exists rather than waiting for ready-to-show: that event can
   // fail to fire (a slow or failed first paint with the GPU off), leaving the app running in the
   // tray with no window. backgroundColor covers the moment before the page paints.
-  // Automated runs (e2e/launch.js) keep the window off screen; it still loads and renders.
-  if (process.env.NEXUSMD_HIDDEN !== '1') {
+  // Automated runs (e2e/launch.js) keep the window out of sight. A window that is never shown
+  // draws about one frame a second, which stalls everything that waits on a frame (Playwright's
+  // waitForFunction and its "element is stable" check before a click), so it is shown, but fully
+  // transparent, off the taskbar, without focus and letting the mouse through.
+  if (process.env.NEXUSMD_HIDDEN === '1') {
+    win.setOpacity(0);
+    win.setSkipTaskbar(true);
+    win.setIgnoreMouseEvents(true);
+    win.showInactive();
+  } else {
     win.show();
     // Windows applies the launcher's show state to a process's first ShowWindow, so a
     // launcher that starts us hidden (the portable build's, start-on-login) leaves the window

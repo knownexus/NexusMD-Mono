@@ -14,8 +14,13 @@ async function withApps(apps, fn) {
 }
 
 const item = (win, label) => win.locator('button.nav-item', { hasText: label })
+// The screen showing, by the top bar's title: one app with one screen has no sidebar (isBareStandalone).
+const showing = (win, label) => expect(win.locator('header.topbar h1')).toHaveText(label, { timeout: 15_000 })
+// Settings is a sidebar entry, or with no sidebar the top bar's Settings button.
 const openSettings = async win => {
-  await item(win, 'Settings').evaluate(b => b.click())
+  const nav = item(win, 'Settings')
+  if (await nav.count()) await nav.evaluate(b => b.click())
+  else await win.getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(win.getByRole('button', { name: 'Appearance' })).toBeVisible({ timeout: 15_000 })
 }
 const settingsTab = (win, name) => win.getByRole('button', { name }).evaluate(b => b.click())
@@ -89,7 +94,7 @@ test('Work\'s Settings cards appear only when Work is installed', async () => {
 
 test('the Planner, which used to share Work\'s data provider, still works without Work', async () => {
   await withApps('planner', async win => {
-    await expect(item(win, 'Planner')).toHaveClass(/active/)
+    await showing(win, 'Planner')
     const errors = []
     win.on('pageerror', e => errors.push(String(e)))
     await win.waitForTimeout(1500)

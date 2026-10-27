@@ -19,6 +19,8 @@ async function withApps(apps, options, fn) {
 
 const tempDir = prefix => realpathSync.native(mkdtempSync(join(tmpdir(), prefix)))
 const item = (win, label) => win.locator('button.nav-item', { hasText: label })
+// The screen showing, by the top bar's title: one app with one screen has no sidebar (isBareStandalone).
+const showing = (win, label) => expect(win.locator('header.topbar h1')).toHaveText(label, { timeout: 15_000 })
 
 test('a file given on the command line opens in the Editor; edits save, and a change on disk is caught', async () => {
   const dir = tempDir('nexusmd-editor-')
@@ -26,7 +28,7 @@ test('a file given on the command line opens in the Editor; edits save, and a ch
   writeFileSync(file, 'hello\n')
   try {
     await withApps('editor', { args: [file] }, async ({ win }) => {
-      await expect(item(win, 'Editor')).toHaveClass(/active/)
+      await showing(win, 'Editor')
       await expect(win.getByRole('tab', { name: /a\.txt/ })).toBeVisible({ timeout: 20_000 })
       const editor = win.getByRole('textbox', { name: 'Editing a.txt' })
       await expect(editor).toContainText('hello')
@@ -92,7 +94,8 @@ const gitSeed = dir => ({
 })
 
 async function openFilesMenu(win) {
-  await item(win, 'Git Workspace').evaluate(b => b.click())
+  // With Git alone there is no sidebar, and Git is the only screen.
+  if (await item(win, 'Git Workspace').count()) await item(win, 'Git Workspace').evaluate(b => b.click())
   const readme = win.getByRole('treeitem', { name: /README\.md/ })
   await expect(readme).toBeVisible({ timeout: 30_000 })
   await readme.dispatchEvent('contextmenu', { clientX: 60, clientY: 60 })
