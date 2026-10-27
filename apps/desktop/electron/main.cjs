@@ -65,6 +65,11 @@ const appLayout = appRegistry.getLayout(process.env, { isPackaged: app.isPackage
 const splitApps = appLayout.appsDir ? appRegistry.scanApps(appLayout.appsDir, { log: log.scope('apps') }) : null;
 // The one app of a single-app install: it gives the window and the tray their name and icon.
 const standaloneApp = splitApps && splitApps.length === 1 ? splitApps[0] : null;
+// Windows groups the taskbar and routes notifications by this id. A single-app install has its own, which its
+// shortcuts carry too (installer.nsh), so it pins and groups as that app; everything else is NexusMD.
+if (process.platform === 'win32' && app.isPackaged) {
+  app.setAppUserModelId(standaloneApp ? `com.knownexus.nexusmd.${standaloneApp.id}` : 'com.knownexus.nexusmd');
+}
 const appTable = splitApps ? appRegistry.modulesFromScan(splitApps) : undefined;
 const fileIpc        = require('./ipc/file.cjs');
 const pickerIpc      = require('./ipc/picker.cjs');

@@ -198,10 +198,12 @@ Var NxDir
     ${If} ${FileExists} "$newStartMenuLink"
       Delete "$newStartMenuLink"
       CreateShortCut "$SMPROGRAMS\$NxOneName.lnk" "$appExe" "" "$INSTDIR\resources\apps\$NxOneId\assets\icon.ico" 0
+      WinShell::SetLnkAUMI "$SMPROGRAMS\$NxOneName.lnk" "${APP_ID}.$NxOneId"
     ${EndIf}
     ${If} ${FileExists} "$newDesktopLink"
       Delete "$newDesktopLink"
       CreateShortCut "$DESKTOP\$NxOneName.lnk" "$appExe" "" "$INSTDIR\resources\apps\$NxOneId\assets\icon.ico" 0
+      WinShell::SetLnkAUMI "$DESKTOP\$NxOneName.lnk" "${APP_ID}.$NxOneId"
     ${EndIf}
     ; The installer removes the old shortcuts by this name when it is updated or uninstalled.
     WriteRegStr SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" ShortcutName "$NxOneName"

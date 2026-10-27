@@ -1133,10 +1133,10 @@ describe('stage 4 actions (unit)', () => {
     const p = await invoke('git:preview', REPO, WT, REG, 'reset', { oid: OID, mode: 'hard' })
     expect(p.eligible).toBe(true)
     expect(await invoke('git:run', REPO, WT, REG, 'reset', { oid: OID, mode: 'hard' }, p.stamp)).toMatchObject({ ok: true })
-    expect(writes(calls).map(c => c.args)).toEqual([['reset', '--hard', '--end-of-options', OID]])
-    expect(() => assertSafeArgv(['reset', '--soft', '--end-of-options', OID])).toThrow('Refusing git reset')
-    for (const bad of [['reset', '--hard', OID], ['reset', '--keep', '--end-of-options', OID], ['reset', '--hard', '--end-of-options', 'HEAD~1'],
-      ['reset', '--hard', '--end-of-options', OID, '--', 'f'], ['clean', '--hard', '--end-of-options', OID]]) {
+    expect(writes(calls).map(c => c.args)).toEqual([['reset', '--hard', OID]])
+    expect(() => assertSafeArgv(['reset', '--soft', OID])).toThrow('Refusing git reset')
+    for (const bad of [['reset', '--hard', '--end-of-options', OID], ['reset', '--keep', OID], ['reset', '--hard', 'HEAD~1'],
+      ['reset', '--hard', OID, '--', 'f'], ['clean', '--hard', OID]]) {
       expect(() => assertResetArgv(bad)).toThrow('Refusing git reset')
     }
   })

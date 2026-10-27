@@ -37,9 +37,10 @@ const RESET_MODES = ['soft', 'mixed', 'hard'];
 
 // The one exception to the forbidden list: the reset kind's own argv, and nothing else shaped like it.
 // It never goes through assertSafeArgv; this checks its exact form instead.
+// There is no --end-of-options: git's reset rejects it (as of 2.43). The oid is checked to be hex, so it cannot be an option.
 function assertResetArgv(args) {
-  const [cmd, mode, eoo, oid, ...rest] = args;
-  if (cmd !== 'reset' || !RESET_MODES.some(m => mode === `--${m}`) || eoo !== '--end-of-options' || !isOid(oid) || rest.length) throw new Error('Refusing git reset');
+  const [cmd, mode, oid, ...rest] = args;
+  if (cmd !== 'reset' || !RESET_MODES.some(m => mode === `--${m}`) || !isOid(oid) || rest.length) throw new Error('Refusing git reset');
   return args;
 }
 
@@ -443,7 +444,7 @@ function registerActions(handle, ctx) {
         };
       },
       // Not through w(): reset is on the forbidden list for every other kind, so this argv has its own check.
-      run: async (wt, o) => finish(wt, await git(wt, assertResetArgv(['reset', `--${o.mode}`, '--end-of-options', o.oid]), { timeout: SHORT, env: { ...WRITE_ENV } })),
+      run: async (wt, o) => finish(wt, await git(wt, assertResetArgv(['reset', `--${o.mode}`, o.oid]), { timeout: SHORT, env: { ...WRITE_ENV } })),
     },
     continue: {
       timeout: LONG,
