@@ -141,7 +141,7 @@
       "provider": "github",
       "owner": "knownexus",
       "repo": "NexusMD-Mono",
-      "releaseType": "release"
+      "releaseType": "draft"
     }
   }
 }

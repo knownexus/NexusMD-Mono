@@ -59,13 +59,25 @@ describe('installer.nsh', () => {
 })
 
 describe('publishing the Windows build', () => {
-  // Left as a draft, electron-builder skips the upload when Mac or Linux has already published the
-  // release, so Windows went missing from 1.2.0.
-  it('publishes the same kind of release as Mac and Linux', async () => {
+  const winConfig = async () => {
     const { createRequire } = await import('node:module')
-    const require = createRequire(import.meta.url)
-    const win = require('../electron-builder.win.cjs')
-    const pkg = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8'))
-    expect(win.publish).toEqual(pkg.build.publish)
+    return createRequire(import.meta.url)('../electron-builder.win.cjs')
+  }
+  const pkg = () => JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8'))
+
+  // With different kinds, electron-builder skips the upload when another platform has already created
+  // the release as the other kind, so Windows went missing from 1.2.0.
+  it('publishes the same kind of release as Mac and Linux', async () => {
+    expect((await winConfig()).publish).toEqual(pkg().build.publish)
+  })
+
+  // Published as each platform finished, a release could be the latest before its latest.yml was
+  // uploaded, and the app's updater failed with a 404 (1.2.3). Every platform uploads to a draft, and
+  // the workflow publishes it only after all of them have.
+  it('uploads to a draft that the release workflow publishes once every platform is in', async () => {
+    expect((await winConfig()).publish.releaseType).toBe('draft')
+    const workflow = readFileSync(join(import.meta.dirname, '..', '..', '..', '.github', 'workflows', 'release-desktop.yml'), 'utf8')
+    expect(workflow).toMatch(/^ {2}publish:\n(?: {4}.*\n)*? {4}needs: build\n/m)
+    expect(workflow).toContain('gh release edit "$GITHUB_REF_NAME" --draft=false')
   })
 })

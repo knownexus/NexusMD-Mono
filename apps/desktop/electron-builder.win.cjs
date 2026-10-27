@@ -47,8 +47,10 @@ module.exports = {
   // nexusmd:// links open this install; the uninstaller removes the registration. Not for the test
   // installer, which must not take the links over from a real install.
   ...(test ? {} : { protocols: [{ name: 'NexusMD', schemes: ['nexusmd'] }] }),
-  // A published release, as package.json's config makes for Mac and Linux. Left out, this defaults to a
-  // draft, and electron-builder skips the upload (with only a warning) when another platform has
-  // already created the release as published.
-  publish: { provider: 'github', owner: 'knownexus', repo: 'NexusMD-Mono', releaseType: 'release' },
+  // A draft, as package.json's config makes for Mac and Linux: every platform uploads into the same
+  // draft, and the release workflow publishes it once all of them have (.github/workflows/
+  // release-desktop.yml). Published straight away, the app's updater could find a release whose
+  // latest.yml wasn't uploaded yet. The kinds must match: electron-builder skips the upload (with only
+  // a warning) when another platform has already created the release as the other kind.
+  publish: { provider: 'github', owner: 'knownexus', repo: 'NexusMD-Mono', releaseType: 'draft' },
 };
