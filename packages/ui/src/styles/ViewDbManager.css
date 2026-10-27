@@ -409,3 +409,23 @@
 .nx-db-ddl-preview { margin: 0; max-height: 220px; overflow: auto; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); font: 12px/1.55 var(--mono); color: var(--text); white-space: pre-wrap; }
 .nx-db-ddl-errors { margin: 0; padding: 8px 12px 8px 28px; border-radius: var(--radius-sm); background: var(--danger-soft); color: var(--danger); font-size: 12.5px; }
 .nx-db-row-title .nx-db-tag { margin-left: 6px; }
+
+/* Structure tab */
+.nx-db-th .fk { padding: 1px 5px; border-radius: 4px; background: var(--surface-2); color: var(--text-muted); font-size: 9.5px; letter-spacing: .04em; }
+.nx-db-structure { display: flex; flex-direction: column; gap: 18px; padding: 14px 16px; overflow: auto; min-height: 0; }
+.nx-db-structure-section h3 { margin: 0 0 6px; font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.nx-db-structure-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.nx-db-structure-table th { padding: 4px 10px 4px 0; text-align: left; font: 600 10.5px var(--sans); color: var(--text-subtle); }
+.nx-db-structure-table td { padding: 5px 10px 5px 0; border-top: 1px solid var(--border); vertical-align: baseline; }
+.nx-db-structure-table td.type { font-family: var(--mono); font-size: 11.5px; color: var(--text-subtle); }
+.nx-db-structure-table td.flags, .nx-db-structure-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.nx-db-structure-table td.flags { display: table-cell; }
+.nx-db-structure-table td.flags > * { margin-right: 6px; }
+.nx-db-structure .pk { padding: 1px 5px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 9.5px; letter-spacing: .04em; }
+.nx-db-structure .flag { padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-muted); font-size: 10.5px; }
+.nx-db-structure-row { padding: 7px 8px; border-top: 1px solid var(--border); font-size: 12.5px; border-radius: 4px; }
+.nx-db-structure-row .key-name { font: 600 12px var(--mono); }
+.nx-db-structure-row[data-focus] { background: var(--accent-soft); }
+.nx-db-structure-link { padding: 0; border: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.nx-db-structure-link:hover { color: var(--text); }
+.nx-db-structure-none { margin: 0; color: var(--text-subtle); font-size: 12.5px; }

@@ -6,7 +6,7 @@
 //
 // Keys (only while this view is showing and no dialog is open):
 //   Ctrl/⌘K jump to table · / filter tables · j / k next / previous table · Ctrl/⌘F search rows
-//   b Browse · q Query · r refresh the open table · Ctrl/⌘Enter run the query
+//   b Browse · s Structure · q Query · r refresh the open table · Ctrl/⌘Enter run the query
 
 import { useState, useRef, useCallback, useEffect, useMemo, forwardRef } from 'react'
 import {
@@ -52,6 +52,7 @@ import { Icon } from '../icons.jsx'
 import { FoldAllButton } from '../fold-all-button.jsx'
 import { DbMenu, menuPointFor } from './db-menu.jsx'
 import { readMinCols, writeMinCols } from './db-min-cols.js'
+import { StructurePanel, typeLabelOf } from './db-structure-panel.jsx'
 
 // ─── Demo data (shown when no real DB is connected) ───────────────────────────
 
@@ -220,7 +221,7 @@ function useDbShortcuts(rootRef, handlers) {
         return
       }
       if (mod || e.altKey || e.shiftKey || typing(e.target) || overlayOpen()) return
-      const map = { '/': h.focusFilter, j: h.next, k: h.previous, b: h.browse, q: h.query, r: h.refresh }
+      const map = { '/': h.focusFilter, j: h.next, k: h.previous, b: h.browse, s: h.structure, q: h.query, r: h.refresh }
       const fn = Object.hasOwn(map, key) ? map[key] : null
       if (fn) { e.preventDefault(); fn() }
     }
@@ -573,6 +574,8 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const [tableColumns, setTableColumns] = useState({})        // { [table]: Column[] }
   const [columnsFailed, setColumnsFailed] = useState({})      // { [table]: true } once its column types couldn't be read
   const [columnsLoading, setColumnsLoading] = useState(false)
+  const [structures, setStructures]   = useState({})          // { [table]: { columns, foreignKeys, referencedBy, indexes } }
+  const [structureState, setStructureState] = useState({})    // { [table]: { error } } when its structure couldn't be read
   const [activeBuilder, setActiveBuilder] = useState(null)    // 'search' | 'insert' | 'update' | 'delete' | 'join' | 'aggregate' | null
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [tableFilter, setTableFilter] = useState('')
@@ -591,6 +594,8 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const loadSeq    = useRef(0)
   const columnsRef = useRef(tableColumns)
   columnsRef.current = tableColumns
+  const structuresRef = useRef(structures)
+  structuresRef.current = structures
 
   const session = dbState.session
   const isDemo = session?.type === 'demo'
@@ -621,7 +626,8 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   // ── Columns ────────────────────────────────────────────────────────────────
 
   const ensureColumnsLoaded = useCallback(async (table, { quiet = false } = {}) => {
-    if (!table || columnsRef.current[table] || !session) return
+    if (!table || !session) return undefined
+    if (columnsRef.current[table]) return columnsRef.current[table]
     if (!quiet) setColumnsLoading(true)
     try {
       if (isDemo) {
@@ -631,27 +637,58 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
           name, dataType: 'TEXT', isPrimaryKey: i === 0, nullable: i !== 0,
         }))
         setTableColumns(prev => ({ ...prev, [table]: demoCols }))
-        return
+        return demoCols
       }
       const result = await db.getColumns(session.type, session.config, table)
       // A table always has columns, so none back means they couldn't be read (a permissions gap, say).
       if (!result.columns?.length) {
         setColumnsFailed(prev => ({ ...prev, [table]: true }))
-        return
+        return undefined
       }
       setColumnsFailed(prev => (prev[table] ? { ...prev, [table]: false } : prev))
       setTableColumns(prev => ({ ...prev, [table]: result.columns }))
+      return result.columns
     } catch (err) {
       if (quiet) {
         setColumnsFailed(prev => ({ ...prev, [table]: true }))
-        return
+        return undefined
       }
       notify(err.message, 'error')
       setActiveBuilder(null)
+      return undefined
     } finally {
       if (!quiet) setColumnsLoading(false)
     }
   }, [db, session, isDemo, notify])
+
+  // ── Structure ──────────────────────────────────────────────────────────────
+
+  // Keys and indexes for the Structure tab and the Browse header markers. With no adapter method
+  // (or in the demo) there are none to show, only the columns.
+  const ensureStructureLoaded = useCallback(async (table, { force = false } = {}) => {
+    if (!table || !session || (!force && structuresRef.current[table])) return
+    setStructureState(prev => { const { [table]: _gone, ...rest } = prev; return rest })
+    try {
+      let found
+      if (isDemo || !db.getStructure) {
+        const columns = await ensureColumnsLoaded(table, { quiet: true })
+        if (!columns) throw new Error("Couldn't read this table's columns")
+        found = { columns, foreignKeys: [], referencedBy: [], indexes: [] }
+      } else {
+        const result = await db.getStructure(session.type, session.config, table)
+        if (result?.ok === false) throw new Error(result.error || "Couldn't read this table's structure")
+        found = {
+          columns: result.columns ?? [],
+          foreignKeys: result.foreignKeys ?? [],
+          referencedBy: result.referencedBy ?? [],
+          indexes: result.indexes ?? [],
+        }
+      }
+      setStructures(prev => ({ ...prev, [table]: found }))
+    } catch (err) {
+      setStructureState(prev => ({ ...prev, [table]: { error: err.message } }))
+    }
+  }, [db, session, isDemo, ensureColumnsLoaded])
 
   // ── Load table ─────────────────────────────────────────────────────────────
 
@@ -681,6 +718,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     setDbState(s => applyTableSelected(s, name))
     // Column metadata gives the real primary key for edits and deletes; fetched alongside the rows.
     ensureColumnsLoaded(name, { quiet: true })
+    ensureStructureLoaded(name)
     try {
       const data = await fetchRows(name)
       if (seq !== loadSeq.current) return
@@ -691,7 +729,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
       setDbState(s => applyError(s, err.message))
       notify(err.message, 'error')
     }
-  }, [session, fetchRows, recordLoaded, ensureColumnsLoaded, notify])
+  }, [session, fetchRows, recordLoaded, ensureColumnsLoaded, ensureStructureLoaded, notify])
 
   // Reads the open table again, keeping the search, sort and tab.
   const refreshTable = useCallback(async () => {
@@ -1154,6 +1192,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     next: () => step(1),
     previous: () => step(-1),
     browse: () => { if (dbState.selectedTable) setActiveTab('browse') },
+    structure: () => { if (dbState.selectedTable) setActiveTab('structure') },
     query: () => { if (dbState.selectedTable) setActiveTab('query') },
     refresh: () => { if (dbState.selectedTable) refreshTable() },
   } : {})
@@ -1323,7 +1362,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
               </div>
 
               <div className="nx-db-tabs" role="tablist" aria-label="View mode">
-                {[['browse', 'Browse', tableData && !dbState.tableLoading ? tableData.rows.length : null], ['query', 'Query', null]].map(([id, label, n]) => (
+                {[['browse', 'Browse', tableData && !dbState.tableLoading ? tableData.rows.length : null], ['structure', 'Structure', null], ['query', 'Query', null]].map(([id, label, n]) => (
                   <button key={id} type="button" role="tab" aria-selected={activeTab === id} className="nx-db-tab"
                     title={`${label} (${id[0]})`} onClick={() => setActiveTab(id)}>
                     {label}{n != null && <span className="n" aria-hidden="true">{n}</span>}
@@ -1357,6 +1396,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                   columnsKnown={columnsKnown || isDemo}
                   typesUnreadable={typesUnreadable}
                   isView={viewSet.has(dbState.selectedTable)}
+                  foreignKeys={structures[dbState.selectedTable]?.foreignKeys}
                   onSetCell={commitCell}
                   onAddRow={() => setAddingRow(true)}
                   search={search}
@@ -1377,6 +1417,17 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                   onStartEdit={startEdit}
                   onSaveEdit={saveEdit}
                   onCancelEdit={() => setEditingCell(null)}
+                />
+              )}
+
+              {activeTab === 'structure' && (
+                <StructurePanel
+                  structure={structures[dbState.selectedTable] ?? null}
+                  isView={viewSet.has(dbState.selectedTable)}
+                  loading={!structureState[dbState.selectedTable]?.error}
+                  error={structureState[dbState.selectedTable]?.error ?? null}
+                  onOpenTable={name => openTable(name, 'structure')}
+                  onRefresh={() => ensureStructureLoaded(dbState.selectedTable, { force: true })}
                 />
               )}
 
@@ -2108,14 +2159,6 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openC
 
 // ─── Browse panel ─────────────────────────────────────────────────────────────
 
-// A column's type as the header shows it: int, nvarchar(50), decimal(8,2), nvarchar(max).
-function typeLabelOf(col) {
-  const t = String(col.dataType ?? '').toLowerCase()
-  if (col.maxLength === -1) return `${t}(max)`
-  if (col.maxLength > 0 && /char|binary/.test(t)) return `${t}(${col.maxLength})`
-  if (col.precision != null && col.scale != null) return `${t}(${col.precision},${col.scale})`
-  return t
-}
 const typeTitle = col => [
   typeLabelOf(col),
   col.nullable ? 'allows NULL' : 'required',
@@ -2149,7 +2192,7 @@ const CellInput = forwardRef(function CellInput({ col, value, onChange, classNam
 })
 
 const BrowsePanel = forwardRef(function BrowsePanel({
-  tableData, visible, keyIdx, columnInfo, minimised, onMinimise, onRestore, onRestoreAll, canWrite, columnsKnown, typesUnreadable = false, isView = false, onSetCell, onAddRow, search, onSearchChange, sort, onSort,
+  tableData, visible, keyIdx, columnInfo, minimised, onMinimise, onRestore, onRestoreAll, canWrite, columnsKnown, typesUnreadable = false, isView = false, foreignKeys = [], onSetCell, onAddRow, search, onSearchChange, sort, onSort,
   selectedRows, allSelected, onToggleRow, onToggleAll, onClearSelection, onDeleteSelected, onDeleteRow, onCopyCell,
   editingCell, editValue, onEditValueChange, onStartEdit, onSaveEdit, onCancelEdit,
 }, ref) {
@@ -2248,6 +2291,10 @@ const BrowsePanel = forwardRef(function BrowsePanel({
                     <button type="button" className="nx-db-th" onClick={() => onSort(ci)} title={`Sort by ${col}`}>
                       <span>{col}</span>
                       {keyIdx.includes(ci) && <span className="pk" title="Key used for edits and deletes">key</span>}
+                      {foreignKeys.filter(fk => fk.columns.includes(col)).map(fk => {
+                        const target = fk.refColumns[fk.columns.indexOf(col)]
+                        return <span key={fk.name} className="fk" title={`→ ${fk.refTable}${target ? `.${target}` : ''}`}>fk</span>
+                      })}
                       {columnInfo[ci] && <span className="nx-db-coltype" title={typeTitle(columnInfo[ci])}>{typeLabelOf(columnInfo[ci])}</span>}
                       <Icon name={dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={11} className={`sort${dir ? ' on' : ''}`} />
                     </button>

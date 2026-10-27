@@ -1930,3 +1930,67 @@ describe('ViewDbManager — tables in other schemas', () => {
     expect(screen.queryByRole('button', { name: /Other schemas/ })).toBeNull()
   })
 })
+
+describe('ViewDbManager — structure and foreign keys', () => {
+  let adapters
+  const structure = {
+    ok: true,
+    columns: [
+      { name: 'id', dataType: 'INTEGER', isPrimaryKey: true },
+      { name: 'name', dataType: 'TEXT', isPrimaryKey: false },
+    ],
+    foreignKeys: [{ name: 'FK_patients_name', columns: ['name'], refTable: 'staff', refColumns: ['id'], onDelete: 'NO ACTION', onUpdate: 'NO ACTION' }],
+    referencedBy: [],
+    indexes: [],
+  }
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter({ getStructure: vi.fn().mockResolvedValue(structure) }) }
+  })
+
+  afterEach(() => { cleanup() })
+
+  const saved = [{ id: 'uat', name: 'UAT', type: 'sqlite', inputMode: 'fields', filePath: '/a.db' }]
+  const openUatPatients = async () => {
+    render(<ViewDbManager adapters={adapters} savedConnections={saved} onResolveSecret={vi.fn().mockResolvedValue('')} />)
+    fireEvent.click(within(screen.getByRole('region', { name: 'Quick connect' })).getByText('UAT'))
+    await waitFor(() => within(screen.getByRole('navigation', { name: 'Table list' })).getByText('patients'))
+    openTable('patients')
+    await waitFor(() => screen.getByRole('table'))
+  }
+
+  it('marks a foreign key column in the Browse header', async () => {
+    await openUatPatients()
+    const marker = await waitFor(() => {
+      const el = within(screen.getByRole('table')).getByText('fk')
+      return el
+    })
+    expect(marker.getAttribute('title')).toBe('→ staff.id')
+    expect(marker.closest('th').textContent).toContain('name')
+  })
+
+  it('shows the Structure tab on s, and opens a target table from it', async () => {
+    await openUatPatients()
+    // jsdom has no layout, so the page never counts as on screen; say it is.
+    const rects = vi.spyOn(Element.prototype, 'getClientRects').mockReturnValue([{}])
+    fireEvent.keyDown(window, { key: 's' })
+    rects.mockRestore()
+    expect(screen.getByRole('tab', { name: 'Structure', selected: true })).toBeTruthy()
+    const fks = await waitFor(() => screen.getByRole('region', { name: 'Foreign keys' }))
+    fireEvent.click(within(fks).getByRole('button', { name: 'Open staff' }))
+    await waitFor(() => expect(adapters.dbManager.getRows).toHaveBeenCalledWith('sqlite', expect.anything(), 'staff'))
+  })
+
+  it('falls back to the columns alone in the demo', async () => {
+    render(<ViewDbManager adapters={adapters} />)
+    fireEvent.click(screen.getByText('Try the demo'))
+    await waitFor(() => screen.getByText('patients'))
+    openTable('patients')
+    await waitFor(() => screen.getByRole('table'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Structure' }))
+    const cols = await waitFor(() => screen.getByRole('region', { name: 'Columns' }))
+    expect(within(cols).getByText('dob')).toBeTruthy()
+    expect(adapters.dbManager.getStructure).not.toHaveBeenCalled()
+    expect(within(screen.getByRole('region', { name: 'Foreign keys' })).getByText('None')).toBeTruthy()
+  })
+})
