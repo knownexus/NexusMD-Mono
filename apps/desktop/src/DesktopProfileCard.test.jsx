@@ -23,6 +23,7 @@ vi.mock('@nexusmd/ui', () => ({
   BoardColumnsCard: () => null,
   VsProfiles: () => null,
   BackupRestoreCard: () => null,
+  BundlePasswordModal: () => null,
   CloudSyncCard: () => null,
   IntegrationsView: () => null,
   Icon: () => null,

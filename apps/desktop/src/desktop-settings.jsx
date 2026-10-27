@@ -14,6 +14,8 @@ import { NavOrderEditor } from './nav-order-editor.jsx'
 import { ZoomSlider } from './zoom-slider.jsx'
 import { desktopFileIO } from './file-io.js'
 import LogsCard from './logs-card.jsx'
+import { SettingsFileCard } from './settings-file-card.jsx'
+import { AppsCard } from './apps-card.jsx'
 import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken, decodeJwtClaims } from './cloud-auth.js'
 import { desktopSync } from './sync.js'
 import { moduleSettingsCards, modulePanels } from './shell/modules.js'
@@ -528,6 +530,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
           {tab === 'data' && (
             <>
               <DesktopDataSyncCard />
+              <SettingsFileCard />
               <LogsCard />
             </>
           )}
@@ -542,6 +545,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
           {tab === 'desktop' && (
             <>
               <DesktopAppCard />
+              <AppsCard />
               {moduleSettingsCards().map(({ id, Card }) => <Card key={id} picker={pickerAdapter} />)}
             </>
           )}

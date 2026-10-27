@@ -227,6 +227,7 @@ function createMainWindow() {
     show: false,
     title: 'Management Dashboard',
     icon: windowIconPath(isDark),
+    backgroundColor: isDark ? '#1f1f1f' : '#ffffff',
     // Hidden title bar allows custom window controls to be rendered
     titleBarStyle: 'hidden',
     webPreferences: {
@@ -317,15 +318,19 @@ function createMainWindow() {
     applyZoom(win, nextZoom(prefs.zoomFactor ?? ZOOM_DEFAULT, direction))
   })
 
-  win.once('ready-to-show', () => {
-    // Automated runs (e2e/launch.js) keep the window off screen; it still loads and renders.
-    if (process.env.NEXUSMD_HIDDEN === '1') return;
+  // Show the window as soon as it exists rather than waiting for ready-to-show: that event can
+  // fail to fire (a slow or failed first paint with the GPU off), leaving the app running in the
+  // tray with no window. backgroundColor covers the moment before the page paints.
+  // Automated runs (e2e/launch.js) keep the window off screen; it still loads and renders.
+  if (process.env.NEXUSMD_HIDDEN !== '1') {
     win.show();
     // Windows applies the launcher's show state to a process's first ShowWindow, so a
-    // launcher that starts us hidden (the portable build's) leaves the window hidden.
-    // The second call isn't overridden.
+    // launcher that starts us hidden (the portable build's, start-on-login) leaves the window
+    // hidden. The second call isn't overridden.
     if (!win.isVisible()) win.show();
-  });
+    win.focus();
+    log.scope('lifecycle').info(`main window shown (visible=${win.isVisible()})`);
+  }
 
   // Honour user's close preference (unless forceQuit is set by before-quit)
   win.on('close', e => {
@@ -356,7 +361,7 @@ app.whenReady().then(async () => {
   log.scope('lifecycle').info('app ready; creating main window');
   // The preload asks which apps are installed (and what bridge they need) while it loads, so this
   // must be answerable before the first window exists.
-  appRegistry.register(ipcMain, process.env, appTable, splitApps);
+  appRegistry.register(ipcMain, process.env, appTable, splitApps, disabledApps);
 
   // Create renderer window (loads from Vite dev server or dist/renderer/)
   mainWindow = createMainWindow();
@@ -395,7 +400,7 @@ app.whenReady().then(async () => {
     preloadPath: path.join(__dirname, 'preload.cjs'),
     windowIcon: () => windowIconPath(nativeTheme.shouldUseDarkColors),
     loadRenderer,
-  }, process.env, appTable, log.scope('apps'));
+  }, process.env, appTable, log.scope('apps'), disabledApps);
   loginItemIpc.register(ipcMain, { app });
   // Start-on-login keeps the exe that turned it on; a packaged build takes it over from an older
   // copy (which may open only to the tray). Not in dev, where execPath is electron.exe itself.
@@ -445,6 +450,10 @@ function savePrefs(data) {
 const prefs = loadPrefs();
 if (prefs.closeToTray === undefined) prefs.closeToTray = true;
 
+// Installed apps the user has switched off in Settings. Read once: the apps wire up their IPC,
+// windows and screens at startup, so a change applies on the next start (apps:set-disabled).
+const disabledApps = Array.isArray(prefs.disabledApps) ? prefs.disabledApps.filter(id => typeof id === 'string') : [];
+
 ipcMain.handle('pick-output-folder', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
     title: 'Select output folder',
@@ -478,6 +487,23 @@ ipcMain.handle('get-close-to-tray', () => prefs.closeToTray);
 ipcMain.handle('set-close-to-tray', (_e, enabled) => {
   prefs.closeToTray = !!enabled;
   savePrefs(prefs);
+});
+
+// ---------------------------------------------------------------------------
+// Switching installed apps on and off — saved now, applied by restarting
+// ---------------------------------------------------------------------------
+// What is saved, which may differ from what this session is running with (disabledApps above).
+ipcMain.handle('apps:get-disabled', () => prefs.disabledApps ?? []);
+ipcMain.handle('apps:set-disabled', (_e, ids, { restart = false } = {}) => {
+  prefs.disabledApps = Array.isArray(ids) ? [...new Set(ids.filter(id => typeof id === 'string'))] : [];
+  savePrefs(prefs);
+  log.scope('apps').info(`switched-off apps: ${prefs.disabledApps.join(', ') || 'none'}${restart ? '; restarting' : ''}`);
+  if (restart) {
+    // The portable build runs from a temp copy; start the real exe again (as start-on-login does).
+    // The relaunch only happens if the quit does: unsaved edits can still cancel it.
+    app.relaunch({ execPath: loginItemIpc.loginItemPath() });
+    app.quit();
+  }
 });
 
 // ---------------------------------------------------------------------------

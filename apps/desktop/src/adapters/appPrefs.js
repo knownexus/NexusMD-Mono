@@ -13,4 +13,8 @@ export const appPrefsAdapter = {
   getZoomFactor() { return api()?.getZoomFactor?.() },
   setZoomFactor(factor) { return api()?.setZoomFactor?.(factor) },
   onZoomChanged(cb) { return api()?.onZoomChanged?.(cb) },
+  // Installed apps switched off in Settings; a change applies when the app restarts.
+  getDisabledApps() { return api()?.registry?.getDisabled?.() },
+  setDisabledApps(ids) { return api()?.registry?.setDisabled?.(ids) },
+  restartApp(disabledIds) { return api()?.registry?.setDisabled?.(disabledIds, { restart: true }) },
 }

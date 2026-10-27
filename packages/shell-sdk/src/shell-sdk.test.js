@@ -35,6 +35,19 @@ describe('createRegistry', () => {
     expect(r.appForView('a')).toBeUndefined()
     expect(r.appForView('b').id).toBe('b')
   })
+  it('leaves out switched-off apps but keeps the mode and identity of what is installed', () => {
+    const r = createRegistry({ manifests, installedIds: ['a', 'b'], disabledIds: ['a'] })
+    expect(r.apps.map(a => a.id)).toEqual(['b'])
+    expect(r.installedApps.map(a => a.id)).toEqual(['a', 'b'])
+    expect(r.isInstalled('a')).toBe(false)
+    expect(r.appForView('a')).toBeUndefined()
+    expect(r.mode).toBe('combined')
+    expect(r.identity.appId).toBe('combined')
+  })
+  it('runs every installed app if all of them are switched off', () => {
+    const r = createRegistry({ manifests, disabledIds: ['a', 'b', 'c'] })
+    expect(r.apps.map(a => a.id)).toEqual(['a', 'b', 'c'])
+  })
   it('ignores installed ids it does not know about', () => {
     expect(createRegistry({ manifests, installedIds: ['a', 'zzz'] }).apps.map(a => a.id)).toEqual(['a'])
   })

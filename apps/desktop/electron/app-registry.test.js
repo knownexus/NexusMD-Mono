@@ -28,13 +28,13 @@ describe('registry IPC', () => {
     const ipcMain = { on: vi.fn((channel, fn) => { handlers[channel] = fn }) }
     register(ipcMain, { NEXUSMD_APPS: 'git' })
     const get = {}; handlers['registry:get'](get)
-    expect(get.returnValue).toEqual({ installedIds: ['git'], split: null })
+    expect(get.returnValue).toEqual({ installedIds: ['git'], disabledIds: [], split: null })
     const pre = {}; handlers['registry:preload-descriptors'](pre)
     expect(pre.returnValue.git.status).toEqual({ invoke: 'git:status' })
     expect(pre.returnValue.popout.open).toEqual({ invoke: 'popout:open' })
   })
   it('reports null (all apps) by default, and no split layout', () => {
-    expect(getRegistryInfo({})).toEqual({ installedIds: null, split: null })
+    expect(getRegistryInfo({})).toEqual({ installedIds: null, disabledIds: [], split: null })
   })
 })
 
@@ -50,6 +50,11 @@ describe('installedModuleIds and getPreloadDescriptors', () => {
   it('leaves out apps that are not installed', () => {
     expect(installedModuleIds({ NEXUSMD_APPS: 'b,planner' }, modules)).toEqual(['b'])
     expect(Object.keys(getPreloadDescriptors({ NEXUSMD_APPS: 'a' }, modules))).toEqual(['a'])
+  })
+  it('leaves out apps switched off in Settings', () => {
+    expect(installedModuleIds({}, modules, ['a'])).toEqual(['b'])
+    expect(Object.keys(getPreloadDescriptors({}, modules, ['b']))).toEqual(['a'])
+    expect(getRegistryInfo({}, null, ['a'])).toEqual({ installedIds: null, disabledIds: ['a'], split: null })
   })
   it('exposes nothing when none of the split-out apps are installed', () => {
     expect(getPreloadDescriptors({ NEXUSMD_APPS: 'planner' }, modules)).toEqual({})
@@ -69,6 +74,11 @@ describe('registerModules', () => {
     expect(register).toHaveBeenCalledWith(ctx)
     await started.disposeAll()
     expect(dispose).toHaveBeenCalled()
+  })
+  it('does not start apps switched off in Settings', () => {
+    const register = vi.fn()
+    registerModules({}, {}, { a: fakeModule({}, { register }) }, log, ['a'])
+    expect(register).not.toHaveBeenCalled()
   })
   it('does not start apps that are not installed', () => {
     const register = vi.fn()
@@ -183,6 +193,21 @@ describe('scanApps', () => {
     expect(Object.keys(info.split.apps[0]).sort()).toEqual(['id', 'manifest', 'rendererUrl', 'styles'])   // no folder paths leak to the page
     expect(getRegistryInfo({ NEXUSMD_APPS: 'notes' }, scanned).installedIds).toEqual(['notes'])
     expect(getRegistryInfo({ NEXUSMD_APPS: 'notes' }, scanned).split.apps.map(a => a.id)).toEqual(['notes'])
+  })
+
+  it('does not load a switched-off app, but still names it so Settings can switch it back on', () => {
+    makeApp('git')
+    makeApp('notes')
+    const scanned = scanApps(root, { log: silent })
+    const info = getRegistryInfo({}, scanned, ['notes'])
+    expect(info.installedIds).toEqual(['git', 'notes'])
+    expect(info.disabledIds).toEqual(['notes'])
+    expect(info.split.apps.map(a => a.id)).toEqual(['git'])
+    expect(info.split.disabled.map(m => m.id)).toEqual(['notes'])
+    // Every app off would leave the window empty, so then all of them run.
+    const all = getRegistryInfo({}, scanned, ['git', 'notes'])
+    expect(all.split.apps.map(a => a.id)).toEqual(['git', 'notes'])
+    expect(all.disabledIds).toEqual([])
   })
 
   it('exposes only the installed apps\' preload bridge, whatever else is on disk', () => {

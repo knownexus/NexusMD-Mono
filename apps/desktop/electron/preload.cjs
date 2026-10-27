@@ -229,6 +229,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // renderer reads it at startup to build the sidebar and Settings.
   registry: {
     get: () => (installedInfo ??= ipcRenderer.sendSync('registry:get')),
+    // Saves which installed apps are switched off; they apply on the next start, so `restart` restarts now.
+    setDisabled: (ids, opts) => ipcRenderer.invoke('apps:set-disabled', ids, opts),
+    getDisabled: () => ipcRenderer.invoke('apps:get-disabled'),
   },
 
   // Namespaces (git, popout, ...) that the installed apps ask for, built from their manifests.

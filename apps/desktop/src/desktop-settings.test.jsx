@@ -35,6 +35,7 @@ vi.mock('@nexusmd/ui', () => ({
   ),
   VsProfiles: () => <div data-testid="vs-profiles">VsProfiles</div>,
   BackupRestoreCard: () => <div data-testid="backup-restore">BackupRestoreCard</div>,
+  BundlePasswordModal: () => null,
   CloudSyncCard: () => <div data-testid="cloud-sync">CloudSyncCard</div>,
   BoardColumnsCard: () => <div data-testid="board-columns">BoardColumnsCard</div>,
   IntegrationsView: () => <div data-testid="integrations-view">IntegrationsView</div>,

@@ -108,28 +108,39 @@ function modulesFromScan(scanned) {
   }]));
 }
 
-// Which apps are installed: NEXUSMD_APPS narrows the set (dev and testing); null means everything.
-function installedModuleIds(env = process.env, modules = MODULES) {
+// Which apps run: NEXUSMD_APPS narrows the set (dev and testing), and the apps the user has switched
+// off in Settings (`disabled`, from prefs.json) are left out.
+function installedModuleIds(env = process.env, modules = MODULES, disabled = []) {
   const installed = parseInstalledIds(env.NEXUSMD_APPS);
-  return Object.keys(modules).filter(id => !installed || installed.includes(id));
+  return Object.keys(modules).filter(id => (!installed || installed.includes(id)) && !disabled.includes(id));
 }
 
 // What the window is told at startup. In the all-in-one build that is only the installed ids (null =
 // all); in the split layout it also carries each installed app's manifest, code URL and stylesheets.
-function getRegistryInfo(env = process.env, scanned = null) {
-  if (!scanned) return { installedIds: parseInstalledIds(env.NEXUSMD_APPS), split: null };
+// disabledIds are installed apps switched off in Settings: the window leaves them out but lists them in
+// Settings so they can be switched back on. In the split layout their code isn't loaded at all, so only
+// their manifests are sent (split.disabled).
+function getRegistryInfo(env = process.env, scanned = null, disabled = []) {
   const wanted = parseInstalledIds(env.NEXUSMD_APPS);
-  const apps = scanned.filter(app => !wanted || wanted.includes(app.id));
+  if (!scanned) return { installedIds: wanted, disabledIds: disabled, split: null };
+  const installed = scanned.filter(app => !wanted || wanted.includes(app.id));
+  const off = installed.filter(app => disabled.includes(app.id));
+  // Never all of them, or the window would have nothing to show (createRegistry does the same).
+  const running = off.length === installed.length ? installed : installed.filter(app => !off.includes(app));
   return {
-    installedIds: apps.map(app => app.id),
-    split: { apps: apps.map(({ id, manifest, rendererUrl, styles }) => ({ id, manifest, rendererUrl, styles })) },
+    installedIds: installed.map(app => app.id),
+    disabledIds: running === installed ? [] : off.map(app => app.id),
+    split: {
+      apps: running.map(({ id, manifest, rendererUrl, styles }) => ({ id, manifest, rendererUrl, styles })),
+      disabled: running === installed ? [] : off.map(app => app.manifest),
+    },
   };
 }
 
 // The preload bridge the installed apps ask for: { namespace: { method: { invoke | send | on | webUtils } } }.
-function getPreloadDescriptors(env = process.env, modules = MODULES) {
+function getPreloadDescriptors(env = process.env, modules = MODULES, disabled = []) {
   const out = {};
-  for (const id of installedModuleIds(env, modules)) {
+  for (const id of installedModuleIds(env, modules, disabled)) {
     const namespaces = modules[id].manifest().ipc?.preload || {};
     for (const [ns, methods] of Object.entries(namespaces)) out[ns] = { ...out[ns], ...methods };
   }
@@ -138,18 +149,19 @@ function getPreloadDescriptors(env = process.env, modules = MODULES) {
 
 // The preload asks synchronously (it builds the renderer's startup state), so these are sendSync
 // handlers: whatever is assigned to event.returnValue is the reply. Register before any window opens.
-// `scanned` is the split layout's apps (from scanApps), or null for the all-in-one build.
-function register(ipcMain, env = process.env, modules = MODULES, scanned = null) {
-  ipcMain.on('registry:get', (event) => { event.returnValue = getRegistryInfo(env, scanned); });
-  ipcMain.on('registry:preload-descriptors', (event) => { event.returnValue = getPreloadDescriptors(env, modules); });
+// `scanned` is the split layout's apps (from scanApps), or null for the all-in-one build. `disabled` is
+// fixed for the session: switching an app on or off takes a restart.
+function register(ipcMain, env = process.env, modules = MODULES, scanned = null, disabled = []) {
+  ipcMain.on('registry:get', (event) => { event.returnValue = getRegistryInfo(env, scanned, disabled); });
+  ipcMain.on('registry:preload-descriptors', (event) => { event.returnValue = getPreloadDescriptors(env, modules, disabled); });
 }
 
 // Starts each installed app's main-process side. One app failing to start never stops the others,
 // and an app with no main-process side (most of them) simply has nothing to start.
 // Returns { disposeAll } for shutdown.
-function registerModules(ctx, env = process.env, modules = MODULES, log = console) {
+function registerModules(ctx, env = process.env, modules = MODULES, log = console, disabled = []) {
   const handles = [];
-  for (const id of installedModuleIds(env, modules)) {
+  for (const id of installedModuleIds(env, modules, disabled)) {
     if (!modules[id].main) continue;
     try {
       const handle = modules[id].main().register(ctx);
