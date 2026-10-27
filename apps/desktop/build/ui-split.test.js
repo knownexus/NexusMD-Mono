@@ -14,7 +14,9 @@ describe('who owns the screens in @nexusmd/ui', () => {
   it('gives each app its own screens', () => {
     expect(rel(ownedFiles(analysis, 'planner'))).toContain('views/view-planner.jsx')
     expect(rel(ownedFiles(analysis, 'calendar'))).toEqual(['views/view-calendar.jsx'])
-    expect(rel(ownedFiles(analysis, 'database'))).toEqual(['views/ViewDbManager.jsx'])
+    expect(rel(ownedFiles(analysis, 'database'))).toEqual([
+      'views/ViewDbManager.jsx', 'views/db-grid-menus.js', 'views/db-menu.jsx', 'views/db-min-cols.js', 'views/db-nav.js', 'views/db-structure-panel.jsx',
+    ])
     expect(rel(ownedFiles(analysis, 'api-client'))).toContain('views/view-api-client.jsx')
     expect(rel(ownedFiles(analysis, 'documents'))).toContain('views/view-documents.jsx')
     for (const f of ['views/view-workitems.jsx', 'views/view-dashboard.jsx', 'views/view-prs.jsx', 'views/work-item-detail.jsx']) {
