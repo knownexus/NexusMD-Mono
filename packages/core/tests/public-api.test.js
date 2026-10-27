@@ -109,6 +109,7 @@ const EXPECTED = [
   'makeGithubConfig', 'MAX_GITHUB_REPOS', 'repoListFromStub',
   'GithubError', 'classifyGithubError', 'makeGithubClient', 'discoverGithubRepos',
   'githubTypeFromLabels', 'mapGithubIssue', 'mapGithubPR', 'mapGithubRun', 'extractIssueRefs',
+  'GITHUB_CACHE_KEY', 'loadCachedGithubData', 'loadGithubData',
   'CATEGORY_LANES', 'CATEGORY_LABELS', 'itemCategory', 'adoStateForCategory',
   'WORK_ITEM_STATUS_KEY', 'readProviderStatus', 'recordProviderStatus', 'describeProviderError',
   'PROVIDER_LABELS', 'mergeTeam', 'mergeWorkItemData', 'applyHiddenPeople',
