@@ -9,6 +9,7 @@ import { localStorageAdapter } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraHttpAdapter } from './jira-client.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
+import { skippedFetches } from './work-screens.js'
 
 // Manual + timed refresh for every work-item provider. ADO also loads PRs/builds/tests. Each
 // provider records its own outcome; a failure keeps its cached data. `cloud` is the shell's
@@ -26,7 +27,8 @@ export function makeRefreshAllData(cloud) {
               return loadAdoData(
                 getAdoConfig(),
                 { http: createAdoHttpAdapter(), storage: localStorageAdapter },
-                { isRefresh: !!priorData && (priorData.TEAM?.length ?? 0) > 0, priorData },
+                // Switched-off screens (Settings > Desktop > Work screens) aren't fetched.
+                { isRefresh: !!priorData && (priorData.TEAM?.length ?? 0) > 0, priorData, skip: skippedFetches() },
               )
             },
           },

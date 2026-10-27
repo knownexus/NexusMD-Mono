@@ -9,7 +9,7 @@ vi.mock('./host.js', async () => {
 })
 
 import {
-  loadModules, modulePanels, useModuleBadges, ModuleTopbar, ModuleBanners, ModuleProviders, moduleView, moduleAdapters,
+  loadModules, modulePanels, useModuleBadges, useModuleOffViews, ModuleTopbar, ModuleBanners, ModuleProviders, moduleView, moduleAdapters,
 } from './modules.js'
 import { buildRegistry } from './registry.js'
 
@@ -60,6 +60,15 @@ describe('useModuleBadges', () => {
   it('is empty with no apps that report', () => {
     render(<Probe mods={[mod('a')]} />)
     expect(screen.getByText('{}')).toBeTruthy()
+  })
+})
+
+describe('useModuleOffViews', () => {
+  function Probe({ mods }) { return <div>{JSON.stringify(useModuleOffViews(mods))}</div> }
+  it('collects the views every app has switched off', () => {
+    const mods = [mod('a', { useOffViews: () => ['triage', 'team'] }), mod('b'), mod('c', { useOffViews: () => ['notes'] })]
+    render(<Probe mods={mods} />)
+    expect(screen.getByText('["triage","team","notes"]')).toBeTruthy()
   })
 })
 

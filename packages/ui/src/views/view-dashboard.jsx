@@ -13,6 +13,8 @@ import { useNexusData, useEffectiveNeedsMe } from '../data-context.jsx';
 const { useState: useStateD, useMemo: useMemoD, useEffect: useEffectD } = React;
 
 const ALL_WIDGET_IDS = ['review', 'blockers', 'team', 'triage', 'activity', 'resolvedme', 'inbox'];
+// The screen each widget belongs to: with that screen switched off (offViews) the widget goes too.
+const WIDGET_VIEW = { review: 'prs', team: 'team', triage: 'triage' };
 const WIDGET_LABELS = {
   review:     'Needs your review',
   blockers:   'Blockers & risks',
@@ -132,10 +134,10 @@ const WIDGET_DESCRIPTIONS = {
   resolvedme: 'Your closed items and avg resolution time',
 };
 
-function AddWidgetPopover({ widgetOrder, onAdd }) {
+function AddWidgetPopover({ widgetOrder, onAdd, offViews = [] }) {
   const [open, setOpen] = useStateD(false);
   const ref = React.useRef(null);
-  const hidden = ALL_WIDGET_IDS.filter(id => !widgetOrder.includes(id));
+  const hidden = ALL_WIDGET_IDS.filter(id => !widgetOrder.includes(id) && !offViews.includes(WIDGET_VIEW[id]));
 
   React.useEffect(() => {
     if (!open) return;
@@ -249,7 +251,7 @@ function TeamWorkloadCard({ team }) {
   );
 }
 
-export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrder, quickLinks, density, team: teamProp, acknowledgedSet, needsMeCriteria, setPlannerData, widgetWidths = {}, setWidgetWidths, widgetHeights = {}, setWidgetHeights }) {
+export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrder, quickLinks, density, team: teamProp, acknowledgedSet, needsMeCriteria, setPlannerData, widgetWidths = {}, setWidgetWidths, widgetHeights = {}, setWidgetHeights, offViews = [] }) {
   const { data: NexusMDData, api: NexusMDApi } = useNexusData();
   const effectiveNeedsMe = useEffectiveNeedsMe();
   const { PRS, BUILDS, WORK_ITEMS, ACTIVITY, SPRINT, RESOLVED_WI, AVG_RESOLUTION_DAYS } = NexusMDData;
@@ -294,6 +296,8 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
     resolvedme: { title: 'Resolved by me',        render: () => <ResolvedByMeWidget items={RESOLVED_WI || []} avgDays={AVG_RESOLUTION_DAYS}/>, span: 1 },
     inbox:      { title: 'Inbox highlights',       render: () => <GmailInboxWidget/>, span: 1 },
   };
+  for (const [id, viewId] of Object.entries(WIDGET_VIEW)) if (offViews.includes(viewId)) delete widgets[id];
+  const isOff = viewId => offViews.includes(viewId);
 
   // ── DnD widget reorder
   const [dragId, setDragId] = useStateD(null);
@@ -325,11 +329,11 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
           <div className="sub">{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} · {SPRINT.daysLeft} days left in {SPRINT.name}</div>
         </div>
         <div className="page-head-actions">
-          <TriageStatusLine style={{ marginRight: 4 }} />
+          {!isOff('triage') && <TriageStatusLine style={{ marginRight: 4 }} />}
           <button className="btn sm ghost" onClick={() => NexusMDApi?.load().catch(() => {})}><Icon name="refresh" size={13}/> Refresh</button>
-          <TriageExportButton />
+          {!isOff('triage') && <TriageExportButton />}
           {setPlannerData && <QuickNotePopover setPlannerData={setPlannerData}/>}
-          <AddWidgetPopover widgetOrder={widgetOrder} onAdd={id => setWidgetOrder(widgetOrder.includes(id) ? widgetOrder : [...widgetOrder, id])}/>
+          <AddWidgetPopover widgetOrder={widgetOrder} offViews={offViews} onAdd={id => setWidgetOrder(widgetOrder.includes(id) ? widgetOrder : [...widgetOrder, id])}/>
           <button className="btn sm primary" onClick={() => window.dispatchEvent(new CustomEvent('nexusmd:create-wi'))}><Icon name="plus" size={13}/> New work item</button>
         </div>
       </div>
@@ -352,7 +356,7 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
       {/* Top stats — clickable cards that drill into the relevant view */}
       <div className="stats">
         {/* ── PRs ── */}
-        {(() => {
+        {!isOff('prs') && (() => {
           const PR_SPARKLINE = NexusMDData.PR_SPARKLINE || [];
           const prevCount = (() => {
             try {
@@ -425,12 +429,12 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
           segments={[
             { label: 'Critical',    value: criticalBlockers,    color: 'var(--danger)',  onClick: () => navigateTo('work', { state: 'Blocked', priority: 1 }), title: 'Priority-1 blockers' },
             { label: 'High',        value: highBlockers,        color: 'var(--warning)', onClick: () => navigateTo('work', { state: 'Blocked', priority: 2 }), title: 'Priority-2 blockers' },
-            { label: 'Build fails', value: failingBuilds.length, color: 'var(--danger)', onClick: () => navigateTo('builds', { status: 'failed' }),            title: 'Failed builds' },
+            ...(isOff('builds') ? [] : [{ label: 'Build fails', value: failingBuilds.length, color: 'var(--danger)', onClick: () => navigateTo('builds', { status: 'failed' }), title: 'Failed builds' }]),
           ]}
         />
 
         {/* ── Team workload ── */}
-        <TeamWorkloadCard team={TEAM} />
+        {!isOff('team') && <TeamWorkloadCard team={TEAM} />}
       </div>
 
       {/* Single ordered grid — span:2 widgets get full width, span:1 auto-place */}

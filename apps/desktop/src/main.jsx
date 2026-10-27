@@ -31,7 +31,7 @@ import { deepLinkAdapter }      from './adapters/deepLink.js'
 import { updateAdapter }        from './adapters/update.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 import {
-  moduleAdapters, moduleView, findPopout, ModuleProviders, useModuleBadges, ModuleTopbar, ModuleBanners,
+  moduleAdapters, moduleView, findPopout, ModuleProviders, useModuleBadges, useModuleOffViews, ModuleTopbar, ModuleBanners,
 } from './shell/modules.js'
 import { host, takeWaitingNavigation } from './shell/host.js'
 
@@ -211,6 +211,10 @@ function App() {
 
   // Counts of new items the installed apps show on their sidebar entries.
   const changeBadges = useModuleBadges()
+  // Screens an app has switched off (Settings > Desktop): off the sidebar, and links to them do nothing.
+  const offViews = useModuleOffViews()
+  const offViewsRef = React.useRef(offViews)
+  offViewsRef.current = offViews
 
   const active = ALL_NAV.find(n => n.id === view) || ALL_NAV[0]
   React.useEffect(() => {
@@ -221,7 +225,7 @@ function App() {
       // { view, filter } object payload used by shared @nexusmd/ui components.
       const next = typeof detail === 'string' ? detail : detail?.view
       const filter = (detail && typeof detail === 'object') ? (detail.filter || null) : null
-      if (next && !isUninstalledView(next)) {
+      if (next && !isUninstalledView(next) && !offViewsRef.current.includes(next)) {
         // Stash the filter so views (e.g. PRView's focused work item) can consume it,
         // mirroring the web host's window.NexusMDNav mechanism.
         window.NexusMDNav = { pendingFilter: filter, view: next }
@@ -233,9 +237,15 @@ function App() {
   }, [])
 
   // What the sidebar shows, in its order; the number keys jump to the entry with that number.
-  const shownNav = visibleNav(tweaks.navOrder, tweaks.navHidden, INSTALLED_NAV)
+  const shownNav = visibleNav(tweaks.navOrder, tweaks.navHidden, INSTALLED_NAV).filter(item => !offViews.includes(item.id))
   const shownNavRef = React.useRef(shownNav)
   shownNavRef.current = shownNav
+  // On a screen that is switched off (it was the start screen, or a saved or linked one): move to the
+  // first one still on, or Settings if the sidebar is empty.
+  const fallbackView = shownNav[0]?.id || SETTINGS_NAV.id
+  React.useEffect(() => {
+    if (offViews.includes(view)) setView(fallbackView)
+  }, [offViews, view, fallbackView])
   React.useEffect(() => {
     const handler = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return
@@ -415,7 +425,7 @@ function App() {
             overflow: FULL_BLEED.has(view) ? 'hidden' : 'auto',
             padding: FULL_BLEED.has(view) ? 0 : 18,
           }}>
-            {mountedViews(visited, view).map(id => (
+            {mountedViews(visited.filter(id => !offViews.includes(id)), view).map(id => (
             <div key={id} style={{ display: id === view ? 'contents' : 'none' }}>
             <ViewBody view={id} tweaks={tweaks} setTweak={setTweak} />
             </div>

@@ -20,7 +20,9 @@ export function loadCachedAdoData(config, { storage }) {
 export async function loadAdoData(
   config,
   { http, storage },
-  { isRefresh = false, priorData = null } = {},
+  // `skip` leaves out what a switched-off Work screen would show: { prs, builds, tests }. Those come
+  // back empty, and nothing is asked of Azure DevOps for them.
+  { isRefresh = false, priorData = null, skip = {} } = {},
 ) {
   if (!config?.org) throw new Error('loadAdoData: config.org is required')
   if (!http) throw new Error('loadAdoData: http adapter is required')
@@ -108,7 +110,7 @@ export async function loadAdoData(
   let prError = null
   let repoCount = 0
   const notePrError = (e) => { if (!prError) prError = e }
-  const prsP = (async () => {
+  const prsP = skip.prs ? Promise.resolve([]) : (async () => {
     const all = []
     await Promise.all(cfgProjects.map(async proj => {
       try {
@@ -151,7 +153,7 @@ export async function loadAdoData(
     return all
   })()
 
-  const buildsP = (async () => {
+  const buildsP = skip.builds ? Promise.resolve([]) : (async () => {
     const all = []
     await Promise.all(cfgProjects.map(async proj => {
       try {
@@ -162,7 +164,7 @@ export async function loadAdoData(
     return all
   })()
 
-  const testBuildsP = testProj
+  const testBuildsP = testProj && !skip.tests
     ? get(`${encodeURIComponent(testProj)}/_apis/build/builds?api-version=7.0&$top=40&queryOrder=queueTimeDescending`).catch(() => null)
     : Promise.resolve(null)
 

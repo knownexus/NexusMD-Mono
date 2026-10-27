@@ -49,6 +49,17 @@ export function useModuleBadges(mods = modules) {
   return out
 }
 
+// The views installed apps have switched off (e.g. Work's Triage). Like useModuleBadges, the apps and
+// their hooks are fixed for the session, so calling them in a loop is safe.
+export function useModuleOffViews(mods = modules) {
+  const out = []
+  for (const m of mods) {
+    const off = m.useOffViews?.()
+    if (Array.isArray(off)) out.push(...off)
+  }
+  return out
+}
+
 // What installed apps add to the top bar and under it. They render inside the apps' providers.
 export function ModuleTopbar({ mods = modules }) {
   return mods.filter(m => m.topbar).map(m => React.createElement(m.topbar, { key: m.id }))

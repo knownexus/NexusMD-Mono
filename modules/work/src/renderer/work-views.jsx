@@ -8,6 +8,7 @@ import { isAdoConfigured } from './ado-client.js'
 import { isJiraActive } from './jira-client.js'
 import { NotConfigured } from './not-configured.jsx'
 import { useWork } from './work-context.js'
+import { useOffScreens } from './work-screens.js'
 
 // Stable fallback so fullRoster (a memo dependency) doesn't change identity every render.
 const EMPTY = []
@@ -75,6 +76,7 @@ export function DashboardApp({ host, tweaks, setTweak }) {
   const [acknowledgedTests] = usePersistedState('nexusmd.tests.acknowledged', [])
   const [widgetWidths, setWidgetWidths] = usePersistedState('nexusmd.dash.widgetWidths', {})
   const [widgetHeights, setWidgetHeights] = usePersistedState('nexusmd.dash.widgetHeights', {})
+  const offViews = useOffScreens()
 
   if (!configured) return <NotConfigured />
   const acknowledgedSet = new Set([...acknowledgedBuilds, ...acknowledgedTests])
@@ -91,6 +93,7 @@ export function DashboardApp({ host, tweaks, setTweak }) {
       density={tweaks.density}
       team={effectiveTeam}
       acknowledgedSet={acknowledgedSet}
+      offViews={offViews}
     />
   )
 }

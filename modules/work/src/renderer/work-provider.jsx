@@ -13,6 +13,7 @@ import { ProjectAreasModal } from './project-areas-modal.jsx'
 import { makeRefreshAllData, desktopWorkItemSource, useNexusSnapshot } from './work-data.js'
 import { WorkContext } from './work-context.js'
 import { workBadges } from './work-store.js'
+import { useOffScreens, skippedFetches } from './work-screens.js'
 
 const VIEW_TO_CATEGORY = { work: 'work', prs: 'pr', builds: 'builds', tests: 'tests' }
 
@@ -91,6 +92,16 @@ export function WorkProvider({ host, view, children }) {
   // triggers the same data refresh as the in-app Refresh button rather than resetting navigation
   // state back to the first screen.
   React.useEffect(() => { host.adapters.windowControls?.onRefreshData(() => { refreshAllData() }) }, [host, refreshAllData])
+
+  // Switching Pull Requests, Builds or Tests on or off changes what is fetched: refresh, so a screen
+  // switched on gets its data now and one switched off lets go of it.
+  const fetched = JSON.stringify(skippedFetches(useOffScreens()))
+  const firstFetched = React.useRef(fetched)
+  React.useEffect(() => {
+    if (fetched === firstFetched.current) return
+    firstFetched.current = fetched
+    refreshAllData()
+  }, [fetched, refreshAllData])
 
   React.useEffect(() => {
     refreshLeftRef.current = refreshInterval
