@@ -79,6 +79,7 @@ describe('settings file', () => {
     expect(isExported('nexusmd.wi.wiTypeStates.cache')).toBe(false)
     expect(isExported('nexusmd.sync.base.gdrive')).toBe(false)
     expect(isExported('nexusmd.p.p1.jira.apiToken')).toBe(true)
+    expect(isExported('nexusmd.p.p1.wi.groupOrder')).toBe(true)
     expect(isExported('nx-db:saved-queries')).toBe(true)
   })
 })

@@ -11,6 +11,7 @@ import { WorkItemDetail } from './work-item-detail.jsx';
 import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS, WI_TABLE_COLUMNS, indexPRsByWorkItem, CATEGORY_LANES, CATEGORY_LABELS, itemCategory, displayIdOf, isJiraId, jiraColumnForStatus } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 import { toast } from '../toast.jsx';
+import { GROUP_ORDER_MODES, orderGroups, moveGroup } from './wi-group-order.js';
 
 // Collapsed group keys, remembered per profile and kept separately per grouping.
 // One persisted object keyed by grouping (usePersisted only reads storage on mount).
@@ -68,7 +69,7 @@ const { useState: useStateW, useMemo: useMemoW } = React;
 // Shared timer for hover-prefetch — only one row is hovered at a time.
 let _wiHoverTimer;
 
-function FilterDropdown({ label, children, activeCount = 0, width = 280 }) {
+function FilterDropdown({ label, children, activeCount = 0, width = 280, align = 'left', title }) {
     const [open, setOpen] = React.useState(false);
     const ref = React.useRef(null);
 
@@ -86,6 +87,7 @@ function FilterDropdown({ label, children, activeCount = 0, width = 280 }) {
         <div ref={ref} style={{ position: 'relative' }}>
             <button
                 onClick={() => setOpen(v => !v)}
+                title={title}
                 style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -131,7 +133,7 @@ function FilterDropdown({ label, children, activeCount = 0, width = 280 }) {
                     style={{
                         position: 'absolute',
                         top: 36,
-                        left: 0,
+                        [align]: 0,
                         width,
                         background: 'var(--surface)',
                         border: '1px solid var(--border)',
@@ -203,6 +205,91 @@ function FilterOption({ active, negated, onClick, icon, label, count, danger = f
       {count != null && <span style={{ opacity: 0.6, fontSize: 10.5, fontFamily: 'var(--mono)' }}>{count}</span>}
       {(active || negated) && <Icon name={negated && !active ? 'x' : 'check'} size={10} />}
     </button>
+  );
+}
+
+// The table's row sort. Its default group order follows it (groups appear as first met).
+function sortItems(items, sort) {
+  return [...items].sort((a, b) => {
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    const va = a[sort.col], vb = b[sort.col];
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    if (typeof va === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb)) * dir;
+  });
+}
+
+// Group key + label for one item, matching how WITable/WIBoard key their groups.
+function groupKeyLabel(w, grouping, team, projects) {
+  switch (grouping) {
+    case 'assignee': return [w.assignee || 'unassigned', team.find(t => t.id === w.assignee)?.name || (w.assignee || 'Unassigned')];
+    case 'state':    return [w.state, w.state];
+    case 'project':  return [w.project, projects.find(p => p.id === w.project)?.name || w.project];
+    case 'priority': return [`p${w.priority}`, `Priority ${w.priority}`];
+    case 'type':     return [w.type || 'unknown', w.type || 'Unknown'];
+    default:         return [null, null];
+  }
+}
+
+// The groups shown for `grouping`, in default order, as { key, label, count }.
+function groupList(items, grouping, team, projects, extraKeys = []) {
+  const map = new Map();
+  items.forEach(w => {
+    const [key, label] = groupKeyLabel(w, grouping, team, projects);
+    if (!map.has(key)) map.set(key, { key, label, count: 0 });
+    map.get(key).count++;
+  });
+  extraKeys.forEach(([key, label]) => { if (!map.has(key)) map.set(key, { key, label, count: 0 }); });
+  const arr = Array.from(map.values());
+  if (grouping === 'priority') arr.sort((a, b) => a.key.localeCompare(b.key));
+  return arr;
+}
+
+// "Order" popover next to Group by: pick a sort, or drag / nudge groups into a custom order.
+function GroupOrderMenu({ grouping, groups, order, setOrder }) {
+  const [dragIdx, setDragIdx] = useStateW(null);
+  const shown = orderGroups(groups, order);
+  const shownKeys = shown.map(g => g.key);
+  const move = (from, to) => { const next = moveGroup(shownKeys, order?.keys, from, to); if (next) setOrder(next); };
+  const mode = order?.mode || 'default';
+  const arrowBtn = { border: 'none', background: 'none', padding: 2, cursor: 'pointer', color: 'var(--text-subtle)', display: 'inline-flex' };
+
+  return (
+    <FilterDropdown label={<><Icon name="sort" size={12}/> Order</>} activeCount={mode === 'default' ? 0 : 1} width={260} align="right" title="Order the groups">
+      <FilterSection title="Sort groups">
+        {GROUP_ORDER_MODES.map(m => (
+          <FilterOption key={m.id} active={mode === m.id} label={m.label}
+            onClick={() => setOrder(m.id === 'custom' ? { mode: 'custom', keys: [...shownKeys, ...(order?.keys || []).filter(k => !shownKeys.includes(k))] } : { ...order, mode: m.id })}/>
+        ))}
+      </FilterSection>
+      <div>
+        <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-subtle)', marginBottom: 6, letterSpacing: 0.5 }}>
+          Drag to reorder
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 280, overflowY: 'auto' }}>
+          {shown.map((g, i) => (
+            <div key={g.key}
+              draggable
+              onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', g.key); setDragIdx(i); }}
+              onDragOver={e => { if (dragIdx != null) e.preventDefault(); }}
+              onDrop={e => { e.preventDefault(); if (dragIdx != null) move(dragIdx, i); setDragIdx(null); }}
+              onDragEnd={() => setDragIdx(null)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 6, fontSize: 12.5, cursor: 'grab',
+                background: dragIdx === i ? 'var(--surface-2)' : 'transparent', opacity: dragIdx === i ? 0.6 : 1 }}>
+              <Icon name="grip" size={12} style={{ color: 'var(--text-subtle)', flexShrink: 0 }}/>
+              {grouping === 'assignee' && g.key !== 'unassigned' && <Avatar who={g.key} size="xs"/>}
+              <span className="truncate" style={{ flex: 1, minWidth: 0 }}>{g.label}</span>
+              <span className="muted mono" style={{ fontSize: 10.5 }}>{g.count}</span>
+              <button type="button" title="Move to top" style={arrowBtn} disabled={i === 0} onClick={() => move(i, 0)}><Icon name="arrow-up" size={11}/></button>
+              <button type="button" title="Move up" style={arrowBtn} disabled={i === 0} onClick={() => move(i, i - 1)}><Icon name="chevron-up" size={11}/></button>
+              <button type="button" title="Move down" style={arrowBtn} disabled={i === shown.length - 1} onClick={() => move(i, i + 1)}><Icon name="chevron-down" size={11}/></button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </FilterDropdown>
   );
 }
 
@@ -342,6 +429,9 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   const [sort,            setSort]           = usePersisted('nexusmd.wi.sort',          { col: 'id', dir: 'desc' });
   const [selection,       setSelection]      = useStateW(new Set());
   const [collapsed,       setCollapsed]      = useCollapsedGroups('nexusmd.wi.collapsed.table', grouping);
+  // Group order per grouping ({ mode, keys }), shared by table and board. Kept in profile
+  // storage, so it is remembered and goes into the exported settings file.
+  const [groupOrders,     setGroupOrders]    = usePersisted('nexusmd.wi.groupOrder',    {});
   const [includedTags,       setIncludedTags]       = usePersisted('nexusmd.wi.tags.inc',           new Set());
   const [excludedTags,       setExcludedTags]       = usePersisted('nexusmd.wi.tags.exc',           new Set());
   const [noTagsOnly,         setNoTagsOnly]         = usePersisted('nexusmd.wi.noTagsOnly',         false);
@@ -627,6 +717,16 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   React.useEffect(() => { filterPredicateRef.current = filterPredicate; }, [filterPredicate]);
 
   const filtered = useMemoW(() => allItems.filter(filterPredicate), [allItems, filterPredicate]);
+
+  const activeGrouping = view === 'board' ? boardGrouping : grouping;
+  const setGroupOrder = (next) => setGroupOrders(prev => ({ ...(prev || {}), [activeGrouping]: next }));
+  const orderGroupList = useMemoW(() => {
+    if (activeGrouping === 'none') return [];
+    // The board can show every team member, item or not; list them too so they can be placed.
+    const extra = view === 'board' && activeGrouping === 'assignee' && showEmptyAssignees
+      ? [['unassigned', 'Unassigned'], ...TEAM.map(t => [t.id, t.name])] : [];
+    return groupList(view === 'board' ? filtered : sortItems(filtered, sort), activeGrouping, TEAM, PROJECTS || [], extra);
+  }, [filtered, activeGrouping, view, sort, showEmptyAssignees, TEAM, PROJECTS]);
   // Jira board columns always show; "Other" only when a rendered card maps to no column.
   const jiraColumnLanes = useMemoW(() => {
     if (!boardColumns) return [];
@@ -872,6 +972,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
                 </select>
                 {grouping !== 'none' && (
                   <>
+                    <GroupOrderMenu grouping={grouping} groups={orderGroupList} order={groupOrders?.[grouping]} setOrder={setGroupOrder}/>
                     <button className="btn sm ghost" onClick={() => setCollapsed(c => {
                       const n = { ...c };
                       const keys = new Set(filtered.map(w =>
@@ -899,6 +1000,9 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
                   <option value="priority">Priority</option>
                   <option value="type">Type</option>
                 </select>
+                {boardGrouping !== 'none' && (
+                  <GroupOrderMenu grouping={boardGrouping} groups={orderGroupList} order={groupOrders?.[boardGrouping]} setOrder={setGroupOrder}/>
+                )}
               </div>
             )}
             {view === 'board' && boardGrouping === 'assignee' && (
@@ -982,12 +1086,12 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
       </div>
 
       {view === 'table'
-        ? <WITable items={filtered} grouping={grouping} sort={sort} setSort={setSort}
+        ? <WITable items={filtered} grouping={grouping} groupOrder={groupOrders?.[grouping]} sort={sort} setSort={setSort}
                    selection={selection} setSelection={setSelection}
                    collapsed={collapsed} setCollapsed={setCollapsed}
                    updateItem={updateItem} onOpen={onOpen} team={TEAM} newItemIds={newItemIds}/>
         : <WIBoard items={filtered} updateItem={updateItem} moveState={moveState}
-                   onOpen={onOpen} grouping={boardGrouping} team={TEAM} showEmptyAssignees={showEmptyAssignees}
+                   onOpen={onOpen} grouping={boardGrouping} groupOrder={groupOrders?.[boardGrouping]} team={TEAM} showEmptyAssignees={showEmptyAssignees}
                    laneMode={laneMode}
                    boardColumns={boardColumns}
                    lanes={laneMode === 'jira-columns' ? jiraColumnLanes
@@ -1263,7 +1367,7 @@ function InlineTagsCell({ tags = [], onTagsChange }) {
 // ─────────────────────────────────────────────────────────
 // Table view (with grouping)
 // ─────────────────────────────────────────────────────────
-function WITable({ items, grouping, sort, setSort, selection, setSelection, collapsed, setCollapsed, updateItem, onOpen, team, newItemIds = new Set() }) {
+function WITable({ items, grouping, groupOrder, sort, setSort, selection, setSelection, collapsed, setCollapsed, updateItem, onOpen, team, newItemIds = new Set() }) {
   const { data: NexusMDData, workItemSource } = useNexusData();
   const TEAM = team || NexusMDData.TEAM || [];
   const [tableDragId, setTableDragId] = useStateW(null);
@@ -1289,15 +1393,7 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
     setTableDragId(null);
   };
 
-  const sorted = [...items].sort((a, b) => {
-    const dir = sort.dir === 'asc' ? 1 : -1;
-    const va = a[sort.col], vb = b[sort.col];
-    if (va == null && vb == null) return 0;
-    if (va == null) return 1;
-    if (vb == null) return -1;
-    if (typeof va === 'number') return (va - vb) * dir;
-    return String(va).localeCompare(String(vb)) * dir;
-  });
+  const sorted = sortItems(items, sort);
 
   const titleColWidth = 280;
 
@@ -1318,8 +1414,8 @@ function WITable({ items, grouping, sort, setSort, selection, setSelection, coll
       if (!map.has(key)) map.set(key, { key, label, items: [] });
       map.get(key).items.push(w);
     });
-    return Array.from(map.values());
-  }, [sorted, grouping]);
+    return orderGroups(Array.from(map.values()), groupOrder);
+  }, [sorted, grouping, groupOrder]);
 
   const toggleSel = (id) => setSelection(prev => {
     const next = new Set(prev);
@@ -1842,7 +1938,7 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
   );
 }
 
-function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team = [], showEmptyAssignees = false, lanes = BOARD_LANES, newItemIds = new Set(), laneMode = 'state', boardColumns = null }) {
+function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', groupOrder, team = [], showEmptyAssignees = false, lanes = BOARD_LANES, newItemIds = new Set(), laneMode = 'state', boardColumns = null }) {
   const { data: NexusMDData, workItemSource } = useNexusData();
   const [dragId,    setDragId]    = useStateW(null);
   const [overKey,   setOverKey]   = useStateW(null);
@@ -1883,8 +1979,8 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', team
     }
     const arr = Array.from(map.values());
     if (grouping === 'priority') arr.sort((a, b) => a.key.localeCompare(b.key));
-    return arr;
-  }, [items, grouping, team, PROJECTS, showEmptyAssignees]);
+    return orderGroups(arr, groupOrder);
+  }, [items, grouping, groupOrder, team, PROJECTS, showEmptyAssignees]);
 
   const [reachable, setReachable] = useStateW(null);
   const dragRef = React.useRef(null);
