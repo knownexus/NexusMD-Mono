@@ -464,7 +464,7 @@ function makeHandlers(drivers) {
         // Constraint names are unique per schema only, so a key from another schema carries it.
         referencedBy: group(incoming, r => ({
           table: listName(r.ownerSchema, r.ownerTable),
-          name: r.ownerSchema === (t.schema ?? 'dbo') ? r.name : listName(r.ownerSchema, r.name),
+          name: r.ownerSchema === (t.schema ?? 'dbo') ? r.name : `${r.ownerSchema}.${r.name}`,
         })),
         indexes: [...indexes.values()],
       }

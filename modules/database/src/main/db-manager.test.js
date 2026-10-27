@@ -588,6 +588,16 @@ describe('db-manager IPC — SQL Server statements', () => {
     expect(result.referencedBy.map(k => [k.name, k.table])).toEqual([['audit.FK_Note_Member', 'audit.Note'], ['FK_Note_Member', 'Note']])
   })
 
+  it('get-structure qualifies a dbo-owned key when the table is outside dbo', async () => {
+    const key = { name: 'FK_Note_Member', ownerTable: 'Note', col: 'MemberID', refSchema: 'audit', refTable: 'Member', refCol: 'Id', onDelete: 'NO ACTION', onUpdate: 'NO ACTION' }
+    queuedResults = [
+      { recordset: [] }, { recordset: [] },
+      { recordset: [{ ...key, ownerSchema: 'dbo' }, { ...key, ownerSchema: 'audit' }] },
+    ]
+    const result = await ipc._invoke('db-manager:get-structure', { ...cfg, table: 'audit.Member' })
+    expect(result.referencedBy.map(k => k.name)).toEqual(['dbo.FK_Note_Member', 'FK_Note_Member'])
+  })
+
   it('get-structure scopes a schema-qualified table', async () => {
     await ipc._invoke('db-manager:get-structure', { ...cfg, table: 'maintenance.Member' })
     expect(requests.map(r => r.inputs.object)).toEqual(Array(4).fill('[maintenance].[Member]'))
