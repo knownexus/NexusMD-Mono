@@ -59,3 +59,38 @@ jobs:
         run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest --repo "$GITHUB_REPOSITORY"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # App updates (release-apps.yml) are listed in apps-index.json on the apps-latest release. It records
+  # the newest NexusMD and the shell API it gives apps, so an app needing more than any published
+  # NexusMD gives is refused rather than sent to copies that can't run it.
+  apps-index:
+    name: Record this release in the app index
+    needs: publish
+    runs-on: ubuntu-latest
+    concurrency:
+      group: apps-index
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # A pre-release, so it is never the "latest" release electron-updater takes NexusMD updates from.
+      - name: Make sure the apps-latest release exists
+        run: |
+          gh release view apps-latest --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 ||
+            gh release create apps-latest --prerelease --latest=false --title "App updates" \
+              --notes "Updates for the apps inside NexusMD, downloaded by the app itself. Not an installer." \
+              --repo "$GITHUB_REPOSITORY"
+      - name: Fetch the published index
+        run: |
+          mkdir -p release/current
+          gh release download apps-latest --pattern apps-index.json --dir release/current --repo "$GITHUB_REPOSITORY" || true
+      - name: Record and sign
+        run: node apps/desktop/build/app-release.mjs shell --version "${GITHUB_REF_NAME#v}" --index release/current/apps-index.json --out release/out
+        env:
+          NEXUSMD_APPS_SIGNING_KEY: ${{ secrets.NEXUSMD_APPS_SIGNING_KEY }}
+      - name: Publish
+        run: gh release upload apps-latest release/out/apps-index.json release/out/apps-index.json.sig --clobber --repo "$GITHUB_REPOSITORY"

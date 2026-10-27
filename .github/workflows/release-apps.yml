@@ -1,0 +1,63 @@
+name: Release App
+
+# One app on its own, without a NexusMD release: tag app-<id>-v<version> (e.g. app-git-v1.0.1), the
+# version in modules/<id>/package.json. The app is built, packed and listed in apps-index.json on the
+# apps-latest release, which installed copies of NexusMD check (apps/desktop/electron/app-updater.cjs)
+# and run from their next launch. NexusMD itself is released by release-desktop.yml.
+on:
+  push:
+    tags: ['app-*-v*']
+
+permissions:
+  contents: write
+
+# Each release rewrites the one index, so they take turns (with release-desktop.yml's apps-index job).
+concurrency:
+  group: apps-index
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish the app
+    # The split build the Windows installer ships is built on Windows; an update is built the same way.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Read the tag
+        id: tag
+        run: |
+          rest="${GITHUB_REF_NAME#app-}"
+          echo "id=${rest%-v*}" >> "$GITHUB_OUTPUT"
+          echo "version=${rest##*-v}" >> "$GITHUB_OUTPUT"
+      - name: Build the app
+        run: node apps/desktop/build/build-split.mjs "${{ steps.tag.outputs.id }}"
+      - name: Fetch the published index
+        run: |
+          mkdir -p release/current
+          gh release download apps-latest --pattern apps-index.json --dir release/current --repo "$GITHUB_REPOSITORY"
+          gh release view apps-latest --json assets --jq '.assets[].name' --repo "$GITHUB_REPOSITORY" > release/assets.txt
+      - name: Pack and sign
+        run: >
+          node apps/desktop/build/app-release.mjs app "${{ steps.tag.outputs.id }}"
+          --version "${{ steps.tag.outputs.version }}"
+          --index release/current/apps-index.json --assets release/assets.txt --out release/out
+        env:
+          NEXUSMD_APPS_SIGNING_KEY: ${{ secrets.NEXUSMD_APPS_SIGNING_KEY }}
+      # The package goes up before the index that names it, so no copy is ever sent to a missing file.
+      - name: Publish
+        run: |
+          gh release upload apps-latest release/out/*.nxapp --repo "$GITHUB_REPOSITORY"
+          gh release upload apps-latest release/out/apps-index.json release/out/apps-index.json.sig --clobber --repo "$GITHUB_REPOSITORY"
+          while read -r name; do
+            [ -n "$name" ] && gh release delete-asset apps-latest "$name" --yes --repo "$GITHUB_REPOSITORY"
+          done < release/out/obsolete.txt
