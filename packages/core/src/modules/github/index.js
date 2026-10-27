@@ -2,3 +2,4 @@ export { makeGithubConfig, MAX_GITHUB_REPOS, repoListFromStub } from './config.j
 export { GithubError, classifyGithubError, makeGithubClient } from './client.js'
 export { discoverGithubRepos } from './repos.js'
 export { githubTypeFromLabels, mapGithubIssue, mapGithubPR, mapGithubRun } from './mappers.js'
+export { extractIssueRefs } from './links.js'
