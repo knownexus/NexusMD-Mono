@@ -40,11 +40,45 @@ function VsRow({ title, desc, children }) {
   );
 }
 
-function VsCard({ title, icon, children }) {
+// Which Settings sections are collapsed: one list of section ids, kept for this machine rather than
+// per profile (it is how the page is laid out, not a setting). Read and written in full each time
+// so cards collapsed on different tabs never overwrite each other.
+const COLLAPSED_KEY = 'nexusmd.settings.collapsed';
+function readCollapsed() {
+  try {
+    const ids = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]');
+    return Array.isArray(ids) ? ids : [];
+  } catch { return []; }
+}
+function writeCollapsed(id, collapsed) {
+  try {
+    const ids = readCollapsed().filter(x => x !== id);
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify(collapsed ? [...ids, id] : ids));
+  } catch { /* storage unavailable: the section still collapses for this visit */ }
+}
+
+// A Settings section. Its title bar collapses and expands it, and that is remembered by `id`
+// (the title by default). A collapsed section stays mounted, so a half-typed field survives it.
+// `actions` sit at the right of the title bar; `flush` drops the body padding for rows (VsRow).
+function VsCard({ title, icon, children, id, actions, flush = true }) {
+  const key = id || (typeof title === 'string' ? title : '');
+  const [collapsed, setCollapsed] = useStateVS(() => !!key && readCollapsed().includes(key));
+  const bodyId = React.useId();
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    if (key) writeCollapsed(key, next);
+  };
   return (
-    <div className="card set-card">
-      <div className="card-head"><h3><span style={{ color: 'var(--text-subtle)', display: 'flex' }}><Icon name={icon} size={14}/></span>&nbsp;{title}</h3></div>
-      <div className="card-body flush">{children}</div>
+    <div className={`card set-card${collapsed ? ' collapsed' : ''}`}>
+      <div className="card-head">
+        <button type="button" className="set-card-toggle" aria-expanded={!collapsed} aria-controls={bodyId} onClick={toggle}>
+          <span className="chev" style={{ display: 'flex' }}><Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size={14}/></span>
+          <h3><span style={{ color: 'var(--text-subtle)', display: 'flex' }}><Icon name={icon} size={14}/></span>&nbsp;{title}</h3>
+        </button>
+        {actions && <div className="actions">{actions}</div>}
+      </div>
+      <div id={bodyId} className={`card-body${flush ? ' flush' : ''}`} hidden={collapsed}>{children}</div>
     </div>
   );
 }
@@ -266,12 +300,9 @@ function VsProfiles({ profileApi, showOrgLabel = true }) {
   };
 
   return (
-    <div className="card set-card">
-      <div className="card-head">
-        <h3><span style={{ color: 'var(--text-subtle)', display: 'flex' }}><Icon name="more" size={14}/></span>&nbsp;Profiles</h3>
-        <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => setEditing('new')}>+ New profile</button>
-      </div>
-      <div className="card-body flush">
+    <>
+    <VsCard title="Profiles" icon="more"
+      actions={<button className="btn sm" onClick={() => setEditing('new')}>+ New profile</button>}>
         {profiles.map(p => (
           <div key={p.id} className="set-row">
             <div style={{ width: 34, height: 34, borderRadius: '50%', background: p.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
@@ -293,18 +324,19 @@ function VsProfiles({ profileApi, showOrgLabel = true }) {
         </div>
         <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }}
           onChange={e => { const f = e.target.files?.[0]; if (f) importProfile(f); e.target.value = ''; }} />
-      </div>
-      {editing && (
-        <VsProfileEditor
-          profile={editing === 'new' ? null : editing}
-          onSave={handleSave}
-          onDelete={handleDelete}
-          onExport={exportProfile}
-          onClose={() => setEditing(null)}
-          showOrgLabel={showOrgLabel}
-        />
-      )}
-    </div>
+    </VsCard>
+    {/* Outside the card: "+ New profile" still works while the section is collapsed. */}
+    {editing && (
+      <VsProfileEditor
+        profile={editing === 'new' ? null : editing}
+        onSave={handleSave}
+        onDelete={handleDelete}
+        onExport={exportProfile}
+        onClose={() => setEditing(null)}
+        showOrgLabel={showOrgLabel}
+      />
+    )}
+    </>
   );
 }
 
@@ -423,11 +455,9 @@ function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [
   };
 
   return (
-    <div className="card set-card">
-      <div className="card-head">
-        <h3><span style={{ color: 'var(--text-subtle)', display: 'flex' }}><Icon name="send" size={14} /></span>&nbsp;Backup &amp; Restore</h3>
-      </div>
-      <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <>
+    <VsCard title="Backup & Restore" icon="send" flush={false}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
           Export a password-encrypted <code>.nmdprofile</code> file you can keep as a backup or open in the other apps.
         </div>
@@ -466,21 +496,22 @@ function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [
           </div>
         ))}
       </div>
-      <CloudPickerModal
-        open={picker != null}
-        label={picker?.provider?.label || ''}
-        files={picker?.files}
-        busy={!!picker?.busy}
-        onClose={() => setPicker(null)}
-        onPick={onPickCloudFile}
-      />
-      <BundlePasswordModal
-        open={mode != null}
-        confirm={mode === 'export-all' || mode === 'export-one'}
-        onClose={() => { setMode(null); setPendingText(null); }}
-        onSubmit={onPassword}
-      />
-    </div>
+    </VsCard>
+    <CloudPickerModal
+      open={picker != null}
+      label={picker?.provider?.label || ''}
+      files={picker?.files}
+      busy={!!picker?.busy}
+      onClose={() => setPicker(null)}
+      onPick={onPickCloudFile}
+    />
+    <BundlePasswordModal
+      open={mode != null}
+      confirm={mode === 'export-all' || mode === 'export-one'}
+      onClose={() => { setMode(null); setPendingText(null); }}
+      onSubmit={onPassword}
+    />
+    </>
   );
 }
 
