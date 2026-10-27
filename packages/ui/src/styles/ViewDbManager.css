@@ -412,6 +412,17 @@
 
 /* Structure tab */
 .nx-db-th .fk { padding: 1px 5px; border-radius: 4px; background: var(--surface-2); color: var(--text-muted); font-size: 9.5px; letter-spacing: .04em; }
+
+/* Following foreign keys: the → in a key cell, the filter chip and Back */
+.nx-db-follow { margin-left: 6px; padding: 0 4px; border: 0; border-radius: 4px; background: transparent; color: var(--accent); font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; opacity: .55; }
+.nx-db-table tr:hover .nx-db-follow, .nx-db-follow:focus-visible { opacity: 1; }
+.nx-db-follow:hover { background: var(--accent-soft); }
+span.nx-db-chip { cursor: default; border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-family: var(--mono); font-size: 12px; }
+span.nx-db-chip button { display: grid; place-items: center; width: 18px; height: 18px; margin-right: -4px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: inherit; font-size: 11px; cursor: pointer; }
+span.nx-db-chip button:hover { background: var(--surface); }
+.nx-db-back { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); cursor: pointer; }
+.nx-db-back:hover:not([disabled]) { background: var(--surface-2); color: var(--text); }
+.nx-db-back[disabled] { opacity: .35; cursor: default; }
 .nx-db-structure { display: flex; flex-direction: column; gap: 18px; padding: 14px 16px; overflow: auto; min-height: 0; }
 .nx-db-structure-section h3 { margin: 0 0 6px; font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
 .nx-db-structure-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }

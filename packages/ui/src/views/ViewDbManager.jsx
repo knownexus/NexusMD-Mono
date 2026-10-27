@@ -7,6 +7,7 @@
 // Keys (only while this view is showing and no dialog is open):
 //   Ctrl/⌘K jump to table · / filter tables · j / k next / previous table · Ctrl/⌘F search rows
 //   b Browse · s Structure · q Query · r refresh the open table · Ctrl/⌘Enter run the query
+//   Alt+← back to where a followed key came from
 
 import { useState, useRef, useCallback, useEffect, useMemo, forwardRef } from 'react'
 import {
@@ -46,12 +47,15 @@ import {
   isPartialInput,
   cellToInput,
   parseCellInput,
+  followTargets,
+  whereLabel,
 } from '@nexusmd/core'
 import { PlModal } from '../planner-chips.jsx'
 import { Icon } from '../icons.jsx'
 import { FoldAllButton } from '../fold-all-button.jsx'
 import { DbMenu, menuPointFor } from './db-menu.jsx'
 import { readMinCols, writeMinCols } from './db-min-cols.js'
+import { pushNav, popNav } from './db-nav.js'
 import { StructurePanel, typeLabelOf } from './db-structure-panel.jsx'
 
 // ─── Demo data (shown when no real DB is connected) ───────────────────────────
@@ -218,6 +222,12 @@ function useDbShortcuts(rootRef, handlers) {
         if (!fn || overlayOpen()) return
         e.preventDefault()
         fn()
+        return
+      }
+      if (e.altKey && !mod && !e.shiftKey && key === 'ArrowLeft') {
+        if (!h.back || typing(e.target) || overlayOpen()) return
+        e.preventDefault()
+        h.back()
         return
       }
       if (mod || e.altKey || e.shiftKey || typing(e.target) || overlayOpen()) return
@@ -575,7 +585,9 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const [columnsFailed, setColumnsFailed] = useState({})      // { [table]: true } once its column types couldn't be read
   const [columnsLoading, setColumnsLoading] = useState(false)
   const [structures, setStructures]   = useState({})          // { [table]: { columns, foreignKeys, referencedBy, indexes } }
-  const [structureState, setStructureState] = useState({})    // { [table]: { error } } when its structure couldn't be read
+  const [structureState, setStructureState] = useState({})    // { [table]: { loading } | { error } }
+  const [rowWhere, setRowWhere]       = useState(null)        // [{ column, value }] the open table is filtered to, or null
+  const [navStack, setNavStack]       = useState([])          // where Back goes: { table, where, search, sort, scrollTop }
   const [activeBuilder, setActiveBuilder] = useState(null)    // 'search' | 'insert' | 'update' | 'delete' | 'join' | 'aggregate' | null
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [tableFilter, setTableFilter] = useState('')
@@ -591,6 +603,8 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const rootRef    = useRef(null)
   const filterRef  = useRef(null)
   const rowSearchRef = useRef(null)
+  const gridRef    = useRef(null)
+  const pendingScroll = useRef(null)                          // a scroll position to put back once the rows show
   const loadSeq    = useRef(0)
   const columnsRef = useRef(tableColumns)
   columnsRef.current = tableColumns
@@ -693,9 +707,18 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
 
   // ── Load table ─────────────────────────────────────────────────────────────
 
-  const fetchRows = useCallback(async (name) => {
-    if (isDemo) return structuredClone(demoData.current[name])
-    return db.getRows(session.type, session.config, name)
+  // `where` keeps only the rows whose columns hold those values (null meaning NULL).
+  const fetchRows = useCallback(async (name, where = null) => {
+    if (isDemo) {
+      const data = structuredClone(demoData.current[name])
+      if (!where || !data) return data
+      const idx = where.map(w => data.columns.indexOf(w.column))
+      const none = v => v === null || v === undefined
+      const holds = (v, value) => (none(value) ? none(v) : v === value)
+      return { ...data, rows: data.rows.filter(r => where.every((w, i) => holds(r[idx[i]], w.value))) }
+    }
+    if (!where) return db.getRows(session.type, session.config, name)
+    return db.getRows(session.type, session.config, name, 500, 0, where)
   }, [db, session, isDemo])
 
   const recordLoaded = useCallback((name, data) => {
@@ -703,12 +726,15 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     setRecent(r => [name, ...r.filter(t => t !== name)].slice(0, 8))
   }, [])
 
-  const openTable = useCallback(async (name, tab = 'browse') => {
+  // `where`, `search`, `sort` and `scrollTop` open it filtered to a key's row, or as Back left it.
+  const openTable = useCallback(async (name, tab = 'browse', { where = null, search: keep = '', sort: order = null, scrollTop = null } = {}) => {
     if (!name || !session) return
     const seq = ++loadSeq.current
     setSelectedRows(new Set())
-    setSearch('')
-    setSort(null)
+    setSearch(keep)
+    setSort(order)
+    setRowWhere(where)
+    pendingScroll.current = scrollTop
     setEditingCell(null)
     setActiveTab(tab)
     if (tab === 'query') {
@@ -721,7 +747,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     ensureColumnsLoaded(name, { quiet: true })
     ensureStructureLoaded(name)
     try {
-      const data = await fetchRows(name)
+      const data = await fetchRows(name, where)
       if (seq !== loadSeq.current) return
       setDbState(s => applyTableLoaded(s, data))
       recordLoaded(name, data)
@@ -732,15 +758,14 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     }
   }, [session, fetchRows, recordLoaded, ensureColumnsLoaded, ensureStructureLoaded, notify])
 
-  // Reads the open table again, keeping the search, sort and tab.
-  const refreshTable = useCallback(async () => {
+  // Reads the open table's rows again, keeping the search, sort and tab.
+  const reloadRows = useCallback(async (where) => {
     const name = dbState.selectedTable
     if (!name) return
     const seq = ++loadSeq.current
     setDbState(s => ({ ...s, error: null }))
-    ensureStructureLoaded(name, { force: true })
     try {
-      const data = await fetchRows(name)
+      const data = await fetchRows(name, where)
       if (seq !== loadSeq.current) return
       setSelectedRows(new Set())
       setEditingCell(null)
@@ -751,9 +776,44 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
       setDbState(s => applyError(s, err.message))
       notify(err.message, 'error')
     }
-  }, [dbState.selectedTable, fetchRows, recordLoaded, ensureStructureLoaded, notify])
+  }, [dbState.selectedTable, fetchRows, recordLoaded, notify])
 
-  const closeTable = () => { loadSeq.current++; setDbState(s => ({ ...s, selectedTable: null, tableData: null, tableLoading: false, error: null })) }
+  // Refresh keeps the filter, and reads the structure again too.
+  const refreshTable = useCallback(() => {
+    if (!dbState.selectedTable) return
+    ensureStructureLoaded(dbState.selectedTable, { force: true })
+    reloadRows(rowWhere)
+  }, [dbState.selectedTable, rowWhere, reloadRows, ensureStructureLoaded])
+  // Back to the table's usual first rows; not a step in the history.
+  const clearFilter = () => { setRowWhere(null); reloadRows(null) }
+
+  // ── Following keys, and Back ───────────────────────────────────────────────
+
+  // Opens `table` in Browse filtered to `where`, remembering this view for Back. The row menu's
+  // "Show rows that reference this" comes through here too.
+  const follow = useCallback(({ table, where }) => {
+    if (dbState.selectedTable) {
+      setNavStack(s => pushNav(s, { table: dbState.selectedTable, where: rowWhere, search, sort, scrollTop: gridRef.current?.scrollTop ?? 0 }))
+    }
+    openTable(table, 'browse', { where })
+  }, [dbState.selectedTable, rowWhere, search, sort, openTable])
+
+  // The entry is used up even if its table then fails to load: the error shows there.
+  const goBack = useCallback(() => {
+    const [entry, rest] = popNav(navStack)
+    if (!entry) return
+    setNavStack(rest)
+    openTable(entry.table, 'browse', entry)
+  }, [navStack, openTable])
+
+  // Puts back the scroll position Back saved, once the rows are on screen.
+  useEffect(() => {
+    if (pendingScroll.current == null || !gridRef.current || dbState.tableLoading) return
+    gridRef.current.scrollTop = pendingScroll.current
+    pendingScroll.current = null
+  }, [dbState.tableData, dbState.tableLoading])
+
+  const closeTable = () => { loadSeq.current++; setRowWhere(null); setDbState(s => ({ ...s, selectedTable: null, tableData: null, tableLoading: false, error: null })) }
 
   // ── Visible rows: search, then sort; each keeps its index into tableData.rows ──
 
@@ -1197,6 +1257,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     structure: () => { if (dbState.selectedTable) setActiveTab('structure') },
     query: () => { if (dbState.selectedTable) setActiveTab('query') },
     refresh: () => { if (dbState.selectedTable) refreshTable() },
+    back: goBack,
   } : {})
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -1321,6 +1382,9 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                     )}
                   </div>
                   <div className="nx-db-dhead-name">
+                    <button type="button" className="nx-db-back" aria-label="Back" title="Back (Alt+←)" disabled={!navStack.length} onClick={goBack}>
+                      <Icon name="chevron-left" size={14} />
+                    </button>
                     <h2 className="nx-db-table-name" title={dbState.selectedTable}>{dbState.selectedTable}</h2>
                     <StarButton on={starredSet.has(dbState.selectedTable)} onClick={() => toggleStar(dbState.selectedTable)} name={dbState.selectedTable} />
                     {tableActions.groupOf(dbState.selectedTable) && <span className="nx-db-tag">{tableActions.groupOf(dbState.selectedTable)}</span>}
@@ -1386,6 +1450,11 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
               {activeTab === 'browse' && tableData && !dbState.tableLoading && (
                 <BrowsePanel
                   ref={rowSearchRef}
+                  gridRef={gridRef}
+                  table={dbState.selectedTable}
+                  where={rowWhere}
+                  onClearFilter={clearFilter}
+                  onFollow={follow}
                   tableData={tableData}
                   visible={visible}
                   keyIdx={keyIdx}
@@ -2193,8 +2262,21 @@ const CellInput = forwardRef(function CellInput({ col, value, onChange, classNam
   )
 })
 
+// The → at the end of a foreign key cell (a composite key's first column). A click follows it; the
+// value itself stays a plain value, so a double-click on the cell still edits.
+function FollowButton({ fk, targets, column, value, onFollow }) {
+  const target = fk && targets.find(t => t.key === fk.name)
+  if (!target) return null
+  return (
+    <button type="button" className="nx-db-follow" aria-label={`Follow ${column} ${value} to ${fk.refTable}`}
+      title={`Open ${fk.refTable} where ${whereLabel(target.where)}`}
+      onClick={() => onFollow(target)} onDoubleClick={e => e.stopPropagation()}>→</button>
+  )
+}
+
 const BrowsePanel = forwardRef(function BrowsePanel({
-  tableData, visible, keyIdx, columnInfo, minimised, onMinimise, onRestore, onRestoreAll, canWrite, columnsKnown, typesUnreadable = false, isView = false, foreignKeys = [], onSetCell, onAddRow, search, onSearchChange, sort, onSort,
+  tableData, visible, keyIdx, columnInfo, minimised, onMinimise, onRestore, onRestoreAll, canWrite, columnsKnown, typesUnreadable = false, isView = false, foreignKeys = [], onSetCell, onAddRow,
+  table, where = null, onClearFilter, onFollow, gridRef, search, onSearchChange, sort, onSort,
   selectedRows, allSelected, onToggleRow, onToggleAll, onClearSelection, onDeleteSelected, onDeleteRow, onCopyCell,
   editingCell, editValue, onEditValueChange, onStartEdit, onSaveEdit, onCancelEdit,
 }, ref) {
@@ -2216,6 +2298,8 @@ const BrowsePanel = forwardRef(function BrowsePanel({
   const editError = editingCell ? parseCellInput(columnInfo[editingCell.ci], editValue).error : null
   const readOnly = !canWrite && (columnsKnown || typesUnreadable)
   const canAdd = columnsKnown || typesUnreadable
+  // A view has no keys of its own to follow.
+  const followable = isView ? [] : foreignKeys
   return (
     <div className="nx-db-browse">
       <div className="nx-db-browse-tools">
@@ -2235,6 +2319,9 @@ const BrowsePanel = forwardRef(function BrowsePanel({
         <span className="nx-db-count" aria-live="polite">
           {search ? `${visible.length} of ${total} matching` : `${total} total`}
         </span>
+        {where && (
+          <span className="nx-db-chip">{whereLabel(where)}<button type="button" aria-label="Clear filter" title="Show the table's rows again" onClick={onClearFilter}>✕</button></span>
+        )}
         {minimised.size > 0 && (
           <button type="button" className="btn sm ghost" onClick={onRestoreAll} aria-label="Show all minimised columns">
             {`${minimised.size} minimised · Show all`}
@@ -2267,7 +2354,7 @@ const BrowsePanel = forwardRef(function BrowsePanel({
         </p>
       )}
 
-      <div className="nx-db-table-wrap" role="region" aria-label="Table data" tabIndex={0}>
+      <div className="nx-db-table-wrap" role="region" aria-label="Table data" tabIndex={0} ref={gridRef}>
         <table className="nx-db-table">
           <thead>
             <tr>
@@ -2310,7 +2397,10 @@ const BrowsePanel = forwardRef(function BrowsePanel({
             </tr>
           </thead>
           <tbody>
-            {visible.map(({ row, i: ri }, vi) => (
+            {visible.map(({ row, i: ri }, vi) => {
+              // Keys with a NULL part are left out, so only a value that's there can be followed.
+              const targets = followable.length ? followTargets({ foreignKeys: followable }, tableData.columns, row) : []
+              return (
               <tr key={ri} aria-selected={selectedRows.has(ri) || undefined}>
                 <td className="check">
                   <input
@@ -2376,7 +2466,11 @@ const BrowsePanel = forwardRef(function BrowsePanel({
                           {editError && <span className="nx-db-cell-error" role="alert">{editError}</span>}
                         </div>
                       ) : (
-                        <CellValue value={cell} />
+                        <>
+                          <CellValue value={cell} />
+                          <FollowButton fk={followable.find(k => k.columns[0] === tableData.columns[ci])} targets={targets}
+                            column={tableData.columns[ci]} value={cell} onFollow={onFollow} />
+                        </>
                       )}
                     </td>
                   )
@@ -2403,11 +2497,12 @@ const BrowsePanel = forwardRef(function BrowsePanel({
                   </button>
                 </td>
               </tr>
-            ))}
+              )
+            })}
             {visible.length === 0 && (
               <tr>
                 <td colSpan={cols + 2} className="empty">
-                  {total === 0 ? 'This table is empty' : 'No rows match your search'}
+                  {total > 0 ? 'No rows match your search' : where ? `No row in ${table} has ${whereLabel(where)}` : 'This table is empty'}
                 </td>
               </tr>
             )}

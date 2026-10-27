@@ -2001,3 +2001,170 @@ describe('ViewDbManager — structure and foreign keys', () => {
     expect(within(screen.getByRole('region', { name: 'Foreign keys' })).getByText('None')).toBeTruthy()
   })
 })
+
+describe('ViewDbManager — following foreign keys', () => {
+  let adapters
+  const fkTo = (refTable, column = 'name', refColumn = 'id') => ({
+    ok: true,
+    columns: [
+      { name: 'id', dataType: 'INTEGER', isPrimaryKey: true },
+      { name: column, dataType: 'TEXT', isPrimaryKey: false },
+    ],
+    foreignKeys: [{ name: `FK_${column}`, columns: [column], refTable, refColumns: [refColumn], onDelete: 'NO ACTION', onUpdate: 'NO ACTION' }],
+    referencedBy: [],
+    indexes: [],
+  })
+  const plain = { ok: true, columns: [{ name: 'id', dataType: 'INTEGER', isPrimaryKey: true }], foreignKeys: [], referencedBy: [], indexes: [] }
+  const toAlice = [{ column: 'id', value: 'Alice' }]
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter({
+      getStructure: vi.fn().mockImplementation((type, config, table) => Promise.resolve(table === 'patients' ? fkTo('staff') : plain)),
+      getRows: vi.fn().mockImplementation((type, config, table) => Promise.resolve(table === 'patients'
+        ? { columns: ['id', 'name'], rows: [[1, 'Alice'], [2, 'Bob']] }
+        : { columns: ['id', 'role'], rows: [['Alice', 'Physician']] })),
+    }) }
+  })
+
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+  const saved = [{ id: 'uat', name: 'UAT', type: 'sqlite', inputMode: 'fields', filePath: '/a.db' }]
+  const connect = async (connections = saved, first = 'patients') => {
+    render(<ViewDbManager adapters={adapters} savedConnections={connections} onResolveSecret={vi.fn().mockResolvedValue('')} />)
+    fireEvent.click(within(screen.getByRole('region', { name: 'Quick connect' })).getByText(connections[0].name))
+    await waitFor(() => within(screen.getByRole('navigation', { name: 'Table list' })).getByText(first))
+  }
+  const openPatients = async () => {
+    await connect()
+    openTable('patients')
+    await waitFor(() => screen.getByRole('table'))
+  }
+  const follow = async (name) => fireEvent.click(await waitFor(() => screen.getByRole('button', { name })))
+  const heading = () => document.querySelector('.nx-db-table-name')
+  const chip = () => document.querySelector('span.nx-db-chip')
+  const back = () => screen.getByRole('button', { name: 'Back' })
+  // jsdom has no layout, so the page never counts as on screen; say it is.
+  const onScreen = () => vi.spyOn(Element.prototype, 'getClientRects').mockReturnValue([{}])
+
+  it('follows a key to its row, with a filter chip, and Back becomes available', async () => {
+    await openPatients()
+    expect(back().disabled).toBe(true)
+    expect(back().getAttribute('title')).toBe('Back (Alt+←)')
+    await follow('Follow name Alice to staff')
+    await waitFor(() => expect(adapters.dbManager.getRows).toHaveBeenCalledWith('sqlite', expect.anything(), 'staff', 500, 0, toAlice))
+    await waitFor(() => expect(heading().textContent).toBe('staff'))
+    await waitFor(() => expect(chip()?.textContent).toContain('id = Alice'))
+    expect(back().disabled).toBe(false)
+  })
+
+  it('only offers to follow a value that is there, and double-click still edits', async () => {
+    adapters.dbManager.getRows.mockImplementation((type, config, table) => Promise.resolve(table === 'patients'
+      ? { columns: ['id', 'name'], rows: [[1, 'Alice'], [2, null]] }
+      : { columns: ['id', 'role'], rows: [] }))
+    await openPatients()
+    await waitFor(() => screen.getByRole('button', { name: 'Follow name Alice to staff' }))
+    expect(screen.getAllByRole('button', { name: /^Follow / })).toHaveLength(1)
+    fireEvent.doubleClick(screen.getByText('Alice').closest('td'))
+    expect(screen.getByRole('textbox', { name: 'Edit name' })).toBeTruthy()
+  })
+
+  it('goes Back to the table it came from, with the search typed before', async () => {
+    await openPatients()
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search rows' }), { target: { value: 'Ali' } })
+    await follow('Follow name Alice to staff')
+    await waitFor(() => expect(heading().textContent).toBe('staff'))
+    expect(screen.getByRole('searchbox', { name: 'Search rows' }).value).toBe('')
+    adapters.dbManager.getRows.mockClear()
+    fireEvent.click(back())
+    await waitFor(() => expect(heading().textContent).toBe('patients'))
+    expect(adapters.dbManager.getRows).toHaveBeenCalledWith('sqlite', expect.anything(), 'patients')
+    await waitFor(() => expect(screen.getByRole('searchbox', { name: 'Search rows' }).value).toBe('Ali'))
+    expect(chip()).toBeNull()
+    expect(back().disabled).toBe(true)
+  })
+
+  it('opens a table in a schema the list is hiding', async () => {
+    const prod = [{ id: 'prod', name: 'Prod', type: 'sqlserver', inputMode: 'fields', host: 'h', port: '1433', database: 'd', user: 'u' }]
+    adapters.dbManager.connect.mockResolvedValue({ ok: true, tables: ['patients', 'maintenance.Booking'] })
+    adapters.dbManager.getStructure.mockImplementation((type, config, table) => Promise.resolve(table === 'patients' ? fkTo('maintenance.Booking') : plain))
+    await connect(prod)
+    fireEvent.click(screen.getByRole('button', { name: /Other schemas/ }))
+    openTable('patients')
+    await waitFor(() => screen.getByRole('table'))
+    await follow('Follow name Alice to maintenance.Booking')
+    await waitFor(() => expect(adapters.dbManager.getRows).toHaveBeenCalledWith('sqlserver', expect.anything(), 'maintenance.Booking', 500, 0, toAlice))
+    await waitFor(() => expect(heading().textContent).toBe('maintenance.Booking'))
+  })
+
+  it('follows a key back into the same table, and steps Back through each filter', async () => {
+    adapters.dbManager.getStructure.mockResolvedValue(fkTo('patients', 'boss'))
+    const all = [[1, 'Alice', null], [2, 'Bob', 1], [3, 'Cy', 2]]
+    adapters.dbManager.getRows.mockImplementation((type, config, table, limit, offset, where) => Promise.resolve({
+      columns: ['id', 'name', 'boss'],
+      rows: where ? all.filter(r => r[0] === where[0].value) : all,
+    }))
+    await openPatients()
+    await follow('Follow boss 2 to patients')
+    await waitFor(() => expect(chip()?.textContent).toContain('id = 2'))
+    await follow('Follow boss 1 to patients')
+    await waitFor(() => expect(chip()?.textContent).toContain('id = 1'))
+    expect(screen.queryByText('Cy')).toBeNull()
+    fireEvent.click(back())
+    await waitFor(() => expect(chip()?.textContent).toContain('id = 2'))
+    expect(adapters.dbManager.getRows).toHaveBeenLastCalledWith('sqlite', expect.anything(), 'patients', 500, 0, [{ column: 'id', value: 2 }])
+    fireEvent.click(back())
+    await waitFor(() => expect(chip()).toBeNull())
+    expect(adapters.dbManager.getRows).toHaveBeenLastCalledWith('sqlite', expect.anything(), 'patients')
+    await waitFor(() => expect(screen.getByText('Cy')).toBeTruthy())
+  })
+
+  it('says when no row has the value followed', async () => {
+    adapters.dbManager.getRows.mockImplementation((type, config, table) => Promise.resolve(table === 'patients'
+      ? { columns: ['id', 'name'], rows: [[1, 'Alice']] }
+      : { columns: ['id', 'role'], rows: [] }))
+    await openPatients()
+    await follow('Follow name Alice to staff')
+    await waitFor(() => expect(screen.getByText('No row in staff has id = Alice')).toBeTruthy())
+  })
+
+  it('clearing the chip reads the table again without the filter, and adds no history', async () => {
+    await openPatients()
+    await follow('Follow name Alice to staff')
+    await waitFor(() => expect(chip()).not.toBeNull())
+    adapters.dbManager.getRows.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }))
+    await waitFor(() => expect(adapters.dbManager.getRows).toHaveBeenCalledWith('sqlite', expect.anything(), 'staff'))
+    await waitFor(() => expect(chip()).toBeNull())
+    expect(heading().textContent).toBe('staff')
+    // Back still goes to patients, in one step.
+    fireEvent.click(back())
+    await waitFor(() => expect(heading().textContent).toBe('patients'))
+    expect(back().disabled).toBe(true)
+  })
+
+  it('shows the error when going Back fails, and the entry is used up', async () => {
+    await openPatients()
+    await follow('Follow name Alice to staff')
+    await waitFor(() => expect(heading().textContent).toBe('staff'))
+    adapters.dbManager.getRows.mockReset()
+    adapters.dbManager.getRows.mockRejectedValue(new Error('patients is locked'))
+    fireEvent.click(back())
+    await waitFor(() => expect(screen.getAllByText('patients is locked').length).toBeGreaterThan(0))
+    expect(adapters.dbManager.getRows).toHaveBeenCalledTimes(1)
+    expect(back().disabled).toBe(true)
+    onScreen()
+    fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true })
+    await new Promise(r => setTimeout(r, 20))
+    expect(adapters.dbManager.getRows).toHaveBeenCalledTimes(1)
+  })
+
+  it('goes Back on Alt+←', async () => {
+    await openPatients()
+    await follow('Follow name Alice to staff')
+    await waitFor(() => expect(heading().textContent).toBe('staff'))
+    onScreen()
+    fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true })
+    await waitFor(() => expect(heading().textContent).toBe('patients'))
+    expect(back().disabled).toBe(true)
+  })
+})
