@@ -85,10 +85,26 @@ describe('StructurePanel', () => {
   it('highlights and scrolls to the focused key', () => {
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
-    render(<StructurePanel structure={structure} onOpenTable={vi.fn()} focusKey="FK_Task_Visit" />)
-    expect(section('Referenced by').getByText(/\(VisitID\)/).closest('[data-key]').getAttribute('data-focus')).toBe('true')
+    render(<StructurePanel structure={structure} onOpenTable={vi.fn()} focusKey="FK_Visit_Booking" />)
+    expect(section('Foreign keys').getByText(/BookingID, Site →/).closest('[data-key]').getAttribute('data-focus')).toBe('true')
     expect(scrollIntoView).toHaveBeenCalled()
     delete Element.prototype.scrollIntoView
+  })
+
+  it('highlights a self-referencing key only in Foreign keys', () => {
+    const self = { name: 'FK_Self', columns: ['ParentID'], refTable: 'Node', refColumns: ['ID'], onDelete: 'NO ACTION', onUpdate: 'NO ACTION' }
+    const s = { ...structure, foreignKeys: [self], referencedBy: [{ ...self, table: 'Node' }] }
+    const { container } = render(<StructurePanel structure={s} onOpenTable={vi.fn()} focusKey="FK_Self" />)
+    expect(container.querySelectorAll('[data-focus]')).toHaveLength(1)
+    expect(section('Foreign keys').getByText('FK_Self').closest('[data-key]').getAttribute('data-focus')).toBe('true')
+  })
+
+  it('highlights a self-referencing key only in Foreign keys', () => {
+    const self = { name: 'FK_Self', columns: ['ParentID'], refTable: 'Node', refColumns: ['ID'], onDelete: 'NO ACTION', onUpdate: 'NO ACTION' }
+    const s = { ...structure, foreignKeys: [self], referencedBy: [{ ...self, table: 'Node', refColumns: ['ID'] }] }
+    const { container } = render(<StructurePanel structure={s} onOpenTable={vi.fn()} focusKey="FK_Self" />)
+    expect(container.querySelectorAll('[data-focus]')).toHaveLength(1)
+    expect(section('Foreign keys').getByText('FK_Self').closest('[data-key]').getAttribute('data-focus')).toBe('true')
   })
 
   it('shows a spinner while loading and an error with a retry', () => {

@@ -1,7 +1,7 @@
 // packages/ui/src/views/db-structure-panel.jsx
 //
 // The Structure tab: a table's columns, the foreign keys it holds, the keys that point at it and
-// its indexes. Target tables are links; `focusKey` names a key whose row to scroll to and mark.
+// its indexes. Target tables are links; `focusKey` names a foreign key (one this table holds) whose row to scroll to and mark.
 
 import { useEffect, useRef } from 'react'
 
@@ -47,8 +47,7 @@ export function StructurePanel({ structure, isView = false, loading = false, err
 
   useEffect(() => {
     if (!focusKey || !structure) return
-    const row = [...(rootRef.current?.querySelectorAll('[data-key]') ?? [])].find(el => el.dataset.key === focusKey)
-    row?.scrollIntoView?.({ block: 'center' })
+    rootRef.current?.querySelector('[data-focus]')?.scrollIntoView?.({ block: 'center' })
   }, [focusKey, structure])
 
   if (!structure) {
@@ -69,7 +68,7 @@ export function StructurePanel({ structure, isView = false, loading = false, err
   const { columns = [], foreignKeys = [], referencedBy = [], indexes = [] } = structure
   // A column's foreign keys, so it can link to the table it points at.
   const fksOf = name => foreignKeys.filter(fk => fk.columns.includes(name))
-  const row = key => ({ 'data-key': key, 'data-focus': key === focusKey ? 'true' : undefined })
+  const row = (key, focusable = false) => ({ 'data-key': key, 'data-focus': focusable && key === focusKey ? 'true' : undefined })
 
   return (
     <div className="nx-db-structure" ref={rootRef}>
@@ -104,7 +103,7 @@ export function StructurePanel({ structure, isView = false, loading = false, err
         <>
           <Section title="Foreign keys">
             {foreignKeys.length === 0 ? <None /> : foreignKeys.map(fk => (
-              <div key={fk.name} className="nx-db-structure-row" {...row(fk.name)}>
+              <div key={fk.name} className="nx-db-structure-row" {...row(fk.name, true)}>
                 <span className="key-name">{fk.name}</span>
                 <span>
                   {list(fk.columns)} → <TableLink table={fk.refTable} onOpenTable={onOpenTable} />

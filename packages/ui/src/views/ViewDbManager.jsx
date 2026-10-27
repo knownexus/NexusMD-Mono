@@ -667,7 +667,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   // (or in the demo) there are none to show, only the columns.
   const ensureStructureLoaded = useCallback(async (table, { force = false } = {}) => {
     if (!table || !session || (!force && structuresRef.current[table])) return
-    setStructureState(prev => { const { [table]: _gone, ...rest } = prev; return rest })
+    setStructureState(prev => ({ ...prev, [table]: { loading: true } }))
     try {
       let found
       if (isDemo || !db.getStructure) {
@@ -685,6 +685,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
         }
       }
       setStructures(prev => ({ ...prev, [table]: found }))
+      setStructureState(prev => { const { [table]: _done, ...rest } = prev; return rest })
     } catch (err) {
       setStructureState(prev => ({ ...prev, [table]: { error: err.message } }))
     }
@@ -737,6 +738,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     if (!name) return
     const seq = ++loadSeq.current
     setDbState(s => ({ ...s, error: null }))
+    ensureStructureLoaded(name, { force: true })
     try {
       const data = await fetchRows(name)
       if (seq !== loadSeq.current) return
@@ -749,7 +751,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
       setDbState(s => applyError(s, err.message))
       notify(err.message, 'error')
     }
-  }, [dbState.selectedTable, fetchRows, recordLoaded, notify])
+  }, [dbState.selectedTable, fetchRows, recordLoaded, ensureStructureLoaded, notify])
 
   const closeTable = () => { loadSeq.current++; setDbState(s => ({ ...s, selectedTable: null, tableData: null, tableLoading: false, error: null })) }
 
@@ -1424,7 +1426,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                 <StructurePanel
                   structure={structures[dbState.selectedTable] ?? null}
                   isView={viewSet.has(dbState.selectedTable)}
-                  loading={!structureState[dbState.selectedTable]?.error}
+                  loading={!!structureState[dbState.selectedTable]?.loading}
                   error={structureState[dbState.selectedTable]?.error ?? null}
                   onOpenTable={name => openTable(name, 'structure')}
                   onRefresh={() => ensureStructureLoaded(dbState.selectedTable, { force: true })}

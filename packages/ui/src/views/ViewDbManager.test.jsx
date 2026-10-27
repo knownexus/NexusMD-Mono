@@ -1981,6 +1981,13 @@ describe('ViewDbManager — structure and foreign keys', () => {
     await waitFor(() => expect(adapters.dbManager.getRows).toHaveBeenCalledWith('sqlite', expect.anything(), 'staff'))
   })
 
+  it('reads the structure again on refresh', async () => {
+    await openUatPatients()
+    await waitFor(() => expect(adapters.dbManager.getStructure).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+    await waitFor(() => expect(adapters.dbManager.getStructure).toHaveBeenCalledTimes(2))
+  })
+
   it('falls back to the columns alone in the demo', async () => {
     render(<ViewDbManager adapters={adapters} />)
     fireEvent.click(screen.getByText('Try the demo'))
