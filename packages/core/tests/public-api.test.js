@@ -107,6 +107,7 @@ const EXPECTED = [
   'JIRA_ID_PREFIX', 'isJiraId', 'toJiraId', 'jiraKeyFromId', 'sourceOfId', 'displayIdOf',
   'GITHUB_ID_PREFIX', 'isGithubId', 'toGithubId', 'parseGithubId',
   'makeGithubConfig', 'MAX_GITHUB_REPOS', 'repoListFromStub',
+  'GithubError', 'classifyGithubError', 'makeGithubClient', 'discoverGithubRepos',
   'CATEGORY_LANES', 'CATEGORY_LABELS', 'itemCategory', 'adoStateForCategory',
   'WORK_ITEM_STATUS_KEY', 'readProviderStatus', 'recordProviderStatus', 'describeProviderError',
   'PROVIDER_LABELS', 'mergeTeam', 'mergeWorkItemData', 'applyHiddenPeople',
