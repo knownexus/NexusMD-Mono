@@ -1,5 +1,5 @@
 import { core } from '../../core.js'
-import { slugify } from '../ado/helpers.js'
+import { slugify, PROJECT_COLORS } from '../ado/helpers.js'
 import { makeGithubClient } from './client.js'
 import { mapGithubIssue, mapGithubPR, mapGithubRun } from './mappers.js'
 import { extractIssueRefs } from './links.js'
@@ -8,6 +8,19 @@ export const GITHUB_CACHE_KEY = 'nexusmd.github.cache.v1'
 
 const STATES = ['Open', 'Closed']
 const CLOSED_WINDOW_DAYS = 14
+const PR_LIMIT = 100
+const PR_CONCURRENCY = 6
+
+// Runs fn over items with at most `limit` in flight; results keep input order.
+async function mapPool(items, limit, fn) {
+  const out = new Array(items.length)
+  let next = 0
+  const worker = async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i]) }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return out
+}
 
 export function loadCachedGithubData(config, { storage }) {
   try {
@@ -56,9 +69,13 @@ export async function loadGithubData(
 
   async function loadIssues(repo) {
     try {
-      const rows = await client.getPaged(`repos/${repo}/issues?state=all&since=${encodeURIComponent(since)}&per_page=100`)
+      // `since` filters on updated_at, so it must not apply to open issues.
+      const [open, closed] = await Promise.all([
+        client.getPaged(`repos/${repo}/issues?state=open&per_page=100`),
+        client.getPaged(`repos/${repo}/issues?state=closed&since=${encodeURIComponent(since)}&per_page=100`),
+      ])
       okRepos.add(repo)
-      return rows.filter(i => !i.pull_request).map(i => {
+      return [...open, ...closed].filter(i => !i.pull_request).map(i => {
         notePerson(i.assignee || i.assignees?.[0])
         return mapGithubIssue(i, repo)
       })
@@ -68,15 +85,14 @@ export async function loadGithubData(
   async function loadPrs(repo) {
     let list
     try {
-      list = await client.getPaged(`repos/${repo}/pulls?state=open&per_page=100`)
+      list = await client.getPaged(`repos/${repo}/pulls?state=open&per_page=100`, { max: PR_LIMIT })
       okRepos.add(repo)
     } catch (e) { noteError(repo, e); prErrors.push(e); return [] }
-    return Promise.all(list.map(async (p) => {
+    return mapPool(list.slice(0, PR_LIMIT), PR_CONCURRENCY, async (p) => {
       const n = p.number
-      const [detail, reviews] = await Promise.all([
-        client.get(`repos/${repo}/pulls/${n}`).catch(() => null),
-        client.getPaged(`repos/${repo}/pulls/${n}/reviews?per_page=100`).catch(() => []),
-      ])
+      // Sequential per PR so the pool bounds the calls in flight at PR_CONCURRENCY.
+      const detail = await client.get(`repos/${repo}/pulls/${n}`).catch(() => null)
+      const reviews = await client.getPaged(`repos/${repo}/pulls/${n}/reviews?per_page=100`, { max: 100 }).catch(() => [])
       const merged = { ...p, ...(detail || {}) }
       notePerson(merged.user)
       ;(reviews || []).forEach(r => notePerson(r.user))
@@ -84,7 +100,7 @@ export async function loadGithubData(
       mapped.linkedWorkItems = extractIssueRefs(`${merged.title || ''}\n${merged.body || ''}`, repo, repos)
         .map(id => ({ id }))
       return mapped
-    }))
+    })
   }
 
   async function loadRuns(repo) {
@@ -141,7 +157,9 @@ export async function loadGithubData(
     if (!milestones.has(k)) milestones.set(k, { repo: w.projectKey, title: w.iterationPath, state: w.sprint ? 'open' : 'closed' })
   })
 
-  const PROJECTS = repos.map((r, i) => ({ id: slugify(r), name: r, color: i }))
+  const PROJECTS = repos.map((r, i) => ({
+    id: slugify(r), name: r, key: r, source: 'github', color: PROJECT_COLORS[i % PROJECT_COLORS.length],
+  }))
 
   const prFailed = prErrors.length > 0 && PRS.length === 0
   const PR_ERROR = prFailed ? `PRs unavailable — ${String(prErrors[0]?.message || prErrors[0]).slice(0, 200)}` : null

@@ -55,7 +55,7 @@ describe('loadGithubData', () => {
     const emit = vi.spyOn(core, '_emit').mockImplementation(() => {})
     const http = makeHttp({
       'user': { login: 'me', name: 'Me', avatar_url: 'a.png' },
-      '/issues?': [issue(1), issue(2, { pull_request: {} })],
+      'issues?state=open': [issue(1), issue(2, { pull_request: {} })],
     })
     const storage = makeStorage()
     const d = await loadGithubData(cfg(['acme/web']), { http, storage })
@@ -74,7 +74,11 @@ describe('loadGithubData', () => {
     const http = makeHttp({})
     const prior = { ME: { login: 'me', name: 'Me', avatarUrl: '' } }
     const d = await loadGithubData(cfg(['acme/web']), { http, storage: makeStorage() }, { isRefresh: true, priorData: prior })
-    expect(urls(http).some(u => u === 'user')).toBe(false)
+    expect(urls(http).length).toBeGreaterThan(0)
+    expect(urls(http).some(u => u.startsWith('user'))).toBe(false)
+    const h1 = makeHttp({})
+    await loadGithubData(cfg(['acme/web']), { http: h1, storage: makeStorage() })
+    expect(urls(h1).some(u => u.startsWith('user'))).toBe(true)
     expect(d.ME).toEqual(prior.ME)
     expect(emit).toHaveBeenCalledWith('github:updated', d)
   })
@@ -83,7 +87,7 @@ describe('loadGithubData', () => {
     const http = makeHttp({
       'repos/acme/web/issues': 410,
       'repos/acme/web/actions': 404,
-      'repos/acme/api/issues': [issue(7)],
+      'repos/acme/api/issues?state=open': [issue(7)],
       'repos/acme/api/pulls?': [pr(3)],
       'repos/acme/api/pulls/3/reviews': [],
       'repos/acme/api/pulls/3': { ...pr(3), mergeable_state: 'dirty' },
@@ -113,7 +117,7 @@ describe('loadGithubData', () => {
   })
 
   it('keeps same issue number in two repos distinct', async () => {
-    const http = makeHttp({ '/issues?': [issue(5)] })
+    const http = makeHttp({ 'issues?state=open': [issue(5)] })
     const d = await loadGithubData(cfg(), { http, storage: makeStorage() })
     expect(d.WORK_ITEMS.map(w => w.id).sort()).toEqual(['gh:acme/api#5', 'gh:acme/web#5'])
   })
@@ -129,7 +133,7 @@ describe('loadGithubData', () => {
   })
 
   it('never stores the PAT or Authorization', async () => {
-    const http = makeHttp({ '/issues?': [issue(1)] })
+    const http = makeHttp({ 'issues?state=open': [issue(1)] })
     const storage = makeStorage()
     const d = await loadGithubData(cfg(), { http, storage })
     const s = JSON.stringify(storage._store) + JSON.stringify(d)
@@ -155,5 +159,56 @@ describe('loadGithubData', () => {
     const http = makeHttp({ 'repos/acme/web/': 401 })
     const d = await loadGithubData(cfg(), { http, storage: makeStorage() })
     expect(d.REPO_ERRORS.some(e => e.kind === 'auth')).toBe(true)
+  })
+
+  it('shapes PROJECTS like the Jira entries', async () => {
+    const { PROJECT_COLORS } = await import('../../src/modules/ado/helpers.js')
+    const d = await loadGithubData(cfg(['acme/web']), { http: makeHttp({}), storage: makeStorage() })
+    expect(d.PROJECTS).toHaveLength(1)
+    expect(d.PROJECTS[0]).toMatchObject({ id: 'acme-web', name: 'acme/web', key: 'acme/web', source: 'github' })
+    expect(typeof d.PROJECTS[0].color).toBe('string')
+    expect(PROJECT_COLORS).toContain(d.PROJECTS[0].color)
+  })
+
+  it('queries open issues without since and closed issues with since', async () => {
+    const http = makeHttp({
+      'issues?state=open': [issue(11)],
+      'issues?state=closed': [issue(12, { state: 'closed' })],
+    })
+    const d = await loadGithubData(cfg(['acme/web']), { http, storage: makeStorage() })
+    expect(d.WORK_ITEMS.map(w => w.id).sort()).toEqual(['gh:acme/web#11', 'gh:acme/web#12'])
+    const open = urls(http).filter(u => u.includes('issues?state=open'))
+    const closed = urls(http).filter(u => u.includes('issues?state=closed'))
+    expect(open).toHaveLength(1)
+    expect(open[0]).not.toContain('since')
+    expect(closed).toHaveLength(1)
+    expect(closed[0]).toContain('since=')
+  })
+
+  it('caps detail/review calls at 6 in flight', async () => {
+    const list = Array.from({ length: 20 }, (_, i) => pr(i + 1))
+    let inFlight = 0
+    let peak = 0
+    const http = {
+      fetch: vi.fn(async (path) => {
+        const sub = /pulls\/\d+/.test(path)
+        if (sub) { inFlight++; peak = Math.max(peak, inFlight); await new Promise(r => setTimeout(r, 5)); inFlight-- }
+        if (/pulls\?/.test(path)) return resp(200, list)
+        if (/reviews/.test(path)) return resp(200, [])
+        if (sub) return resp(200, { mergeable_state: 'clean' })
+        return resp(200, [])
+      }),
+    }
+    const d = await loadGithubData(cfg(['acme/web']), { http, storage: makeStorage() })
+    expect(d.PRS).toHaveLength(20)
+    expect(peak).toBeGreaterThan(1)
+    expect(peak).toBeLessThanOrEqual(6)
+  })
+
+  it('loads only the first 100 open PRs of a repo', async () => {
+    const list = Array.from({ length: 130 }, (_, i) => pr(i + 1))
+    const http = makeHttp({ 'pulls?': list })
+    const d = await loadGithubData(cfg(['acme/web']), { http, storage: makeStorage() })
+    expect(d.PRS).toHaveLength(100)
   })
 })
