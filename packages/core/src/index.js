@@ -68,7 +68,7 @@ export {
   secretStorageKey, setSecretVar, removeSecretVar,
   buildRequest, executeRequest,
   buildRunEntries, runCollection,
-  importPostmanCollection,
+  importPostmanCollection, importBrunoCollection, parseBru,
   appendHistoryEntry, readHistory, clearHistory,
 } from './modules/api-client/index.js'
 export {

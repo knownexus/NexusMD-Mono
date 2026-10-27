@@ -62,7 +62,7 @@ const EXPECTED = [
   'secretStorageKey', 'setSecretVar', 'removeSecretVar',
   'buildRequest', 'executeRequest',
   'buildRunEntries', 'runCollection',
-  'importPostmanCollection',
+  'importPostmanCollection', 'importBrunoCollection', 'parseBru',
   'appendHistoryEntry', 'readHistory', 'clearHistory',
   // Database Manager module (desktop-only: requires the `dbManager` adapter)
   'IDbManagerAdapter', 'getDbManagerAdapter', 'parseConnectionString', 'buildConfig',

@@ -132,6 +132,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     write:             (filePath, text)  => ipcRenderer.invoke('file:write', filePath, text),
     exists:            (filePath)        => ipcRenderer.invoke('file:exists', filePath),
     list:              (dirPath)         => ipcRenderer.invoke('file:list', dirPath),
+    listDirs:          (dirPath)         => ipcRenderer.invoke('file:listDirs', dirPath),
     delete:            (filePath)        => ipcRenderer.invoke('file:delete', filePath),
     mkdir:             (dirPath)         => ipcRenderer.invoke('file:mkdir', dirPath),
     defaultProfileDir: ()               => ipcRenderer.invoke('file:defaultProfileDir'),

@@ -18,7 +18,7 @@ import {
   loadCollection, createCollection, writeCollectionMeta, writeRequest,
   addTreeNode, buildRunEntries,
   resolveEnvironment, executeRequest, runCollection, importPostmanCollection,
-  appendHistoryEntry, readHistory, clearHistory,
+  importBrunoCollection, writeEnvironment, appendHistoryEntry, readHistory, clearHistory,
 } from '@nexusmd/core'
 
 const TABS = ['Params', 'Headers', 'Body', 'Auth', 'Scripts', 'Tests', 'History']
@@ -315,6 +315,42 @@ export function ApiClientView() {
     if (warnings.length) setOpenError(`Imported with ${warnings.length} warning(s): ${warnings.join('; ')}`)
   }
 
+  // Bruno collections are folders of .bru files, so this imports from a
+  // picked directory rather than pasted text.
+  const importBruno = async (dir) => {
+    const col = collections[dir]
+    if (!col) return
+    const brunoDir = await adapters.picker?.pickDirectory?.()
+    if (!brunoDir) return
+    let imported
+    try {
+      imported = await importBrunoCollection(adapters.file, brunoDir)
+    } catch (err) {
+      setOpenError(`Import failed: ${err?.message || String(err)}`)
+      return
+    }
+    const { meta, tree, requests, environments, warnings } = imported
+    for (const [refId, req] of Object.entries(requests)) {
+      await writeRequest(adapters.file, dir, refId, req)
+    }
+    // Never clobber an environment the collection already has.
+    const nextEnvs = {}
+    for (const [name, envDef] of Object.entries(environments)) {
+      const envName = col.environments[name] ? `${name} (${meta.name})` : name
+      await writeEnvironment(adapters.file, dir, envName, envDef)
+      nextEnvs[envName] = envDef
+    }
+    const importedFolder = { type: 'folder', name: meta.name, children: tree }
+    const nextMeta = { ...col.meta, tree: [...col.meta.tree, importedFolder] }
+    await writeCollectionMeta(adapters.file, dir, nextMeta)
+    updateCollection(dir, prev => ({
+      meta: nextMeta,
+      requests: { ...prev.requests, ...requests },
+      environments: { ...prev.environments, ...nextEnvs },
+    }))
+    if (warnings.length) setOpenError(`Imported with ${warnings.length} warning(s): ${warnings.join('; ')}`)
+  }
+
   if (!available) {
     return (
       <div className="ac-unavailable">
@@ -436,6 +472,12 @@ export function ApiClientView() {
                       />
                       <button className="btn sm" onClick={doImport}>Import</button>
                     </details>
+
+                    {adapters.picker && adapters.file?.listDirs && (
+                      <button className="btn sm" onClick={() => importBruno(dir)} title="Pick a Bruno collection folder (the one containing bruno.json)">
+                        <Icon name="folder" size={12}/> Import Bruno collection
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

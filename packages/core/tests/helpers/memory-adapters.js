@@ -24,6 +24,13 @@ export function memFile(initial = {}) {
         .filter((k) => k.startsWith(pre))
         .map((k) => k.slice(pre.length).split('/')[0])
     },
+    async listDirs(dir) {
+      const pre = dir.endsWith('/') ? dir : dir + '/'
+      const names = [...files.keys()]
+        .filter((k) => k.startsWith(pre) && k.slice(pre.length).includes('/'))
+        .map((k) => k.slice(pre.length).split('/')[0])
+      return [...new Set(names)]
+    },
     async delete(path) { files.delete(path) },
     async mkdir() { /* dirs are implicit */ },
     async defaultProfileDir() { return '/profiles' },
