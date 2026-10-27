@@ -105,6 +105,8 @@ const EXPECTED = [
   'followTargets', 'referencingTargets', 'whereLabel',
   // Work items module (ADO + Jira merged)
   'JIRA_ID_PREFIX', 'isJiraId', 'toJiraId', 'jiraKeyFromId', 'sourceOfId', 'displayIdOf',
+  'GITHUB_ID_PREFIX', 'isGithubId', 'toGithubId', 'parseGithubId',
+  'makeGithubConfig', 'MAX_GITHUB_REPOS', 'repoListFromStub',
   'CATEGORY_LANES', 'CATEGORY_LABELS', 'itemCategory', 'adoStateForCategory',
   'WORK_ITEM_STATUS_KEY', 'readProviderStatus', 'recordProviderStatus', 'describeProviderError',
   'PROVIDER_LABELS', 'mergeTeam', 'mergeWorkItemData', 'applyHiddenPeople',
