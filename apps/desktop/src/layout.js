@@ -35,6 +35,15 @@ export function orderedNav(navOrder, nav) {
   return [...ordered, ...rest]
 }
 
+// The stored order after the user reorders the entries shown (`shownIds`, in their new sequence).
+// Ids of apps that are not installed stay where they were, so installing one later finds its place.
+export function mergeNavOrder(stored, shownIds) {
+  const shown = new Set(shownIds)
+  const queue = shownIds.slice()
+  const merged = (Array.isArray(stored) ? stored : []).map(id => (shown.has(id) ? queue.shift() : id))
+  return [...merged, ...queue]
+}
+
 // The entries the sidebar shows: orderedNav without the ids the user hid in Settings. A hidden entry
 // stays in the Settings list (so it can be shown again) and is still reachable by view id.
 export function visibleNav(navOrder, hidden, nav) {

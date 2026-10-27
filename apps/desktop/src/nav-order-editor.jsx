@@ -1,5 +1,5 @@
 import React from 'react'
-import { orderedNav } from './layout.js'
+import { orderedNav, mergeNavOrder } from './layout.js'
 
 // Drag-to-reorder list of nav items, editing the persisted navOrder from
 // Settings. Mirrors the dashboard widget DnD pattern (view-dashboard.jsx):
@@ -24,7 +24,7 @@ export function NavOrderEditor({ nav, order, onChange, hidden = [], onHiddenChan
     const to = next.indexOf(id)
     next.splice(from, 1)
     next.splice(to, 0, dragId)
-    onChange(next)
+    onChange(mergeNavOrder(order, next))
     setDragId(null)
   }
 

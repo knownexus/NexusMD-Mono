@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { effectiveSidebar, SIDEBAR_BREAKPOINT, orderedNav, visibleNav, toggledSidebar, mountedViews } from './layout.js'
+import { effectiveSidebar, SIDEBAR_BREAKPOINT, orderedNav, visibleNav, toggledSidebar, mountedViews, mergeNavOrder } from './layout.js'
+
+describe('mergeNavOrder', () => {
+  it('keeps the places of apps that are not installed', () => {
+    expect(mergeNavOrder(['a', 'x', 'b', 'y', 'c'], ['c', 'a', 'b'])).toEqual(['c', 'x', 'a', 'y', 'b'])
+  })
+  it('appends shown ids missing from the stored order, and copes with no stored order', () => {
+    expect(mergeNavOrder(['a'], ['b', 'a'])).toEqual(['b', 'a'])
+    expect(mergeNavOrder(undefined, ['a', 'b'])).toEqual(['a', 'b'])
+  })
+})
 
 describe('effectiveSidebar', () => {
   it('forces icons below the breakpoint regardless of preference', () => {
