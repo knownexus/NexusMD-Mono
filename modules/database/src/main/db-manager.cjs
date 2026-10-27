@@ -143,8 +143,11 @@ function getSqliteDb(filePath, drivers) {
 // ─── Shared row reader ────────────────────────────────────────────────────────
 
 function recordsetToRows(recordset) {
-  if (!recordset?.length) return { columns: [], rows: [] }
-  const columns = Object.keys(recordset[0])
+  // The driver names the columns even when no row comes back, so an empty table keeps its
+  // columns (and the grid can still find its key).
+  const meta = recordset?.columns ? Object.values(recordset.columns).sort((a, b) => a.index - b.index).map(c => c.name) : []
+  if (!recordset?.length) return { columns: meta, rows: [] }
+  const columns = meta.length ? meta : Object.keys(recordset[0])
   const rows = recordset.map(r => columns.map(c => r[c] ?? null))
   return { columns, rows }
 }
@@ -248,10 +251,12 @@ function makeHandlers(drivers) {
       const db = getSqliteDb(config.filePath, drivers)
       const clause  = filters.map(({ column, value }) => value === null ? `"${column}" IS NULL` : `"${column}" = ?`)
       const whereSql  = clause.length ? ` WHERE ${clause.join(' AND ')}` : ''
-      const rawRows = db.prepare(`SELECT * FROM "${table}"${whereSql} LIMIT ? OFFSET ?`)
-        .all(...filters.filter(f => f.value !== null).map(f => f.value), safeLimit, safeOffset)
-      if (!rawRows.length) return { columns: [], rows: [] }
-      const columns = Object.keys(rawRows[0])
+      const stmt    = db.prepare(`SELECT * FROM "${table}"${whereSql} LIMIT ? OFFSET ?`)
+      const rawRows = stmt.all(...filters.filter(f => f.value !== null).map(f => f.value), safeLimit, safeOffset)
+      // better-sqlite3 knows the columns before any row is read, so an empty table keeps them.
+      const named   = typeof stmt.columns === 'function' ? stmt.columns().map(c => c.name) : []
+      if (!rawRows.length) return { columns: named, rows: [] }
+      const columns = named.length ? named : Object.keys(rawRows[0])
       const rows    = rawRows.map(r => columns.map(c => r[c] ?? null))
       return { columns, rows }
     }

@@ -85,6 +85,15 @@ describe('db-manager IPC — SQLite', () => {
     expect(mockSqliteStmt.all).toHaveBeenLastCalledWith(10_000, 0)
   })
 
+  it('get-rows names the columns of an empty table', async () => {
+    mockSqliteStmt.columns = vi.fn(() => [{ name: 'id' }, { name: 'name' }])
+    mockSqliteStmt.all.mockReturnValueOnce([])
+    try {
+      const result = await ipc._invoke('db-manager:get-rows', { ...cfg, table: 'users' })
+      expect(result).toEqual({ columns: ['id', 'name'], rows: [] })
+    } finally { delete mockSqliteStmt.columns }
+  })
+
   it('get-rows filters by a parameterised where, binding values before limit and offset', async () => {
     await ipc._invoke('db-manager:get-rows', { ...cfg, table: 'users', where: [{ column: 'id', value: 2 }] })
     expect(mockSqliteDb.prepare.mock.calls.at(-1)[0]).toMatch(/WHERE "id" = \? LIMIT \? OFFSET \?/)
@@ -513,6 +522,14 @@ describe('db-manager IPC — SQL Server statements', () => {
 
   it('get-rows rejects an invalid where column', async () => {
     await expect(ipc._invoke('db-manager:get-rows', { ...cfg, table: 'Member', where: [{ column: 'a]; DROP', value: 1 }] })).rejects.toThrow('Invalid identifier')
+  })
+
+  // An empty table still has columns: without them the grid can't find the primary key.
+  it('get-rows names the columns of an empty table, in table order', async () => {
+    const recordset = Object.assign([], { columns: { Table: { index: 1, name: 'Table' }, AuditTrailId: { index: 0, name: 'AuditTrailId' } } })
+    nextResult = { recordset, recordsets: [recordset], rowsAffected: [0] }
+    const result = await ipc._invoke('db-manager:get-rows', { ...cfg, table: 'AuditTrail' })
+    expect(result).toEqual({ columns: ['AuditTrailId', 'Table'], rows: [] })
   })
 
   it('reads and changes a table in its own schema', async () => {
