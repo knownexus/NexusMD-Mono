@@ -82,7 +82,7 @@ export function StructurePanel({ structure, isView = false, loading = false, err
                 <td className="type">{typeLabelOf(col)}</td>
                 <td className="flags">
                   {col.isPrimaryKey && <span className="pk">key</span>}
-                  {col.nullable ? <span className="flag">null</span> : <span className="flag">required</span>}
+                  {col.nullable ? <span className="flag">nullable</span> : <span className="flag">required</span>}
                   {col.isIdentity && <span className="flag">identity</span>}
                   {col.isComputed && <span className="flag">computed</span>}
                 </td>

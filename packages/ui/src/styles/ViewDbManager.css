@@ -192,7 +192,8 @@
 .nx-db-table th:hover .nx-db-th-hide, .nx-db-table th:focus-within .nx-db-th-hide, .nx-db-th-hide:focus-visible { opacity: 1; pointer-events: auto; }
 .nx-db-th-hide:hover { color: var(--text); }
 .nx-db-table th.min, .nx-db-table td.min { width: 24px; min-width: 24px; max-width: 24px; padding: 0; }
-.nx-db-th-min { display: block; width: 24px; height: 100%; max-height: 120px; padding: 6px 0; border: 0; background: transparent; color: var(--text-muted); font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; writing-mode: vertical-rl; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Fixed and clipped, shorter than the 34px header row, so a long vertical name can never stretch it. */
+.nx-db-th-min { display: block; box-sizing: border-box; width: 24px; height: 18px; max-height: 18px; min-height: 0; padding: 0; border: 0; background: transparent; color: var(--text-muted); font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; writing-mode: vertical-rl; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-db-th-min:hover { color: var(--text); background: var(--surface-2); }
 .nx-db-table td { max-width: 280px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--surface-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .nx-db-table td[data-num] { text-align: right; font-family: var(--mono); font-size: 12px; font-feature-settings: 'tnum'; }

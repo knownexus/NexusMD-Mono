@@ -445,17 +445,17 @@ describe('db-manager IPC — SQL Server statements', () => {
 
   it('insert-row passes every value as a parameter', async () => {
     await ipc._invoke('db-manager:insert-row', { ...cfg, table: 'Setting', values: { Key: 'theme', Value: 'dark', IsOn: true } })
-    expect(requests[0].sql).toBe('INSERT INTO [Setting] ([Key], [Value], [IsOn]) VALUES (@v0, @v1, @v2)')
+    expect(requests[0].sql).toBe('INSERT INTO [dbo].[Setting] ([Key], [Value], [IsOn]) VALUES (@v0, @v1, @v2)')
     expect(requests[0].inputs).toEqual({ v0: 'theme', v1: 'dark', v2: true })
   })
 
   it('update-cell and delete-rows match every column of a composite key', async () => {
     await ipc._invoke('db-manager:update-cell', { ...cfg, table: 'T', primaryKey: ['A', 'B'], primaryValue: [1, 2], column: 'C', value: null })
-    expect(requests[0].sql).toBe('UPDATE [T] SET [C] = @val WHERE [A] = @pk0 AND [B] = @pk1')
+    expect(requests[0].sql).toBe('UPDATE [dbo].[T] SET [C] = @val WHERE [A] = @pk0 AND [B] = @pk1')
     expect(requests[0].inputs).toEqual({ val: null, pk0: 1, pk1: 2 })
 
     await ipc._invoke('db-manager:delete-rows', { ...cfg, table: 'T', primaryKey: 'Id', values: [5, 6] })
-    expect(requests[1].sql).toBe('DELETE FROM [T] WHERE ([Id] = @v0_0) OR ([Id] = @v1_0)')
+    expect(requests[1].sql).toBe('DELETE FROM [dbo].[T] WHERE ([Id] = @v0_0) OR ([Id] = @v1_0)')
   })
 
   it('run-query returns every result set, with headers even when a set is empty', async () => {
@@ -527,8 +527,7 @@ describe('db-manager IPC — SQL Server statements', () => {
     expect(requests[3].sql).toBe('DELETE FROM [maintenance].[DirectDebitEmailHistory] WHERE ([Id] = @v0_0)')
   })
 
-  // A bare name resolves as [name] does in the row queries: the login's default schema, then dbo.
-  // Matching SCHEMA_NAME() alone found no columns for a dbo table when the default schema was another.
+  // Matching SCHEMA_NAME() alone found no columns for a dbo table when the login's default schema was another.
   it('get-columns finds the table the row queries read', async () => {
     await ipc._invoke('db-manager:get-columns', { ...cfg, table: 'maintenance.updatemember' })
     expect(requests[0].inputs).toEqual({ object: '[maintenance].[updatemember]', table: 'updatemember' })
@@ -537,7 +536,14 @@ describe('db-manager IPC — SQL Server statements', () => {
     // The primary key is matched within the same schema, so a namesake elsewhere can't lend or hide one.
     expect(requests[0].sql).toMatch(/pk\.TABLE_SCHEMA = c\.TABLE_SCHEMA/)
     await ipc._invoke('db-manager:get-columns', { ...cfg, table: 'Member' })
-    expect(requests[1].inputs).toEqual({ object: '[Member]', table: 'Member' })
+    expect(requests[1].inputs).toEqual({ object: '[dbo].[Member]', table: 'Member' })
+  })
+
+  it('a bare SQL Server name means dbo, never the login default schema', async () => {
+    await ipc._invoke('db-manager:get-rows', { ...cfg, table: 'Member' })
+    expect(requests[0].sql).toContain('FROM [dbo].[Member]')
+    await ipc._invoke('db-manager:get-columns', { ...cfg, table: 'Member' })
+    expect(requests[1].inputs.object).toBe('[dbo].[Member]')
   })
 
   it('get-structure groups composite keys, names targets like the table list, and reads indexes', async () => {
@@ -575,7 +581,7 @@ describe('db-manager IPC — SQL Server statements', () => {
     expect(requests).toHaveLength(4)
     expect(requests[1].sql).toMatch(/parent_object_id = OBJECT_ID\(@object\)/)
     expect(requests[2].sql).toMatch(/referenced_object_id = OBJECT_ID\(@object\)/)
-    expect(requests.map(r => r.inputs.object)).toEqual(['[Member]', '[Member]', '[Member]', '[Member]'])
+    expect(requests.map(r => r.inputs.object)).toEqual(Array(4).fill('[dbo].[Member]'))
   })
 
   it('get-structure gives same-named keys from different schemas distinct names', async () => {

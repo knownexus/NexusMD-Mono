@@ -34,6 +34,14 @@ describe('StructurePanel', () => {
     expect(row.textContent).not.toContain('NO ACTION')
   })
 
+  it('flags a nullable column "nullable" and the others "required"', () => {
+    render(<StructurePanel structure={structure} onOpenTable={vi.fn()} />)
+    const flags = name => section('Columns').getByText(name).closest('tr').querySelector('.flags').textContent
+    expect(flags('Note')).toContain('nullable')
+    expect(flags('Site')).toContain('required')
+    expect(flags('Site')).not.toContain('nullable')
+  })
+
   it('opens the target table from a link in the key row and in the column', () => {
     const onOpenTable = vi.fn()
     render(<StructurePanel structure={structure} onOpenTable={onOpenTable} />)

@@ -58,13 +58,18 @@ function validateIdentifier(name) {
   if (!SAFE_ID.test(name)) throw new Error(`Invalid identifier: "${name}"`)
 }
 
-// A table as connect lists it. SQL Server names one outside dbo by its schema (maintenance.Member),
-// and it must be queried as [maintenance].[Member]: a bare [Member] only looks in the login's default
-// schema. `schema` is null for a bare name. SQLite names have no schema part.
+// A table as connect lists it. SQL Server names one outside dbo by its schema (maintenance.Member) and
+// a dbo table bare, so a bare name there is always dbo. Both are sent qualified: a bare [Member] would
+// resolve to the login's default schema first and could read or write a namesake there.
+// SQLite names have no schema part (schema is null).
 function tableName(type, table) {
-  if (type !== 'sqlserver' || typeof table !== 'string' || !table.includes('.')) {
+  if (type !== 'sqlserver' || typeof table !== 'string') {
     validateIdentifier(table)
     return { schema: null, name: table, sql: `[${table}]` }
+  }
+  if (!table.includes('.')) {
+    validateIdentifier(table)
+    return { schema: 'dbo', name: table, sql: `[dbo].[${table}]` }
   }
   const [schema, name, ...rest] = table.split('.')
   if (rest.length) throw new Error(`Invalid identifier: "${table}"`)
@@ -371,8 +376,6 @@ function makeHandlers(drivers) {
              AND tc.TABLE_NAME = ku.TABLE_NAME
             WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
           ) pk ON pk.COLUMN_NAME = c.COLUMN_NAME AND pk.TABLE_NAME = c.TABLE_NAME AND pk.TABLE_SCHEMA = c.TABLE_SCHEMA
-          -- The table OBJECT_ID resolves the name to, as [name] does in the other queries: for a bare
-          -- name the login's default schema, then dbo.
           WHERE c.TABLE_NAME = @table
             AND OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME)) = OBJECT_ID(@object)
           ORDER BY c.ORDINAL_POSITION
@@ -464,7 +467,7 @@ function makeHandlers(drivers) {
         // Constraint names are unique per schema only, so a key from another schema carries it.
         referencedBy: group(incoming, r => ({
           table: listName(r.ownerSchema, r.ownerTable),
-          name: r.ownerSchema === (t.schema ?? 'dbo') ? r.name : `${r.ownerSchema}.${r.name}`,
+          name: r.ownerSchema === t.schema ? r.name : `${r.ownerSchema}.${r.name}`,
         })),
         indexes: [...indexes.values()],
       }
