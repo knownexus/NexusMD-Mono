@@ -2,42 +2,24 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import '@nexusmd/ui/styles.css'
 
+import { initCore, createNoOpAdapters } from '@nexusmd/core'
 import {
-  initCore, createNoOpAdapters, core, loadCachedAdoData, loadAdoData, makeAdoWorkItemSource,
-  loadCachedJiraData, loadJiraData, displayIdOf,
-  buildSnapshot, refreshProviders, defaultCreateProvider, nextHiddenIds,
-} from '@nexusmd/core'
-import {
-  Icon, CardFrame,
-  NexusDataProvider, useNexusData, ToastHost, toast,
-  PRView, BuildsView, TestsView, TeamView, EMPTY_NEXUS_DATA,
-  DashboardView, WorkItemsView, TriageView,
-  WorkItemDetail, BuildDetail, Drawer, TypeIcon, Prio,
+  Icon, CardFrame, NexusDataProvider, ToastHost,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
-  WorkItemFieldsEditor, PRTabs, useSeenTracking, SEEN_FINGERPRINTS,
 } from '@nexusmd/ui'
 import { effectiveSidebar, ICON_RAIL_WIDTH, visibleNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
-import { useLocalItems } from './items-state.js'
 import { DesktopSettings } from './desktop-settings.jsx'
-import { ProfileProvider, useProfile, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
-import { getProfileKey } from './profile-keys.js'
-import { desktopCloudProviders, registerCloudDeepLink, makeDesktopOAuthService } from './cloud-auth.js'
+import { ProfileProvider, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
+import { getProfileKey, usePersistedState } from '@nexusmd/shell-sdk'
+import { registerCloudDeepLink } from './cloud-auth.js'
 import { startDesktopAutoSync } from './sync.js'
 import { INSTALLED_NAV, SETTINGS_NAV, ALL_NAV, DEFAULT_NAV_ORDER } from './nav-config.js'
-import { isUninstalledView } from './shell/registry.js'
+import { isUninstalledView, registry } from './shell/registry.js'
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
 } from '@nexusmd/web-adapters'
-import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured } from './ado-client.js'
-import { linkAdapter } from './adapters/link.js'
 import { windowControlsAdapter } from './adapters/windowControls.js'
-import { getJiraConfig, isJiraActive, createJiraHttpAdapter, createJiraWorkItemSource } from './jira-client.js'
-import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
-import { desktopBuildSource } from './desktop-build-source.js'
-import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
-import { PersonSummary, PersonActions } from './person-summary.jsx'
-import { submitNewWorkItem } from './ado-workitem-types.js'
 import { navigationAdapter }    from './adapters/navigation.js'
 import { authAdapter }          from './adapters/auth.js'
 import { fileAdapter }          from './adapters/file.js'
@@ -47,13 +29,14 @@ import { trayAdapter }          from './adapters/tray.js'
 import { deepLinkAdapter }      from './adapters/deepLink.js'
 import { updateAdapter }        from './adapters/update.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
-import { moduleAdapters, moduleView, findPopout, ModuleProviders } from './shell/modules.js'
-import { host, capabilities, takeWaitingNavigation } from './shell/host.js'
+import {
+  moduleAdapters, moduleView, findPopout, ModuleProviders, useModuleBadges, ModuleTopbar, ModuleBanners,
+} from './shell/modules.js'
+import { host, takeWaitingNavigation } from './shell/host.js'
 
 const adapters = {
   ...createNoOpAdapters(),
   storage:       localStorageAdapter,
-  http:          createAdoHttpAdapter(),
   network:       networkAdapter,
   lifecycle:     lifecycleAdapter,
   theme:         themeAdapter,
@@ -115,124 +98,6 @@ registerCloudDeepLink()
 // and re-renders on core's 'data:updated' events.
 initCore(adapters)
 
-// Manual + timed refresh for every work-item provider. ADO also loads PRs/builds/
-// tests. Each provider records its own outcome; a failure keeps its cached data.
-async function refreshAllData() {
-  try {
-    await refreshProviders({
-      storage: localStorageAdapter,
-      providers: {
-        ado: {
-          configured: isAdoConfigured(),
-          run: () => {
-            const priorData = loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter })
-            return loadAdoData(
-              getAdoConfig(),
-              { http: createAdoHttpAdapter(), storage: localStorageAdapter },
-              { isRefresh: !!priorData && (priorData.TEAM?.length ?? 0) > 0, priorData },
-            )
-          },
-        },
-        jira: {
-          configured: isJiraActive(),
-          run: () => {
-            const priorData = loadCachedJiraData(getJiraConfig(), { storage: localStorageAdapter })
-            return loadJiraData(
-              getJiraConfig(),
-              { http: createJiraHttpAdapter(), storage: localStorageAdapter },
-              { isRefresh: !!priorData?._jiraMeta, priorData },
-            )
-          },
-        },
-      },
-    })
-  } finally { core._emit?.('data:updated') }
-  // Check GitHub token health — fires nexusmd:github-401 event if expired
-  try {
-    const ghService = makeDesktopOAuthService('github')
-    if (ghService?.getToken) {
-      await ghService.getToken({ force: true }).catch(() => {})
-    }
-  } catch {}
-}
-
-// F5 (main process menu accelerator) sends 'refresh-data' instead of reloading
-// the window, so it triggers the same data refresh as the in-app Refresh
-// button rather than resetting navigation state back to the dashboard.
-windowControlsAdapter.onRefreshData(() => { refreshAllData() })
-
-// Direct-to-ADO work item source for the desktop (no ASP.NET proxy available).
-// The logic lives in core; this supplies the desktop's connection, process cache and create flow.
-const desktopWorkItemSource = makeAdoWorkItemSource({
-  http: { fetch: (path, options) => createAdoHttpAdapter().fetch(path, options) },
-  getDefaultProject: () => (getAdoConfig().projects || [])[0] || '',
-  getOrg: () => getAdoConfig().org,
-  loadProcessMeta: () => loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter })?._adoMeta,
-  createWorkItem: submitNewWorkItem,
-})
-
-// Per-profile ids of people hidden from NexusMD (the Team view's "Remove").
-function readHiddenPeople() {
-  try {
-    const ids = JSON.parse(localStorage.getItem(getProfileKey('nexusmd.team.removed')) || '[]')
-    return Array.isArray(ids) ? ids : []
-  } catch { return [] }
-}
-
-// Cached ADO snapshot, shaped for the shared views, re-read on every data:updated.
-function useNexusSnapshot() {
-  const [snapshot, setSnapshot] = React.useState(EMPTY_NEXUS_DATA)
-  const [loaded, setLoaded] = React.useState(false)
-  const refresh = React.useCallback(() => {
-    try {
-      setSnapshot(buildSnapshot({
-        adoConfig: getAdoConfig(), adoConfigured: isAdoConfigured(),
-        jiraConfig: getJiraConfig(), jiraActive: isJiraActive(),
-        storage: localStorageAdapter, empty: EMPTY_NEXUS_DATA,
-        hiddenIds: readHiddenPeople(),
-      }))
-    } catch { setSnapshot(EMPTY_NEXUS_DATA) }
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    refresh()
-    const onData = () => refresh()
-    core.on('data:updated', onData)
-    return () => core.off('data:updated', onData)
-  }, [refresh])
-
-  return { snapshot, loaded }
-}
-
-// Simple localStorage-backed state for the per-view "acknowledged" sets and
-// PR criteria that the shared views expect their host to own. Keys are routed
-// through getProfileKey so this state is scoped to the active profile.
-function usePersistedState(key, initial) {
-  const sk = getProfileKey(key)
-  const [value, setValue] = React.useState(() => {
-    try {
-      const raw = window.localStorage.getItem(sk)
-      return raw === null ? initial : JSON.parse(raw)
-    } catch { return initial }
-  })
-  React.useEffect(() => {
-    try { window.localStorage.setItem(sk, JSON.stringify(value)) } catch { /* ignore */ }
-  }, [sk, value])
-  return [value, setValue]
-}
-
-function NotConfigured() {
-  return (
-    <CardFrame title="Welcome to NexusMD" icon={<Icon name="dashboard" size={16} />}>
-      <p style={{ color: 'var(--text-muted)', maxWidth: 520 }}>
-        Connect your Azure DevOps organisation in <strong>Settings</strong> to populate your
-        dashboard with work items, pull requests, builds and sprint metrics.
-      </p>
-    </CardFrame>
-  )
-}
-
 function Placeholder({ label }) {
   return (
     <CardFrame title={label}>
@@ -244,232 +109,22 @@ function Placeholder({ label }) {
   )
 }
 
-function DesktopDetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }) {
-  const open = drawer != null
-  const kind = drawer?.kind
-  const d    = drawer?.data
-  const http = React.useMemo(() => createAdoHttpAdapter(), [])
-  const { workItemSource } = useNexusData()
+// The base data provider: what apps that don't bring their own data (the Planner, for one) still read
+// from it, namely the profile-scoped storage. Work's provider replaces it with the real data.
+const BASE_DATA = { storage: window.localStorage, getProfileKey, pushPref: () => {} }
 
-  const title = !d ? '' : kind === 'wi' ? d.title : kind === 'pr' ? d.title : kind === 'person' ? d.name : kind === 'build' ? d.pipeline : ''
-
-  const { org } = getAdoConfig()
-  const adoUrl = kind === 'wi' ? workItemSource.webUrl(d)
-    : kind === 'pr' ? d?.url
-    : kind === 'build' && (d?.projectName || d?.project) && org
-      ? `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(d.projectName || d.project)}/_build/results?buildId=${d.id}`
-      : null
-
-  const markDone = async () => {
-    try {
-      const r = await workItemSource.moveToCategory(d.id, 'Completed', d)
-      setItems?.(arr => arr.map(w => w.id === d.id ? { ...w, state: r.state, stateCategory: r.stateCategory } : w))
-      toast?.('Marked done', 'success')
-      onClose()
-    } catch (e) {
-      toast?.('Could not update: ' + (e?.message || 'unknown error'), 'error')
-    }
-  }
-
-  return (
-    <Drawer open={open} onClose={onClose} title={title}
-      badges={kind === 'wi' && d ? (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>{displayIdOf(d)}</span>
-          <TypeIcon type={d.type}/><Prio p={d.priority}/>
-        </span>
-      ) : kind === 'pr' && d ? (
-        <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>#{d.id}</span>
-      ) : kind === 'build' && d ? (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>#{d.id}</span>
-          <span className={`build-dot ${d.status}`}/>
-        </span>
-      ) : null}
-      actions={(
-        <React.Fragment>
-          {kind === 'wi' && d && (
-            <button className="btn sm" onClick={markDone}>
-              <Icon name="check" size={13}/> Mark done
-            </button>
-          )}
-          {kind === 'person' && d && <PersonActions dev={d} />}
-          {adoUrl && (
-            <button className="btn sm ghost" onClick={() => linkAdapter.openLink(adoUrl)}>
-              <Icon name="link" size={12}/> Open in {kind === 'wi' ? (d?.source === 'jira' ? 'Jira' : 'ADO') : kind === 'build' ? 'ADO' : 'browser'}
-            </button>
-          )}
-        </React.Fragment>
-      )}>
-      {kind === 'wi' && d && (
-        <React.Fragment>
-          <WorkItemFieldsEditor item={d} onItemUpdated={patch => setItems?.(arr => arr.map(w => w.id === d.id ? { ...w, ...patch } : w))} />
-          <WorkItemDetail id={d.id} project={d.project} />
-        </React.Fragment>
-      )}
-      {kind === 'pr' && d && <PRTabs key={d.id} pr={d} http={http} />}
-      {kind === 'person' && d && <PersonSummary dev={d} onOpenItem={onOpenItem} onOpenPR={onOpenPR} />}
-      {kind === 'build' && d && <BuildDetail build={d} />}
-    </Drawer>
-  )
-}
-
-// Stable fallback so fullRoster (a memo dependency) doesn't change identity every render.
-const EMPTY = []
-
-// The view body — reads the snapshot from context and wires per-view host state.
-function ViewBody({
-  view, onOpenItem, onOpenPR, onOpenPerson = () => {}, onOpenBuild = () => {},
-  tweaks = DEFAULT_TWEAKS, setTweak = () => {},
-  newItemIds = { work: new Set(), pr: new Set(), builds: new Set(), tests: new Set() },
-  refreshInterval = 300, onRefreshIntervalChange = () => {},
-  localItems = null, setLocalItems = () => {},
-}) {
-  const { data } = useNexusData()
-  const { activeProfile } = useProfile() || {}
-  // manual profiles don't require ADO config
-  const configured = activeProfile?.type === 'manual' || (() => { try { return isAdoConfigured() || isJiraActive() } catch { return false } })()
-  const openExternal = (item) => { if (item?.url) linkAdapter.openLink(item.url) }
-
-  const [needsMeCriteria, setNeedsMeCriteria] = usePersistedState('nexusmd.pr.needsMeCriteria', { votes: [0], includeDrafts: false })
-  const [acknowledgedBuilds, setAcknowledgedBuilds] = usePersistedState('nexusmd.builds.acknowledged', [])
-  const [acknowledgedTests, setAcknowledgedTests]   = usePersistedState('nexusmd.tests.acknowledged', [])
-  const [widgetWidths, setWidgetWidths] = usePersistedState('nexusmd.dash.widgetWidths', {})
-  const [widgetHeights, setWidgetHeights] = usePersistedState('nexusmd.dash.widgetHeights', {})
-  const items = localItems ?? (data.WORK_ITEMS || [])
-
-  const [customTeam, setCustomTeam] = React.useState(() => {
-    try {
-      const k = getProfileKey('nexusmd.team.custom')
-      return JSON.parse(localStorage.getItem(k) || '[]')
-    } catch { return [] }
-  })
-  const [removedIds, setRemovedIds] = React.useState(() => {
-    try {
-      const k = getProfileKey('nexusmd.team.removed')
-      return JSON.parse(localStorage.getItem(k) || '[]')
-    } catch { return [] }
-  })
-
-  // data.TEAM is already filtered by hidden people; TEAM_ALL is the full roster.
-  const fullRoster = data.TEAM_ALL || data.TEAM || EMPTY
-  const effectiveTeam = React.useMemo(() => {
-    const base = fullRoster.filter(m => !removedIds.includes(m.id))
-    const existingIds = new Set(base.map(m => m.id))
-    return [...base, ...customTeam.filter(m => !existingIds.has(m.id))]
-  }, [fullRoster, customTeam, removedIds])
-  // The Team view lists removed people (to restore them), so it needs the unfiltered roster.
-  const teamViewTeam = React.useMemo(() => {
-    const existingIds = new Set(fullRoster.map(m => m.id))
-    return [...fullRoster, ...customTeam.filter(m => !existingIds.has(m.id))]
-  }, [fullRoster, customTeam])
-
-  const handleTeamChange = (newTeam) => {
-    const baseIds = new Set(fullRoster.map(m => m.id))
-    const newCustom = newTeam.filter(m => !baseIds.has(m.id))
-    const newRemoved = nextHiddenIds(removedIds, fullRoster, newTeam)
-    setCustomTeam(newCustom)
-    setRemovedIds(newRemoved)
-    try {
-      localStorage.setItem(getProfileKey('nexusmd.team.custom'), JSON.stringify(newCustom))
-      localStorage.setItem(getProfileKey('nexusmd.team.removed'), JSON.stringify(newRemoved))
-    } catch {}
-    // Rebuild the snapshot so hidden/restored people apply immediately (skip no-op syncs)
-    if (newRemoved.length !== removedIds.length || newRemoved.some(id => !removedIds.includes(id))) {
-      core._emit?.('data:updated')
-    }
-  }
-
-  // "Schedule 1:1" is the Calendar app's job, so the button exists only when it's installed; the
-  // Planner is opened afterwards only if it is installed too.
-  const handleScheduleOneOnOne = capabilities.has('calendar.scheduleMeeting') ? (dev) => {
-    const start = new Date()
-    start.setHours(10, 0, 0, 0)
-    start.setDate(start.getDate() + 1)
-    const end = new Date(start.getTime() + 60 * 60000)
-    Promise.resolve(capabilities.call('calendar.scheduleMeeting', { title: `1:1 with ${dev.name}`, start, end })).catch(console.error)
-    if (host.isInstalled('planner')) host.navigate('planner')
-  } : undefined
-
+// The body of a screen: an installed app's own view, or the shell's Settings.
+function ViewBody({ view, tweaks = DEFAULT_TWEAKS, setTweak = () => {} }) {
   // A view from an app that isn't installed on this machine (stale saved view, deep link, tray).
   if (isUninstalledView(view)) return <Placeholder label={(ALL_NAV.find(n => n.id === view) || ALL_NAV[0]).label} />
 
-  // Views that live in an installable app's own module.
   const ModuleView = moduleView(view)
-  if (ModuleView) return <ModuleView adapters={adapters} host={host} />
+  if (ModuleView) return <ModuleView adapters={adapters} host={host} tweaks={tweaks} setTweak={setTweak} />
 
-  switch (view) {
-    case 'dashboard': {
-      if (!configured) return <NotConfigured />
-      const acknowledgedSet = new Set([...acknowledgedBuilds, ...acknowledgedTests])
-      return (
-        <DashboardView
-          onOpenItem={onOpenItem} onOpenPR={onOpenPR}
-          widgetOrder={tweaks.widgetOrder || DASH_WIDGET_ORDER} setWidgetOrder={arr => setTweak('widgetOrder', arr)}
-          widgetWidths={widgetWidths} setWidgetWidths={setWidgetWidths}
-          widgetHeights={widgetHeights} setWidgetHeights={setWidgetHeights}
-          needsMeCriteria={needsMeCriteria}
-          setPlannerData={capabilities.has('planner.updateData') ? (updater => capabilities.call('planner.updateData', updater)) : undefined}
-          quickLinks={tweaks.quickLinks || []}
-          density={tweaks.density}
-          team={effectiveTeam}
-          acknowledgedSet={acknowledgedSet}
-        />
-      )
-    }
-    case 'work':
-      return (
-        <WorkItemsView
-          items={items}
-          setItems={setLocalItems}
-          onOpen={onOpenItem}
-          onCreate={() => { window.dispatchEvent(new CustomEvent('nexusmd:create-wi', { detail: {} })) }}
-          team={effectiveTeam}
-          newItemIds={newItemIds.work}
-        />
-      )
-    case 'prs':
-      return (
-        <PRView prs={data.PRS || []} onOpen={onOpenPR}
-          onOpenLink={(u) => linkAdapter.openLink(u)}
-          needsMeCriteria={needsMeCriteria} setNeedsMeCriteria={setNeedsMeCriteria}
-          newItemIds={newItemIds.pr} />
-      )
-    case 'builds':
-      return (
-        <BuildsView builds={data.BUILDS || []}
-          acknowledgedBuilds={acknowledgedBuilds} setAcknowledgedBuilds={setAcknowledgedBuilds}
-          newItemIds={newItemIds.builds} onOpenBuild={onOpenBuild}
-        />
-      )
-    case 'tests':
-      return (
-        <TestsView tests={data.TESTS || []}
-          acknowledgedTests={acknowledgedTests} setAcknowledgedTests={setAcknowledgedTests}
-          newItemIds={newItemIds.tests} />
-      )
-    case 'team':
-      return (
-        <TeamView
-          team={teamViewTeam}
-          workItems={data.WORK_ITEMS || []}
-          prs={data.PRS || []}
-          onOpenItem={onOpenItem}
-          onOpenPerson={onOpenPerson}
-          onTeamChange={handleTeamChange}
-          onScheduleOneOnOne={handleScheduleOneOnOne}
-        />
-      )
-    case 'triage':
-      return <TriageView />
-    case 'settings':
-      return <DesktopSettings tweaks={tweaks} setTweak={setTweak}
-        nav={INSTALLED_NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder}
-        refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange}
-        onRefreshData={refreshAllData} />
-    default:
-      return <Placeholder label={(ALL_NAV.find(n => n.id === view) || ALL_NAV[0]).label} />
+  if (view === 'settings') {
+    return <DesktopSettings tweaks={tweaks} setTweak={setTweak} nav={INSTALLED_NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder} />
   }
+  return <Placeholder label={(ALL_NAV.find(n => n.id === view) || ALL_NAV[0]).label} />
 }
 
 const FIRST_VIEW = INSTALLED_NAV[0]?.id || 'dashboard'
@@ -503,85 +158,13 @@ function WindowControls() {
   );
 }
 
-function DesktopProjectAreasModal({ open, onClose }) {
-  const [areas, setAreas] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem('nexusmd.projectAreas.v3') || '[]') } catch { return [] }
-  })
-
-  React.useEffect(() => {
-    if (open) {
-      try { setAreas(JSON.parse(localStorage.getItem('nexusmd.projectAreas.v3') || '[]')) } catch { setAreas([]) }
-    }
-  }, [open])
-
-  const save = (next) => {
-    setAreas(next)
-    try { localStorage.setItem('nexusmd.projectAreas.v3', JSON.stringify(next)) } catch {}
-  }
-
-  if (!open) return null
-
-  const addArea  = () => save([...areas, { id: Date.now().toString(), label: 'New area' }])
-  const remove   = (id) => save(areas.filter(a => a.id !== id))
-  const rename   = (id, label) => save(areas.map(a => a.id === id ? { ...a, label } : a))
-
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-      }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div style={{
-        background: 'var(--surface)', borderRadius: 10, padding: 24, width: 'min(520px, 92vw)',
-        maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 16,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Project Areas</h2>
-          <button className="btn sm ghost" onClick={onClose}><Icon name="x" size={14}/></button>
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {areas.length === 0 && (
-            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No areas yet. Click "+ Add area" to create one.</p>
-          )}
-          {areas.map(a => (
-            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-              <input
-                value={a.label}
-                onChange={e => rename(a.id, e.target.value)}
-                style={{ flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13 }}
-              />
-              <button className="btn sm ghost" onClick={() => remove(a.id)} title="Delete area">
-                <Icon name="trash" size={12}/>
-              </button>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn sm" onClick={addArea}>+ Add area</button>
-          <button className="btn sm primary" onClick={onClose}>Done</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function App() {
   // Start on the first installed app's first view (Dashboard in a full install).
   const [view, setView]         = React.useState(() => takeWaitingNavigation() || FIRST_VIEW)
   // Every view visited this session, in order; mountedViews keeps the kept-alive ones mounted.
   const [visited, setVisited]   = React.useState(() => [view])
   React.useEffect(() => { setVisited(v => (v.includes(view) ? v : [...v, view])) }, [view])
-  const [createWI, setCreateWI] = React.useState(null)
-  const [areasOpen, setAreasOpen] = React.useState(false)
-  const [drawer, setDrawer] = React.useState(null)
   const [sidebarWidth, setSidebarWidth] = usePersistedState('nexusmd.sidebar.width', 220)
-  const openItem   = item => setDrawer({ kind: 'wi', data: item })
-  const openPR     = pr   => setDrawer({ kind: 'pr', data: pr })
-  const openPerson = dev  => setDrawer({ kind: 'person', data: dev })
-  const openBuild  = b    => setDrawer({ kind: 'build', data: b })
   const [tweaks, setTweaksState] = React.useState(loadTweaks)
 
   // Fall back to clientWidth when innerWidth is 0 (e.g. jsdom in tests) so the
@@ -618,55 +201,10 @@ function App() {
     window.nexusMDTypeLabels = tweaks.typeLabels || false
   }, [tweaks.typeLabels])
 
-  React.useEffect(() => {
-    const handler = () => setAreasOpen(true)
-    window.addEventListener('nexusmd:openProjectAreas', handler)
-    return () => window.removeEventListener('nexusmd:openProjectAreas', handler)
-  }, [])
-
-  const [githubExpired, setGithubExpired] = React.useState(false)
-
-
-  const [refreshInterval, setRefreshInterval] = React.useState(() => {
-    try { return parseInt(localStorage.getItem('nexusmd.refreshInterval') || '300', 10) } catch { return 300 }
-  })
-  const [refreshPaused, setRefreshPaused] = React.useState(false)
-  const [refreshLeft, setRefreshLeft] = React.useState(refreshInterval)
-  const refreshLeftRef = React.useRef(refreshInterval)
+  // Counts of new items the installed apps show on their sidebar entries.
+  const changeBadges = useModuleBadges()
 
   const active = ALL_NAV.find(n => n.id === view) || ALL_NAV[0]
-  const { snapshot, loaded: dataLoaded } = useNexusSnapshot()
-
-  // localItems starts as null (sentinel: mirror snapshot.WORK_ITEMS). Shared
-  // views update via setItems(arr => arr.map(...)); the setter resolves the
-  // sentinel to the current snapshot so the first edit doesn't call .map on null.
-  // A new snapshot (refresh, hide/restore) resets it so Work Items shows it.
-  const [localItems, setItemsResolved] = useLocalItems(snapshot)
-
-  const seenCategories = {
-    work:   { items: snapshot.WORK_ITEMS || [], fingerprint: SEEN_FINGERPRINTS.work },
-    pr:     { items: snapshot.PRS || [],        fingerprint: SEEN_FINGERPRINTS.pr },
-    builds: { items: snapshot.BUILDS || [],     fingerprint: SEEN_FINGERPRINTS.builds },
-    tests:  { items: snapshot.TESTS || [],      fingerprint: SEEN_FINGERPRINTS.tests },
-  }
-  const { unseenIds: newItemIds, unseenCounts, markSeen } = useSeenTracking(
-    seenCategories, dataLoaded, { storage: window.localStorage, getProfileKey },
-  )
-  // Sidebar badges are keyed by nav id; 'prs' (nav-config.js) maps to the 'pr' category.
-  const changeBadges = { work: unseenCounts.work, prs: unseenCounts.pr, builds: unseenCounts.builds, tests: unseenCounts.tests }
-
-  React.useEffect(() => {
-    const viewToCategory = { work: 'work', prs: 'pr', builds: 'builds', tests: 'tests' }
-    const key = viewToCategory[view]
-    if (key) markSeen(key)
-  }, [view, snapshot])
-
-  React.useEffect(() => {
-    const handler = () => setGithubExpired(true)
-    window.addEventListener('nexusmd:github-401', handler)
-    return () => window.removeEventListener('nexusmd:github-401', handler)
-  }, [])
-
   React.useEffect(() => {
     const handler = e => {
       takeWaitingNavigation()   // heard live, so nothing is left waiting
@@ -684,12 +222,6 @@ function App() {
     }
     window.addEventListener('nexusmd:navigate', handler)
     return () => window.removeEventListener('nexusmd:navigate', handler)
-  }, [])
-
-  React.useEffect(() => {
-    const handler = (e) => setCreateWI(e.detail || {})
-    window.addEventListener('nexusmd:create-wi', handler)
-    return () => window.removeEventListener('nexusmd:create-wi', handler)
   }, [])
 
   // What the sidebar shows, in its order; the number keys jump to the entry with that number.
@@ -722,46 +254,10 @@ function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [tweaks.sidebar, setTweak, view])
 
-  React.useEffect(() => {
-    refreshLeftRef.current = refreshInterval
-    setRefreshLeft(refreshInterval)
-  }, [refreshInterval])
-
-  React.useEffect(() => {
-    if (refreshPaused) return
-    const tick = setInterval(() => {
-      refreshLeftRef.current -= 1
-      setRefreshLeft(refreshLeftRef.current)
-      if (refreshLeftRef.current <= 0) {
-        refreshAllData()
-        refreshLeftRef.current = refreshInterval
-        setRefreshLeft(refreshInterval)
-      }
-    }, 1000)
-    return () => clearInterval(tick)
-  }, [refreshPaused, refreshInterval])
-
-  // One Jira source per Jira-active state: a new identity on every snapshot
-  // would make JiraCreateForm re-fetch create-meta and wipe the user's input.
-  const jiraActive = isJiraActive()
-  const jiraSource = React.useMemo(() => (jiraActive ? createJiraWorkItemSource() : null), [jiraActive])
-  // Stable across data refreshes: only a Jira-source change produces a new identity.
-  const workItemSource = useRoutedWorkItemSource(desktopWorkItemSource, jiraSource)
-
-  const nexusDataValue = React.useMemo(() => ({
-    data:           snapshot,
-    api:            { load: refreshAllData },
-    storage:        window.localStorage,
-    getProfileKey,
-    pushPref:       () => {},
-    workItemSource,
-    buildSource:    desktopBuildSource,
-  }), [snapshot, workItemSource])
-
   return (
-    <NexusDataProvider value={nexusDataValue}>
+    <NexusDataProvider value={BASE_DATA}>
     {/* Above ViewBody so what an app owns (e.g. a devenv run and its prompts) outlives leaving its screen. */}
-    <ModuleProviders adapters={adapters} notify={(title, body, opts) => notificationAdapter.send(title, body, opts)}>
+    <ModuleProviders adapters={adapters} view={view} notify={(title, body, opts) => notificationAdapter.send(title, body, opts)}>
       <div data-density={tweaks.density} data-sidebar={effSidebar}
         style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
         {!navHidden && <aside style={{
@@ -891,32 +387,10 @@ function App() {
             )}
             <Icon name={active.icon} size={16} />
             <h1 style={{ fontSize: 15, margin: 0 }}>{active.label}</h1>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
-              {refreshPaused ? 'paused' : `${refreshLeft}s`}
-            </span>
-            <button className="btn sm ghost" title={refreshPaused ? 'Resume auto-refresh' : 'Pause auto-refresh'}
-              onClick={() => setRefreshPaused(p => !p)}>
-              <Icon name={refreshPaused ? 'play' : 'pause'} size={12}/>
-            </button>
+            <ModuleTopbar />
             <WindowControls />
           </header>
-          {githubExpired && (
-            <div style={{
-              background: 'var(--warning-soft)', borderBottom: '1px solid var(--warning-border)',
-              padding: '8px 18px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13,
-              flexShrink: 0,
-            }}>
-              <Icon name="alert" size={14} style={{ color: 'var(--warning)', flexShrink: 0 }}/>
-              <span style={{ flex: 1, color: 'var(--warning-text)' }}>GitHub token expired — re-connect to restore PR and build data.</span>
-              <button className="btn sm ghost" onClick={() => {
-                if (linkAdapter.canOpenExternal()) linkAdapter.openExternal('nexusmd://github-oauth')
-                setGithubExpired(false)
-              }}>Re-connect</button>
-              <button className="btn sm ghost" onClick={() => setGithubExpired(false)}>
-                <Icon name="x" size={12}/>
-              </button>
-            </div>
-          )}
+          <ModuleBanners />
           <section style={{
             flex: 1,
             display: 'flex',
@@ -927,13 +401,7 @@ function App() {
           }}>
             {mountedViews(visited, view).map(id => (
             <div key={id} style={{ display: id === view ? 'contents' : 'none' }}>
-            <ViewBody
-              view={id} onOpenItem={openItem} onOpenPR={openPR} onOpenPerson={openPerson} onOpenBuild={openBuild}
-              tweaks={tweaks} setTweak={setTweak}
-              newItemIds={newItemIds}
-              refreshInterval={refreshInterval} onRefreshIntervalChange={setRefreshInterval}
-              localItems={localItems} setLocalItems={setItemsResolved}
-            />
+            <ViewBody view={id} tweaks={tweaks} setTweak={setTweak} />
             </div>
             ))}
           </section>
@@ -954,45 +422,13 @@ function App() {
           <TweakToggle label="Show type labels" value={tweaks.typeLabels || false}
             onChange={v => setTweak('typeLabels', v)}/>
         </TweakSection>
-        <TweakSection title="Dashboard">
-          <TweakButton label="Reset widget order"
-            onClick={() => setTweak('widgetOrder', DASH_WIDGET_ORDER)}/>
-        </TweakSection>
+        {registry.isInstalled('work') && (
+          <TweakSection title="Dashboard">
+            <TweakButton label="Reset widget order"
+              onClick={() => setTweak('widgetOrder', DASH_WIDGET_ORDER)}/>
+          </TweakSection>
+        )}
       </TweaksPanel>
-      <DesktopDetailDrawer drawer={drawer} onClose={() => setDrawer(null)} setItems={setItemsResolved}
-        onOpenItem={openItem} onOpenPR={openPR} />
-      <CreateWorkItemDrawer
-        open={!!createWI}
-        title={createWI?.title}
-        project={getAdoConfig().projects || []}
-        team={snapshot.TEAM || []}
-        adoAvailable={isAdoConfigured()}
-        jira={jiraActive ? {
-          source: jiraSource,
-          projectKeys: getJiraConfig().projectKeys,
-          people: snapshot.JIRA_PEOPLE || [],
-          site: getJiraConfig().site,
-        } : null}
-        defaultProvider={defaultCreateProvider({
-          readJson: (k, d) => { try { const v = localStorage.getItem(getProfileKey(k)); return v == null ? d : JSON.parse(v) } catch { return d } },
-          adoAvailable: isAdoConfigured(),
-          jiraAvailable: jiraActive,
-        })}
-        onProviderChange={(p) => { try { localStorage.setItem(getProfileKey('nexusmd.wi.createProvider'), JSON.stringify(p)) } catch {} }}
-        onJiraCreated={(result) => {
-          if (!result.warnings?.length) setTimeout(() => setCreateWI(null), 600)
-          refreshAllData()
-        }}
-        onClose={() => setCreateWI(null)}
-        onCreate={async (payload) => {
-          const result = await desktopWorkItemSource.createWorkItem(payload)
-          if (result.warnings.length === 0) {
-            setTimeout(() => setCreateWI(null), 600)
-          }
-          return result
-        }}
-      />
-      <DesktopProjectAreasModal open={areasOpen} onClose={() => setAreasOpen(false)} />
     </ModuleProviders>
     </NexusDataProvider>
   )

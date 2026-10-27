@@ -14,6 +14,7 @@
     "main": "src/main/index.cjs",
     "renderer": "src/renderer/index.js"
   },
+  "mainFiles": ["git-editor.cjs"],
   "ipc": {
     "preload": {
       "popout": {

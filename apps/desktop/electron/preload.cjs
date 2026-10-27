@@ -170,10 +170,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
 
-  // ── Jira proxy IPC ──────────────────────────────────────────────────────────
-  jira: {
-    request: (req) => ipcRenderer.invoke('jira:request', req),
-  },
 
   // ── nativeTheme (used by theme adapter) ────────────────────────────────────
   // One-time read of the native theme preference.

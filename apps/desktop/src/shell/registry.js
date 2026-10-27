@@ -1,13 +1,9 @@
 import { createRegistry } from '@nexusmd/shell-sdk'
-import bundledApps from './bundled-apps.json'
-
-// Apps that have moved into their own modules/<id> package declare themselves in
-// modules/<id>/app.manifest.json; the rest are still listed in bundled-apps.json.
-const moduleManifests = import.meta.glob('../../../../modules/*/app.manifest.json', { eager: true, import: 'default' })
+import { appManifests } from './app-manifests.js'
 
 // All apps this build knows about. While everything is still bundled in one renderer, the main
 // process tells us which of them are actually installed.
-export const BUNDLED_MANIFESTS = [...bundledApps, ...Object.values(moduleManifests)]
+export const BUNDLED_MANIFESTS = appManifests
 
 // Registry for an installed set (null = all, as in dev, tests and Mac/Linux).
 export function buildRegistry(installedIds = null) {
@@ -26,8 +22,8 @@ export function installedIdsFromHost(host = typeof window !== 'undefined' ? wind
 
 export const registry = buildRegistry(installedIdsFromHost())
 
-// True for a view that belongs to an app this build knows but this machine doesn't have. Other
-// ids (settings, unknown) are not "uninstalled" and keep their existing handling.
+// True for a view that no installed app owns: an app that isn't on this machine (a saved view, a
+// deep link, the tray), or an id nobody has heard of. Settings is the shell's own.
 export function isUninstalledView(viewId, reg = registry) {
-  return !reg.appForView(viewId) && !!buildRegistry().appForView(viewId)
+  return viewId !== 'settings' && !reg.appForView(viewId)
 }

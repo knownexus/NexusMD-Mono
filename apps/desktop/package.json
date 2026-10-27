@@ -18,7 +18,8 @@
     "build": "vite build && electron-builder --publish never",
     "build:win": "vite build && electron-builder --win",
     "build:mac": "vite build && electron-builder --mac",
-    "build:linux": "vite build && electron-builder --linux"
+    "build:linux": "vite build && electron-builder --linux",
+    "build:split": "node build/build-split.mjs"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",
@@ -42,6 +43,7 @@
     "@nexusmd/app-git": "*",
     "@nexusmd/app-notes": "*",
     "@nexusmd/app-planner": "*",
+    "@nexusmd/app-work": "*",
     "@nexusmd/core": "*",
     "@nexusmd/editor-kit": "*",
     "@nexusmd/main-kit": "*",

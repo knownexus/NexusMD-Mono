@@ -1,7 +1,7 @@
 // ado-workitem-types.js — binds the @nexusmd/core work item type helpers to the desktop's
 // ADO connection and profile-scoped cache. The logic itself lives in core.
 import * as core from '@nexusmd/core'
-import { getProfileKey } from './profile-keys.js'
+import { getProfileKey } from '@nexusmd/shell-sdk'
 import { createAdoHttpAdapter } from './ado-client.js'
 
 export {

@@ -22,6 +22,9 @@ export async function launchApp({ seed = {}, args = [], headed = process.env.HEA
   const win = await app.firstWindow()
   await win.waitForLoadState('domcontentloaded')
   if (Object.keys(seed).length) {
+    // The profile is created as the app boots; a split install loads its apps first, so wait for it
+    // rather than seeding under a profile that does not exist yet.
+    await win.waitForFunction(() => localStorage.getItem('nexusmd.activeProfileId'), null, { timeout: 30_000 })
     await win.evaluate(s => {
       const id = localStorage.getItem('nexusmd.activeProfileId')
       for (const [k, v] of Object.entries(s)) localStorage.setItem(k.startsWith('profile:') ? `nexusmd.p.${id}.${k.slice(8)}` : k, JSON.stringify(v))

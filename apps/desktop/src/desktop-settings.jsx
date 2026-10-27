@@ -1,12 +1,12 @@
 import React from 'react'
 import {
-  Icon, CardFrame,
-  VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker, BoardColumnsCard,
+  Icon,
+  VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker,
   VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView,
   PlToggle,
-  CardsAndTablesSettings, toast, WI_TYPE_STATES_CACHE_KEY,
+  toast,
 } from '@nexusmd/ui'
-import { ADO_CACHE_KEY, JIRA_CACHE_KEY, buildConfig, resolveConnectionParams, buildConnectionString, graphJSON, SQL_AUTH, AZURE_AD_INTERACTIVE, connectionStringToFields } from '@nexusmd/core'
+import { graphJSON } from '@nexusmd/core'
 import { appPrefsAdapter } from './adapters/appPrefs.js'
 import { useProfile } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -16,121 +16,16 @@ import { desktopFileIO } from './file-io.js'
 import LogsCard from './logs-card.jsx'
 import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken, decodeJwtClaims } from './cloud-auth.js'
 import { desktopSync } from './sync.js'
-import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
-import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
 import { moduleSettingsCards, modulePanels } from './shell/modules.js'
 import { registry } from './shell/registry.js'
 import { host } from './shell/host.js'
 import { pickerAdapter } from './adapters/picker.js'
 
-export const settInputStyle = {
+const settInputStyle = {
   width: '100%', padding: '7px 10px',
   border: '1px solid var(--border)', borderRadius: 6,
   background: 'var(--surface-2)', outline: 'none', fontSize: 13,
   color: 'var(--text)', boxSizing: 'border-box',
-}
-
-export function SettField({ label, hint, children }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)' }}>{label}</label>
-      {children}
-      {hint && <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{hint}</span>}
-    </div>
-  )
-}
-
-export function AdoConnectionCard({ onRefreshData }) {
-  const [org, setOrg]           = React.useState('')
-  const [pat, setPat]           = React.useState('')
-  const [projects, setProjects] = React.useState('')
-  const [status, setStatus]     = React.useState('')
-  const [saving, setSaving]     = React.useState(false)
-  const [discovering, setDiscovering] = React.useState(false)
-
-  React.useEffect(() => {
-    const c = getAdoConfig()
-    setOrg(c.org || '')
-    setProjects((c.projects || []).join(', '))
-  }, [])
-
-  const save = async () => {
-    setSaving(true)
-    setStatus('Saving…')
-    try {
-      const projectList = projects.split(/[,\n]+/).map(p => p.trim()).filter(Boolean)
-      saveAdoConfig({
-        org: org.trim(),
-        ...(pat.trim() ? { pat: pat.trim() } : {}),
-        projects: projectList,
-      })
-      setStatus('Saved! Loading data…')
-      setPat('')
-      onRefreshData?.().catch(() => {})
-      setTimeout(() => setStatus(''), 3000)
-    } catch (e) {
-      setStatus('Error: ' + e.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const discoverProjects = async () => {
-    const currentOrg = org.trim()
-    const currentPat = pat.trim() || getAdoConfig().pat
-    if (!currentOrg || !currentPat) { setStatus('Enter org and PAT first.'); return }
-    setDiscovering(true)
-    setStatus('Discovering…')
-    try {
-      saveAdoConfig({ org: currentOrg, pat: currentPat })
-      const adapter = createAdoHttpAdapter()
-      const res = await adapter.fetch('_apis/projects?api-version=7.0')
-      const j   = await res.json()
-      const names = (j.value || []).map(p => p.name).filter(Boolean)
-      if (!names.length) { setStatus('No projects returned.'); return }
-      setProjects(names.join(', '))
-      setStatus(`Discovered ${names.length} project${names.length === 1 ? '' : 's'}.`)
-    } catch (e) {
-      setStatus('Error: ' + e.message)
-    } finally {
-      setDiscovering(false)
-    }
-  }
-
-  const isError = status.startsWith('Error')
-
-  return (
-    <CardFrame title="Azure DevOps Connection" icon={<Icon name="settings" size={16} />}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <SettField label="Organisation" hint="The subdomain from dev.azure.com/your-org">
-          <input value={org} onChange={e => setOrg(e.target.value)}
-            placeholder="your-org-name" style={settInputStyle} />
-        </SettField>
-        <SettField label="Personal Access Token" hint="Needs Work Items (Read & Write), Code (Read & Write), Build (Read & Execute), Test Management (Read), and Project and Team (Read) scopes. Leave blank to keep existing.">
-          <input type="password" value={pat} onChange={e => setPat(e.target.value)}
-            placeholder="Leave blank to keep existing PAT" style={settInputStyle} />
-        </SettField>
-        <SettField label="Projects" hint="Comma-separated project names.">
-          <textarea value={projects} onChange={e => setProjects(e.target.value)}
-            placeholder="Project1, Project2" rows={2}
-            style={{ ...settInputStyle, resize: 'vertical', paddingTop: 8, paddingBottom: 8 }} />
-        </SettField>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="btn sm ghost" onClick={discoverProjects} disabled={discovering || saving}>
-            {discovering ? 'Discovering…' : 'Discover projects'}
-          </button>
-          <button className="btn primary" onClick={save} disabled={saving || discovering}>
-            {saving ? 'Saving…' : 'Save & connect'}
-          </button>
-          {status && (
-            <span style={{ fontSize: 12.5, color: isError ? 'var(--danger)' : 'var(--success)' }}>
-              {status}
-            </span>
-          )}
-        </div>
-      </div>
-    </CardFrame>
-  )
 }
 
 export function DesktopProfileCard() {
@@ -273,7 +168,7 @@ export function DesktopQuickLinksCard({ links, onChange }) {
   )
 }
 
-export function DesktopDataSyncCard({ refreshInterval, onRefreshIntervalChange, onRefreshData }) {
+export function DesktopDataSyncCard() {
   const [kbUsed, setKbUsed] = React.useState(0)
 
   React.useEffect(() => {
@@ -300,37 +195,13 @@ export function DesktopDataSyncCard({ refreshInterval, onRefreshIntervalChange, 
     } catch {}
   }
 
-  const clearCache = () => {
-    try {
-      localStorage.removeItem(ADO_CACHE_KEY)
-      localStorage.removeItem(JIRA_CACHE_KEY)
-      localStorage.removeItem(WI_TYPE_STATES_CACHE_KEY)
-    } catch {}
-    toast?.('Cache cleared — refreshing…', 'success')
-    onRefreshData?.().catch(() => {})
-  }
-
   return (
     <VsCard title="Data & sync" icon="dashboard">
       <VsRow title="Local storage used" desc="Approximate size of all NexusMD data in this profile">
         <span style={{ fontSize: 13, fontFamily: 'var(--mono)' }}>{kbUsed} KB</span>
       </VsRow>
-      <VsRow title="Auto-refresh interval" desc="Seconds between automatic ADO data refreshes (10–3600)">
-        <input type="number" min={10} max={3600} step={10}
-          value={refreshInterval}
-          style={{ width: 80, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
-          onChange={e => {
-            const v = Math.max(10, Math.min(3600, parseInt(e.target.value, 10) || 300))
-            onRefreshIntervalChange(v)
-            try { localStorage.setItem('nexusmd.refreshInterval', String(v)) } catch {}
-          }}
-        />
-      </VsRow>
-      {onRefreshData && (
-        <VsRow title="Clear cache" desc="Drop the cached ADO and Jira data and re-fetch — keeps profiles, settings, and planner notes">
-          <button className="btn sm ghost" onClick={clearCache}>Clear cache</button>
-        </VsRow>
-      )}
+      {/* Rows the installed apps add: Work's refresh interval and cache. */}
+      {modulePanels('data-sync').map(({ id, Panel }) => <Panel key={id} host={host} />)}
       <VsRow title="Clear local data" desc="Remove all locally stored NexusMD data and reload">
         <button className="btn sm ghost danger" onClick={clearLocal}>Clear data…</button>
       </VsRow>
@@ -610,12 +481,12 @@ const SETTINGS_TABS = [
 ]
 
 // A tab shows only when it has something to hold: 'planner' needs the Planner or Work apps (its board
-// columns are Work's), 'confidential' is the Planner's.
-const TAB_NEEDS = { planner: ['planner', 'work'], confidential: ['planner'] }
+// columns are Work's), 'cards' is Work's, 'confidential' is the Planner's.
+const TAB_NEEDS = { planner: ['planner', 'work'], cards: ['work'], confidential: ['planner'] }
 export const visibleSettingsTabs = (reg = registry) =>
   SETTINGS_TABS.filter(t => !TAB_NEEDS[t.id] || TAB_NEEDS[t.id].some(id => reg.isInstalled(id)))
 
-export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refreshInterval, onRefreshIntervalChange, onRefreshData }) {
+export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
   const profileApi = useProfile()
   const [tab, setTab] = React.useState('profile')
 
@@ -692,11 +563,10 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
           {tab === 'planner' && (
             <>
               {modulePanels('planner').map(({ id, Panel }) => <Panel key={id} host={host} />)}
-              <BoardColumnsCard />
             </>
           )}
 
-          {tab === 'cards' && <CardsAndTablesSettings />}
+          {tab === 'cards' && modulePanels('cards').map(({ id, Panel }) => <Panel key={id} host={host} />)}
 
           {tab === 'profiles' && (
             <>
@@ -710,16 +580,13 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder, refres
 
           {tab === 'data' && (
             <>
-              <DesktopDataSyncCard refreshInterval={refreshInterval} onRefreshIntervalChange={onRefreshIntervalChange} onRefreshData={onRefreshData} />
+              <DesktopDataSyncCard />
               <LogsCard />
             </>
           )}
 
           {tab === 'integrations' && (
             <>
-              <AdoConnectionCard onRefreshData={onRefreshData} />
-              <JiraConnectionCard onRefreshData={onRefreshData} />
-              <WorkItemsDisplayCard />
               {modulePanels('integrations').map(({ id, Panel }) => <Panel key={id} host={host} />)}
               <IntegrationsPanel />
             </>

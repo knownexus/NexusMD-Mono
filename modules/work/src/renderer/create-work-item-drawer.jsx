@@ -1,9 +1,9 @@
 import React from 'react'
-import { mdToHtml, Drawer, TypeIcon, Icon } from '@nexusmd/ui'
+import { mdToHtml, Drawer, TypeIcon, Icon, SettField } from '@nexusmd/ui'
 import { adoTypeToHelm } from '@nexusmd/core'
 import { fieldBucket, fieldGroup, LINK_TYPES, resolveTypeLayout, TYPE_LAYOUTS } from './ado-workitem-types.js'
 import * as adoWorkItemTypesModule from './ado-workitem-types.js'
-import { SettField, settInputStyle } from './desktop-settings.jsx'
+import { settInputStyle } from './form-style.js'
 import { JiraCreateForm } from './jira-create-form.jsx'
 
 function FieldLabel({ def }) {

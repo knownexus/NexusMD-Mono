@@ -59,6 +59,11 @@ const { initNotifications } = require('./notifications.cjs');
 const { initUpdater, registerUpdaterIpc } = require('./updater.cjs');
 
 const appRegistry    = require('./app-registry.cjs');
+
+// All-in-one, or apps installed as folders of their own (see app-registry.cjs).
+const appLayout = appRegistry.getLayout(process.env, { isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
+const splitApps = appLayout.appsDir ? appRegistry.scanApps(appLayout.appsDir, { log: log.scope('apps') }) : null;
+const appTable = splitApps ? appRegistry.modulesFromScan(splitApps) : undefined;
 const fileIpc        = require('./ipc/file.cjs');
 const pickerIpc      = require('./ipc/picker.cjs');
 const badgeIpc       = require('./ipc/badge.cjs');
@@ -66,7 +71,6 @@ const deepLinkIpc    = require('./ipc/deepLink.cjs');
 const trayIpc        = require('./ipc/tray-ipc.cjs');
 const logsIpc        = require('./ipc/logs.cjs');
 const oauthIpc       = require('./ipc/oauth.cjs');
-const jiraIpc        = require('./ipc/jira.cjs');
 const loginItemIpc   = require('./ipc/login-item.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
@@ -194,9 +198,12 @@ function loadRenderer(win, hash = '') {
     win.loadURL(hash ? `${process.env.VITE_DEV_SERVER_URL}#${hash}` : process.env.VITE_DEV_SERVER_URL);
   } else {
     // Packaged: extraResources/renderer. Unpackaged (npm start, e2e): vite's outDir.
-    const rendererDir = app.isPackaged
-      ? path.join(process.resourcesPath, 'renderer')
-      : path.join(__dirname, '..', '..', '..', 'dist', 'desktop', 'renderer');
+    // A split layout names its shell folder; otherwise: installed = extraResources/renderer,
+    // unpackaged (npm start, e2e) = vite's outDir.
+    const rendererDir = appLayout.shellDir
+      || (app.isPackaged
+        ? path.join(process.resourcesPath, 'renderer')
+        : path.join(__dirname, '..', '..', '..', 'dist', 'desktop', 'renderer'));
     win.loadFile(path.join(rendererDir, 'index.html'), hash ? { hash } : undefined);
   }
 }
@@ -341,7 +348,7 @@ app.whenReady().then(async () => {
   log.scope('lifecycle').info('app ready; creating main window');
   // The preload asks which apps are installed (and what bridge they need) while it loads, so this
   // must be answerable before the first window exists.
-  appRegistry.register(ipcMain);
+  appRegistry.register(ipcMain, process.env, appTable, splitApps);
 
   // Create renderer window (loads from Vite dev server or dist/renderer/)
   mainWindow = createMainWindow();
@@ -370,7 +377,6 @@ app.whenReady().then(async () => {
   trayIpc.register(ipcMain, () => mainWindow, () => tray);
   logsIpc.register(ipcMain);
   oauthIpc.register(ipcMain);
-  jiraIpc.register(ipcMain);
   // Apps split into their own package (Git Workspace, ...): each registers its own IPC and windows.
   appModules = appRegistry.registerModules({
     ipcMain, BrowserWindow, dialog,
@@ -380,7 +386,7 @@ app.whenReady().then(async () => {
     preloadPath: path.join(__dirname, 'preload.cjs'),
     windowIcon: () => windowIconPath(nativeTheme.shouldUseDarkColors),
     loadRenderer,
-  }, process.env, undefined, log.scope('apps'));
+  }, process.env, appTable, log.scope('apps'));
   loginItemIpc.register(ipcMain, { app });
   // Start-on-login keeps the exe that turned it on; a packaged build takes it over from an older
   // copy (which may open only to the tray). Not in dev, where execPath is electron.exe itself.

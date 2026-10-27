@@ -19,6 +19,7 @@ export default defineConfig({
       'modules/devenv',
       'modules/git',
       'modules/planner',
+      'modules/work',
       'packages/ui',
       'apps/desktop',
       'apps/web',

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-vi.mock('./profile-keys.js', () => ({ getProfileKey: k => `p.${k}` }))
+vi.mock('@nexusmd/shell-sdk', () => ({ getProfileKey: k => `p.${k}` }))
 
 import { createJiraHttpAdapter, createJiraWorkItemSource, saveJiraConfig, getJiraConfig, isJiraActive } from './jira-client.js'
 

@@ -1,11 +1,10 @@
 // apps/desktop/src/jira-settings.jsx — Jira Cloud connection + work-item display settings.
-import { linkAdapter } from './adapters/link.js'
+import { linkAdapter, getProfileKey } from '@nexusmd/shell-sdk'
 import React from 'react'
-import { CardFrame, Icon } from '@nexusmd/ui'
+import { CardFrame, Icon, SettField } from '@nexusmd/ui'
 import { makeJiraClient, fetchJiraBoards, JIRA_CACHE_KEY } from '@nexusmd/core'
-import { SettField, settInputStyle } from './desktop-settings.jsx'
+import { settInputStyle } from './form-style.js'
 import { getJiraConfig, saveJiraConfig, createJiraHttpAdapter } from './jira-client.js'
-import { getProfileKey } from './profile-keys.js'
 
 const TOKEN_URL = 'https://id.atlassian.com/manage-profile/security/api-tokens'
 const splitKeys = (s) => s.split(/[,\s]+/).map(k => k.trim()).filter(Boolean)

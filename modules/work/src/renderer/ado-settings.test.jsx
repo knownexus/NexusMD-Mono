@@ -3,14 +3,6 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { saveAdoConfig, getAdoConfig } from './ado-client.js'
 
-vi.mock('./profile-keys.js', () => ({ getProfileKey: k => k }))
-vi.mock('./profile-context.jsx', () => ({ useProfile: () => ({}) }))
-vi.mock('./cloud-auth.js', () => ({
-  desktopCloudProviders: [],
-  makeDesktopOAuthService: () => ({ isConnected: false, connect: vi.fn(), disconnect: vi.fn() }),
-}))
-vi.mock('./sync.js', () => ({ desktopSync: {} }))
-vi.mock('./file-io.js', () => ({ desktopFileIO: {} }))
 vi.mock('./ado-client.js', () => ({
   getAdoConfig: vi.fn(() => ({ org: '', pat: '', projects: [] })),
   saveAdoConfig: vi.fn(),
@@ -19,7 +11,6 @@ vi.mock('./ado-client.js', () => ({
   })),
   isAdoConfigured: () => false,
 }))
-vi.mock('./logs-card.jsx', () => ({ default: () => <div>LogsCard</div> }))
 vi.mock('@nexusmd/ui', () => ({
   VsCard: ({ children }) => <div>{children}</div>,
   VsRow: ({ children }) => <div>{children}</div>,
@@ -40,6 +31,7 @@ vi.mock('@nexusmd/ui', () => ({
   loadConfidentialConfig: vi.fn(() => ({ sections: [], hash: null })),
   CardFrame: ({ title, children }) => <div><span>{title}</span>{children}</div>,
   Icon: () => null,
+  SettField: ({ label, hint, children }) => <div><label>{label}</label>{children}{hint && <span>{hint}</span>}</div>,
 }))
 
 beforeEach(() => {
@@ -49,7 +41,7 @@ beforeEach(() => {
 
 afterEach(() => { cleanup() })
 
-import { AdoConnectionCard } from './desktop-settings.jsx'
+import { AdoConnectionCard } from './ado-settings.jsx'
 
 describe('AdoConnectionCard', () => {
   it('renders org and PAT inputs', () => {

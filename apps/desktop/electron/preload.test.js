@@ -7,13 +7,14 @@ import devenvManifest from '@nexusmd/app-devenv/manifest'
 import databaseManifest from '@nexusmd/app-database/manifest'
 import apiClientManifest from '@nexusmd/app-api-client/manifest'
 import editorManifest from '@nexusmd/app-editor/manifest'
+import workManifest from '@nexusmd/app-work/manifest'
 
 let exposed
 let ipcRenderer
 const origRequire = Module.prototype.require
 
 beforeAll(() => {
-  ipcRenderer = { invoke: vi.fn(), sendSync: vi.fn(channel => (channel === 'registry:preload-descriptors' ? { ...gitManifest.ipc.preload, ...devenvManifest.ipc.preload, ...databaseManifest.ipc.preload, ...apiClientManifest.ipc.preload, ...editorManifest.ipc.preload } : { installedIds: ['git'] })), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
+  ipcRenderer = { invoke: vi.fn(), sendSync: vi.fn(channel => (channel === 'registry:preload-descriptors' ? { ...gitManifest.ipc.preload, ...devenvManifest.ipc.preload, ...databaseManifest.ipc.preload, ...apiClientManifest.ipc.preload, ...editorManifest.ipc.preload, ...workManifest.ipc.preload } : { installedIds: ['git'] })), on: vi.fn(), send: vi.fn(), removeAllListeners: vi.fn(), removeListener: vi.fn() }
   const fakeElectron = {
     contextBridge: { exposeInMainWorld: (_name, obj) => { exposed = obj } },
     ipcRenderer,
@@ -61,6 +62,11 @@ describe('preload bridge', () => {
     handler({}, ['C:\\a.txt'])
     expect(cb).toHaveBeenCalledWith(['C:\\a.txt'])
     off()
+  })
+
+  it('bridges the Jira proxy', () => {
+    exposed.jira.request({ url: 'https://acme.atlassian.net/rest/api/3/myself' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('jira:request', { url: 'https://acme.atlassian.net/rest/api/3/myself' })
   })
 
   it('builds a nested method from a dotted name', () => {

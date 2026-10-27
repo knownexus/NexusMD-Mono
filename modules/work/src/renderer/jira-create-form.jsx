@@ -1,12 +1,12 @@
 // apps/desktop/src/jira-create-form.jsx — generic Jira issue form driven by the
 // normalised create-meta from @nexusmd/core (core fields first, then required,
 // then optional extras under "More fields").
-import { linkAdapter } from './adapters/link.js'
+import { linkAdapter } from '@nexusmd/shell-sdk'
 import React from 'react'
-import { mdToHtml } from '@nexusmd/ui'
+import { mdToHtml, SettField } from '@nexusmd/ui'
 import { layoutCreateFields } from '@nexusmd/core'
 import { MarkdownField } from './create-work-item-drawer.jsx'
-import { SettField, settInputStyle } from './desktop-settings.jsx'
+import { settInputStyle } from './form-style.js'
 
 function JiraFieldInput({ field, value, onChange, people }) {
   const label = `${field.name}${field.required ? ' *' : ''}`

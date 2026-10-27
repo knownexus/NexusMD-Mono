@@ -55,3 +55,12 @@ describe('git app manifest', () => {
     expect(typeof handle.dispose).toBe('function')
   })
 })
+
+describe('files the Git app runs from a path of their own', () => {
+  it('exist beside its main code, so the build can copy them', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    expect(manifest.mainFiles).toEqual(['git-editor.cjs'])
+    for (const file of manifest.mainFiles) expect(fs.existsSync(path.join(__dirname, file))).toBe(true)
+  })
+})

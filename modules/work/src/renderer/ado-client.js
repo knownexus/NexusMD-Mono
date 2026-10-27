@@ -1,5 +1,5 @@
 import { makeAdoConfig } from '@nexusmd/core';
-import { getProfileKey } from './profile-keys.js';
+import { getProfileKey } from '@nexusmd/shell-sdk';
 
 // Raw string storage (ADO values are stored as plain strings, not JSON) under the
 // profile-namespaced `ado.*` keys. The read/write logic lives in @nexusmd/core.

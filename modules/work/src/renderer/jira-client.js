@@ -1,7 +1,7 @@
 // apps/desktop/src/jira-client.js — desktop binding for Jira Cloud: profile-scoped
 // config, an http adapter over the main-process proxy (Jira has no CORS), and the
 // Jira half of the routed workItemSource. Logic lives in @nexusmd/core.
-import { jiraAdapter } from './adapters/jira.js'
+import { jiraAdapter } from './jira-adapter.js'
 import {
   makeJiraConfig, makeJiraClient, loadCachedJiraData, jiraKeyFromId,
   loadJiraDetail, loadJiraComments, addJiraComment, loadJiraRawFields,
@@ -10,7 +10,7 @@ import {
   transitionJiraIssueToAny, fetchJiraBoards,
 } from '@nexusmd/core'
 import { localStorageAdapter } from '@nexusmd/web-adapters'
-import { getProfileKey } from './profile-keys.js'
+import { getProfileKey } from '@nexusmd/shell-sdk'
 
 const rawStorage = {
   get: (k) => localStorage.getItem(k),

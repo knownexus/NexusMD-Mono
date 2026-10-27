@@ -44,10 +44,12 @@ describe('isUninstalledView', () => {
   it('is true for a known view whose app is missing', () => {
     expect(isUninstalledView('dashboard', git)).toBe(true)
   })
-  it('is false for installed, settings and unknown views', () => {
+  it('is true for a view nobody owns, since no installed app can show it', () => {
+    expect(isUninstalledView('nope', git)).toBe(true)
+  })
+  it('is false for an installed app\'s view and for the shell\'s own Settings', () => {
     expect(isUninstalledView('git', git)).toBe(false)
     expect(isUninstalledView('settings', git)).toBe(false)
-    expect(isUninstalledView('nope', git)).toBe(false)
   })
 })
 
