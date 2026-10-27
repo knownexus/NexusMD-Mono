@@ -16,7 +16,7 @@
     "graph:smoke": "node scripts/graph-smoke-test.js",
     "build:renderer": "vite build",
     "build": "vite build && electron-builder --publish never",
-    "build:win": "vite build && electron-builder --win",
+    "build:win": "node installer/build-win.mjs --publish onTagOrDraft",
     "build:mac": "vite build && electron-builder --mac",
     "build:linux": "vite build && electron-builder --linux",
     "build:split": "node build/build-split.mjs"

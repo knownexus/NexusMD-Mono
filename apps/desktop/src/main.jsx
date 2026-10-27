@@ -7,7 +7,7 @@ import {
   Icon, CardFrame, NexusDataProvider, ToastHost,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
 } from '@nexusmd/ui'
-import { effectiveSidebar, ICON_RAIL_WIDTH, visibleNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
+import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, visibleNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
 import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
 import { getProfileKey, usePersistedState } from '@nexusmd/shell-sdk'
@@ -129,6 +129,10 @@ function ViewBody({ view, tweaks = DEFAULT_TWEAKS, setTweak = () => {} }) {
 
 const FIRST_VIEW = INSTALLED_NAV[0]?.id || 'dashboard'
 
+// An install of one app with one screen has nothing to switch between, so it has no sidebar: Settings is
+// a gear in the title bar instead.
+const BARE = isBareStandalone(registry.mode, INSTALLED_NAV.length)
+
 const FULL_BLEED = new Set(['markdown', 'devenv', 'git', 'db-manager', 'editor'])
 // Views that hide the nav sidebar to give their own layout the width; the top bar's
 // nav button (or Ctrl+B) brings it back while on them. None at the moment.
@@ -137,7 +141,7 @@ const NAV_HIDDEN = new Set([])
 function WindowControls() {
   if (windowControlsAdapter.platform() === 'darwin') return null;
   return (
-    <div style={{ display: 'flex', alignSelf: 'stretch', marginLeft: 'auto', marginTop: -10, marginBottom: -10 }}>
+    <div style={{ display: 'flex', alignSelf: 'stretch', marginLeft: BARE ? 0 : 'auto', marginTop: -10, marginBottom: -10 }}>
       <button className="wc-btn" onClick={() => windowControlsAdapter.minimize()} title="Minimize">
         <svg width="10" height="1" viewBox="0 0 10 1" aria-hidden="true">
           <rect width="10" height="1" fill="currentColor" />
@@ -182,7 +186,10 @@ function App() {
   // Shown by hand on a NAV_HIDDEN view; resets whenever the view changes.
   const [navShown, setNavShown] = React.useState(false)
   React.useEffect(() => { setNavShown(false) }, [view])
-  const navHidden = NAV_HIDDEN.has(view) && !navShown
+  const navHidden = BARE || (NAV_HIDDEN.has(view) && !navShown)
+
+  // The window, and so the taskbar, is named for what is installed.
+  React.useEffect(() => { document.title = registry.identity.productName }, [])
 
   const setTweak = React.useCallback((key, value) => {
     setTweaksState(prev => {
@@ -245,7 +252,7 @@ function App() {
   // Ctrl+B collapses the sidebar to icons, or expands it back to labels.
   React.useEffect(() => {
     const handler = e => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'b' || e.defaultPrevented) return
+      if (BARE || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'b' || e.defaultPrevented) return
       e.preventDefault()
       if (NAV_HIDDEN.has(view)) setNavShown(v => !v)
       else setTweak('sidebar', toggledSidebar(tweaks.sidebar))
@@ -379,7 +386,7 @@ function App() {
             display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 10px 18px',
             borderBottom: '1px solid var(--border)',
           }}>
-            {navHidden && (
+            {navHidden && !BARE && (
               <button className="btn sm ghost" aria-label="Show navigation" title="Show navigation (Ctrl+B)"
                 onClick={() => setNavShown(true)}>
                 <Icon name="list" size={14}/>
@@ -388,6 +395,14 @@ function App() {
             <Icon name={active.icon} size={16} />
             <h1 style={{ fontSize: 15, margin: 0 }}>{active.label}</h1>
             <ModuleTopbar />
+            {BARE && (
+              <button className="btn sm ghost" style={{ marginLeft: 'auto' }}
+                aria-label={view === SETTINGS_NAV.id ? `Back to ${INSTALLED_NAV[0].label}` : 'Settings'}
+                title={view === SETTINGS_NAV.id ? `Back to ${INSTALLED_NAV[0].label}` : 'Settings'}
+                onClick={() => setView(view === SETTINGS_NAV.id ? FIRST_VIEW : SETTINGS_NAV.id)}>
+                <Icon name={view === SETTINGS_NAV.id ? INSTALLED_NAV[0].icon : SETTINGS_NAV.icon} size={14} />
+              </button>
+            )}
             <WindowControls />
           </header>
           <ModuleBanners />

@@ -67,6 +67,8 @@ async function withInstalled(ids, fn, { prepare, launch = {} } = {}) {
 }
 
 const item = (win, label) => win.locator('button.nav-item', { hasText: label })
+// What a single-app install shows in place of a sidebar: the app's name in the title bar.
+const heading = win => win.locator('header.topbar h1')
 
 test('every marker is really in the app that owns it (so the absence checks below cannot pass by accident)', () => {
   for (const [id, marker] of markerList()) {
@@ -93,7 +95,7 @@ test('installing only Git puts only Git on the disk, and the app runs on just th
     expect(mentions(root, MARKERS.git[0])).toBe(true)
 
     // In the window: Git is the whole app.
-    await expect(item(win, 'Git Workspace')).toHaveClass(/active/, { timeout: 30_000 })
+    await expect(heading(win)).toHaveText('Git Workspace', { timeout: 30_000 })
     for (const label of ['Dashboard', 'Planner', 'Calendar', 'Editor', 'Database', 'Dev Environment', 'Notes']) {
       await expect(item(win, label)).toHaveCount(0)
     }
@@ -150,7 +152,7 @@ test('Work, Planner and Calendar find each other across folders, and only when i
 
 test('an app\'s main process is bundled with what it needs: Database (with mssql) starts from its folder', async () => {
   await withInstalled(['database'], async ({ win, apps }) => {
-    await expect(item(win, 'Database')).toHaveClass(/active/, { timeout: 30_000 })
+    await expect(heading(win)).toHaveText('Database', { timeout: 30_000 })
     const main = join(apps, 'database', 'main', 'index.cjs')
     expect(statSync(main).size).toBeGreaterThan(500_000)     // mssql and its dependencies are inside
     // The handler is registered, so asking is an answer (here a refusal of a bogus request), not "No handler".
@@ -163,15 +165,15 @@ test('an app\'s main process is bundled with what it needs: Database (with mssql
 
 test('an app whose code fails to load is left out, and the others carry on', async () => {
   await withInstalled(['git', 'notes'], async ({ win }) => {
-    await expect(item(win, 'Git Workspace')).toHaveClass(/active/, { timeout: 30_000 })
-    await expect(item(win, 'Notes')).toHaveCount(0)
+    await expect(heading(win)).toHaveText('Git Workspace', { timeout: 30_000 })
+    await expect(win.locator('button.nav-item')).toHaveCount(0)
   }, { prepare: ({ apps }) => writeFileSync(join(apps, 'notes', 'renderer', 'index.js'), 'throw new Error("this app is broken")') })
 })
 
 test('a folder that is not an app, and an app with a mismatched manifest, are ignored', async () => {
   await withInstalled(['git'], async ({ win }) => {
-    await expect(item(win, 'Git Workspace')).toHaveClass(/active/, { timeout: 30_000 })
-    await expect(win.locator('button.nav-item')).toHaveCount(3)      // Git, Settings and the collapse button
+    await expect(heading(win)).toHaveText('Git Workspace', { timeout: 30_000 })
+    await expect(win.getByRole('button', { name: 'Settings' })).toHaveCount(1)      // one app only: the gear, no sidebar
   }, {
     prepare: ({ apps }) => {
       mkdirSync(join(apps, 'stray')); writeFileSync(join(apps, 'stray', 'readme.txt'), 'not an app')
@@ -196,5 +198,26 @@ test('with every app installed, every app loads and its screens render (no name 
       await expect(win.locator('#root > *').first(), `${label} should render`).toBeVisible()
     }
     expect(errors).toEqual([])
+  })
+})
+
+test('an install of one app is that app alone: its name, no sidebar, Settings from the title bar', async () => {
+  await withInstalled(['git'], async ({ win }) => {
+    await expect(heading(win)).toHaveText('Git Workspace', { timeout: 30_000 })
+    expect(await win.title()).toBe('NexusMD Git Workspace')
+    await expect(win.locator('button.nav-item')).toHaveCount(0)
+    await win.getByRole('button', { name: 'Settings' }).click()
+    await expect(heading(win)).toHaveText('Settings')
+    await win.getByRole('button', { name: 'Back to Git Workspace' }).click()
+    await expect(heading(win)).toHaveText('Git Workspace')
+  })
+  // Several apps, or one app with several screens, keep the sidebar and the product name.
+  await withInstalled(['git', 'editor'], async ({ win }) => {
+    await expect(item(win, 'Editor')).toBeVisible({ timeout: 30_000 })
+    expect(await win.title()).toBe('NexusMD')
+  })
+  await withInstalled(['work'], async ({ win }) => {
+    await expect(item(win, 'Pull Requests')).toBeVisible({ timeout: 30_000 })
+    expect(await win.title()).toBe('NexusMD Work')
   })
 })

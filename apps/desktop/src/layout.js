@@ -41,3 +41,9 @@ export function visibleNav(navOrder, hidden, nav) {
   const gone = new Set(Array.isArray(hidden) ? hidden : [])
   return orderedNav(navOrder, nav).filter(item => !gone.has(item.id))
 }
+
+// Whether the window drops its sidebar: only one app is installed and it has a single screen, so there
+// is nothing to switch between (an app with several screens, like Work, keeps its sidebar).
+export function isBareStandalone(mode, navCount) {
+  return mode === 'standalone' && navCount === 1
+}

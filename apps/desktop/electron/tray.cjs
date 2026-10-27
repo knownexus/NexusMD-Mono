@@ -19,7 +19,8 @@ const FALLBACK_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAY
  * @param {Electron.Tray} tray
  * @param {boolean}       isDark  true = OS is in dark mode (taskbar dark → use light icon)
  */
-function updateTrayIcon(tray, isDark) {
+function updateTrayIcon(tray, isDark, ownIcon) {
+  if (ownIcon) return;
   const name = isDark ? 'tray-icon-light.png' : 'tray-icon.png';
   const iconPath = path.join(__dirname, '..', 'assets', name);
   let icon = nativeImage.createFromPath(iconPath);
@@ -27,13 +28,14 @@ function updateTrayIcon(tray, isDark) {
   tray.setImage(icon);
 }
 
-function createTray(win, isDark) {
-  const iconPath = path.join(__dirname, '..', 'assets', isDark ? 'tray-icon-light.png' : 'tray-icon.png');
+function createTray(win, isDark, { iconPath: ownIcon, tooltip = 'Management Dashboard' } = {}) {
+  // An install of a single app shows that app's icon; the full set of tray icons is NexusMD's own.
+  const iconPath = ownIcon || path.join(__dirname, '..', 'assets', isDark ? 'tray-icon-light.png' : 'tray-icon.png');
   let icon = nativeImage.createFromPath(iconPath);
   if (icon.isEmpty()) icon = nativeImage.createFromDataURL(FALLBACK_ICON);
   const tray = new Tray(icon);
 
-  tray.setToolTip('Management Dashboard');
+  tray.setToolTip(tooltip);
 
   const contextMenu = Menu.buildFromTemplate([
     {

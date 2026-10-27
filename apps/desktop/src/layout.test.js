@@ -74,3 +74,12 @@ describe('visibleNav', () => {
     expect(visibleNav(['b'], ['b'], NAV).map(i => i.id)).toEqual(['a', 'c'])
   })
 })
+
+describe('isBareStandalone', () => {
+  it('drops the sidebar only for one app with one screen', async () => {
+    const { isBareStandalone } = await import('./layout.js')
+    expect(isBareStandalone('standalone', 1)).toBe(true)
+    expect(isBareStandalone('standalone', 7)).toBe(false)   // Work keeps its sidebar
+    expect(isBareStandalone('combined', 1)).toBe(false)
+  })
+})

@@ -91,6 +91,7 @@ function scanApps(appsDir, { fs = nodeFs, log = console } = {}) {
         rendererUrl: pathToFileURL(path.join(renderer, 'index.js')).href,
         styles: fs.readdirSync(renderer).filter(f => f.endsWith('.css')).sort().map(f => pathToFileURL(path.join(renderer, f)).href),
         mainFile: fs.existsSync(mainFile) ? mainFile : null,
+        iconPath: fs.existsSync(path.join(dir, 'assets', 'icon.png')) ? path.join(dir, 'assets', 'icon.png') : null,
       });
     } catch (err) {
       log.error(`app folder "${id}" is not a usable app, so it is skipped: ${err.message}`);

@@ -63,6 +63,8 @@ const appRegistry    = require('./app-registry.cjs');
 // All-in-one, or apps installed as folders of their own (see app-registry.cjs).
 const appLayout = appRegistry.getLayout(process.env, { isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
 const splitApps = appLayout.appsDir ? appRegistry.scanApps(appLayout.appsDir, { log: log.scope('apps') }) : null;
+// The one app of a single-app install: it gives the window and the tray their name and icon.
+const standaloneApp = splitApps && splitApps.length === 1 ? splitApps[0] : null;
 const appTable = splitApps ? appRegistry.modulesFromScan(splitApps) : undefined;
 const fileIpc        = require('./ipc/file.cjs');
 const pickerIpc      = require('./ipc/picker.cjs');
@@ -175,6 +177,7 @@ function buildAppMenu(win) {
 // Window icon utility
 // ---------------------------------------------------------------------------
 function windowIconPath(isDark) {
+  if (standaloneApp?.iconPath) return standaloneApp.iconPath;
   const name = isDark ? 'icon-light.png' : 'icon.png';
   return path.join(__dirname, '..', 'assets', name);
 }
@@ -354,7 +357,8 @@ app.whenReady().then(async () => {
   mainWindow = createMainWindow();
 
   // System tray
-  tray = createTray(mainWindow, nativeTheme.shouldUseDarkColors);
+  tray = createTray(mainWindow, nativeTheme.shouldUseDarkColors,
+    standaloneApp ? { iconPath: standaloneApp.iconPath, tooltip: standaloneApp.manifest.productName } : undefined);
 
   nativeTheme.on('updated', () => {
     const dark = nativeTheme.shouldUseDarkColors;

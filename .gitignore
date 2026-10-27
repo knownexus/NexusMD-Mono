@@ -4,6 +4,8 @@ node_modules/
 # Build output
 dist/
 build/
+# ...except the desktop split build scripts
+!apps/desktop/build/
 out/
 **/wwwroot/
 apps/web/server/wwwroot/
@@ -58,3 +60,4 @@ apps/web/triage-tracker/exports/
 
 # Generated entry modules for the split build (apps/desktop/build)
 apps/desktop/build/.shared/
+apps/desktop/installer/apps.generated.nsh
