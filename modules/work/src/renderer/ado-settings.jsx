@@ -10,11 +10,13 @@ export function AdoConnectionCard({ onRefreshData }) {
   const [status, setStatus]     = React.useState('')
   const [saving, setSaving]     = React.useState(false)
   const [discovering, setDiscovering] = React.useState(false)
+  const [workItems, setWorkItems] = React.useState(true)
 
   React.useEffect(() => {
     const c = getAdoConfig()
     setOrg(c.org || '')
     setProjects((c.projects || []).join(', '))
+    setWorkItems(c.workItems !== false)
   }, [])
 
   const save = async () => {
@@ -26,6 +28,7 @@ export function AdoConnectionCard({ onRefreshData }) {
         org: org.trim(),
         ...(pat.trim() ? { pat: pat.trim() } : {}),
         projects: projectList,
+        workItems,
       })
       setStatus('Saved! Loading data…')
       setPat('')
@@ -65,6 +68,15 @@ export function AdoConnectionCard({ onRefreshData }) {
   return (
     <CardFrame title="Azure DevOps Connection" icon={<Icon name="settings" size={16} />}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+          <input type="checkbox" checked={workItems} onChange={e => setWorkItems(e.target.checked)} />
+          Load Azure DevOps work items
+        </label>
+        {!workItems && (
+          <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: -8 }}>
+            Pull requests, builds and tests still come from Azure DevOps.
+          </div>
+        )}
         <SettField label="Organisation" hint="The subdomain from dev.azure.com/your-org">
           <input value={org} onChange={e => setOrg(e.target.value)}
             placeholder="your-org-name" style={settInputStyle} />

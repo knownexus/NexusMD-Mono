@@ -3,7 +3,7 @@ import { defaultCreateProvider } from '@nexusmd/core'
 import { NexusDataProvider, useSeenTracking, SEEN_FINGERPRINTS } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useLocalItems } from './items-state.js'
-import { getAdoConfig, isAdoConfigured } from './ado-client.js'
+import { getAdoConfig, usesAdoWorkItems } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraWorkItemSource } from './jira-client.js'
 import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
 import { desktopBuildSource } from './desktop-build-source.js'
@@ -157,7 +157,7 @@ export function WorkProvider({ host, view, children }) {
           title={createWI?.title}
           project={getAdoConfig().projects || []}
           team={snapshot.TEAM || []}
-          adoAvailable={isAdoConfigured()}
+          adoAvailable={usesAdoWorkItems()}
           jira={jiraActive ? {
             source: jiraSource,
             projectKeys: getJiraConfig().projectKeys,
@@ -166,7 +166,7 @@ export function WorkProvider({ host, view, children }) {
           } : null}
           defaultProvider={defaultCreateProvider({
             readJson: (k, d) => { try { const v = localStorage.getItem(getProfileKey(k)); return v == null ? d : JSON.parse(v) } catch { return d } },
-            adoAvailable: isAdoConfigured(),
+            adoAvailable: usesAdoWorkItems(),
             jiraAvailable: jiraActive,
           })}
           onProviderChange={(p) => { try { localStorage.setItem(getProfileKey('nexusmd.wi.createProvider'), JSON.stringify(p)) } catch {} }}

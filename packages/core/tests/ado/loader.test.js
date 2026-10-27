@@ -136,6 +136,20 @@ describe('loadAdoData — dynamic WIQL from real ADO state metadata', () => {
     expect(activeQuery).toContain("'Closed'")
   })
 
+  it('asks for no work items when they are skipped, but still loads PRs', async () => {
+    const http = makeHttp({
+      'wiql': { workItems: [{ id: 1 }] },
+      '/_apis/git/repositories?': { value: [{ id: 'repo1', name: 'Repo One' }] },
+      '/pullrequests?': { value: [{ pullRequestId: 7, title: 'Fix', createdBy: { displayName: 'Al' }, status: 'active', reviewers: [] }] },
+    })
+    const data = await loadAdoData({ org: 'myorg', projects: ['Proj'] }, { http, storage: makeStorage() }, { skip: { workItems: true } })
+
+    expect(http.fetch.mock.calls.filter(([path]) => path.includes('_apis/wit/wiql') || path.includes('_apis/wit/workitems?'))).toEqual([])
+    expect(data.WORK_ITEMS).toEqual([])
+    expect(data.RESOLVED_WI).toEqual([])
+    expect(data.PRS.map(p => p.id)).toEqual([7])
+  })
+
   it('escapes a single quote in a live ADO state name so the WIQL query stays valid (not just the hardcoded list)', async () => {
     const http = makeHttp({
       'workitemtypes?api-version': { value: [{ name: 'Bug', isDisabled: false }] },

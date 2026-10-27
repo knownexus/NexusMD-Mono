@@ -7,13 +7,20 @@ import { mergeWorkItemData } from './merge.js'
 import { readProviderStatus, recordProviderStatus } from './status.js'
 import { applyHiddenPeople } from './people.js'
 
-export function buildSnapshot({ adoConfig, adoConfigured, jiraConfig, jiraActive, storage, empty, hiddenIds = [] }) {
+// `adoWorkItems: false` keeps ADO's PRs, builds and tests but leaves its work items out (also
+// any still in the cache from before they were switched off) and ADO out of the providers.
+export function buildSnapshot({ adoConfig, adoConfigured, adoWorkItems = true, jiraConfig, jiraActive, storage, empty, hiddenIds = [] }) {
   const ado = loadCachedAdoData(adoConfig, { storage })
   const jira = jiraActive ? loadCachedJiraData(jiraConfig, { storage }) : null
+  const noAdoItems = { WORK_ITEMS: [], RESOLVED_WI: [], STATES: [], TYPES: [], PRIORITIES: [], WI_TYPE_STATES: {} }
+  const adoForItems = ado && !adoWorkItems ? { ...ado, ...noAdoItems } : ado
   const merged = mergeWorkItemData({
-    ado, jira, status: readProviderStatus(storage), configured: { ado: !!adoConfigured, jira: !!jiraActive },
+    ado: adoForItems, jira, status: readProviderStatus(storage),
+    configured: { ado: !!adoConfigured && adoWorkItems, jira: !!jiraActive },
   })
-  return applyHiddenPeople({ ...empty, ...(ado || {}), ...merged }, hiddenIds)
+  // Derived from ADO's work items alone, so meaningless without them.
+  const adoItemStats = ado && !adoWorkItems ? { SPRINT: empty?.SPRINT ?? null, AVG_RESOLUTION_DAYS: null } : {}
+  return applyHiddenPeople({ ...empty, ...(ado || {}), ...adoItemStats, ...merged }, hiddenIds)
 }
 
 // The hidden-people list after the Team view reports `newTeam`. Updated

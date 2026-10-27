@@ -8,7 +8,7 @@ const rawStorage = {
   set: (k, v) => localStorage.setItem(k, v),
 };
 
-export const { getAdoConfig, saveAdoConfig, isAdoConfigured } = makeAdoConfig({
+export const { getAdoConfig, saveAdoConfig, isAdoConfigured, usesAdoWorkItems } = makeAdoConfig({
   storage: rawStorage,
   key: (name) => getProfileKey('ado.' + name),
 });

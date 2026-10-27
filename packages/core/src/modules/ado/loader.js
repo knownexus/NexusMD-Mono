@@ -20,7 +20,8 @@ export function loadCachedAdoData(config, { storage }) {
 export async function loadAdoData(
   config,
   { http, storage },
-  // `skip` leaves out what a switched-off Work screen would show: { prs, builds, tests }. Those come
+  // `skip` leaves out what a switched-off Work screen would show: { prs, builds, tests }, and
+  // { workItems } when ADO's work items are switched off (they live in Jira). Those come
   // back empty, and nothing is asked of Azure DevOps for them.
   { isRefresh = false, priorData = null, skip = {} } = {},
 ) {
@@ -76,7 +77,7 @@ export async function loadAdoData(
   const FALLBACK_DONE_STATES = ['Done', 'Closed', 'Resolved', 'Completed']
   const wiqlStateList = (names) => names.map(s => `'${String(s).replace(/'/g, "''")}'`).join(',')
 
-  const wiP = metaP.then(async (meta) => {
+  const wiP = skip.workItems ? Promise.resolve([]) : metaP.then(async (meta) => {
     const terminalNames = meta?.terminalStateNames?.length ? meta.terminalStateNames : FALLBACK_TERMINAL_STATES
     const notInClause = wiqlStateList(terminalNames)
     const all = []
@@ -174,7 +175,7 @@ export async function loadAdoData(
     return get(`${encodeURIComponent(testProj)}/_apis/test/runs?buildIds=${encodeURIComponent(ids)}&api-version=7.0&includeRunDetails=true`).catch(() => null)
   })
 
-  const summaryP = metaP.then(async (meta) => {
+  const summaryP = skip.workItems ? Promise.resolve(null) : metaP.then(async (meta) => {
     try {
       const doneNames = meta?.doneStateNames?.length ? meta.doneStateNames : FALLBACK_DONE_STATES
       const inClause = wiqlStateList(doneNames)
