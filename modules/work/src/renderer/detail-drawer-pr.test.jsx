@@ -26,6 +26,18 @@ describe('PR actions in the drawer', () => {
     await waitFor(() => expect(onPRChanged).toHaveBeenCalledWith(7, { myVote: 10 }))
     expect(fetch.mock.calls.some(([p, o]) => p.includes('reviewers/me-1') && o?.method === 'PUT')).toBe(true)
   })
+  it('closes an open merge dialog when the drawer switches to another PR', async () => {
+    const view = p => (
+      <NexusDataProvider value={value}>
+        <DetailDrawer drawer={{ kind: 'pr', data: p }} onClose={() => {}} onPRChanged={() => {}} />
+      </NexusDataProvider>
+    )
+    const { rerender } = render(view(pr))
+    fireEvent.click(screen.getByText('Merge'))
+    await screen.findByRole('dialog')
+    rerender(view({ ...pr, id: 8, title: 'Other' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
   it('offers no Approve on a merged PR', () => {
     mount({ ...pr, status: 'merged' }, vi.fn())
     expect(screen.queryByText('Approve')).toBeNull()

@@ -71,7 +71,7 @@ export function DetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR, 
             </button>
           )}
           {kind === 'person' && d && <PersonActions dev={d} />}
-          {kind === 'pr' && d && <PRActions pr={d} actions={prActions} onChanged={patch => onPRChanged?.(d.id, patch)} />}
+          {kind === 'pr' && d && <PRActions key={d.id} pr={d} actions={prActions} onChanged={patch => onPRChanged?.(d.id, patch)} />}
           {adoUrl && (
             <button className="btn sm ghost" onClick={() => linkAdapter.openLink(adoUrl)}>
               <Icon name="link" size={12}/> Open in {openInLabel}
