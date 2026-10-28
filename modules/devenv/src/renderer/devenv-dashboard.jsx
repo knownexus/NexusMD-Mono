@@ -263,7 +263,7 @@ export function DevenvDashboard({ adapter, picker }) {
         <PlModal open title={mTitle} icon={MODAL_ICONS[modal] || 'build'} onClose={() => setModal(null)} className={size === 'lg' ? 'nx-modal-lg' : size === 'xl-auto' ? 'nx-modal-xl auto' : 'nx-modal-xl'}>
           <div className={size === 'lg' ? undefined : size === 'xl-pad' ? 'nx-modal-fill nx-modal-pad' : 'nx-modal-fill'}
             style={size === 'lg' ? { minHeight: 360, display: 'flex', flexDirection: 'column' } : undefined}>
-            <ModalView adapter={adapter} picker={picker} />
+            <ModalView adapter={adapter} picker={picker} {...(modal === 'builds' ? { builds } : {})} />
           </div>
         </PlModal>
       )}
