@@ -158,37 +158,6 @@ export function DesktopDataSyncCard() {
   )
 }
 
-function DesktopGitHubPATRow() {
-  const [pat, setPat] = React.useState(() => {
-    try { return localStorage.getItem(getProfileKey('nexusmd.github.pat')) || '' } catch { return '' }
-  })
-  const [valid, setValid] = React.useState(true)
-  const validate = (v) => /^gh[ps]_/.test(v) || /^github_pat_/.test(v) || v === ''
-
-  const save = () => {
-    if (!validate(pat)) { setValid(false); return }
-    setValid(true)
-    try { localStorage.setItem(getProfileKey('nexusmd.github.pat'), pat) } catch {}
-  }
-
-  return (
-    <VsRow title="Personal access token" desc="Alternative to OAuth — must start with ghp_, ghs_, or github_pat_">
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input
-          type="password"
-          value={pat}
-          style={{ width: 260, padding: '5px 10px', borderRadius: 8, border: `1px solid ${valid ? 'var(--border)' : 'var(--danger)'}`, background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
-          onChange={e => { setPat(e.target.value); setValid(true) }}
-          placeholder="ghp_…"
-        />
-        <button className="btn sm" onClick={save}>Save</button>
-        {pat && <button className="btn sm ghost danger" onClick={() => { setPat(''); try { localStorage.removeItem(getProfileKey('nexusmd.github.pat')) } catch {} }}>Clear</button>}
-      </div>
-      {!valid && <span style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4, display: 'block' }}>Invalid PAT format</span>}
-    </VsRow>
-  )
-}
-
 // Read-only presets exercising scopes the Microsoft connection already has
 // (User.Read / Calendars.ReadWrite / Files.ReadWrite) — no new consent needed.
 const GRAPH_TEST_PRESETS = [
@@ -367,15 +336,8 @@ function GraphApiTestCard() {
   )
 }
 
+// GitHub is connected from the Work app's GitHub Connection card, not here.
 export function IntegrationsPanel() {
-  const [ghRepos, setGhRepos] = React.useState(() => {
-    try { return localStorage.getItem(getProfileKey('nexusmd.github.repos')) || '' } catch { return '' }
-  })
-
-  const saveGhRepos = () => {
-    try { localStorage.setItem(getProfileKey('nexusmd.github.repos'), ghRepos) } catch {}
-  }
-
   const oauthServices = React.useMemo(() => [
     {
       id: 'google',
@@ -399,20 +361,6 @@ export function IntegrationsPanel() {
       <GraphManualTokenCard />
       <GraphPermissionsCard />
       <GraphApiTestCard />
-      <VsCard title="GitHub" icon="pr">
-        <DesktopGitHubPATRow />
-        <VsRow title="Repositories" desc="owner/repo pairs, comma-separated">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              value={ghRepos}
-              onChange={e => setGhRepos(e.target.value)}
-              placeholder="myorg/backend, myorg/frontend"
-              style={{ width: 200, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
-            />
-            <button className="btn sm" onClick={saveGhRepos}>Save</button>
-          </div>
-        </VsRow>
-      </VsCard>
     </div>
   )
 }
