@@ -360,3 +360,40 @@ describe('importBrunoCollection', () => {
     await expect(importBrunoCollection(file, '/x')).rejects.toThrow(/bruno\.json/)
   })
 })
+
+describe('importBrunoCollection with includeScripts', () => {
+  const req = (name, extra = '') => `meta {\n  name: ${name}\n  seq: 1\n}\n\nget {\n  url: /${name}\n  body: none\n  auth: none\n}\n${extra}`
+
+  it('records each request\'s path in the collection, with or without scripts', async () => {
+    const { requests } = await importBrunoCollection(brunoFixture(), '/bru', { idPrefix: 'b' })
+    expect(Object.values(requests).map(r => r.brunoPath).sort()).toEqual(['Get user.bru', 'List users.bru', 'orders/Create order.bru', 'orders/Login.bru'])
+  })
+
+  it('keeps a request\'s own scripts and tests as written, marked as Bruno scripts, without a scripts warning', async () => {
+    const { tree, requests, warnings } = await importBrunoCollection(brunoFixture(), '/bru', { idPrefix: 'b', includeScripts: true })
+    const getUser = requests[tree[2].refId]
+    expect(getUser.scriptFlavor).toBe('bruno')
+    expect(getUser.tests).toBe('test("ok", function () {\n  expect(res.status).to.equal(200);\n});')
+    expect(requests[tree[0].children[0].refId].preRequestScript).toBe('bru.setVar("x", 1);')
+    expect(warnings.some(w => w.startsWith('Scripts and tests'))).toBe(false)
+  })
+
+  it('combines collection, folder and request scripts in Bruno\'s sandwich order', async () => {
+    const file = memFile({
+      '/bru/bruno.json': JSON.stringify({ name: 'X' }),
+      '/bru/collection.bru': 'script:pre-request {\n  c_pre();\n}\n\ntests {\n  c_tests();\n}\n',
+      '/bru/f/folder.bru': 'meta {\n  name: F\n}\n\nscript:pre-request {\n  f_pre();\n  return;\n}\n',
+      '/bru/f/a.bru': req('a', '\nscript:pre-request {\n  r_pre();\n}\n\ntests {\n  r_tests();\n}\n'),
+    })
+    const { requests, warnings } = await importBrunoCollection(file, '/bru', { idPrefix: 'b', includeScripts: true })
+    const a = Object.values(requests)[0]
+
+    const pre = a.preRequestScript
+    expect(pre.indexOf('c_pre')).toBeLessThan(pre.indexOf('f_pre'))
+    expect(pre.indexOf('f_pre')).toBeLessThan(pre.indexOf('r_pre'))
+    expect(a.tests.indexOf('r_tests')).toBeLessThan(a.tests.indexOf('c_tests'))
+    // Each runs in its own async function, so the folder's `return` can't skip the request's script.
+    expect(pre).toContain('// ── folder.bru: f ──\nawait (async () => {\nf_pre();\nreturn;\n})();')
+    expect(warnings).toEqual([])
+  })
+})

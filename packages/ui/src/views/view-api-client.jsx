@@ -14,11 +14,13 @@ import { Icon } from '../icons.jsx'
 import { usePersisted } from '../app-components.jsx'
 import { useApiClient } from '../api-client-context.jsx'
 import { JsonPretty } from '../json-pretty.jsx'
+import { EnvironmentEditor } from './api-client-env-editor.jsx'
 import {
   loadCollection, createCollection, writeCollectionMeta, writeRequest,
   addTreeNode, buildRunEntries,
   resolveEnvironment, executeRequest, runCollection, importPostmanCollection,
-  importBrunoCollection, writeEnvironment, appendHistoryEntry, readHistory, clearHistory,
+  importBrunoCollection, writeEnvironment, brunoRequestLookup, nextRuntimeVars,
+  appendHistoryEntry, readHistory, clearHistory,
 } from '@nexusmd/core'
 
 const TABS = ['Params', 'Headers', 'Body', 'Auth', 'Scripts', 'Tests', 'History']
@@ -29,6 +31,11 @@ const EMPTY_REQUEST = {
   bodyType: 'none', bodyLanguage: 'json',
   auth: { type: 'none' }, preRequestScript: '', postResponseScript: '', tests: '',
 }
+
+const BRUNO_SCRIPT_HINT = 'Bruno script: runs with bru, req, res, test() and expect(), as in Bruno.'
+
+/** Pill colour for a run/send status. */
+const statusPill = (status) => (status === 'passed' ? 'success' : status === 'failed' ? 'danger' : status === 'skipped' ? '' : 'warning')
 
 const BODY_TYPES = ['none', 'raw', 'urlencoded', 'formdata']
 const BODY_TYPE_LABELS = { none: 'None', raw: 'Raw', urlencoded: 'x-www-form-urlencoded', formdata: 'form-data' }
@@ -138,6 +145,8 @@ export function ApiClientView() {
   const [runReport, setRunReport] = React.useState(null)
   const [history, setHistory] = React.useState([])
   const [historyPreview, setHistoryPreview] = React.useState(null)
+  const [envEditing, setEnvEditing] = React.useState(null) // { dir, name } while the environment editor is open
+  const [brunoIncludeScripts, setBrunoIncludeScripts] = React.useState(false)
 
   const didMountLoad = React.useRef(false)
   React.useEffect(() => {
@@ -191,6 +200,7 @@ export function ApiClientView() {
     setCollections(prev => { const next = { ...prev }; delete next[dir]; return next })
     setCollapsedDirs(prev => { if (!prev.has(dir)) return prev; const next = new Set(prev); next.delete(dir); return next })
     if (importDir === dir) { setImportDir(null); setImportText('') }
+    if (envEditing?.dir === dir) setEnvEditing(null)
     if (activeDir === dir) {
       setActiveDir(null)
       setSelectedRefId(null)
@@ -209,7 +219,14 @@ export function ApiClientView() {
     })
   }
 
+  const saveEnvironment = async (dir, name, envDef) => {
+    await writeEnvironment(adapters.file, dir, name, envDef)
+    updateCollection(dir, prev => ({ environments: { ...prev.environments, [name]: envDef } }))
+    setEnvEditing(null)
+  }
+
   const selectRequest = (dir, refId) => {
+    setEnvEditing(null)
     setActiveDir(dir)
     setSelectedRefId(refId)
     setDraft(hydrateRequest(collections[dir].requests[refId]))
@@ -249,14 +266,28 @@ export function ApiClientView() {
     return resolveEnvironment(adapters.secureStorage, dir, col.activeEnv, col.environments[col.activeEnv])
   }
 
+  // What a send or a run needs: the environment's vars, the session's runtime
+  // vars (what scripts have set so far, e.g. a token) and, for Bruno scripts,
+  // a way to find the request a bru.runRequest(path) names.
+  const runOptions = async (dir) => {
+    const col = collections[dir]
+    const env = await resolvedVars(dir)
+    const runtimeVars = col?.runtimeVars || {}
+    return {
+      env, runtimeVars, vars: { ...env, ...runtimeVars },
+      envName: col?.activeEnv || undefined, adapters, lookupRequest: brunoRequestLookup(col),
+    }
+  }
+
   const send = async () => {
     if (!draft || !activeDir) return
     setSending(true)
     setResponse(null)
     setResponseTab('Body')
     try {
-      const vars = await resolvedVars(activeDir)
-      const result = await executeRequest(draft, { vars, adapters })
+      const options = await runOptions(activeDir)
+      const result = await executeRequest(draft, options)
+      updateCollection(activeDir, { runtimeVars: nextRuntimeVars(result, options.vars, options.runtimeVars) })
       setResponse(result)
       if (selectedRefId) {
         const entry = {
@@ -287,9 +318,9 @@ export function ApiClientView() {
     setRunningDir(dir)
     setRunReport(null)
     try {
-      const vars = await resolvedVars(dir)
       const entries = buildRunEntries(col, nodes)
-      const report = await runCollection(entries, { vars, adapters })
+      const report = await runCollection(entries, await runOptions(dir))
+      updateCollection(dir, { runtimeVars: report.runtimeVars })
       setRunReport({ ...report, collectionName: col.meta.name })
     } finally {
       setRunningDir(null)
@@ -324,7 +355,7 @@ export function ApiClientView() {
     if (!brunoDir) return
     let imported
     try {
-      imported = await importBrunoCollection(adapters.file, brunoDir)
+      imported = await importBrunoCollection(adapters.file, brunoDir, { includeScripts: brunoIncludeScripts })
     } catch (err) {
       setOpenError(`Import failed: ${err?.message || String(err)}`)
       return
@@ -434,13 +465,33 @@ export function ApiClientView() {
                 {!collapsed && (
                   <div className="ac-collection-body">
                     {Object.keys(col.environments).length > 0 && (
-                      <select
-                        className="ac-select block" value={col.activeEnv}
-                        onChange={e => updateCollection(dir, { activeEnv: e.target.value })}
-                      >
-                        <option value="">No environment</option>
-                        {Object.keys(col.environments).map(name => <option key={name} value={name}>{name}</option>)}
-                      </select>
+                      <div className="ac-env-bar">
+                        <select
+                          className="ac-select" aria-label="Environment" value={col.activeEnv}
+                          onChange={e => updateCollection(dir, { activeEnv: e.target.value })}
+                        >
+                          <option value="">No environment</option>
+                          {Object.keys(col.environments).map(name => <option key={name} value={name}>{name}</option>)}
+                        </select>
+                        <button
+                          className="btn sm" disabled={!col.activeEnv}
+                          onClick={() => setEnvEditing({ dir, name: col.activeEnv })}
+                          title={col.activeEnv ? `Edit the ${col.activeEnv} variables` : 'Choose an environment to edit'}
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )}
+
+                    {Object.keys(col.runtimeVars || {}).length > 0 && (
+                      <div className="ac-session-vars">
+                        <span title={Object.keys(col.runtimeVars).join(', ')}>
+                          Session vars: {Object.keys(col.runtimeVars).join(', ')}
+                        </span>
+                        <button className="ac-add-link" onClick={() => updateCollection(dir, { runtimeVars: {} })} title="Forget the vars scripts have set (e.g. a token)">
+                          Clear
+                        </button>
+                      </div>
                     )}
 
                     <button className="btn sm" onClick={() => runFolder(dir, col.meta.tree)} disabled={runningDir === dir}>
@@ -474,9 +525,15 @@ export function ApiClientView() {
                     </details>
 
                     {adapters.picker && adapters.file?.listDirs && (
-                      <button className="btn sm" onClick={() => importBruno(dir)} title="Pick a Bruno collection folder (the one containing bruno.json)">
-                        <Icon name="folder" size={12}/> Import Bruno collection
-                      </button>
+                      <div className="ac-bruno-import">
+                        <button className="btn sm" onClick={() => importBruno(dir)} title="Pick a Bruno collection folder (the one containing bruno.json)">
+                          <Icon name="folder" size={12}/> Import Bruno collection
+                        </button>
+                        <label className="ac-check">
+                          <input type="checkbox" checked={brunoIncludeScripts} onChange={e => setBrunoIncludeScripts(e.target.checked)}/>
+                          Include scripts and tests (they run code: only for collections you trust)
+                        </label>
+                      </div>
                     )}
                   </div>
                 )}
@@ -487,9 +544,19 @@ export function ApiClientView() {
       </div>
 
       <div className="ac-main">
-        {!draft && <div className="ac-empty">Select or create a request to begin.</div>}
+        {envEditing && collections[envEditing.dir]?.environments?.[envEditing.name] && (
+          <EnvironmentEditor
+            dir={envEditing.dir} name={envEditing.name}
+            envDef={collections[envEditing.dir].environments[envEditing.name]}
+            secureStorage={adapters.secureStorage}
+            onSave={envDef => saveEnvironment(envEditing.dir, envEditing.name, envDef)}
+            onClose={() => setEnvEditing(null)}
+          />
+        )}
 
-        {draft && (
+        {!envEditing && !draft && <div className="ac-empty">Select or create a request to begin.</div>}
+
+        {!envEditing && draft && (
           <>
             <div className="ac-request-bar">
               <select
@@ -618,6 +685,7 @@ export function ApiClientView() {
             )}
             {activeTab === 'Scripts' && (
               <div>
+                {draft.scriptFlavor === 'bruno' && <div className="ac-empty-note ac-script-hint">{BRUNO_SCRIPT_HINT}</div>}
                 <div className="ac-field-label">Pre-request script</div>
                 <textarea
                   className="ac-code" rows={6} style={{ marginBottom: 10 }} value={draft.preRequestScript || ''}
@@ -631,11 +699,16 @@ export function ApiClientView() {
               </div>
             )}
             {activeTab === 'Tests' && (
-              <textarea
-                className="ac-code" rows={10} value={draft.tests || ''}
-                placeholder="context.tests.push({ name: 'status is 200', passed: context.response.status === 200 })"
-                onChange={e => setDraft({ ...draft, tests: e.target.value })}
-              />
+              <div>
+                {draft.scriptFlavor === 'bruno' && <div className="ac-empty-note ac-script-hint">{BRUNO_SCRIPT_HINT}</div>}
+                <textarea
+                  className="ac-code" rows={draft.scriptFlavor === 'bruno' ? 18 : 10} value={draft.tests || ''}
+                  placeholder={draft.scriptFlavor === 'bruno'
+                    ? 'test("status is 200", function () {\n  expect(res.getStatus()).to.equal(200);\n});'
+                    : "context.tests.push({ name: 'status is 200', passed: context.response.status === 200 })"}
+                  onChange={e => setDraft({ ...draft, tests: e.target.value })}
+                />
+              </div>
             )}
             {activeTab === 'History' && (
               <div>
@@ -652,7 +725,7 @@ export function ApiClientView() {
                     className={`ac-history-row${historyPreview === entry ? ' active' : ''}`}
                     onClick={() => setHistoryPreview(entry)}
                   >
-                    <span className={`pill ${entry.status === 'passed' ? 'success' : entry.status === 'failed' ? 'danger' : 'warning'}`}>
+                    <span className={`pill ${statusPill(entry.status)}`}>
                       {entry.status}
                     </span>
                     <span className="mono">{entry.request?.method}</span>
@@ -676,7 +749,7 @@ export function ApiClientView() {
             {response && (
               <div className="ac-response">
                 <div className="ac-response-status">
-                  <span className={`pill ${response.status === 'passed' ? 'success' : response.status === 'failed' ? 'danger' : 'warning'}`}>
+                  <span className={`pill ${statusPill(response.status)}`}>
                     {response.status}
                   </span>
                   {response.response && (
@@ -686,14 +759,21 @@ export function ApiClientView() {
                   )}
                   {response.error && <span className="ac-error-text">{response.error}</span>}
                 </div>
+                {response.status === 'skipped' && (
+                  <div className="ac-empty-note">The pre-request script skipped this request (bru.runner.skipRequest), so it wasn't sent.</div>
+                )}
                 {response.tests && response.tests.length > 0 && (
                   <div className="ac-tests">
                     {response.tests.map((t, i) => (
                       <div key={i} className={`ac-test-row ${t.passed ? 'pass' : 'fail'}`}>
                         {t.passed ? '✓' : '✗'} {t.name}
+                        {!t.passed && t.error && <div className="ac-test-error">{t.error}</div>}
                       </div>
                     ))}
                   </div>
+                )}
+                {response.logs?.length > 0 && (
+                  <pre className="ac-logs">{response.logs.map(l => (typeof l === 'string' ? l : l.message)).join('\n')}</pre>
                 )}
                 {response.response && (
                   <>
@@ -723,11 +803,18 @@ export function ApiClientView() {
 
         {runReport && (
           <div className="ac-response">
-            <strong>Run results — {runReport.collectionName}: {runReport.passed} passed, {runReport.failed} failed ({runReport.totalDurationMs}ms)</strong>
+            <strong>
+              Run results — {runReport.collectionName}: {runReport.passed} passed, {runReport.failed} failed
+              {runReport.skipped ? `, ${runReport.skipped} skipped` : ''} ({runReport.totalDurationMs}ms)
+            </strong>
             <div className="ac-tests" style={{ marginTop: 8 }}>
               {runReport.results.map((r, i) => (
-                <div key={i} className={`ac-test-row ${r.status === 'passed' ? 'pass' : 'fail'}`}>
-                  {r.status === 'passed' ? '✓' : '✗'} {r.name} — {r.status}
+                <div key={i} className={`ac-test-row ${r.status === 'passed' ? 'pass' : r.status === 'skipped' ? 'skip' : 'fail'}`}>
+                  {r.status === 'passed' ? '✓' : r.status === 'skipped' ? '–' : '✗'} {r.name} — {r.status}
+                  {r.error && <div className="ac-test-error">{r.phase ? `${r.phase}: ` : ''}{r.error}</div>}
+                  {(r.tests || []).filter(t => !t.passed).map((t, j) => (
+                    <div key={j} className="ac-test-error">✗ {t.name}{t.error ? `: ${t.error}` : ''}</div>
+                  ))}
                 </div>
               ))}
             </div>
