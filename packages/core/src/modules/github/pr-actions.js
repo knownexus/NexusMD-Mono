@@ -34,7 +34,10 @@ export async function githubMergeMethods(client, repo) {
 export async function mergeGithubPR(client, { repo, number, branch, headRepo }, { method, deleteBranch }) {
   await client.put(`${pullPath(repo, number)}/merge`, { merge_method: method })
   const warnings = []
-  if (deleteBranch && branch && headRepo === repo) {
+  const sameRepo = !!headRepo && headRepo.toLowerCase() === repo.toLowerCase()
+  if (deleteBranch && branch && !sameRepo) {
+    warnings.push('Merged, but the branch is in another repository and was not deleted')
+  } else if (deleteBranch && branch) {
     const ref = branch.split('/').map(encodeURIComponent).join('/')
     try {
       await client.del(`repos/${repo}/git/refs/heads/${ref}`)

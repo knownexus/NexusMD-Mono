@@ -72,6 +72,24 @@ describe('mergeGithubPR', () => {
     await mergeGithubPR(c, { ...target, headRepo: 'fork/web' }, opts)
     expect(c.del).not.toHaveBeenCalled()
   })
+  it('warns and does not delete when the head repo is another repository', async () => {
+    const c = { put: async () => null, del: vi.fn() }
+    expect(await mergeGithubPR(c, { ...target, headRepo: 'fork/web' }, opts)).toEqual({
+      warnings: ['Merged, but the branch is in another repository and was not deleted'],
+    })
+    expect(c.del).not.toHaveBeenCalled()
+  })
+  it('never deletes when the head repo is unknown (deleted fork)', async () => {
+    const c = { put: async () => null, del: vi.fn() }
+    const r = await mergeGithubPR(c, { ...target, branch: 'main', headRepo: null }, opts)
+    expect(c.del).not.toHaveBeenCalled()
+    expect(r.warnings).toEqual(['Merged, but the branch is in another repository and was not deleted'])
+  })
+  it('compares repo names case-insensitively', async () => {
+    const c = { put: async () => null, del: vi.fn(async () => null) }
+    await mergeGithubPR(c, { ...target, headRepo: 'Acme/Web' }, opts)
+    expect(c.del).toHaveBeenCalledWith('repos/acme/web/git/refs/heads/f')
+  })
   it('does not delete when deleteBranch is false', async () => {
     const c = { put: vi.fn(async () => null), del: vi.fn() }
     expect(await mergeGithubPR(c, target, { method: 'merge', deleteBranch: false })).toEqual({ warnings: [] })
