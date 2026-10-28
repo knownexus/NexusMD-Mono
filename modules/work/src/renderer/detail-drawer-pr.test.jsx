@@ -23,7 +23,7 @@ describe('PR actions in the drawer', () => {
     const onPRChanged = vi.fn()
     mount(pr, onPRChanged)
     fireEvent.click(screen.getByText('Approve'))
-    await waitFor(() => expect(onPRChanged).toHaveBeenCalledWith({ myVote: 10 }))
+    await waitFor(() => expect(onPRChanged).toHaveBeenCalledWith(7, { myVote: 10 }))
     expect(fetch.mock.calls.some(([p, o]) => p.includes('reviewers/me-1') && o?.method === 'PUT')).toBe(true)
   })
   it('offers no Approve on a merged PR', () => {

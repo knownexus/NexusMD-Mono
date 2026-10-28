@@ -158,8 +158,8 @@ export function WorkProvider({ host, view, children }) {
         {children}
         <DetailDrawer drawer={drawer} onClose={() => setDrawer(null)} setItems={setItemsResolved}
           onOpenItem={openItem} onOpenPR={openPR}
-          onPRChanged={patch => {
-            setDrawer(dr => dr && dr.kind === 'pr' ? { ...dr, data: { ...dr.data, ...patch } } : dr)
+          onPRChanged={(id, patch) => {
+            setDrawer(dr => dr && dr.kind === 'pr' && dr.data.id === id ? { ...dr, data: { ...dr.data, ...patch } } : dr)
             refreshAllData()
           }} />
         <CreateWorkItemDrawer

@@ -70,9 +70,19 @@ describe('the drawers', () => {
   it('patches the open PR and refreshes when a PR action succeeds', () => {
     mount()
     act(() => work.openPR({ id: 1, status: 'active' }))
-    act(() => drawerProps.onPRChanged({ status: 'merged' }))
+    act(() => drawerProps.onPRChanged(1, { status: 'merged' }))
     expect(screen.getByTestId('drawer').dataset.status).toBe('merged')
     expect(refreshSpy).toHaveBeenCalledTimes(1)
+  })
+  it('does not patch a different PR that is open now, but still refreshes', () => {
+    mount()
+    act(() => work.openPR({ id: 1, status: 'active' }))
+    act(() => work.openPR({ id: 2, status: 'active' }))
+    act(() => drawerProps.onPRChanged(1, { status: 'merged' }))
+    expect(screen.getByTestId('drawer').dataset.status).toBe('active')
+    expect(refreshSpy).toHaveBeenCalledTimes(1)
+    act(() => drawerProps.onPRChanged(2, { status: 'merged' }))
+    expect(screen.getByTestId('drawer').dataset.status).toBe('merged')
   })
   it('opens the create drawer on nexusmd:create-wi, with the title it was given', () => {
     mount()
