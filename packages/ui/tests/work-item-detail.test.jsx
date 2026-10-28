@@ -102,13 +102,13 @@ describe('WorkItemFieldsEditor for GitHub issues', () => {
   it('offers Open/Closed states and GitHub logins, and hides Priority and Area', async () => {
     const { WorkItemFieldsEditor } = await import('../src/index.js')
     const { container } = render(
-      <NexusDataProvider value={{ data: { STATES: ['New', 'Active'], TEAM: [{ id: 'alice', name: 'Alice' }, { id: 'octo', name: 'octo', source: 'github' }] }, storage: { getItem: () => null, setItem() {} }, getProfileKey: k => k, workItemSource: { saveField: vi.fn() } }}>
+      <NexusDataProvider value={{ data: { STATES: ['New', 'Active'], TEAM: [{ id: 'alice', name: 'Alice' }, { id: 'bob', name: 'Bob Smith', githubLogin: 'bobs' }, { id: 'octo', name: 'octo', githubLogin: 'octo', source: 'github' }] }, storage: { getItem: () => null, setItem() {} }, getProfileKey: k => k, workItemSource: { saveField: vi.fn() } }}>
         <WorkItemFieldsEditor item={{ id: 'gh:acme/web#4', source: 'github', state: 'Open', tags: [] }} />
       </NexusDataProvider>,
     )
     const [stateSel, assigneeSel] = container.querySelectorAll('select')
     expect([...stateSel.options].map(o => o.value)).toEqual(['Open', 'Closed'])
-    expect([...assigneeSel.options].map(o => o.value)).toEqual(['', 'octo'])
+    expect([...assigneeSel.options].map(o => o.value)).toEqual(['', 'bobs', 'octo'])
     expect(container.textContent).not.toContain('Priority')
     expect(container.textContent).not.toContain('Area')
   })

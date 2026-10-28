@@ -29,7 +29,9 @@ export function GithubConnectionCard({ onRefreshData, makeClient = defaultClient
   const [status, setStatus]     = React.useState('')
   const [busy, setBusy]         = React.useState('')
 
-  const token = () => pat.trim() || saved.pat || legacy?.pat || ''
+  // The stored token is read now, not at mount: a save made from this card stores one.
+  const storedPat = () => getGithubConfig().pat
+  const token = () => pat.trim() || storedPat() || legacy?.pat || ''
   const overCap = selected.length > MAX_GITHUB_REPOS
 
   const discoverRepos = async () => {
@@ -50,7 +52,7 @@ export function GithubConnectionCard({ onRefreshData, makeClient = defaultClient
     setBusy('save'); setStatus('Saving…')
     try {
       const me = await makeClient(token()).get('user')
-      const newPat = pat.trim() || (!saved.pat && legacy?.pat) || ''
+      const newPat = pat.trim() || (!storedPat() && legacy?.pat) || ''
       saveGithubConfig({ ...(newPat ? { pat: newPat } : {}), repos: selected, issues, login: me?.login || '' })
       setPat('')
       setStatus('Saved! Loading data…')

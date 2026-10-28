@@ -121,4 +121,18 @@ describe('GithubConnectionCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save & connect' }))
     await waitFor(() => expect(saveGithubConfig).toHaveBeenCalledWith(expect.objectContaining({ pat: 'ghp_legacy', repos: ['acme/api', 'me/dots'] })))
   })
+
+  it('saves again after a first save without retyping the token', async () => {
+    let stored = { pat: '', repos: ['acme/api'], issues: true, login: '' }
+    vi.mocked(getGithubConfig).mockImplementation(() => stored)
+    vi.mocked(saveGithubConfig).mockImplementation(v => { stored = { ...stored, ...v } })
+    mount(fakeClient())
+    fireEvent.change(screen.getByPlaceholderText('Leave blank to keep existing token'), { target: { value: 'ghp_new' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save & connect' }))
+    await waitFor(() => expect(saveGithubConfig).toHaveBeenCalledTimes(1))
+    await screen.findByText(/Saved!/)
+    fireEvent.click(screen.getByRole('button', { name: 'Save & connect' }))
+    await waitFor(() => expect(saveGithubConfig).toHaveBeenCalledTimes(2))
+    expect(screen.queryByText(/Enter a token first/)).toBeNull()
+  })
 })

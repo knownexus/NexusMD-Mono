@@ -473,10 +473,12 @@ export function WorkItemFieldsEditor({ item, onItemUpdated }) {
     return item.state && !base.includes(item.state) ? [item.state, ...base] : base;
   })();
   const jiraPriorities = isJira ? (data.PRIORITIES_BY_SOURCE?.jira || []) : null;
-  // Jira assignee options come from the site's assignable users; ADO from the team.
+  // Jira assignee options come from the site's assignable users; ADO from the team. GitHub
+  // assigns by login, which a person merged into an ADO member keeps as githubLogin; the id
+  // matches the mapper's slugified-login assignee.
   const assigneeOptions = isJira
     ? (data.JIRA_PEOPLE || []).map(p => ({ id: TEAM.find(t => t.name === p.displayName)?.id || slugify(p.displayName), name: p.displayName }))
-    : isGithub ? TEAM.filter(t => t.source === 'github')
+    : isGithub ? TEAM.filter(t => t.githubLogin).map(t => ({ id: slugify(t.githubLogin), name: t.githubLogin }))
     : TEAM;
   const [areas] = useProjectAreas({ storage, getProfileKey });
 
