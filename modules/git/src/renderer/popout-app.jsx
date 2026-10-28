@@ -1,5 +1,5 @@
 import React from 'react'
-import { paletteFor } from '@nexusmd/ui'
+import { paletteFor as uiPaletteFor } from '@nexusmd/ui'
 import { FileEditor } from './file-editor.jsx'
 import { ResolvePane } from './resolve-pane.jsx'
 import { DiffPane } from './diff-pane.jsx'
@@ -10,6 +10,12 @@ import './git-workspace.css'
 
 const HEADINGS = { editor: 'Edit', conflict: 'Resolve', diff: 'Diff' }
 const NOOP = () => {}
+
+// The app can be updated on its own (app-updater.cjs), so it may run in a shell from before
+// @nexusmd/ui had paletteFor (NexusMD 1.2.7 and older), whose tweaks know only light and dark. The
+// split build reads @nexusmd/ui's names off the shell's module, so a missing one is undefined there.
+// Read when called, not at load: tests that load every app mock @nexusmd/ui without it.
+const paletteFor = t => (uiPaletteFor ? uiPaletteFor(t) : t?.theme === 'dark' ? (t.darkTheme || 'cobalt') : (t?.lightTheme || 'parchment'))
 
 // The same palette the main window uses (its tweaks are kept in localStorage).
 function usePalette() {
