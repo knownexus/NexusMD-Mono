@@ -12,6 +12,7 @@ vi.mock('@nexusmd/ui', () => ({
 }))
 vi.mock('./ado-settings.jsx', () => ({ AdoConnectionCard: () => <div>AdoConnectionCard</div> }))
 vi.mock('./jira-settings.jsx', () => ({ JiraConnectionCard: () => <div>JiraConnectionCard</div>, WorkItemsDisplayCard: () => <div>WorkItemsDisplayCard</div> }))
+vi.mock('./github-settings.jsx', () => ({ GithubConnectionCard: () => <div>GithubConnectionCard</div> }))
 
 import { WorkContext } from './work-context.js'
 import { WorkDataRows, WorkIntegrationsPanel, WorkBoardPanel, WorkCardsPanel } from './work-settings.jsx'
@@ -79,9 +80,9 @@ describe('WorkDataRows (the refresh interval and cache rows of Data & sync)', ()
 })
 
 describe('the other Work panels', () => {
-  it('Integrations holds the Azure DevOps and Jira cards', () => {
+  it('Integrations holds the Azure DevOps, Jira and GitHub cards', () => {
     withWork(<WorkIntegrationsPanel />)
-    for (const name of ['AdoConnectionCard', 'JiraConnectionCard', 'WorkItemsDisplayCard']) expect(screen.getByText(name)).toBeTruthy()
+    for (const name of ['AdoConnectionCard', 'JiraConnectionCard', 'GithubConnectionCard', 'WorkItemsDisplayCard']) expect(screen.getByText(name)).toBeTruthy()
   })
   it("Integrations shows nothing, rather than failing, outside Work's provider", () => {
     const { container } = render(<WorkIntegrationsPanel />)
