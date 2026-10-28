@@ -13,7 +13,8 @@ vi.mock('./work-data.js', () => ({
   desktopWorkItemSource: { createWorkItem: vi.fn(async () => ({ warnings: [] })) },
   useNexusSnapshot: () => ({ snapshot: SNAPSHOT, loaded: true }),
 }))
-vi.mock('./detail-drawer.jsx', () => ({ DetailDrawer: ({ drawer }) => <div data-testid="drawer">{drawer ? drawer.kind : 'closed'}</div> }))
+let drawerProps
+vi.mock('./detail-drawer.jsx', () => ({ DetailDrawer: props => { drawerProps = props; return <div data-testid="drawer" data-status={props.drawer?.data?.status ?? ''}>{props.drawer ? props.drawer.kind : 'closed'}</div> } }))
 vi.mock('./create-work-item-drawer.jsx', () => ({ CreateWorkItemDrawer: ({ open, title, github, defaultProvider }) => <div data-testid="create" data-github={github ? github.repos.join(',') : ''} data-provider={defaultProvider}>{open ? `open:${title ?? ''}` : 'closed'}</div> }))
 vi.mock('./project-areas-modal.jsx', () => ({ ProjectAreasModal: ({ open }) => <div data-testid="areas">{open ? 'open' : 'closed'}</div> }))
 
@@ -65,6 +66,13 @@ describe('the drawers', () => {
       act(() => work[open]({ id: 1 }))
       expect(screen.getByTestId('drawer').textContent).toBe(kind)
     }
+  })
+  it('patches the open PR and refreshes when a PR action succeeds', () => {
+    mount()
+    act(() => work.openPR({ id: 1, status: 'active' }))
+    act(() => drawerProps.onPRChanged({ status: 'merged' }))
+    expect(screen.getByTestId('drawer').dataset.status).toBe('merged')
+    expect(refreshSpy).toHaveBeenCalledTimes(1)
   })
   it('opens the create drawer on nexusmd:create-wi, with the title it was given', () => {
     mount()

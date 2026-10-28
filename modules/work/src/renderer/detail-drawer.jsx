@@ -1,7 +1,7 @@
 import React from 'react'
-import { displayIdOf } from '@nexusmd/core'
+import { displayIdOf, makePRActions, makeGithubClient } from '@nexusmd/core'
 import {
-  Icon, useNexusData, toast, WorkItemDetail, BuildDetail, Drawer, TypeIcon, Prio, WorkItemFieldsEditor, PRTabs,
+  Icon, useNexusData, toast, WorkItemDetail, BuildDetail, Drawer, TypeIcon, Prio, WorkItemFieldsEditor, PRTabs, PRActions,
 } from '@nexusmd/ui'
 import { linkAdapter } from '@nexusmd/shell-sdk'
 import { createAdoHttpAdapter, getAdoConfig } from './ado-client.js'
@@ -21,12 +21,17 @@ export function drawerLink(kind, d, { org, workItemSource }) {
 }
 
 // The side drawer for a work item, pull request, person or build.
-export function DetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }) {
+export function DetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR, onPRChanged }) {
   const open = drawer != null
   const kind = drawer?.kind
   const d    = drawer?.data
   const http = React.useMemo(() => createAdoHttpAdapter(), [])
-  const { workItemSource } = useNexusData()
+  const { workItemSource, data, githubHttp } = useNexusData()
+  const prActions = React.useMemo(() => makePRActions({
+    adoHttp: http,
+    adoMeId: data?.ME?.adoId || '',
+    githubClient: githubHttp ? makeGithubClient(githubHttp) : null,
+  }), [http, data?.ME?.adoId, githubHttp])
 
   const title = !d ? '' : kind === 'wi' ? d.title : kind === 'pr' ? d.title : kind === 'person' ? d.name : kind === 'build' ? d.pipeline : ''
 
@@ -66,6 +71,7 @@ export function DetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
             </button>
           )}
           {kind === 'person' && d && <PersonActions dev={d} />}
+          {kind === 'pr' && d && <PRActions pr={d} actions={prActions} onChanged={onPRChanged} />}
           {adoUrl && (
             <button className="btn sm ghost" onClick={() => linkAdapter.openLink(adoUrl)}>
               <Icon name="link" size={12}/> Open in {openInLabel}
