@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500;600&amp;family=Cinzel:wght@600&amp;display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;height:100%;background:#f4f1e8;color:#2c2618;font-family:Geist,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#9a7e22}a:hover{color:#7d6619}
+button,input,textarea,select{font:inherit;color:inherit}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#c9bd9c;border-radius:999px;border:2px solid transparent;background-clip:padding-box}
+</style>
+</helmet>
+<div style="height:100vh;display:flex;flex-direction:column;background:#f4f1e8;color:#2c2618;font-size:13px;position:relative;overflow:hidden;">
+
+  <header style="padding:14px 24px 0;background:#fbf8ee;border-bottom:1px solid #c9bd9c;display:flex;flex-direction:column;gap:12px">
+    <div style="display:flex;align-items:center;gap:12px 20px;flex-wrap:wrap">
+      <h1 style="margin:0;font:600 20px/1.2 Cinzel,Georgia,serif;letter-spacing:.03em">Git Workspace</h1>
+      <div role="tablist" style="display:flex;gap:2px;padding:3px;background:#ebe5d4;border-radius:8px">
+        <sc-for list="{{ groupTabs }}" as="g" hint-placeholder-count="2">
+          <button role="tab" onClick="{{ g.onClick }}" style="display:flex;align-items:center;gap:6px;height:26px;padding:0 12px;border:0;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:500;white-space:nowrap;flex:none;background:{{ g.bg }};color:{{ g.color }};box-shadow:{{ g.shadow }}">{{ g.label }}<span style="font-size:11px;color:#76705e">{{ g.n }}</span></button>
+        </sc-for>
+        <button onClick="{{ newGroup }}" style="height:26px;padding:0 10px;border:0;background:transparent;color:#9a7e22;cursor:pointer;font-size:12.5px;font-weight:500;border-radius:6px;white-space:nowrap" style-hover="background:#e3dcc6">+ Group</button>
+      </div>
+      <sc-if value="{{ canEditGroup }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;margin-left:-14px">
+          <button onClick="{{ toggleGroupMenu }}" title="Group options" style="height:30px;width:30px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-size:16px;line-height:1;color:#76705e" style-hover="background:#ebe5d4;color:#2c2618">⋯</button>
+          <sc-if value="{{ groupMenuOpen }}" hint-placeholder-val="{{ false }}">
+            <div role="menu" style="position:absolute;left:0;top:calc(100% + 4px);z-index:45;width:210px;background:#fbf8ee;border:1px solid #c9bd9c;border-radius:10px;box-shadow:0 12px 40px rgba(44,38,24,.14),0 2px 6px rgba(44,38,24,.06);padding:6px">
+              <sc-for list="{{ groupMenu }}" as="mi">
+                <button role="menuitem" onClick="{{ mi.onClick }}" style="width:100%;display:flex;align-items:center;gap:8px;padding:7px 8px;border:0;border-radius:6px;background:transparent;cursor:pointer;text-align:left;font-size:12.5px;color:{{ mi.color }}" style-hover="background:#ebe5d4">{{ mi.label }}</button>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+      <div style="flex:1"></div>
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#76705e;white-space:nowrap;flex:none"><span style="width:7px;height:7px;border-radius:50%;background:#1f7a48"></span>{{ fetchedText }}</span>
+      <button onClick="{{ openSwitcher }}" style="display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:6px;border:1px solid #c9bd9c;background:#f4f1e8;color:#76705e;cursor:pointer;font-size:12.5px;min-width:180px;white-space:nowrap;flex:none" style-hover="border-color:#b0a480">Jump to branch…<span style="flex:1"></span><sc-if value="{{ kbd }}" hint-placeholder-val="{{ true }}"><span style="font:10.5px 'Geist Mono',monospace;padding:1px 5px;border:1px solid #c9bd9c;border-radius:4px;background:#e3dcc6;color:#76705e">Ctrl K</span></sc-if></button>
+      <button onClick="{{ fetchAll }}" style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:500;white-space:nowrap;flex:none" style-hover="background:#ebe5d4">Fetch all</button>
+      <button onClick="{{ pullAll }}" disabled="{{ pullAllDisabled }}" title="Fast-forwards every branch that's behind and has no local changes" style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:6px;border:1px solid #9a7e22;background:#9a7e22;color:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:600;white-space:nowrap;flex:none;opacity:{{ pullAllOpacity }}" style-hover="background:#86701c">{{ pullAllLabel }}</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding-bottom:12px;flex-wrap:wrap">
+      <div style="position:relative;width:240px;flex:none">
+        <input ref="{{ searchRef }}" value="{{ q }}" onChange="{{ onQ }}" placeholder="Filter branches and repos" style="width:100%;height:30px;padding:0 34px 0 10px;border:1px solid #c9bd9c;border-radius:6px;background:#fbf8ee;outline:none;font-size:12.5px" style-focus="border-color:#9a7e22">
+        <sc-if value="{{ kbd }}" hint-placeholder-val="{{ true }}"><span style="position:absolute;right:8px;top:7px;font:10.5px 'Geist Mono',monospace;padding:0 5px;border:1px solid #c9bd9c;border-radius:4px;background:#e3dcc6;color:#76705e">/</span></sc-if>
+      </div>
+      <span style="width:1px;height:18px;background:#c9bd9c;margin:0 4px"></span>
+      <span style="font-size:11.5px;color:#76705e;white-space:nowrap">Show</span>
+      <sc-for list="{{ chips }}" as="c" hint-placeholder-count="6">
+        <button onClick="{{ c.onClick }}" title="{{ c.titleFull }}" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.color }};cursor:pointer;font-size:12.5px;font-weight:500;white-space:nowrap;flex:none"><span style="width:7px;height:7px;border-radius:50%;background:{{ c.dot }}"></span>{{ c.label }}<span style="font-size:11.5px;font-weight:600;font-feature-settings:'tnum'">{{ c.n }}</span></button>
+      </sc-for>
+      
+    </div>
+  </header>
+
+  <div style="flex:1;min-height:0;display:flex">
+
+    <sc-if value="{{ isSplit }}" hint-placeholder-val="{{ true }}">
+      <aside style="width:330px;flex:none;border-right:1px solid #c9bd9c;background:#f4f1e8;overflow:auto;padding:12px 10px 24px;display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{ repoList }}" as="r" hint-placeholder-count="4">
+          <section>
+            <button onClick="{{ r.toggle }}" style="width:100%;display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;padding:6px 8px;border:0;background:transparent;cursor:pointer;text-align:left;border-radius:6px" style-hover="background:#ebe5d4">
+              <span style="width:10px;color:#76705e;font-size:10px">{{ r.caret }}</span>
+              <span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#9a7e22">{{ r.name }}</span>
+              <span style="font-size:11.5px;color:#76705e;white-space:nowrap">{{ r.countText }}</span>
+              <span style="margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
+                <sc-for list="{{ r.pills }}" as="p"><span style="display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;background:{{ p.bg }};color:{{ p.color }}">{{ p.text }}</span></sc-for>
+              </span>
+            </button>
+            <sc-if value="{{ r.open }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:2px;margin-top:2px">
+                <sc-for list="{{ r.rows }}" as="t">
+                  <button onClick="{{ t.onClick }}" title="{{ t.title }}" style="display:grid;grid-template-columns:8px minmax(0,1fr);gap:10px;align-items:start;padding:8px 10px;border:1px solid {{ t.bd }};background:{{ t.bg }};border-radius:8px;cursor:pointer;text-align:left;width:100%" style-hover="border-color:#c9bd9c">
+                    <span style="width:8px;height:8px;border-radius:50%;margin-top:5px;background:{{ t.dot }}"></span>
+                    <span style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                      <span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.branch }}</span>
+                      <span style="display:flex;flex-wrap:wrap;gap:2px 10px;font-size:11.5px">
+                        <sc-for list="{{ t.meta }}" as="m"><span style="color:{{ m.color }};font-weight:{{ m.weight }};white-space:nowrap">{{ m.text }}</span></sc-for>
+                      </span>
+                    </span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </section>
+        </sc-for>
+        <sc-if value="{{ listEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:24px 10px;color:#76705e;font-size:12.5px;line-height:1.5">No branches match. <button onClick="{{ clearFilters }}" style="border:0;background:none;color:#9a7e22;cursor:pointer;padding:0;font-weight:500">Clear filters</button></div>
+        </sc-if>
+      </aside>
+    </sc-if>
+
+    <main style="flex:1;min-width:0;display:flex;flex-direction:column;min-height:0">
+
+      <sc-if value="{{ noSel }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;overflow:auto;padding:24px 28px 40px">
+          <div style="max-width:1080px;display:flex;flex-direction:column;gap:20px">
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+              <h2 style="margin:0;font-size:18px;font-weight:600">{{ overviewTitle }}</h2>
+              <span style="color:#76705e">{{ overviewSub }}</span>
+            </div>
+            <sc-for list="{{ attention }}" as="a" hint-placeholder-count="3">
+              <section style="background:#fbf8ee;border:1px solid #c9bd9c;border-radius:12px;overflow:hidden">
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:#ebe5d4;border-bottom:1px solid #c9bd9c">
+                  <span style="width:8px;height:8px;border-radius:50%;background:{{ a.dot }}"></span>
+                  <span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#2c2618">{{ a.title }}</span>
+                  <span style="font-size:12px;color:#76705e">{{ a.hint }}</span>
+                  <span style="flex:1"></span>
+                  <sc-if value="{{ a.hasBulk }}" hint-placeholder-val="{{ false }}"><button onClick="{{ a.onBulk }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12px;font-weight:500" style-hover="background:#f4f1e8">{{ a.bulkLabel }}</button></sc-if>
+                </div>
+                <sc-for list="{{ a.items }}" as="i">
+                  <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:10px 16px;border-bottom:1px solid #e3dcc6">
+                    <button onClick="{{ i.open }}" style="display:flex;flex-direction:column;gap:2px;border:0;background:none;padding:0;text-align:left;cursor:pointer;min-width:0">
+                      <span style="display:flex;gap:8px;align-items:baseline;min-width:0"><span style="font-size:11.5px;color:#76705e;flex:none">{{ i.repo }}</span><span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" style-hover="color:#9a7e22">{{ i.branch }}</span></span>
+                      <span style="font-size:12px;color:#76705e">{{ i.desc }}</span>
+                    </button>
+                    <div style="display:flex;gap:6px">
+                      <button onClick="{{ i.open }}" style="height:28px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-size:12.5px;color:#76705e" style-hover="background:#ebe5d4;color:#2c2618">Open</button>
+                      <button onClick="{{ i.onAction }}" style="height:28px;padding:0 12px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:600;color:{{ i.actionColor }}" style-hover="background:#ebe5d4">{{ i.action }}</button>
+                    </div>
+                  </div>
+                </sc-for>
+              </section>
+            </sc-for>
+            <sc-if value="{{ allGood }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:28px;border:1px dashed #c9bd9c;border-radius:12px;text-align:center;color:#76705e">Nothing needs you right now. Every branch is committed, pushed and up to date.</div>
+            </sc-if>
+
+            <sc-if value="{{ isFocus }}" hint-placeholder-val="{{ false }}">
+              <section style="background:#fbf8ee;border:1px solid #c9bd9c;border-radius:12px;overflow:hidden">
+                <div style="display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.3fr) 130px;gap:12px;padding:9px 16px;background:#ebe5d4;border-bottom:1px solid #c9bd9c;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#76705e">
+                  <span>Branch</span><span>Local changes</span><span>Sync</span><span>Upstream</span><span></span>
+                </div>
+                <sc-for list="{{ repoList }}" as="r">
+                  <div style="padding:8px 16px 6px;display:flex;gap:8px;align-items:center;border-bottom:1px solid #e3dcc6;background:#f4f1e8">
+                    <span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#9a7e22">{{ r.name }}</span>
+                    <span style="font-size:11.5px;color:#76705e">{{ r.countText }}</span>
+                  </div>
+                  <sc-for list="{{ r.rows }}" as="t">
+                    <div onClick="{{ t.onClick }}" style="display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.3fr) 130px;gap:12px;align-items:center;padding:9px 16px;border-bottom:1px solid #e3dcc6;cursor:pointer" style-hover="background:#f4f1e8">
+                      <span style="display:flex;align-items:center;gap:10px;min-width:0"><span style="width:8px;height:8px;border-radius:50%;flex:none;background:{{ t.dot }}"></span><span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.branch }}</span></span>
+                      <span style="color:{{ t.changesColor }}">{{ t.changesText }}</span>
+                      <span style="font-family:'Geist Mono',monospace;font-size:12px;color:{{ t.syncColor }}">{{ t.syncText }}</span>
+                      <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#76705e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.upText }}</span>
+                      <span style="display:flex;justify-content:flex-end">
+                        <sc-if value="{{ t.hasAction }}"><button onClick="{{ t.onAction }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12px;font-weight:600" style-hover="background:#ebe5d4">{{ t.actionLabel }}</button></sc-if>
+                      </span>
+                    </div>
+                  </sc-for>
+                </sc-for>
+              </section>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+          <div style="padding:14px 20px 12px;background:#fbf8ee;border-bottom:1px solid #c9bd9c;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end">
+            <div style="min-width:min(100%,360px);flex:1 1 360px;display:flex;flex-direction:column;gap:4px">
+              <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#76705e">
+                <button onClick="{{ backToOverview }}" style="border:0;background:none;padding:0;cursor:pointer;color:#9a7e22;font-weight:500">Overview</button><span>›</span><span>{{ sel.repo }}</span>
+                <sc-if value="{{ sel.isWorktree }}"><span>›</span><span style="font-family:'Geist Mono',monospace">{{ sel.worktree }}</span></sc-if>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;min-width:0">
+                <span style="font-size:18px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ sel.branch }}</span>
+                <button onClick="{{ openSwitcher }}" title="Switch branch" style="flex:none;height:24px;padding:0 8px;border-radius:6px;border:1px solid #c9bd9c;background:transparent;cursor:pointer;font-size:12px;color:#76705e" style-hover="background:#ebe5d4;color:#2c2618">Switch ▾</button>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:#76705e;align-items:center">
+                <span style="font-family:'Geist Mono',monospace;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%" title="{{ sel.path }}">{{ sel.path }}</span>
+                <button onClick="{{ copyPath }}" style="border:0;background:none;padding:0;color:#9a7e22;cursor:pointer;font-size:12px">Copy path</button>
+                <span style="color:{{ sel.trackColor }}">{{ sel.track }}</span>
+                <span>{{ sel.syncText }}</span>
+                <span>Fetched {{ sel.fetched }}</span>
+              </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:0 1 auto;margin-left:auto">
+              <sc-if value="{{ sel.hasPrimary }}"><button onClick="{{ sel.onPrimary }}" style="white-space:nowrap;height:30px;padding:0 14px;border-radius:6px;border:1px solid #9a7e22;background:#9a7e22;color:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:600" style-hover="background:#86701c">{{ sel.primary }}</button></sc-if>
+              <button onClick="{{ fetchOne }}" style="white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:500" style-hover="background:#ebe5d4">Fetch</button>
+              <button onClick="{{ openPull }}" disabled="{{ sel.busy }}" style="white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:500;opacity:{{ sel.busyOpacity }}" style-hover="background:#ebe5d4">Pull…</button>
+              <button onClick="{{ openRebase }}" disabled="{{ sel.busy }}" style="white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:500;opacity:{{ sel.busyOpacity }}" style-hover="background:#ebe5d4">Rebase…</button>
+              <div style="position:relative">
+                <button onClick="{{ toggleMore }}" style="white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:500" style-hover="background:#ebe5d4">More ▾</button>
+                <sc-if value="{{ moreOpen }}" hint-placeholder-val="{{ false }}">
+                  <div role="menu" style="position:absolute;right:0;top:calc(100% + 4px);z-index:45;width:250px;background:#fbf8ee;border:1px solid #c9bd9c;border-radius:10px;box-shadow:0 12px 40px rgba(44,38,24,.14),0 2px 6px rgba(44,38,24,.06);padding:6px">
+                    <sc-for list="{{ moreMenu }}" as="mi">
+                      <sc-if value="{{ mi.isHead }}"><div style="padding:8px 8px 3px;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#76705e">{{ mi.label }}</div></sc-if>
+                      <sc-if value="{{ mi.isItem }}"><button role="menuitem" onClick="{{ mi.onClick }}" disabled="{{ mi.disabled }}" title="{{ mi.title }}" style="width:100%;display:flex;align-items:center;gap:8px;padding:6px 8px;border:0;border-radius:6px;background:transparent;cursor:pointer;text-align:left;font-size:12.5px;color:{{ mi.color }};opacity:{{ mi.opacity }}" style-hover="background:#ebe5d4">{{ mi.label }}<span style="flex:1"></span><span style="font:11px 'Geist Mono',monospace;color:#76705e">{{ mi.hint }}</span></button></sc-if>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+              <span style="width:1px;height:20px;background:#c9bd9c;margin:0 2px"></span>
+              <button onClick="{{ openTerminal }}" style="white-space:nowrap;height:30px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-size:12.5px;color:#76705e" style-hover="background:#ebe5d4;color:#2c2618">Terminal</button>
+              <button onClick="{{ openEditor }}" style="white-space:nowrap;height:30px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-size:12.5px;color:#76705e" style-hover="background:#ebe5d4;color:#2c2618">Editor</button>
+            </div>
+          </div>
+
+          <sc-if value="{{ op.show }}" hint-placeholder-val="{{ false }}">
+            <div role="status" style="margin:12px 20px 0;padding:12px 14px;border:1px solid rgba(168,94,16,.45);background:rgba(168,94,16,.08);border-radius:10px;display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center">
+              <div style="display:flex;flex-direction:column;gap:6px;min-width:0;flex:1 1 380px">
+                <div style="font-weight:600;color:#2c2618">{{ op.title }}</div>
+                <div style="font-size:12.5px;color:#76705e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Commit {{ op.step }} of {{ op.total }} · <span style="font-family:'Geist Mono',monospace;color:#9a7e22">{{ op.hash }}</span> {{ op.msg }}</div>
+                <div style="display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap">
+                  <div style="display:flex;gap:3px;flex:none">
+                    <sc-for list="{{ op.steps }}" as="s"><span style="width:22px;height:5px;border-radius:3px;background:{{ s.bg }}"></span></sc-for>
+                  </div>
+                  <span style="font-size:12px;font-weight:600;white-space:nowrap;color:{{ op.conflictColor }}">{{ op.conflictText }}</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-left:auto">
+                <button onClick="{{ opContinue }}" disabled="{{ op.blocked }}" title="{{ op.continueTitle }}" style="white-space:nowrap;height:30px;padding:0 14px;border-radius:6px;border:1px solid #9a7e22;background:#9a7e22;color:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:600;opacity:{{ op.continueOpacity }}">Continue rebase</button>
+                <button onClick="{{ opSkip }}" style="white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12.5px" style-hover="background:#ebe5d4">Skip this commit</button>
+                <button onClick="{{ opAbort }}" style="white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-size:12.5px;color:#a02617;font-weight:500" style-hover="background:rgba(160,38,23,.09)">Abort</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;align-items:flex-end;gap:2px;padding:0 20px;border-bottom:1px solid #c9bd9c;margin-top:10px">
+            <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="2">
+              <button onClick="{{ tb.onClick }}" style="height:34px;padding:0 12px;border:0;border-bottom:2px solid {{ tb.line }};background:transparent;cursor:pointer;font-size:13px;font-weight:600;color:{{ tb.color }};margin-bottom:-1px">{{ tb.label }}</button>
+            </sc-for>
+            <span style="flex:1"></span>
+            <button onClick="{{ goToFile }}" style="height:28px;margin-bottom:4px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-size:12.5px;color:#76705e;display:flex;gap:8px;align-items:center" style-hover="background:#ebe5d4">Go to file<sc-if value="{{ kbd }}"><span style="font:10.5px 'Geist Mono',monospace;padding:1px 5px;border:1px solid #c9bd9c;border-radius:4px;background:#e3dcc6;color:#76705e">Ctrl P</span></sc-if></button>
+          </div>
+
+          <sc-if value="{{ isChanges }}" hint-placeholder-val="{{ true }}">
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:clamp(260px,32%,360px) minmax(0,1fr)">
+              <div style="border-right:1px solid #c9bd9c;display:flex;flex-direction:column;min-height:0;overflow:auto;background:#fbf8ee">
+                <div style="flex:1 0 auto;min-height:160px;padding:8px 8px 12px">
+                  <sc-if value="{{ noChanges }}" hint-placeholder-val="{{ false }}">
+                    <div style="padding:28px 12px;text-align:center;color:#76705e;line-height:1.5"><div style="font-weight:600;color:#2c2618;margin-bottom:4px">Working tree clean</div>Nothing to stage or commit on this branch.</div>
+                  </sc-if>
+                  <sc-for list="{{ sections }}" as="s" hint-placeholder-count="2">
+                    <div style="margin-bottom:10px">
+                      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px">
+                        <span style="width:7px;height:7px;border-radius:50%;background:{{ s.dot }}"></span>
+                        <span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase">{{ s.title }}</span>
+                        <span style="font-size:11.5px;color:#76705e">{{ s.count }}</span>
+                        <span style="flex:1"></span>
+                        <sc-if value="{{ s.hasAction }}"><button onClick="{{ s.onAction }}" style="height:22px;padding:0 8px;border-radius:5px;border:0;background:transparent;cursor:pointer;font-size:12px;color:#9a7e22;font-weight:500" style-hover="background:#ebe5d4">{{ s.actionLabel }}</button></sc-if>
+                      </div>
+                      <sc-if value="{{ s.hasNote }}"><div style="padding:0 8px 6px 23px;font-size:11.5px;color:#76705e">{{ s.note }}</div></sc-if>
+                      <sc-for list="{{ s.files }}" as="f">
+                        <div onClick="{{ f.onClick }}" title="{{ f.path }}" style="display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 8px;border-radius:6px;cursor:pointer;background:{{ f.bg }}" style-hover="background:#ebe5d4">
+                          <span style="font:600 11px 'Geist Mono',monospace;color:{{ f.stColor }};text-align:center">{{ f.st }}</span>
+                          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-weight:500">{{ f.name }}</span> <span style="color:#76705e;font-size:11.5px">{{ f.dir }}</span></span>
+                          <button onClick="{{ f.onAct }}" title="{{ f.actTitle }}" style="height:22px;padding:0 7px;border-radius:5px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:11.5px;color:#76705e" style-hover="color:#2c2618;border-color:#b0a480">{{ f.act }}</button>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="position:sticky;bottom:0;flex:none;border-top:1px solid #c9bd9c;padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:#f4f1e8">
+                  <sc-if value="{{ commit.blocked }}"><div style="font-size:12px;color:#a85e10;line-height:1.4">{{ commit.blockedText }}</div></sc-if>
+                  <sc-if value="{{ commit.showForm }}" hint-placeholder-val="{{ true }}">
+                  <div style="position:relative">
+                    <input value="{{ summary }}" onChange="{{ onSummary }}" onKeyDown="{{ onCommitKey }}" onFocus="{{ onComposeFocus }}" placeholder="Commit summary" style="width:100%;height:32px;padding:0 48px 0 10px;border:1px solid #c9bd9c;border-radius:6px;background:#fbf8ee;outline:none;font-size:13px" style-focus="border-color:#9a7e22">
+                    <span style="position:absolute;right:10px;top:8px;font-size:11px;font-family:'Geist Mono',monospace;color:{{ commit.lenColor }}">{{ commit.len }}</span>
+                  </div>
+                  <sc-if value="{{ commit.showDesc }}"><textarea value="{{ desc }}" onChange="{{ onDesc }}" onKeyDown="{{ onCommitKey }}" placeholder="Description" rows="2" style="width:100%;padding:8px 10px;border:1px solid #c9bd9c;border-radius:6px;background:#fbf8ee;outline:none;font-size:13px;resize:vertical" style-focus="border-color:#9a7e22"></textarea></sc-if>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#76705e;cursor:pointer;width:fit-content"><input type="checkbox" checked="{{ amend }}" onChange="{{ onAmend }}" style="accent-color:#9a7e22">Amend last commit</label>
+                  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px">
+                    <button onClick="{{ commitPush }}" disabled="{{ commit.disabled }}" title="{{ commit.pushTitle }}" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;color:#2c2618;cursor:pointer;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:{{ commit.opacity }}" style-hover="background:#ebe5d4">{{ commit.pushLabel }}</button>
+                    <button onClick="{{ commitOnly }}" disabled="{{ commit.disabled }}" title="Ctrl+Enter" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid #9a7e22;background:#9a7e22;color:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:{{ commit.opacity }}" style-hover="background:#86701c">{{ commit.label }}</button>
+                  </div>
+                  <sc-if value="{{ commit.hasHint }}"><div style="font-size:11.5px;color:{{ commit.hintColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ commit.hint }}</div></sc-if>
+                  </sc-if>
+                </div>
+              </div>
+
+              <div style="min-width:0;min-height:0;display:flex;flex-direction:column;background:#fbf8ee">
+                <sc-if value="{{ showDiff }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:10px 16px;border-bottom:1px solid #e3dcc6">
+                    <span style="display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 160px"><span style="font:600 12.5px 'Geist Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0" title="{{ diff.path }}">{{ diff.path }}</span>
+                    <span style="font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:4px;background:#ebe5d4;color:#76705e;white-space:nowrap">{{ diff.lang }}</span>
+                    <span style="font:600 11.5px 'Geist Mono',monospace;color:#1f7a48;flex:none">+{{ diff.add }}</span>
+                    <span style="font:600 11.5px 'Geist Mono',monospace;color:#a02617">−{{ diff.del }}</span></span>
+                    <span style="display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:6px;flex:0 1 auto;min-width:0;margin-left:auto">
+                    <div style="display:flex;padding:2px;background:#ebe5d4;border-radius:6px;flex:none">
+                      <sc-for list="{{ diffModes }}" as="dm"><button onClick="{{ dm.onClick }}" style="white-space:nowrap;height:22px;padding:0 9px;border:0;border-radius:4px;cursor:pointer;font-size:11.5px;font-weight:500;background:{{ dm.bg }};color:{{ dm.color }}">{{ dm.label }}</button></sc-for>
+                    </div>
+                    <button onClick="{{ diff.onStage }}" style="white-space:nowrap;height:26px;padding:0 10px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12px;font-weight:500" style-hover="background:#ebe5d4">{{ diff.stageLabel }}</button>
+                    <button onClick="{{ diff.onDiscard }}" style="white-space:nowrap;height:26px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-size:12px;color:#a02617" style-hover="background:rgba(160,38,23,.09)">Discard…</button></span>
+                  </div>
+                  <div style="flex:1;overflow:auto;padding:8px 0 24px">
+                    <sc-for list="{{ diff.hunks }}" as="h">
+                      <div style="display:flex;align-items:center;gap:10px;padding:10px 16px 4px">
+                        <span style="font:11px 'Geist Mono',monospace;padding:1px 6px;border-radius:4px;background:#ebe5d4;color:#76705e">{{ h.range }}</span>
+                        <span style="font:600 12px 'Geist Mono',monospace;color:#2c2618;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ h.context }}</span>
+                        <span style="flex:1"></span>
+                        <button onClick="{{ h.onStage }}" style="height:22px;padding:0 8px;border-radius:5px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:11.5px" style-hover="background:#ebe5d4">{{ h.stageLabel }}</button>
+                      </div>
+                      <sc-if value="{{ isUnified }}" hint-placeholder-val="{{ true }}">
+                        <div style="font:12px/20px 'Geist Mono',monospace">
+                          <sc-for list="{{ h.lines }}" as="l">
+                            <div style="display:grid;grid-template-columns:44px 44px 18px minmax(0,1fr);background:{{ l.bg }}">
+                              <span style="text-align:right;padding-right:8px;color:#a8a08a;user-select:none">{{ l.o }}</span>
+                              <span style="text-align:right;padding-right:8px;color:#a8a08a;user-select:none;border-right:1px solid #e3dcc6">{{ l.n }}</span>
+                              <span style="text-align:center;color:{{ l.signColor }};user-select:none">{{ l.sign }}</span>
+                              <span style="white-space:pre;overflow:hidden"><sc-for list="{{ l.toks }}" as="tk"><span style="color:{{ tk.c }};font-style:{{ tk.i }};font-weight:{{ tk.w }}">{{ tk.t }}</span></sc-for></span>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ isSplitDiff }}" hint-placeholder-val="{{ false }}">
+                        <div style="font:12px/20px 'Geist Mono',monospace">
+                          <sc-for list="{{ h.pairs }}" as="p">
+                            <div style="display:grid;grid-template-columns:40px minmax(0,1fr) 40px minmax(0,1fr)">
+                              <span style="text-align:right;padding-right:8px;color:#a8a08a;background:{{ p.lbg }}">{{ p.lo }}</span>
+                              <span style="white-space:pre;overflow:hidden;background:{{ p.lbg }};border-right:1px solid #e3dcc6;padding-left:6px"><sc-for list="{{ p.ltoks }}" as="tk"><span style="color:{{ tk.c }};font-style:{{ tk.i }};font-weight:{{ tk.w }}">{{ tk.t }}</span></sc-for></span>
+                              <span style="text-align:right;padding-right:8px;color:#a8a08a;background:{{ p.rbg }}">{{ p.rn }}</span>
+                              <span style="white-space:pre;overflow:hidden;background:{{ p.rbg }};padding-left:6px"><sc-for list="{{ p.rtoks }}" as="tk"><span style="color:{{ tk.c }};font-style:{{ tk.i }};font-weight:{{ tk.w }}">{{ tk.t }}</span></sc-for></span>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                    </sc-for>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ showNonText }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #e3dcc6">
+                    <span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#a02617">Conflict</span>
+                    <span style="font:600 12.5px 'Geist Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ cf.path }}</span>
+                    <span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(160,38,23,.09);color:#a02617;font-weight:600;white-space:nowrap">deleted upstream</span>
+                    <span style="flex:1"></span>
+                    <span style="font-size:12px;color:#76705e;white-space:nowrap">File {{ cf.idx }} of {{ cf.total }}</span>
+                    <button onClick="{{ cf.prev }}" style="height:26px;width:28px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer" style-hover="background:#ebe5d4">‹</button>
+                    <button onClick="{{ cf.next }}" style="height:26px;width:28px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer" style-hover="background:#ebe5d4">›</button>
+                  </div>
+                  <div style="flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px">
+                    <div style="font-size:12.5px;color:#76705e;line-height:1.5">{{ nt.explain }}</div>
+                    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+                      <sc-for list="{{ nt.options }}" as="no"><button onClick="{{ no.onClick }}" style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;padding:14px;border-radius:10px;border:1px solid {{ no.bd }};border-top:3px solid {{ no.color }};background:{{ no.bg }};cursor:pointer;text-align:left"><span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ no.color }}">{{ no.kicker }}</span><span style="font-weight:600;font-size:14px">{{ no.title }}</span><span style="font-size:12px;color:#76705e;line-height:1.45">{{ no.desc }}</span></button></sc-for>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end"><button onClick="{{ cf.resolve }}" disabled="{{ cf.unresolved }}" title="{{ cf.resolveTitle }}" style="height:30px;padding:0 14px;border-radius:6px;border:1px solid #9a7e22;background:#9a7e22;color:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:600;opacity:{{ cf.resolveOpacity }}">Mark resolved &amp; next</button></div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ showConflict }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #e3dcc6">
+                    <span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#a02617">Conflict</span>
+                    <span style="font:600 12.5px 'Geist Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ cf.path }}</span>
+                    <span style="flex:1"></span>
+                    <span style="font-size:12px;color:#76705e">File {{ cf.idx }} of {{ cf.total }}</span>
+                    <button onClick="{{ cf.prev }}" style="height:26px;width:28px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer" style-hover="background:#ebe5d4">‹</button>
+                    <button onClick="{{ cf.next }}" style="height:26px;width:28px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer" style-hover="background:#ebe5d4">›</button>
+                  </div>
+                  <div style="flex:1;overflow:auto;padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px">
+                    <div style="font-size:12.5px;color:#76705e;line-height:1.5">Both sides changed the same lines. <strong style="color:#1f5d8c">origin/master</strong> is already in your branch; <strong style="color:oklch(0.58 0.18 295)">your commit 580ddbd</strong> is being replayed on top. Pick a side, combine them, or edit the result.</div>
+                    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+                      <sc-for list="{{ cf.sides }}" as="sd">
+                        <div style="border:1px solid {{ sd.bd }};border-top:3px solid {{ sd.color }};border-radius:8px;background:#f4f1e8;min-width:0;display:flex;flex-direction:column">
+                          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #e3dcc6">
+                            <span style="display:flex;flex-direction:column;min-width:0;flex:1"><span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ sd.color }}">{{ sd.kicker }}</span><span style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ sd.title }}</span></span>
+                            <button onClick="{{ sd.onUse }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ sd.btnBd }};background:{{ sd.btnBg }};color:{{ sd.btnColor }};cursor:pointer;font-size:12px;font-weight:600">{{ sd.useLabel }}</button>
+                          </div>
+                          <div style="font:12px/20px 'Geist Mono',monospace;max-height:220px;overflow:auto;padding:4px 0">
+                            <sc-for list="{{ sd.lines }}" as="l"><div style="display:grid;grid-template-columns:36px minmax(0,1fr);background:{{ sd.tint }}"><span style="text-align:right;padding-right:8px;color:#a8a08a">{{ l.n }}</span><span style="white-space:pre;overflow:hidden"><sc-for list="{{ l.toks }}" as="tk"><span style="color:{{ tk.c }};font-style:{{ tk.i }};font-weight:{{ tk.w }}">{{ tk.t }}</span></sc-for></span></div></sc-for>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px">
+                      <span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin-right:6px">Result</span>
+                      <sc-for list="{{ cf.combos }}" as="cb"><button onClick="{{ cb.onClick }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ cb.bd }};background:{{ cb.bg }};cursor:pointer;font-size:12px;color:{{ cb.color }}">{{ cb.label }}</button></sc-for>
+                      <span style="flex:1"></span>
+                      <span style="font-size:12px;color:{{ cf.stateColor }}">{{ cf.stateText }}</span>
+                    </div>
+                    <div style="border:1px solid #c9bd9c;border-radius:8px;background:#fbf8ee;font:12px/20px 'Geist Mono',monospace;padding:4px 0">
+                      <sc-for list="{{ cf.result }}" as="l"><div style="display:grid;grid-template-columns:44px minmax(0,1fr);background:{{ l.bg }}"><span style="text-align:right;padding-right:10px;color:#a8a08a">{{ l.n }}</span><span style="white-space:pre;overflow:hidden"><sc-for list="{{ l.toks }}" as="tk"><span style="color:{{ tk.c }};font-style:{{ tk.i }};font-weight:{{ tk.w }}">{{ tk.t }}</span></sc-for></span></div></sc-for>
+                    </div>
+                    <div style="display:flex;gap:8px;justify-content:flex-end">
+                      <button onClick="{{ cf.edit }}" style="white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12.5px" style-hover="background:#ebe5d4">Edit result…</button>
+                      <button onClick="{{ cf.resolve }}" disabled="{{ cf.unresolved }}" title="{{ cf.resolveTitle }}" style="height:30px;padding:0 14px;border-radius:6px;border:1px solid #9a7e22;background:#9a7e22;color:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:600;opacity:{{ cf.resolveOpacity }}">Mark resolved &amp; next</button>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isHistory }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 400px">
+              <div style="overflow:auto;background:#fbf8ee;border-right:1px solid #c9bd9c;padding:6px 0 20px">
+                <sc-for list="{{ history }}" as="c">
+                  <sc-if value="{{ c.hasDivider }}"><div style="padding:12px 16px 6px 46px;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#76705e">{{ c.divider }}</div></sc-if>
+                  <div onClick="{{ c.onClick }}" style="display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:10px;align-items:stretch;padding:0 16px;cursor:pointer;background:{{ c.bg }}" style-hover="background:#ebe5d4">
+                    <span style="position:relative;display:flex;justify-content:center"><span style="position:absolute;top:0;bottom:0;width:2px;background:#e3dcc6"></span><span style="position:relative;margin-top:11px;width:10px;height:10px;border-radius:50%;background:{{ c.dot }};box-shadow:0 0 0 2px #fbf8ee"></span></span>
+                    <span style="display:flex;flex-direction:column;gap:2px;padding:7px 0;min-width:0">
+                      <span style="display:flex;gap:6px;align-items:center;min-width:0">
+                        <sc-for list="{{ c.refs }}" as="rf"><span style="flex:none;font:600 10.5px 'Geist Mono',monospace;padding:1px 6px;border-radius:4px;background:{{ rf.bg }};color:{{ rf.color }}">{{ rf.t }}</span></sc-for>
+                        <span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.m }}</span>
+                      </span>
+                      <span style="font-size:11.5px;color:#76705e">{{ c.a }} · {{ c.w }}</span>
+                    </span>
+                    <span style="font:11.5px 'Geist Mono',monospace;color:#9a7e22;padding-top:9px">{{ c.h }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px">
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <span style="font:12px 'Geist Mono',monospace;color:#9a7e22">{{ hc.h }}</span>
+                  <span style="font-size:15px;font-weight:600;line-height:1.35">{{ hc.m }}</span>
+                  <span style="font-size:12px;color:#76705e">{{ hc.a }} committed {{ hc.w }}</span>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <button onClick="{{ copyHash }}" style="height:28px;padding:0 10px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12px" style-hover="background:#ebe5d4">Copy hash</button>
+                  <button onClick="{{ cherryPick }}" style="height:28px;padding:0 10px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12px" style-hover="background:#ebe5d4">Cherry-pick…</button>
+                  <button onClick="{{ revertCommit }}" style="height:28px;padding:0 10px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12px" style-hover="background:#ebe5d4">Revert…</button>
+                  <button onClick="{{ resetHere }}" style="height:28px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-size:12px;color:#a02617" style-hover="background:rgba(160,38,23,.09)">Reset to here…</button>
+                </div>
+                <div style="border:1px solid #c9bd9c;border-radius:10px;background:#fbf8ee;overflow:hidden">
+                  <div style="padding:8px 12px;background:#ebe5d4;border-bottom:1px solid #c9bd9c;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#76705e">{{ hc.filesTitle }}</div>
+                  <sc-for list="{{ hc.files }}" as="f"><div style="display:grid;grid-template-columns:16px minmax(0,1fr) auto auto;gap:8px;padding:6px 12px;border-bottom:1px solid #e3dcc6;align-items:center"><span style="font:600 11px 'Geist Mono',monospace;color:{{ f.stColor }}">{{ f.st }}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.path }}</span><span style="font:11px 'Geist Mono',monospace;color:#1f7a48">+{{ f.add }}</span><span style="font:11px 'Geist Mono',monospace;color:#a02617">−{{ f.del }}</span></div></sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="border-top:1px solid #c9bd9c;background:#fbf8ee;padding:8px 20px 10px;position:relative">
+            <sc-if value="{{ outVisible }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;left:12px;right:12px;bottom:calc(100% + 6px);height:{{ outH }};z-index:25;display:flex;flex-direction:column;background:#fbf8ee;border:1px solid #c9bd9c;border-radius:10px;box-shadow:0 12px 40px rgba(44,38,24,.16),0 2px 6px rgba(44,38,24,.06);overflow:hidden">
+                <div style="display:flex;align-items:center;gap:2px;padding:0 6px 0 8px;border-bottom:1px solid #e3dcc6;background:#f4f1e8;flex:none">
+                  <sc-for list="{{ outTabs }}" as="ot"><button onClick="{{ ot.onClick }}" style="height:32px;padding:0 10px;border:0;border-bottom:2px solid {{ ot.line }};background:transparent;cursor:pointer;font-size:12px;font-weight:600;color:{{ ot.color }};margin-bottom:-1px;white-space:nowrap">{{ ot.label }}</button></sc-for>
+                  <span style="flex:1"></span>
+                  <button onClick="{{ copyOut }}" style="height:24px;padding:0 8px;border:0;border-radius:5px;background:transparent;cursor:pointer;font-size:12px;color:#76705e" style-hover="background:#ebe5d4;color:#2c2618">Copy</button>
+                  <button onClick="{{ clearOut }}" style="height:24px;padding:0 8px;border:0;border-radius:5px;background:transparent;cursor:pointer;font-size:12px;color:#76705e" style-hover="background:#ebe5d4;color:#2c2618">Clear</button>
+                  <button onClick="{{ toggleBig }}" style="height:24px;padding:0 8px;border:0;border-radius:5px;background:transparent;cursor:pointer;font-size:12px;color:#76705e;white-space:nowrap" style-hover="background:#ebe5d4;color:#2c2618">{{ bigLabel }}</button>
+                  <button onClick="{{ minimiseOut }}" title="Minimise (Esc)" style="height:24px;width:28px;border:0;border-radius:5px;background:transparent;cursor:pointer;font-size:14px;font-weight:700;color:#76705e" style-hover="background:#ebe5d4;color:#2c2618">–</button>
+                </div>
+                <div ref="{{ outRef }}" onScroll="{{ onOutScroll }}" style="flex:1;min-height:0;overflow:auto;padding:8px 12px 12px;font:12px/1.6 'Geist Mono',monospace">
+                  <sc-if value="{{ isOutTab }}">
+                    <sc-for list="{{ out }}" as="o"><div style="white-space:pre-wrap;color:{{ o.color }};font-weight:{{ o.weight }}">{{ o.t }}</div></sc-for>
+                    <sc-if value="{{ outEmpty }}"><div style="color:#76705e;font-family:Geist,sans-serif">Run a command below — its output lands here.</div></sc-if>
+                  </sc-if>
+                  <sc-if value="{{ isActTab }}">
+                    <sc-for list="{{ activityRows }}" as="ac"><div style="display:grid;grid-template-columns:70px 14px minmax(0,1fr);gap:8px;padding:2px 0"><span style="color:#a8a08a">{{ ac.at }}</span><span style="color:#1f7a48">✓</span><span style="display:flex;flex-direction:column;font-family:Geist,sans-serif;font-size:12.5px"><span style="color:#2c2618">{{ ac.msg }}</span><sc-if value="{{ ac.hasDetail }}"><span style="font:11.5px 'Geist Mono',monospace;color:#76705e">{{ ac.detail }}</span></sc-if></span></div></sc-for>
+                    <sc-if value="{{ actEmpty }}"><div style="color:#76705e;font-family:Geist,sans-serif">Actions you take this session (pull, push, commit…) are listed here.</div></sc-if>
+                  </sc-if>
+                </div>
+                <sc-if value="{{ showJump }}"><button onClick="{{ jumpLatest }}" style="position:absolute;right:18px;bottom:12px;height:26px;padding:0 10px;border-radius:999px;border:1px solid #9a7e22;background:#9a7e22;color:#fbf8ee;cursor:pointer;font-size:12px;font-weight:600;box-shadow:0 4px 12px rgba(44,38,24,.18)">Jump to latest ↓</button></sc-if>
+              </div>
+            </sc-if>
+            <div style="display:flex;align-items:center;border:1px solid #c9bd9c;border-radius:8px;background:#f4f1e8;overflow:hidden">
+              <span style="padding:0 4px 0 10px;font:600 12.5px 'Geist Mono',monospace;color:#9a7e22">git ›</span>
+              <input ref="{{ cmdRef }}" value="{{ cmd }}" onChange="{{ onCmd }}" onKeyDown="{{ onCmdKey }}" spellCheck="false" placeholder="status, ga ., uncommit, log -5" style="flex:1;min-width:0;border:0;outline:0;background:transparent;font:13px 'Geist Mono',monospace;padding:8px 6px">
+              <sc-if value="{{ kbd }}"><span style="font:10.5px 'Geist Mono',monospace;padding:1px 5px;border:1px solid #c9bd9c;border-radius:4px;background:#e3dcc6;color:#76705e;margin-right:6px">`</span></sc-if>
+              <button onClick="{{ runCmd }}" style="height:26px;margin:3px;padding:0 12px;border-radius:6px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:12px;font-weight:500" style-hover="background:#ebe5d4">Run</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11.5px;color:#76705e;flex-wrap:wrap">
+              <sc-if value="{{ showOutChip }}"><button onClick="{{ restoreOut }}" title="Show output" style="display:inline-flex;align-items:center;gap:6px;font:600 11.5px Geist,sans-serif;border:1px solid #c9bd9c;border-radius:999px;padding:2px 10px;background:#f4f1e8;color:#2c2618;cursor:pointer;white-space:nowrap" style-hover="border-color:#9a7e22"><sc-if value="{{ hasUnread }}"><span style="width:7px;height:7px;border-radius:50%;background:#9a7e22"></span></sc-if>{{ outChipLabel }}</button></sc-if>
+              <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">in <span style="font-family:'Geist Mono',monospace;color:#2c2618">{{ sel.path }}</span> · Enter to run · ↑ previous · Esc minimises output</span>
+              <span style="flex:1"></span>
+              <sc-for list="{{ quick }}" as="qc"><button onClick="{{ qc.onClick }}" style="font:11.5px 'Geist Mono',monospace;border:1px solid #c9bd9c;border-radius:4px;padding:2px 7px;background:transparent;color:#76705e;cursor:pointer" style-hover="color:#9a7e22;border-color:rgba(154,126,34,.45)">{{ qc.label }}</button></sc-for>
+              <button onClick="{{ toggleAliases }}" style="font:11.5px 'Geist Mono',monospace;border:1px solid {{ aliasBd }};border-radius:4px;padding:2px 7px;background:{{ aliasBg }};color:#2c2618;cursor:pointer">My aliases ({{ aliasCount }}) ▾</button>
+            </div>
+            <sc-if value="{{ aliasOpen }}" hint-placeholder-val="{{ false }}">
+              <div role="menu" style="position:absolute;right:20px;bottom:calc(100% - 4px);z-index:30;width:420px;max-height:340px;overflow:auto;background:#fbf8ee;border:1px solid #c9bd9c;border-radius:10px;box-shadow:0 12px 40px rgba(44,38,24,.14),0 2px 6px rgba(44,38,24,.06);padding:6px">
+                <sc-for list="{{ aliasGroups }}" as="ag">
+                  <div style="padding:6px 8px 2px;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#76705e">{{ ag.title }}</div>
+                  <sc-for list="{{ ag.items }}" as="al"><button role="menuitem" onClick="{{ al.onClick }}" style="width:100%;display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;padding:5px 8px;border:0;border-radius:6px;background:transparent;cursor:pointer;text-align:left;font:12px 'Geist Mono',monospace" style-hover="background:#ebe5d4"><span style="color:#2c2618;font-weight:600">{{ al.name }}</span><span style="color:#76705e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ al.runs }}</span></button></sc-for>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+
+  <sc-if value="{{ dlgRebase }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDialog }}" style="position:absolute;inset:0;background:rgba(44,38,24,.28);display:grid;place-items:center;z-index:50">
+      <div onClick="{{ stop }}" style="width:640px;max-height:86vh;display:flex;flex-direction:column;background:#fbf8ee;border:1px solid #c9bd9c;border-radius:14px;box-shadow:0 12px 40px rgba(44,38,24,.14);overflow:hidden">
+        <div style="padding:16px 20px 12px;border-bottom:1px solid #e3dcc6">
+          <div style="font-size:16px;font-weight:600">Rebase {{ dlg.branch }}</div>
+          <div style="font-size:12.5px;color:#76705e;margin-top:2px">{{ dlg.repo }} · replays your commits on top of another branch</div>
+        </div>
+        <div style="padding:16px 20px;overflow:auto;display:flex;flex-direction:column;gap:14px">
+          <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#76705e">Onto</span>
+            <select defaultValue="{{ rebaseOnto }}" onChange="{{ onOnto }}" style="height:32px;padding:0 8px;border:1px solid #c9bd9c;border-radius:6px;background:#fbf8ee;font:13px 'Geist Mono',monospace"><option value="origin/master">origin/master</option><option value="master">master (local)</option><option value="origin/develop">origin/develop</option></select>
+          </label>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+            <div style="padding:10px 12px;border-radius:8px;background:#ebe5d4"><div style="font-size:20px;font-weight:700;color:oklch(0.58 0.18 295)">7</div><div style="font-size:12px;color:#76705e">your commits replayed</div></div>
+            <div style="padding:10px 12px;border-radius:8px;background:#ebe5d4"><div style="font-size:20px;font-weight:700;color:#1f5d8c">8</div><div style="font-size:12px;color:#76705e">new on {{ rebaseOnto }}</div></div>
+            <div style="padding:10px 12px;border-radius:8px;background:rgba(168,94,16,.10)"><div style="font-size:20px;font-weight:700;color:#a85e10">2</div><div style="font-size:12px;color:#76705e">files likely to conflict</div></div>
+          </div>
+          <div style="font-size:12.5px;color:#76705e;line-height:1.5">Both sides touched <span style="font-family:'Geist Mono',monospace;color:#2c2618">QRCodeController.cs</span> and <span style="font-family:'Geist Mono',monospace;color:#2c2618">QRCodeFreePassController.cs</span>. If it stops on a conflict you can resolve it here, skip the commit, or abort and return to where you started.</div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+            <div style="border:1px solid #c9bd9c;border-top:3px solid oklch(0.58 0.18 295);border-radius:8px;overflow:hidden"><div style="padding:6px 10px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:oklch(0.58 0.18 295);border-bottom:1px solid #e3dcc6">Yours · replayed in order</div><div style="max-height:170px;overflow:auto">
+              <sc-for list="{{ yours }}" as="y"><div style="display:flex;align-items:center;gap:8px;padding:4px 10px;font-size:12px;border-bottom:1px solid #e3dcc6"><sc-if value="{{ interactive }}"><select value="{{ y.act }}" onChange="{{ y.onAct }}" style="height:22px;padding:0 2px;border:1px solid #c9bd9c;border-radius:4px;background:#fbf8ee;font:600 11px 'Geist Mono',monospace;color:{{ y.actColor }};flex:none"><option value="pick">pick</option><option value="reword">reword</option><option value="squash">squash</option><option value="fixup">fixup</option><option value="drop">drop</option></select></sc-if><span style="font-family:'Geist Mono',monospace;color:#9a7e22;flex:none">{{ y.h }}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:{{ y.deco }};color:{{ y.color }}">{{ y.m }}</span></div></sc-for></div></div>
+            <div style="border:1px solid #c9bd9c;border-top:3px solid #1f5d8c;border-radius:8px;overflow:hidden"><div style="padding:6px 10px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#1f5d8c;border-bottom:1px solid #e3dcc6">New on {{ rebaseOnto }}</div><div style="max-height:170px;overflow:auto">
+              <sc-for list="{{ upstream }}" as="y"><div style="display:flex;gap:8px;padding:4px 10px;font-size:12px;border-bottom:1px solid #e3dcc6"><span style="font-family:'Geist Mono',monospace;color:#9a7e22;flex:none">{{ y.h }}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ y.m }}</span></div></sc-for></div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+            <label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" checked="{{ rebaseFetch }}" onChange="{{ onRebaseFetch }}" style="accent-color:#9a7e22">Fetch origin first <span style="color:#76705e;font-size:12px">(lists above may grow)</span></label>
+            <label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" checked="{{ interactive }}" onChange="{{ onInteractive }}" style="accent-color:#9a7e22">Choose what happens to each commit <span style="color:#76705e;font-size:12px">(interactive: pick, reword, squash, drop)</span></label>
+            <sc-if value="{{ dlg.hasChanges }}"><label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" checked="{{ stash }}" onChange="{{ onStash }}" style="accent-color:#9a7e22">Stash my {{ dlg.changed }} uncommitted files and restore them afterwards</label></sc-if>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid #e3dcc6;background:#f4f1e8">
+          <span style="font:11.5px 'Geist Mono',monospace;color:#76705e">git rebase {{ rebaseOnto }}</span>
+          <span style="flex:1"></span>
+          <button onClick="{{ closeDialog }}" style="height:30px;padding:0 12px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-size:12.5px" style-hover="background:#ebe5d4">Cancel</button>
+          <button onClick="{{ doRebase }}" style="height:30px;padding:0 14px;border-radius:6px;border:1px solid #9a7e22;background:#9a7e22;color:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:600">{{ rebaseLabel }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ dlgPull }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDialog }}" style="position:absolute;inset:0;background:rgba(44,38,24,.28);display:grid;place-items:center;z-index:50">
+      <div onClick="{{ stop }}" style="width:600px;max-height:86vh;display:flex;flex-direction:column;background:#fbf8ee;border:1px solid #c9bd9c;border-radius:14px;box-shadow:0 12px 40px rgba(44,38,24,.14);overflow:hidden">
+        <div style="padding:16px 20px 12px;border-bottom:1px solid #e3dcc6">
+          <div style="font-size:16px;font-weight:600">Pull into {{ dlg.branch }}</div>
+          <div style="font-size:12.5px;color:#76705e;margin-top:2px">{{ dlg.pullSub }}</div>
+        </div>
+        <div style="padding:16px 20px;overflow:auto;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#76705e">How to combine</span>
+            <sc-for list="{{ pullModes }}" as="pm">
+              <button onClick="{{ pm.onClick }}" style="display:grid;grid-template-columns:16px minmax(0,1fr);gap:10px;align-items:start;padding:10px 12px;border-radius:8px;border:1px solid {{ pm.bd }};background:{{ pm.bg }};cursor:pointer;text-align:left">
+                <span style="width:14px;height:14px;border-radius:50%;margin-top:2px;border:{{ pm.ring }}"></span>
+                <span style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:600">{{ pm.label }}</span><span style="font-size:12px;color:#76705e">{{ pm.desc }}</span></span>
+              </button>
+            </sc-for>
+          </div>
+          <sc-if value="{{ dlg.hasChanges }}"><label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;padding:8px 10px;border-radius:8px;background:rgba(168,94,16,.08)"><input type="checkbox" checked="{{ stash }}" onChange="{{ onStash }}" style="accent-color:#9a7e22">You have {{ dlg.changed }} uncommitted files. Stash them and restore after pulling.</label></sc-if>
+          <div style="border:1px solid #c9bd9c;border-top:3px solid #1f5d8c;border-radius:8px;overflow:hidden">
+            <div style="padding:6px 10px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#1f5d8c;border-bottom:1px solid #e3dcc6">Incoming</div>
+            <sc-for list="{{ incoming }}" as="y"><div style="display:flex;gap:8px;padding:5px 10px;font-size:12px;border-bottom:1px solid #e3dcc6"><span style="font-family:'Geist Mono',monospace;color:#9a7e22;flex:none">{{ y.h }}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">{{ y.m }}</span><span style="color:#76705e;flex:none">{{ y.a }}</span></div></sc-for>
+            <div style="padding:6px 10px;font-size:12px;color:#76705e">{{ dlg.moreText }}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid #e3dcc6;background:#f4f1e8">
+          <span style="font:11.5px 'Geist Mono',monospace;color:#76705e">{{ pullCmd }}</span>
+          <span style="flex:1"></span>
+          <button onClick="{{ closeDialog }}" style="height:30px;padding:0 12px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-size:12.5px" style-hover="background:#ebe5d4">Cancel</button>
+          <button onClick="{{ doPull }}" style="height:30px;padding:0 14px;border-radius:6px;border:1px solid #9a7e22;background:#9a7e22;color:#fbf8ee;cursor:pointer;font-size:12.5px;font-weight:600">{{ dlg.pullLabel }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ anyMenu }}" hint-placeholder-val="{{ false }}"><div onClick="{{ closeMenu }}" style="position:fixed;inset:0;z-index:20"></div></sc-if>
+
+  <sc-if value="{{ dlgGeneric }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDialog }}" style="position:absolute;inset:0;background:rgba(44,38,24,.28);display:grid;place-items:center;z-index:50;padding:24px">
+      <div onClick="{{ stop }}" style="width:{{ gd.width }};max-width:100%;max-height:86vh;display:flex;flex-direction:column;background:#fbf8ee;border:1px solid #c9bd9c;border-radius:14px;box-shadow:0 12px 40px rgba(44,38,24,.14);overflow:hidden">
+        <div style="padding:16px 20px 12px;border-bottom:1px solid #e3dcc6;flex:none">
+          <div style="font-size:16px;font-weight:600">{{ gd.title }}</div>
+          <sc-if value="{{ hasSub }}"><div style="font-size:12.5px;color:#76705e;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ gd.sub }}</div></sc-if>
+        </div>
+        <div style="padding:16px 20px;overflow:auto;display:flex;flex-direction:column;gap:14px;min-height:0">
+          <sc-for list="{{ gd.fields }}" as="fd">
+            <sc-if value="{{ fd.isText }}">
+              <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#76705e">{{ fd.label }}</span>
+                <input value="{{ fd.value }}" onChange="{{ fd.onChange }}" placeholder="{{ fd.placeholder }}" spellCheck="false" style="height:32px;padding:0 10px;border:1px solid {{ fd.bd }};border-radius:6px;background:#fbf8ee;outline:none;font-size:13px;font-family:{{ fd.font }}">
+                <sc-if value="{{ fd.hasError }}"><span style="font-size:12px;color:#a02617">{{ fd.error }}</span></sc-if>
+                <sc-if value="{{ fd.hasHint }}"><span style="font-size:12px;color:#76705e">{{ fd.hint }}</span></sc-if>
+              </label>
+            </sc-if>
+            <sc-if value="{{ fd.isSelect }}">
+              <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#76705e">{{ fd.label }}</span>
+                <select value="{{ fd.value }}" onChange="{{ fd.onChange }}" style="height:32px;padding:0 8px;border:1px solid #c9bd9c;border-radius:6px;background:#fbf8ee;font:13px 'Geist Mono',monospace"><sc-for list="{{ fd.options }}" as="op"><option value="{{ op.v }}">{{ op.l }}</option></sc-for></select>
+              </label>
+            </sc-if>
+            <sc-if value="{{ fd.isCheck }}">
+              <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;font-size:13px"><input type="checkbox" checked="{{ fd.checked }}" onChange="{{ fd.onChange }}" style="accent-color:#9a7e22;margin-top:2px"><span style="display:flex;flex-direction:column;gap:2px">{{ fd.label }}<sc-if value="{{ fd.hasNote }}"><span style="font-size:12px;color:#76705e">{{ fd.note }}</span></sc-if></span></label>
+            </sc-if>
+            <sc-if value="{{ fd.isRadio }}">
+              <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#76705e">{{ fd.label }}</span>
+                <sc-for list="{{ fd.options }}" as="ro"><button onClick="{{ ro.onClick }}" style="display:grid;grid-template-columns:16px minmax(0,1fr);gap:10px;align-items:start;padding:10px 12px;border-radius:8px;border:1px solid {{ ro.bd }};background:{{ ro.bg }};cursor:pointer;text-align:left"><span style="width:14px;height:14px;border-radius:50%;margin-top:2px;border:{{ ro.ring }}"></span><span style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:600">{{ ro.label }}</span><span style="font-size:12px;color:#76705e">{{ ro.desc }}</span></span></button></sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ fd.isNote }}"><div style="padding:9px 12px;border-radius:8px;font-size:12.5px;line-height:1.5;background:{{ fd.bg }};color:{{ fd.color }}">{{ fd.text }}</div></sc-if>
+            <sc-if value="{{ fd.isList }}">
+              <div style="border:1px solid #c9bd9c;border-top:3px solid {{ fd.color }};border-radius:8px;overflow:hidden">
+                <div style="padding:6px 10px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ fd.color }};border-bottom:1px solid #e3dcc6">{{ fd.title }}</div>
+                <div style="max-height:230px;overflow:auto">
+                  <sc-for list="{{ fd.rows }}" as="lr"><div style="display:flex;align-items:center;gap:8px;padding:5px 10px;font-size:12px;border-bottom:1px solid #e3dcc6"><span style="font-family:'Geist Mono',monospace;color:#9a7e22;flex:none">{{ lr.h }}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ lr.m }}</span><span style="color:#76705e;flex:none;font-size:11.5px">{{ lr.right }}</span><sc-for list="{{ lr.actions }}" as="la"><button onClick="{{ la.onClick }}" style="flex:none;height:24px;padding:0 8px;border-radius:5px;border:1px solid #c9bd9c;background:#fbf8ee;cursor:pointer;font-size:11.5px;color:{{ la.color }}" style-hover="background:#ebe5d4">{{ la.label }}</button></sc-for></div></sc-for>
+                  <sc-if value="{{ fd.hasEmpty }}"><div style="padding:14px 10px;font-size:12.5px;color:#76705e">{{ fd.empty }}</div></sc-if>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ fd.isTyped }}">
+              <label style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">Type <span style="font:600 12.5px 'Geist Mono',monospace;color:#a02617">{{ fd.word }}</span> to confirm
+                <input value="{{ fd.value }}" onChange="{{ fd.onChange }}" spellCheck="false" style="height:32px;padding:0 10px;border:1px solid #c9bd9c;border-radius:6px;background:#fbf8ee;outline:none;font:13px 'Geist Mono',monospace">
+              </label>
+            </sc-if>
+            <sc-if value="{{ fd.isCode }}">
+              <label style="display:flex;flex-direction:column;gap:6px"><sc-if value="{{ fd.hasLabel }}"><span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#76705e">{{ fd.label }}</span></sc-if>
+                <sc-if value="{{ fd.isPlain }}"><textarea value="{{ fd.value }}" onChange="{{ fd.onChange }}" rows="{{ fd.rows }}" style="width:100%;padding:10px 12px;border:1px solid #c9bd9c;border-radius:8px;background:#fbf8ee;outline:none;font-size:12.5px;line-height:1.6;font-family:{{ fd.font }};resize:vertical"></textarea></sc-if>
+                <sc-if value="{{ fd.isHl }}"><div style="max-height:56vh;overflow:auto;border:1px solid #c9bd9c;border-radius:8px;background:#fbf8ee"><div style="position:relative;min-width:100%;width:max-content">
+                  <div aria-hidden="true" style="padding:10px 12px;font:12.5px/20px 'Geist Mono',monospace;white-space:pre;pointer-events:none"><sc-for list="{{ fd.lines }}" as="ln"><div style="min-height:20px"><sc-for list="{{ ln.toks }}" as="tk"><span style="color:{{ tk.c }};font-style:{{ tk.i }};font-weight:{{ tk.w }}">{{ tk.t }}</span></sc-for></div></sc-for><div style="height:20px"></div></div>
+                  <textarea value="{{ fd.value }}" onChange="{{ fd.onChange }}" spellCheck="false" wrap="off" style="position:absolute;inset:0;width:100%;height:100%;padding:10px 12px;border:0;outline:none;background:transparent;color:transparent;caret-color:#2c2618;font:12.5px/20px 'Geist Mono',monospace;white-space:pre;resize:none;overflow:hidden"></textarea>
+                </div></div></sc-if>
+              </label>
+            </sc-if>
+            <sc-if value="{{ fd.isTree }}">
+              <div style="border:1px solid #c9bd9c;border-radius:10px;max-height:320px;overflow:auto">
+                <sc-for list="{{ fd.rows }}" as="tr"><div style="display:flex;align-items:center;gap:10px;padding:7px 12px 7px {{ tr.pad }};border-bottom:1px solid #e3dcc6"><button onClick="{{ tr.onToggle }}" style="width:18px;height:18px;flex:none;padding:0;border-radius:4px;border:1px solid {{ tr.boxBd }};background:{{ tr.boxBg }};color:{{ tr.boxColor }};display:grid;place-items:center;font:700 12px/1 Geist,sans-serif;cursor:pointer">{{ tr.mark }}</button><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:13px;font-weight:{{ tr.weight }};font-family:{{ tr.font }};color:{{ tr.color }}">{{ tr.label }}</span><sc-if value="{{ tr.hasSub }}"><span style="font-size:12px;color:#76705e">{{ tr.sub }}</span></sc-if></span></div></sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ fd.isTargets }}">
+              <div style="border:1px solid #c9bd9c;border-radius:10px;overflow:hidden">
+                <sc-for list="{{ fd.rows }}" as="tg"><div style="display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border-bottom:1px solid #e3dcc6"><sc-if value="{{ tg.hasCheck }}"><input type="checkbox" checked="{{ tg.checked }}" onChange="{{ tg.onToggle }}" style="accent-color:#9a7e22;margin-top:3px"></sc-if><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ tg.label }}</span><span style="font-size:12px;color:#76705e">{{ tg.detail }}</span></span><span style="font-size:12px;font-weight:600;white-space:nowrap;color:{{ tg.statusColor }}">{{ tg.status }}</span></div></sc-for>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid #e3dcc6;background:#f4f1e8;flex:none;flex-wrap:wrap">
+          <sc-if value="{{ hasFoot }}"><span style="font:11.5px 'Geist Mono',monospace;color:#76705e;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 200px">{{ gd.foot }}</span></sc-if>
+          <span style="flex:1"></span>
+          <sc-for list="{{ gd.buttons }}" as="b"><button onClick="{{ b.onClick }}" disabled="{{ b.disabled }}" style="height:30px;padding:0 14px;border-radius:6px;border:1px solid {{ b.bd }};background:{{ b.bg }};color:{{ b.color }};cursor:pointer;font-size:12.5px;font-weight:600;white-space:nowrap;opacity:{{ b.opacity }}">{{ b.label }}</button></sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ switcher }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeSwitcher }}" style="position:absolute;inset:0;background:rgba(44,38,24,.22);z-index:60;display:flex;justify-content:center;padding-top:90px">
+      <div onClick="{{ stop }}" style="width:560px;height:fit-content;max-height:70vh;display:flex;flex-direction:column;background:#fbf8ee;border:1px solid #c9bd9c;border-radius:12px;box-shadow:0 12px 40px rgba(44,38,24,.18);overflow:hidden">
+        <input ref="{{ swRef }}" value="{{ sq }}" onChange="{{ onSq }}" onKeyDown="{{ onSwKey }}" placeholder="{{ swPlaceholder }}" style="height:46px;border:0;border-bottom:1px solid #e3dcc6;outline:0;background:transparent;padding:0 16px;font-size:14px">
+        <div style="overflow:auto;padding:6px">
+          <sc-for list="{{ swItems }}" as="it">
+            <button onClick="{{ it.onClick }}" style="width:100%;display:grid;grid-template-columns:8px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border:0;border-radius:6px;background:{{ it.bg }};cursor:pointer;text-align:left" style-hover="background:#ebe5d4">
+              <span style="width:8px;height:8px;border-radius:50%;background:{{ it.dot }}"></span>
+              <span style="display:flex;gap:8px;align-items:baseline;min-width:0"><span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.branch }}</span><span style="font-size:11.5px;color:#76705e;flex:none">{{ it.repo }}</span></span>
+              <span style="font-size:11.5px;color:#76705e">{{ it.meta }}</span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:14px;padding:8px 14px;border-top:1px solid #e3dcc6;font-size:11.5px;color:#76705e;background:#f4f1e8"><span>Enter to open</span><span>Esc to close</span></div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+    <div role="status" style="position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:70;display:flex;align-items:center;gap:12px;padding:9px 14px;border-radius:999px;background:#2c2618;color:#fbf8ee;font-size:12.5px;box-shadow:0 12px 40px rgba(44,38,24,.25)"><span style="width:7px;height:7px;border-radius:50%;background:#7fc79d"></span>{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;layout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;split&quot;,&quot;focus&quot;],&quot;default&quot;:&quot;split&quot;,&quot;tsType&quot;:&quot;'split' | 'focus'&quot;},&quot;startScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Overview&quot;,&quot;Changes &amp; commit&quot;,&quot;Diff review&quot;,&quot;Conflict resolution&quot;,&quot;History&quot;,&quot;Rebase dialog&quot;,&quot;Pull dialog&quot;,&quot;Push dialog&quot;,&quot;Branch menu&quot;,&quot;Stashes&quot;,&quot;Group editor&quot;,&quot;Console output&quot;],&quot;default&quot;:&quot;Overview&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;showKeyHints&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const K = { s:'#fbf8ee', s2:'#ebe5d4', s3:'#e3dcc6', bd:'#c9bd9c', tx:'#2c2618', mu:'#76705e', sub:'#a8a08a', ac:'#9a7e22', acS:'rgba(154,126,34,.12)', acB:'rgba(154,126,34,.45)', ok:'#1f7a48', okS:'rgba(31,122,72,.10)', wa:'#a85e10', waS:'rgba(168,94,16,.10)', da:'#a02617', daS:'rgba(160,38,23,.09)', inf:'#1f5d8c', infS:'rgba(31,93,140,.09)', vi:'oklch(0.58 0.18 295)', viS:'oklch(0.95 0.03 295)' };
+const POOL = ['Controllers/QRCodeController.cs','Controllers/QRCodeFreePassController.cs','Services/FreePass/FreePassService.cs','Services/Joining/CompletionServiceNewJoiners.cs','Services/QRCode/QrPayloadFactory.cs','Services/QRCode/QrSessionService.cs','Models/MemberQrCode.cs','Migrations/20261014_AddMemberQrCode.cs','Middleware/ClientIpMiddleware.cs','Auth/AuthTokenValidator.cs','Data/SetupDD.cs','Startup.cs','appsettings.json','Tests/QRCodeControllerTests.cs','src/screens/Home.tsx','src/api/client.ts','src/hooks/usePush.ts','Services/Gym/WomensGymPolicy.cs','Services/Gym/GymAccessService.cs','Controllers/GymController.cs','ViewModels/QRCodes/QrCodeResponse.cs','Helpers/StatusCodes.cs','Services/Joining/SessionGrouping.cs','Data/Sql/accumulate_update.sql','Tests/FreePassServiceTests.cs','docs/qr-codes.md','Properties/launchSettings.json','Services/KeyVault/ServiceApiKey.cs','Controllers/TurnstileController.cs','Jobs/ExpireQrTokensJob.cs'];
+const SEED = [
+  { repo:'Joiners', id:'j-fix', branch:'fix/qrcode-response-contract-and-unhandled-exceptions', path:'C:/repos/Joiners/fix/qrcode-response-contract-and-unhandled-exceptions', op:{ step:1, total:7, hash:'580ddbd', msg:'Centralize QR code generation and rename orchestration methods', onto:'origin/master' }, spec:{ conflict:10, staged:3, unstaged:2 }, off:0, fetched:'3 min ago' },
+  { repo:'Joiners', id:'j-master', branch:'master', upstream:'origin/master', behind:12, spec:{ unstaged:4 }, off:10 },
+  { repo:'Joiners', id:'j-gym', branch:'feature/womens-gym-decoupling', upstream:'origin/feature/womens-gym-decoupling', ahead:3, spec:{ staged:5 }, off:17 },
+  { repo:'Joiners', id:'j-agent', branch:'(detached)', worktree:'agent-a370507d', path:'C:/repos/Joiners/.claude/worktrees/agent-a370507d', spec:{ unstaged:26 }, off:2 },
+  { repo:'Joiners', id:'j-policy', branch:'feature/app-version-policy', gone:true },
+  { repo:'Joiners', id:'j-cat', branch:'feature/product-catalogue' },
+  { repo:'MobileApp', id:'m-main', branch:'main', upstream:'origin/main', behind:8, spec:{ staged:1, unstaged:2 }, off:14 },
+  { repo:'MobileApp', id:'m-push', branch:'feature/push-notifications', upstream:'origin/feature/push-notifications', ahead:4 },
+  { repo:'AccessControl', id:'a-master', branch:'master', upstream:'origin/master', behind:211 },
+  { repo:'Admin_Portal', id:'ap-dev', branch:'develop', upstream:'origin/develop' },
+  { repo:'MemberPortal', id:'mp-master', branch:'master', upstream:'origin/master' },
+  { repo:'MemberPortal', id:'mp-net6', branch:'migration/net6', upstream:'origin/migration/net6' },
+];
+const GROUPS = [{ id:'all', label:'All repositories', repos:['Joiners','MobileApp','AccessControl','Admin_Portal','MemberPortal'] }, { id:'mj', label:'Mobile + Joiners', repos:['Joiners','MobileApp'] }];
+const YOURS = [['1ff27fc','Add QR code data endpoints and give the QR controllers real status codes'],['b3b9f65','Await PushDDMigration in SetupDD and return a real error on failure'],['c4e815f','Parameterise DD migration SQL and fix the accumulating update'],['eac34bd','Handle an unresolvable member grouping when creating a new session'],['1f399cf','Null-check the extension_memberId claim in AuthTokenValidator'],['22a057a','Stop ClientIpMiddleware replaying the pipeline on downstream errors'],['580ddbd','Centralize QR code generation and rename orchestration methods']];
+const UP = [['0cd7a20','TFP-17857 Deprecate Free Pass QR Endpoint'],['5e95875','TFP-17857 Load the service API key from Azure Key Vault'],['ad00bfa','TFP-17857 Add the MakeMemberQrCodeTokenNullable migration'],['43ae719','TFP-17857 Clear expired secure QR code tokens on a timer'],['e9da63f','TFP-17857 Authenticate the turnstile endpoints with a service API key'],['9f8976d','TFP-17857 Add the secure QR payload factory and endpoints'],['0fec38b','TFP-17857 Add the AddMemberQrCode migration'],['ad054e8','TFP-17857 Add MemberQrCode entity and the secure QR code session service']];
+const HUNKS = [
+  { o:58, n:58, ctx:'public async Task<IActionResult> IssueFreePass(FreePassRequest request)', lines:[[' ','        if (request.MemberId <= 0)'],[' ','        {'],['-','            return BadRequest("MemberId is required.");'],['+','            return BadRequest(new ProblemDetails { Title = "MemberId is required." });'],[' ','        }'],[' ',''],[' ','        try'],[' ','        {'],['-','            var result = await _freePassQrCodeService.IssueFreePassQRCodeForMember(request, ECCLevel.H);'],['+','            var result = await _qrCodes.GenerateForMember(request, QrPurpose.FreePass);'],['+','            if (result is null)'],['+','                return NotFound(NoFreePass);'],[' ','            return Ok(result);']] },
+  { o:81, n:84, ctx:'catch (Exception ex)', lines:[[' ','        catch (Exception ex)'],[' ','        {'],['-','            Log.Error(ex, $"Free pass GenerateQRCode failed for MemberID {request.MemberId}");'],['+','            Log.Error(ex, "Free pass QR generation failed for {MemberId}", request.MemberId);'],['+','            return StatusCode(StatusCodes.Status500InternalServerError, GenerationFailed);'],[' ','        }']] },
+];
+const THEIRS = ['        try','        {','            var result = await _freePassQrCodeService.IssueFreePassQRCodeForMember(request, ECCLevel.H);','','            // A missing pass is the caller\'s problem (404);','            // a failed upload is ours (500).','            if (result == null || string.IsNullOrEmpty(result.QRCodeURL))','            {','                if (!await _freePassQrCodeService.FreePassExists(request.MemberId))','                    return NotFound(NoFreePass);','                return StatusCode(500, GenerationFailed);','            }'];
+const MINE = ['            var result = await _freePassQrCodeService.GenerateAndSendWomensGymFreePassQRCodeForMember(request, ECCLevel.H);'];
+const BEFORE = ['    [HttpPost("free-pass")]','    public async Task<IActionResult> IssueFreePass(FreePassRequest request)','    {'];
+const AFTER = ['            return Ok(result);','    }'];
+const ALIASES = [
+  { title:'DotFiles', items:[['ga','add','ga '],['gs','status -sb','gs'],['uncommit','reset --soft HEAD~1','uncommit'],['gl','log --oneline --graph -20','gl'],['gco','checkout','gco ']] },
+  { title:'DotFiles scripts', items:[['g!','PowerShell script','g! '],['gclean','PowerShell script','gclean']] },
+  { title:'git config', items:[['git st','status','git st'],['git amend','commit --amend --no-edit','git amend'],['git pushf','push --force-with-lease','git pushf']] },
+];
+const basename = p => p.split('/').pop();
+const dirname = p => { const i = p.lastIndexOf('/'); return i < 0 ? '' : p.slice(0, i); };
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+function build() {
+  return SEED.map(s => {
+    const files = []; let i = s.off || 0; const sp = s.spec || {};
+    const add = (area, n) => { for (let k = 0; k < n; k++) { const p = POOL[i % POOL.length]; i++; files.push({ path:p, area, kind: area === 'conflict' && k === 9 ? 'deleted' : 'text', st: area === 'conflict' ? 'U' : ['M','M','A','M','D'][k % 5], add: 2 + (i * 7) % 38, del: (i * 3) % 15 }); } };
+    add('conflict', sp.conflict || 0); add('staged', sp.staged || 0); add('unstaged', sp.unstaged || 0);
+    return { ahead:0, behind:0, upstream:null, gone:false, op:null, fetched:'2 min ago', path:`C:/repos/${s.repo}/${s.branch}`, ...s, files };
+  });
+}
+const info = t => {
+  const conflicts = t.files.filter(f => f.area === 'conflict').length;
+  const staged = t.files.filter(f => f.area === 'staged').length;
+  const changed = t.files.length;
+  const detached = t.branch === '(detached)';
+  const unpublished = !detached && (!t.upstream || t.gone);
+  const tone = t.op ? 'busy' : changed ? 'dirty' : (t.ahead || t.behind) ? 'sync' : unpublished ? 'local' : 'ok';
+  return { conflicts, staged, changed, detached, unpublished, tone };
+};
+const DOT = { busy:K.da, dirty:K.wa, sync:K.inf, local:K.sub, ok:K.ok };
+const ALL_REPOS = ['Joiners','MobileApp','AccessControl','Admin_Portal','MemberPortal'];
+const OTHER_BRANCHES = ['release/2026.10','feature/legacy-sso','spike/qr-offline'];
+const HIST = [...YOURS.slice().reverse().map(([h, m], k) => ({ h, m, a:'Phill', w:`${k + 2} h ago`, mine:true })), ...UP.map(([h, m], k) => ({ h, m, a: k % 2 ? 'S. Patel' : 'K. Morgan', w:`${k + 1} d ago`, mine:false }))];
+const BTN = { primary:{ bg:K.ac, color:'#fbf8ee', bd:K.ac }, danger:{ bg:K.da, color:'#fbf8ee', bd:K.da }, secondary:{ bg:K.s, color:K.tx, bd:K.bd }, ghost:{ bg:'transparent', color:K.tx, bd:'transparent' } };
+const btn = (label, kind, onClick, disabled) => ({ label, onClick: disabled ? () => {} : onClick, ...BTN[kind], disabled: !!disabled, opacity: disabled ? .45 : 1 });
+const FT = ['text','select','check','radio','note','list','typed','code','tree','targets'];
+const F = (type, o) => {
+  const f = { label:'', ...o }; f.hasLabel = !!f.label;
+  FT.forEach(t => { f['is' + t[0].toUpperCase() + t.slice(1)] = t === type; });
+  if (type === 'text') { f.hasError = !!o.error; f.hasHint = !!o.hint && !o.error; f.font = o.mono ? "'Geist Mono',monospace" : 'inherit'; f.placeholder = o.placeholder || ''; f.bd = o.error ? K.da : K.bd; }
+  if (type === 'check') f.hasNote = !!o.note;
+  if (type === 'note') { const tn = { warn:[K.waS, K.wa], danger:[K.daS, K.da], info:[K.s2, K.tx] }[o.tone || 'info']; f.bg = tn[0]; f.color = tn[1]; }
+  if (type === 'list') { f.color = o.color || K.mu; f.hasEmpty = !o.rows.length; f.empty = o.empty || ''; }
+  if (type === 'code') { f.rows = o.rows || '6'; f.font = o.font || "'Geist Mono',monospace"; f.isHl = !!o.lang; f.isPlain = !o.lang; f.lines = o.lang ? String(o.value || '').split('\n').map(l => ({ toks:hl(l, o.lang) })) : []; }
+  return f;
+};
+const lrow = (h, m, right = '', actions = []) => ({ h, m, right, actions });
+// Each typed term must start a word: the start of the text, or right after a space or symbol (- _ / . etc.).
+const wordMatch = (text, query) => {
+  const terms = String(query || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const s = String(text).toLowerCase();
+  return terms.every(t => new RegExp('(^|[^a-z0-9])' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(s));
+};
+const LANG = p => /\.cs$/.test(p) ? 'cs' : /\.(tsx?|jsx?)$/.test(p) ? 'ts' : /\.json$/.test(p) ? 'json' : /\.sql$/.test(p) ? 'sql' : /\.md$/.test(p) ? 'md' : 'text';
+const KW = {
+  cs: new Set('using namespace public private protected internal static readonly const class interface record struct enum new return if else try catch finally throw await async var void null true false this base is as in out ref foreach for while switch case default break continue get set override virtual sealed string int bool long decimal object nameof when'.split(' ')),
+  ts: new Set('import export from default const let var function return if else for while switch case break continue new class extends implements interface type as async await try catch finally throw null undefined true false this of in typeof keyof readonly string number boolean void'.split(' ')),
+  sql: new Set('SELECT FROM WHERE UPDATE SET INSERT INTO VALUES DELETE JOIN LEFT INNER ON AND OR NOT NULL AS GROUP BY ORDER CREATE TABLE ALTER ADD BEGIN END IF EXISTS DECLARE SUM COALESCE CASE WHEN THEN ELSE'.split(' ')),
+  json: new Set(['true', 'false', 'null']),
+};
+const TC = { kw:K.vi, str:K.ok, num:K.wa, com:K.mu, type:K.inf, fn:K.ac, punc:'#6b6450', plain:K.tx, key:K.inf, attr:'#7a5a18' };
+const RE_C = /(\/\/.*$|\/\*.*?\*\/)|(\$"(?:[^"])*"|@"(?:[^"])*"|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[^`]*`)|(\b\d+(?:\.\d+)?[mMfFdDLu]?\b)|([A-Za-z_][\w]*)|(\s+)|([^\s\w])/g;
+const RE_SQL = /(--.*$)|('(?:[^'])*')|(\b\d+(?:\.\d+)?\b)|([A-Za-z_@][\w]*)|(\s+)|([^\s\w])/g;
+function hl(line, lang) {
+  const tk = (t, k, it) => ({ t, c:TC[k], i: it ? 'italic' : 'normal', w: k === 'kw' && lang === 'sql' ? 600 : 400 });
+  if (!line) return [tk(' ', 'plain')];
+  if (lang === 'text') return [tk(line, 'plain')];
+  if (lang === 'md') {
+    if (/^#{1,6}\s/.test(line)) return [{ t:line, c:K.ac, i:'normal', w:700 }];
+    return line.split(/(`[^`]*`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/).filter(Boolean).map(s => s[0] === '`' ? tk(s, 'str') : s.startsWith('**') ? { t:s, c:K.tx, i:'normal', w:700 } : s[0] === '[' ? tk(s, 'type') : tk(s, 'plain'));
+  }
+  const out = []; const re = new RegExp((lang === 'sql' ? RE_SQL : RE_C).source, 'g'); let m;
+  const push = (t, k, it) => { const last = out[out.length - 1]; const n = tk(t, k, it); if (last && last.c === n.c && last.i === n.i && last.w === n.w) last.t += t; else out.push(n); };
+  while ((m = re.exec(line)) !== null) {
+    const [s, com, str, num, word, ws] = m;
+    if (com) push(s, 'com', true);
+    else if (str) push(s, lang === 'json' && /^\s*:/.test(line.slice(re.lastIndex)) ? 'key' : 'str');
+    else if (num) push(s, 'num');
+    else if (word) {
+      const kw = lang === 'sql' ? KW.sql.has(word.toUpperCase()) : (KW[lang] || new Set()).has(word);
+      const next = line.slice(re.lastIndex).match(/^\s*(.)/);
+      if (kw) push(s, 'kw');
+      else if (next && next[1] === '(') push(s, 'fn');
+      else if (lang !== 'json' && lang !== 'sql' && /^[A-Z]/.test(word)) push(s, 'type');
+      else push(s, 'plain');
+    } else if (ws) push(s, 'plain');
+    else push(s, lang === 'cs' && (s === '[' || s === ']') ? 'attr' : 'punc');
+  }
+  return out.length ? out : [tk(line, 'plain')];
+}
+const HUNKS_BY = {
+  ts: [
+    { o:12, n:12, ctx:'export function Home({ member }: HomeProps)', lines:[[' ','  const { data, isLoading } = useQuery(["qr", member.id], () =>'],['-','    api.get(`/qrcode/${member.id}`)'],['+','    api.get<QrCodeResponse>(`/api/qrcode/member/${member.id}`)'],[' ','  );'],[' ',''],['-','  if (isLoading) return null;'],['+','  if (isLoading) return <Spinner label="Loading your pass" />;'],['+','  if (!data?.qrCodeUrl) return <EmptyPass onRetry={refetch} />;'],[' ','  return <PassCard url={data.qrCodeUrl} expiresAt={data.expiresAt} />;']] },
+  ],
+  json: [
+    { o:4, n:4, ctx:'"Logging"', lines:[[' ','  "Logging": {'],[' ','    "LogLevel": {'],['-','      "Default": "Information",'],['+','      "Default": "Warning",'],['+','      "API.Services.QRCode": "Debug",'],[' ','      "Microsoft.AspNetCore": "Warning"'],[' ','    }'],[' ','  },'],['+','  "QrCodeTokenLifetimeMinutes": 15,'],[' ','  "AllowedHosts": "*"']] },
+  ],
+  sql: [
+    { o:1, n:1, ctx:'accumulate_update.sql', lines:[['-',"UPDATE MemberTotals SET Visits = Visits + 1 WHERE MemberId = '\" + id + \"'"],['+','-- Parameterised: @MemberId is bound by the caller'],['+','UPDATE MemberTotals'],['+','SET Visits = COALESCE(Visits, 0) + 1'],['+','WHERE MemberId = @MemberId;'],[' ',''],[' ','SELECT MemberId, Visits FROM MemberTotals WHERE MemberId = @MemberId;']] },
+  ],
+  md: [
+    { o:1, n:1, ctx:'# QR codes', lines:[[' ','# QR codes'],[' ',''],['-','Free passes call `IssueFreePassQRCodeForMember`.'],['+','All QR codes are issued through **QrCodeService**. Free passes use'],['+','`GenerateForMember(request, QrPurpose.FreePass)`.'],[' ',''],['+','See [turnstile auth](docs/turnstile.md) for how gates validate them.']] },
+  ],
+};
+const many = n => `${n} ${n === 1 ? 'branch' : 'branches'}`;
+const branchErr = (n, taken = []) => { const v = (n || '').trim(); if (!v) return 'Enter a branch name'; if (/\s/.test(v)) return 'Branch names can’t contain spaces'; if (/\.\.|[~^:?*\[\\]|\/$|^\/|\.lock$/.test(v)) return 'Can’t contain .., ~, ^, :, ?, *, [ or \\'; if (taken.includes(v)) return 'A branch with this name already exists'; return ''; };
+const CONSOLE_DEMO = [{ t:'$ git fetch origin', color:K.ac, weight:600 }, { t:'From github.com:knownexus/Joiners', color:K.mu, weight:400 }, { t:'   9c1e2aa..0cd7a20  master     -> origin/master', color:K.tx, weight:400 }, { t:'$ git status', color:K.ac, weight:600 }, { t:'On branch master', color:K.tx, weight:400 }, { t:"Your branch is behind 'origin/master' by 12 commits, and can be fast-forwarded.", color:K.mu, weight:400 }, { t:'  modified:      Startup.cs', color:K.wa, weight:400 }, { t:'  modified:      appsettings.json', color:K.wa, weight:400 }, { t:'  modified:      Tests/QRCodeControllerTests.cs', color:K.wa, weight:400 }, { t:'  modified:      src/screens/Home.tsx', color:K.wa, weight:400 }, { t:'$ git log --oneline -5', color:K.ac, weight:600 }, ...UP.slice(0, 5).map(([h, m]) => ({ t:`${h} ${m}`, color:K.tx, weight:400 }))];
+
+class Component extends DCLogic {
+  state = { groups: GROUPS.map(g => ({ ...g, entries:[] })), menu:null, form:{}, stashes:{ 'j-master':[{ id:'stash@{0}', m:'WIP on master: tweak QR logging', when:'yesterday', n:2, files:[] }, { id:'stash@{1}', m:'spike: offline QR cache', when:'3 days ago', n:5, files:[] }] }, activity:[], outOpen:false, outMin:false, outBig:false, outTab:'output', unread:0, atBottom:true, interactive:false, todo:{}, swMode:'branch', edited:{}, trees: build(), sel:null, tab:'changes', file:null, filter:'all', q:'', group:'all', collapsed:[], dialog:null, dlgTree:null, pullMode:'ff', stash:true, rebaseOnto:'origin/master', rebaseFetch:true, summary:'', desc:'', amend:false, choice:{}, commitSel:'580ddbd', cmd:'', past:[], pastIdx:-1, out:[], aliasOpen:false, switcher:false, sq:'', toast:null, diffMode:'unified', stagedHunks:{} };
+  searchRef = React.createRef(); cmdRef = React.createRef(); swRef = React.createRef(); outRef = React.createRef();
+
+  componentDidMount() {
+    this.applyStart();
+    this.onKey = e => {
+      const tag = (e.target.tagName || '').toLowerCase(); const typing = tag === 'input' || tag === 'textarea' || tag === 'select';
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); this.setState({ switcher:true, swMode:'branch', sq:'' }); return; }
+      if (mod && (e.key === 'p' || e.key === 'P')) { e.preventDefault(); if (this.state.sel) this.setState({ switcher:true, swMode:'file', sq:'' }); return; }
+      if (e.key === 'Escape') { const S = this.state; if (S.switcher || S.dialog || S.menu || S.aliasOpen) this.setState({ switcher:false, dialog:null, aliasOpen:false, menu:null }); else if (S.outOpen) this.setState({ outOpen:false, outMin:true }); return; }
+      if (typing || mod) return;
+      if (e.key === '/') { e.preventDefault(); this.searchRef.current && this.searchRef.current.focus(); }
+      else if (e.key === '`') { e.preventDefault(); this.cmdRef.current && this.cmdRef.current.focus(); }
+      else if (e.key === 'j' || e.key === 'k') this.step(e.key === 'j' ? 1 : -1);
+      else if (e.key === 'b' && this.state.sel) this.openDlg('branch', { checkout:true });
+      else if (e.key === 's' && this.curFileObj()) this.stageFile(this.curFileObj().path, true);
+      else if (e.key === 'u' && this.curFileObj()) this.stageFile(this.curFileObj().path, false);
+    };
+    window.addEventListener('keydown', this.onKey);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.onKey); clearTimeout(this.tt); }
+  componentDidUpdate(pp) {
+    const s = (pp && pp.startScreen);
+    if (pp && s !== this.props.startScreen && this._lastStart !== this.props.startScreen) this.applyStart();
+    if (this.state.switcher && !this._swWas) setTimeout(() => this.swRef.current && this.swRef.current.focus(), 0);
+    this._swWas = this.state.switcher;
+    const el = this.outRef.current; if (el && this.stick !== false) el.scrollTop = el.scrollHeight;
+  }
+  applyStart() {
+    const m = {
+      'Overview': { sel:null, dialog:null },
+      'Changes & commit': { sel:'j-gym', tab:'changes', file:null, dialog:null, summary:'Decouple womens gym policy from access service' },
+      'Diff review': { sel:'j-master', tab:'changes', file:null, dialog:null },
+      'Conflict resolution': { sel:'j-fix', tab:'changes', file:'Controllers/QRCodeFreePassController.cs', dialog:null },
+      'History': { sel:'j-fix', tab:'history', dialog:null },
+      'Rebase dialog': { sel:'j-gym', tab:'changes', dialog:'rebase', dlgTree:'j-gym' },
+      'Pull dialog': { sel:'j-master', tab:'changes', dialog:'pull', dlgTree:'j-master' },
+      'Push dialog': { sel:'j-gym', tab:'changes', dialog:'push', dlgTree:'j-gym' },
+      'Branch menu': { sel:'j-gym', tab:'changes', dialog:null, menu:'more' },
+      'Stashes': { sel:'j-master', tab:'changes', dialog:'stashes', dlgTree:'j-master' },
+      'Group editor': { sel:null, dialog:'groupEdit', form:this.groupForm('mj') },
+      'Console output': { sel:'j-master', tab:'changes', dialog:null, out:CONSOLE_DEMO, outOpen:true, outMin:false },
+    };
+    this._lastStart = this.props.startScreen;
+    this.stick = true;
+    this.setState({ trees: build(), choice:{}, menu:null, form:{}, outOpen:false, out:[], ...(m[this.props.startScreen || 'Overview'] || m.Overview) });
+  }
+  toast(msg, detail) { const at = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' }); this.setState(s => ({ toast:msg, activity:[...s.activity, { at, msg, detail: detail || '' }].slice(-80) })); clearTimeout(this.tt); this.tt = setTimeout(() => this.setState({ toast:null }), 2800); }
+  upd(id, fn) { this.setState(s => ({ trees: s.trees.map(t => t.id === id ? fn({ ...t, files:[...t.files] }) : t) })); }
+  tree(id) { return this.state.trees.find(t => t.id === id); }
+  select(id) { this.setState({ sel:id, file:null, tab:'changes' }); }
+  visibleTrees() {
+    const { trees, filter, q } = this.state;
+    const qq = q.trim().toLowerCase();
+    return trees.filter(t => this.inGroup(t) && this.match(t, filter) && (!qq || wordMatch(t.repo + ' ' + t.branch + ' ' + (t.worktree || ''), qq)));
+  }
+  match(t, f) {
+    const i = info(t);
+    return f === 'all' || (f === 'busy' && t.op) || (f === 'changes' && i.changed) || (f === 'push' && t.ahead) || (f === 'pull' && t.behind) || (f === 'local' && i.unpublished);
+  }
+  step(d) {
+    const v = this.visibleTrees(); if (!v.length) return;
+    const i = v.findIndex(t => t.id === this.state.sel);
+    const n = v[Math.max(0, Math.min(v.length - 1, i < 0 ? 0 : i + d))]; this.select(n.id);
+  }
+  curFileObj() {
+    const t = this.tree(this.state.sel); if (!t || !t.files.length) return null;
+    return t.files.find(f => f.path === this.state.file) || t.files[0];
+  }
+  stageFile(path, on) {
+    const t = this.tree(this.state.sel); if (!t) return;
+    this.upd(t.id, x => { x.files = x.files.map(f => f.path === path && f.area !== 'conflict' ? { ...f, area: on ? 'staged' : 'unstaged' } : f); return x; });
+  }
+  stageArea(from, to) { const id = this.state.sel; this.upd(id, x => { x.files = x.files.map(f => f.area === from ? { ...f, area:to } : f); return x; }); }
+  pull(id) { const t = this.tree(id); this.upd(id, x => ({ ...x, behind:0, fetched:'just now' })); this.toast(`Pulled ${plural(t.behind, 'commit')} into ${t.branch}`); }
+  push(id) { const t = this.tree(id); this.upd(id, x => ({ ...x, ahead:0 })); this.toast(`Pushed ${plural(t.ahead, 'commit')} to ${t.upstream}`); }
+  publish(id) { const t = this.tree(id); this.upd(id, x => ({ ...x, upstream:'origin/' + x.branch, gone:false })); this.toast(`Published ${t.branch} to origin`); }
+  primaryFor(t) {
+    const i = info(t);
+    if (t.op) return [`Resolve ${plural(i.conflicts, 'conflict')}`, () => this.select(t.id)];
+    if (t.behind) return [`Pull ↓${t.behind}`, () => this.setState({ sel:t.id, dialog:'pull', dlgTree:t.id })];
+    if (t.ahead) return [`Push ↑${t.ahead}`, () => this.push(t.id)];
+    if (i.changed) return ['Review', () => this.select(t.id)];
+    if (i.unpublished) return [t.gone ? 'Re-publish' : 'Publish', () => this.publish(t.id)];
+    return null;
+  }
+  runLine(line) {
+    const c = line.trim(); if (!c) return;
+    const t = this.tree(this.state.sel); const i = info(t);
+    const argv = c.replace(/^git\s+/, '');
+    let res;
+    if (/^(status|st|gs)\b/.test(argv)) res = [{ t:`On branch ${t.branch}`, color:K.tx }, { t: t.upstream ? `Your branch is ${t.behind ? `behind '${t.upstream}' by ${t.behind}` : t.ahead ? `ahead of '${t.upstream}' by ${t.ahead}` : `up to date with '${t.upstream}'`}.` : 'No upstream configured.', color:K.mu }, ...t.files.slice(0, 6).map(f => ({ t:`  ${f.area === 'conflict' ? 'both modified:' : f.area === 'staged' ? 'staged:       ' : 'modified:     '} ${f.path}`, color: f.area === 'conflict' ? K.da : f.area === 'staged' ? K.ok : K.wa })), ...(i.changed > 6 ? [{ t:`  … and ${i.changed - 6} more`, color:K.mu }] : [])];
+    else if (/^(log|gl)\b/.test(argv)) res = YOURS.slice().reverse().slice(0, 5).map(([h, m]) => ({ t:`${h} ${m}`, color:K.tx }));
+    else res = [{ t:'✓ done', color:K.ok }];
+    this.stick = true;
+    this.setState(s => ({ outOpen: !s.outMin, unread: s.outMin ? s.unread + 1 : 0, outTab: s.outMin ? s.outTab : 'output', cmd:'', pastIdx:-1, past:[c, ...s.past.filter(x => x !== c)].slice(0, 20), out:[...s.out, { t:`$ git ${argv}`, color:K.ac, weight:600 }, ...res.map(r => ({ weight:400, ...r }))].slice(-60) }));
+  }
+
+  renderVals() {
+    const S = this.state; const P = this.props;
+    const layout = P.layout || 'split'; const kbd = P.showKeyHints ?? true;
+    const inGroup = S.trees.filter(t => this.inGroup(t));
+    const groupRepos = ALL_REPOS.filter(r => inGroup.some(t => t.repo === r));
+    const vis = this.visibleTrees();
+
+    const groupTabs = S.groups.map(g => ({ label:g.label, n:plural(ALL_REPOS.filter(r => S.trees.some(t => t.repo === r && this.inGroup(t, g.id))).length, 'repo'), onClick:() => this.setState({ group:g.id }), bg: S.group === g.id ? K.s : 'transparent', color: S.group === g.id ? K.tx : K.mu, shadow: S.group === g.id ? '0 1px 2px rgba(44,38,24,.10)' : 'none' }));
+    const CH = [['all','All',K.sub,'Every branch'],['busy','In progress',K.da,'A rebase, merge or cherry-pick stopped part-way'],['changes','Uncommitted',K.wa,'Branches with files changed but not committed'],['push','To push',K.inf,'Branches with local commits not on their upstream'],['pull','To pull',K.inf,'Branches behind their upstream'],['local','Not published',K.sub,'Branches with no upstream, or whose upstream was deleted']];
+    const chips = CH.map(([k, label, dot, title]) => { const on = S.filter === k; return { label, titleFull: title + ' · count is branches', dot, n: inGroup.filter(t => this.match(t, k)).length, onClick:() => this.setState({ filter: on && k !== 'all' ? 'all' : k }), bg: on ? K.acS : K.s, bd: on ? K.ac : K.bd, color: on ? K.ac : K.tx }; });
+
+    const behindClean = inGroup.filter(t => t.behind && !info(t).changed && !t.op);
+    const repoList = groupRepos.map(name => {
+      const all = inGroup.filter(t => t.repo === name);
+      const rows = vis.filter(t => t.repo === name);
+      if (!rows.length) return null;
+      const open = !S.collapsed.includes(name) || S.q.trim() !== '';
+      const dirty = all.filter(t => info(t).changed).length, busy = all.filter(t => t.op).length, behind = all.reduce((n, t) => n + t.behind, 0), ahead = all.reduce((n, t) => n + t.ahead, 0);
+      const pills = [];
+      if (busy) pills.push({ text:'rebasing', bg:K.daS, color:K.da });
+      if (dirty) pills.push({ text:`${dirty} uncommitted`, bg:K.waS, color:K.wa });
+      if (ahead) pills.push({ text:`↑${ahead}`, bg:K.infS, color:K.inf });
+      if (behind) pills.push({ text:`↓${behind}`, bg:K.infS, color:K.inf });
+      if (!pills.length) pills.push({ text:'all clean', bg:K.okS, color:K.ok });
+      return { name, open, caret: open ? '▾' : '▸', countText: plural(all.length, 'branch').replace('branchs', 'branches'), pills,
+        toggle:() => this.setState(s => ({ collapsed: s.collapsed.includes(name) ? s.collapsed.filter(n => n !== name) : [...s.collapsed, name] })),
+        rows: rows.map(t => {
+          const i = info(t); const on = S.sel === t.id; const meta = [];
+          if (t.op) meta.push({ text:`Rebasing ${t.op.step}/${t.op.total} · ${plural(i.conflicts, 'conflict')}`, color:K.da, weight:600 });
+          if (t.worktree) meta.push({ text:t.worktree, color:K.mu, weight:400 });
+          if (i.changed && !t.op) meta.push({ text: plural(i.changed, 'file') + ' changed' + (i.staged ? ` · ${i.staged} staged` : ''), color:K.wa, weight:500 });
+          if (t.ahead) meta.push({ text:`↑${t.ahead} to push`, color:K.inf, weight:500 });
+          if (t.behind) meta.push({ text:`↓${t.behind} to pull`, color:K.inf, weight:500 });
+          if (t.gone) meta.push({ text:'upstream deleted', color:K.wa, weight:400 });
+          else if (i.unpublished) meta.push({ text:'not published', color:K.mu, weight:400 });
+          if (!meta.length) meta.push({ text:'Up to date', color:K.ok, weight:400 });
+          const pa = this.primaryFor(t);
+          return { id:t.id, branch:t.branch, title:`${t.repo} → ${t.branch}`, meta, dot:DOT[i.tone], bg: on ? K.acS : 'transparent', bd: on ? K.acB : 'transparent', onClick:() => this.select(t.id),
+            changesText: t.op ? `${plural(i.conflicts, 'conflict')} · ${i.changed} files` : i.changed ? `${plural(i.changed, 'file')}${i.staged ? ` · ${i.staged} staged` : ''}` : 'Clean', changesColor: t.op ? K.da : i.changed ? K.wa : K.mu,
+            syncText: t.ahead || t.behind ? `↑${t.ahead}  ↓${t.behind}` : i.unpublished ? '—' : 'Up to date', syncColor: t.ahead || t.behind ? K.inf : K.mu,
+            upText: t.upstream ? t.upstream : t.gone ? 'deleted on origin' : i.detached ? 'detached HEAD' : 'local only',
+            hasAction: !!pa, actionLabel: pa ? pa[0] : '', onAction: e => { e && e.stopPropagation(); pa && pa[1](); } };
+        }) };
+    }).filter(Boolean);
+
+    const stagedTrees = inGroup.filter(t => info(t).staged && !t.op);
+    const cats = [
+      ['busy','In progress',K.da,'stopped part-way', t => `Rebase onto ${t.op.onto} paused · ${plural(info(t).conflicts, 'conflict')} to resolve`, t => ['Resolve', () => this.select(t.id), K.da]],
+      ['pull','Behind upstream',K.inf,'new commits to pull', t => `${plural(t.behind, 'new commit')} on ${t.upstream}${info(t).changed ? ' · you have local changes' : ''}`, t => [`Pull ↓${t.behind}`, () => this.setState({ sel:t.id, dialog:'pull', dlgTree:t.id }), K.tx]],
+      ['push','Ready to push',K.inf,'local commits not on origin', t => `${plural(t.ahead, 'commit')} not on ${t.upstream}`, t => [`Push ↑${t.ahead}`, () => this.push(t.id), K.tx]],
+      ['changes','Uncommitted work',K.wa,'changed files', t => `${plural(info(t).changed, 'file')} changed${info(t).staged ? ` · ${info(t).staged} staged` : ''}`, t => ['Review & commit', () => this.select(t.id), K.tx]],
+      ['local','Not published',K.sub,'no upstream', t => t.gone ? 'Its branch on origin was deleted — re-publish or delete locally' : 'Only exists on this machine', t => [t.gone ? 'Re-publish' : 'Publish', () => this.publish(t.id), K.tx]],
+    ];
+    const attention = cats.map(([k, title, dot, hint, desc, act]) => {
+      const ts = vis.filter(t => this.match(t, k) && !(k === 'changes' && t.op));
+      if (!ts.length) return null;
+      return { title, dot, hint:`${ts.length} ${hint}`, hasBulk: (k === 'pull' && behindClean.length > 1) || (k === 'changes' && stagedTrees.length > 1), bulkLabel: k === 'pull' ? `Pull all clean (${behindClean.length})` : `Commit across branches (${stagedTrees.length})…`, onBulk:() => k === 'pull' ? this.openBatch() : this.openDlg('multiCommit'),
+        items: ts.map(t => { const [action, onAction, actionColor] = act(t); return { repo:t.repo, branch:t.branch, desc:desc(t), action, onAction, actionColor, open:() => this.select(t.id) }; }) };
+    }).filter(Boolean);
+    const needN = inGroup.filter(t => info(t).tone !== 'ok').length;
+
+    const t = this.tree(S.sel);
+    let sel = { repo:'', branch:'', path:'' }, op = { show:false }, sections = [], tabs = [], diff = { hunks:[] }, cf = {}, commit = {}, showDiff = false, showConflict = false, showNonText = false, nt = { options:[] }, history = [], hc = { files:[] };
+    if (t) {
+      const i = info(t); const pa = this.primaryFor(t);
+      sel = { repo:t.repo, branch:t.branch, path:t.path, isWorktree:!!t.worktree, worktree:t.worktree, fetched:t.fetched,
+        track: t.upstream ? `Tracks ${t.upstream}` : t.gone ? 'Upstream was deleted on origin' : i.detached ? 'Detached HEAD' : 'Not published yet', trackColor: t.gone ? K.wa : K.mu,
+        syncText: t.upstream ? (t.ahead || t.behind ? `↑${t.ahead} to push · ↓${t.behind} to pull` : 'In sync') : '',
+        hasPrimary: !!pa && !t.op && pa[0] !== 'Review', primary: pa ? pa[0] : '', onPrimary: pa ? pa[1] : null, busy: !!t.op, busyOpacity: t.op ? .45 : 1 };
+      if (t.op) {
+        const resolved = 10 - i.conflicts;
+        op = { show:true, title:`Rebasing onto ${t.op.onto} — paused${i.conflicts ? ' on conflicts' : ', ready to continue'}`, step:t.op.step, total:t.op.total, hash:t.op.hash, msg:t.op.msg,
+          steps: Array.from({ length:t.op.total }, (_, k) => ({ bg: k < t.op.step - 1 ? K.ok : k === t.op.step - 1 ? K.wa : K.s3 })),
+          conflictText: i.conflicts ? `${resolved} of 10 conflicts resolved` : 'All conflicts resolved', conflictColor: i.conflicts ? K.da : K.ok,
+          blocked: i.conflicts > 0, continueOpacity: i.conflicts ? .45 : 1, continueTitle: i.conflicts ? `Resolve ${plural(i.conflicts, 'remaining conflict')} first` : 'Continue to the next commit' };
+      }
+      tabs = [['changes', `Changes  ${i.changed}`], ['history', 'History']].map(([k, label]) => ({ label, onClick:() => this.setState({ tab:k }), line: S.tab === k ? K.ac : 'transparent', color: S.tab === k ? K.tx : K.mu }));
+      const cur = this.curFileObj();
+      const lang = cur ? LANG(cur.path) : 'text';
+      const fileRow = f => ({ path:f.path, name:basename(f.path), dir:dirname(f.path), st:f.st, stColor: f.st === 'U' ? K.da : f.st === 'A' ? K.ok : f.st === 'D' ? K.da : K.wa,
+        bg: cur && cur.path === f.path ? K.acS : 'transparent', onClick:() => this.setState({ file:f.path }),
+        act: f.area === 'conflict' ? 'Resolve' : f.area === 'staged' ? 'Unstage' : 'Stage', actTitle: f.area === 'staged' ? 'Unstage (u)' : f.area === 'conflict' ? 'Open resolver' : 'Stage (s)',
+        onAct: e => { e.stopPropagation(); if (f.area === 'conflict') this.setState({ file:f.path }); else this.stageFile(f.path, f.area !== 'staged'); } });
+      const by = a => t.files.filter(f => f.area === a);
+      if (by('conflict').length) sections.push({ title:'Conflicts', count:by('conflict').length, dot:K.da, hasNote:true, note:'Resolve each file, then continue the rebase.', hasAction:false, files:by('conflict').map(fileRow) });
+      if (by('staged').length) sections.push({ title:'Staged', count:by('staged').length, dot:K.ok, hasNote:false, hasAction:true, actionLabel:'Unstage all', onAction:() => this.stageArea('staged', 'unstaged'), files:by('staged').map(fileRow) });
+      if (by('unstaged').length) sections.push({ title:'Not staged', count:by('unstaged').length, dot:K.wa, hasNote:false, hasAction:true, actionLabel:'Stage all', onAction:() => this.stageArea('unstaged', 'staged'), files:by('unstaged').map(fileRow) });
+
+      const stagedN = i.staged; const len = S.summary.length;
+      const disabled = !!t.op || (!stagedN && !S.amend) || !S.summary.trim();
+      const why = t.op ? '' : !stagedN && !S.amend ? (t.files.length ? 'Stage files first — use Stage or Stage all above' : 'Nothing to commit') : !S.summary.trim() ? 'Write a summary to commit' : `${S.amend ? 'Amends your last commit' : plural(stagedN, 'staged file') + ' → ' + t.branch} · Ctrl+Enter`;
+      commit = { blocked: !!t.op, blockedText:'Committing is paused during the rebase — resolved files go into the replayed commit.', len:`${len}/72`, lenColor: len > 72 ? K.da : len > 50 ? K.wa : K.sub,
+        disabled, opacity: disabled ? .45 : 1, label: S.amend ? 'Amend commit' : stagedN ? `Commit ${plural(stagedN, 'file')}` : 'Commit',
+        pushLabel: S.amend ? 'Amend & push' : t.upstream ? 'Commit & push' : 'Commit & publish', pushTitle: t.upstream ? `Commit, then push to ${t.upstream}` : 'Commit, then publish this branch to origin',
+        hint: why, hasHint: !!why, hintColor: disabled ? K.wa : K.mu, showForm: !t.op, showDesc: !!S.composeOpen || !!S.desc };
+
+      if (cur && cur.area === 'conflict') {
+        showConflict = cur.kind !== 'deleted'; showNonText = cur.kind === 'deleted';
+        const conf = by('conflict'); const idx = conf.findIndex(f => f.path === cur.path);
+        const ch = S.choice[cur.path] || null;
+        const side = (k, kicker, title, lines, color, tint, label) => ({ kicker, title, color, tint, bd: ch === k ? color : K.bd, useLabel: ch === k ? '✓ Using this' : label, btnBg: ch === k ? color : K.s, btnColor: ch === k ? '#fbf8ee' : K.tx, btnBd: ch === k ? color : K.bd,
+          onUse:() => this.setState(s => ({ choice:{ ...s.choice, [cur.path]:k } })), lines: lines.map((l, n) => ({ n:61 + n, t:l, toks:hl(l, lang) })) });
+        let mid;
+        if (ch === 'theirs') mid = THEIRS.map(l => ['theirs', l]);
+        else if (ch === 'mine') mid = MINE.map(l => ['mine', l]);
+        else if (ch === 'both-t') mid = [...THEIRS.map(l => ['theirs', l]), ...MINE.map(l => ['mine', l])];
+        else if (ch === 'both-m') mid = [...MINE.map(l => ['mine', l]), ...THEIRS.map(l => ['theirs', l])];
+        else mid = [['mk', '<<<<<<< origin/master'], ...THEIRS.map(l => ['theirs', l]), ['mk', '======='], ...MINE.map(l => ['mine', l]), ['mk', '>>>>>>> 580ddbd (Centralize QR code generation…)']];
+        const res = ch === 'edited' ? (S.edited[cur.path] || '').split('\n').map(l => ['ctx', l]) : [...BEFORE.map(l => ['ctx', l]), ...mid, ...AFTER.map(l => ['ctx', l])];
+        const combo = (k, label) => ({ label, onClick:() => this.setState(s => ({ choice:{ ...s.choice, [cur.path]:k } })), bg: ch === k ? K.acS : K.s, bd: ch === k ? K.ac : K.bd, color: ch === k ? K.ac : K.tx });
+        const go = d => { const n = conf[(idx + d + conf.length) % conf.length]; this.setState({ file:n.path }); };
+        cf = { path:cur.path, edit:() => this.openDlg('code', { path:cur.path, text:res.map(r => r[1]).join('\n') }), idx:idx + 1, total:conf.length, prev:() => go(-1), next:() => go(1),
+          sides:[side('theirs', 'Incoming · already applied', 'origin/master', THEIRS, K.inf, K.infS, 'Use theirs'), side('mine', 'Yours · being replayed', 'Commit 580ddbd', MINE, K.vi, K.viS, 'Use mine')],
+          combos:[combo('both-t', 'Both, theirs first'), combo('both-m', 'Both, mine first'), combo(null, 'Show markers')],
+          stateText: ch ? 'Conflict resolved — review, then mark resolved' : '1 conflict block left in this file', stateColor: ch ? K.ok : K.da,
+          result: res.map(([k, l], n) => ({ n:58 + n, t:l, toks: k === 'mk' ? [{ t:l, c:K.wa, i:'normal', w:600 }] : hl(l, lang), bg: k === 'mk' ? K.waS : k === 'theirs' ? K.infS : k === 'mine' ? K.viS : 'transparent', color: k === 'mk' ? K.wa : K.tx, weight: k === 'mk' ? 600 : 400 })),
+          unresolved: !ch, resolveOpacity: ch ? 1 : .45, resolveTitle: ch ? 'Stage this file and open the next conflict' : 'Pick a side or a combination first',
+          resolve:() => { if (!ch) return; const nextC = conf.filter(f => f.path !== cur.path)[idx] || conf.filter(f => f.path !== cur.path)[0];
+            this.upd(t.id, x => { x.files = x.files.map(f => f.path === cur.path ? { ...f, area:'staged', st:'M' } : f); return x; });
+            this.setState({ file: nextC ? nextC.path : null }); this.toast(`Resolved ${basename(cur.path)}${nextC ? '' : ' · all conflicts resolved'}`); } };
+        const ntOpt = (k, kicker, title, desc, color) => ({ kicker, title, desc, color, bd: ch === k ? color : K.bd, bg: ch === k ? K.acS : K.s, onClick:() => this.setState(s => ({ choice:{ ...s.choice, [cur.path]:k } })) });
+        nt = { explain:`origin/master deleted ${basename(cur.path)}, but your commit 580ddbd changed it. There's no text to merge — choose whether the file survives.`,
+          options:[ntOpt('keep', 'Yours', 'Keep the file', `Keeps your changed ${basename(cur.path)} in the replayed commit.`, K.vi), ntOpt('delete', 'Incoming', 'Accept the deletion', 'Removes the file and drops your changes to it.', K.inf)] };
+      } else if (cur) {
+        showDiff = true;
+        const mk = (h, hi) => {
+          let o = h.o, n = h.n; const key = cur.path + ':' + hi; const done = !!S.stagedHunks[key];
+          const lines = h.lines.map(([s, tx]) => { const r = { sign:s === ' ' ? '' : s === '-' ? '−' : '+', text:tx, toks:hl(tx, lang), o: s === '+' ? '' : o, n: s === '-' ? '' : n, bg: s === '-' ? K.daS : s === '+' ? K.okS : 'transparent', signColor: s === '-' ? K.da : K.ok }; if (s !== '+') o++; if (s !== '-') n++; return r; });
+          const L = [], R = []; let oo = h.o, nn = h.n;
+          h.lines.forEach(([s, tx]) => { if (s === ' ') { while (L.length < R.length) L.push(null); while (R.length < L.length) R.push(null); L.push([oo++, tx, 'c']); R.push([nn++, tx, 'c']); } else if (s === '-') L.push([oo++, tx, 'd']); else R.push([nn++, tx, 'a']); });
+          while (L.length < R.length) L.push(null); while (R.length < L.length) R.push(null);
+          const pairs = L.map((l, k) => { const r = R[k]; return { lo: l ? l[0] : '', lt: l ? l[1] : '', ltoks: l ? hl(l[1], lang) : [], rtoks: r ? hl(r[1], lang) : [], lbg: !l ? K.s2 : l[2] === 'd' ? K.daS : 'transparent', rn: r ? r[0] : '', rt: r ? r[1] : '', rbg: !r ? K.s2 : r[2] === 'a' ? K.okS : 'transparent' }; });
+          return { range:`@@ −${h.o} +${h.n} @@`, context:h.ctx, lines, pairs, stageLabel: cur.area === 'staged' || done ? 'Unstage hunk' : 'Stage hunk', onStage:() => this.setState(s => ({ stagedHunks:{ ...s.stagedHunks, [key]:!done } })) };
+        };
+        diff = { path:cur.path, lang:{ cs:'C#', ts:'TypeScript', json:'JSON', sql:'SQL', md:'Markdown', text:'Text' }[lang], add:cur.add, del:cur.del, hunks:(HUNKS_BY[lang] || HUNKS).map(mk), stageLabel: cur.area === 'staged' ? 'Unstage file' : 'Stage file', onStage:() => this.stageFile(cur.path, cur.area !== 'staged'), onDiscard:() => this.openDlg('discard', { paths:[cur.path] }) };
+      }
+      const hist = HIST;
+      history = hist.map((c, k) => ({ ...c, hasDivider: k === 0 || k === YOURS.length, divider: k === 0 ? (t.op ? 'Your commits · being rebased' : 'Local commits') : 'On origin/master', dot: c.mine ? K.vi : K.inf, bg: S.commitSel === c.h ? K.acS : 'transparent',
+        refs: k === 0 ? [{ t:'HEAD', bg:K.acS, color:K.ac }] : k === YOURS.length ? [{ t:'origin/master', bg:K.infS, color:K.inf }] : [], onClick:() => this.setState({ commitSel:c.h }) }));
+      const hcRow = hist.find(c => c.h === S.commitSel) || hist[0]; const hi = hist.indexOf(hcRow);
+      const hf = [0, 1, 2, 3].slice(0, 2 + hi % 3).map(k => { const p = POOL[(hi * 3 + k) % POOL.length]; return { path:p, st: k === 2 ? 'A' : 'M', stColor: k === 2 ? K.ok : K.wa, add: 4 + (hi * 5 + k * 7) % 40, del: (hi + k * 3) % 12 }; });
+      hc = { ...hcRow, files:hf, filesTitle:`${plural(hf.length, 'file')} changed` };
+    }
+
+    const dt = this.tree(S.dlgTree);
+    const dlg = dt ? { branch:dt.branch, repo:dt.repo, hasChanges: info(dt).changed > 0, changed: info(dt).changed,
+      pullSub: `${plural(dt.behind || 0, 'new commit')} on ${dt.upstream || 'origin'}`, moreText: dt.behind > 5 ? `and ${dt.behind - 5} more` : ' ',
+      pullLabel: `Pull ${plural(dt.behind || 0, 'commit')}` } : {};
+    const PM = [['ff', 'Fast-forward only', 'Safest. Moves your branch forward; stops if it has diverged.'], ['rebase', 'Rebase', 'Replay your local commits on top of the incoming ones. Keeps history linear.'], ['merge', 'Merge', 'Create a merge commit joining both histories.']];
+    const pullModes = PM.map(([k, label, desc]) => ({ label, desc, onClick:() => this.setState({ pullMode:k }), bg: S.pullMode === k ? K.acS : K.s, bd: S.pullMode === k ? K.ac : K.bd, ring: S.pullMode === k ? `4px solid ${K.ac}` : `1.5px solid ${K.bd}` }));
+
+    const sq = S.sq.trim().toLowerCase();
+    const swList = S.trees.filter(x => !sq || wordMatch(x.repo + ' ' + x.branch + ' ' + (x.worktree || ''), sq));
+    const fileMode = S.swMode === 'file' && !!t;
+    const fileList = POOL.filter(p => !sq || wordMatch(p, sq));
+    let swItems = fileMode ? fileList.slice(0, 14).map((p, k) => { const ch = t.files.find(x => x.path === p); return { branch:basename(p), repo:dirname(p), dot: ch ? (ch.area === 'conflict' ? K.da : K.wa) : K.s3, bg: k === 0 && sq ? K.s2 : 'transparent', meta: ch ? (ch.area === 'conflict' ? 'conflict' : 'changed') : '', onClick:() => this.openFile(p) }; }) : null;
+    if (!swItems) swItems = swList.slice(0, 12).map((x, k) => { const i = info(x); return { branch:x.branch, repo:x.repo, dot:DOT[i.tone], bg: k === 0 && sq ? K.s2 : 'transparent', meta: x.op ? 'rebasing' : i.changed ? plural(i.changed, 'file') : x.behind ? `↓${x.behind}` : x.ahead ? `↑${x.ahead}` : '', onClick:() => { this.select(x.id); this.setState({ switcher:false }); } }; });
+
+    const gd = this.spec();
+    const hasLog = S.out.length > 0 || S.activity.length > 0;
+    return {
+      kbd, isSplit: layout === 'split', isFocus: layout === 'focus', groupTabs, chips, repoList, listEmpty: !repoList.length,
+      q:S.q, onQ:e => this.setState({ q:e.target.value }), searchRef:this.searchRef, clearFilters:() => this.setState({ q:'', filter:'all' }),
+      fetchedText:'All fetched 2 min ago', openSwitcher:() => this.setState({ switcher:true, swMode:'branch', sq:'' }),
+      fetchAll:() => this.toast(`Fetched ${plural(groupRepos.length, 'repository')} · nothing new since 2 min ago`),
+      pullAll:() => this.openBatch(), pullAllLabel: behindClean.length ? `Pull all (${behindClean.length})` : 'Pull all', pullAllDisabled: !behindClean.length, pullAllOpacity: behindClean.length ? 1 : .5,
+      noSel: !t, hasSel: !!t, attention, allGood: !attention.length,
+      overviewTitle: needN ? `${plural(needN, 'branch').replace('branchs', 'branches')} need attention` : 'All caught up',
+      overviewSub: `${inGroup.length} branches across ${plural(groupRepos.length, 'repository').replace('repositorys', 'repositories')}`,
+      sel, op, tabs, sections, noChanges: t ? !t.files.length : false, isChanges: S.tab === 'changes', isHistory: S.tab === 'history',
+      backToOverview:() => this.setState({ sel:null }), copyPath:() => this.toast('Path copied'),
+      fetchOne:() => { this.upd(t.id, x => ({ ...x, fetched:'just now' })); this.toast(`Fetched ${t.repo}`); },
+      openPull:() => this.setState({ dialog:'pull', dlgTree:S.sel }), openRebase:() => this.setState({ dialog:'rebase', dlgTree:S.sel }),
+      openTerminal:() => this.toast('Opening terminal in worktree…'), openEditor:() => this.toast('Opening in editor…'), goToFile:() => this.setState({ switcher:true, swMode:'file', sq:'' }),
+      opContinue:() => { this.upd(t.id, x => ({ ...x, op:null, files:x.files.filter(f => f.area !== 'staged' || x.files.indexOf(f) > 12), ahead:7, upstream:null })); this.toast('Rebase complete · 7 commits replayed onto origin/master'); },
+      opSkip:() => { this.upd(t.id, x => ({ ...x, op:{ ...x.op, step:Math.min(x.op.step + 1, x.op.total) }, files:x.files.filter(f => f.area !== 'conflict') })); this.toast('Skipped 580ddbd · continuing with the next commit'); },
+      opAbort:() => this.openDlg('abort'),
+      showDiff, showConflict, diff, cf, isUnified: S.diffMode === 'unified', isSplitDiff: S.diffMode === 'split',
+      diffModes: [['unified', 'Unified'], ['split', 'Side by side']].map(([k, label]) => ({ label, onClick:() => this.setState({ diffMode:k }), bg: S.diffMode === k ? K.s : 'transparent', color: S.diffMode === k ? K.tx : K.mu })),
+      summary:S.summary, desc:S.desc, amend:S.amend, commit,
+      onSummary:e => this.setState({ summary:e.target.value }), onDesc:e => this.setState({ desc:e.target.value }), onAmend:e => this.setState({ amend:e.target.checked }),
+      onComposeFocus:() => { if (!S.composeOpen) this.setState({ composeOpen:true }); },
+      onCommitKey:e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.doCommit(false); } },
+      commitOnly:() => this.doCommit(false), commitPush:() => this.doCommit(true),
+      history, hc, copyHash:() => this.toast(`Copied ${hc.h}`), cherryPick:() => this.openDlg('cherryPick'), revertCommit:() => this.openDlg('revert'), resetHere:() => this.openDlg('reset', { mode:'mixed' }),
+      cmd:S.cmd, cmdRef:this.cmdRef, onCmd:e => this.setState({ cmd:e.target.value }), runCmd:() => this.runLine(S.cmd),
+      onCmdKey:e => { if (e.key === 'Enter') { e.preventDefault(); this.runLine(S.cmd); } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && S.past.length) { e.preventDefault(); const i = Math.max(-1, Math.min(S.past.length - 1, S.pastIdx + (e.key === 'ArrowUp' ? 1 : -1))); this.setState({ pastIdx:i, cmd: i < 0 ? '' : S.past[i] }); } },
+      hasOut: S.out.length > 0, out:S.out, clearOut:() => this.setState({ out:[] }),
+      quick: [['status', 'status'], ['log -5', 'log --oneline -5'], ['stash', 'stash push'], ['switch -c', null]].map(([label, c]) => ({ label, onClick:() => c ? this.runLine(c) : (this.setState({ cmd:'switch -c ' }), this.cmdRef.current && this.cmdRef.current.focus()) })),
+      aliasOpen:S.aliasOpen, toggleAliases:() => this.setState(s => ({ aliasOpen:!s.aliasOpen })), aliasBg: S.aliasOpen ? K.acS : 'transparent', aliasBd: S.aliasOpen ? K.ac : K.bd,
+      aliasCount: ALIASES.reduce((n, g) => n + g.items.length, 0),
+      aliasGroups: ALIASES.map(g => ({ title:g.title, items:g.items.map(([name, exp, typed]) => ({ name, runs: exp === 'PowerShell script' ? exp : `git ${exp}`, onClick:() => { this.setState({ cmd:typed, aliasOpen:false }); setTimeout(() => this.cmdRef.current && this.cmdRef.current.focus(), 0); } })) })),
+      dlgRebase: S.dialog === 'rebase' && !!dt, dlgPull: S.dialog === 'pull' && !!dt, dlg, closeDialog:() => this.setState({ dialog:null }), stop:e => e.stopPropagation(),
+      rebaseOnto:S.rebaseOnto, onOnto:e => this.setState({ rebaseOnto:e.target.value }), rebaseFetch:S.rebaseFetch, onRebaseFetch:e => this.setState({ rebaseFetch:e.target.checked }),
+      stash:S.stash, onStash:e => this.setState({ stash:e.target.checked }),
+      yours: YOURS.map(([h, m]) => { const a = S.todo[h] || 'pick'; return { h, m, act:a, onAct:e => { const v = e.target.value; this.setState(s => ({ todo:{ ...s.todo, [h]:v } })); }, actColor:{ pick:K.mu, reword:K.inf, squash:K.vi, fixup:K.vi, drop:K.da }[a], deco: a === 'drop' ? 'line-through' : 'none', color: a === 'drop' ? K.mu : K.tx }; }),
+      interactive:S.interactive, onInteractive:e => this.setState({ interactive:e.target.checked }),
+      rebaseLabel: S.interactive ? `Rebase · keep ${YOURS.filter(([h]) => (S.todo[h] || 'pick') !== 'drop').length} of 7` : 'Rebase 7 commits', upstream: UP.map(([h, m]) => ({ h, m })), incoming: UP.slice(0, 5).map(([h, m], k) => ({ h, m, a: k % 2 ? 'S. Patel' : 'K. Morgan' })),
+      pullModes, pullCmd: `git pull ${S.pullMode === 'ff' ? '--ff-only' : S.pullMode === 'rebase' ? '--rebase' : '--no-rebase'}${dlg.hasChanges && S.stash ? ' --autostash' : ''}`,
+      doRebase:() => { this.setState({ dialog:null }); this.upd(dt.id, x => ({ ...x, ahead: x.ahead + 8 })); this.toast(`Rebased ${dt.branch} onto ${S.rebaseOnto} · no conflicts`); },
+      doPull:() => { this.setState({ dialog:null }); this.pull(dt.id); },
+      switcher:S.switcher, closeSwitcher:() => this.setState({ switcher:false }), sq:S.sq, onSq:e => this.setState({ sq:e.target.value }), swRef:this.swRef, swItems,
+      onSwKey:e => { if (e.key !== 'Enter') return; if (fileMode) { if (fileList[0]) this.openFile(fileList[0]); } else if (swList[0]) { this.select(swList[0].id); this.setState({ switcher:false }); } },
+      swPlaceholder: fileMode ? `Go to a file in ${t.branch}…` : 'Jump to a branch or worktree…',
+      showNonText, nt,
+      anyMenu: !!S.menu || S.aliasOpen, closeMenu:() => this.setState({ menu:null, aliasOpen:false }),
+      moreOpen: S.menu === 'more', toggleMore:() => this.setState(s => ({ menu: s.menu === 'more' ? null : 'more' })), moreMenu: t ? this.moreMenuItems(t) : [],
+      groupMenuOpen: S.menu === 'group', toggleGroupMenu:() => this.setState(s => ({ menu: s.menu === 'group' ? null : 'group' })), groupMenu: this.groupMenuItems(),
+      canEditGroup: S.group !== 'all', newGroup:() => this.openDlg('groupNew', this.groupForm(null)),
+      dlgGeneric: !!gd, gd: gd || { fields:[], buttons:[], title:'', sub:'', width:'520px', foot:'' }, hasFoot: !!(gd && gd.foot), hasSub: !!(gd && gd.sub),
+      outVisible: hasLog && S.outOpen, outH: S.outBig ? 'min(64vh, 620px)' : '200px',
+      outTabs: [['output', 'Output'], ['activity', `Activity ${S.activity.length}`]].map(([k, label]) => ({ label, onClick:() => { this.stick = true; this.setState({ outTab:k }); }, line: S.outTab === k ? K.ac : 'transparent', color: S.outTab === k ? K.tx : K.mu })),
+      isOutTab: S.outTab === 'output', isActTab: S.outTab === 'activity', outEmpty: !S.out.length, actEmpty: !S.activity.length,
+      activityRows: S.activity.map(a => ({ at:a.at, msg:a.msg, detail:a.detail, hasDetail: !!a.detail })),
+      outRef:this.outRef, onOutScroll:e => { const el = e.currentTarget; const b = el.scrollHeight - el.scrollTop - el.clientHeight < 24; this.stick = b; if (b !== this.state.atBottom) this.setState({ atBottom:b }); },
+      showJump: !S.atBottom, jumpLatest:() => { this.stick = true; const el = this.outRef.current; if (el) el.scrollTop = el.scrollHeight; this.setState({ atBottom:true }); },
+      toggleBig:() => { this.stick = true; this.setState(s => ({ outBig:!s.outBig })); }, bigLabel: S.outBig ? 'Shrink ▾' : 'Expand ▴',
+      minimiseOut:() => this.setState({ outOpen:false, outMin:true, unread:0 }),
+      showOutChip: hasLog && !S.outOpen, outChipLabel: S.unread ? `Output · ${S.unread} new ▴` : 'Output ▴', hasUnread: S.unread > 0,
+      restoreOut:() => { this.stick = true; this.setState({ outOpen:true, outMin:false, unread:0, atBottom:true }); },
+      copyOut:() => this.toast('Copied to clipboard'),
+      clearOut:() => this.setState(s => s.outTab === 'output' ? { out:[] } : { activity:[] }),
+      hasToast: !!S.toast, toast:S.toast,
+    };
+  }
+  inGroup(t, gid = this.state.group) { const g = this.state.groups.find(x => x.id === gid) || this.state.groups[0]; return g.repos.includes(t.repo) || g.entries.includes(t.id); }
+  openDlg(kind, form = {}) { this.setState(s => ({ dialog:kind, form, dlgTree: s.sel || s.dlgTree, menu:null })); }
+  openBatch() { this.openDlg('batchPull', { snap: this.state.trees.filter(t => this.inGroup(t) && t.behind).map(t => ({ id:t.id, behind:t.behind })) }); }
+  setF(k) { return e => { const v = e.target.type === 'checkbox' ? e.target.checked : e.target.value; this.setState(s => ({ form:{ ...s.form, [k]:v } })); }; }
+  openFile(p) { const t = this.tree(this.state.sel); if (t && t.files.some(f => f.path === p)) this.setState({ file:p, tab:'changes', switcher:false }); else { this.setState({ switcher:false }); this.toast(`Opened ${p} in your editor`); } }
+  groupForm(gid) { const g = gid && this.state.groups.find(x => x.id === gid); return { gid: g ? g.id : null, name: g ? g.label : 'New group', repos: g ? [...g.repos] : [], entries: g ? [...g.entries] : [], filter:'' }; }
+  curCommit() { return HIST.find(c => c.h === this.state.commitSel) || HIST[0]; }
+  addStash(dt, msg, files = dt.files) { this.setState(s => { const l = (s.stashes[dt.id] || []).map((x, i) => ({ ...x, id:`stash@{${i + 1}}` })); return { stashes:{ ...s.stashes, [dt.id]:[{ id:'stash@{0}', m:msg, when:'just now', n:files.length, files:files.map(x => ({ ...x, area: x.area === 'conflict' ? 'unstaged' : x.area })) }, ...l] } }; }); }
+  applyStash(dt, st, pop) {
+    const back = st.files.length ? st.files : POOL.slice(20, 20 + st.n).map(p => ({ path:p, area:'unstaged', kind:'text', st:'M', add:6, del:2 }));
+    this.upd(dt.id, x => ({ ...x, files:[...x.files.filter(f => !back.some(b => b.path === f.path)), ...back] }));
+    if (pop) this.setState(s => ({ stashes:{ ...s.stashes, [dt.id]:(s.stashes[dt.id] || []).filter(x => x.id !== st.id).map((x, i) => ({ ...x, id:`stash@{${i}}` })) } }));
+    this.toast(`${pop ? 'Popped' : 'Applied'} ${st.id} · ${plural(back.length, 'file')} restored`, `git stash ${pop ? 'pop' : 'apply'} ${st.id}`);
+  }
+  menuHead(label) { return { isHead:true, isItem:false, label, hint:'', onClick:null, color:K.mu, disabled:false, opacity:1, title:'' }; }
+  menuItem(label, fn, o = {}) { return { isHead:false, isItem:true, label, hint:o.hint || '', color: o.danger ? K.da : K.tx, disabled:!!o.disabled, opacity: o.disabled ? .45 : 1, title:o.title || '', onClick: o.disabled ? () => {} : () => { this.setState({ menu:null }); fn(); } }; }
+  moreMenuItems(t) {
+    const i = info(t); const stN = (this.state.stashes[t.id] || []).length; const main = t.branch === 'master' || t.branch === 'main' || t.branch === 'develop';
+    return [this.menuHead('Branch'), this.menuItem('New branch…', () => this.openDlg('branch', { checkout:true }), { hint:'b' }), this.menuItem('Check out another branch…', () => this.openDlg('checkout'), { disabled:!!t.op, title: t.op ? 'Finish the rebase first' : '' }),
+      this.menuHead('Remote'), this.menuItem(i.unpublished ? 'Publish…' : 'Push…', () => this.openDlg('push'), { disabled: !!t.op || (!t.ahead && !i.unpublished), title: !t.ahead && !i.unpublished ? 'Nothing to push' : '' }),
+      this.menuHead('Stash'), this.menuItem('Stash changes…', () => this.openDlg('stashPush'), { disabled: !i.changed || !!t.op, title: !i.changed ? 'No changes to stash' : '' }), this.menuItem('Stashes…', () => this.openDlg('stashes'), { hint: String(stN) }),
+      this.menuHead('Worktree'), this.menuItem('Add worktree…', () => this.openDlg('worktreeAdd')), this.menuItem('Remove this worktree…', () => this.openDlg('worktreeRemove'), { danger:true, disabled:main, title: main ? 'The main worktree can’t be removed' : '' })];
+  }
+  groupMenuItems() {
+    const g = this.state.groups.find(x => x.id === this.state.group);
+    if (!g) return [];
+    return [this.menuItem('Edit members…', () => this.openDlg('groupEdit', this.groupForm(g.id))), this.menuItem('Rename…', () => this.openDlg('groupRename', { name:g.label })), this.menuItem('Duplicate…', () => this.openDlg('groupDuplicate', { name:`${g.label} copy` })), this.menuItem('Delete…', () => this.openDlg('groupDelete'), { danger:true })];
+  }
+  spec() {
+    const S = this.state, f = S.form || {}, dt = this.tree(S.dlgTree), di = dt ? info(dt) : null;
+    const close = () => this.setState({ dialog:null }); const cancel = btn('Cancel', 'ghost', close);
+    const done = (msg, detail) => { close(); this.toast(msg, detail); };
+    switch (S.dialog) {
+      case 'push': { if (!dt) return null; const dest = f.dest ?? dt.branch; const err = branchErr(dest); const up = f.setUpstream ?? !dt.upstream; const n = Math.max(dt.ahead, 1); const remote = f.remote || 'origin';
+        return { title:`Push ${dt.branch}`, sub:`${dt.repo} · send your commits to ${remote}`, width:'580px', foot:`git push ${remote} ${dt.branch}:${dest}${up ? ' --set-upstream' : ''}`,
+          fields:[F('select', { label:'Remote', value:remote, onChange:this.setF('remote'), options:[{ v:'origin', l:`origin · github.com/knownexus/${dt.repo}` }, { v:'upstream', l:`upstream · github.com/nexus-core/${dt.repo}` }] }),
+            F('text', { label:'Remote branch', value:dest, onChange:this.setF('dest'), mono:true, error:err, hint: dest === dt.branch ? '' : 'Pushing under a different name than your local branch' }),
+            F('check', { label:'Track it as this branch’s upstream', checked:up, onChange:this.setF('setUpstream'), note: dt.upstream ? '' : 'Recommended — this branch isn’t published yet' }),
+            F('list', { title:`${plural(n, 'commit')} to push`, color:K.vi, rows: YOURS.slice(-n).reverse().map(([h, m]) => lrow(h, m)) })],
+          buttons:[cancel, btn(`Push ${plural(n, 'commit')}`, 'primary', () => { this.upd(dt.id, x => ({ ...x, ahead:0, upstream: up ? `${remote}/${dest}` : x.upstream, gone:false })); done(`Pushed ${plural(n, 'commit')} to ${remote}/${dest}`, `git push ${remote} ${dt.branch}:${dest}`); }, !!err)] }; }
+      case 'branch': { if (!dt) return null; const name = f.name ?? ''; const taken = S.trees.filter(x => x.repo === dt.repo).map(x => x.branch).concat(OTHER_BRANCHES); const err = name ? branchErr(name, taken) : ''; const start = f.start || 'HEAD'; const co = f.checkout ?? true;
+        return { title:'New branch', sub:`${dt.repo} · starting from ${start === 'HEAD' ? dt.branch : start}`, width:'540px', foot:`git ${co ? 'switch -c' : 'branch'} ${name || '<name>'} ${start}`,
+          fields:[F('text', { label:'Branch name', value:name, onChange:this.setF('name'), mono:true, placeholder:'feature/short-description', error:err, hint:'Use / to group, e.g. feature/, fix/' }),
+            F('select', { label:'Start from', value:start, onChange:this.setF('start'), options:[{ v:'HEAD', l:`HEAD · current commit on ${dt.branch}` }, { v:'origin/master', l:'origin/master' }, { v:'master', l:'master (local)' }, { v:'origin/develop', l:'origin/develop' }] }),
+            F('check', { label:'Switch to it now', checked:co, onChange:this.setF('checkout'), note: co && di.changed ? `Your ${plural(di.changed, 'uncommitted file')} come with you` : '' })],
+          buttons:[cancel, btn('Create branch', 'primary', () => { const b = name.trim(); const nt = { ...dt, id:'n' + Date.now(), branch:b, upstream:null, gone:false, ahead:0, behind:0, op:null, worktree:null, files: co ? dt.files : [], path:`C:/repos/${dt.repo}/${b}` };
+            this.setState(s => ({ trees: co ? s.trees.map(x => x.id === dt.id ? { ...nt, id:dt.id, path:dt.path } : x) : [...s.trees, nt] })); done(`Created ${b}${co ? ' and switched to it' : ''}`, `git ${co ? 'switch -c' : 'branch'} ${b}`); }, !name || !!err)] }; }
+      case 'checkout': { if (!dt) return null; const b = f.branch || OTHER_BRANCHES[0];
+        return { title:'Check out a branch', sub:`${dt.repo} · switch ${dt.worktree || 'this worktree'} to another branch`, width:'540px', foot:`git switch ${b}`,
+          fields:[F('select', { label:'Branch', value:b, onChange:this.setF('branch'), options: OTHER_BRANCHES.map(v => ({ v, l:v })) }),
+            di.changed ? F('note', { tone:'warn', text:`You have ${plural(di.changed, 'uncommitted file')}. They come with you; if any clash with ${b}, git stops and nothing changes. Stashing first is safest.` }) : F('note', { tone:'info', text:`${dt.branch} stays as it is. Branches already checked out in another worktree aren't listed.` })],
+          buttons:[cancel, ...(di.changed ? [btn('Stash & switch', 'secondary', () => { this.addStash(dt, `WIP on ${dt.branch}`); this.upd(dt.id, x => ({ ...x, branch:b, files:[], upstream:'origin/' + b, ahead:0, behind:0 })); done(`Stashed ${plural(di.changed, 'file')} and switched to ${b}`); })] : []),
+            btn(`Switch to ${b}`, 'primary', () => { this.upd(dt.id, x => ({ ...x, branch:b, upstream:'origin/' + b, ahead:0, behind:0 })); done(`Switched to ${b}`, `git switch ${b}`); })] }; }
+      case 'worktreeAdd': { if (!dt) return null; const b = f.branch || OTHER_BRANCHES[0]; const path = f.path ?? `C:/repos/${dt.repo}/${b}`; const opts = [...OTHER_BRANCHES, 'origin/feature/turnstile-auth'];
+        return { title:'Add worktree', sub:`${dt.repo} · check out another branch in its own folder, side by side`, width:'580px', foot:`git worktree add "${path}" ${b}`,
+          fields:[F('select', { label:'Branch', value:b, onChange:e => { const v = e.target.value; this.setState(s => ({ form:{ ...s.form, branch:v, path:`C:/repos/${dt.repo}/${v.replace(/^origin\//, '')}` } })); }, options: opts.map(v => ({ v, l: v.startsWith('origin/') ? `${v} (remote — makes a local branch)` : v })) }),
+            F('text', { label:'Folder', value:path, onChange:this.setF('path'), mono:true, hint:'Created if it doesn’t exist yet' })],
+          buttons:[cancel, btn('Add worktree', 'primary', () => { const br = b.replace(/^origin\//, ''); const id = 'w' + Date.now();
+            this.setState(s => ({ trees:[...s.trees, { repo:dt.repo, id, branch:br, worktree:basename(path), path, upstream: b.startsWith('origin/') ? b : null, gone:false, ahead:0, behind:0, op:null, fetched:'just now', files:[] }], dialog:null, sel:id, file:null })); this.toast(`Added worktree for ${br}`, `git worktree add "${path}" ${b}`); })] }; }
+      case 'worktreeRemove': { if (!dt) return null; const need = di.changed > 0; const typed = f.typed || '';
+        return { title:'Remove worktree?', sub:`${dt.repo} › ${dt.branch}`, width:'540px', foot:`git worktree remove${need ? ' --force' : ''} "${dt.path}"`,
+          fields:[F('note', { tone:'info', text:`Deletes the folder ${dt.path}. The branch ${dt.branch} and its commits stay in the repository.` }), ...(need ? [F('note', { tone:'danger', text:`${plural(di.changed, 'uncommitted file')} in this folder will be lost.` }), F('typed', { word:'REMOVE', value:typed, onChange:this.setF('typed') })] : [])],
+          buttons:[cancel, btn('Remove worktree', 'danger', () => { this.setState(s => ({ trees:s.trees.filter(x => x.id !== dt.id), sel:null, dialog:null })); this.toast(`Removed worktree ${dt.worktree || dt.branch}`); }, need && typed !== 'REMOVE')] }; }
+      case 'stashPush': { if (!dt) return null; const msg = f.message ?? ''; const unt = f.untracked ?? false;
+        return { title:'Stash changes', sub:`${dt.repo} › ${dt.branch} · set your changes aside for a clean working tree`, width:'560px', foot:`git stash push${unt ? ' --include-untracked' : ''}${msg ? ` -m "${msg}"` : ''}`,
+          fields:[F('text', { label:'Message', value:msg, onChange:this.setF('message'), placeholder:`WIP on ${dt.branch}` }), F('check', { label:'Include untracked files', checked:unt, onChange:this.setF('untracked') }),
+            F('list', { title:`${plural(di.changed, 'file')} will be stashed`, color:K.wa, rows: dt.files.map(x => lrow(x.st, x.path, x.area === 'staged' ? 'staged' : '')) })],
+          buttons:[cancel, btn('Stash', 'primary', () => { this.addStash(dt, msg || `WIP on ${dt.branch}`); this.upd(dt.id, x => ({ ...x, files:[] })); this.setState({ file:null }); done(`Stashed ${plural(di.changed, 'file')}`, 'git stash push'); }, !di.changed)] }; }
+      case 'stashes': { if (!dt) return null; const list = S.stashes[dt.id] || [];
+        return { title:'Stashes', sub:`${dt.repo} › ${dt.branch}`, width:'640px', foot:'Apply keeps the stash · Pop applies it, then removes it',
+          fields:[F('list', { title:`${list.length} ${list.length === 1 ? 'stash' : 'stashes'}`, color:K.ac, empty:'No stashes on this branch yet.', rows: list.map(s => lrow(s.id, s.m, `${plural(s.n, 'file')} · ${s.when}`, [{ label:'Apply', color:K.tx, onClick:() => this.applyStash(dt, s, false) }, { label:'Pop', color:K.tx, onClick:() => this.applyStash(dt, s, true) }, { label:'Drop…', color:K.da, onClick:() => this.openDlg('stashDrop', { stashId:s.id }) }])) })],
+          buttons:[btn('Stash current changes…', 'secondary', () => this.openDlg('stashPush'), !di.changed || !!dt.op), btn('Close', 'primary', close)] }; }
+      case 'stashDrop': { if (!dt) return null; const s0 = (S.stashes[dt.id] || []).find(s => s.id === f.stashId); if (!s0) return null; const typed = f.typed || '';
+        return { title:`Drop ${s0.id}?`, sub:s0.m, width:'500px', foot:`git stash drop ${s0.id}`,
+          fields:[F('note', { tone:'danger', text:`The ${plural(s0.n, 'changed file')} in this stash will be gone for good.` }), F('typed', { word:'DROP', value:typed, onChange:this.setF('typed') })],
+          buttons:[btn('Back', 'ghost', () => this.openDlg('stashes')), btn('Drop stash', 'danger', () => { this.setState(s => ({ stashes:{ ...s.stashes, [dt.id]:(s.stashes[dt.id] || []).filter(x => x.id !== s0.id) } })); this.openDlg('stashes'); this.toast(`Dropped ${s0.id}`); }, typed !== 'DROP')] }; }
+      case 'discard': { if (!dt) return null; const paths = f.paths || []; const multi = paths.length > 1; const typed = f.typed || ''; const files = dt.files.filter(x => paths.includes(x.path));
+        return { title:`Discard changes to ${paths.length === 1 ? basename(paths[0]) : plural(paths.length, 'file')}?`, sub:`${dt.repo} › ${dt.branch}`, width:'560px', foot:`git restore -- ${paths.length === 1 ? paths[0] : '…'}`,
+          fields:[F('note', { tone:'danger', text:'This can’t be undone. The files go back to their last committed version. Stash them instead if you might want them later.' }), F('list', { title:'Files', color:K.da, rows: files.map(x => lrow(x.st, x.path, `+${x.add} −${x.del}`)) }), ...(multi ? [F('typed', { word:'DISCARD', value:typed, onChange:this.setF('typed') })] : [])],
+          buttons:[cancel, btn('Stash instead', 'secondary', () => { this.addStash(dt, `Saved instead of discarding`, files); this.upd(dt.id, x => ({ ...x, files:x.files.filter(y => !paths.includes(y.path)) })); this.setState({ file:null }); done(`Stashed ${plural(paths.length, 'file')} instead`); }),
+            btn('Discard', 'danger', () => { this.upd(dt.id, x => ({ ...x, files:x.files.filter(y => !paths.includes(y.path)) })); this.setState({ file:null }); done(`Discarded ${plural(paths.length, 'file')}`, 'git restore'); }, multi && typed !== 'DISCARD')] }; }
+      case 'revert': { const hc = this.curCommit(); const now = f.commitNow ?? true;
+        return { title:`Revert ${hc.h}?`, sub:`“${hc.m}”`, width:'540px', foot:`git revert ${now ? '' : '--no-commit '}${hc.h}`,
+          fields:[F('note', { tone:'info', text:'Makes a new commit that undoes this one. History isn’t rewritten, so it’s safe on pushed branches.' }), F('check', { label:'Commit the revert straight away', checked:now, onChange:this.setF('commitNow'), note: now ? '' : 'The undo is left staged so you can adjust it first' })],
+          buttons:[cancel, btn('Revert', 'primary', () => { if (dt && now) this.upd(dt.id, x => ({ ...x, ahead:x.ahead + 1 })); done(`Reverted ${hc.h}`, `git revert ${hc.h}`); })] }; }
+      case 'reset': { const hc = this.curCommit(); const idx = HIST.indexOf(hc); const mode = f.mode || 'mixed'; const typed = f.typed || '';
+        const M = [['soft', 'Soft', 'Moves the branch only. Your files and staging stay exactly as they are.'], ['mixed', 'Mixed', 'Moves the branch and unstages everything. Your files are untouched.'], ['hard', 'Hard', 'Moves the branch and throws away every uncommitted change.']];
+        return { title:`Reset ${dt ? dt.branch : 'branch'} to ${hc.h}`, sub: idx ? `${plural(idx, 'newer commit')} will leave the branch` : 'This is already the newest commit', width:'580px', foot:`git reset --${mode} ${hc.h}`,
+          fields:[F('radio', { label:'Mode', options: M.map(([k, l, d]) => { const on = mode === k; const c = k === 'hard' ? K.da : K.ac; return { label:l, desc:d, onClick:() => this.setState(s => ({ form:{ ...s.form, mode:k } })), bg: on ? (k === 'hard' ? K.daS : K.acS) : K.s, bd: on ? c : K.bd, ring: on ? `4px solid ${c}` : `1.5px solid ${K.bd}` }; }) }),
+            ...(idx > 0 ? [F('list', { title:'Leaves the branch', color:K.wa, rows: HIST.slice(0, idx).map(c => lrow(c.h, c.m)) })] : []), ...(mode === 'hard' ? [F('typed', { word:'RESET', value:typed, onChange:this.setF('typed') })] : [])],
+          buttons:[cancel, btn(`Reset (${mode})`, mode === 'hard' ? 'danger' : 'primary', () => done(`Reset to ${hc.h} (${mode})`, `git reset --${mode} ${hc.h}`), mode === 'hard' && typed !== 'RESET')] }; }
+      case 'cherryPick': { const hc = this.curCommit(); const targets = S.trees.filter(x => x.id !== S.sel && !x.op); const to = f.to || (targets[0] && targets[0].id); const tt = this.tree(to); const x = f.x ?? true;
+        return { title:`Cherry-pick ${hc.h}`, sub:`“${hc.m}”`, width:'560px', foot:`git cherry-pick ${x ? '-x ' : ''}${hc.h}`,
+          fields:[F('select', { label:'Onto branch', value:to, onChange:this.setF('to'), options: targets.map(y => ({ v:y.id, l:`${y.repo} › ${y.branch}` })) }),
+            ...(tt && info(tt).changed ? [F('note', { tone:'warn', text:`${tt.branch} has ${plural(info(tt).changed, 'uncommitted file')}. Git will refuse if they overlap.` })] : []),
+            F('check', { label:'Note where it came from in the message (-x)', checked:x, onChange:this.setF('x') })],
+          buttons:[cancel, btn('Cherry-pick', 'primary', () => { this.upd(to, y => ({ ...y, ahead:y.ahead + 1 })); done(`Cherry-picked ${hc.h} onto ${tt.branch}`, `git cherry-pick ${hc.h}`); }, !tt)] }; }
+      case 'abort': { if (!dt || !dt.op) return null; const resolved = 10 - di.conflicts;
+        return { title:'Abort the rebase?', sub:`${dt.repo} › ${dt.branch}`, width:'520px', foot:'git rebase --abort',
+          fields:[F('note', { tone:'info', text:`Puts ${dt.branch} back exactly as it was before the rebase started.` }), ...(resolved ? [F('note', { tone:'danger', text:`The ${plural(resolved, 'conflict')} you’ve resolved will be lost.` })] : [])],
+          buttons:[btn('Keep rebasing', 'ghost', close), btn('Abort rebase', 'danger', () => { this.upd(dt.id, x => ({ ...x, op:null, files:x.files.filter(y => y.area !== 'conflict') })); this.setState({ file:null }); done('Rebase aborted · branch restored', 'git rebase --abort'); })] }; }
+      case 'groupNew': case 'groupEdit': {
+        const repos = f.repos || [], entries = f.entries || [], q = (f.filter || '').toLowerCase();
+        const toggleRepo = r => this.setState(s => { const fr = s.form; const on = fr.repos.includes(r); return { form:{ ...fr, repos: on ? fr.repos.filter(x => x !== r) : [...fr.repos, r], entries: fr.entries.filter(id => (this.tree(id) || {}).repo !== r) } }; });
+        const toggleEntry = id => this.setState(s => { const fr = s.form; return { form:{ ...fr, entries: fr.entries.includes(id) ? fr.entries.filter(x => x !== id) : [...fr.entries, id] } }; });
+        const rows = [];
+        ALL_REPOS.forEach(r => {
+          const ts = S.trees.filter(t => t.repo === r && (!q || wordMatch(r + ' ' + t.branch, q))); if (!ts.length) return;
+          const whole = repos.includes(r); const some = !whole && ts.some(t => entries.includes(t.id));
+          rows.push({ pad:'12px', mark: whole ? '✓' : some ? '–' : '', boxBg: whole || some ? K.ac : K.s, boxBd: whole || some ? K.ac : '#b0a480', boxColor:'#fbf8ee', label:r, weight:600, font:'inherit', color:K.tx, hasSub:whole, sub:'Whole repo — includes worktrees added later', onToggle:() => toggleRepo(r) });
+          ts.forEach(t => { const on = entries.includes(t.id); rows.push({ pad:'42px', mark: whole || on ? '✓' : '', boxBg: whole ? K.acS : on ? K.ac : K.s, boxBd: whole ? K.acB : on ? K.ac : '#b0a480', boxColor: whole ? K.ac : '#fbf8ee', label:t.branch, weight:400, font:"'Geist Mono',monospace", color: whole ? K.mu : K.tx, hasSub:false, sub:'', onToggle:() => { if (!whole) toggleEntry(t.id); } }); });
+        });
+        const summary = [repos.length && `${repos.length} whole repo${repos.length > 1 ? 's' : ''}`, entries.length && many(entries.length)].filter(Boolean);
+        const name = f.name ?? ''; const dup = S.groups.some(g => g.label.toLowerCase() === name.trim().toLowerCase() && g.id !== f.gid);
+        const err = !name.trim() ? 'Give the group a name' : dup ? 'Another group already has this name' : '';
+        return { title: S.dialog === 'groupNew' ? 'New group' : `Edit ${name || 'group'}`, sub:'Pick whole repositories or individual branches. Groups never change your repos.', width:'640px', foot: summary.length ? `Includes ${summary.join(' and ')}` : 'Nothing selected yet',
+          fields:[F('text', { label:'Group name', value:name, onChange:this.setF('name'), error:err }), F('text', { label:'Members', value:f.filter || '', onChange:this.setF('filter'), placeholder:'Filter repositories and branches', hint:'Only repositories registered in Settings → Desktop → Git Workspace are listed' }), F('tree', { rows })],
+          buttons:[...(f.gid ? [btn('Delete group…', 'ghost', () => this.openDlg('groupDelete'))] : []), cancel, btn('Save group', 'primary', () => { const g = { id: f.gid || 'g' + Date.now(), label:name.trim(), repos, entries };
+            this.setState(s => ({ groups: f.gid ? s.groups.map(x => x.id === f.gid ? g : x) : [...s.groups, g], group:g.id, dialog:null })); this.toast(`${f.gid ? 'Saved' : 'Created'} group ${g.label}`); }, !!err || !summary.length)] }; }
+      case 'groupRename': case 'groupDuplicate': { const g = S.groups.find(x => x.id === S.group); if (!g) return null; const ren = S.dialog === 'groupRename'; const name = f.name ?? '';
+        const dup = S.groups.some(x => x.label.toLowerCase() === name.trim().toLowerCase() && (!ren || x.id !== g.id)); const err = !name.trim() ? 'Enter a name' : dup ? 'Another group already has this name' : '';
+        return { title: ren ? `Rename ${g.label}` : `Duplicate ${g.label}`, sub: ren ? 'Only the name changes' : 'Makes a copy with the same members', width:'460px', foot:'',
+          fields:[F('text', { label:'Group name', value:name, onChange:this.setF('name'), error:err })],
+          buttons:[cancel, btn(ren ? 'Rename' : 'Duplicate', 'primary', () => { const id = 'g' + Date.now(); this.setState(s => ({ groups: ren ? s.groups.map(x => x.id === g.id ? { ...x, label:name.trim() } : x) : [...s.groups, { ...g, id, label:name.trim() }], group: ren ? g.id : id, dialog:null })); this.toast(ren ? `Renamed to ${name.trim()}` : `Created ${name.trim()}`); }, !!err)] }; }
+      case 'groupDelete': { const g = S.groups.find(x => x.id === S.group); if (!g) return null;
+        return { title:`Delete ${g.label}?`, sub:'', width:'460px', foot:'', fields:[F('note', { tone:'info', text:'Only the saved group goes. Repositories, branches and worktrees stay exactly where they are.' })],
+          buttons:[cancel, btn('Delete group', 'danger', () => { this.setState(s => ({ groups:s.groups.filter(x => x.id !== g.id), group:'all', dialog:null })); this.toast(`Deleted group ${g.label}`); })] }; }
+      case 'batchPull': { const ts = (f.snap || []).map(o => ({ ...this.tree(o.id), behind:o.behind })).filter(t => t.id); const res = f.results; const ok = t => !info(t).changed && !t.op;
+        const rows = ts.map(t => { const r = res && res[t.id]; return { hasCheck:false, checked:false, onToggle:null, label:`${t.repo} › ${t.branch}`, detail: r || (ok(t) ? `Fast-forward ${plural(t.behind, 'commit')} from ${t.upstream}` : t.op ? 'Rebase in progress' : `${plural(info(t).changed, 'uncommitted file')} — pull this one on its own to stash them`), status: r ? '✓ Pulled' : ok(t) ? 'Ready' : 'Skipped', statusColor: r ? K.ok : ok(t) ? K.inf : K.mu }; });
+        const n = ts.filter(ok).length; const gl = (S.groups.find(g => g.id === S.group) || {}).label;
+        return { title: res ? 'Pull all · done' : 'Pull all', sub:`${many(ts.length)} behind their upstream in ${gl}`, width:'620px', foot:'git pull --ff-only, for each ready branch',
+          fields: ts.length ? [F('targets', { rows })] : [F('note', { tone:'info', text:'Every branch is up to date.' })],
+          buttons: res ? [btn('Close', 'primary', close)] : [cancel, btn(`Pull ${many(n)}`, 'primary', () => { const out = {}; ts.filter(ok).forEach(t => { out[t.id] = `Fast-forwarded ${plural(t.behind, 'commit')}`; }); this.setState(s => ({ form:{ ...s.form, results:out }, trees:s.trees.map(t => out[t.id] ? { ...t, behind:0, fetched:'just now' } : t) })); this.toast(`Pulled ${many(n)}`, 'git pull --ff-only'); }, !n)] }; }
+      case 'multiCommit': { const ts = S.trees.filter(t => this.inGroup(t) && info(t).staged && !t.op); const pick = f.pick || ts.map(t => t.id); const msg = f.message ?? '';
+        const rows = ts.map(t => ({ hasCheck:true, checked:pick.includes(t.id), onToggle:() => this.setState(s => { const p = s.form.pick || ts.map(x => x.id); return { form:{ ...s.form, pick: p.includes(t.id) ? p.filter(x => x !== t.id) : [...p, t.id] } }; }), label:`${t.repo} › ${t.branch}`, detail: t.files.filter(x => x.area === 'staged').map(x => basename(x.path)).join(', '), status:`${info(t).staged} staged`, statusColor:K.ok }));
+        const n = pick.length;
+        return { title:'Commit across branches', sub:'One message, committed separately on each ticked branch', width:'620px', foot:'Only staged files are committed',
+          fields:[F('targets', { rows }), F('code', { label:'Commit message', value:msg, onChange:this.setF('message'), rows:'4', font:'inherit' })],
+          buttons:[cancel, btn(`Commit on ${many(n)}`, 'primary', () => { this.setState(s => ({ trees:s.trees.map(t => pick.includes(t.id) ? { ...t, files:t.files.filter(x => x.area !== 'staged'), ahead:t.ahead + 1 } : t), dialog:null })); this.toast(`Committed on ${many(n)}`); }, !n || !msg.trim())] }; }
+      case 'code': { const text = f.text ?? ''; const markers = /^(<<<<<<<|=======|>>>>>>>)/m.test(text);
+        return { title:`Edit ${basename(f.path || '')}`, sub:`${f.path} · conflict result`, width:'860px', foot: markers ? 'Conflict markers still present — remove them to resolve' : 'No conflict markers left',
+          fields:[F('code', { value:text, onChange:this.setF('text'), rows:'18', lang:LANG(f.path || '') })],
+          buttons:[cancel, btn('Save result', 'primary', () => { this.setState(s => ({ edited:{ ...s.edited, [f.path]:text }, choice:{ ...s.choice, [f.path]: markers ? s.choice[f.path] : 'edited' }, dialog:null })); this.toast(markers ? 'Saved — markers still need removing' : 'Saved your edit'); })] }; }
+      default: return null;
+    }
+  }
+  pullAllFn() {
+    const repos = GROUPS.find(g => g.id === this.state.group).repos;
+    const ts = this.state.trees.filter(t => repos.includes(t.repo) && t.behind && !info(t).changed && !t.op);
+    const skipped = this.state.trees.filter(t => repos.includes(t.repo) && t.behind && (info(t).changed || t.op)).length;
+    this.setState(s => ({ trees: s.trees.map(t => ts.includes(t) ? { ...t, behind:0, fetched:'just now' } : t) }));
+    this.toast(`Pulled ${plural(ts.length, 'branch').replace('branchs', 'branches')}${skipped ? ` · skipped ${skipped} with local changes` : ''}`);
+  }
+  doCommit(andPush) {
+    const S = this.state; const t = this.tree(S.sel); if (!t || t.op) return;
+    const n = info(t).staged; if ((!n && !S.amend) || !S.summary.trim()) return;
+    this.upd(t.id, x => ({ ...x, files:x.files.filter(f => f.area !== 'staged'), ahead: andPush ? 0 : x.ahead + (S.amend ? 0 : 1), upstream: andPush ? (x.upstream || 'origin/' + x.branch) : x.upstream }));
+    this.setState({ summary:'', desc:'', amend:false, file:null, composeOpen:false });
+    this.toast(`${S.amend ? 'Amended' : 'Committed'} ${plural(n, 'file')}${andPush ? ' and pushed' : ''} · “${S.summary.trim()}”`);
+  }
+}
+</script>
+</body>
+</html>
