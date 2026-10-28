@@ -1,9 +1,6 @@
 import { buildRequest } from './request-builder.js'
-
-function normalizeHeaders(headers) {
-  if (headers && typeof headers.entries === 'function') return Object.fromEntries(headers.entries())
-  return headers || {}
-}
+import { sendRequest } from './http-send.js'
+import { executeBrunoRequest } from './bruno-executor.js'
 
 /**
  * Builds (resolving vars/auth + pre-request script), sends via
@@ -11,33 +8,34 @@ function normalizeHeaders(headers) {
  * adapters.scriptRunner. The returned `status` distinguishes a script failure
  * from a network failure from a request that sent fine but failed its tests,
  * so callers can render each case distinctly.
+ *
+ * A request imported from Bruno with its scripts (scriptFlavor 'bruno') runs
+ * through bruno-executor.js instead, which takes env and runtime vars apart
+ * (`env`, `runtimeVars`) and can resolve bru.runRequest via `lookupRequest`.
  */
-export async function executeRequest(requestDef, { vars = {}, adapters = {} } = {}) {
+export async function executeRequest(requestDef, options = {}) {
+  const { vars = {}, adapters = {} } = options
+  if (requestDef?.scriptFlavor === 'bruno') {
+    return executeBrunoRequest(requestDef, {
+      env:           options.env ?? vars,
+      runtimeVars:   options.runtimeVars ?? {},
+      envName:       options.envName,
+      adapters,
+      lookupRequest: options.lookupRequest,
+    })
+  }
+
   const { request, vars: builtVars, preScriptError, preScriptLogs } = await buildRequest(requestDef, { vars, adapters })
 
   if (preScriptError) {
     return { status: 'script-error', phase: 'pre-request', error: preScriptError, logs: preScriptLogs, vars: builtVars }
   }
 
-  const started = Date.now()
-  let response
-  try {
-    const raw = await adapters.apiHttp.fetch(request.url, {
-      method:  request.method,
-      headers: request.headers,
-      body:    request.body,
-    })
-    const bodyText = typeof raw.text === 'function' ? await raw.text() : (raw.body ?? '')
-    response = {
-      status:     raw.status,
-      statusText: raw.statusText,
-      headers:    normalizeHeaders(raw.headers),
-      body:       bodyText,
-      durationMs: Date.now() - started,
-    }
-  } catch (error) {
-    return { status: 'network-error', phase: 'send', error: error?.message || String(error), vars: builtVars }
+  const sent = await sendRequest(adapters, request)
+  if (sent.error) {
+    return { status: 'network-error', phase: 'send', error: sent.error, vars: builtVars }
   }
+  const { response } = sent
 
   let tests = []
   let vars_ = builtVars

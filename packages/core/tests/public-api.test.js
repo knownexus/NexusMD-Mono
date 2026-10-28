@@ -63,6 +63,7 @@ const EXPECTED = [
   'buildRequest', 'executeRequest',
   'buildRunEntries', 'runCollection',
   'importPostmanCollection', 'importBrunoCollection', 'parseBru',
+  'executeBrunoRequest', 'brunoRequestLookup', 'normalizeBrunoPath', 'nextRuntimeVars',
   'appendHistoryEntry', 'readHistory', 'clearHistory',
   // Database Manager module (desktop-only: requires the `dbManager` adapter)
   'IDbManagerAdapter', 'getDbManagerAdapter', 'parseConnectionString', 'buildConfig',

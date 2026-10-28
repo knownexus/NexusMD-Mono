@@ -11,7 +11,9 @@
   "ipc": {
     "preload": {
       "apiClient": {
-        "script.run": { "invoke": "api-client:script:run" }
+        "script.run": { "invoke": "api-client:script:run" },
+        "bruno.start": { "invoke": "api-client:bruno:start" },
+        "bruno.resume": { "invoke": "api-client:bruno:resume" }
       }
     }
   }

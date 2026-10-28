@@ -67,8 +67,9 @@ export {
   resolveVars, resolveObjectVars, resolveEnvironment,
   secretStorageKey, setSecretVar, removeSecretVar,
   buildRequest, executeRequest,
-  buildRunEntries, runCollection,
+  buildRunEntries, runCollection, nextRuntimeVars,
   importPostmanCollection, importBrunoCollection, parseBru,
+  executeBrunoRequest, brunoRequestLookup, normalizeBrunoPath,
   appendHistoryEntry, readHistory, clearHistory,
 } from './modules/api-client/index.js'
 export {
