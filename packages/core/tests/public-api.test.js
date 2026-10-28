@@ -52,6 +52,8 @@ const EXPECTED = [
   // Shared PR REST helpers (threads/comments/resolve/reopen/commits/file changes/description)
   'fetchPRThreads', 'postPRThread', 'postPRReply', 'setPRThreadStatus',
   'fetchPRCommits', 'fetchPRFileChanges', 'fetchFileContent', 'updatePRDescription',
+  // ADO PR actions (vote/abandon/complete)
+  'ADO_MERGE_STRATEGIES', 'voteAdoPR', 'abandonAdoPR', 'completeAdoPR',
   // API client module (collections/requests/environments + var resolution)
   'getApiClientAdapters',
   'createCollection', 'readCollectionMeta', 'writeCollectionMeta',
