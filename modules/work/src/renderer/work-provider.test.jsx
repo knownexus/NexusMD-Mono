@@ -5,7 +5,8 @@ import { render, screen, act, cleanup } from '@testing-library/react'
 const refreshSpy = vi.fn(async () => {})
 const markSeen = vi.fn()
 const seen = { unseenIds: { work: new Set(), pr: new Set(), builds: new Set(), tests: new Set() }, unseenCounts: { work: 3, pr: 1, builds: 0, tests: 2 }, markSeen }
-const SNAPSHOT = { WORK_ITEMS: [], PRS: [], BUILDS: [], TESTS: [], TEAM: [], JIRA_PEOPLE: [] }
+const BASE = { WORK_ITEMS: [], PRS: [], BUILDS: [], TESTS: [], TEAM: [], JIRA_PEOPLE: [], ME: { name: 'Me Myself' }, GITHUB_ME: { login: 'octo' } }
+let SNAPSHOT = BASE
 
 vi.mock('@nexusmd/ui', async importOriginal => ({ ...(await importOriginal()), useSeenTracking: () => seen }))
 vi.mock('./work-data.js', () => ({
@@ -37,6 +38,7 @@ const mount = (view = 'dashboard') => render(<WorkProvider host={host} view={vie
 
 beforeEach(() => {
   vi.clearAllMocks()
+  SNAPSHOT = BASE
   localStorage.clear()
   workBadges.set({})
 })
@@ -83,6 +85,34 @@ describe('the drawers', () => {
     expect(refreshSpy).toHaveBeenCalledTimes(1)
     act(() => drawerProps.onPRChanged(2, { status: 'merged' }))
     expect(screen.getByTestId('drawer').dataset.status).toBe('merged')
+  })
+  it('puts the current user vote into the open ADO PR reviewers', () => {
+    mount()
+    act(() => work.openPR({ id: 1, status: 'active', reviewerDetails: [{ id: 'a', name: 'Alice', vote: 0 }, { id: 'me', name: 'me myself', vote: 0 }] }))
+    act(() => drawerProps.onPRChanged(1, { myVote: 10 }))
+    const data = drawerProps.drawer.data
+    expect(data.reviewerDetails).toEqual([{ id: 'a', name: 'Alice', vote: 0 }, { id: 'me', name: 'me myself', vote: 10 }])
+    expect('myVote' in data).toBe(false)
+  })
+  it('appends the current user when they are not yet a reviewer, using GITHUB_ME for GitHub PRs', () => {
+    mount()
+    act(() => work.openPR({ id: 2, source: 'github', status: 'active', reviewerDetails: [{ id: 'a', name: 'Alice', vote: 0 }] }))
+    act(() => drawerProps.onPRChanged(2, { myVote: -5 }))
+    expect(drawerProps.drawer.data.reviewerDetails).toEqual([
+      { id: 'a', name: 'Alice', vote: 0 }, { id: 'octo', name: 'octo', vote: -5 },
+    ])
+    act(() => work.openPR({ id: 3, status: 'active' }))
+    act(() => drawerProps.onPRChanged(3, { myVote: 10 }))
+    expect(drawerProps.drawer.data.reviewerDetails).toEqual([{ id: 'Me Myself', name: 'Me Myself', vote: 10 }])
+  })
+  it('replaces the open PR with the refreshed one when the snapshot changes', () => {
+    const view = () => <WorkProvider host={host} view="dashboard"><Probe /></WorkProvider>
+    const { rerender } = render(view())
+    act(() => work.openPR({ id: 1, status: 'active' }))
+    expect(drawerProps.drawer.data.status).toBe('active')
+    SNAPSHOT = { ...BASE, PRS: [{ id: 1, status: 'merged', title: 'fresh' }] }
+    rerender(view())
+    expect(drawerProps.drawer.data).toEqual({ id: 1, status: 'merged', title: 'fresh' })
   })
   it('opens the create drawer on nexusmd:create-wi, with the title it was given', () => {
     mount()
