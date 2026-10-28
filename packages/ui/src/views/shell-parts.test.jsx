@@ -35,13 +35,17 @@ describe('shell parts', () => {
     expect(screen.getByText('Triage queue')).toBeTruthy()
   })
 
-  it('ProfileMenu toggles the theme from its popover', () => {
+  it.each([
+    ['light', 'Dim mode', 'dim'],
+    ['dim', 'Dark mode', 'dark'],
+    ['dark', 'Light mode', 'light'],
+  ])('ProfileMenu moves on from %s mode from its popover', (theme, label, next) => {
     const setTweak = vi.fn()
-    render(<ProfileMenu name="Ada Lovelace" role="Lead" tweaks={{ theme: 'light' }} setTweak={setTweak}
+    render(<ProfileMenu name="Ada Lovelace" role="Lead" tweaks={{ theme }} setTweak={setTweak}
       onOpenSettings={() => {}} onOpenProjectAreas={() => {}} />)
     fireEvent.click(screen.getByTitle('Profile & settings'))
-    fireEvent.click(screen.getByText('Dark mode'))
-    expect(setTweak).toHaveBeenCalledWith('theme', 'dark')
+    fireEvent.click(screen.getByText(label))
+    expect(setTweak).toHaveBeenCalledWith('theme', next)
   })
 })
 

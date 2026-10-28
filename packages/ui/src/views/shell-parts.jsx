@@ -1,6 +1,7 @@
 import React from 'react'
 import { Icon } from '../icons.jsx'
 import { Avatar } from '../app-components.jsx'
+import { nextThemeMode } from '../themes.js'
 
 const { useState, useEffect, useRef } = React
 
@@ -86,7 +87,7 @@ export function ProfileMenu({ name, role, tweaks, setTweak, onOpenSettings, onOp
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const isDark = tweaks.theme === 'dark';
+  const nextMode = nextThemeMode(tweaks.theme);
   const initials = (name || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 
   return (
@@ -127,9 +128,9 @@ export function ProfileMenu({ name, role, tweaks, setTweak, onOpenSettings, onOp
 
           <div style={{ padding: 4 }}>
             <ProfileMenuItem
-              icon={<Icon name={isDark ? 'sun' : 'moon'} size={14}/>}
-              label={isDark ? 'Light mode' : 'Dark mode'}
-              onClick={() => setTweak('theme', isDark ? 'light' : 'dark')}
+              icon={<Icon name={nextMode.icon} size={14}/>}
+              label={`${nextMode.label} mode`}
+              onClick={() => setTweak('theme', nextMode.id)}
             />
             <ProfileMenuItem
               icon={<Icon name="list" size={14}/>}

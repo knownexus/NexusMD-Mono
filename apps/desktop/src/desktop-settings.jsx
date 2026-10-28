@@ -1,7 +1,7 @@
 import React from 'react'
 import {
   Icon,
-  VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker,
+  VsRow, VsCard, VsFullRow, ThemeModeSettings,
   VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView,
   PlToggle,
   toast,
@@ -483,17 +483,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
 
           {tab === 'appearance' && (
             <VsCard title="Appearance" icon="sun">
-              <VsRow title="Mode" desc="Toggle between your assigned light and dark themes">
-                <VsSeg value={tweaks.theme}
-                  options={[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon']]}
-                  onChange={v => setTweak('theme', v)} />
-              </VsRow>
-              <VsFullRow title="Light mode theme" desc="Palette used when light mode is active">
-                <ThemeChipPicker value={tweaks.lightTheme || 'parchment'} onChange={v => setTweak('lightTheme', v)} />
-              </VsFullRow>
-              <VsFullRow title="Dark mode theme" desc="Palette used when dark mode is active">
-                <ThemeChipPicker value={tweaks.darkTheme || 'cobalt'} onChange={v => setTweak('darkTheme', v)} />
-              </VsFullRow>
+              <ThemeModeSettings tweaks={tweaks} setTweak={setTweak} />
               <VsRow title="Zoom" desc="Scale the entire app interface">
                 <ZoomSlider />
               </VsRow>

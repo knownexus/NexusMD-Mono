@@ -15,6 +15,15 @@ describe('popoutSpec', () => {
     expect(popoutSpec('diff', { repo, worktree: 'w', registered, path: change.path, change }).changeId).toBe(change.id)
     expect(popoutSpec('conflict', { repo, worktree: 'w', registered, path: change.path, change })).not.toHaveProperty('changeId')
   })
+  it('carries the change itself for a diff, with only the status fields', () => {
+    const change = { id: 'unstaged\0new.txt', area: 'unstaged', path: 'new.txt', originalPath: 'old.txt', xy: '.R', sub: 'N...', extra: {}, originalPathX: null }
+    expect(popoutSpec('diff', { repo, worktree: 'w', registered, path: change.path, change }).change)
+      .toEqual({ id: 'unstaged\0new.txt', area: 'unstaged', path: 'new.txt', originalPath: 'old.txt', xy: '.R', sub: 'N...' })
+    const plain = { id: 'untracked\0a.txt', area: 'untracked', path: 'a.txt', originalPath: null }
+    expect(popoutSpec('diff', { repo, worktree: 'w', registered, path: plain.path, change: plain }).change)
+      .toEqual({ id: 'untracked\0a.txt', area: 'untracked', path: 'a.txt' })
+    expect(popoutSpec('conflict', { repo, worktree: 'w', registered, path: plain.path, change: plain })).not.toHaveProperty('change')
+  })
 })
 
 describe('parsePopoutHash', () => {

@@ -7,7 +7,7 @@ import { Icon } from '../icons.jsx';
 import { useProfile } from '../profile-context.jsx';
 import { marked } from 'marked';
 import {
-  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard, CloudSyncCard,
+  PlToggle, VsRow, VsCard, VsFullRow, ThemeModeSettings, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard, CloudSyncCard,
   IntegrationsView,
 } from '@nexusmd/ui';
 import { appFileIO } from '../file-io.js';
@@ -277,17 +277,7 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
 
           {subPage === 'appearance' && (
             <VsCard title="Appearance" icon="sun">
-              <VsRow title="Mode" desc="Toggle between your assigned light and dark themes">
-                <VsSeg value={tweaks.theme}
-                  options={[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon']]}
-                  onChange={v => setTweak('theme', v)}/>
-              </VsRow>
-              <VsFullRow title="Light mode theme" desc="Palette used when light mode is active">
-                <ThemeChipPicker value={tweaks.lightTheme || 'parchment'} onChange={v => setTweak('lightTheme', v)}/>
-              </VsFullRow>
-              <VsFullRow title="Dark mode theme" desc="Palette used when dark mode is active">
-                <ThemeChipPicker value={tweaks.darkTheme || 'cobalt'} onChange={v => setTweak('darkTheme', v)}/>
-              </VsFullRow>
+              <ThemeModeSettings tweaks={tweaks} setTweak={setTweak}/>
               <VsRow title="Density" desc="Row height and padding everywhere">
                 <VsSeg value={tweaks.density}
                   options={[['compact', 'Compact'], ['balanced', 'Balanced'], ['cozy', 'Cozy']]}
