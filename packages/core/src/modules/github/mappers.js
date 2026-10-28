@@ -92,6 +92,7 @@ export function mapGithubPR(pr, repo, { reviews = [], meLogin = '' } = {}) {
     repo,
     branch: pr.head?.ref || '',
     sourceBranch: pr.head?.ref || '',
+    headRepo: pr.head?.repo?.full_name || repo,
     targetBranch: pr.base?.ref || '',
     author: slugify(login || 'unknown'),
     authorName: login,

@@ -79,4 +79,25 @@ describe('makeGithubClient', () => {
     const c = makeGithubClient({ fetch })
     expect(await c.getPaged('x', { max: 3 })).toEqual([1, 2, 1])
   })
+
+  it('put sends a JSON body and del sends none', async () => {
+    const fetch = vi.fn(async () => res(200, { ok: 1 }))
+    const c = makeGithubClient({ fetch })
+    expect(await c.put('x', { a: 1 })).toEqual({ ok: 1 })
+    expect(fetch.mock.calls[0][1].method).toBe('PUT')
+    expect(fetch.mock.calls[0][1].body).toBe('{"a":1}')
+    fetch.mockResolvedValueOnce(res(204, ''))
+    expect(await c.del('y')).toBeNull()
+    expect(fetch.mock.calls[1][1].method).toBe('DELETE')
+    expect(fetch.mock.calls[1][1].body).toBeUndefined()
+  })
+
+  it('put and del throw GithubError on !ok', async () => {
+    const c = makeGithubClient({ fetch: async () => res(404, '{"message":"Not Found"}') })
+    for (const p of [c.put('x', {}), c.del('x')]) {
+      const err = await p.catch(e => e)
+      expect(err).toBeInstanceOf(GithubError)
+      expect(err.status).toBe(404)
+    }
+  })
 })
