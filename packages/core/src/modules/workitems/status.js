@@ -1,6 +1,7 @@
 export const WORK_ITEM_STATUS_KEY = 'nexusmd.workitems.status.v1'
 
 export function describeProviderError(err) {
+  if (err?.kind && err.message) return String(err.message).slice(0, 300)
   const s = err?.status
   if (s === 401 || s === 403) {
     const detail = String(err?.message || '').trim()

@@ -5,6 +5,7 @@ import { fieldBucket, fieldGroup, LINK_TYPES, resolveTypeLayout, TYPE_LAYOUTS } 
 import * as adoWorkItemTypesModule from './ado-workitem-types.js'
 import { settInputStyle } from './form-style.js'
 import { JiraCreateForm } from './jira-create-form.jsx'
+import { GithubCreateForm } from './github-create-form.jsx'
 
 function FieldLabel({ def }) {
   return <span>{def.name}{def.alwaysRequired ? ' *' : ''}</span>
@@ -131,8 +132,12 @@ const DEFAULT_TYPE_REF = 'Microsoft.VSTS.WorkItemTypes.Task'
 
 export function CreateWorkItemDrawer({
   open, title: initialTitle, project: projectsList, team, onClose, onCreate,
-  jira = null, adoAvailable = true, defaultProvider = 'ado', onProviderChange, onJiraCreated,
+  jira = null, github = null, adoAvailable = true, defaultProvider = 'ado', onProviderChange, onJiraCreated, onGithubCreated,
 }) {
+  // ADO is also the fallback form when nothing else is connected.
+  const available = [
+    (adoAvailable || (!jira && !github)) && 'ado', jira && 'jira', github && 'github',
+  ].filter(Boolean)
   const [project, setProject] = React.useState(projectsList[0] || '')
   const [typeRef, setTypeRef] = React.useState(DEFAULT_TYPE_REF)
   const [defs, setDefs] = React.useState(null)
@@ -150,8 +155,9 @@ export function CreateWorkItemDrawer({
   }, [])
 
   React.useEffect(() => {
-    if (!open || (!adoAvailable && jira)) return
+    if (!open) return
     setWiTitle(initialTitle || '')
+    if (!available.includes('ado')) return
     setProject(projectsList[0] || '')
     setTypeRef(DEFAULT_TYPE_REF)
     load(projectsList[0] || '', DEFAULT_TYPE_REF)
@@ -164,22 +170,39 @@ export function CreateWorkItemDrawer({
   const [linkId, setLinkId] = React.useState('')
   const [saving, setSaving] = React.useState(false)
   const [titleError, setTitleError] = React.useState('')
-  const [provider, setProvider] = React.useState(defaultProvider)
+  const [chosen, setProvider] = React.useState(defaultProvider)
   React.useEffect(() => {
-    if (open) setProvider(jira ? defaultProvider : 'ado')
+    if (open) setProvider(defaultProvider)
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+  const provider = available.includes(chosen) ? chosen : available[0]
   const chooseProvider = (p) => { setProvider(p); onProviderChange?.(p) }
-  const providerSwitch = jira && adoAvailable ? (
+  const PROVIDER_NAMES = { ado: 'Azure DevOps', jira: 'Jira', github: 'GitHub' }
+  const providerSwitch = available.length > 1 ? (
     <div role="group" aria-label="Create in" style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
-      {[['ado', 'Azure DevOps'], ['jira', 'Jira']].map(([v, l]) => (
-        <button key={v} type="button" className={`btn sm ${provider === v ? 'primary' : 'ghost'}`} aria-pressed={provider === v} onClick={() => chooseProvider(v)}>{l}</button>
+      {available.map(v => (
+        <button key={v} type="button" className={`btn sm ${provider === v ? 'primary' : 'ghost'}`} aria-pressed={provider === v} onClick={() => chooseProvider(v)}>{PROVIDER_NAMES[v]}</button>
       ))}
     </div>
   ) : null
 
   if (!open) return null
 
-  if (jira && (provider === 'jira' || !adoAvailable)) {
+  if (provider === 'github') {
+    return (
+      <Drawer open={open} onClose={onClose} defaultWidth={820} title="New GitHub issue">
+        {providerSwitch}
+        <GithubCreateForm
+          source={github.source}
+          repos={github.repos}
+          defaultTitle={wiTitle || initialTitle}
+          onTitleChange={setWiTitle}
+          onCreated={(result) => onGithubCreated?.(result)}
+        />
+      </Drawer>
+    )
+  }
+
+  if (provider === 'jira') {
     return (
       <Drawer open={open} onClose={onClose} defaultWidth={820} title="New Jira issue">
         {providerSwitch}

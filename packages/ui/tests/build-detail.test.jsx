@@ -37,7 +37,7 @@ describe('BuildDetail', () => {
         <BuildDetail build={failedBuild} />
       </NexusDataProvider>,
     )
-    expect(loadTimeline).toHaveBeenCalledWith('proj-a', 2)
+    expect(loadTimeline).toHaveBeenCalledWith('proj-a', 2, failedBuild)
     await waitFor(() => expect(screen.getByText('Run tests')).toBeTruthy())
     expect(screen.getByText('Test suite exited with code 1')).toBeTruthy()
   })

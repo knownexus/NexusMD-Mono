@@ -241,8 +241,8 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
       case 'build':
         return (
           <div key="build" className="mono" style={{ fontSize:12, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', display:'flex', alignItems:'center', gap:5 }}>
-            {NexusMDData.ORG && b.project
-              ? <a href={`https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(b.projectName || b.project)}/_build/results?buildId=${b.id}`}
+            {(b.source === 'github' ? b.url : NexusMDData.ORG && b.project)
+              ? <a href={b.source === 'github' ? b.url : `https://dev.azure.com/${encodeURIComponent(NexusMDData.ORG)}/${encodeURIComponent(b.projectName || b.project)}/_build/results?buildId=${b.id}`}
                   target="_blank" rel="noopener" onClick={e => e.stopPropagation()}
                   style={{ color:'var(--accent)', textDecoration:'none' }}>#{b.id}</a>
               : <span>#{b.id}</span>
@@ -294,8 +294,8 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
       case 'actions':
         return (
           <div key="actions" style={{ display:'flex', justifyContent:'flex-end', gap:4 }}>
-            {/* Cancel — running builds only */}
-            {b.status === 'running' && (
+            {/* Cancel — running ADO builds only (cancel and rerun go through ADO) */}
+            {b.status === 'running' && b.source !== 'github' && (
               <button className="btn sm ghost" title="Cancel this build"
                 style={{ color:'var(--danger)' }}
                 disabled={actioning.has(b.id)}
@@ -304,7 +304,7 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
               </button>
             )}
             {/* Rerun — completed builds */}
-            {b.status !== 'running' && b.definitionId > 0 && (
+            {b.status !== 'running' && b.definitionId > 0 && b.source !== 'github' && (
               <button className="btn sm ghost" title="Re-run this pipeline"
                 disabled={actioning.has(b.id)}
                 onClick={e => { e.stopPropagation(); rerunBuild(b) }}>

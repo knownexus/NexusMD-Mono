@@ -1,8 +1,10 @@
 import React from 'react';
-import { fetchPRCommits, fetchPRFileChanges, fetchFileContent, fetchPRThreads, postPRThread, postPRReply, setPRThreadStatus, updatePRDescription, timeAgo } from '@nexusmd/core';
+import { fetchPRCommits, fetchPRFileChanges, fetchFileContent, fetchPRThreads, postPRThread, postPRReply, setPRThreadStatus, updatePRDescription, timeAgo, makeGithubClient, displayIdOf } from '@nexusmd/core';
 import { renderContent, mdToHtml } from './render-content.js';
 import { toast } from '../toast.jsx';
 import { Icon } from '../icons.jsx';
+import { useNexusData } from '../data-context.jsx';
+import { GithubPRCommitsTab, GithubPRFilesTab, GithubPRThreadsPanel, GithubPRDescription } from './pr-tabs-github.jsx';
 
 const { useState, useEffect } = React;
 
@@ -489,6 +491,10 @@ function PRThreadsPanel({ pr, http }) {
 export function PRTabs({ pr, http }) {
   const [tab, setTab] = useState('overview');
   const [description, setDescription] = useState(pr.description || '');
+  // GitHub PRs read through the GitHub adapter from NexusData, never the ADO `http`.
+  const isGithub = pr.source === 'github';
+  const { githubHttp } = useNexusData();
+  const githubClient = React.useMemo(() => (isGithub && githubHttp ? makeGithubClient(githubHttp) : null), [isGithub, githubHttp]);
 
   const tabBtnStyle = (active) => ({
     fontSize: 12, fontWeight: active ? 600 : 500, padding: '5px 12px', borderRadius: 6,
@@ -507,7 +513,9 @@ export function PRTabs({ pr, http }) {
 
       {tab === 'overview' && (
         <div>
-          <PRDescriptionField pr={pr} http={http} description={description} onSaved={setDescription} />
+          {isGithub
+            ? (description && <GithubPRDescription description={description} />)
+            : <PRDescriptionField pr={pr} http={http} description={description} onSaved={setDescription} />}
 
           {(pr.reviewerDetails || []).length > 0 && (
             <div className="drawer-section">
@@ -533,20 +541,20 @@ export function PRTabs({ pr, http }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {pr.linkedWorkItems.map(wi => (
                   <div key={wi.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--surface-2)', borderRadius: 6, fontSize: 12.5 }}>
-                    <span className="mono muted" style={{ fontSize: 11 }}>#{wi.id}</span>
-                    <span style={{ flex: 1, minWidth: 0 }} className="truncate">{wi.title || `Work Item #${wi.id}`}</span>
+                    <span className="mono muted" style={{ fontSize: 11 }}>{displayIdOf(wi)}</span>
+                    {(wi.title || !isGithub) && <span style={{ flex: 1, minWidth: 0 }} className="truncate">{wi.title || `Work Item #${wi.id}`}</span>}
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          <PRThreadsPanel pr={pr} http={http} />
+          {isGithub ? <GithubPRThreadsPanel pr={pr} client={githubClient} /> : <PRThreadsPanel pr={pr} http={http} />}
         </div>
       )}
 
-      {tab === 'commits' && <PRCommitsTab pr={pr} http={http} />}
-      {tab === 'files' && <PRFilesTab pr={pr} http={http} />}
+      {tab === 'commits' && (isGithub ? <GithubPRCommitsTab pr={pr} client={githubClient} /> : <PRCommitsTab pr={pr} http={http} />)}
+      {tab === 'files' && (isGithub ? <GithubPRFilesTab pr={pr} client={githubClient} /> : <PRFilesTab pr={pr} http={http} />)}
     </div>
   );
 }

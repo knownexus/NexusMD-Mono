@@ -5,6 +5,7 @@ import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useLocalItems } from './items-state.js'
 import { getAdoConfig, usesAdoWorkItems } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraWorkItemSource } from './jira-client.js'
+import { getGithubConfig, usesGithubWorkItems, desktopGithubSource, createGithubHttpAdapter } from './github-client.js'
 import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
@@ -16,6 +17,8 @@ import { workBadges } from './work-store.js'
 import { useOffScreens, skippedFetches } from './work-screens.js'
 
 const VIEW_TO_CATEGORY = { work: 'work', prs: 'pr', builds: 'builds', tests: 'tests' }
+// GitHub PR drawer tabs read through this; it uses whichever token is saved at request time.
+const githubHttp = createGithubHttpAdapter()
 
 // Wraps the whole shell, above every screen, so what Work owns outlives leaving a screen: the
 // cached data and its refresh, the unseen-item markers, and the drawers that open from any screen.
@@ -126,8 +129,10 @@ export function WorkProvider({ host, view, children }) {
   // would make JiraCreateForm re-fetch create-meta and wipe the user's input.
   const jiraActive = isJiraActive()
   const jiraSource = React.useMemo(() => (jiraActive ? createJiraWorkItemSource() : null), [jiraActive])
-  // Stable across data refreshes: only a Jira-source change produces a new identity.
-  const workItemSource = useRoutedWorkItemSource(desktopWorkItemSource, jiraSource)
+  // GitHub issues are routed only while "Load GitHub issues" is on.
+  const githubSource = usesGithubWorkItems() ? desktopGithubSource : null
+  // Stable across data refreshes: only a Jira- or GitHub-source change produces a new identity.
+  const workItemSource = useRoutedWorkItemSource(desktopWorkItemSource, jiraSource, githubSource)
 
   const nexusDataValue = React.useMemo(() => ({
     data:           snapshot,
@@ -137,6 +142,7 @@ export function WorkProvider({ host, view, children }) {
     pushPref:       () => {},
     workItemSource,
     buildSource:    desktopBuildSource,
+    githubHttp,
   }), [snapshot, workItemSource, refreshAllData])
 
   const work = {
@@ -164,13 +170,19 @@ export function WorkProvider({ host, view, children }) {
             people: snapshot.JIRA_PEOPLE || [],
             site: getJiraConfig().site,
           } : null}
+          github={githubSource ? { source: githubSource, repos: getGithubConfig().repos } : null}
           defaultProvider={defaultCreateProvider({
             readJson: (k, d) => { try { const v = localStorage.getItem(getProfileKey(k)); return v == null ? d : JSON.parse(v) } catch { return d } },
             adoAvailable: usesAdoWorkItems(),
             jiraAvailable: jiraActive,
+            githubAvailable: !!githubSource,
           })}
           onProviderChange={(p) => { try { localStorage.setItem(getProfileKey('nexusmd.wi.createProvider'), JSON.stringify(p)) } catch {} }}
           onJiraCreated={(result) => {
+            if (!result.warnings?.length) setTimeout(() => setCreateWI(null), 600)
+            refreshAllData()
+          }}
+          onGithubCreated={(result) => {
             if (!result.warnings?.length) setTimeout(() => setCreateWI(null), 600)
             refreshAllData()
           }}

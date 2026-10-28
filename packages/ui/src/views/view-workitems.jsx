@@ -340,7 +340,9 @@ function ActiveFilterChip({ label, onRemove, negated = false, icon }) {
     );
 }
 
-const SOURCE_LABELS = { ado: 'ADO', jira: 'Jira' };
+const SOURCE_LABELS = { ado: 'ADO', jira: 'Jira', github: 'GitHub' };
+// GitHub issues are only open or closed; label-driven columns are out of scope.
+const GITHUB_LANES = ['Open', 'Closed'];
 
 const adoItemUrl = (org, w) =>
   `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(String(w.project || '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}/_workitems/edit/${w.id}`;
@@ -610,12 +612,12 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   React.useEffect(() => {
     if (Object.keys(wiTypeStates).length === 0) return;
     // Union all states from all work item types. With several providers connected,
-    // board columns are ADO-only: Jira states and projects must not leak in.
+    // board columns are ADO-only: Jira and GitHub states and projects must not leak in.
     const detectedStates = multiProvider
       ? [...new Set(Object.values(NexusMDData.WI_TYPE_STATES_BY_SOURCE?.ado || {}).flat())]
       : [...new Set(Object.values(wiTypeStates).flat())];
     if (detectedStates.length === 0) return;
-    const boardProjects = multiProvider ? PROJECTS.filter(p => p.source !== 'jira') : PROJECTS;
+    const boardProjects = multiProvider ? PROJECTS.filter(p => p.source !== 'jira' && p.source !== 'github') : PROJECTS;
 
     setBoardColumnConfig(prev => {
       const useGlobal = boardProjects.length <= 1;
@@ -1097,6 +1099,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
                    lanes={laneMode === 'jira-columns' ? jiraColumnLanes
                      : laneMode === 'category' ? CATEGORY_LANES
                      : activeSource === 'jira' ? jiraLanes
+                     : activeSource === 'github' ? GITHUB_LANES
                      : getActiveLanes(boardColumnConfig, activeProject, PROJECTS, BOARD_LANES)}
                    newItemIds={newItemIds}/>
       }

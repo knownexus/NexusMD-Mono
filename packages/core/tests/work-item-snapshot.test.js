@@ -77,6 +77,10 @@ describe('defaultCreateProvider', () => {
     expect(defaultCreateProvider({ readJson: reader({ 'nexusmd.wi.createProvider': 'ado' }), adoAvailable: false, jiraAvailable: true })).toBe('jira')
     expect(defaultCreateProvider({ readJson: reader({ 'nexusmd.wi.createProvider': 'jira' }), adoAvailable: true, jiraAvailable: false })).toBe('ado')
   })
+  it('supports github', () => {
+    expect(defaultCreateProvider({ readJson: reader({}), adoAvailable: false, jiraAvailable: false, githubAvailable: true })).toBe('github')
+    expect(defaultCreateProvider({ readJson: reader({ 'nexusmd.wi.createProvider': 'github' }), adoAvailable: true, jiraAvailable: true, githubAvailable: true })).toBe('github')
+  })
 })
 
 describe('nextHiddenIds', () => {

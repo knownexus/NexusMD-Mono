@@ -150,3 +150,70 @@ describe('PRTabs', () => {
     await waitFor(() => expect(screen.getByText('Race comment')).toBeTruthy())
   })
 })
+
+describe('PRTabs for a GitHub pull request', () => {
+  const ghPr = {
+    id: 'gh:acme/web#7', source: 'github', number: 7, repo: 'acme/web', displayId: 'acme/web#7',
+    description: 'PR **body**', reviewerDetails: [{ name: 'r1', vote: 10, id: 'r1' }],
+    linkedWorkItems: [{ id: 'gh:acme/web#4' }],
+  }
+  const GH = {
+    'repos/acme/web/pulls/7/commits': [{ sha: 'abc1234ffff', author: { login: 'octo' }, commit: { message: 'Add it', author: { name: 'Octo', date: '2026-01-01T00:00:00Z' } } }],
+    'repos/acme/web/pulls/7/files': [{ filename: 'src/a.js', status: 'modified', additions: 2, deletions: 1, patch: '@@ -1 +1 @@\n-old line\n+new line' }],
+    'repos/acme/web/issues/7/comments': [{ id: 50, user: { login: 'pm' }, body: 'ship it', created_at: '2026-01-01T00:00:00Z' }],
+    'repos/acme/web/pulls/7/comments': [{ id: 1, path: 'src/a.js', line: 2, user: { login: 'r1' }, body: 'why?', created_at: '2026-01-01T00:00:00Z' }],
+  }
+  const ghHttp = () => ({
+    fetch: vi.fn(async (path, opts = {}) => {
+      const key = path.split('?')[0]
+      const body = opts.method === 'POST' ? { id: 51, user: { login: 'me' }, body: JSON.parse(opts.body).body, created_at: '2026-01-02T00:00:00Z' } : (GH[key] ?? [])
+      return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(body), json: async () => body }
+    }),
+  })
+  const renderGh = async () => {
+    const { NexusDataProvider } = await import('../data-context.jsx')
+    const http = makeHttp([])
+    const githubHttp = ghHttp()
+    render(<NexusDataProvider value={{ data: {}, githubHttp }}><PRTabs pr={ghPr} http={http} /></NexusDataProvider>)
+    return { http, githubHttp }
+  }
+
+  it('shows the conversation and review threads from GitHub, never asking ADO', async () => {
+    const { http } = await renderGh()
+    expect(await screen.findByText('ship it')).toBeTruthy()
+    expect(screen.getByText('why?')).toBeTruthy()
+    expect(screen.getByText('src/a.js:2')).toBeTruthy()
+    expect(screen.getByText('acme/web#4')).toBeTruthy()
+    expect(http.fetch).not.toHaveBeenCalled()
+  })
+
+  it('has no thread status or description editing controls', async () => {
+    await renderGh()
+    await screen.findByText('ship it')
+    expect(screen.queryByRole('button', { name: /Resolve|Re-open/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Edit/ })).toBeNull()
+    expect(screen.getByText('body')).toBeTruthy()
+  })
+
+  it('posts a comment to the PR conversation', async () => {
+    const { githubHttp } = await renderGh()
+    await screen.findByText('ship it')
+    fireEvent.change(screen.getByLabelText('Add a comment'), { target: { value: 'looks good' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Post comment' }))
+    expect(await screen.findByText('looks good')).toBeTruthy()
+    const post = githubHttp.fetch.mock.calls.find(([, o]) => o?.method === 'POST')
+    expect(post[0]).toBe('repos/acme/web/issues/7/comments')
+  })
+
+  it('loads commits and files from GitHub', async () => {
+    const { http } = await renderGh()
+    fireEvent.click(screen.getByRole('button', { name: 'Commits' }))
+    expect(await screen.findByText('Add it')).toBeTruthy()
+    expect(screen.getByText('abc1234')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }))
+    expect(await screen.findByText('1 file changed')).toBeTruthy()
+    fireEvent.click(screen.getByText('a.js'))
+    expect(await screen.findByText('new line')).toBeTruthy()
+    expect(http.fetch).not.toHaveBeenCalled()
+  })
+})
