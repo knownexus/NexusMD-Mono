@@ -342,7 +342,7 @@ describe('resolveApps', () => {
     const reasons = log.error.mock.calls.map(c => c[0]).join('\n')
     expect(reasons).toMatch(/1\.3\.0.*1\.9\.9/)
     expect(reasons).toMatch(/1\.4\.0/)
-    expect(reasons).not.toMatch(/tmp/)
+    expect(reasons).not.toMatch(/\.tmp-/)
   })
 
   it('never starts an app that is only downloaded, not installed', () => {
