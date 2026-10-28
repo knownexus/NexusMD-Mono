@@ -188,3 +188,10 @@ describe('creating GitHub issues', () => {
     expect(screen.getByTestId('create').getAttribute('data-provider')).toBe('github')
   })
 })
+
+describe('GitHub pull requests', () => {
+  it('gives the PR drawer a GitHub http adapter', () => {
+    mount()
+    expect(typeof data.githubHttp?.fetch).toBe('function')
+  })
+})

@@ -417,7 +417,7 @@ function PRRow({ pr, onOpen, onOpenLink, isNew = false }) {
           {isNew && <span style={{ fontSize:9, fontWeight:700, background:'var(--accent)', color:'var(--accent-fg)', padding:'1px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:'0.05em', flexShrink:0 }}>New</span>}
         </div>
         <div className="pr-sub">
-          <span>#{pr.id}</span>
+          <span>{pr.displayId || `#${pr.id}`}</span>
           {subEls.map(({ k, el }) => (<React.Fragment key={`sep-${k}`}><span>·</span>{el}</React.Fragment>))}
         </div>
       </div>

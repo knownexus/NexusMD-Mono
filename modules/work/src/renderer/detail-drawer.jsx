@@ -43,7 +43,7 @@ export function DetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
           <TypeIcon type={d.type}/><Prio p={d.priority}/>
         </span>
       ) : kind === 'pr' && d ? (
-        <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>#{d.id}</span>
+        <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>{d.displayId || `#${d.id}`}</span>
       ) : kind === 'build' && d ? (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>#{d.id}</span>

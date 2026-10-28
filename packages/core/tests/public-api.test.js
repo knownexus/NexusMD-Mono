@@ -112,6 +112,7 @@ const EXPECTED = [
   'GITHUB_CACHE_KEY', 'loadCachedGithubData', 'loadGithubData',
   'loadGithubDetail', 'loadGithubComments', 'addGithubComment', 'updateGithubIssue',
   'githubPatchFromAdoField', 'fetchGithubCreateMeta', 'createGithubIssue', 'makeGithubWorkItemSource',
+  'fetchGithubPRFiles', 'fetchGithubPRCommits', 'fetchGithubPRThreads', 'postGithubPRComment',
   'CATEGORY_LANES', 'CATEGORY_LABELS', 'itemCategory', 'adoStateForCategory',
   'WORK_ITEM_STATUS_KEY', 'readProviderStatus', 'recordProviderStatus', 'describeProviderError',
   'PROVIDER_LABELS', 'mergeTeam', 'mergeWorkItemData', 'applyHiddenPeople',

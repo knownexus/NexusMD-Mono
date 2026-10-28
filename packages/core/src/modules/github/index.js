@@ -9,3 +9,4 @@ export {
   githubPatchFromAdoField, fetchGithubCreateMeta, createGithubIssue,
 } from './issues.js'
 export { makeGithubWorkItemSource } from './work-item-source.js'
+export { fetchGithubPRFiles, fetchGithubPRCommits, fetchGithubPRThreads, postGithubPRComment } from './pr-collab.js'

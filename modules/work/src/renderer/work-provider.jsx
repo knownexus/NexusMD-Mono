@@ -5,7 +5,7 @@ import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useLocalItems } from './items-state.js'
 import { getAdoConfig, usesAdoWorkItems } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraWorkItemSource } from './jira-client.js'
-import { getGithubConfig, usesGithubWorkItems, desktopGithubSource } from './github-client.js'
+import { getGithubConfig, usesGithubWorkItems, desktopGithubSource, createGithubHttpAdapter } from './github-client.js'
 import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
@@ -17,6 +17,8 @@ import { workBadges } from './work-store.js'
 import { useOffScreens, skippedFetches } from './work-screens.js'
 
 const VIEW_TO_CATEGORY = { work: 'work', prs: 'pr', builds: 'builds', tests: 'tests' }
+// GitHub PR drawer tabs read through this; it uses whichever token is saved at request time.
+const githubHttp = createGithubHttpAdapter()
 
 // Wraps the whole shell, above every screen, so what Work owns outlives leaving a screen: the
 // cached data and its refresh, the unseen-item markers, and the drawers that open from any screen.
@@ -140,6 +142,7 @@ export function WorkProvider({ host, view, children }) {
     pushPref:       () => {},
     workItemSource,
     buildSource:    desktopBuildSource,
+    githubHttp,
   }), [snapshot, workItemSource, refreshAllData])
 
   const work = {
