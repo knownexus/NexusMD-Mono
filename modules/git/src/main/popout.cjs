@@ -11,6 +11,7 @@
 'use strict';
 
 const KINDS = ['editor', 'conflict', 'diff'];
+const AREAS = ['unstaged', 'staged', 'untracked', 'conflict'];
 const TITLES = { editor: 'Edit', conflict: 'Resolve', diff: 'Diff' };
 const MAX_PATHS = 500;
 
@@ -33,8 +34,20 @@ function validateSpec(spec) {
     worktree: spec.worktree,
     path: spec.path,
     registered: [...spec.registered],
-    ...(spec.kind === 'diff' ? { changeId: spec.changeId } : null),
+    ...(spec.kind === 'diff' ? { changeId: spec.changeId, ...diffChange(spec, bad) } : null),
   };
+}
+
+// A diff may carry its change (the status entry) so its window can ask for the diff at once. It must be
+// the change the id names; git:diff checks its paths against the worktree again.
+function diffChange(spec, bad) {
+  const c = spec.change;
+  if (c == null) return null;
+  const optional = k => c[k] === undefined || str(c[k]);
+  if (typeof c !== 'object' || c.id !== spec.changeId || !AREAS.includes(c.area) || !str(c.path) || !['originalPath', 'xy', 'sub'].every(optional)) bad('bad change');
+  const change = { id: c.id, area: c.area, path: c.path };
+  for (const k of ['originalPath', 'xy', 'sub']) if (c[k] !== undefined) change[k] = c[k];
+  return { change };
 }
 
 const keyOf = s => [s.kind, s.worktree, s.path, s.changeId ?? ''].join('\0');

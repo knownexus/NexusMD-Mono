@@ -3,7 +3,11 @@
 
 export const POPOUT_KINDS = ['editor', 'conflict', 'diff']
 
-/** The request for a window: `kind` of screen, for the file `path` (and `change` for a diff) in a worktree. */
+/**
+ * The request for a window: `kind` of screen, for the file `path` (and `change` for a diff) in a worktree.
+ * A diff carries the change itself, so its window asks for the diff at once instead of reading the
+ * worktree's status first.
+ */
 export function popoutSpec(kind, { repo, worktree, registered, path, change = null }) {
   return {
     kind,
@@ -11,8 +15,15 @@ export function popoutSpec(kind, { repo, worktree, registered, path, change = nu
     worktree,
     path,
     registered: [...registered],
-    ...(kind === 'diff' ? { changeId: change.id } : null),
+    ...(kind === 'diff' ? { changeId: change.id, change: changeOf(change) } : null),
   }
+}
+
+// The fields of a status entry (see core's parseStatus) that the diff needs.
+function changeOf(c) {
+  const out = { id: c.id, area: c.area, path: c.path }
+  for (const k of ['originalPath', 'xy', 'sub']) if (typeof c[k] === 'string') out[k] = c[k]
+  return out
 }
 
 /** The request in a page's URL hash ("#popout=<json>"), or null when this isn't a pop-out page or it is malformed. */
