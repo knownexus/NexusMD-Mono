@@ -7,6 +7,19 @@ import { linkAdapter } from '@nexusmd/shell-sdk'
 import { createAdoHttpAdapter, getAdoConfig } from './ado-client.js'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
 
+const SOURCE_NAMES = { jira: 'Jira', github: 'GitHub' }
+
+// Where the drawer's "Open in …" button goes, and what it is called.
+export function drawerLink(kind, d, { org, workItemSource }) {
+  if (kind === 'wi') return { url: workItemSource.webUrl(d), label: SOURCE_NAMES[d?.source] || 'ADO' }
+  if (kind === 'pr') return { url: d?.url, label: 'browser' }
+  if (kind === 'build' && d?.source === 'github') return { url: d.url || null, label: 'GitHub' }
+  if (kind === 'build' && (d?.projectName || d?.project) && org) {
+    return { url: `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(d.projectName || d.project)}/_build/results?buildId=${d.id}`, label: 'ADO' }
+  }
+  return { url: null, label: 'browser' }
+}
+
 // The side drawer for a work item, pull request, person or build.
 export function DetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }) {
   const open = drawer != null
@@ -17,12 +30,7 @@ export function DetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
 
   const title = !d ? '' : kind === 'wi' ? d.title : kind === 'pr' ? d.title : kind === 'person' ? d.name : kind === 'build' ? d.pipeline : ''
 
-  const { org } = getAdoConfig()
-  const adoUrl = kind === 'wi' ? workItemSource.webUrl(d)
-    : kind === 'pr' ? d?.url
-    : kind === 'build' && (d?.projectName || d?.project) && org
-      ? `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(d.projectName || d.project)}/_build/results?buildId=${d.id}`
-      : null
+  const { url: adoUrl, label: openInLabel } = d ? drawerLink(kind, d, { org: getAdoConfig().org, workItemSource }) : { url: null }
 
   const markDone = async () => {
     try {
@@ -60,7 +68,7 @@ export function DetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
           {kind === 'person' && d && <PersonActions dev={d} />}
           {adoUrl && (
             <button className="btn sm ghost" onClick={() => linkAdapter.openLink(adoUrl)}>
-              <Icon name="link" size={12}/> Open in {kind === 'wi' ? (d?.source === 'jira' ? 'Jira' : d?.source === 'github' ? 'GitHub' : 'ADO') : kind === 'build' ? 'ADO' : 'browser'}
+              <Icon name="link" size={12}/> Open in {openInLabel}
             </button>
           )}
         </React.Fragment>
