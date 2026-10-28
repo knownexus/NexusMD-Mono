@@ -5,7 +5,7 @@ import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useLocalItems } from './items-state.js'
 import { getAdoConfig, usesAdoWorkItems } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraWorkItemSource } from './jira-client.js'
-import { usesGithubWorkItems, desktopGithubSource } from './github-client.js'
+import { getGithubConfig, usesGithubWorkItems, desktopGithubSource } from './github-client.js'
 import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
@@ -167,13 +167,19 @@ export function WorkProvider({ host, view, children }) {
             people: snapshot.JIRA_PEOPLE || [],
             site: getJiraConfig().site,
           } : null}
+          github={githubSource ? { source: githubSource, repos: getGithubConfig().repos } : null}
           defaultProvider={defaultCreateProvider({
             readJson: (k, d) => { try { const v = localStorage.getItem(getProfileKey(k)); return v == null ? d : JSON.parse(v) } catch { return d } },
             adoAvailable: usesAdoWorkItems(),
             jiraAvailable: jiraActive,
+            githubAvailable: !!githubSource,
           })}
           onProviderChange={(p) => { try { localStorage.setItem(getProfileKey('nexusmd.wi.createProvider'), JSON.stringify(p)) } catch {} }}
           onJiraCreated={(result) => {
+            if (!result.warnings?.length) setTimeout(() => setCreateWI(null), 600)
+            refreshAllData()
+          }}
+          onGithubCreated={(result) => {
             if (!result.warnings?.length) setTimeout(() => setCreateWI(null), 600)
             refreshAllData()
           }}

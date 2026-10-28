@@ -14,7 +14,7 @@ vi.mock('./work-data.js', () => ({
   useNexusSnapshot: () => ({ snapshot: SNAPSHOT, loaded: true }),
 }))
 vi.mock('./detail-drawer.jsx', () => ({ DetailDrawer: ({ drawer }) => <div data-testid="drawer">{drawer ? drawer.kind : 'closed'}</div> }))
-vi.mock('./create-work-item-drawer.jsx', () => ({ CreateWorkItemDrawer: ({ open, title }) => <div data-testid="create">{open ? `open:${title ?? ''}` : 'closed'}</div> }))
+vi.mock('./create-work-item-drawer.jsx', () => ({ CreateWorkItemDrawer: ({ open, title, github, defaultProvider }) => <div data-testid="create" data-github={github ? github.repos.join(',') : ''} data-provider={defaultProvider}>{open ? `open:${title ?? ''}` : 'closed'}</div> }))
 vi.mock('./project-areas-modal.jsx', () => ({ ProjectAreasModal: ({ open }) => <div data-testid="areas">{open ? 'open' : 'closed'}</div> }))
 
 import { useNexusData } from '@nexusmd/ui'
@@ -176,5 +176,15 @@ describe('the GitHub work-item source', () => {
     saveGithubConfig({ issues: false })
     mount()
     expect(data.workItemSource.github).toBeNull()
+  })
+})
+
+describe('creating GitHub issues', () => {
+  it('offers GitHub in the create drawer with the selected repos, and defaults to it when it is the only provider', async () => {
+    const { saveGithubConfig } = await import('./github-client.js')
+    saveGithubConfig({ pat: 'ghp_x', repos: ['acme/web', 'acme/api'] })
+    mount()
+    expect(screen.getByTestId('create').getAttribute('data-github')).toBe('acme/web,acme/api')
+    expect(screen.getByTestId('create').getAttribute('data-provider')).toBe('github')
   })
 })
