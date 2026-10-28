@@ -15,6 +15,8 @@ function register(ctx) {
   return {
     // Ends any still-running scripts when the app quits.
     dispose: () => runs.disposeAll(),
+    // Asked before an update replaces this app while NexusMD runs.
+    busy: () => runs.busy(),
   };
 }
 

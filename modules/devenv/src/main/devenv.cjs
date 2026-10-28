@@ -262,6 +262,8 @@ function register(ipcMain, deps = {}) {
   });
 
   return {
+    // A command is running (a query isn't one): stopping the app now would interrupt it.
+    busy: () => runs.size > 0,
     async disposeAll() {
       const all = [...runs.values()].map(r => r.child).concat([...collectors]);
       runs.clear();

@@ -58,6 +58,7 @@ const { createTray, updateTrayIcon } = require('./tray.cjs');
 const { initNotifications } = require('./notifications.cjs');
 const { initUpdater, registerUpdaterIpc } = require('./updater.cjs');
 const { startAppUpdater } = require('./app-updater.cjs');
+const { pendingUpdates, applyAppUpdates } = require('./app-apply.cjs');
 
 const appRegistry    = require('./app-registry.cjs');
 
@@ -119,6 +120,7 @@ if (!gotLock) {
 // ---------------------------------------------------------------------------
 let mainWindow = null;
 let appModules = null;
+let appUpdater = null;
 let tray = null;
 let forceQuit = false;
 
@@ -204,6 +206,39 @@ function applyZoom(win, factor) {
   prefs.zoomFactor = f
   try { savePrefs(prefs) } catch { /* best-effort */ }
   try { win.webContents.send('zoom:changed', f) } catch { /* best-effort */ }
+}
+
+// Downloaded app updates the window can apply without restarting NexusMD (app-apply.cjs). Without
+// an updater (all-in-one or development builds) there is never anything to apply.
+function resolveAppsNow() {
+  const appsLog = log.scope('apps');
+  // Asked again on every check; which version runs is logged once, at launch.
+  const quiet = { error: (...a) => appsLog.error(...a), warn: (...a) => appsLog.warn(...a), info: () => {} };
+  return appRegistry.resolveApps(appLayout.appsDir, { updatesDir: appLayout.updatesDir, log: quiet });
+}
+
+function pendingAppUpdates() {
+  return appUpdater ? pendingUpdates(splitApps, resolveAppsNow(), disabledApps) : [];
+}
+
+function registerAppUpdatesIpc() {
+  ipcMain.handle('app-updates:pending', () => pendingAppUpdates());
+  ipcMain.handle('app-updates:check', async () => {
+    if (!appUpdater) return { enabled: false, error: null, pending: [] };
+    const result = await appUpdater.check();
+    return { enabled: true, error: result.error ?? null, pending: pendingAppUpdates() };
+  });
+  ipcMain.handle('app-updates:apply', (_e, { force = false } = {}) => {
+    if (!appUpdater || !appModules) return { applied: [], busy: [], failed: [] };
+    return applyAppUpdates({
+      running: splitApps, table: appTable, started: appModules, disabled: disabledApps, force,
+      resolve: resolveAppsNow,
+      toModule: a => appRegistry.modulesFromScan([a])[a.id],
+      // After the reply, so the window hears what happened before it reloads.
+      reload: () => setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reloadIgnoringCache(); }, 100),
+      log: log.scope('app-updates'),
+    });
+  });
 }
 
 // Loads the app's page into a window; `hash` (no leading #) is how a pop-out says what to show.
@@ -397,10 +432,11 @@ app.whenReady().then(async () => {
   initUpdater(mainWindow);
   registerUpdaterIpc(() => mainWindow);
 
-  // App updates: newer versions of the installed apps, downloaded to run from the next launch. In an
-  // installed split build; elsewhere only when pointed at an index (and only there with another key).
+  // App updates: newer versions of the installed apps, downloaded to run from the next launch, or
+  // applied now from the window (registerAppUpdatesIpc). In an installed split build; elsewhere only
+  // when pointed at an index (and only there with another key).
   if (splitApps && appLayout.updatesDir && (app.isPackaged || process.env.NEXUSMD_APPS_INDEX_URL)) {
-    startAppUpdater({
+    appUpdater = startAppUpdater({
       apps: splitApps,
       updatesDir: appLayout.updatesDir,
       fetch: url => net.fetch(url),
@@ -408,8 +444,13 @@ app.whenReady().then(async () => {
       publicKey: (!app.isPackaged && process.env.NEXUSMD_APPS_PUBLIC_KEY) || undefined,
       delayMs: process.env.NEXUSMD_APP_UPDATE_DELAY_MS ? Number(process.env.NEXUSMD_APP_UPDATE_DELAY_MS) : undefined,
       log: log.scope('app-updates'),
+      onChecked: () => {
+        const ready = pendingAppUpdates();
+        if (ready.length && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('app-updates:ready', ready);
+      },
     });
   }
+  registerAppUpdatesIpc();
 
   // Register Phase 6 IPC handlers
   fileIpc.register(ipcMain);
