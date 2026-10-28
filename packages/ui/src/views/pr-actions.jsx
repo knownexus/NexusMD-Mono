@@ -14,7 +14,7 @@ export function PRActions({ pr, actions, onChanged, confirm = (...a) => window.c
     setBusy(true)
     try {
       const { patch, warnings = [] } = await fn()
-      toast?.(successText, 'success')
+      toast?.(typeof successText === 'function' ? successText() : successText, 'success')
       warnings.forEach(w => toast?.(w, 'warning'))
       onChanged?.(patch)
       return true
@@ -54,7 +54,12 @@ export function PRActions({ pr, actions, onChanged, confirm = (...a) => window.c
 
   async function doMerge() {
     const { method, deleteBranch } = dlg
-    const ok = await run('Merge', 'Merged', () => actions.merge(pr, { method, deleteBranch }))
+    let merged = false
+    const ok = await run('Merge', () => (merged ? 'Merged' : 'Merge requested'), async () => {
+      const r = await actions.merge(pr, { method, deleteBranch })
+      merged = r?.patch?.status === 'merged'
+      return r
+    })
     if (ok) setDlg(null)
   }
 

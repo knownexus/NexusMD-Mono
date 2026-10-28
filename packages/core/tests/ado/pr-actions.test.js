@@ -73,6 +73,17 @@ describe('completeAdoPR', () => {
   })
 })
 
+describe('completeAdoPR reply', () => {
+  it('returns the parsed PATCH reply', async () => {
+    const http = makeHttp([
+      { status: 200, body: { lastMergeSourceCommit: { commitId: 'abc' } } },
+      { status: 200, body: { status: 'active', mergeStatus: 'queued' } },
+    ])
+    const r = await completeAdoPR(http, pr, { mergeStrategy: 'squash', deleteSourceBranch: false })
+    expect(r).toMatchObject({ status: 'active', mergeStatus: 'queued' })
+  })
+})
+
 describe('errors', () => {
   it('uses the ADO message', async () => {
     const msg = 'TF401181: The pull request cannot be completed due to policy'

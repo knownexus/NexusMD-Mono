@@ -111,6 +111,19 @@ it('errors toast and leave PR unchanged', async () => {
   expect(onChanged).not.toHaveBeenCalled()
 })
 
+it('toasts "Merge requested" when a merge returns an empty patch', async () => {
+  const actions = mk({ merge: vi.fn(async () => ({ patch: {}, warnings: ['Completion queued — Azure DevOps reports queued'] })) })
+  const { onChanged } = setup({ actions })
+  fireEvent.click(screen.getByText('Merge'))
+  const dlg = await screen.findByRole('dialog')
+  await within(dlg).findByRole('option', { name: 'Squash' })
+  fireEvent.click(within(dlg).getByRole('button', { name: 'Merge' }))
+  await waitFor(() => expect(toast).toHaveBeenCalledWith('Merge requested', 'success'))
+  expect(toast).not.toHaveBeenCalledWith('Merged', 'success')
+  expect(toast).toHaveBeenCalledWith('Completion queued — Azure DevOps reports queued', 'warning')
+  expect(onChanged).toHaveBeenCalledWith({})
+})
+
 it('merge warnings toast separately', async () => {
   const w = 'Merged, but the branch could not be deleted: x'
   const actions = mk({ merge: vi.fn(async () => ({ patch: { status: 'merged' }, warnings: [w] })) })

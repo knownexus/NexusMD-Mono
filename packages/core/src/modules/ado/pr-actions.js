@@ -29,6 +29,7 @@ async function send(http, path, method, body) {
     body: JSON.stringify(body),
   })
   if (!res.ok) throw await failure(res)
+  return res
 }
 
 export async function voteAdoPR(http, { project, repoId, prId, reviewerId }, vote) {
@@ -45,9 +46,10 @@ export async function completeAdoPR(http, { project, repoId, prId }, { mergeStra
   const res = await http.fetch(path)
   if (!res.ok) throw await failure(res)
   const pr = await res.json()
-  await send(http, path, 'PATCH', {
+  const reply = await send(http, path, 'PATCH', {
     status: 'completed',
     lastMergeSourceCommit: { commitId: pr.lastMergeSourceCommit?.commitId },
     completionOptions: { mergeStrategy, deleteSourceBranch },
   })
+  try { return (await reply.json()) || {} } catch { return {} }
 }

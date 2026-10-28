@@ -42,11 +42,16 @@ describe('makePRActions', () => {
     expect(githubClient.del).not.toHaveBeenCalled()
   })
   it('merges an ADO PR using the chosen strategy', async () => {
-    const adoHttp = { fetch: vi.fn(async (p, o) => ok({ lastMergeSourceCommit: { commitId: 'c1' } })) }
+    const adoHttp = { fetch: vi.fn(async (p, o) => ok({ status: 'completed', lastMergeSourceCommit: { commitId: 'c1' } })) }
     const r = await makePRActions({ adoHttp }).merge(adoPr, { method: 'squash', deleteBranch: true })
     expect(r).toEqual({ patch: { status: 'merged' }, warnings: [] })
     const body = JSON.parse(adoHttp.fetch.mock.calls[1][1].body)
     expect(body.completionOptions).toMatchObject({ mergeStrategy: 'squash', deleteSourceBranch: true })
+  })
+  it.each([['queued', 'queued'], [undefined, 'pending']])('does not mark an ADO PR merged while completion is queued (%s)', async (mergeStatus, shown) => {
+    const adoHttp = { fetch: vi.fn(async (p, o) => ok(o?.method === 'PATCH' ? { status: 'active', mergeStatus } : { lastMergeSourceCommit: { commitId: 'c1' } })) }
+    const r = await makePRActions({ adoHttp }).merge(adoPr, { method: 'squash', deleteBranch: false })
+    expect(r).toEqual({ patch: {}, warnings: [`Completion queued — Azure DevOps reports ${shown}`] })
   })
   it('mergeOptions for GitHub', async () => {
     const githubClient = { get: async () => ({ allow_merge_commit: true, allow_squash_merge: false, allow_rebase_merge: false }) }

@@ -38,8 +38,9 @@ export function makePRActions({ adoHttp, adoMeId, githubClient } = {}) {
         const { warnings } = await mergeGithubPR(gh(), ghRef(pr), { method, deleteBranch })
         return result({ status: 'merged' }, warnings)
       }
-      await completeAdoPR(adoHttp, adoRef(pr), { mergeStrategy: method, deleteSourceBranch: !!deleteBranch })
-      return result({ status: 'merged' })
+      const reply = await completeAdoPR(adoHttp, adoRef(pr), { mergeStrategy: method, deleteSourceBranch: !!deleteBranch })
+      if (reply?.status === 'completed') return result({ status: 'merged' })
+      return result({}, [`Completion queued — Azure DevOps reports ${reply?.mergeStatus || 'pending'}`])
     },
     async mergeOptions(pr) {
       if (isGithub(pr)) {
