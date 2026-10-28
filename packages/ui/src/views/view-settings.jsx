@@ -1,12 +1,13 @@
 // view-settings.jsx — shared Settings form/profile primitives (web + app). The
 // SettingsView page + integration cards (Google/GitHub/Drive/PlannerSync) stay
 // per-platform; these 9 building blocks were byte-identical bar a few seams:
-// ThemeChipPicker reads the platform theme registry off window; VsPasswordModal
+// ThemeChipPicker reads the shared theme registry (themes.js); VsPasswordModal
 // uses the shared confidential helpers; VsProfileEditor/VsProfiles take a
 // showOrgLabel flag (web shows an org-label field, the app hides it); VsProfiles
 // takes the profile API as a prop (each platform's profile-context useProfile()).
 import React from 'react';
 import { Icon } from '../icons.jsx';
+import { NEXUSMD_THEMES, THEME_MODES } from '../themes.js';
 import { PlFld, PlModal } from '../planner-chips.jsx';
 import { toast } from '../toast.jsx';
 import { hashPassword, loadConfidentialConfig, saveConfidentialConfig } from '../planner/planner-confidential.js';
@@ -96,11 +97,9 @@ function VsFullRow({ title, desc, children }) {
 }
 
 function ThemeChipPicker({ value, onChange }) {
-  // Theme registry is published on window per platform (web NEXUSMD_THEMES, app HELM_THEMES).
-  const themes = window.NEXUSMD_THEMES || window.HELM_THEMES || [];
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, width: '100%' }}>
-      {themes.map(t => {
+      {NEXUSMD_THEMES.map(t => {
         const active = value === t.id;
         return (
           <button key={t.id} type="button" onClick={() => onChange(t.id)} style={{
@@ -129,6 +128,24 @@ function ThemeChipPicker({ value, onChange }) {
         );
       })}
     </div>
+  );
+}
+
+// The mode switch (light / dim / dark) and, for each mode, the palette it uses.
+function ThemeModeSettings({ tweaks, setTweak }) {
+  return (
+    <>
+      <VsRow title="Mode" desc="Switch between your light, dim and dark themes">
+        <VsSeg value={tweaks.theme || 'light'}
+          options={THEME_MODES.map(m => [m.id, m.label, m.icon])}
+          onChange={v => setTweak('theme', v)}/>
+      </VsRow>
+      {THEME_MODES.map(m => (
+        <VsFullRow key={m.id} title={`${m.label} mode theme`} desc={`Palette used when ${m.label.toLowerCase()} mode is on`}>
+          <ThemeChipPicker value={tweaks[m.key] || m.fallback} onChange={v => setTweak(m.key, v)}/>
+        </VsFullRow>
+      ))}
+    </>
   );
 }
 
@@ -1041,7 +1058,7 @@ function CardsAndTablesSettings() {
 // ── Shared exports ────────────────────────────────────────────────
 export {
   PROFILE_COLORS,
-  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg,
+  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, ThemeModeSettings, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
   BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,
   OAuthServiceCard, IntegrationsView,

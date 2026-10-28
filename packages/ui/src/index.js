@@ -6,6 +6,7 @@
 // Stylesheet:  import '@nexusmd/ui/styles.css'
 
 export { Icon } from './icons.jsx'
+export { NEXUSMD_THEMES, THEME_MODES, paletteFor, nextThemeMode, isDarkPalette } from './themes.js'
 export { FoldAllButton } from './fold-all-button.jsx'
 export {
   StatusChip, PrioChip, PlModal, PlFld, DueLabel,
@@ -66,7 +67,7 @@ export {
 // SettingsView page + integration cards; these are the shared building blocks.
 export {
   PROFILE_COLORS,
-  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg,
+  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, ThemeModeSettings, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
   BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,
   OAuthServiceCard, IntegrationsView, BoardColumnsCard, FieldVisibilityCard,

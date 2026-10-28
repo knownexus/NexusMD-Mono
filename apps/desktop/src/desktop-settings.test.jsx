@@ -39,7 +39,7 @@ vi.mock('@nexusmd/ui', () => ({
   CloudSyncCard: () => <div data-testid="cloud-sync">CloudSyncCard</div>,
   BoardColumnsCard: () => <div data-testid="board-columns">BoardColumnsCard</div>,
   IntegrationsView: () => <div data-testid="integrations-view">IntegrationsView</div>,
-  ThemeChipPicker: () => <div data-testid="theme-chip-picker">ThemeChipPicker</div>,
+  ThemeModeSettings: () => <div data-testid="theme-chip-picker">ThemeModeSettings</div>,
   VsPasswordModal: ({ open }) => open ? <div>VsPasswordModal</div> : null,
   loadConfidentialConfig: vi.fn(() => ({ sections: [], hash: null })),
   CardFrame: ({ title, children }) => <div><span>{title}</span>{children}</div>,

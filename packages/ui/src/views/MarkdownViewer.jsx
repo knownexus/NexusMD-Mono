@@ -5,6 +5,7 @@
 import React from 'react';
 import { marked, Marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { isDarkPalette } from '../themes.js';
 const { useState: useStateMD, useEffect: useEffectMD, useRef: useRefMD, useCallback: useCallbackMD } = React;
 
 const HLJS_LIGHT = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css";
@@ -698,8 +699,7 @@ function MarkdownViewer() {
 
   // Inject / update highlight.js CSS link — mirrors the app's active theme
   useEffectMD(() => {
-    const DARK_THEMES = ['cobalt', 'noir', 'slate', 'forest'];
-    const getHref = () => DARK_THEMES.includes(document.body.dataset.theme || '') ? HLJS_DARK : HLJS_LIGHT;
+    const getHref = () => isDarkPalette(document.body.dataset.theme) ? HLJS_DARK : HLJS_LIGHT;
 
     if (!hljsLinkRef.current) {
       const link = document.createElement("link");
