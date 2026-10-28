@@ -196,3 +196,29 @@ it('shows a provider warning pill when the Jira board is unavailable', () => {
   renderView({ providers: [{ id: 'ado', label: 'Azure DevOps', status: 'ok', error: null, warning: null }, { id: 'jira', label: 'Jira', status: 'ok', error: null, warning: 'Jira board unavailable — using status columns' }] })
   expect(screen.getByText('Jira: Jira board unavailable — using status columns')).toBeTruthy()
 })
+
+const GH_ITEM = { id: 'gh:acme/web#4', source: 'github', displayId: 'acme/web#4', type: 'bug', title: 'GitHub issue', project: 'acme-web', state: 'Open', stateCategory: 'Proposed', assignee: null, priority: 3, points: 0, tags: [], comments: 0, prs: 0, updated: '3h' }
+const GH_PROVIDERS = [...PROVIDERS, { id: 'github', label: 'GitHub', status: 'ok', error: null }]
+
+it('in separate mode shows a GitHub tab with only GitHub items and Open/Closed lanes', () => {
+  renderView({ items: [ADO_ITEM, JIRA_ITEM, GH_ITEM], providers: GH_PROVIDERS, seed: { 'nexusmd.wi.displayMode': '"separate"', 'nexusmd.wi.sourceTab': '"github"' } })
+  expect(screen.getByRole('tab', { name: /GitHub/ }).getAttribute('aria-selected')).toBe('true')
+  expect(screen.getByText('GitHub issue')).toBeTruthy()
+  expect(screen.queryByText('ADO bug')).toBeNull()
+  expect(screen.queryByText('Jira story')).toBeNull()
+  expect(screen.getAllByText('Open').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Closed').length).toBeGreaterThan(0)
+})
+
+it('shows Open/Closed state lanes for a GitHub-only profile', () => {
+  renderView({ items: [GH_ITEM], providers: [{ id: 'github', label: 'GitHub', status: 'ok', error: null }], data: { WI_TYPE_STATES: { bug: ['Open', 'Closed'] } } })
+  expect(screen.getByText('GitHub issue')).toBeTruthy()
+  expect(screen.getAllByText('Open').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Closed').length).toBeGreaterThan(0)
+  expect(screen.queryByText('Proposed')).toBeNull()
+})
+
+it('labels GitHub items with a GitHub source badge when several providers are connected', () => {
+  renderView({ items: [ADO_ITEM, GH_ITEM], providers: GH_PROVIDERS, view: 'list' })
+  expect(document.querySelector('[data-source="github"]')?.textContent).toBe('GitHub')
+})

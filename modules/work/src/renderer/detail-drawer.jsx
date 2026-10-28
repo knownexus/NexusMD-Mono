@@ -60,7 +60,7 @@ export function DetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR }
           {kind === 'person' && d && <PersonActions dev={d} />}
           {adoUrl && (
             <button className="btn sm ghost" onClick={() => linkAdapter.openLink(adoUrl)}>
-              <Icon name="link" size={12}/> Open in {kind === 'wi' ? (d?.source === 'jira' ? 'Jira' : 'ADO') : kind === 'build' ? 'ADO' : 'browser'}
+              <Icon name="link" size={12}/> Open in {kind === 'wi' ? (d?.source === 'jira' ? 'Jira' : d?.source === 'github' ? 'GitHub' : 'ADO') : kind === 'build' ? 'ADO' : 'browser'}
             </button>
           )}
         </React.Fragment>

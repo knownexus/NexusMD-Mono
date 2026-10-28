@@ -15,7 +15,7 @@
 // supplies an ado-client-backed source via NexusDataProvider. A module-level mirror
 // lets the non-component prefetch helper reach the active source.
 
-import { isJiraId } from '@nexusmd/core'
+import { isJiraId, isGithubId } from '@nexusmd/core'
 
 export const apiWorkItemSource = {
   async loadDetail(id, _project) {
@@ -64,17 +64,22 @@ export function setWorkItemSource(s) { _source = s || apiWorkItemSource }
 export function getWorkItemSource() { return _source }
 
 // Dispatch each operation to the provider that owns the item: "jira:KEY" ids go
-// to Jira, everything else (numeric ADO ids) to ADO. Methods are async so a
+// to Jira, "gh:owner/name#N" ids to GitHub, everything else (numeric ADO ids) to
+// ADO. Methods are async so a
 // routing error surfaces as a rejected promise, like any other save failure.
 const ROUTED_METHODS = ['loadDetail', 'loadComments', 'addComment', 'saveField', 'loadRawFields']
 
-export function createRoutedWorkItemSource({ ado, jira = null }) {
+export function createRoutedWorkItemSource({ ado, jira = null, github = null }) {
   const pick = (id) => {
+    if (isGithubId(id)) {
+      if (!github) throw new Error('GitHub is not configured')
+      return github
+    }
     if (!isJiraId(id)) return ado
     if (!jira) throw new Error('Jira is not configured')
     return jira
   }
-  const routed = { jira }
+  const routed = { jira, github }
   for (const m of ROUTED_METHODS) routed[m] = async (id, ...rest) => pick(id)[m](id, ...rest)
   routed.createWorkItem = async (payload) => ado.createWorkItem(payload)
   routed.moveToCategory = async (id, category, item) => {

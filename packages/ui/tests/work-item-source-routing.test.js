@@ -54,3 +54,22 @@ describe('createRoutedWorkItemSource', () => {
     await expect(s.moveToStatuses(7, ['Done'], {})).rejects.toThrow('Moving between columns is not supported for this item')
   })
 })
+
+describe('createRoutedWorkItemSource with GitHub', () => {
+  it('routes gh: ids to GitHub and leaves ADO and Jira routing unchanged', async () => {
+    const ado = fakeSource('ado'); const jira = fakeSource('jira'); const github = fakeSource('github')
+    const s = createRoutedWorkItemSource({ ado, jira, github })
+    expect(await s.loadDetail('gh:a/b#1', 'p')).toBe('github')
+    expect(await s.loadDetail('jira:A-1', 'p')).toBe('jira')
+    expect(await s.loadDetail(7, 'p')).toBe('ado')
+    expect(s.webUrl({ id: 'gh:a/b#1' })).toBe('github:gh:a/b#1')
+    expect(await s.moveToCategory('gh:a/b#1', 'Completed', {})).toEqual({ state: 'github', stateCategory: 'Completed' })
+    expect(s.github).toBe(github)
+  })
+
+  it('rejects GitHub ids when GitHub is not configured', async () => {
+    const s = createRoutedWorkItemSource({ ado: fakeSource('ado'), jira: fakeSource('jira') })
+    await expect(s.loadDetail('gh:a/b#1')).rejects.toThrow('GitHub is not configured')
+    expect(s.webUrl({ id: 'gh:a/b#1' })).toBeNull()
+  })
+})

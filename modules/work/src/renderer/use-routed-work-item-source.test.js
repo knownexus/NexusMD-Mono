@@ -22,3 +22,18 @@ describe('useRoutedWorkItemSource', () => {
   })
 })
 
+
+describe('useRoutedWorkItemSource with GitHub', () => {
+  it('passes the github source through and rebuilds when it changes', async () => {
+    const { renderHook } = await import('@testing-library/react')
+    const ado = { loadDetail: vi.fn() }
+    const github = { loadDetail: vi.fn(async () => 'gh') }
+    const { result, rerender } = renderHook(({ g }) => useRoutedWorkItemSource(ado, null, g), { initialProps: { g: null } })
+    const first = result.current
+    expect(first.github).toBeNull()
+    rerender({ g: github })
+    expect(result.current).not.toBe(first)
+    expect(result.current.github).toBe(github)
+    expect(await result.current.loadDetail('gh:a/b#1')).toBe('gh')
+  })
+})
