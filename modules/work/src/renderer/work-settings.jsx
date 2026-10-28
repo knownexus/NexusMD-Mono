@@ -1,6 +1,6 @@
 import React from 'react'
 import { VsCard, VsRow, BoardColumnsCard, CardsAndTablesSettings, toast, WI_TYPE_STATES_CACHE_KEY } from '@nexusmd/ui'
-import { ADO_CACHE_KEY, JIRA_CACHE_KEY } from '@nexusmd/core'
+import { ADO_CACHE_KEY, JIRA_CACHE_KEY, GITHUB_CACHE_KEY } from '@nexusmd/core'
 import { AdoConnectionCard } from './ado-settings.jsx'
 import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
 import { QuickLinksCard } from './quick-links-card.jsx'
@@ -45,6 +45,7 @@ export function WorkDataRows() {
     try {
       localStorage.removeItem(ADO_CACHE_KEY)
       localStorage.removeItem(JIRA_CACHE_KEY)
+      localStorage.removeItem(GITHUB_CACHE_KEY)
       localStorage.removeItem(WI_TYPE_STATES_CACHE_KEY)
     } catch {}
     toast?.('Cache cleared — refreshing…', 'success')

@@ -5,6 +5,7 @@ import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useLocalItems } from './items-state.js'
 import { getAdoConfig, usesAdoWorkItems } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraWorkItemSource } from './jira-client.js'
+import { usesGithubWorkItems, desktopGithubSource } from './github-client.js'
 import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
@@ -126,8 +127,10 @@ export function WorkProvider({ host, view, children }) {
   // would make JiraCreateForm re-fetch create-meta and wipe the user's input.
   const jiraActive = isJiraActive()
   const jiraSource = React.useMemo(() => (jiraActive ? createJiraWorkItemSource() : null), [jiraActive])
-  // Stable across data refreshes: only a Jira-source change produces a new identity.
-  const workItemSource = useRoutedWorkItemSource(desktopWorkItemSource, jiraSource)
+  // GitHub issues are routed only while "Load GitHub issues" is on.
+  const githubSource = usesGithubWorkItems() ? desktopGithubSource : null
+  // Stable across data refreshes: only a Jira- or GitHub-source change produces a new identity.
+  const workItemSource = useRoutedWorkItemSource(desktopWorkItemSource, jiraSource, githubSource)
 
   const nexusDataValue = React.useMemo(() => ({
     data:           snapshot,

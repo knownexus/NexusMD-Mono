@@ -164,3 +164,17 @@ describe('refresh', () => {
     expect(work.refreshInterval).toBe(300)
   })
 })
+
+describe('the GitHub work-item source', () => {
+  it('routes GitHub items only while "Load GitHub issues" is on', async () => {
+    const { saveGithubConfig } = await import('./github-client.js')
+    saveGithubConfig({ pat: 'ghp_x', repos: ['acme/web'] })
+    mount()
+    expect(data.workItemSource.github).toBeTruthy()
+    expect(data.workItemSource.webUrl({ id: 'gh:acme/web#3' })).toBe('https://github.com/acme/web/issues/3')
+    cleanup()
+    saveGithubConfig({ issues: false })
+    mount()
+    expect(data.workItemSource.github).toBeNull()
+  })
+})
