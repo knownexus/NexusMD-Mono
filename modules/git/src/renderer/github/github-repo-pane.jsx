@@ -1,6 +1,9 @@
 import React from 'react'
-import { mapGithubPR, mapGithubIssue } from '@nexusmd/core'
+import { mapGithubPR, mapGithubIssue, listGithubBranches } from '@nexusmd/core'
 import { relativeTime } from '../history-pane.jsx'
+import { GithubBranches } from './github-branches.jsx'
+import { GithubHistory } from './github-history.jsx'
+import { GithubFiles } from './github-files.jsx'
 
 export const GITHUB_TABS = [
   { id: 'prs', label: 'Pull requests' },
@@ -67,9 +70,45 @@ function Listing({ client, repo, kind, refreshKey, onOpen }) {
   return <Rows rows={rows} onOpen={open} empty={kind === 'prs' ? 'No open pull requests.' : 'No open issues.'} />
 }
 
-/** The chosen repository's right pane: a tab per view; Branches, History and Files are wired in later. */
-export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, initialTab = 'prs' }) {
+/** The chosen repository's right pane: a tab per view. History and Files share a picked branch. */
+export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, initialTab = 'prs', confirm }) {
   const [tab, setTab] = React.useState(initialTab)
+  const [loaded, setLoaded] = React.useState({ repo: null, client: null, list: null })
+  const [picked, setPicked] = React.useState('')
+  const [branchError, setBranchError] = React.useState('')
+  const needsBranches = tab === 'history' || tab === 'files'
+  const branches = loaded.repo === repo && loaded.client === client ? loaded.list : null
+
+  // Branches reported by the Branches tab replace whatever list the pane has.
+  const onBranchesChanged = React.useCallback(list => { setLoaded({ repo, client, list }); setBranchError('') }, [repo, client])
+  React.useEffect(() => { setPicked('') }, [repo])
+
+  React.useEffect(() => {
+    if (!needsBranches || !client || branches) return undefined
+    let live = true
+    Promise.resolve().then(() => listGithubBranches(client, repo)).then(
+      list => { if (live) { setLoaded(cur => (cur.repo === repo && cur.client === client && cur.list ? cur : { repo, client, list })); setBranchError('') } },
+      e => { if (live) setBranchError(e?.message || String(e)) },
+    )
+    return () => { live = false }
+  }, [needsBranches, client, repo, branches])
+
+  const defaultName = branches ? (branches.find(b => b.isDefault)?.name ?? branches[0]?.name ?? '') : ''
+  const branch = branches && branches.some(b => b.name === picked) ? picked : defaultName
+
+  const picker = (
+    <div style={{ padding: '8px 16px 0' }}>
+      <select aria-label="Branch" value={branch} onChange={e => setPicked(e.target.value)}>
+        {(branches || []).map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
+      </select>
+    </div>
+  )
+  const branchView = Component => {
+    if (branchError) return <div className="nx-gw-empty" role="alert">{branchError}</div>
+    if (!branches) return <div className="nx-gw-empty">Loading…</div>
+    return <>{picker}<Component repo={repo} client={client} branch={branch} refreshKey={refreshKey} /></>
+  }
+
   return (
     <div className="nx-gw-gh-pane">
       <div aria-label="Repository views" className="nx-gw-gh-tabs" style={{ display: 'flex', gap: 4, padding: '4px 0' }}>
@@ -79,7 +118,9 @@ export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, ini
       </div>
       {tab === 'prs' && <Listing client={client} repo={repo} kind="prs" refreshKey={refreshKey} onOpen={openPR} />}
       {tab === 'issues' && <Listing client={client} repo={repo} kind="issues" refreshKey={refreshKey} onOpen={openItem} />}
-      {tab !== 'prs' && tab !== 'issues' && <div className="nx-empty" style={{ padding: 16 }}>Coming soon</div>}
+      {tab === 'branches' && <GithubBranches repo={repo} client={client} refreshKey={refreshKey} confirm={confirm} onBranchesChanged={onBranchesChanged} />}
+      {tab === 'history' && branchView(GithubHistory)}
+      {tab === 'files' && branchView(GithubFiles)}
     </div>
   )
 }

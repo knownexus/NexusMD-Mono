@@ -7,6 +7,8 @@
 .nx-gw-dot[data-tone="warn"] { background: var(--warning); }
 .nx-gw-dot[data-tone="info"] { background: var(--info); }
 .nx-gw-dot[data-tone="ok"] { background: var(--success); }
+.nx-gw-dot[data-tone="muted"] { background: var(--text-muted); }
+.nx-gw-empty { padding: 16px; color: var(--text-muted); font-size: 12.5px; }
 [data-tone="bad"] > .nx-gw-t, .nx-gw-t[data-tone="bad"] { color: var(--danger); }
 .nx-gw-t[data-tone="warn"] { color: var(--warning); }
 .nx-gw-t[data-tone="info"] { color: var(--info); }

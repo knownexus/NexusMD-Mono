@@ -68,8 +68,63 @@ describe('GithubRepoPane', () => {
     await waitFor(() => expect(client.getPaged).toHaveBeenCalledTimes(2))
   })
 
-  it('shows placeholders for the later tabs', () => {
-    render(<GithubRepoPane repo="acme/web" client={fakeClient(ROUTES)} refreshKey={0} openPR={vi.fn()} openItem={vi.fn()} initialTab="history" />)
-    expect(screen.getByText('Coming soon')).toBeTruthy()
+  describe('branches, history and files', () => {
+    const commit = (sha, message) => ({ sha, commit: { message, author: { name: 'Ann', date: iso() } }, author: { login: 'ann' } })
+    function repoClient() {
+      let branches = [{ name: 'main', commit: { sha: 'a1' } }, { name: 'old', commit: { sha: 'b2' } }]
+      return {
+        getPaged: vi.fn(async path => (path === 'repos/acme/web/branches' ? branches : [])),
+        get: vi.fn(async path => {
+          if (path === 'repos/acme/web') return { default_branch: 'main', html_url: 'https://github.com/acme/web' }
+          if (path === 'repos/acme/web/commits?sha=main&per_page=50') return [commit('c1', 'Main commit')]
+          if (path === 'repos/acme/web/commits?sha=old&per_page=50') return [commit('c2', 'Old commit')]
+          if (path === 'repos/acme/web/contents?ref=main') return [{ name: 'README.md', path: 'README.md', type: 'file', size: 3 }, { name: 'src', path: 'src', type: 'dir' }]
+          throw new Error(`unexpected ${path}`)
+        }),
+        del: vi.fn(async () => { branches = branches.filter(b => b.name !== 'old') }),
+      }
+    }
+    const pane = (client, props = {}) => render(<GithubRepoPane repo="acme/web" client={client} refreshKey={0} openPR={vi.fn()} openItem={vi.fn()} confirm={() => true} {...props} />)
+
+    it('renders the branch list on the Branches tab', async () => {
+      pane(repoClient(), { initialTab: 'branches' })
+      expect((await screen.findAllByText('main')).length).toBeGreaterThan(0)
+      expect(screen.getByText(/default/i)).toBeTruthy()
+    })
+
+    it('shows a Branch picker on the default branch with its commits, and refetches for another', async () => {
+      const client = repoClient()
+      pane(client, { initialTab: 'history' })
+      expect(await screen.findByText(/Main commit/)).toBeTruthy()
+      const picker = screen.getByLabelText('Branch')
+      expect(picker.value).toBe('main')
+      fireEvent.change(picker, { target: { value: 'old' } })
+      expect(await screen.findByText(/Old commit/)).toBeTruthy()
+      expect(client.get).toHaveBeenCalledWith('repos/acme/web/commits?sha=old&per_page=50')
+    })
+
+    it('lists the root contents of the picked branch on the Files tab', async () => {
+      pane(repoClient(), { initialTab: 'files' })
+      expect(await screen.findByText('README.md')).toBeTruthy()
+      expect(screen.getByText('src')).toBeTruthy()
+      expect(screen.getByLabelText('Branch').value).toBe('main')
+    })
+
+    it('falls back to the default branch when the picked branch is deleted on the Branches tab', async () => {
+      const client = repoClient()
+      pane(client, { initialTab: 'history' })
+      await screen.findByText(/Main commit/)
+      fireEvent.change(screen.getByLabelText('Branch'), { target: { value: 'old' } })
+      await screen.findByText(/Old commit/)
+      fireEvent.click(screen.getByRole('button', { name: 'Branches' }))
+      const dels = await screen.findAllByRole('button', { name: /delete/i })
+      fireEvent.click(dels[0])
+      await waitFor(() => expect(client.del).toHaveBeenCalled())
+      await waitFor(() => expect(screen.queryByText('old')).toBeNull())
+      fireEvent.click(screen.getByRole('button', { name: 'History' }))
+      expect(await screen.findByText(/Main commit/)).toBeTruthy()
+      expect(screen.getByLabelText('Branch').value).toBe('main')
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
   })
 })
