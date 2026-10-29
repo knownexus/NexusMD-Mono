@@ -74,6 +74,7 @@ const EXPECTED = [
   'generateConnectionId', 'upsertConnection', 'removeConnection',
   'normalizeTablePrefs', 'toggleTableStarred', 'toggleTableHidden', 'setTableGroup', 'renameTableGroup',
   'removeTableGroup', 'toggleSectionCollapsed', 'tableSections', 'groupSectionKey', 'schemaSectionKey', 'VIEWS_SECTION_KEY',
+  'TABLE_GROUP_BY', 'setTableGroupBy', 'tablePrefix',
   'columnTypes', 'validateTableSpec', 'buildCreateTable', 'buildCreateView', 'buildDropStatement', 'formatDefault', 'isSingleStatement',
   'columnKind', 'isPartialInput', 'cellToInput', 'parseCellInput',
   // Dev Environment module (desktop-only: requires the `devenv` adapter)

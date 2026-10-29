@@ -358,6 +358,9 @@
 .nx-db-save-conn { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .nx-db-save-conn .db-hint { grid-column: 1 / -1; }
 .nx-db-list-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.nx-db-groupby { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: 11px; cursor: pointer; }
+.nx-db-groupby:hover { background: var(--surface-2); color: var(--text); }
+.nx-db-groupby:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* typed cell editing, bit checkboxes, add row */
 .nx-db-coltype { margin-left: 6px; font: 500 10px var(--mono); letter-spacing: 0; text-transform: none; color: var(--text-subtle); }

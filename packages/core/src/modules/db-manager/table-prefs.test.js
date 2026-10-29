@@ -3,19 +3,20 @@ import { describe, it, expect } from 'vitest'
 import {
   normalizeTablePrefs, toggleTableStarred, toggleTableHidden, setTableGroup, renameTableGroup,
   removeTableGroup, toggleSectionCollapsed, tableSections, groupSectionKey, schemaSectionKey,
+  setTableGroupBy, TABLE_GROUP_BY, tablePrefix,
 } from './table-prefs.js'
 
 const empty = () => normalizeTablePrefs(null)
 
 describe('normalizeTablePrefs', () => {
   it('fills in an empty object from nothing', () => {
-    expect(normalizeTablePrefs(undefined)).toEqual({ starred: [], hidden: [], groups: [], assigned: {}, collapsed: [] })
+    expect(normalizeTablePrefs(undefined)).toEqual({ starred: [], hidden: [], groups: [], assigned: {}, collapsed: [], groupBy: 'schema' })
     expect(normalizeTablePrefs('junk')).toEqual(empty())
   })
 
   it('keeps valid entries and drops malformed ones', () => {
     const p = normalizeTablePrefs({ starred: ['a', 3], hidden: 'x', assigned: { a: 'Core', b: '', c: 7 }, groups: ['Core'] })
-    expect(p).toEqual({ starred: ['a'], hidden: [], groups: ['Core'], assigned: { a: 'Core' }, collapsed: [] })
+    expect(p).toEqual({ starred: ['a'], hidden: [], groups: ['Core'], assigned: { a: 'Core' }, collapsed: [], groupBy: 'schema' })
   })
 
   it('lists any assigned group missing from the order', () => {
@@ -108,5 +109,63 @@ describe('tableSections', () => {
     const p = setTableGroup(empty(), 'dbo.Invoices', 'dbo')
     const keys = tableSections(['dbo.Invoices', 'dbo.Users'], p).map(s => s.key)
     expect(keys).toEqual(['group:dbo', 'schema:dbo'])
+  })
+})
+
+describe('grouping the list another way', () => {
+  const labelled = sections => sections.map(s => [s.label, s.names])
+
+  it('keeps a known grouping and falls back to schema for anything else', () => {
+    expect(TABLE_GROUP_BY.map(g => g.id)).toEqual(['schema', 'name', 'changed', 'prefix', 'type'])
+    expect(normalizeTablePrefs({ groupBy: 'prefix' }).groupBy).toBe('prefix')
+    expect(normalizeTablePrefs({ groupBy: 'size' }).groupBy).toBe('schema')
+    expect(setTableGroupBy(empty(), 'name').groupBy).toBe('name')
+    expect(setTableGroupBy(empty(), 'nope').groupBy).toBe('schema')
+  })
+
+  it('by name: a section per first letter, ignoring the schema, the rest under #', () => {
+    const p = setTableGroupBy(empty(), 'name')
+    const sections = tableSections(['dbo.users', 'audit.Accounts', 'apples', '_tmp', 'Ugly', '2024_log'], p)
+    expect(labelled(sections)).toEqual([
+      ['A', ['audit.Accounts', 'apples']],
+      ['U', ['Ugly', 'dbo.users']],
+      ['#', ['2024_log', '_tmp']],
+    ])
+    expect(sections[0]).toMatchObject({ key: 'name:A', kind: 'name' })
+  })
+
+  it('by last changed: newest first in day buckets, unknown last', () => {
+    const now = new Date(2026, 9, 29, 15, 0).getTime()
+    const at = (d, h = 12) => ({ at: new Date(2026, 9, d, h).toISOString(), kind: 'data' })
+    const changed = { a: at(29, 9), b: at(28), c: at(20), d: { at: new Date(2026, 6, 1).toISOString(), kind: 'structure' }, e: at(29, 14), f: { at: 'junk' } }
+    const p = setTableGroupBy(empty(), 'changed')
+    expect(labelled(tableSections(['a', 'b', 'c', 'd', 'e', 'f', 'g'], p, { changed, now }))).toEqual([
+      ['Today', ['e', 'a']],
+      ['Last 7 days', ['b']],
+      ['Last 30 days', ['c']],
+      ['Older', ['d']],
+      ['Not known', ['f', 'g']],
+    ])
+  })
+
+  it('by prefix: the first word of the name; a prefix with one table goes under Other', () => {
+    expect(['tbl_Patient', 'PatientVisit', 'patient-notes', 'dbo.Orders', 'HTTPLog', 'x'].map(tablePrefix))
+      .toEqual(['tbl', 'Patient', 'patient', 'Orders', 'HTTP', 'x'])
+    const p = setTableGroupBy(empty(), 'prefix')
+    expect(labelled(tableSections(['PatientVisit', 'patient_notes', 'Patients', 'OrderLine', 'Order', 'Staff'], p))).toEqual([
+      ['Order', ['Order', 'OrderLine']],
+      ['Patient', ['patient_notes', 'PatientVisit']],
+      ['Other', ['Patients', 'Staff']],
+    ])
+  })
+
+  it('by type: tables, then views', () => {
+    const p = setTableGroupBy(empty(), 'type')
+    expect(labelled(tableSections(['b', 'v1', 'a'], p, { views: ['v1'] }))).toEqual([['Tables', ['a', 'b']], ['Views', ['v1']]])
+  })
+
+  it('your own groups stay first in every grouping', () => {
+    const p = setTableGroupBy(setTableGroup(empty(), 'zeta', 'Mine'), 'name')
+    expect(labelled(tableSections(['alpha', 'zeta'], p))).toEqual([['Mine', ['zeta']], ['A', ['alpha']]])
   })
 })

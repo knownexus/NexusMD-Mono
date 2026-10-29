@@ -1191,6 +1191,33 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
     await connectUat()
     expect(list().getByText('staff')).toBeTruthy()
   })
+
+  const sectionNames = () => list().queryAllByRole('button', { expanded: true }).map(b => b.querySelector('.nx-db-group-name').textContent)
+
+  it('groups the list by first letter, and remembers it for the connection', async () => {
+    await connectUat()
+    expect(list().getByRole('button', { name: /Schema/ })).toBeTruthy()
+    fireEvent.click(openMenu(/Schema/).getByRole('menuitemcheckbox', { name: 'Name (A–Z)' }))
+    expect(sectionNames()).toEqual(['P', 'S'])
+    expect(prefsOf('uat').groupBy).toBe('name')
+  })
+
+  it('groups by when tables last changed, saying what changed', async () => {
+    const today = new Date(); today.setHours(9, 30, 0, 0)
+    adapters.dbManager.connect.mockResolvedValue({
+      ok: true, tables: ['patients', 'staff'], changed: { patients: { at: today.toISOString(), kind: 'data' } },
+    })
+    await connectUat()
+    fireEvent.click(openMenu(/Schema/).getByRole('menuitemcheckbox', { name: 'Last changed' }))
+    expect(sectionNames()).toEqual(['Today', 'Not known'])
+    expect(list().getByText(/^Rows changed \d/)).toBeTruthy()
+  })
+
+  it("can't group by last changed when the database doesn't say", async () => {
+    await connectUat()
+    const item = openMenu(/Schema/).getByRole('menuitemcheckbox', { name: 'Last changed' })
+    expect(item.disabled || item.getAttribute('aria-disabled') === 'true').toBe(true)
+  })
 })
 
 describe('ViewDbManager — creating and dropping tables and views', () => {
