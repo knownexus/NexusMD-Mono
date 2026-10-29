@@ -7,6 +7,8 @@
 .nx-gw-dot[data-tone="warn"] { background: var(--warning); }
 .nx-gw-dot[data-tone="info"] { background: var(--info); }
 .nx-gw-dot[data-tone="ok"] { background: var(--success); }
+.nx-gw-dot[data-tone="muted"] { background: var(--text-muted); }
+.nx-gw-empty { padding: 16px; color: var(--text-muted); font-size: 12.5px; }
 [data-tone="bad"] > .nx-gw-t, .nx-gw-t[data-tone="bad"] { color: var(--danger); }
 .nx-gw-t[data-tone="warn"] { color: var(--warning); }
 .nx-gw-t[data-tone="info"] { color: var(--info); }
@@ -22,12 +24,30 @@
    never past half the page, so the changes always keep room. */
 .nx-gw-body { flex: 1; min-height: 0; display: grid; grid-template-columns: min(var(--gw-list, 330px), 50%) 6px minmax(0, 1fr); }
 .nx-gw-body[data-list="hidden"] { grid-template-columns: minmax(0, 1fr); }
+/* The GitHub tab: its repository list (no divider to drag) beside the chosen repository. */
+.nx-gw-body[data-list="github"] { grid-template-columns: min(330px, 50%) minmax(0, 1fr); }
+.nx-gw-gh-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.nx-gw-gh-list > li { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+/* Plain-looking buttons in the GitHub Files and History panes, with a visible keyboard focus ring. */
+.nx-gw-gh-item { display: block; width: 100%; margin: 0; padding: 2px 4px; border: 0; border-radius: var(--radius); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.nx-gw-gh-item:hover { background: var(--surface-2); }
+.nx-gw-gh-crumb { margin: 0; padding: 0; border: 0; border-radius: 2px; background: none; color: var(--accent); font: inherit; cursor: pointer; }
+.nx-gw-gh-item:focus-visible, .nx-gw-gh-crumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.nx-gw-gh-branches { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; }
+.nx-gw-gh-newbranch { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.nx-gw-gh-branch-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.nx-gw-gh-branch { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid transparent; border-radius: var(--radius); }
+.nx-gw-gh-branch:hover { border-color: var(--border); }
+.nx-gw-gh-branch .nx-gw-row-title { flex: 1; min-width: 0; }
+.nx-gw-gh-local { margin-left: 28px; }
+.nx-gw-gh-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.nx-gw-gh-title { margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
 .nx-gw-list-resizer { cursor: col-resize; margin-left: -1px; touch-action: none; }
 .nx-gw-list-resizer:hover, .nx-gw-list-resizer:focus-visible { background: linear-gradient(var(--accent), var(--accent)) center / 2px 100% no-repeat; outline: none; }
 .nx-gw-aside { min-height: 0; overflow: auto; padding: 12px 10px 24px; border-right: 1px solid var(--border); background: var(--bg); }
 .nx-gw-main { min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 @container nx-page (max-width: 720px) {
-  .nx-gw-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 40%) minmax(0, 1fr); }
+  .nx-gw-body, .nx-gw-body[data-list="github"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 40%) minmax(0, 1fr); }
   .nx-gw-aside { border-right: 0; border-bottom: 1px solid var(--border); }
   /* Stacked, the list is full width: nothing to resize. */
   .nx-gw-list-resizer { display: none; }

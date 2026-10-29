@@ -5,7 +5,7 @@ import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useLocalItems } from './items-state.js'
 import { getAdoConfig, usesAdoWorkItems } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraWorkItemSource } from './jira-client.js'
-import { getGithubConfig, usesGithubWorkItems, desktopGithubSource, createGithubHttpAdapter } from './github-client.js'
+import { getGithubConfig, usesGithubWorkItems, isGithubConfigured, desktopGithubSource, createGithubHttpAdapter } from './github-client.js'
 import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
@@ -59,6 +59,34 @@ export function WorkProvider({ host, view, children }) {
   const refreshLeftRef = React.useRef(refreshInterval)
 
   const { snapshot, loaded: dataLoaded } = useNexusSnapshot()
+
+  // What other apps (Git) may borrow: GitHub's credentials-backed client with Work's cached
+  // data, and Work's drawers. Config and snapshot are read when called, not when registered.
+  const snapshotRef = React.useRef(snapshot)
+  snapshotRef.current = snapshot
+  const drawersRef = React.useRef({})
+  drawersRef.current = { openItem, openPR }
+  React.useEffect(() => {
+    const caps = host.capabilities
+    if (!caps?.provide) return undefined
+    const offs = [
+      caps.provide('work.github', () => {
+        if (!isGithubConfigured()) return null
+        const snap = snapshotRef.current
+        return {
+          repos: getGithubConfig().repos,
+          http: githubHttp,
+          cached: {
+            prs: (snap.PRS || []).filter(p => p.source === 'github'),
+            issues: (snap.WORK_ITEMS || []).filter(i => i.source === 'github'),
+          },
+        }
+      }),
+      caps.provide('work.openPR', pr => drawersRef.current.openPR(pr)),
+      caps.provide('work.openItem', item => drawersRef.current.openItem(item)),
+    ]
+    return () => offs.forEach(off => off())
+  }, [host])
 
   // A refresh brings the provider's real state: show it in an open PR drawer.
   React.useEffect(() => {

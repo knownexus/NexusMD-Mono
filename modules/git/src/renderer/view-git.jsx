@@ -27,6 +27,8 @@ import { CommitDialog } from './commit-dialog.jsx'
 import { OutputConsole } from '@nexusmd/editor-kit/output-console.jsx'
 import { GitCommandLine } from './git-command-line.jsx'
 import { useCommandAliases } from './use-command-aliases.js'
+import { useGithub } from './github/use-github.js'
+import { GithubTab } from './github/github-tab.jsx'
 import '@nexusmd/editor-kit/devenv-git.css'
 import './git-workspace.css'
 
@@ -38,6 +40,8 @@ const VIA_SYNC = { fetch: {}, pull: { mode: 'ff' }, push: {} }
 const RISKY = /(^|\s)(--force\S*|-f\w*|-\w*f|--hard|-D)(\s|$)|^(clean|reset|restore)\b|^stash (drop|clear)\b/
 // The dock keeps this session's newest output lines, up to this many.
 const MAX_LINES = 5000
+// The GitHub tab's id in the tab strip: not a name a group can have.
+const GITHUB_TAB = '\u0000github'
 
 // When a snapshot was read: the time, with the day too when it wasn't today.
 function readAt(iso) {
@@ -91,6 +95,8 @@ function GitWorkspace({ adapter, host }) {
   }, [adapter])
   const { snapshot, stale, error, loading, refresh, reload } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported, full: config.view.selected })
   const actions = useGitActions({ adapter, registered, reload })
+  // Work's GitHub connection, when Work is installed and connected; otherwise there is no GitHub tab.
+  const github = useGithub(host)
   const sync = useGitSync({ adapter, registered, reload })
   // A pop-out window saved or resolved a file: read that repository again.
   const reposRef = React.useRef(config.repos)
@@ -119,8 +125,17 @@ function GitWorkspace({ adapter, host }) {
   const tabs = [
     { name: ALL_PROJECTS, repos: repoCount(null), editable: false },
     ...config.groups.map(g => ({ name: g.name, repos: repoCount(g), editable: true })),
+    ...(github ? [{ id: GITHUB_TAB, name: 'GitHub', repos: github.repos.length, editable: false }] : []),
   ]
-  const setView = patch => setGitConfig({ view: { ...getGitConfig().view, ...patch } })
+  // A remembered GitHub tab falls back to the group under it once GitHub is gone.
+  const onGithub = !!github && view.tab === 'github'
+  // While GitHub isn't there (not yet registered by Work, or gone), moving anywhere forgets a
+  // remembered GitHub tab, so GitHub turning up later never takes the page from where the user is.
+  const setView = patch => {
+    const current = getGitConfig().view
+    const forget = !github && current.tab === 'github' && !('tab' in patch) ? { tab: undefined } : {}
+    setGitConfig({ view: { ...current, ...forget, ...patch } })
+  }
   const selectedTree = scoped.worktrees.find(t => worktreeId(t) === view.selected)
   const selectedBranch = scoped.inactiveBranches.find(b => b.id === view.selected)
   const treeKey = selectedTree ? worktreeId(selectedTree) : null
@@ -211,7 +226,21 @@ function GitWorkspace({ adapter, host }) {
     const next = i < 0 ? (by > 0 ? 0 : list.length - 1) : (i + by + list.length) % list.length
     selectTree({ kind: 'worktree', id: worktreeId(list[next]) })
   }
-  Object.assign(keys, {
+  // The GitHub tab's local copy: Registered repos, with that repository's main worktree selected.
+  const openLocal = name => {
+    const repo = config.repos.find(r => r.name === name)
+    const usable = (snapshot?.worktrees ?? []).filter(t => t.repo === name && !t.prunable && !t.error)
+    const tree = usable.find(t => repo && worktreeId(t) === worktreeId({ path: repo.path })) ?? usable[0]
+    setView({ tab: undefined, group: ALL_PROJECTS, selected: tree ? worktreeId(tree) : null, collapsed: view.collapsed.filter(n => n !== name) })
+  }
+  const selectTab = id => {
+    if (id === GITHUB_TAB) { if (!onGithub && mayLeave()) setView({ tab: 'github' }) }
+    // Back from GitHub to the group under it keeps what was selected there.
+    else if (onGithub && id === (group ? group.name : ALL_PROJECTS)) setView({ tab: undefined })
+    else if (mayLeave()) setView({ tab: undefined, group: id, selected: null })
+  }
+  // The page's keys work on the local branches, so the GitHub tab has none.
+  if (!onGithub) Object.assign(keys, {
     jumpToBranch: () => { if (scoped.worktrees.length) setSwitcher(true) },
     focusFilter: () => { if (listHidden) setView({ list: 'shown' }); searchRef.current?.focus(); searchRef.current?.select() },
     focusCommand: () => detailsRef.current?.querySelector('input[aria-label="git command"]')?.focus(),
@@ -225,14 +254,14 @@ function GitWorkspace({ adapter, host }) {
       <header className="nx-gw-head">
         <div className="nx-gw-head-row">
           <h2 className="nx-gw-title">Git Workspace</h2>
-          <GroupTabs tabs={tabs} active={activeTab?.name ?? ALL_PROJECTS}
-            onSelect={name => { if (mayLeave()) setView({ group: name, selected: null }) }}
-            onNew={() => setEditing({ name: null })} busy={editBusy} />
-          {activeTab?.editable && (
+          <GroupTabs tabs={tabs} active={onGithub ? GITHUB_TAB : activeTab?.name ?? ALL_PROJECTS}
+            onSelect={selectTab} onNew={() => setEditing({ name: null })} busy={editBusy} />
+          {!onGithub && activeTab?.editable && (
             <GroupMenuButton name={activeTab.name} editBusy={editBusy} onEdit={() => setEditing({ name: activeTab.name })}
               onOpen={mode => setMenuFor({ name: activeTab.name, mode })} />
           )}
           <span className="nx-gw-spacer" />
+          {!onGithub && (<>
           {headStatus && <span className="nx-gw-status"><span className="nx-gw-dot" data-tone={loading || stale ? 'info' : 'ok'} />{headStatus}</span>}
           <button type="button" className="nx-gw-jumpbtn" disabled={!scoped.worktrees.length} onClick={() => setSwitcher(true)}>
             Jump to branch…<span className="kbd">Ctrl K</span>
@@ -240,7 +269,9 @@ function GitWorkspace({ adapter, host }) {
           <button className="btn sm ghost" title="git fetch --all --prune in every repository" disabled={!scoped.worktrees.length} onClick={() => sync.open('fetch', actionTargets('fetch', scoped.worktrees, null))}>Fetch all</button>
           <button className="btn sm accent" title={pullable.length ? "Fast-forwards every branch that's behind and has no local changes" : 'No branch is behind with nothing local in the way'}
             disabled={!pullable.length} onClick={pullAll}>{`Pull all (${pullable.length})`}</button>
+          </>)}
         </div>
+        {!onGithub && (
         <div className="nx-gw-head-row">
           <BranchSearch ref={searchRef} value={query} onChange={setQuery} />
           <span className="nx-gw-divider" />
@@ -251,8 +282,10 @@ function GitWorkspace({ adapter, host }) {
             onClick={() => setView({ list: listHidden ? 'shown' : 'hidden' })}>{listHidden ? 'Show repositories' : 'Hide repositories'}</button>
           <button className="btn sm ghost" aria-label="Refresh" title="Read every repository's state again" onClick={refresh}>Refresh</button>
         </div>
+        )}
       </header>
 
+      {onGithub ? <GithubTab host={host} adapter={adapter} config={config} snapshot={snapshot} onOpenLocal={openLocal} /> : (<>
       <div className="nx-gw-alerts">
         {error && card(error, 'alert')}
         {!config.repos.length && card(roots.length
@@ -306,6 +339,7 @@ function GitWorkspace({ adapter, host }) {
             busy={!!cmdRunning || (!!selectedTree && !!actions.busy[selectedTree.path])} onRun={exec} />
         </aside>
       </div>
+      </>)}
 
       {switcher && (
         <BranchSwitcher trees={scoped.worktrees} selected={view.selected} onClose={() => setSwitcher(false)}
@@ -341,11 +375,12 @@ function GitWorkspace({ adapter, host }) {
           setEditing(null)
         } : null}
         onSaved={(next, saved) => {
-          // Saving shows the group with nothing selected; declining keeps the dialog open and nothing saved.
+          // Saving shows the group with nothing selected (leaving the GitHub tab, where + Group stays
+          // offered); declining keeps the dialog open and nothing saved.
           if (!mayLeave()) return
           // Groups never change the registered list, so the snapshot isn't reloaded for the save itself.
           save(next)
-          setView({ group: saved.name, selected: null })
+          setView({ tab: undefined, group: saved.name, selected: null })
           setEditing(null)
           refresh()
         }} />
