@@ -25,7 +25,8 @@ function hostWith(state) {
 }
 
 const tree = (repo, path) => ({ repo, repoRoot: path, path, prunable: false, error: '' })
-const SNAPSHOT = { worktrees: [tree('web-local', 'C:/repos/web'), tree('other', 'C:/repos/other')] }
+// 'later' has a worktree but is only registered by one test.
+const SNAPSHOT = { worktrees: [tree('web-local', 'C:/repos/web'), tree('other', 'C:/repos/other'), tree('later', 'C:/repos/later')] }
 const REMOTES = {
   'C:/repos/web': 'origin\tgit@github.com:Acme/Web.git (fetch)\norigin\tgit@github.com:Acme/Web.git (push)\n',
   'C:/repos/other': 'origin\thttps://dev.azure.com/acme/_git/other (fetch)\n',
@@ -78,7 +79,21 @@ describe('GithubTab', () => {
     const { state } = setup()
     await screen.findByRole('button', { name: 'Open local copy' })
     state.github = { ...state.github, cached: { prs: [], issues: [...ISSUES, { id: 'i2', projectKey: 'ACME/web' }] } }
-    act(() => core._emit('data:updated', { moduleId: 'work' }))
+    act(() => core._emit('data:updated'))
     await waitFor(() => expect(within(repoItem('acme/web')).getByText('0 PRs · 2 issues')).toBeTruthy())
+  })
+
+
+  it('reads remotes again only when the registered repositories change, not on other view writes', async () => {
+    const { git } = setup()
+    await screen.findByRole('button', { name: 'Open local copy' })
+    expect(git.remotes).toHaveBeenCalledTimes(2)
+    fireEvent.click(within(repoItem('acme/api')).getByRole('button', { name: /^acme\/api/ }))
+    act(() => { setGitConfig({ view: { ...getGitConfig().view, list: 'hidden' } }) })
+    await act(async () => { await new Promise(r => setTimeout(r, 20)) })
+    expect(git.remotes).toHaveBeenCalledTimes(2)
+    act(() => { setGitConfig({ repos: [...getGitConfig().repos, { name: 'later', path: 'C:/repos/later' }] }) })
+    await waitFor(() => expect(git.remotes).toHaveBeenCalledWith({ name: 'later', path: 'C:/repos/later' }, 'C:/repos/later', ['C:/repos/web', 'C:/repos/other', 'C:/repos/later']))
+    await screen.findByRole('button', { name: 'Open local copy' })
   })
 })

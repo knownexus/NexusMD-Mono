@@ -19,19 +19,22 @@ export function githubReposInRemotes(text) {
 // Which registered repository holds a local copy of each GitHub repository: { 'owner/name': repoName }.
 // git runs in each repository's main worktree (or, with none, any usable one) from the snapshot.
 function useLocalCopies(adapter, repos, snapshot) {
-  const registered = React.useMemo(() => repos.map(r => r.path), [repos])
   const trees = snapshot?.worktrees ?? []
   const where = repos.map(r => {
     const usable = trees.filter(t => t.repo === r.name && !t.prunable && !t.error)
     const tree = usable.find(t => same(worktreeId(t), worktreeId({ path: r.path }))) ?? usable[0]
     return tree ? { name: r.name, repo: { name: r.name, path: tree.repoRoot }, path: tree.path } : null
   }).filter(Boolean)
-  const key = where.map(w => `${w.name}\0${w.path}`).join('\n')
+  const registered = repos.map(r => r.path)
+  const key = where.map(w => `${w.name}\0${w.path}`).join('\n') + '\n\n' + registered.join('\n')
+  // The config is rebuilt on every write; only `key` says the repositories really changed.
+  const registeredRef = React.useRef(registered)
+  registeredRef.current = registered
   const [copies, setCopies] = React.useState({})
   React.useEffect(() => {
     if (!adapter?.remotes || !where.length) return undefined
     let live = true
-    Promise.all(where.map(w => Promise.resolve().then(() => adapter.remotes(w.repo, w.path, registered)).then(text => [w.name, text], () => [w.name, ''])))
+    Promise.all(where.map(w => Promise.resolve().then(() => adapter.remotes(w.repo, w.path, registeredRef.current)).then(text => [w.name, text], () => [w.name, ''])))
       .then(results => {
         if (!live) return
         const next = {}
@@ -40,7 +43,7 @@ function useLocalCopies(adapter, repos, snapshot) {
       })
     return () => { live = false }
     // `where` is rebuilt each render; `key` says when it really changed.
-  }, [adapter, key, registered]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [adapter, key]) // eslint-disable-line react-hooks/exhaustive-deps
   return copies
 }
 

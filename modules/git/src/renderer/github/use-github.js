@@ -26,7 +26,8 @@ export function useGithub(host) {
     let timer = null
     const read = () => { if (live) setState(s => ({ github: readGithub(host), refreshKey: s.refreshKey + 1 })) }
     // Work keeps its snapshot in React state, so it is read once Work has had the update too.
-    const onData = () => { clearTimeout(timer); timer = setTimeout(read, 0) }
+    // Work announces its refresh with no module id; core's per-module poll events carry one.
+    const onData = payload => { if (payload?.moduleId) return; clearTimeout(timer); timer = setTimeout(read, 0) }
     // A different host from the one first read.
     if (readFor.current !== host) { readFor.current = host; setState(s => ({ ...s, github: readGithub(host) })) }
     core.on('data:updated', onData)
