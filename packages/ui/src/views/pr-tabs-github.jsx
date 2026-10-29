@@ -54,7 +54,7 @@ export function GithubPRCommitsTab({ pr, client }) {
 const CHANGE_ICON = { add: { icon: '+', color: 'var(--success)' }, delete: { icon: '−', color: 'var(--danger)' }, edit: { icon: '~', color: 'var(--info)' }, rename: { icon: 'R', color: 'var(--warning)' } };
 
 // GitHub sends each file's unified diff (`patch`); large or binary files have none.
-function Patch({ patch, url }) {
+export function GithubPatch({ patch, url }) {
   if (!patch) {
     return (
       <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-subtle)' }}>
@@ -116,7 +116,7 @@ export function GithubPRFilesTab({ pr, client }) {
               </div>
               {isOpen && (
                 <div style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)', overflow: 'auto', maxHeight: 480 }}>
-                  <Patch patch={f.patch} url={`https://github.com/${pr.repo}/pull/${pr.number}/files`} />
+                  <GithubPatch patch={f.patch} url={`https://github.com/${pr.repo}/pull/${pr.number}/files`} />
                 </div>
               )}
             </div>
