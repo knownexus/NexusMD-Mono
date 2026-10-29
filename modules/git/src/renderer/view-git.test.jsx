@@ -378,3 +378,53 @@ describe('ViewGit repository list', () => {
     expect(screen.getByRole('region', { name: 'A' })).toBeTruthy()
   })
 })
+
+describe('ViewGit GitHub tab', () => {
+  const caps = (provided = {}) => ({
+    capabilities: { provide: vi.fn(), has: name => name in provided, call: vi.fn(name => provided[name]()) },
+  })
+  const github = () => ({ repos: ['acme/web', 'acme/api'], http: { fetch: vi.fn() }, cached: { prs: [], issues: [] } })
+  const remotes = vi.fn(async (repo) => (repo.name === 'A' ? 'origin\thttps://github.com/acme/web.git (fetch)\n' : ''))
+  const strip = () => screen.findByRole('tablist', { name: 'Project groups' })
+
+  it('has no GitHub tab without Work, and nothing errors', async () => {
+    configure()
+    const errors = vi.spyOn(console, 'error')
+    render(<ViewGit adapters={{ git: adapter() }} host={caps()} />)
+    const tabs = await strip()
+    expect(await screen.findByRole('region', { name: 'A' })).toBeTruthy()
+    expect(within(tabs).queryByRole('tab', { name: /^GitHub/ })).toBeNull()
+    cleanup()
+    render(<ViewGit adapters={{ git: adapter() }} />)
+    expect(within(await strip()).queryByRole('tab', { name: /^GitHub/ })).toBeNull()
+    expect(errors).not.toHaveBeenCalled()
+    errors.mockRestore()
+  })
+
+  it('has no GitHub tab when GitHub is not connected', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter() }} host={caps({ 'work.github': () => null })} />)
+    const tabs = await strip()
+    expect(await screen.findByRole('region', { name: 'A' })).toBeTruthy()
+    expect(within(tabs).queryByRole('tab', { name: /^GitHub/ })).toBeNull()
+  })
+
+  it('shows a GitHub tab with its repository count that lists the ticked repositories', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter({ remotes }) }} host={caps({ 'work.github': github })} />)
+    const tabs = await strip()
+    await screen.findByRole('region', { name: 'A' })
+    fireEvent.click(within(tabs).getByRole('tab', { name: 'GitHub 2 repos' }))
+    const list = screen.getByRole('list', { name: 'GitHub repositories' })
+    expect(within(list).getByRole('listitem', { name: 'acme/web' })).toBeTruthy()
+    expect(within(list).getByRole('listitem', { name: 'acme/api' })).toBeTruthy()
+    expect(screen.queryByRole('region', { name: 'A' })).toBeNull()
+    expect(within(tabs).getByRole('tab', { name: 'GitHub 2 repos' }).getAttribute('aria-selected')).toBe('true')
+    expect(getGitConfig().view.tab).toBe('github')
+    // Open local copy goes back to the registered repositories with that repository's worktree selected.
+    fireEvent.click(await within(list).findByRole('button', { name: 'Open local copy' }))
+    expect(getGitConfig().view).toMatchObject({ group: 'Registered repos', selected: 'C:/repos/A' })
+    expect(getGitConfig().view.tab).toBeUndefined()
+    expect(await screen.findByRole('region', { name: 'A' })).toBeTruthy()
+  })
+})
