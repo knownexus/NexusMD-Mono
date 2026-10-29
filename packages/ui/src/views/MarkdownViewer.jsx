@@ -127,6 +127,58 @@ function relativeTime(ts) {
   return new Date(ts).toLocaleDateString();
 }
 
+// GitHub-style heading anchors, so [text](#some-heading) links work. Kept in a data attribute
+// rather than an id, so a heading can't clash with an id elsewhere in the app.
+export function slugifyHeading(text) {
+  return text.trim().toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s/g, '-');
+}
+
+export function addHeadingAnchors(container) {
+  const seen = new Map();
+  container.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(h => {
+    const base = slugifyHeading(h.textContent);
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    h.setAttribute('data-anchor', n ? `${base}-${n}` : base);
+  });
+}
+
+// A click on a link in the preview. Web links open as the app's other links do (the link window
+// in the desktop app, a new tab on the web), mailto: in the mail app, and #anchors scroll to their
+// heading. Anything else is ignored, so a click can never navigate the app itself away.
+export function followPreviewLink(e, container, {
+  open = url => window.open(url, '_blank', 'noopener'),
+  openExternal = window.electronAPI?.openExternal,
+} = {}) {
+  const a = e.target.closest?.('a[href]');
+  if (!a || !container.contains(a)) return;
+  e.preventDefault();
+  const href = a.getAttribute('href');
+  if (href.startsWith('#')) {
+    let anchor = href.slice(1);
+    try { anchor = decodeURIComponent(anchor); } catch { /* keep it as written */ }
+    const heading = [...container.querySelectorAll('[data-anchor]')]
+      .find(h => h.getAttribute('data-anchor') === anchor.toLowerCase());
+    heading?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  let url;
+  try { url = new URL(href); } catch { return; }
+  if (url.protocol === 'http:' || url.protocol === 'https:') open(url.href);
+  else if (url.protocol === 'mailto:') (openExternal ?? open)(url.href);
+}
+
+// Renders markdown into a preview element: sanitized HTML, heading anchors, highlighted code.
+function renderPreview(el, markdown, hljs) {
+  el.innerHTML = DOMPurify.sanitize(new Marked({ gfm: true }).parse(markdown));
+  addHeadingAnchors(el);
+  el.querySelectorAll('pre code[class*="language-"]').forEach(block => {
+    hljs.highlightElement(block);
+    const lang = (block.className.match(/language-(\S+)/) || [])[1];
+    if (lang) block.closest("pre").setAttribute("data-lang", lang);
+  });
+}
+
 function parseMarkdownSafe(content) {
   try {
     const raw = new Marked({ gfm: true }).parse(content || '');
@@ -661,6 +713,7 @@ function MarkdownViewer() {
   // Document state
   const [docs, setDocs]                 = useStateMD(loadDocs);
   const [currentDocId, setCurrentDocId] = useStateMD(null);
+  const [compareDocId, setCompareDocId] = useStateMD(null);   // shown beside the open document in the Compare view
   const [showModal, setShowModal]       = useStateMD(false);
   const [saveStatus, setSaveStatus]     = useStateMD('');
   const [learnMode, setLearnMode]           = useStateMD(() => localStorage.getItem(LEARN_MODE_KEY) === 'true');
@@ -670,6 +723,7 @@ function MarkdownViewer() {
 
   const editorRef    = useRefMD(null);
   const previewRef   = useRefMD(null);
+  const compareRef   = useRefMD(null);
   const workspaceRef = useRefMD(null);
   const fileInputRef = useRefMD(null);
   const hljsLinkRef  = useRefMD(null);
@@ -684,6 +738,10 @@ function MarkdownViewer() {
   const saveStatusTimerRef = useRefMD(null);
   const markdownRef        = useRefMD('');
   const isLoadingDoc       = useRefMD(false);
+
+  // The Compare view's other document: the one picked, else the most recently edited other one.
+  const otherDocs  = docs.filter(d => d.id !== currentDocId).sort((a, b) => b.updatedAt - a.updatedAt);
+  const compareDoc = otherDocs.find(d => d.id === compareDocId) ?? otherDocs[0] ?? null;
 
   const markedReady = true; // marked is imported from npm (no CDN script needed)
   const hljsReady   = useScript("https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js");
@@ -722,15 +780,23 @@ function MarkdownViewer() {
     if (!markedReady || !hljsReady || !previewRef.current) return;
     const { hljs } = window;
     if (!hljs) return;
-    const md2html = new Marked({ gfm: true });
-    const raw = md2html.parse(markdown);
-    previewRef.current.innerHTML = DOMPurify.sanitize(raw);
-    previewRef.current.querySelectorAll('pre code[class*="language-"]').forEach(block => {
-      hljs.highlightElement(block);
-      const lang = (block.className.match(/language-(\S+)/) || [])[1];
-      if (lang) block.closest("pre").setAttribute("data-lang", lang);
-    });
+    renderPreview(previewRef.current, markdown, hljs);
   }, [markdown, markedReady, hljsReady]);
+
+  // Compare view: the other document's preview, beside the open one's
+  useEffectMD(() => {
+    if (view !== 'compare' || !hljsReady || !compareRef.current || !window.hljs) return;
+    renderPreview(compareRef.current, compareDoc?.content ?? '', window.hljs);
+  }, [view, compareDoc?.id, compareDoc?.content, hljsReady]);
+
+  // Links in the preview
+  useEffectMD(() => {
+    const container = previewRef.current;
+    if (!container) return;
+    const onClick = e => followPreviewLink(e, container);
+    container.addEventListener('click', onClick);
+    return () => container.removeEventListener('click', onClick);
+  }, []);
 
   // Auto-save: fires on content or active doc change
   useEffectMD(() => {
@@ -1032,6 +1098,14 @@ function MarkdownViewer() {
     setShowModal(false);
   }
 
+  // Compare view: open the other document, and show the one that was open beside it.
+  function handleSwapCompare() {
+    if (!currentDocId || !compareDoc) return;
+    const was = currentDocId;
+    handleOpenDoc(compareDoc.id);
+    setCompareDocId(was);
+  }
+
   function handleNewDoc() {
     clearTimeout(saveTimerRef.current);
     clearTimeout(createDocTimerRef.current);
@@ -1079,7 +1153,7 @@ function MarkdownViewer() {
     borderRadius:  "var(--radius)",
     overflow:      "hidden",
     minWidth:      220,
-    ...(view === "preview"
+    ...(view === "preview" || view === "compare"
       ? { display: "none" }
       : editorWidth !== null
         ? { flex: "none", width: editorWidth }
@@ -1097,6 +1171,16 @@ function MarkdownViewer() {
     flex:          1,
     position:      "relative",
     ...(view === "editor" ? { display: "none" } : {}),
+  };
+
+  const comparePaneStyle = {
+    ...previewPaneStyle,
+    ...(view === "compare" ? {} : { display: "none" }),
+  };
+  const paneSelectStyle = {
+    height: 22, maxWidth: 220, padding: "0 6px", fontSize: 12,
+    color: "var(--text)", background: "var(--surface)",
+    border: "1px solid var(--border)", borderRadius: "var(--radius-sm)",
   };
 
   return (
@@ -1183,7 +1267,7 @@ function MarkdownViewer() {
 
           {/* View tabs */}
           <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: 3, gap: 2 }}>
-            {["editor", "split", "preview"].map((v) => (
+            {["editor", "split", "preview", "compare"].map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -1399,7 +1483,13 @@ function MarkdownViewer() {
 
           {/* PREVIEW PANE */}
           <div style={previewPaneStyle}>
-            <PaneHeader label="Preview" />
+            <PaneHeader label="Preview">
+              {view === "compare" && (
+                <span style={{ fontSize: 12, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {currentDoc ? displayName(currentDoc) : "Unsaved document"}
+                </span>
+              )}
+            </PaneHeader>
             <div style={{ flex: 1, overflowY: "auto", padding: "28px 36px" }}>
               <div
                 className={`md-content${learnMode ? ' md-learn' : ''}`}
@@ -1416,6 +1506,46 @@ function MarkdownViewer() {
                 onClose={() => setCheatSheetOpen(false)}
               />
             )}
+          </div>
+
+          {/* COMPARE PANE */}
+          <div style={comparePaneStyle}>
+            <PaneHeader label="Preview">
+              {compareDoc && (
+                <>
+                  <select
+                    aria-label="Document to compare"
+                    value={compareDoc.id}
+                    onChange={e => setCompareDocId(e.target.value)}
+                    style={paneSelectStyle}
+                  >
+                    {otherDocs.map(d => <option key={d.id} value={d.id}>{displayName(d)}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleSwapCompare}
+                    disabled={!currentDocId}
+                    title={currentDocId ? "Open this document, and show the current one here" : "Save the open document first"}
+                    style={{ ...paneSelectStyle, cursor: currentDocId ? "pointer" : "default", opacity: currentDocId ? 1 : .5 }}
+                  >⇄ Swap</button>
+                </>
+              )}
+            </PaneHeader>
+            <div style={{ flex: 1, overflowY: "auto", padding: "28px 36px" }}>
+              {compareDoc ? (
+                <div
+                  className="md-content"
+                  ref={compareRef}
+                  data-testid="compare-preview"
+                  onClick={e => followPreviewLink(e, e.currentTarget)}
+                  style={{ maxWidth: 740, margin: "0 auto", lineHeight: 1.8, color: "var(--text)" }}
+                />
+              ) : (
+                <p style={{ color: "var(--text-muted)", textAlign: "center", marginTop: 40 }}>
+                  No other documents to compare with yet.
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1520,12 +1650,13 @@ function BarSep() {
 export { MarkdownViewer };
 // displayName is exported inline above (used by web's settings view).
 
-function PaneHeader({ label }) {
+function PaneHeader({ label, children }) {
   return (
     <div style={{
       height:       32,
       display:      "flex",
       alignItems:   "center",
+      gap:          10,
       padding:      "0 14px",
       background:   "var(--surface-2)",
       borderBottom: "1px solid var(--border)",
@@ -1540,6 +1671,7 @@ function PaneHeader({ label }) {
       }}>
         {label}
       </span>
+      {children}
     </div>
   );
 }
