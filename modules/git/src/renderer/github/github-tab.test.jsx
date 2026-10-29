@@ -96,4 +96,26 @@ describe('GithubTab', () => {
     await waitFor(() => expect(git.remotes).toHaveBeenCalledWith({ name: 'later', path: 'C:/repos/later' }, 'C:/repos/later', ['C:/repos/web', 'C:/repos/other', 'C:/repos/later']))
     await screen.findByRole('button', { name: 'Open local copy' })
   })
+
+  describe('opening in Work', () => {
+    const json = body => ({ ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(body) })
+    const item = (number, title, extra = {}) => ({ number, title, state: 'open', user: { login: 'ann' }, created_at: new Date().toISOString(), labels: [], head: { ref: 'f' }, base: { ref: 'main' }, ...extra })
+    function withData() {
+      const fetch = vi.fn(async path => json(String(path).includes('/pulls') ? [item(7, 'Add search')] : [item(4, 'Crash on save')]))
+      return setup({ github: { repos: ['acme/web'], http: { fetch }, cached: { prs: [], issues: [] } } })
+    }
+
+    it('opens a PR row through work.openPR', async () => {
+      const { host } = withData()
+      fireEvent.click(await screen.findByText(/Add search/))
+      expect(host.capabilities.call).toHaveBeenCalledWith('work.openPR', expect.objectContaining({ id: 'gh:acme/web#7' }))
+    })
+
+    it('opens an issue row through work.openItem', async () => {
+      const { host } = withData()
+      fireEvent.click(screen.getByRole('button', { name: 'Issues' }))
+      fireEvent.click(await screen.findByText(/Crash on save/))
+      expect(host.capabilities.call).toHaveBeenCalledWith('work.openItem', expect.objectContaining({ id: 'gh:acme/web#4' }))
+    })
+  })
 })
