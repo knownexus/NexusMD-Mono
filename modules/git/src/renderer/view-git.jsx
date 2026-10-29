@@ -29,6 +29,7 @@ import { GitCommandLine } from './git-command-line.jsx'
 import { useCommandAliases } from './use-command-aliases.js'
 import { useGithub } from './github/use-github.js'
 import { GithubTab } from './github/github-tab.jsx'
+import { githubMode, useTopbarShowsMode, ModeSwitch } from './github/github-mode.jsx'
 import '@nexusmd/editor-kit/devenv-git.css'
 import './git-workspace.css'
 
@@ -40,7 +41,7 @@ const VIA_SYNC = { fetch: {}, pull: { mode: 'ff' }, push: {} }
 const RISKY = /(^|\s)(--force\S*|-f\w*|-\w*f|--hard|-D)(\s|$)|^(clean|reset|restore)\b|^stash (drop|clear)\b/
 // The dock keeps this session's newest output lines, up to this many.
 const MAX_LINES = 5000
-// The GitHub tab's id in the tab strip: not a name a group can have.
+// The GitHub view's id when switching: not a name a group can have.
 const GITHUB_TAB = '\u0000github'
 
 // When a snapshot was read: the time, with the day too when it wasn't today.
@@ -106,6 +107,17 @@ function GitWorkspace({ adapter, host }) {
     if (repo) reload([repo.name])
   }), [adapter, reload])
 
+  // The Local / GitHub switch is drawn in the top bar; the page owns the mode (leaving may be
+  // refused over unsaved work) and tells the switch. An older shell's top bar can't, so the page
+  // draws the switch itself until a top bar has.
+  const topbarShowsMode = useTopbarShowsMode()
+  const requestMode = React.useRef(() => {})
+  const githubShown = !!github && config.view.tab === 'github'
+  React.useEffect(() => {
+    githubMode.publish({ available: !!github, onGithub: githubShown, request: mode => requestMode.current(mode) })
+  }, [github, githubShown])
+  React.useEffect(() => () => githubMode.publish({ available: false, onGithub: false, request: () => {} }), [])
+
   for (const k of Object.keys(keys)) delete keys[k]
   if (config.unsupported) return card(`These Git Workspace settings were saved by a newer NexusMD (version ${config.unsupported}). Update NexusMD to use them.`, 'alert')
   if (gitVersion === null) return card('Git not found. Install Git for Windows (git-scm.com) and make sure git is on PATH, then reopen this screen.', 'alert')
@@ -125,10 +137,9 @@ function GitWorkspace({ adapter, host }) {
   const tabs = [
     { name: ALL_PROJECTS, repos: repoCount(null), editable: false },
     ...config.groups.map(g => ({ name: g.name, repos: repoCount(g), editable: true })),
-    ...(github ? [{ id: GITHUB_TAB, name: 'GitHub', repos: github.repos.length, editable: false }] : []),
   ]
-  // A remembered GitHub tab falls back to the group under it once GitHub is gone.
-  const onGithub = !!github && view.tab === 'github'
+  // A remembered GitHub view falls back to the group under it once GitHub is gone.
+  const onGithub = githubShown
   // While GitHub isn't there (not yet registered by Work, or gone), moving anywhere forgets a
   // remembered GitHub tab, so GitHub turning up later never takes the page from where the user is.
   const setView = patch => {
@@ -239,7 +250,8 @@ function GitWorkspace({ adapter, host }) {
     else if (onGithub && id === (group ? group.name : ALL_PROJECTS)) setView({ tab: undefined })
     else if (mayLeave()) setView({ tab: undefined, group: id, selected: null })
   }
-  // The page's keys work on the local branches, so the GitHub tab has none.
+  requestMode.current = mode => selectTab(mode === 'github' ? GITHUB_TAB : (group ? group.name : ALL_PROJECTS))
+  // The page's keys work on the local branches, so the GitHub view has none.
   if (!onGithub) Object.assign(keys, {
     jumpToBranch: () => { if (scoped.worktrees.length) setSwitcher(true) },
     focusFilter: () => { if (listHidden) setView({ list: 'shown' }); searchRef.current?.focus(); searchRef.current?.select() },
@@ -253,9 +265,11 @@ function GitWorkspace({ adapter, host }) {
     <div className="nx-gw-page">
       <header className="nx-gw-head">
         <div className="nx-gw-head-row">
-          <h2 className="nx-gw-title">Git Workspace</h2>
-          <GroupTabs tabs={tabs} active={onGithub ? GITHUB_TAB : activeTab?.name ?? ALL_PROJECTS}
-            onSelect={selectTab} onNew={() => setEditing({ name: null })} busy={editBusy} />
+          <h2 className="nx-gw-title">{onGithub ? 'GitHub' : 'Git Workspace'}</h2>
+          {github && !topbarShowsMode && <ModeSwitch onGithub={onGithub} request={mode => requestMode.current(mode)} />}
+          {onGithub
+            ? <span className="nx-gw-head-note">{`${github.repos.length} ${github.repos.length === 1 ? 'repository' : 'repositories'} from Work's GitHub connection`}</span>
+            : <GroupTabs tabs={tabs} active={activeTab?.name ?? ALL_PROJECTS} onSelect={selectTab} onNew={() => setEditing({ name: null })} busy={editBusy} />}
           {!onGithub && activeTab?.editable && (
             <GroupMenuButton name={activeTab.name} editBusy={editBusy} onEdit={() => setEditing({ name: activeTab.name })}
               onOpen={mode => setMenuFor({ name: activeTab.name, mode })} />

@@ -1,5 +1,7 @@
 import React from 'react'
 import { listGithubBranches, createGithubBranch, deleteGithubBranch } from '@nexusmd/core'
+import { Icon } from '@nexusmd/ui'
+import { GithubCard, Notice } from './github-ui.jsx'
 
 const same = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase()
 
@@ -83,29 +85,37 @@ export function GithubBranches({ repo, client, refreshKey, confirm = window.conf
   }
 
   return (
-    <div className="nx-gw-gh-branches">
-      <form className="nx-gw-gh-newbranch" onSubmit={create}>
-        <strong>New branch</strong>
-        <select aria-label="From branch" value={source} onChange={e => setFrom(e.target.value)}>
-          {branches.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
-        </select>
-        <input aria-label="Branch name" placeholder="feature/name" value={name} onChange={e => setName(e.target.value)} />
-        <button type="submit" className="btn sm" disabled={busy || !name.trim() || !source}>Create</button>
-      </form>
-      {error && <div role="alert" className="nx-gw-dhead-error">{error}</div>}
-      {!current && !error && client && <div className="nx-gw-empty">Loading branches…</div>}
-      <ul aria-label="GitHub branches" className="nx-gw-gh-branch-list">
-        {branches.map(b => (
-          <li key={b.name} aria-label={b.name} className="nx-gw-gh-branch">
-            <span className="nx-gw-row-title">{b.name}</span>
-            {b.isDefault && <span className="nx-badge">default</span>}
-            {b.protected && <span className="nx-badge">protected</span>}
-            {!b.isDefault && !b.protected && (
-              <button type="button" className="btn sm ghost" disabled={busy} onClick={() => remove(b)}>Delete</button>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <>
+      {error && <Notice kind="error">{error}</Notice>}
+      <GithubCard title="New branch" tone="info">
+        <form className="nx-gw-gh-newbranch" onSubmit={create}>
+          <label className="nx-gw-gh-pick">
+            <span>From</span>
+            <select className="nx-input" aria-label="From branch" value={source} onChange={e => setFrom(e.target.value)}>
+              {branches.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
+            </select>
+          </label>
+          <input className="nx-input mono" aria-label="Branch name" placeholder="feature/name" value={name} onChange={e => setName(e.target.value)} />
+          <button type="submit" className="btn sm accent" disabled={busy || !name.trim() || !source}>Create branch</button>
+        </form>
+      </GithubCard>
+      {!current && !error && client && <Notice>Loading branches…</Notice>}
+      {current && (
+        <GithubCard title="Branches" hint={String(branches.length)} label="Branches on GitHub">
+          <ul aria-label="GitHub branches" className="nx-gw-gh-rows">
+            {branches.map(b => (
+              <li key={b.name} aria-label={b.name} className="nx-gw-gh-branch">
+                <span className="nx-gw-row-title"><Icon name="git-branch" size={12} />{b.name}</span>
+                {b.isDefault && <span className="nx-badge">default</span>}
+                {b.protected && <span className="nx-badge">protected</span>}
+                {!b.isDefault && !b.protected && (
+                  <button type="button" className="btn sm ghost" disabled={busy} onClick={() => remove(b)}>Delete</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </GithubCard>
+      )}
+    </>
   )
 }

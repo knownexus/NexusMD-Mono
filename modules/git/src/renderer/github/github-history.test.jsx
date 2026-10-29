@@ -40,7 +40,7 @@ describe('GithubHistory', () => {
     listGithubCommits.mockResolvedValue(COMMITS)
     render(<GithubHistory repo="acme/web" client={client} branch="main" />)
     const row = (await screen.findByText(/Fix bug/)).closest('button')
-    expect(row.className).toBe('nx-gw-gh-item')
+    expect(row.className).toBe('nx-gw-attn-open')
     expect(row.style.all).toBe('')
   })
 })

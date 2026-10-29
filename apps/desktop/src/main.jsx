@@ -395,7 +395,7 @@ function App() {
             )}
             <Icon name={active.icon} size={16} />
             <h1 style={{ fontSize: 15, margin: 0 }}>{active.label}</h1>
-            <ModuleTopbar />
+            <ModuleTopbar view={view} />
             {BARE && (
               <button className="btn sm ghost" style={{ marginLeft: 'auto' }}
                 aria-label={view === SETTINGS_NAV.id ? `Back to ${INSTALLED_NAV[0].label}` : 'Settings'}

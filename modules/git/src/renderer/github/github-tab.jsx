@@ -1,5 +1,6 @@
 import React from 'react'
 import { githubRepoFromRemote, worktreeId } from '@nexusmd/core'
+import { Icon } from '@nexusmd/ui'
 import { setGitConfig, getGitConfig } from '../git-config.js'
 import { useGithub } from './use-github.js'
 import { GithubRepoPane } from './github-repo-pane.jsx'
@@ -68,41 +69,62 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
   const openItem = item => call('work.openItem', cachedCopy(cached.issues, item))
   const chosen = repos.find(r => same(r, config.view.githubRepo)) ?? repos[0]
   const choose = repo => setGitConfig({ view: { ...getGitConfig().view, githubRepo: repo } })
-  const prs = repo => (cached.prs ?? []).filter(p => same(p.repo, repo)).length
-  const issues = repo => (cached.issues ?? []).filter(i => same(i.projectKey, repo)).length
+  const prsOf = repo => (cached.prs ?? []).filter(p => same(p.repo, repo))
+  const issuesOf = repo => (cached.issues ?? []).filter(i => same(i.projectKey, repo))
+  const chosenLocal = copies[String(chosen).toLowerCase()]
+  const counts = { prs: prsOf(chosen).length, issues: issuesOf(chosen).length }
   return (
     <div className="nx-gw-body" data-list="github">
       <nav aria-label="GitHub" className="nx-gw-aside">
-        <ul aria-label="GitHub repositories" className="nx-gw-list nx-gw-gh-list">
+        <ul aria-label="GitHub repositories" className="nx-gw-list">
           {repos.map(repo => {
             const local = copies[repo.toLowerCase()]
+            const cut = repo.indexOf('/') + 1
+            const prs = prsOf(repo).length
             return (
-              <li key={repo} aria-label={repo}>
-                <button type="button" className="nx-gw-row" aria-current={repo === chosen ? 'true' : undefined} onClick={() => choose(repo)}>
-                  <span className="nx-gw-dot" data-tone="info" />
+              <li key={repo} aria-label={repo} className="nx-gw-gh-repo">
+                <button type="button" className="nx-gw-row" aria-current={repo === chosen ? 'true' : undefined} onClick={() => choose(repo)}
+                  aria-label={`${repo}, ${plural(prs, 'open PR', 'open PRs')}, ${plural(issuesOf(repo).length, 'issue', 'issues')}`}>
+                  <span className="nx-gw-dot" data-tone={prs ? 'info' : 'muted'} />
                   <span className="nx-gw-row-body">
-                    <span className="nx-gw-row-title">{repo}</span>
-                    <span className="nx-gw-row-meta"><span>{`${plural(prs(repo), 'PR', 'PRs')} · ${plural(issues(repo), 'issue', 'issues')}`}</span></span>
+                    <span className="nx-gw-row-title"><span className="nx-gw-gh-owner">{repo.slice(0, cut)}</span>{repo.slice(cut)}</span>
+                    <span className="nx-gw-row-meta">
+                      <span>{plural(prs, 'open PR', 'open PRs')}</span>
+                      <span>{plural(issuesOf(repo).length, 'issue', 'issues')}</span>
+                    </span>
                   </span>
                 </button>
                 {local && (
-                  <button type="button" className="btn sm ghost nx-gw-gh-local" title={`Show ${local} in Registered repos`} onClick={() => onOpenLocal(local)}>Open local copy</button>
+                  <button type="button" className="nx-gw-gh-local" aria-label={`Open local copy (${local})`} title={`Show ${local} in Registered repos`} onClick={() => onOpenLocal(local)}>
+                    <Icon name="folder" size={12} />Local
+                  </button>
                 )}
               </li>
             )
           })}
         </ul>
       </nav>
-      <aside aria-label="GitHub repository" className="nx-gw-main">
-        <div className="nx-gw-gh-head">
-          <h3 className="nx-gw-gh-title">{chosen}</h3>
-          <span className="nx-gw-spacer" />
-          <button type="button" className="btn sm ghost" aria-label="Refresh" title="Read this repository from GitHub again" onClick={() => setReloads(n => n + 1)}>Refresh</button>
-          <a className="btn sm ghost" href={`https://github.com/${chosen}`} target="_blank" rel="noopener noreferrer">Open on GitHub</a>
-        </div>
+      <section aria-label="GitHub repository" className="nx-gw-main">
+        <header className="nx-gw-dhead">
+          <div className="nx-gw-dhead-title">
+            <div className="nx-gw-dhead-branch"><h3 className="nx-gw-branch-name">{chosen}</h3></div>
+            <div className="nx-gw-dhead-meta">
+              <span>{plural(counts.prs, 'open pull request', 'open pull requests')}</span>
+              <span>{plural(counts.issues, 'open issue', 'open issues')}</span>
+              {chosenLocal && <span>{`Local copy in ${chosenLocal}`}</span>}
+            </div>
+          </div>
+          <div className="nx-gw-dhead-actions">
+            {chosenLocal && <button type="button" className="btn sm ghost" onClick={() => onOpenLocal(chosenLocal)}>Open local copy</button>}
+            <button type="button" className="btn sm ghost" aria-label="Refresh" title="Read this repository from GitHub again" onClick={() => setReloads(n => n + 1)}>
+              <Icon name="refresh" size={12} />Refresh
+            </button>
+            <a className="btn sm" href={`https://github.com/${chosen}`} target="_blank" rel="noopener noreferrer"><Icon name="link" size={12} />Open on GitHub</a>
+          </div>
+        </header>
         <GithubRepoPane key={chosen} repo={chosen} client={client} refreshKey={refreshKey} openPR={openPR} openItem={openItem}
-          openPRs={(cached.prs ?? []).filter(p => same(p.repo, chosen))} />
-      </aside>
+          openPRs={prsOf(chosen)} counts={counts} />
+      </section>
     </div>
   )
 }

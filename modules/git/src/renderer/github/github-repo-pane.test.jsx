@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react'
 import { GithubError } from '@nexusmd/core'
 import { GithubRepoPane } from './github-repo-pane.jsx'
 
@@ -36,18 +36,23 @@ describe('GithubRepoPane', () => {
     expect(openItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'gh:acme/web#4' }))
   })
 
-  it('gives each row the leading dot cell the workspace row grid expects', async () => {
+  it('shows each PR as a card row: number and title, then who, which branch and when, with its labels beside it', async () => {
     render(<GithubRepoPane repo="acme/web" client={fakeClient(ROUTES)} refreshKey={0} openPR={vi.fn()} openItem={vi.fn()} />)
-    const row = (await screen.findByText(/Add search/)).closest('button')
-    expect(row.className).toContain('nx-gw-row')
-    expect(row.children[0].className).toContain('nx-gw-dot')
-    expect(row.children[1].className).toContain('nx-gw-row-body')
+    const card = await screen.findByRole('region', { name: 'Open pull requests' })
+    const row = within(card).getByText(/Add search/).closest('li')
+    expect(row.className).toBe('nx-gw-attn-row')
+    const open = within(row).getByRole('button')
+    expect(open.className).toBe('nx-gw-attn-open')
+    expect(open.textContent).toContain('#7')
   })
 
   it('has the five tabs and switches between them', async () => {
     render(<GithubRepoPane repo="acme/web" client={fakeClient(ROUTES)} refreshKey={0} openPR={vi.fn()} openItem={vi.fn()} />)
-    for (const l of ['Pull requests', 'Issues', 'Branches', 'History', 'Files']) expect(screen.getByRole('button', { name: l })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Issues' }))
+    const tabs = screen.getByRole('tablist', { name: 'Repository views' })
+    for (const l of ['Pull requests', 'Issues', 'Branches', 'History', 'Files']) expect(within(tabs).getByRole('tab', { name: l })).toBeTruthy()
+    expect(within(tabs).getByRole('tab', { name: 'Pull requests' }).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(within(tabs).getByRole('tab', { name: 'Issues' }))
+    expect(within(tabs).getByRole('tab', { name: 'Issues' }).getAttribute('aria-selected')).toBe('true')
     expect(await screen.findByText(/Crash on save/)).toBeTruthy()
   })
 
@@ -116,12 +121,12 @@ describe('GithubRepoPane', () => {
       await screen.findByText(/Main commit/)
       fireEvent.change(screen.getByLabelText('Branch'), { target: { value: 'old' } })
       await screen.findByText(/Old commit/)
-      fireEvent.click(screen.getByRole('button', { name: 'Branches' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'Branches' }))
       const dels = await screen.findAllByRole('button', { name: /delete/i })
       fireEvent.click(dels[0])
       await waitFor(() => expect(client.del).toHaveBeenCalled())
       await waitFor(() => expect(screen.queryByText('old')).toBeNull())
-      fireEvent.click(screen.getByRole('button', { name: 'History' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'History' }))
       expect(await screen.findByText(/Main commit/)).toBeTruthy()
       expect(screen.getByLabelText('Branch').value).toBe('main')
       expect(screen.queryByRole('alert')).toBeNull()

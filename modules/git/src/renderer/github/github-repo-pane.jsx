@@ -4,6 +4,7 @@ import { relativeTime } from '../history-pane.jsx'
 import { GithubBranches } from './github-branches.jsx'
 import { GithubHistory } from './github-history.jsx'
 import { GithubFiles } from './github-files.jsx'
+import { GithubCard, Notice } from './github-ui.jsx'
 
 export const GITHUB_TABS = [
   { id: 'prs', label: 'Pull requests' },
@@ -29,22 +30,20 @@ function useList(client, path, refreshKey) {
   return state.path === path ? state : { path, items: null, error: '' }
 }
 
-function Rows({ rows, onOpen, empty }) {
-  if (!rows.length) return <div className="nx-empty" style={{ padding: 16 }}>{empty}</div>
+function Rows({ rows, onOpen }) {
   return (
-    <ul className="nx-gw-list">
+    <ul className="nx-gw-gh-rows">
       {rows.map(r => (
-        <li key={r.key}>
-          <button type="button" className="nx-gw-row" onClick={() => onOpen(r.raw)}>
-            <span className="nx-gw-dot" data-tone={r.tone} />
-            <span className="nx-gw-row-body">
-              <span className="nx-gw-row-title">{`#${r.number} ${r.title}`}</span>
-              <span className="nx-gw-row-meta">
-                <span>{r.author}</span>
-                <span>{r.time ? relativeTime(r.time) : ''}</span>
-              </span>
+        <li key={r.key} className="nx-gw-attn-row">
+          <button type="button" className="nx-gw-attn-open" onClick={() => onOpen(r.raw)}>
+            <span className="branch"><span className="nx-gw-gh-num">{`#${r.number}`}</span>{r.title}</span>
+            <span className="nx-gw-row-meta">
+              {r.meta.filter(Boolean).map((m, i) => <span key={i}>{m}</span>)}
             </span>
           </button>
+          {r.tags.length > 0 && (
+            <span className="nx-gw-attn-actions">{r.tags.map(t => <span key={t} className="nx-badge">{t}</span>)}</span>
+          )}
         </li>
       ))}
     </ul>
@@ -54,24 +53,32 @@ function Rows({ rows, onOpen, empty }) {
 function Listing({ client, repo, kind, refreshKey, onOpen }) {
   const path = `repos/${repo}/${kind === 'prs' ? 'pulls' : 'issues'}?state=open`
   const { items, error } = useList(client, path, refreshKey)
-  if (error) return <div className="nx-empty" role="alert" style={{ padding: 16 }}>{error}</div>
-  if (!items) return <div className="nx-empty" style={{ padding: 16 }}>Loading…</div>
+  if (error) return <Notice kind="error">{error}</Notice>
+  if (!items) return <Notice>{kind === 'prs' ? 'Loading pull requests…' : 'Loading issues…'}</Notice>
   const list = kind === 'prs' ? items : items.filter(i => !i.pull_request)
+  if (!list.length) return <Notice kind="empty">{kind === 'prs' ? 'No open pull requests.' : 'No open issues.'}</Notice>
+  const when = p => Date.parse(p.updated_at || p.created_at || '') || 0
   const rows = list.map(p => ({
     key: p.number,
     number: p.number,
     title: p.title,
-    author: p.user?.login || '',
-    time: Date.parse(p.updated_at || p.created_at || '') || 0,
-    tone: p.draft ? 'muted' : 'ok',
+    meta: kind === 'prs'
+      ? [p.user?.login, p.head?.ref && p.base?.ref ? `${p.head.ref} → ${p.base.ref}` : '', when(p) ? `updated ${relativeTime(when(p))}` : '']
+      : [p.user?.login, p.comments ? `${p.comments} ${p.comments === 1 ? 'comment' : 'comments'}` : '', when(p) ? `updated ${relativeTime(when(p))}` : ''],
+    tags: [...(p.draft ? ['Draft'] : []), ...(p.labels || []).map(l => l.name).filter(Boolean)],
     raw: p,
   }))
   const open = raw => onOpen(kind === 'prs' ? mapGithubPR(raw, repo) : mapGithubIssue(raw, repo))
-  return <Rows rows={rows} onOpen={open} empty={kind === 'prs' ? 'No open pull requests.' : 'No open issues.'} />
+  const title = kind === 'prs' ? 'Open pull requests' : 'Open issues'
+  return (
+    <GithubCard title={title} hint={String(rows.length)} tone={kind === 'prs' ? 'info' : 'ok'}>
+      <Rows rows={rows} onOpen={open} />
+    </GithubCard>
+  )
 }
 
 /** The chosen repository's right pane: a tab per view. History and Files share a picked branch. */
-export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, initialTab = 'prs', confirm, openPRs }) {
+export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, initialTab = 'prs', confirm, openPRs, counts = {} }) {
   const [tab, setTab] = React.useState(initialTab)
   const [loaded, setLoaded] = React.useState({ repo: null, client: null, list: null })
   const [picked, setPicked] = React.useState('')
@@ -101,31 +108,41 @@ export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, ini
   const defaultName = branches ? (branches.find(b => b.isDefault)?.name ?? branches[0]?.name ?? '') : ''
   const branch = branches && branches.some(b => b.name === picked) ? picked : defaultName
 
-  const picker = (
-    <div style={{ padding: '8px 16px 0' }}>
-      <select aria-label="Branch" value={branch} onChange={e => setPicked(e.target.value)}>
-        {(branches || []).map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
-      </select>
-    </div>
-  )
   const branchView = Component => {
-    if (branchError) return <div className="nx-gw-empty" role="alert">{branchError}</div>
-    if (!branches) return <div className="nx-gw-empty">Loading…</div>
-    return <>{picker}<Component repo={repo} client={client} branch={branch} refreshKey={refreshKey} /></>
+    if (branchError) return <Notice kind="error">{branchError}</Notice>
+    if (!branches) return <Notice>Loading branches…</Notice>
+    return <Component repo={repo} client={client} branch={branch} refreshKey={refreshKey} />
   }
+  const count = { prs: counts.prs, issues: counts.issues }
 
   return (
     <div className="nx-gw-gh-pane">
-      <div aria-label="Repository views" className="nx-gw-gh-tabs" style={{ display: 'flex', gap: 4, padding: '4px 0' }}>
-        {GITHUB_TABS.map(t => (
-          <button key={t.id} type="button" aria-pressed={tab === t.id} className={`btn sm ${tab === t.id ? '' : 'ghost'}`} onClick={() => setTab(t.id)}>{t.label}</button>
-        ))}
+      <div className="nx-gw-tabs">
+        <div role="tablist" aria-label="Repository views" style={{ display: 'contents' }}>
+          {GITHUB_TABS.map(t => (
+            <button key={t.id} type="button" role="tab" className="nx-gw-tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>
+              {t.label}{count[t.id] > 0 && <>{' '}<span className="n">{count[t.id]}</span></>}
+            </button>
+          ))}
+        </div>
+        {needsBranches && branches && branches.length > 0 && (
+          <div className="nx-gw-tabs-end">
+            <label className="nx-gw-gh-pick">
+              <span>Branch</span>
+              <select className="nx-input" aria-label="Branch" value={branch} onChange={e => setPicked(e.target.value)}>
+                {branches.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
+              </select>
+            </label>
+          </div>
+        )}
       </div>
-      {tab === 'prs' && <Listing client={client} repo={repo} kind="prs" refreshKey={refreshKey} onOpen={openPR} />}
-      {tab === 'issues' && <Listing client={client} repo={repo} kind="issues" refreshKey={refreshKey} onOpen={openItem} />}
-      {tab === 'branches' && <GithubBranches repo={repo} client={client} refreshKey={refreshKey} confirm={confirm} onBranchesChanged={onBranchesChanged} openPRs={openPRs} />}
-      {tab === 'history' && branchView(GithubHistory)}
-      {tab === 'files' && branchView(GithubFiles)}
+      <div className="nx-gw-gh-view">
+        {tab === 'prs' && <Listing client={client} repo={repo} kind="prs" refreshKey={refreshKey} onOpen={openPR} />}
+        {tab === 'issues' && <Listing client={client} repo={repo} kind="issues" refreshKey={refreshKey} onOpen={openItem} />}
+        {tab === 'branches' && <GithubBranches repo={repo} client={client} refreshKey={refreshKey} confirm={confirm} onBranchesChanged={onBranchesChanged} openPRs={openPRs} />}
+        {tab === 'history' && branchView(GithubHistory)}
+        {tab === 'files' && branchView(GithubFiles)}
+      </div>
     </div>
   )
 }

@@ -47,7 +47,7 @@ describe('GithubBranches', () => {
     expect(screen.getByLabelText('From branch').value).toBe('main')
     fireEvent.change(screen.getByLabelText('From branch'), { target: { value: 'release/1' } })
     fireEvent.change(screen.getByLabelText('Branch name'), { target: { value: 'feature/x' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create branch' }))
     await waitFor(() => expect(createGithubBranch).toHaveBeenCalledWith(client, 'acme/web', { name: 'feature/x', from: 'release/1' }))
     await waitFor(() => expect(listGithubBranches).toHaveBeenCalledTimes(2))
   })
@@ -75,7 +75,7 @@ describe('GithubBranches', () => {
     render(<GithubBranches repo="acme/web" client={client} />)
     await screen.findByRole('listitem', { name: 'old' })
     fireEvent.change(screen.getByLabelText('Branch name'), { target: { value: 'main2' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create branch' }))
     expect((await screen.findByRole('alert')).textContent).toContain('Reference already exists')
   })
 
