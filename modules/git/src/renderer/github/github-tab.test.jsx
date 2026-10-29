@@ -52,15 +52,17 @@ const repoItem = name => screen.getByRole('listitem', { name })
 describe('GithubTab', () => {
   it('counts open PRs and issues per repository from Work\'s cached data', async () => {
     setup()
-    expect(within(repoItem('acme/web')).getByText('2 PRs · 1 issue')).toBeTruthy()
-    expect(within(repoItem('acme/api')).getByText('1 PR · 0 issues')).toBeTruthy()
-    await screen.findByRole('button', { name: 'Open local copy' })
+    expect(within(repoItem('acme/web')).getByText('2 open PRs')).toBeTruthy()
+    expect(within(repoItem('acme/web')).getByText('1 issue')).toBeTruthy()
+    expect(within(repoItem('acme/api')).getByText('1 open PR')).toBeTruthy()
+    expect(within(repoItem('acme/api')).getByText('0 issues')).toBeTruthy()
+    await screen.findByRole('button', { name: /^Open local copy [(]/ })
   })
 
   it('offers Open local copy only on the repository a registered repo\'s remotes point at', async () => {
     const { git, onOpenLocal } = setup()
-    const open = await within(repoItem('acme/web')).findByRole('button', { name: 'Open local copy' })
-    expect(within(repoItem('acme/api')).queryByRole('button', { name: 'Open local copy' })).toBeNull()
+    const open = await within(repoItem('acme/web')).findByRole('button', { name: 'Open local copy (web-local)' })
+    expect(within(repoItem('acme/api')).queryByRole('button', { name: /^Open local copy/ })).toBeNull()
     expect(git.remotes).toHaveBeenCalledWith({ name: 'web-local', path: 'C:/repos/web' }, 'C:/repos/web', ['C:/repos/web', 'C:/repos/other'])
     fireEvent.click(open)
     expect(onOpenLocal).toHaveBeenCalledWith('web-local')
@@ -72,21 +74,21 @@ describe('GithubTab', () => {
     fireEvent.click(within(repoItem('acme/api')).getByRole('button', { name: /^acme\/api/ }))
     expect(getGitConfig().view.githubRepo).toBe('acme/api')
     await waitFor(() => expect(screen.getByRole('link', { name: 'Open on GitHub' }).getAttribute('href')).toBe('https://github.com/acme/api'))
-    await screen.findByRole('button', { name: 'Open local copy' })
+    await screen.findByRole('button', { name: /^Open local copy [(]/ })
   })
 
   it('reads Work\'s GitHub data again when Work\'s data updates', async () => {
     const { state } = setup()
-    await screen.findByRole('button', { name: 'Open local copy' })
+    await screen.findByRole('button', { name: /^Open local copy [(]/ })
     state.github = { ...state.github, cached: { prs: [], issues: [...ISSUES, { id: 'i2', projectKey: 'ACME/web' }] } }
     act(() => core._emit('data:updated'))
-    await waitFor(() => expect(within(repoItem('acme/web')).getByText('0 PRs · 2 issues')).toBeTruthy())
+    await waitFor(() => expect(within(repoItem('acme/web')).getByText('2 issues')).toBeTruthy())
   })
 
 
   it('reads remotes again only when the registered repositories change, not on other view writes', async () => {
     const { git } = setup()
-    await screen.findByRole('button', { name: 'Open local copy' })
+    await screen.findByRole('button', { name: /^Open local copy [(]/ })
     expect(git.remotes).toHaveBeenCalledTimes(2)
     fireEvent.click(within(repoItem('acme/api')).getByRole('button', { name: /^acme\/api/ }))
     act(() => { setGitConfig({ view: { ...getGitConfig().view, list: 'hidden' } }) })
@@ -94,7 +96,7 @@ describe('GithubTab', () => {
     expect(git.remotes).toHaveBeenCalledTimes(2)
     act(() => { setGitConfig({ repos: [...getGitConfig().repos, { name: 'later', path: 'C:/repos/later' }] }) })
     await waitFor(() => expect(git.remotes).toHaveBeenCalledWith({ name: 'later', path: 'C:/repos/later' }, 'C:/repos/later', ['C:/repos/web', 'C:/repos/other', 'C:/repos/later']))
-    await screen.findByRole('button', { name: 'Open local copy' })
+    await screen.findByRole('button', { name: /^Open local copy [(]/ })
   })
 
   describe('opening in Work', () => {
@@ -113,7 +115,7 @@ describe('GithubTab', () => {
 
     it('opens an issue row through work.openItem', async () => {
       const { host } = withData()
-      fireEvent.click(screen.getByRole('button', { name: 'Issues' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'Issues' }))
       fireEvent.click(await screen.findByText(/Crash on save/))
       expect(host.capabilities.call).toHaveBeenCalledWith('work.openItem', expect.objectContaining({ id: 'gh:acme/web#4' }))
     })
@@ -127,7 +129,7 @@ describe('GithubTab', () => {
       expect(host.capabilities.call).toHaveBeenLastCalledWith('work.openPR', cachedPR)
       fireEvent.click(screen.getByText(/Fix typo/))
       expect(host.capabilities.call).toHaveBeenLastCalledWith('work.openPR', expect.objectContaining({ id: 'gh:acme/web#8', source: 'github' }))
-      fireEvent.click(screen.getByRole('button', { name: 'Issues' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'Issues' }))
       fireEvent.click(await screen.findByText(/Crash on save/))
       expect(host.capabilities.call).toHaveBeenLastCalledWith('work.openItem', cachedIssue)
     })
@@ -154,14 +156,15 @@ describe('GithubTab', () => {
       expect(calls('/pulls')).toBe(1)
       fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
       await waitFor(() => expect(calls('/pulls')).toBe(2))
-      fireEvent.click(screen.getByRole('button', { name: 'History' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'History' }))
       await screen.findByRole('combobox', { name: 'Branch' })
       expect(calls('/branches')).toBe(1)
       fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
       await waitFor(() => expect(calls('/branches')).toBe(2))
-      await screen.findByText('No commits.')
+      await screen.findByText('No commits on this branch.')
     })
-it('warns that deleting a branch closes the open PRs Work knows it heads', async () => {
+
+    it('warns that deleting a branch closes the open PRs Work knows it heads', async () => {
       const fetch = vi.fn(async path => {
         const p = String(path)
         if (p.includes('/branches')) return json([{ name: 'main', commit: { sha: 'a' } }, { name: 'feature/x', commit: { sha: 'b' } }])
@@ -172,7 +175,7 @@ it('warns that deleting a branch closes the open PRs Work knows it heads', async
       setup({ github: { repos: ['acme/web'], http: { fetch }, cached: { prs, issues: [] } } })
       const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
       try {
-        fireEvent.click(screen.getByRole('button', { name: 'Branches' }))
+        fireEvent.click(screen.getByRole('tab', { name: 'Branches' }))
         const row = await screen.findByRole('listitem', { name: 'feature/x' })
         fireEvent.click(within(row).getByRole('button', { name: 'Delete' }))
         expect(confirm).toHaveBeenCalledWith('Delete branch feature/x on GitHub? This also closes pull request #7.')

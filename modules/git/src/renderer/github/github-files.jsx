@@ -1,10 +1,10 @@
 // github-files.jsx — read-only browser of a GitHub repo's files at a branch.
 import React from 'react'
 import { listGithubContents, getGithubFile } from '@nexusmd/core'
+import { Icon } from '@nexusmd/ui'
+import { GithubCard, Notice } from './github-ui.jsx'
 
 const { useState, useEffect } = React
-
-const alertStyle = { color: 'var(--danger)' }
 
 function FileView({ repo, client, branch, path }) {
   const [state, setState] = useState({ status: 'loading', file: null, error: '' })
@@ -16,18 +16,18 @@ function FileView({ repo, client, branch, path }) {
       .catch(e => { if (!cancelled) setState({ status: 'error', file: null, error: e.message }) })
     return () => { cancelled = true }
   }, [client, repo, branch, path])
-  if (state.status === 'loading') return <div className="nx-gw-empty">Loading file…</div>
-  if (state.status === 'error') return <div className="nx-gw-empty" role="alert" style={alertStyle}>{state.error}</div>
+  if (state.status === 'loading') return <Notice>Loading file…</Notice>
+  if (state.status === 'error') return <Notice kind="error">{state.error}</Notice>
   const { file } = state
   if (file.reason) {
     return (
       <div className="nx-gw-empty">
-        {file.reason === 'binary' ? 'Binary file.' : 'File is too large to show.'}{' '}
+        {file.reason === 'binary' ? 'This is a binary file, so it isn’t shown here.' : 'This file is too large to show here.'}{' '}
         <a href={file.url} target="_blank" rel="noopener">Open on GitHub</a>
       </div>
     )
   }
-  return <pre className="mono" style={{ margin: 0, padding: 10, overflow: 'auto', fontSize: 12 }}>{file.text}</pre>
+  return <pre className="nx-gw-gh-code mono">{file.text}</pre>
 }
 
 export function GithubFiles({ repo, client, branch }) {
@@ -51,24 +51,25 @@ export function GithubFiles({ repo, client, branch }) {
     : <button key={`c${p}`} type="button" className="nx-gw-gh-crumb" onClick={() => go(p)}>{label}</button>)
   const crumbs = [crumb(repo.split('/').pop() || repo, '', !parts.length && !file)]
   parts.forEach((seg, i) => {
-    crumbs.push(<span key={`s${i}`}> / </span>)
+    crumbs.push(<span key={`s${i}`} className="sep">/</span>)
     crumbs.push(crumb(seg, parts.slice(0, i + 1).join('/'), i === parts.length - 1 && !file))
   })
-  if (file) { crumbs.push(<span key="sf"> / </span>); crumbs.push(<span key="f" aria-current="page">{file.split('/').pop()}</span>) }
+  if (file) { crumbs.push(<span key="sf" className="sep">/</span>); crumbs.push(<span key="f" aria-current="page">{file.split('/').pop()}</span>) }
 
   const sorted = [...state.items].sort((a, b) => (a.type === b.type ? 0 : a.type === 'dir' ? -1 : 1))
   let body
   if (file) body = <FileView repo={repo} client={client} branch={branch} path={file} />
-  else if (state.status === 'loading') body = <div className="nx-gw-empty">Loading…</div>
-  else if (state.status === 'error') body = <div className="nx-gw-empty" role="alert" style={alertStyle}>{state.error}</div>
-  else if (!sorted.length) body = <div className="nx-gw-empty">Empty folder.</div>
+  else if (state.status === 'loading') body = <Notice>Loading…</Notice>
+  else if (state.status === 'error') body = <Notice kind="error">{state.error}</Notice>
+  else if (!sorted.length) body = <div className="nx-gw-empty">This folder is empty.</div>
   else {
     body = (
-      <ul className="nx-gw-gh-list">
+      <ul className="nx-gw-gh-rows">
         {sorted.map(it => (
           <li key={it.path}>
             <button type="button" className="nx-gw-gh-item" onClick={() => (it.type === 'dir' ? go(it.path) : setFile(it.path))}>
-              <span aria-hidden="true">{it.type === 'dir' ? '▸ ' : ''}</span>{it.name}
+              <Icon name={it.type === 'dir' ? 'folder' : 'doc'} size={13} />
+              <span className="name">{it.name}</span>
             </button>
           </li>
         ))}
@@ -76,9 +77,8 @@ export function GithubFiles({ repo, client, branch }) {
     )
   }
   return (
-    <div className="nx-gw-gh-files">
-      <nav aria-label="Path" style={{ padding: '6px 10px', fontSize: 12 }}>{crumbs}</nav>
+    <GithubCard title={`Files on ${branch}`} label="Files" head={<nav aria-label="Path" className="nx-gw-gh-path">{crumbs}</nav>}>
       {body}
-    </div>
+    </GithubCard>
   )
 }
