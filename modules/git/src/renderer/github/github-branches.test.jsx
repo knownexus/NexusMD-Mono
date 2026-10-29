@@ -127,4 +127,40 @@ describe('GithubBranches', () => {
     expect(kids(row('old'))).toEqual(['old', 'Delete'])
     expect(row('main').className).toBe('nx-gw-gh-branch')
   })
+it('shows Loading branches… until the list arrives', async () => {
+    let done
+    listGithubBranches.mockReturnValue(new Promise(r => { done = r }))
+    render(<GithubBranches repo="acme/web" client={client} />)
+    const loading = screen.getByText('Loading branches…')
+    expect(loading.className).toContain('nx-gw-empty')
+    done(BRANCHES)
+    await screen.findByRole('listitem', { name: 'old' })
+    expect(screen.queryByText('Loading branches…')).toBeNull()
+  })
+
+  it('says deleting the head branch of an open PR also closes it', async () => {
+    const confirm = vi.fn(() => false)
+    const openPRs = [
+      { number: 12, sourceBranch: 'old', repo: 'acme/web' },
+      { number: 15, branch: 'old', repo: 'acme/web' },
+      { number: 20, sourceBranch: 'other', repo: 'acme/web' },
+      { number: 31, sourceBranch: 'old', repo: 'acme/web', headRepo: 'fork/web' },
+    ]
+    render(<GithubBranches repo="acme/web" client={client} confirm={confirm} openPRs={openPRs} />)
+    await screen.findByRole('listitem', { name: 'old' })
+    fireEvent.click(within(row('old')).getByRole('button', { name: /delete/i }))
+    expect(confirm).toHaveBeenCalledWith('Delete branch old on GitHub? This also closes pull requests #12, #15.')
+    confirm.mockClear()
+    cleanup()
+    render(<GithubBranches repo="acme/web" client={client} confirm={confirm} openPRs={[openPRs[0]]} />)
+    await screen.findByRole('listitem', { name: 'old' })
+    fireEvent.click(within(row('old')).getByRole('button', { name: /delete/i }))
+    expect(confirm).toHaveBeenCalledWith('Delete branch old on GitHub? This also closes pull request #12.')
+    confirm.mockClear()
+    cleanup()
+    render(<GithubBranches repo="acme/web" client={client} confirm={confirm} openPRs={[openPRs[2]]} />)
+    await screen.findByRole('listitem', { name: 'old' })
+    fireEvent.click(within(row('old')).getByRole('button', { name: /delete/i }))
+    expect(confirm).toHaveBeenCalledWith('Delete branch old on GitHub?')
+  })
 })

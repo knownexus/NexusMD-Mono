@@ -71,7 +71,7 @@ function Listing({ client, repo, kind, refreshKey, onOpen }) {
 }
 
 /** The chosen repository's right pane: a tab per view. History and Files share a picked branch. */
-export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, initialTab = 'prs', confirm }) {
+export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, initialTab = 'prs', confirm, openPRs }) {
   const [tab, setTab] = React.useState(initialTab)
   const [loaded, setLoaded] = React.useState({ repo: null, client: null, list: null })
   const [picked, setPicked] = React.useState('')
@@ -123,7 +123,7 @@ export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, ini
       </div>
       {tab === 'prs' && <Listing client={client} repo={repo} kind="prs" refreshKey={refreshKey} onOpen={openPR} />}
       {tab === 'issues' && <Listing client={client} repo={repo} kind="issues" refreshKey={refreshKey} onOpen={openItem} />}
-      {tab === 'branches' && <GithubBranches repo={repo} client={client} refreshKey={refreshKey} confirm={confirm} onBranchesChanged={onBranchesChanged} />}
+      {tab === 'branches' && <GithubBranches repo={repo} client={client} refreshKey={refreshKey} confirm={confirm} onBranchesChanged={onBranchesChanged} openPRs={openPRs} />}
       {tab === 'history' && branchView(GithubHistory)}
       {tab === 'files' && branchView(GithubFiles)}
     </div>

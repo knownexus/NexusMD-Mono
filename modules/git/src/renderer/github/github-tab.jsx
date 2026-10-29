@@ -100,7 +100,8 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
           <button type="button" className="btn sm ghost" aria-label="Refresh" title="Read this repository from GitHub again" onClick={() => setReloads(n => n + 1)}>Refresh</button>
           <a className="btn sm ghost" href={`https://github.com/${chosen}`} target="_blank" rel="noopener noreferrer">Open on GitHub</a>
         </div>
-        <GithubRepoPane key={chosen} repo={chosen} client={client} refreshKey={refreshKey} openPR={openPR} openItem={openItem} />
+        <GithubRepoPane key={chosen} repo={chosen} client={client} refreshKey={refreshKey} openPR={openPR} openItem={openItem}
+          openPRs={(cached.prs ?? []).filter(p => same(p.repo, chosen))} />
       </aside>
     </div>
   )

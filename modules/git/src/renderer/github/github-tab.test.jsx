@@ -161,5 +161,24 @@ describe('GithubTab', () => {
       await waitFor(() => expect(calls('/branches')).toBe(2))
       await screen.findByText('No commits.')
     })
+it('warns that deleting a branch closes the open PRs Work knows it heads', async () => {
+      const fetch = vi.fn(async path => {
+        const p = String(path)
+        if (p.includes('/branches')) return json([{ name: 'main', commit: { sha: 'a' } }, { name: 'feature/x', commit: { sha: 'b' } }])
+        if (p.includes('/pulls')) return json([])
+        return json({ default_branch: 'main' })
+      })
+      const prs = [{ id: 'gh:acme/web#7', repo: 'acme/web', number: 7, sourceBranch: 'feature/x' }, { id: 'gh:acme/api#9', repo: 'acme/api', number: 9, sourceBranch: 'feature/x' }]
+      setup({ github: { repos: ['acme/web'], http: { fetch }, cached: { prs, issues: [] } } })
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      try {
+        fireEvent.click(screen.getByRole('button', { name: 'Branches' }))
+        const row = await screen.findByRole('listitem', { name: 'feature/x' })
+        fireEvent.click(within(row).getByRole('button', { name: 'Delete' }))
+        expect(confirm).toHaveBeenCalledWith('Delete branch feature/x on GitHub? This also closes pull request #7.')
+      } finally {
+        confirm.mockRestore()
+      }
+    })
   })
 })

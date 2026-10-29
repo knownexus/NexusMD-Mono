@@ -1,11 +1,27 @@
 import React from 'react'
 import { listGithubBranches, createGithubBranch, deleteGithubBranch } from '@nexusmd/core'
 
+const same = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase()
+
+// The open pull requests whose head is this branch of this repository (not a fork's branch of the
+// same name): GitHub closes them when the branch is deleted.
+function headOf(openPRs, repo, name) {
+  return (openPRs || []).filter(pr => (pr.sourceBranch || pr.branch) === name && (!pr.headRepo || same(pr.headRepo, repo)))
+}
+
+export function deleteBranchMessage(name, prs) {
+  const plain = `Delete branch ${name} on GitHub?`
+  if (!prs.length) return plain
+  const numbers = prs.map(pr => `#${pr.number}`).join(', ')
+  return `${plain} This also closes ${prs.length === 1 ? 'pull request' : 'pull requests'} ${numbers}.`
+}
+
 /**
  * A GitHub repository's branches: list with default / protected badges, a form to create one from
  * another branch, and Delete on plain branches. `onBranchesChanged` gets the list after each load.
+ * `openPRs` (Work's mapped PRs) lets Delete warn that it closes the PRs the branch heads.
  */
-export function GithubBranches({ repo, client, refreshKey, confirm = window.confirm, onBranchesChanged }) {
+export function GithubBranches({ repo, client, refreshKey, confirm = window.confirm, onBranchesChanged, openPRs }) {
   const [loaded, setLoaded] = React.useState({ repo: null, client: null, list: [] })
   const [error, setError] = React.useState('')
   const [from, setFrom] = React.useState('')
@@ -17,7 +33,8 @@ export function GithubBranches({ repo, client, refreshKey, confirm = window.conf
   notify.current = onBranchesChanged
 
   // Rows belong to the repository they were loaded for; another repository starts empty.
-  const branches = loaded.repo === repo && loaded.client === client ? loaded.list : []
+  const current = loaded.repo === repo && loaded.client === client
+  const branches = current ? loaded.list : []
   React.useEffect(() => { setFrom(''); setName(''); setError('') }, [repo, client])
 
   React.useEffect(() => {
@@ -61,7 +78,7 @@ export function GithubBranches({ repo, client, refreshKey, confirm = window.conf
     run(async () => { await createGithubBranch(client, repo, { name: next, from: source }); setName('') })
   }
   const remove = b => {
-    if (busyRef.current || !confirm(`Delete branch ${b.name} on GitHub?`)) return
+    if (busyRef.current || !confirm(deleteBranchMessage(b.name, headOf(openPRs, repo, b.name)))) return
     run(() => deleteGithubBranch(client, repo, b.name))
   }
 
@@ -76,6 +93,7 @@ export function GithubBranches({ repo, client, refreshKey, confirm = window.conf
         <button type="submit" className="btn sm" disabled={busy || !name.trim() || !source}>Create</button>
       </form>
       {error && <div role="alert" className="nx-gw-dhead-error">{error}</div>}
+      {!current && !error && client && <div className="nx-gw-empty">Loading branches…</div>}
       <ul aria-label="GitHub branches" className="nx-gw-gh-branch-list">
         {branches.map(b => (
           <li key={b.name} aria-label={b.name} className="nx-gw-gh-branch">
