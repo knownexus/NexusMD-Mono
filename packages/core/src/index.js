@@ -88,6 +88,7 @@ export {
 export {
   normalizeTablePrefs, toggleTableStarred, toggleTableHidden, setTableGroup, renameTableGroup,
   removeTableGroup, toggleSectionCollapsed, tableSections, groupSectionKey, schemaSectionKey, VIEWS_SECTION_KEY,
+  TABLE_GROUP_BY, setTableGroupBy, tablePrefix,
 } from './modules/db-manager/table-prefs.js'
 export {
   columnTypes, validateTableSpec, buildCreateTable, buildCreateView, buildDropStatement, formatDefault, isSingleStatement,

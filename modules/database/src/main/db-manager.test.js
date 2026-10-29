@@ -433,11 +433,16 @@ describe('db-manager IPC — SQL Server statements', () => {
   let ipc, requests, nextResult, queuedResults
 
   // Each request records its parameters, its SQL and whether it asked for array rows.
-  // It gets the next queued result if a test queued any, else `nextResult`.
+  // It gets the next queued result if a test queued any (a function is called, so it can throw), else `nextResult`.
   function fakeRequest() {
     const req = { inputs: {}, sql: null, arrayRowMode: false }
     req.input = (name, value) => { req.inputs[name] = value; return req }
-    req.query = async (sql) => { req.sql = sql; requests.push(req); return queuedResults.length ? queuedResults.shift() : nextResult }
+    req.query = async (sql) => {
+      req.sql = sql
+      requests.push(req)
+      const next = queuedResults.length ? queuedResults.shift() : nextResult
+      return typeof next === 'function' ? next() : next
+    }
     return req
   }
 
@@ -451,6 +456,35 @@ describe('db-manager IPC — SQL Server statements', () => {
 
   // Pools are cached for the process, so these tests share one server name of their own.
   const cfg = { type: 'sqlserver', config: { server: 'statements-host', port: 1433, database: 'd', user: 'u', password: 'p' } }
+
+  it('connect says when each table last changed: its rows where known, else its structure', async () => {
+    queuedResults = [
+      { recordset: [{ TABLE_SCHEMA: 'dbo', TABLE_NAME: 'Member', TABLE_TYPE: 'BASE TABLE' }, { TABLE_SCHEMA: 'audit', TABLE_NAME: 'Note', TABLE_TYPE: 'BASE TABLE' }] },
+      { recordset: [
+        { schemaName: 'dbo', objectName: 'Member', structureAt: new Date('2026-01-01T00:00:00Z'), dataAt: new Date('2026-10-28T09:00:00Z') },
+        { schemaName: 'audit', objectName: 'Note', structureAt: new Date('2026-03-01T00:00:00Z'), dataAt: null },
+      ] },
+    ]
+    const result = await ipc._invoke('db-manager:connect', cfg)
+    expect(result.changed).toEqual({
+      Member: { at: '2026-10-28T09:00:00.000Z', kind: 'data' },
+      'audit.Note': { at: '2026-03-01T00:00:00.000Z', kind: 'structure' },
+    })
+    expect(requests[1].sql).toMatch(/sys\.dm_db_index_usage_stats/)
+  })
+
+  it('connect falls back to structure times without VIEW SERVER STATE, and to none without either', async () => {
+    const denied = () => { throw new Error('VIEW SERVER STATE permission was denied') }
+    const tables = { recordset: [{ TABLE_SCHEMA: 'dbo', TABLE_NAME: 'Member', TABLE_TYPE: 'BASE TABLE' }] }
+    const structure = { recordset: [{ schemaName: 'dbo', objectName: 'Member', structureAt: new Date('2026-02-02T00:00:00Z'), dataAt: null }] }
+    queuedResults = [tables, denied, structure]
+    expect((await ipc._invoke('db-manager:connect', cfg)).changed).toEqual({ Member: { at: '2026-02-02T00:00:00.000Z', kind: 'structure' } })
+    expect(requests[2].sql).not.toMatch(/dm_db_index_usage_stats/)
+
+    queuedResults.push(tables, denied, denied)
+    const result = await ipc._invoke('db-manager:connect', cfg)
+    expect(result).toMatchObject({ ok: true, tables: ['Member'], changed: {} })
+  })
 
   it('insert-row passes every value as a parameter', async () => {
     await ipc._invoke('db-manager:insert-row', { ...cfg, table: 'Setting', values: { Key: 'theme', Value: 'dark', IsOn: true } })

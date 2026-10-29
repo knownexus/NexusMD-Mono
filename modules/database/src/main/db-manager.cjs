@@ -82,6 +82,36 @@ function tableName(type, table) {
 // others carry their schema.
 const listName = (schema, name) => (!schema || schema === 'dbo' ? name : `${schema}.${name}`)
 
+// When each SQL Server table or view last changed, keyed like the table list:
+// { [name]: { at: ISO string, kind: 'data'|'structure' } }. Its rows' last write where the server
+// still has it (index usage stats need VIEW SERVER STATE and clear on a restart), else its last
+// structure change. A login that can read neither gets {}, and the list says "Not known".
+const CHANGE_TIMES_SQL = dataAt => `
+  SELECT s.name AS schemaName, o.name AS objectName, o.modify_date AS structureAt, ${dataAt} AS dataAt
+  FROM sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id
+  WHERE o.type IN ('U', 'V') AND o.is_ms_shipped = 0
+`
+async function readChangeTimes(pool) {
+  const queries = [
+    CHANGE_TIMES_SQL(`(SELECT MAX(u.last_user_update) FROM sys.dm_db_index_usage_stats u
+      WHERE u.database_id = DB_ID() AND u.object_id = o.object_id)`),
+    CHANGE_TIMES_SQL('NULL'),
+  ]
+  for (const sql of queries) {
+    let recordset
+    try { ({ recordset } = await pool.request().query(sql)) } catch { continue }
+    const changed = {}
+    for (const r of recordset ?? []) {
+      const kind = r.dataAt ? 'data' : 'structure'
+      const at = new Date(r.dataAt ?? r.structureAt)
+      if (!r.objectName || Number.isNaN(at.getTime())) continue
+      changed[listName(r.schemaName, r.objectName)] = { at: at.toISOString(), kind }
+    }
+    return changed
+  }
+  return {}
+}
+
 // ─── SQL Server pool factory ──────────────────────────────────────────────────
 
 /** @type {Map<string, import('@azure/identity').TokenCredential>} */
@@ -187,6 +217,7 @@ function makeHandlers(drivers) {
         ok: true,
         tables: result.recordset.map(named),
         views: result.recordset.filter(r => r.TABLE_TYPE === 'VIEW').map(named),
+        changed: await readChangeTimes(pool),
       }
     }
 
