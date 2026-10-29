@@ -23,6 +23,8 @@ import { useNexusData } from '@nexusmd/ui'
 import { WorkProvider } from './work-provider.jsx'
 import { useWork } from './work-context.js'
 import { workBadges } from './work-store.js'
+import { createCapabilities } from '@nexusmd/shell-sdk'
+import { saveGithubConfig } from './github-client.js'
 
 let work
 let data
@@ -33,11 +35,15 @@ function Probe() {
 }
 
 const onRefreshData = vi.fn()
-const host = { cloud: {}, adapters: { windowControls: { onRefreshData } } }
+let capabilities
+let host
+const makeHost = () => { capabilities = createCapabilities(); host = { cloud: {}, capabilities, adapters: { windowControls: { onRefreshData } } } }
+makeHost()
 const mount = (view = 'dashboard') => render(<WorkProvider host={host} view={view}><Probe /></WorkProvider>)
 
 beforeEach(() => {
   vi.clearAllMocks()
+  makeHost()
   SNAPSHOT = BASE
   localStorage.clear()
   workBadges.set({})
@@ -241,5 +247,39 @@ describe('GitHub pull requests', () => {
   it('gives the PR drawer a GitHub http adapter', () => {
     mount()
     expect(typeof data.githubHttp?.fetch).toBe('function')
+  })
+})
+
+describe('what it offers other apps', () => {
+  const ghPr = { id: 'gh:a/b#1', source: 'github' }
+  const adoPr = { id: 'ado:1', source: 'ado' }
+  const ghItem = { id: 'gh:a/b#2', source: 'github' }
+  const adoItem = { id: 'ado:2', source: 'ado' }
+  it('offers GitHub with only its own cached PRs and issues', () => {
+    saveGithubConfig({ pat: 'ghp_x', repos: ['acme/web'] })
+    SNAPSHOT = { ...BASE, PRS: [ghPr, adoPr], WORK_ITEMS: [ghItem, adoItem] }
+    mount()
+    const gh = capabilities.call('work.github')
+    expect(gh.repos).toEqual(['acme/web'])
+    expect(typeof gh.http.fetch).toBe('function')
+    expect(gh.cached.prs).toEqual([ghPr])
+    expect(gh.cached.issues).toEqual([ghItem])
+  })
+  it('offers nothing when GitHub is not configured', () => {
+    mount()
+    expect(capabilities.call('work.github')).toBeNull()
+  })
+  it('opens its drawers on request', () => {
+    mount()
+    act(() => capabilities.call('work.openPR', { id: 'gh:a/b#1' }))
+    expect(screen.getByTestId('drawer').textContent).toBe('pr')
+    act(() => capabilities.call('work.openItem', { id: 'gh:a/b#1' }))
+    expect(screen.getByTestId('drawer').textContent).toBe('wi')
+  })
+  it('stops offering them on unmount', () => {
+    const { unmount } = mount()
+    expect(capabilities.has('work.github')).toBe(true)
+    unmount()
+    expect(capabilities.has('work.github')).toBe(false)
   })
 })
