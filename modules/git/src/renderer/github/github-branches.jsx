@@ -6,14 +6,19 @@ import { listGithubBranches, createGithubBranch, deleteGithubBranch } from '@nex
  * another branch, and Delete on plain branches. `onBranchesChanged` gets the list after each load.
  */
 export function GithubBranches({ repo, client, refreshKey, confirm = window.confirm, onBranchesChanged }) {
-  const [branches, setBranches] = React.useState([])
+  const [loaded, setLoaded] = React.useState({ repo: null, client: null, list: [] })
   const [error, setError] = React.useState('')
   const [from, setFrom] = React.useState('')
   const [name, setName] = React.useState('')
   const [busy, setBusy] = React.useState(false)
+  const busyRef = React.useRef(false)
   const [reloads, setReloads] = React.useState(0)
   const notify = React.useRef(onBranchesChanged)
   notify.current = onBranchesChanged
+
+  // Rows belong to the repository they were loaded for; another repository starts empty.
+  const branches = loaded.repo === repo && loaded.client === client ? loaded.list : []
+  React.useEffect(() => { setFrom(''); setName(''); setError('') }, [repo, client])
 
   React.useEffect(() => {
     if (!client) return undefined
@@ -21,7 +26,7 @@ export function GithubBranches({ repo, client, refreshKey, confirm = window.conf
     Promise.resolve().then(() => listGithubBranches(client, repo)).then(
       list => {
         if (!live) return
-        setBranches(list)
+        setLoaded({ repo, client, list })
         setError('')
         notify.current?.(list)
       },
@@ -34,6 +39,8 @@ export function GithubBranches({ repo, client, refreshKey, confirm = window.conf
   const source = branches.some(b => b.name === from) ? from : defaultName
 
   const run = async action => {
+    if (busyRef.current) return
+    busyRef.current = true
     setBusy(true)
     try {
       await action()
@@ -42,17 +49,19 @@ export function GithubBranches({ repo, client, refreshKey, confirm = window.conf
     } catch (e) {
       setError(e?.message || String(e))
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
   }
   const create = e => {
     e.preventDefault()
+    if (busyRef.current) return
     const next = name.trim()
     if (!next || !source) return
     run(async () => { await createGithubBranch(client, repo, { name: next, from: source }); setName('') })
   }
   const remove = b => {
-    if (!confirm(`Delete branch ${b.name} on GitHub?`)) return
+    if (busyRef.current || !confirm(`Delete branch ${b.name} on GitHub?`)) return
     run(() => deleteGithubBranch(client, repo, b.name))
   }
 
@@ -67,12 +76,12 @@ export function GithubBranches({ repo, client, refreshKey, confirm = window.conf
         <button type="submit" className="btn sm" disabled={busy || !name.trim() || !source}>Create</button>
       </form>
       {error && <div role="alert" className="nx-gw-dhead-error">{error}</div>}
-      <ul aria-label="GitHub branches" className="nx-gw-list">
+      <ul aria-label="GitHub branches" className="nx-gw-gh-branch-list">
         {branches.map(b => (
-          <li key={b.name} aria-label={b.name} className="nx-gw-row">
-            <span className="nx-gw-row-body"><span className="nx-gw-row-title">{b.name}</span></span>
-            {b.isDefault && <span className="nx-gw-chip">default</span>}
-            {b.protected && <span className="nx-gw-chip">protected</span>}
+          <li key={b.name} aria-label={b.name} className="nx-gw-gh-branch">
+            <span className="nx-gw-row-title">{b.name}</span>
+            {b.isDefault && <span className="nx-badge">default</span>}
+            {b.protected && <span className="nx-badge">protected</span>}
             {!b.isDefault && !b.protected && (
               <button type="button" className="btn sm ghost" disabled={busy} onClick={() => remove(b)}>Delete</button>
             )}

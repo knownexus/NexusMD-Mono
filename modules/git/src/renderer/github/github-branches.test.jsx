@@ -85,4 +85,46 @@ describe('GithubBranches', () => {
     rerender(<GithubBranches repo="acme/web" client={client} refreshKey={2} />)
     await waitFor(() => expect(listGithubBranches).toHaveBeenCalledTimes(2))
   })
+
+  it('drops the previous repository rows while another repository loads', async () => {
+    const onBranchesChanged = vi.fn()
+    const { rerender } = render(<GithubBranches repo="acme/web" client={client} onBranchesChanged={onBranchesChanged} />)
+    await screen.findByRole('listitem', { name: 'old' })
+    onBranchesChanged.mockClear()
+    listGithubBranches.mockReturnValue(new Promise(() => {}))
+    rerender(<GithubBranches repo="acme/api" client={client} onBranchesChanged={onBranchesChanged} />)
+    expect(screen.queryByRole('listitem', { name: 'old' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /delete/i })).toBeNull()
+    expect(onBranchesChanged).not.toHaveBeenCalled()
+  })
+
+  it('does not bring the previous rows back when the other repository fails to load', async () => {
+    const { rerender } = render(<GithubBranches repo="acme/web" client={client} />)
+    await screen.findByRole('listitem', { name: 'old' })
+    listGithubBranches.mockRejectedValue(new Error('Not Found'))
+    rerender(<GithubBranches repo="acme/api" client={client} />)
+    expect((await screen.findByRole('alert')).textContent).toContain('Not Found')
+    expect(screen.queryByRole('listitem', { name: 'old' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /delete/i })).toBeNull()
+  })
+
+  it('sends one create request for a same-tick double submit', async () => {
+    render(<GithubBranches repo="acme/web" client={client} />)
+    await screen.findByRole('listitem', { name: 'old' })
+    fireEvent.change(screen.getByLabelText('Branch name'), { target: { value: 'feature/x' } })
+    const form = screen.getByLabelText('Branch name').closest('form')
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    await waitFor(() => expect(listGithubBranches).toHaveBeenCalledTimes(2))
+    expect(createGithubBranch).toHaveBeenCalledTimes(1)
+  })
+
+  it('builds each row as name, badges, then Delete', async () => {
+    render(<GithubBranches repo="acme/web" client={client} />)
+    await screen.findByRole('listitem', { name: 'old' })
+    const kids = el => [...el.children].map(c => c.textContent)
+    expect(kids(row('main'))).toEqual(['main', 'default', 'protected'])
+    expect(kids(row('old'))).toEqual(['old', 'Delete'])
+    expect(row('main').className).toBe('nx-gw-gh-branch')
+  })
 })
