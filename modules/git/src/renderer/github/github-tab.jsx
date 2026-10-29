@@ -2,6 +2,7 @@ import React from 'react'
 import { githubRepoFromRemote, worktreeId } from '@nexusmd/core'
 import { setGitConfig, getGitConfig } from '../git-config.js'
 import { useGithub } from './use-github.js'
+import { GithubRepoPane } from './github-repo-pane.jsx'
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
 const same = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase()
@@ -55,7 +56,9 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
   const github = useGithub(host)
   const copies = useLocalCopies(adapter, config.repos, snapshot)
   if (!github) return null
-  const { repos, cached } = github
+  const { repos, cached, client, refreshKey } = github
+  const openPR = pr => host?.capabilities?.call?.('work.openPR', pr)
+  const openItem = item => host?.capabilities?.call?.('work.openItem', item)
   const chosen = repos.find(r => same(r, config.view.githubRepo)) ?? repos[0]
   const choose = repo => setGitConfig({ view: { ...getGitConfig().view, githubRepo: repo } })
   const prs = repo => (cached.prs ?? []).filter(p => same(p.repo, repo)).length
@@ -89,7 +92,7 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
           <span className="nx-gw-spacer" />
           <a className="btn sm ghost" href={`https://github.com/${chosen}`} target="_blank" rel="noopener noreferrer">Open on GitHub</a>
         </div>
-        <div className="nx-empty" style={{ padding: 16 }}>This repository&apos;s pull requests, issues, branches, history and files will show here.</div>
+        <GithubRepoPane key={chosen} repo={chosen} client={client} refreshKey={refreshKey} openPR={openPR} openItem={openItem} />
       </aside>
     </div>
   )
