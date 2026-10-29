@@ -108,3 +108,24 @@ describe('contents', () => {
     expect(await getGithubFile(c, 'acme/web', { path: 'bin', ref: 'main' })).toEqual({ text: null, reason: 'binary', url: 'u' })
   })
 })
+
+describe('getGithubFile without Node globals', () => {
+  // The desktop renderer runs with contextIsolation and no nodeIntegration: there is no Buffer.
+  it('decodes text, detects binary and reads multi-byte UTF-8 with Buffer undefined', async () => {
+    const binary = b64('a\0b')
+    const utf8 = Buffer.from('caf\u00e9 \u2713', 'utf8').toString('base64')
+    const saved = globalThis.Buffer
+    globalThis.Buffer = undefined
+    try {
+      const c = { get: vi.fn() }
+      c.get.mockResolvedValueOnce({ content: 'aG\nk=\n', encoding: 'base64', size: 2, html_url: 'u' })
+      expect(await getGithubFile(c, 'acme/web', { path: 'a', ref: 'main' })).toEqual({ text: 'hi', reason: null, url: 'u' })
+      c.get.mockResolvedValueOnce({ content: binary, size: 3, html_url: 'u' })
+      expect(await getGithubFile(c, 'acme/web', { path: 'bin', ref: 'main' })).toEqual({ text: null, reason: 'binary', url: 'u' })
+      c.get.mockResolvedValueOnce({ content: utf8, size: 9, html_url: 'u' })
+      expect(await getGithubFile(c, 'acme/web', { path: 'u', ref: 'main' })).toEqual({ text: 'caf\u00e9 \u2713', reason: null, url: 'u' })
+    } finally {
+      globalThis.Buffer = saved
+    }
+  })
+})

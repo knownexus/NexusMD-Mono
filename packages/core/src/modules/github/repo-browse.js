@@ -10,6 +10,8 @@ const COMMIT_PAGE = 50
 const encPath = (p) => String(p || '').split('/').map(encodeURIComponent).join('/')
 const repoPath = (repo) => `repos/${repo}`
 const firstLine = (s) => String(s || '').split('\n')[0]
+// Web APIs only: the desktop renderer has no Node globals such as Buffer.
+const base64Bytes = (b64) => Uint8Array.from(atob(String(b64 || '').replace(/\s/g, '')), ch => ch.charCodeAt(0))
 const authorOf = (c) => c.author?.login || c.commit?.author?.name || ''
 
 export function githubRepoFromRemote(url) {
@@ -77,7 +79,7 @@ export async function getGithubFile(client, repo, { path, ref }) {
   const f = await client.get(`${repoPath(repo)}/contents/${encPath(path)}?ref=${encodeURIComponent(ref)}`)
   const url = f?.html_url || ''
   if ((f?.size || 0) > MAX_TEXT_BYTES) return { text: null, reason: 'too-large', url }
-  const bytes = Buffer.from(String(f?.content || '').replace(/\s/g, ''), 'base64')
+  const bytes = base64Bytes(f?.content)
   if (bytes.includes(0)) return { text: null, reason: 'binary', url }
-  return { text: bytes.toString('utf8'), reason: null, url }
+  return { text: new TextDecoder('utf-8').decode(bytes), reason: null, url }
 }
