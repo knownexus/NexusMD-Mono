@@ -85,6 +85,12 @@ describe('GithubTab', () => {
     await waitFor(() => expect(within(repoItem('acme/web')).getByText('2 issues')).toBeTruthy())
   })
 
+  it('leaves recently closed issues in Work\'s data out of the counts', async () => {
+    setup({ github: { repos: ['acme/web', 'acme/api'], http, cached: { prs: PRS, issues: [...ISSUES, { id: 'i3', projectKey: 'acme/api', state: 'Closed' }] } } })
+    expect(within(repoItem('acme/api')).getByText('0 issues')).toBeTruthy()
+    await screen.findByRole('button', { name: /^Open local copy [(]/ })
+  })
+
 
   it('reads remotes again only when the registered repositories change, not on other view writes', async () => {
     const { git } = setup()

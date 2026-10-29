@@ -75,7 +75,8 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
   const chosen = repos.find(r => same(r, config.view.githubRepo)) ?? repos[0]
   const choose = repo => setGitConfig({ view: { ...getGitConfig().view, githubRepo: repo } })
   const prsOf = repo => (cached.prs ?? []).filter(p => same(p.repo, repo))
-  const issuesOf = repo => (cached.issues ?? []).filter(i => same(i.projectKey, repo))
+  // Work also keeps issues closed in the last few days; the counts are of open ones, as the list is.
+  const issuesOf = repo => (cached.issues ?? []).filter(i => same(i.projectKey, repo) && i.state !== 'Closed')
   const chosenLocal = copies[String(chosen).toLowerCase()]
   const counts = { prs: prsOf(chosen).length, issues: issuesOf(chosen).length }
   return (
