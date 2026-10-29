@@ -1,22 +1,23 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
-import { FilesPane } from './files-pane.jsx'
+import { FilesPane, forgetFilesView } from './files-pane.jsx'
 
-afterEach(cleanup)
+// The tab remembers open folders per worktree for the session; each test starts afresh.
+afterEach(() => { cleanup(); forgetFilesView() })
 
 const repo = { name: 'A', path: 'C:/repos/A' }
 const registered = ['C:/repos/A']
 const files = ['README.md', 'docs/guide.md', 'src/app.jsx']
 const dropped = name => ({ name })
 
-function setup({ plan = { total: 1, conflicts: [], failed: [] }, result = { added: 1, replaced: 0, skipped: 0, failed: [] }, changes } = {}) {
+function setup({ plan = { total: 1, conflicts: [], failed: [] }, result = { added: 1, replaced: 0, skipped: 0, failed: [] }, changes, worktreePath = repo.path } = {}) {
   const adapter = {
     files: vi.fn(async () => ({ files, truncated: false })),
     pathForFile: vi.fn(f => (f.name === 'unknown' ? '' : `D:\\in\\${f.name}`)),
     importFiles: vi.fn(async (_r, _w, _g, _d, _s, options) => (options?.dryRun ? plan : result)),
   }
   const onImported = vi.fn()
-  render(<FilesPane adapter={adapter} repo={repo} worktreePath={repo.path} registered={registered} version={1} onImported={onImported} changes={changes} />)
+  render(<div className="nx-gw-files-body"><FilesPane adapter={adapter} repo={repo} worktreePath={worktreePath} registered={registered} version={1} onImported={onImported} changes={changes} /></div>)
   return { adapter, onImported }
 }
 const dropOn = (el, names) => fireEvent.drop(el, { dataTransfer: { types: ['Files'], files: names.map(dropped) } })
@@ -206,26 +207,92 @@ describe('FilesPane', () => {
     expect(adapter.importFiles).not.toHaveBeenCalled()
   })
 
-  it('marks changed files with their letter and folders holding changes with a dot', async () => {
+  it('marks each changed file by where its change is, in the Changes tab colours, and folders holding changes with a dot', async () => {
     setup({ changes: [
       { path: 'README.md', area: 'unstaged', xy: '.M' },
+      { path: 'README.md', area: 'staged', xy: 'M.' },
       { path: 'docs/guide.md', area: 'untracked', xy: '??' },
+      { path: 'src/app.jsx', area: 'staged', xy: 'A.' },
     ] })
     const readme = await row('README.md')
-    expect(readme.querySelector('.nx-gw-tree-code').textContent).toBe('M')
-    expect(readme.querySelector('.nx-gw-tree-code').title).toBe('Modified')
+    const codes = [...readme.querySelectorAll('.nx-gw-tree-code')]
+    expect(codes.map(c => [c.firstChild.textContent, c.dataset.tone, c.title])).toEqual([['M', 'ok', 'Staged: modified'], ['M', 'warn', 'Not staged: modified']])
+    expect(readme.querySelector('.nx-gw-tree-name').dataset.tone).toBe('warn')
+    expect(readme.textContent).toContain('Staged: modified')
     const docs = await row('docs')
     expect(docs.querySelector('.nx-gw-tree-dot').title).toBe('1 changed file inside')
-    expect((await row('src')).querySelector('.nx-gw-tree-dot')).toBeNull()
+    expect(docs.querySelector('.nx-gw-tree-dot').dataset.tone).toBe('info')
     fireEvent.click(docs)
-    expect((await row('guide.md')).querySelector('.nx-gw-tree-code').textContent).toBe('A')
+    const guide = (await row('guide.md')).querySelector('.nx-gw-tree-code')
+    expect([guide.firstChild.textContent, guide.dataset.tone, guide.title]).toEqual(['?', 'info', 'Untracked'])
     fireEvent.click(await row('src'))
-    expect((await row('app.jsx')).querySelector('.nx-gw-tree-code')).toBeNull()
+    const app = (await row('app.jsx')).querySelector('.nx-gw-tree-code')
+    expect([app.firstChild.textContent, app.dataset.tone]).toEqual(['A', 'ok'])
+  })
+
+  it('explains the colours when there are changes, and not for a clean worktree', async () => {
+    setup({ changes: [{ path: 'README.md', area: 'unstaged', xy: '.M' }] })
+    const legend = await screen.findByRole('list', { name: 'What the colours mean' })
+    expect(legend.textContent).toContain('Staged')
+    expect(legend.textContent).toContain('Not staged')
+    expect(legend.textContent).toContain('Untracked')
+    cleanup()
+    setup()
+    await row('README.md')
+    expect(screen.queryByRole('list', { name: 'What the colours mean' })).toBeNull()
   })
 
   it('shows no marks for a clean worktree', async () => {
     setup()
     await row('README.md')
     expect(document.querySelector('.nx-gw-tree-code, .nx-gw-tree-dot')).toBeNull()
+  })
+
+  describe('coming back to the tab', () => {
+    beforeEach(() => forgetFilesView())
+
+    it('keeps the folders that were open, and the scroll position, when the tab is left and opened again', async () => {
+      setup()
+      fireEvent.click(await row('docs'))
+      await row('guide.md')
+      const scroller = document.querySelector('.nx-gw-files-body')
+      scroller.scrollTop = 120
+      fireEvent.scroll(scroller)
+      cleanup()
+      setup()
+      expect(await row('guide.md')).toBeTruthy()
+      await waitFor(() => expect(document.querySelector('.nx-gw-files-body').scrollTop).toBe(120))
+    })
+
+    it('does not lose the position to a scroll while the files are still loading', async () => {
+      setup()
+      fireEvent.click(await row('docs'))
+      await row('guide.md')
+      const first = document.querySelector('.nx-gw-files-body')
+      first.scrollTop = 120
+      fireEvent.scroll(first)
+      cleanup()
+      // Opened again: the list is slow, and the box is scrolled (clamped to 0) before it arrives.
+      let release
+      const adapter = { files: vi.fn(() => new Promise(r => { release = () => r({ files, truncated: false }) })), pathForFile: vi.fn(), importFiles: vi.fn() }
+      render(<div className="nx-gw-files-body"><FilesPane adapter={adapter} repo={repo} worktreePath={repo.path} registered={registered} version={1} /></div>)
+      const box = document.querySelector('.nx-gw-files-body')
+      box.scrollTop = 0
+      fireEvent.scroll(box)
+      release()
+      expect(await row('guide.md')).toBeTruthy()
+      await waitFor(() => expect(box.scrollTop).toBe(120))
+    })
+
+
+    it('remembers each worktree on its own', async () => {
+      setup()
+      fireEvent.click(await row('docs'))
+      await row('guide.md')
+      cleanup()
+      setup({ worktreePath: 'C:/repos/A-feature' })
+      await row('docs')
+      expect((await screen.findAllByRole('treeitem')).some(r => r.textContent.includes('guide.md'))).toBe(false)
+    })
   })
 })

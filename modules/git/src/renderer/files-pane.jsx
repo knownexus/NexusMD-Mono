@@ -7,29 +7,60 @@ import { ipcMessage } from './use-git-actions.js'
 import { openElsewhere } from './open-elsewhere.js'
 import { fileMarks } from './file-marks.js'
 
-// A row's name, marked when the file is changed (its letter after it) or the folder holds changes (a dot).
+// A row's name, coloured and marked when the file is changed (a letter for each area it is changed
+// in) or the folder holds changes (a dot in the colour of the most pressing one).
 function RowName({ row, marks }) {
   if (row.kind === 'dir') {
-    const n = marks.dirs.get(row.path)
+    const d = marks.dirs.get(row.path)
     return (
       <>
-        <span className="nx-gw-tree-name" data-changed={n ? '' : undefined}>{row.name}</span>
-        {n > 0 && (
-          <span className="nx-gw-tree-dot" title={`${n} changed file${n === 1 ? '' : 's'} inside`}>
-            <span className="nx-sr-only">{`, ${n} changed inside`}</span>
+        <span className="nx-gw-tree-name" data-changed={d ? '' : undefined}>{row.name}</span>
+        {d && (
+          <span className="nx-gw-tree-dot" data-tone={d.tone} title={`${d.count} changed file${d.count === 1 ? '' : 's'} inside`}>
+            <span className="nx-sr-only">{`, ${d.count} changed inside`}</span>
           </span>
         )}
       </>
     )
   }
-  const m = marks.files.get(row.path)
+  const f = marks.files.get(row.path)
   return (
     <>
-      <span className="nx-gw-tree-name" data-tone={m?.tone}>{row.name}</span>
-      {m && <span className="nx-gw-file-code nx-gw-tree-code" data-tone={m.tone} title={m.label}>{m.letter}</span>}
+      <span className="nx-gw-tree-name" data-tone={f?.tone}>{row.name}</span>
+      {f && (
+        <span className="nx-gw-tree-codes">
+          {f.marks.map(m => (
+            <span key={m.area} className="nx-gw-file-code nx-gw-tree-code" data-tone={m.tone} title={m.label}>
+              {m.letter}<span className="nx-sr-only">{`, ${m.label}`}</span>
+            </span>
+          ))}
+        </span>
+      )}
     </>
   )
 }
+
+const LEGEND = [['ok', 'Staged'], ['warn', 'Not staged'], ['info', 'Untracked'], ['bad', 'Conflicted']]
+
+// What the colours mean, shown while the worktree has changes. Conflicted only when there is one.
+function Legend({ marks }) {
+  const tones = new Set([...marks.files.values()].flatMap(f => f.marks.map(m => m.tone)))
+  return (
+    <ul aria-label="What the colours mean" className="nx-gw-files-legend">
+      {LEGEND.filter(([tone]) => tone !== 'bad' || tones.has('bad')).map(([tone, label]) => (
+        <li key={tone}><span className="nx-gw-dot" data-tone={tone} />{label}</li>
+      ))}
+    </ul>
+  )
+}
+
+// The tab is drawn afresh each time it is opened (and for each worktree), so which folders were open
+// and how far it was scrolled are kept here, per worktree, for the rest of the session.
+const views = new Map()
+const viewOf = path => views.get(path) ?? { open: [], scrollTop: 0 }
+const keep = (path, patch) => views.set(path, { ...viewOf(path), ...patch })
+/** Forgets every remembered Files tab (open folders, scroll). */
+export function forgetFilesView() { views.clear() }
 
 // The tree flattened to the rows that are showing: folders open in `open`, in tree order.
 function visibleRows(node, open, depth, out) {
@@ -47,14 +78,16 @@ function visibleRows(node, open, depth, out) {
  * empty space or the root row, into the repository root. Names that already exist are asked about
  * first (ImportDialog). Nothing is staged: new files appear as untracked, replaced ones as unstaged.
  * `onImported()` asks the workspace to read the changes again. `changes` (the worktree's) marks each
- * changed file A, M, D or U as the Changes tab does, and each folder holding one with a dot.
+ * changed file by where its change is (staged, not staged, untracked, conflicted) in the Changes tab's
+ * colours, and each folder holding one with a dot. Open folders and the scroll position are kept per
+ * worktree, so leaving the tab and coming back finds it as it was.
  */
 export function FilesPane({ adapter, host = null, repo, worktreePath, registered, version, onImported = () => {}, onOpenFile = null, changes = [] }) {
   // The right-click menu: { x, y, label, items } for the row it was opened on.
   const [menu, setMenu] = React.useState(null)
   const [list, setList] = React.useState(null)
   const [error, setError] = React.useState(null)
-  const [open, setOpen] = React.useState(() => new Set())
+  const [open, setOpen] = React.useState(() => new Set(viewOf(worktreePath).open))
   const [target, setTarget] = React.useState(null)
   const [ask, setAsk] = React.useState(null)
   const [note, setNote] = React.useState(null)
@@ -77,6 +110,55 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
   const rows = React.useMemo(() => visibleRows(root, open, 0, []), [root, open])
   const marks = React.useMemo(() => fileMarks(changes), [changes])
   const toggle = path => setOpen(prev => { const next = new Set(prev); if (!next.delete(path)) next.add(path); return next })
+
+  // Kept per worktree: the open folders as they change, and the scroll position of the box the tab
+  // scrolls in (the panel's). Another worktree shows its own; the scroll comes back once the files are listed.
+  const shownFor = React.useRef(worktreePath)
+  React.useEffect(() => {
+    if (shownFor.current === worktreePath) return
+    shownFor.current = worktreePath
+    setOpen(new Set(viewOf(worktreePath).open))
+  }, [worktreePath])
+  React.useEffect(() => { if (shownFor.current === worktreePath) keep(worktreePath, { open: [...open] }) }, [open, worktreePath])
+  const rootRef = React.useRef(null)
+  const scroller = () => rootRef.current?.closest('.nx-gw-files-body') ?? rootRef.current?.parentElement ?? null
+  // The scroll is only kept once the files are listed and the old position put back: until then the
+  // box is short, and anything that scrolls it is clamped to 0. The panel also reuses its scrolling box
+  // for the next tab (clamping it as the content goes), so the position is taken as the tab closes (a
+  // layout cleanup runs before that); and a hidden screen (display: none) resets it, so it isn't kept
+  // while hidden and is put back when the screen shows again.
+  const restoredFor = React.useRef(null)
+  React.useLayoutEffect(() => {
+    const box = scroller()
+    if (!box) return undefined
+    let live = true
+    const ready = () => live && restoredFor.current === worktreePath
+    const shown = () => {
+      for (let el = box; el; el = el.parentElement) if (getComputedStyle(el).display === 'none') return false
+      return true
+    }
+    const onScroll = () => { if (ready() && shown()) keep(worktreePath, { scrollTop: box.scrollTop }) }
+    box.addEventListener('scroll', onScroll)
+    const seen = typeof IntersectionObserver === 'function'
+      ? new IntersectionObserver(entries => {
+        if (ready() && entries.some(e => e.isIntersecting)) box.scrollTop = viewOf(worktreePath).scrollTop
+      })
+      : null
+    seen?.observe(box)
+    return () => {
+      if (ready() && shown()) keep(worktreePath, { scrollTop: box.scrollTop })
+      live = false
+      seen?.disconnect()
+      box.removeEventListener('scroll', onScroll)
+    }
+  }, [worktreePath])
+  const listed = !!list
+  React.useLayoutEffect(() => {
+    if (!listed || restoredFor.current === worktreePath) return
+    restoredFor.current = worktreePath
+    const box = scroller()
+    if (box) box.scrollTop = viewOf(worktreePath).scrollTop
+  }, [listed, worktreePath, rows])
 
   const finish = async (dir, sources, replace) => {
     setBusy(true)
@@ -166,9 +248,10 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
 
   const dropping = target !== null
   return (
-    <section aria-label="Files" className="nx-gw-files-tab" data-dropping={dropping || undefined}
+    <section ref={rootRef} aria-label="Files" className="nx-gw-files-tab" data-dropping={dropping || undefined}
       onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       <div className="nx-gw-files-hint">Drag files or folders here from your file explorer. Drop them on a folder to add them to it.</div>
+      {marks.files.size > 0 && <Legend marks={marks} />}
       {note && <div role={note.bad ? 'alert' : 'status'} className={`nx-alert ${note.bad ? 'bad' : 'good'}`}>{note.text}</div>}
       {error && <div role="alert" className="nx-alert bad">{error}</div>}
       {!list && !error && <div style={{ color: 'var(--text-muted)' }}>Loading files…</div>}
