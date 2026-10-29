@@ -36,6 +36,14 @@ describe('GithubRepoPane', () => {
     expect(openItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'gh:acme/web#4' }))
   })
 
+  it('gives each row the leading dot cell the workspace row grid expects', async () => {
+    render(<GithubRepoPane repo="acme/web" client={fakeClient(ROUTES)} refreshKey={0} openPR={vi.fn()} openItem={vi.fn()} />)
+    const row = (await screen.findByText(/Add search/)).closest('button')
+    expect(row.className).toContain('nx-gw-row')
+    expect(row.children[0].className).toContain('nx-gw-dot')
+    expect(row.children[1].className).toContain('nx-gw-row-body')
+  })
+
   it('has the five tabs and switches between them', async () => {
     render(<GithubRepoPane repo="acme/web" client={fakeClient(ROUTES)} refreshKey={0} openPR={vi.fn()} openItem={vi.fn()} />)
     for (const l of ['Pull requests', 'Issues', 'Branches', 'History', 'Files']) expect(screen.getByRole('button', { name: l })).toBeTruthy()

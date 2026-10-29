@@ -33,6 +33,7 @@ function Rows({ rows, onOpen, empty }) {
       {rows.map(r => (
         <li key={r.key}>
           <button type="button" className="nx-gw-row" onClick={() => onOpen(r.raw)}>
+            <span className="nx-gw-dot" data-tone={r.tone} />
             <span className="nx-gw-row-body">
               <span className="nx-gw-row-title">{`#${r.number} ${r.title}`}</span>
               <span className="nx-gw-row-meta">
@@ -59,6 +60,7 @@ function Listing({ client, repo, kind, refreshKey, onOpen }) {
     title: p.title,
     author: p.user?.login || '',
     time: Date.parse(p.updated_at || p.created_at || '') || 0,
+    tone: p.draft ? 'muted' : 'ok',
     raw: p,
   }))
   const open = raw => onOpen(kind === 'prs' ? mapGithubPR(raw, repo) : mapGithubIssue(raw, repo))
