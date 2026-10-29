@@ -29,3 +29,4 @@ export {
   buildLinkRelationOps, submitNewWorkItem,
 } from './workitem-types.js'
 export { makeAdoWorkItemSource, adoMoveToCategory, adoWorkItemUrl } from './work-item-source.js'
+export { ADO_MERGE_STRATEGIES, voteAdoPR, abandonAdoPR, completeAdoPR } from './pr-actions.js'

@@ -52,6 +52,8 @@ const EXPECTED = [
   // Shared PR REST helpers (threads/comments/resolve/reopen/commits/file changes/description)
   'fetchPRThreads', 'postPRThread', 'postPRReply', 'setPRThreadStatus',
   'fetchPRCommits', 'fetchPRFileChanges', 'fetchFileContent', 'updatePRDescription',
+  // ADO PR actions (vote/abandon/complete)
+  'ADO_MERGE_STRATEGIES', 'voteAdoPR', 'abandonAdoPR', 'completeAdoPR',
   // API client module (collections/requests/environments + var resolution)
   'getApiClientAdapters',
   'createCollection', 'readCollectionMeta', 'writeCollectionMeta',
@@ -113,6 +115,8 @@ const EXPECTED = [
   'loadGithubDetail', 'loadGithubComments', 'addGithubComment', 'updateGithubIssue',
   'githubPatchFromAdoField', 'fetchGithubCreateMeta', 'createGithubIssue', 'makeGithubWorkItemSource',
   'fetchGithubPRFiles', 'fetchGithubPRCommits', 'fetchGithubPRThreads', 'postGithubPRComment',
+  'reviewGithubPR', 'closeGithubPR', 'githubMergeMethods', 'mergeGithubPR',
+  'makePRActions',
   'CATEGORY_LANES', 'CATEGORY_LABELS', 'itemCategory', 'adoStateForCategory',
   'WORK_ITEM_STATUS_KEY', 'readProviderStatus', 'recordProviderStatus', 'describeProviderError',
   'PROVIDER_LABELS', 'mergeTeam', 'mergeWorkItemData', 'applyHiddenPeople',

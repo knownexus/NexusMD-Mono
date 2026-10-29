@@ -108,5 +108,7 @@ export function makeGithubClient(http) {
     method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }))
 
-  return { get, getPaged, post: withJson('POST'), patch: withJson('PATCH') }
+  const del = async (path) => parse(await raw(path, { method: 'DELETE' }))
+
+  return { get, getPaged, post: withJson('POST'), patch: withJson('PATCH'), put: withJson('PUT'), del }
 }

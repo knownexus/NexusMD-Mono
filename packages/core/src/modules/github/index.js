@@ -10,3 +10,4 @@ export {
 } from './issues.js'
 export { makeGithubWorkItemSource } from './work-item-source.js'
 export { fetchGithubPRFiles, fetchGithubPRCommits, fetchGithubPRThreads, postGithubPRComment } from './pr-collab.js'
+export { reviewGithubPR, closeGithubPR, githubMergeMethods, mergeGithubPR } from './pr-actions.js'

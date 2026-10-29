@@ -51,6 +51,11 @@ const pr = (o = {}) => ({ number: 5, title: 'P', state: 'open', draft: false, me
   html_url: 'u', head: { ref: 'f' }, base: { ref: 'main' }, requested_reviewers: [], created_at: '2026-01-01T00:00:00Z', ...o })
 
 describe('mapGithubPR', () => {
+  it('headRepo is the head repo full name, null for a deleted fork, the repo only without a head', () => {
+    expect(mapGithubPR(pr({ head: { ref: 'f', repo: { full_name: 'fork/web' } } }), 'acme/web').headRepo).toBe('fork/web')
+    expect(mapGithubPR(pr({ head: { ref: 'f', repo: null } }), 'acme/web').headRepo).toBeNull()
+    expect(mapGithubPR(pr({ head: undefined }), 'acme/web').headRepo).toBe('acme/web')
+  })
   it('status mapping', () => {
     expect(mapGithubPR(pr({ draft: true }), 'a/b').status).toBe('draft')
     expect(mapGithubPR(pr({ state: 'closed', merged_at: '2026-01-02T00:00:00Z' }), 'a/b').status).toBe('merged')

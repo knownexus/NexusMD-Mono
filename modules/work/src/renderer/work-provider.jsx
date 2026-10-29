@@ -16,6 +16,19 @@ import { WorkContext } from './work-context.js'
 import { workBadges } from './work-store.js'
 import { useOffScreens, skippedFetches } from './work-screens.js'
 
+// The drawer's reviewer list reads reviewerDetails, so a vote cast from the drawer is
+// written there until the refreshed PR arrives.
+function withMyVote(pr, myVote, snapshot) {
+  const me = pr.source === 'github' ? snapshot.GITHUB_ME?.login : snapshot.ME?.name
+  if (!me) return pr
+  const list = pr.reviewerDetails || []
+  const at = list.findIndex(r => (r.name || '').toLowerCase() === me.toLowerCase())
+  const reviewerDetails = at >= 0
+    ? list.map((r, i) => (i === at ? { ...r, vote: myVote } : r))
+    : [...list, { id: me, name: me, vote: myVote }]
+  return { ...pr, reviewerDetails }
+}
+
 const VIEW_TO_CATEGORY = { work: 'work', prs: 'pr', builds: 'builds', tests: 'tests' }
 // GitHub PR drawer tabs read through this; it uses whichever token is saved at request time.
 const githubHttp = createGithubHttpAdapter()
@@ -46,6 +59,15 @@ export function WorkProvider({ host, view, children }) {
   const refreshLeftRef = React.useRef(refreshInterval)
 
   const { snapshot, loaded: dataLoaded } = useNexusSnapshot()
+
+  // A refresh brings the provider's real state: show it in an open PR drawer.
+  React.useEffect(() => {
+    setDrawer(dr => {
+      if (!dr || dr.kind !== 'pr') return dr
+      const fresh = (snapshot.PRS || []).find(p => p.id === dr.data.id)
+      return fresh && fresh !== dr.data ? { ...dr, data: fresh } : dr
+    })
+  }, [snapshot.PRS])
 
   // localItems starts as null (sentinel: mirror snapshot.WORK_ITEMS). Shared
   // views update via setItems(arr => arr.map(...)); the setter resolves the
@@ -157,7 +179,16 @@ export function WorkProvider({ host, view, children }) {
       <WorkContext.Provider value={work}>
         {children}
         <DetailDrawer drawer={drawer} onClose={() => setDrawer(null)} setItems={setItemsResolved}
-          onOpenItem={openItem} onOpenPR={openPR} />
+          onOpenItem={openItem} onOpenPR={openPR}
+          onPRChanged={(id, patch) => {
+            const { myVote, ...rest } = patch || {}
+            setDrawer(dr => {
+              if (!dr || dr.kind !== 'pr' || dr.data.id !== id) return dr
+              const next = { ...dr.data, ...rest }
+              return { ...dr, data: myVote == null ? next : withMyVote(next, myVote, snapshot) }
+            })
+            refreshAllData()
+          }} />
         <CreateWorkItemDrawer
           open={!!createWI}
           title={createWI?.title}
