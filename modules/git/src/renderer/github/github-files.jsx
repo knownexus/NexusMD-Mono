@@ -48,7 +48,7 @@ export function GithubFiles({ repo, client, branch }) {
   const parts = path ? path.split('/') : []
   const crumb = (label, p, last) => (last
     ? <span key={`c${p}`} aria-current="page">{label}</span>
-    : <button key={`c${p}`} type="button" onClick={() => go(p)} style={{ all: 'unset', cursor: 'pointer', color: 'var(--accent)' }}>{label}</button>)
+    : <button key={`c${p}`} type="button" className="nx-gw-gh-crumb" onClick={() => go(p)}>{label}</button>)
   const crumbs = [crumb(repo.split('/').pop() || repo, '', !parts.length && !file)]
   parts.forEach((seg, i) => {
     crumbs.push(<span key={`s${i}`}> / </span>)
@@ -67,8 +67,7 @@ export function GithubFiles({ repo, client, branch }) {
       <ul className="nx-gw-gh-list">
         {sorted.map(it => (
           <li key={it.path}>
-            <button type="button" onClick={() => (it.type === 'dir' ? go(it.path) : setFile(it.path))}
-              style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }}>
+            <button type="button" className="nx-gw-gh-item" onClick={() => (it.type === 'dir' ? go(it.path) : setFile(it.path))}>
               <span aria-hidden="true">{it.type === 'dir' ? '▸ ' : ''}</span>{it.name}
             </button>
           </li>

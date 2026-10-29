@@ -44,4 +44,16 @@ describe('GithubFiles', () => {
     render(<GithubFiles repo="acme/web" client={client} branch="main" />)
     expect(await screen.findByText('Rate limited')).toBeTruthy()
   })
+
+  it('styles its row and breadcrumb buttons by class, keeping their focus ring', async () => {
+    listGithubContents.mockImplementation(async (c, r, { path }) => (path ? [] : ROOT))
+    render(<GithubFiles repo="acme/web" client={client} branch="main" />)
+    const row = (await screen.findByText('src')).closest('button')
+    expect(row.className).toBe('nx-gw-gh-item')
+    expect(row.style.all).toBe('')
+    fireEvent.click(row)
+    const crumb = await screen.findByRole('button', { name: 'web' })
+    expect(crumb.className).toBe('nx-gw-gh-crumb')
+    expect(crumb.style.all).toBe('')
+  })
 })

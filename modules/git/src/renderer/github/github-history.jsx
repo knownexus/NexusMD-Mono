@@ -64,8 +64,7 @@ export function GithubHistory({ repo, client, branch, refreshKey }) {
       <ul className="nx-gw-gh-list">
         {state.commits.map(c => (
           <li key={c.sha}>
-            <button type="button" aria-pressed={selected === c.sha} onClick={() => setSelected(s => (s === c.sha ? null : c.sha))}
-              style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }}>
+            <button type="button" className="nx-gw-gh-item" aria-pressed={selected === c.sha} onClick={() => setSelected(s => (s === c.sha ? null : c.sha))}>
               <span>{c.message.split('\n')[0]}</span>
               <span className="muted" style={{ fontSize: 11 }}>
                 {' · '}{c.author}{c.date ? ` · ${timeAgo(c.date)} ago` : ''}{' · '}<span className="mono">{c.sha.slice(0, 7)}</span>

@@ -35,4 +35,12 @@ describe('GithubHistory', () => {
     render(<GithubHistory repo="acme/web" client={client} branch="main" />)
     expect(await screen.findByText('Not Found')).toBeTruthy()
   })
+
+  it('styles its commit buttons by class, keeping their focus ring', async () => {
+    listGithubCommits.mockResolvedValue(COMMITS)
+    render(<GithubHistory repo="acme/web" client={client} branch="main" />)
+    const row = (await screen.findByText(/Fix bug/)).closest('button')
+    expect(row.className).toBe('nx-gw-gh-item')
+    expect(row.style.all).toBe('')
+  })
 })
