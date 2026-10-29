@@ -30,8 +30,13 @@ export function useGithub(host) {
     const onData = payload => { if (payload?.moduleId) return; clearTimeout(timer); timer = setTimeout(read, 0) }
     // A different host from the one first read.
     if (readFor.current !== host) { readFor.current = host; setState(s => ({ ...s, github: readGithub(host) })) }
+    // Work registers its capabilities in its provider's effect, which React runs after this one
+    // (parents' effects follow their children's): with nothing found yet, read once more after it.
+    const settle = setTimeout(() => {
+      if (live) setState(s => { if (s.github) return s; const github = readGithub(host); return github ? { ...s, github } : s })
+    }, 0)
     core.on('data:updated', onData)
-    return () => { live = false; clearTimeout(timer); core.off('data:updated', onData) }
+    return () => { live = false; clearTimeout(timer); clearTimeout(settle); core.off('data:updated', onData) }
   }, [host])
   const { github, refreshKey } = state
   const http = github?.http ?? null

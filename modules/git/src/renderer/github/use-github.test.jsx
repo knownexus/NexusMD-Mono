@@ -25,3 +25,18 @@ describe('useGithub', () => {
     expect(h.capabilities.call).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('useGithub at startup', () => {
+  it('finds Work\'s GitHub registered by an ancestor\'s effect after its own first read', async () => {
+    // React runs a child's effects before its parent's: Work's provider registers after the hook reads.
+    const React = await import('react')
+    const caps = new Map()
+    const h = { capabilities: { provide: vi.fn(), has: n => caps.has(n), call: n => caps.get(n)() } }
+    function WorkLike({ children }) {
+      React.useEffect(() => { caps.set('work.github', () => ({ repos: ['acme/web'], http: { fetch: vi.fn() }, cached: { prs: [], issues: [] } })) }, [])
+      return children
+    }
+    const { result } = renderHook(() => useGithub(h), { wrapper: WorkLike })
+    await waitFor(() => expect(result.current?.repos).toEqual(['acme/web']))
+  })
+})

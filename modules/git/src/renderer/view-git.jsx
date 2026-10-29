@@ -129,7 +129,13 @@ function GitWorkspace({ adapter, host }) {
   ]
   // A remembered GitHub tab falls back to the group under it once GitHub is gone.
   const onGithub = !!github && view.tab === 'github'
-  const setView = patch => setGitConfig({ view: { ...getGitConfig().view, ...patch } })
+  // While GitHub isn't there (not yet registered by Work, or gone), moving anywhere forgets a
+  // remembered GitHub tab, so GitHub turning up later never takes the page from where the user is.
+  const setView = patch => {
+    const current = getGitConfig().view
+    const forget = !github && current.tab === 'github' && !('tab' in patch) ? { tab: undefined } : {}
+    setGitConfig({ view: { ...current, ...forget, ...patch } })
+  }
   const selectedTree = scoped.worktrees.find(t => worktreeId(t) === view.selected)
   const selectedBranch = scoped.inactiveBranches.find(b => b.id === view.selected)
   const treeKey = selectedTree ? worktreeId(selectedTree) : null
@@ -369,11 +375,12 @@ function GitWorkspace({ adapter, host }) {
           setEditing(null)
         } : null}
         onSaved={(next, saved) => {
-          // Saving shows the group with nothing selected; declining keeps the dialog open and nothing saved.
+          // Saving shows the group with nothing selected (leaving the GitHub tab, where + Group stays
+          // offered); declining keeps the dialog open and nothing saved.
           if (!mayLeave()) return
           // Groups never change the registered list, so the snapshot isn't reloaded for the save itself.
           save(next)
-          setView({ group: saved.name, selected: null })
+          setView({ tab: undefined, group: saved.name, selected: null })
           setEditing(null)
           refresh()
         }} />

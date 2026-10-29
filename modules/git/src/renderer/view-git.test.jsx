@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, within, waitFor } from '@testing-library/react'
+import React from 'react'
+import { render, screen, fireEvent, cleanup, within, waitFor, act } from '@testing-library/react'
+import { core } from '@nexusmd/core'
 import { ViewGit } from './view-git.jsx'
 import { setGitConfig, getGitConfig } from './git-config.js'
 import { clearGitSnapshotCache } from './use-git-snapshot.js'
@@ -426,5 +428,56 @@ describe('ViewGit GitHub tab', () => {
     expect(getGitConfig().view).toMatchObject({ group: 'Registered repos', selected: 'C:/repos/A' })
     expect(getGitConfig().view.tab).toBeUndefined()
     expect(await screen.findByRole('region', { name: 'A' })).toBeTruthy()
+  })
+
+  it('shows a remembered GitHub tab when Work registers GitHub in its provider\'s effect, after the page\'s first read', async () => {
+    configure()
+    setGitConfig({ view: { ...getGitConfig().view, tab: 'github' } })
+    const provided = {}
+    const host = caps(provided)
+    host.capabilities.has = name => name in provided
+    // Work's provider wraps the page; React runs its effect after the page's.
+    function WorkLike({ children }) {
+      React.useEffect(() => { provided['work.github'] = github }, [])
+      return children
+    }
+    render(<WorkLike><ViewGit adapters={{ git: adapter({ remotes }) }} host={host} /></WorkLike>)
+    expect(await screen.findByRole('list', { name: 'GitHub repositories' })).toBeTruthy()
+    expect(within(await strip()).getByRole('tab', { name: 'GitHub 2 repos' }).getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('stays where the user went when a remembered GitHub tab only becomes available later', async () => {
+    configure()
+    setGitConfig({ view: { ...getGitConfig().view, tab: 'github' } })
+    const provided = {}
+    render(<ViewGit adapters={{ git: adapter({ remotes }) }} host={caps(provided)} />)
+    await screen.findByRole('region', { name: 'A' })
+    fireEvent.click(screen.getByRole('button', { name: /Jump to branch/ }))
+    const box = screen.getByRole('combobox', { name: 'Branch name' })
+    fireEvent.change(box, { target: { value: 'b' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(getGitConfig().view.selected).toBe('C:/repos/B')
+    provided['work.github'] = github
+    act(() => core._emit('data:updated'))
+    expect(await within(await strip()).findByRole('tab', { name: 'GitHub 2 repos' })).toBeTruthy()
+    expect(screen.queryByRole('list', { name: 'GitHub repositories' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'A' })).toBeTruthy()
+    expect(getGitConfig().view.tab).toBeUndefined()
+  })
+
+  it('shows a group saved from the GitHub tab', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter({ remotes }) }} host={caps({ 'work.github': github })} />)
+    const tabs = await strip()
+    await screen.findByRole('region', { name: 'A' })
+    fireEvent.click(within(tabs).getByRole('tab', { name: 'GitHub 2 repos' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New group' }))
+    fireEvent.change(await screen.findByLabelText('Group name'), { target: { value: 'Team A' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'A' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(getGitConfig().view).toMatchObject({ group: 'Team A', selected: null })
+    expect(getGitConfig().view.tab).toBeUndefined()
+    await waitFor(() => expect(within(tabs).getByRole('tab', { name: 'Team A 1 repo' }).getAttribute('aria-selected')).toBe('true'))
+    expect(screen.queryByRole('list', { name: 'GitHub repositories' })).toBeNull()
   })
 })
