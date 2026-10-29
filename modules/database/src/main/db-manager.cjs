@@ -528,11 +528,9 @@ function makeHandlers(drivers) {
   }
 
   async function handleRunQuery(_e, { type, config, sql }) {
-    const trimmed = sql.trimStart().toUpperCase()
-    const ALLOWED = ['SELECT', 'WITH', 'DELETE', 'INSERT', 'UPDATE']
-    if (!ALLOWED.some(p => trimmed.startsWith(p))) {
-      throw new Error('Only SELECT, WITH (CTE), DELETE, INSERT, and UPDATE statements are permitted.')
-    }
+    // Any statement runs; the Query tab asks before destructive ones. Leading comments are skipped
+    // so SQLite's fallback below sees the first real keyword.
+    const trimmed = sql.replace(/^(\s+|--[^\n]*(\n|$)|\/\*[\s\S]*?\*\/)*/, '').toUpperCase()
 
     // Every result set the statement returns, each with its column names even when it has no rows,
     // so an empty SELECT still shows its headers. `columns`/`rows` are the first set's.

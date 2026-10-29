@@ -1826,6 +1826,42 @@ describe('ViewDbManager — query results', () => {
     expect(screen.getByText('1 row returned')).toBeTruthy()
     expect(screen.getByText('2 rows returned')).toBeTruthy()
   })
+
+  it('runs a DECLARE batch without asking', async () => {
+    await queryTab()
+    const sql = 'DECLARE @n INT; SELECT @n = 1; SELECT @n AS n'
+    fireEvent.change(screen.getByLabelText('SQL query'), { target: { value: sql } })
+    fireEvent.click(screen.getByText('Run query'))
+    await waitFor(() => expect(adapters.dbManager.runQuery).toHaveBeenCalledWith('sqlite', expect.anything(), sql))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('explains each destructive statement and runs only once confirmed', async () => {
+    await queryTab()
+    adapters.dbManager.runQuery.mockClear()
+    const sql = 'SELECT 1; -- tidy up\nDROP TABLE patients; DELETE FROM visits; UPDATE staff SET a = 1 WHERE id = 2'
+    fireEvent.change(screen.getByLabelText('SQL query'), { target: { value: sql } })
+    fireEvent.click(screen.getByText('Run query'))
+    const prompt = within(await screen.findByRole('alertdialog'))
+    expect(prompt.getByText('Drops the table patients and every row in it.')).toBeTruthy()
+    expect(prompt.getByText('Deletes every row in visits: there is no WHERE clause.')).toBeTruthy()
+    expect(prompt.queryByText(/staff/)).toBeNull()
+    expect(adapters.dbManager.runQuery).not.toHaveBeenCalled()
+    fireEvent.click(prompt.getByRole('button', { name: 'Run query' }))
+    await waitFor(() => expect(adapters.dbManager.runQuery).toHaveBeenCalledWith('sqlite', expect.anything(), sql))
+  })
+
+  it('does not run a destructive query when the prompt is cancelled', async () => {
+    await queryTab()
+    adapters.dbManager.runQuery.mockClear()
+    fireEvent.change(screen.getByLabelText('SQL query'), { target: { value: 'TRUNCATE TABLE patients' } })
+    fireEvent.click(screen.getByText('Run query'))
+    const prompt = within(await screen.findByRole('alertdialog'))
+    expect(prompt.getByText(/Removes every row from patients/)).toBeTruthy()
+    fireEvent.click(prompt.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(adapters.dbManager.runQuery).not.toHaveBeenCalled()
+  })
 })
 
 describe('ViewDbManager — editing a saved connection', () => {

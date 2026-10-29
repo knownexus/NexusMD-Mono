@@ -215,10 +215,10 @@ describe('db-manager IPC — SQLite', () => {
     expect(result.affected).toBe(2)
   })
 
-  it('run-query blocks unrelated statements', async () => {
-    await expect(
-      ipc._invoke('db-manager:run-query', { ...cfg, sql: 'DROP TABLE users' }),
-    ).rejects.toThrow('Only SELECT')
+  it('run-query runs any statement, leaving confirmation to the Query tab', async () => {
+    const result = await ipc._invoke('db-manager:run-query', { ...cfg, sql: 'DROP TABLE users' })
+    expect(mockSqliteDb.prepare.mock.calls.at(-1)[0]).toBe('DROP TABLE users')
+    expect(result.error).toBeUndefined()
   })
 
   it('run-query allows DELETE', async () => {

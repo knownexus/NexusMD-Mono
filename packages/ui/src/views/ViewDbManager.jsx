@@ -199,10 +199,31 @@ function fillTemplate(sql, table) {
 }
 const isTemplate = q => q.sql.includes(TABLE_TOKEN)
 
-// Asked about before running: schema changes, and DELETE / UPDATE with no WHERE.
-const RISKY_STATEMENT = /^\s*(drop|truncate|alter)\b|^\s*(delete|update)\b(?![\s\S]*\bwhere\b)/i
-// Every statement is checked, not just the first: "select 1; drop table x" still asks.
-const RISKY_SQL = { test: sql => sql.split(';').some(st => RISKY_STATEMENT.test(st)) }
+// Asked about before running: schema changes, and DELETE / UPDATE with no WHERE. Each risky
+// statement gets a line saying what it will do. Every statement is checked, not just the first,
+// and comments are dropped first, so "select 1; -- note\ndrop table x" still asks.
+const RISKY_EXPLAINERS = [
+  [/^drop\s+database\s+(\S+)/i, n => `Drops the database ${n}, with every table and row in it.`],
+  [/^drop\s+(table|view|index|procedure|proc|function|trigger|schema)\s+(?:if\s+exists\s+)?(\S+)/i,
+    (kind, n) => (/^table$/i.test(kind)
+      ? `Drops the table ${n} and every row in it.`
+      : `Drops the ${kind.toLowerCase() === 'proc' ? 'procedure' : kind.toLowerCase()} ${n}.`)],
+  [/^drop\b/i, () => 'Drops a database object.'],
+  [/^truncate\s+table\s+(\S+)/i, n => `Removes every row from ${n} at once, without checking each row.`],
+  [/^alter\s+table\s+(\S+)\s+drop\b/i, n => `Removes part of ${n}. A dropped column loses its data.`],
+  [/^alter\s+(\w+)\s+(\S+)/i, (kind, n) => `Changes the structure of the ${kind.toLowerCase()} ${n}.`],
+  [/^delete\s+(?:from\s+)?(\S+)/i, n => `Deletes every row in ${n}: there is no WHERE clause.`],
+  [/^update\s+(\S+)/i, n => `Changes every row in ${n}: there is no WHERE clause.`],
+]
+const stripSqlComments = sql => sql.replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, ' ')
+const describeRisks = sql => stripSqlComments(sql).split(';').map(s => s.trim()).flatMap((st) => {
+  if (/^(delete|update)\b/i.test(st) && /\bwhere\b/i.test(st)) return []
+  for (const [re, explain] of RISKY_EXPLAINERS) {
+    const m = st.match(re)
+    if (m) return [{ statement: st, explanation: explain(...m.slice(1)) }]
+  }
+  return []
+})
 const MUTATING_SQL = /^\s*(insert|update|delete|merge|drop|truncate|alter|create)\b/i
 
 const typing = el => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
@@ -594,6 +615,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const [nullFilter, setNullFilter]   = useState(null)        // { col, empty }: only the loaded rows whose col is (or isn't) NULL
   const [structureFocus, setStructureFocus] = useState(null)  // the foreign key Structure scrolls to and marks
   const [activeBuilder, setActiveBuilder] = useState(null)    // 'search' | 'insert' | 'update' | 'delete' | 'join' | 'aggregate' | null
+  const [riskyQuery, setRiskyQuery]   = useState(null)        // { sql, risks: [{ statement, explanation }] } awaiting confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [tableFilter, setTableFilter] = useState('')
   const [listFilter, setListFilter]   = useState('all')       // all | starred | opened | hidden
@@ -1005,10 +1027,12 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     setActiveBuilder(null)
   }, [])
 
-  const runQuery = useCallback(async (override) => {
+  // `confirmed` is set once the risky-query prompt has been accepted.
+  const runQuery = useCallback(async (override, confirmed = false) => {
     const sql = (typeof override === 'string' ? override : sqlQuery).trim()
     if (!sql || queryRunning) return
-    if (RISKY_SQL.test(sql) && !window.confirm(`Run this on ${sessionName(session)}?\n\n${sql}\n\nIt changes the schema or every row, and can't be undone from NexusMD.`)) return
+    const risks = confirmed ? [] : describeRisks(sql)
+    if (risks.length) { setRiskyQuery({ sql, risks }); return }
     setQueryResult(null)
     setQueryRunning(true)
     const started = performance.now()
@@ -1679,6 +1703,29 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
           confirmLabel="Delete"
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
+      {riskyQuery && (
+        <ConfirmDialog
+          title={`Run this on ${sessionName(session)}?`}
+          body={
+            <div className="nx-db-muted">
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {riskyQuery.risks.map((r, i) => (
+                  <li key={i} style={{ marginBottom: 6 }}>
+                    <code>{r.statement.length > 80 ? `${r.statement.slice(0, 80)}…` : r.statement}</code>
+                    <div>{r.explanation}</div>
+                  </li>
+                ))}
+              </ul>
+              <p style={{ margin: '8px 0 0' }}>This can't be undone from NexusMD.</p>
+            </div>
+          }
+          confirmLabel="Run query"
+          busyLabel="Running…"
+          icon="alert"
+          onConfirm={() => { const { sql } = riskyQuery; setRiskyQuery(null); runQuery(sql, true) }}
+          onCancel={() => setRiskyQuery(null)}
         />
       )}
     </div>
@@ -3243,7 +3290,7 @@ function TableSelect({ id, tables, value, onChange, placeholder = 'Select a tabl
   )
 }
 
-function ConfirmDialog({ title, body, confirmLabel, onConfirm, onCancel }) {
+function ConfirmDialog({ title, body, confirmLabel, busyLabel = 'Deleting…', icon = 'trash', onConfirm, onCancel }) {
   const [busy, setBusy] = useState(false)
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') onCancel() }
@@ -3254,15 +3301,15 @@ function ConfirmDialog({ title, body, confirmLabel, onConfirm, onCancel }) {
     <div className="plm-veil" onMouseDown={e => { if (e.target === e.currentTarget) onCancel() }}>
       <div className="plm nx-db-confirm" role="alertdialog" aria-modal="true" aria-label={title}>
         <div className="plm-head">
-          <span className="plm-ic nx-db-confirm-ic"><Icon name="trash" size={16} /></span>
+          <span className="plm-ic nx-db-confirm-ic"><Icon name={icon} size={16} /></span>
           <div className="plm-ttl"><h2>{title}</h2></div>
         </div>
-        <div className="plm-body"><p className="nx-db-muted" style={{ margin: 0 }}>{body}</p></div>
+        <div className="plm-body">{typeof body === 'string' ? <p className="nx-db-muted" style={{ margin: 0 }}>{body}</p> : body}</div>
         <div className="plm-foot">
           <button type="button" className="btn ghost" onClick={onCancel}>Cancel</button>
           <button type="button" className="btn danger-solid" autoFocus disabled={busy}
             onClick={async () => { setBusy(true); try { await onConfirm() } finally { setBusy(false) } }}>
-            {busy ? 'Deleting…' : confirmLabel}
+            {busy ? busyLabel : confirmLabel}
           </button>
         </div>
       </div>
