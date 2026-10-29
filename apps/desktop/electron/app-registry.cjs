@@ -241,24 +241,98 @@ function register(ipcMain, env = process.env, modules = MODULES, scanned = null,
   ipcMain.on('registry:preload-descriptors', (event) => { event.returnValue = getPreloadDescriptors(env, modules, disabled); });
 }
 
-// Starts each installed app's main-process side. One app failing to start never stops the others,
-// and an app with no main-process side (most of them) simply has nothing to start.
-// Returns { disposeAll } for shutdown.
-function registerModules(ctx, env = process.env, modules = MODULES, log = console, disabled = []) {
-  const handles = [];
-  for (const id of installedModuleIds(env, modules, disabled)) {
-    if (!modules[id].main) continue;
-    try {
-      const handle = modules[id].main().register(ctx);
-      if (handle) handles.push({ id, handle });
-    } catch (err) {
-      log.error(`app "${id}" failed to start`, err);
-    }
+// One app's view of ctx: the IPC it registers and the windows it opens are noted, so that stopping
+// the app (to run a newer version without restarting NexusMD) can take them away again.
+function scopeContext(ctx) {
+  const handled = new Set();
+  const listening = [];
+  const windows = new Set();
+  const scoped = { ...ctx };
+  if (ctx.ipcMain) {
+    const ipc = ctx.ipcMain;
+    scoped.ipcMain = {
+      handle: (channel, fn) => { ipc.handle(channel, fn); handled.add(channel); },
+      handleOnce: (channel, fn) => { ipc.handleOnce(channel, fn); handled.add(channel); },
+      removeHandler: (channel) => { ipc.removeHandler(channel); handled.delete(channel); },
+      on: (channel, fn) => { ipc.on(channel, fn); listening.push([channel, fn]); return scoped.ipcMain; },
+      once: (channel, fn) => { ipc.once(channel, fn); listening.push([channel, fn]); return scoped.ipcMain; },
+      removeListener: (channel, fn) => { ipc.removeListener(channel, fn); return scoped.ipcMain; },
+    };
+  }
+  if (ctx.BrowserWindow) {
+    scoped.BrowserWindow = class extends ctx.BrowserWindow {
+      constructor(...args) {
+        super(...args);
+        windows.add(this);
+        this.on('closed', () => windows.delete(this));
+      }
+    };
   }
   return {
-    disposeAll: () => Promise.allSettled(handles.map(async ({ id, handle }) => {
-      try { await handle.dispose?.(); } catch (err) { log.error(`app "${id}" failed to shut down`, err); }
+    ctx: scoped,
+    windows: () => [...windows].filter(w => !w.isDestroyed()),
+    release() {
+      for (const channel of handled) ctx.ipcMain.removeHandler(channel);
+      for (const [channel, fn] of listening) ctx.ipcMain.removeListener(channel, fn);
+      for (const win of windows) if (!win.isDestroyed()) win.close();
+      handled.clear();
+      listening.length = 0;
+    },
+  };
+}
+
+// Starts each installed app's main-process side. One app failing to start never stops the others,
+// and an app with no main-process side (most of them) simply has nothing to start.
+// Returns { disposeAll } for shutdown, busy(id) and restart(id, module) for applying an update.
+function registerModules(ctx, env = process.env, modules = MODULES, log = console, disabled = []) {
+  const started = new Map();
+  const start = (id, mod) => {
+    const scope = scopeContext(ctx);
+    try {
+      started.set(id, { scope, handle: mod.main().register(scope.ctx) || null });
+    } catch (err) {
+      scope.release();
+      throw err;
+    }
+  };
+  const stop = async id => {
+    const entry = started.get(id);
+    if (!entry) return;
+    started.delete(id);
+    try { await entry.handle?.dispose?.(); } catch (err) { log.error(`app "${id}" failed to shut down`, err); }
+    entry.scope.release();
+  };
+  for (const id of installedModuleIds(env, modules, disabled)) {
+    if (!modules[id].main) continue;
+    try { start(id, modules[id]); } catch (err) { log.error(`app "${id}" failed to start`, err); }
+  }
+  return {
+    disposeAll: () => Promise.allSettled([...started.entries()].map(async ([id, { handle }]) => {
+      try { await handle?.dispose?.(); } catch (err) { log.error(`app "${id}" failed to shut down`, err); }
     })),
+    // What stopping the app now would interrupt: work it reports (handle.busy(), optional) and its windows.
+    busy: id => {
+      const entry = started.get(id);
+      if (!entry) return { running: false, windows: 0 };
+      let running = false;
+      try { running = !!entry.handle?.busy?.(); } catch { /* an app that can't say is treated as idle */ }
+      return { running, windows: entry.scope.windows().length };
+    },
+    // Stops the app and starts `next` (a MODULES entry) in its place. If the new version fails to
+    // start, the previous one is started again, so the app keeps working.
+    restart: async (id, next) => {
+      const previous = modules[id];
+      await stop(id);
+      try {
+        if (next.main) start(id, next);
+        modules[id] = next;
+        return { ok: true };
+      } catch (err) {
+        log.error(`app "${id}" failed to start its new version; going back to the one it was running`, err);
+        try { if (previous?.main) start(id, previous); } catch (again) { log.error(`app "${id}" failed to start again`, again); }
+        return { ok: false, error: err.message };
+      }
+    },
   };
 }
 

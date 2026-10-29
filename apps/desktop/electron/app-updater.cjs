@@ -1,8 +1,9 @@
 'use strict';
 
 // App updates: downloads newer versions of the installed apps into updatesDir, where resolveApps
-// (app-registry.cjs) picks them up at the next launch. The shell itself still updates through
-// electron-updater (updater.cjs); this only ever replaces app folders.
+// (app-registry.cjs) picks them up at the next launch, or sooner when the user applies them
+// (app-apply.cjs). The shell itself still updates through electron-updater (updater.cjs); this only
+// ever replaces app folders.
 //
 // The index (apps-index.json, published with each app release by build/app-release.mjs) is trusted
 // only with a valid signature from the key built into the app, and each package only if it is the
@@ -114,19 +115,25 @@ async function checkAppUpdates({
   return result;
 }
 
-// Checks shortly after launch, then every few hours. Returns a function that stops it.
+// Checks shortly after launch, then every few hours. Returns { stop, check }: check() checks now
+// (Settings' "Check for app updates"), sharing a check already under way, and resolves to its result.
 function startAppUpdater({ delayMs = 30_000, everyMs = 6 * 60 * 60_000, onChecked = () => {}, ...options }) {
-  let running = false;
-  const check = async () => {
-    if (running) return;
-    running = true;
-    try { onChecked(await checkAppUpdates(options)); } finally { running = false; }
+  let current = null;
+  const check = () => {
+    current ??= (async () => {
+      try {
+        const result = await checkAppUpdates(options);
+        onChecked(result);
+        return result;
+      } finally { current = null; }
+    })();
+    return current;
   };
   const first = setTimeout(check, delayMs);
   const every = setInterval(check, everyMs);
   first.unref?.();
   every.unref?.();
-  return () => { clearTimeout(first); clearInterval(every); };
+  return { stop: () => { clearTimeout(first); clearInterval(every); }, check };
 }
 
 module.exports = { INDEX_URL, checkAppUpdates, pruneDownloads, startAppUpdater };

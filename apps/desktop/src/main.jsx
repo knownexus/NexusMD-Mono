@@ -35,6 +35,7 @@ import {
   moduleAdapters, moduleView, findPopout, ModuleProviders, useModuleBadges, useModuleOffViews, ModuleTopbar, ModuleBanners,
 } from './shell/modules.js'
 import { host, takeWaitingNavigation } from './shell/host.js'
+import { AppUpdatesBanner } from './app-updates.jsx'
 
 const adapters = {
   ...createNoOpAdapters(),
@@ -405,6 +406,7 @@ function App() {
             )}
             <WindowControls />
           </header>
+          <AppUpdatesBanner />
           <ModuleBanners />
           <section style={{
             flex: 1,

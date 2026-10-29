@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { checkAppUpdates, pruneDownloads } from './app-updater.cjs'
+import { checkAppUpdates, pruneDownloads, startAppUpdater } from './app-updater.cjs'
 import { packApp, sha256, signIndex } from './app-package.cjs'
 import { resolveApps } from './app-registry.cjs'
 
@@ -146,5 +146,25 @@ describe('pruneDownloads', () => {
     // A NexusMD update brought git 1.0.2 with it: 1.0.1 and 1.0.2 are no use any more.
     pruneDownloads({ apps: [{ id: 'git', version: '1.0.2', installedVersion: '1.0.2' }], updatesDir, log })
     expect(left('git')).toEqual(['1.0.3'])
+  })
+})
+
+describe('startAppUpdater', () => {
+  const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn() }
+  it('checks on demand, sharing a check already under way', async () => {
+    let calls = 0
+    const fetch = vi.fn(async () => { calls++; return { ok: false, status: 503 } })
+    const onChecked = vi.fn()
+    const updater = startAppUpdater({ delayMs: 60_000, apps: [], updatesDir: os.tmpdir(), fetch, indexUrl: INDEX_URL, publicKey: PUB, log, onChecked })
+    try {
+      const [a, b] = await Promise.all([updater.check(), updater.check()])
+      expect(a).toBe(b)
+      expect(a.error).toMatch(/503/)
+      const perCheck = calls
+      expect(onChecked).toHaveBeenCalledTimes(1)
+      expect(onChecked).toHaveBeenCalledWith(a)
+      await updater.check()
+      expect(calls).toBe(perCheck * 2)
+    } finally { updater.stop() }
   })
 })

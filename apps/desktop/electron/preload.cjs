@@ -212,6 +212,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
 
+  // ── App updates (newer versions of the installed apps) ─────────────────────
+  // pending() lists the downloaded updates not yet running; apply() runs them now (the window
+  // reloads), unless an updated app is busy and `force` isn't set, when it says which.
+  appUpdates: {
+    pending: () => ipcRenderer.invoke('app-updates:pending'),
+    check:   () => ipcRenderer.invoke('app-updates:check'),
+    apply:   (opts) => ipcRenderer.invoke('app-updates:apply', opts),
+    onReady: (callback) => {
+      const handler = (_event, ready) => callback(ready);
+      ipcRenderer.on('app-updates:ready', handler);
+      return () => ipcRenderer.removeListener('app-updates:ready', handler);
+    },
+  },
+
   // ── Logs viewer IPC ────────────────────────────────────────────────────────
   logs: {
     list:   () => ipcRenderer.invoke('logs:list'),

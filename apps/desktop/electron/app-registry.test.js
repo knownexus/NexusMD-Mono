@@ -69,9 +69,9 @@ describe('registerModules', () => {
   it('starts each installed app with the context and disposes them all', async () => {
     const dispose = vi.fn()
     const register = vi.fn(() => ({ dispose }))
-    const ctx = { ipcMain: {} }
+    const ctx = { ipcMain: {}, send: vi.fn() }
     const started = registerModules(ctx, {}, { a: fakeModule({}, { register }) }, log)
-    expect(register).toHaveBeenCalledWith(ctx)
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({ send: ctx.send }))
     await started.disposeAll()
     expect(dispose).toHaveBeenCalled()
   })
@@ -96,6 +96,83 @@ describe('registerModules', () => {
     expect(good).toHaveBeenCalled()
     await expect(started.disposeAll()).resolves.toBeDefined()
     expect(log.error).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('registerModules restart', () => {
+  const log = { error: vi.fn(), info: vi.fn() }
+  // Enough of ipcMain and BrowserWindow to see what an app left behind.
+  function electronFakes() {
+    const handlers = new Map()
+    const listeners = []
+    const ipcMain = {
+      handle: (ch, fn) => { if (handlers.has(ch)) throw new Error(`second handler for ${ch}`); handlers.set(ch, fn) },
+      removeHandler: ch => handlers.delete(ch),
+      on: (ch, fn) => listeners.push([ch, fn]),
+      removeListener: (ch, fn) => { const i = listeners.findIndex(l => l[0] === ch && l[1] === fn); if (i >= 0) listeners.splice(i, 1) },
+    }
+    class BrowserWindow {
+      constructor() { this.closedFns = []; this.destroyed = false }
+      on(ev, fn) { if (ev === 'closed') this.closedFns.push(fn) }
+      isDestroyed() { return this.destroyed }
+      close() { this.destroyed = true; this.closedFns.forEach(f => f()) }
+    }
+    return { handlers, listeners, ctx: { ipcMain, BrowserWindow } }
+  }
+  const app = (channel, extra = {}) => fakeModule({}, {
+    register: ctx => {
+      ctx.ipcMain.handle(channel, () => channel)
+      ctx.ipcMain.on(`${channel}:changed`, () => {})
+      return { dispose: vi.fn(), ...extra }
+    },
+  })
+
+  it('restarts one app on a new version, removing the IPC the old one registered', async () => {
+    const { handlers, listeners, ctx } = electronFakes()
+    const started = registerModules(ctx, {}, { a: app('a:get'), b: app('b:get') }, log)
+    const next = app('a:get')
+    await expect(started.restart('a', next)).resolves.toEqual({ ok: true })
+    expect([...handlers.keys()].sort()).toEqual(['a:get', 'b:get'])
+    expect(listeners.map(l => l[0]).sort()).toEqual(['a:get:changed', 'b:get:changed'])
+  })
+
+  it('says what an app is busy with: its own report and the windows it has open', () => {
+    const { ctx } = electronFakes()
+    let win
+    const modules = {
+      a: fakeModule({}, { register: c => { win = new c.BrowserWindow(); return { busy: () => true } } }),
+      b: app('b:get'),
+    }
+    const started = registerModules(ctx, {}, modules, log)
+    expect(started.busy('a')).toEqual({ running: true, windows: 1 })
+    expect(started.busy('b')).toEqual({ running: false, windows: 0 })
+    win.close()
+    expect(started.busy('a').windows).toBe(0)
+  })
+
+  it("closes the old version's windows when it restarts", async () => {
+    const { ctx } = electronFakes()
+    let win
+    const started = registerModules(ctx, {}, { a: fakeModule({}, { register: c => { win = new c.BrowserWindow() } }) }, log)
+    await started.restart('a', fakeModule({}, { register: () => {} }))
+    expect(win.isDestroyed()).toBe(true)
+  })
+
+  it('starts the old version again when the new one fails to start', async () => {
+    const { handlers, ctx } = electronFakes()
+    const started = registerModules(ctx, {}, { a: app('a:get') }, log)
+    const broken = fakeModule({}, { register: c => { c.ipcMain.handle('a:get', () => 1); throw new Error('boom') } })
+    const result = await started.restart('a', broken)
+    expect(result).toEqual({ ok: false, error: 'boom' })
+    expect([...handlers.keys()]).toEqual(['a:get'])
+    expect(started.busy('a')).toEqual({ running: false, windows: 0 })
+  })
+
+  it('starts an app that had no main-process side before', async () => {
+    const { handlers, ctx } = electronFakes()
+    const started = registerModules(ctx, {}, { a: { manifest: () => ({}), main: null } }, log)
+    await started.restart('a', app('a:get'))
+    expect([...handlers.keys()]).toEqual(['a:get'])
   })
 })
 
