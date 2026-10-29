@@ -116,6 +116,8 @@ const EXPECTED = [
   'githubPatchFromAdoField', 'fetchGithubCreateMeta', 'createGithubIssue', 'makeGithubWorkItemSource',
   'fetchGithubPRFiles', 'fetchGithubPRCommits', 'fetchGithubPRThreads', 'postGithubPRComment',
   'reviewGithubPR', 'closeGithubPR', 'githubMergeMethods', 'mergeGithubPR',
+  'githubRepoFromRemote', 'githubRepoInfo', 'listGithubBranches', 'createGithubBranch', 'deleteGithubBranch',
+  'listGithubCommits', 'getGithubCommit', 'listGithubContents', 'getGithubFile',
   'makePRActions',
   'CATEGORY_LANES', 'CATEGORY_LABELS', 'itemCategory', 'adoStateForCategory',
   'WORK_ITEM_STATUS_KEY', 'readProviderStatus', 'recordProviderStatus', 'describeProviderError',

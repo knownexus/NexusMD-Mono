@@ -11,3 +11,4 @@ export {
 export { makeGithubWorkItemSource } from './work-item-source.js'
 export { fetchGithubPRFiles, fetchGithubPRCommits, fetchGithubPRThreads, postGithubPRComment } from './pr-collab.js'
 export { reviewGithubPR, closeGithubPR, githubMergeMethods, mergeGithubPR } from './pr-actions.js'
+export { githubRepoFromRemote, githubRepoInfo, listGithubBranches, createGithubBranch, deleteGithubBranch, listGithubCommits, getGithubCommit, listGithubContents, getGithubFile } from './repo-browse.js'

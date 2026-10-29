@@ -5,7 +5,7 @@
 const pullPath = ({ repo, number }) => `repos/${repo}/pulls/${number}`
 const issuePath = ({ repo, number }) => `repos/${repo}/issues/${number}`
 
-const CHANGE_TYPES = { added: 'add', removed: 'delete', renamed: 'rename' }
+export const CHANGE_TYPES = { added: 'add', removed: 'delete', renamed: 'rename' }
 
 const mapComment = (c) => ({ id: c.id, author: c.user?.login || '', text: c.body || '', createdDate: c.created_at || '' })
 
