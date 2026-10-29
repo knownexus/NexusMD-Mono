@@ -55,10 +55,17 @@ function useLocalCopies(adapter, repos, snapshot) {
 export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
   const github = useGithub(host)
   const copies = useLocalCopies(adapter, config.repos, snapshot)
+  // Refresh in this tab: added to Work's refreshKey, so every pane and the branch picker reload.
+  const [reloads, setReloads] = React.useState(0)
   if (!github) return null
-  const { repos, cached, client, refreshKey } = github
-  const openPR = pr => host?.capabilities?.call?.('work.openPR', pr)
-  const openItem = item => host?.capabilities?.call?.('work.openItem', item)
+  const { repos, cached, client } = github
+  const refreshKey = github.refreshKey + reloads
+  // Work's drawers, when Work still offers them. Work's cached copy carries more than the list
+  // endpoint gives (reviews, +/−, linked items), so it is opened in place of the mapped row.
+  const call = (name, value) => { const caps = host?.capabilities; if (caps?.has?.(name)) caps.call(name, value) }
+  const cachedCopy = (list, item) => (list ?? []).find(c => same(c.id, item?.id)) ?? item
+  const openPR = pr => call('work.openPR', cachedCopy(cached.prs, pr))
+  const openItem = item => call('work.openItem', cachedCopy(cached.issues, item))
   const chosen = repos.find(r => same(r, config.view.githubRepo)) ?? repos[0]
   const choose = repo => setGitConfig({ view: { ...getGitConfig().view, githubRepo: repo } })
   const prs = repo => (cached.prs ?? []).filter(p => same(p.repo, repo)).length
@@ -90,6 +97,7 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
         <div className="nx-gw-gh-head">
           <h3 className="nx-gw-gh-title">{chosen}</h3>
           <span className="nx-gw-spacer" />
+          <button type="button" className="btn sm ghost" aria-label="Refresh" title="Read this repository from GitHub again" onClick={() => setReloads(n => n + 1)}>Refresh</button>
           <a className="btn sm ghost" href={`https://github.com/${chosen}`} target="_blank" rel="noopener noreferrer">Open on GitHub</a>
         </div>
         <GithubRepoPane key={chosen} repo={chosen} client={client} refreshKey={refreshKey} openPR={openPR} openItem={openItem} />

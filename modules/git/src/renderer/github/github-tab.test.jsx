@@ -18,7 +18,7 @@ function hostWith(state) {
   return {
     capabilities: {
       provide: vi.fn(),
-      has: name => name === 'work.github',
+      has: name => ['work.github', 'work.openPR', 'work.openItem'].includes(name),
       call: vi.fn(name => (name === 'work.github' ? state.github : undefined)),
     },
   }
@@ -116,6 +116,50 @@ describe('GithubTab', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Issues' }))
       fireEvent.click(await screen.findByText(/Crash on save/))
       expect(host.capabilities.call).toHaveBeenCalledWith('work.openItem', expect.objectContaining({ id: 'gh:acme/web#4' }))
+    })
+
+    it('opens Work\'s cached copy of a PR or issue when Work has one, else the mapped row', async () => {
+      const cachedPR = { id: 'GH:Acme/Web#7', title: 'Add search', reviewerDetails: [{ name: 'cy', vote: 10, id: 'cy' }] }
+      const cachedIssue = { id: 'gh:acme/web#4', title: 'Crash on save', assignee: 'Ann' }
+      const fetch = vi.fn(async path => json(String(path).includes('/pulls') ? [item(7, 'Add search'), item(8, 'Fix typo')] : [item(4, 'Crash on save')]))
+      const { host } = setup({ github: { repos: ['acme/web'], http: { fetch }, cached: { prs: [cachedPR], issues: [cachedIssue] } } })
+      fireEvent.click(await screen.findByText(/Add search/))
+      expect(host.capabilities.call).toHaveBeenLastCalledWith('work.openPR', cachedPR)
+      fireEvent.click(screen.getByText(/Fix typo/))
+      expect(host.capabilities.call).toHaveBeenLastCalledWith('work.openPR', expect.objectContaining({ id: 'gh:acme/web#8', source: 'github' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Issues' }))
+      fireEvent.click(await screen.findByText(/Crash on save/))
+      expect(host.capabilities.call).toHaveBeenLastCalledWith('work.openItem', cachedIssue)
+    })
+
+    it('does nothing on a row click once Work\'s drawers are gone', async () => {
+      const { host } = withData()
+      host.capabilities.has = name => name === 'work.github'
+      const row = await screen.findByText(/Add search/)
+      host.capabilities.call.mockImplementation(name => { throw new Error(`No capability ${name}`) })
+      expect(() => fireEvent.click(row)).not.toThrow()
+    })
+
+    it('Refresh fetches the open pull requests and the branch list again', async () => {
+      const fetch = vi.fn(async path => {
+        const p = String(path)
+        if (p.includes('/pulls')) return json([item(7, 'Add search')])
+        if (p.includes('/branches')) return json([{ name: 'main', commit: { sha: 'a' } }])
+        if (p.includes('/commits')) return json([])
+        return json({ default_branch: 'main' })
+      })
+      setup({ github: { repos: ['acme/web'], http: { fetch }, cached: { prs: [], issues: [] } } })
+      const calls = part => fetch.mock.calls.filter(([p]) => String(p).includes(part)).length
+      await screen.findByText(/Add search/)
+      expect(calls('/pulls')).toBe(1)
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+      await waitFor(() => expect(calls('/pulls')).toBe(2))
+      fireEvent.click(screen.getByRole('button', { name: 'History' }))
+      await screen.findByRole('combobox', { name: 'Branch' })
+      expect(calls('/branches')).toBe(1)
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+      await waitFor(() => expect(calls('/branches')).toBe(2))
+      await screen.findByText('No commits.')
     })
   })
 })
