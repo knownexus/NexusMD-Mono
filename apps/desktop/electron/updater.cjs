@@ -76,6 +76,24 @@ function initUpdater(win) {
   });
 }
 
+// Some networks (the work VPN) drop the odd connection, so a check that fails at the network
+// level is tried again before it's reported. Other errors, like a 404, are reported at once.
+const RETRY_DELAYS_MS = [1500, 3000];
+const isNetworkError = err => /net::ERR_|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up/i.test(err?.message ?? '');
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function checkWithRetry(autoUpdater, wait = sleep) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await autoUpdater.checkForUpdates();
+    } catch (err) {
+      if (attempt >= RETRY_DELAYS_MS.length || !isNetworkError(err)) throw err;
+      console.warn(`[updater] check failed (${err.message}), retrying`);
+      await wait(RETRY_DELAYS_MS[attempt]);
+    }
+  }
+}
+
 /**
  * The tray's "Check for Updates": unlike the silent check at launch it always answers — up to
  * date, couldn't check (and why), or a development build that doesn't update. A newer version
@@ -83,7 +101,7 @@ function initUpdater(win) {
  * Dependencies are injectable so it can be tested without Electron.
  */
 async function checkForUpdatesManually({
-  app: a = app, dialog: d = dialog, autoUpdater, getWin = () => null,
+  app: a = app, dialog: d = dialog, autoUpdater, getWin = () => null, wait = sleep,
 } = {}) {
   const win = getWin();
   const show = opts => (win && !win.isDestroyed() ? d.showMessageBox(win, opts) : d.showMessageBox(opts));
@@ -93,7 +111,7 @@ async function checkForUpdatesManually({
     return { available: false };
   }
   try {
-    const result = await (autoUpdater ?? getAutoUpdater()).checkForUpdates();
+    const result = await checkWithRetry(autoUpdater ?? getAutoUpdater(), wait);
     const version = result?.updateInfo?.version;
     const available = result?.isUpdateAvailable ?? (!!version && version !== a.getVersion());
     if (!available) {
@@ -121,7 +139,7 @@ function registerUpdaterIpc(getWin = () => null) {
   ipcMain.handle('updater:check', async () => {
     if (!app.isPackaged) return { available: false };
     try {
-      const result = await getAutoUpdater().checkForUpdates();
+      const result = await checkWithRetry(getAutoUpdater());
       const info = result?.updateInfo;
       const available = !!info && info.version !== app.getVersion();
       return { available, version: info?.version };
