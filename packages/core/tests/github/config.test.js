@@ -19,12 +19,12 @@ describe('makeGithubConfig', () => {
     expect(() => makeGithubConfig({})).toThrow()
   })
   it('has defaults', () => {
-    expect(cfg.getGithubConfig()).toEqual({ pat: '', repos: [], issues: true, login: '', refreshSecs: 60 })
+    expect(cfg.getGithubConfig()).toEqual({ pat: '', repos: [], issues: true, inWork: true, login: '', refreshSecs: 60 })
     expect(MAX_GITHUB_REPOS).toBe(50)
   })
   it('round-trips each field', () => {
-    cfg.saveGithubConfig({ pat: 'tok', repos: ['a/b', 'c/d'], login: 'me', refreshSecs: 90, issues: false })
-    expect(cfg.getGithubConfig()).toEqual({ pat: 'tok', repos: ['a/b', 'c/d'], issues: false, login: 'me', refreshSecs: 90 })
+    cfg.saveGithubConfig({ pat: 'tok', repos: ['a/b', 'c/d'], login: 'me', refreshSecs: 90, issues: false, inWork: false })
+    expect(cfg.getGithubConfig()).toEqual({ pat: 'tok', repos: ['a/b', 'c/d'], issues: false, inWork: false, login: 'me', refreshSecs: 90 })
   })
   it('partial saves leave other fields', () => {
     cfg.saveGithubConfig({ pat: 'tok' })

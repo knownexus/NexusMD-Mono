@@ -72,8 +72,8 @@ describe('buildSnapshot with GitHub', () => {
     const m = new Map([[ADO_CACHE_KEY, adoCache], [GITHUB_CACHE_KEY, ghCache]])
     return { get: k => m.get(k) ?? null, set: (k, v) => m.set(k, v) }
   }
-  const buildGh = (githubWorkItems) => buildSnapshot({
-    adoConfig: { org: 'myorg' }, adoConfigured: true, githubConfig: {}, githubActive: true, githubWorkItems,
+  const buildGh = (githubWorkItems, githubInWork) => buildSnapshot({
+    adoConfig: { org: 'myorg' }, adoConfigured: true, githubConfig: {}, githubActive: true, githubWorkItems, githubInWork,
     jiraConfig: {}, jiraActive: false, storage: storage(), empty: EMPTY,
   })
 
@@ -94,5 +94,15 @@ describe('buildSnapshot with GitHub', () => {
     expect(s.WORK_ITEM_PROVIDERS.map(p => p.id)).toEqual(['ado'])
     expect(s.PRS.map(p => p.id)).toEqual([7, 'o/r#5'])
     expect(s.BUILDS.map(b => b.id)).toEqual(['b1', 'run1'])
+  })
+
+  it('githubInWork false leaves GitHub issues and runs to the Git tab, keeping its PRs', () => {
+    const s = buildGh(true, false)
+    expect(s.WORK_ITEMS.map(w => w.id)).toEqual([1])
+    expect(s.PROJECTS.some(p => p.source === 'github')).toBe(false)
+    expect(s.WORK_ITEM_PROVIDERS.map(p => p.id)).toEqual(['ado'])
+    expect(s.BUILDS.map(b => b.id)).toEqual(['b1'])
+    expect(s.PRS.map(p => p.id)).toEqual([7, 'o/r#5'])
+    expect(s.GITHUB_ME.login).toBe('octo')
   })
 })

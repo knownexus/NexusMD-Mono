@@ -96,7 +96,7 @@ export function useNexusSnapshot() {
       setSnapshot(buildSnapshot({
         adoConfig: getAdoConfig(), adoConfigured: isAdoConfigured(), adoWorkItems: usesAdoWorkItems(),
         jiraConfig: getJiraConfig(), jiraActive: isJiraActive(),
-        githubConfig: getGithubConfig(), githubActive: isGithubConfigured(), githubWorkItems: usesGithubWorkItems(),
+        githubConfig: getGithubConfig(), githubActive: isGithubConfigured(), githubWorkItems: usesGithubWorkItems(), githubInWork: getGithubConfig().inWork,
         storage: localStorageAdapter, empty: EMPTY_NEXUS_DATA,
         hiddenIds: readHiddenPeople(),
       }))

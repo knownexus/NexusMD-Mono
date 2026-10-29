@@ -1,5 +1,6 @@
 import React from 'react'
-import { defaultCreateProvider } from '@nexusmd/core'
+import { defaultCreateProvider, loadCachedGithubData } from '@nexusmd/core'
+import { localStorageAdapter } from '@nexusmd/web-adapters'
 import { NexusDataProvider, useSeenTracking, SEEN_FINGERPRINTS } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useLocalItems } from './items-state.js'
@@ -65,25 +66,31 @@ export function WorkProvider({ host, view, children }) {
   const snapshotRef = React.useRef(snapshot)
   snapshotRef.current = snapshot
   const drawersRef = React.useRef({})
-  drawersRef.current = { openItem, openPR }
+  drawersRef.current = { openItem, openPR, openBuild }
   React.useEffect(() => {
     const caps = host.capabilities
     if (!caps?.provide) return undefined
     const offs = [
       caps.provide('work.github', () => {
         if (!isGithubConfigured()) return null
+        const config = getGithubConfig()
         const snap = snapshotRef.current
+        // Kept to the Git tab, issues and runs aren't in the snapshot: read GitHub's own cache.
+        const own = config.inWork ? snap : (loadCachedGithubData(config, { storage: localStorageAdapter }) || {})
         return {
-          repos: getGithubConfig().repos,
+          repos: config.repos,
           http: githubHttp,
+          inWork: config.inWork,
           cached: {
             prs: (snap.PRS || []).filter(p => p.source === 'github'),
-            issues: (snap.WORK_ITEMS || []).filter(i => i.source === 'github'),
+            issues: (own.WORK_ITEMS || []).filter(i => i.source === 'github'),
+            builds: (own.BUILDS || []).filter(b => b.source === 'github'),
           },
         }
       }),
       caps.provide('work.openPR', pr => drawersRef.current.openPR(pr)),
       caps.provide('work.openItem', item => drawersRef.current.openItem(item)),
+      caps.provide('work.openBuild', build => drawersRef.current.openBuild(build)),
     ]
     return () => offs.forEach(off => off())
   }, [host])

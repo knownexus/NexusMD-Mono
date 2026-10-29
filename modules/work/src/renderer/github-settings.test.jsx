@@ -136,3 +136,27 @@ describe('GithubConnectionCard', () => {
     expect(screen.queryByText(/Enter a token first/)).toBeNull()
   })
 })
+
+describe('GithubConnectionCard where issues and builds show', () => {
+  afterEach(() => { cleanup(); vi.clearAllMocks() })
+
+  it('defaults to Work and Git, and saves Git only at once without reconnecting', async () => {
+    const { core } = await import('@nexusmd/core')
+    const emit = vi.spyOn(core, '_emit').mockImplementation(() => {})
+    const onRefreshData = mount(fakeClient())
+    const group = within(screen.getByRole('radiogroup', { name: 'Show GitHub issues and builds in' }))
+    expect(group.getByLabelText('Work and Git').checked).toBe(true)
+    fireEvent.click(group.getByLabelText('Git only'))
+    expect(saveGithubConfig).toHaveBeenCalledWith({ inWork: false })
+    expect(emit).toHaveBeenCalledWith('data:updated')
+    expect(onRefreshData).not.toHaveBeenCalled()
+    expect(group.getByLabelText('Git only').checked).toBe(true)
+    emit.mockRestore()
+  })
+
+  it('shows the saved choice', () => {
+    getGithubConfig.mockReturnValueOnce({ pat: '', repos: [], issues: true, inWork: false, login: '' })
+    mount(fakeClient())
+    expect(screen.getByLabelText('Git only').checked).toBe(true)
+  })
+})
