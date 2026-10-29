@@ -43,6 +43,6 @@ export function useGithub(host) {
   const client = React.useMemo(() => {
     try { return http ? makeGithubClient(http) : null } catch { return null }
   }, [http])
-  return React.useMemo(() => (github ? { repos: github.repos, client, cached: github.cached ?? { prs: [], issues: [] }, refreshKey } : null),
+  return React.useMemo(() => (github ? { repos: github.repos, client, cached: { prs: [], issues: [], builds: [], ...github.cached }, refreshKey } : null),
     [github, client, refreshKey])
 }

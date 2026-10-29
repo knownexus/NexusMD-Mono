@@ -134,6 +134,21 @@ describe('GithubTab', () => {
       expect(host.capabilities.call).toHaveBeenLastCalledWith('work.openItem', cachedIssue)
     })
 
+    it('opens a build through work.openBuild, or on GitHub when Work can\'t', async () => {
+      const runs = { workflow_runs: [{ id: 5, run_number: 3, name: 'CI', display_title: 'Ship it', status: 'completed', conclusion: 'success', html_url: 'https://github.com/acme/web/actions/runs/5' }] }
+      const fetch = vi.fn(async path => json(String(path).includes('/actions/runs') ? runs : []))
+      const { host } = setup({ github: { repos: ['acme/web'], http: { fetch }, cached: { prs: [], issues: [] } } })
+      host.capabilities.has = name => ['work.github', 'work.openBuild'].includes(name)
+      fireEvent.click(screen.getByRole('tab', { name: 'Builds' }))
+      fireEvent.click(await screen.findByText(/Ship it/))
+      expect(host.capabilities.call).toHaveBeenLastCalledWith('work.openBuild', expect.objectContaining({ id: 5, source: 'github' }))
+      host.capabilities.has = name => name === 'work.github'
+      const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+      fireEvent.click(screen.getByText(/Ship it/))
+      expect(open).toHaveBeenCalledWith('https://github.com/acme/web/actions/runs/5', '_blank', 'noopener,noreferrer')
+      open.mockRestore()
+    })
+
     it('does nothing on a row click once Work\'s drawers are gone', async () => {
       const { host } = withData()
       host.capabilities.has = name => name === 'work.github'

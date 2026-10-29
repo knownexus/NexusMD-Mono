@@ -67,6 +67,11 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
   const cachedCopy = (list, item) => (list ?? []).find(c => same(c.id, item?.id)) ?? item
   const openPR = pr => call('work.openPR', cachedCopy(cached.prs, pr))
   const openItem = item => call('work.openItem', cachedCopy(cached.issues, item))
+  // A Work too old to open builds: the run's page on GitHub instead.
+  const openBuild = build => {
+    if (host?.capabilities?.has?.('work.openBuild')) call('work.openBuild', cachedCopy(cached.builds, build))
+    else if (build?.url) window.open(build.url, '_blank', 'noopener,noreferrer')
+  }
   const chosen = repos.find(r => same(r, config.view.githubRepo)) ?? repos[0]
   const choose = repo => setGitConfig({ view: { ...getGitConfig().view, githubRepo: repo } })
   const prsOf = repo => (cached.prs ?? []).filter(p => same(p.repo, repo))
@@ -122,7 +127,7 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
             <a className="btn sm" href={`https://github.com/${chosen}`} target="_blank" rel="noopener noreferrer"><Icon name="link" size={12} />Open on GitHub</a>
           </div>
         </header>
-        <GithubRepoPane key={chosen} repo={chosen} client={client} refreshKey={refreshKey} openPR={openPR} openItem={openItem}
+        <GithubRepoPane key={chosen} repo={chosen} client={client} refreshKey={refreshKey} openPR={openPR} openItem={openItem} openBuild={openBuild}
           openPRs={prsOf(chosen)} counts={counts} />
       </section>
     </div>

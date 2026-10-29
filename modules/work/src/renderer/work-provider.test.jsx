@@ -264,6 +264,19 @@ describe('what it offers other apps', () => {
     expect(typeof gh.http.fetch).toBe('function')
     expect(gh.cached.prs).toEqual([ghPr])
     expect(gh.cached.issues).toEqual([ghItem])
+    expect(gh.inWork).toBe(true)
+  })
+  it('kept to the Git tab, offers GitHub issues and runs from its own cache', async () => {
+    const { localStorageAdapter } = await import('@nexusmd/web-adapters')
+    const { GITHUB_CACHE_KEY } = await import('@nexusmd/core')
+    const ghRun = { id: 9, source: 'github' }
+    localStorageAdapter.set(GITHUB_CACHE_KEY, { WORK_ITEMS: [ghItem], BUILDS: [ghRun], PRS: [] })
+    saveGithubConfig({ pat: 'ghp_x', repos: ['acme/web'], inWork: false })
+    SNAPSHOT = { ...BASE, PRS: [ghPr], WORK_ITEMS: [adoItem] }
+    mount()
+    const gh = capabilities.call('work.github')
+    expect(gh.inWork).toBe(false)
+    expect(gh.cached).toEqual({ prs: [ghPr], issues: [ghItem], builds: [ghRun] })
   })
   it('offers nothing when GitHub is not configured', () => {
     mount()
@@ -275,6 +288,8 @@ describe('what it offers other apps', () => {
     expect(screen.getByTestId('drawer').textContent).toBe('pr')
     act(() => capabilities.call('work.openItem', { id: 'gh:a/b#1' }))
     expect(screen.getByTestId('drawer').textContent).toBe('wi')
+    act(() => capabilities.call('work.openBuild', { id: 9, source: 'github' }))
+    expect(screen.getByTestId('drawer').textContent).toBe('build')
   })
   it('stops offering them on unmount', () => {
     const { unmount } = mount()

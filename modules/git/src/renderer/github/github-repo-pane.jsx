@@ -1,5 +1,5 @@
 import React from 'react'
-import { mapGithubPR, mapGithubIssue, listGithubBranches } from '@nexusmd/core'
+import { mapGithubPR, mapGithubIssue, mapGithubRun, listGithubBranches } from '@nexusmd/core'
 import { relativeTime } from '../history-pane.jsx'
 import { GithubBranches } from './github-branches.jsx'
 import { GithubHistory } from './github-history.jsx'
@@ -9,24 +9,30 @@ import { GithubCard, Notice } from './github-ui.jsx'
 export const GITHUB_TABS = [
   { id: 'prs', label: 'Pull requests' },
   { id: 'issues', label: 'Issues' },
+  { id: 'builds', label: 'Builds' },
   { id: 'branches', label: 'Branches' },
   { id: 'history', label: 'History' },
   { id: 'files', label: 'Files' },
 ]
 
-// Open pull requests or issues for a repository, fetched live. A repo, client or refresh change
-// refetches, and a late answer for an earlier one is dropped.
-function useList(client, path, refreshKey) {
+const readPaged = (client, path) => client.getPaged(path)
+// Actions runs come wrapped ({ workflow_runs }) and newest first, so one page is the recent ones.
+const readRuns = (client, path) => Promise.resolve(client.get(path)).then(r => r?.workflow_runs ?? [])
+
+// Open pull requests, issues or recent runs for a repository, fetched live. A repo, client or
+// refresh change refetches, and a late answer for an earlier one is dropped.
+function useList(client, path, refreshKey, read = readPaged) {
   const [state, setState] = React.useState({ path: null, items: null, error: '' })
   React.useEffect(() => {
     let live = true
     if (!client) { setState({ path, items: [], error: '' }); return undefined }
-    Promise.resolve().then(() => client.getPaged(path)).then(
+    Promise.resolve().then(() => read(client, path)).then(
       items => { if (live) setState({ path, items, error: '' }) },
       err => { if (live) setState({ path, items: [], error: err?.message || String(err) }) },
     )
     return () => { live = false }
-  }, [client, path, refreshKey])
+    // `read` is one of the module's readers, fixed per call site.
+  }, [client, path, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
   return state.path === path ? state : { path, items: null, error: '' }
 }
 
@@ -36,7 +42,10 @@ function Rows({ rows, onOpen }) {
       {rows.map(r => (
         <li key={r.key} className="nx-gw-attn-row">
           <button type="button" className="nx-gw-attn-open" onClick={() => onOpen(r.raw)}>
-            <span className="branch"><span className="nx-gw-gh-num">{`#${r.number}`}</span>{r.title}</span>
+            <span className="branch">
+              {r.status && <span className={`build-dot ${r.status}`} aria-hidden="true" />}
+              <span className="nx-gw-gh-num">{`#${r.number}`}</span>{r.title}
+            </span>
             <span className="nx-gw-row-meta">
               {r.meta.filter(Boolean).map((m, i) => <span key={i}>{m}</span>)}
             </span>
@@ -77,8 +86,38 @@ function Listing({ client, repo, kind, refreshKey, onOpen }) {
   )
 }
 
+const RUN_STATUS = { running: 'Running', success: 'Passed', failed: 'Failed', cancelled: 'Cancelled', partial: 'Skipped' }
+
+// The repository's most recent Actions runs, each opening in Work's build drawer.
+function Builds({ client, repo, refreshKey, onOpen }) {
+  const { items, error } = useList(client, `repos/${repo}/actions/runs?per_page=30`, refreshKey, readRuns)
+  if (error) return <Notice kind="error">{error}</Notice>
+  if (!items) return <Notice>Loading builds…</Notice>
+  if (!items.length) return <Notice kind="empty">No Actions runs yet.</Notice>
+  const rows = items.map(run => {
+    const build = mapGithubRun(run, repo)
+    const when = Date.parse(build.finishTime || '') || 0
+    return {
+      key: run.id,
+      number: run.run_number ?? run.id,
+      title: run.display_title || build.pipeline,
+      status: build.status,
+      meta: [build.pipeline !== run.display_title ? build.pipeline : '', build.branch, build.reason, run.actor?.login,
+        when ? `${build.status === 'running' ? 'started' : 'finished'} ${relativeTime(when)}` : ''],
+      tags: [RUN_STATUS[build.status] ?? build.status],
+      raw: build,
+    }
+  })
+  const failing = rows.filter(r => r.status === 'failed').length
+  return (
+    <GithubCard title="Recent builds" hint={failing ? `${failing} failed` : String(rows.length)} tone={failing ? 'bad' : 'ok'}>
+      <Rows rows={rows} onOpen={onOpen} />
+    </GithubCard>
+  )
+}
+
 /** The chosen repository's right pane: a tab per view. History and Files share a picked branch. */
-export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, initialTab = 'prs', confirm, openPRs, counts = {} }) {
+export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, openBuild, initialTab = 'prs', confirm, openPRs, counts = {} }) {
   const [tab, setTab] = React.useState(initialTab)
   const [loaded, setLoaded] = React.useState({ repo: null, client: null, list: null })
   const [picked, setPicked] = React.useState('')
@@ -139,6 +178,7 @@ export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, ini
       <div className="nx-gw-gh-view">
         {tab === 'prs' && <Listing client={client} repo={repo} kind="prs" refreshKey={refreshKey} onOpen={openPR} />}
         {tab === 'issues' && <Listing client={client} repo={repo} kind="issues" refreshKey={refreshKey} onOpen={openItem} />}
+        {tab === 'builds' && <Builds client={client} repo={repo} refreshKey={refreshKey} onOpen={openBuild ?? (() => {})} />}
         {tab === 'branches' && <GithubBranches repo={repo} client={client} refreshKey={refreshKey} confirm={confirm} onBranchesChanged={onBranchesChanged} openPRs={openPRs} />}
         {tab === 'history' && branchView(GithubHistory)}
         {tab === 'files' && branchView(GithubFiles)}

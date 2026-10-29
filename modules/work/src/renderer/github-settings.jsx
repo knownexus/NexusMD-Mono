@@ -1,6 +1,6 @@
 import React from 'react'
 import { Icon, CardFrame, SettField } from '@nexusmd/ui'
-import { makeGithubClient, discoverGithubRepos, MAX_GITHUB_REPOS } from '@nexusmd/core'
+import { core, makeGithubClient, discoverGithubRepos, MAX_GITHUB_REPOS } from '@nexusmd/core'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { getGithubConfig, saveGithubConfig, createGithubHttpAdapter } from './github-client.js'
 import { settInputStyle } from './form-style.js'
@@ -23,6 +23,13 @@ export function GithubConnectionCard({ onRefreshData, makeClient = defaultClient
   const [saved] = React.useState(() => getGithubConfig())
   const [pat, setPat]           = React.useState('')
   const [issues, setIssues]     = React.useState(saved.issues !== false)
+  const [inWork, setInWork]     = React.useState(saved.inWork !== false)
+  // Only where cached data shows changes, so it's saved at once and the screens re-read it.
+  const chooseInWork = (value) => {
+    setInWork(value)
+    saveGithubConfig({ inWork: value })
+    core._emit?.('data:updated')
+  }
   const [selected, setSelected] = React.useState(() => (saved.repos.length ? saved.repos : legacyRepoList(legacy?.repos)))
   const [found, setFound]       = React.useState(null) // { repos, ssoOrgs } after Discover
   const [search, setSearch]     = React.useState('')
@@ -94,6 +101,16 @@ export function GithubConnectionCard({ onRefreshData, makeClient = defaultClient
             Pull requests and Actions runs still come from GitHub.
           </div>
         )}
+        <SettField label="Show GitHub issues and builds in" hint="Git only keeps them out of Work Items, Builds, the Dashboard and Triage; they stay in Git Workspace's GitHub tab. Pull requests show in both either way.">
+          <div role="radiogroup" aria-label="Show GitHub issues and builds in" style={{ display: 'flex', gap: 16, fontSize: 13 }}>
+            {[[true, 'Work and Git'], [false, 'Git only']].map(([value, label]) => (
+              <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input type="radio" name="github-in-work" checked={inWork === value} onChange={() => chooseInWork(value)} />
+                {label}
+              </label>
+            ))}
+          </div>
+        </SettField>
         <SettField label="Personal Access Token" hint="A classic token needs the repo, read:org and workflow scopes; a fine-grained token needs read access to Issues, Pull requests, Actions and Metadata (write to Issues to edit them). Leave blank to keep existing.">
           <input type="password" value={pat} onChange={e => setPat(e.target.value)}
             placeholder="Leave blank to keep existing token" style={settInputStyle} />

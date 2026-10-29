@@ -27,6 +27,8 @@ export function makeGithubConfig({ storage, key }) {
       pat:         get('pat') || '',
       repos,
       issues:      get('issues') !== '0',
+      // Issues and Actions runs also show in Work's screens; false keeps them to the Git tab.
+      inWork:      get('inWork') !== '0',
       login:       get('login') || '',
       refreshSecs: Number.isFinite(refresh) ? refresh : 60,
     }
@@ -42,6 +44,7 @@ export function makeGithubConfig({ storage, key }) {
     if (values.login       !== undefined) set('login',       values.login)
     if (values.refreshSecs !== undefined) set('refreshSecs', String(values.refreshSecs))
     if (values.issues      !== undefined) set('issues',      values.issues ? '1' : '0')
+    if (values.inWork      !== undefined) set('inWork',      values.inWork ? '1' : '0')
   }
 
   function isGithubConfigured() {

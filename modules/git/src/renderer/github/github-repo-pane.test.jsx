@@ -46,10 +46,10 @@ describe('GithubRepoPane', () => {
     expect(open.textContent).toContain('#7')
   })
 
-  it('has the five tabs and switches between them', async () => {
+  it('has the six tabs and switches between them', async () => {
     render(<GithubRepoPane repo="acme/web" client={fakeClient(ROUTES)} refreshKey={0} openPR={vi.fn()} openItem={vi.fn()} />)
     const tabs = screen.getByRole('tablist', { name: 'Repository views' })
-    for (const l of ['Pull requests', 'Issues', 'Branches', 'History', 'Files']) expect(within(tabs).getByRole('tab', { name: l })).toBeTruthy()
+    for (const l of ['Pull requests', 'Issues', 'Builds', 'Branches', 'History', 'Files']) expect(within(tabs).getByRole('tab', { name: l })).toBeTruthy()
     expect(within(tabs).getByRole('tab', { name: 'Pull requests' }).getAttribute('aria-selected')).toBe('true')
     fireEvent.click(within(tabs).getByRole('tab', { name: 'Issues' }))
     expect(within(tabs).getByRole('tab', { name: 'Issues' }).getAttribute('aria-selected')).toBe('true')
@@ -71,6 +71,31 @@ describe('GithubRepoPane', () => {
     await screen.findByText(/Add search/)
     rerender(<GithubRepoPane repo="acme/web" client={client} refreshKey={1} openPR={vi.fn()} openItem={vi.fn()} />)
     await waitFor(() => expect(client.getPaged).toHaveBeenCalledTimes(2))
+  })
+
+  it('lists recent Actions runs with their result, and opens one as a build', async () => {
+    const run = (id, run_number, conclusion, extra = {}) => ({
+      id, run_number, name: 'CI', display_title: `Change ${run_number}`, status: conclusion ? 'completed' : 'in_progress', conclusion,
+      head_branch: 'main', event: 'push', actor: { login: 'ann' }, run_started_at: iso(), updated_at: iso(), html_url: `https://github.com/acme/web/actions/runs/${id}`, ...extra,
+    })
+    const client = { getPaged: vi.fn(async () => []), get: vi.fn(async () => ({ workflow_runs: [run(11, 42, null), run(10, 41, 'failure'), run(9, 40, 'success')] })) }
+    const openBuild = vi.fn()
+    render(<GithubRepoPane repo="acme/web" client={client} refreshKey={0} openPR={vi.fn()} openItem={vi.fn()} openBuild={openBuild} initialTab="builds" />)
+    const card = await screen.findByRole('region', { name: 'Recent builds' })
+    expect(client.get).toHaveBeenCalledWith('repos/acme/web/actions/runs?per_page=30')
+    expect(within(card).getByText('1 failed')).toBeTruthy()
+    const failed = within(card).getByText(/Change 41/).closest('li')
+    expect(within(failed).getByText('Failed')).toBeTruthy()
+    expect(failed.querySelector('.build-dot.failed')).toBeTruthy()
+    expect(within(card).getByText(/Change 42/).closest('li').textContent).toContain('Running')
+    fireEvent.click(within(card).getByText(/Change 41/))
+    expect(openBuild).toHaveBeenCalledWith(expect.objectContaining({ id: 10, status: 'failed', source: 'github', url: 'https://github.com/acme/web/actions/runs/10' }))
+  })
+
+  it('says when a repository has no Actions runs', async () => {
+    const client = { getPaged: vi.fn(async () => []), get: vi.fn(async () => ({ total_count: 0, workflow_runs: [] })) }
+    render(<GithubRepoPane repo="acme/web" client={client} refreshKey={0} openPR={vi.fn()} openItem={vi.fn()} initialTab="builds" />)
+    expect(await screen.findByText('No Actions runs yet.')).toBeTruthy()
   })
 
   describe('branches, history and files', () => {
