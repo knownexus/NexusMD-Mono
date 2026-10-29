@@ -79,19 +79,24 @@ export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, ini
   const needsBranches = tab === 'history' || tab === 'files'
   const branches = loaded.repo === repo && loaded.client === client ? loaded.list : null
 
-  // Branches reported by the Branches tab replace whatever list the pane has.
-  const onBranchesChanged = React.useCallback(list => { setLoaded({ repo, client, list }); setBranchError('') }, [repo, client])
+  // Branches reported by the Branches tab replace whatever list the pane has; a response that was
+  // requested before such a report is older than it and is dropped.
+  const version = React.useRef(0)
+  const onBranchesChanged = React.useCallback(list => { version.current += 1; setLoaded({ repo, client, list }); setBranchError('') }, [repo, client])
   React.useEffect(() => { setPicked('') }, [repo])
 
+  // Loaded when History or Files is shown and again on every refresh; the current list stays on
+  // screen while the new one loads.
   React.useEffect(() => {
-    if (!needsBranches || !client || branches) return undefined
+    if (!needsBranches || !client) return undefined
     let live = true
+    const started = version.current
     Promise.resolve().then(() => listGithubBranches(client, repo)).then(
-      list => { if (live) { setLoaded(cur => (cur.repo === repo && cur.client === client && cur.list ? cur : { repo, client, list })); setBranchError('') } },
-      e => { if (live) setBranchError(e?.message || String(e)) },
+      list => { if (live && version.current === started) { setLoaded({ repo, client, list }); setBranchError('') } },
+      e => { if (live && version.current === started) setBranchError(e?.message || String(e)) },
     )
     return () => { live = false }
-  }, [needsBranches, client, repo, branches])
+  }, [needsBranches, client, repo, refreshKey])
 
   const defaultName = branches ? (branches.find(b => b.isDefault)?.name ?? branches[0]?.name ?? '') : ''
   const branch = branches && branches.some(b => b.name === picked) ? picked : defaultName

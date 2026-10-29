@@ -126,5 +126,45 @@ describe('GithubRepoPane', () => {
       expect(screen.getByLabelText('Branch').value).toBe('main')
       expect(screen.queryByRole('alert')).toBeNull()
     })
+
+    describe('refreshing', () => {
+      function mutableClient() {
+        const state = { branches: [{ name: 'main', commit: { sha: 'a1' } }, { name: 'old', commit: { sha: 'b2' } }] }
+        const client = {
+          getPaged: vi.fn(async path => (path === 'repos/acme/web/branches' ? state.branches : [])),
+          get: vi.fn(async path => {
+            if (path === 'repos/acme/web') return { default_branch: 'main' }
+            if (path === 'repos/acme/web/commits?sha=main&per_page=50') return [commit('c1', 'Main commit')]
+            if (path === 'repos/acme/web/commits?sha=old&per_page=50') return [commit('c2', 'Old commit')]
+            throw new Error(`unexpected ${path}`)
+          }),
+        }
+        return { client, state }
+      }
+      const props = { repo: 'acme/web', openPR: vi.fn(), openItem: vi.fn(), initialTab: 'history' }
+
+      it('shows a branch added elsewhere in the picker after a refresh', async () => {
+        const { client, state } = mutableClient()
+        const { rerender } = render(<GithubRepoPane {...props} client={client} refreshKey={0} />)
+        await screen.findByText(/Main commit/)
+        state.branches = [...state.branches, { name: 'fresh', commit: { sha: 'c3' } }]
+        rerender(<GithubRepoPane {...props} client={client} refreshKey={1} />)
+        await waitFor(() => expect(screen.getByRole('option', { name: 'fresh' })).toBeTruthy())
+        expect(screen.getByLabelText('Branch').value).toBe('main')
+      })
+
+      it('falls back to the default branch when the picked branch was removed elsewhere', async () => {
+        const { client, state } = mutableClient()
+        const { rerender } = render(<GithubRepoPane {...props} client={client} refreshKey={0} />)
+        await screen.findByText(/Main commit/)
+        fireEvent.change(screen.getByLabelText('Branch'), { target: { value: 'old' } })
+        await screen.findByText(/Old commit/)
+        state.branches = state.branches.filter(b => b.name !== 'old')
+        rerender(<GithubRepoPane {...props} client={client} refreshKey={1} />)
+        await waitFor(() => expect(screen.getByLabelText('Branch').value).toBe('main'))
+        expect(await screen.findByText(/Main commit/)).toBeTruthy()
+        expect(screen.queryByRole('alert')).toBeNull()
+      })
+    })
   })
 })
