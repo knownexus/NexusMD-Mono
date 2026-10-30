@@ -1,8 +1,8 @@
-# Work Item Drawer — DriveFurther Agile Layout Implementation Plan
+# Work Item Drawer — Example Agile Layout Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Render the New Work Item drawer's Details tab using DriveFurther's real per-type Azure DevOps field layout (Bug/Epic/Feature/Issue/Task) instead of the current generic bucket-based grouping, while leaving every other project/process template on today's unchanged fallback path.
+**Goal:** Render the New Work Item drawer's Details tab using Example's real per-type Azure DevOps field layout (Bug/Epic/Feature/Issue/Task) instead of the current generic bucket-based grouping, while leaving every other project/process template on today's unchanged fallback path.
 
 **Architecture:** A pure, independently-testable `resolveTypeLayout(typeName, fields)` function in `ado-workitem-types.js` maps a `TYPE_LAYOUTS` config (field display names, per type, per column) onto the live field defs ADO returns. `CreateWorkItemDrawer` calls it once per render; when it returns a layout, the Details tab renders two equal columns (Left: stacked multi-line fields, Middle: Acceptance Criteria + Planning group + Additional Fields catch-all) instead of today's `1fr 280px` main+rail split. When it returns `null` (unknown type), the existing generic rendering path is untouched.
 
@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Fields are matched by **display name** (`field.name`), not reference name — several of DriveFurther's fields (Resolved Reason, Risk, Effort, Stack Rank, Activity, Stages) have unverified reference names; a name that doesn't match a field returned by ADO must degrade to the "Additional Fields" section, never crash or silently drop data.
+- Fields are matched by **display name** (`field.name`), not reference name — several of Example's fields (Resolved Reason, Risk, Effort, Stack Rank, Activity, Stages) have unverified reference names; a name that doesn't match a field returned by ADO must degrade to the "Additional Fields" section, never crash or silently drop data.
 - `fieldBucket`, `fieldGroup`, `KNOWN_FIELD_GROUPS`, and the existing generic rendering path in `CreateWorkItemDrawer` must be unchanged and still used for any type not in `TYPE_LAYOUTS` — no regression for other projects/process templates.
 - The System.State field continues to render exactly once, in the drawer header (established in a prior feature) — it must never appear in a type layout's `left`/`middleTop`/`planning`/`additional` output.
 - No changes to the create/submit/attachment/link API flow — this is a layout-only change.
@@ -148,7 +148,7 @@ Expected: PASS — all tests in the file, including the 5 new ones.
 
 ```bash
 git add apps/desktop/src/ado-workitem-types.js apps/desktop/src/ado-workitem-types.test.js
-git commit -m "feat(desktop): add per-type field layout config for DriveFurther Agile process"
+git commit -m "feat(desktop): add per-type field layout config for Example Agile process"
 ```
 
 ---

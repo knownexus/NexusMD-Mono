@@ -8,8 +8,8 @@ describe('createWindowOpenHandler', () => {
   it('routes http(s) target=_blank urls to openLink and denies the native window', () => {
     const openLink = vi.fn()
     const handler = createWindowOpenHandler({ isAllowedUrl: allow, openLink })
-    const result = handler({ url: 'https://cirrus.uat.msl.co.uk/' })
-    expect(openLink).toHaveBeenCalledWith('https://cirrus.uat.msl.co.uk/')
+    const result = handler({ url: 'https://uat.example.com/' })
+    expect(openLink).toHaveBeenCalledWith('https://uat.example.com/')
     expect(result).toEqual({ action: 'deny' })
   })
 

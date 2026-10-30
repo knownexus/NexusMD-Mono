@@ -288,7 +288,7 @@ function VsProfileEditor({ profile, onSave, onDelete, onExport, onClose, showOrg
       </PlFld>
       {showOrgLabel && (
         <PlFld label="Organisation label" hint="Shown under the app name in the sidebar — leave blank to use the Azure DevOps org name">
-          <input value={orgLabel} placeholder="e.g. msl-cirrus" onChange={e => setOrgLabel(e.target.value)} />
+          <input value={orgLabel} placeholder="e.g. my-org" onChange={e => setOrgLabel(e.target.value)} />
         </PlFld>
       )}
     </PlModal>

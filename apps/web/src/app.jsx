@@ -105,8 +105,8 @@ const DEFAULT_TWEAKS = /*EDITMODE-BEGIN*/{
   "widgetWidths": {},
   "widgetHeights": {},
   "quickLinks": [
-    { "label": "UAT Testing", "url": "https://cirrus.uat.msl.co.uk/", "color": "var(--info)" },
-    { "label": "Dev Testing", "url": "https://cirrus.dev.msl.co.uk/", "color": "var(--success)" },
+    { "label": "UAT Testing", "url": "https://uat.example.com/", "color": "var(--info)" },
+    { "label": "Dev Testing", "url": "https://dev.example.com/", "color": "var(--success)" },
     { "label": "Cirrus HR",   "url": "https://cirrushr.co.uk",        "color": "var(--violet)" }
   ]
 }/*EDITMODE-END*/;
@@ -413,7 +413,7 @@ function SettingsModal({ open, onClose, onSaved }) {
 // ─── Brand org label — reads per-profile orgLabel, falls back to ADO org ──────
 function BrandOrg() {
   const { activeProfile } = useProfile?.() || {};
-  const org = activeProfile?.orgLabel || NexusMDData.ME?.org || 'msl-cirrus';
+  const org = activeProfile?.orgLabel || NexusMDData.ME?.org || 'my-org';
   return <span className="org">{org}</span>;
 }
 

@@ -33,23 +33,15 @@ function runProfileMigration() {
     localStorage.setItem(prefix + suffix, localStorage.getItem(k));
   });
 
-  // Write profile metadata — default to Drivefurther ADO profile for fresh installs
+  // Write profile metadata — fresh installs get an empty ADO profile to fill in
   const profile = {
     id,
-    name: org || 'Drivefurther',
-    initials: org ? org.slice(0, 2).toUpperCase() : 'DF',
+    name: org || 'My organisation',
+    initials: org ? org.slice(0, 2).toUpperCase() : 'MY',
     color: '#6c8ebf',
     type: 'ado',
     createdAt: Date.now(),
   };
-
-  // Pre-seed credentials for fresh installs with no existing ADO config
-  if (!org) {
-    localStorage.setItem(prefix + 'android.org', 'drivefurther');
-    localStorage.setItem(prefix + 'android.pat', '8I54VaFIYc6bEy9KmnjpzNhEXnABwHMsn569vNJC9s6PoU97FlbbJQQJ99CFACAAAAAT5Z59AAASAZDOtdEB');
-    localStorage.setItem(prefix + 'android.projects', JSON.stringify(['DriveFurtherAPI', 'DriveFurtherNucleus', 'DriveFurtherPortal', 'DriveFurtherBxIn']));
-    localStorage.setItem(prefix + 'android.testProject', 'CirrusAutomatedTests');
-  }
 
   localStorage.setItem(PROFILES_KEY, JSON.stringify([profile]));
   localStorage.setItem(ACTIVE_KEY, id);

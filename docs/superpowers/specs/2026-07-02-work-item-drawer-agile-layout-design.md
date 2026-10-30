@@ -1,4 +1,4 @@
-# Work Item Drawer — DriveFurther Agile Process Layout Design
+# Work Item Drawer — Example Agile Process Layout Design
 
 **Date:** 2026-07-02
 **Scope:** `apps/desktop/src/ado-workitem-types.js`, `apps/desktop/src/create-work-item-drawer.jsx`, their test files
@@ -7,7 +7,7 @@
 
 `CreateWorkItemDrawer` currently groups fields generically: any `html`-bucket field (matched by a fixed reference-name set or `dataType === 'html'`) renders in the wide left column via `MarkdownField`; everything else renders in a narrow 280px right rail, bucketed into unlabeled `status`/`classification`/`planning`/`tags` groups by `fieldGroup()` (`ado-workitem-types.js:100-127`), with anything unmatched falling into a collapsible "Additional Fields" section.
 
-This doesn't match DriveFurther's actual Azure DevOps process template. The user supplied the real per-type field layout (5 types: Bug, Epic, Feature, Issue, Task), each split into a Left column (stacked multi-line text fields) and a Middle column (Acceptance Criteria, then a Planning group of compact fields). A Right column exists in ADO's own UI (Deployment, Links/Related Work, and a redundant System Info entry) but per user decision none of it needs new UI: Deployment is omitted (no build/release data exists pre-creation, same reasoning as the already-disabled Discussion/History tabs), Related Work is the existing Links tab, and the right-column "System Info" entry was a transcription duplicate of the one already in the left column.
+This doesn't match Example's actual Azure DevOps process template. The user supplied the real per-type field layout (5 types: Bug, Epic, Feature, Issue, Task), each split into a Left column (stacked multi-line text fields) and a Middle column (Acceptance Criteria, then a Planning group of compact fields). A Right column exists in ADO's own UI (Deployment, Links/Related Work, and a redundant System Info entry) but per user decision none of it needs new UI: Deployment is omitted (no build/release data exists pre-creation, same reasoning as the already-disabled Discussion/History tabs), Related Work is the existing Links tab, and the right-column "System Info" entry was a transcription duplicate of the one already in the left column.
 
 ---
 
@@ -74,7 +74,7 @@ Fields are matched by **display name** (`field.name`), not reference name: the t
 
 ## Section 3 — Fallback for types outside `TYPE_LAYOUTS`
 
-When `typeName` has no entry in `TYPE_LAYOUTS` (a project using a different process template, or a 6th type added later to this one), the Details tab renders exactly as it does today: `mainFields`/`statusFields`/`classificationFields`/`planningFields`/`tagsFields`/`additionalFields` via `fieldGroup()`, `1fr 280px` grid. This is a pure fallback path — `fieldBucket`/`fieldGroup`/`KNOWN_FIELD_GROUPS` are unchanged, so no existing behavior regresses for any project not on DriveFurther's Agile template.
+When `typeName` has no entry in `TYPE_LAYOUTS` (a project using a different process template, or a 6th type added later to this one), the Details tab renders exactly as it does today: `mainFields`/`statusFields`/`classificationFields`/`planningFields`/`tagsFields`/`additionalFields` via `fieldGroup()`, `1fr 280px` grid. This is a pure fallback path — `fieldBucket`/`fieldGroup`/`KNOWN_FIELD_GROUPS` are unchanged, so no existing behavior regresses for any project not on Example's Agile template.
 
 ---
 

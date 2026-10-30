@@ -53,8 +53,8 @@ describe('ProjectAreasModal', () => {
   it('renders the area tree when open and nothing when closed', () => {
     const { container, rerender } = render(
       <ProjectAreasModal open={false} onClose={() => {}} areas={DEFAULT_PROJECT_AREAS} setAreas={() => {}} />)
-    expect(container.textContent).not.toContain('DriveFurther.API')
+    expect(container.textContent).not.toContain('Example.API')
     rerender(<ProjectAreasModal open onClose={() => {}} areas={DEFAULT_PROJECT_AREAS} setAreas={() => {}} />)
-    expect(container.textContent).toContain('DriveFurther.API')
+    expect(container.textContent).toContain('Example.API')
   })
 })

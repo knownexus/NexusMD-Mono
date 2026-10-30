@@ -21,7 +21,7 @@ public class ConfigController(IConfiguration config, IWebHostEnvironment env) : 
     public IActionResult Get()
     {
         var projects    = config.GetSection("Ado:Projects").Get<string[]>() ?? [];
-        var testProject = config["Ado:TestProject"] ?? "CirrusAutomatedTests";
+        var testProject = config["Ado:TestProject"] ?? "AutomatedTests";
         var refreshSecs = int.TryParse(config["App:RefreshSeconds"], out var s) ? s : 30;
         var isDefault   = IsUnconfigured();
 
@@ -93,7 +93,7 @@ public class ConfigController(IConfiguration config, IWebHostEnvironment env) : 
                                     .Where(p => !string.IsNullOrWhiteSpace(p))
                                     .Select(p => JsonValue.Create(p.Trim())!)
                                     .ToArray<JsonNode>()),
-            ["TestProject"]  = (req.TestProject ?? "CirrusAutomatedTests").Trim(),
+            ["TestProject"]  = (req.TestProject ?? "AutomatedTests").Trim(),
         };
 
         // Only write the PAT if a new one was supplied (blank = keep existing)

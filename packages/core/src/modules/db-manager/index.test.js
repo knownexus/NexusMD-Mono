@@ -98,10 +98,10 @@ describe('parseConnectionString', () => {
     it('parses host, port, and database from a jdbc:sqlserver:// URL', () => {
       const cfg = parseConnectionString(
         'sqlserver',
-        'jdbc:sqlserver://df-test-sql01.msl.co.uk:1433;database=DriveFurther_UAT',
+        'jdbc:sqlserver://test-sql01.example.com:1433;database=Example_UAT',
       )
       expect(cfg).toMatchObject({
-        server: 'df-test-sql01.msl.co.uk', port: 1433, database: 'DriveFurther_UAT',
+        server: 'test-sql01.example.com', port: 1433, database: 'Example_UAT',
       })
     })
 

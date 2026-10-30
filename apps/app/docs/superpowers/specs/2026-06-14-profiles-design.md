@@ -35,7 +35,7 @@ Stored in `localStorage` key `helm.profiles` as a JSON array:
 [
   {
     "id": "abc123",
-    "name": "MSL Engineering",
+    "name": "Example Engineering",
     "color": "#9a7e22",
     "initials": "MS",
     "type": "ado",
@@ -73,7 +73,7 @@ All existing `helm.X` keys become `helm.p.{id}.X`. Examples:
 ```json
 {
   "version": 1,
-  "profile": { "name": "MSL Engineering", "color": "#9a7e22", "initials": "MS", "type": "ado" },
+  "profile": { "name": "Example Engineering", "color": "#9a7e22", "initials": "MS", "type": "ado" },
   "data": {
     "tweaks": { "theme": "light", "density": "balanced" },
     "planner.week.2026-W24": { ... },

@@ -68,8 +68,8 @@ const DEFAULT_TWEAKS = {
   navOrder: DEFAULT_NAV_ORDER,
   navHidden: [],
   quickLinks: [
-    { label: 'UAT Testing', url: 'https://cirrus.uat.msl.co.uk/', color: 'var(--info)' },
-    { label: 'Dev Testing', url: 'https://cirrus.dev.msl.co.uk/', color: 'var(--success)' },
+    { label: 'UAT Testing', url: 'https://uat.example.com/', color: 'var(--info)' },
+    { label: 'Dev Testing', url: 'https://dev.example.com/', color: 'var(--success)' },
     { label: 'Cirrus HR',   url: 'https://cirrushr.co.uk',        color: 'var(--violet)' },
   ],
 }
