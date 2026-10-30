@@ -15,6 +15,10 @@ Goal: GitHub becomes a peer of Jira/ADO. Users on GitHub-hosted teams get **issu
 - **Per-profile PAT**, stored exactly as ADO's PAT is (per profile, same storage adapter and key scheme pattern). A "Load GitHub issues" switch (per profile, default on) mirrors ADO's "Load Azure DevOps work items": off, issues are not fetched or shown, PRs and runs still are.
 - GitHub can run alongside Jira and/or ADO in one profile.
 
+## Platforms
+
+Desktop and the Android app (`apps/app`) both get GitHub. Core logic is shared; Android binds it in `apps/app/src/` (PAT, `CapacitorHttp`, a settings modal, and GitHub awareness in its own work-item, PR and build views). Creating issues from Android is a later change.
+
 ## Non-goals
 
 - OAuth-only sign-in. The existing OAuth flow stays as is; PAT is the supported path for this work.
