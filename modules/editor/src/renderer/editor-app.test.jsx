@@ -144,6 +144,7 @@ describe('tabs', () => {
   it('switches between open files, keeping each one\'s edits', async () => {
     const { store } = setup()
     await store.openFile('/work/a.txt'); await store.openFile('/work/b.md')
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
     expect(await screen.findByDisplayValue('# beta')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /^a\.txt/ }))
     fireEvent.change(await screen.findByDisplayValue('alpha'), { target: { value: 'alpha edited' } })
@@ -223,5 +224,70 @@ describe('read-only text', () => {
       expect(screen.getByText('Read-only')).toBeTruthy()
       expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
     })
+  })
+})
+
+describe('markdown', () => {
+  const preview = name => screen.findByLabelText(`Preview of ${name}`)
+
+  it('opens a markdown file rendered, and Edit shows its source to change', async () => {
+    const { store } = setup({ files: { '/work/b.md': '# beta\n\nSome **bold** text' } })
+    await store.openFile('/work/b.md')
+    const shown = await preview('b.md')
+    expect(within(shown).getByRole('heading', { name: 'beta' })).toBeTruthy()
+    expect(shown.querySelector('strong').textContent).toBe('bold')
+    expect(screen.queryByRole('textbox')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(textbox('b.md'), { target: { value: '# gamma' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
+    expect(within(await preview('b.md')).getByRole('heading', { name: 'gamma' })).toBeTruthy()
+    expect(screen.getByText('Unsaved changes')).toBeTruthy()
+  })
+
+  it('keeps each tab showing the way it was left', async () => {
+    const { store } = setup()
+    await store.openFile('/work/b.md')
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    await store.openFile('/work/a.txt')
+    fireEvent.click(screen.getByRole('button', { name: /^b\.md/ }))
+    expect(await screen.findByDisplayValue('# beta')).toBeTruthy()
+  })
+
+  it('shows the source when asked for a line in it', async () => {
+    const { store } = setup()
+    await store.openFile('/work/b.md', { line: 1 })
+    expect(await screen.findByDisplayValue('# beta')).toBeTruthy()
+  })
+
+  it('sizes the preview text from the status bar or Ctrl+scroll over the pane, only while previewing', async () => {
+    localStorage.clear()
+    const { store } = setup()
+    await store.openFile('/work/b.md')
+    const shown = await preview('b.md')
+    fireEvent.click(screen.getByRole('button', { name: 'Larger text' }))
+    expect(shown.style.fontSize).toBe('110%')
+    fireEvent.wheel(shown.parentElement, { deltaY: 100, ctrlKey: true })
+    fireEvent.wheel(shown.parentElement, { deltaY: 100, ctrlKey: true })
+    expect(shown.style.fontSize).toBe('90%')
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.queryByRole('group', { name: 'Text size' })).toBeNull()
+    localStorage.clear()
+  })
+
+  it('offers no choice for files that are not markdown', async () => {
+    const { store } = setup()
+    await store.openFile('/work/a.txt')
+    await screen.findByDisplayValue('alpha')
+    expect(screen.queryByRole('group', { name: 'Show as' })).toBeNull()
+  })
+
+  it('renders read-only markdown too, with its source a click away but never editable', async () => {
+    const { store } = setup()
+    store.openText({ id: 'github:acme/web@main:README.md', name: 'README.md', text: '# readme', origin: 'acme/web on GitHub, main: README.md' })
+    expect(within(await preview('README.md')).getByRole('heading', { name: 'readme' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Source' }))
+    expect(screen.getByRole('textbox', { name: 'Reading README.md' }).readOnly).toBe(true)
   })
 })

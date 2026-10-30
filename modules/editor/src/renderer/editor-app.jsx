@@ -1,5 +1,6 @@
 import React from 'react'
 import { CodeEditor, languageForPath } from '@nexusmd/editor-kit/code-editor.jsx'
+import { MarkdownPreview, TextSizeControls, useMarkdownTextSize, useCtrlWheelTextSize } from '@nexusmd/ui'
 import { FolderTree } from './folder-tree.jsx'
 import { editorApi, editorStore, useEditorStore } from './editor-singleton.js'
 import { isDirty, baseName } from './editor-store.js'
@@ -32,6 +33,35 @@ function Empty({ recent, onOpen }) {
   )
 }
 
+// Markdown opens rendered, as the Documents app shows it; its source (where editing happens) is a
+// click away. Other files have only their source, so no choice.
+const viewOf = doc => (languageForPath(doc.name) === 'markdown' ? doc.view ?? 'preview' : null)
+
+function ViewToggle({ doc, view, store }) {
+  const option = (value, label) => (
+    <button type="button" className={`nx-ed-view${view === value ? ' nx-ed-active' : ''}`} aria-pressed={view === value}
+      onClick={() => store.setView(doc.path, value)}>{label}</button>
+  )
+  return <div role="group" aria-label="Show as" className="nx-ed-views">{option('preview', 'Preview')}{option('source', doc.readOnly ? 'Source' : 'Edit')}</div>
+}
+
+// Ctrl+scroll anywhere over the pane changes the text size, shared with the Documents app's previews.
+function Preview({ doc }) {
+  const pane = React.useRef(null)
+  const [size, setSize] = useMarkdownTextSize()
+  useCtrlWheelTextSize(pane, size, setSize)
+  return (
+    <div ref={pane} className="nx-ed-preview">
+      <MarkdownPreview markdown={doc.text} aria-label={`Preview of ${doc.name}`} className="nx-ed-preview-body" ctrlWheel={false} />
+    </div>
+  )
+}
+
+function PreviewTextSize() {
+  const [size, setSize] = useMarkdownTextSize()
+  return <TextSizeControls size={size} onChange={setSize} />
+}
+
 function DocPane({ doc, store }) {
   if (doc.status === 'loading') return <div className="nx-ed-empty">Loading {doc.name}…</div>
   if (doc.status === 'error') {
@@ -42,12 +72,15 @@ function DocPane({ doc, store }) {
       </div>
     )
   }
+  const view = viewOf(doc)
   if (doc.readOnly) {
     return (
       <>
-        <CodeEditor value={doc.text} language={languageForPath(doc.name)} ariaLabel={`Reading ${doc.name}`} readOnly />
+        {view === 'preview' ? <Preview doc={doc} /> : <CodeEditor value={doc.text} language={languageForPath(doc.name)} ariaLabel={`Reading ${doc.name}`} readOnly />}
         <div className="nx-ed-status">
           <span className="nx-ed-path" title={doc.origin}>{doc.origin}</span>
+          {view === 'preview' && <PreviewTextSize />}
+          {view && <ViewToggle doc={doc} view={view} store={store} />}
           <span className="nx-ed-readonly">Read-only</span>
         </div>
       </>
@@ -64,10 +97,14 @@ function DocPane({ doc, store }) {
         </div>
       )}
       {doc.error && <div role="alert" className="nx-ed-banner nx-ed-bad">{doc.error}</div>}
-      <CodeEditor value={doc.text} language={languageForPath(doc.path)} ariaLabel={`Editing ${doc.name}`} line={doc.line}
-        onChange={text => store.setText(doc.path, text)} />
+      {view === 'preview' ? <Preview doc={doc} /> : (
+        <CodeEditor value={doc.text} language={languageForPath(doc.path)} ariaLabel={`Editing ${doc.name}`} line={doc.line}
+          onChange={text => store.setText(doc.path, text)} />
+      )}
       <div className="nx-ed-status">
         <span className="nx-ed-path" title={doc.path}>{doc.path}</span>
+        {view === 'preview' && <PreviewTextSize />}
+        {view && <ViewToggle doc={doc} view={view} store={store} />}
         <span>{eolLabel(doc.eol)}{doc.bom ? ' · BOM' : ''}</span>
         <span>{doc.saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span>
         <button type="button" className="btn sm primary" disabled={!dirty || doc.saving} onClick={() => store.save(doc.path)}>Save</button>
