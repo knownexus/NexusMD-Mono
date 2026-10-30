@@ -109,7 +109,8 @@ test('Git\'s Files tab opens a file in the Editor when both are installed', asyn
       await expect(win.getByRole('menuitem', { name: 'Open with default app' })).toHaveCount(0)
       await win.getByRole('menuitem', { name: 'Open in Editor' }).click({ force: true })
       await expect(item(win, 'Editor')).toHaveClass(/active/, { timeout: 20_000 })
-      await expect(win.getByRole('textbox', { name: 'Editing README.md' })).toContainText('From the repo')
+      // A Markdown file opens rendered; its source is behind Edit.
+      await expect(win.getByLabel('Preview of README.md')).toContainText('From the repo')
     })
   } finally {
     rmSync(dir, { recursive: true, force: true })
