@@ -6,6 +6,7 @@ import { getProfileKey } from '../profile-keys.js';
 import { Icon } from '../icons.jsx';
 import { useProfile } from '../profile-context.jsx';
 import { marked } from 'marked';
+import { WORK_SCREENS, useOffScreens, setOffScreens } from '../work-screens.js';
 import {
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard, CloudSyncCard,
   IntegrationsView,
@@ -57,8 +58,9 @@ function vsTimeZones() {
   return result;
 }
 
-function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenJira, onOpenProjectAreas, onGoPlanner }) {
+function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection, onOpenJira, onOpenProjectAreas, onGoPlanner }) {
   const [subPage, setSubPage] = useStateVS('profile');
+  const offScreens = useOffScreens();
   const [pwOpen, setPwOpen] = useStateVS(false);
   const isManual = useProfile?.()?.activeProfile?.type === 'manual';
   const photoInputRef = useRefVS(null);
@@ -306,6 +308,12 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenJira, onOpenPr
               <VsRow title="Work-item type labels" desc="Show type names next to type icons in lists">
                 <PlToggle checked={tweaks.typeLabels} onChange={v => setTweak('typeLabels', v)}/>
               </VsRow>
+              {WORK_SCREENS.map(s => (
+                <VsRow key={s.id} title={`${s.label} screen`} desc="Show it in the navigation; switching it off also stops loading its data">
+                  <PlToggle checked={!offScreens.includes(s.id)}
+                    onChange={on => { setOffScreens(on ? offScreens.filter(x => x !== s.id) : [...offScreens, s.id]); onWorkScreensChanged?.(); }}/>
+                </VsRow>
+              ))}
               <VsRow title="Documents tab" desc="Show Markdown, JSON editor and Regex tester in the navigation">
                 <PlToggle
                   checked={tweaks.showMarkdown !== false}

@@ -15,6 +15,7 @@ import {
 } from '@nexusmd/ui';
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
+import { useOffScreens } from './work-screens.js';
 import { registerCloudDeepLink, hydrateCloudTokens } from './cloud-auth.js';
 import { startAppAutoSync } from './sync.js';
 import { DashboardView } from './views/view-dashboard.jsx';
@@ -495,7 +496,10 @@ function AppShell() {
   })();
   const [tweaks, setTweak] = useTweaks(storedTweaks);
 
-  const { primary: primaryTabs, secondary: secondaryTabs } = tabsForType(activeProfile?.type || 'ado');
+  const offScreens = useOffScreens();
+  const { primary: allPrimary, secondary: allSecondary } = tabsForType(activeProfile?.type || 'ado');
+  const primaryTabs = allPrimary.filter(t => !offScreens.includes(t.id));
+  const secondaryTabs = allSecondary.filter(t => !offScreens.includes(t.id));
   const visibleSecondaryTabs = secondaryTabs.filter(t =>
     t.id !== 'markdown' || tweaks.showMarkdown !== false
   );
@@ -1022,6 +1026,7 @@ function AppShell() {
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
         onOpenConnection={() => setSettingsOpen(true)}
         onOpenJira={() => setJiraSettingsOpen(true)}
+        onWorkScreensChanged={handleSettingsSaved}
         onOpenProjectAreas={() => setProjectAreasOpen(true)}
         onGoPlanner={() => navigate('planner')} device={device}/>;
       default: return null;

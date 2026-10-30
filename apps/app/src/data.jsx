@@ -7,6 +7,7 @@ import {
   timeAgo, adoTypeToHelm, adoStateToHelm, slugify,
 } from '@nexusmd/core';
 import { getAdoConfig, isAdoConfigured, usesAdoWorkItems, createAdoHttpAdapter } from './ado-client.js';
+import { skippedFetches } from './work-screens.js';
 import { getJiraConfig, isJiraActive, createJiraHttpAdapter } from './jira-client.js';
 import { localStorageAdapter } from '@nexusmd/web-adapters';
 import { getProfileKey } from './profile-keys.js';
@@ -82,7 +83,7 @@ async function runLoad(isRefresh = false) {
       providers: {
         ado: {
           configured: adoOn,
-          run: () => loadAdoData(getAdoConfig(), adapters, { isRefresh, priorData, skip: { workItems: !usesAdoWorkItems() } }),
+          run: () => loadAdoData(getAdoConfig(), adapters, { isRefresh, priorData, skip: { ...skippedFetches(), workItems: !usesAdoWorkItems() } }),
         },
         jira: {
           configured: jiraOn,
