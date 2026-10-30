@@ -8,6 +8,7 @@
 | .NET SDK | 8.0 | Web app host |
 | Android SDK | API 36 | App only — via Android Studio |
 | Java | 21 | App only — required by Gradle (Capacitor 8) |
+| Node.js | ≥ 22 | App only — the Capacitor 8 CLI (`cap sync`) |
 
 ## Setup
 
