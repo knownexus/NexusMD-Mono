@@ -4,7 +4,7 @@
 
 **Goal:** GitHub becomes a peer of Jira and Azure DevOps: issues as work items, pull requests, Actions runs as builds, and repo discovery/selection, per profile with a PAT.
 
-**Architecture:** Headless logic goes in a new `packages/core/src/modules/github/` (config, REST client, discovery, mappers, loader, issue operations, work-item source), mirroring `ado/` and `jira/`. Its cache merges into the snapshot beside ADO and Jira (`workitems/snapshot.js`, `workitems/merge.js`). The Work module binds it in `modules/work/src/renderer/` (client, settings card, refresh, routed source, create form). Shared UI gets small source-awareness changes only where it hard-codes `ado`/`jira`.
+**Architecture:** Headless logic goes in a new `packages/core/src/modules/github/` (config, REST client, discovery, mappers, loader, issue operations, work-item source), mirroring `ado/` and `jira/`. Its cache merges into the snapshot beside ADO and Jira (`workitems/snapshot.js`, `workitems/merge.js`). The Work module binds it in `modules/work/src/renderer/` (client, settings card, refresh, routed source, create form). Shared UI gets small source-awareness changes only where it hard-codes `ado`/`jira`. The Android app (`apps/app`) binds the same core module in `apps/app/src/` (Tasks 14-16), mirroring its Jira binding.
 
 **Tech Stack:** JS/JSX (ESM), React, vitest, GitHub REST v3 (`X-GitHub-Api-Version: 2022-11-28`), no GraphQL.
 
@@ -23,6 +23,7 @@
 - A "Load GitHub issues" switch (`issues`, default on). Off: issues are not fetched or shown, GitHub drops out of the work-item providers and create form; PRs and runs still load.
 - 401 fires the existing `nexusmd:github-401` event. 403 is classified into `scope`, `rate-limit`, `sso`, each with its own message. SSO-blocked orgs are listed in discovery as "needs SSO authorization".
 - "Me" is the login from `GET /user`; the team is built from logins seen as authors, assignees and reviewers.
+- Android (`apps/app`): config keys use the app's scheme, `getProfileKey('helm.android.github.' + name)`; HTTP goes through `CapacitorHttp` (not `window.fetch`); the app has its own phone-sized work-item, PR and build views, so GitHub awareness is added there as well as in the shared views. Creating issues from Android is out of scope in this version. Tests for it live in `apps/app/src/*.test.js(x)` and run with `npm -w apps/app test`.
 - Tests live beside the existing ones: core in `packages/core/tests/github/*.test.js`, renderer in `modules/work/src/renderer/*.test.js(x)`. Run with `npx vitest run <path>` from the repo root.
 
 ## Review Focus
@@ -32,6 +33,7 @@
 3. **Over the cap.** Saving 51 repos throws and nothing is saved; the card shows the message.
 4. **Number collisions across repos.** Issue `#12` in two repos are two items with distinct ids, and the PR link index keys by the full string id.
 5. **403 is three different problems.** Missing scope, secondary rate limit (`x-ratelimit-remaining: 0` or `retry-after`) and SAML SSO (`x-github-sso` header) each get a distinct message, not "auth failed".
+6. **Android has its own views.** `apps/app` keeps phone-sized copies of the work-item, PR and build views, and `PRDetail` calls ADO endpoints directly. A GitHub PR or run must never reach an ADO URL there; the Task 16 tests assert it.
 
 ---
 
@@ -354,12 +356,86 @@
 
 ---
 
-### Task 14: Verify end to end
+### Task 14: Android binding and refresh
+
+**Depends on:** Tasks 1-8 (core module, snapshot merge, routed source) and Tasks 12-13 (shared PR and Builds changes). The Android app (`apps/app`) imports only `@nexusmd/core`, `@nexusmd/ui` and `@nexusmd/web-adapters`, so everything in core arrives for free; this task is only the binding, mirroring what Jira already has in `apps/app/src/jira-client.js` and `apps/app/src/data.jsx`.
+
+**Files:**
+- Create: `apps/app/src/github-client.js`
+- Modify: `apps/app/src/data.jsx`, `apps/app/src/work-item-source.js`
+- Test: `apps/app/src/github-client.test.js`, `apps/app/src/work-item-source.test.js` (extend)
+
+**Interfaces:**
+- Consumes: `makeGithubConfig`, `loadGithubData`, `loadCachedGithubData`, `makeGithubWorkItemSource`, `buildSnapshot`, `refreshProviders`.
+- Produces (github-client.js): `{ getGithubConfig, saveGithubConfig, isGithubConfigured, usesGithubWorkItems } = makeGithubConfig({ storage: rawStorage, key: n => getProfileKey('helm.android.github.' + n) })` (the Android `helm.android.*` scheme from `profile-keys.js`, not `github.*`); `createGithubHttpAdapter({ getConfig = getGithubConfig, request = req => CapacitorHttp.request(req) } = {})` returning the same `{ ok, status, headers.get, text(), json() }` as `createJiraHttpAdapter`, with the three headers from Task 9, `https://api.github.com/${path}` as the URL, a thrown `Error('GitHub token not configured — open Settings first.')` when there is no PAT, and `window.dispatchEvent(new Event('nexusmd:github-401'))` on a 401. `androidGithubSource = makeGithubWorkItemSource({ http: createGithubHttpAdapter(), getLogin: () => getGithubConfig().login })`.
+- `data.jsx`: `runLoad` adds a `github` provider to its `refreshProviders` call (`configured` is `isGithubConfigured()` and the profile is not `manual`; `run` calls `loadGithubData(getGithubConfig(), { http, storage: localStorageAdapter }, { isRefresh, priorData, skip: { ...skippedFetches(), workItems: !usesGithubWorkItems() } })`), and `mergedSnapshot()` passes `githubConfig`, `githubActive: isGithubConfigured()`, `githubWorkItems: usesGithubWorkItems()` to `buildSnapshot`. The early-out in `runLoad` becomes "none of ADO, Jira, GitHub is on". The cached start-up read uses `mergedSnapshot()` when any provider is configured.
+- `work-item-source.js`: `createRoutedWorkItemSource({ ado, jira: <proxy>, github: <proxy> })`, the GitHub half built like the Jira one so it follows connection changes without a reload and throws `Error('GitHub is not configured')` while `isGithubConfigured()` is false.
+
+- [ ] **Step 1: Write failing tests**
+  - `github-client.test.js` (inject `request`): headers and URL are right; a 401 dispatches `nexusmd:github-401` and a 200 does not; no PAT throws; the config round-trips under the `helm.android.github.` keys and `usesGithubWorkItems()` is false when `issues` is off or GitHub is not connected.
+  - `work-item-source.test.js`: `gh:acme/web#7` routes to GitHub, `jira:ABC-1` to Jira and a numeric id to ADO; `gh:` throws `GitHub is not configured` while it is off.
+- [ ] **Step 2:** Run `npm -w apps/app test`; expect FAIL.
+- [ ] **Step 3:** Implement per Interfaces. Do not touch the existing GitHub OAuth card or `cloud-auth.js`: that sign-in is separate from the PAT.
+- [ ] **Step 4:** Run `npm -w apps/app test` and `npm -w apps/app run build`; expect PASS.
+- [ ] **Step 5:** Commit `feat(app): load GitHub issues, PRs and runs on Android`.
+
+---
+
+### Task 15: Android settings modal with repo discovery
+
+**Files:**
+- Create: `apps/app/src/github-settings.jsx`
+- Modify: `apps/app/src/app.jsx` (`githubSettingsOpen` state, render `<GithubSettingsModal />` beside `JiraSettingsModal`, pass `onOpenGithub` to `SettingsView`), `apps/app/src/views/view-settings.jsx` (a "GitHub account" `VsRow` with Manage, next to the Jira one; hidden for `manual` profiles)
+- Test: `apps/app/src/github-settings.test.jsx`
+
+**Interfaces:**
+- Consumes: `getGithubConfig`, `saveGithubConfig`, `createGithubHttpAdapter` (Task 14), `makeGithubClient`, `discoverGithubRepos`, `MAX_GITHUB_REPOS`.
+- Produces: `GithubSettingsModal({ open, onClose, onSaved })`, same shell and fields as Task 10 with phone sizing (full-width modal like `JiraSettingsModal`, the repo checklist scrolls inside the modal body): PAT (blank keeps the saved one), "Load GitHub issues" switch, a **Discover repositories** button, a searchable checklist grouped by owner with archived and issues-disabled labels, `N of 50 selected`, and the "needs SSO authorization" list. Saving the 51st repo shows `Select at most 50 repositories` and disables Save. A `GithubError` shows its own message (scope, rate limit, SSO, auth). Save writes PAT, repos, `issues` and the login from `GET /user`, clears `GITHUB_CACHE_KEY`, then calls `onSaved` (the existing `handleSettingsSaved` reload). Use `onSaved?.()` and close after a short delay as the Jira modal does.
+- The profile `modules.github` stub seeding (Task 10) is skipped on Android: profiles there are localStorage-based and the stub is not reachable.
+
+- [ ] **Step 1: Write failing tests** (model on `apps/app/src/jira-client.test.js` and Task 10)
+  - Saving with a PAT and two ticked repos calls `saveGithubConfig` with `{ pat, repos, issues: true, login }` and then `onSaved`; a blank PAT keeps the stored one; the switch off saves `issues: false`.
+  - Discover with a faked client groups by owner and filters by the search box; an SSO org shows its authorize link.
+  - The 51st tick shows the cap message and disables Save; a faked 403 `scope` shows the scope message.
+- [ ] **Step 2:** Run `npx vitest run src/github-settings.test.jsx` from `apps/app`; expect FAIL.
+- [ ] **Step 3:** Implement, reusing `inputStyle` and the modal layout of `apps/app/src/jira-settings.jsx`.
+- [ ] **Step 4:** Run `npm -w apps/app test`; expect PASS.
+- [ ] **Step 5:** Commit `feat(app): GitHub settings with PAT and repo discovery`.
+
+---
+
+### Task 16: Android views for GitHub items, PRs and runs
+
+**Files:**
+- Modify: `apps/app/src/views/view-workitems.jsx`, `apps/app/src/views/view-prs.jsx`, `apps/app/src/views/view-builds.jsx`, `apps/app/src/app.jsx` (the PR detail, `PRDetail`, which calls ADO thread, reviewer and ref endpoints directly), `apps/app/src/work-item-detail.jsx` if it assumes ADO
+- Test: extend or add `apps/app/src/views/github-items.test.jsx`
+
+Android keeps its own phone-sized copies of these views (they are not the shared ones changed in Tasks 8, 12 and 13), so the GitHub awareness has to be added here too. Keep the changes minimal: no new screens.
+
+**Interfaces:**
+- Work items: GitHub items (`source === 'github'`) show `displayId` (`owner/name#123`), group by repo as "project", use the two lanes `Open` and `Closed` when GitHub is the only provider, and open `html_url` for "Open in GitHub". ADO-only fields in the detail sheet are hidden for them, as for Jira.
+- Pull requests: the list shows `pr.displayId` when present. In `PRDetail`, when `pr.source === 'github'`, load files, commits and threads from `pr-collab.js` (Task 12) with `createGithubHttpAdapter`, allow posting a PR comment, and do **not** call the ADO thread, reviewer, ref or complete-PR endpoints (hide those actions).
+- Builds: a GitHub run shows its workflow, branch and status, and its action opens `build.url` as "Open in GitHub"; queue and retry are hidden (as in Task 13). `loadTimeline` is not called for GitHub runs.
+- The Work-screens switches from Settings continue to apply: switching Pull requests or Builds off skips the GitHub PR and run fetches through `skippedFetches()`.
+- Create-issue is out of scope on Android in this version (the same as Jira today: the source exposes `createIssue`, but there is no phone create form). Note this in the PR description rather than leaving it silent.
+
+- [ ] **Step 1: Write failing tests**
+  - A GitHub work item shows `acme/web#7`, falls in `Open`, and has no ADO-only field; the same list with an ADO item is unchanged.
+  - A GitHub PR's detail never requests an ADO URL (assert on a stubbed `adoGet`/`adoPost`) and shows files from the GitHub functions.
+  - A GitHub run shows "Open in GitHub" and no retry control.
+- [ ] **Step 2:** Run `npm -w apps/app test`; expect FAIL.
+- [ ] **Step 3:** Implement per Interfaces.
+- [ ] **Step 4:** Run `npm -w apps/app test` and `npm -w apps/app run build`; expect PASS.
+- [ ] **Step 5:** Commit `feat(app): GitHub issues, PRs and runs in the Android views`.
+
+---
+
+### Task 17: Verify end to end
 
 **Files:**
 - Modify: none expected (fixes only); docs line in `README.md` integrations list if one exists.
 
-- [ ] **Step 1:** Run the whole suite: `npx vitest run`. Expected: all pass, no snapshot changes outside GitHub additions.
+- [ ] **Step 1:** Run the whole suite: `npx vitest run`, and `npm -w apps/app test` plus `npm -w apps/app run build` for Android. Expected: all pass, no snapshot changes outside GitHub additions.
 - [ ] **Step 2:** Run the desktop e2e that covers Work (`apps/desktop/e2e/work.spec.js`) per `apps/desktop/package.json` scripts; expected: passes with GitHub unconfigured (no regression).
-- [ ] **Step 3:** Launch the desktop app with the `run` skill, create a profile, paste a real PAT on the GitHub card, discover repos, tick two, save, and confirm: issues on the board and in the table, a PR in Pull Requests with its drawer tabs, runs in Builds, closing an issue from the drawer reflected on GitHub, creating an issue from the drawer, "Load GitHub issues" off hides issues but keeps PRs and runs. Report anything not verified.
+- [ ] **Step 3:** Launch the desktop app with the `run` skill, create a profile, paste a real PAT on the GitHub card, discover repos, tick two, save, and confirm: issues on the board and in the table, a PR in Pull Requests with its drawer tabs, runs in Builds, closing an issue from the drawer reflected on GitHub, creating an issue from the drawer, "Load GitHub issues" off hides issues but keeps PRs and runs. Then, on an Android emulator or device (build with `npm -w apps/app run android`): add the PAT and tick repos in the GitHub settings modal, and confirm issues in Work, a PR with its files/commits/threads, runs in Builds, and "Load GitHub issues" off hiding issues but keeping PRs and runs. Report anything not verified, including anything that could only be checked on one platform.
 - [ ] **Step 4:** Commit any fixes `fix(github): <what>`; do not push.

@@ -10,10 +10,18 @@ import { useTweaks } from './tweaks-panel.jsx';
 import { getProfileKey } from './profile-keys.js';
 import {
   NexusDataProvider, renderContent, SEEN_FINGERPRINTS, DEFAULT_PROJECT_AREAS,
-  ProjectAreasModal, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
+  ProjectAreasModal, DocumentsView, ApiClientProvider, ApiClientView, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
   PRCommitsTab, PRFilesTab, CreateWIModal, WIDetail, PersonDetail, DetailDrawer, paletteFor,
 } from '@nexusmd/ui';
-import { adoWorkItemSource } from './work-item-source.js';
+import { workItemSource } from './work-item-source.js';
+import { JiraSettingsModal } from './jira-settings.jsx';
+import { useOffScreens } from './work-screens.js';
+import { EditorScreen } from './editor-screen.jsx';
+import { GitView } from './git-view.jsx';
+import { apiFileAdapter } from './adapters/api-file.js';
+import { scriptRunnerAdapter } from './adapters/api-script-runner.js';
+import { apiHttpAdapter } from './adapters/api-http.js';
+import { secureStorageAdapter } from './adapters/secureStorage.js';
 import { registerCloudDeepLink, hydrateCloudTokens } from './cloud-auth.js';
 import { startAppAutoSync } from './sync.js';
 import { DashboardView } from './views/view-dashboard.jsx';
@@ -25,7 +33,6 @@ import { CalendarView } from './views/view-calendar.jsx';
 import { TriageView } from './views/view-triage.jsx';
 import { TeamView } from './views/view-team.jsx';
 import { PlannerView, plannerExportDocx } from './planner/view-planner.jsx';
-import { MarkdownViewer } from './MarkdownViewer.jsx';
 import { SettingsView } from './views/view-settings.jsx';
 import { ListsView } from './views/view-lists.jsx';
 import { WorkItemDetail } from './work-item-detail.jsx';
@@ -97,8 +104,16 @@ const NAV_SECONDARY = [
   { id: 'triage',   label: 'Triage',   icon: 'inbox'   },
   { id: 'team',     label: 'Team',     icon: 'team'    },
   { id: 'planner',  label: 'Planner',  icon: 'planner' },
-  { id: 'markdown', label: 'Markdown', icon: 'doc'     },
+  { id: 'markdown', label: 'Documents', icon: 'doc'    },
+  { id: 'api',      label: 'API Client', icon: 'link'   },
+  { id: 'editor',   label: 'Editor',     icon: 'edit'   },
+  { id: 'git',      label: 'Repos',      icon: 'git-branch' },
 ];
+
+// The API client's adapters: collections in a virtual file system, scripts in a worker, native HTTP.
+const API_CLIENT_ADAPTERS = {
+  file: apiFileAdapter, scriptRunner: scriptRunnerAdapter, apiHttp: apiHttpAdapter, secureStorage: secureStorageAdapter,
+};
 
 // ─── Mobile nav tab lists (module-level constants — never recreated) ──────────
 const ALL_PRIMARY_TABS = [
@@ -114,13 +129,16 @@ const ALL_SECONDARY_TABS = [
   { id: 'calendar', label: 'Calendar', icon: 'planner'      },
   { id: 'triage',   label: 'Triage',   icon: 'inbox'        },
   { id: 'team',     label: 'Team',     icon: 'team'         },
-  { id: 'markdown', label: 'Markdown', icon: 'doc'          },
+  { id: 'markdown', label: 'Documents', icon: 'doc'         },
+  { id: 'api',      label: 'API Client', icon: 'link'        },
+  { id: 'editor',   label: 'Editor',     icon: 'edit'        },
+  { id: 'git',      label: 'Repos',      icon: 'git-branch'  },
   { id: 'settings', label: 'Settings', icon: 'settings'     },
 ];
 
 function tabsForType(type) {
   if (type === 'manual') {
-    const ADO_IDS = new Set(['work', 'pr', 'builds', 'tests', 'triage']);
+    const ADO_IDS = new Set(['work', 'pr', 'builds', 'tests', 'triage', 'git']);
     return {
       primary:   ALL_PRIMARY_TABS.filter(t => !ADO_IDS.has(t.id)),
       secondary: ALL_SECONDARY_TABS.filter(t => !ADO_IDS.has(t.id)),
@@ -210,6 +228,7 @@ function SettingsModal({ open, onClose, onSaved }) {
   const [uatProject, setUatProject] = useState('');
   const [uatPipelineId, setUatPipelineId] = useState('');
   const [uatBranch, setUatBranch] = useState('');
+  const [adoWorkItems, setAdoWorkItems] = useState(true);
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [smtpHost, setSmtpHost] = useState('');
   const [smtpPort, setSmtpPort] = useState('');
@@ -234,6 +253,7 @@ function SettingsModal({ open, onClose, onSaved }) {
     setUatProject(c.uatProject || '');
     setUatPipelineId(c.uatPipelineId || '');
     setUatBranch(c.uatBranch || '');
+    setAdoWorkItems(c.workItems !== false);
     setStatus('');
     const stored = localStorage.getItem(getProfileKey('helm.tweaks'));
     let tweaks = {};
@@ -254,6 +274,7 @@ function SettingsModal({ open, onClose, onSaved }) {
         uatProject:    uatProject.trim(),
         uatPipelineId: parseInt(uatPipelineId, 10) || 0,
         uatBranch:     uatBranch.trim(),
+        workItems:     adoWorkItems,
       });
       setStatus('Saved! Reloading data…');
       setPat('');
@@ -320,6 +341,13 @@ function SettingsModal({ open, onClose, onSaved }) {
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-subtle)', marginBottom: 12 }}>Connection</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <input type="checkbox" checked={adoWorkItems} onChange={e => setAdoWorkItems(e.target.checked)}/>
+                  Load Azure DevOps work items
+                </label>
+                {!adoWorkItems && (
+                  <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: -6 }}>Pull requests, builds and tests still come from Azure DevOps.</div>
+                )}
                 <SettField label="Organisation" hint="The name after dev.azure.com/">
                   <input value={org} onChange={e => setOrg(e.target.value)} placeholder="your-org-name" style={settInputStyle}/>
                 </SettField>
@@ -475,7 +503,10 @@ function AppShell() {
   })();
   const [tweaks, setTweak] = useTweaks(storedTweaks);
 
-  const { primary: primaryTabs, secondary: secondaryTabs } = tabsForType(activeProfile?.type || 'ado');
+  const offScreens = useOffScreens();
+  const { primary: allPrimary, secondary: allSecondary } = tabsForType(activeProfile?.type || 'ado');
+  const primaryTabs = allPrimary.filter(t => !offScreens.includes(t.id));
+  const secondaryTabs = allSecondary.filter(t => !offScreens.includes(t.id));
   const visibleSecondaryTabs = secondaryTabs.filter(t =>
     t.id !== 'markdown' || tweaks.showMarkdown !== false
   );
@@ -512,6 +543,7 @@ function AppShell() {
   }, []);
   const [drawer, setDrawer]       = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [jiraSettingsOpen, setJiraSettingsOpen] = useState(false);
   const [projectAreasOpen, setProjectAreasOpen] = useState(false);
   const [projectAreas, setProjectAreas] = useState(() => {
     try {
@@ -994,9 +1026,14 @@ function AppShell() {
       case 'planner': return <PlannerView data={plannerData} setData={setPlannerData}
         themes={themes} setThemes={setThemes} onExportDocx={plannerExportDocx} device={device} onFlash={showFlash}/>;
       case 'lists': return <ListsView />;
-      case 'markdown': return <MarkdownViewer device={device}/>;
+      case 'markdown': return <DocumentsView/>;
+      case 'editor': return <EditorScreen/>;
+      case 'git': return <GitView/>;
+      case 'api': return <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>;
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
         onOpenConnection={() => setSettingsOpen(true)}
+        onOpenJira={() => setJiraSettingsOpen(true)}
+        onWorkScreensChanged={handleSettingsSaved}
         onOpenProjectAreas={() => setProjectAreasOpen(true)}
         onGoPlanner={() => navigate('planner')} device={device}/>;
       default: return null;
@@ -1038,6 +1075,8 @@ function AppShell() {
         patchFields={patchWorkItemFields} confidential={confidential} PRDetail={PRDetail}/>
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)}
+        onSaved={handleSettingsSaved}/>
+      <JiraSettingsModal open={jiraSettingsOpen} onClose={() => setJiraSettingsOpen(false)}
         onSaved={handleSettingsSaved}/>
       <ProjectAreasModal open={projectAreasOpen} onClose={() => setProjectAreasOpen(false)}
         areas={projectAreas} setAreas={setProjectAreas}/>
@@ -1624,7 +1663,7 @@ const nexusDataValue = {
   getProfileKey,
   pushPref:      helmPushPref,
   namespace:     'helm',
-  workItemSource: adoWorkItemSource,
+  workItemSource,
 };
 // Subscribe to nexusmd:// deep links so cloud OAuth one-time codes are redeemed.
 registerCloudDeepLink();

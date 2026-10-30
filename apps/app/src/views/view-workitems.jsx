@@ -3,6 +3,7 @@ import { Icon } from '../icons.jsx';
 import { Sheet } from '../components.jsx';
 import { getProfileKey } from '../profile-keys.js';
 import { isTerminalState } from '@nexusmd/core';
+import { usePersisted, GROUP_ORDER_MODES, orderGroups, moveGroup } from '@nexusmd/ui';
 // view-workitems.jsx — Mobile work items list
 const { useState, useMemo, useEffect } = React;
 
@@ -109,6 +110,8 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
   const [sortBy, setSortBy]           = useState(() => loadWIViewState().sortBy ?? null);
   const [collapsedGroups, setCollapsedGroups] = usePersisted('helm.workitems.collapsed', new Set());
   useEffect(() => { setCollapsedGroups(new Set()); }, [groupBy]);
+  // One saved order per grouping: { mode, keys }, shared with desktop's Work Items.
+  const [groupOrders, setGroupOrders] = usePersisted('nexusmd.wi.groupOrder', {});
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -182,18 +185,18 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
     if (groupBy === 'status') {
       const known = STATUS_ORDER.filter(s => buckets[s]);
       const rest  = Object.keys(buckets).filter(k => !STATUS_ORDER.includes(k)).sort();
-      return [...known, ...rest].map(k => ({ key: k, label: k, items: buckets[k] }));
+      return orderGroups([...known, ...rest].map(k => ({ key: k, label: k, items: buckets[k] })), groupOrders?.[groupBy]);
     }
     if (groupBy === 'user') {
       const keys = Object.keys(buckets).filter(k => k !== 'unassigned').sort(
         (a, b) => memberName(a).localeCompare(memberName(b))
       );
       if (buckets['unassigned']) keys.push('unassigned');
-      return keys.map(k => ({ key: k, label: memberName(k), items: buckets[k] }));
+      return orderGroups(keys.map(k => ({ key: k, label: memberName(k), items: buckets[k] })), groupOrders?.[groupBy]);
     }
     // project
-    return Object.keys(buckets).sort().map(k => ({ key: k, label: k, items: buckets[k] }));
-  }, [sortedFiltered, groupBy, team]);
+    return orderGroups(Object.keys(buckets).sort().map(k => ({ key: k, label: k, items: buckets[k] })), groupOrders?.[groupBy]);
+  }, [sortedFiltered, groupBy, team, groupOrders]);
 
   const boardLanes = useMemo(() => {
     if (!groupBy || groupBy === 'status') {
@@ -436,6 +439,42 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
             ))}
           </div>
         </div>
+        {groupBy && groupedList && (
+          <div className="m-fld">
+            <label>Order groups</label>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              {GROUP_ORDER_MODES.map(m => (
+                <ChipToggle key={m.id} label={m.label}
+                  active={(groupOrders?.[groupBy]?.mode || 'default') === m.id}
+                  onToggle={() => {
+                    const cur = groupOrders?.[groupBy];
+                    const shownKeys = groupedList.map(g => g.key);
+                    const next = m.id === 'custom'
+                      ? { mode: 'custom', keys: [...shownKeys, ...(cur?.keys || []).filter(k => !shownKeys.includes(k))] }
+                      : { ...cur, mode: m.id };
+                    setGroupOrders({ ...groupOrders, [groupBy]: next });
+                  }}/>
+              ))}
+            </div>
+            {(groupOrders?.[groupBy]?.mode === 'custom') && (
+              <div style={{ display:'flex', flexDirection:'column', gap:4, marginTop:6 }}>
+                {groupedList.map((g, i) => {
+                  const move = (to) => {
+                    const next = moveGroup(groupedList.map(x => x.key), groupOrders[groupBy].keys, i, to);
+                    if (next) setGroupOrders({ ...groupOrders, [groupBy]: next });
+                  };
+                  return (
+                    <div key={g.key} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13 }}>
+                      <span style={{ flex:1, minWidth:0 }} className="truncate">{g.label}</span>
+                      <button type="button" className="btn sm ghost" disabled={i === 0} onClick={() => move(i - 1)}><Icon name="chevron-up" size={12}/></button>
+                      <button type="button" className="btn sm ghost" disabled={i === groupedList.length - 1} onClick={() => move(i + 1)}><Icon name="chevron-down" size={12}/></button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
         <div className="m-fld">
           <label>Sort by</label>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>

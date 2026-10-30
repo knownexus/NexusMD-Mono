@@ -12,7 +12,7 @@ const rawStorage = {
   set: (k, v) => localStorage.setItem(k, v),
 };
 
-const { getAdoConfig, saveAdoConfig, isAdoConfigured } = makeAdoConfig({
+const { getAdoConfig, saveAdoConfig, isAdoConfigured, usesAdoWorkItems } = makeAdoConfig({
   storage: rawStorage,
   key: (name) => getProfileKey('helm.android.' + name),
 });
@@ -69,7 +69,7 @@ const adoPatch = (path, body) => adoRequest('PATCH', path, body);
 const adoPut   = (path, body) => adoRequest('PUT',   path, body);
 
 // Expose on window so JSX files (non-module globals) can call them directly.
-Object.assign(window, { adoGet, adoPost, adoPatch, adoPut, getAdoConfig, saveAdoConfig, isAdoConfigured });
+Object.assign(window, { adoGet, adoPost, adoPatch, adoPut, getAdoConfig, saveAdoConfig, isAdoConfigured, usesAdoWorkItems });
 
 export function createAdoHttpAdapter() {
   return {
@@ -107,4 +107,4 @@ export function createAdoHttpAdapter() {
   }
 }
 
-export { adoGet, adoPost, adoPatch, adoPut, getAdoConfig, saveAdoConfig, isAdoConfigured };
+export { adoGet, adoPost, adoPatch, adoPut, getAdoConfig, saveAdoConfig, isAdoConfigured, usesAdoWorkItems };

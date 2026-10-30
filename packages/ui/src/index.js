@@ -78,6 +78,7 @@ export {
 export { TriageEvents, TriageExportButton, TriageStatusLine, TriageExportModal } from './views/triage.jsx'
 export { WorkItemDetail, WorkItemFieldsEditor, RawFieldsInspector } from './views/work-item-detail.jsx'
 export { createRoutedWorkItemSource, apiWorkItemSource } from './views/work-item-source.js'
+export { GROUP_ORDER_MODES, orderGroups, moveGroup } from './views/wi-group-order.js'
 export { apiBuildSource } from './views/build-source.js'
 export { BuildDetail } from './views/build-detail.jsx'
 export { TagInput, AreaTreePicker } from './views/wi-field-pickers.jsx'

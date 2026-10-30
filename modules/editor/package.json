@@ -10,7 +10,9 @@
   "exports": {
     "./manifest": "./app.manifest.json",
     "./main": "./src/main/index.cjs",
-    "./renderer": "./src/renderer/index.js"
+    "./renderer": "./src/renderer/index.js",
+    "./editor-app": "./src/renderer/editor-app.jsx",
+    "./editor-store": "./src/renderer/editor-store.js"
   },
   "files": [
     "app.manifest.json",
