@@ -41,6 +41,18 @@ describe('editor.openPath', () => {
   })
 })
 
+describe('editor.openText', () => {
+  it('opens the text read-only and shows the Editor', async () => {
+    const openText = vi.spyOn(editorStore, 'openText').mockImplementation(() => {})
+    const host = hostWith()
+    editor.activate(host)
+    const spec = { id: 'github:a/b@main:x', name: 'x', text: 't', origin: 'a/b' }
+    expect(await host.capabilities.call('editor.openText', spec)).toBe(true)
+    expect(openText).toHaveBeenCalledWith(spec)
+    expect(host.navigate).toHaveBeenCalledWith('editor')
+  })
+})
+
 describe('files the app is opened with', () => {
   const bridge = (pending = []) => {
     const api = { takePending: vi.fn(async () => pending), onOpenRequest: vi.fn() }

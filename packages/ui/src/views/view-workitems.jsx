@@ -340,7 +340,9 @@ function ActiveFilterChip({ label, onRemove, negated = false, icon }) {
     );
 }
 
-const SOURCE_LABELS = { ado: 'ADO', jira: 'Jira' };
+const SOURCE_LABELS = { ado: 'ADO', jira: 'Jira', github: 'GitHub' };
+// GitHub issues are only open or closed; label-driven columns are out of scope.
+const GITHUB_LANES = ['Open', 'Closed'];
 
 const adoItemUrl = (org, w) =>
   `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(String(w.project || '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}/_workitems/edit/${w.id}`;
@@ -610,12 +612,12 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   React.useEffect(() => {
     if (Object.keys(wiTypeStates).length === 0) return;
     // Union all states from all work item types. With several providers connected,
-    // board columns are ADO-only: Jira states and projects must not leak in.
+    // board columns are ADO-only: Jira and GitHub states and projects must not leak in.
     const detectedStates = multiProvider
       ? [...new Set(Object.values(NexusMDData.WI_TYPE_STATES_BY_SOURCE?.ado || {}).flat())]
       : [...new Set(Object.values(wiTypeStates).flat())];
     if (detectedStates.length === 0) return;
-    const boardProjects = multiProvider ? PROJECTS.filter(p => p.source !== 'jira') : PROJECTS;
+    const boardProjects = multiProvider ? PROJECTS.filter(p => p.source !== 'jira' && p.source !== 'github') : PROJECTS;
 
     setBoardColumnConfig(prev => {
       const useGlobal = boardProjects.length <= 1;
@@ -1097,6 +1099,7 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
                    lanes={laneMode === 'jira-columns' ? jiraColumnLanes
                      : laneMode === 'category' ? CATEGORY_LANES
                      : activeSource === 'jira' ? jiraLanes
+                     : activeSource === 'github' ? GITHUB_LANES
                      : getActiveLanes(boardColumnConfig, activeProject, PROJECTS, BOARD_LANES)}
                    newItemIds={newItemIds}/>
       }
@@ -1781,7 +1784,7 @@ function personColor(id) {
   return `oklch(0.75 0.1 ${hue})`;
 }
 
-function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], isNew = false, showState = false }) {
+function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], isNew = false, showState = false, singleLineTitle = false }) {
   const { data: NexusMDData } = useNexusData();
   const [cfg] = usePersisted('nexusmd.fields.wiCard', []);
   const resolved = resolveFields(WI_CARD_FIELDS, cfg).filter(f => f.visible);
@@ -1856,7 +1859,9 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
           ))}
         </span>
       </div>
-      <div className="board-card-title">{w.title}</div>
+      <div className="board-card-title"
+        title={singleLineTitle ? w.title : undefined}
+        style={singleLineTitle ? { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : undefined}>{w.title}</div>
       <div className="board-card-meta">
         {detailFields.map(f => metaFrag[f.key]())}
         <span className="spacer"/>
@@ -1872,9 +1877,29 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
   );
 }
 
-function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes = BOARD_LANES, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], newItemIds = new Set(), laneMode = 'state', reachable = null, boardColumns = null }) {
+// A lane header button, styled with the header's existing "add" button. Inline styles here and in
+// BoardLanes, not base.css, so a Work-only release carries them (the stylesheet ships with the shell).
+function LaneToggle({ label, icon, onToggle }) {
   return (
-    <div className="board">
+    <span role="button" tabIndex={0} className="add" aria-label={label} title={label}
+      style={{ marginLeft: 0 }}
+      onClick={onToggle}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}>
+      <Icon name={icon} size={12}/>
+    </span>
+  );
+}
+
+// Widest a widened lane grows to fit its titles on one line; longer titles are cut with an ellipsis.
+const WIDE_LANE_MAX = 'min(900px, 85vw)';
+
+function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes = BOARD_LANES, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], newItemIds = new Set(), laneMode = 'state', reachable = null, boardColumns = null, collapsedLanes = {}, onToggleLane, widenedLanes = {}, onToggleWide }) {
+  // Lanes collapse or widen one swimlane at a time, keyed "<group>::<lane>".
+  const isLaneCollapsed = (state) => !!collapsedLanes[`${groupKey}::${state}`];
+  const isLaneWide = (state) => !isLaneCollapsed(state) && !!widenedLanes[`${groupKey}::${state}`];
+  const track = (s) => (isLaneCollapsed(s) ? '40px' : isLaneWide(s) ? 'max-content' : '300px');
+  return (
+    <div className="board" style={{ gridTemplateColumns: lanes.map(track).join(' ') }}>
       {lanes.map(state => {
         const laneItems = laneMode === 'category'
           ? items.filter(w => itemCategory(w) === state)
@@ -1884,24 +1909,50 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
         const laneLabel = laneMode === 'category' ? CATEGORY_LABELS[state] : state === '__other__' ? 'Other' : state;
         const dimmed = !!reachable && !reachable.has(state);
         const isOver = overKey === `${groupKey}::${state}`;
+        const laneCollapsed = isLaneCollapsed(state);
+        const laneWide = isLaneWide(state);
+        const toggleBtn = onToggleLane && (
+          <LaneToggle label={`${laneCollapsed ? 'Expand' : 'Collapse'} ${laneLabel}`}
+            icon={laneCollapsed ? 'chevron-right' : 'chevron-left'}
+            onToggle={() => onToggleLane(`${groupKey}::${state}`)}/>
+        );
+        const wideBtn = onToggleWide && (
+          <LaneToggle label={`${laneWide ? 'Narrow' : 'Widen'} ${laneLabel}`}
+            icon={laneWide ? 'collapse' : 'expand'}
+            onToggle={() => onToggleWide(`${groupKey}::${state}`)}/>
+        );
         return (
           <div
             key={state}
-            className="lane"
+            className={`lane${laneCollapsed ? ' collapsed' : ''}`}
             onDragOver={e => { e.preventDefault(); onLaneOver(`${groupKey}::${state}`); }}
             onDrop={e => { e.preventDefault(); onLaneDrop(state, groupKey); }}
             style={{
+              ...(laneCollapsed ? { padding: '8px 4px', alignItems: 'center' } : {}),
+              ...(laneWide ? { minWidth: 300, maxWidth: WIDE_LANE_MAX } : {}),
               ...(isOver ? { background: 'var(--accent-soft)', borderColor: 'var(--accent-border)' } : {}),
               ...(dimmed ? { opacity: 0.4 } : {}),
             }}
           >
+            {laneCollapsed ? (
+              // A narrow strip: toggle, then the count and the name running down it.
+              <div className="lane-head" style={{ flexDirection: 'column', padding: 0, gap: 8 }}>
+                {toggleBtn}
+                <span className="lane-dot" style={{ background: laneColor(state) }}/>
+                <span className="count">{laneItems.length}</span>
+                <h4 style={{ writingMode: 'vertical-rl', whiteSpace: 'nowrap' }}>{laneLabel}</h4>
+              </div>
+            ) : (
             <div className="lane-head">
               <span className="lane-dot" style={{ background: laneColor(state) }}/>
               <h4>{laneLabel}</h4>
               <span className="count">{laneItems.length}</span>
               <span className="add" title="Add item"><Icon name="plus" size={12}/></span>
+              {wideBtn}
+              {toggleBtn}
             </div>
-            <div className="lane-list">
+            )}
+            {!laneCollapsed && <div className="lane-list">
               {laneItems.map(w => (
                 <BoardCard
                   key={w.id}
@@ -1917,6 +1968,7 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
                   projects={projects}
                   isNew={newItemIds.has(w.id)}
                   showState={laneMode === 'category' || laneMode === 'jira-columns'}
+                  singleLineTitle={laneWide}
                 />
               ))}
               {laneItems.length === 0 && (
@@ -1930,7 +1982,7 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
                   {isOver ? 'Release to move here' : 'Drop items here'}
                 </div>
               )}
-            </div>
+            </div>}
           </div>
         );
       })}
@@ -1943,6 +1995,8 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', grou
   const [dragId,    setDragId]    = useStateW(null);
   const [overKey,   setOverKey]   = useStateW(null);
   const [collapsed, setCollapsed] = useCollapsedGroups('nexusmd.wi.collapsed.board', grouping);
+  const [collapsedLanes, setCollapsedLanes] = useCollapsedGroups('nexusmd.wi.collapsed.lanes', grouping);
+  const [widenedLanes, setWidenedLanes] = useCollapsedGroups('nexusmd.wi.widened.lanes', grouping);
 
   const PROJECTS = NexusMDData.PROJECTS || [];
 
@@ -2095,6 +2149,8 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', grou
   };
 
   const toggleCollapsed = (key) => setCollapsed(c => ({ ...c, [key]: !c[key] }));
+  const toggleLane = (key) => setCollapsedLanes(c => ({ ...c, [key]: !c[key] }));
+  const toggleWide = (key) => setWidenedLanes(c => ({ ...c, [key]: !c[key] }));
 
   const onAssignCard = async (id, assigneeId) => {
     const member = team.find(t => t.id === assigneeId);
@@ -2107,7 +2163,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', grou
     await patchWI(id, [['/fields/System.Tags', newTags.join('; ')]]);
   };
 
-  const laneProps = { dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes, team, onAssign: onAssignCard, onTagsChange: onTagsCard, grouping, projects: PROJECTS, newItemIds, laneMode, reachable, boardColumns };
+  const laneProps = { dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes, team, onAssign: onAssignCard, onTagsChange: onTagsCard, grouping, projects: PROJECTS, newItemIds, laneMode, reachable, boardColumns, collapsedLanes, onToggleLane: toggleLane, widenedLanes, onToggleWide: toggleWide };
 
   const boardContent = grouping === 'none' ? (
     <BoardLanes items={items} groupKey="__all__" {...laneProps} />
@@ -2119,7 +2175,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', grou
           groups.forEach(g => { next[g.key] = true; });
           setCollapsed(next);
         }}><Icon name="chevron-right" size={12}/> Collapse all</button>
-        <button className="btn sm ghost" onClick={() => setCollapsed({})}>
+        <button className="btn sm ghost" onClick={() => { setCollapsed({}); setCollapsedLanes({}); }}>
           <Icon name="chevron-down" size={12}/> Expand all
         </button>
       </div>

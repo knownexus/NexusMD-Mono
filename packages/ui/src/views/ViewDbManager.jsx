@@ -37,6 +37,8 @@ import {
   removeTableGroup,
   toggleSectionCollapsed,
   tableSections,
+  TABLE_GROUP_BY,
+  setTableGroupBy,
   quoteTable,
   columnTypes,
   validateTableSpec,
@@ -102,6 +104,12 @@ const DEMO = {
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`
 const typeLabel = t => (t === 'sqlite' ? 'SQLite' : t === 'sqlserver' ? 'SQL Server' : t === 'demo' ? 'Demo' : t)
 const clock = d => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+// When a table last changed, for its row in the list: "Rows changed 14:05", or a date before today.
+function changedLabel({ at, kind }) {
+  const d = new Date(at)
+  const when = d.toDateString() === new Date().toDateString() ? clock(d) : d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })
+  return `${kind === 'data' ? 'Rows' : 'Structure'} changed ${when}`
+}
 
 function sessionName(session) {
   if (!session) return ''
@@ -199,10 +207,31 @@ function fillTemplate(sql, table) {
 }
 const isTemplate = q => q.sql.includes(TABLE_TOKEN)
 
-// Asked about before running: schema changes, and DELETE / UPDATE with no WHERE.
-const RISKY_STATEMENT = /^\s*(drop|truncate|alter)\b|^\s*(delete|update)\b(?![\s\S]*\bwhere\b)/i
-// Every statement is checked, not just the first: "select 1; drop table x" still asks.
-const RISKY_SQL = { test: sql => sql.split(';').some(st => RISKY_STATEMENT.test(st)) }
+// Asked about before running: schema changes, and DELETE / UPDATE with no WHERE. Each risky
+// statement gets a line saying what it will do. Every statement is checked, not just the first,
+// and comments are dropped first, so "select 1; -- note\ndrop table x" still asks.
+const RISKY_EXPLAINERS = [
+  [/^drop\s+database\s+(\S+)/i, n => `Drops the database ${n}, with every table and row in it.`],
+  [/^drop\s+(table|view|index|procedure|proc|function|trigger|schema)\s+(?:if\s+exists\s+)?(\S+)/i,
+    (kind, n) => (/^table$/i.test(kind)
+      ? `Drops the table ${n} and every row in it.`
+      : `Drops the ${kind.toLowerCase() === 'proc' ? 'procedure' : kind.toLowerCase()} ${n}.`)],
+  [/^drop\b/i, () => 'Drops a database object.'],
+  [/^truncate\s+table\s+(\S+)/i, n => `Removes every row from ${n} at once, without checking each row.`],
+  [/^alter\s+table\s+(\S+)\s+drop\b/i, n => `Removes part of ${n}. A dropped column loses its data.`],
+  [/^alter\s+(\w+)\s+(\S+)/i, (kind, n) => `Changes the structure of the ${kind.toLowerCase()} ${n}.`],
+  [/^delete\s+(?:from\s+)?(\S+)/i, n => `Deletes every row in ${n}: there is no WHERE clause.`],
+  [/^update\s+(\S+)/i, n => `Changes every row in ${n}: there is no WHERE clause.`],
+]
+const stripSqlComments = sql => sql.replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, ' ')
+const describeRisks = sql => stripSqlComments(sql).split(';').map(s => s.trim()).flatMap((st) => {
+  if (/^(delete|update)\b/i.test(st) && /\bwhere\b/i.test(st)) return []
+  for (const [re, explain] of RISKY_EXPLAINERS) {
+    const m = st.match(re)
+    if (m) return [{ statement: st, explanation: explain(...m.slice(1)) }]
+  }
+  return []
+})
 const MUTATING_SQL = /^\s*(insert|update|delete|merge|drop|truncate|alter|create)\b/i
 
 const typing = el => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
@@ -343,7 +372,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
       const result = await db.connect(connType, config)
       const tables = plural(result.tables.length, 'table')
       if (!saveAs || !onSaveConnection) {
-        addSession({ type: connType, config, tables: result.tables, views: result.views ?? [] })
+        addSession({ type: connType, config, tables: result.tables, views: result.views ?? [], changed: result.changed ?? {} })
         notify(`Connected · ${tables}`)
         return
       }
@@ -353,10 +382,10 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
       try {
         const id = await onSaveConnection(same ? { ...meta, id: same.id } : meta, secret)
         if (focusOpen(sessionKey({ connectionId: id }))) return
-        addSession({ type: connType, config, tables: result.tables, views: result.views ?? [], connectionId: id, name: saveAs.name })
+        addSession({ type: connType, config, tables: result.tables, views: result.views ?? [], changed: result.changed ?? {}, connectionId: id, name: saveAs.name })
         notify(`Connected and saved as ${saveAs.name} · ${tables}`)
       } catch (err) {
-        addSession({ type: connType, config, tables: result.tables, views: result.views ?? [] })
+        addSession({ type: connType, config, tables: result.tables, views: result.views ?? [], changed: result.changed ?? {} })
         notify(`Connected, but couldn't save it: ${err.message}`, 'error')
       }
     } catch (err) {
@@ -383,7 +412,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
     try {
       const config = await configFor(entry)
       const result = await db.connect(entry.type, config)
-      addSession({ type: entry.type, config, tables: result.tables, views: result.views ?? [], connectionId: entry.id, name: entry.name })
+      addSession({ type: entry.type, config, tables: result.tables, views: result.views ?? [], changed: result.changed ?? {}, connectionId: entry.id, name: entry.name })
       setDeferred(d => d.filter(id => id !== entry.id))
       notify(`Connected to ${entry.name} · ${plural(result.tables.length, 'table')}`)
     } catch (err) {
@@ -412,7 +441,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
           const config = await configFor(entry)
           if (config.authentication === AZURE_AD_INTERACTIVE) return { entry, deferred: true }
           const result = await db.connect(entry.type, config)
-          return { entry, session: { type: entry.type, config, tables: result.tables, views: result.views ?? [], connectionId: entry.id, name: entry.name } }
+          return { entry, session: { type: entry.type, config, tables: result.tables, views: result.views ?? [], changed: result.changed ?? {}, connectionId: entry.id, name: entry.name } }
         } catch (err) {
           return { entry, error: err.message }
         }
@@ -476,7 +505,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
     setConnecting(entry.id)
     try {
       const result = await db.connect(connType, config)
-      setSessions(list => list.map(s => (s.key === key ? { ...s, type: connType, config, name, tables: result.tables, views: result.views ?? [], generation: (s.generation ?? 0) + 1 } : s)))
+      setSessions(list => list.map(s => (s.key === key ? { ...s, type: connType, config, name, tables: result.tables, views: result.views ?? [], changed: result.changed ?? {}, generation: (s.generation ?? 0) + 1 } : s)))
       notify(`Saved and reconnected ${name} · ${plural(result.tables.length, 'table')}`)
     } catch (err) {
       closeSession(key)
@@ -594,6 +623,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const [nullFilter, setNullFilter]   = useState(null)        // { col, empty }: only the loaded rows whose col is (or isn't) NULL
   const [structureFocus, setStructureFocus] = useState(null)  // the foreign key Structure scrolls to and marks
   const [activeBuilder, setActiveBuilder] = useState(null)    // 'search' | 'insert' | 'update' | 'delete' | 'join' | 'aggregate' | null
+  const [riskyQuery, setRiskyQuery]   = useState(null)        // { sql, risks: [{ statement, explanation }] } awaiting confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [tableFilter, setTableFilter] = useState('')
   const [listFilter, setListFilter]   = useState('all')       // all | starred | opened | hidden
@@ -636,7 +666,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     if (!session || isDemo) return
     try {
       const result = await db.connect(session.type, session.config)
-      setDbState(s => (s.session ? { ...s, session: { ...s.session, tables: result.tables, views: result.views ?? [] } } : s))
+      setDbState(s => (s.session ? { ...s, session: { ...s.session, tables: result.tables, views: result.views ?? [], changed: result.changed ?? {} } } : s))
     } catch (err) {
       notify(err.message, 'error')
     }
@@ -1005,10 +1035,12 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     setActiveBuilder(null)
   }, [])
 
-  const runQuery = useCallback(async (override) => {
+  // `confirmed` is set once the risky-query prompt has been accepted.
+  const runQuery = useCallback(async (override, confirmed = false) => {
     const sql = (typeof override === 'string' ? override : sqlQuery).trim()
     if (!sql || queryRunning) return
-    if (RISKY_SQL.test(sql) && !window.confirm(`Run this on ${sessionName(session)}?\n\n${sql}\n\nIt changes the schema or every row, and can't be undone from NexusMD.`)) return
+    const risks = confirmed ? [] : describeRisks(sql)
+    if (risks.length) { setRiskyQuery({ sql, risks }); return }
     setQueryResult(null)
     setQueryRunning(true)
     const started = performance.now()
@@ -1145,6 +1177,17 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   // ── New table / view, drop ─────────────────────────────────────────────────
   // The demo has no database behind it, so there's nothing to create or drop there.
   const viewSet = useMemo(() => new Set(session?.views ?? []), [session])
+  // When each table last changed (SQL Server only; SQLite doesn't keep it), for Group by › Last changed.
+  const changed = useMemo(() => session?.changed ?? {}, [session])
+  const knowsChanged = Object.keys(changed).length > 0
+  const groupByMenu = () => [
+    { heading: 'Group tables by' },
+    ...TABLE_GROUP_BY.map(g => ({
+      label: g.label, checked: prefs.groupBy === g.id,
+      ...(g.id === 'changed' && !knowsChanged ? { disabled: true, title: "This database doesn't say when its tables changed" } : {}),
+      onSelect: () => updatePrefs(p => setTableGroupBy(p, g.id)),
+    })),
+  ]
   const [ddl, setDdl] = useState(null) // { kind: 'table' | 'view' | 'drop', name?, sql?, view? }
   const canDdl = !isDemo
   // Runs the statement, reads the table list again and opens what was made. Returns an error
@@ -1334,7 +1377,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
 
   // j / k walk the listed tables, wrapping at the ends.
   const step = (by) => {
-    const list = listHidden ? listed : tableSections(listed, prefs, { views: viewSet }).flatMap(s => (collapsed.includes(s.key) ? [] : s.names))
+    const list = listHidden ? listed : tableSections(listed, prefs, { views: viewSet, changed }).flatMap(s => (collapsed.includes(s.key) ? [] : s.names))
     if (!list.length) return
     const i = list.indexOf(dbState.selectedTable)
     openTable(list[i < 0 ? (by > 0 ? 0 : list.length - 1) : (i + by + list.length) % list.length], activeTab)
@@ -1431,6 +1474,8 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
               meta={tableMeta}
               prefs={prefs}
               views={viewSet}
+              changed={changed}
+              onGroupByMenu={point => showMenu(groupByMenu(), 'Group tables by', point)}
               onTableMenu={(name, point) => showMenu(tableMenu(name), `${name} options`, point)}
               onSectionMenu={(s, keys, point) => showMenu(sectionMenu(s, keys), `${s.label} options`, point)}
               onCloseTable={name => closeTables([name])}
@@ -1681,6 +1726,29 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
           onCancel={() => setShowDeleteConfirm(false)}
         />
       )}
+      {riskyQuery && (
+        <ConfirmDialog
+          title={`Run this on ${sessionName(session)}?`}
+          body={
+            <div className="nx-db-muted">
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {riskyQuery.risks.map((r, i) => (
+                  <li key={i} style={{ marginBottom: 6 }}>
+                    <code>{r.statement.length > 80 ? `${r.statement.slice(0, 80)}…` : r.statement}</code>
+                    <div>{r.explanation}</div>
+                  </li>
+                ))}
+              </ul>
+              <p style={{ margin: '8px 0 0' }}>This can't be undone from NexusMD.</p>
+            </div>
+          }
+          confirmLabel="Run query"
+          busyLabel="Running…"
+          icon="alert"
+          onConfirm={() => { const { sql } = riskyQuery; setRiskyQuery(null); runQuery(sql, true) }}
+          onCancel={() => setRiskyQuery(null)}
+        />
+      )}
     </div>
   )
 }
@@ -1816,8 +1884,10 @@ function StarButton({ on, onClick, name }) {
 
 // ─── Table list (sidebar) ─────────────────────────────────────────────────────
 
-function TableList({ tables, total, selected, starred, meta, prefs, views, onToggleGroup, onSetCollapsed, onOpen, onStar, onClearFilters, onTableMenu, onSectionMenu, onCloseTable }) {
-  const sections = tableSections(tables, prefs, { views })
+function TableList({ tables, total, selected, starred, meta, prefs, views, changed = {}, onGroupByMenu, onToggleGroup, onSetCollapsed, onOpen, onStar, onClearFilters, onTableMenu, onSectionMenu, onCloseTable }) {
+  const sections = tableSections(tables, prefs, { views, changed })
+  const byChanged = prefs.groupBy === 'changed'
+  const groupByLabel = TABLE_GROUP_BY.find(g => g.id === prefs.groupBy)?.label ?? 'Schema'
   const shownKeys = sections.map(s => s.key)
   const pinned = tables.filter(t => starred.has(t))
   if (!total) return <div className="nx-db-list-empty">This database has no tables.</div>
@@ -1843,6 +1913,7 @@ function TableList({ tables, total, selected, starred, meta, prefs, views, onTog
               {views?.has(name) && <span className="nx-db-tag" data-tone="muted">view</span>}
             </span>
             {m && <span className="nx-db-row-meta">{`${plural(m.rows, 'row')} · ${plural(m.cols, 'col')}`}</span>}
+            {!m && byChanged && changed[name] && <span className="nx-db-row-meta">{changedLabel(changed[name])}</span>}
           </span>
         </button>
         {(m || name === selected) && (
@@ -1862,6 +1933,10 @@ function TableList({ tables, total, selected, starred, meta, prefs, views, onTog
         <div className="nx-db-list-keys" title="j / k move through the tables">
           <span className="kbd">j</span><span className="kbd">k</span><span>to move</span>
         </div>
+        <button type="button" className="nx-db-groupby" aria-haspopup="menu" title="Group the tables outside your own groups by schema, name, when they changed, prefix or type"
+          onClick={e => onGroupByMenu?.(menuPointFor(e.currentTarget))}>
+          {groupByLabel}<Icon name="chevron-down" size={11} />
+        </button>
         {/* Folds the sections shown; ones the filter hides keep their own state. */}
         {shownKeys.length > 1 && (
           <FoldAllButton what="groups" allCollapsed={shownKeys.every(k => prefs.collapsed.includes(k))}
@@ -1892,7 +1967,7 @@ function TableList({ tables, total, selected, starred, meta, prefs, views, onTog
               <MenuButton label={s.kind === 'group' ? `Edit group ${s.name}` : `More for ${s.label}`} title="More options (or right-click the header)"
                 onOpen={point => onSectionMenu(s, shownKeys, point)} />
             </div>
-            {open && <div className="nx-db-rows">{s.names.map(t => row(t, { fullName: s.kind === 'group' }))}</div>}
+            {open && <div className="nx-db-rows">{s.names.map(t => row(t, { fullName: s.kind !== 'schema' && s.kind !== 'views' }))}</div>}
           </div>
         )
       })}
@@ -3243,7 +3318,7 @@ function TableSelect({ id, tables, value, onChange, placeholder = 'Select a tabl
   )
 }
 
-function ConfirmDialog({ title, body, confirmLabel, onConfirm, onCancel }) {
+function ConfirmDialog({ title, body, confirmLabel, busyLabel = 'Deleting…', icon = 'trash', onConfirm, onCancel }) {
   const [busy, setBusy] = useState(false)
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') onCancel() }
@@ -3254,15 +3329,15 @@ function ConfirmDialog({ title, body, confirmLabel, onConfirm, onCancel }) {
     <div className="plm-veil" onMouseDown={e => { if (e.target === e.currentTarget) onCancel() }}>
       <div className="plm nx-db-confirm" role="alertdialog" aria-modal="true" aria-label={title}>
         <div className="plm-head">
-          <span className="plm-ic nx-db-confirm-ic"><Icon name="trash" size={16} /></span>
+          <span className="plm-ic nx-db-confirm-ic"><Icon name={icon} size={16} /></span>
           <div className="plm-ttl"><h2>{title}</h2></div>
         </div>
-        <div className="plm-body"><p className="nx-db-muted" style={{ margin: 0 }}>{body}</p></div>
+        <div className="plm-body">{typeof body === 'string' ? <p className="nx-db-muted" style={{ margin: 0 }}>{body}</p> : body}</div>
         <div className="plm-foot">
           <button type="button" className="btn ghost" onClick={onCancel}>Cancel</button>
           <button type="button" className="btn danger-solid" autoFocus disabled={busy}
             onClick={async () => { setBusy(true); try { await onConfirm() } finally { setBusy(false) } }}>
-            {busy ? 'Deleting…' : confirmLabel}
+            {busy ? busyLabel : confirmLabel}
           </button>
         </div>
       </div>

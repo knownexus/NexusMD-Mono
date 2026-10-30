@@ -678,10 +678,29 @@ Test runner: **Vitest**, per-workspace config (`vitest.config.js`):
 Run tests:
 
 ```
+npm run test:affected           # only what your working-tree changes can affect
+npm run test:affected -- --base master   # ...or what changed since master
+npm run test:git                # one feature: its core logic + its module (also devenv, database, api-client, work)
+npm run test:git:full           # ...plus Git's real-repository integration tests
 npm -w apps/desktop test        # this workspace only
-npm -w packages/core test       # this workspace only
-npm test                        # every workspace, from the repo root
+npm test                        # every workspace, from the repo root (CI runs this)
 ```
+
+While working on a module, run `test:affected` or `test:<feature>`. Run the
+whole suite before merging. `scripts/test-scope.mjs` chooses tests by path
+rather than by import graph: every consumer imports the `@nexusmd/core`
+barrel (the desktop shell shares one copy of it with every app through an
+import map, so don't switch modules to deep imports), so to Vitest a change
+to any core module touches every test. A change to a shared package (core
+outside `src/modules`, `ui`, `shell-sdk`, `editor-kit`, `main-kit`,
+`web-adapters`) runs everything. When you add a feature, add it to
+`FEATURES` in that script.
+
+Git's `*.integration.test.js` files drive real repositories and take most
+of the suite's time (each git command is a process start, which is slow on
+Windows). They are their own Vitest project, `git-integration`. Build a
+fixture repository once and `fs.cpSync` it per test rather than rebuilding
+it, as `git.conflicts.integration.test.js` does.
 
 ## 7. Verifying on desktop
 

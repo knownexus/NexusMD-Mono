@@ -28,3 +28,11 @@ describe('IntegrationsPanel OAuth services', () => {
     expect(screen.queryByTestId('svc-github')).toBeNull()
   })
 })
+
+describe('IntegrationsPanel GitHub', () => {
+  it('has no old GitHub token and repositories card (GitHub is connected from the Work app\'s GitHub Connection card)', () => {
+    render(<IntegrationsPanel />)
+    expect(screen.queryByPlaceholderText('ghp_…')).toBeNull()
+    expect(screen.queryByPlaceholderText('myorg/backend, myorg/frontend')).toBeNull()
+  })
+})

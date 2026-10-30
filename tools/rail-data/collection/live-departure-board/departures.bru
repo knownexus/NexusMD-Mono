@@ -1,0 +1,27 @@
+meta {
+  name: Departures
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{ldbDeparturesBaseUrl}}/GetDepartureBoard/{{crs}}?numRows=10
+  body: none
+  auth: none
+}
+
+params:query {
+  numRows: 10
+  ~timeOffset: 0
+  ~timeWindow: 120
+}
+
+headers {
+  x-apikey: {{ldbDeparturesKey}}
+}
+
+docs {
+  Next departures from {{crs}}: std (scheduled), etd (expected, e.g. "On time", "Delayed",
+  "10:42"), platform, delayReason/cancelReason. timeOffset is minutes from now (-120 to 120);
+  timeWindow is minutes ahead (up to 120).
+}

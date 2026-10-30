@@ -1,0 +1,20 @@
+meta {
+  name: Schedule - full daily (all operators)
+  type: http
+  seq: 3
+}
+
+get {
+  url: https://publicdatafeeds.networkrail.co.uk/ntrod/CifFileAuthenticate?type=CIF_ALL_FULL_DAILY&day=toc-full
+  body: none
+  auth: inherit
+}
+
+params:query {
+  type: CIF_ALL_FULL_DAILY
+  day: toc-full
+}
+
+docs {
+  The full timetable as gzipped JSON lines. Needs the SCHEDULE feed enabled on your Network Rail account.
+}

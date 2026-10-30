@@ -36,6 +36,7 @@ import {
   BuildDetail, PRCommitsTab, PRFilesTab, DEFAULT_PROJECT_AREAS,
   ProjectAreasModal, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
   CreateWIModal, WIDetail, PersonDetail, DetailDrawer, settInputStyle,
+  THEME_MODES, paletteFor, nextThemeMode,
 } from '@nexusmd/ui';
 import { createAdoHttpAdapter } from './ado-client.js';
 import '@nexusmd/ui/styles.css';
@@ -92,20 +93,10 @@ function applyTeamPrefs(baseTeam) {
   return mergeTeamRoster(baseTeam, { removedIds, customMembers });
 }
 
-const NEXUSMD_THEMES = [
-  { id: 'parchment', label: 'Parchment', swatch: ['#f4f1e8', '#ebe5d4', '#9a7e22'] },
-  { id: 'dusk',      label: 'Dusk',      swatch: ['#e4e0d2', '#dbd5c2', '#9a7e22'] },
-  { id: 'paper',     label: 'Paper',     swatch: ['#f5f5f5', '#e8e8e8', '#1d6fcc'] },
-  { id: 'cobalt',    label: 'Cobalt',    swatch: ['#0d1620', '#1f2c3b', '#4a9eff'] },
-  { id: 'noir',      label: 'Noir',      swatch: ['#171410', '#282420', '#e8a020'] },
-  { id: 'slate',     label: 'Slate',     swatch: ['#1a1c20', '#2a2e38', '#8098e0'] },
-  { id: 'forest',    label: 'Forest',    swatch: ['#0e1812', '#1c2a20', '#48b870'] },
-];
-window.NEXUSMD_THEMES = NEXUSMD_THEMES;
-
 const DEFAULT_TWEAKS = /*EDITMODE-BEGIN*/{
   "theme": "light",
   "lightTheme": "parchment",
+  "dimTheme": "umber",
   "darkTheme": "cobalt",
   "density": "balanced",
   "sidebar": "labels",
@@ -531,11 +522,8 @@ function App() {
   window.nexusMDTypeLabels = tweaks.typeLabels || false;
 
   useEffect(() => {
-    const palette = tweaks.theme === 'dark'
-      ? (tweaks.darkTheme || 'cobalt')
-      : (tweaks.lightTheme || 'parchment');
-    document.body.dataset.theme = palette;
-  }, [tweaks.theme, tweaks.darkTheme, tweaks.lightTheme]);
+    document.body.dataset.theme = paletteFor(tweaks);
+  }, [tweaks.theme, tweaks.darkTheme, tweaks.dimTheme, tweaks.lightTheme]);
 
   useEffect(() => {
     try { localStorage.setItem('nexusmd.tweaks', JSON.stringify(tweaks)); } catch (_) {}
@@ -1123,9 +1111,9 @@ function App() {
               onClick={() => setAutoRefreshPaused(v => !v)}>
               <Icon name={autoRefreshPaused ? 'play' : 'pause'} size={14}/>
             </button>
-            <button className="btn icon ghost sm" title="Toggle light/dark mode"
-              onClick={()=>setTweak('theme', tweaks.theme==='light'?'dark':'light')}>
-              <Icon name={tweaks.theme==='light'?'moon':'sun'} size={15}/>
+            <button className="btn icon ghost sm" title={`Switch to ${nextThemeMode(tweaks.theme).label.toLowerCase()} mode`}
+              onClick={()=>setTweak('theme', nextThemeMode(tweaks.theme).id)}>
+              <Icon name={nextThemeMode(tweaks.theme).icon} size={15}/>
             </button>
             <button className="btn icon ghost sm" title="Refresh data"
               onClick={()=>{ NexusMDApi?.load().catch(()=>{}); }}>
@@ -1210,7 +1198,7 @@ function App() {
       <TweaksPanel title="Display">
         <TweakSection title="Appearance">
           <TweakRadio label="Theme" value={tweaks.theme} onChange={v=>setTweak('theme',v)}
-            options={[{label:'Light',value:'light'},{label:'Dark',value:'dark'}]}/>
+            options={THEME_MODES.map(m => ({ label: m.label, value: m.id }))}/>
           <TweakRadio label="Density" value={tweaks.density} onChange={v=>setTweak('density',v)}
             options={[{label:'Compact',value:'compact'},{label:'Balanced',value:'balanced'},{label:'Cozy',value:'cozy'}]}/>
           <TweakRadio label="Sidebar" value={tweaks.sidebar} onChange={v=>setTweak('sidebar',v)}

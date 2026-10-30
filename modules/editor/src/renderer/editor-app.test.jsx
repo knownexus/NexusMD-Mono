@@ -6,7 +6,7 @@ import { createEditorStore } from './editor-store.js'
 // CodeMirror is its own thing to test; here the editor is a plain textarea.
 vi.mock('@nexusmd/editor-kit/code-editor.jsx', () => ({
   languageForPath: p => (String(p).endsWith('.md') ? 'markdown' : 'plaintext'),
-  CodeEditor: ({ value, onChange, ariaLabel }) => <textarea aria-label={ariaLabel} value={value} onChange={e => onChange(e.target.value)} />,
+  CodeEditor: ({ value, onChange, ariaLabel, readOnly }) => <textarea aria-label={ariaLabel} value={value} readOnly={readOnly} onChange={e => onChange?.(e.target.value)} />,
 }))
 
 import { EditorApp } from './editor-app.jsx'
@@ -210,5 +210,18 @@ describe('folder tree', () => {
     await screen.findByRole('tree')
     fireEvent.click(screen.getByRole('button', { name: 'Close folder' }))
     expect(screen.queryByRole('tree')).toBeNull()
+  })
+})
+
+describe('read-only text', () => {
+  it('shows where the text came from, says it is read-only, and offers no Save', () => {
+    const { store } = setup()
+    store.openText({ id: 'github:acme/web@main:src/a.js', name: 'a.js', text: 'alpha', origin: 'acme/web on GitHub, main: src/a.js' })
+    return waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Reading a.js' }).readOnly).toBe(true)
+      expect(screen.getByText('acme/web on GitHub, main: src/a.js')).toBeTruthy()
+      expect(screen.getByText('Read-only')).toBeTruthy()
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
+    })
   })
 })

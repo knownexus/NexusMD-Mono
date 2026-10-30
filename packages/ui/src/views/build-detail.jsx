@@ -16,7 +16,7 @@ export function BuildDetail({ build }) {
     if (!showErrors) return
     let cancelled = false
     setLoading(true); setError(null)
-    buildSource.loadTimeline(build.projectName || build.project, build.id)
+    buildSource.loadTimeline(build.projectName || build.project, build.id, build)
       .then(res => { if (!cancelled) setFailedRecords(res?.failedRecords ?? []) })
       .catch(e => { if (!cancelled) setError(e.message || 'Failed to load') })
       .finally(() => { if (!cancelled) setLoading(false) })

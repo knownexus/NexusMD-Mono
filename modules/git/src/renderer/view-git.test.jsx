@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, within, waitFor } from '@testing-library/react'
+import React from 'react'
+import { render, screen, fireEvent, cleanup, within, waitFor, act } from '@testing-library/react'
+import { core } from '@nexusmd/core'
 import { ViewGit } from './view-git.jsx'
 import { setGitConfig, getGitConfig } from './git-config.js'
 import { clearGitSnapshotCache } from './use-git-snapshot.js'
+import { githubMode } from './github/github-mode.jsx'
 
 afterEach(cleanup)
 beforeEach(() => { localStorage.clear(); clearGitSnapshotCache() })
@@ -376,5 +379,115 @@ describe('ViewGit repository list', () => {
     expect(getGitConfig().view.list).toBe('hidden')
     fireEvent.click(screen.getByRole('button', { name: 'Show repositories' }))
     expect(screen.getByRole('region', { name: 'A' })).toBeTruthy()
+  })
+})
+
+describe('ViewGit GitHub view', () => {
+  const caps = (provided = {}) => ({
+    capabilities: { provide: vi.fn(), has: name => name in provided, call: vi.fn(name => provided[name]()) },
+  })
+  const github = () => ({ repos: ['acme/web', 'acme/api'], http: { fetch: vi.fn() }, cached: { prs: [], issues: [] } })
+  const remotes = vi.fn(async (repo) => (repo.name === 'A' ? 'origin\thttps://github.com/acme/web.git (fetch)\n' : ''))
+  const strip = () => screen.findByRole('tablist', { name: 'Project groups' })
+  const modeSwitch = () => screen.queryByRole('tablist', { name: 'Git Workspace view' })
+  afterEach(() => githubMode.reset())
+
+  it('offers no GitHub view without Work, and nothing errors', async () => {
+    configure()
+    const errors = vi.spyOn(console, 'error')
+    render(<ViewGit adapters={{ git: adapter() }} host={caps()} />)
+    expect(await screen.findByRole('region', { name: 'A' })).toBeTruthy()
+    expect(modeSwitch()).toBeNull()
+    expect(githubMode.get().available).toBe(false)
+    cleanup()
+    render(<ViewGit adapters={{ git: adapter() }} />)
+    await strip()
+    expect(modeSwitch()).toBeNull()
+    expect(errors).not.toHaveBeenCalled()
+    errors.mockRestore()
+  })
+
+  it('offers no GitHub view when GitHub is not connected', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter() }} host={caps({ 'work.github': () => null })} />)
+    expect(await screen.findByRole('region', { name: 'A' })).toBeTruthy()
+    expect(modeSwitch()).toBeNull()
+  })
+
+  it('switches to GitHub from the Local / GitHub switch, not from the group tabs, and lists the ticked repositories', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter({ remotes }) }} host={caps({ 'work.github': github })} />)
+    const tabs = await strip()
+    await screen.findByRole('region', { name: 'A' })
+    expect(within(tabs).queryByRole('tab', { name: /^GitHub/ })).toBeNull()
+    fireEvent.click(within(modeSwitch()).getByRole('tab', { name: 'GitHub' }))
+    const list = screen.getByRole('list', { name: 'GitHub repositories' })
+    expect(within(list).getByRole('listitem', { name: 'acme/web' })).toBeTruthy()
+    expect(within(list).getByRole('listitem', { name: 'acme/api' })).toBeTruthy()
+    expect(screen.queryByRole('region', { name: 'A' })).toBeNull()
+    // Groups are about local repositories, so their tabs go while GitHub is showing.
+    expect(screen.queryByRole('tablist', { name: 'Project groups' })).toBeNull()
+    expect(within(modeSwitch()).getByRole('tab', { name: 'GitHub' }).getAttribute('aria-selected')).toBe('true')
+    expect(getGitConfig().view.tab).toBe('github')
+    // Open local copy goes back to the registered repositories with that repository's worktree selected.
+    fireEvent.click(await within(list).findByRole('button', { name: /Open local copy/ }))
+    expect(getGitConfig().view).toMatchObject({ group: 'Registered repos', selected: 'C:/repos/A' })
+    expect(getGitConfig().view.tab).toBeUndefined()
+    expect(await screen.findByRole('region', { name: 'A' })).toBeTruthy()
+  })
+
+  it('tells the top bar switch the mode, and switches when the top bar asks', async () => {
+    configure()
+    render(<ViewGit adapters={{ git: adapter({ remotes }) }} host={caps({ 'work.github': github })} />)
+    await screen.findByRole('region', { name: 'A' })
+    expect(githubMode.get()).toMatchObject({ available: true, onGithub: false })
+    act(() => githubMode.get().request('github'))
+    expect(await screen.findByRole('list', { name: 'GitHub repositories' })).toBeTruthy()
+    expect(githubMode.get().onGithub).toBe(true)
+    act(() => githubMode.get().request('local'))
+    expect(await screen.findByRole('region', { name: 'A' })).toBeTruthy()
+  })
+
+  it('leaves the switch to the top bar once the top bar draws it', async () => {
+    configure()
+    act(() => githubMode.markTopbar())
+    render(<ViewGit adapters={{ git: adapter({ remotes }) }} host={caps({ 'work.github': github })} />)
+    await screen.findByRole('region', { name: 'A' })
+    expect(modeSwitch()).toBeNull()
+  })
+
+  it('shows a remembered GitHub view when Work registers GitHub in its provider\'s effect, after the page\'s first read', async () => {
+    configure()
+    setGitConfig({ view: { ...getGitConfig().view, tab: 'github' } })
+    const provided = {}
+    const host = caps(provided)
+    host.capabilities.has = name => name in provided
+    // Work's provider wraps the page; React runs its effect after the page's.
+    function WorkLike({ children }) {
+      React.useEffect(() => { provided['work.github'] = github }, [])
+      return children
+    }
+    render(<WorkLike><ViewGit adapters={{ git: adapter({ remotes }) }} host={host} /></WorkLike>)
+    expect(await screen.findByRole('list', { name: 'GitHub repositories' })).toBeTruthy()
+    expect(within(modeSwitch()).getByRole('tab', { name: 'GitHub' }).getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('stays where the user went when a remembered GitHub view only becomes available later', async () => {
+    configure()
+    setGitConfig({ view: { ...getGitConfig().view, tab: 'github' } })
+    const provided = {}
+    render(<ViewGit adapters={{ git: adapter({ remotes }) }} host={caps(provided)} />)
+    await screen.findByRole('region', { name: 'A' })
+    fireEvent.click(screen.getByRole('button', { name: /Jump to branch/ }))
+    const box = screen.getByRole('combobox', { name: 'Branch name' })
+    fireEvent.change(box, { target: { value: 'b' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(getGitConfig().view.selected).toBe('C:/repos/B')
+    provided['work.github'] = github
+    act(() => core._emit('data:updated'))
+    await waitFor(() => expect(modeSwitch()).toBeTruthy())
+    expect(screen.queryByRole('list', { name: 'GitHub repositories' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'A' })).toBeTruthy()
+    expect(getGitConfig().view.tab).toBeUndefined()
   })
 })

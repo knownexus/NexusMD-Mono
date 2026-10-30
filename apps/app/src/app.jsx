@@ -11,7 +11,7 @@ import { getProfileKey } from './profile-keys.js';
 import {
   NexusDataProvider, renderContent, SEEN_FINGERPRINTS, DEFAULT_PROJECT_AREAS,
   ProjectAreasModal, DocumentsView, ApiClientProvider, ApiClientView, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
-  PRCommitsTab, PRFilesTab, CreateWIModal, WIDetail, PersonDetail, DetailDrawer,
+  PRCommitsTab, PRFilesTab, CreateWIModal, WIDetail, PersonDetail, DetailDrawer, paletteFor,
 } from '@nexusmd/ui';
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
@@ -57,20 +57,10 @@ function applyTeamPrefs(baseTeam) {
   return [...visibleAzure, ...newCustom];
 }
 
-const HELM_THEMES = [
-  { id: 'parchment', label: 'Parchment', swatch: ['#f4f1e8', '#ebe5d4', '#9a7e22'] },
-  { id: 'dusk',      label: 'Dusk',      swatch: ['#e4e0d2', '#dbd5c2', '#9a7e22'] },
-  { id: 'paper',     label: 'Paper',     swatch: ['#f5f5f5', '#e8e8e8', '#1d6fcc'] },
-  { id: 'cobalt',    label: 'Cobalt',    swatch: ['#0d1620', '#1f2c3b', '#4a9eff'] },
-  { id: 'noir',      label: 'Noir',      swatch: ['#171410', '#282420', '#e8a020'] },
-  { id: 'slate',     label: 'Slate',     swatch: ['#1a1c20', '#2a2e38', '#8098e0'] },
-  { id: 'forest',    label: 'Forest',    swatch: ['#0e1812', '#1c2a20', '#48b870'] },
-];
-window.HELM_THEMES = HELM_THEMES;
-
 const DEFAULT_TWEAKS = /*EDITMODE-BEGIN*/{
   "theme": "light",
   "lightTheme": "parchment",
+  "dimTheme": "umber",
   "darkTheme": "cobalt",
   "density": "balanced",
   "sidebar": "labels",
@@ -529,11 +519,8 @@ function AppShell() {
   window.helmTypeLabels = tweaks.typeLabels || false;
 
   useEffect(() => {
-    const palette = tweaks.theme === 'dark'
-      ? (tweaks.darkTheme || 'cobalt')
-      : (tweaks.lightTheme || 'parchment');
-    document.body.dataset.theme = palette;
-  }, [tweaks.theme, tweaks.darkTheme, tweaks.lightTheme]);
+    document.body.dataset.theme = paletteFor(tweaks);
+  }, [tweaks.theme, tweaks.darkTheme, tweaks.dimTheme, tweaks.lightTheme]);
 
   useEffect(() => {
     document.body.dataset.density = tweaks.density || 'balanced';

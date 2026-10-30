@@ -266,3 +266,28 @@ describe('subscribing', () => {
     expect(fn).not.toHaveBeenCalled()
   })
 })
+
+describe('read-only text', () => {
+  const spec = { id: 'github:acme/web@main:src/a.js', name: 'a.js', text: 'one\r\ntwo\r\n', origin: 'acme/web on GitHub, main: src/a.js' }
+  it('opens in a tab of its own, held as LF, and never reads or writes the disk', async () => {
+    const api = fakeApi()
+    const store = createEditorStore({ api, storage: memoryStorage() })
+    store.openText(spec)
+    const d = store.getState().docs[0]
+    expect(d).toMatchObject({ path: spec.id, name: 'a.js', status: 'ready', text: 'one\ntwo\n', readOnly: true, origin: spec.origin })
+    expect(store.getState().active).toBe(spec.id)
+    store.setText(spec.id, 'changed')
+    expect(store.getState().docs[0].text).toBe('one\ntwo\n')
+    expect(await store.save(spec.id)).toBe(false)
+    await store.reload(spec.id)
+    expect(api.read).not.toHaveBeenCalled()
+    expect(api.write).not.toHaveBeenCalled()
+    expect(store.getState().recent.files).toEqual([])
+  })
+  it('opening the same text again shows the one tab with the new text', () => {
+    const store = createEditorStore({ api: fakeApi() })
+    store.openText(spec)
+    store.openText({ ...spec, text: 'newer' })
+    expect(store.getState().docs.map(d => d.text)).toEqual(['newer'])
+  })
+})

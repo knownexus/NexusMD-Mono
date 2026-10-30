@@ -1,0 +1,19 @@
+meta {
+  name: SMART berth data
+  type: http
+  seq: 2
+}
+
+get {
+  url: https://publicdatafeeds.networkrail.co.uk/ntrod/SupportingFileAuthenticate?type=SMART
+  body: none
+  auth: inherit
+}
+
+params:query {
+  type: SMART
+}
+
+docs {
+  Maps Train Describer berths to locations and platforms (for the TD feed).
+}

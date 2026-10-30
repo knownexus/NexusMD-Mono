@@ -1,10 +1,12 @@
 import React from 'react'
-import { defaultCreateProvider } from '@nexusmd/core'
+import { defaultCreateProvider, loadCachedGithubData } from '@nexusmd/core'
+import { localStorageAdapter } from '@nexusmd/web-adapters'
 import { NexusDataProvider, useSeenTracking, SEEN_FINGERPRINTS } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useLocalItems } from './items-state.js'
 import { getAdoConfig, usesAdoWorkItems } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraWorkItemSource } from './jira-client.js'
+import { getGithubConfig, usesGithubWorkItems, isGithubConfigured, desktopGithubSource, createGithubHttpAdapter } from './github-client.js'
 import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
 import { desktopBuildSource } from './desktop-build-source.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
@@ -15,7 +17,22 @@ import { WorkContext } from './work-context.js'
 import { workBadges } from './work-store.js'
 import { useOffScreens, skippedFetches } from './work-screens.js'
 
+// The drawer's reviewer list reads reviewerDetails, so a vote cast from the drawer is
+// written there until the refreshed PR arrives.
+function withMyVote(pr, myVote, snapshot) {
+  const me = pr.source === 'github' ? snapshot.GITHUB_ME?.login : snapshot.ME?.name
+  if (!me) return pr
+  const list = pr.reviewerDetails || []
+  const at = list.findIndex(r => (r.name || '').toLowerCase() === me.toLowerCase())
+  const reviewerDetails = at >= 0
+    ? list.map((r, i) => (i === at ? { ...r, vote: myVote } : r))
+    : [...list, { id: me, name: me, vote: myVote }]
+  return { ...pr, reviewerDetails }
+}
+
 const VIEW_TO_CATEGORY = { work: 'work', prs: 'pr', builds: 'builds', tests: 'tests' }
+// GitHub PR drawer tabs read through this; it uses whichever token is saved at request time.
+const githubHttp = createGithubHttpAdapter()
 
 // Wraps the whole shell, above every screen, so what Work owns outlives leaving a screen: the
 // cached data and its refresh, the unseen-item markers, and the drawers that open from any screen.
@@ -43,6 +60,49 @@ export function WorkProvider({ host, view, children }) {
   const refreshLeftRef = React.useRef(refreshInterval)
 
   const { snapshot, loaded: dataLoaded } = useNexusSnapshot()
+
+  // What other apps (Git) may borrow: GitHub's credentials-backed client with Work's cached
+  // data, and Work's drawers. Config and snapshot are read when called, not when registered.
+  const snapshotRef = React.useRef(snapshot)
+  snapshotRef.current = snapshot
+  const drawersRef = React.useRef({})
+  drawersRef.current = { openItem, openPR, openBuild }
+  React.useEffect(() => {
+    const caps = host.capabilities
+    if (!caps?.provide) return undefined
+    const offs = [
+      caps.provide('work.github', () => {
+        if (!isGithubConfigured()) return null
+        const config = getGithubConfig()
+        const snap = snapshotRef.current
+        // Kept to the Git tab, issues and runs aren't in the snapshot: read GitHub's own cache.
+        const own = config.inWork ? snap : (loadCachedGithubData(config, { storage: localStorageAdapter }) || {})
+        return {
+          repos: config.repos,
+          http: githubHttp,
+          inWork: config.inWork,
+          cached: {
+            prs: (snap.PRS || []).filter(p => p.source === 'github'),
+            issues: (own.WORK_ITEMS || []).filter(i => i.source === 'github'),
+            builds: (own.BUILDS || []).filter(b => b.source === 'github'),
+          },
+        }
+      }),
+      caps.provide('work.openPR', pr => drawersRef.current.openPR(pr)),
+      caps.provide('work.openItem', item => drawersRef.current.openItem(item)),
+      caps.provide('work.openBuild', build => drawersRef.current.openBuild(build)),
+    ]
+    return () => offs.forEach(off => off())
+  }, [host])
+
+  // A refresh brings the provider's real state: show it in an open PR drawer.
+  React.useEffect(() => {
+    setDrawer(dr => {
+      if (!dr || dr.kind !== 'pr') return dr
+      const fresh = (snapshot.PRS || []).find(p => p.id === dr.data.id)
+      return fresh && fresh !== dr.data ? { ...dr, data: fresh } : dr
+    })
+  }, [snapshot.PRS])
 
   // localItems starts as null (sentinel: mirror snapshot.WORK_ITEMS). Shared
   // views update via setItems(arr => arr.map(...)); the setter resolves the
@@ -126,8 +186,10 @@ export function WorkProvider({ host, view, children }) {
   // would make JiraCreateForm re-fetch create-meta and wipe the user's input.
   const jiraActive = isJiraActive()
   const jiraSource = React.useMemo(() => (jiraActive ? createJiraWorkItemSource() : null), [jiraActive])
-  // Stable across data refreshes: only a Jira-source change produces a new identity.
-  const workItemSource = useRoutedWorkItemSource(desktopWorkItemSource, jiraSource)
+  // GitHub issues are routed only while "Load GitHub issues" is on.
+  const githubSource = usesGithubWorkItems() ? desktopGithubSource : null
+  // Stable across data refreshes: only a Jira- or GitHub-source change produces a new identity.
+  const workItemSource = useRoutedWorkItemSource(desktopWorkItemSource, jiraSource, githubSource)
 
   const nexusDataValue = React.useMemo(() => ({
     data:           snapshot,
@@ -137,6 +199,7 @@ export function WorkProvider({ host, view, children }) {
     pushPref:       () => {},
     workItemSource,
     buildSource:    desktopBuildSource,
+    githubHttp,
   }), [snapshot, workItemSource, refreshAllData])
 
   const work = {
@@ -151,7 +214,16 @@ export function WorkProvider({ host, view, children }) {
       <WorkContext.Provider value={work}>
         {children}
         <DetailDrawer drawer={drawer} onClose={() => setDrawer(null)} setItems={setItemsResolved}
-          onOpenItem={openItem} onOpenPR={openPR} />
+          onOpenItem={openItem} onOpenPR={openPR}
+          onPRChanged={(id, patch) => {
+            const { myVote, ...rest } = patch || {}
+            setDrawer(dr => {
+              if (!dr || dr.kind !== 'pr' || dr.data.id !== id) return dr
+              const next = { ...dr.data, ...rest }
+              return { ...dr, data: myVote == null ? next : withMyVote(next, myVote, snapshot) }
+            })
+            refreshAllData()
+          }} />
         <CreateWorkItemDrawer
           open={!!createWI}
           title={createWI?.title}
@@ -164,13 +236,19 @@ export function WorkProvider({ host, view, children }) {
             people: snapshot.JIRA_PEOPLE || [],
             site: getJiraConfig().site,
           } : null}
+          github={githubSource ? { source: githubSource, repos: getGithubConfig().repos } : null}
           defaultProvider={defaultCreateProvider({
             readJson: (k, d) => { try { const v = localStorage.getItem(getProfileKey(k)); return v == null ? d : JSON.parse(v) } catch { return d } },
             adoAvailable: usesAdoWorkItems(),
             jiraAvailable: jiraActive,
+            githubAvailable: !!githubSource,
           })}
           onProviderChange={(p) => { try { localStorage.setItem(getProfileKey('nexusmd.wi.createProvider'), JSON.stringify(p)) } catch {} }}
           onJiraCreated={(result) => {
+            if (!result.warnings?.length) setTimeout(() => setCreateWI(null), 600)
+            refreshAllData()
+          }}
+          onGithubCreated={(result) => {
             if (!result.warnings?.length) setTimeout(() => setCreateWI(null), 600)
             refreshAllData()
           }}

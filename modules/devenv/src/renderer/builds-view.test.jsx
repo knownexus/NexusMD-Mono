@@ -109,6 +109,18 @@ describe('BuildsView', () => {
     expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
   })
 
+  it("uses the dashboard's build status instead of querying again", () => {
+    globalThis.__run = { state: createRunState(), start: vi.fn(), cancel: vi.fn(), config: CFG }
+    const adapter = { query: vi.fn() }
+    const status = { data: { apis: [ORDERS], mobile: MOBILE }, error: null, loading: false, refresh: vi.fn() }
+    render(<BuildsView adapter={adapter} builds={status} />)
+    expect(screen.getByRole('button', { name: 'Build mobile' })).toBeTruthy()
+    expect(screen.getByLabelText('ABI')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    expect(status.refresh).toHaveBeenCalled()
+    expect(adapter.query).not.toHaveBeenCalled()
+  })
+
   it('shows a query error', async () => {
     globalThis.__run = { state: createRunState(), start: vi.fn(), cancel: vi.fn(), config: CFG }
     render(<BuildsView adapter={{ query: vi.fn(async () => { throw new Error('pwsh missing') }) }} />)

@@ -1,0 +1,24 @@
+meta {
+  name: Arrivals and departures with details
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{ldbArrDepBaseUrl}}/GetArrDepBoardWithDetails/{{crs}}?numRows=10
+  body: none
+  auth: none
+}
+
+params:query {
+  numRows: 10
+}
+
+headers {
+  x-apikey: {{ldbArrDepKey}}
+}
+
+docs {
+  Needs a subscription to the separate arrivals-and-departures product; set ldbArrDepBaseUrl and
+  ldbArrDepKey from its Specification tab.
+}

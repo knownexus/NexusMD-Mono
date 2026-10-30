@@ -5,7 +5,8 @@ import { render, screen, act, cleanup } from '@testing-library/react'
 const refreshSpy = vi.fn(async () => {})
 const markSeen = vi.fn()
 const seen = { unseenIds: { work: new Set(), pr: new Set(), builds: new Set(), tests: new Set() }, unseenCounts: { work: 3, pr: 1, builds: 0, tests: 2 }, markSeen }
-const SNAPSHOT = { WORK_ITEMS: [], PRS: [], BUILDS: [], TESTS: [], TEAM: [], JIRA_PEOPLE: [] }
+const BASE = { WORK_ITEMS: [], PRS: [], BUILDS: [], TESTS: [], TEAM: [], JIRA_PEOPLE: [], ME: { name: 'Me Myself' }, GITHUB_ME: { login: 'octo' } }
+let SNAPSHOT = BASE
 
 vi.mock('@nexusmd/ui', async importOriginal => ({ ...(await importOriginal()), useSeenTracking: () => seen }))
 vi.mock('./work-data.js', () => ({
@@ -13,14 +14,17 @@ vi.mock('./work-data.js', () => ({
   desktopWorkItemSource: { createWorkItem: vi.fn(async () => ({ warnings: [] })) },
   useNexusSnapshot: () => ({ snapshot: SNAPSHOT, loaded: true }),
 }))
-vi.mock('./detail-drawer.jsx', () => ({ DetailDrawer: ({ drawer }) => <div data-testid="drawer">{drawer ? drawer.kind : 'closed'}</div> }))
-vi.mock('./create-work-item-drawer.jsx', () => ({ CreateWorkItemDrawer: ({ open, title }) => <div data-testid="create">{open ? `open:${title ?? ''}` : 'closed'}</div> }))
+let drawerProps
+vi.mock('./detail-drawer.jsx', () => ({ DetailDrawer: props => { drawerProps = props; return <div data-testid="drawer" data-status={props.drawer?.data?.status ?? ''}>{props.drawer ? props.drawer.kind : 'closed'}</div> } }))
+vi.mock('./create-work-item-drawer.jsx', () => ({ CreateWorkItemDrawer: ({ open, title, github, defaultProvider }) => <div data-testid="create" data-github={github ? github.repos.join(',') : ''} data-provider={defaultProvider}>{open ? `open:${title ?? ''}` : 'closed'}</div> }))
 vi.mock('./project-areas-modal.jsx', () => ({ ProjectAreasModal: ({ open }) => <div data-testid="areas">{open ? 'open' : 'closed'}</div> }))
 
 import { useNexusData } from '@nexusmd/ui'
 import { WorkProvider } from './work-provider.jsx'
 import { useWork } from './work-context.js'
 import { workBadges } from './work-store.js'
+import { createCapabilities } from '@nexusmd/shell-sdk'
+import { saveGithubConfig } from './github-client.js'
 
 let work
 let data
@@ -31,11 +35,16 @@ function Probe() {
 }
 
 const onRefreshData = vi.fn()
-const host = { cloud: {}, adapters: { windowControls: { onRefreshData } } }
+let capabilities
+let host
+const makeHost = () => { capabilities = createCapabilities(); host = { cloud: {}, capabilities, adapters: { windowControls: { onRefreshData } } } }
+makeHost()
 const mount = (view = 'dashboard') => render(<WorkProvider host={host} view={view}><Probe /></WorkProvider>)
 
 beforeEach(() => {
   vi.clearAllMocks()
+  makeHost()
+  SNAPSHOT = BASE
   localStorage.clear()
   workBadges.set({})
 })
@@ -65,6 +74,51 @@ describe('the drawers', () => {
       act(() => work[open]({ id: 1 }))
       expect(screen.getByTestId('drawer').textContent).toBe(kind)
     }
+  })
+  it('patches the open PR and refreshes when a PR action succeeds', () => {
+    mount()
+    act(() => work.openPR({ id: 1, status: 'active' }))
+    act(() => drawerProps.onPRChanged(1, { status: 'merged' }))
+    expect(screen.getByTestId('drawer').dataset.status).toBe('merged')
+    expect(refreshSpy).toHaveBeenCalledTimes(1)
+  })
+  it('does not patch a different PR that is open now, but still refreshes', () => {
+    mount()
+    act(() => work.openPR({ id: 1, status: 'active' }))
+    act(() => work.openPR({ id: 2, status: 'active' }))
+    act(() => drawerProps.onPRChanged(1, { status: 'merged' }))
+    expect(screen.getByTestId('drawer').dataset.status).toBe('active')
+    expect(refreshSpy).toHaveBeenCalledTimes(1)
+    act(() => drawerProps.onPRChanged(2, { status: 'merged' }))
+    expect(screen.getByTestId('drawer').dataset.status).toBe('merged')
+  })
+  it('puts the current user vote into the open ADO PR reviewers', () => {
+    mount()
+    act(() => work.openPR({ id: 1, status: 'active', reviewerDetails: [{ id: 'a', name: 'Alice', vote: 0 }, { id: 'me', name: 'me myself', vote: 0 }] }))
+    act(() => drawerProps.onPRChanged(1, { myVote: 10 }))
+    const data = drawerProps.drawer.data
+    expect(data.reviewerDetails).toEqual([{ id: 'a', name: 'Alice', vote: 0 }, { id: 'me', name: 'me myself', vote: 10 }])
+    expect('myVote' in data).toBe(false)
+  })
+  it('appends the current user when they are not yet a reviewer, using GITHUB_ME for GitHub PRs', () => {
+    mount()
+    act(() => work.openPR({ id: 2, source: 'github', status: 'active', reviewerDetails: [{ id: 'a', name: 'Alice', vote: 0 }] }))
+    act(() => drawerProps.onPRChanged(2, { myVote: -5 }))
+    expect(drawerProps.drawer.data.reviewerDetails).toEqual([
+      { id: 'a', name: 'Alice', vote: 0 }, { id: 'octo', name: 'octo', vote: -5 },
+    ])
+    act(() => work.openPR({ id: 3, status: 'active' }))
+    act(() => drawerProps.onPRChanged(3, { myVote: 10 }))
+    expect(drawerProps.drawer.data.reviewerDetails).toEqual([{ id: 'Me Myself', name: 'Me Myself', vote: 10 }])
+  })
+  it('replaces the open PR with the refreshed one when the snapshot changes', () => {
+    const view = () => <WorkProvider host={host} view="dashboard"><Probe /></WorkProvider>
+    const { rerender } = render(view())
+    act(() => work.openPR({ id: 1, status: 'active' }))
+    expect(drawerProps.drawer.data.status).toBe('active')
+    SNAPSHOT = { ...BASE, PRS: [{ id: 1, status: 'merged', title: 'fresh' }] }
+    rerender(view())
+    expect(drawerProps.drawer.data).toEqual({ id: 1, status: 'merged', title: 'fresh' })
   })
   it('opens the create drawer on nexusmd:create-wi, with the title it was given', () => {
     mount()
@@ -162,5 +216,85 @@ describe('refresh', () => {
     localStorage.setItem('nexusmd.refreshInterval', '0')
     mount()
     expect(work.refreshInterval).toBe(300)
+  })
+})
+
+describe('the GitHub work-item source', () => {
+  it('routes GitHub items only while "Load GitHub issues" is on', async () => {
+    const { saveGithubConfig } = await import('./github-client.js')
+    saveGithubConfig({ pat: 'ghp_x', repos: ['acme/web'] })
+    mount()
+    expect(data.workItemSource.github).toBeTruthy()
+    expect(data.workItemSource.webUrl({ id: 'gh:acme/web#3' })).toBe('https://github.com/acme/web/issues/3')
+    cleanup()
+    saveGithubConfig({ issues: false })
+    mount()
+    expect(data.workItemSource.github).toBeNull()
+  })
+})
+
+describe('creating GitHub issues', () => {
+  it('offers GitHub in the create drawer with the selected repos, and defaults to it when it is the only provider', async () => {
+    const { saveGithubConfig } = await import('./github-client.js')
+    saveGithubConfig({ pat: 'ghp_x', repos: ['acme/web', 'acme/api'] })
+    mount()
+    expect(screen.getByTestId('create').getAttribute('data-github')).toBe('acme/web,acme/api')
+    expect(screen.getByTestId('create').getAttribute('data-provider')).toBe('github')
+  })
+})
+
+describe('GitHub pull requests', () => {
+  it('gives the PR drawer a GitHub http adapter', () => {
+    mount()
+    expect(typeof data.githubHttp?.fetch).toBe('function')
+  })
+})
+
+describe('what it offers other apps', () => {
+  const ghPr = { id: 'gh:a/b#1', source: 'github' }
+  const adoPr = { id: 'ado:1', source: 'ado' }
+  const ghItem = { id: 'gh:a/b#2', source: 'github' }
+  const adoItem = { id: 'ado:2', source: 'ado' }
+  it('offers GitHub with only its own cached PRs and issues', () => {
+    saveGithubConfig({ pat: 'ghp_x', repos: ['acme/web'] })
+    SNAPSHOT = { ...BASE, PRS: [ghPr, adoPr], WORK_ITEMS: [ghItem, adoItem] }
+    mount()
+    const gh = capabilities.call('work.github')
+    expect(gh.repos).toEqual(['acme/web'])
+    expect(typeof gh.http.fetch).toBe('function')
+    expect(gh.cached.prs).toEqual([ghPr])
+    expect(gh.cached.issues).toEqual([ghItem])
+    expect(gh.inWork).toBe(true)
+  })
+  it('kept to the Git tab, offers GitHub issues and runs from its own cache', async () => {
+    const { localStorageAdapter } = await import('@nexusmd/web-adapters')
+    const { GITHUB_CACHE_KEY } = await import('@nexusmd/core')
+    const ghRun = { id: 9, source: 'github' }
+    localStorageAdapter.set(GITHUB_CACHE_KEY, { WORK_ITEMS: [ghItem], BUILDS: [ghRun], PRS: [] })
+    saveGithubConfig({ pat: 'ghp_x', repos: ['acme/web'], inWork: false })
+    SNAPSHOT = { ...BASE, PRS: [ghPr], WORK_ITEMS: [adoItem] }
+    mount()
+    const gh = capabilities.call('work.github')
+    expect(gh.inWork).toBe(false)
+    expect(gh.cached).toEqual({ prs: [ghPr], issues: [ghItem], builds: [ghRun] })
+  })
+  it('offers nothing when GitHub is not configured', () => {
+    mount()
+    expect(capabilities.call('work.github')).toBeNull()
+  })
+  it('opens its drawers on request', () => {
+    mount()
+    act(() => capabilities.call('work.openPR', { id: 'gh:a/b#1' }))
+    expect(screen.getByTestId('drawer').textContent).toBe('pr')
+    act(() => capabilities.call('work.openItem', { id: 'gh:a/b#1' }))
+    expect(screen.getByTestId('drawer').textContent).toBe('wi')
+    act(() => capabilities.call('work.openBuild', { id: 9, source: 'github' }))
+    expect(screen.getByTestId('drawer').textContent).toBe('build')
+  })
+  it('stops offering them on unmount', () => {
+    const { unmount } = mount()
+    expect(capabilities.has('work.github')).toBe(true)
+    unmount()
+    expect(capabilities.has('work.github')).toBe(false)
   })
 })

@@ -40,3 +40,11 @@ describe('desktopBuildSource.loadTimeline', () => {
     await expect(desktopBuildSource.loadTimeline('MyProject', 999)).rejects.toThrow('HTTP 404')
   })
 })
+
+describe('desktopBuildSource.loadTimeline for GitHub Actions runs', () => {
+  it('resolves no failed records without asking ADO', async () => {
+    createAdoHttpAdapter.mockReset()
+    expect(await desktopBuildSource.loadTimeline('acme/web', 1, { source: 'github' })).toEqual({ failedRecords: [] })
+    expect(createAdoHttpAdapter).not.toHaveBeenCalled()
+  })
+})

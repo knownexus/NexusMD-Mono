@@ -6,6 +6,7 @@
 // Stylesheet:  import '@nexusmd/ui/styles.css'
 
 export { Icon } from './icons.jsx'
+export { NEXUSMD_THEMES, THEME_MODES, paletteFor, nextThemeMode, isDarkPalette } from './themes.js'
 export { FoldAllButton } from './fold-all-button.jsx'
 export {
   StatusChip, PrioChip, PlModal, PlFld, DueLabel,
@@ -66,7 +67,7 @@ export {
 // SettingsView page + integration cards; these are the shared building blocks.
 export {
   PROFILE_COLORS,
-  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, VsSeg,
+  PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, ThemeModeSettings, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
   BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,
   OAuthServiceCard, IntegrationsView, BoardColumnsCard, FieldVisibilityCard,
@@ -82,6 +83,8 @@ export { apiBuildSource } from './views/build-source.js'
 export { BuildDetail } from './views/build-detail.jsx'
 export { TagInput, AreaTreePicker } from './views/wi-field-pickers.jsx'
 export { PRTabs, PRCommitsTab, PRFilesTab } from './views/pr-tabs.jsx'
+export { GithubPatch } from './views/pr-tabs-github.jsx'
+export { PRActions } from './views/pr-actions.jsx'
 export { DEFAULT_PROJECT_AREAS, useProjectAreas } from './project-areas.js'
 export { renderContent, mdToHtml } from './views/render-content.js'
 export { MarkdownViewer, displayName } from './views/MarkdownViewer.jsx'

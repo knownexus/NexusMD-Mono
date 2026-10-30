@@ -1,0 +1,20 @@
+meta {
+  name: Service details
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{ldbServiceBaseUrl}}/GetServiceDetails/{{serviceId}}
+  body: none
+  auth: none
+}
+
+headers {
+  x-apikey: {{ldbServiceKey}}
+}
+
+docs {
+  Full detail for one train. serviceId is set from the first train of the last board you fetched.
+  Needs the separate service-details product; set ldbServiceBaseUrl and ldbServiceKey.
+}

@@ -9,7 +9,7 @@ const eolLabel = eol => (eol === '\r\n' ? 'CRLF' : 'LF')
 
 function Tab({ doc, active, onSelect, onClose }) {
   return (
-    <div role="tab" aria-selected={active} className={`nx-ed-tab${active ? ' nx-ed-active' : ''}`} title={doc.path}>
+    <div role="tab" aria-selected={active} className={`nx-ed-tab${active ? ' nx-ed-active' : ''}`} title={doc.readOnly ? `${doc.origin} (read-only)` : doc.path}>
       <button type="button" className="nx-ed-tab-name" onClick={onSelect}>
         {doc.name}{isDirty(doc) && <span className="nx-ed-dirty" title="Unsaved changes" aria-label="unsaved changes"> ●</span>}
       </button>
@@ -40,6 +40,17 @@ function DocPane({ doc, store }) {
         <p role="alert" className="nx-ed-bad">{doc.error}</p>
         <button type="button" className="btn sm" onClick={() => store.reload(doc.path)}>Try again</button>
       </div>
+    )
+  }
+  if (doc.readOnly) {
+    return (
+      <>
+        <CodeEditor value={doc.text} language={languageForPath(doc.name)} ariaLabel={`Reading ${doc.name}`} readOnly />
+        <div className="nx-ed-status">
+          <span className="nx-ed-path" title={doc.origin}>{doc.origin}</span>
+          <span className="nx-ed-readonly">Read-only</span>
+        </div>
+      </>
     )
   }
   const dirty = isDirty(doc)

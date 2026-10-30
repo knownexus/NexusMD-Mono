@@ -118,8 +118,17 @@ export const IDeepLinkAdapter = {
 // trust model as Postman/Bruno's own request scripts), not as a boundary
 // against untrusted/third-party code — Node's `vm` module (the desktop
 // implementation) is explicitly documented as NOT a security mechanism.
+//
+// runBruno/resumeBruno run Bruno-style scripts (bru, req, res, test, expect)
+// as a session that can pause on `await bru.runRequest(path)`: each call
+// resolves to { done: true, context, logs, error } when the script finished,
+// or { done: false, sessionId, pending: [{ id, path }], context, logs } when
+// it's waiting — the caller sends each pending request and passes
+// { response, vars } (or { vars, error }) back through resumeBruno.
 export const IScriptRunnerAdapter = {
   run: async (script, context) => Promise.reject(new Error('IScriptRunnerAdapter.run not implemented')),
+  runBruno: async (script, input) => Promise.reject(new Error('IScriptRunnerAdapter.runBruno not implemented')),
+  resumeBruno: async (sessionId, requestId, result) => Promise.reject(new Error('IScriptRunnerAdapter.resumeBruno not implemented')),
 }
 
 // A plain, unscoped HTTP client for the api-client module — unlike IHttpAdapter,

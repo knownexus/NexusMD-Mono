@@ -18,6 +18,7 @@ export { makeProfileKeys } from './profiles/profile-keys.js'
 export * from './modules/ado/index.js'
 export * from './modules/workitems/index.js'
 export * from './modules/jira/index.js'
+export * from './modules/github/index.js'
 export { effectiveNeedsMe, effectiveTeamActivity } from './modules/pr/index.js'
 export { mergeTeamRoster, enrichTeamMember, enrichTeam } from './modules/team/index.js'
 export {
@@ -67,8 +68,9 @@ export {
   resolveVars, resolveObjectVars, resolveEnvironment,
   secretStorageKey, setSecretVar, removeSecretVar,
   buildRequest, executeRequest,
-  buildRunEntries, runCollection,
+  buildRunEntries, runCollection, nextRuntimeVars,
   importPostmanCollection, importBrunoCollection, parseBru,
+  executeBrunoRequest, brunoRequestLookup, normalizeBrunoPath,
   appendHistoryEntry, readHistory, clearHistory,
 } from './modules/api-client/index.js'
 export {
@@ -86,6 +88,7 @@ export {
 export {
   normalizeTablePrefs, toggleTableStarred, toggleTableHidden, setTableGroup, renameTableGroup,
   removeTableGroup, toggleSectionCollapsed, tableSections, groupSectionKey, schemaSectionKey, VIEWS_SECTION_KEY,
+  TABLE_GROUP_BY, setTableGroupBy, tablePrefix,
 } from './modules/db-manager/table-prefs.js'
 export {
   columnTypes, validateTableSpec, buildCreateTable, buildCreateView, buildDropStatement, formatDefault, isSingleStatement,

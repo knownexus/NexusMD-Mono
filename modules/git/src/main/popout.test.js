@@ -50,6 +50,18 @@ describe('validateSpec', () => {
     expect(validateSpec(spec({ kind: 'diff', changeId: 'unstaged:src/app.jsx' })).changeId).toBe('unstaged:src/app.jsx')
     expect(validateSpec(spec({ kind: 'diff', changeId: 'unstaged\0src/app.jsx' })).changeId).toBe('unstaged\0src/app.jsx')
   })
+  it('keeps the change a diff carries, with only its status fields', () => {
+    const change = { id: 'unstaged\0src/app.jsx', area: 'unstaged', path: 'src/app.jsx', originalPath: 'src/old.jsx', xy: '.R', sub: 'N...' }
+    expect(validateSpec(spec({ kind: 'diff', changeId: change.id, change: { ...change, junk: 1 } })).change).toEqual(change)
+    expect(validateSpec(spec({ kind: 'diff', changeId: 'u', change: { id: 'u', area: 'untracked', path: 'a.txt' } })).change).toEqual({ id: 'u', area: 'untracked', path: 'a.txt' })
+    expect(validateSpec(spec({ kind: 'diff', changeId: 'u' }))).not.toHaveProperty('change')
+  })
+  it('refuses a change that is not the one the id names, or is malformed', () => {
+    const ok = { id: 'u', area: 'unstaged', path: 'a.txt' }
+    for (const change of ['x', { ...ok, id: 'other' }, { ...ok, area: 'nowhere' }, { ...ok, path: '' }, { ...ok, path: 'a\0b' }, { ...ok, originalPath: 3 }, { ...ok, xy: '' }]) {
+      expect(() => validateSpec(spec({ kind: 'diff', changeId: 'u', change }))).toThrow(/Can't open that window/)
+    }
+  })
 })
 
 describe('createPopouts', () => {

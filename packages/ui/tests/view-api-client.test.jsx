@@ -302,3 +302,118 @@ it('creating a new request clears the previous request\'s history, preview, and 
   expect(container.textContent).toContain('0 sent')
   expect(container.textContent).toContain('No requests sent yet.')
 })
+
+function memSecureStorage(initial = {}) {
+  const values = new Map(Object.entries(initial))
+  return {
+    get: async (k) => (values.has(k) ? values.get(k) : null),
+    set: async (k, v) => { values.set(k, v) },
+    remove: async (k) => { values.delete(k) },
+    values,
+  }
+}
+
+async function openCollectionWithEnvironment({ secureStorage }) {
+  const file = memFile({
+    '/col/collection.json': JSON.stringify({ name: 'Col', description: '', tree: [] }),
+    '/col/environments/Dev.json': JSON.stringify({ variables: { baseUrl: { value: 'http://old' }, token: { secret: true } } }),
+  })
+  const adapters = {
+    file, scriptRunner: fakeScriptRunner(), secureStorage,
+    apiHttp: { fetch: async () => ({ status: 200, statusText: 'OK', headers: {}, text: async () => '' }) },
+  }
+  const rr = render(
+    <ApiClientProvider adapters={adapters}>
+      <ApiClientView />
+    </ApiClientProvider>,
+  )
+  fireEvent.change(rr.getByPlaceholderText('Collection folder path'), { target: { value: '/col' } })
+  fireEvent.click(rr.getByTitle('Load collection'))
+  await waitFor(() => rr.getByLabelText('Environment'))
+  fireEvent.change(rr.getByLabelText('Environment'), { target: { value: 'Dev' } })
+  fireEvent.click(rr.getByText('Edit'))
+  await waitFor(() => rr.getByLabelText('Value of baseUrl'))
+  return { ...rr, file }
+}
+
+it('edits a plain environment value and saves it to the environment file', async () => {
+  const { getByLabelText, getByText, file, queryByLabelText } = await openCollectionWithEnvironment({ secureStorage: memSecureStorage() })
+
+  fireEvent.change(getByLabelText('Value of baseUrl'), { target: { value: 'http://localhost:5000' } })
+  fireEvent.click(getByText('Save'))
+
+  await waitFor(() => expect(queryByLabelText('Value of baseUrl')).toBeNull()) // editor closes on save
+  const saved = JSON.parse(await file.read('/col/environments/Dev.json'))
+  expect(saved.variables.baseUrl).toEqual({ value: 'http://localhost:5000' })
+  expect(saved.variables.token).toEqual({ secret: true })
+})
+
+it('shows and saves secret values through secure storage, never the file', async () => {
+  const key = 'nexusmd.apiClient.secret./col.Dev.token'
+  const secureStorage = memSecureStorage({ [key]: 'old-token' })
+  const { getByLabelText, getByText, file, queryByLabelText } = await openCollectionWithEnvironment({ secureStorage })
+
+  const tokenInput = getByLabelText('Value of token')
+  expect(tokenInput.value).toBe('old-token')
+  expect(tokenInput.type).toBe('password')
+
+  fireEvent.change(tokenInput, { target: { value: 'new-token' } })
+  fireEvent.click(getByText('Save'))
+
+  await waitFor(() => expect(queryByLabelText('Value of token')).toBeNull())
+  expect(secureStorage.values.get(key)).toBe('new-token')
+  expect(await file.read('/col/environments/Dev.json')).not.toContain('new-token')
+})
+
+it('removes a secret from secure storage when it is made a plain value', async () => {
+  const key = 'nexusmd.apiClient.secret./col.Dev.token'
+  const secureStorage = memSecureStorage({ [key]: 'abc' })
+  const { getByLabelText, getByText, file, queryByLabelText } = await openCollectionWithEnvironment({ secureStorage })
+
+  fireEvent.click(getByLabelText('token is secret'))
+  fireEvent.click(getByText('Save'))
+
+  await waitFor(() => expect(queryByLabelText('Value of token')).toBeNull())
+  expect(secureStorage.values.has(key)).toBe(false)
+  expect(JSON.parse(await file.read('/col/environments/Dev.json')).variables.token).toEqual({ value: 'abc' })
+})
+
+it('keeps the vars a Bruno script sets for the next send, and can clear them', async () => {
+  const file = memFile({
+    '/col/collection.json': JSON.stringify({ name: 'Col', description: '', tree: [{ type: 'request', name: 'Login', refId: 'r1' }] }),
+    '/col/requests/r1.json': JSON.stringify({
+      method: 'GET', url: 'http://h/login', params: {}, headers: {}, bodyType: 'none', body: '',
+      auth: { type: 'bearer', token: '{{token}}' }, scriptFlavor: 'bruno', postResponseScript: 'bru.setVar("token", "t1")',
+    }),
+  })
+  const sent = []
+  const scriptRunner = {
+    run: async (_s, context) => ({ context, logs: [], error: null }),
+    runBruno: async (_script, input) => ({ done: true, logs: [], error: null, context: { vars: { ...input.vars, token: 't1' }, tests: [] } }),
+    resumeBruno: async () => { throw new Error('not expected') },
+  }
+  const adapters = {
+    file, scriptRunner, secureStorage: { get: async () => null },
+    apiHttp: { fetch: async (url, opts) => { sent.push(opts.headers); return { status: 200, statusText: 'OK', headers: {}, text: async () => '{}' } } },
+  }
+  const { getByPlaceholderText, getByTitle, getByText, queryByText, container } = render(
+    <ApiClientProvider adapters={adapters}>
+      <ApiClientView />
+    </ApiClientProvider>,
+  )
+  fireEvent.change(getByPlaceholderText('Collection folder path'), { target: { value: '/col' } })
+  fireEvent.click(getByTitle('Load collection'))
+  await waitFor(() => getByText('Login'))
+  fireEvent.click(getByText('Login'))
+
+  fireEvent.click(getByText('Send'))
+  await waitFor(() => expect(container.textContent).toContain('Session vars: token'))
+  expect(sent[0].Authorization).toBe('Bearer {{token}}') // nothing has set it yet
+
+  fireEvent.click(getByText('Send'))
+  await waitFor(() => expect(sent).toHaveLength(2))
+  expect(sent[1].Authorization).toBe('Bearer t1')
+
+  fireEvent.click(getByText('Clear'))
+  expect(queryByText(/Session vars/)).toBeNull()
+})

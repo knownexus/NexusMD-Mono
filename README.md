@@ -46,8 +46,13 @@ Create a classic or fine-grained PAT scoped to:
 
 - `repo`
 - `read:org`
+- `workflow` (Actions runs in Builds)
+
+For a fine-grained token: read access to Issues, Pull requests, Actions and Metadata, and write access to Issues to close, edit or create them. Organizations that use SAML SSO also need the token authorized for them; Settings lists any that do not.
 
 Accepted token prefixes: `ghp_`, `ghs_`, or `github_pat_`. On web, GitHub OAuth is available as an alternative to a PAT.
+
+On desktop, connect GitHub in Settings → Integrations → **GitHub Connection**: paste the token, **Discover repositories**, and tick up to 50. Issues then appear as work items (switch off **Load GitHub issues** to keep only pull requests and Actions runs), pull requests in Pull Requests, and workflow runs in Builds.
 
 The four original repos (`NexusMD`, `NexusMD-App`, `NexusMD-Desktop`, `NexusMD-Web`)
 were merged here with history preserved via `git subtree`. They are tagged

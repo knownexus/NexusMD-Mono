@@ -174,3 +174,52 @@ describe('public API', () => {
     }
   })
 })
+
+describe('mergeWorkItemData with GitHub', () => {
+  const GH = {
+    WORK_ITEMS: [{ id: 'o/r#1', source: 'github', displayId: 'o/r#1', state: 'Open', stateCategory: 'Proposed', assignee: 'alex-doe' }],
+    PROJECTS: [{ id: 'o-r', name: 'o/r', key: 'o/r', source: 'github', color: 'c1' }],
+    PEOPLE: [{ login: 'Alex Doe', avatarUrl: 'a' }, { login: 'octo', avatarUrl: 'b' }],
+    ME: { login: 'me-login', name: 'Me', avatarUrl: 'm' },
+    STATES: ['Open', 'Closed'], TYPES: ['issue'], WI_TYPE_STATES: { issue: ['Open', 'Closed'] },
+    PR_ERROR: null, REPO_ERRORS: [],
+  }
+  const ok = { github: { status: 'ok' } }
+
+  it('only GitHub configured', () => {
+    const m = mergeWorkItemData({ github: GH, status: ok, configured: { github: true } })
+    expect(m.WORK_ITEMS).toEqual(GH.WORK_ITEMS)
+    expect(m.WORK_ITEM_PROVIDERS).toEqual([expect.objectContaining({ id: 'github', label: 'GitHub', status: 'ok' })])
+    expect(m.PROJECTS).toEqual(GH.PROJECTS)
+    expect(m.STATES).toEqual(['Open', 'Closed'])
+    expect(m.STATE_CATEGORIES_BY_SOURCE.github).toBeDefined()
+    expect(m.WI_TYPE_STATES_BY_SOURCE.github.issue).toEqual(['Open', 'Closed'])
+  })
+
+  it('all three providers, in order', () => {
+    const m = mergeWorkItemData({ ado: ADO, jira: JIRA, github: GH, configured: { ado: true, jira: true, github: true } })
+    expect(Object.keys(m.WORK_ITEMS_BY_SOURCE)).toEqual(['ado', 'jira', 'github'])
+    expect(m.WORK_ITEM_PROVIDERS.map(p => p.id)).toEqual(['ado', 'jira', 'github'])
+  })
+
+  it('error status is stale with data, error without', () => {
+    const st = { github: { status: 'error', error: 'x' } }
+    expect(mergeWorkItemData({ github: GH, status: st, configured: { github: true } }).WORK_ITEM_PROVIDERS[0].status).toBe('stale')
+    expect(mergeWorkItemData({ github: null, status: st, configured: { github: true } }).WORK_ITEM_PROVIDERS[0].status).toBe('error')
+  })
+
+  it('warning and detail come from PR_ERROR and REPO_ERRORS', () => {
+    const g = { ...GH, PR_ERROR: 'PRs unavailable', REPO_ERRORS: [{ repo: 'o/r', kind: 'auth', message: 'bad' }] }
+    const p = mergeWorkItemData({ github: g, configured: { github: true } }).WORK_ITEM_PROVIDERS[0]
+    expect(p.warning).toBe('PRs unavailable')
+    expect(p.warningDetail).toContain('o/r')
+  })
+
+  it('a login equal to an ADO member name does not duplicate the member', () => {
+    const m = mergeWorkItemData({ ado: ADO, github: GH, configured: { ado: true, github: true } })
+    expect(m.TEAM.filter(t => t.name === 'Alex Doe')).toHaveLength(1)
+    const octo = m.TEAM.find(t => t.name === 'octo')
+    expect(octo).toMatchObject({ id: 'octo', source: 'github', avatarUrl: 'b' })
+    expect(m.TEAM.find(t => t.name === 'me-login')).toBeTruthy()
+  })
+})

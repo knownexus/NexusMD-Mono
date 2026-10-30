@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildSnapshot } from '../../src/modules/workitems/snapshot.js'
 import { ADO_CACHE_KEY } from '../../src/modules/ado/loader.js'
+import { GITHUB_CACHE_KEY } from '../../src/modules/github/loader.js'
 
 const EMPTY = { SPRINT: { name: 'Current Sprint', burndown: [] }, AVG_RESOLUTION_DAYS: null }
 
@@ -56,5 +57,52 @@ describe('buildSnapshot with ADO work items switched off', () => {
     expect(s.WORK_ITEMS.map(w => w.id)).toEqual([1])
     expect(s.SPRINT.name).toBe('Sprint 9')
     expect(s.AVG_RESOLUTION_DAYS).toBe(4)
+  })
+})
+
+describe('buildSnapshot with GitHub', () => {
+  const ghCache = {
+    WORK_ITEMS: [{ id: 'o/r#1', source: 'github', state: 'Open', assignee: 'octo' }],
+    PROJECTS: [{ id: 'o-r', name: 'o/r', key: 'o/r', source: 'github', color: 'c1' }],
+    PEOPLE: [], ME: { login: 'octo', name: 'octo', avatarUrl: '' },
+    STATES: ['Open', 'Closed'], TYPES: ['issue'], WI_TYPE_STATES: { issue: ['Open', 'Closed'] },
+    PRS: [{ id: 'o/r#5', title: 'GH PR' }], BUILDS: [{ id: 'run1' }], REPO_ERRORS: [], PR_ERROR: null, loaded: true,
+  }
+  const storage = () => {
+    const m = new Map([[ADO_CACHE_KEY, adoCache], [GITHUB_CACHE_KEY, ghCache]])
+    return { get: k => m.get(k) ?? null, set: (k, v) => m.set(k, v) }
+  }
+  const buildGh = (githubWorkItems, githubInWork) => buildSnapshot({
+    adoConfig: { org: 'myorg' }, adoConfigured: true, githubConfig: {}, githubActive: true, githubWorkItems, githubInWork,
+    jiraConfig: {}, jiraActive: false, storage: storage(), empty: EMPTY,
+  })
+
+  it('merges items, PRs, builds and ME', () => {
+    const s = buildGh(true)
+    expect(s.WORK_ITEMS.map(w => w.id)).toEqual([1, 'o/r#1'])
+    expect(s.PRS.map(p => p.id)).toEqual([7, 'o/r#5'])
+    expect(s.BUILDS.map(b => b.id)).toEqual(['b1', 'run1'])
+    expect(s.GITHUB_ME.login).toBe('octo')
+    expect(s.WORK_ITEM_PROVIDERS.map(p => p.id)).toEqual(['ado', 'github'])
+  })
+
+  it('githubWorkItems false keeps PRs and builds, drops items, types, projects and provider', () => {
+    const s = buildGh(false)
+    expect(s.WORK_ITEMS.map(w => w.id)).toEqual([1])
+    expect(s.TYPES).toEqual(['Bug'])
+    expect(s.PROJECTS.some(p => p.source === 'github')).toBe(false)
+    expect(s.WORK_ITEM_PROVIDERS.map(p => p.id)).toEqual(['ado'])
+    expect(s.PRS.map(p => p.id)).toEqual([7, 'o/r#5'])
+    expect(s.BUILDS.map(b => b.id)).toEqual(['b1', 'run1'])
+  })
+
+  it('githubInWork false leaves GitHub issues and runs to the Git tab, keeping its PRs', () => {
+    const s = buildGh(true, false)
+    expect(s.WORK_ITEMS.map(w => w.id)).toEqual([1])
+    expect(s.PROJECTS.some(p => p.source === 'github')).toBe(false)
+    expect(s.WORK_ITEM_PROVIDERS.map(p => p.id)).toEqual(['ado'])
+    expect(s.BUILDS.map(b => b.id)).toEqual(['b1'])
+    expect(s.PRS.map(p => p.id)).toEqual([7, 'o/r#5'])
+    expect(s.GITHUB_ME.login).toBe('octo')
   })
 })

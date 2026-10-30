@@ -67,3 +67,11 @@ describe('PRView opened from a link with a preset', () => {
     expect(screen.getByText('Fix the thing')).toBeTruthy()   // still on the stored 'all' tab
   })
 })
+
+describe('PRView with GitHub pull requests', () => {
+  it('shows the repo-qualified number, not the internal id', () => {
+    renderPRView({ prs: [{ ...basePr, id: 'gh:acme/web#7', displayId: 'acme/web#7', source: 'github' }], onOpen: vi.fn(), onOpenLink: vi.fn() })
+    expect(screen.getByText('acme/web#7')).toBeTruthy()
+    expect(screen.queryByText('#gh:acme/web#7')).toBeNull()
+  })
+})

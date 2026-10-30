@@ -1,13 +1,14 @@
 import React from 'react'
 import {
   core, loadCachedAdoData, loadAdoData, makeAdoWorkItemSource, loadCachedJiraData, loadJiraData,
-  buildSnapshot, refreshProviders,
+  loadCachedGithubData, loadGithubData, buildSnapshot, refreshProviders,
 } from '@nexusmd/core'
 import { EMPTY_NEXUS_DATA } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { localStorageAdapter } from '@nexusmd/web-adapters'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured, usesAdoWorkItems } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraHttpAdapter } from './jira-client.js'
+import { getGithubConfig, isGithubConfigured, usesGithubWorkItems, createGithubHttpAdapter } from './github-client.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
 import { skippedFetches } from './work-screens.js'
 
@@ -40,6 +41,18 @@ export function makeRefreshAllData(cloud) {
                 getJiraConfig(),
                 { http: createJiraHttpAdapter(), storage: localStorageAdapter },
                 { isRefresh: !!priorData?._jiraMeta, priorData },
+              )
+            },
+          },
+          github: {
+            configured: isGithubConfigured(),
+            run: () => {
+              const priorData = loadCachedGithubData(getGithubConfig(), { storage: localStorageAdapter })
+              return loadGithubData(
+                getGithubConfig(),
+                { http: createGithubHttpAdapter(), storage: localStorageAdapter },
+                // PRs and runs still load with "Load GitHub issues" off.
+                { isRefresh: !!priorData?.ME, priorData, skip: { ...skippedFetches(), workItems: !usesGithubWorkItems() } },
               )
             },
           },
@@ -83,6 +96,7 @@ export function useNexusSnapshot() {
       setSnapshot(buildSnapshot({
         adoConfig: getAdoConfig(), adoConfigured: isAdoConfigured(), adoWorkItems: usesAdoWorkItems(),
         jiraConfig: getJiraConfig(), jiraActive: isJiraActive(),
+        githubConfig: getGithubConfig(), githubActive: isGithubConfigured(), githubWorkItems: usesGithubWorkItems(), githubInWork: getGithubConfig().inWork,
         storage: localStorageAdapter, empty: EMPTY_NEXUS_DATA,
         hiddenIds: readHiddenPeople(),
       }))

@@ -1,0 +1,37 @@
+{
+  "variables": {
+    "ldbDeparturesBaseUrl": {
+      "value": "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120"
+    },
+    "ldbArrDepBaseUrl": {
+      "value": ""
+    },
+    "ldbServiceBaseUrl": {
+      "value": ""
+    },
+    "crs": {
+      "value": ""
+    },
+    "destinationCrs": {
+      "value": ""
+    },
+    "scheduleDay": {
+      "value": "mon"
+    },
+    "ldbDeparturesKey": {
+      "secret": true
+    },
+    "ldbArrDepKey": {
+      "secret": true
+    },
+    "ldbServiceKey": {
+      "secret": true
+    },
+    "nrUsername": {
+      "secret": true
+    },
+    "nrPassword": {
+      "secret": true
+    }
+  }
+}

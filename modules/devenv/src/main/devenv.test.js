@@ -242,6 +242,20 @@ describe('devenv ipc', () => {
     expect(t.deps.kill).toHaveBeenCalledTimes(2)
   })
 
+  it('is busy while a command runs, not for a query', async () => {
+    expect(t.api.busy()).toBe(false)
+    const q = t.handlers['devenv:query'](null, CONFIG, ['status', '--json'])
+    await tick()
+    expect(t.api.busy()).toBe(false)
+    t.children[0].finish(0)
+    await q
+    await t.handlers['devenv:run'](null, CONFIG, ['start'], {})
+    expect(t.api.busy()).toBe(true)
+    t.children[1].finish(0)
+    await tick(); await tick()
+    expect(t.api.busy()).toBe(false)
+  })
+
   it('query runs status --json privately and returns its result messages', async () => {
     const p = t.handlers['devenv:query'](null, CONFIG, ['status', '--json'])
     await tick()

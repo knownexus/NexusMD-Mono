@@ -1,0 +1,69 @@
+{
+  "name": "C:\\repos\\NexusMD-Mono\\tools\\rail-data\\collection",
+  "description": "",
+  "tree": [
+    {
+      "type": "folder",
+      "name": "UK Rail Data",
+      "children": [
+        {
+          "type": "folder",
+          "name": "Live Departure Board (Rail Data Marketplace)",
+          "children": [
+            {
+              "type": "request",
+              "name": "Departures",
+              "refId": "bruno-1793209580409-4"
+            },
+            {
+              "type": "request",
+              "name": "Departures to a destination",
+              "refId": "bruno-1793209580409-2"
+            },
+            {
+              "type": "request",
+              "name": "Departures with calling points",
+              "refId": "bruno-1793209580409-3"
+            },
+            {
+              "type": "request",
+              "name": "Arrivals and departures with details",
+              "refId": "bruno-1793209580409-1"
+            },
+            {
+              "type": "request",
+              "name": "Service details",
+              "refId": "bruno-1793209580409-5"
+            }
+          ]
+        },
+        {
+          "type": "folder",
+          "name": "Network Rail open data (username/password)",
+          "children": [
+            {
+              "type": "request",
+              "name": "CORPUS location codes",
+              "refId": "bruno-1793209580409-6"
+            },
+            {
+              "type": "request",
+              "name": "SMART berth data",
+              "refId": "bruno-1793209580409-9"
+            },
+            {
+              "type": "request",
+              "name": "Schedule - full daily (all operators)",
+              "refId": "bruno-1793209580409-7"
+            },
+            {
+              "type": "request",
+              "name": "Schedule - daily update",
+              "refId": "bruno-1793209580409-8"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

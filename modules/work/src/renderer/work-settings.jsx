@@ -1,12 +1,13 @@
 import React from 'react'
 import { VsCard, VsRow, BoardColumnsCard, CardsAndTablesSettings, toast, WI_TYPE_STATES_CACHE_KEY } from '@nexusmd/ui'
-import { ADO_CACHE_KEY, JIRA_CACHE_KEY } from '@nexusmd/core'
+import { ADO_CACHE_KEY, JIRA_CACHE_KEY, GITHUB_CACHE_KEY } from '@nexusmd/core'
 import { AdoConnectionCard } from './ado-settings.jsx'
 import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
+import { GithubConnectionCard } from './github-settings.jsx'
 import { QuickLinksCard } from './quick-links-card.jsx'
 import { useOptionalWork } from './work-context.js'
 
-// Settings → Integrations: where Azure DevOps and Jira are connected.
+// Settings → Integrations: where Azure DevOps, Jira and GitHub are connected.
 export function WorkIntegrationsPanel() {
   const work = useOptionalWork()
   if (!work) return null
@@ -15,6 +16,7 @@ export function WorkIntegrationsPanel() {
     <>
       <AdoConnectionCard onRefreshData={refreshAllData} />
       <JiraConnectionCard onRefreshData={refreshAllData} />
+      <GithubConnectionCard onRefreshData={refreshAllData} />
       <WorkItemsDisplayCard />
     </>
   )
@@ -45,6 +47,7 @@ export function WorkDataRows() {
     try {
       localStorage.removeItem(ADO_CACHE_KEY)
       localStorage.removeItem(JIRA_CACHE_KEY)
+      localStorage.removeItem(GITHUB_CACHE_KEY)
       localStorage.removeItem(WI_TYPE_STATES_CACHE_KEY)
     } catch {}
     toast?.('Cache cleared — refreshing…', 'success')

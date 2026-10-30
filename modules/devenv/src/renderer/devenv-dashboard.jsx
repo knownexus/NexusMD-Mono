@@ -2,6 +2,7 @@ import React from 'react'
 import { PlModal } from '@nexusmd/ui'
 import { normaliseBuilds, buildBuildArgv, buildTestUpArgv, buildTestRunArgv } from '@nexusmd/core'
 import { useDevenvRunContext } from './devenv-run-context.jsx'
+import { buildBranchArgv } from './source-branch.js'
 import { useDevenvStatus } from './use-devenv-status.js'
 import { useDevenvQuery } from './use-devenv-query.js'
 import { hasProfileDrafts, useProfileDraftsVersion } from './use-profile-file.js'
@@ -34,6 +35,7 @@ const TITLES = [
   [/^devenv test run/, 'Run tests'],
   [/^devenv app install$/, 'Install last Android build'],
   [/^devenv build /, 'Build'],
+  [/^devenv source branch /, 'Change branch'],
   [/^devenv start/, 'Start environment'],
 ]
 const friendly = cmd => (TITLES.find(([re]) => re.test(cmd || ''))?.[1] ?? (cmd || '').replace(/^devenv\s+/, ''))
@@ -94,6 +96,14 @@ export function DevenvDashboard({ adapter, picker }) {
     go(argv, { label })
   }
   const tryArgv = (fn, label) => { try { go(fn(), { label }) } catch (e) { setActionError(e.message) } }
+  // devenv asks which branch through its prompt, which the run context shows as the branch picker.
+  const branch = item => tryArgv(() => buildBranchArgv(item.key), `Change branch: ${item.label}`)
+  const mobileSource = () => mobile?.source && (
+    <div className="nx-list-row">
+      <div className="nx-muted nx-trunc" style={{ flex: 1, fontSize: 13 }}>Branch: <span style={{ color: 'var(--text)' }}>{sourceText(mobile)}</span></div>
+      <button className="btn sm ghost" disabled={busy} aria-label={`Change branch for ${mobile.label}`} onClick={() => branch(mobile)}>Branch…</button>
+    </div>
+  )
 
   const services = status ? [
     ...status.backend.map(b => ({ key: b.key, label: b.label, state: b.state, meta: `port ${b.port}` })),
@@ -174,6 +184,7 @@ export function DevenvDashboard({ adapter, picker }) {
                   <div className={a.error ? '' : 'nx-muted nx-trunc'} style={{ fontSize: 12, color: a.error ? 'var(--danger)' : undefined }} title={builtText(a.built)}>{a.error || sourceText(a)}</div>
                 </div>
                 <span className={`nx-badge ${a.error ? 'bad' : a.upToDate ? 'ok' : 'warn'}`}>{a.error ? 'Unavailable' : a.upToDate ? 'Up to date' : 'Needs build'}</span>
+                <button className="btn sm ghost" disabled={busy} aria-label={`Change branch for ${a.label}`} onClick={() => branch(a)}>Branch…</button>
                 <button className="btn sm ghost" disabled={busy || !!a.error} aria-label={`Build ${a.label}`} onClick={() => build({ kind: 'api', key: a.key, clean }, `Build ${a.label}`)}>Build</button>
               </div>
             ))}
@@ -211,6 +222,7 @@ export function DevenvDashboard({ adapter, picker }) {
             <Line state={emu?.running ? 'running' : 'stopped'}>{emu?.running ? `Emulator · ${emu.avd} (${emu.serial})` : 'Emulator stopped'}</Line>
             <Line state={status.android.proxy} meta="port 8888">Network proxy</Line>
           </>}
+          {mobileSource()}
           {mobile && <div className="nx-muted" style={{ fontSize: 13 }}>Last build: <span style={{ color: 'var(--text)' }}>{mobile.mode ? `${mobile.mode.deploy} deploy, ${mobile.mode.abi} · ` : ''}{builtText(mobile.built)}</span></div>}
         </Tile>
 
@@ -223,6 +235,7 @@ export function DevenvDashboard({ adapter, picker }) {
           {status && (status.ios.host
             ? <Line state="running" meta="connected">{status.ios.host}</Line>
             : <Line state="stopped">{status.ios.error || 'No Mac configured'}</Line>)}
+          {mobileSource()}
           {mobile && <div className="nx-muted" style={{ fontSize: 13 }}>Last build: <span style={{ color: 'var(--text)' }}>{mobile.ios ? builtText(mobile.ios) : 'None yet'}</span></div>}
         </Tile>
 
@@ -263,7 +276,7 @@ export function DevenvDashboard({ adapter, picker }) {
         <PlModal open title={mTitle} icon={MODAL_ICONS[modal] || 'build'} onClose={() => setModal(null)} className={size === 'lg' ? 'nx-modal-lg' : size === 'xl-auto' ? 'nx-modal-xl auto' : 'nx-modal-xl'}>
           <div className={size === 'lg' ? undefined : size === 'xl-pad' ? 'nx-modal-fill nx-modal-pad' : 'nx-modal-fill'}
             style={size === 'lg' ? { minHeight: 360, display: 'flex', flexDirection: 'column' } : undefined}>
-            <ModalView adapter={adapter} picker={picker} />
+            <ModalView adapter={adapter} picker={picker} {...(modal === 'builds' ? { builds } : {})} />
           </div>
         </PlModal>
       )}

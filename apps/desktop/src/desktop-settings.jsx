@@ -1,7 +1,7 @@
 import React from 'react'
 import {
   Icon,
-  VsRow, VsCard, VsFullRow, VsSeg, ThemeChipPicker,
+  VsRow, VsCard, VsFullRow, ThemeModeSettings,
   VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView,
   PlToggle,
   toast,
@@ -16,6 +16,7 @@ import { desktopFileIO } from './file-io.js'
 import LogsCard from './logs-card.jsx'
 import { SettingsFileCard } from './settings-file-card.jsx'
 import { AppsCard } from './apps-card.jsx'
+import { AppUpdatesCard } from './app-updates.jsx'
 import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken, decodeJwtClaims } from './cloud-auth.js'
 import { desktopSync } from './sync.js'
 import { moduleSettingsCards, modulePanels } from './shell/modules.js'
@@ -155,37 +156,6 @@ export function DesktopDataSyncCard() {
         <button className="btn sm ghost danger" onClick={clearLocal}>Clear data…</button>
       </VsRow>
     </VsCard>
-  )
-}
-
-function DesktopGitHubPATRow() {
-  const [pat, setPat] = React.useState(() => {
-    try { return localStorage.getItem(getProfileKey('nexusmd.github.pat')) || '' } catch { return '' }
-  })
-  const [valid, setValid] = React.useState(true)
-  const validate = (v) => /^gh[ps]_/.test(v) || /^github_pat_/.test(v) || v === ''
-
-  const save = () => {
-    if (!validate(pat)) { setValid(false); return }
-    setValid(true)
-    try { localStorage.setItem(getProfileKey('nexusmd.github.pat'), pat) } catch {}
-  }
-
-  return (
-    <VsRow title="Personal access token" desc="Alternative to OAuth — must start with ghp_, ghs_, or github_pat_">
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input
-          type="password"
-          value={pat}
-          style={{ width: 260, padding: '5px 10px', borderRadius: 8, border: `1px solid ${valid ? 'var(--border)' : 'var(--danger)'}`, background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
-          onChange={e => { setPat(e.target.value); setValid(true) }}
-          placeholder="ghp_…"
-        />
-        <button className="btn sm" onClick={save}>Save</button>
-        {pat && <button className="btn sm ghost danger" onClick={() => { setPat(''); try { localStorage.removeItem(getProfileKey('nexusmd.github.pat')) } catch {} }}>Clear</button>}
-      </div>
-      {!valid && <span style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4, display: 'block' }}>Invalid PAT format</span>}
-    </VsRow>
   )
 }
 
@@ -367,15 +337,8 @@ function GraphApiTestCard() {
   )
 }
 
+// GitHub is connected from the Work app's GitHub Connection card, not here.
 export function IntegrationsPanel() {
-  const [ghRepos, setGhRepos] = React.useState(() => {
-    try { return localStorage.getItem(getProfileKey('nexusmd.github.repos')) || '' } catch { return '' }
-  })
-
-  const saveGhRepos = () => {
-    try { localStorage.setItem(getProfileKey('nexusmd.github.repos'), ghRepos) } catch {}
-  }
-
   const oauthServices = React.useMemo(() => [
     {
       id: 'google',
@@ -399,20 +362,6 @@ export function IntegrationsPanel() {
       <GraphManualTokenCard />
       <GraphPermissionsCard />
       <GraphApiTestCard />
-      <VsCard title="GitHub" icon="pr">
-        <DesktopGitHubPATRow />
-        <VsRow title="Repositories" desc="owner/repo pairs, comma-separated">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              value={ghRepos}
-              onChange={e => setGhRepos(e.target.value)}
-              placeholder="myorg/backend, myorg/frontend"
-              style={{ width: 200, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', font: 'inherit', fontSize: 13, color: 'var(--text)' }}
-            />
-            <button className="btn sm" onClick={saveGhRepos}>Save</button>
-          </div>
-        </VsRow>
-      </VsCard>
     </div>
   )
 }
@@ -483,17 +432,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
 
           {tab === 'appearance' && (
             <VsCard title="Appearance" icon="sun">
-              <VsRow title="Mode" desc="Toggle between your assigned light and dark themes">
-                <VsSeg value={tweaks.theme}
-                  options={[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon']]}
-                  onChange={v => setTweak('theme', v)} />
-              </VsRow>
-              <VsFullRow title="Light mode theme" desc="Palette used when light mode is active">
-                <ThemeChipPicker value={tweaks.lightTheme || 'parchment'} onChange={v => setTweak('lightTheme', v)} />
-              </VsFullRow>
-              <VsFullRow title="Dark mode theme" desc="Palette used when dark mode is active">
-                <ThemeChipPicker value={tweaks.darkTheme || 'cobalt'} onChange={v => setTweak('darkTheme', v)} />
-              </VsFullRow>
+              <ThemeModeSettings tweaks={tweaks} setTweak={setTweak} />
               <VsRow title="Zoom" desc="Scale the entire app interface">
                 <ZoomSlider />
               </VsRow>
@@ -546,6 +485,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
             <>
               <DesktopAppCard />
               <AppsCard />
+              <AppUpdatesCard />
               {moduleSettingsCards().map(({ id, Card }) => <Card key={id} picker={pickerAdapter} />)}
             </>
           )}

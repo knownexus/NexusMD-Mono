@@ -193,6 +193,8 @@ function download(updates, id, version, change = m => m) {
   const manifest = JSON.parse(readFileSync(join(dir, 'app.manifest.json'), 'utf8'))
   writeFileSync(join(dir, 'app.manifest.json'), JSON.stringify(change({ ...manifest, version })))
 }
+// A Git version newer than any real release.
+const UPDATE = '99.0.0'
 const relabel = label => m => ({ ...m, nav: m.nav.map(n => ({ ...n, label })) })
 
 test('an installed app runs its newest downloaded version, unless that needs a newer shell', async () => {
@@ -201,12 +203,12 @@ test('an installed app runs its newest downloaded version, unless that needs a n
     await expect(item(win, 'Git Updated')).toHaveCount(1)
     await expect(item(win, 'Git Too New')).toHaveCount(0)
     // Its code, stylesheet and preload bridge came from the downloaded folder.
-    expect(await win.evaluate(() => [...document.styleSheets].some(s => (s.href || '').includes('/updates/git/1.0.1/renderer/')))).toBe(true)
+    expect(await win.evaluate(v => [...document.styleSheets].some(s => (s.href || '').includes(`/updates/git/${v}/renderer/`)), UPDATE)).toBe(true)
     expect(await win.evaluate(() => typeof window.electronAPI.git?.status)).toBe('function')
   }, {
     prepare: ({ updates }) => {
-      download(updates, 'git', '1.0.1', relabel('Git Updated'))
-      download(updates, 'git', '9.0.0', m => ({ ...relabel('Git Too New')(m), requires: { shellApi: 99 } }))
+      download(updates, 'git', UPDATE, relabel('Git Updated'))
+      download(updates, 'git', '999.0.0', m => ({ ...relabel('Git Too New')(m), requires: { shellApi: 99 } }))
       download(updates, 'notes', '0.0.1', relabel('Notes Older'))      // older than installed: not used
     },
   })
@@ -219,25 +221,26 @@ test('a downloaded version marked bad is passed over for the installed one', asy
     await expect(item(win, 'Git Updated')).toHaveCount(0)
   }, {
     prepare: ({ updates }) => {
-      download(updates, 'git', '1.0.1', relabel('Git Updated'))
-      writeFileSync(join(updates, 'state.json'), JSON.stringify({ apps: { git: { bad: ['1.0.1'] } } }))
+      download(updates, 'git', UPDATE, relabel('Git Updated'))
+      writeFileSync(join(updates, 'state.json'), JSON.stringify({ apps: { git: { bad: [UPDATE] } } }))
     },
   })
 })
 
-test('a published app update is downloaded, checked, and run from the next launch', async () => {
+// What release-apps.yml would publish for Git UPDATE, served the way the apps-latest release is, and
+// the environment that points the app at it (checking `delayMs` after launch). close() takes it down.
+async function publishGitUpdate({ delayMs = 0 } = {}) {
   const { createServer } = await import('node:http')
   const { generateKeyPairSync } = await import('node:crypto')
   const { emptyIndex, setShell, addApp } = await import('../build/app-release.mjs')
   const { signIndex } = (await import('../electron/app-package.cjs')).default
   const { publicKey, privateKey } = generateKeyPairSync('ed25519')
 
-  // What release-apps.yml would publish for Git 1.0.1, served the way the apps-latest release is.
   const site = realpathSync.native(mkdtempSync(join(tmpdir(), 'nexusmd-apps-site-')))
   const release = join(site, 'built-git')
-  download(site, 'git', '1.0.1', relabel('Git Updated'))
-  cpSync(join(site, 'git', '1.0.1'), release, { recursive: true })
-  const added = addApp(setShell(emptyIndex(), '1.2.5', 1), 'git', { dir: release, version: '1.0.1' })
+  download(site, 'git', UPDATE, relabel('Git Updated'))
+  cpSync(join(site, 'git', UPDATE), release, { recursive: true })
+  const added = addApp(setShell(emptyIndex(), '1.2.5', 1), 'git', { dir: release, version: UPDATE })
   const files = { [`/${added.entry.file}`]: added.data, '/apps-index.json': Buffer.from(JSON.stringify(added.index)) }
   files['/apps-index.json.sig'] = Buffer.from(signIndex(files['/apps-index.json'], privateKey.export({ type: 'pkcs8', format: 'pem' })))
   const server = createServer((req, res) => {
@@ -245,31 +248,75 @@ test('a published app update is downloaded, checked, and run from the next launc
     res.writeHead(body ? 200 : 404).end(body)
   })
   await new Promise(done => server.listen(0, '127.0.0.1', done))
-
   const env = {
     NEXUSMD_APPS_INDEX_URL: `http://127.0.0.1:${server.address().port}/apps-index.json`,
     NEXUSMD_APPS_PUBLIC_KEY: publicKey.export({ type: 'spki', format: 'pem' }),
-    NEXUSMD_APP_UPDATE_DELAY_MS: '0',
+    NEXUSMD_APP_UPDATE_DELAY_MS: String(delayMs),
   }
   Object.assign(process.env, env)
+  return {
+    close() {
+      for (const key of Object.keys(env)) delete process.env[key]
+      server.close()
+      rmSync(site, { recursive: true, force: true })
+    },
+  }
+}
+
+test('a published app update is downloaded, checked, and run from the next launch', async () => {
+  const published = await publishGitUpdate()
   const installed = install(['git', 'notes'])
   try {
-    // First launch: the installed Git runs, and 1.0.1 arrives in the updates folder.
+    // First launch: the installed Git runs, and UPDATE arrives in the updates folder.
     await withInstalled(['git', 'notes'], async ({ win, updates }) => {
       await expect(item(win, 'Git Workspace')).toHaveCount(1, { timeout: 30_000 })
-      await expect.poll(() => existsSync(join(updates, 'git', '1.0.1', 'app.manifest.json')), { timeout: 30_000 }).toBe(true)
+      await expect.poll(() => existsSync(join(updates, 'git', UPDATE, 'app.manifest.json')), { timeout: 30_000 }).toBe(true)
       cpSync(updates, installed.updates, { recursive: true })
     })
-    // Next launch, the same installation: Git 1.0.1 runs.
+    // Next launch, the same installation: Git UPDATE runs.
     await withInstalled(['git', 'notes'], async ({ win }) => {
       await expect(item(win, 'Git Updated')).toHaveCount(1, { timeout: 30_000 })
     }, { prepare: ({ updates }) => cpSync(installed.updates, updates, { recursive: true }) })
   } finally {
-    for (const key of Object.keys(env)) delete process.env[key]
-    server.close()
-    rmSync(site, { recursive: true, force: true })
+    published.close()
     rmSync(installed.root, { recursive: true, force: true })
   }
+})
+
+test('a downloaded app update can be applied from the banner without restarting NexusMD', async () => {
+  const published = await publishGitUpdate()
+  try {
+    await withInstalled(['git', 'notes'], async ({ app, win }) => {
+      await expect(item(win, 'Git Workspace')).toHaveCount(1, { timeout: 30_000 })
+      const pid = await app.evaluate(() => process.pid)
+      await expect(win.getByRole('status').filter({ hasText: `Git Workspace ${UPDATE} is ready.` })).toBeVisible({ timeout: 30_000 })
+      await win.getByRole('button', { name: 'Update now' }).click()
+      // The window reloads onto the new version; the main process is the same one.
+      await expect(item(win, 'Git Updated')).toHaveCount(1, { timeout: 30_000 })
+      expect(await app.evaluate(() => process.pid)).toBe(pid)
+      expect(await win.evaluate(v => [...document.styleSheets].some(s => (s.href || '').includes(`/git/${v}/renderer/`)), UPDATE)).toBe(true)
+      // Git's main side was restarted on UPDATE: its handlers are registered once, and answer.
+      expect(await app.evaluate(({ ipcMain }) => ipcMain._invokeHandlers.has('popout:open'))).toBe(true)
+      expect(await win.evaluate(() => typeof window.electronAPI.git?.status)).toBe('function')
+      await expect(win.getByRole('status')).toHaveCount(0)
+    })
+  } finally { published.close() }
+})
+
+test('Settings checks for app updates now and applies what it finds', async () => {
+  const published = await publishGitUpdate({ delayMs: 3_600_000 })
+  try {
+    await withInstalled(['git', 'notes'], async ({ win }) => {
+      await expect(item(win, 'Git Workspace')).toHaveCount(1, { timeout: 30_000 })
+      await win.getByText('Settings').first().click()
+      await win.getByText('Desktop', { exact: true }).click()
+      await win.getByRole('button', { name: 'Check now' }).click()
+      const card = win.locator('.set-row').filter({ hasText: `Git Workspace ${UPDATE} is ready.` })
+      await expect(card).toBeVisible({ timeout: 30_000 })
+      await card.getByRole('button', { name: 'Update now' }).click()
+      await expect(item(win, 'Git Updated')).toHaveCount(1, { timeout: 30_000 })
+    })
+  } finally { published.close() }
 })
 
 test('a folder that is not an app, and an app with a mismatched manifest, are ignored', async () => {

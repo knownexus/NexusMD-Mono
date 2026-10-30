@@ -85,6 +85,23 @@ describe('preload bridge', () => {
     expect(ipcRenderer.removeListener).toHaveBeenLastCalledWith('popout:changed', handler)
   })
 
+  it('bridges app updates: pending, check, apply and the ready event', () => {
+    exposed.appUpdates.pending()
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('app-updates:pending')
+    exposed.appUpdates.check()
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('app-updates:check')
+    exposed.appUpdates.apply({ force: true })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('app-updates:apply', { force: true })
+    const cb = vi.fn()
+    const off = exposed.appUpdates.onReady(cb)
+    const [channel, handler] = ipcRenderer.on.mock.calls.at(-1)
+    expect(channel).toBe('app-updates:ready')
+    handler({}, [{ id: 'devenv' }])
+    expect(cb).toHaveBeenCalledWith([{ id: 'devenv' }])
+    off()
+    expect(ipcRenderer.removeListener).toHaveBeenLastCalledWith('app-updates:ready', handler)
+  })
+
   it('resolves a dropped file\'s real path through webUtils', () => {
     expect(exposed.git.pathForFile({ name: 'photo.jpg' })).toBe('C:\\Users\\me\\photo.jpg')
   })

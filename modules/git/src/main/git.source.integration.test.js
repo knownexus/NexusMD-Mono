@@ -27,12 +27,19 @@ const reftableSupported = (() => {
 })()
 
 // A fresh repo on main with three commits, plus a reader whose spawns are counted. `intercept(args)` may
-// answer a spawn itself (return a result) instead of running git.
+// answer a spawn itself (return a result) instead of running git. Each ref format's repo is built once
+// and copied: every git command costs a process start, which is slow on Windows.
+const templates = {}
 function repo({ reftable = false, intercept = () => null } = {}) {
+  const key = reftable ? 'reftable' : 'files'
+  if (!templates[key]) {
+    templates[key] = path.join(root, '.template-' + key)
+    fs.mkdirSync(templates[key])
+    git(templates[key], 'init', '-q', ...(reftable ? ['--ref-format=reftable'] : []))
+    for (const m of ['c1', 'c2', 'c3']) commit(templates[key], m)
+  }
   const dir = path.join(root, 'r' + n++)
-  fs.mkdirSync(dir)
-  git(dir, 'init', '-q', ...(reftable ? ['--ref-format=reftable'] : []))
-  for (const m of ['c1', 'c2', 'c3']) commit(dir, m)
+  fs.cpSync(templates[key], dir, { recursive: true })
   const calls = []
   const run = args => new Promise(resolve => {
     calls.push(args)

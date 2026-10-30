@@ -1,0 +1,25 @@
+meta {
+  name: Departures to a destination
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{ldbDeparturesBaseUrl}}/GetDepartureBoard/{{crs}}?numRows=10&filterCrs={{destinationCrs}}&filterType=to
+  body: none
+  auth: none
+}
+
+params:query {
+  numRows: 10
+  filterCrs: {{destinationCrs}}
+  filterType: to
+}
+
+headers {
+  x-apikey: {{ldbDeparturesKey}}
+}
+
+docs {
+  Only trains from {{crs}} that call at {{destinationCrs}}.
+}

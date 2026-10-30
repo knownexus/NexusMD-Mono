@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
 import { FieldInput, MarkdownField, CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import * as adoWorkItemTypes from './ado-workitem-types.js'
 
@@ -431,5 +431,36 @@ describe('CreateWorkItemDrawer per-type layout', () => {
     // Falls into Additional Fields exactly as today's generic path does for unrecognized reference names
     expect(screen.getByText('Additional Fields')).toBeTruthy()
     expect(screen.getByLabelText('Whatever')).toBeTruthy()
+  })
+})
+
+describe('CreateWorkItemDrawer with GitHub', () => {
+  afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
+  const github = () => ({
+    source: { getCreateMeta: vi.fn(async () => ({ labels: [], assignees: [], milestones: [] })), createIssue: vi.fn() },
+    repos: ['acme/web'],
+  })
+
+  it('opens on the GitHub form when GitHub is the only provider, without loading ADO types', async () => {
+    const spy = vi.spyOn(adoWorkItemTypes, 'loadWorkItemTypeDefs'); spy.mockClear()
+    render(<CreateWorkItemDrawer open={true} title="Idea" project={[]} team={[]} adoAvailable={false} github={github()} onClose={() => {}} onCreate={() => {}} />)
+    expect(await screen.findByLabelText('Repository')).toBeTruthy()
+    expect(screen.getByLabelText('Title').value).toBe('Idea')
+    expect(screen.queryByRole('group', { name: 'Create in' })).toBeNull()
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('switches between ADO and GitHub, keeping the title typed on the GitHub form', async () => {
+    stubDefs()
+    const onProviderChange = vi.fn()
+    render(<CreateWorkItemDrawer open={true} title="" project={['ProjectA']} team={[]} github={github()} defaultProvider="github" onProviderChange={onProviderChange} onClose={() => {}} onCreate={() => {}} />)
+    const sw = screen.getByRole('group', { name: 'Create in' })
+    expect(within(sw).getByRole('button', { name: 'GitHub' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Carried over' } })
+    fireEvent.click(within(sw).getByRole('button', { name: 'Azure DevOps' }))
+    expect(onProviderChange).toHaveBeenCalledWith('ado')
+    expect(screen.queryByLabelText('Repository')).toBeNull()
+    fireEvent.click(within(screen.getByRole('group', { name: 'Create in' })).getByRole('button', { name: 'GitHub' }))
+    expect((await screen.findByLabelText('Title')).value).toBe('Carried over')
   })
 })

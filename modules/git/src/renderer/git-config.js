@@ -44,6 +44,10 @@ function normalise(saved) {
       // read, which used to lose historySplit.
       ...(typeof view.historySplit === 'number' && view.historySplit >= 0.2 && view.historySplit <= 0.8 ? { historySplit: view.historySplit } : {}),
       ...(Number.isFinite(view.listWidth) ? { listWidth: clampListWidth(view.listWidth) } : {}),
+      // The GitHub tab when it is the one showing (a group can't take its place, whatever it's
+      // called), and the GitHub repository chosen in it.
+      ...(view.tab === 'github' ? { tab: 'github' } : {}),
+      ...(typeof view.githubRepo === 'string' ? { githubRepo: view.githubRepo } : {}),
     },
   }
 }

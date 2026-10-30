@@ -15,6 +15,13 @@
 //
 // Auth set to "inherit" and headers are resolved the way Bruno does: from the
 // nearest folder.bru that sets them, then collection.bru.
+//
+// Scripts and tests run arbitrary code, so they're only imported when the
+// caller opts in (includeScripts). Then each request gets scriptFlavor 'bruno'
+// (run by bruno-executor.js) and its collection, folder and own scripts
+// combined in Bruno's default "sandwich" order: pre-request runs collection →
+// folder → request, post-response and tests run request → folder → collection.
+// Every request records its brunoPath so bru.runRequest(path) can find it.
 
 const TEXT_BLOCK = /^(body:(?!form-urlencoded$|multipart-form$).+|script:.+|tests|docs)$/
 const SKIP_FILES = new Set(['collection.bru', 'folder.bru'])
@@ -107,15 +114,32 @@ function makeWarnings() {
   }
 }
 
-const ROOT_INHERITED = { auth: { mode: 'none', blocks: {} }, headers: {} }
+const ROOT_INHERITED = { auth: { mode: 'none', blocks: {} }, headers: {}, scripts: [] }
 
-/** What a folder (or the collection) passes down: its auth if it sets one, and its headers on top of its parent's. */
-function inheritFrom(parent, blocks) {
+/**
+ * What a folder (or the collection) passes down: its auth if it sets one, its
+ * headers on top of its parent's, and its scripts after its parent's
+ * (outermost first), labelled with where they came from.
+ */
+function inheritFrom(parent, blocks, label) {
   const mode = dictGet(blocks.auth, 'mode')
+  const own = { label, pre: blocks['script:pre-request'], post: blocks['script:post-response'], tests: blocks.tests }
   return {
     auth:    mode && mode !== 'inherit' ? { mode, blocks } : parent.auth,
     headers: { ...parent.headers, ...enabledObject(blocks.headers) },
+    scripts: own.pre || own.post || own.tests ? [...parent.scripts, own] : parent.scripts,
   }
+}
+
+/**
+ * Joins scripts into one. A lone script is kept as written; several each run
+ * in their own async function, so one's `return` (Bruno scripts use it to bail
+ * out early) or `const` can't affect the next.
+ */
+function composeScripts(parts) {
+  const present = parts.filter(p => p.script)
+  if (present.length <= 1) return present[0]?.script || ''
+  return present.map(p => `// ── ${p.label} ──\nawait (async () => {\n${p.script}\n})();`).join('\n\n')
 }
 
 function mapBody(blocks, mode, warnings, name) {
@@ -175,7 +199,7 @@ function mapAuth(blocks, mode, warnings, name) {
   }
 }
 
-function convertRequest(blocks, fallbackName, warnings, inherited) {
+function convertRequest(blocks, fallbackName, warnings, inherited, { includeScripts, brunoPath }) {
   const name = dictGet(blocks.meta, 'name') || fallbackName
   if (dictGet(blocks.meta, 'type') === 'graphql') warnings.add('graphqlRequest', name)
 
@@ -190,9 +214,9 @@ function convertRequest(blocks, fallbackName, warnings, inherited) {
   if (blocks['params:path']?.length) warnings.add('pathParams', name)
 
   // Scripts run arbitrary code and the collection may come from someone else,
-  // so — as with the Postman importer — they're never copied into an
-  // executable field; we only flag that one existed.
-  if (SCRIPT_BLOCKS.some(b => blocks[b])) warnings.add('scripts', name)
+  // so — as with the Postman importer — without the opt-in they're never
+  // copied into an executable field; we only flag that one existed.
+  if (!includeScripts && SCRIPT_BLOCKS.some(b => blocks[b])) warnings.add('scripts', name)
 
   const authMode = dictGet(http, 'auth')
   const auth = authMode === 'inherit'
@@ -209,10 +233,20 @@ function convertRequest(blocks, fallbackName, warnings, inherited) {
       headers: { ...inherited.headers, ...enabledObject(blocks.headers) },
       ...mapBody(blocks, dictGet(http, 'body'), warnings, name),
       auth,
-      preRequestScript:   '',
-      postResponseScript: '',
-      tests:              '',
+      brunoPath,
+      ...(includeScripts ? brunoScripts(blocks, inherited.scripts, name) : { preRequestScript: '', postResponseScript: '', tests: '' }),
     },
+  }
+}
+
+function brunoScripts(blocks, inheritedScripts, name) {
+  const own = { label: name, pre: blocks['script:pre-request'], post: blocks['script:post-response'], tests: blocks.tests }
+  const outward = [own, ...[...inheritedScripts].reverse()] // request, nearest folder, …, collection
+  return {
+    scriptFlavor:       'bruno',
+    preRequestScript:   composeScripts([...inheritedScripts, own].map(s => ({ label: s.label, script: s.pre }))),
+    postResponseScript: composeScripts(outward.map(s => ({ label: s.label, script: s.post }))),
+    tests:              composeScripts(outward.map(s => ({ label: s.label, script: s.tests }))),
   }
 }
 
@@ -229,8 +263,9 @@ function convertEnvironment(blocks) {
  * Reads the Bruno collection at `dir` through the file adapter (which must
  * implement listDirs). `idPrefix` namespaces the generated refIds so a second
  * import into the same collection can't overwrite the first one's requests.
+ * `includeScripts` opts in to importing scripts and tests (they run code).
  */
-export async function importBrunoCollection(file, dir, { idPrefix = `bruno-${Date.now()}` } = {}) {
+export async function importBrunoCollection(file, dir, { idPrefix = `bruno-${Date.now()}`, includeScripts = false } = {}) {
   let config
   try {
     config = JSON.parse(await file.read(join(dir, 'bruno.json')))
@@ -246,18 +281,21 @@ export async function importBrunoCollection(file, dir, { idPrefix = `bruno-${Dat
   async function readSettings(path, label) {
     let blocks
     try { blocks = parseBru(await file.read(path)) } catch { return {} }
-    if (SCRIPT_BLOCKS.some(b => blocks[b])) warnings.add('folderScripts', label)
+    if (!includeScripts && SCRIPT_BLOCKS.some(b => blocks[b])) warnings.add('folderScripts', label)
     return blocks
   }
 
-  async function walk(folderDir, isRoot, inherited) {
+  // relDir is the folder's path inside the collection ('' at the root), which
+  // is what bru.runRequest paths are relative to.
+  async function walk(folderDir, relDir, inherited) {
     const folders = []
     for (const sub of (await file.listDirs(folderDir)).sort()) {
-      if (isRoot && sub === ENVIRONMENTS_DIR) continue
+      if (!relDir && sub === ENVIRONMENTS_DIR) continue
       if (sub.startsWith('.') || sub === 'node_modules') continue
       const subDir = join(folderDir, sub)
-      const folderBlocks = await readSettings(join(subDir, 'folder.bru'), sub)
-      const children = await walk(subDir, false, inheritFrom(inherited, folderBlocks))
+      const subRel = relDir ? join(relDir, sub) : sub
+      const folderBlocks = await readSettings(join(subDir, 'folder.bru'), subRel)
+      const children = await walk(subDir, subRel, inheritFrom(inherited, folderBlocks, `folder.bru: ${subRel}`))
       if (!children.length) continue // tooling/asset folders with no requests
       folders.push({
         dir:  sub,
@@ -274,7 +312,8 @@ export async function importBrunoCollection(file, dir, { idPrefix = `bruno-${Dat
     for (const fileName of bruFiles(await file.list(folderDir)).sort()) {
       if (SKIP_FILES.has(fileName)) continue
       const blocks = parseBru(await file.read(join(folderDir, fileName)))
-      const { name, seq, request } = convertRequest(blocks, fileName.slice(0, -4), warnings, inherited)
+      const brunoPath = relDir ? join(relDir, fileName) : fileName
+      const { name, seq, request } = convertRequest(blocks, fileName.slice(0, -4), warnings, inherited, { includeScripts, brunoPath })
       counter += 1
       const refId = `${idPrefix}-${counter}`
       requests[refId] = request
@@ -286,7 +325,7 @@ export async function importBrunoCollection(file, dir, { idPrefix = `bruno-${Dat
   }
 
   const collectionBlocks = await readSettings(join(dir, 'collection.bru'), config?.name || 'collection')
-  const tree = await walk(dir, true, inheritFrom(ROOT_INHERITED, collectionBlocks))
+  const tree = await walk(dir, '', inheritFrom(ROOT_INHERITED, collectionBlocks, 'collection.bru'))
 
   const environments = {}
   for (const fileName of bruFiles(await file.list(join(dir, ENVIRONMENTS_DIR)))) {

@@ -108,6 +108,17 @@ export function createEditorStore({ api, storage = null, recentKey = 'nexusmd.ed
       }
     },
 
+    // Text that isn't a file on disk (another app's copy, e.g. a file on GitHub), in a read-only tab.
+    // `id` names it in place of a path, so opening it again shows the same tab with the new text;
+    // `origin` says where it came from.
+    openText({ id, name, text, origin = '' }) {
+      const doc = {
+        path: id, name: name || baseName(id), status: 'ready', text: toLf(text), saved: toLf(text), eol: majorityEol(text), bom: false,
+        stamp: null, error: null, conflict: false, saving: false, line: null, readOnly: true, origin,
+      }
+      set({ docs: find(id) ? state.docs.map(d => (sameDoc(d.path, id) ? doc : d)) : [...state.docs, doc], active: id, notice: null })
+    },
+
     activate(path) { const d = find(path); if (d) set({ active: d.path }) },
     dismissNotice() { set({ notice: null }) },
     closeFolder() { set({ folder: null }) },
@@ -124,15 +135,15 @@ export function createEditorStore({ api, storage = null, recentKey = 'nexusmd.ed
 
     setText(path, text) {
       const d = find(path)
-      if (d && d.status === 'ready' && d.text !== text) patchDoc(path, { text })
+      if (d && d.status === 'ready' && !d.readOnly && d.text !== text) patchDoc(path, { text })
     },
 
     // Throws away the edits and reads the file again.
-    reload(path) { return find(path) ? load(path) : Promise.resolve() },
+    reload(path) { const d = find(path); return d && !d.readOnly ? load(path) : Promise.resolve() },
 
     async save(path, { overwrite = false } = {}) {
       const d = find(path)
-      if (!d || d.status !== 'ready' || d.saving) return false
+      if (!d || d.status !== 'ready' || d.saving || d.readOnly) return false
       // Typing continues during the write, so only what was actually sent counts as saved.
       const written = d.text
       patchDoc(path, { saving: true, error: null })

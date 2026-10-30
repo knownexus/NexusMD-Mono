@@ -1,0 +1,20 @@
+meta {
+  name: Schedule - daily update
+  type: http
+  seq: 4
+}
+
+get {
+  url: https://publicdatafeeds.networkrail.co.uk/ntrod/CifFileAuthenticate?type=CIF_ALL_UPDATE_DAILY&day=toc-update-{{scheduleDay}}
+  body: none
+  auth: inherit
+}
+
+params:query {
+  type: CIF_ALL_UPDATE_DAILY
+  day: toc-update-{{scheduleDay}}
+}
+
+docs {
+  Changes since the previous day. scheduleDay is mon, tue, wed, thu, fri, sat or sun.
+}

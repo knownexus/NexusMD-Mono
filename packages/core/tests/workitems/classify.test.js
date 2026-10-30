@@ -45,3 +45,11 @@ describe('work-item classifier', () => {
     expect(core.isDoneItem).toBe(isDoneItem)
   })
 })
+
+describe('GitHub items', () => {
+  it('classify an open, assigned issue as active and a closed one as done', () => {
+    expect(isActiveItem({ source: 'github', state: 'Open', stateCategory: 'InProgress' })).toBe(true)
+    expect(isDoneItem({ source: 'github', state: 'Closed', stateCategory: 'Completed' })).toBe(true)
+    expect(isActiveItem({ source: 'github', state: 'Open', stateCategory: 'Proposed' })).toBe(false)
+  })
+})

@@ -13,6 +13,7 @@ function deps({ packaged = true, version = '1.1.0', check } = {}) {
     dialog: { showMessageBox: vi.fn(async () => ({ response: 0 })) },
     autoUpdater: { checkForUpdates: check ?? vi.fn(async () => ({ isUpdateAvailable: false, updateInfo: { version } })) },
     getWin: () => ({ isDestroyed: () => false }),
+    wait: vi.fn(async () => {}),
   }
 }
 const shown = d => d.dialog.showMessageBox.mock.calls.map(([, opts]) => opts)
@@ -34,6 +35,33 @@ describe('checkForUpdatesManually', () => {
     const d = deps({ check: vi.fn(async () => { throw new Error('HttpError: 404') }) })
     await checkForUpdatesManually(d)
     expect(shown(d)).toEqual([expect.objectContaining({ type: 'error', message: "Couldn't check for updates", detail: expect.stringContaining('404') })])
+  })
+
+  it('retries a dropped connection before reporting anything', async () => {
+    const check = vi.fn()
+      .mockRejectedValueOnce(new Error('net::ERR_CONNECTION_RESET'))
+      .mockResolvedValueOnce({ isUpdateAvailable: false, updateInfo: { version: '1.1.0' } })
+    const d = deps({ check })
+    await checkForUpdatesManually(d)
+    expect(check).toHaveBeenCalledTimes(2)
+    expect(d.wait).toHaveBeenCalledTimes(1)
+    expect(shown(d)).toEqual([expect.objectContaining({ message: "You're up to date" })])
+  })
+
+  it('shows the error once the retries run out', async () => {
+    const check = vi.fn(async () => { throw new Error('net::ERR_CONNECTION_RESET') })
+    const d = deps({ check })
+    await checkForUpdatesManually(d)
+    expect(check).toHaveBeenCalledTimes(3)
+    expect(shown(d)).toEqual([expect.objectContaining({ type: 'error', detail: 'net::ERR_CONNECTION_RESET' })])
+  })
+
+  it('does not retry an error that is not a network failure', async () => {
+    const check = vi.fn(async () => { throw new Error('HttpError: 404') })
+    const d = deps({ check })
+    await checkForUpdatesManually(d)
+    expect(check).toHaveBeenCalledTimes(1)
+    expect(d.wait).not.toHaveBeenCalled()
   })
 
   it('explains that a development build doesn’t update', async () => {

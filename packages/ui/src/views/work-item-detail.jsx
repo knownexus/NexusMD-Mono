@@ -6,7 +6,7 @@ import React from 'react';
 // Used by WIDetail in app.jsx and by TriageRow in view-triage.jsx.
 // Requires: icons.jsx (Icon), toast.jsx (toast), render-content.js (renderContent).
 
-import { renderContent, sanitizeHtml, mdToHtml } from './render-content.js';
+import { renderContent, sanitizeHtml, mdToHtml, stripStructural } from './render-content.js';
 import { Icon } from '../icons.jsx';
 import { toast } from '../toast.jsx';
 import { timeAgo, slugify, sourceOfId } from '@nexusmd/core';
@@ -37,21 +37,24 @@ async function prefetchWorkItem(id, project) {
 // ── HtmlField ─────────────────────────────────────────────────────────────────
 // Renders a single HTML field with a view/edit toggle.
 // On save, PATCHes /api/workitems/{itemId} using the ADO JSON-patch format.
+// `markdown` sources (GitHub) store markdown: the editor starts from the plain text
+// and saves it as typed, so GitHub never receives HTML.
 
-function HtmlField({ label, value: initialValue, field, itemId, editElsewhereUrl = null }) {
+function HtmlField({ label, value: initialValue, field, itemId, editElsewhereUrl = null, markdown = false }) {
   const { workItemSource } = useNexusData();
+  const editText = () => (markdown ? stripStructural(initialValue) : (initialValue || ''));
   const [editing,  setEditing]  = React.useState(false);
-  const [text,     setText]     = React.useState(initialValue || '');
+  const [text,     setText]     = React.useState(editText);
   const [preview,  setPreview]  = React.useState(false);
   const [saving,   setSaving]   = React.useState(false);
   const [status,   setStatus]   = React.useState('');
 
-  React.useEffect(() => { setText(initialValue || ''); }, [initialValue]);
+  React.useEffect(() => { setText(editText()); }, [initialValue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
     setSaving(true); setStatus('Saving…');
     try {
-      await workItemSource.saveField(itemId, field, mdToHtml(text));
+      await workItemSource.saveField(itemId, field, markdown ? text : mdToHtml(text));
       setStatus('✓ Saved');
       toast?.(`${label} updated`, 'success');
       setTimeout(() => { setEditing(false); setPreview(false); setStatus(''); }, 1200);
@@ -82,7 +85,7 @@ function HtmlField({ label, value: initialValue, field, itemId, editElsewhereUrl
         )}
         {!editing && !editElsewhereUrl && (
           <button className="btn sm ghost" style={{ fontSize: 11.5 }}
-            onClick={() => { setText(initialValue || ''); setPreview(false); setStatus(''); setEditing(true); }}>
+            onClick={() => { setText(editText()); setPreview(false); setStatus(''); setEditing(true); }}>
             <Icon name="edit" size={11}/> Edit
           </button>
         )}
@@ -148,7 +151,7 @@ function HtmlField({ label, value: initialValue, field, itemId, editElsewhereUrl
 // ── Discussion ────────────────────────────────────────────────────────────────
 // Shows the ADO comment thread and a reply box.
 
-function Discussion({ id, project, initialComments }) {
+function Discussion({ id, project, initialComments, markdown = false }) {
   const { workItemSource } = useNexusData();
   const [comments, setComments] = React.useState(initialComments || []);
   const [reply,    setReply]    = React.useState('');
@@ -163,7 +166,7 @@ function Discussion({ id, project, initialComments }) {
     if (!trimmed) return;
     setPosting(true); setStatus('Posting…');
     try {
-      const data = await workItemSource.addComment(id, project, mdToHtml(trimmed));
+      const data = await workItemSource.addComment(id, project, markdown ? trimmed : mdToHtml(trimmed));
       setComments(c => [...c, data]);
       setReply('');
       setPreview(false);
@@ -337,6 +340,7 @@ export function WorkItemDetail({ id, project }) {
   // dropped on save), so they are shown read-only with a link to edit them in Jira.
   const isJira = sourceOfId(id) === 'jira';
   const editInJiraUrl = (html) => (isJira && /<img\b/i.test(html || '') ? (workItemSource?.webUrl?.({ id }) || null) : null);
+  const isGithub = sourceOfId(id) === 'github';
 
   return (
     <div>
@@ -347,6 +351,7 @@ export function WorkItemDetail({ id, project }) {
           field="System.Description"
           itemId={id}
           editElsewhereUrl={editInJiraUrl(detail.description)}
+          markdown={isGithub}
         />
       )}
       {detail?.acceptanceCriteria && (
@@ -375,6 +380,7 @@ export function WorkItemDetail({ id, project }) {
         id={id}
         project={project}
         initialComments={comments}
+        markdown={isGithub}
       />
     </div>
   );
@@ -459,15 +465,20 @@ export function WorkItemFieldsEditor({ item, onItemUpdated }) {
   const { data, storage, getProfileKey, workItemSource } = useNexusData();
   const TEAM = data.TEAM || [];
   const isJira = item.source === 'jira';
+  // GitHub issues are open or closed, have no priority or area, and are assigned by login.
+  const isGithub = item.source === 'github';
   const typeStates = isJira ? data.WI_TYPE_STATES_BY_SOURCE?.jira?.[item.type] : null;
-  const STATES = !isJira ? (data.STATES || []) : (() => {
+  const STATES = isGithub ? ['Open', 'Closed'] : !isJira ? (data.STATES || []) : (() => {
     const base = typeStates?.length ? typeStates : (data.STATES || []);
     return item.state && !base.includes(item.state) ? [item.state, ...base] : base;
   })();
   const jiraPriorities = isJira ? (data.PRIORITIES_BY_SOURCE?.jira || []) : null;
-  // Jira assignee options come from the site's assignable users; ADO from the team.
+  // Jira assignee options come from the site's assignable users; ADO from the team. GitHub
+  // assigns by login, which a person merged into an ADO member keeps as githubLogin; the id
+  // matches the mapper's slugified-login assignee.
   const assigneeOptions = isJira
     ? (data.JIRA_PEOPLE || []).map(p => ({ id: TEAM.find(t => t.name === p.displayName)?.id || slugify(p.displayName), name: p.displayName }))
+    : isGithub ? TEAM.filter(t => t.githubLogin).map(t => ({ id: slugify(t.githubLogin), name: t.githubLogin }))
     : TEAM;
   const [areas] = useProjectAreas({ storage, getProfileKey });
 
@@ -531,6 +542,7 @@ export function WorkItemFieldsEditor({ item, onItemUpdated }) {
           </select>
         </dd>
 
+        {!isGithub && <>
         <dt>Priority</dt>
         <dd>
           {jiraPriorities ? (
@@ -552,8 +564,9 @@ export function WorkItemFieldsEditor({ item, onItemUpdated }) {
             </select>
           )}
         </dd>
+        </>}
 
-        {!isJira && (
+        {!isJira && !isGithub && (
           <>
             <dt>Area</dt>
             <dd>

@@ -52,6 +52,8 @@ const EXPECTED = [
   // Shared PR REST helpers (threads/comments/resolve/reopen/commits/file changes/description)
   'fetchPRThreads', 'postPRThread', 'postPRReply', 'setPRThreadStatus',
   'fetchPRCommits', 'fetchPRFileChanges', 'fetchFileContent', 'updatePRDescription',
+  // ADO PR actions (vote/abandon/complete)
+  'ADO_MERGE_STRATEGIES', 'voteAdoPR', 'abandonAdoPR', 'completeAdoPR',
   // API client module (collections/requests/environments + var resolution)
   'getApiClientAdapters',
   'createCollection', 'readCollectionMeta', 'writeCollectionMeta',
@@ -63,6 +65,7 @@ const EXPECTED = [
   'buildRequest', 'executeRequest',
   'buildRunEntries', 'runCollection',
   'importPostmanCollection', 'importBrunoCollection', 'parseBru',
+  'executeBrunoRequest', 'brunoRequestLookup', 'normalizeBrunoPath', 'nextRuntimeVars',
   'appendHistoryEntry', 'readHistory', 'clearHistory',
   // Database Manager module (desktop-only: requires the `dbManager` adapter)
   'IDbManagerAdapter', 'getDbManagerAdapter', 'parseConnectionString', 'buildConfig',
@@ -71,6 +74,7 @@ const EXPECTED = [
   'generateConnectionId', 'upsertConnection', 'removeConnection',
   'normalizeTablePrefs', 'toggleTableStarred', 'toggleTableHidden', 'setTableGroup', 'renameTableGroup',
   'removeTableGroup', 'toggleSectionCollapsed', 'tableSections', 'groupSectionKey', 'schemaSectionKey', 'VIEWS_SECTION_KEY',
+  'TABLE_GROUP_BY', 'setTableGroupBy', 'tablePrefix',
   'columnTypes', 'validateTableSpec', 'buildCreateTable', 'buildCreateView', 'buildDropStatement', 'formatDefault', 'isSingleStatement',
   'columnKind', 'isPartialInput', 'cellToInput', 'parseCellInput',
   // Dev Environment module (desktop-only: requires the `devenv` adapter)
@@ -104,6 +108,18 @@ const EXPECTED = [
   'followTargets', 'referencingTargets', 'whereLabel',
   // Work items module (ADO + Jira merged)
   'JIRA_ID_PREFIX', 'isJiraId', 'toJiraId', 'jiraKeyFromId', 'sourceOfId', 'displayIdOf',
+  'GITHUB_ID_PREFIX', 'isGithubId', 'toGithubId', 'parseGithubId',
+  'makeGithubConfig', 'MAX_GITHUB_REPOS', 'repoListFromStub',
+  'GithubError', 'classifyGithubError', 'makeGithubClient', 'discoverGithubRepos',
+  'githubTypeFromLabels', 'mapGithubIssue', 'mapGithubPR', 'mapGithubRun', 'extractIssueRefs',
+  'GITHUB_CACHE_KEY', 'loadCachedGithubData', 'loadGithubData',
+  'loadGithubDetail', 'loadGithubComments', 'addGithubComment', 'updateGithubIssue',
+  'githubPatchFromAdoField', 'fetchGithubCreateMeta', 'createGithubIssue', 'makeGithubWorkItemSource',
+  'fetchGithubPRFiles', 'fetchGithubPRCommits', 'fetchGithubPRThreads', 'postGithubPRComment',
+  'reviewGithubPR', 'closeGithubPR', 'githubMergeMethods', 'mergeGithubPR',
+  'githubRepoFromRemote', 'githubRepoInfo', 'listGithubBranches', 'createGithubBranch', 'deleteGithubBranch',
+  'listGithubCommits', 'getGithubCommit', 'listGithubContents', 'getGithubFile',
+  'makePRActions',
   'CATEGORY_LANES', 'CATEGORY_LABELS', 'itemCategory', 'adoStateForCategory',
   'WORK_ITEM_STATUS_KEY', 'readProviderStatus', 'recordProviderStatus', 'describeProviderError',
   'PROVIDER_LABELS', 'mergeTeam', 'mergeWorkItemData', 'applyHiddenPeople',

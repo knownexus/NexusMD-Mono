@@ -15,12 +15,23 @@ function Source({ item }) {
   return item.error ? <span style={{ color: 'var(--danger)' }}>{item.error}</span> : <span>{sourceText(item)}</span>
 }
 
-export function BuildsView({ adapter }) {
+function OwnBuilds({ adapter }) {
   const run = useDevenvRunContext()
-  const busy = run.state.status === 'starting' || run.state.status === 'running'
-  const { data, error, loading, refresh } = useDevenvQuery({
+  const builds = useDevenvQuery({
     adapter, config: run.config, argv: ARGV, kind: 'builds', normalise: normaliseBuilds, runStatus: run.state.status,
   })
+  return <BuildsBody builds={builds} />
+}
+
+// build status walks git in every repo and takes seconds, so the dashboard passes the status it
+// already holds instead of the dialog asking again on every open.
+export function BuildsView({ adapter, builds }) {
+  return builds ? <BuildsBody builds={builds} /> : <OwnBuilds adapter={adapter} />
+}
+
+function BuildsBody({ builds: { data, error, loading, refresh } }) {
+  const run = useDevenvRunContext()
+  const busy = run.state.status === 'starting' || run.state.status === 'running'
   const [cleanAll, setCleanAll] = React.useState(false)
   const [abi, setAbi] = React.useState('x64')
   const [deploy, setDeploy] = React.useState('fast')

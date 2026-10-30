@@ -30,16 +30,22 @@ async function act(repo, wt, kind, options = {}) {
 }
 
 // A repository whose `main` and `feature` both edit the one line of `f`; `feature` is checked out.
+// Built once and copied for each test: every git command costs a process start, which is slow on Windows.
+let template
 function diverged(name) {
+  if (!template) {
+    template = path.join(root, '.template')
+    fs.mkdirSync(template)
+    run(template, 'init', '-q')
+    write(template, 'f', 'base\n'); commit(template, 'base')
+    run(template, 'checkout', '-q', '-b', 'feature')
+    write(template, 'f', 'feature\n'); commit(template, 'feature edit')
+    run(template, 'checkout', '-q', 'main')
+    write(template, 'f', 'main\n'); commit(template, 'main edit')
+    run(template, 'checkout', '-q', 'feature')
+  }
   const dir = path.join(root, name)
-  fs.mkdirSync(dir)
-  run(dir, 'init', '-q')
-  write(dir, 'f', 'base\n'); commit(dir, 'base')
-  run(dir, 'checkout', '-q', '-b', 'feature')
-  write(dir, 'f', 'feature\n'); commit(dir, 'feature edit')
-  run(dir, 'checkout', '-q', 'main')
-  write(dir, 'f', 'main\n'); commit(dir, 'main edit')
-  run(dir, 'checkout', '-q', 'feature')
+  fs.cpSync(template, dir, { recursive: true })
   REPOS.push(dir)
   return { name, path: dir }
 }

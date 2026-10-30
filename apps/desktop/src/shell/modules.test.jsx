@@ -82,6 +82,13 @@ describe('top bar and banner slots', () => {
     const { container } = render(<><ModuleTopbar mods={mods} /><ModuleBanners mods={mods} /></>)
     expect(container.textContent).toBe('a-topc-topa-banner')
   })
+  it('tell each top bar slot which view is showing, so an app can add to the bar only on its own screen', () => {
+    const only = [mod('git', { topbar: ({ view }) => <span>{view === 'git' ? 'git-switch' : ''}</span> })]
+    const { container, rerender } = render(<ModuleTopbar mods={only} view="git" />)
+    expect(container.textContent).toBe('git-switch')
+    rerender(<ModuleTopbar mods={only} view="work" />)
+    expect(container.textContent).toBe('')
+  })
 })
 
 describe('ModuleProviders', () => {

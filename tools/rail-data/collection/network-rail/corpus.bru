@@ -1,0 +1,19 @@
+meta {
+  name: CORPUS location codes
+  type: http
+  seq: 1
+}
+
+get {
+  url: https://publicdatafeeds.networkrail.co.uk/ntrod/SupportingFileAuthenticate?type=CORPUS
+  body: none
+  auth: inherit
+}
+
+params:query {
+  type: CORPUS
+}
+
+docs {
+  Maps STANOX / TIPLOC / CRS / NLC codes to location names. You need this to turn the STOMP movement feed's loc_stanox into station names.
+}

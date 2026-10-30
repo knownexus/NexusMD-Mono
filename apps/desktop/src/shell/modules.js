@@ -61,8 +61,9 @@ export function useModuleOffViews(mods = modules) {
 }
 
 // What installed apps add to the top bar and under it. They render inside the apps' providers.
-export function ModuleTopbar({ mods = modules }) {
-  return mods.filter(m => m.topbar).map(m => React.createElement(m.topbar, { key: m.id }))
+// A top bar slot is told the view showing, so an app can add to the bar only on its own screen.
+export function ModuleTopbar({ mods = modules, view }) {
+  return mods.filter(m => m.topbar).map(m => React.createElement(m.topbar, { key: m.id, view }))
 }
 export function ModuleBanners({ mods = modules }) {
   return mods.filter(m => m.banner).map(m => React.createElement(m.banner, { key: m.id }))

@@ -81,6 +81,22 @@ describe('DevenvView', () => {
     expect(globalThis.__run.start).toHaveBeenLastCalledWith(['build', 'apis', '--clean'], { exclusive: true, label: 'devenv build apis --clean' })
   })
 
+  it('changes a source branch from its tile without starting the environment', () => {
+    globalThis.__builds.data = { ...BUILDS, mobile: { key: 'mobile', label: 'Mobile app', source: { branch: 'feature/x', commit: 'feedface00', dirty: false }, built: null, mode: null, ios: null } }
+    render(<DevenvView adapters={adapters} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Change branch for Accounts API' }))
+    expect(globalThis.__run.start).toHaveBeenLastCalledWith(['source', 'branch', 'accounts'], { exclusive: true, label: 'devenv source branch accounts' })
+    for (const name of ['Android', 'iOS on Mac']) expect(within(tile(name)).getByText('feature/x · feedface')).toBeTruthy()
+    fireEvent.click(within(tile('Android')).getByRole('button', { name: 'Change branch for Mobile app' }))
+    expect(globalThis.__run.start).toHaveBeenLastCalledWith(['source', 'branch', 'mobile'], { exclusive: true, label: 'devenv source branch mobile' })
+  })
+
+  it('titles a branch change in the drawer', () => {
+    globalThis.__run.state = { ...createRunState(), status: 'running', runId: 4, command: 'devenv source branch mobile' }
+    render(<DevenvView adapters={adapters} />)
+    expect(screen.getByRole('dialog', { name: 'Change branch' })).toBeTruthy()
+  })
+
   it('opens the full Builds view for the options the tiles leave out', () => {
     render(<DevenvView adapters={adapters} />)
     fireEvent.click(screen.getByRole('button', { name: 'Build options…' }))

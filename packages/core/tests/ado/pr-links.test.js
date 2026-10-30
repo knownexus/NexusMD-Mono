@@ -24,3 +24,13 @@ describe('indexPRsByWorkItem', () => {
     expect(indexPRsByWorkItem(null).size).toBe(0)
   })
 })
+
+describe('indexPRsByWorkItem non-numeric ids', () => {
+  it('keeps gh: and jira: ids as strings, numeric as numbers', () => {
+    const pr = { id: 1, linkedWorkItems: [{ id: 'gh:a/b#1' }, { id: 'jira:X-1' }, { id: '42' }] }
+    const m = indexPRsByWorkItem([pr])
+    expect(m.get('gh:a/b#1')).toEqual([pr])
+    expect(m.get('jira:X-1')).toEqual([pr])
+    expect(m.get(42)).toEqual([pr])
+  })
+})

@@ -12,6 +12,7 @@ vi.mock('@nexusmd/ui', () => ({
 }))
 vi.mock('./ado-settings.jsx', () => ({ AdoConnectionCard: () => <div>AdoConnectionCard</div> }))
 vi.mock('./jira-settings.jsx', () => ({ JiraConnectionCard: () => <div>JiraConnectionCard</div>, WorkItemsDisplayCard: () => <div>WorkItemsDisplayCard</div> }))
+vi.mock('./github-settings.jsx', () => ({ GithubConnectionCard: () => <div>GithubConnectionCard</div> }))
 
 import { WorkContext } from './work-context.js'
 import { WorkDataRows, WorkIntegrationsPanel, WorkBoardPanel, WorkCardsPanel } from './work-settings.jsx'
@@ -45,11 +46,12 @@ describe('WorkDataRows (the refresh interval and cache rows of Data & sync)', ()
     expect(setRefreshInterval).toHaveBeenLastCalledWith(3600)
   })
 
-  it('clears only the cache keys (ADO, Jira, type states) and re-fetches when Clear cache is clicked', () => {
+  it('clears only the cache keys (ADO, Jira, GitHub, type states) and re-fetches when Clear cache is clicked', () => {
     const refreshAllData = vi.fn().mockResolvedValue()
     localStorage.setItem('nexusmd.ado.cache.v1', '{"WORK_ITEMS":[]}')
     localStorage.setItem('nexusmd.wi.wiTypeStates.cache', '{}')
     localStorage.setItem('nexusmd.jira.cache.v1', '{"WORK_ITEMS":[]}')
+    localStorage.setItem('nexusmd.github.cache.v1', '{"WORK_ITEMS":[]}')
     localStorage.setItem('nexusmd.ado.org', 'acme')
     localStorage.setItem('nexusmd.planner.week.2026-W27', 'notes')
     withWork(<WorkDataRows />, { refreshAllData })
@@ -58,6 +60,7 @@ describe('WorkDataRows (the refresh interval and cache rows of Data & sync)', ()
     expect(localStorage.getItem('nexusmd.ado.cache.v1')).toBeNull()
     expect(localStorage.getItem('nexusmd.wi.wiTypeStates.cache')).toBeNull()
     expect(localStorage.getItem('nexusmd.jira.cache.v1')).toBeNull()
+    expect(localStorage.getItem('nexusmd.github.cache.v1')).toBeNull()
     expect(localStorage.getItem('nexusmd.ado.org')).toBe('acme')
     expect(localStorage.getItem('nexusmd.planner.week.2026-W27')).toBe('notes')
     expect(refreshAllData).toHaveBeenCalledTimes(1)
@@ -77,9 +80,9 @@ describe('WorkDataRows (the refresh interval and cache rows of Data & sync)', ()
 })
 
 describe('the other Work panels', () => {
-  it('Integrations holds the Azure DevOps and Jira cards', () => {
+  it('Integrations holds the Azure DevOps, Jira and GitHub cards', () => {
     withWork(<WorkIntegrationsPanel />)
-    for (const name of ['AdoConnectionCard', 'JiraConnectionCard', 'WorkItemsDisplayCard']) expect(screen.getByText(name)).toBeTruthy()
+    for (const name of ['AdoConnectionCard', 'JiraConnectionCard', 'GithubConnectionCard', 'WorkItemsDisplayCard']) expect(screen.getByText(name)).toBeTruthy()
   })
   it("Integrations shows nothing, rather than failing, outside Work's provider", () => {
     const { container } = render(<WorkIntegrationsPanel />)

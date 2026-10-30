@@ -6,6 +6,7 @@ import { initCore, createNoOpAdapters } from '@nexusmd/core'
 import {
   Icon, CardFrame, NexusDataProvider, ToastHost,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
+  THEME_MODES, paletteFor,
 } from '@nexusmd/ui'
 import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, visibleNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
 import { DesktopSettings } from './desktop-settings.jsx'
@@ -34,6 +35,7 @@ import {
   moduleAdapters, moduleView, findPopout, ModuleProviders, useModuleBadges, useModuleOffViews, ModuleTopbar, ModuleBanners,
 } from './shell/modules.js'
 import { host, takeWaitingNavigation } from './shell/host.js'
+import { AppUpdatesBanner } from './app-updates.jsx'
 
 const adapters = {
   ...createNoOpAdapters(),
@@ -57,21 +59,10 @@ const adapters = {
   ...moduleAdapters(),
 }
 
-const NEXUSMD_THEMES = [
-  { id: 'parchment', label: 'Parchment', swatch: ['#f4f1e8', '#ebe5d4', '#9a7e22'] },
-  { id: 'dusk',      label: 'Dusk',      swatch: ['#e4e0d2', '#dbd5c2', '#9a7e22'] },
-  { id: 'paper',     label: 'Paper',     swatch: ['#f5f5f5', '#e8e8e8', '#1d6fcc'] },
-  { id: 'cobalt',    label: 'Cobalt',    swatch: ['#0d1620', '#1f2c3b', '#4a9eff'] },
-  { id: 'noir',      label: 'Noir',      swatch: ['#171410', '#282420', '#e8a020'] },
-  { id: 'slate',     label: 'Slate',     swatch: ['#1a1c20', '#2a2e38', '#8098e0'] },
-  { id: 'forest',    label: 'Forest',    swatch: ['#0e1812', '#1c2a20', '#48b870'] },
-]
-window.NEXUSMD_THEMES = NEXUSMD_THEMES
-
 const DASH_WIDGET_ORDER = ['sprint', 'review', 'blockers', 'team', 'triage', 'activity', 'resolvedme']
 
 const DEFAULT_TWEAKS = {
-  theme: 'light', lightTheme: 'parchment', darkTheme: 'cobalt',
+  theme: 'light', lightTheme: 'parchment', dimTheme: 'umber', darkTheme: 'cobalt',
   density: 'balanced', sidebar: 'labels', typeLabels: false,
   widgetOrder: DASH_WIDGET_ORDER,
   navOrder: DEFAULT_NAV_ORDER,
@@ -201,9 +192,10 @@ function App() {
   }, [])
 
   React.useEffect(() => {
-    const palette = tweaks.theme === 'dark' ? (tweaks.darkTheme || 'cobalt') : (tweaks.lightTheme || 'parchment')
-    document.body.dataset.theme = palette
-  }, [tweaks.theme, tweaks.darkTheme, tweaks.lightTheme])
+    document.body.dataset.theme = paletteFor(tweaks)
+    // The stylesheet has taken over from the background index.html's preload script set (build/theme-preload.mjs).
+    document.documentElement.style.backgroundColor = ''
+  }, [tweaks.theme, tweaks.darkTheme, tweaks.dimTheme, tweaks.lightTheme])
 
   React.useEffect(() => {
     window.nexusMDTypeLabels = tweaks.typeLabels || false
@@ -405,7 +397,7 @@ function App() {
             )}
             <Icon name={active.icon} size={16} />
             <h1 style={{ fontSize: 15, margin: 0 }}>{active.label}</h1>
-            <ModuleTopbar />
+            <ModuleTopbar view={view} />
             {BARE && (
               <button className="btn sm ghost" style={{ marginLeft: 'auto' }}
                 aria-label={view === SETTINGS_NAV.id ? `Back to ${INSTALLED_NAV[0].label}` : 'Settings'}
@@ -416,6 +408,7 @@ function App() {
             )}
             <WindowControls />
           </header>
+          <AppUpdatesBanner />
           <ModuleBanners />
           <section style={{
             flex: 1,
@@ -438,7 +431,7 @@ function App() {
         <TweakSection title="Appearance">
           <TweakRadio label="Theme" value={tweaks.theme}
             onChange={v => setTweak('theme', v)}
-            options={[{label:'Light',value:'light'},{label:'Dark',value:'dark'}]}/>
+            options={THEME_MODES.map(m => ({ label: m.label, value: m.id }))}/>
           <TweakRadio label="Density" value={tweaks.density}
             onChange={v => setTweak('density', v)}
             options={[{label:'Compact',value:'compact'},{label:'Balanced',value:'balanced'},{label:'Cozy',value:'cozy'}]}/>

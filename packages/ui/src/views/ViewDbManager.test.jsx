@@ -1191,6 +1191,33 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
     await connectUat()
     expect(list().getByText('staff')).toBeTruthy()
   })
+
+  const sectionNames = () => list().queryAllByRole('button', { expanded: true }).map(b => b.querySelector('.nx-db-group-name').textContent)
+
+  it('groups the list by first letter, and remembers it for the connection', async () => {
+    await connectUat()
+    expect(list().getByRole('button', { name: /Schema/ })).toBeTruthy()
+    fireEvent.click(openMenu(/Schema/).getByRole('menuitemcheckbox', { name: 'Name (A–Z)' }))
+    expect(sectionNames()).toEqual(['P', 'S'])
+    expect(prefsOf('uat').groupBy).toBe('name')
+  })
+
+  it('groups by when tables last changed, saying what changed', async () => {
+    const today = new Date(); today.setHours(9, 30, 0, 0)
+    adapters.dbManager.connect.mockResolvedValue({
+      ok: true, tables: ['patients', 'staff'], changed: { patients: { at: today.toISOString(), kind: 'data' } },
+    })
+    await connectUat()
+    fireEvent.click(openMenu(/Schema/).getByRole('menuitemcheckbox', { name: 'Last changed' }))
+    expect(sectionNames()).toEqual(['Today', 'Not known'])
+    expect(list().getByText(/^Rows changed \d/)).toBeTruthy()
+  })
+
+  it("can't group by last changed when the database doesn't say", async () => {
+    await connectUat()
+    const item = openMenu(/Schema/).getByRole('menuitemcheckbox', { name: 'Last changed' })
+    expect(item.disabled || item.getAttribute('aria-disabled') === 'true').toBe(true)
+  })
 })
 
 describe('ViewDbManager — creating and dropping tables and views', () => {
@@ -1825,6 +1852,42 @@ describe('ViewDbManager — query results', () => {
     await waitFor(() => expect(screen.getByText('Result 2 of 2')).toBeTruthy())
     expect(screen.getByText('1 row returned')).toBeTruthy()
     expect(screen.getByText('2 rows returned')).toBeTruthy()
+  })
+
+  it('runs a DECLARE batch without asking', async () => {
+    await queryTab()
+    const sql = 'DECLARE @n INT; SELECT @n = 1; SELECT @n AS n'
+    fireEvent.change(screen.getByLabelText('SQL query'), { target: { value: sql } })
+    fireEvent.click(screen.getByText('Run query'))
+    await waitFor(() => expect(adapters.dbManager.runQuery).toHaveBeenCalledWith('sqlite', expect.anything(), sql))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('explains each destructive statement and runs only once confirmed', async () => {
+    await queryTab()
+    adapters.dbManager.runQuery.mockClear()
+    const sql = 'SELECT 1; -- tidy up\nDROP TABLE patients; DELETE FROM visits; UPDATE staff SET a = 1 WHERE id = 2'
+    fireEvent.change(screen.getByLabelText('SQL query'), { target: { value: sql } })
+    fireEvent.click(screen.getByText('Run query'))
+    const prompt = within(await screen.findByRole('alertdialog'))
+    expect(prompt.getByText('Drops the table patients and every row in it.')).toBeTruthy()
+    expect(prompt.getByText('Deletes every row in visits: there is no WHERE clause.')).toBeTruthy()
+    expect(prompt.queryByText(/staff/)).toBeNull()
+    expect(adapters.dbManager.runQuery).not.toHaveBeenCalled()
+    fireEvent.click(prompt.getByRole('button', { name: 'Run query' }))
+    await waitFor(() => expect(adapters.dbManager.runQuery).toHaveBeenCalledWith('sqlite', expect.anything(), sql))
+  })
+
+  it('does not run a destructive query when the prompt is cancelled', async () => {
+    await queryTab()
+    adapters.dbManager.runQuery.mockClear()
+    fireEvent.change(screen.getByLabelText('SQL query'), { target: { value: 'TRUNCATE TABLE patients' } })
+    fireEvent.click(screen.getByText('Run query'))
+    const prompt = within(await screen.findByRole('alertdialog'))
+    expect(prompt.getByText(/Removes every row from patients/)).toBeTruthy()
+    fireEvent.click(prompt.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(adapters.dbManager.runQuery).not.toHaveBeenCalled()
   })
 })
 
