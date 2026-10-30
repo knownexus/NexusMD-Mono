@@ -16,6 +16,10 @@ export const { getGithubConfig, saveGithubConfig, isGithubConfigured, usesGithub
 
 // A 401 fires nexusmd:github-401 (the shell's expired-token notice) and still returns the
 // response, so the client turns it into a GithubError of kind 'auth' as usual.
+//
+// GitHub lets its replies be kept for 60s, so a read soon after the last (the refresh that follows a
+// merge) came straight from the browser cache, still showing the merged PR as open. 'no-cache'
+// checks each read with GitHub: unchanged ones still come back as a 304, which costs no rate limit.
 export function createGithubHttpAdapter({ getConfig = getGithubConfig, fetchImpl = (...a) => window.fetch(...a) } = {}) {
   return {
     async fetch(path, options = {}) {
@@ -30,6 +34,7 @@ export function createGithubHttpAdapter({ getConfig = getGithubConfig, fetchImpl
           ...(options.headers || {}),
         },
         ...(options.body !== undefined ? { body: options.body } : {}),
+        cache: 'no-cache',
       })
       if (r.status === 401) window.dispatchEvent(new Event('nexusmd:github-401'))
       return r

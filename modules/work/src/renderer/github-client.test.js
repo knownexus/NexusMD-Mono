@@ -32,7 +32,17 @@ describe('createGithubHttpAdapter', () => {
         'Content-Type': 'application/json',
       },
       body: '{}',
+      cache: 'no-cache',
     })
+  })
+
+  // GitHub allows its replies to be kept for 60s. A read straight after a change (the refresh after
+  // a merge) must ask GitHub again, or the merged PR comes back still open.
+  it('has every read checked with GitHub rather than answered from the browser cache', async () => {
+    const fetchImpl = vi.fn(async () => reply(200))
+    const http = createGithubHttpAdapter({ getConfig: () => ({ pat: 'ghp_x' }), fetchImpl })
+    await http.fetch('repos/acme/web/pulls?state=open')
+    expect(fetchImpl.mock.calls[0][1]).toMatchObject({ method: 'GET', cache: 'no-cache' })
   })
 
   it('throws a readable error when there is no token', async () => {
