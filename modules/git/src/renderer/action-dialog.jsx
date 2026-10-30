@@ -7,9 +7,10 @@ export const VERB = {
   fetch: 'Fetch', pull: 'Pull', push: 'Push', branch: 'Create branch', checkout: 'Check out', worktreeAdd: 'Add worktree',
   worktreeRemove: 'Remove worktree', stashPush: 'Stash', stashApply: 'Apply', stashPop: 'Pop', stashDrop: 'Drop',
   revert: 'Revert', cherryPick: 'Cherry-pick', reset: 'Reset', continue: 'Continue', skip: 'Skip', abort: 'Abort', rebase: 'Rebase', rebaseInteractive: 'Rebase',
+  resetUpstream: 'Reset to remote', branchDelete: 'Delete branch',
 }
 // The word to type before running; reset asks only for a hard reset.
-const TYPED = { stashDrop: () => 'DROP', reset: o => (o?.mode === 'hard' ? 'RESET' : null) }
+const TYPED = { stashDrop: () => 'DROP', reset: o => (o?.mode === 'hard' ? 'RESET' : null), resetUpstream: () => 'RESET', branchDelete: () => 'DELETE' }
 const RESET_MODES = [
   ['soft', 'Soft', 'Keeps the changes from those commits, staged.'],
   ['mixed', 'Mixed', 'Keeps the changes from those commits in your files, unstaged.'],
@@ -27,6 +28,19 @@ function Commits({ list, label }) {
       <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{label}</div>
       <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, maxHeight: 140, overflow: 'auto' }}>
         {list.map(c => <li key={c.oid}><span className="nx-hash">{c.oid}</span>{` ${c.subject}`}</li>)}
+      </ul>
+    </div>
+  )
+}
+
+// What a hard reset throws away of the uncommitted work.
+function LostFiles({ files }) {
+  if (!files?.length) return <div style={{ color: 'var(--text-muted)' }}>No uncommitted changes to tracked files; untracked files are left alone.</div>
+  return (
+    <div role="note" style={{ color: 'var(--danger)' }}>
+      {`Uncommitted changes (staged and unstaged) to ${files.length === 1 ? 'this file are' : `these ${files.length} files are`} thrown away for good:`}
+      <ul aria-label="Changes thrown away" style={{ margin: 0, paddingLeft: 18, maxHeight: 140, overflow: 'auto' }}>
+        {files.map(f => <li key={f}>{f}</li>)}
       </ul>
     </div>
   )
@@ -103,17 +117,32 @@ function Details({ kind, details, options }) {
             {`${details.pushed} of these commits ${details.pushed === 1 ? 'is' : 'are'} already pushed. NexusMD's Push won't overwrite the remote - you'd have to force-push yourself.`}
           </div>
         )}
-        {details.mode === 'hard' && (details.lost?.length
-          ? (
-            <div role="note" style={{ color: 'var(--danger)' }}>
-              {`Uncommitted changes (staged and unstaged) to ${details.lost.length === 1 ? 'this file are' : `these ${details.lost.length} files are`} thrown away for good:`}
-              <ul aria-label="Changes thrown away" style={{ margin: 0, paddingLeft: 18, maxHeight: 140, overflow: 'auto' }}>
-                {details.lost.map(f => <li key={f}>{f}</li>)}
-              </ul>
-            </div>
-          )
-          : <div style={{ color: 'var(--text-muted)' }}>No uncommitted changes to tracked files; untracked files are left alone.</div>)}
+        {details.mode === 'hard' && <LostFiles files={details.lost} />}
         <Commits list={details.leaves} label="Leaves the branch" />
+      </div>
+    )
+  }
+  if (kind === 'resetUpstream') {
+    const n = details.leaves?.length ?? 0
+    return (
+      <div style={{ fontSize: 12, display: 'grid', gap: 4 }}>
+        <div>{'Makes '}<Ref>{details.branch}</Ref>{' exactly '}<Ref>{details.upstream}</Ref>{` as last fetched (`}<span className="nx-hash">{shortOid(details.oid)}</span>{`)${details.incoming ? `, bringing in ${details.incoming} commit${details.incoming === 1 ? '' : 's'}` : ''}.`}</div>
+        {n > 0 && <div role="note" style={{ color: 'var(--danger)' }}>{`${n} local commit${n === 1 ? '' : 's'} not on ${details.upstream} ${n === 1 ? 'is' : 'are'} thrown away.`}</div>}
+        <LostFiles files={details.lost} />
+        <Commits list={details.leaves} label="Thrown away" />
+      </div>
+    )
+  }
+  if (kind === 'branchDelete') {
+    const n = details.lost?.length ?? 0
+    return (
+      <div style={{ fontSize: 12, display: 'grid', gap: 4 }}>
+        <div>{'Removes the worktree folder '}<Ref>{details.path}</Ref>{', then deletes the branch '}<Ref>{details.branch}</Ref>{'.'}</div>
+        <div style={{ color: 'var(--text-muted)' }}>{details.upstream ? <>{'Its branch on the remote, '}<Ref>{details.upstream}</Ref>{', is kept.'}</> : 'It was never pushed.'}</div>
+        {n > 0
+          ? <div role="note" style={{ color: 'var(--danger)' }}>{`${n} commit${n === 1 ? ' is' : 's are'} on no other branch, local or remote, and ${n === 1 ? 'is' : 'are'} lost with it.`}</div>
+          : <div style={{ color: 'var(--text-muted)' }}>Every commit on it is on another branch too.</div>}
+        <Commits list={details.lost} label="Lost with the branch" />
       </div>
     )
   }
@@ -358,7 +387,8 @@ export function ActionDialog({ sync, adapter, registered }) {
     ? <>{failed && <button className="btn sm" onClick={() => sync.retryFailed(d.runId)}>Retry failed</button>}<button className="btn sm" onClick={sync.close}>Close</button></>
     : <><button className="btn sm ghost" disabled={d.running} onClick={sync.close}>Cancel</button><button className={`btn sm${word || d.kind === 'abort' ? ' danger' : ''}`} disabled={!canRun} onClick={sync.confirm}>{d.running ? 'Running…' : primaryLabel(d.kind, d.options)}</button></>
   return (
-    <PlModal open wide onClose={sync.close} title={d.model?.title ?? VERB[d.kind]} icon="git-branch" footer={footer} closeOnBackdrop={!d.running}>
+    // A shell whose core predates a kind titles it with the kind's own name.
+    <PlModal open wide onClose={sync.close} title={(d.model?.title !== d.kind && d.model?.title) || VERB[d.kind]} icon="git-branch" footer={footer} closeOnBackdrop={!d.running}>
       <div style={{ display: 'grid', gap: 10 }}>
         {d.kind === 'cherryPick' && <OntoTarget dialog={d} onRetarget={t => sync.retarget?.(t)} />}
         <Options kind={d.kind} options={d.options} onOptions={setOptions} details={rows[0]?.details} refInfo={refInfo} target={first} />

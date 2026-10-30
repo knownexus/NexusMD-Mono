@@ -1,5 +1,7 @@
 import React from 'react'
 import { branchState, branchLabel, worktreeId, commitsOff } from '@nexusmd/core'
+import { PopoverMenu } from './popover-menu.jsx'
+import { isMainWorktree } from './branch-header.jsx'
 
 const plural = (n, w) => `${n} ${n === 1 ? w : `${w}s`}`
 const many = n => `${n} ${n === 1 ? 'branch' : 'branches'}`
@@ -18,9 +20,22 @@ const CATEGORIES = [
     when: (t, s) => s.unpublished, desc: t => `${commitsOff(t)}${t.upstreamGone ? 'Its branch on origin was deleted — push it again or delete it locally' : 'Only exists on this machine'}`, action: () => ({ kind: 'publish', label: 'Push' }) },
 ]
 
+// A row's less common actions; both throw work away, so main previews them and asks for a typed word.
+function moreItems(t, s, onAction) {
+  const busy = s.busy ? `Finish or abort the ${t.operation} first` : null
+  const detached = t.branch === '(detached)' ? 'Check out a branch first' : null
+  const remote = !t.upstream ? 'It has no branch on the remote' : t.upstreamGone ? 'Its branch on the remote was deleted' : null
+  const main = isMainWorktree(t) ? "It's checked out in the repository's main folder" : null
+  return [
+    { label: 'Reset to remote…', danger: true, disabled: !!(busy || detached || remote), reason: busy || detached || remote, onSelect: () => onAction('resetUpstream', t) },
+    { label: 'Delete branch…', danger: true, disabled: !!(busy || detached || main), reason: busy || detached || main, onSelect: () => onAction('branchDelete', t) },
+  ]
+}
+
 /**
  * The page with nothing selected: what needs the user, grouped, each with one action.
- * onOpen(tree) selects it; onAction(kind, tree) with kind resolve | pull | push | review | publish.
+ * onOpen(tree) selects it; onAction(kind, tree) with kind resolve | pull | push | review | publish,
+ * or from a row's More menu resetUpstream | branchDelete.
  * onPullAll / onCommitAcross open the batch dialogs (shown when 2+ branches qualify).
  */
 export function AttentionOverview({ trees, repoCount, onOpen, onAction, onPullAll, onCommitAcross, children }) {
@@ -57,6 +72,8 @@ export function AttentionOverview({ trees, repoCount, onOpen, onAction, onPullAl
                 <div className="nx-gw-attn-actions">
                   <button className="btn sm ghost" onClick={() => onOpen(t)}>Open</button>
                   <button className={`btn sm ${a.kind === 'resolve' ? 'danger' : 'accent'}`} style={{ fontWeight: 600 }} onClick={() => onAction(a.kind, t)}>{a.label}</button>
+                  <PopoverMenu label="⋯" buttonClassName="btn sm ghost" buttonProps={{ 'aria-label': `More for ${branchLabel(t)}` }} menuLabel={`More for ${branchLabel(t)}`}
+                    items={moreItems(t, s, onAction)} />
                 </div>
               </div>
             )

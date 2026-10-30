@@ -228,6 +228,8 @@ function GitWorkspace({ adapter, host }) {
     else if (kind === 'pull') sync.open('pull', actionTargets('pull', [t], id), { mode: 'ff' })
     else if (kind === 'push') sync.open('push', actionTargets('push', [t], id), {})
     else if (kind === 'publish') sync.open('push', actionTargets('push', [t], id), { setUpstream: true })
+    // These kinds may be newer than the shell's core, so their single target is checkout's.
+    else if (kind === 'resetUpstream' || kind === 'branchDelete') sync.open(kind, actionTargets('checkout', [t], id), {})
   }
   // j / k walk the worktrees the list shows (all that pass the filter when it's hidden), wrapping at the ends.
   const step = by => {

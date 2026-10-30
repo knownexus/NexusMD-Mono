@@ -47,6 +47,13 @@ function assertResetArgv(args) {
   return args;
 }
 
+// The other exception: deleting a local branch, by a name the branch rules accept (so never an option).
+function assertBranchDeleteArgv(args) {
+  const [cmd, flag, name, ...rest] = args;
+  if (cmd !== 'branch' || flag !== '-D' || branchNameProblem(name) || rest.length) throw new Error('Refusing git branch -D');
+  return args;
+}
+
 function assertSafeArgv(args) {
   if (FORBIDDEN_COMMANDS.has(args[0])) throw new Error(`Refusing git ${args[0]}`);
   for (const a of args) {
@@ -215,6 +222,17 @@ function registerActions(handle, ctx) {
   async function subjects(wt, range, max = 50) {
     const r = await read(wt, ['log', `--max-count=${max}`, '--format=%h%x00%s', ...range]);
     return r.code === 0 ? r.stdout.split('\n').filter(Boolean).map(l => { const [oid, subject] = l.split('\0'); return { oid, subject }; }) : [];
+  }
+  // A hard reset throws away tracked content, so its stamp covers that content itself: status alone
+  // doesn't change when an already-modified file is edited again.
+  async function trackedDiffSha(wt) {
+    const d = await read(wt, ['diff', 'HEAD', '--binary', '--no-ext-diff', '--no-textconv', '--no-color']);
+    if (d.code !== 0) throw new Error(d.stderr || 'git diff failed');
+    return sha(d.stdout);
+  }
+  // The tracked files whose uncommitted changes (staged or not) a hard reset throws away.
+  async function lostFiles(wt, state) {
+    return state.tracked ? (out(await read(wt, ['diff', 'HEAD', '--name-only', '-z', '--no-ext-diff'])) ?? '').split('\0').filter(Boolean) : [];
   }
   const notDuring = state => { if (state.operation) throw new Error(`${state.operation}. Continue or abort it first.`); };
   const branchOf = state => { if (!state.symbolic?.startsWith('refs/heads/')) throw new Error('Check out a branch first (HEAD is detached).'); return short(state.symbolic); };
@@ -463,19 +481,9 @@ function registerActions(handle, ctx) {
         if ((await read(wt, ['merge-base', '--is-ancestor', o.oid, 'HEAD'])).code !== 0) throw new Error(`Reset only moves ${branch} back to one of its own commits.`);
         return { oid: o.oid, mode, branch };
       },
-      // A hard reset throws away tracked content, so its stamp covers that content itself: status alone
-      // doesn't change when an already-modified file is edited again.
-      extra: async (wt, o) => {
-        if (o.mode !== 'hard') return `${o.oid}\0${o.mode}`;
-        const d = await read(wt, ['diff', 'HEAD', '--binary', '--no-ext-diff', '--no-textconv', '--no-color']);
-        if (d.code !== 0) throw new Error(d.stderr || 'git diff failed');
-        return `${o.oid}\0${o.mode}\0${sha(d.stdout)}`;
-      },
+      extra: async (wt, o) => (o.mode === 'hard' ? `${o.oid}\0${o.mode}\0${await trackedDiffSha(wt)}` : `${o.oid}\0${o.mode}`),
       preview: async (wt, o, state) => {
-        // The tracked files whose uncommitted changes (staged or not) a hard reset throws away.
-        const lost = o.mode === 'hard' && state.tracked
-          ? (out(await read(wt, ['diff', 'HEAD', '--name-only', '-z', '--no-ext-diff'])) ?? '').split('\0').filter(Boolean)
-          : [];
+        const lost = o.mode === 'hard' ? await lostFiles(wt, state) : [];
         const leaves = await subjects(wt, [`${o.oid}..HEAD`]);
         const count = Number(out(await read(wt, ['rev-list', '--count', `${o.oid}..HEAD`])) || 0);
         const unpushed = Number(out(await read(wt, ['rev-list', '--count', `${o.oid}..HEAD`, '--not', '--remotes'])) || 0);
@@ -486,6 +494,52 @@ function registerActions(handle, ctx) {
       },
       // Not through w(): reset is on the forbidden list for every other kind, so this argv has its own check.
       run: async (wt, o) => finish(wt, await git(wt, assertResetArgv(['reset', `--${o.mode}`, o.oid]), { timeout: SHORT, env: { ...WRITE_ENV } })),
+    },
+    // The overview's Reset to remote: the branch becomes its upstream as last fetched. Local commits and
+    // uncommitted changes to tracked files go; untracked files are left alone.
+    resetUpstream: {
+      timeout: SHORT,
+      check: async (wt, o, state) => {
+        notDuring(state);
+        const branch = branchOf(state);
+        if (!state.upstream) throw new Error('No upstream is set for this branch.');
+        if (!state.upstreamOid) throw new Error('The upstream branch is gone.');
+        if (state.head === state.upstreamOid && !state.tracked) throw new Error(`${branch} already matches ${state.upstream}.`);
+        return { oid: state.upstreamOid, upstream: state.upstream, branch };
+      },
+      extra: async wt => trackedDiffSha(wt),
+      preview: async (wt, o, state) => ({
+        ...o,
+        leaves: await subjects(wt, [`${o.oid}..HEAD`]),
+        incoming: Number(out(await read(wt, ['rev-list', '--count', `HEAD..${o.oid}`])) || 0),
+        lost: await lostFiles(wt, state),
+      }),
+      run: async (wt, o) => finish(wt, await git(wt, assertResetArgv(['reset', '--hard', o.oid]), { timeout: SHORT, env: { ...WRITE_ENV } })),
+    },
+    // The overview's Delete branch: a branch in a worktree of its own goes with that worktree. The main
+    // worktree's branch can't be deleted here, and the branch on the remote is left alone.
+    branchDelete: {
+      timeout: SHORT,
+      check: async (wt, o, state) => {
+        notDuring(state);
+        const branch = branchOf(state);
+        const entries = await worktreeEntries(wt);
+        const i = entries.findIndex(e => samePath(e.path, wt));
+        if (i < 0) throw new Error('Choose a worktree.');
+        if (i === 0 || entries[i].bare) throw new Error(`${branch} is checked out in the repository's main folder. Switch that folder to another branch first.`);
+        if (entries[i].locked) throw new Error('That worktree is locked.');
+        if (state.dirty) throw new Error('Its worktree has uncommitted or untracked files. Commit, stash or discard them first.');
+        return { branch, upstream: state.upstream, path: entries[i].path, cwd: entries[0].path };
+      },
+      // Commits only this branch has: on no remote, nor on another local branch. A branch name has no
+      // glob characters (branchNameProblem), so it excludes just itself.
+      preview: async (wt, o) => ({ ...o, lost: await subjects(wt, ['HEAD', '--not', '--remotes', `--exclude=${o.branch}`, '--branches']) }),
+      run: async (wt, o) => {
+        const removed = await w(o.cwd, ['worktree', 'remove', o.path], { timeout: SHORT });
+        if (removed.code !== 0) return finish(o.cwd, removed);
+        // Not through w(): -D is on the forbidden list for every other kind, so this argv has its own check.
+        return finish(o.cwd, await git(o.cwd, assertBranchDeleteArgv(['branch', '-D', o.branch]), { timeout: SHORT, env: { ...WRITE_ENV } }));
+      },
     },
     continue: {
       timeout: LONG,
@@ -780,6 +834,6 @@ function registerActions(handle, ctx) {
 }
 
 module.exports = {
-  registerActions, assertSafeArgv, assertResetArgv, branchNameProblem, rebaseTodo, rebaseMessages,
+  registerActions, assertSafeArgv, assertResetArgv, assertBranchDeleteArgv, branchNameProblem, rebaseTodo, rebaseMessages,
   WRITE_ENV, BASE_MARKER, STALE, REJECTED, PUSHED_RANGE, MERGES_RANGE, ownershipMessage, networkMessage,
 };

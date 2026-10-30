@@ -7,7 +7,7 @@ import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
 import { parseDiff } from '@nexusmd/core'
 import { register, gitEnv, isRepositoryRoot, findGit, extractHunk, logArgs, HISTORY_CONFIG } from './git.cjs'
-import { assertSafeArgv, assertResetArgv } from './git-actions.cjs'
+import { assertSafeArgv, assertResetArgv, assertBranchDeleteArgv } from './git-actions.cjs'
 
 const ROOT = process.platform === 'win32' ? 'C:\\repos' : '/repos'
 const REPO = { name: 'App', path: path.join(ROOT, 'App') }
@@ -1138,6 +1138,14 @@ describe('stage 4 actions (unit)', () => {
     for (const bad of [['reset', '--hard', '--end-of-options', OID], ['reset', '--keep', OID], ['reset', '--hard', 'HEAD~1'],
       ['reset', '--hard', OID, '--', 'f'], ['clean', '--hard', OID]]) {
       expect(() => assertResetArgv(bad)).toThrow('Refusing git reset')
+    }
+  })
+
+  it('branch delete runs only its own exact argv, by a valid branch name', () => {
+    expect(assertBranchDeleteArgv(['branch', '-D', 'feature/one'])).toEqual(['branch', '-D', 'feature/one'])
+    expect(() => assertSafeArgv(['branch', '-D', 'feature/one'])).toThrow('Refusing -D')
+    for (const bad of [['branch', '-d', 'x'], ['branch', '-D', '-r'], ['branch', '-D', 'a', 'b'], ['branch', '-D', 'a..b'], ['tag', '-D', 'x']]) {
+      expect(() => assertBranchDeleteArgv(bad)).toThrow('Refusing git branch -D')
     }
   })
 

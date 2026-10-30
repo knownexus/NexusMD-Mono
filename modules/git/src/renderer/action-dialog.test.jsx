@@ -96,6 +96,35 @@ describe('useGitSync and the action dialog', () => {
     expect(screen.getByRole('button', { name: 'Reset (hard)' }).className).toContain('danger')
   })
 
+  it('reset to remote lists the commits and changes thrown away and needs RESET typed', async () => {
+    const details = { oid: 'f'.repeat(40), upstream: 'origin/feat', branch: 'feat', incoming: 3, lost: ['f.txt'], leaves: [{ oid: 'abc1234', subject: 'mine' }] }
+    const git = adapter({ preview: vi.fn(async () => ({ eligible: true, details, programs: [], stamp: 's' })) })
+    render(<Harness git={git} />)
+    act(() => sync().open('resetUpstream', [target('A')], {}))
+    expect((await screen.findByText(/exactly/)).textContent).toBe('Makes feat exactly origin/feat as last fetched (fffffff), bringing in 3 commits.')
+    expect(screen.getByText('1 local commit not on origin/feat is thrown away.')).toBeTruthy()
+    expect(screen.getByRole('list', { name: 'Changes thrown away' }).textContent).toBe('f.txt')
+    // The title and the button.
+    expect(screen.getAllByText('Reset to remote')).toHaveLength(2)
+    const reset = screen.getByRole('button', { name: 'Reset to remote' })
+    expect(reset.disabled).toBe(true)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Type RESET to confirm' }), { target: { value: 'RESET' } })
+    expect(reset.disabled).toBe(false)
+  })
+
+  it('delete branch names the worktree folder, keeps the remote branch, and lists commits lost with it', async () => {
+    const details = { branch: 'feat', upstream: 'origin/feat', path: 'C:/repos/A/feat', lost: [{ oid: 'abc1234', subject: 'only here' }] }
+    const git = adapter({ preview: vi.fn(async () => ({ eligible: true, details, programs: [], stamp: 's' })) })
+    render(<Harness git={git} />)
+    act(() => sync().open('branchDelete', [target('A')], {}))
+    expect((await screen.findByText(/Removes the worktree folder/)).textContent).toBe('Removes the worktree folder C:/repos/A/feat, then deletes the branch feat.')
+    expect(screen.getByText(/is kept/).textContent).toBe('Its branch on the remote, origin/feat, is kept.')
+    expect(screen.getByText('1 commit is on no other branch, local or remote, and is lost with it.')).toBeTruthy()
+    const del = screen.getByRole('button', { name: 'Delete branch' })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Type DELETE to confirm' }), { target: { value: 'DELETE' } })
+    expect(del.disabled).toBe(false)
+  })
+
   it('cherry-pick warns when the target branch changed the same files', async () => {
     const details = { oid: 'e'.repeat(40), branch: 'feat', subject: 'fix', files: 2, overlap: ['a.js'], x: false }
     const git = adapter({ preview: vi.fn(async () => ({ eligible: true, details, programs: [], stamp: 's' })) })
