@@ -16,6 +16,7 @@ import {
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
 import { useOffScreens } from './work-screens.js';
+import { EditorScreen } from './editor-screen.jsx';
 import { apiFileAdapter } from './adapters/api-file.js';
 import { scriptRunnerAdapter } from './adapters/api-script-runner.js';
 import { apiHttpAdapter } from './adapters/api-http.js';
@@ -114,6 +115,7 @@ const NAV_SECONDARY = [
   { id: 'planner',  label: 'Planner',  icon: 'planner' },
   { id: 'markdown', label: 'Documents', icon: 'doc'    },
   { id: 'api',      label: 'API Client', icon: 'link'   },
+  { id: 'editor',   label: 'Editor',     icon: 'edit'   },
 ];
 
 // The API client's adapters: collections in a virtual file system, scripts in a worker, native HTTP.
@@ -137,6 +139,7 @@ const ALL_SECONDARY_TABS = [
   { id: 'team',     label: 'Team',     icon: 'team'         },
   { id: 'markdown', label: 'Documents', icon: 'doc'         },
   { id: 'api',      label: 'API Client', icon: 'link'        },
+  { id: 'editor',   label: 'Editor',     icon: 'edit'        },
   { id: 'settings', label: 'Settings', icon: 'settings'     },
 ];
 
@@ -1034,6 +1037,7 @@ function AppShell() {
         themes={themes} setThemes={setThemes} onExportDocx={plannerExportDocx} device={device} onFlash={showFlash}/>;
       case 'lists': return <ListsView />;
       case 'markdown': return <DocumentsView/>;
+      case 'editor': return <EditorScreen/>;
       case 'api': return <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>;
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
         onOpenConnection={() => setSettingsOpen(true)}
