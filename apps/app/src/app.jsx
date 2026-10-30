@@ -17,6 +17,7 @@ import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
 import { useOffScreens } from './work-screens.js';
 import { EditorScreen } from './editor-screen.jsx';
+import { GitView } from './git-view.jsx';
 import { apiFileAdapter } from './adapters/api-file.js';
 import { scriptRunnerAdapter } from './adapters/api-script-runner.js';
 import { apiHttpAdapter } from './adapters/api-http.js';
@@ -116,6 +117,7 @@ const NAV_SECONDARY = [
   { id: 'markdown', label: 'Documents', icon: 'doc'    },
   { id: 'api',      label: 'API Client', icon: 'link'   },
   { id: 'editor',   label: 'Editor',     icon: 'edit'   },
+  { id: 'git',      label: 'Repos',      icon: 'git-branch' },
 ];
 
 // The API client's adapters: collections in a virtual file system, scripts in a worker, native HTTP.
@@ -140,12 +142,13 @@ const ALL_SECONDARY_TABS = [
   { id: 'markdown', label: 'Documents', icon: 'doc'         },
   { id: 'api',      label: 'API Client', icon: 'link'        },
   { id: 'editor',   label: 'Editor',     icon: 'edit'        },
+  { id: 'git',      label: 'Repos',      icon: 'git-branch'  },
   { id: 'settings', label: 'Settings', icon: 'settings'     },
 ];
 
 function tabsForType(type) {
   if (type === 'manual') {
-    const ADO_IDS = new Set(['work', 'pr', 'builds', 'tests', 'triage']);
+    const ADO_IDS = new Set(['work', 'pr', 'builds', 'tests', 'triage', 'git']);
     return {
       primary:   ALL_PRIMARY_TABS.filter(t => !ADO_IDS.has(t.id)),
       secondary: ALL_SECONDARY_TABS.filter(t => !ADO_IDS.has(t.id)),
@@ -1038,6 +1041,7 @@ function AppShell() {
       case 'lists': return <ListsView />;
       case 'markdown': return <DocumentsView/>;
       case 'editor': return <EditorScreen/>;
+      case 'git': return <GitView/>;
       case 'api': return <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>;
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
         onOpenConnection={() => setSettingsOpen(true)}
