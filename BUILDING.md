@@ -6,8 +6,9 @@
 |------|---------|-------|
 | Node.js | ≥ 20 | Use `.nvmrc` — `nvm use` |
 | .NET SDK | 8.0 | Web app host |
-| Android SDK | API 33+ | App only — via Android Studio |
-| Java | 17 | App only — required by Gradle |
+| Android SDK | API 36 | App only — via Android Studio |
+| Java | 21 | App only — required by Gradle (Capacitor 8) |
+| Node.js | ≥ 22 | App only — the Capacitor 8 CLI (`cap sync`) |
 
 ## Setup
 
@@ -146,7 +147,7 @@ cd apps/app/android && ./gradlew assembleDebug
 
 Debug APK output: `apps/app/android/app/build/outputs/apk/debug/app-debug.apk`
 
-For a release build, configure signing in `apps/app/android/app/build.gradle` then:
+For a release build, put the signing details in `apps/app/android/keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; not committed), then:
 
 ```bash
 cd apps/app/android && ./gradlew assembleRelease
@@ -159,13 +160,9 @@ cd apps/app/android && ./gradlew assembleRelease
 VITE_API_BASE=https://your-api.example.com
 ```
 
-### E2E tests (nightly)
+### Debug APK from GitHub
 
-Requires a running Android emulator and Appium server — see `apps/app/e2e/README.md` for setup.
-
-```bash
-npm -w apps/app run e2e:android
-```
+`android-apk.yml` builds a debug APK on pushes and PRs that touch the app (or by hand from the Actions tab) and keeps it as a run artifact for 14 days. Download it from the run page and install it on a phone (enable "install unknown apps" for your browser or file manager). It needs no secrets; a signed release build still needs `keystore.properties` (see above).
 
 ---
 
@@ -176,4 +173,4 @@ npm -w apps/app run e2e:android
 | Push / PR to `master` | `ci.yml` | Unit tests, backend tests, all builds, web + desktop e2e |
 | Tag `v*` | `release-desktop.yml` | Desktop builds (Win/Mac/Linux) → GitHub Release |
 | Tag `web-v*` | `release-web.yml` | `dotnet publish` → GitHub Release artifact |
-| Nightly 03:00 UTC | `e2e-android.yml` | Android APK build + Appium smoke tests |
+| Push / PR touching the app | `android-apk.yml` | Android debug APK, kept as a run artifact |

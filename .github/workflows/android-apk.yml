@@ -1,0 +1,54 @@
+name: Android debug APK
+
+# Builds a debug APK of the Android app (apps/app) and keeps it as a run artifact, so a change can
+# be installed on a phone without Android Studio. Debug builds need no signing secrets.
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'apps/app/**'
+      - 'packages/**'
+      - 'modules/editor/**'
+      - 'package-lock.json'
+      - '.github/workflows/android-apk.yml'
+  pull_request:
+    paths:
+      - 'apps/app/**'
+      - 'packages/**'
+      - 'modules/editor/**'
+      - 'package-lock.json'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+
+jobs:
+  apk:
+    name: Debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # The Capacitor 8 CLI needs Node 22 or newer.
+          node-version: 22
+          cache: npm
+      # Capacitor 8 builds with Java 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      # The runner image already has the Android SDK and its licences.
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      - run: npm -w apps/app run build
+      - name: Sync Capacitor into the Android project
+        working-directory: apps/app
+        run: npx cap sync android
+      - name: Assemble the debug APK
+        working-directory: apps/app/android
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexusmd-android-debug-${{ github.sha }}
+          path: apps/app/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
