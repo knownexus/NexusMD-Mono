@@ -107,7 +107,7 @@ test('Git\'s Files tab opens a file in the Editor when both are installed', asyn
     await withApps('git,editor', { seed: gitSeed(dir) }, async ({ win }) => {
       await openFilesMenu(win)
       await expect(win.getByRole('menuitem', { name: 'Open with default app' })).toHaveCount(0)
-      await win.getByRole('menuitem', { name: 'Open in Editor' }).evaluate(b => b.click())
+      await win.getByRole('menuitem', { name: 'Open in Editor' }).click({ force: true })
       await expect(item(win, 'Editor')).toHaveClass(/active/, { timeout: 20_000 })
       await expect(win.getByRole('textbox', { name: 'Editing README.md' })).toContainText('From the repo')
     })
