@@ -39,11 +39,16 @@ test('the branch list is resized by dragging its divider, and keeps its width', 
       await expect(handle).toBeVisible({ timeout: 30_000 })
       const before = await listWidth(win)
       const box = await handle.boundingBox()
+      // The page caps the list at half its width, so on a small window (a CI runner's screen) there is
+      // less room to drag into than on a 1400px one: drag as far as there is room, up to 150px.
+      const room = Math.floor((await win.locator('.nx-gw-body').evaluate(el => el.getBoundingClientRect().width)) / 2) - before - 10
+      const drag = Math.min(150, room)
+      expect(drag).toBeGreaterThan(30)
       await win.mouse.move(box.x + box.width / 2, box.y + 40)
       await win.mouse.down()
-      await win.mouse.move(box.x + 150, box.y + 40, { steps: 5 })
+      await win.mouse.move(box.x + drag, box.y + 40, { steps: 5 })
       await win.mouse.up()
-      await expect.poll(() => listWidth(win)).toBeGreaterThan(before + 100)
+      await expect.poll(() => listWidth(win)).toBeGreaterThan(before + drag - 20)
       const after = await listWidth(win)
 
       await win.reload()
@@ -66,10 +71,12 @@ test('the Files tab marks added and modified files, and folders holding them', a
       await openGit(win)
       const row = name => win.getByRole('treeitem').filter({ hasText: name })
       await expect(row('README.md')).toBeVisible({ timeout: 30_000 })
-      await expect(row('README.md').locator('.nx-gw-tree-code')).toHaveText('M')
+      // Each mark is the letter plus a screen-reader-only label ("M, Not staged: modified").
+      await expect(row('README.md').locator('.nx-gw-tree-code')).toHaveText(/^M, /)
       await expect(row('docs').locator('.nx-gw-tree-dot')).toHaveCount(1)
       await row('docs').click()
-      await expect(row('new.md').locator('.nx-gw-tree-code')).toHaveText('A')
+      // new.md is on disk but not added to git, so its mark is "?" (untracked).
+      await expect(row('new.md').locator('.nx-gw-tree-code')).toHaveText(/^\?, Untracked/)
       await expect(row('old.md').locator('.nx-gw-tree-code')).toHaveCount(0)
     } finally { await close() }
   } finally { rmSync(dir, { recursive: true, force: true }) }
