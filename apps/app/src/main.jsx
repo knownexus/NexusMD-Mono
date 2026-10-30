@@ -5,6 +5,7 @@ import './styles/app-overrides.css';
 import './styles/helm-mobile.css';
 
 import { initCore, createNoOpAdapters } from '@nexusmd/core';
+import { showFatalError } from './fatal-error.js';
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
@@ -37,4 +38,5 @@ initCore({
   file:          fileAdapter,
 });
 
-import('./app.jsx');
+// A module that fails to load, or throws as it evaluates, rejects here: say so rather than leave a blank page.
+import('./app.jsx').catch(showFatalError);

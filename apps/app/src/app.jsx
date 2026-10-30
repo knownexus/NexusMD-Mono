@@ -16,6 +16,7 @@ import {
 } from '@nexusmd/ui';
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
+import { ErrorBoundary } from './error-screen.jsx';
 import { useOffScreens } from './work-screens.js';
 import { EditorScreen } from './editor-screen.jsx';
 import { GitView } from './git-view.jsx';
@@ -1679,9 +1680,11 @@ startAppAutoSync();
 
 (async () => {
   ReactDOM.createRoot(document.getElementById('root')).render(
-    <NexusDataProvider value={nexusDataValue}>
-      <HelmApp/><ToastHost/>
-    </NexusDataProvider>
+    <ErrorBoundary>
+      <NexusDataProvider value={nexusDataValue}>
+        <HelmApp/><ToastHost/>
+      </NexusDataProvider>
+    </ErrorBoundary>
   );
 })();
 

@@ -71,6 +71,20 @@ describe('the app stays up', () => {
     expect(failures).toEqual([])
   }, 60000)
 
+  it('shows the error screen, not a blank page, when part of the app throws while rendering', async () => {
+    vi.doMock('./components.jsx', async importOriginal => ({
+      ...(await importOriginal()),
+      StatusBar: () => { throw new Error('StatusBar exploded') },
+    }))
+    try {
+      await boot()
+      await vi.waitFor(() => expect(root().textContent).toContain('Something went wrong'), { timeout: 15000 })
+      expect(root().querySelector('[data-testid="error-details"]').textContent).toContain('StatusBar exploded')
+    } finally {
+      vi.doUnmock('./components.jsx')
+    }
+  }, 30000)
+
   it('renders the tablet layout on a wide window', async () => {
     await boot({ width: 1100 })
     try {
