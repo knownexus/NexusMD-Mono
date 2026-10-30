@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -9,18 +9,22 @@ import { register } from './git.cjs'
 
 const STALE = 'Changed since you reviewed it. Refresh and review again.'
 let root
+// The fixture repositories are built once into a template; each test gets its own copy in dir.
+let template
+let dir
+let copies = 0
 const handlers = {}
 const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM }
 const run = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString()
 const call = (channel, ...args) => handlers[channel](null, ...args)
-const repo = name => ({ name, path: path.join(root, name) })
-const REG = () => ['Work', 'Fresh', 'Hooked', 'Guarded'].map(n => path.join(root, n))
+const repo = name => ({ name, path: path.join(dir, name) })
+const REG = () => ['Work', 'Fresh', 'Hooked', 'Guarded'].map(n => path.join(dir, n))
 const story = changed => Array.from({ length: 30 }, (_, i) => `line ${i + 1}${changed.includes(i + 1) ? ' changed' : ''}`).join('\n') + '\n'
 const CRLF = 'a\r\nb\r\nc\r\nd\r\ne\r\nf\r\ng\r\nh\r\ni\r\nj\r\n'
 const write = (r, file, text) => fs.writeFileSync(path.join(r.path, file), text)
 const filesStamp = (r, wt, paths) => call('git:stamp', r, wt, REG(), { kind: 'files', paths })
 const commitStamp = (r, wt) => call('git:stamp', r, wt, REG(), { kind: 'commit' })
-const failWorktree = () => path.join(root, 'Hooked-fail-marker')
+const failWorktree = () => path.join(dir, 'Hooked-fail-marker')
 
 beforeAll(() => {
   root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'nexusmd-gitw-')))
@@ -28,6 +32,10 @@ beforeAll(() => {
   fs.writeFileSync(globalConfig, '[user]\n\tname = Test\n\temail = test@example.invalid\n[core]\n\tautocrlf = false\n')
   process.env.GIT_CONFIG_GLOBAL = globalConfig
   process.env.GIT_CONFIG_NOSYSTEM = '1'
+
+  // Built once and copied for each test: every git command costs a process start, which is slow on Windows.
+  template = dir = path.join(root, 'template')
+  fs.mkdirSync(template)
 
   const work = repo('Work')
   fs.mkdirSync(work.path)
@@ -64,7 +72,21 @@ beforeAll(() => {
   fs.chmodSync(guard, 0o755)
 
   register({ handle: (channel, fn) => { handlers[channel] = fn } }, { logger: { scope: () => ({ error: () => {}, info: () => {} }) } })
-}, 60000)
+})
+
+beforeEach(() => {
+  dir = path.join(root, `t${++copies}`)
+  fs.cpSync(template, dir, { recursive: true })
+  // Hooked and its linked worktree record each other's absolute paths; point them at this copy.
+  const slash = p => p.split(path.sep).join('/')
+  for (const link of [path.join(dir, 'Hooked', '.git', 'worktrees', 'Hooked-fail-marker', 'gitdir'), path.join(failWorktree(), '.git')]) {
+    const text = fs.readFileSync(link, 'utf8')
+    if (!text.includes(slash(template))) throw new Error(`Unexpected worktree link in ${link}: ${text}`)
+    // git marks the .git file hidden, and Windows refuses to overwrite a hidden file: replace it instead.
+    fs.rmSync(link)
+    fs.writeFileSync(link, text.split(slash(template)).join(slash(dir)))
+  }
+})
 
 afterAll(() => {
   if (saved.global === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved.global
@@ -88,7 +110,7 @@ describe('git workspace writes against real repositories', () => {
     expect(run(r.path, 'diff', '--cached')).toBe('')
     expect(await call('git:discard', r, r.path, REG(), ['story.txt'], await filesStamp(r, r.path, ['story.txt']))).toMatchObject({ ok: true })
     expect(fs.readFileSync(path.join(r.path, 'story.txt'), 'utf8')).toBe(story([]))
-  }, 60000)
+  })
 
   it('takes glob characters and leading dashes in names literally', async () => {
     const r = repo('Work')
@@ -105,7 +127,7 @@ describe('git workspace writes against real repositories', () => {
     expect(await call('git:deleteUntracked', r, r.path, REG(), ['-x 1.txt'], await filesStamp(r, r.path, ['-x 1.txt'])))
       .toEqual({ ok: true, detail: 'Deleted 1 untracked file.' })
     expect(fs.existsSync(path.join(r.path, '-x 1.txt'))).toBe(false)
-  }, 60000)
+  })
 
   it('stages one hunk of a CRLF file without touching the other', async () => {
     const r = repo('Work')
@@ -114,9 +136,7 @@ describe('git workspace writes against real repositories', () => {
     expect(parseDiff(d.text).files[0].hunks).toHaveLength(2)
     expect(await call('git:stageHunk', r, r.path, REG(), ['crlf.txt'], 0, d.stamp)).toMatchObject({ ok: true })
     expect(run(r.path, 'show', ':crlf.txt')).toBe(CRLF.replace('a\r\n', 'A\r\n'))
-    run(r.path, 'reset', '-q')
-    run(r.path, 'checkout', '--', 'crlf.txt')
-  }, 60000)
+  })
 
   it('refuses a write whose reviewed state changed', async () => {
     const r = repo('Work')
@@ -124,9 +144,7 @@ describe('git workspace writes against real repositories', () => {
     const reviewed = await filesStamp(r, r.path, ['story.txt'])
     run(r.path, 'add', 'story.txt')
     expect(await call('git:stage', r, r.path, REG(), ['story.txt'], reviewed)).toEqual({ ok: false, stale: true, detail: STALE })
-    run(r.path, 'reset', '-q')
-    run(r.path, 'checkout', '--', 'story.txt')
-  }, 60000)
+  })
 
   it('commits the staged changes with the given message', async () => {
     const r = repo('Work')
@@ -135,7 +153,7 @@ describe('git workspace writes against real repositories', () => {
     expect(await call('git:commit', r, r.path, REG(), 'Change line 5', await commitStamp(r, r.path))).toMatchObject({ ok: true })
     expect(run(r.path, 'log', '-1', '--format=%s')).toBe('Change line 5\n')
     expect(await call('git:commit', r, r.path, REG(), 'Again', await commitStamp(r, r.path))).toEqual({ ok: false, detail: 'No staged changes.' })
-  }, 60000)
+  })
 
   it('amends the last commit, rewording it with nothing staged', async () => {
     const r = repo('Work')
@@ -144,7 +162,7 @@ describe('git workspace writes against real repositories', () => {
     expect(await call('git:commit', r, r.path, REG(), 'Change line 5, reworded', await commitStamp(r, r.path), { amend: true })).toMatchObject({ ok: true })
     expect(run(r.path, 'log', '-1', '--format=%s')).toBe('Change line 5, reworded\n')
     expect(count()).toBe(before)
-  }, 60000)
+  })
 
   it('stages and unstages on a branch with no commits', async () => {
     const r = repo('Fresh')
@@ -153,7 +171,7 @@ describe('git workspace writes against real repositories', () => {
     expect(run(r.path, 'status', '--porcelain')).toBe('A  a.txt\n')
     expect(await call('git:unstage', r, r.path, REG(), ['a.txt'], await filesStamp(r, r.path, ['a.txt']))).toMatchObject({ ok: true })
     expect(run(r.path, 'status', '--porcelain')).toBe('?? a.txt\n')
-  }, 60000)
+  })
 
   it('commits each worktree separately: a failing hook in one does not stop the other', async () => {
     const r = repo('Hooked')
@@ -168,7 +186,7 @@ describe('git workspace writes against real repositories', () => {
     expect(no.detail).toContain('hook says no')
     expect(run(r.path, 'log', '-1', '--format=%s')).toBe('Works\n')
     expect(run(failWorktree(), 'log', '-1', '--format=%s')).toBe('Base\n')
-  }, 60000)
+  })
 
   it('lets a pre-commit hook that filters with a glob pathspec see the staged files', async () => {
     const r = repo('Guarded')
@@ -178,7 +196,7 @@ describe('git workspace writes against real repositories', () => {
     expect(no.ok).toBe(false)
     expect(no.detail).toContain('secret files staged')
     expect(run(r.path, 'log', '-1', '--format=%s')).toBe('Base\n')
-  }, 60000)
+  })
 
   it('stages one hunk of a Latin-1 file', async () => {
     const r = repo('Work')
@@ -191,9 +209,7 @@ describe('git workspace writes against real repositories', () => {
     expect(parseDiff(d.text).files[0].hunks).toHaveLength(2)
     expect(await call('git:stageHunk', r, r.path, REG(), ['latin.txt'], 0, d.stamp)).toMatchObject({ ok: true })
     expect(execFileSync('git', ['show', ':latin.txt'], { cwd: r.path }).equals(latin([2]))).toBe(true)
-    run(r.path, 'reset', '-q')
-    run(r.path, 'checkout', '--', 'latin.txt')
-  }, 60000)
+  })
 
   it('refuses to unstage a hunk of a staged rename', async () => {
     const r = repo('Work')
@@ -209,8 +225,7 @@ describe('git workspace writes against real repositories', () => {
     expect(await call('git:unstageHunk', r, r.path, REG(), paths, 0, s.stamp))
       .toEqual({ ok: false, detail: 'Renamed, copied or mode-changed files are staged whole.' })
     expect(run(r.path, 'status', '--porcelain')).toBe('R  old-name.txt -> new-name.txt\n')
-    run(r.path, 'reset', '-q', '--hard')
-  }, 60000)
+  })
 
   it('refuses to stage an untracked nested repository', async () => {
     const r = repo('Work')
@@ -222,14 +237,12 @@ describe('git workspace writes against real repositories', () => {
     expect(await call('git:stage', r, r.path, REG(), ['nested/'], await filesStamp(r, r.path, ['nested/'])))
       .toEqual({ ok: false, detail: 'Nested repositories are managed on their own.' })
     expect(run(r.path, 'ls-files', '--stage', 'nested')).toBe('')
-    fs.rmSync(nested, { recursive: true, force: true })
-  }, 60000)
+  })
 
   it('rejects a subfolder of the repository as a worktree', async () => {
     const r = repo('Work')
     const sub = path.join(r.path, 'sub')
     fs.mkdirSync(sub)
     await expect(call('git:stamp', r, sub, REG(), { kind: 'files', paths: ['x.txt'] })).rejects.toThrow('Not a worktree of')
-    fs.rmSync(sub, { recursive: true, force: true })
-  }, 60000)
+  })
 })

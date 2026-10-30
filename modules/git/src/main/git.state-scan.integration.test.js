@@ -10,6 +10,9 @@ import { register } from './git.cjs'
 // not scan the whole repository for untracked files: in a repo with tens of thousands of them it
 // turned every click into seconds, to look at one tracked file.
 let root
+// The repository is built once into `template`; each test works on its own copy.
+let template
+let copies = 0
 const handlers = {}
 let spawned = []
 const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM }
@@ -28,18 +31,18 @@ beforeAll(() => {
   fs.writeFileSync(globalConfig, '[user]\n\tname = Test\n\temail = test@example.invalid\n[core]\n\tautocrlf = false\n')
   process.env.GIT_CONFIG_GLOBAL = globalConfig
   process.env.GIT_CONFIG_NOSYSTEM = '1'
-  repo.path = path.join(root, 'Big')
-  fs.mkdirSync(repo.path)
-  run(repo.path, 'init', '-b', 'main')
-  fs.writeFileSync(path.join(repo.path, 'a.txt'), 'one\n')
-  fs.writeFileSync(path.join(repo.path, 'b.txt'), 'one\n')
-  fs.writeFileSync(path.join(repo.path, 'old name.txt'), 'content that is long enough to be detected as a rename\n'.repeat(5))
-  run(repo.path, 'add', '.')
-  run(repo.path, 'commit', '-m', 'Initial')
-  fs.mkdirSync(path.join(repo.path, 'out'))
-  for (let i = 0; i < 200; i++) fs.writeFileSync(path.join(repo.path, 'out', `g${i}.js`), 'x\n')
+  template = path.join(root, 'Big')
+  fs.mkdirSync(template)
+  run(template, 'init', '-b', 'main')
+  fs.writeFileSync(path.join(template, 'a.txt'), 'one\n')
+  fs.writeFileSync(path.join(template, 'b.txt'), 'one\n')
+  fs.writeFileSync(path.join(template, 'old name.txt'), 'content that is long enough to be detected as a rename\n'.repeat(5))
+  run(template, 'add', '.')
+  run(template, 'commit', '-m', 'Initial')
+  fs.mkdirSync(path.join(template, 'out'))
+  for (let i = 0; i < 200; i++) fs.writeFileSync(path.join(template, 'out', `g${i}.js`), 'x\n')
   register({ handle: (channel, fn) => { handlers[channel] = fn } }, { spawn: spy, logger: { scope: () => ({ error: () => {}, info: () => {} }) } })
-}, 60000)
+})
 
 afterAll(() => {
   if (saved.global === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved.global
@@ -47,7 +50,11 @@ afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
 })
 
-beforeEach(() => { spawned = [] })
+beforeEach(() => {
+  spawned = []
+  repo.path = path.join(root, `Big${++copies}`)
+  fs.cpSync(template, repo.path, { recursive: true })
+})
 
 describe('reading the state of the files being reviewed or written', () => {
   it('does not scan the whole repository for untracked files when the files are tracked', async () => {

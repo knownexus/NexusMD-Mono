@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -7,6 +7,9 @@ import { execFileSync } from 'child_process'
 import { register } from './git.cjs'
 
 let root
+// The repository is built once into `template`; each test reads its own copy.
+let template
+let copies = 0
 const handlers = {}
 const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM }
 const run = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString()
@@ -26,7 +29,7 @@ beforeAll(() => {
   process.env.GIT_CONFIG_GLOBAL = globalConfig
   process.env.GIT_CONFIG_NOSYSTEM = '1'
 
-  repo.path = path.join(root, 'Work')
+  repo.path = template = path.join(root, 'Work')
   fs.mkdirSync(repo.path)
   run(repo.path, 'init', '-b', 'main')
   fs.mkdirSync(disk('img'))
@@ -42,7 +45,7 @@ beforeAll(() => {
   fs.writeFileSync(disk('new.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>')
 
   register({ handle: (channel, fn) => { handlers[channel] = fn } }, { logger: { scope: () => ({ error: () => {}, info: () => {} }) } })
-}, 60000)
+})
 
 afterAll(() => {
   if (saved.global === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved.global
@@ -50,7 +53,12 @@ afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
 })
 
-describe('git workspace image reads against a real repository', { timeout: 60000 }, () => {
+beforeEach(() => {
+  repo.path = path.join(root, `Work${++copies}`)
+  fs.cpSync(template, repo.path, { recursive: true })
+})
+
+describe('git workspace image reads against a real repository', () => {
   it('reads the working tree, index and HEAD versions as data URLs', async () => {
     const working = await image('img/logo.png', 'working')
     expect(working).toMatchObject({ mime: 'image/png', size: bytes('working').length })

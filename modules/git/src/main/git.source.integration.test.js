@@ -79,7 +79,7 @@ afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
 })
 
-describe('source branch detection and storage', { timeout: 60000 }, () => {
+describe('source branch detection and storage', () => {
   it('reads the branch reflog', async () => {
     const { dir, reader } = repo()
     git(dir, 'branch', 'feat', 'main')
@@ -252,7 +252,7 @@ describe('source branch detection and storage', { timeout: 60000 }, () => {
   })
 })
 
-describe.skipIf(!reftableSupported)('a reftable repository', { timeout: 60000 }, () => {
+describe.skipIf(!reftableSupported)('a reftable repository', () => {
   it('detects once and then trusts the stored value without spawning', async () => {
     const { dir, calls, reader } = repo({ reftable: true })
     git(dir, 'switch', '-q', '-c', 'feat'); commit(dir, 'f1')
@@ -283,7 +283,7 @@ describe.skipIf(!reftableSupported)('a reftable repository', { timeout: 60000 },
   })
 })
 
-describe('git:status source', { timeout: 60000 }, () => {
+describe('git:status source', () => {
   const handlers = {}
   const status = (dir, options) => handlers['git:status'](null, { name: 'r', path: dir }, dir, [dir], options)
   beforeAll(() => {
@@ -328,7 +328,7 @@ describe('git:status source', { timeout: 60000 }, () => {
   })
 })
 
-describe('recording the source at creation', { timeout: 60000 }, () => {
+describe('recording the source at creation', () => {
   const handlers = {}
   const call = (channel, ...args) => handlers[channel](null, ...args)
   const act = async (dir, kind, options = {}) => {
@@ -402,7 +402,7 @@ describe('recording the source at creation', { timeout: 60000 }, () => {
   })
 })
 
-describe('rebasing with editPlan', { timeout: 60000 }, () => {
+describe('rebasing with editPlan', () => {
   const handlers = {}
   beforeAll(() => {
     register({ handle: (channel, fn) => { handlers[channel] = fn } }, {

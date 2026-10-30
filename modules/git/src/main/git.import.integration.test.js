@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -7,7 +7,9 @@ import { execFileSync } from 'child_process'
 import { register } from './git.cjs'
 
 let root
+let template
 let outside
+let n = 0
 const revealed = []
 const opened = []
 const handlers = {}
@@ -27,8 +29,11 @@ beforeAll(() => {
   process.env.GIT_CONFIG_GLOBAL = globalConfig
   process.env.GIT_CONFIG_NOSYSTEM = '1'
 
-  repo.path = path.join(root, 'Work')
-  fs.mkdirSync(repo.path)
+  // Work and Outside are built once in a template folder and copied for each test (see beforeEach):
+  // every git command costs a process start, which is slow on Windows.
+  template = path.join(root, '.template')
+  repo.path = path.join(template, 'Work')
+  fs.mkdirSync(repo.path, { recursive: true })
   run(repo.path, 'init', '-b', 'main')
   fs.mkdirSync(disk('docs'))
   fs.writeFileSync(disk('docs/readme.txt'), 'original\n')
@@ -45,7 +50,7 @@ beforeAll(() => {
   run(repo.path, 'add', '.')
   run(repo.path, 'commit', '-m', 'Initial')
 
-  outside = path.join(root, 'Outside')
+  outside = path.join(template, 'Outside')
   fs.mkdirSync(path.join(outside, 'pack', 'inner'), { recursive: true })
   fs.writeFileSync(path.join(outside, 'logo.png'), 'png')
   fs.writeFileSync(path.join(outside, 'readme.txt'), 'dropped\n')
@@ -59,7 +64,17 @@ beforeAll(() => {
     reveal: async (full, isRoot) => { revealed.push({ full, isRoot }) },
     openExternal: async full => { opened.push(full) },
   })
-}, 60000)
+})
+
+// Each test gets its own copy of Work, with Outside beside it so `../Outside` still names it.
+beforeEach(() => {
+  const dir = path.join(root, 't' + n++)
+  fs.cpSync(template, dir, { recursive: true })
+  repo.path = path.join(dir, 'Work')
+  outside = path.join(dir, 'Outside')
+  revealed.length = 0
+  opened.length = 0
+})
 
 afterAll(() => {
   if (saved.global === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved.global
@@ -67,7 +82,7 @@ afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
 })
 
-describe('git workspace drag-and-drop import against a real repository', { timeout: 60000 }, () => {
+describe('git workspace drag-and-drop import against a real repository', () => {
   it('copies a new file into a folder as untracked, leaving the source', async () => {
     const r = await drop('docs', [path.join(outside, 'logo.png')])
     expect(r).toEqual({ added: 1, replaced: 0, skipped: 0, failed: [] })
@@ -108,7 +123,7 @@ describe('git workspace drag-and-drop import against a real repository', { timeo
     await expect(drop('docs/.git/hooks', src)).rejects.toThrow('Not a worktree folder')
     await expect(drop('../Outside', src)).rejects.toThrow('Not a worktree folder')
     await expect(drop('docs/readme.txt', src)).rejects.toThrow('Not a worktree folder')
-    expect(fs.existsSync(path.join(root, 'Outside', 'logo.png'))).toBe(true)
+    expect(fs.existsSync(path.join(outside, 'logo.png'))).toBe(true)
   })
 
   it('rejects relative sources and unregistered repositories', async () => {
@@ -184,6 +199,7 @@ describe('git workspace drag-and-drop import against a real repository', { timeo
   })
 
   it('skips a file dropped onto itself', async () => {
+    fs.writeFileSync(disk('docs/logo.png'), 'png')
     const r = await drop('docs', [disk('docs/logo.png')], { replace: ['docs/logo.png'] })
     expect(r).toMatchObject({ added: 0, replaced: 0, skipped: 1 })
   })

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -19,13 +19,15 @@ const adapter = {
   discover: (roots, repos) => handlers['git:discover'](null, roots, repos),
 }
 
-beforeAll(() => {
-  root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'nexusmd-git-')))
-  const globalConfig = path.join(root, 'gitconfig')
-  fs.writeFileSync(globalConfig, '[user]\n\tname = Test\n\temail = test@example.invalid\n[core]\n\tautocrlf = false\n')
-  process.env.GIT_CONFIG_GLOBAL = globalConfig
-  process.env.GIT_CONFIG_NOSYSTEM = '1'
-  const repos = path.join(root, 'repos')
+// The fixture is one folder: repos/{Normal,Layout,Plain}, plus "external topic", a worktree of Layout
+// outside repos. Built once as a template and copied for each test: every git command is a process
+// start, which is slow on Windows.
+let template
+let base
+let copies = 0
+
+function build(dir) {
+  const repos = path.join(dir, 'repos')
   const normal = path.join(repos, 'Normal')
   fs.mkdirSync(normal, { recursive: true })
   run(normal, 'init', '-b', 'main')
@@ -36,12 +38,46 @@ beforeAll(() => {
   fs.writeFileSync(path.join(normal, 'new.txt'), 'new\n')
   const layout = path.join(repos, 'Layout')
   fs.mkdirSync(layout)
-  run(root, 'clone', '--bare', normal, path.join(layout, '.git-main'))
+  run(dir, 'clone', '--bare', normal, path.join(layout, '.git-main'))
   run(path.join(layout, '.git-main'), 'worktree', 'add', path.join(layout, 'master'), 'main')
-  run(path.join(layout, '.git-main'), 'worktree', 'add', '-b', 'topic', path.join(root, 'external topic'), 'main')
+  run(path.join(layout, '.git-main'), 'worktree', 'add', '-b', 'topic', path.join(dir, 'external topic'), 'main')
   fs.mkdirSync(path.join(repos, 'Plain'))
+}
+
+// A copy's worktree links still name the template; git records them as absolute forward-slash paths.
+function copyTemplate(dir) {
+  fs.cpSync(template, dir, { recursive: true })
+  const from = template.replace(/\\/g, '/')
+  const to = dir.replace(/\\/g, '/')
+  const gitMain = path.join(dir, 'repos', 'Layout', '.git-main')
+  const links = [
+    path.join(dir, 'repos', 'Layout', 'master', '.git'),
+    path.join(dir, 'external topic', '.git'),
+    ...fs.readdirSync(path.join(gitMain, 'worktrees')).map(w => path.join(gitMain, 'worktrees', w, 'gitdir')),
+  ]
+  for (const file of links) {
+    const text = fs.readFileSync(file, 'utf8').split(from).join(to)
+    // Git hides a worktree's .git file, and Windows refuses to open a hidden file for overwrite ('w').
+    fs.writeFileSync(file, text, { flag: 'r+' })
+    fs.truncateSync(file, Buffer.byteLength(text))
+  }
+}
+
+beforeAll(() => {
+  root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'nexusmd-git-')))
+  const globalConfig = path.join(root, 'gitconfig')
+  fs.writeFileSync(globalConfig, '[user]\n\tname = Test\n\temail = test@example.invalid\n[core]\n\tautocrlf = false\n')
+  process.env.GIT_CONFIG_GLOBAL = globalConfig
+  process.env.GIT_CONFIG_NOSYSTEM = '1'
+  template = path.join(root, 'template')
+  build(template)
   register({ handle: (channel, fn) => { handlers[channel] = fn } }, { logger: { scope: () => ({ error: () => {}, info: () => {} }) } })
-}, 60000)
+})
+
+beforeEach(() => {
+  base = path.join(root, `t${++copies}`)
+  copyTemplate(base)
+})
 
 afterAll(() => {
   if (saved.global === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved.global
@@ -50,8 +86,8 @@ afterAll(() => {
 })
 
 const registered = () => [
-  { name: 'Normal', path: path.join(root, 'repos', 'Normal') },
-  { name: 'Layout', path: path.join(root, 'repos', 'Layout') },
+  { name: 'Normal', path: path.join(base, 'repos', 'Normal') },
+  { name: 'Layout', path: path.join(base, 'repos', 'Layout') },
 ]
 
 describe('git workspace against real repositories', () => {
@@ -66,18 +102,18 @@ describe('git workspace against real repositories', () => {
     expect(layout.map(worktreeName)).toContain('master')
     expect(layout.every(t => t.error === '')).toBe(true)
     expect(s.branches.filter(b => b.repo === 'Layout').map(b => b.name)).toEqual(['main', 'topic'])
-  }, 60000)
+  })
 
   it('discovers repo folders, skipping plain folders and marking registered ones', async () => {
-    const found = await adapter.discover([path.join(root, 'repos'), path.join(root, 'missing')], [registered()[0]])
+    const found = await adapter.discover([path.join(base, 'repos'), path.join(base, 'missing')], [registered()[0]])
     expect(found.map(f => f.name)).toEqual(['Layout', 'Normal'])
     expect(found.find(f => f.name === 'Normal').registeredAs).toBe('Normal')
-  }, 60000)
+  })
 
   it('reports a deleted worktree folder as missing rather than clean', async () => {
-    fs.rmSync(path.join(root, 'external topic'), { recursive: true, force: true })
+    fs.rmSync(path.join(base, 'external topic'), { recursive: true, force: true })
     const s = await loadSnapshot(adapter, registered())
     const topic = s.worktrees.find(t => t.branch === 'topic' || t.path.endsWith('external topic'))
     expect(topic.error).toMatch(/^Missing worktree/)
-  }, 60000)
+  })
 })

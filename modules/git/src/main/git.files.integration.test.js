@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -7,6 +7,8 @@ import { execFileSync } from 'child_process'
 import { register } from './git.cjs'
 
 let root
+let template
+let n = 0
 const handlers = {}
 const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM }
 const run = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString()
@@ -24,8 +26,11 @@ beforeAll(() => {
   process.env.GIT_CONFIG_GLOBAL = globalConfig
   process.env.GIT_CONFIG_NOSYSTEM = '1'
 
-  repo.path = path.join(root, 'Work')
-  fs.mkdirSync(repo.path)
+  // Built once and copied for each test (see beforeEach): every git command costs a process start,
+  // which is slow on Windows.
+  template = path.join(root, '.template')
+  repo.path = path.join(template, 'Work')
+  fs.mkdirSync(repo.path, { recursive: true })
   run(repo.path, 'init', '-b', 'main')
   fs.writeFileSync(disk('.gitignore'), '*.log\n')
   fs.writeFileSync(disk('story.txt'), 'one\ntwo\n')
@@ -35,7 +40,14 @@ beforeAll(() => {
   fs.writeFileSync(disk('ignored.log'), 'noise\n')
 
   register({ handle: (channel, fn) => { handlers[channel] = fn } }, { logger: { scope: () => ({ error: () => {}, info: () => {} }) } })
-}, 60000)
+})
+
+// Each test gets its own copy of Work, in a folder of its own so `../x` stays inside that folder.
+beforeEach(() => {
+  const dir = path.join(root, 't' + n++)
+  fs.cpSync(template, dir, { recursive: true })
+  repo.path = path.join(dir, 'Work')
+})
 
 afterAll(() => {
   if (saved.global === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved.global
@@ -44,7 +56,7 @@ afterAll(() => {
 })
 
 // Real git on Windows starts a process per command, so a test can take well over the 5 s default.
-describe('git workspace file editor against a real repository', { timeout: 60000 }, () => {
+describe('git workspace file editor against a real repository', () => {
   it('lists tracked and untracked files but not ignored ones', async () => {
     const { files, truncated } = await call('git:files', repo, repo.path, REG())
     expect(files).toContain('story.txt')
@@ -102,7 +114,7 @@ describe('git workspace file editor against a real repository', { timeout: 60000
       await expect(read(rel), rel).rejects.toThrow(/Not a worktree file|Invalid file path/)
       await expect(save(rel, 'boom', { expectedStamp: 'x', overwrite: true }), rel).rejects.toThrow(/Not a worktree file|Invalid file path/)
     }
-    expect(fs.existsSync(path.join(root, 'x'))).toBe(false)
+    expect(fs.existsSync(path.join(repo.path, '..', 'x'))).toBe(false)
     expect(fs.readFileSync(path.join(repo.path, '.git', 'config'), 'utf8')).toBe(config)
   })
 

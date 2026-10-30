@@ -1,6 +1,6 @@
 // @vitest-environment node
 // History's actions against real git: Reset to here (soft, mixed, hard) and Cherry-pick onto another worktree.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -9,12 +9,16 @@ import { parseNumstat } from '@nexusmd/core'
 import { register } from './git.cjs'
 
 let root
+// The repositories are built once into `template`; each test works on its own copy in `base`.
+let template
+let base
+let copies = 0
 const handlers = {}
 const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM }
 const run = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString()
 const call = (channel, ...args) => handlers[channel](null, ...args)
-const R = name => ({ name, path: path.join(root, name) })
-const REG = () => ['Hist', 'Pick'].map(n => path.join(root, n))
+const R = name => ({ name, path: path.join(base, name) })
+const REG = () => ['Hist', 'Pick'].map(n => path.join(base, n))
 const write = (dir, file, text) => fs.writeFileSync(path.join(dir, file), text)
 const commit = (dir, msg) => { run(dir, 'add', '-A'); run(dir, 'commit', '-qm', msg) }
 const head = dir => run(dir, 'rev-parse', 'HEAD').trim()
@@ -32,7 +36,9 @@ beforeAll(() => {
   fs.writeFileSync(globalConfig, '[user]\n\tname = Ana\n\temail = ana@example.invalid\n[core]\n\tautocrlf = false\n[init]\n\tdefaultBranch = main\n')
   process.env.GIT_CONFIG_GLOBAL = globalConfig
   process.env.GIT_CONFIG_NOSYSTEM = '1'
-  run(root, 'init', '-q', '--bare', 'remote.git')
+  template = base = path.join(root, 'template')
+  fs.mkdirSync(template)
+  run(template, 'init', '-q', '--bare', 'remote.git')
   for (const name of ['Hist', 'Pick']) {
     const w = R(name).path
     fs.mkdirSync(w)
@@ -40,14 +46,14 @@ beforeAll(() => {
     write(w, 'f', '1\n'); commit(w, 'c1')
   }
   const h = R('Hist').path
-  run(h, 'remote', 'add', 'origin', path.join(root, 'remote.git'))
+  run(h, 'remote', 'add', 'origin', path.join(template, 'remote.git'))
   run(h, 'push', '-q', '-u', 'origin', 'main')
 
   register({ handle: (channel, fn) => { handlers[channel] = fn } }, {
     logger: { scope: () => ({ error: () => {}, info: () => {} }) },
     editorCommand: { exe: process.execPath, helper: path.join(__dirname, 'git-editor.cjs') },
   })
-}, 60000)
+})
 
 afterAll(() => {
   if (saved.global === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved.global
@@ -55,7 +61,16 @@ afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
 })
 
-describe('history actions against real repositories', { timeout: 180000 }, () => {
+// Hist records remote.git's absolute path (backslashes doubled); point each copy at its own remote.
+const esc = p => p.replaceAll('\\', '\\\\')
+beforeEach(() => {
+  base = path.join(root, `t${++copies}`)
+  fs.cpSync(template, base, { recursive: true })
+  const config = path.join(base, 'Hist', '.git', 'config')
+  fs.writeFileSync(config, fs.readFileSync(config, 'utf8').split(esc(template)).join(esc(base)))
+})
+
+describe('history actions against real repositories', () => {
   it('reset soft keeps the work staged, mixed keeps it unstaged, and lists what leaves the branch', async () => {
     const h = R('Hist')
     const c1 = head(h.path)
@@ -73,12 +88,13 @@ describe('history actions against real repositories', { timeout: 180000 }, () =>
     expect(head(h.path)).toBe(c1)
     expect(run(h.path, 'diff', '--cached', '--name-only')).toBe('')
     expect(run(h.path, 'status', '--porcelain', '--untracked-files=all').split('\n').filter(Boolean).sort()).toEqual(['?? a', '?? b'])
-    commit(h.path, 'a and b again')
   })
 
   it('reset hard throws away uncommitted changes; pushed commits are counted; a stale preview changes nothing', async () => {
     const h = R('Hist')
-    const c1 = run(h.path, 'rev-list', '--max-parents=0', 'HEAD').trim()
+    const c1 = head(h.path)
+    // One pushed commit above c1.
+    write(h.path, 'a', 'a\n'); write(h.path, 'b', 'b\n'); commit(h.path, 'a and b')
     run(h.path, 'push', '-q')
     write(h.path, 'f', 'dirty\n')
     let p = await call('git:preview', h, h.path, REG(), 'reset', { oid: c1, mode: 'hard' })
@@ -102,12 +118,12 @@ describe('history actions against real repositories', { timeout: 180000 }, () =>
     expect(fs.existsSync(path.join(h.path, 'a'))).toBe(false)
     expect(fs.existsSync(path.join(h.path, 'staged-new'))).toBe(false)
     expect(fs.readFileSync(path.join(h.path, 'untracked'), 'utf8')).toBe('u\n')
-    fs.rmSync(path.join(h.path, 'untracked'))
-    run(h.path, 'reset', '-q', '--hard', 'origin/main')
   })
 
   it('reset refuses HEAD itself, commits off the branch, and unknown modes', async () => {
     const h = R('Hist')
+    // main needs a commit above c1, so the refused reset to c1 can be seen not to move it.
+    write(h.path, 'a', 'a\n'); commit(h.path, 'add a')
     expect((await act(h, h.path, 'reset', { oid: head(h.path) })).previewRefused).toBe('main is already at that commit.')
     run(h.path, 'checkout', '-qb', 'off')
     write(h.path, 'off', 'o\n'); commit(h.path, 'off the branch')
@@ -155,7 +171,6 @@ describe('history actions against real repositories', { timeout: 180000 }, () =>
 
   it('resets to the upstream as last fetched, throwing away local commits and tracked changes but not untracked files', async () => {
     const h = R('Hist')
-    run(h.path, 'reset', '-q', '--hard', 'origin/main')
     expect((await act(h, h.path, 'resetUpstream')).previewRefused).toBe('main already matches origin/main.')
     write(h.path, 'up', 'u\n'); commit(h.path, 'on the remote')
     run(h.path, 'push', '-q', 'origin', 'main')
@@ -176,7 +191,6 @@ describe('history actions against real repositories', { timeout: 180000 }, () =>
     expect(fs.readFileSync(path.join(h.path, 'f'), 'utf8')).toBe('1\n')
     expect(fs.existsSync(path.join(h.path, 'mine'))).toBe(false)
     expect(fs.readFileSync(path.join(h.path, 'loose'), 'utf8')).toBe('l\n')
-    fs.rmSync(path.join(h.path, 'loose'))
   })
 
   it('deletes a branch with its worktree, keeping the remote branch; not the main folder\'s branch, nor one with changes', async () => {

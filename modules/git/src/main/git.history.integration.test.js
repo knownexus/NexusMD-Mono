@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -8,12 +8,16 @@ import { parseLog, parseNameStatus, parseCommitDetails, parseRefList, parseDiff 
 import { register } from './git.cjs'
 
 let root
+// The fixture repositories are built once into a template; each test gets its own copy in dir.
+let template
+let dir
+let copies = 0
 const handlers = {}
 const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM }
 const run = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString()
 const call = (channel, ...args) => handlers[channel](null, ...args)
-const repo = name => ({ name, path: path.join(root, name) })
-const REG = () => ['Work', 'Layout'].map(n => path.join(root, n))
+const repo = name => ({ name, path: path.join(dir, name) })
+const REG = () => ['Work', 'Layout'].map(n => path.join(dir, n))
 const write = (r, file, text) => fs.writeFileSync(path.join(r.path, file), text)
 const commit = (r, msg) => { run(r.path, 'add', '-A'); run(r.path, 'commit', '-qm', msg) }
 const q = over => ({ ref: 'HEAD', filter: 'all', base: null, search: null, limit: 200, ...over })
@@ -26,14 +30,18 @@ beforeAll(() => {
   process.env.GIT_CONFIG_GLOBAL = globalConfig
   process.env.GIT_CONFIG_NOSYSTEM = '1'
 
-  run(root, 'init', '-q', '-b', 'main', '--bare', 'remote.git')
+  // Built once and copied for each test: every git command costs a process start, which is slow on Windows.
+  // The copies keep the template's path as origin's URL, which is only read, never fetched.
+  template = dir = path.join(root, 'template')
+  fs.mkdirSync(template)
+  run(template, 'init', '-q', '-b', 'main', '--bare', 'remote.git')
   const w = repo('Work')
   fs.mkdirSync(w.path)
   run(w.path, 'init', '-q', '-b', 'main')
   write(w, 'f', '1\n'); commit(w, 'c1 a.b')
   write(w, 'f', '2\n'); commit(w, 'c2 a.b')
   write(w, 'g', 'x\n'); commit(w, 'axb')
-  run(w.path, 'remote', 'add', 'origin', path.join(root, 'remote.git'))
+  run(w.path, 'remote', 'add', 'origin', path.join(template, 'remote.git'))
   run(w.path, 'push', '-q', 'origin', 'HEAD:main')
   run(w.path, 'fetch', '-q', 'origin')
   write(w, 'f', '3\n'); commit(w, 'c3 [x] ünïcode')
@@ -57,7 +65,12 @@ beforeAll(() => {
   fs.writeFileSync(path.join(layout.path, '.git'), 'gitdir: ./.bare\n')
 
   register({ handle: (channel, fn) => { handlers[channel] = fn } }, { logger: { scope: () => ({ error: () => {}, info: () => {} }) } })
-}, 60000)
+})
+
+beforeEach(() => {
+  dir = path.join(root, `t${++copies}`)
+  fs.cpSync(template, dir, { recursive: true })
+})
 
 afterAll(() => {
   if (saved.global === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved.global
@@ -66,7 +79,7 @@ afterAll(() => {
 })
 
 // Real git on Windows starts a process per command, so a test can take well over the 5 s default.
-describe('git workspace history against real repositories', { timeout: 60000 }, () => {
+describe('git workspace history against real repositories', () => {
   it('lists the whole history in topo order with parsed refs', async () => {
     const w = repo('Work')
     const r = await call('git:log', w, w.path, REG(), q())
@@ -142,8 +155,14 @@ describe('git workspace history against real repositories', { timeout: 60000 }, 
     expect(await subjects(l, bare, q({ ref: 'refs/heads/side' }))).toEqual(['side', 'axb', 'c2 a.b', 'c1 a.b'])
   })
 
-  it('never runs gpg, even when the repository asks for signatures', () => {
-    expect(fs.existsSync(path.join(root, 'gpg-ran'))).toBe(false)
+  it('never runs gpg, even when the repository asks for signatures', async () => {
+    const w = repo('Work')
+    const marker = path.join(root, 'gpg-ran')
+    fs.rmSync(marker, { force: true })
+    const head = run(w.path, 'rev-parse', 'HEAD').trim()
+    await call('git:log', w, w.path, REG(), q())
+    await call('git:commitDetails', w, w.path, REG(), head)
+    expect(fs.existsSync(marker)).toBe(false)
   })
 
   it('refuses a branch deleted after the refs were read', async () => {

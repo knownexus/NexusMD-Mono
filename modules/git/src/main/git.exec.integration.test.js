@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -10,7 +10,11 @@ let root
 const handlers = {}
 const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM }
 const run = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString()
-const repo = () => ({ name: 'Work', path: path.join(root, 'Work') })
+// Each test gets its own copy of the Work template, so what one test writes (a file, a branch) stays there.
+let template
+let work
+let copies = 0
+const repo = () => ({ name: 'Work', path: work })
 const REG = () => [repo().path]
 const exec = (argv, { r = repo(), wt = r.path, reg = REG() } = {}) => handlers['git:exec'](null, r, wt, reg, argv)
 
@@ -21,19 +25,20 @@ beforeAll(() => {
   process.env.GIT_CONFIG_GLOBAL = globalConfig
   process.env.GIT_CONFIG_NOSYSTEM = '1'
 
-  const work = repo()
-  fs.mkdirSync(path.join(work.path, 'sub'), { recursive: true })
-  run(work.path, 'init', '-b', 'main')
-  fs.writeFileSync(path.join(work.path, 'a.txt'), 'a\n')
-  fs.writeFileSync(path.join(work.path, 'sub', 'b.txt'), 'b\n')
-  run(work.path, 'add', '.')
-  run(work.path, 'commit', '-m', 'Initial')
+  // Built once and copied for each test: every git command is a process start, which is slow on Windows.
+  template = path.join(root, 'Work')
+  fs.mkdirSync(path.join(template, 'sub'), { recursive: true })
+  run(template, 'init', '-b', 'main')
+  fs.writeFileSync(path.join(template, 'a.txt'), 'a\n')
+  fs.writeFileSync(path.join(template, 'sub', 'b.txt'), 'b\n')
+  run(template, 'add', '.')
+  run(template, 'commit', '-m', 'Initial')
 
   fs.mkdirSync(path.join(root, 'Other'))
   run(path.join(root, 'Other'), 'init', '-b', 'main')
 
   register({ handle: (channel, fn) => { handlers[channel] = fn } }, { logger: { scope: () => ({ error: () => {}, info: () => {} }) } })
-}, 60000)
+})
 
 afterAll(() => {
   if (saved.global === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved.global
@@ -59,6 +64,11 @@ describe('checkExecArgv', () => {
 })
 
 describe('git:exec against a real repository', () => {
+  beforeEach(() => {
+    work = path.join(root, `Work-${++copies}`)
+    fs.cpSync(template, work, { recursive: true })
+  })
+
   it('runs status in the worktree and returns its output, in git\'s colours', async () => {
     fs.writeFileSync(path.join(repo().path, 'new.txt'), 'n\n')
     const r = await exec(['status', '--short'])
@@ -67,7 +77,6 @@ describe('git:exec against a real repository', () => {
     expect(r.stdout).toMatch(/\x1b\[3\dm/)
     // eslint-disable-next-line no-control-regex
     expect(r.stdout.replace(/\x1b\[[0-9;]*m/g, '')).toContain('?? new.txt')
-    fs.rmSync(path.join(repo().path, 'new.txt'))
   })
 
   it('returns a non-zero code with stderr for an unknown command', async () => {
@@ -95,7 +104,7 @@ describe('git:exec against a real repository', () => {
     expect(r.code).not.toBe(0)
     expect(r.stderr).toMatch(/empty commit message/i)
     expect(run(repo().path, 'rev-list', '--count', 'HEAD').trim()).toBe('1')
-  }, 30000)
+  })
 
   it('writes with the user\'s arguments, e.g. a new branch', async () => {
     expect(await exec(['branch', 'topic'])).toMatchObject({ code: 0 })

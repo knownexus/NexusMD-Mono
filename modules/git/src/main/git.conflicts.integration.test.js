@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -29,25 +29,45 @@ async function act(repo, wt, kind, options = {}) {
   return call('git:run', repo, wt, REG(), kind, options, p.stamp)
 }
 
-// A repository whose `main` and `feature` both edit the one line of `f`; `feature` is checked out.
-// Built once and copied for each test: every git command costs a process start, which is slow on Windows.
-let template
-function diverged(name) {
-  if (!template) {
-    template = path.join(root, '.template')
-    fs.mkdirSync(template)
-    run(template, 'init', '-q')
-    write(template, 'f', 'base\n'); commit(template, 'base')
-    run(template, 'checkout', '-q', '-b', 'feature')
-    write(template, 'f', 'feature\n'); commit(template, 'feature edit')
-    run(template, 'checkout', '-q', 'main')
-    write(template, 'f', 'main\n'); commit(template, 'main edit')
-    run(template, 'checkout', '-q', 'feature')
+// Each fixture repository is built once as a template and copied for each test: every git command
+// costs a process start, which is slow on Windows.
+const templates = {}
+function copyOf(kind, build, name) {
+  if (!templates[kind]) {
+    templates[kind] = path.join(root, `.template-${kind}`)
+    fs.mkdirSync(templates[kind])
+    build(templates[kind])
   }
   const dir = path.join(root, name)
-  fs.cpSync(template, dir, { recursive: true })
+  fs.cpSync(templates[kind], dir, { recursive: true })
   REPOS.push(dir)
   return { name, path: dir }
+}
+
+// A repository whose `main` and `feature` both edit the one line of `f`; `feature` is checked out.
+const diverged = name => copyOf('diverged', dir => {
+  run(dir, 'init', '-q')
+  write(dir, 'f', 'base\n'); commit(dir, 'base')
+  run(dir, 'checkout', '-q', '-b', 'feature')
+  write(dir, 'f', 'feature\n'); commit(dir, 'feature edit')
+  run(dir, 'checkout', '-q', 'main')
+  write(dir, 'f', 'main\n'); commit(dir, 'main edit')
+  run(dir, 'checkout', '-q', 'feature')
+}, name)
+
+// Like diverged, but `main` deletes `f`; the copy is left stopped in `git rebase main`.
+function deletedOnMain(name) {
+  const r = copyOf('deleted', dir => {
+    run(dir, 'init', '-q')
+    write(dir, 'f', 'base\n'); write(dir, 'g', 'keep\n'); commit(dir, 'base')
+    run(dir, 'checkout', '-q', '-b', 'feature')
+    write(dir, 'f', 'feature\n'); commit(dir, 'feature edit')
+    run(dir, 'checkout', '-q', 'main')
+    run(dir, 'rm', '-q', 'f'); run(dir, 'commit', '-qm', 'main deletes')
+    run(dir, 'checkout', '-q', 'feature')
+  }, name)
+  tryRun(r.path, 'rebase', 'main')
+  return r
 }
 
 beforeAll(() => {
@@ -60,7 +80,10 @@ beforeAll(() => {
     logger: { scope: () => ({ error: () => {}, info: () => {} }) },
     editorCommand: { exe: process.execPath, helper: path.join(__dirname, 'git-editor.cjs') },
   })
-}, 60000)
+})
+
+// The registered repositories are only the ones the running test made.
+beforeEach(() => { REPOS.length = 0 })
 
 afterAll(() => {
   if (saved.global === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved.global
@@ -68,8 +91,7 @@ afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
 })
 
-// Real git on Windows starts a process per command; keep generous timeouts.
-describe('operation details in git:status', { timeout: 60000 }, () => {
+describe('operation details in git:status', () => {
   it('status describes a stopped rebase', async () => {
     const r = diverged('Stopped')
     expect(tryRun(r.path, 'rebase', 'main')).toMatch(/CONFLICT/)
@@ -199,7 +221,7 @@ const resolve = (r, rel, resolution, expected) => call('git:resolveConflict', r,
 const xy = async (r, rel) => (run(r.path, 'status', '--porcelain=v2', '--', rel).split('\n').find(l => l.startsWith('u ')) || '').slice(2, 4)
 const conflicted = (r, rel) => run(r.path, 'ls-files', '-u', '--', rel).trim() !== ''
 
-describe('git:conflict and git:resolveConflict', { timeout: 60000 }, () => {
+describe('git:conflict and git:resolveConflict', () => {
   it('stage 3 is the replayed commit', async () => {
     const r = diverged('Stages')
     tryRun(r.path, 'rebase', 'main')
@@ -255,21 +277,6 @@ describe('git:conflict and git:resolveConflict', { timeout: 60000 }, () => {
     expect(fs.readFileSync(path.join(b.path, 'f'), 'utf8')).toBe('feature\n')
     expect(conflicted(b, 'f')).toBe(false)
   })
-
-  function deletedOnMain(name) {
-    const dir = path.join(root, name)
-    fs.mkdirSync(dir)
-    run(dir, 'init', '-q')
-    write(dir, 'f', 'base\n'); write(dir, 'g', 'keep\n'); commit(dir, 'base')
-    run(dir, 'checkout', '-q', '-b', 'feature')
-    write(dir, 'f', 'feature\n'); commit(dir, 'feature edit')
-    run(dir, 'checkout', '-q', 'main')
-    run(dir, 'rm', '-q', 'f'); run(dir, 'commit', '-qm', 'main deletes')
-    run(dir, 'checkout', '-q', 'feature')
-    REPOS.push(dir)
-    tryRun(dir, 'rebase', 'main')
-    return { name, path: dir }
-  }
 
   it('keeps my version of a file main deleted', async () => {
     const r = deletedOnMain('Deleted')
@@ -354,24 +361,9 @@ describe('git:conflict and git:resolveConflict', { timeout: 60000 }, () => {
   })
 })
 
-describe('git:unresolve and special files', { timeout: 60000 }, () => {
+describe('git:unresolve and special files', () => {
   const stampOf = (r, rel) => call('git:stamp', r, r.path, REG(), { kind: 'files', paths: [rel] })
   const unresolve = async (r, rel) => call('git:unresolve', r, r.path, REG(), rel, await stampOf(r, rel))
-
-  function deletedOnMain(name) {
-    const dir = path.join(root, name)
-    fs.mkdirSync(dir)
-    run(dir, 'init', '-q')
-    write(dir, 'f', 'base\n'); write(dir, 'g', 'keep\n'); commit(dir, 'base')
-    run(dir, 'checkout', '-q', '-b', 'feature')
-    write(dir, 'f', 'feature\n'); commit(dir, 'feature edit')
-    run(dir, 'checkout', '-q', 'main')
-    run(dir, 'rm', '-q', 'f'); run(dir, 'commit', '-qm', 'main deletes')
-    run(dir, 'checkout', '-q', 'feature')
-    REPOS.push(dir)
-    tryRun(dir, 'rebase', 'main')
-    return { name, path: dir }
-  }
 
   it('unresolve restores a conflict that was missing a side', async () => {
     const r = deletedOnMain('UnDU')
@@ -490,7 +482,7 @@ describe('git:unresolve and special files', { timeout: 60000 }, () => {
   })
 })
 
-describe('unresolve guards (resolution record)', { timeout: 90000 }, () => {
+describe('unresolve guards (resolution record)', () => {
   const stampOf = (r, rel) => call('git:stamp', r, r.path, REG(), { kind: 'files', paths: [rel] })
   const unresolve = async (r, rel) => call('git:unresolve', r, r.path, REG(), rel, await stampOf(r, rel))
   const records = r => path.join(r.path, '.git', 'nexusmd-resolutions.json')
@@ -547,7 +539,7 @@ describe('unresolve guards (resolution record)', { timeout: 90000 }, () => {
   })
 })
 
-describe('a whole rebase resolved in the workspace', { timeout: 120000 }, () => {
+describe('a whole rebase resolved in the workspace', () => {
   it('full rebase resolved in the workspace', async () => {
     const dir = path.join(root, 'Story')
     fs.mkdirSync(dir)

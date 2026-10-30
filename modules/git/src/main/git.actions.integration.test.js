@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -7,13 +7,17 @@ import { execFileSync } from 'child_process'
 import { register } from './git.cjs'
 
 let root
+// The repositories are built once into `template`; each test works on its own copy in `base`.
+let template
+let base
+let copies = 0
 const handlers = {}
 const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM }
 const run = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString()
 const tryRun = (cwd, ...args) => { try { return run(cwd, ...args) } catch (e) { return `ERR ${e.stderr}` } }
 const call = (channel, ...args) => handlers[channel](null, ...args)
-const R = name => ({ name, path: path.join(root, name) })
-const REG = () => ['Work', 'Other', 'Rebase', 'Hooked', 'Merging', 'Onto'].map(n => path.join(root, n))
+const R = name => ({ name, path: path.join(base, name) })
+const REG = () => ['Work', 'Other', 'Rebase', 'Hooked', 'Merging', 'Onto'].map(n => path.join(base, n))
 const write = (dir, file, text) => fs.writeFileSync(path.join(dir, file), text)
 const commit = (dir, msg) => { run(dir, 'add', '-A'); run(dir, 'commit', '-qm', msg) }
 const head = dir => run(dir, 'rev-parse', 'HEAD').trim()
@@ -32,23 +36,30 @@ beforeAll(() => {
   fs.writeFileSync(globalConfig, '[user]\n\tname = Ana\n\temail = ana@example.invalid\n[core]\n\tautocrlf = false\n[init]\n\tdefaultBranch = main\n')
   process.env.GIT_CONFIG_GLOBAL = globalConfig
   process.env.GIT_CONFIG_NOSYSTEM = '1'
-  run(root, 'init', '-q', '--bare', 'remote.git')
+  template = base = path.join(root, 'template')
+  fs.mkdirSync(template)
+  run(template, 'init', '-q', '--bare', 'remote.git')
 
   const w = R('Work').path
   fs.mkdirSync(w)
   run(w, 'init', '-q')
   write(w, 'f', '1\n'); commit(w, 'c1')
-  run(w, 'remote', 'add', 'origin', path.join(root, 'remote.git'))
+  run(w, 'remote', 'add', 'origin', path.join(template, 'remote.git'))
   run(w, 'push', '-q', '-u', 'origin', 'main')
 
   // A second clone that moves the remote on.
-  run(root, 'clone', '-q', path.join(root, 'remote.git'), 'Other')
+  run(template, 'clone', '-q', path.join(template, 'remote.git'), 'Other')
+
+  const r = R('Rebase').path
+  fs.mkdirSync(r)
+  run(r, 'init', '-q')
+  for (const n of [1, 2, 3, 4]) { write(r, `f${n}`, `${n}\n`); commit(r, `c${n}`) }
 
   register({ handle: (channel, fn) => { handlers[channel] = fn } }, {
     logger: { scope: () => ({ error: () => {}, info: () => {} }) },
     editorCommand: { exe: process.execPath, helper: path.join(__dirname, 'git-editor.cjs') },
   })
-}, 60000)
+})
 
 afterAll(() => {
   if (saved.global === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved.global
@@ -56,8 +67,19 @@ afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
 })
 
+// Work and Other record remote.git's absolute path (backslashes doubled); point each copy at its own remote.
+const esc = p => p.replaceAll('\\', '\\\\')
+beforeEach(() => {
+  base = path.join(root, `t${++copies}`)
+  fs.cpSync(template, base, { recursive: true })
+  for (const name of ['Work', 'Other']) {
+    const config = path.join(base, name, '.git', 'config')
+    fs.writeFileSync(config, fs.readFileSync(config, 'utf8').split(esc(template)).join(esc(base)))
+  }
+})
+
 // Real git on Windows starts a process per command; these tests make 100+ calls each and can pass a minute under full-suite load.
-describe('stage 4 actions against real repositories', { timeout: 180000 }, () => {
+describe('stage 4 actions against real repositories', () => {
   it('fetches, then fast-forwards; refuses a fast-forward once both sides moved', async () => {
     const work = R('Work')
     const other = R('Other').path
@@ -81,6 +103,7 @@ describe('stage 4 actions against real repositories', { timeout: 180000 }, () =>
     const other = R('Other').path
     run(other, 'pull', '-q', '--rebase')
     write(other, 'x', 'x\n'); commit(other, 'remote moves'); run(other, 'push', '-q')
+    write(work.path, 'w', 'w\n'); commit(work.path, 'local work')
     const r = await act(work, work.path, 'push', { remote: 'origin' })
     expect(r.ok).toBe(false)
     expect(r.detail).toMatch(/^The remote has commits you don't have - pull first\./)
@@ -112,12 +135,14 @@ describe('stage 4 actions against real repositories', { timeout: 180000 }, () =>
 
   it('adds a worktree where devenv would, reusing a local branch, and removes it only when clean', async () => {
     const work = R('Work')
+    run(work.path, 'branch', 'feature/one')
+    run(work.path, 'push', '-q', 'origin', 'feature/one')
     await act(work, work.path, 'fetch')
     const target = path.join(work.path, 'feature-one')
-    // feature/one exists locally (from the push test), so it is reused rather than duplicated.
+    // feature/one exists locally, so it is reused rather than duplicated.
     expect(await act(work, work.path, 'worktreeAdd', { ref: 'refs/remotes/origin/feature/one', path: target })).toMatchObject({ ok: true })
     expect(run(target, 'branch', '--show-current').trim()).toBe('feature/one')
-    expect((await act(work, work.path, 'worktreeAdd', { ref: 'refs/heads/main', path: path.join(root, 'outside') })).previewRefused).toMatch(/inside the repository folder/)
+    expect((await act(work, work.path, 'worktreeAdd', { ref: 'refs/heads/main', path: path.join(base, 'outside') })).previewRefused).toMatch(/inside the repository folder/)
     write(target, 'dirty', 'd\n')
     const refused = await act(work, target, 'worktreeRemove', { path: target })
     expect(refused.ok).toBe(false)
@@ -163,18 +188,24 @@ describe('stage 4 actions against real repositories', { timeout: 180000 }, () =>
 
   it('interactive rebase reorders, squashes and rewords with the messages given', async () => {
     const r = R('Rebase')
-    fs.mkdirSync(r.path)
-    run(r.path, 'init', '-q')
-    for (const n of [1, 2, 3, 4]) { write(r.path, `f${n}`, `${n}\n`); commit(r.path, `c${n}`) }
     const [c4, c3, c2, base] = run(r.path, 'rev-list', 'HEAD').split('\n').filter(Boolean)
     const rows = [
       { oid: c3, action: 'pick', message: null },
       { oid: c2, action: 'squash', message: 'c3 and c2' },
       { oid: c4, action: 'reword', message: 'c4 renamed' },
     ]
-    expect(await act(r, r.path, 'rebaseInteractive', { base, rows })).toMatchObject({ ok: true })
+    // The plan file goes in the temp folder: give this test its own, so plans from other runs don't count.
+    const tmp = R('tmp').path
+    fs.mkdirSync(tmp)
+    const env = { TEMP: process.env.TEMP, TMP: process.env.TMP, TMPDIR: process.env.TMPDIR }
+    Object.assign(process.env, { TEMP: tmp, TMP: tmp, TMPDIR: tmp })
+    try {
+      expect(await act(r, r.path, 'rebaseInteractive', { base, rows })).toMatchObject({ ok: true })
+    } finally {
+      for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]; else process.env[k] = v
+    }
     expect(subjects(r.path)).toEqual(['c4 renamed', 'c3 and c2', 'c1'])
-    expect(fs.readdirSync(os.tmpdir()).filter(f => f.startsWith('nexusmd-rebase-'))).toEqual([])
+    expect(fs.readdirSync(tmp)).toEqual([])
   })
 
   it('interactive rebase stops on a conflict, and Continue still applies later rewords', async () => {
@@ -205,6 +236,7 @@ describe('stage 4 actions against real repositories', { timeout: 180000 }, () =>
 
   it('abort undoes a stopped rebase and removes the plan', async () => {
     const r = R('Rebase')
+    write(r.path, 'shared', 'base\n'); commit(r.path, 'base')
     const base = head(r.path)
     write(r.path, 'shared', 'A\n'); commit(r.path, 'A')
     write(r.path, 'shared', 'B\n'); commit(r.path, 'B')
@@ -220,6 +252,7 @@ describe('stage 4 actions against real repositories', { timeout: 180000 }, () =>
 
   it('skip drops the stopped commit and the rebase finishes', async () => {
     const r = R('Rebase')
+    write(r.path, 'shared', 'base\n'); commit(r.path, 'base')
     const base = head(r.path)
     write(r.path, 'shared', 'A2\n'); commit(r.path, 'A2')
     write(r.path, 'shared', 'B2\n'); commit(r.path, 'B2')
@@ -249,6 +282,8 @@ describe('stage 4 actions against real repositories', { timeout: 180000 }, () =>
 
   it('refuses to rewrite pushed commits or merges', async () => {
     const work = R('Work')
+    for (const n of [1, 2, 3]) { write(work.path, `p${n}`, `${n}\n`); commit(work.path, `pushed ${n}`) }
+    run(work.path, 'push', '-q')
     await act(work, work.path, 'fetch')
     const base = run(work.path, 'rev-parse', 'HEAD~3').trim()
     const range = run(work.path, 'rev-list', '--reverse', `${base}..HEAD`).split('\n').filter(Boolean)
@@ -258,8 +293,8 @@ describe('stage 4 actions against real repositories', { timeout: 180000 }, () =>
 
   it('hooks run, see none of the helper\'s variables, and a rejecting pre-push hook stops the push', async () => {
     const h = R('Hooked')
-    run(root, 'clone', '-q', path.join(root, 'remote.git'), 'Hooked')
-    const log = path.join(root, 'hook.log')
+    run(base, 'clone', '-q', path.join(base, 'remote.git'), 'Hooked')
+    const log = path.join(base, 'hook.log')
     fs.writeFileSync(path.join(h.path, '.git', 'hooks', 'post-checkout'), `#!/bin/sh\necho "ERAN=$ELECTRON_RUN_AS_NODE" >> "${log}"\n`, { mode: 0o755 })
     fs.writeFileSync(path.join(h.path, '.git', 'hooks', 'pre-push'), '#!/bin/sh\necho "pushing is off today" >&2\nexit 1\n', { mode: 0o755 })
     const p = await call('git:preview', h, h.path, REG(), 'branch', { name: 'hooked', checkout: true })
@@ -319,7 +354,6 @@ describe('stage 4 actions against real repositories', { timeout: 180000 }, () =>
     expect(await call('git:run', work, work.path, REG(), 'rebase', { onto: 'refs/remotes/origin/main', fetch: true }, p.stamp)).toMatchObject({ ok: true })
     expect(subjects(work.path).slice(0, 2)).toEqual(['mine on remote base', 'news from other'])
     expect(fs.existsSync(path.join(work.path, '.git', 'nexusmd-rebase-onto'))).toBe(false)
-    run(work.path, 'checkout', '-q', 'main')
   })
 
   it.skipIf(process.platform === 'win32' || process.getuid?.() !== 0)('a repository another user owns is refused with the safe.directory hint', async () => {
