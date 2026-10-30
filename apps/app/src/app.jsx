@@ -10,7 +10,7 @@ import { useTweaks } from './tweaks-panel.jsx';
 import { getProfileKey } from './profile-keys.js';
 import {
   NexusDataProvider, renderContent, SEEN_FINGERPRINTS, DEFAULT_PROJECT_AREAS,
-  ProjectAreasModal, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
+  ProjectAreasModal, DocumentsView, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
   PRCommitsTab, PRFilesTab, CreateWIModal, WIDetail, PersonDetail, DetailDrawer,
 } from '@nexusmd/ui';
 import { workItemSource } from './work-item-source.js';
@@ -26,7 +26,6 @@ import { CalendarView } from './views/view-calendar.jsx';
 import { TriageView } from './views/view-triage.jsx';
 import { TeamView } from './views/view-team.jsx';
 import { PlannerView, plannerExportDocx } from './planner/view-planner.jsx';
-import { MarkdownViewer } from './MarkdownViewer.jsx';
 import { SettingsView } from './views/view-settings.jsx';
 import { ListsView } from './views/view-lists.jsx';
 import { WorkItemDetail } from './work-item-detail.jsx';
@@ -108,7 +107,7 @@ const NAV_SECONDARY = [
   { id: 'triage',   label: 'Triage',   icon: 'inbox'   },
   { id: 'team',     label: 'Team',     icon: 'team'    },
   { id: 'planner',  label: 'Planner',  icon: 'planner' },
-  { id: 'markdown', label: 'Markdown', icon: 'doc'     },
+  { id: 'markdown', label: 'Documents', icon: 'doc'    },
 ];
 
 // ─── Mobile nav tab lists (module-level constants — never recreated) ──────────
@@ -125,7 +124,7 @@ const ALL_SECONDARY_TABS = [
   { id: 'calendar', label: 'Calendar', icon: 'planner'      },
   { id: 'triage',   label: 'Triage',   icon: 'inbox'        },
   { id: 'team',     label: 'Team',     icon: 'team'         },
-  { id: 'markdown', label: 'Markdown', icon: 'doc'          },
+  { id: 'markdown', label: 'Documents', icon: 'doc'         },
   { id: 'settings', label: 'Settings', icon: 'settings'     },
 ];
 
@@ -1019,7 +1018,7 @@ function AppShell() {
       case 'planner': return <PlannerView data={plannerData} setData={setPlannerData}
         themes={themes} setThemes={setThemes} onExportDocx={plannerExportDocx} device={device} onFlash={showFlash}/>;
       case 'lists': return <ListsView />;
-      case 'markdown': return <MarkdownViewer device={device}/>;
+      case 'markdown': return <DocumentsView/>;
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
         onOpenConnection={() => setSettingsOpen(true)}
         onOpenJira={() => setJiraSettingsOpen(true)}

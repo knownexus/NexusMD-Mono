@@ -306,7 +306,7 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenJira, onOpenPr
               <VsRow title="Work-item type labels" desc="Show type names next to type icons in lists">
                 <PlToggle checked={tweaks.typeLabels} onChange={v => setTweak('typeLabels', v)}/>
               </VsRow>
-              <VsRow title="Markdown tab" desc="Show the Markdown viewer in the navigation">
+              <VsRow title="Documents tab" desc="Show Markdown, JSON editor and Regex tester in the navigation">
                 <PlToggle
                   checked={tweaks.showMarkdown !== false}
                   onChange={v => setTweak('showMarkdown', v)}
