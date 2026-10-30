@@ -1296,6 +1296,7 @@ function MarkdownViewer() {
         {/* WORKSPACE */}
         <div
           ref={workspaceRef}
+          className="doc-workspace"
           style={{
             display:    "flex",
             flex:       1,

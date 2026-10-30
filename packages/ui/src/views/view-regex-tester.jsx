@@ -279,7 +279,7 @@ export function RegexTesterView() {
       )}
 
       {/* Bottom grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div className="rx-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         {/* Match info */}
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
           <div style={{ padding: '6px 13px', borderBottom: '1px solid var(--border)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.7px', color: 'var(--text-subtle)' }}>Match information</div>
