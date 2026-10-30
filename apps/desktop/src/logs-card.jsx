@@ -35,13 +35,14 @@ export default function LogsCard() {
     try {
       const list = await logsAdapter.list()
       setLogs(list || [])
-      if (list?.length > 0 && !selectedDate) setSelectedDate(list[0].date)
+      // Picking the first date doesn't change loadLogs, so it doesn't list the logs a second time.
+      if (list?.length > 0) setSelectedDate(d => d ?? list[0].date)
     } catch (err) {
       console.error('[LogsCard] Failed to list logs:', err)
     } finally {
       setLoading(false)
     }
-  }, [selectedDate])
+  }, [])
 
   const loadContent = React.useCallback(async (date) => {
     if (!date) return

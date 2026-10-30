@@ -102,6 +102,13 @@ describe('LogsCard', () => {
     await waitFor(() => expect(screen.getByText(/No logs available/)).toBeTruthy())
   })
 
+  it('lists the logs once on mount, not again when it picks the first date', async () => {
+    render(<LogsCard />)
+    await waitFor(() => expect(mockLogs.read).toHaveBeenCalledWith('2026-07-01'))
+    await waitFor(() => expect(screen.getByText(/Log line 1/)).toBeTruthy())
+    expect(mockLogs.list).toHaveBeenCalledTimes(1)
+  })
+
   it('renders a Refresh button that re-fetches the log list', async () => {
     render(<LogsCard />)
     await waitFor(() => screen.getByRole('button', { name: 'Refresh' }))
