@@ -15,6 +15,13 @@
     "build": "npm run build --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:affected": "node scripts/test-scope.mjs",
+    "test:git": "node scripts/test-scope.mjs git",
+    "test:devenv": "node scripts/test-scope.mjs devenv",
+    "test:database": "node scripts/test-scope.mjs database",
+    "test:api-client": "node scripts/test-scope.mjs api-client",
+    "test:work": "node scripts/test-scope.mjs work",
+    "test:git:full": "node scripts/test-scope.mjs git --full",
     "test:e2e:web": "npm -w apps/web run e2e",
     "test:e2e:desktop": "npm -w apps/desktop run e2e"
   },
