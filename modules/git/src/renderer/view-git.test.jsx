@@ -7,6 +7,9 @@ import { setGitConfig, getGitConfig } from './git-config.js'
 import { clearGitSnapshotCache } from './use-git-snapshot.js'
 import { githubMode } from './github/github-mode.jsx'
 
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const flushPromises = () => act(() => new Promise(r => setImmediate(r)))
+
 afterEach(cleanup)
 beforeEach(() => { localStorage.clear(); clearGitSnapshotCache() })
 
@@ -149,7 +152,7 @@ describe('ViewGit', () => {
     fireEvent.change(await screen.findByLabelText('Group name'), { target: { value: 'Renamed B' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(loadsOfA(a)).toBe(2))
-    await new Promise(r => setTimeout(r, 30))
+    await flushPromises()
     expect(loadsOfA(a)).toBe(2)
   })
 

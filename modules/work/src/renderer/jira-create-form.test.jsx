@@ -1,8 +1,11 @@
 // apps/desktop/src/jira-create-form.test.jsx
 import React from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { JiraCreateForm } from './jira-create-form.jsx'
+
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const flushPromises = () => act(() => new Promise(r => setImmediate(r)))
 
 afterEach(() => cleanup())
 
@@ -71,7 +74,7 @@ describe('JiraCreateForm', () => {
     await waitFor(() => expect(source.getCreateFields).toHaveBeenCalledTimes(1))
     fireEvent.change(await screen.findByLabelText('Team *'), { target: { value: '7' } })
     rerender(<JiraCreateForm source={source} projectKeys={['ABC']} people={[...PEOPLE, { accountId: 'u2', displayName: 'Sam Roe' }]} site="s" onCreated={() => {}} />)
-    await new Promise(r => setTimeout(r, 20))
+    await flushPromises()
     expect(screen.getByLabelText('Team *').value).toBe('7')
     expect(source.getCreateFields).toHaveBeenCalledTimes(1)
     expect(source.getCreateTypes).toHaveBeenCalledTimes(1)
@@ -99,7 +102,7 @@ describe('JiraCreateForm', () => {
     const btn = screen.getByText('Create issue')
     expect(btn.disabled).toBe(true)
     fireEvent.click(btn)
-    await new Promise(r => setTimeout(r, 20))
+    await flushPromises()
     expect(source.createIssue).toHaveBeenCalledTimes(1)
   })
 

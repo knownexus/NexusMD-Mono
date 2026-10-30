@@ -4,6 +4,9 @@ import path from 'path'
 import { pathToFileURL } from 'url'
 import { createReportWindows } from './report-window.cjs'
 
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const flushPromises = () => new Promise(r => setImmediate(r))
+
 function fakes({ loadRejects = false } = {}) {
   const wins = []
   class FakeWindow {
@@ -120,7 +123,7 @@ describe('report windows', () => {
     const unhandled = vi.fn()
     process.on('unhandledRejection', unhandled)
     openReport(FILE)
-    await new Promise(r => setTimeout(r, 20))
+    await flushPromises()
     process.off('unhandledRejection', unhandled)
     expect(unhandled).not.toHaveBeenCalled()
     expect(log).toHaveBeenCalled()

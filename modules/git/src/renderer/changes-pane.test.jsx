@@ -218,7 +218,7 @@ describe('ChangesPane with very many changes', () => {
     renderPane({ tree: { ...tree, changes: many } })
     fireEvent.click(screen.getByRole('button', { name: /Show 700 more/ }))
     expect(document.querySelectorAll(".nx-gw-file")).toHaveLength(1000)
-  }, 30000)
+  })
 
   it('always draws the focused file, even past the cap', () => {
     renderPane({ tree: { ...tree, changes: many }, focusId: many[900].id })

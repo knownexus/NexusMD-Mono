@@ -3,6 +3,9 @@ import { renderHook, waitFor, act, cleanup } from '@testing-library/react'
 import { useGitSnapshot, clearGitSnapshotCache } from './use-git-snapshot.js'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const flushPromises = () => act(() => new Promise(r => setImmediate(r)))
+
 afterEach(() => { cleanup(); clearGitSnapshotCache() })
 
 const repos = [{ name: 'A', path: 'C:/repos/A' }]
@@ -27,15 +30,17 @@ describe('useGitSnapshot', () => {
   it('does nothing while disabled', async () => {
     const adapter = adapterWith(async dir => ({ commonDir: dir }))
     renderHook(() => useGitSnapshot({ adapter, repos, enabled: false, intervalMs: null }))
-    await new Promise(r => setTimeout(r, 20))
+    await flushPromises()
     expect(adapter.resolve).not.toHaveBeenCalled()
   })
 
   it('skips polls while a load is still running', async () => {
     const pending = deferred()
     const adapter = adapterWith(() => pending.promise)
+    // Polls run on a fake clock: eight of them come due while the first load is still out.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
     renderHook(() => useGitSnapshot({ adapter, repos, intervalMs: 10 }))
-    await new Promise(r => setTimeout(r, 80))
+    await act(() => vi.advanceTimersByTimeAsync(80))
     expect(adapter.resolve).toHaveBeenCalledTimes(1)
     pending.resolve({ commonDir: 'C:/repos/A/.git' })
   })
@@ -48,7 +53,7 @@ describe('useGitSnapshot', () => {
     rerender({ repos: [{ name: 'A', path: 'C:/repos/A2' }] })
     await waitFor(() => expect(result.current.snapshot?.worktrees[0].commonDir).toBe('second'))
     await act(async () => { first.resolve({ commonDir: 'first' }) })
-    await new Promise(r => setTimeout(r, 20))
+    await flushPromises()
     expect(result.current.snapshot.worktrees[0].commonDir).toBe('second')
   })
 

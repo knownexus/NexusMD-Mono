@@ -79,7 +79,7 @@ describe('api-client-script ipc', () => {
     const result = await h['api-client:script:run'](null, 'while (true) {}', {})
 
     expect(result.error).toMatch(/timed out/i)
-  }, 2000)
+  })
 
   it('runScript is directly reusable outside of IPC', () => {
     const result = runScript('context.x = 1', {})

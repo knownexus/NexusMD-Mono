@@ -2,6 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor, act, cleanup } from '@testing-library/react'
 import { useWorktreeStatus } from './use-worktree-status.js'
 
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const flushPromises = () => act(() => new Promise(r => setImmediate(r)))
+
 afterEach(cleanup)
 
 const repo = { name: 'A', path: 'C:/repos/A' }
@@ -25,7 +28,7 @@ describe('useWorktreeStatus', () => {
   it('does nothing while disabled', async () => {
     const adapter = adapterWith()
     renderHook(() => useWorktreeStatus({ adapter, ...args({ enabled: false }) }))
-    await new Promise(r => setTimeout(r, 20))
+    await flushPromises()
     expect(adapter.status).not.toHaveBeenCalled()
   })
 
@@ -43,8 +46,10 @@ describe('useWorktreeStatus', () => {
   it('skips polls while a read is still running', async () => {
     const pending = deferred()
     const adapter = adapterWith(() => pending.promise)
+    // Polls run on a fake clock: six of them come due while the first read is still out.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
     renderHook(() => useWorktreeStatus({ adapter, ...args({ intervalMs: 10 }) }))
-    await new Promise(r => setTimeout(r, 60))
+    await act(() => vi.advanceTimersByTimeAsync(60))
     expect(adapter.status).toHaveBeenCalledTimes(1)
     pending.resolve({ porcelain })
   })

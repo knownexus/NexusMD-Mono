@@ -1,7 +1,10 @@
 import { it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, waitFor } from '@testing-library/react'
+import { act, render, cleanup, waitFor } from '@testing-library/react'
 import React from 'react'
 import { NexusDataProvider, WorkItemsView } from '../src/index.js'
+
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const flushPromises = () => act(() => new Promise(r => setImmediate(r)))
 
 function memStorage(seed = {}) {
   const m = new Map(Object.entries(seed))
@@ -24,7 +27,7 @@ it('hides the load-more bar and never calls serverSearch when no fetcher is inje
   const search = vi.fn()
   const { container } = renderView({}) // no serverSearch
   // Give the auto-fill effect a chance to (not) fire.
-  await new Promise(r => setTimeout(r, 0))
+  await flushPromises()
   expect(search).not.toHaveBeenCalled()
   expect(container.textContent).not.toContain('more may exist')
   expect(container.textContent).not.toContain('Load more')

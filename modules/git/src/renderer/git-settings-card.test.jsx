@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import { GitSettingsCard } from './git-settings-card.jsx'
 import { getGitConfig, setGitConfig } from './git-config.js'
 import { getProfileKey } from '@nexusmd/shell-sdk'
+
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const flushPromises = () => act(() => new Promise(r => setImmediate(r)))
 
 afterEach(cleanup)
 beforeEach(() => localStorage.clear())
@@ -177,7 +180,7 @@ describe('GitSettingsCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove Gone' }))
     await waitFor(() => expect(a.checkFolders).toHaveBeenCalledTimes(2))
     answerFirst()
-    await new Promise(r => setTimeout(r, 0))
+    await flushPromises()
     expect(screen.queryByText('not found')).toBeNull()
   })
 

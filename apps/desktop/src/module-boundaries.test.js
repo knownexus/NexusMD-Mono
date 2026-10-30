@@ -72,7 +72,10 @@ describe('module boundaries', () => {
   for (const id of moduleIds()) {
     it(`modules/${id} imports only shared packages and itself`, () => {
       const violations = []
-      for (const file of walk(path.join(MODULES_DIR, id))) {
+      // A module's own Vitest config is never installed (package.json "files" ships src and the
+      // manifest), and it takes the repo-wide test settings from the root's vitest.shared.js.
+      const testConfig = path.join(MODULES_DIR, id, 'vitest.config.js')
+      for (const file of walk(path.join(MODULES_DIR, id)).filter(f => f !== testConfig)) {
         for (const v of findViolations(id, file, fs.readFileSync(file, 'utf8'))) {
           violations.push(`${path.relative(MODULES_DIR, file)}: ${v}`)
         }

@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import { isolation, isolationSetup } from '../../vitest.shared.js'
 
 // React components render under jsdom.
 export default defineConfig({
@@ -7,6 +8,7 @@ export default defineConfig({
   test: {
     name: 'ui',
     environment: 'jsdom',
-    setupFiles: ['./vitest.setup.js'],
+    setupFiles: [isolationSetup, './vitest.setup.js'],
+    ...isolation,
   },
 })

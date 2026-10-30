@@ -1,8 +1,11 @@
 // packages/ui/tests/workitems-board-columns.test.jsx
 import { it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
 import React from 'react'
 import { NexusDataProvider, WorkItemsView } from '../src/index.js'
+
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const flushPromises = () => act(() => new Promise(r => setImmediate(r)))
 
 const toast = vi.hoisted(() => vi.fn())
 vi.mock('../src/toast.jsx', () => ({ toast, ToastHost: () => null }))
@@ -78,7 +81,7 @@ it('does nothing when a card is dropped into the column it is already in', async
   renderBoard({ items: [item('A-1', 'Code Review')], source: { moveToStatuses } })
   fireEvent.dragStart(screen.getByText('T A-1').closest('.board-card'), { dataTransfer: { setData: () => {} } })
   fireEvent.drop(document.querySelectorAll('.lane')[1], { dataTransfer: {} })
-  await new Promise(r => setTimeout(r, 0))
+  await flushPromises()
   expect(moveToStatuses).not.toHaveBeenCalled()
 })
 
@@ -104,7 +107,7 @@ it('does not call moveToStatuses when a card is dropped on the Other lane', asyn
   renderBoard({ items: [item('A-1', 'Blocked'), item('A-2', 'In Progress')], source: { moveToStatuses } })
   fireEvent.dragStart(screen.getByText('T A-2').closest('.board-card'), { dataTransfer: { setData: () => {} } })
   fireEvent.drop(laneOf('T A-1'), { dataTransfer: {} })
-  await new Promise(r => setTimeout(r, 0))
+  await flushPromises()
   expect(moveToStatuses).not.toHaveBeenCalled()
 })
 

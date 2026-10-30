@@ -4,6 +4,9 @@ import { createLru, createQueue, createHistoryCache } from './history-cache.js'
 import { useHistory, GONE_REF } from './use-history.js'
 import { useCommit, MISSING_COMMIT } from './use-commit.js'
 
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const flushPromises = () => act(() => new Promise(r => setImmediate(r)))
+
 afterEach(cleanup)
 
 const repo = { name: 'A', path: 'C:/repos/A' }
@@ -119,7 +122,7 @@ describe('useHistory', () => {
     const { result } = render(adapter, { ref: 'refs/heads/main', head: null })
     await waitFor(() => expect(result.current.error).toBe(GONE_REF))
     await waitFor(() => expect(adapter.refs).toHaveBeenCalledTimes(2))
-    await new Promise(r => setTimeout(r, 50))
+    await flushPromises()
     expect(adapter.log).toHaveBeenCalledTimes(1)
     expect(adapter.refs).toHaveBeenCalledTimes(2)
   })

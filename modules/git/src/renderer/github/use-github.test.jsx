@@ -8,7 +8,8 @@ afterEach(cleanup)
 const host = () => ({
   capabilities: { provide: vi.fn(), has: n => n === 'work.github', call: vi.fn(() => ({ repos: ['acme/web'], http: { fetch: vi.fn() }, cached: { prs: [], issues: [] } })) },
 })
-const tick = () => act(async () => { await new Promise(r => setTimeout(r, 10)) })
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const tick = () => act(() => new Promise(r => setImmediate(r)))
 
 describe('useGithub', () => {
   it('refreshes on Work\'s data update but not on another module\'s', async () => {

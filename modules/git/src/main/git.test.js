@@ -9,6 +9,9 @@ import { parseDiff } from '@nexusmd/core'
 import { register, gitEnv, isRepositoryRoot, findGit, extractHunk, logArgs, HISTORY_CONFIG } from './git.cjs'
 import { assertSafeArgv, assertResetArgv, assertBranchDeleteArgv } from './git-actions.cjs'
 
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const flushPromises = () => new Promise(r => setImmediate(r))
+
 const ROOT = process.platform === 'win32' ? 'C:\\repos' : '/repos'
 const REPO = { name: 'App', path: path.join(ROOT, 'App') }
 const COMMON = path.join(ROOT, 'App', '.git')
@@ -647,7 +650,7 @@ describe('stage 2 writes', () => {
     await vi.waitFor(() => expect(s.calls.filter(c => c.args[0] === 'add')).toHaveLength(1))
     const second = s.invoke('git:stage', REPO, WT, REG, ['a b.txt'], expected)
     await s.invoke('git:diff', REPO, WT, REG, unstaged())
-    await new Promise(r => setTimeout(r, 20))
+    await flushPromises()
     expect(s.calls.filter(c => c.args[0] === 'add')).toHaveLength(1)
     s.calls.find(c => c.args[0] === 'add').child.emit('close', 0)
     expect((await first).ok).toBe(true)

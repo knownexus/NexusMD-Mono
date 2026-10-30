@@ -1,7 +1,10 @@
 // packages/ui/src/views/ViewDbManager.test.jsx
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { ViewDbManager } from './ViewDbManager.jsx'
+
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const flushPromises = () => act(() => new Promise(r => setImmediate(r)))
 
 // ── Fake adapter ──────────────────────────────────────────────────────────────
 
@@ -2217,7 +2220,7 @@ describe('ViewDbManager — following foreign keys', () => {
     expect(back().disabled).toBe(true)
     onScreen()
     fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true })
-    await new Promise(r => setTimeout(r, 20))
+    await flushPromises()
     expect(adapters.dbManager.getRows).toHaveBeenCalledTimes(1)
   })
 
@@ -2265,7 +2268,7 @@ describe('ViewDbManager — following foreign keys', () => {
     adapters.dbManager.getRows.mockClear()
     onScreen()
     fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true })
-    await new Promise(r => setTimeout(r, 20))
+    await flushPromises()
     expect(adapters.dbManager.getRows).not.toHaveBeenCalled()
     expect(heading()).toBeNull()
     openTable('staff')

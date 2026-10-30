@@ -215,9 +215,11 @@ describe('devenv ipc', () => {
   it('finishes a run after exit even if close never fires', async () => {
     const t2 = setup({ exitGraceMs: 10 })
     const { runId } = await t2.handlers['devenv:run'](null, CONFIG, ['start'], { exclusive: true })
+    // The grace period runs on a fake clock, so the test decides when it is over.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     t2.children[0].emit('exit', 3)
     expect(t2.sent).toEqual([])
-    await new Promise(r => setTimeout(r, 40))
+    await vi.advanceTimersByTimeAsync(10)
     expect(t2.sent).toEqual([{ channel: 'devenv:exit', msg: { runId, code: 3, cancelled: false } }])
     await expect(t2.handlers['devenv:run'](null, CONFIG, ['stop'], { exclusive: true })).resolves.toHaveProperty('runId')
   })

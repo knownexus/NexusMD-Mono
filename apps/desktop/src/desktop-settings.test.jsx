@@ -46,17 +46,19 @@ vi.mock('@nexusmd/ui', () => ({
   Icon: () => null,
 }))
 
-vi.stubGlobal('electronAPI', {
-  getLoginItemEnabled: vi.fn(() => Promise.resolve(false)),
-  getCloseToTray: vi.fn(() => Promise.resolve(true)),
-  setLoginItemEnabled: vi.fn(),
-  setCloseToTray: vi.fn(),
-  getZoomFactor: vi.fn(() => Promise.resolve(1.0)),
-  setZoomFactor: vi.fn(),
-  onZoomChanged: vi.fn(() => () => {}),
+// Stubbed per test: stubbed globals are put back after each one (vitest.shared.js).
+beforeEach(() => {
+  vi.stubGlobal('electronAPI', {
+    getLoginItemEnabled: vi.fn(() => Promise.resolve(false)),
+    getCloseToTray: vi.fn(() => Promise.resolve(true)),
+    setLoginItemEnabled: vi.fn(),
+    setCloseToTray: vi.fn(),
+    getZoomFactor: vi.fn(() => Promise.resolve(1.0)),
+    setZoomFactor: vi.fn(),
+    onZoomChanged: vi.fn(() => () => {}),
+  })
+  getToken.mockReset(); getToken.mockResolvedValue('fake.token.value')
 })
-
-beforeEach(() => { getToken.mockReset(); getToken.mockResolvedValue('fake.token.value') })
 afterEach(() => { cleanup(); localStorage.clear() })
 
 const NAV = [

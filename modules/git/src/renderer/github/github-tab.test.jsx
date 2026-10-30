@@ -5,6 +5,9 @@ import { GithubTab } from './github-tab.jsx'
 import { getGitConfig, setGitConfig } from '../git-config.js'
 import { useGitConfig } from '../use-git-config.js'
 
+// Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
+const flushPromises = () => act(() => new Promise(r => setImmediate(r)))
+
 afterEach(cleanup)
 beforeEach(() => localStorage.clear())
 
@@ -98,7 +101,7 @@ describe('GithubTab', () => {
     expect(git.remotes).toHaveBeenCalledTimes(2)
     fireEvent.click(within(repoItem('acme/api')).getByRole('button', { name: /^acme\/api/ }))
     act(() => { setGitConfig({ view: { ...getGitConfig().view, list: 'hidden' } }) })
-    await act(async () => { await new Promise(r => setTimeout(r, 20)) })
+    await flushPromises()
     expect(git.remotes).toHaveBeenCalledTimes(2)
     act(() => { setGitConfig({ repos: [...getGitConfig().repos, { name: 'later', path: 'C:/repos/later' }] }) })
     await waitFor(() => expect(git.remotes).toHaveBeenCalledWith({ name: 'later', path: 'C:/repos/later' }, 'C:/repos/later', ['C:/repos/web', 'C:/repos/other', 'C:/repos/later']))

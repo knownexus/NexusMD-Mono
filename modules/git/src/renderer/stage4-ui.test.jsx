@@ -18,9 +18,13 @@ vi.mock('./use-worktree-file.js', async orig => {
     discardWorktreeDraft: (...a) => { keptDraft.discarded.push(a[2]); keptDraft.on = false; return real.discardWorktreeDraft(...a) },
   }
 })
+// Every store this file touches starts empty, whichever tests ran before.
 beforeEach(() => {
   localStorage.clear()
   clearGitSnapshotCache()
+  clearWorktreeDrafts()
+  keptDraft.on = false
+  keptDraft.discarded = []
   for (const k of ['details', 'files', 'diffs', 'pages']) historyCache[k].clear()
 })
 

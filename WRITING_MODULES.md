@@ -702,6 +702,40 @@ Windows). They are their own Vitest project, `git-integration`. Build a
 fixture repository once and `fs.cpSync` it per test rather than rebuilding
 it, as `git.conflicts.integration.test.js` does.
 
+### Every test stands alone
+
+Files and projects run in parallel, so a test must pass or fail on its own
+merits, whatever runs before it or alongside it. `npx vitest run
+--sequence.shuffle.files --sequence.shuffle.tests` must pass as reliably as a
+plain run.
+
+- **Shared settings.** Each project's `vitest.config.js` spreads `isolation`
+  from the root `vitest.shared.js` and loads `test-isolation.setup.js` first.
+  After every test that unmounts what Testing Library rendered, clears
+  `localStorage`/`sessionStorage`, puts fake timers back to real ones, and
+  restores spies, stubbed globals and env vars. A new project's config does
+  the same.
+- **Set up per test.** Stub globals (`vi.stubGlobal`) and spies in
+  `beforeEach` or the test itself, never at the top of the file: they are
+  undone after each test. Never rely on what an earlier test stored or left
+  mounted.
+- **No sleeps.** Don't `await new Promise(r => setTimeout(r, n))` and hope the
+  work is done:
+  - waiting for queued promise work: `flushPromises()`
+    (`new Promise(r => setImmediate(r))`, wrapped in `act` for React), which
+    runs after every callback already queued;
+  - code under test that uses timers (polling, debounce, grace periods):
+    `vi.useFakeTimers({ toFake: [...] })` and `vi.advanceTimersByTimeAsync`;
+  - real I/O (processes, files): wait for the result itself with `waitFor`
+    or `vi.waitFor`.
+
+  A timer is fine only when it is the point of the test, such as a fake
+  "slow" request in a test that counts requests in flight.
+- **Timeouts catch hangs, never slowness.** The shared test and hook timeout
+  is 5 minutes and Testing Library's `waitFor` gives up after 30 seconds.
+  Don't pass a smaller timeout to a test or a `describe`: under a full
+  parallel run a test can take many times longer than on its own.
+
 ## 7. Verifying on desktop
 
 From `apps/desktop/`:
