@@ -135,4 +135,19 @@ button[style*="height:30"] { min-height: 44px !important; }
   #modal-create-workitem [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
 }
 
+/* ── Settings: one column on phone ─────────────────────────────── */
+@media (max-width: 600px) {
+  .set-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .set-layout > .pl-rail {
+    position: static !important;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+  .set-layout > .pl-rail .pl-rail-item { flex: none; white-space: nowrap; }
+  .set-layout .set-row { flex-wrap: wrap; }
+  .set-layout [style*="grid-template-columns: 1fr 1fr"] { grid-template-columns: 1fr !important; }
+}
+
 .fld input, .fld textarea, .fld select { padding: 8px 10px; }
