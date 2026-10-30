@@ -10,12 +10,16 @@ import { useTweaks } from './tweaks-panel.jsx';
 import { getProfileKey } from './profile-keys.js';
 import {
   NexusDataProvider, renderContent, SEEN_FINGERPRINTS, DEFAULT_PROJECT_AREAS,
-  ProjectAreasModal, DocumentsView, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
+  ProjectAreasModal, DocumentsView, ApiClientProvider, ApiClientView, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
   PRCommitsTab, PRFilesTab, CreateWIModal, WIDetail, PersonDetail, DetailDrawer,
 } from '@nexusmd/ui';
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
 import { useOffScreens } from './work-screens.js';
+import { apiFileAdapter } from './adapters/api-file.js';
+import { scriptRunnerAdapter } from './adapters/api-script-runner.js';
+import { apiHttpAdapter } from './adapters/api-http.js';
+import { secureStorageAdapter } from './adapters/secureStorage.js';
 import { registerCloudDeepLink, hydrateCloudTokens } from './cloud-auth.js';
 import { startAppAutoSync } from './sync.js';
 import { DashboardView } from './views/view-dashboard.jsx';
@@ -109,7 +113,13 @@ const NAV_SECONDARY = [
   { id: 'team',     label: 'Team',     icon: 'team'    },
   { id: 'planner',  label: 'Planner',  icon: 'planner' },
   { id: 'markdown', label: 'Documents', icon: 'doc'    },
+  { id: 'api',      label: 'API Client', icon: 'link'   },
 ];
+
+// The API client's adapters: collections in a virtual file system, scripts in a worker, native HTTP.
+const API_CLIENT_ADAPTERS = {
+  file: apiFileAdapter, scriptRunner: scriptRunnerAdapter, apiHttp: apiHttpAdapter, secureStorage: secureStorageAdapter,
+};
 
 // ─── Mobile nav tab lists (module-level constants — never recreated) ──────────
 const ALL_PRIMARY_TABS = [
@@ -126,6 +136,7 @@ const ALL_SECONDARY_TABS = [
   { id: 'triage',   label: 'Triage',   icon: 'inbox'        },
   { id: 'team',     label: 'Team',     icon: 'team'         },
   { id: 'markdown', label: 'Documents', icon: 'doc'         },
+  { id: 'api',      label: 'API Client', icon: 'link'        },
   { id: 'settings', label: 'Settings', icon: 'settings'     },
 ];
 
@@ -1023,6 +1034,7 @@ function AppShell() {
         themes={themes} setThemes={setThemes} onExportDocx={plannerExportDocx} device={device} onFlash={showFlash}/>;
       case 'lists': return <ListsView />;
       case 'markdown': return <DocumentsView/>;
+      case 'api': return <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>;
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
         onOpenConnection={() => setSettingsOpen(true)}
         onOpenJira={() => setJiraSettingsOpen(true)}
