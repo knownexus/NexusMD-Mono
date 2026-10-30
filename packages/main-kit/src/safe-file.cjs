@@ -99,4 +99,4 @@ async function writeAtomic(full, realDir, body, notOk) {
   }
 }
 
-module.exports = { resolveInside, readText, checkText, writeAtomic, sha256, BOM, TMP_FILE };
+module.exports = { resolveInside, realDeep, readText, checkText, writeAtomic, sha256, BOM, TMP_FILE };

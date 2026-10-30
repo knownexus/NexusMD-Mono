@@ -9,7 +9,7 @@
 //   - saves are atomic (temp file + rename) and go to a symlink's target, keeping the link
 const path = require('path');
 const fsp = require('fs/promises');
-const { readText, checkText, writeAtomic, sha256, BOM } = require('@nexusmd/main-kit/safe-file');
+const { readText, checkText, writeAtomic, realDeep, sha256, BOM } = require('@nexusmd/main-kit/safe-file');
 
 const MAX_READ_BYTES = 5 * 1024 * 1024;
 const MAX_LIST = 5000;
@@ -59,7 +59,9 @@ async function write(p, text, { expectedStamp = null, overwrite = false, bom = f
   }
 
   // The real target: saving through a symlink updates what it points at and keeps the link.
-  const real = current ? await fsp.realpath(full) : full;
+  // A new file is resolved too (its nearest existing folder), so a path written with a Windows short
+  // name (C:\PROGRA~1\...) matches the resolved parent writeAtomic checks it against.
+  const real = current ? await fsp.realpath(full) : (await realDeep(full)) || full;
   await writeAtomic(real, path.dirname(real), body, () => new EditorPathError(`${name} cannot be saved there.`));
   return { ok: true, stamp: sha256(body), path: full };
 }
