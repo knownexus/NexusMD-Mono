@@ -109,7 +109,8 @@ test('Git\'s Files tab opens a file in the Editor when both are installed', asyn
       await expect(win.getByRole('menuitem', { name: 'Open with default app' })).toHaveCount(0)
       await win.getByRole('menuitem', { name: 'Open in Editor' }).click({ force: true })
       await expect(item(win, 'Editor')).toHaveClass(/active/, { timeout: 20_000 })
-      await expect(win.getByRole('textbox', { name: 'Editing README.md' })).toContainText('From the repo')
+      // Markdown opens rendered.
+      await expect(win.getByLabel('Preview of README.md')).toContainText('From the repo')
     })
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -144,11 +145,21 @@ test('launching the app again with a file opens it in the running Editor', async
       // to the running app and exits.
       const { default: electronPath } = await import('electron')
       const { spawn } = await import('node:child_process')
-      const child = spawn(electronPath, [join(import.meta.dirname, '..'), `--user-data-dir=${userData}`, '--disable-gpu', second], {
-        env: { ...process.env, NEXUSMD_APPS: 'editor', NEXUSMD_HIDDEN: '1' }, stdio: 'ignore',
+      // Playwright starts the first app with --no-sandbox on Linux (a CI runner has no SUID sandbox), so
+      // this launch needs it too. Its output is kept so a failure says why it never reached the app.
+      const sandbox = process.platform === 'linux' ? ['--no-sandbox'] : []
+      const child = spawn(electronPath, [join(import.meta.dirname, '..'), `--user-data-dir=${userData}`, '--disable-gpu', ...sandbox, second], {
+        env: { ...process.env, NEXUSMD_APPS: 'editor', NEXUSMD_HIDDEN: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
       })
-      const exited = new Promise(resolve => child.on('exit', resolve))
-      await expect(win.getByRole('tab', { name: /second\.txt/ })).toBeVisible({ timeout: 30_000 })
+      let output = ''
+      child.stdout.on('data', d => { output += d })
+      child.stderr.on('data', d => { output += d })
+      const exited = new Promise(resolve => child.on('exit', code => resolve(code)))
+      try {
+        await expect(win.getByRole('tab', { name: /second\.txt/ })).toBeVisible({ timeout: 30_000 })
+      } catch (e) {
+        throw new Error(`${e.message}\nThe second launch printed: ${output.slice(-1500) || '(nothing)'}`)
+      }
       await expect(win.getByRole('textbox', { name: 'Editing second.txt' })).toContainText('second file')
       await exited
       // The first file is still open in its own tab.

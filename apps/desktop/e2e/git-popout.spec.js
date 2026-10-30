@@ -39,7 +39,7 @@ test('the editor, diff and conflict screens open in windows of their own', async
     const popup = async (item, rowName) => {
       const known = new Set(app.windows())
       await row(rowName).dispatchEvent('contextmenu', { clientX: 60, clientY: 60 })
-      await win.getByRole('menuitem', { name: item }).click({ force: true })
+      await win.getByRole('menuitem', { name: item }).evaluate(b => b.click())
       await expect.poll(() => app.windows().filter(w => !known.has(w)).length, { timeout: 20_000 }).toBe(1)
       const w = app.windows().find(x => !known.has(x))
       await w.waitForLoadState('domcontentloaded')
@@ -60,7 +60,7 @@ test('the editor, diff and conflict screens open in windows of their own', async
     // The same item again focuses the existing window instead of opening another.
     const before = app.windows().length
     await row('edit.txt').dispatchEvent('contextmenu', { clientX: 60, clientY: 60 })
-    await win.getByRole('menuitem', { name: 'Edit in new window' }).click({ force: true })
+    await win.getByRole('menuitem', { name: 'Edit in new window' }).evaluate(b => b.click())
     await win.waitForTimeout(500)
     expect(app.windows().length).toBe(before)
 

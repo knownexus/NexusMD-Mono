@@ -260,6 +260,21 @@ describe('markdown', () => {
     expect(await screen.findByDisplayValue('# beta')).toBeTruthy()
   })
 
+  it('sizes the preview text from the status bar or Ctrl+scroll over the pane, only while previewing', async () => {
+    localStorage.clear()
+    const { store } = setup()
+    await store.openFile('/work/b.md')
+    const shown = await preview('b.md')
+    fireEvent.click(screen.getByRole('button', { name: 'Larger text' }))
+    expect(shown.style.fontSize).toBe('110%')
+    fireEvent.wheel(shown.parentElement, { deltaY: 100, ctrlKey: true })
+    fireEvent.wheel(shown.parentElement, { deltaY: 100, ctrlKey: true })
+    expect(shown.style.fontSize).toBe('90%')
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.queryByRole('group', { name: 'Text size' })).toBeNull()
+    localStorage.clear()
+  })
+
   it('offers no choice for files that are not markdown', async () => {
     const { store } = setup()
     await store.openFile('/work/a.txt')
