@@ -139,7 +139,7 @@ test('apps loaded from separate folders still work together: Git opens a file in
       const readme = win.getByRole('treeitem', { name: /README\.md/ })
       await expect(readme).toBeVisible({ timeout: 30_000 })
       await readme.dispatchEvent('contextmenu', { clientX: 60, clientY: 60 })
-      await win.getByRole('menuitem', { name: 'Open in Editor' }).click({ force: true })
+      await win.getByRole('menuitem', { name: 'Open in Editor' }).evaluate(b => b.click())
       await expect(item(win, 'Editor')).toHaveClass(/active/, { timeout: 20_000 })
       await expect(win.getByRole('textbox', { name: 'Editing README.md' })).toContainText('From a split install')
     }, { launch: { seed } })
