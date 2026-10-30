@@ -58,7 +58,7 @@ test('images render in the diff and in the editor window', async () => {
     // The editor window shows the picture instead of "isn't a text file".
     const known = new Set(app.windows())
     await row('logo.png').dispatchEvent('contextmenu', { clientX: 60, clientY: 60 })
-    await win.getByRole('menuitem', { name: 'Edit in new window' }).click({ force: true })
+    await win.getByRole('menuitem', { name: 'Edit in new window' }).evaluate(b => b.click())
     await expect.poll(() => app.windows().filter(w => !known.has(w)).length, { timeout: 20_000 }).toBe(1)
     const editor = app.windows().find(w => !known.has(w))
     await editor.waitForLoadState('domcontentloaded')
