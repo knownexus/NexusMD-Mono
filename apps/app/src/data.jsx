@@ -2,11 +2,12 @@
 // All ADO fetch/map/derive logic is in @nexusmd/core. Only planner/theme
 // storage helpers and the HelmData/HelmApi window shims live here.
 import {
-  loadAdoData, loadCachedAdoData,
+  loadAdoData, loadCachedAdoData, loadJiraData, loadCachedJiraData, buildSnapshot, refreshProviders,
   isTerminalState, isActiveState, isReviewState, isBlockedState, stateCategory,
   timeAgo, adoTypeToHelm, adoStateToHelm, slugify,
 } from '@nexusmd/core';
 import { getAdoConfig, isAdoConfigured, usesAdoWorkItems, createAdoHttpAdapter } from './ado-client.js';
+import { getJiraConfig, isJiraActive, createJiraHttpAdapter } from './jira-client.js';
 import { localStorageAdapter } from '@nexusmd/web-adapters';
 import { getProfileKey } from './profile-keys.js';
 
@@ -54,21 +55,48 @@ function applyToShim(data) {
 }
 
 // ── Loader ────────────────────────────────────────────────────────────────────
+// The cached ADO and Jira snapshots merged into the shape the views read.
+function mergedSnapshot() {
+  return buildSnapshot({
+    adoConfig: getAdoConfig(), adoConfigured: isAdoConfigured(), adoWorkItems: usesAdoWorkItems(),
+    jiraConfig: getJiraConfig(), jiraActive: isJiraActive(),
+    storage: localStorageAdapter, empty: {},
+  });
+}
+
 async function runLoad(isRefresh = false) {
-  if (!isAdoConfigured() || getActiveProfileType() === 'manual') {
+  const adoOn = isAdoConfigured() && getActiveProfileType() !== 'manual';
+  const jiraOn = isJiraActive() && getActiveProfileType() !== 'manual';
+  if (!adoOn && !jiraOn) {
     HelmData.configured = false;
     HelmData.loaded = true;
     window.dispatchEvent(new CustomEvent('helmdata:loaded'));
     return;
   }
-  const cfg = getAdoConfig();
   const adapters = { http: createAdoHttpAdapter(), storage: localStorageAdapter };
   const priorData = isRefresh ? { ...HelmData } : null;
   try {
-    const data = await loadAdoData(cfg, adapters, { isRefresh, priorData, skip: { workItems: !usesAdoWorkItems() } });
-    applyToShim(data);
+    // Each provider records its own outcome; one failing keeps the other's data and its own cache.
+    await refreshProviders({
+      storage: localStorageAdapter,
+      providers: {
+        ado: {
+          configured: adoOn,
+          run: () => loadAdoData(getAdoConfig(), adapters, { isRefresh, priorData, skip: { workItems: !usesAdoWorkItems() } }),
+        },
+        jira: {
+          configured: jiraOn,
+          run: () => {
+            const prior = loadCachedJiraData(getJiraConfig(), { storage: localStorageAdapter });
+            return loadJiraData(getJiraConfig(), { http: createJiraHttpAdapter(), storage: localStorageAdapter },
+              { isRefresh: !!prior?._jiraMeta, priorData: prior });
+          },
+        },
+      },
+    });
+    applyToShim({ ...mergedSnapshot(), loaded: true, configured: true });
   } catch (err) {
-    console.error('[data.jsx] loadAdoData failed:', err);
+    console.error('[data.jsx] load failed:', err);
     HelmData.loaded = true;
     window.dispatchEvent(new CustomEvent('helmdata:loaded'));
   }
@@ -77,8 +105,8 @@ async function runLoad(isRefresh = false) {
 export const HelmApi = window.HelmApi = { load: () => runLoad(true) };
 
 // Stale-while-revalidate: show cache immediately, then fetch fresh data.
-const cached = loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter });
-if (cached) {
+const cached = (isAdoConfigured() || isJiraActive()) ? mergedSnapshot() : loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter });
+if (cached && (cached.TEAM?.length || cached.WORK_ITEMS?.length || cached.PRS?.length)) {
   Object.assign(HelmData, cached, { loaded: true, configured: true });
   window.dispatchEvent(new CustomEvent('helmdata:loaded'));
 }
