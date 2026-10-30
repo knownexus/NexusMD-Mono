@@ -13,7 +13,8 @@ import {
   ProjectAreasModal, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
   PRCommitsTab, PRFilesTab, CreateWIModal, WIDetail, PersonDetail, DetailDrawer,
 } from '@nexusmd/ui';
-import { adoWorkItemSource } from './work-item-source.js';
+import { workItemSource } from './work-item-source.js';
+import { JiraSettingsModal } from './jira-settings.jsx';
 import { registerCloudDeepLink, hydrateCloudTokens } from './cloud-auth.js';
 import { startAppAutoSync } from './sync.js';
 import { DashboardView } from './views/view-dashboard.jsx';
@@ -535,6 +536,7 @@ function AppShell() {
   }, []);
   const [drawer, setDrawer]       = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [jiraSettingsOpen, setJiraSettingsOpen] = useState(false);
   const [projectAreasOpen, setProjectAreasOpen] = useState(false);
   const [projectAreas, setProjectAreas] = useState(() => {
     try {
@@ -1020,6 +1022,7 @@ function AppShell() {
       case 'markdown': return <MarkdownViewer device={device}/>;
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
         onOpenConnection={() => setSettingsOpen(true)}
+        onOpenJira={() => setJiraSettingsOpen(true)}
         onOpenProjectAreas={() => setProjectAreasOpen(true)}
         onGoPlanner={() => navigate('planner')} device={device}/>;
       default: return null;
@@ -1061,6 +1064,8 @@ function AppShell() {
         patchFields={patchWorkItemFields} confidential={confidential} PRDetail={PRDetail}/>
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)}
+        onSaved={handleSettingsSaved}/>
+      <JiraSettingsModal open={jiraSettingsOpen} onClose={() => setJiraSettingsOpen(false)}
         onSaved={handleSettingsSaved}/>
       <ProjectAreasModal open={projectAreasOpen} onClose={() => setProjectAreasOpen(false)}
         areas={projectAreas} setAreas={setProjectAreas}/>
@@ -1647,7 +1652,7 @@ const nexusDataValue = {
   getProfileKey,
   pushPref:      helmPushPref,
   namespace:     'helm',
-  workItemSource: adoWorkItemSource,
+  workItemSource,
 };
 // Subscribe to nexusmd:// deep links so cloud OAuth one-time codes are redeemed.
 registerCloudDeepLink();

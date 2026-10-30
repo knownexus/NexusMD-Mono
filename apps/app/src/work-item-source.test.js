@@ -32,3 +32,11 @@ describe('adoWorkItemSource', () => {
     await expect(adoWorkItemSource.saveField(1, 'System.Title', 'x')).rejects.toThrow('ADO 500')
   })
 })
+
+describe('workItemSource routing', () => {
+  it('sends ADO ids to ADO and reports Jira as not configured when it is off', async () => {
+    const { workItemSource } = await import('./work-item-source.js')
+    await expect(workItemSource.loadDetail('jira:ABC-1')).rejects.toThrow('Jira is not configured')
+    expect(workItemSource.webUrl({ id: 'jira:ABC-1' })).toBeNull()
+  })
+})

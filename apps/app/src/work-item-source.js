@@ -3,6 +3,8 @@
 // Azure DevOps directly (Capacitor app, no ASP.NET host) and maps ADO → that shape.
 // Passed to <NexusDataProvider value={{ workItemSource: adoWorkItemSource }}>.
 import { adoMoveToCategory } from '@nexusmd/core';
+import { createRoutedWorkItemSource } from '@nexusmd/ui';
+import { createJiraWorkItemSource, isJiraActive } from './jira-client.js';
 import { adoGet, adoPost, adoPatch } from './ado-client.js';
 import { HelmData } from './data.jsx';
 
@@ -65,3 +67,13 @@ export const adoWorkItemSource = {
     });
   },
 };
+
+// Routes jira:KEY ids to Jira and everything else to ADO. The Jira half is only exposed
+// while Jira is connected, so the source follows connection changes without a reload.
+const jiraSource = createJiraWorkItemSource();
+export const workItemSource = createRoutedWorkItemSource({
+  ado: adoWorkItemSource,
+  jira: new Proxy(jiraSource, {
+    get: (t, k) => (isJiraActive() ? t[k] : () => { throw new Error('Jira is not configured'); }),
+  }),
+});

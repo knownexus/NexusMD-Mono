@@ -57,7 +57,7 @@ function vsTimeZones() {
   return result;
 }
 
-function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, onGoPlanner }) {
+function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenJira, onOpenProjectAreas, onGoPlanner }) {
   const [subPage, setSubPage] = useStateVS('profile');
   const [pwOpen, setPwOpen] = useStateVS(false);
   const isManual = useProfile?.()?.activeProfile?.type === 'manual';
@@ -265,6 +265,11 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
                     : 'Organisation, PAT, projects, email digest'}>
                   <span className="pill success"><span className="dot"></span>Connected</span>
                   <button className="btn sm ghost" onClick={onOpenConnection}>Manage</button>
+                </VsRow>
+              )}
+              {!isManual && onOpenJira && (
+                <VsRow title="Jira account" desc="Site, email, API token and projects">
+                  <button className="btn sm ghost" onClick={onOpenJira}>Manage</button>
                 </VsRow>
               )}
               {!isManual && onOpenProjectAreas && (
