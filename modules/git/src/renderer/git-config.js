@@ -44,6 +44,9 @@ function normalise(saved) {
       // read, which used to lose historySplit.
       ...(typeof view.historySplit === 'number' && view.historySplit >= 0.2 && view.historySplit <= 0.8 ? { historySplit: view.historySplit } : {}),
       ...(Number.isFinite(view.listWidth) ? { listWidth: clampListWidth(view.listWidth) } : {}),
+      // The Changes tab's file list and the file explorer's tree, in pixels, the same way.
+      ...(Number.isFinite(view.filesWidth) ? { filesWidth: clampListWidth(view.filesWidth) } : {}),
+      ...(Number.isFinite(view.explorerWidth) ? { explorerWidth: clampListWidth(view.explorerWidth) } : {}),
       // The GitHub tab when it is the one showing (a group can't take its place, whatever it's
       // called), and the GitHub repository chosen in it.
       ...(view.tab === 'github' ? { tab: 'github' } : {}),

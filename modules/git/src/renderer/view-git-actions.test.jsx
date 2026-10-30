@@ -62,7 +62,8 @@ describe('file actions', () => {
     const statusCalls = a.status.mock.calls.length
     fireEvent.click(within(dialog).getByRole('button', { name: 'Stage' }))
     await waitFor(() => expect(a.stage).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, ['f.txt'], 'stamp-1'))
-    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Done'))
+    // The result lands in the output window, not the Changes pane.
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Command output' }).textContent).toContain('Done'))
     await waitFor(() => expect(a.status.mock.calls.length).toBeGreaterThan(statusCalls))
     expect(screen.queryByRole('dialog')).toBeNull()
   })
@@ -96,7 +97,7 @@ describe('file actions', () => {
     await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Delete' }).disabled).toBe(false))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(a.deleteUntracked).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, ['new.txt'], 'stamp-1'))
-    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Deleted 1 untracked file.'))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Command output' }).textContent).toContain('Deleted 1 untracked file.'))
   })
 
   it('shows the stale message when the files changed after review', async () => {
@@ -107,7 +108,7 @@ describe('file actions', () => {
     const dialog = screen.getByRole('dialog')
     await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Stage' }).disabled).toBe(false))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Stage' }))
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(STALE))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Command output' }).textContent).toContain(STALE))
   })
 
   it('keeps the reviewed file list when a poll arrives while the dialog is open', async () => {
@@ -161,7 +162,7 @@ describe('file actions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     await waitFor(() => expect(a.status.mock.calls.length).toBe(before + 1))
     fireEvent.click(run)
-    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Done'))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Command output' }).textContent).toContain('Done'))
     expect(a.status.mock.calls.length).toBe(before + 1)
     await act(async () => { poll.resolve({ porcelain: DIRTY, operation: '', rebasingBranch: null, fetchedAt: null }) })
     await waitFor(() => expect(a.status.mock.calls.length).toBe(before + 2))
@@ -194,7 +195,7 @@ describe('file actions', () => {
     const run = within(screen.getByRole('dialog')).getByRole('button', { name: 'Stage' })
     await waitFor(() => expect(run.disabled).toBe(false))
     fireEvent.click(run)
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('git add timed out after 30s'))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Command output' }).textContent).toContain('git add timed out after 30s'))
   })
 
   it('saves the History divider position once, when the drag ends', async () => {
@@ -233,7 +234,7 @@ describe('file actions', () => {
     await waitFor(() => expect(a.commit).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, 'Ship it\n\nBody', 'stamp-1'))
     expect(a.stamp).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, { kind: 'commit' })
     await waitFor(() => expect(screen.getByLabelText('Commit summary').value).toBe(''))
-    expect(screen.getByRole('status').textContent).toBe('[main abc1234] Ship it')
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Command output' }).textContent).toContain('[main abc1234] Ship it'))
   })
 
   it('amends with nothing staged', async () => {
@@ -251,7 +252,7 @@ describe('file actions', () => {
     await openWorktree()
     fireEvent.change(screen.getByLabelText('Commit summary'), { target: { value: 'Ship it' } })
     fireEvent.keyDown(screen.getByLabelText('Commit summary'), { key: 'Enter', ctrlKey: true })
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('hook failed'))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Command output' }).textContent).toContain('hook failed'))
     expect(a.commit).toHaveBeenCalledTimes(1)
     expect(screen.getByLabelText('Commit summary').value).toBe('Ship it')
   })

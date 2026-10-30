@@ -228,7 +228,7 @@ describe('resolving a conflicted file whole', () => {
     fireEvent.click(await screen.findByRole('button', { name: "Take dev's for c.txt" }))
     await waitFor(() => expect(git.resolveConflict).toHaveBeenCalledWith({ name: 'A', path: 'C:/repos/A' }, 'C:/repos/A', ['C:/repos/A', 'C:/repos/B'], 'c.txt', { take: 'left' }, 'stamp-1'))
     expect(git.stamp).toHaveBeenCalledWith(expect.anything(), 'C:/repos/A', expect.anything(), { kind: 'files', paths: ['c.txt'] })
-    expect((await screen.findByRole('alert')).textContent).toContain('c.txt changed since it was listed.')
+    expect((await screen.findByRole('region', { name: 'Command output' })).textContent).toContain('c.txt changed since it was listed.')
     window.confirm.mockRestore()
   })
 })

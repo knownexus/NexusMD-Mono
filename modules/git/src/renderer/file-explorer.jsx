@@ -2,6 +2,7 @@ import React from 'react'
 import { Icon } from '@nexusmd/ui'
 import { buildFileTree } from './file-tree.js'
 import { ContextMenu, menuPoint } from './context-menu.jsx'
+import { PaneResizer, usePaneWidth, EXPLORER_WIDTH } from './pane-resizer.jsx'
 
 // What each explorer was showing (open folders, the file picked, the filter, the scroll), per
 // `viewKey`, for the rest of the session: the tab is drawn afresh each time it is opened.
@@ -76,6 +77,8 @@ export function FileExplorer({
   const [filter, setFilter] = React.useState(() => viewOf(viewKey).filter)
   const [focused, setFocused] = React.useState(null)
   const [menu, setMenu] = React.useState(null)
+  const box = React.useRef(null)
+  const side = usePaneWidth('explorerWidth', EXPLORER_WIDTH)
   const shownFor = React.useRef(viewKey)
   React.useEffect(() => {
     if (shownFor.current === viewKey) return
@@ -141,7 +144,7 @@ export function FileExplorer({
 
   const count = files ? (match ? plural(match.files.size, 'match', 'matches') : plural(files.length, 'file', 'files')) : ''
   return (
-    <section aria-label={label} className="nx-gw-fx">
+    <section aria-label={label} className="nx-gw-fx" ref={box} style={{ '--gw-fx': `${side.width}px` }}>
       <div className="nx-gw-fx-side">
         <div className="nx-gw-fx-tools">
           <label className="nx-gw-fx-filter">
@@ -179,6 +182,7 @@ export function FileExplorer({
         </div>
         <div className="nx-gw-fx-foot"><span className="nx-gw-fx-count" aria-live="polite">{count}</span>{footer}</div>
       </div>
+      <PaneResizer label="Resize file tree" width={side.width} fallback={EXPLORER_WIDTH} boxRef={box} onDrag={side.onDrag} onDone={side.onDone} className="nx-gw-fx-resizer" />
       <div className="nx-gw-fx-preview">
         {picked ? preview(picked) : (
           <div className="nx-gw-fx-empty">

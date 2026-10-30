@@ -1,7 +1,8 @@
 import React from 'react'
 import { githubRepoFromRemote, worktreeId } from '@nexusmd/core'
 import { Icon } from '@nexusmd/ui'
-import { setGitConfig, getGitConfig } from '../git-config.js'
+import { setGitConfig, getGitConfig, LIST_WIDTH } from '../git-config.js'
+import { PaneResizer, usePaneWidth } from '../pane-resizer.jsx'
 import { useGithub } from './use-github.js'
 import { GithubRepoPane } from './github-repo-pane.jsx'
 import { githubFileActions } from './github-open.js'
@@ -60,6 +61,9 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
   const copies = useLocalCopies(adapter, config.repos, snapshot)
   // Refresh in this tab: added to Work's refreshKey, so every pane and the branch picker reload.
   const [reloads, setReloads] = React.useState(0)
+  // The repository list shares its width with the branch list on Local.
+  const list = usePaneWidth('listWidth', LIST_WIDTH)
+  const bodyRef = React.useRef(null)
   if (!github) return null
   const { repos, cached, client } = github
   const refreshKey = github.refreshKey + reloads
@@ -87,7 +91,7 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
   const fileActionsFor = branch => githubFileActions({ host, client, repo: chosen, branch, local: localTrees })
   const counts = { prs: prsOf(chosen).length, issues: issuesOf(chosen).length }
   return (
-    <div className="nx-gw-body" data-list="github">
+    <div className="nx-gw-body" data-list="github" ref={bodyRef} style={{ '--gw-list': `${list.width}px` }}>
       <nav aria-label="GitHub" className="nx-gw-aside">
         <ul aria-label="GitHub repositories" className="nx-gw-list">
           {repos.map(repo => {
@@ -117,6 +121,7 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
           })}
         </ul>
       </nav>
+      <PaneResizer label="Resize repository list" width={list.width} fallback={LIST_WIDTH} boxRef={bodyRef} onDrag={list.onDrag} onDone={list.onDone} />
       <section aria-label="GitHub repository" className="nx-gw-main">
         <header className="nx-gw-dhead">
           <div className="nx-gw-dhead-title">

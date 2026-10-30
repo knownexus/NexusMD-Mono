@@ -13,6 +13,7 @@ import { GoToFile } from './go-to-file.jsx'
 import { BranchHeader } from './branch-header.jsx'
 import { BranchCommits, useBranchCommits } from './branch-commits.jsx'
 import { SourcePicker } from './source-picker.jsx'
+import { PaneResizer, usePaneWidth, FILES_WIDTH } from './pane-resizer.jsx'
 import { sourceName, checkoutName } from '@nexusmd/core'
 import { discardWorktreeDraft, discardConflictDraft, worktreeDraftPaths, worktreeDraftsByEditor, useWorktreeDraftsVersion } from './use-worktree-file.js'
 
@@ -60,6 +61,8 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   // so the editor jumps again even to the same line, and stays put while typing. Kept (hidden) in Diff.
   const [opened, setOpened] = React.useState(null)
   const [mode, setMode] = React.useState('diff')
+  const files = usePaneWidth('filesWidth', FILES_WIDTH)
+  const changesRef = React.useRef(null)
   // A file just marked resolved keeps its resolve screen (for Undo resolution) after the snapshot reload
   // drops its conflict entry, until another file is focused or the operation ends.
   const [justResolved, setJustResolved] = React.useState(null)
@@ -244,10 +247,11 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
           </div>
         )
         : (
-            <div className="nx-gw-changes">
+            <div className="nx-gw-changes" ref={changesRef} style={{ '--gw-files': `${files.width}px` }}>
               <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={focus} drafts={drafts}
                 onAction={onAction} onWrite={onWrite} onCommit={onCommit} onResolve={onResolve && resolve} busy={busy} status={status}
                 onPopout={adapter.openWindow ? (kind, c) => adapter.openWindow(popoutSpec(kind, { repo, worktree: tree.path, registered, path: c.path, change: c })) : null} />
+              <PaneResizer label="Resize file list" width={files.width} fallback={FILES_WIDTH} boxRef={changesRef} onDrag={files.onDrag} onDone={files.onDone} className="nx-gw-files-resizer" />
               <div className="nx-gw-changes-main" data-mode={canEdit ? 'edit' : 'plain'}>
                 {canEdit && <ModeSwitch editing={editing} onDiff={() => setMode('diff')} onEdit={edit} />}
                 {editor && (

@@ -4,6 +4,10 @@ import { ANSI_COLORS } from './run-drawer.jsx'
 
 const STICK_PX = 24
 const SIDE_KEY = 'nexusmd.outputSide'
+const SIZE_KEY = 'nexusmd.outputSize'
+// Dragged sizes: the height when docked at the bottom, the width at the right.
+const LIMITS = { bottom: [96, 900], right: [280, 1100] }
+const readSizes = () => { try { return JSON.parse(localStorage.getItem(SIZE_KEY)) ?? {} } catch { return {} } }
 const time = at => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 // One output line, keeping git's ANSI colours (mapped onto the theme).
@@ -67,6 +71,46 @@ export function OutputConsole({ lines = [], running = null, activity = [], onCle
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
+  const [sizes, setSizes] = React.useState(readSizes)
+  const size = sizes[side]
+  const keepSize = (key, value) => {
+    setSizes(cur => {
+      const next = { ...cur }
+      if (value == null) delete next[key]; else next[key] = value
+      try { localStorage.setItem(SIZE_KEY, JSON.stringify(next)) } catch { /* not remembered */ }
+      return next
+    })
+  }
+  // The edge facing the page (top at the bottom, left at the right) drags the size; a double-click resets it.
+  const grip = e => {
+    if (e.button > 0) return
+    e.preventDefault()
+    const key = side
+    const box = e.currentTarget.parentElement.getBoundingClientRect()
+    const [lo, hi] = LIMITS[key]
+    let last = null
+    const move = ev => {
+      const raw = key === 'bottom' ? box.bottom - ev.clientY : box.right - ev.clientX
+      last = Math.round(Math.min(hi, Math.max(lo, raw)))
+      setSizes(cur => ({ ...cur, [key]: last }))
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      if (last != null) keepSize(key, last)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+  const nudgeSize = e => {
+    const grow = side === 'bottom' ? 'ArrowUp' : 'ArrowLeft'
+    const shrink = side === 'bottom' ? 'ArrowDown' : 'ArrowRight'
+    if (e.key !== grow && e.key !== shrink) return
+    e.preventDefault()
+    const [lo, hi] = LIMITS[side]
+    const now = size ?? e.currentTarget.parentElement.getBoundingClientRect()[side === 'bottom' ? 'height' : 'width']
+    keepSize(side, Math.round(Math.min(hi, Math.max(lo, now + (e.key === grow ? 20 : -20)))))
+  }
   const toggleSide = () => {
     const next = side === 'right' ? 'bottom' : 'right'
     setSide(next)
@@ -102,7 +146,9 @@ export function OutputConsole({ lines = [], running = null, activity = [], onCle
   return (
     <div className="nx-gw-dock">
       {open && has && (
-        <section className="nx-gw-out" data-big={big || undefined} data-side={side} aria-label="Command output">
+        <section className="nx-gw-out" data-big={big || undefined} data-side={side} aria-label="Command output" style={size ? { [side === 'bottom' ? 'height' : 'width']: size } : undefined}>
+          <div role="separator" aria-orientation={side === 'bottom' ? 'horizontal' : 'vertical'} aria-label="Resize output" tabIndex={0} className="nx-gw-out-grip"
+            title="Drag to resize · double-click to reset" onPointerDown={grip} onKeyDown={nudgeSize} onDoubleClick={() => keepSize(side, null)} />
           <div className="nx-gw-out-head" role="tablist">
             <button role="tab" className="nx-gw-out-tab" aria-selected={tab === 'output'} onClick={() => { stick.current = true; setTab('output') }}>Output</button>
             <button role="tab" className="nx-gw-out-tab" aria-selected={tab === 'activity'} onClick={() => { stick.current = true; setTab('activity') }}>{`Activity ${activity.length}`}</button>
@@ -110,7 +156,7 @@ export function OutputConsole({ lines = [], running = null, activity = [], onCle
             <button className="nx-gw-out-tool" onClick={copy}>Copy</button>
             <button className="nx-gw-out-tool" onClick={tab === 'output' ? onClear : onClearActivity}>Clear</button>
             <button className="nx-gw-out-tool" aria-label={side === 'right' ? 'Dock output at the bottom' : 'Dock output at the right'} title={side === 'right' ? 'Snap to the bottom' : 'Snap to the right'} onClick={toggleSide}>{side === 'right' ? '⇩ Bottom' : '⇨ Right'}</button>
-            <button className="nx-gw-out-tool" aria-pressed={big} onClick={() => { stick.current = true; setBig(b => !b) }}>{big ? 'Shrink ▾' : 'Expand ▴'}</button>
+            <button className="nx-gw-out-tool" aria-pressed={big} onClick={() => { stick.current = true; keepSize(side, null); setBig(b => !b) }}>{big ? 'Shrink ▾' : 'Expand ▴'}</button>
             <button className="nx-gw-out-tool" aria-label="Minimise output" title="Minimise (Esc)" onClick={minimise}>–</button>
           </div>
           <div ref={body} className="nx-gw-out-body" onScroll={onScroll} tabIndex={0}>

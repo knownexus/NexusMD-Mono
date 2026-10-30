@@ -25,7 +25,7 @@
 .nx-gw-body { flex: 1; min-height: 0; display: grid; grid-template-columns: min(var(--gw-list, 330px), 50%) 6px minmax(0, 1fr); }
 .nx-gw-body[data-list="hidden"] { grid-template-columns: minmax(0, 1fr); }
 /* GitHub: the repository list (no divider to drag) beside the chosen repository. */
-.nx-gw-body[data-list="github"] { grid-template-columns: min(330px, 50%) minmax(0, 1fr); }
+.nx-gw-body[data-list="github"] { grid-template-columns: min(var(--gw-list, 330px), 50%) 6px minmax(0, 1fr); }
 .nx-gw-body[data-list="github"] ul.nx-gw-list { list-style: none; margin: 0; padding: 0; gap: 4px; }
 .nx-gw-dhead-actions a.btn { text-decoration: none; }
 /* The Local / GitHub switch, beside the screen title in the top bar (or the page heading). */
@@ -210,7 +210,9 @@
 .nx-gw-detail { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .nx-gw-banner-slot { flex: none; padding: 12px 16px 0; }
 .nx-gw-banner-slot:empty { display: none; }
-.nx-gw-changes { flex: 1; min-height: 380px; display: grid; grid-template-columns: clamp(260px, 32%, 360px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.nx-gw-changes { flex: 1; min-height: 380px; display: grid; grid-template-columns: min(var(--gw-files, 320px), 60%) 6px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.nx-gw-fx-resizer, .nx-gw-files-resizer { cursor: col-resize; margin-left: -1px; touch-action: none; }
+.nx-gw-fx-resizer:hover, .nx-gw-fx-resizer:focus-visible, .nx-gw-files-resizer:hover, .nx-gw-files-resizer:focus-visible { background: linear-gradient(var(--accent), var(--accent)) center / 2px 100% no-repeat; outline: none; }
 .nx-gw-files { display: flex; flex-direction: column; min-height: 0; overflow: auto; border-right: 1px solid var(--border); background: var(--surface); }
 .nx-gw-files-list { flex: 1 0 auto; min-height: 160px; padding: 8px 8px 12px; outline: none; }
 .nx-gw-files-list:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-border); }
@@ -263,7 +265,7 @@
 
 /* The file explorer (file-explorer.jsx), shared by a worktree's Files tab and a GitHub repository's:
    the tree with its filter on the left, the picked file on the right, both scrolling on their own. */
-.nx-gw-fx { flex: 1; min-height: 420px; display: grid; grid-template-columns: minmax(220px, 32%) minmax(0, 1fr); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.nx-gw-fx { flex: 1; min-height: 420px; display: grid; grid-template-columns: min(var(--gw-fx, 300px), 60%) 6px minmax(0, 1fr); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
 .nx-gw-fx-side { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 0 0; border-right: 1px solid var(--border); background: var(--surface-2); }
 .nx-gw-fx-side > .nx-gw-files-hint, .nx-gw-fx-side > .nx-gw-files-legend, .nx-gw-fx-side > .nx-alert { margin: 0 12px; }
 .nx-gw-fx-tools { display: flex; gap: 6px; align-items: center; padding: 0 10px; }
@@ -345,6 +347,7 @@
 .nx-gw-changes-main[data-mode="plain"] { grid-template-rows: minmax(0, 1fr); }
 @container nx-page (max-width: 720px) {
   .nx-gw-changes { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(320px, 1fr); }
+  .nx-gw-files-resizer, .nx-gw-fx-resizer { display: none; }
   .nx-gw-files { border-right: 0; border-bottom: 1px solid var(--border); max-height: 60vh; }
 }
 .nx-gw-diff-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 16px; border-bottom: 1px solid var(--surface-3); }
@@ -407,8 +410,12 @@
 .nx-gw-dock .nx-cmd-hint > .nx-cmd-where { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-gw-act-retry { justify-self: start; margin: 2px 0 6px 92px; }
 .nx-gw-out { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 6px); height: 200px; max-height: max(96px, calc(100cqh - 100px)); z-index: 25; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-pop); overflow: hidden; }
+.nx-gw-out-grip { position: absolute; z-index: 1; touch-action: none; }
+.nx-gw-out[data-side="bottom"] > .nx-gw-out-grip { left: 0; right: 0; top: -3px; height: 7px; cursor: row-resize; }
+.nx-gw-out[data-side="right"] > .nx-gw-out-grip { top: 0; bottom: 0; left: -3px; width: 7px; cursor: col-resize; }
+.nx-gw-out-grip:hover, .nx-gw-out-grip:focus-visible { background: var(--accent); opacity: .6; outline: none; }
 .nx-gw-out[data-big] { height: min(64vh, 620px); }
-.nx-gw-out[data-side="right"] { left: auto; width: min(440px, 45%); height: calc(100cqh - 100px); }
+.nx-gw-out[data-side="right"] { left: auto; max-width: calc(100% - 24px); width: min(440px, 45%); height: calc(100cqh - 100px); }
 .nx-gw-out[data-side="right"][data-big] { width: min(760px, 80%); height: calc(100cqh - 100px); }
 .nx-gw-out-head { flex: none; display: flex; align-items: center; gap: 2px; padding: 0 6px 0 8px; border-bottom: 1px solid var(--border); background: var(--bg); }
 .nx-gw-out-tab { height: 32px; padding: 0 10px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: transparent; font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; cursor: pointer; }
