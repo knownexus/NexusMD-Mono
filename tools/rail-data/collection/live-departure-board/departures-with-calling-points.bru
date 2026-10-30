@@ -1,0 +1,23 @@
+meta {
+  name: Departures with calling points
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{ldbDeparturesBaseUrl}}/GetDepBoardWithDetails/{{crs}}?numRows=5
+  body: none
+  auth: none
+}
+
+params:query {
+  numRows: 5
+}
+
+headers {
+  x-apikey: {{ldbDeparturesKey}}
+}
+
+docs {
+  Departures plus each train's later calling points with their expected times.
+}

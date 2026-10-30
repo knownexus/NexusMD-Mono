@@ -1,0 +1,21 @@
+{
+  "method": "GET",
+  "url": "{{ldbDeparturesBaseUrl}}/GetDepartureBoard/{{crs}}",
+  "params": {
+    "numRows": "10"
+  },
+  "headers": {
+    "x-apikey": "{{ldbDeparturesKey}}"
+  },
+  "bodyType": "none",
+  "bodyLanguage": "json",
+  "body": "",
+  "auth": {
+    "type": "none"
+  },
+  "brunoPath": "live-departure-board/departures.bru",
+  "scriptFlavor": "bruno",
+  "preRequestScript": "",
+  "postResponseScript": "// Remember the first train on a station board so \"Service details\" can use it.\nconst board = res.getBody();\nif (req.getUrl().includes('/LDBWS/') && res.getStatus() === 200 && board && board.trainServices) {\n  const first = board.trainServices[0];\n  const id = first && (first.serviceID || first.serviceId);\n  if (id) bru.setVar('serviceId', id);\n}",
+  "tests": "test(\"responds 200\", function () {\n  expect(res.getStatus()).to.equal(200);\n});"
+}

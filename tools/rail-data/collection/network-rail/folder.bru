@@ -1,0 +1,19 @@
+meta {
+  name: Network Rail open data (username/password)
+  seq: 2
+}
+
+auth {
+  mode: basic
+}
+
+auth:basic {
+  username: {{nrUsername}}
+  password: {{nrPassword}}
+}
+
+docs {
+  HTTP downloads from publicdatafeeds.networkrail.co.uk using your Network Rail open data login.
+  They redirect to a signed download URL and return gzipped files; the schedule files are large
+  (hundreds of MB).
+}

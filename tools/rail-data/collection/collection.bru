@@ -1,0 +1,20 @@
+script:post-response {
+  // Remember the first train on a station board so "Service details" can use it.
+  const board = res.getBody();
+  if (req.getUrl().includes('/LDBWS/') && res.getStatus() === 200 && board && board.trainServices) {
+    const first = board.trainServices[0];
+    const id = first && (first.serviceID || first.serviceId);
+    if (id) bru.setVar('serviceId', id);
+  }
+}
+
+tests {
+  test("responds 200", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+}
+
+docs {
+  Live train times, platforms and delays (National Rail Live Departure Board via Rail Data
+  Marketplace) and Network Rail open-data reference downloads. See tools/rail-data/README.md.
+}
