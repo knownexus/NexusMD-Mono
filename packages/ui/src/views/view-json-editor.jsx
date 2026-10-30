@@ -351,7 +351,7 @@ export function JsonEditorView() {
       </div>
 
       {/* Workspace */}
-      <div ref={workspaceRef} style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div ref={workspaceRef} className="doc-workspace" style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div style={{ ...leftStyle, display: panelHidden.left ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ height: 32, display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
             <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Raw JSON</span>
