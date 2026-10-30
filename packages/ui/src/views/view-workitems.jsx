@@ -1784,7 +1784,7 @@ function personColor(id) {
   return `oklch(0.75 0.1 ${hue})`;
 }
 
-function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], isNew = false, showState = false }) {
+function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], isNew = false, showState = false, singleLineTitle = false }) {
   const { data: NexusMDData } = useNexusData();
   const [cfg] = usePersisted('nexusmd.fields.wiCard', []);
   const resolved = resolveFields(WI_CARD_FIELDS, cfg).filter(f => f.visible);
@@ -1859,7 +1859,9 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
           ))}
         </span>
       </div>
-      <div className="board-card-title">{w.title}</div>
+      <div className="board-card-title"
+        title={singleLineTitle ? w.title : undefined}
+        style={singleLineTitle ? { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : undefined}>{w.title}</div>
       <div className="board-card-meta">
         {detailFields.map(f => metaFrag[f.key]())}
         <span className="spacer"/>
@@ -1875,11 +1877,29 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
   );
 }
 
-function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes = BOARD_LANES, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], newItemIds = new Set(), laneMode = 'state', reachable = null, boardColumns = null, collapsedLanes = {}, onToggleLane }) {
-  // Lanes collapse one swimlane at a time, keyed "<group>::<lane>".
-  const isLaneCollapsed = (state) => !!collapsedLanes[`${groupKey}::${state}`];
+// A lane header button, styled with the header's existing "add" button. Inline styles here and in
+// BoardLanes, not base.css, so a Work-only release carries them (the stylesheet ships with the shell).
+function LaneToggle({ label, icon, onToggle }) {
   return (
-    <div className="board" style={{ gridTemplateColumns: lanes.map(s => (isLaneCollapsed(s) ? '40px' : '300px')).join(' ') }}>
+    <span role="button" tabIndex={0} className="add" aria-label={label} title={label}
+      style={{ marginLeft: 0 }}
+      onClick={onToggle}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}>
+      <Icon name={icon} size={12}/>
+    </span>
+  );
+}
+
+// Widest a widened lane grows to fit its titles on one line; longer titles are cut with an ellipsis.
+const WIDE_LANE_MAX = 'min(900px, 85vw)';
+
+function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes = BOARD_LANES, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], newItemIds = new Set(), laneMode = 'state', reachable = null, boardColumns = null, collapsedLanes = {}, onToggleLane, widenedLanes = {}, onToggleWide }) {
+  // Lanes collapse or widen one swimlane at a time, keyed "<group>::<lane>".
+  const isLaneCollapsed = (state) => !!collapsedLanes[`${groupKey}::${state}`];
+  const isLaneWide = (state) => !isLaneCollapsed(state) && !!widenedLanes[`${groupKey}::${state}`];
+  const track = (s) => (isLaneCollapsed(s) ? '40px' : isLaneWide(s) ? 'max-content' : '300px');
+  return (
+    <div className="board" style={{ gridTemplateColumns: lanes.map(track).join(' ') }}>
       {lanes.map(state => {
         const laneItems = laneMode === 'category'
           ? items.filter(w => itemCategory(w) === state)
@@ -1890,16 +1910,16 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
         const dimmed = !!reachable && !reachable.has(state);
         const isOver = overKey === `${groupKey}::${state}`;
         const laneCollapsed = isLaneCollapsed(state);
-        const toggleLabel = `${laneCollapsed ? 'Expand' : 'Collapse'} ${laneLabel}`;
-        // Styled with the header's existing "add" button; inline styles here, not base.css, so a
-        // Work-only release carries them (the stylesheet ships with the shell).
+        const laneWide = isLaneWide(state);
         const toggleBtn = onToggleLane && (
-          <span role="button" tabIndex={0} className="add" aria-label={toggleLabel} title={toggleLabel}
-            style={{ marginLeft: 0 }}
-            onClick={() => onToggleLane(`${groupKey}::${state}`)}
-            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleLane(`${groupKey}::${state}`); } }}>
-            <Icon name={laneCollapsed ? 'chevron-right' : 'chevron-left'} size={12}/>
-          </span>
+          <LaneToggle label={`${laneCollapsed ? 'Expand' : 'Collapse'} ${laneLabel}`}
+            icon={laneCollapsed ? 'chevron-right' : 'chevron-left'}
+            onToggle={() => onToggleLane(`${groupKey}::${state}`)}/>
+        );
+        const wideBtn = onToggleWide && (
+          <LaneToggle label={`${laneWide ? 'Narrow' : 'Widen'} ${laneLabel}`}
+            icon={laneWide ? 'collapse' : 'expand'}
+            onToggle={() => onToggleWide(`${groupKey}::${state}`)}/>
         );
         return (
           <div
@@ -1909,6 +1929,7 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
             onDrop={e => { e.preventDefault(); onLaneDrop(state, groupKey); }}
             style={{
               ...(laneCollapsed ? { padding: '8px 4px', alignItems: 'center' } : {}),
+              ...(laneWide ? { minWidth: 300, maxWidth: WIDE_LANE_MAX } : {}),
               ...(isOver ? { background: 'var(--accent-soft)', borderColor: 'var(--accent-border)' } : {}),
               ...(dimmed ? { opacity: 0.4 } : {}),
             }}
@@ -1927,6 +1948,7 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
               <h4>{laneLabel}</h4>
               <span className="count">{laneItems.length}</span>
               <span className="add" title="Add item"><Icon name="plus" size={12}/></span>
+              {wideBtn}
               {toggleBtn}
             </div>
             )}
@@ -1946,6 +1968,7 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
                   projects={projects}
                   isNew={newItemIds.has(w.id)}
                   showState={laneMode === 'category' || laneMode === 'jira-columns'}
+                  singleLineTitle={laneWide}
                 />
               ))}
               {laneItems.length === 0 && (
@@ -1973,6 +1996,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', grou
   const [overKey,   setOverKey]   = useStateW(null);
   const [collapsed, setCollapsed] = useCollapsedGroups('nexusmd.wi.collapsed.board', grouping);
   const [collapsedLanes, setCollapsedLanes] = useCollapsedGroups('nexusmd.wi.collapsed.lanes', grouping);
+  const [widenedLanes, setWidenedLanes] = useCollapsedGroups('nexusmd.wi.widened.lanes', grouping);
 
   const PROJECTS = NexusMDData.PROJECTS || [];
 
@@ -2126,6 +2150,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', grou
 
   const toggleCollapsed = (key) => setCollapsed(c => ({ ...c, [key]: !c[key] }));
   const toggleLane = (key) => setCollapsedLanes(c => ({ ...c, [key]: !c[key] }));
+  const toggleWide = (key) => setWidenedLanes(c => ({ ...c, [key]: !c[key] }));
 
   const onAssignCard = async (id, assigneeId) => {
     const member = team.find(t => t.id === assigneeId);
@@ -2138,7 +2163,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', grou
     await patchWI(id, [['/fields/System.Tags', newTags.join('; ')]]);
   };
 
-  const laneProps = { dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes, team, onAssign: onAssignCard, onTagsChange: onTagsCard, grouping, projects: PROJECTS, newItemIds, laneMode, reachable, boardColumns, collapsedLanes, onToggleLane: toggleLane };
+  const laneProps = { dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes, team, onAssign: onAssignCard, onTagsChange: onTagsCard, grouping, projects: PROJECTS, newItemIds, laneMode, reachable, boardColumns, collapsedLanes, onToggleLane: toggleLane, widenedLanes, onToggleWide: toggleWide };
 
   const boardContent = grouping === 'none' ? (
     <BoardLanes items={items} groupKey="__all__" {...laneProps} />

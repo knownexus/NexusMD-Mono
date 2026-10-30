@@ -8,6 +8,8 @@ function memStorage(seed = {}) {
   return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }
 }
 
+afterEach(cleanup)
+
 const TEAM = [{ id: 'u1', name: 'Alex', initials: 'AL' }, { id: 'u2', name: 'Sam', initials: 'SA' }]
 const base = { type: 'task', project: 'proj', priority: 2, points: 0, tags: [], comments: 0, prs: 0, updated: '1h' }
 const ITEMS = [
@@ -44,6 +46,32 @@ it('collapses one column inside one swimlane, leaving the rest alone', () => {
   expect(expand.closest('.lane').textContent).toContain('1')
   fireEvent.click(expand)
   expect(getByText('Alex todo')).toBeTruthy()
+})
+
+it('widens one column so its card titles stay on one line, and narrows it again', () => {
+  const { container, getByText } = renderBoard(groupedStorage())
+  const alexBoard = Array.from(container.querySelectorAll('.board')).find(b => b.textContent.includes('Alex todo'))
+
+  fireEvent.click(within(alexBoard).getByRole('button', { name: 'Widen To Do' }))
+
+  expect(getByText('Alex todo').style.whiteSpace).toBe('nowrap')
+  expect(getByText('Alex doing').style.whiteSpace).toBe('')
+  expect(getByText('Sam todo').style.whiteSpace).toBe('')
+  expect(alexBoard.style.gridTemplateColumns.split(' ')[1]).toBe('max-content')
+
+  fireEvent.click(within(alexBoard).getByRole('button', { name: 'Narrow To Do' }))
+  expect(getByText('Alex todo').style.whiteSpace).toBe('')
+})
+
+it('remembers widened columns across renders', () => {
+  const storage = groupedStorage()
+  const first = renderBoard(storage)
+  const alexBoard = Array.from(first.container.querySelectorAll('.board')).find(b => b.textContent.includes('Alex todo'))
+  fireEvent.click(within(alexBoard).getByRole('button', { name: 'Widen To Do' }))
+  cleanup()
+
+  const { getByText } = renderBoard(storage)
+  expect(getByText('Alex todo').style.whiteSpace).toBe('nowrap')
 })
 
 it('remembers collapsed columns across renders', () => {
