@@ -1,4 +1,4 @@
-package uk.co.drivefurther.nexus;
+package com.knownexus.nexus;
 
 import com.getcapacitor.BridgeActivity;
 
