@@ -241,7 +241,9 @@ async function publishGitUpdate({ delayMs = 0 } = {}) {
   const release = join(site, 'built-git')
   download(site, 'git', UPDATE, relabel('Git Updated'))
   cpSync(join(site, 'git', UPDATE), release, { recursive: true })
-  const added = addApp(setShell(emptyIndex(), '1.2.5', 1), 'git', { dir: release, version: UPDATE })
+  // The NexusMD this stands in for gives the shell API of this build (setShell's default), so a Git
+  // that needs the current API is publishable. A fixed number here goes stale each time it is raised.
+  const added = addApp(setShell(emptyIndex(), '1.2.5'), 'git', { dir: release, version: UPDATE })
   const files = { [`/${added.entry.file}`]: added.data, '/apps-index.json': Buffer.from(JSON.stringify(added.index)) }
   files['/apps-index.json.sig'] = Buffer.from(signIndex(files['/apps-index.json'], privateKey.export({ type: 'pkcs8', format: 'pem' })))
   const server = createServer((req, res) => {
