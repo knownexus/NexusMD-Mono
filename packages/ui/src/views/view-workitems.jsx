@@ -1875,9 +1875,11 @@ function BoardCard({ w, dragId, onDragStart, onDragEnd, onOpen, team = [], onAss
   );
 }
 
-function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes = BOARD_LANES, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], newItemIds = new Set(), laneMode = 'state', reachable = null, boardColumns = null }) {
+function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes = BOARD_LANES, team = [], onAssign, onTagsChange, grouping = 'none', projects = [], newItemIds = new Set(), laneMode = 'state', reachable = null, boardColumns = null, collapsedLanes = {}, onToggleLane }) {
+  // Lanes collapse one swimlane at a time, keyed "<group>::<lane>".
+  const isLaneCollapsed = (state) => !!collapsedLanes[`${groupKey}::${state}`];
   return (
-    <div className="board">
+    <div className="board" style={{ gridTemplateColumns: lanes.map(s => (isLaneCollapsed(s) ? '40px' : '300px')).join(' ') }}>
       {lanes.map(state => {
         const laneItems = laneMode === 'category'
           ? items.filter(w => itemCategory(w) === state)
@@ -1887,24 +1889,48 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
         const laneLabel = laneMode === 'category' ? CATEGORY_LABELS[state] : state === '__other__' ? 'Other' : state;
         const dimmed = !!reachable && !reachable.has(state);
         const isOver = overKey === `${groupKey}::${state}`;
+        const laneCollapsed = isLaneCollapsed(state);
+        const toggleLabel = `${laneCollapsed ? 'Expand' : 'Collapse'} ${laneLabel}`;
+        // Styled with the header's existing "add" button; inline styles here, not base.css, so a
+        // Work-only release carries them (the stylesheet ships with the shell).
+        const toggleBtn = onToggleLane && (
+          <span role="button" tabIndex={0} className="add" aria-label={toggleLabel} title={toggleLabel}
+            style={{ marginLeft: 0 }}
+            onClick={() => onToggleLane(`${groupKey}::${state}`)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleLane(`${groupKey}::${state}`); } }}>
+            <Icon name={laneCollapsed ? 'chevron-right' : 'chevron-left'} size={12}/>
+          </span>
+        );
         return (
           <div
             key={state}
-            className="lane"
+            className={`lane${laneCollapsed ? ' collapsed' : ''}`}
             onDragOver={e => { e.preventDefault(); onLaneOver(`${groupKey}::${state}`); }}
             onDrop={e => { e.preventDefault(); onLaneDrop(state, groupKey); }}
             style={{
+              ...(laneCollapsed ? { padding: '8px 4px', alignItems: 'center' } : {}),
               ...(isOver ? { background: 'var(--accent-soft)', borderColor: 'var(--accent-border)' } : {}),
               ...(dimmed ? { opacity: 0.4 } : {}),
             }}
           >
+            {laneCollapsed ? (
+              // A narrow strip: toggle, then the count and the name running down it.
+              <div className="lane-head" style={{ flexDirection: 'column', padding: 0, gap: 8 }}>
+                {toggleBtn}
+                <span className="lane-dot" style={{ background: laneColor(state) }}/>
+                <span className="count">{laneItems.length}</span>
+                <h4 style={{ writingMode: 'vertical-rl', whiteSpace: 'nowrap' }}>{laneLabel}</h4>
+              </div>
+            ) : (
             <div className="lane-head">
               <span className="lane-dot" style={{ background: laneColor(state) }}/>
               <h4>{laneLabel}</h4>
               <span className="count">{laneItems.length}</span>
               <span className="add" title="Add item"><Icon name="plus" size={12}/></span>
+              {toggleBtn}
             </div>
-            <div className="lane-list">
+            )}
+            {!laneCollapsed && <div className="lane-list">
               {laneItems.map(w => (
                 <BoardCard
                   key={w.id}
@@ -1933,7 +1959,7 @@ function BoardLanes({ items, groupKey, dragId, overKey, onDragStart, onDragEnd, 
                   {isOver ? 'Release to move here' : 'Drop items here'}
                 </div>
               )}
-            </div>
+            </div>}
           </div>
         );
       })}
@@ -1946,6 +1972,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', grou
   const [dragId,    setDragId]    = useStateW(null);
   const [overKey,   setOverKey]   = useStateW(null);
   const [collapsed, setCollapsed] = useCollapsedGroups('nexusmd.wi.collapsed.board', grouping);
+  const [collapsedLanes, setCollapsedLanes] = useCollapsedGroups('nexusmd.wi.collapsed.lanes', grouping);
 
   const PROJECTS = NexusMDData.PROJECTS || [];
 
@@ -2098,6 +2125,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', grou
   };
 
   const toggleCollapsed = (key) => setCollapsed(c => ({ ...c, [key]: !c[key] }));
+  const toggleLane = (key) => setCollapsedLanes(c => ({ ...c, [key]: !c[key] }));
 
   const onAssignCard = async (id, assigneeId) => {
     const member = team.find(t => t.id === assigneeId);
@@ -2110,7 +2138,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', grou
     await patchWI(id, [['/fields/System.Tags', newTags.join('; ')]]);
   };
 
-  const laneProps = { dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes, team, onAssign: onAssignCard, onTagsChange: onTagsCard, grouping, projects: PROJECTS, newItemIds, laneMode, reachable, boardColumns };
+  const laneProps = { dragId, overKey, onDragStart, onDragEnd, onLaneOver, onLaneDrop, onOpen, lanes, team, onAssign: onAssignCard, onTagsChange: onTagsCard, grouping, projects: PROJECTS, newItemIds, laneMode, reachable, boardColumns, collapsedLanes, onToggleLane: toggleLane };
 
   const boardContent = grouping === 'none' ? (
     <BoardLanes items={items} groupKey="__all__" {...laneProps} />
@@ -2122,7 +2150,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', grou
           groups.forEach(g => { next[g.key] = true; });
           setCollapsed(next);
         }}><Icon name="chevron-right" size={12}/> Collapse all</button>
-        <button className="btn sm ghost" onClick={() => setCollapsed({})}>
+        <button className="btn sm ghost" onClick={() => { setCollapsed({}); setCollapsedLanes({}); }}>
           <Icon name="chevron-down" size={12}/> Expand all
         </button>
       </div>
