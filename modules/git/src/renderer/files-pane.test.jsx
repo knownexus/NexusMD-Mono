@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+// CodeMirror is tested on its own; the preview here is a plain read-only textarea.
+vi.mock('@nexusmd/editor-kit/code-editor.jsx', () => ({
+  languageForPath: () => 'plaintext',
+  CodeEditor: ({ value, ariaLabel }) => <textarea aria-label={ariaLabel} value={value} readOnly />,
+}))
+
 import { FilesPane, forgetFilesView } from './files-pane.jsx'
 
 // The tab remembers open folders per worktree for the session; each test starts afresh.
@@ -98,7 +104,7 @@ describe('FilesPane', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Not a worktree folder: docs')
   })
 
-  it('opens a file on double-click and Enter, but not a folder', async () => {
+  it('opens a file on double-click, and on Enter once it is picked, but not a folder', async () => {
     const onOpenFile = vi.fn()
     const adapter = { files: vi.fn(async () => ({ files, truncated: false })), pathForFile: vi.fn(), importFiles: vi.fn(), reveal: vi.fn(async () => {}) }
     render(<FilesPane adapter={adapter} repo={repo} worktreePath={repo.path} registered={registered} version={1} onOpenFile={onOpenFile} />)
@@ -106,6 +112,8 @@ describe('FilesPane', () => {
     expect(onOpenFile).toHaveBeenLastCalledWith('README.md')
     fireEvent.click(await row('docs'))
     fireEvent.doubleClick(await row('docs'))
+    expect(onOpenFile).toHaveBeenCalledTimes(1)
+    fireEvent.keyDown(await row('guide.md'), { key: 'Enter' })
     expect(onOpenFile).toHaveBeenCalledTimes(1)
     fireEvent.keyDown(await row('guide.md'), { key: 'Enter' })
     expect(onOpenFile).toHaveBeenLastCalledWith('docs/guide.md')
@@ -251,24 +259,25 @@ describe('FilesPane', () => {
   describe('coming back to the tab', () => {
     beforeEach(() => forgetFilesView())
 
-    it('keeps the folders that were open, and the scroll position, when the tab is left and opened again', async () => {
+    it('keeps the folders that were open, the picked file and the scroll position, when the tab is left and opened again', async () => {
       setup()
       fireEvent.click(await row('docs'))
       await row('guide.md')
-      const scroller = document.querySelector('.nx-gw-files-body')
+      const scroller = document.querySelector('.nx-gw-fx-scroll')
       scroller.scrollTop = 120
       fireEvent.scroll(scroller)
+      fireEvent.click(await row('guide.md'))
       cleanup()
       setup()
-      expect(await row('guide.md')).toBeTruthy()
-      await waitFor(() => expect(document.querySelector('.nx-gw-files-body').scrollTop).toBe(120))
+      expect((await row('guide.md')).getAttribute('aria-selected')).toBe('true')
+      await waitFor(() => expect(document.querySelector('.nx-gw-fx-scroll').scrollTop).toBe(120))
     })
 
     it('does not lose the position to a scroll while the files are still loading', async () => {
       setup()
       fireEvent.click(await row('docs'))
       await row('guide.md')
-      const first = document.querySelector('.nx-gw-files-body')
+      const first = document.querySelector('.nx-gw-fx-scroll')
       first.scrollTop = 120
       fireEvent.scroll(first)
       cleanup()
@@ -276,7 +285,7 @@ describe('FilesPane', () => {
       let release
       const adapter = { files: vi.fn(() => new Promise(r => { release = () => r({ files, truncated: false }) })), pathForFile: vi.fn(), importFiles: vi.fn() }
       render(<div className="nx-gw-files-body"><FilesPane adapter={adapter} repo={repo} worktreePath={repo.path} registered={registered} version={1} /></div>)
-      const box = document.querySelector('.nx-gw-files-body')
+      const box = document.querySelector('.nx-gw-fx-scroll')
       box.scrollTop = 0
       fireEvent.scroll(box)
       release()
@@ -293,6 +302,42 @@ describe('FilesPane', () => {
       setup({ worktreePath: 'C:/repos/A-feature' })
       await row('docs')
       expect((await screen.findAllByRole('treeitem')).some(r => r.textContent.includes('guide.md'))).toBe(false)
+    })
+  })
+
+  describe('the preview', () => {
+    const adapterWith = extra => ({
+      files: vi.fn(async () => ({ files: [...files, 'logo.png'], truncated: false })), pathForFile: vi.fn(), importFiles: vi.fn(), reveal: vi.fn(),
+      readFile: vi.fn(async (_r, _w, _g, rel) => ({ text: 'text of ' + rel, bom: false, stamp: 's' })),
+      readImage: vi.fn(async () => ({ url: 'data:image/png;base64,AA', size: 10, mime: 'image/png' })),
+      openWindow: vi.fn(async () => ({})), ...extra,
+    })
+
+    it('shows the picked file read-only, with Edit, Open in Editor and Open in new window', async () => {
+      const onOpenFile = vi.fn()
+      const adapter = adapterWith()
+      const calls = []
+      const host = { capabilities: { has: n => n === 'editor.openPath', call: (...a) => { calls.push(a); return Promise.resolve(true) } } }
+      render(<FilesPane adapter={adapter} host={host} repo={repo} worktreePath={'C:\\repos\\A'} registered={registered} version={1} onOpenFile={onOpenFile} />)
+      expect(await screen.findByText('Pick a file to see it here.')).toBeTruthy()
+      fireEvent.click(await row('README.md'))
+      expect((await screen.findByRole('textbox', { name: 'Preview of README.md' })).value).toBe('text of README.md')
+      expect(adapter.readFile).toHaveBeenCalledWith(repo, 'C:\\repos\\A', registered, 'README.md')
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+      expect(onOpenFile).toHaveBeenLastCalledWith('README.md')
+      fireEvent.click(screen.getByRole('button', { name: 'Open in Editor' }))
+      await waitFor(() => expect(calls).toEqual([['editor.openPath', 'C:\\repos\\A\\README.md']]))
+      fireEvent.click(screen.getByRole('button', { name: 'Open in new window' }))
+      await waitFor(() => expect(adapter.openWindow).toHaveBeenCalled())
+    })
+
+    it('shows an image as an image, and why a file could not be read', async () => {
+      const adapter = adapterWith({ readFile: vi.fn(async () => { throw new Error("Error invoking remote method 'git:readFile': Error: big.bin isn't a text file.") }) })
+      render(<FilesPane adapter={adapter} repo={repo} worktreePath={repo.path} registered={registered} version={1} />)
+      fireEvent.click(await row('logo.png'))
+      expect((await screen.findByRole('img', { name: 'logo.png' })).getAttribute('src')).toBe('data:image/png;base64,AA')
+      fireEvent.click(await row('README.md'))
+      expect((await screen.findByRole('alert')).textContent).toBe("big.bin isn't a text file.")
     })
   })
 })

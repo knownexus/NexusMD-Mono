@@ -4,6 +4,8 @@ import { Icon } from '@nexusmd/ui'
 import { setGitConfig, getGitConfig } from '../git-config.js'
 import { useGithub } from './use-github.js'
 import { GithubRepoPane } from './github-repo-pane.jsx'
+import { githubFileActions } from './github-open.js'
+import { isMainWorktree } from '../branch-header.jsx'
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
 const same = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase()
@@ -78,6 +80,11 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
   // Work also keeps issues closed in the last few days; the counts are of open ones, as the list is.
   const issuesOf = repo => (cached.issues ?? []).filter(i => same(i.projectKey, repo) && i.state !== 'Closed')
   const chosenLocal = copies[String(chosen).toLowerCase()]
+  // The local copy's worktrees, for opening a GitHub file from disk (see github-open.js).
+  const localTrees = chosenLocal
+    ? (snapshot?.worktrees ?? []).filter(t => t.repo === chosenLocal && !t.prunable && !t.error).map(t => ({ path: t.path, branch: t.branch, main: isMainWorktree(t) }))
+    : []
+  const fileActionsFor = branch => githubFileActions({ host, client, repo: chosen, branch, local: localTrees })
   const counts = { prs: prsOf(chosen).length, issues: issuesOf(chosen).length }
   return (
     <div className="nx-gw-body" data-list="github">
@@ -129,7 +136,7 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
           </div>
         </header>
         <GithubRepoPane key={chosen} repo={chosen} client={client} refreshKey={refreshKey} openPR={openPR} openItem={openItem} openBuild={openBuild}
-          openPRs={prsOf(chosen)} counts={counts} />
+          openPRs={prsOf(chosen)} counts={counts} fileActionsFor={fileActionsFor} />
       </section>
     </div>
   )

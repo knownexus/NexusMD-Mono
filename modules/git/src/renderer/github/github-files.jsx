@@ -1,84 +1,56 @@
-// github-files.jsx — read-only browser of a GitHub repo's files at a branch.
+// github-files.jsx — a GitHub repository's files at a branch, in the same explorer as a local worktree's.
 import React from 'react'
-import { listGithubContents, getGithubFile } from '@nexusmd/core'
-import { Icon } from '@nexusmd/ui'
-import { GithubCard, Notice } from './github-ui.jsx'
+import { getGithubFile } from '@nexusmd/core'
+import { FileExplorer, PreviewHead } from '../file-explorer.jsx'
+import { TextPreview } from '../file-preview.jsx'
+import { githubBlobUrl } from './github-open.js'
 
-const { useState, useEffect } = React
-
-function FileView({ repo, client, branch, path }) {
-  const [state, setState] = useState({ status: 'loading', file: null, error: '' })
-  useEffect(() => {
-    let cancelled = false
-    setState({ status: 'loading', file: null, error: '' })
-    getGithubFile(client, repo, { path, ref: branch })
-      .then(file => { if (!cancelled) setState({ status: 'ok', file, error: '' }) })
-      .catch(e => { if (!cancelled) setState({ status: 'error', file: null, error: e.message }) })
-    return () => { cancelled = true }
-  }, [client, repo, branch, path])
-  if (state.status === 'loading') return <Notice>Loading file…</Notice>
-  if (state.status === 'error') return <Notice kind="error">{state.error}</Notice>
-  const { file } = state
-  if (file.reason) {
-    return (
-      <div className="nx-gw-empty">
-        {file.reason === 'binary' ? 'This is a binary file, so it isn’t shown here.' : 'This file is too large to show here.'}{' '}
-        <a href={file.url} target="_blank" rel="noopener">Open on GitHub</a>
-      </div>
-    )
-  }
-  return <pre className="nx-gw-gh-code mono">{file.text}</pre>
+// Every file at a commit, from one call (git's recursive tree). GitHub cuts very large trees short.
+export async function listGithubTree(client, repo, sha) {
+  const r = await client.get(`repos/${repo}/git/trees/${encodeURIComponent(sha)}?recursive=1`)
+  return { files: (r?.tree ?? []).filter(e => e.type === 'blob').map(e => e.path), truncated: !!r?.truncated }
 }
 
-export function GithubFiles({ repo, client, branch }) {
-  const [path, setPath] = useState('')
-  const [file, setFile] = useState(null)
-  const [state, setState] = useState({ status: 'loading', items: [], error: '' })
-  useEffect(() => { setPath(''); setFile(null) }, [repo, branch])
-  useEffect(() => {
-    let cancelled = false
-    setState({ status: 'loading', items: [], error: '' })
-    listGithubContents(client, repo, { path, ref: branch })
-      .then(items => { if (!cancelled) setState({ status: 'ok', items, error: '' }) })
-      .catch(e => { if (!cancelled) setState({ status: 'error', items: [], error: e.message }) })
-    return () => { cancelled = true }
-  }, [client, repo, branch, path])
+const REASONS = { binary: 'This is a binary file, so it isn’t shown here.', 'too-large': 'This file is too large to show here.' }
 
-  const go = (p) => { setPath(p); setFile(null) }
-  const parts = path ? path.split('/') : []
-  const crumb = (label, p, last) => (last
-    ? <span key={`c${p}`} aria-current="page">{label}</span>
-    : <button key={`c${p}`} type="button" className="nx-gw-gh-crumb" onClick={() => go(p)}>{label}</button>)
-  const crumbs = [crumb(repo.split('/').pop() || repo, '', !parts.length && !file)]
-  parts.forEach((seg, i) => {
-    crumbs.push(<span key={`s${i}`} className="sep">/</span>)
-    crumbs.push(crumb(seg, parts.slice(0, i + 1).join('/'), i === parts.length - 1 && !file))
-  })
-  if (file) { crumbs.push(<span key="sf" className="sep">/</span>); crumbs.push(<span key="f" aria-current="page">{file.split('/').pop()}</span>) }
-
-  const sorted = [...state.items].sort((a, b) => (a.type === b.type ? 0 : a.type === 'dir' ? -1 : 1))
-  let body
-  if (file) body = <FileView repo={repo} client={client} branch={branch} path={file} />
-  else if (state.status === 'loading') body = <Notice>Loading…</Notice>
-  else if (state.status === 'error') body = <Notice kind="error">{state.error}</Notice>
-  else if (!sorted.length) body = <div className="nx-gw-empty">This folder is empty.</div>
-  else {
-    body = (
-      <ul className="nx-gw-gh-rows">
-        {sorted.map(it => (
-          <li key={it.path}>
-            <button type="button" className="nx-gw-gh-item" onClick={() => (it.type === 'dir' ? go(it.path) : setFile(it.path))}>
-              <Icon name={it.type === 'dir' ? 'folder' : 'doc'} size={13} />
-              <span className="name">{it.name}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+/**
+ * The GitHub tab's Files: the tree at `branch` (its commit `sha`) and the picked file's text.
+ * `fileActions(path)` gives the preview's buttons and the right-click menu (see github-open.js).
+ */
+export function GithubFiles({ repo, client, branch, sha, refreshKey = 0, fileActions = path => [{ label: 'Open on GitHub', onSelect: () => window.open(githubBlobUrl(repo, branch, path), '_blank', 'noopener,noreferrer') }] }) {
+  const [state, setState] = React.useState({ key: null, files: null, truncated: false, error: null })
+  const [note, setNote] = React.useState(null)
+  const key = `${repo}@${sha || branch}#${refreshKey}`
+  React.useEffect(() => {
+    let live = true
+    Promise.resolve().then(() => listGithubTree(client, repo, sha || branch)).then(
+      r => { if (live) setState({ key, ...r, error: null }) },
+      e => { if (live) setState({ key, files: null, truncated: false, error: e?.message || String(e) }) },
     )
+    return () => { live = false }
+    // `key` holds everything the list depends on.
+  }, [client, key]) // eslint-disable-line react-hooks/exhaustive-deps
+  const current = state.key === key ? state : { files: null, truncated: false, error: null }
+
+  const attempt = action => async () => {
+    setNote(null)
+    try { await action.onSelect() } catch (e) { setNote(e?.message || String(e)) }
   }
+  const actions = path => fileActions(path).map(a => ({ ...a, onSelect: attempt(a) }))
+  const preview = path => (
+    <>
+      <PreviewHead path={path} actions={actions(path)} />
+      <TextPreview path={path} loadKey={key}
+        load={() => getGithubFile(client, repo, { path, ref: branch }).then(f => (f.text == null ? { text: null, note: REASONS[f.reason] ?? REASONS.binary } : { text: f.text }))}
+        extra={<a href={githubBlobUrl(repo, branch, path)} target="_blank" rel="noopener noreferrer">Open on GitHub</a>} />
+    </>
+  )
   return (
-    <GithubCard title={`Files on ${branch}`} label="Files" head={<nav aria-label="Path" className="nx-gw-gh-path">{crumbs}</nav>}>
-      {body}
-    </GithubCard>
+    <div className="nx-gw-gh-files">
+      {note && <div role="alert" className="nx-alert bad">{note}</div>}
+      <FileExplorer label="Files" rootName={repo.split('/').pop() || repo} files={current.files} truncated={current.truncated} error={current.error}
+        viewKey={`github:${repo}@${branch}`} menuItems={row => (row.kind === 'file' ? actions(row.path).map(({ label, onSelect }) => ({ label, onSelect })) : [])}
+        preview={preview} />
+    </div>
   )
 }

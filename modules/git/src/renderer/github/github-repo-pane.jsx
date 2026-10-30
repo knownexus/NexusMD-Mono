@@ -117,7 +117,7 @@ function Builds({ client, repo, refreshKey, onOpen }) {
 }
 
 /** The chosen repository's right pane: a tab per view. History and Files share a picked branch. */
-export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, openBuild, initialTab = 'prs', confirm, openPRs, counts = {} }) {
+export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, openBuild, initialTab = 'prs', confirm, openPRs, counts = {}, fileActionsFor = null }) {
   const [tab, setTab] = React.useState(initialTab)
   const [loaded, setLoaded] = React.useState({ repo: null, client: null, list: null })
   const [picked, setPicked] = React.useState('')
@@ -150,7 +150,8 @@ export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, ope
   const branchView = Component => {
     if (branchError) return <Notice kind="error">{branchError}</Notice>
     if (!branches) return <Notice>Loading branches…</Notice>
-    return <Component repo={repo} client={client} branch={branch} refreshKey={refreshKey} />
+    const sha = branches.find(b => b.name === branch)?.sha || ''
+    return <Component repo={repo} client={client} branch={branch} sha={sha} refreshKey={refreshKey} {...(fileActionsFor ? { fileActions: fileActionsFor(branch) } : {})} />
   }
   const count = { prs: counts.prs, issues: counts.issues }
 

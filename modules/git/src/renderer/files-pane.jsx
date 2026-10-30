@@ -1,11 +1,14 @@
 import React from 'react'
-import { buildFileTree, dropFolder, importSummary } from './file-tree.js'
+import { dropFolder, importSummary } from './file-tree.js'
 import { ImportDialog } from './import-dialog.jsx'
-import { ContextMenu, menuPoint } from './context-menu.jsx'
 import { popoutSpec } from './popout-spec.js'
 import { ipcMessage } from './use-git-actions.js'
 import { openElsewhere } from './open-elsewhere.js'
 import { fileMarks } from './file-marks.js'
+import { FileExplorer, PreviewHead, forgetExplorerViews } from './file-explorer.jsx'
+import { TextPreview } from './file-preview.jsx'
+import { ImageView } from './image-view.jsx'
+import { isImagePath } from './image-types.js'
 
 // A row's name, coloured and marked when the file is changed (a letter for each area it is changed
 // in) or the folder holds changes (a dot in the colour of the most pressing one).
@@ -54,40 +57,23 @@ function Legend({ marks }) {
   )
 }
 
-// The tab is drawn afresh each time it is opened (and for each worktree), so which folders were open
-// and how far it was scrolled are kept here, per worktree, for the rest of the session.
-const views = new Map()
-const viewOf = path => views.get(path) ?? { open: [], scrollTop: 0 }
-const keep = (path, patch) => views.set(path, { ...viewOf(path), ...patch })
-/** Forgets every remembered Files tab (open folders, scroll). */
-export function forgetFilesView() { views.clear() }
-
-// The tree flattened to the rows that are showing: folders open in `open`, in tree order.
-function visibleRows(node, open, depth, out) {
-  for (const d of node.dirs) {
-    out.push({ kind: 'dir', path: d.path, name: d.name, depth, expanded: open.has(d.path) })
-    if (open.has(d.path)) visibleRows(d, open, depth + 1, out)
-  }
-  for (const f of node.files) out.push({ kind: 'file', path: f.path, name: f.name, depth })
-  return out
-}
+/** Forgets every remembered Files tab (open folders, picked file, filter, scroll). */
+export const forgetFilesView = forgetExplorerViews
 
 /**
- * The Files tab: the worktree's folders, and a drop target for files dragged in from outside the app.
- * Dropping on a folder row copies the files into that folder; on a file row, into its folder; on the
- * empty space or the root row, into the repository root. Names that already exist are asked about
- * first (ImportDialog). Nothing is staged: new files appear as untracked, replaced ones as unstaged.
- * `onImported()` asks the workspace to read the changes again. `changes` (the worktree's) marks each
- * changed file by where its change is (staged, not staged, untracked, conflicted) in the Changes tab's
- * colours, and each folder holding one with a dot. Open folders and the scroll position are kept per
- * worktree, so leaving the tab and coming back finds it as it was.
+ * The Files tab: the worktree's files in the shared explorer (tree and filter, the picked file's
+ * preview), and a drop target for files dragged in from outside the app. Dropping on a folder row
+ * copies the files into that folder; on a file row, into its folder; anywhere else, into the
+ * repository root. Names that already exist are asked about first (ImportDialog). Nothing is staged:
+ * new files appear as untracked, replaced ones as unstaged. `onImported()` asks the workspace to read
+ * the changes again. `changes` (the worktree's) marks each changed file by where its change is (staged,
+ * not staged, untracked, conflicted) in the Changes tab's colours, and each folder holding one with a
+ * dot. `onOpenFile(path)` edits a file in the workspace (double-click, Enter, Edit). What was open and
+ * picked, the filter and the scroll are kept per worktree, so leaving the tab and coming back finds it as it was.
  */
 export function FilesPane({ adapter, host = null, repo, worktreePath, registered, version, onImported = () => {}, onOpenFile = null, changes = [] }) {
-  // The right-click menu: { x, y, label, items } for the row it was opened on.
-  const [menu, setMenu] = React.useState(null)
   const [list, setList] = React.useState(null)
   const [error, setError] = React.useState(null)
-  const [open, setOpen] = React.useState(() => new Set(viewOf(worktreePath).open))
   const [target, setTarget] = React.useState(null)
   const [ask, setAsk] = React.useState(null)
   const [note, setNote] = React.useState(null)
@@ -105,60 +91,7 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
     )
   }, [worktreePath])
   React.useEffect(() => { load() }, [load, repoPath, repoName, version])
-
-  const root = React.useMemo(() => buildFileTree(list?.files ?? []), [list])
-  const rows = React.useMemo(() => visibleRows(root, open, 0, []), [root, open])
   const marks = React.useMemo(() => fileMarks(changes), [changes])
-  const toggle = path => setOpen(prev => { const next = new Set(prev); if (!next.delete(path)) next.add(path); return next })
-
-  // Kept per worktree: the open folders as they change, and the scroll position of the box the tab
-  // scrolls in (the panel's). Another worktree shows its own; the scroll comes back once the files are listed.
-  const shownFor = React.useRef(worktreePath)
-  React.useEffect(() => {
-    if (shownFor.current === worktreePath) return
-    shownFor.current = worktreePath
-    setOpen(new Set(viewOf(worktreePath).open))
-  }, [worktreePath])
-  React.useEffect(() => { if (shownFor.current === worktreePath) keep(worktreePath, { open: [...open] }) }, [open, worktreePath])
-  const rootRef = React.useRef(null)
-  const scroller = () => rootRef.current?.closest('.nx-gw-files-body') ?? rootRef.current?.parentElement ?? null
-  // The scroll is only kept once the files are listed and the old position put back: until then the
-  // box is short, and anything that scrolls it is clamped to 0. The panel also reuses its scrolling box
-  // for the next tab (clamping it as the content goes), so the position is taken as the tab closes (a
-  // layout cleanup runs before that); and a hidden screen (display: none) resets it, so it isn't kept
-  // while hidden and is put back when the screen shows again.
-  const restoredFor = React.useRef(null)
-  React.useLayoutEffect(() => {
-    const box = scroller()
-    if (!box) return undefined
-    let live = true
-    const ready = () => live && restoredFor.current === worktreePath
-    const shown = () => {
-      for (let el = box; el; el = el.parentElement) if (getComputedStyle(el).display === 'none') return false
-      return true
-    }
-    const onScroll = () => { if (ready() && shown()) keep(worktreePath, { scrollTop: box.scrollTop }) }
-    box.addEventListener('scroll', onScroll)
-    const seen = typeof IntersectionObserver === 'function'
-      ? new IntersectionObserver(entries => {
-        if (ready() && entries.some(e => e.isIntersecting)) box.scrollTop = viewOf(worktreePath).scrollTop
-      })
-      : null
-    seen?.observe(box)
-    return () => {
-      if (ready() && shown()) keep(worktreePath, { scrollTop: box.scrollTop })
-      live = false
-      seen?.disconnect()
-      box.removeEventListener('scroll', onScroll)
-    }
-  }, [worktreePath])
-  const listed = !!list
-  React.useLayoutEffect(() => {
-    if (!listed || restoredFor.current === worktreePath) return
-    restoredFor.current = worktreePath
-    const box = scroller()
-    if (box) box.scrollTop = viewOf(worktreePath).scrollTop
-  }, [listed, worktreePath, rows])
 
   const finish = async (dir, sources, replace) => {
     setBusy(true)
@@ -167,7 +100,6 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
       const r = await d.adapter.importFiles(d.repo, worktreePath, d.registered, dir, sources, { replace })
       const first = r.failed?.[0]
       setNote({ bad: r.failed?.length > 0, text: `${importSummary(r)}${first ? ` ${first.rel}: ${first.error}` : ''}` })
-      if (dir) setOpen(prev => new Set([...prev, ...dir.split('/').map((_, i, a) => a.slice(0, i + 1).join('/'))]))
       await load()
       onImported()
     } catch (e) {
@@ -212,73 +144,49 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
     drop(folderAt(e), [...e.dataTransfer.files])
   }
 
-  const closeMenu = React.useCallback(() => setMenu(null), [])
   const attempt = async fn => {
     setNote(null)
     try { await fn() } catch (e) { setNote({ bad: true, text: ipcMessage(e) }) }
   }
-  const openMenu = (e, r) => {
-    e.preventDefault()
-    const file = r.kind === 'file'
-    const items = []
-    if (file && onOpenFile) items.push({ label: 'Open', onSelect: () => onOpenFile(r.path) })
-    if (file) {
-      items.push({
-        label: 'Open in new window',
-        onSelect: () => attempt(() => deps.current.adapter.openWindow(popoutSpec('editor', { repo: deps.current.repo, worktree: worktreePath, registered: deps.current.registered, path: r.path }))),
-      })
-    }
-    if (file) {
-      const elsewhere = openElsewhere({ host, adapter: deps.current.adapter, repo: deps.current.repo, worktreePath, registered: deps.current.registered })
-      items.push({ label: elsewhere.label, onSelect: () => attempt(() => elsewhere.run(r.path)) })
-    }
-    items.push({ label: 'Show in Explorer', onSelect: () => reveal(r.path) })
-    setMenu({ ...menuPoint(e), label: r.path || 'Repository root', items })
-  }
   const reveal = path => attempt(() => deps.current.adapter.reveal(deps.current.repo, worktreePath, deps.current.registered, path))
-  const onRowKey = (e, r) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      if (r.kind === 'dir') toggle(r.path)
-      else if (onOpenFile) onOpenFile(r.path)
-    } else if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
-      openMenu(e, r)
-    }
+  const inWindow = path => attempt(() => deps.current.adapter.openWindow(popoutSpec('editor', { repo: deps.current.repo, worktree: worktreePath, registered: deps.current.registered, path })))
+  const elsewhere = () => openElsewhere({ host, adapter: deps.current.adapter, repo: deps.current.repo, worktreePath, registered: deps.current.registered })
+  const fileActions = path => {
+    const other = elsewhere()
+    return [
+      ...(onOpenFile ? [{ label: 'Edit', primary: true, title: 'Edit it here, with its changes', onSelect: () => onOpenFile(path) }] : []),
+      { label: other.label, onSelect: () => attempt(() => other.run(path)) },
+      { label: 'Open in new window', onSelect: () => inWindow(path) },
+    ]
+  }
+  const menuItems = row => [
+    ...(row.kind === 'file' ? fileActions(row.path).map(({ label, onSelect }) => ({ label: label === 'Edit' ? 'Open' : label, onSelect })) : []),
+    { label: 'Show in Explorer', onSelect: () => reveal(row.path) },
+  ]
+  const preview = path => {
+    const d = deps.current
+    return (
+      <>
+        <PreviewHead path={path} actions={fileActions(path)} />
+        {isImagePath(path)
+          ? <div className="nx-gw-fx-pad"><ImageView name={path} loadKey={`${path}\0${version}`} load={() => d.adapter.readImage(d.repo, worktreePath, d.registered, path, 'working')} emptyText="This file isn’t there any more." /></div>
+          : <TextPreview path={path} loadKey={version} load={() => d.adapter.readFile(d.repo, worktreePath, d.registered, path)} />}
+      </>
+    )
   }
 
-  const dropping = target !== null
+  const notes = note && <div role={note.bad ? 'alert' : 'status'} className={`nx-alert ${note.bad ? 'bad' : 'good'}`}>{note.text}</div>
   return (
-    <section ref={rootRef} aria-label="Files" className="nx-gw-files-tab" data-dropping={dropping || undefined}
-      onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
-      <div className="nx-gw-files-hint">Drag files or folders here from your file explorer. Drop them on a folder to add them to it.</div>
-      {marks.files.size > 0 && <Legend marks={marks} />}
-      {note && <div role={note.bad ? 'alert' : 'status'} className={`nx-alert ${note.bad ? 'bad' : 'good'}`}>{note.text}</div>}
-      {error && <div role="alert" className="nx-alert bad">{error}</div>}
-      {!list && !error && <div style={{ color: 'var(--text-muted)' }}>Loading files…</div>}
-      {list && (
-        <div role="tree" aria-label="Repository folders" className="nx-gw-tree">
-          <div role="treeitem" aria-level={1} aria-expanded="true" tabIndex={0} data-row="" data-kind="dir" className="nx-gw-tree-row nx-gw-tree-root" data-drop={target === '' || undefined}
-            onContextMenu={e => openMenu(e, { path: '', kind: 'dir' })} onKeyDown={e => onRowKey(e, { path: '', kind: 'dir' })}>
-            <span aria-hidden="true">▾</span><span>{repo?.name || 'Repository root'}</span>
-          </div>
-          {rows.map(r => (
-            <div key={`${r.kind}:${r.path}`} role="treeitem" aria-level={r.depth + 2} aria-expanded={r.kind === 'dir' ? r.expanded : undefined}
-              data-row={r.path} data-kind={r.kind} className="nx-gw-tree-row" data-drop={(r.kind === 'dir' && target === r.path) || undefined}
-              tabIndex={0} style={{ paddingLeft: 8 + (r.depth + 1) * 16 }} onClick={r.kind === 'dir' ? () => toggle(r.path) : undefined}
-              onDoubleClick={r.kind === 'file' && onOpenFile ? () => onOpenFile(r.path) : undefined}
-              onContextMenu={e => openMenu(e, r)} onKeyDown={e => onRowKey(e, r)}>
-              <span aria-hidden="true">{r.kind === 'dir' ? (r.expanded ? '▾' : '▸') : ''}</span>
-              <RowName row={r} marks={marks} />
-            </div>
-          ))}
-          {list.truncated && <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Showing the first 50,000 files.</div>}
-        </div>
-      )}
-      <ContextMenu menu={menu} onClose={closeMenu} />
+    <div className="nx-gw-files-tab" data-dropping={target !== null || undefined} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+      <FileExplorer label="Files" rootName={repo?.name || 'Repository'} files={list?.files ?? null} truncated={!!list?.truncated} error={error}
+        viewKey={`local:${worktreePath}`} renderName={row => <RowName row={row} marks={marks} />} menuItems={menuItems}
+        onOpen={onOpenFile} preview={preview} notes={notes} footer={marks.files.size > 0 && <Legend marks={marks} />}
+        emptyNote="To add files, drag them here from your file explorer. Drop them on a folder to put them in it."
+        rowProps={row => ({ 'data-drop': (row.kind === 'dir' && target === row.path) || undefined })} />
       {ask && (
         <ImportDialog folder={ask.dir} conflicts={ask.conflicts} onCancel={() => setAsk(null)}
           onDone={replace => { const a = ask; setAsk(null); finish(a.dir, a.sources, replace) }} />
       )}
-    </section>
+    </div>
   )
 }

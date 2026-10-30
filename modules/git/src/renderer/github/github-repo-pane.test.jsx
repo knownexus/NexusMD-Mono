@@ -108,7 +108,7 @@ describe('GithubRepoPane', () => {
           if (path === 'repos/acme/web') return { default_branch: 'main', html_url: 'https://github.com/acme/web' }
           if (path === 'repos/acme/web/commits?sha=main&per_page=50') return [commit('c1', 'Main commit')]
           if (path === 'repos/acme/web/commits?sha=old&per_page=50') return [commit('c2', 'Old commit')]
-          if (path === 'repos/acme/web/contents?ref=main') return [{ name: 'README.md', path: 'README.md', type: 'file', size: 3 }, { name: 'src', path: 'src', type: 'dir' }]
+          if (path === 'repos/acme/web/git/trees/a1?recursive=1') return { tree: [{ path: 'README.md', type: 'blob' }, { path: 'src', type: 'tree' }, { path: 'src/a.js', type: 'blob' }], truncated: false }
           throw new Error(`unexpected ${path}`)
         }),
         del: vi.fn(async () => { branches = branches.filter(b => b.name !== 'old') }),
