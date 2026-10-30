@@ -1,6 +1,7 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
 import { HelmData } from '../data.jsx';
+import { NotificationBanner } from '../components.jsx';
 // view-tests.jsx — Tests dashboard: pipeline runs + pass/fail summaries
 
 const { useState: useStateT, useMemo: useMemoT } = React;

@@ -24,10 +24,12 @@ export function runScriptSource(script, contextJson) {
   }
 }
 
+// The whole worker program, as text: the script runner above plus the message handler.
+export const workerSource = () => `const run = ${runScriptSource.toString()};
+  self.onmessage = (e) => self.postMessage(run(e.data.script, e.data.contextJson));`;
+
 function defaultCreateWorker() {
-  const source = `const run = ${runScriptSource.toString()};
-    self.onmessage = (e) => self.postMessage(run(e.data.script, e.data.contextJson));`;
-  const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+  const url = URL.createObjectURL(new Blob([workerSource()], { type: 'text/javascript' }));
   const worker = new Worker(url);
   return { worker, dispose: () => { worker.terminate(); URL.revokeObjectURL(url); } };
 }
