@@ -3,14 +3,15 @@ import { Icon } from './icons.jsx';
 import ReactDOM from 'react-dom/client';
 import { adoGet, adoPost, adoPatch, adoPut, getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js';
 import { toast } from './toast.jsx';
-import { helmPushPref, effectiveNeedsMe } from './components.jsx';
+import { helmPushPref, effectiveNeedsMe, StatusBar, Flash, Sheet } from './components.jsx';
+import { getIsoYearWeek, getMondayOfDate, getYearWeekForOffset } from '@nexusmd/core';
 import { HelmData, HelmApi } from './data.jsx';
 import { useProfile, ProfileProvider } from './profile-context.jsx';
 import { useTweaks } from './tweaks-panel.jsx';
 import { getProfileKey } from './profile-keys.js';
 import {
   NexusDataProvider, renderContent, SEEN_FINGERPRINTS, DEFAULT_PROJECT_AREAS,
-  ProjectAreasModal, DocumentsView, ApiClientProvider, ApiClientView, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
+  loadWeekPlanner, saveWeekPlanner, ProjectAreasModal, DocumentsView, ApiClientProvider, ApiClientView, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
   PRCommitsTab, PRFilesTab, CreateWIModal, WIDetail, PersonDetail, DetailDrawer, paletteFor,
 } from '@nexusmd/ui';
 import { workItemSource } from './work-item-source.js';

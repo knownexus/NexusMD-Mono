@@ -4,6 +4,7 @@ import { adoGet, adoPost, adoPatch, getAdoConfig } from '../ado-client.js';
 import { toast } from '../toast.jsx';
 import { HelmData } from '../data.jsx';
 import { ColHead } from '@nexusmd/ui';
+import { NotificationBanner } from '../components.jsx';
 // view-builds.jsx — Build pipelines status view
 
 // Grid template shared between header and every build row
