@@ -3,6 +3,7 @@ import { ansiToSpans, stripAnsi } from '@nexusmd/core'
 import { ANSI_COLORS } from './run-drawer.jsx'
 
 const STICK_PX = 24
+const SIDE_KEY = 'nexusmd.outputSide'
 const time = at => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 // One output line, keeping git's ANSI colours (mapped onto the theme).
@@ -18,7 +19,7 @@ function Line({ text, tone }) {
 
 /**
  * The command dock: wraps GitCommandLine (children) and floats the output above it, so it never moves
- * the page. Compact 200px or expanded; Output and Activity tabs; sticks to the newest line while the
+ * the page. Compact 200px or expanded; snaps to the bottom or the right (remembered); Output and Activity tabs; sticks to the newest line while the
  * user is at the bottom, otherwise offers "Jump to latest". Minimise (– or Esc) hides it behind an
  * "Output ▴" chip; new runs while minimised count as unread instead of reopening it.
  *
@@ -32,6 +33,7 @@ export function OutputConsole({ lines = [], running = null, activity = [], onCle
   const [open, setOpen] = React.useState(() => lines.length > 0)
   const [minimised, setMinimised] = React.useState(false)
   const [big, setBig] = React.useState(false)
+  const [side, setSide] = React.useState(() => { try { return localStorage.getItem(SIDE_KEY) === 'right' ? 'right' : 'bottom' } catch { return 'bottom' } })
   const [tab, setTab] = React.useState('output')
   const [unread, setUnread] = React.useState(0)
   const [atBottom, setAtBottom] = React.useState(true)
@@ -65,6 +67,11 @@ export function OutputConsole({ lines = [], running = null, activity = [], onCle
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
+  const toggleSide = () => {
+    const next = side === 'right' ? 'bottom' : 'right'
+    setSide(next)
+    try { localStorage.setItem(SIDE_KEY, next) } catch { /* not remembered */ }
+  }
   const minimise = () => { setOpen(false); setMinimised(true); setUnread(0) }
   const restore = () => { stick.current = true; setAtBottom(true); setOpen(true); setMinimised(false); setUnread(0) }
   const onScroll = e => {
@@ -95,13 +102,14 @@ export function OutputConsole({ lines = [], running = null, activity = [], onCle
   return (
     <div className="nx-gw-dock">
       {open && has && (
-        <section className="nx-gw-out" data-big={big || undefined} aria-label="Command output">
+        <section className="nx-gw-out" data-big={big || undefined} data-side={side} aria-label="Command output">
           <div className="nx-gw-out-head" role="tablist">
             <button role="tab" className="nx-gw-out-tab" aria-selected={tab === 'output'} onClick={() => { stick.current = true; setTab('output') }}>Output</button>
             <button role="tab" className="nx-gw-out-tab" aria-selected={tab === 'activity'} onClick={() => { stick.current = true; setTab('activity') }}>{`Activity ${activity.length}`}</button>
             <span style={{ flex: 1 }} />
             <button className="nx-gw-out-tool" onClick={copy}>Copy</button>
             <button className="nx-gw-out-tool" onClick={tab === 'output' ? onClear : onClearActivity}>Clear</button>
+            <button className="nx-gw-out-tool" aria-label={side === 'right' ? 'Dock output at the bottom' : 'Dock output at the right'} title={side === 'right' ? 'Snap to the bottom' : 'Snap to the right'} onClick={toggleSide}>{side === 'right' ? '⇩ Bottom' : '⇨ Right'}</button>
             <button className="nx-gw-out-tool" aria-pressed={big} onClick={() => { stick.current = true; setBig(b => !b) }}>{big ? 'Shrink ▾' : 'Expand ▴'}</button>
             <button className="nx-gw-out-tool" aria-label="Minimise output" title="Minimise (Esc)" onClick={minimise}>–</button>
           </div>

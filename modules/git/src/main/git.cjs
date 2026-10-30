@@ -131,7 +131,8 @@ const refuse = detail => ({ ok: false, detail });
 
 function result(r) {
   const detail = [r.stdout.trim(), r.stderr].filter(Boolean).join('\n');
-  if (r.code === 0) return { ok: true, detail: detail || 'Done' };
+  // A successful run's stderr is git's notes (CRLF warnings, progress): the command log shows them, not the status line.
+  if (r.code === 0) return { ok: true, detail: r.stdout.trim() || 'Done', ...(r.stderr ? { notes: r.stderr } : {}) };
   return { ok: false, detail: /index\.lock/.test(r.stderr) ? `${detail}\n${LOCK_HINT}` : detail || `git exited with code ${r.code}` };
 }
 

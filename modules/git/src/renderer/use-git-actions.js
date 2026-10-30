@@ -12,7 +12,7 @@ export function ipcMessage(e) {
 // Reviews and runs file writes. One write per worktree at a time here (main also locks per repo),
 // so a double click can never run a write twice. The last result is kept per worktree.
 // Every write ends with a quiet snapshot reload that can't be skipped by a poll already running.
-export function useGitActions({ adapter, registered, reload }) {
+export function useGitActions({ adapter, registered, reload, onResult = () => {} }) {
   const [review, setReview] = React.useState(null)
   const [busy, setBusy] = React.useState({})
   const [status, setStatus] = React.useState({})
@@ -27,6 +27,7 @@ export function useGitActions({ adapter, registered, reload }) {
     let r
     try { r = await write() } catch (e) { r = { ok: false, detail: ipcMessage(e) } }
     after?.()
+    onResult(r)
     running.current.delete(tree.path)
     setBusy(b => { const next = { ...b }; delete next[tree.path]; return next })
     setStatus(s => ({ ...s, [tree.path]: { ok: !!r.ok, text: r.detail } }))

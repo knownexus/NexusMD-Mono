@@ -86,6 +86,8 @@ function GitWorkspace({ adapter, host }) {
   const keys = React.useRef({}).current
   useGitShortcuts(keys)
   const detailsRef = React.useRef(null)
+  // The GitHub view stays mounted once opened, hidden while on Local (and Local while on GitHub), so switching back finds each as it was left.
+  const githubSeen = React.useRef(false)
   // The branch list's width while its divider is being dragged (saved to the view when let go).
   const bodyRef = React.useRef(null)
   const [draggedWidth, setDraggedWidth] = React.useState(null)
@@ -95,7 +97,10 @@ function GitWorkspace({ adapter, host }) {
     return () => { live = false }
   }, [adapter])
   const { snapshot, stale, error, loading, refresh, reload } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported, full: config.view.selected })
-  const actions = useGitActions({ adapter, registered, reload })
+  // A write's result (the commit summary, git's notes, a refusal) goes to the command log, not the Changes pane.
+  const toLog = (text, tone) => text.replace(/\r?\n$/, '').split(/\r?\n/).map(t => ({ text: t, tone }))
+  const actions = useGitActions({ adapter, registered, reload,
+    onResult: r => setCmdLines(l => [...l, ...toLog(r.detail || '', r.ok ? 'ok' : 'bad'), ...(r.notes ? toLog(r.notes, 'muted') : [])].slice(-MAX_LINES)) })
   // Work's GitHub connection, when Work is installed and connected; otherwise there is no GitHub tab.
   const github = useGithub(host)
   const sync = useGitSync({ adapter, registered, reload })
@@ -140,6 +145,7 @@ function GitWorkspace({ adapter, host }) {
   ]
   // A remembered GitHub view falls back to the group under it once GitHub is gone.
   const onGithub = githubShown
+  if (onGithub) githubSeen.current = true
   // While GitHub isn't there (not yet registered by Work, or gone), moving anywhere forgets a
   // remembered GitHub tab, so GitHub turning up later never takes the page from where the user is.
   const setView = patch => {
@@ -301,7 +307,10 @@ function GitWorkspace({ adapter, host }) {
         )}
       </header>
 
-      {onGithub ? <GithubTab host={host} adapter={adapter} config={config} snapshot={snapshot} onOpenLocal={openLocal} /> : (<>
+      {githubSeen.current && github && (
+        <div style={{ display: onGithub ? 'contents' : 'none' }}><GithubTab host={host} adapter={adapter} config={config} snapshot={snapshot} onOpenLocal={openLocal} /></div>
+      )}
+      <div style={{ display: onGithub ? 'none' : 'contents' }}>
       <div className="nx-gw-alerts">
         {error && card(error, 'alert')}
         {!config.repos.length && card(roots.length
@@ -331,7 +340,7 @@ function GitWorkspace({ adapter, host }) {
                 onAction={(action, ids = selectedIds) => actions.openReview(action, selectedTree, ids)} onWrite={(action, ids) => actions.write(action, selectedTree, ids)}
                 onCommit={draft => commitHere(selectedTree, draft)} onResolve={(change, take, onResolved) => actions.resolve(selectedTree, change, take, onResolved)}
                 onHunk={(change, index, stamp, after) => actions.hunk(selectedTree, change, index, stamp, after)}
-                busy={!!actions.busy[selectedTree.path] || !!cmdRunning} status={actions.status[selectedTree.path] ?? null}
+                busy={!!actions.busy[selectedTree.path] || !!cmdRunning}
                 split={view.historySplit ?? HISTORY_SPLIT} onSplit={historySplit => setView({ historySplit })}
                 panel={view.panel} onPanel={panel => setView({ panel })}
                 onSync={(kind, options) => syncTree(selectedTree, kind, options)}
@@ -355,7 +364,7 @@ function GitWorkspace({ adapter, host }) {
             busy={!!cmdRunning || (!!selectedTree && !!actions.busy[selectedTree.path])} onRun={exec} />
         </aside>
       </div>
-      </>)}
+      </div>
 
       {switcher && (
         <BranchSwitcher trees={scoped.worktrees} selected={view.selected} onClose={() => setSwitcher(false)}

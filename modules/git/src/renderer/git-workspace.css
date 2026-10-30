@@ -408,6 +408,8 @@
 .nx-gw-act-retry { justify-self: start; margin: 2px 0 6px 92px; }
 .nx-gw-out { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 6px); height: 200px; max-height: max(96px, calc(100cqh - 100px)); z-index: 25; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-pop); overflow: hidden; }
 .nx-gw-out[data-big] { height: min(64vh, 620px); }
+.nx-gw-out[data-side="right"] { left: auto; width: min(440px, 45%); height: calc(100cqh - 100px); }
+.nx-gw-out[data-side="right"][data-big] { width: min(760px, 80%); height: calc(100cqh - 100px); }
 .nx-gw-out-head { flex: none; display: flex; align-items: center; gap: 2px; padding: 0 6px 0 8px; border-bottom: 1px solid var(--border); background: var(--bg); }
 .nx-gw-out-tab { height: 32px; padding: 0 10px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: transparent; font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; cursor: pointer; }
 .nx-gw-out-tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
