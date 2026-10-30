@@ -10,7 +10,7 @@ const MAX_BYTES = 5 * 1024 * 1024;
 const BOM = '﻿';
 
 // FNV-1a over the text: only has to tell "changed" from "unchanged".
-function stampOf(text) {
+export function stampOf(text) {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
   return `${h.toString(16)}-${text.length}`;
