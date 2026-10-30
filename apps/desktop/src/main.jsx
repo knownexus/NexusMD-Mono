@@ -193,6 +193,8 @@ function App() {
 
   React.useEffect(() => {
     document.body.dataset.theme = paletteFor(tweaks)
+    // The stylesheet has taken over from the background index.html's preload script set (build/theme-preload.mjs).
+    document.documentElement.style.backgroundColor = ''
   }, [tweaks.theme, tweaks.darkTheme, tweaks.dimTheme, tweaks.lightTheme])
 
   React.useEffect(() => {
