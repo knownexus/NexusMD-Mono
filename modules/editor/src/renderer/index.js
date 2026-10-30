@@ -6,6 +6,8 @@ import { isDirty } from './editor-store.js'
 //   views     view id -> component, rendered as <View adapters={...} host={...} />
 //   activate  registers what this app offers other apps, and listens for files opened with the app:
 //               editor.openPath(path, line?)   open a file (or a folder) in the Editor and show it
+//               editor.openText({ id, name, text, origin })
+//                                              show text that isn't on disk in a read-only tab
 export default {
   id: 'editor',
   views: { editor: EditorApp },
@@ -14,6 +16,11 @@ export default {
       const ok = await editorStore.openPath(path, { line: line ?? null })
       if (ok) host.navigate('editor')
       return ok
+    })
+    host.capabilities.provide('editor.openText', spec => {
+      editorStore.openText(spec)
+      host.navigate('editor')
+      return true
     })
 
     const api = typeof window !== 'undefined' ? window.electronAPI?.editor : null
