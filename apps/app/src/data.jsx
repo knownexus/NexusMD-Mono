@@ -6,7 +6,7 @@ import {
   isTerminalState, isActiveState, isReviewState, isBlockedState, stateCategory,
   timeAgo, adoTypeToHelm, adoStateToHelm, slugify,
 } from '@nexusmd/core';
-import { getAdoConfig, isAdoConfigured, createAdoHttpAdapter } from './ado-client.js';
+import { getAdoConfig, isAdoConfigured, usesAdoWorkItems, createAdoHttpAdapter } from './ado-client.js';
 import { localStorageAdapter } from '@nexusmd/web-adapters';
 import { getProfileKey } from './profile-keys.js';
 
@@ -65,7 +65,7 @@ async function runLoad(isRefresh = false) {
   const adapters = { http: createAdoHttpAdapter(), storage: localStorageAdapter };
   const priorData = isRefresh ? { ...HelmData } : null;
   try {
-    const data = await loadAdoData(cfg, adapters, { isRefresh, priorData });
+    const data = await loadAdoData(cfg, adapters, { isRefresh, priorData, skip: { workItems: !usesAdoWorkItems() } });
     applyToShim(data);
   } catch (err) {
     console.error('[data.jsx] loadAdoData failed:', err);

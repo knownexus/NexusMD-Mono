@@ -220,6 +220,7 @@ function SettingsModal({ open, onClose, onSaved }) {
   const [uatProject, setUatProject] = useState('');
   const [uatPipelineId, setUatPipelineId] = useState('');
   const [uatBranch, setUatBranch] = useState('');
+  const [adoWorkItems, setAdoWorkItems] = useState(true);
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [smtpHost, setSmtpHost] = useState('');
   const [smtpPort, setSmtpPort] = useState('');
@@ -244,6 +245,7 @@ function SettingsModal({ open, onClose, onSaved }) {
     setUatProject(c.uatProject || '');
     setUatPipelineId(c.uatPipelineId || '');
     setUatBranch(c.uatBranch || '');
+    setAdoWorkItems(c.workItems !== false);
     setStatus('');
     const stored = localStorage.getItem(getProfileKey('helm.tweaks'));
     let tweaks = {};
@@ -264,6 +266,7 @@ function SettingsModal({ open, onClose, onSaved }) {
         uatProject:    uatProject.trim(),
         uatPipelineId: parseInt(uatPipelineId, 10) || 0,
         uatBranch:     uatBranch.trim(),
+        workItems:     adoWorkItems,
       });
       setStatus('Saved! Reloading data…');
       setPat('');
@@ -330,6 +333,13 @@ function SettingsModal({ open, onClose, onSaved }) {
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-subtle)', marginBottom: 12 }}>Connection</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <input type="checkbox" checked={adoWorkItems} onChange={e => setAdoWorkItems(e.target.checked)}/>
+                  Load Azure DevOps work items
+                </label>
+                {!adoWorkItems && (
+                  <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: -6 }}>Pull requests, builds and tests still come from Azure DevOps.</div>
+                )}
                 <SettField label="Organisation" hint="The name after dev.azure.com/">
                   <input value={org} onChange={e => setOrg(e.target.value)} placeholder="your-org-name" style={settInputStyle}/>
                 </SettField>
