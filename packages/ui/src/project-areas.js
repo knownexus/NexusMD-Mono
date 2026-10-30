@@ -7,8 +7,8 @@ import React from 'react'
 // useEffect pair (app.jsx:1427-1440), decoupled from the HelmData global.
 
 export const DEFAULT_PROJECT_AREAS = [
-  // ── DriveFurther.API ──────────────────────────────────────────────────────
-  { id: 'api', name: 'DriveFurther.API', items: [], children: [
+  // ── Example.API ──────────────────────────────────────────────────────
+  { id: 'api', name: 'Example.API', items: [], children: [
     { id: 'api-modules', name: 'Modules', items: [
       'Activities', 'Admin', 'Claims', 'Communication', 'Documents',
       'Finance', 'Integrations', 'Organisations', 'Policy', 'Products', 'Users', 'Vehicles',
@@ -35,8 +35,8 @@ export const DEFAULT_PROJECT_AREAS = [
       'WindowsService',
     ], children: [] },
   ]},
-  // ── DriveFurther.Nucleus ──────────────────────────────────────────────────
-  { id: 'nucleus', name: 'DriveFurther.Nucleus', items: [], children: [
+  // ── Example.Nucleus ──────────────────────────────────────────────────
+  { id: 'nucleus', name: 'Example.Nucleus', items: [], children: [
     { id: 'nucleus-modules', name: 'modules', items: [
       'vehicle-cap-valuations', 'temporary-vehicles',
       'group-inbox', 'group-calls', 'commission-statement',

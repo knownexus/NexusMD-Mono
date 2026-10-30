@@ -15,7 +15,7 @@ describe('buildLinkMenuTemplate', () => {
   })
 
   it('returns the three link actions for an https link', () => {
-    const template = buildLinkMenuTemplate({ linkURL: 'https://cirrus.uat.msl.co.uk/', isAllowedUrl: allow })
+    const template = buildLinkMenuTemplate({ linkURL: 'https://uat.example.com/', isAllowedUrl: allow })
     expect(template).toHaveLength(3)
     expect(template.map(i => i.action)).toEqual(['open', 'openExternal', 'copy'])
   })
