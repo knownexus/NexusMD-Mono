@@ -41,7 +41,7 @@ export const MARKDOWN_CONTENT_CSS = `
   .md-content pre code {
     display: block; padding: 16px 20px;
     font-family: var(--mono);
-    font-size: 12.5px; line-height: 1.65; overflow-x: auto;
+    font-size: .9em; line-height: 1.65; overflow-x: auto;
   }
   .md-content pre[data-lang]::before {
     content: attr(data-lang); position: absolute; top: 0; right: 0;
@@ -147,10 +147,91 @@ export function useHighlightJs() {
   return ready;
 }
 
+// ── Text size ────────────────────────────────────────────────────
+// One size, as a percentage, for every rendered markdown view (the Documents panes, the Editor's
+// preview), so changing it in one changes them all. It is remembered between sessions.
+const TEXT_SIZE_KEY = 'nexusmd.markdown.textSize';
+const TEXT_SIZE_EVENT = 'nexusmd-markdown-text-size';
+export const TEXT_SIZES = [70, 80, 90, 100, 110, 125, 150, 175, 200];
+
+function readTextSize() {
+  try {
+    const n = Number(localStorage.getItem(TEXT_SIZE_KEY));
+    return TEXT_SIZES.includes(n) ? n : 100;
+  } catch { return 100; }
+}
+
+// The size one step smaller (dir -1) or larger (dir 1), staying within TEXT_SIZES.
+export function stepTextSize(size, dir) {
+  const i = TEXT_SIZES.indexOf(size);
+  const at = i < 0 ? TEXT_SIZES.indexOf(100) : i;
+  return TEXT_SIZES[Math.min(TEXT_SIZES.length - 1, Math.max(0, at + dir))];
+}
+
+// [size, setSize]: the shared text size, kept in step with every other view showing markdown.
+export function useMarkdownTextSize() {
+  const [size, setLocal] = React.useState(readTextSize);
+  React.useEffect(() => {
+    const sync = () => setLocal(readTextSize());
+    window.addEventListener(TEXT_SIZE_EVENT, sync);
+    window.addEventListener('storage', sync);
+    return () => { window.removeEventListener(TEXT_SIZE_EVENT, sync); window.removeEventListener('storage', sync); };
+  }, []);
+  const setSize = React.useCallback(next => {
+    try { localStorage.setItem(TEXT_SIZE_KEY, String(next)); } catch { /* still changes for this session's views */ }
+    setLocal(next);
+    window.dispatchEvent(new Event(TEXT_SIZE_EVENT));
+  }, []);
+  return [size, setSize];
+}
+
+const sizeBtnStyle = {
+  height: 22, minWidth: 26, padding: "0 6px", fontSize: 12, lineHeight: 1,
+  color: "var(--text)", background: "var(--surface)", border: "1px solid var(--border)",
+  borderRadius: "var(--radius-sm)", cursor: "pointer",
+};
+
+// A−, the size (click to go back to 100%), A+.
+export function TextSizeControls({ size, onChange }) {
+  return (
+    <div role="group" aria-label="Text size" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <button type="button" aria-label="Smaller text" title="Smaller text (Ctrl+scroll)" style={sizeBtnStyle}
+        disabled={size === TEXT_SIZES[0]} onClick={() => onChange(stepTextSize(size, -1))}>A−</button>
+      <button type="button" aria-label="Reset text size" title="Back to 100%" style={{ ...sizeBtnStyle, minWidth: 44, color: "var(--text-muted)" }}
+        onClick={() => onChange(100)}>{size}%</button>
+      <button type="button" aria-label="Larger text" title="Larger text (Ctrl+scroll)" style={sizeBtnStyle}
+        disabled={size === TEXT_SIZES[TEXT_SIZES.length - 1]} onClick={() => onChange(stepTextSize(size, 1))}>A+</button>
+    </div>
+  );
+}
+
+const NO_ELEMENT = { current: null };
+
+// Ctrl+scroll (pinch on a trackpad) over the element changes the text size instead of zooming the page.
+export function useCtrlWheelTextSize(ref, size, setSize) {
+  const latest = React.useRef(size);
+  latest.current = size;
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onWheel = e => {
+      if (!e.ctrlKey || !e.deltaY) return;
+      e.preventDefault();
+      setSize(stepTextSize(latest.current, e.deltaY < 0 ? 1 : -1));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [ref, setSize]);
+}
+
 // Markdown, rendered. Code is highlighted once highlight.js has loaded; until then it shows plain.
-export function MarkdownPreview({ markdown, className = '', style, ...rest }) {
+// The text is at the shared text size, which Ctrl+scroll over it changes (ctrlWheel false leaves
+// that to the page, e.g. to take it over the whole pane around the preview).
+export function MarkdownPreview({ markdown, className = '', style, ctrlWheel = true, ...rest }) {
   const ref = React.useRef(null);
   const hljsReady = useHighlightJs();
+  const [textSize, setTextSize] = useMarkdownTextSize();
+  useCtrlWheelTextSize(ctrlWheel ? ref : NO_ELEMENT, textSize, setTextSize);
   React.useEffect(() => {
     if (ref.current) renderPreview(ref.current, markdown, hljsReady ? window.hljs : null);
   }, [markdown, hljsReady]);
@@ -162,7 +243,7 @@ export function MarkdownPreview({ markdown, className = '', style, ...rest }) {
         ref={ref}
         className={`md-content${className ? ` ${className}` : ''}`}
         onClick={e => followPreviewLink(e, e.currentTarget)}
-        style={{ lineHeight: 1.8, color: "var(--text)", ...style }}
+        style={{ lineHeight: 1.8, color: "var(--text)", fontSize: `${textSize}%`, ...style }}
       />
     </>
   );

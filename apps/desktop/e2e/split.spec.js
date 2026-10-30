@@ -141,7 +141,7 @@ test('apps loaded from separate folders still work together: Git opens a file in
       await readme.dispatchEvent('contextmenu', { clientX: 60, clientY: 60 })
       await win.getByRole('menuitem', { name: 'Open in Editor' }).click({ force: true })
       await expect(item(win, 'Editor')).toHaveClass(/active/, { timeout: 20_000 })
-      // A Markdown file opens rendered; its source is behind Edit.
+      // Markdown opens rendered.
       await expect(win.getByLabel('Preview of README.md')).toContainText('From a split install')
     }, { launch: { seed } })
   } finally { rmSync(dir, { recursive: true, force: true }) }

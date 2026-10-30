@@ -5,7 +5,7 @@
 import React from 'react';
 import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { MARKDOWN_CONTENT_CSS, followPreviewLink, renderPreview, useHighlightJs } from './markdown-preview.jsx';
+import { MARKDOWN_CONTENT_CSS, followPreviewLink, renderPreview, useHighlightJs, useMarkdownTextSize, useCtrlWheelTextSize, TextSizeControls } from './markdown-preview.jsx';
 export { slugifyHeading, addHeadingAnchors, followPreviewLink } from './markdown-preview.jsx';
 const { useState: useStateMD, useEffect: useEffectMD, useRef: useRefMD, useCallback: useCallbackMD } = React;
 
@@ -677,6 +677,12 @@ function MarkdownViewer() {
 
   const markedReady = true; // marked is imported from npm (no CDN script needed)
   const hljsReady   = useHighlightJs();
+  const [textSize, setTextSize] = useMarkdownTextSize();
+  // Ctrl+scroll anywhere over a preview pane (both are always in the page, unlike the compare preview).
+  const previewScrollRef = useRefMD(null);
+  const compareScrollRef = useRefMD(null);
+  useCtrlWheelTextSize(previewScrollRef, textSize, setTextSize);
+  useCtrlWheelTextSize(compareScrollRef, textSize, setTextSize);
 
   // Keep markdownRef in sync for use inside async timer callbacks
   useEffectMD(() => { markdownRef.current = markdown; }, [markdown]);
@@ -1353,12 +1359,13 @@ function MarkdownViewer() {
                   {currentDoc ? displayName(currentDoc) : "Unsaved document"}
                 </span>
               )}
+              <div style={{ marginLeft: "auto" }}><TextSizeControls size={textSize} onChange={setTextSize} /></div>
             </PaneHeader>
-            <div style={{ flex: 1, overflowY: "auto", padding: "28px 36px" }}>
+            <div ref={previewScrollRef} style={{ flex: 1, overflowY: "auto", padding: "28px 36px" }}>
               <div
                 className={`md-content${learnMode ? ' md-learn' : ''}`}
                 ref={previewRef}
-                style={{ maxWidth: 740, margin: "0 auto", lineHeight: 1.8, color: "var(--text)" }}
+                style={{ maxWidth: 740, margin: "0 auto", lineHeight: 1.8, color: "var(--text)", fontSize: `${textSize}%` }}
               />
             </div>
             {cheatSheetOpen && (
@@ -1395,14 +1402,14 @@ function MarkdownViewer() {
                 </>
               )}
             </PaneHeader>
-            <div style={{ flex: 1, overflowY: "auto", padding: "28px 36px" }}>
+            <div ref={compareScrollRef} style={{ flex: 1, overflowY: "auto", padding: "28px 36px" }}>
               {compareDoc ? (
                 <div
                   className="md-content"
                   ref={compareRef}
                   data-testid="compare-preview"
                   onClick={e => followPreviewLink(e, e.currentTarget)}
-                  style={{ maxWidth: 740, margin: "0 auto", lineHeight: 1.8, color: "var(--text)" }}
+                  style={{ maxWidth: 740, margin: "0 auto", lineHeight: 1.8, color: "var(--text)", fontSize: `${textSize}%` }}
                 />
               ) : (
                 <p style={{ color: "var(--text-muted)", textAlign: "center", marginTop: 40 }}>
