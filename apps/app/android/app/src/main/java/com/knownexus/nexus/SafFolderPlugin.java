@@ -131,7 +131,14 @@ public class SafFolderPlugin extends Plugin {
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
             byte[] chunk = new byte[16 * 1024];
             int n;
-            while ((n = in.read(chunk)) > 0) buf.write(chunk, 0, n);
+            // length() is whatever the provider reports, so the cap is enforced on the bytes actually read.
+            while ((n = in.read(chunk)) > 0) {
+                if (buf.size() + n > MAX_READ_BYTES) {
+                    call.reject("That file is too large to open here.");
+                    return;
+                }
+                buf.write(chunk, 0, n);
+            }
             JSObject out = new JSObject();
             out.put("text", new String(buf.toByteArray(), StandardCharsets.UTF_8));
             call.resolve(out);
