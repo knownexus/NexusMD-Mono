@@ -1,15 +1,14 @@
 // MarkdownViewer.jsx — shared markdown document editor/viewer (web + app).
 // Integrates with the host theme (CSS tokens + data-theme), so it has no built-in
 // dark toggle. marked is imported from npm; highlight.js is still loaded on demand
-// via CDN. Self-contained — no app-local imports.
+// via CDN. The rendering itself is markdown-preview.jsx's, shared with the Editor app.
 import React from 'react';
-import { marked, Marked } from 'marked';
+import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { isDarkPalette } from '../themes.js';
+import { MARKDOWN_CONTENT_CSS, followPreviewLink, renderPreview, useHighlightJs } from './markdown-preview.jsx';
+export { slugifyHeading, addHeadingAnchors, followPreviewLink } from './markdown-preview.jsx';
 const { useState: useStateMD, useEffect: useEffectMD, useRef: useRefMD, useCallback: useCallbackMD } = React;
 
-const HLJS_LIGHT = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css";
-const HLJS_DARK  = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css";
 const STORAGE_KEY = 'md_documents';
 const CHEAT_OPEN_KEY     = 'md_cheatsheet_open';
 const LEARN_MODE_KEY     = 'md_learn_mode';
@@ -127,58 +126,6 @@ function relativeTime(ts) {
   return new Date(ts).toLocaleDateString();
 }
 
-// GitHub-style heading anchors, so [text](#some-heading) links work. Kept in a data attribute
-// rather than an id, so a heading can't clash with an id elsewhere in the app.
-export function slugifyHeading(text) {
-  return text.trim().toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s/g, '-');
-}
-
-export function addHeadingAnchors(container) {
-  const seen = new Map();
-  container.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(h => {
-    const base = slugifyHeading(h.textContent);
-    const n = seen.get(base) ?? 0;
-    seen.set(base, n + 1);
-    h.setAttribute('data-anchor', n ? `${base}-${n}` : base);
-  });
-}
-
-// A click on a link in the preview. Web links open as the app's other links do (the link window
-// in the desktop app, a new tab on the web), mailto: in the mail app, and #anchors scroll to their
-// heading. Anything else is ignored, so a click can never navigate the app itself away.
-export function followPreviewLink(e, container, {
-  open = url => window.open(url, '_blank', 'noopener'),
-  openExternal = window.electronAPI?.openExternal,
-} = {}) {
-  const a = e.target.closest?.('a[href]');
-  if (!a || !container.contains(a)) return;
-  e.preventDefault();
-  const href = a.getAttribute('href');
-  if (href.startsWith('#')) {
-    let anchor = href.slice(1);
-    try { anchor = decodeURIComponent(anchor); } catch { /* keep it as written */ }
-    const heading = [...container.querySelectorAll('[data-anchor]')]
-      .find(h => h.getAttribute('data-anchor') === anchor.toLowerCase());
-    heading?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    return;
-  }
-  let url;
-  try { url = new URL(href); } catch { return; }
-  if (url.protocol === 'http:' || url.protocol === 'https:') open(url.href);
-  else if (url.protocol === 'mailto:') (openExternal ?? open)(url.href);
-}
-
-// Renders markdown into a preview element: sanitized HTML, heading anchors, highlighted code.
-function renderPreview(el, markdown, hljs) {
-  el.innerHTML = DOMPurify.sanitize(new Marked({ gfm: true }).parse(markdown));
-  addHeadingAnchors(el);
-  el.querySelectorAll('pre code[class*="language-"]').forEach(block => {
-    hljs.highlightElement(block);
-    const lang = (block.className.match(/language-(\S+)/) || [])[1];
-    if (lang) block.closest("pre").setAttribute("data-lang", lang);
-  });
-}
-
 function parseMarkdownSafe(content) {
   try {
     const raw = new Marked({ gfm: true }).parse(content || '');
@@ -188,20 +135,6 @@ function parseMarkdownSafe(content) {
 
 function docWordCount(content) {
   return content.trim() ? content.trim().split(/\s+/).length : 0;
-}
-
-// ── useScript ────────────────────────────────────────────────────
-
-function useScript(src) {
-  const [ready, setReady] = useStateMD(false);
-  useEffectMD(() => {
-    if (document.querySelector(`script[src="${src}"]`)) { setReady(true); return; }
-    const s = document.createElement("script");
-    s.src = src;
-    s.onload = () => setReady(true);
-    document.head.appendChild(s);
-  }, [src]);
-  return ready;
 }
 
 // ── DocumentsModal ───────────────────────────────────────────────
@@ -726,7 +659,6 @@ function MarkdownViewer() {
   const compareRef   = useRefMD(null);
   const workspaceRef = useRefMD(null);
   const fileInputRef = useRefMD(null);
-  const hljsLinkRef  = useRefMD(null);
   const tooltipRef   = useRefMD(null);
   const dragging     = useRefMD(false);
   const startX       = useRefMD(0);
@@ -744,7 +676,7 @@ function MarkdownViewer() {
   const compareDoc = otherDocs.find(d => d.id === compareDocId) ?? otherDocs[0] ?? null;
 
   const markedReady = true; // marked is imported from npm (no CDN script needed)
-  const hljsReady   = useScript("https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js");
+  const hljsReady   = useHighlightJs();
 
   // Keep markdownRef in sync for use inside async timer callbacks
   useEffectMD(() => { markdownRef.current = markdown; }, [markdown]);
@@ -754,26 +686,6 @@ function MarkdownViewer() {
 
   // Persist cheatSheetOpen to localStorage
   useEffectMD(() => { localStorage.setItem(CHEAT_OPEN_KEY, cheatSheetOpen); }, [cheatSheetOpen]);
-
-  // Inject / update highlight.js CSS link — mirrors the app's active theme
-  useEffectMD(() => {
-    const getHref = () => isDarkPalette(document.body.dataset.theme) ? HLJS_DARK : HLJS_LIGHT;
-
-    if (!hljsLinkRef.current) {
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.id  = "hljs-theme";
-      document.head.appendChild(link);
-      hljsLinkRef.current = link;
-    }
-    hljsLinkRef.current.href = getHref();
-
-    const observer = new MutationObserver(() => {
-      if (hljsLinkRef.current) hljsLinkRef.current.href = getHref();
-    });
-    observer.observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => observer.disconnect();
-  }, []);
 
   // Render markdown into preview div
   useEffectMD(() => {
@@ -1185,55 +1097,7 @@ function MarkdownViewer() {
 
   return (
     <>
-      <style>{`
-        .md-content h1, .md-content h2, .md-content h3, .md-content h4, .md-content h5, .md-content h6 {
-          margin: 1.5em 0 .5em; line-height: 1.3; font-weight: 700; color: var(--text);
-        }
-        .md-content h1:first-child, .md-content h2:first-child { margin-top: 0; }
-        .md-content h1 { font-size: 1.85em; border-bottom: 2px solid var(--border); padding-bottom: .35em; }
-        .md-content h2 { font-size: 1.35em; border-bottom: 1px solid var(--border); padding-bottom: .25em; }
-        .md-content h3 { font-size: 1.15em; }
-        .md-content h4 { font-size: 1em; }
-        .md-content p { margin: .75em 0; }
-        .md-content a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-        .md-content a:hover { opacity: .8; }
-        .md-content ul, .md-content ol { padding-left: 1.6em; margin: .65em 0; }
-        .md-content li { margin: .3em 0; }
-        .md-content li > ul, .md-content li > ol { margin: .2em 0; }
-        .md-content blockquote {
-          border-left: 3px solid var(--accent); margin: 1.1em 0;
-          padding: .6em 1em .6em 1.1em; background: var(--accent-soft);
-          border-radius: 0 var(--radius) var(--radius) 0; color: var(--text-muted);
-        }
-        .md-content code:not(pre code) {
-          background: var(--surface-2); padding: .18em .45em; border-radius: 4px;
-          font-family: var(--mono);
-          font-size: .855em; color: var(--danger);
-        }
-        .md-content pre {
-          position: relative; margin: 1.1em 0; border-radius: var(--radius);
-          overflow: hidden; border: 1px solid var(--border);
-        }
-        .md-content pre code {
-          display: block; padding: 16px 20px;
-          font-family: var(--mono);
-          font-size: 12.5px; line-height: 1.65; overflow-x: auto;
-        }
-        .md-content pre[data-lang]::before {
-          content: attr(data-lang); position: absolute; top: 0; right: 0;
-          padding: 2px 8px; font-size: 10px; font-family: var(--sans);
-          font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
-          color: var(--text-subtle); background: rgba(0,0,0,.04);
-          border-bottom-left-radius: var(--radius);
-        }
-        .md-content table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: .92em; }
-        .md-content th, .md-content td { border: 1px solid var(--border); padding: 8px 13px; text-align: left; }
-        .md-content th { background: var(--surface-2); font-weight: 600; }
-        .md-content tr:nth-child(even) td { background: var(--surface-2); }
-        .md-content img { max-width: 100%; border-radius: var(--radius); display: block; }
-        .md-content hr { border: none; border-top: 2px solid var(--border); margin: 1.8em 0; }
-        .md-content .task-list-item { list-style: none; margin-left: -1.2em; }
-        .md-content .task-list-item input { margin-right: .45em; accent-color: var(--accent); }
+      <style>{`${MARKDOWN_CONTENT_CSS}
         .md-learn [data-md-source] { outline: 1px dashed var(--accent-border); outline-offset: 1px; border-radius: 2px; cursor: help; }
         .md-learn [data-md-source]:hover { outline-color: var(--accent); background: var(--accent-soft); }
       `}</style>

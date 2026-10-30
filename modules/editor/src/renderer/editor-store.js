@@ -72,11 +72,12 @@ export function createEditorStore({ api, storage = null, recentKey = 'nexusmd.ed
     const existing = find(path)
     if (existing) {
       set({ active: existing.path, notice: null })
-      // A new object each time, so asking for the same line again still jumps there.
-      if (line != null) patchDoc(existing.path, { line: { line } })
+      // A new object each time, so asking for the same line again still jumps there. A line is
+      // in the source, so a rendered markdown file switches to it.
+      if (line != null) patchDoc(existing.path, { line: { line }, view: 'source' })
       return
     }
-    const doc = { path, name: baseName(path), status: 'loading', text: '', saved: '', eol: '\n', bom: false, stamp: null, error: null, conflict: false, saving: false, line: line != null ? { line } : null }
+    const doc = { path, name: baseName(path), status: 'loading', text: '', saved: '', eol: '\n', bom: false, stamp: null, error: null, conflict: false, saving: false, line: line != null ? { line } : null, view: line != null ? 'source' : null }
     set({ docs: [...state.docs, doc], active: path, notice: null })
     remember('files', path)
     await load(path, { line: line != null ? { line } : null })
@@ -114,13 +115,15 @@ export function createEditorStore({ api, storage = null, recentKey = 'nexusmd.ed
     openText({ id, name, text, origin = '' }) {
       const doc = {
         path: id, name: name || baseName(id), status: 'ready', text: toLf(text), saved: toLf(text), eol: majorityEol(text), bom: false,
-        stamp: null, error: null, conflict: false, saving: false, line: null, readOnly: true, origin,
+        stamp: null, error: null, conflict: false, saving: false, line: null, view: find(id)?.view ?? null, readOnly: true, origin,
       }
       set({ docs: find(id) ? state.docs.map(d => (sameDoc(d.path, id) ? doc : d)) : [...state.docs, doc], active: id, notice: null })
     },
 
     activate(path) { const d = find(path); if (d) set({ active: d.path }) },
     dismissNotice() { set({ notice: null }) },
+    // How a file is shown, where it has a choice: 'preview' (markdown, rendered) or 'source'.
+    setView(path, view) { if (find(path)) patchDoc(path, { view }) },
     closeFolder() { set({ folder: null }) },
 
     // Closing drops the file and its unsaved edits (the screen asks first when there are any).
