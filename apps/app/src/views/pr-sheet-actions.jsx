@@ -2,13 +2,14 @@
 // Both go through the offline queue: with no connection they are kept and sent when it returns.
 import React from 'react';
 import { appQueue } from '../offline-queue-app.js';
+import { PRMergeSheet, canMerge, canClose } from './pr-merge-sheet.jsx';
 import { adoGet } from '../ado-client.js';
 import { votesFor, canVote, canComment, myVoteOf, adoVoteLabel, minimalPR, resolveAdoId } from '../pr-actions-phone.js';
 
 const label = (pr, v) => votesFor(pr).find(x => x.v === v)?.label || adoVoteLabel(v);
 const OFFLINE = "Saved. It will be sent when you're back online.";
 
-export function PRSheetActions({ pr, me: meIn, githubLogin, onFlash, lookupAdoId = () => resolveAdoId(adoGet) }) {
+export function PRSheetActions({ pr, me: meIn, githubLogin, onFlash, onChanged, lookupAdoId = () => resolveAdoId(adoGet) }) {
   const github = pr.source === 'github';
   // The loaded data doesn't always carry your ADO identity; ask for it when voting needs it.
   const [foundId, setFoundId] = React.useState('');
@@ -54,8 +55,9 @@ export function PRSheetActions({ pr, me: meIn, githubLogin, onFlash, lookupAdoId
     finally { setBusy(''); }
   };
 
+  const [endMode, setEndMode] = React.useState(null); // 'merge' | 'close'
   const showVote = canVote(pr, me);
-  if (!showVote && !canComment(pr)) return null;
+  if (!showVote && !canComment(pr) && !canClose(pr)) return null;
   return (
     <div className="m-pr-actions">
       {showVote && (
@@ -79,7 +81,22 @@ export function PRSheetActions({ pr, me: meIn, githubLogin, onFlash, lookupAdoId
             disabled={!text.trim() || !!busy} onClick={post}>{busy === 'comment' ? 'Posting…' : 'Post comment'}</button>
         </section>
       )}
+      {(canMerge(pr) || canClose(pr)) && (
+        <section aria-label="Finish">
+          <div className="m-sec-h"><span className="lbl">Finish</span><span className="line"/></div>
+          <div className="m-votes">
+            {canMerge(pr) && <button type="button" className="btn primary m-btn-lg" onClick={() => setEndMode('merge')}>{github ? 'Merge' : 'Complete'}</button>}
+            {canClose(pr) && <button type="button" className="btn m-btn-lg" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => setEndMode('close')}>{github ? 'Close PR' : 'Abandon'}</button>}
+          </div>
+        </section>
+      )}
       {error && <div className="m-error" role="alert" style={{ marginTop: 10 }}>{error}</div>}
+      <PRMergeSheet pr={pr} mode={endMode} adoMeId={me?.adoId} onClose={() => setEndMode(null)}
+        onDone={({ merged, warnings }) => {
+          warnings.forEach(w => onFlash?.(w, 'alert'));
+          onFlash?.(endMode === 'merge' ? (merged ? 'Pull request merged' : 'Merge requested') : (github ? 'Pull request closed' : 'Pull request abandoned'), 'check');
+          onChanged?.();
+        }}/>
     </div>
   );
 }

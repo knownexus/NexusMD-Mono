@@ -196,7 +196,8 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
                 {detailPR.description.length > 500 ? detailPR.description.slice(0, 500) + '…' : detailPR.description}
               </div>
             )}
-            <PRSheetActions pr={detailPR} me={HelmData?.ME} githubLogin={getGithubConfig().login} onFlash={onFlash}/>
+            <PRSheetActions pr={detailPR} me={HelmData?.ME} githubLogin={getGithubConfig().login} onFlash={onFlash}
+              onChanged={() => { setDetailPR(null); HelmApi?.load().catch(() => {}); }}/>
           </>
         )}
       </Sheet>
