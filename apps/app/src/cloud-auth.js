@@ -57,20 +57,37 @@ function openBrowser(url) {
   if (!window.open(url, '_system')) window.location.href = url
 }
 
+const apiHost = () => { try { return new URL(API_BASE).host } catch { return API_BASE } }
+
+// Say why sign-in did not start, instead of nothing happening.
+export async function signInFailure(res) {
+  let error = ''
+  try { error = (await res.json())?.error || '' } catch { /* not JSON */ }
+  if (/not configured/i.test(error)) return `The sign-in server (${apiHost()}) has no client ID for this provider yet.`
+  if (/returnUri/i.test(error)) return `The sign-in server (${apiHost()}) does not accept this app's return link.`
+  return `The sign-in server (${apiHost()}) answered ${res.status}${error ? `: ${error}` : ''}.`
+}
+
+// Ask the sign-in server for the provider's consent URL and open it in the system browser. Every way this can
+// fail says so, instead of the button doing nothing.
+export async function startSignIn(cfg) {
+  try {
+    const returnUri = `nexusmd://oauth/${cfg.from}`
+    const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
+    if (!res.ok) { toast?.(await signInFailure(res), 'error'); return }
+    const { url } = await res.json()
+    markPending(cfg.from)
+    openBrowser(url)
+  } catch {
+    toast?.(`Can't reach the sign-in server (${apiHost()}). Check your connection, or that the server is running.`, 'error')
+  }
+}
+
 function makeBinding(key) {
   const cfg = PROVIDERS[key]
   return {
     isConnected: () => Boolean(readAuth(cfg.keySuffix)?.accessToken),
-    async connect() {
-      try {
-        const returnUri = `nexusmd://oauth/${cfg.from}`
-        const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
-        if (!res.ok) return
-        const { url } = await res.json()
-        markPending(cfg.from)
-        openBrowser(url)
-      } catch {}
-    },
+    connect: () => startSignIn(cfg),
     async disconnect() {
       await clearAuth(cfg.keySuffix)
       window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
@@ -167,16 +184,7 @@ export function makeAppOAuthService(from) {
   const cfg = PROVIDERS[from]
   return {
     isConnected: () => Boolean(readAuth(cfg.keySuffix)?.accessToken),
-    async connect() {
-      try {
-        const returnUri = `nexusmd://oauth/${cfg.from}`
-        const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
-        if (!res.ok) { toast?.(`${from} sign-in is not configured on the server.`, 'error'); return }
-        const { url } = await res.json()
-        markPending(cfg.from)
-        openBrowser(url)
-      } catch { toast?.('Sign-in failed. Please try again.', 'error') }
-    },
+    connect: () => startSignIn(cfg),
     async disconnect() {
       await clearAuth(cfg.keySuffix)
       window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
