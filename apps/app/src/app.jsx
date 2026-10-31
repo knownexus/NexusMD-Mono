@@ -283,7 +283,7 @@ function SettingsModal({ open, onClose, onSaved }) {
   // On a phone the form saves as you type, once every field checks out.
   const formValues = { org, pat, projects, interval, testProject, uatProject, uatPipelineId, uatBranch, adoWorkItems, quickLinks };
   const form = useFormAutosave({
-    enabled: open && phone && Object.keys(initial).length > 0, values: formValues, initial, validate: validateAdoForm,
+    enabled: open && phone && Object.keys(initial).length > 0, values: formValues, initial, validate: validateAdoForm, hold: ['org'],
     save: (v) => {
       saveAdoConfig({
         org: v.org.trim(), ...(v.pat.trim() ? { pat: v.pat.trim() } : {}),
@@ -296,7 +296,7 @@ function SettingsModal({ open, onClose, onSaved }) {
     },
   });
   // Closing reloads the data once, if anything was saved.
-  const closeForm = () => { if (phone && form.dirty) onSaved?.(); onClose(); };
+  const closeForm = () => { const flushed = phone && form.flush(); if (phone && (form.dirty || flushed)) onSaved?.(); onClose(); };
   const fe = phone ? form.errors : {};
 
   const save = async () => {

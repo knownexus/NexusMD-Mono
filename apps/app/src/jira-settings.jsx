@@ -37,7 +37,7 @@ export function JiraSettingsModal({ open, onClose, onSaved }) {
 
   // On a phone the form saves as you type, once every field checks out.
   const form = useFormAutosave({
-    enabled: open && phone && Object.keys(initial).length > 0, values: { site, email, token, keys, jql, enabled }, initial, validate: validateJiraForm,
+    enabled: open && phone && Object.keys(initial).length > 0, values: { site, email, token, keys, jql, enabled }, initial, validate: validateJiraForm, hold: ['site'],
     save: (v) => saveJiraConfig({
       site: v.site.trim(), email: v.email.trim(), ...(v.token.trim() ? { apiToken: v.token.trim() } : {}),
       projectKeys: splitKeys(v.keys), jql: v.jql.trim(), enabled: v.enabled,
@@ -45,7 +45,8 @@ export function JiraSettingsModal({ open, onClose, onSaved }) {
   });
   // Closing refetches the Jira data once, if anything was saved.
   const closeForm = () => {
-    if (phone && form.dirty) { try { localStorage.removeItem(JIRA_CACHE_KEY); } catch (_) {} onSaved?.(); }
+    const flushed = phone && form.flush();
+    if (phone && (form.dirty || flushed)) { try { localStorage.removeItem(JIRA_CACHE_KEY); } catch (_) {} onSaved?.(); }
     onClose();
   };
   const fe = phone ? form.errors : {};

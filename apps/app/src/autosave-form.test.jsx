@@ -29,7 +29,8 @@ describe('Jira form checks', () => {
   it('accepts a good form', () => { expect(hasErrors(validateJiraForm(jira))).toBe(false) })
   it('checks the site, email and project keys', () => {
     expect(validateJiraForm({ ...jira, site: '' }).site).toBeTruthy()
-    expect(validateJiraForm({ ...jira, site: 'a b' }).site).toBeTruthy()
+    for (const bad of ['a b', 'evil.com', 'a@evil.com', 'acme.atlassian.net/x?y', 'acme#x', 'a\\b']) expect(validateJiraForm({ ...jira, site: bad }).site).toBeTruthy()
+    for (const ok of ['acme', 'acme.atlassian.net', 'https://acme.atlassian.net/']) expect(validateJiraForm({ ...jira, site: ok }).site).toBeUndefined()
     expect(validateJiraForm({ ...jira, email: 'nope' }).email).toMatch(/email/)
     expect(validateJiraForm({ ...jira, keys: 'ABC, 1x, a-b' }).keys).toMatch(/1x, a-b/)
     expect(validateJiraForm({ ...jira, keys: '' }).keys).toBeUndefined()
@@ -89,6 +90,27 @@ describe('saving as you type', () => {
     expect(save).not.toHaveBeenCalled()
     expect(out.current.errors.org).toBeTruthy()
     expect(out.current.label).toMatch(/Fix/)
+  })
+
+  it('holds back a changed server address until it is flushed', () => {
+    const save = vi.fn()
+    const init = { org: 'acme', interval: 30 }
+    const { out, rerender } = mount({ ...base, hold: ['org'], initial: init, values: init, save })
+    rerender({ ...base, hold: ['org'], initial: init, values: { ...init, org: 'acm' }, save })
+    act(() => { vi.advanceTimersByTime(3000) })
+    expect(save).not.toHaveBeenCalled()
+    expect(out.current.label).toMatch(/server address/)
+    act(() => { out.current.flush() })
+    expect(save).toHaveBeenCalledTimes(1)
+  })
+
+  it('still autosaves other fields while the address is unchanged', () => {
+    const save = vi.fn()
+    const init = { org: 'acme', interval: 30 }
+    const { rerender } = mount({ ...base, hold: ['org'], initial: init, values: init, save })
+    rerender({ ...base, hold: ['org'], initial: init, values: { ...init, interval: 60 }, save })
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(save).toHaveBeenCalledTimes(1)
   })
 
   it('does nothing when disabled', () => {
