@@ -25,7 +25,16 @@ function mediaFor(width) {
   }
 }
 
+
+// Nothing seeds a profile, so a bare launch shows the first-run gate; tests that want the shell start with one.
+const seedProfile = () => {
+  if (localStorage.getItem('helm.activeProfileId')) return
+  localStorage.setItem('helm.profiles', JSON.stringify([{ id: 'test', name: 'Test', initials: 'TE', color: '#6c8ebf', type: 'ado', createdAt: 1 }]))
+  localStorage.setItem('helm.activeProfileId', 'test')
+}
+
 async function boot({ width = 412 } = {}) {
+  seedProfile()
   vi.resetModules()
   window.matchMedia = mediaFor(width)
   document.body.replaceChildren(Object.assign(document.createElement('div'), { id: 'root' }))

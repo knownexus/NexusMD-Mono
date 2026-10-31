@@ -13,11 +13,14 @@ function runProfileMigration() {
   // Already migrated
   if (localStorage.getItem(ACTIVE_KEY)) return;
 
-  const id = generateMigrationId();
-  const prefix = `helm.p.${id}.`;
-
   // Determine profile name/type from existing ADO config
   const org = localStorage.getItem('helm.android.org') || '';
+
+  // Fresh installs have nothing to carry over: the first-run gate makes their profile.
+  if (!org && !localStorage.getItem('helm.android.pat')) return;
+
+  const id = generateMigrationId();
+  const prefix = `helm.p.${id}.`;
 
   // Collect all helm.* keys to copy (skip the 3 meta keys we're about to write)
   const skip = new Set([ACTIVE_KEY, PROFILES_KEY, MIGRATED_KEY]);
@@ -33,7 +36,7 @@ function runProfileMigration() {
     localStorage.setItem(prefix + suffix, localStorage.getItem(k));
   });
 
-  // Write profile metadata — fresh installs get an empty ADO profile to fill in
+  // Write profile metadata
   const profile = {
     id,
     name: org || 'My organisation',

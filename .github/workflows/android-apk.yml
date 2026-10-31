@@ -46,6 +46,10 @@ jobs:
       - name: Assemble the debug APK
         working-directory: apps/app/android
         run: ./gradlew assembleDebug --no-daemon
+      # Proves the Play bundle builds on every change (unsigned: signing secrets are only in the release workflow).
+      - name: Assemble the release bundle (unsigned)
+        working-directory: apps/app/android
+        run: ./gradlew bundleRelease --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: nexusmd-android-debug-${{ github.sha }}

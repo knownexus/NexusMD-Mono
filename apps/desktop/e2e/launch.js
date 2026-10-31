@@ -23,17 +23,19 @@ export async function launchApp({ seed = {}, prefs = null, args = [], headed = p
   })
   const win = await app.firstWindow()
   await win.waitForLoadState('domcontentloaded')
-  if (Object.keys(seed).length) {
-    // The profile is created as the app boots; a split install loads its apps first, so wait for it
-    // rather than seeding under a profile that does not exist yet.
-    await win.waitForFunction(() => localStorage.getItem('nexusmd.activeProfileId'), null, { timeout: 30_000 })
-    await win.evaluate(s => {
-      const id = localStorage.getItem('nexusmd.activeProfileId')
-      for (const [k, v] of Object.entries(s)) localStorage.setItem(k.startsWith('profile:') ? `nexusmd.p.${id}.${k.slice(8)}` : k, JSON.stringify(v))
-    }, seed)
-    await win.reload()
-    await win.waitForLoadState('domcontentloaded')
-  }
+  // Nothing seeds a profile: a fresh install shows the first-run gate. Make one here (what filling the gate in
+  // would store) so the tests land in the shell, then reload into it along with any seed.
+  await win.evaluate(s => {
+    if (!localStorage.getItem('nexusmd.activeProfileId')) {
+      const id = 'e2e'
+      localStorage.setItem('nexusmd.profiles', JSON.stringify([{ id, name: 'E2E', initials: 'E2', color: '#9a7e22', type: 'manual', createdAt: Date.now() }]))
+      localStorage.setItem('nexusmd.activeProfileId', id)
+    }
+    const id = localStorage.getItem('nexusmd.activeProfileId')
+    for (const [k, v] of Object.entries(s)) localStorage.setItem(k.startsWith('profile:') ? `nexusmd.p.${id}.${k.slice(8)}` : k, JSON.stringify(v))
+  }, seed)
+  await win.reload()
+  await win.waitForLoadState('domcontentloaded')
   return {
     app, win,
     async close() {

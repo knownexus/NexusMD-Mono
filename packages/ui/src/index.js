@@ -39,6 +39,7 @@ export { ViewDbManager } from './views/ViewDbManager.jsx'
 // Profile registry (active profile, CRUD, export/import). Each app wraps this
 // with a platform `store` (web REST vs app local) in its own profile-context.
 export { ProfileProvider, useProfile, localUpsertProfiles } from './profile-context.jsx'
+export { ProfileGate } from './profile-gate.jsx'
 
 
 // Global toast notifications.
@@ -66,7 +67,7 @@ export {
 // Shared Settings form/profile primitives (web + app). Each app keeps its own
 // SettingsView page + integration cards; these are the shared building blocks.
 export {
-  PROFILE_COLORS,
+  PROFILE_COLORS, PROFILE_TYPES,
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, ThemeModeSettings, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
   BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,

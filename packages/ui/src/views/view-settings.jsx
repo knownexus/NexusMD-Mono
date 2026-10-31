@@ -225,6 +225,15 @@ const PROFILE_COLORS = [
   '#e05a2b', '#8098e0', '#b86078', '#c09040',
 ];
 
+// The primary integration a profile is built around ('manual' has none). Others can still be connected in Settings.
+const PROFILE_TYPES = [
+  { id: 'ado',    label: 'Azure DevOps', desc: 'Work items, PRs, builds and team from Azure DevOps.' },
+  { id: 'jira',   label: 'Jira',         desc: 'Issues and boards from Jira Cloud.' },
+  { id: 'github', label: 'GitHub',       desc: 'Issues, pull requests and Actions from GitHub.' },
+  { id: 'manual', label: 'Manual',       desc: 'No external tool. Planner, notes, lists and calendar only.' },
+];
+const profileTypeLabel = (t) => PROFILE_TYPES.find(x => x.id === t)?.label || t;
+
 // showOrgLabel: web profiles carry an `orgLabel` (sidebar label); the app's don't.
 function VsProfileEditor({ profile, onSave, onDelete, onExport, onClose, showOrgLabel = true }) {
   const isNew = !profile;
@@ -270,7 +279,7 @@ function VsProfileEditor({ profile, onSave, onDelete, onExport, onClose, showOrg
       </PlFld>
       <PlFld label="Type">
         <div className="pl-seg">
-          {[['ado', 'Azure DevOps'], ['manual', 'Manual']].map(([v, l]) => (
+          {PROFILE_TYPES.map(({ id: v, label: l }) => (
             <button key={v} className={type === v ? 'active' : ''} onClick={() => setType(v)}>{l}</button>
           ))}
         </div>
@@ -327,7 +336,7 @@ function VsProfiles({ profileApi, showOrgLabel = true }) {
             </div>
             <div className="info">
               <div className="t">{p.name}</div>
-              <div className="d">{p.type === 'ado' ? 'Azure DevOps' : 'Manual — no DevOps'}</div>
+              <div className="d">{p.type === 'manual' ? 'Manual — no integration' : profileTypeLabel(p.type)}</div>
             </div>
             {p.id === activeId
               ? <span className="pill success"><span className="dot"></span>Active</span>
@@ -1057,7 +1066,7 @@ function CardsAndTablesSettings() {
 
 // ── Shared exports ────────────────────────────────────────────────
 export {
-  PROFILE_COLORS,
+  PROFILE_COLORS, PROFILE_TYPES,
   PlToggle, VsRow, VsCard, VsFullRow, ThemeChipPicker, ThemeModeSettings, VsSeg,
   VsPasswordModal, VsProfileEditor, VsProfiles,
   BundlePasswordModal, BackupRestoreCard, CloudPickerModal, CloudSyncCard,

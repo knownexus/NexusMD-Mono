@@ -17,6 +17,7 @@ import { appSync } from '../sync.js';
 import { getAdoConfig } from '../ado-client.js';
 import { getJiraConfig } from '../jira-client.js';
 import { getGithubConfig } from '../github-client.js';
+import { checkForUpdate, installUpdate } from '../app-update.js';
 import { appQueue } from '../offline-queue-app.js';
 import { syncLabel } from '../sync-status.js';
 import { connectionsSummary, privacySummary, dataSummary } from '../settings-summary.js';
@@ -62,6 +63,33 @@ function vsTimeZones() {
   const fallback = ['Europe/London', 'Europe/Amsterdam', 'Europe/Paris', 'UTC', 'America/New_York', 'America/Chicago', 'America/Los_Angeles', 'Asia/Kolkata', 'Asia/Singapore', 'Australia/Sydney'];
   const result = zones || fallback;
   return result;
+}
+
+// Updates from GitHub releases. Hidden off the phone and on Play installs, which Play updates itself.
+function AppUpdateRow() {
+  const [state, setState] = useStateVS({ busy: false });
+  useEffectVS(() => { checkForUpdate().then(r => setState({ busy: false, r })).catch(() => setState({ busy: false })); }, []);
+  const { r, busy, err } = state;
+  if (!r?.supported || r.fromPlay) return null;
+  const check = async () => {
+    setState({ busy: true, r });
+    try { setState({ busy: false, r: await checkForUpdate() }); } catch (e) { setState({ busy: false, r, err: e.message }); }
+  };
+  const install = async () => {
+    setState({ busy: true, r });
+    try { await installUpdate(r.latest); setState({ busy: false, r }); }
+    catch (e) { setState({ busy: false, r, err: e.message }); toast?.(e.message, 'error'); }
+  };
+  const desc = err ? err : r.available
+    ? `Version ${r.latest.version} is available (you have ${r.current})`
+    : `Version ${r.current} is the latest`;
+  return (
+    <VsRow title="App updates" desc={desc}>
+      {r.available
+        ? <button className="btn sm primary" disabled={busy} onClick={install}>{busy ? 'Downloading…' : 'Install update'}</button>
+        : <button className="btn sm" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check now'}</button>}
+    </VsRow>
+  );
 }
 
 function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection, onOpenJira, onOpenGithub, onOpenProjectAreas, onGoPlanner }) {
@@ -453,6 +481,7 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
 
           {page === 'data' && (
             <VsCard title="Data & sync" icon="inbox">
+              <AppUpdateRow />
               <VsRow title="Export this week" desc="Download as JSON or Word (.docx) from the planner header">
                 <button className="btn sm" onClick={() => {
                   onGoPlanner?.();

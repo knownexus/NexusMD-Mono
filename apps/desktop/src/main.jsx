@@ -6,11 +6,11 @@ import { initCore, createNoOpAdapters } from '@nexusmd/core'
 import {
   Icon, CardFrame, NexusDataProvider, ToastHost,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
-  THEME_MODES, paletteFor,
+  THEME_MODES, paletteFor, ProfileGate,
 } from '@nexusmd/ui'
 import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, visibleNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
 import { DesktopSettings } from './desktop-settings.jsx'
-import { ProfileProvider, ensureDefaultProfileAndMigrate } from './profile-context.jsx'
+import { ProfileProvider } from './profile-context.jsx'
 import { getProfileKey, usePersistedState } from '@nexusmd/shell-sdk'
 import { redeem } from './cloud-auth.js'
 import { registerDeepLinks } from './shell/deep-links.js'
@@ -77,11 +77,6 @@ const DEFAULT_TWEAKS = {
 function loadTweaks() {
   try { const s = localStorage.getItem('nexusmd.tweaks'); return s ? { ...DEFAULT_TWEAKS, ...JSON.parse(s) } : DEFAULT_TWEAKS } catch { return DEFAULT_TWEAKS }
 }
-
-// Seed a default profile and fold any pre-registry flat `nexusmd.*` data into
-// its scope. Must run before initCore, which reads cached ADO data via the
-// (now profile-scoped) getProfileKey.
-ensureDefaultProfileAndMigrate()
 
 // nexusmd:// deep links: open a screen, or redeem a cloud OAuth one-time code.
 registerDeepLinks({ redeem, navigate: view => host.navigate(view) })
@@ -493,7 +488,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AppErrorBoundary>
       <ProfileProvider>
-        {popout ? <popout.Component spec={popout.spec} adapter={popout.adapter} /> : <App />}
+        {popout ? <popout.Component spec={popout.spec} adapter={popout.adapter} /> : <ProfileGate><App /></ProfileGate>}
       </ProfileProvider>
     </AppErrorBoundary>
   </React.StrictMode>
