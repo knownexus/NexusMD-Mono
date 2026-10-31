@@ -4,13 +4,16 @@ import { adoGet, adoPost, adoPatch, getAdoConfig } from '../ado-client.js';
 import { toast } from '../toast.jsx';
 import { HelmData } from '../data.jsx';
 import { ColHead } from '@nexusmd/ui';
+import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
 import { NotificationBanner } from '../components.jsx';
 // view-builds.jsx — Build pipelines status view
 
 // Grid template shared between header and every build row
 const BUILD_GRID = '28px 68px 1fr 160px 72px 80px 72px 148px 140px';
 
-function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItemIds = new Set() }) {
+function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuilds, newItemIds = new Set() }) {
+  const src = useSourceFilter('builds', allBuilds);
+  const builds = src.filtered;
   const [initialNewCount] = React.useState(() => newItemIds.size);
   const [bannerDismissed, setBannerDismissed] = React.useState(false);
   const [collapsed,        setCollapsed]        = usePersisted('helm.builds.collapsed', {});
@@ -190,6 +193,7 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
       </div>
 
       <div className="m-screen">
+        <SourceSwitch {...src}/>
       {initialNewCount > 0 && !bannerDismissed && (
         <NotificationBanner
           label={`${initialNewCount} new build result${initialNewCount !== 1 ? 's' : ''} since your last visit`}

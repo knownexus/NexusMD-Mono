@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
 vi.mock('@capacitor/core', () => ({ CapacitorHttp: undefined }))
@@ -54,5 +54,27 @@ describe('GitHub runs', () => {
     expect(links[0].closest('a').getAttribute('href')).toBe('https://github.com/acme/web/actions/runs/991')
     expect(screen.queryByText('Rerun')).toBeNull()
     expect(screen.queryByText('Cancel')).toBeNull()
+  })
+})
+
+describe('source switch', () => {
+  it('shows one provider at a time on Work, and remembers the choice', () => {
+    localStorage.clear()
+    render(<WorkItemsView items={[adoItem, ghIssue()]} onOpen={() => {}} onCreate={() => {}} team={[]} device="phone"/>)
+    expect(screen.getByRole('tab', { name: /Azure DevOps/ }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByText('ADO thing')).toBeTruthy()
+    expect(screen.queryByText('Fix the login redirect')).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: /GitHub/ }))
+    expect(screen.getByText('Fix the login redirect')).toBeTruthy()
+    expect(screen.queryByText('ADO thing')).toBeNull()
+    cleanup()
+    render(<WorkItemsView items={[adoItem, ghIssue()]} onOpen={() => {}} onCreate={() => {}} team={[]} device="phone"/>)
+    expect(screen.getByRole('tab', { name: /GitHub/ }).getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('shows no switch when there is only one provider', () => {
+    localStorage.clear()
+    render(<WorkItemsView items={[adoItem]} onOpen={() => {}} onCreate={() => {}} team={[]} device="phone"/>)
+    expect(screen.queryByRole('tablist', { name: 'Source' })).toBeNull()
   })
 })

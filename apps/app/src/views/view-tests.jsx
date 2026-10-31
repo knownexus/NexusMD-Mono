@@ -1,12 +1,15 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
+import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
 import { HelmData } from '../data.jsx';
 import { NotificationBanner } from '../components.jsx';
 // view-tests.jsx — Tests dashboard: pipeline runs + pass/fail summaries
 
 const { useState: useStateT, useMemo: useMemoT } = React;
 
-function TestsView({ tests, acknowledgedTests, setAcknowledgedTests, newItemIds = new Set() }) {
+function TestsView({ tests: allTests, acknowledgedTests, setAcknowledgedTests, newItemIds = new Set() }) {
+  const src = useSourceFilter('tests', allTests);
+  const tests = src.filtered;
   const [initialNewCount] = useStateT(() => newItemIds.size);
   const [bannerDismissed, setBannerDismissed] = useStateT(false);
   const [pipeline,    setPipeline]    = usePersisted('helm.tests.pipeline', 'all');
@@ -106,6 +109,7 @@ function TestsView({ tests, acknowledgedTests, setAcknowledgedTests, newItemIds 
       </div>
 
       <div className="m-screen">
+        <SourceSwitch {...src}/>
       {initialNewCount > 0 && !bannerDismissed && (
         <NotificationBanner
           label={`${initialNewCount} new test result${initialNewCount !== 1 ? 's' : ''} since your last visit`}

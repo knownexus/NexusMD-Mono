@@ -1,5 +1,6 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
+import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
 import { Sheet, effectiveNeedsMe } from '../components.jsx';
 import { getProfileKey } from '../profile-keys.js';
 // view-prs.jsx — Mobile pull requests
@@ -57,7 +58,8 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
     } catch {}
   }, [seg, groupBy]);
 
-  const list = prs || [];
+  const src = useSourceFilter('prs', prs);
+  const list = src.filtered;
   const needsMeCount = useMemo(() => list.filter(p => needsMe(p)).length, [list, needsMeCriteria]);
 
   const filtered = useMemo(() => {
@@ -87,6 +89,7 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
       </div>
 
       <div className="m-screen">
+        <SourceSwitch {...src}/>
         {/* Segmented control */}
         <div className="m-seg" style={{ marginBottom: 12 }}>
           <button type="button" className={seg === 'all' ? 'active' : ''} onClick={() => setSeg('all')}>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
+import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
 import { Sheet } from '../components.jsx';
 import { getProfileKey } from '../profile-keys.js';
 import { isTerminalState } from '@nexusmd/core';
@@ -148,7 +149,8 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
     setAssigneeFilter(new Set());
   };
 
-  const list = items || [];
+  const src = useSourceFilter('work', items);
+  const list = src.filtered;
   // Open / Closed when GitHub is the only provider; the usual five lanes otherwise.
   const lanes = useMemo(() => (list.length > 0 && list.every(w => w.source === 'github') ? GH_LANES : LANES), [list]);
 
@@ -273,6 +275,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
       </div>
 
       <div className="m-screen" style={{ paddingBottom: 80 }}>
+        <SourceSwitch {...src}/>
         {/* Search + filter bar */}
         <div className="m-filterbar" style={{ marginBottom: 12 }}>
           <div className="m-search" style={{ flex: 1 }}>
