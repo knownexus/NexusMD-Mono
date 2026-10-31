@@ -8,10 +8,10 @@ describe('pending sign-in', () => {
     expect(takePending('google', 2000)).toBe(true)
     expect(takePending('google', 2000)).toBe(false)
   })
-  it('rejects a different provider and still consumes the record', () => {
+  it('rejects a different provider without cancelling the real sign-in', () => {
     markPending('gdrive', 1000)
     expect(takePending('google', 2000)).toBe(false)
-    expect(takePending('gdrive', 2000)).toBe(false)
+    expect(takePending('gdrive', 2000)).toBe(true)
   })
   it('rejects with nothing pending or after 10 minutes', () => {
     expect(takePending('google')).toBe(false)
