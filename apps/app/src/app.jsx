@@ -1042,10 +1042,10 @@ function AppShell() {
         showGlobalNotesTab={device !== 'phone'}/>;
       case 'notes': return <NotesView onAddTask={addTaskFromNote} onFlash={showFlash}/>;
       case 'lists': return <ListsView />;
-      case 'markdown': return <DocumentsView/>;
+      case 'markdown': return withBar('Documents', <DocumentsView/>);
       case 'editor': return <EditorScreen onFlash={showFlash}/>;
       case 'git': return <GitView onFlash={showFlash}/>;
-      case 'api': return <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>;
+      case 'api': return withBar('API Client', <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>);
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
         onOpenConnection={() => setSettingsOpen(true)}
         onOpenJira={() => setJiraSettingsOpen(true)}
@@ -1122,6 +1122,14 @@ function NavItem({ item, active, onClick, count, changed }) {
     </div>
   );
 }
+
+// Screens from the shared package bring no app bar of their own: give them the standard one on a phone.
+const withBar = (title, node, phone = typeof window !== 'undefined' && window.matchMedia('(max-width:600px)').matches) => (!phone ? node : (
+  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div className="m-appbar"><div className="m-ab-lead"><h1>{title}</h1></div></div>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>{node}</div>
+  </div>
+));
 
 // A GitHub PR is shown by the shared tabs (overview, commits, files, threads, comments) over the
 // GitHub adapter; none of the ADO thread, reviewer, ref or complete endpoints below are used for it.
