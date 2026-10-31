@@ -4,6 +4,8 @@ import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
 import { workItemSource } from '../work-item-source.js';
 import { PullRefresh } from '../pull-refresh.jsx';
 import { appQueue } from '../offline-queue-app.js';
+import { GithubIssueSheet } from './github-issue-sheet.jsx';
+import { getGithubConfig } from '../github-client.js';
 import { HelmData, HelmApi } from '../data.jsx';
 import { Sheet } from '../components.jsx';
 import { getProfileKey } from '../profile-keys.js';
@@ -167,6 +169,7 @@ function WorkItemsView({ items, setItems, onOpen, onCreate, onFlash, team = [], 
   // Change an item's state from its row: a sheet of the states it can move to, applied at once, with Undo.
   const [stateItem, setStateItem] = useState(null);
   const [stateOptions, setStateOptions] = useState(null);
+  const [issueOpen, setIssueOpen] = useState(false);
   const src = useSourceFilter('work', items);
   const list = src.filtered;
   const openStateSheet = (wi) => {
@@ -503,8 +506,15 @@ function WorkItemsView({ items, setItems, onOpen, onCreate, onFlash, team = [], 
         )}
       </Sheet>
 
+      <GithubIssueSheet open={issueOpen} onClose={() => setIssueOpen(false)} repos={getGithubConfig().repos}
+        onCreated={({ id, repo, title }) => {
+          onFlash?.(`Created ${String(id).replace(/^gh:/, '')}: ${title}`.slice(0, 90), 'check');
+          HelmApi?.load().catch(() => {});
+        }}/>
+
       {/* FAB */}
-      <button type="button" className="m-fab" onClick={onCreate} aria-label="New work item">
+      <button type="button" className="m-fab" onClick={() => (src.source === 'github' ? setIssueOpen(true) : onCreate())}
+        aria-label={src.source === 'github' ? 'New GitHub issue' : 'New work item'}>
         <Icon name="plus" size={24}/>
       </button>
 
