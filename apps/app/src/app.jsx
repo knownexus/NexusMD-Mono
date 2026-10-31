@@ -942,6 +942,22 @@ function AppShell() {
     showFlash(pushed ? 'Event added and sent to Outlook' : rowId ? 'Event added to Calendar and Planner' : 'Event added', 'check', undo);
   }, [canAddToPlanner, showFlash]);
 
+  // An event that is already on the calendar becomes a row in Planner > Meetings - schedule.
+  const addEventToPlanner = React.useCallback((ev) => {
+    if (!canAddToPlanner(ev.start.slice(0, 10))) { showFlash("Only days in the Planner's week can be added", 'alert'); return; }
+    const rowId = 'ms' + Date.now();
+    const day = new Date(ev.start).toLocaleDateString('en-US', { weekday: 'long' });
+    setPlannerData((prev) => ({ ...prev, meetSched: [...(prev.meetSched || []), {
+      id: rowId, dayTime: `${day} ${new Date(ev.start).toTimeString().slice(0, 5)}`, meeting: ev.title, attendees: '', prep: '', owner: '', status: '',
+    }] }));
+    const mark = (section) => setCalendarEvents((prev) => prev.map((e) => (String(e.id) === String(ev.id) ? { ...e, plannerSection: section } : e)));
+    if (ev.source !== 'outlook') mark('meetSched');
+    showFlash('Added to Planner', 'check', () => {
+      setPlannerData((prev) => ({ ...prev, meetSched: (prev.meetSched || []).filter((r) => r.id !== rowId) }));
+      if (ev.source !== 'outlook') mark(ev.plannerSection);
+    });
+  }, [canAddToPlanner, showFlash]);
+
   const moveCalendarEvent = React.useCallback((id, newDateStr) => {
     const ev = (calendarEvents || []).find((e) => String(e.id) === String(id));
     if (!ev || !newDateStr) return;
@@ -1075,7 +1091,7 @@ function AppShell() {
       case 'calendar': return <CalendarView calendarEvents={calendarEvents}
         onNavigatePlanner={navigateToPlanner} onUpdateEvent={updateCalendarEvent}
         onDeleteEvent={deleteCalendarEvent} onMoveEvent={moveCalendarEvent} onAddEvent={addCalendarEvent}
-        canAddToPlanner={canAddToPlanner} device={device}/>;
+        onAddToPlanner={addEventToPlanner} onFlash={showFlash} canAddToPlanner={canAddToPlanner} device={device}/>;
       case 'triage': return <TriageView device={device}/>;
       case 'team': return <TeamView team={team} workItems={workItems}
         prs={HelmData?.PRS || []} onOpenItem={openWI} onOpenPerson={openPerson}

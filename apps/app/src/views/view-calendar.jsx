@@ -6,6 +6,9 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
 import { NewEventSheet } from './calendar-new-event.jsx';
+import { DayTimeline } from './day-timeline.jsx';
+import { EventSheet } from './event-sheet.jsx';
+import { shiftEvent, eventBadge } from '../calendar-phone.js';
 import {
   OutlookService, getWeekDays, getMonthGrid, getYearMonths, getAgendaDays,
   nowTopPx, todayStr, isoDate, MONTH_NAMES, MONTH_SHORT,
@@ -28,13 +31,15 @@ const dayOffset = (d, unit) => {
 };
 const fmtTime = iso => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDeleteEvent, onMoveEvent, onAddEvent, canAddToPlanner, device }) {
+function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDeleteEvent, onMoveEvent, onAddEvent, onAddToPlanner, canAddToPlanner, onFlash, device }) {
   const phone = device === 'phone';
   const [tView, setCalView]               = useStateCal('week');
   const [tOffset, setOffset]              = useStateCal(0);
   const [phoneMode, setPhoneMode]         = useStateCal('agenda');
   const [selDay, setSelDay]               = useStateCal(() => new Date());
   const [newEventOpen, setNewEventOpen]   = useStateCal(false);
+  const [newEventTime, setNewEventTime]   = useStateCal(null);
+  const [actionEvent, setActionEvent]     = useStateCal(null);
   const calView = phone ? (phoneMode === 'agenda' ? 'week' : 'month') : tView;
   const offset  = phone ? dayOffset(selDay, phoneMode === 'agenda' ? 'week' : 'month') : tOffset;
   const [selectedEvent, setSelectedEvent] = useStateCal(null);
@@ -170,9 +175,9 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
         </div>
       )}
       {dayEvents.map(ev => (
-        <div key={ev.id} className="m-row" onClick={() => setSelectedEvent(ev)}>
+        <div key={ev.id} className="m-row" onClick={() => setActionEvent(ev)}>
           <div className="m-row-main">
-            <div className="m-row-title">{ev.title}</div>
+            <div className="m-row-title">{ev.title} {eventBadge(ev) && <span className={`pill ${eventBadge(ev) === 'now' ? 'success' : 'warning'}`}>{eventBadge(ev) === 'now' ? 'Now' : 'Soon'}</span>}</div>
             <div className="m-row-sub">{ev.start ? fmtTime(ev.start) : ''}{ev.end ? ' – ' + fmtTime(ev.end) : ''}</div>
             <div className="m-row-meta">{ev.source === 'local' && <span className="pill accent">In Planner</span>}</div>
           </div>
@@ -232,12 +237,22 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
             ); })}
           </div>
         )}
-        {dayList}
+        {phoneMode === 'month'
+          ? <div style={{ marginTop: 12 }}><DayTimeline events={dayEvents} isToday={selKey === today} onPick={setActionEvent}
+              onAddAt={onAddEvent ? (t) => { setNewEventTime(t); setNewEventOpen(true); } : undefined}/></div>
+          : dayList}
       </div>
       {onAddEvent && (
         <button type="button" className="m-fab" aria-label="New event" onClick={() => setNewEventOpen(true)}><Icon name="plus" size={24}/></button>
       )}
-      <NewEventSheet open={newEventOpen} onClose={() => setNewEventOpen(false)} dayKey={selKey}
+      <EventSheet ev={actionEvent} onClose={() => setActionEvent(null)} canAddToPlanner={canAddToPlanner}
+        onAddToPlanner={onAddToPlanner} onDetails={setSelectedEvent} onDelete={onDeleteEvent}
+        onMoveLater={(ev) => {
+          const before = { start: ev.start, end: ev.end };
+          onUpdateEvent?.(ev.id, shiftEvent(ev, 30));
+          onFlash?.('Moved 30 minutes later', 'clock', () => onUpdateEvent?.(ev.id, before));
+        }}/>
+      <NewEventSheet open={newEventOpen} onClose={() => { setNewEventOpen(false); setNewEventTime(null); }} dayKey={selKey} startTime={newEventTime}
         onAdd={(ev, opts) => { onAddEvent(ev, opts); setSelDay(new Date(ev.start)); }}
         canAddToPlanner={canAddToPlanner} outlookConnected={outlookConnected}/>
     </React.Fragment>

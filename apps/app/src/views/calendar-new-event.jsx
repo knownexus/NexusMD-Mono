@@ -28,7 +28,7 @@ export function buildEvent({ title, day, time, length }, id = String(Date.now())
   return { event: { id, title: name, start: localStamp(start), end: localStamp(end), type: 'meeting', description: '' } };
 }
 
-export function NewEventSheet({ open, onClose, dayKey, onAdd, canAddToPlanner, outlookConnected }) {
+export function NewEventSheet({ open, onClose, dayKey, startTime, onAdd, canAddToPlanner, outlookConnected }) {
   const [title, setTitle] = React.useState('');
   const [day, setDay] = React.useState(dayKey);
   const [time, setTime] = React.useState(defaultStart(dayKey));
@@ -39,9 +39,9 @@ export function NewEventSheet({ open, onClose, dayKey, onAdd, canAddToPlanner, o
 
   React.useEffect(() => {
     if (!open) return;
-    setTitle(''); setDay(dayKey); setTime(defaultStart(dayKey)); setLength(30);
+    setTitle(''); setDay(dayKey); setTime(startTime || defaultStart(dayKey)); setLength(30);
     setToPlanner(false); setToOutlook(false); setError('');
-  }, [open, dayKey]);
+  }, [open, dayKey, startTime]);
 
   const plannerOk = !!canAddToPlanner?.(day);
   const submit = () => {

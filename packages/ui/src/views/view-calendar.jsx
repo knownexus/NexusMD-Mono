@@ -63,7 +63,7 @@ const OutlookService = (() => {
     async fetchWeekEvents(startISO, endISO) {
       const path = ['/me/calendarView',
         `?startDateTime=${encodeURIComponent(startISO)}`,`&endDateTime=${encodeURIComponent(endISO)}`,
-        '&$select=id,subject,start,end,location,body','&$top=100','&$orderby=start/dateTime'].join('');
+        '&$select=id,subject,start,end,location,body,onlineMeeting','&$top=100','&$orderby=start/dateTime'].join('');
       const data = await graphJSON(getToken, path, { headers: { Prefer: 'outlook.timezone="UTC"' } });
       const toISO = s => (s && !s.endsWith('Z') ? s + 'Z' : s);
       return (data.value || []).map(ev => ({
@@ -71,6 +71,7 @@ const OutlookService = (() => {
         start: toISO(ev.start?.dateTime), end: toISO(ev.end?.dateTime),
         type:'meeting', personId:null, personName:null, plannerSection:null,
         description: ev.location?.displayName || '', source:'outlook',
+        joinUrl: ev.onlineMeeting?.joinUrl || '',
       }));
     },
     async createEvent({ title, start, end, description = '' }) {
