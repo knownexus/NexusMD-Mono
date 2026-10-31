@@ -12,6 +12,22 @@ import { BuildArtifactsSheet } from './build-artifacts-sheet.jsx';
 // Grid template shared between header and every build row
 const BUILD_GRID = '28px 68px 1fr 160px 72px 80px 72px 148px 140px';
 
+// On a phone the table's ~770px of fixed columns cannot fit, so each build becomes a small card: status, number and
+// date on the first line, who/what next, then the actions wrapping underneath.
+const PHONE_QUERY = '(max-width:600px)';
+const PHONE_ROW = { display:'flex', flexWrap:'wrap', alignItems:'center', gap:'4px 10px', padding:'10px 14px' };
+function usePhone() {
+  const [phone, setPhone] = React.useState(() => !!window.matchMedia?.(PHONE_QUERY).matches);
+  React.useEffect(() => {
+    const mq = window.matchMedia?.(PHONE_QUERY);
+    if (!mq) return;
+    const on = e => setPhone(e.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return phone;
+}
+
 function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuilds, newItemIds = new Set() }) {
   const src = useSourceFilter('builds', allBuilds);
   const builds = src.filtered;
@@ -25,6 +41,7 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
   const [deployStatus,     setDeployStatus]     = React.useState(null);
   const [actioning,        setActioning]        = React.useState(new Set());
   const [artifactBuild,    setArtifactBuild]    = React.useState(null);
+  const phone = usePhone();
 
   const acknowledgedSet = React.useMemo(() => new Set(acknowledgedBuilds || []), [acknowledgedBuilds]);
   const toggleAck = (id) => setAcknowledgedBuilds(prev =>
@@ -304,7 +321,7 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
 
         {/* ── Column headers ── */}
         <div style={{
-          display:'grid', gridTemplateColumns: BUILD_GRID,
+          display: phone ? 'none' : 'grid', gridTemplateColumns: BUILD_GRID,
           padding:'0 14px', gap:8,
           borderBottom:'2px solid var(--border)',
           background:'var(--surface-2)',
@@ -368,17 +385,17 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                   return (
                   <div key={`${g.name}-${b.id}`}
                     className="build-row"
-                    style={{ display:'grid', gridTemplateColumns: BUILD_GRID, alignItems:'center', gap:8, padding:'0 14px', cursor:'pointer',
+                    style={{ ...(phone ? PHONE_ROW : { display:'grid', gridTemplateColumns: BUILD_GRID, alignItems:'center', gap:8, padding:'0 14px' }), cursor:'pointer',
                       ...(isNew ? { background: 'color-mix(in srgb, var(--accent) 7%, var(--surface))', boxShadow: 'inset 3px 0 0 var(--accent)' } : {}),
                     }}>
 
                     {/* Status dot */}
-                    <div style={{ display:'flex', justifyContent:'center' }}>
+                    <div style={{ display:'flex', justifyContent:'center', ...(phone ? { order:0 } : null) }}>
                       <div className={`build-dot ${dotClass[dispStatus(b)]}`}/>
                     </div>
 
                     {/* Build # */}
-                    <div className="mono" style={{ fontSize:12, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', display:'flex', alignItems:'center', gap:5 }}>
+                    <div className="mono" style={{ fontSize:12, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', display:'flex', alignItems:'center', gap:5, ...(phone ? { order:1 } : null) }}>
                       {(b.source === 'github' ? b.url : HelmData.ORG && b.project)
                         ? <a href={b.source === 'github' ? b.url : `https://dev.azure.com/${encodeURIComponent(HelmData.ORG)}/${encodeURIComponent(b.project)}/_build/results?buildId=${b.id}`}
                             target="_blank" rel="noopener" onClick={e => e.stopPropagation()}
@@ -389,7 +406,7 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                     </div>
 
                     {/* Triggered by / failure reason */}
-                    <div style={{ minWidth:0 }}>
+                    <div style={{ minWidth:0, ...(phone ? { order:3, flex:'1 1 100%' } : null) }}>
                       {b.failureReason
                         ? <span style={{ fontSize:12.5, color: dispStatus(b) === 'acknowledged' ? 'var(--warning)' : 'var(--danger)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'block' }}
                             title={b.failureReason}>{b.failureReason}</span>
@@ -401,7 +418,7 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                     </div>
 
                     {/* Branch */}
-                    <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', ...(phone ? { order:4, maxWidth:'55%' } : null) }}>
                       <span style={{
                         display:'inline-flex', alignItems:'center', gap:4,
                         fontSize:11.5, padding:'2px 7px', borderRadius:4,
@@ -412,10 +429,10 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                     </div>
 
                     {/* Commit */}
-                    <div className="mono muted" style={{ fontSize:11.5 }}>{b.commit}</div>
+                    <div className="mono muted" style={{ fontSize:11.5, ...(phone ? { order:4 } : null) }}>{b.commit}</div>
 
                     {/* Reason */}
-                    <div>
+                    <div style={phone ? { display:'none' } : undefined}>
                       {b.reason
                         ? <span className="pill" style={{ fontSize:10.5, textTransform:'capitalize' }}>
                             {reasonLabel[b.reason] || b.reason}
@@ -425,15 +442,15 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                     </div>
 
                     {/* Duration */}
-                    <div className="build-meta">{b.duration}</div>
+                    <div className="build-meta" style={phone ? { order:4 } : undefined}>{b.duration}</div>
 
                     {/* Date */}
-                    <div className="build-meta" title={b.finishTime ? new Date(b.finishTime).toLocaleString() : ''}>
+                    <div className="build-meta" style={phone ? { order:2, marginLeft:'auto' } : undefined} title={b.finishTime ? new Date(b.finishTime).toLocaleString() : ''}>
                       {b.when}
                     </div>
 
                     {/* Actions */}
-                    <div style={{ display:'flex', justifyContent:'flex-end', gap:4 }}>
+                    <div style={{ display:'flex', justifyContent: phone ? 'flex-start' : 'flex-end', gap:4, ...(phone ? { order:5, flex:'1 1 100%', flexWrap:'wrap', paddingTop:2 } : null) }}>
                       {/* Cancel — running builds only */}
                       {b.source === 'github' && b.url && (
                         <a className="btn sm ghost" href={b.url} target="_blank" rel="noopener noreferrer"
