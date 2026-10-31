@@ -7,7 +7,7 @@ const ORIGINAL_NAV_ORDER = [
   'planner', 'notes', 'markdown', 'api-client', 'db-manager', 'devenv', 'git',
 ]
 // The Editor is new, so it comes after everything users already have.
-const WITH_EDITOR = [...ORIGINAL_NAV_ORDER, 'editor']
+const WITH_EDITOR = [...ORIGINAL_NAV_ORDER, 'editor', 'time']
 
 describe('bundled apps', () => {
   it('reproduces the original sidebar order when everything is installed', () => {

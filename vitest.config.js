@@ -23,6 +23,7 @@ export default defineConfig({
       'modules/documents',
       'modules/editor',
       'modules/notes',
+      'modules/time',
       'modules/devenv',
       {
         extends: './modules/git/vitest.config.js',

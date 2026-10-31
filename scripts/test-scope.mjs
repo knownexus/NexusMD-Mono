@@ -32,6 +32,7 @@ const FEATURES = {
   planner: { projects: ['core', 'planner'], paths: ['packages/core/tests/planner', 'modules/planner/'] },
   editor: { projects: ['editor'], paths: ['modules/editor/'] },
   notes: { projects: ['notes'], paths: ['modules/notes/'] },
+  time: { projects: ['time'], paths: ['modules/time/'] },
   documents: { projects: ['documents'], paths: ['modules/documents/'] },
 }
 

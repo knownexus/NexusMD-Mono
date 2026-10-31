@@ -1,0 +1,218 @@
+/* Time: the day tape is the one loud thing here; the rest is ruled lists on the app's own tokens. */
+.tl-page {
+  --tl-c0: var(--accent); --tl-c1: var(--info); --tl-c2: var(--success);
+  --tl-c3: var(--violet); --tl-c4: #b0566d; --tl-c5: #2f8486;
+  max-width: 1120px; margin: 0 auto; padding: var(--pad-5) var(--pad-5) 64px;
+  display: flex; flex-direction: column; gap: 22px; color: var(--text); font-family: var(--sans);
+}
+.tl-num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.tl-muted { color: var(--text-muted); }
+.tl-page h2, .tl-page h3 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0; }
+
+/* The running entry: name on the left, a large clock, Stop. */
+.tl-now-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; min-width: 0; }
+.tl-now-title > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-now-sub { margin-top: 3px; font-size: 12.5px; color: var(--text-muted); }
+.tl-clock { font-size: 44px; font-weight: 500; letter-spacing: -0.5px; line-height: 1; }
+.tl-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; animation: tl-pulse 2s ease-in-out infinite; }
+@keyframes tl-pulse { 50% { opacity: 0.25; } }
+.tl-stop { min-width: 84px; justify-content: center; }
+
+/* One field to start: a ticket chip appears inside it once a ticket is picked. */
+.tl-starter { display: flex; flex-direction: column; gap: 10px; }
+.tl-field {
+  position: relative; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface);
+}
+.tl-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.tl-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 15px; padding: 8px 0; }
+.tl-input::placeholder { color: var(--text-subtle); }
+.tl-suggest {
+  position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-pop);
+}
+.tl-suggest li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13.5px; }
+.tl-suggest li.on { background: var(--accent-soft); }
+.tl-suggest-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-recent { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12.5px; }
+.tl-recent-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px;
+  background: transparent; color: var(--text); font: inherit; font-size: 12.5px; cursor: pointer; max-width: 220px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tl-recent-btn:hover { border-color: var(--accent-border); background: var(--accent-soft); }
+
+.tl-chip {
+  flex: none; padding: 1px 7px; border-radius: 4px; font-family: var(--mono); font-size: 11.5px; font-weight: 500;
+  color: var(--c, var(--text-muted)); background: color-mix(in srgb, var(--c, var(--text-muted)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c, var(--text-muted)) 35%, transparent);
+}
+.tl-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; display: inline-block; }
+
+/* The day tape. */
+.tl-tape-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+.tl-tape-head .tl-num { font-size: 13px; color: var(--text-muted); }
+.tl-ruler { position: relative; padding-top: 18px; }
+.tl-tick { position: absolute; top: 0; transform: translateX(-50%); font-family: var(--mono); font-size: 10.5px; color: var(--text-subtle); }
+.tl-tick i { position: absolute; left: 50%; top: 15px; height: 62px; border-left: 1px dashed var(--border); }
+.tl-track {
+  position: relative; height: 56px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); overflow: hidden;
+}
+.tl-seg { position: absolute; top: 6px; bottom: 6px; border-radius: 3px; opacity: 0.92; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); }
+.tl-seg.live { opacity: 1; }
+.tl-now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--text); transform: translateX(-1px); }
+
+.tl-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 36px; align-items: start; }
+
+/* The log: ruled rows, no cards. */
+.tl-day { margin-bottom: 26px; }
+.tl-day-head { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px solid var(--border-strong); }
+.tl-day-head .tl-num { font-size: 13px; font-weight: 600; }
+.tl-rows { list-style: none; margin: 0; padding: 0; }
+.tl-row {
+  display: grid; grid-template-columns: 18px 9px minmax(0, 1fr) auto 64px 84px; align-items: center; gap: 12px;
+  min-height: 46px; border-bottom: 1px solid var(--border); font-size: 13.5px;
+}
+.tl-row.live .tl-label { font-weight: 600; }
+.tl-what { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tl-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-range { font-size: 12px; color: var(--text-muted); }
+.tl-dur { text-align: right; font-weight: 600; }
+.tl-actions { display: flex; justify-content: flex-end; gap: 2px; opacity: 0; transition: opacity 0.12s; }
+.tl-row:hover .tl-actions, .tl-row:focus-within .tl-actions, .tl-actions.on { opacity: 1; }
+.tl-icon { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); cursor: pointer; }
+.tl-icon:hover { background: var(--surface-3); color: var(--text); }
+
+.tl-empty { padding: 28px 0; max-width: 46ch; color: var(--text-muted); }
+.tl-empty strong { color: var(--text); font-size: 14px; }
+.tl-empty p { margin: 6px 0 0; line-height: 1.55; }
+
+/* The week: seven bars you can click to show that day on the tape, then time per task. */
+.tl-bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; height: 112px; }
+.tl-bar {
+  position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px;
+  padding: 0 0 4px; border: 0; background: transparent; cursor: pointer; color: var(--text-muted); font: inherit; font-size: 11.5px;
+}
+.tl-bar-fill { width: 100%; max-width: 26px; border-radius: 3px 3px 0 0; background: var(--border-strong); min-height: 0; }
+.tl-bar:hover .tl-bar-fill { background: var(--accent-border); }
+.tl-bar.today .tl-bar-fill { background: var(--accent-border); }
+.tl-bar.on .tl-bar-fill { background: var(--accent); }
+.tl-bar.on .tl-bar-day { color: var(--text); font-weight: 600; }
+.tl-bars { border-bottom: 1px solid var(--border-strong); }
+.tl-tasks { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.tl-tasks li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; font-size: 13px; }
+.tl-tasks-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tl-tasks-bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+.tl-tasks-bar i { display: block; height: 100%; border-radius: 2px; }
+
+.tl-undo {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px;
+  padding: 8px 8px 8px 16px; background: var(--text); color: var(--surface); border-radius: var(--radius); font-size: 13px; box-shadow: var(--shadow-pop);
+}
+
+.tl-page :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tl-input:focus-visible { outline: 0; }
+
+@media (max-width: 860px) {
+  .tl-cols { grid-template-columns: 1fr; }
+  .tl-clock { font-size: 34px; }
+  .tl-row { grid-template-columns: 18px 9px minmax(0, 1fr) 60px; }
+  .tl-range { display: none; }
+  .tl-actions { grid-column: 3 / -1; justify-content: flex-start; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-pulse { animation: none; }
+  .tl-actions { transition: none; }
+}
+
+/* Editing an entry: name on the first line, then start / end / break / result on a second. */
+.tl-row.editing { padding: 10px 0; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: start; }
+.tl-row.editing .tl-actions { grid-column: 3; grid-row: 1; }
+.tl-edit { width: 100%; min-width: 0; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px; }
+.tl-edit-times { grid-column: 2 / -1; grid-row: 2; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: flex-end; }
+.tl-tfield { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
+.tl-nudge { display: inline-flex; align-items: center; gap: 4px; }
+.tl-nudge button { height: 30px; padding: 0 7px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font-family: var(--mono); font-size: 11.5px; cursor: pointer; }
+.tl-nudge button:hover { background: var(--accent-soft); color: var(--text); }
+.tl-nudge .tl-edit { width: 104px; }
+.tl-break { width: 72px; }
+.tl-counts { height: 30px; display: flex; align-items: center; font-size: 15px; font-weight: 600; color: var(--text); }
+.tl-running-note { height: 30px; display: flex; align-items: center; }
+.tl-hint { grid-column: 2 / -1; grid-row: 3; font-size: 12px; color: var(--danger); }
+
+/* Running timers: one block each, so several can run side by side. */
+.tl-running { border: 1px solid var(--accent-border); border-radius: var(--radius-lg); background: linear-gradient(0deg, var(--accent-soft), var(--accent-soft)), var(--surface); }
+.tl-running.idle { padding: 18px 22px; border-color: var(--border); background: var(--surface); }
+.tl-run { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px 20px; padding: 16px 22px; }
+.tl-run + .tl-run { border-top: 1px solid var(--accent-border); }
+.tl-run-main { min-width: 0; }
+.tl-run-notes { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
+.tl-run .tl-clock { font-size: 34px; }
+
+/* Notes: stamped lines under an entry. */
+.tl-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.tl-notes li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: baseline; gap: 8px; font-size: 13px; }
+.tl-note-at { font-size: 11.5px; color: var(--text-muted); }
+.tl-note-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+.tl-note-x { width: 22px; height: 22px; opacity: 0; }
+.tl-notes li:hover .tl-note-x, .tl-note-x:focus-visible { opacity: 1; }
+.tl-row-extra { grid-column: 3 / -1; display: flex; flex-direction: column; gap: 8px; padding: 0 0 12px; }
+.tl-note-start { margin-top: -2px; }
+
+/* Assigning a ticket to an entry that has none. */
+.tl-assign { padding: 1px 8px; border: 1px dashed var(--border-strong); border-radius: 4px; background: transparent; color: var(--text-muted); font: inherit; font-size: 11.5px; cursor: pointer; }
+.tl-assign:hover { border-color: var(--accent); color: var(--text); }
+.tl-select { position: relative; min-width: 260px; }
+.tl-select .tl-suggest { top: calc(100% + 4px); }
+.tl-hint-box { margin-top: 4px; font-size: 12px; color: var(--text-muted); max-width: 40ch; }
+.tl-refline { display: flex; align-items: center; gap: 10px; height: 30px; font-family: var(--mono); font-size: 12.5px; color: var(--text); }
+.tl-link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-family: var(--sans); font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+/* Entries / Timeline switch. */
+.tl-tabs { display: flex; gap: 18px; margin-bottom: 18px; border-bottom: 1px solid var(--border); }
+.tl-tabs button { padding: 6px 0 9px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; color: var(--text-muted); font: inherit; font-size: 13px; cursor: pointer; }
+.tl-tabs button.on { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+
+/* The day as a timeline: time down the left, a mark per event, overlapping timers indented by lane. */
+.tl-tl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.tl-events { list-style: none; margin: 0; padding: 0 0 0 4px; position: relative; }
+.tl-events::before { content: ''; position: absolute; left: 62px; top: 6px; bottom: 6px; border-left: 1px solid var(--border-strong); }
+.tl-ev { display: grid; grid-template-columns: 48px 18px minmax(0, 1fr); gap: 0 8px; align-items: baseline; padding: 7px 0; font-size: 13.5px; padding-left: calc(var(--lane, 0) * 0px); }
+.tl-ev-at { font-size: 12px; color: var(--text-muted); text-align: right; }
+.tl-ev-mark { position: relative; top: 1px; width: 11px; height: 11px; justify-self: center; border-radius: 2px; background: var(--c); border: 2px solid var(--bg); box-sizing: content-box; }
+.tl-ev.stop .tl-ev-mark { background: var(--bg); border-color: var(--c); box-sizing: border-box; }
+.tl-ev.note .tl-ev-mark { width: 7px; height: 7px; border-radius: 50%; }
+.tl-ev-body { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; padding-left: calc(var(--lane, 0) * 16px); }
+.tl-ev.note .tl-ev-body { color: var(--text); }
+.tl-ev-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tl-ev-verb { font-weight: 600; }
+
+@media (max-width: 860px) {
+  .tl-run { grid-template-columns: minmax(0, 1fr) auto; }
+  .tl-run .tl-stop { grid-column: 1 / -1; }
+}
+
+/* Marks: a diamond on the tape, in the list and on the timeline. */
+.tl-diamond { display: inline-block; width: 7px; height: 7px; margin-right: 5px; background: var(--text); transform: rotate(45deg); }
+.tl-pin { position: absolute; width: 2px; margin-left: -1px; background: var(--bg); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); pointer-events: auto; }
+.tl-marks { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.tl-marks .tl-notes { width: 100%; }
+.tl-mark-item { align-items: center !important; grid-template-columns: 60px minmax(0, 1fr) auto !important; }
+.tl-mark-input { padding: 3px 8px; font-size: 13px; }
+.tl-note-btn { padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: text; }
+.tl-note-btn:hover { text-decoration: underline dotted; }
+.tl-markat { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 14px; }
+.tl-grow { flex: 1; min-width: 180px; }
+.tl-run-btns { display: flex; gap: 8px; }
+.tl-ev.mark .tl-ev-mark { width: 8px; height: 8px; border-radius: 0; transform: rotate(45deg); background: var(--text); border-color: var(--bg); }
+
+/* Selecting entries to assign together. */
+.tl-check { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); opacity: 0; cursor: pointer; }
+.tl-row:hover .tl-check, .tl-check:focus-visible, .tl-check:checked, .tl-log:has(.tl-check:checked) .tl-check { opacity: 1; }
+.tl-row.selected { background: var(--accent-soft); }
+.tl-bulk {
+  position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 0 16px;
+  padding: 10px 14px; border: 1px solid var(--accent-border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.tl-bulk .tl-select { flex: 1; min-width: 240px; }

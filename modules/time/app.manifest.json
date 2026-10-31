@@ -1,0 +1,10 @@
+{
+  "id": "time",
+  "label": "Time",
+  "productName": "NexusMD Time",
+  "order": 16,
+  "nav": [{ "id": "time", "label": "Time", "icon": "clock" }],
+  "entries": {
+    "renderer": "src/renderer/index.js"
+  }
+}

@@ -88,6 +88,10 @@ export function WorkProvider({ host, view, children }) {
           },
         }
       }),
+      // The tickets other apps may track time against (the Time app's picker).
+      caps.provide('work.items', () => (snapshotRef.current.WORK_ITEMS || []).map(i => ({
+        id: String(i.key ?? i.id), title: i.title || '', source: i.source || 'ado',
+      }))),
       caps.provide('work.openPR', pr => drawersRef.current.openPR(pr)),
       caps.provide('work.openItem', item => drawersRef.current.openItem(item)),
       caps.provide('work.openBuild', build => drawersRef.current.openBuild(build)),
