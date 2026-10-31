@@ -139,6 +139,6 @@ describe('Google sign-in redirect', () => {
   it('uses the app id as the redirect scheme and the manifest opens the app for it', () => {
     // Google requires an Android client's custom scheme to be the package name.
     expect(scheme).toBe(namespace)
-    expect(manifest).toMatch(new RegExp(`<data android:scheme="${scheme.replace(/\./g, '\.')}"\s*/>`))
+    expect(manifest).toContain(`<data android:scheme="${scheme}" />`)
   })
 })
