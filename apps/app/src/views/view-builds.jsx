@@ -10,7 +10,7 @@ import { BuildArtifactsSheet } from './build-artifacts-sheet.jsx';
 // view-builds.jsx — Build pipelines status view
 
 // Grid template shared between header and every build row
-const BUILD_GRID = '28px 68px 1fr 160px 72px 80px 72px 148px 140px';
+const BUILD_GRID = '28px 100px minmax(120px,1fr) 160px 72px 130px 72px 148px 140px';
 
 // On a phone the table's ~770px of fixed columns cannot fit, so each build becomes a small card: status, number and
 // date on the first line, who/what next, then the actions wrapping underneath.
