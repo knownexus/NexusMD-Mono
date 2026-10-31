@@ -294,7 +294,7 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
           onUpdate={onUpdateEvent} onDelete={onDeleteEvent}/>
       )}
 
-      <div className="m-appbar">
+      <div className="m-appbar" style={{ flexWrap:'wrap', rowGap:8 }}>
         <div className="m-ab-lead" style={{ flex:'0 0 auto' }}>
           <div><h1>Calendar</h1><div className="m-ab-sub">{headerTitle}</div></div>
         </div>
