@@ -517,3 +517,30 @@
 .m-stats + .m-card, .m-stats + .m-chipscroll { margin-top: 12px; }
 /* the base input rule (many :not() clauses) outranks .m-search input */
 .m-app .m-search input[type] { padding: 0 14px 0 40px !important; }
+
+/* ---------- Phone touch targets: at least 44px ---------- */
+.m-app[data-device="phone"] .btn,
+.m-app[data-device="phone"] .m-seg button,
+.m-app[data-device="phone"] .m-linkbtn,
+.m-app[data-device="phone"] .m-chip { min-height: 44px; }
+.m-app[data-device="phone"] .m-seg button { padding-top: 0; padding-bottom: 0; }
+.m-app[data-device="phone"] .m-chip { height: 44px; }
+
+/* ---------- Crowded app bars wrap their actions onto a second row ---------- */
+.m-app[data-device="phone"] .m-appbar.wrap { flex-wrap: wrap; row-gap: 6px; }
+.m-app[data-device="phone"] .m-appbar.wrap .m-ab-lead { flex: 1 1 100%; }
+.m-app[data-device="phone"] .m-appbar.wrap .m-ab-actions { flex: 1 1 100%; justify-content: flex-start; gap: 8px; }
+
+/* ---------- Builds table: keep every column readable and swipe sideways ---------- */
+.m-app[data-device="phone"] .m-bld-card { min-width: 880px; }
+
+/* ---------- Phone form fields are tall enough to tap ---------- */
+.m-app[data-device="phone"] .m-screen input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+.m-app[data-device="phone"] .m-screen select { min-height: 44px; }
+
+/* ---------- API Client: collections above the request, not beside it ---------- */
+.m-app[data-device="phone"] .ac-shell { flex-direction: column; height: 100%; overflow-y: auto; }
+.m-app[data-device="phone"] .ac-sidebar { width: auto; max-height: 38%; flex-shrink: 0; border-right: 0; border-bottom: 1px solid var(--border); }
+.m-app[data-device="phone"] .ac-main { flex: 1 0 auto; overflow-y: visible; padding: 14px; }
+.m-app[data-device="phone"] .ac-empty { padding: 28px 0; }
+.m-app[data-device="phone"] .m-iconbtn { width: 44px; height: 44px; }

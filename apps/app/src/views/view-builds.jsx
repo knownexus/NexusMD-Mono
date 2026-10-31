@@ -173,7 +173,7 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
 
   return (
     <React.Fragment>
-      <div className="m-appbar">
+      <div className="m-appbar wrap">
         <div className="m-ab-lead">
           <h1>Builds</h1>
           <div className="m-ab-sub">{passing} passing · {failing} failing{acknowledged > 0 ? ` · ${acknowledged} acknowledged` : ''} · {running} running{cancelled > 0 ? ` · ${cancelled} cancelled` : ''}</div>
@@ -206,7 +206,7 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
 
       {/* ── Builds table card ── */}
       <div style={{ overflowX:'auto' }}>
-      <div className="card">
+      <div className="card m-bld-card">
         <div className="card-head" style={{ flexWrap:'wrap', gap:6 }}>
           <h3>Recent builds</h3>
           <span className="muted" style={{ fontSize:11.5 }}>Across all pipelines</span>

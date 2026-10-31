@@ -184,7 +184,7 @@ function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTeamChange
         onSave={onScheduleOneOnOne}
       />
 
-      <div className="m-appbar">
+      <div className="m-appbar wrap">
         <div className="m-ab-lead">
           <h1>Team</h1>
           <div className="m-ab-sub">
@@ -195,10 +195,10 @@ function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTeamChange
           </div>
         </div>
         <div className="m-ab-actions">
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
             <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)' }}/>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Find someone…" style={{
-              height: 30, padding: '0 10px 0 28px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', fontSize: 12.5, outline: 'none', width: 200
+              height: 30, padding: '0 10px 0 28px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', fontSize: 12.5, outline: 'none', width: '100%', boxSizing: 'border-box', minWidth: 140
             }}/>
           </div>
           {removedAzureTeam.length > 0 && (
@@ -295,7 +295,7 @@ function DevCard({ dev, onOpenItem, onOpenPerson, onRemove, onDelete, onAddNote,
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}
             onClick={(e) => { e.stopPropagation(); onOpenItem(dev.current); }}>
             <TypeIcon type={dev.current.type}/>
-            <span className="mono muted" style={{ fontSize: 11 }}>#{dev.current.id}</span>
+            <span className="mono muted" style={{ fontSize: 11, whiteSpace: 'nowrap', flexShrink: 0 }}>#{String(dev.current.id).replace(/^jira:/, '')}</span>
             <span className="truncate" style={{ fontSize: 12.5 }}>{dev.current.title}</span>
           </span>
         ) : (
