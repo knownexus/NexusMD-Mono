@@ -503,3 +503,14 @@
 .m-code .tx { white-space: pre; padding-right: 12px; }
 .m-code.wrap .tx { white-space: pre-wrap; word-break: break-word; min-width: 0; }
 .m-error { padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 10px; background: var(--danger-soft); color: var(--danger); }
+
+/* ---------- Notes: title field, check, editor body, bottom bar ---------- */
+.m-note-title { width: 100%; min-width: 0; border: 0; outline: none; background: transparent; font: inherit; font-size: 17px; font-weight: 600; color: var(--text); padding: 6px 0; }
+.m-check { width: 24px; height: 24px; flex-shrink: 0; align-self: center; border-radius: 50%; border: 1.5px solid var(--border-strong, var(--border)); background: none; color: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.m-check.on { background: var(--success); border-color: var(--success); color: var(--bg); }
+.m-note-body { flex: 1; min-height: 0; width: 100%; box-sizing: border-box; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); padding: 12px; color: var(--text); font-size: 14.5px; line-height: 1.6; }
+.m-note-text { resize: none; outline: none; font-family: var(--mono); font-size: 13.5px; }
+.m-confnote { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12px; color: var(--warning); }
+.m-notebar { flex-shrink: 0; display: flex; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--border); background: var(--surface); }
+.m-notebar .btn { flex: 1; }
+.m-iconbtn.active { color: var(--accent); }

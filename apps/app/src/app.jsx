@@ -26,6 +26,7 @@ import { secureStorageAdapter } from './adapters/secureStorage.js';
 import { registerCloudDeepLink, hydrateCloudTokens } from './cloud-auth.js';
 import { startAppAutoSync } from './sync.js';
 import { DashboardView } from './views/view-dashboard.jsx';
+import { NotesView } from './views/view-notes.jsx';
 import { WorkItemsView } from './views/view-workitems.jsx';
 import { PRView } from './views/view-prs.jsx';
 import { BuildsView } from './views/view-builds.jsx';
@@ -128,6 +129,7 @@ const ALL_SECONDARY_TABS = [
   { id: 'builds',   label: 'Builds',   icon: 'build'        },
   { id: 'tests',    label: 'Tests',    icon: 'check-circle' },
   { id: 'calendar', label: 'Calendar', icon: 'planner'      },
+  { id: 'notes',    label: 'Notes',    icon: 'pin'          },
   { id: 'triage',   label: 'Triage',   icon: 'inbox'        },
   { id: 'team',     label: 'Team',     icon: 'team'         },
   { id: 'markdown', label: 'Documents', icon: 'doc'         },
@@ -720,6 +722,14 @@ function AppShell() {
     }));
   }, []);
 
+  // A note becomes a task in this week's planner.
+  const addTaskFromNote = React.useCallback((title) => {
+    setPlannerData(prev => ({
+      ...prev,
+      tasks: [...(prev.tasks || []), { id: 't' + Date.now(), task: title, priority: '3 - Medium' }],
+    }));
+  }, []);
+
   const scheduleOneOnOne = React.useCallback(async (dev, { date, time, duration, points }) => {
     const start = `${date}T${time}`;
     const endDate = new Date(`${date}T${time}`);
@@ -1025,7 +1035,9 @@ function AppShell() {
         onTeamChange={setTeam} onAddNote={addTeamNote}
         onScheduleOneOnOne={scheduleOneOnOne} device={device}/>;
       case 'planner': return <PlannerView data={plannerData} setData={setPlannerData}
-        themes={themes} setThemes={setThemes} onExportDocx={plannerExportDocx} device={device} onFlash={showFlash}/>;
+        themes={themes} setThemes={setThemes} onExportDocx={plannerExportDocx} device={device} onFlash={showFlash}
+        showGlobalNotesTab={device !== 'phone'}/>;
+      case 'notes': return <NotesView onAddTask={addTaskFromNote} onFlash={showFlash}/>;
       case 'lists': return <ListsView />;
       case 'markdown': return <DocumentsView/>;
       case 'editor': return <EditorScreen onFlash={showFlash}/>;
