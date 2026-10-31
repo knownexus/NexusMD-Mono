@@ -6,10 +6,16 @@ import { MarkdownPreview } from '@nexusmd/ui';
 import { Icon } from './icons.jsx';
 import { Sheet } from './components.jsx';
 import { adoGet, getAdoConfig } from './ado-client.js';
-import { listRepos, listBranches, listCommits, listItems, getFile, groupCommitsByDay } from './git-browser.js';
+import { getGithubConfig, isGithubConfigured, createGithubHttpAdapter } from './github-client.js';
+import { groupCommitsByDay } from './git-browser.js';
+import { makeGitBackend, providerName, isGithubRepo } from './git-backend.js';
 import { getProfileKey } from './profile-keys.js';
 
 const errText = (e) => e?.message || String(e);
+const backend = makeGitBackend({
+  adoGet, getAdoProjects: () => getAdoConfig().projects || [],
+  githubHttp: createGithubHttpAdapter(), getGithubConfig, isGithubConfigured,
+});
 const RECENT_KEY = 'helm.git.recent';
 const loadRecent = () => { try { return JSON.parse(localStorage.getItem(getProfileKey(RECENT_KEY)) || '[]'); } catch { return []; } };
 const saveRecent = (ids) => { try { localStorage.setItem(getProfileKey(RECENT_KEY), JSON.stringify(ids)); } catch {} };
@@ -23,6 +29,7 @@ function RepoRow({ repo, onOpen }) {
         <div className="m-row-title">{repo.name}</div>
         <div className="m-row-sub">{repo.project}</div>
       </div>
+      {isGithubRepo(repo) && <span className="pill">GitHub</span>}
       <Icon name="chevron-right" size={16} className="chev"/>
     </div>
   );
@@ -35,7 +42,7 @@ function FileViewer({ repo, branch, path, onBack, onFlash }) {
   const [raw, setRaw] = useState(false);
   useEffect(() => {
     setText(null); setError('');
-    getFile(adoGet, repo, branch, path).then(setText).catch(e => setError(errText(e)));
+    backend.getFile(repo, branch, path).then(setText).catch(e => setError(errText(e)));
   }, [repo, branch, path]);
   const md = isMarkdown(path);
   return (
@@ -88,31 +95,34 @@ export function GitView({ onFlash }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    listRepos(adoGet, getAdoConfig().projects || []).then(setRepos).catch(e => setError(errText(e)));
+    backend.listRepos().then(({ repos, errors }) => {
+      setRepos(repos);
+      if (errors.length) setError(errText(errors[0]));
+    }).catch(e => setError(errText(e)));
   }, []);
 
   // Folder contents (and the README at the root) follow the repo, branch and path.
   useEffect(() => {
     if (!repo || !branch) return;
     setItems(null); setReadme(null);
-    listItems(adoGet, repo, branch, path).then(list => {
+    backend.listItems(repo, branch, path).then(list => {
       setItems(list);
       const rd = path === '/' && list.find(i => !i.isFolder && /^readme\.md$/i.test(i.name));
-      if (rd) getFile(adoGet, repo, branch, rd.path).then(setReadme).catch(() => {});
+      if (rd) backend.getFile(repo, branch, rd.path).then(setReadme).catch(() => {});
     }).catch(e => setError(errText(e)));
   }, [repo, branch, path]);
 
   useEffect(() => {
     if (!repo || !branch || tab !== 'commits') return;
     setCommits(null);
-    listCommits(adoGet, repo, branch).then(setCommits).catch(e => setError(errText(e)));
+    backend.listCommits(repo, branch).then(setCommits).catch(e => setError(errText(e)));
   }, [repo, branch, tab]);
 
   const pickRepo = (r) => {
     const next = [r.id, ...recent.filter(id => id !== r.id)].slice(0, 3);
     setRecent(next); saveRecent(next);
     setRepo(r); setBranch(null); setBranches(null); setPath('/'); setTab('files'); setError('');
-    listBranches(adoGet, r).then(bs => {
+    backend.listBranches(r).then(bs => {
       setBranches(bs);
       const first = bs.find(b => b.isDefault) || bs[0];
       if (first) setBranch(first.name);
@@ -134,7 +144,7 @@ export function GitView({ onFlash }) {
     return (
       <>
         <div className="m-appbar">
-          <div className="m-ab-lead"><div><h1>Repos</h1><div className="m-ab-sub">Azure DevOps</div></div></div>
+          <div className="m-ab-lead"><div><h1>Repos</h1><div className="m-ab-sub">{[getAdoConfig().projects?.length ? 'Azure DevOps' : null, isGithubConfigured() ? 'GitHub' : null].filter(Boolean).join(' and ') || 'No repositories connected'}</div></div></div>
         </div>
         <div className="m-screen">
           <div className="m-search" style={{ marginBottom: 12 }}>
@@ -271,7 +281,7 @@ export function GitView({ onFlash }) {
         footer={commitSheet && (
           <>
             <button type="button" className="btn ghost m-btn-lg" onClick={() => { copy(commitSheet.id); onFlash?.('Commit id copied'); }}>Copy</button>
-            {commitSheet.url && <a className="btn primary m-btn-lg" href={commitSheet.url} target="_blank" rel="noreferrer">Open in Azure DevOps</a>}
+            {commitSheet.url && <a className="btn primary m-btn-lg" href={commitSheet.url} target="_blank" rel="noreferrer">Open in {providerName(repo)}</a>}
           </>
         )}>
         {commitSheet && (
