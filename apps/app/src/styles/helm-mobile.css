@@ -593,3 +593,58 @@
 .m-run-actions .btn { justify-content: center; }
 .m-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; font-size: 13px; color: var(--text-muted); }
 .m-pager .btn { min-width: 56px; justify-content: center; }
+
+/* ---------- Documents (phone): Markdown, JSON and Regex as single panes ---------- */
+.m-docs { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.m-docs-tools { flex-shrink: 0; padding: 10px 14px 0; background: var(--bg); }
+.m-docs-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 10px 14px 0; overflow-y: auto; }
+.m-docs-text {
+  flex: 1; min-height: 160px; width: 100%; box-sizing: border-box; resize: none; outline: none;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--text);
+  padding: 12px; font-family: var(--mono); font-size: 14px; line-height: 1.55;
+}
+.m-docs-text.short { flex: none; min-height: 120px; resize: vertical; }
+.m-docs-text:focus { border-color: var(--accent-border); }
+.m-docs-preview { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); padding: 12px 14px; }
+.m-docs-foot {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 16px; font-size: 12px; color: var(--text-subtle); border-top: 1px solid var(--border); background: var(--surface);
+}
+.m-docs-status { color: var(--success); }
+.m-docs-chips { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; padding: 0 0 10px; flex-shrink: 0; }
+.m-docs-chips::-webkit-scrollbar { display: none; }
+.m-docs-chips .m-chip { font-family: var(--mono); text-transform: none; }
+.m-fmtbar {
+  flex-shrink: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 8px -14px 0; padding: 8px 14px 10px;
+  border-top: 1px solid var(--border); background: var(--surface);
+}
+.m-fmtbar::-webkit-scrollbar { display: none; }
+.m-fmtbar button {
+  flex-shrink: 0; min-width: 44px; height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.m-fmtbar button:active { background: var(--accent-soft); border-color: var(--accent-border); }
+.m-json-state.ok { color: var(--success); }
+.m-json-state.bad { color: var(--danger); }
+.m-doc-rename { flex: 1; min-width: 0; height: 44px; }
+.m-row.on { background: var(--accent-soft); }
+
+/* JSON tree */
+.m-tree-row { display: flex; align-items: center; gap: 6px; min-height: 36px; font-size: 13.5px; }
+.m-tree-row.tap { cursor: pointer; }
+.m-tree-caret { width: 14px; display: inline-flex; color: var(--text-subtle); flex-shrink: 0; }
+.m-tree-key { color: var(--accent); font-family: var(--mono); font-weight: 600; }
+.m-tree-key::after { content: ':'; color: var(--text-subtle); font-weight: 400; margin-left: 1px; }
+.m-tree-val { font-family: var(--mono); word-break: break-word; }
+.m-tree-val.string { color: var(--success); }
+.m-tree-val.number { color: var(--info, var(--accent)); }
+.m-tree-val.boolean { color: var(--violet, var(--warning)); }
+.m-tree-val.null { color: var(--text-subtle); }
+.m-tree-val.object, .m-tree-val.array { color: var(--text-subtle); }
+.m-tree-kids { margin-left: 12px; padding-left: 8px; border-left: 1px solid var(--border); }
+
+/* Regex */
+.m-rx-pattern { font-family: var(--mono); font-size: 15px; }
+.m-rx-text { white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 13.5px; line-height: 1.6; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.m-rx-hit { background: var(--accent-soft); color: inherit; border-radius: 3px; box-shadow: 0 0 0 1px var(--accent-border); }
+.m-rx-token { font-family: var(--mono); font-size: 13px; min-width: 62px; color: var(--accent); font-weight: 600; flex-shrink: 0; align-self: center; }

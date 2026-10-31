@@ -154,3 +154,11 @@ export {
   DataTagInput, DataAreaTreePicker,
   DEFAULT_WI_TYPES, DEFAULT_PRIORITIES, PRIORITY_LABELS, settInputStyle,
 } from './views/work-item-shell.jsx'
+
+// Document tools' shared logic, for host apps that lay the tools out themselves (the Android app's
+// phone layout): autosave, regex matching and the JSON helpers.
+export { useDocumentAutosave, relativeTime, generateId } from './views/document-store.js'
+export {
+  findMatches, buildOverlaySegments, splitMatchByGroups, genCode, REFERENCE_DATA,
+} from './views/regex-tester-helpers.js'
+export { typeOf } from './views/json-editor-helpers.js'

@@ -17,6 +17,7 @@ import {
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
 import { GithubSettingsModal } from './github-settings.jsx';
+import { DocumentsPhone } from './views/documents-phone.jsx';
 import { createGithubHttpAdapter } from './github-client.js';
 import { useOffScreens } from './work-screens.js';
 import { EditorScreen } from './editor-screen.jsx';
@@ -1042,7 +1043,7 @@ function AppShell() {
         showGlobalNotesTab={device !== 'phone'}/>;
       case 'notes': return <NotesView onAddTask={addTaskFromNote} onFlash={showFlash}/>;
       case 'lists': return <ListsView />;
-      case 'markdown': return withBar('Documents', <DocumentsView/>);
+      case 'markdown': return device === 'phone' ? <DocumentsPhone onFlash={showFlash}/> : <DocumentsView/>;
       case 'editor': return <EditorScreen onFlash={showFlash}/>;
       case 'git': return <GitView onFlash={showFlash}/>;
       case 'api': return withBar('API Client', <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>);
