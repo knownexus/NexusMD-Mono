@@ -77,38 +77,3 @@ function Flash({ msg, icon, onUndo }) {
 }
 export { Flash };
 
-
-// ─── StatusBar — mobile time/battery bar ─────────────────────────────────────
-function StatusBar() {
-  const fmtTime = () => {
-    const t = new Date();
-    const hh = t.getHours() % 12 || 12;
-    const mm = String(t.getMinutes()).padStart(2, '0');
-    const ap = t.getHours() < 12 ? 'AM' : 'PM';
-    return `${hh}:${mm} ${ap}`;
-  };
-  const [time, setTime] = useState(fmtTime);
-  useEffect(() => {
-    const id = setInterval(() => setTime(fmtTime()), 30000);
-    return () => clearInterval(id);
-  }, []);
-  return (
-    <div className="m-statusbar">
-      <span>{time}</span>
-      <span className="sb-icons">
-        <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor">
-          <rect x="0" y="7" width="3" height="5" rx="1"/>
-          <rect x="5" y="4.5" width="3" height="7.5" rx="1"/>
-          <rect x="10" y="2" width="3" height="10" rx="1"/>
-          <rect x="15" y="0" width="3" height="12" rx="1" opacity=".35"/>
-        </svg>
-        <svg width="26" height="13" viewBox="0 0 26 13" fill="none">
-          <rect x="1" y="1" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/>
-          <rect x="3" y="3" width="16" height="7" rx="1.5" fill="currentColor"/>
-          <rect x="23.5" y="4" width="2" height="5" rx="1" fill="currentColor" opacity=".5"/>
-        </svg>
-      </span>
-    </div>
-  );
-}
-export { StatusBar };
