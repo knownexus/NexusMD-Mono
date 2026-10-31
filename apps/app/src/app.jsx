@@ -19,6 +19,7 @@ import { JiraSettingsModal } from './jira-settings.jsx';
 import { GithubSettingsModal } from './github-settings.jsx';
 import { DocumentsPhone } from './views/documents-phone.jsx';
 import './offline-queue-app.js';
+import { useFormAutosave, validateAdoForm } from './autosave-form.js';
 import { createGithubHttpAdapter } from './github-client.js';
 import { useOffScreens } from './work-screens.js';
 import { EditorScreen } from './editor-screen.jsx';
@@ -226,6 +227,8 @@ function TabletRail({ view, navigate, navBadges, changeBadges, primaryTabs, rail
 }
 
 // ─── Settings modal (reads/writes localStorage via ado-client.js) ─────────────
+const FieldError = ({ msg }) => (msg ? <div role="alert" style={{ marginTop: 4, fontSize: 12, color: 'var(--danger)' }}>{msg}</div> : null);
+
 function SettingsModal({ open, onClose, onSaved }) {
   const [org, setOrg]         = useState('');
   const [pat, setPat]         = useState('');
@@ -248,6 +251,8 @@ function SettingsModal({ open, onClose, onSaved }) {
   const [saving, setSaving]   = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [initial, setInitial] = useState({});
+  const phone = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width:600px)').matches;
   const [quickLinks, setQuickLinks] = useState([]);
 
   useEffect(() => {
@@ -267,7 +272,32 @@ function SettingsModal({ open, onClose, onSaved }) {
     let tweaks = {};
     try { tweaks = stored ? JSON.parse(stored) : {}; } catch (_) {}
     setQuickLinks(tweaks.quickLinks || DEFAULT_TWEAKS.quickLinks);
+    // What the form holds as it opens, so opening it never counts as a change.
+    setInitial({
+      org: c.org || '', pat: '', projects: (c.projects || []).join(', '), interval: c.refreshSecs || 30,
+      testProject: c.testProject || '', uatProject: c.uatProject || '', uatPipelineId: c.uatPipelineId || '',
+      uatBranch: c.uatBranch || '', adoWorkItems: c.workItems !== false, quickLinks: tweaks.quickLinks || DEFAULT_TWEAKS.quickLinks,
+    });
   }, [open]);
+
+  // On a phone the form saves as you type, once every field checks out.
+  const formValues = { org, pat, projects, interval, testProject, uatProject, uatPipelineId, uatBranch, adoWorkItems, quickLinks };
+  const form = useFormAutosave({
+    enabled: open && phone && Object.keys(initial).length > 0, values: formValues, initial, validate: validateAdoForm,
+    save: (v) => {
+      saveAdoConfig({
+        org: v.org.trim(), ...(v.pat.trim() ? { pat: v.pat.trim() } : {}),
+        projects: v.projects.split(/[,\n]+/).map(p => p.trim()).filter(Boolean),
+        refreshSecs: parseInt(v.interval, 10) || 30, testProject: v.testProject.trim(), uatProject: v.uatProject.trim(),
+        uatPipelineId: parseInt(v.uatPipelineId, 10) || 0, uatBranch: v.uatBranch.trim(), workItems: v.adoWorkItems,
+      });
+      let t = {}; try { t = JSON.parse(localStorage.getItem(getProfileKey('helm.tweaks')) || '{}'); } catch (_) {}
+      localStorage.setItem(getProfileKey('helm.tweaks'), JSON.stringify({ ...t, quickLinks: v.quickLinks }));
+    },
+  });
+  // Closing reloads the data once, if anything was saved.
+  const closeForm = () => { if (phone && form.dirty) onSaved?.(); onClose(); };
+  const fe = phone ? form.errors : {};
 
   const save = async () => {
     setSaving(true); setStatus('Saving…');
@@ -339,7 +369,7 @@ function SettingsModal({ open, onClose, onSaved }) {
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '16px',
-    }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+    }} onClick={e => { if (e.target === e.currentTarget) closeForm(); }}>
       <div style={{
         background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16,
         boxShadow: 'var(--shadow-pop)', width: 720, maxWidth: '100%',
@@ -350,7 +380,7 @@ function SettingsModal({ open, onClose, onSaved }) {
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em', flex: 1 }}>
             Azure DevOps Settings
           </h2>
-          <button className="btn icon ghost sm" onClick={onClose}><Icon name="x" size={14}/></button>
+          <button className="btn icon ghost sm" onClick={closeForm} aria-label="Close"><Icon name="x" size={14}/></button>
         </div>
 
         {/* Scrollable body */}
@@ -371,11 +401,13 @@ function SettingsModal({ open, onClose, onSaved }) {
                   <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: -6 }}>Pull requests, builds and tests still come from Azure DevOps.</div>
                 )}
                 <SettField label="Organisation" hint="The name after dev.azure.com/">
-                  <input value={org} onChange={e => setOrg(e.target.value)} placeholder="your-org-name" style={settInputStyle}/>
+                  <input value={org} onChange={e => setOrg(e.target.value)} placeholder="your-org-name" style={settInputStyle} aria-invalid={!!fe.org}/>
+                  <FieldError msg={fe.org}/>
                 </SettField>
                 <SettField label="Personal Access Token" hint="Stored server-side only. Needs Work Items (Read & Write), Code (Read & Write), Build (Read & Execute), Test Management (Read), and Project and Team (Read) scopes.">
                   <input type="password" value={pat} onChange={e => setPat(e.target.value)}
-                    placeholder="Leave blank to keep existing PAT" style={settInputStyle}/>
+                    placeholder="Leave blank to keep existing PAT" style={settInputStyle} aria-invalid={!!fe.pat}/>
+                  <FieldError msg={fe.pat}/>
                 </SettField>
                 <SettField label="Projects" hint="Comma-separated project names.">
                   <textarea value={projects} onChange={e => setProjects(e.target.value)}
@@ -389,7 +421,8 @@ function SettingsModal({ open, onClose, onSaved }) {
                 </SettField>
                 <SettField label="Auto-refresh interval (seconds)">
                   <input type="number" value={interval} onChange={e => setInterval(e.target.value)}
-                    min={10} max={3600} style={{ ...settInputStyle, width: 120 }}/>
+                    min={10} max={3600} style={{ ...settInputStyle, width: 120 }} aria-invalid={!!fe.interval}/>
+                  <FieldError msg={fe.interval}/>
                 </SettField>
               </div>
             </div>
@@ -406,7 +439,8 @@ function SettingsModal({ open, onClose, onSaved }) {
                 </SettField>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <SettField label="UAT Pipeline ID">
-                    <input type="number" value={uatPipelineId} onChange={e => setUatPipelineId(e.target.value)} style={settInputStyle}/>
+                    <input type="number" value={uatPipelineId} onChange={e => setUatPipelineId(e.target.value)} style={settInputStyle} aria-invalid={!!fe.uatPipelineId}/>
+                    <FieldError msg={fe.uatPipelineId}/>
                   </SettField>
                   <SettField label="UAT Branch">
                     <input value={uatBranch} onChange={e => setUatBranch(e.target.value)} style={settInputStyle}/>
@@ -494,12 +528,13 @@ function SettingsModal({ open, onClose, onSaved }) {
               color: status.startsWith('Error') ? 'var(--danger)' : 'var(--success)',
             }}>{status}</div>
           )}
+          {phone && <div role="status" style={{ fontSize: 12.5, color: Object.keys(fe).length ? 'var(--danger)' : 'var(--text-subtle)' }}>{form.label}</div>}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button className="btn ghost" onClick={onClose}>Cancel</button>
+            {!phone && <button className="btn ghost" onClick={onClose}>Cancel</button>}
             <button className="btn ghost" onClick={testConnection} disabled={testing || saving}>{testing ? 'Testing…' : 'Test connection'}</button>
-            <button className="btn primary" onClick={save} disabled={saving}>
-              {saving ? 'Saving…' : 'Save & reload'}
-            </button>
+            {phone
+              ? <button className="btn primary" onClick={closeForm}>Done</button>
+              : <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save & reload'}</button>}
           </div>
         </div>
       </div>
