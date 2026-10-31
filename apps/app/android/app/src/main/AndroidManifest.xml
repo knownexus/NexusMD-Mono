@@ -46,4 +46,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The in-app updater (AppUpdatePlugin); -Psideload only, see build.gradle. -->
+    <uses-permission android:name="${installPermission}" />
 </manifest>

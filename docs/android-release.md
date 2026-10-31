@@ -72,3 +72,19 @@ store review for most updates, available to named testers within minutes.
   before it can publish to Production. Internal testing is not affected.
 - `targetSdkVersion` is 36 (Android 16), current at time of writing. Check Play's requirement before
   each year's deadline.
+
+## Updating outside Google Play (GitHub releases)
+
+For installs that did not come from Play, the app can update itself from a GitHub Release:
+
+- Run **Android APK release** (Actions tab, `master` only, same `release` environment secrets). It
+  builds a signed APK with `-Psideload` and publishes release `android-v<version>`. Use a version
+  higher than the last one.
+- In the app, **Settings > Data & sync > App updates** compares the installed version with the newest
+  `android-v*` release, downloads the APK and opens Android's installer. Android asks you to confirm
+  every install, and the first time to allow "install unknown apps" for this app.
+- `-Psideload` is what adds the `REQUEST_INSTALL_PACKAGES` permission. The Play bundle is built
+  without it, because Play restricts that permission.
+- **Play and GitHub installs do not mix.** Play re-signs the app, so a release APK cannot replace a
+  Play install (Android rejects it as a signature mismatch). The updater hides itself on Play installs.
+  To move a phone from one to the other, uninstall first (this clears the app's data; export a backup).

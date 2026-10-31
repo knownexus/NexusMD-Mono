@@ -17,6 +17,9 @@ android {
         // a local build uses the number below.
         versionCode (project.findProperty('versionCode') ?: '3').toString().toInteger()
         versionName (project.findProperty('versionName') ?: '1.2.0')
+        // Only the GitHub (sideload) build may ask to install packages: Play restricts that permission, so the
+        // Play bundle carries a second INTERNET line (harmless) instead. See docs/android-release.md.
+        manifestPlaceholders = [installPermission: project.hasProperty('sideload') ? 'android.permission.REQUEST_INSTALL_PACKAGES' : 'android.permission.INTERNET']
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
