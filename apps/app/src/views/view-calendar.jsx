@@ -5,6 +5,10 @@
 // MSAL sign-in (a Capacitor webview can't do popups).
 import React from 'react';
 import { Icon } from '../icons.jsx';
+import { NewEventSheet } from './calendar-new-event.jsx';
+import { DayTimeline } from './day-timeline.jsx';
+import { EventSheet } from './event-sheet.jsx';
+import { shiftEvent, eventBadge } from '../calendar-phone.js';
 import {
   OutlookService, getWeekDays, getMonthGrid, getYearMonths, getAgendaDays,
   nowTopPx, todayStr, isoDate, MONTH_NAMES, MONTH_SHORT,
@@ -17,9 +21,27 @@ const { useState: useStateCal, useMemo: useMemoCal, useEffect: useEffectCal, use
 window.OutlookService = OutlookService;
 
 // ── CalendarView ──────────────────────────────────────────────────
-function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDeleteEvent, onMoveEvent }) {
-  const [calView, setCalView]             = useStateCal('week');
-  const [offset, setOffset]               = useStateCal(0);
+// Phone: Agenda (week strip + the day's list) or Month (grid + the day's list). Both share
+// the selected day, mapped onto the week/month ranges the desktop views already fetch.
+const dayOffset = (d, unit) => {
+  const now = new Date();
+  if (unit === 'month') return (d.getFullYear() - now.getFullYear()) * 12 + d.getMonth() - now.getMonth();
+  const mon = n => { const x = new Date(n); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() || 7) - 1)); return x; };
+  return Math.round((mon(d) - mon(now)) / (7 * 86400000));
+};
+const fmtTime = iso => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDeleteEvent, onMoveEvent, onAddEvent, onAddToPlanner, canAddToPlanner, onFlash, device }) {
+  const phone = device === 'phone';
+  const [tView, setCalView]               = useStateCal('week');
+  const [tOffset, setOffset]              = useStateCal(0);
+  const [phoneMode, setPhoneMode]         = useStateCal('agenda');
+  const [selDay, setSelDay]               = useStateCal(() => new Date());
+  const [newEventOpen, setNewEventOpen]   = useStateCal(false);
+  const [newEventTime, setNewEventTime]   = useStateCal(null);
+  const [actionEvent, setActionEvent]     = useStateCal(null);
+  const calView = phone ? (phoneMode === 'agenda' ? 'week' : 'month') : tView;
+  const offset  = phone ? dayOffset(selDay, phoneMode === 'agenda' ? 'week' : 'month') : tOffset;
   const [selectedEvent, setSelectedEvent] = useStateCal(null);
   const [nowPx, setNowPx]                 = useStateCal(nowTopPx);
   const scrollRef                         = useRefCal(null);
@@ -133,6 +155,38 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
   const agendaDays  = useMemoCal(() => calView==='agenda'  ? getAgendaDays(offset) : null, [calView,offset]);
   const weekDays    = useMemoCal(() => (calView==='week'||calView==='workweek') ? getWeekDays(offset, calView==='workweek') : null, [calView,offset]);
 
+  // Arrows move by week in Agenda and by month in Month; Today returns to now.
+  const stepSel = dir => setSelDay(d => {
+    const n = new Date(d);
+    if (phoneMode === 'agenda') n.setDate(n.getDate() + 7 * dir); else n.setMonth(n.getMonth() + dir, 1);
+    return n;
+  });
+  const selKey = isoDate(selDay);
+  const dayEvents = (eventsByDay[selKey] || []).slice().sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  const stripDays = getWeekDays(dayOffset(selDay, 'week'), false);
+  const monthDays = phoneMode === 'month' ? getMonthGrid(offset) : null;
+
+  const dayList = (
+    <div className="m-card flush" style={{ marginTop: 12 }}>
+      {dayEvents.length === 0 && (
+        <div className="m-empty" style={{ padding: 24 }}>
+          <div className="et">Nothing scheduled</div>
+          {onAddEvent && <button type="button" className="btn m-btn-lg" style={{ marginTop: 12 }} onClick={() => setNewEventOpen(true)}>Add an event</button>}
+        </div>
+      )}
+      {dayEvents.map(ev => (
+        <div key={ev.id} className="m-row" onClick={() => setActionEvent(ev)}>
+          <div className="m-row-main">
+            <div className="m-row-title">{ev.title} {eventBadge(ev) && <span className={`pill ${eventBadge(ev) === 'now' ? 'success' : 'warning'}`}>{eventBadge(ev) === 'now' ? 'Now' : 'Soon'}</span>}</div>
+            <div className="m-row-sub">{ev.start ? fmtTime(ev.start) : ''}{ev.end ? ' – ' + fmtTime(ev.end) : ''}</div>
+            <div className="m-row-meta">{ev.source === 'local' && <span className="pill accent">In Planner</span>}</div>
+          </div>
+          <Icon name="chevron-right" size={16} className="chev"/>
+        </div>
+      ))}
+    </div>
+  );
+
   const handleViewChange = (v) => { setCalView(v); setOffset(0); };
 
   const VIEWS = [
@@ -142,6 +196,67 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
     { id:'workweek', label:'Work Week' },
     { id:'agenda',   label:'Agenda'    },
   ];
+
+  if (phone) return (
+    <React.Fragment>
+      {selectedEvent && (
+        <EventDetailModal event={selectedEvent} onClose={()=>setSelectedEvent(null)} onOpenPlanner={ev=>onNavigatePlanner?.(ev)}
+          onUpdate={onUpdateEvent} onDelete={onDeleteEvent}/>
+      )}
+      <div className="m-appbar">
+        <div className="m-ab-lead"><div><h1>Calendar</h1><div className="m-ab-sub">{headerTitle}</div></div></div>
+        <div className="m-ab-actions">
+          <button type="button" className="m-iconbtn" title="Previous" onClick={() => stepSel(-1)}><Icon name="chevron-left" size={18}/></button>
+          <button type="button" className="m-linkbtn" onClick={() => setSelDay(new Date())}>Today</button>
+          <button type="button" className="m-iconbtn" title="Next" onClick={() => stepSel(1)}><Icon name="chevron-right" size={18}/></button>
+        </div>
+      </div>
+      <div className="m-screen">
+        <div className="m-seg" style={{ marginBottom: 12 }}>
+          <button type="button" className={phoneMode === 'agenda' ? 'active' : ''} onClick={() => setPhoneMode('agenda')}>Agenda</button>
+          <button type="button" className={phoneMode === 'month' ? 'active' : ''} onClick={() => setPhoneMode('month')}>Month</button>
+        </div>
+        {phoneMode === 'agenda' ? (
+          <div className="m-weekstrip">
+            {stripDays.map(d => { const k = isoDate(d); return (
+              <button key={k} type="button" className={`m-day${k === selKey ? ' sel' : ''}${k === today ? ' today' : ''}`} onClick={() => setSelDay(d)}>
+                <span className="dow">{d.toLocaleDateString([], { weekday: 'narrow' })}</span>
+                <span className="num">{d.getDate()}</span>
+                <span className={`dot${(eventsByDay[k] || []).length ? ' on' : ''}`}/>
+              </button>
+            ); })}
+          </div>
+        ) : (
+          <div className="m-monthgrid">
+            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((w, i) => <span key={i} className="dow">{w}</span>)}
+            {monthDays.days.map(d => { const k = isoDate(d); return (
+              <button key={k} type="button" className={`m-day${k === selKey ? ' sel' : ''}${k === today ? ' today' : ''}${d.getMonth() !== monthDays.month ? ' out' : ''}`} onClick={() => setSelDay(d)}>
+                <span className="num">{d.getDate()}</span>
+                <span className={`dot${(eventsByDay[k] || []).length ? ' on' : ''}`}/>
+              </button>
+            ); })}
+          </div>
+        )}
+        {phoneMode === 'month'
+          ? <div style={{ marginTop: 12 }}><DayTimeline events={dayEvents} isToday={selKey === today} onPick={setActionEvent}
+              onAddAt={onAddEvent ? (t) => { setNewEventTime(t); setNewEventOpen(true); } : undefined}/></div>
+          : dayList}
+      </div>
+      {onAddEvent && (
+        <button type="button" className="m-fab" aria-label="New event" onClick={() => setNewEventOpen(true)}><Icon name="plus" size={24}/></button>
+      )}
+      <EventSheet ev={actionEvent} onClose={() => setActionEvent(null)} canAddToPlanner={canAddToPlanner}
+        onAddToPlanner={onAddToPlanner} onDetails={setSelectedEvent} onDelete={onDeleteEvent}
+        onMoveLater={(ev) => {
+          const before = { start: ev.start, end: ev.end };
+          onUpdateEvent?.(ev.id, shiftEvent(ev, 30));
+          onFlash?.('Moved 30 minutes later', 'clock', () => onUpdateEvent?.(ev.id, before));
+        }}/>
+      <NewEventSheet open={newEventOpen} onClose={() => { setNewEventOpen(false); setNewEventTime(null); }} dayKey={selKey} startTime={newEventTime}
+        onAdd={(ev, opts) => { onAddEvent(ev, opts); setSelDay(new Date(ev.start)); }}
+        canAddToPlanner={canAddToPlanner} outlookConnected={outlookConnected}/>
+    </React.Fragment>
+  );
 
   return (
     <React.Fragment>

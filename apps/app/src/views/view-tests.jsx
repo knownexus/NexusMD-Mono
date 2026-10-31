@@ -1,12 +1,16 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
+import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
+import { PhoneTests } from './tests-phone.jsx';
 import { HelmData } from '../data.jsx';
 import { NotificationBanner } from '../components.jsx';
 // view-tests.jsx — Tests dashboard: pipeline runs + pass/fail summaries
 
 const { useState: useStateT, useMemo: useMemoT } = React;
 
-function TestsView({ tests, acknowledgedTests, setAcknowledgedTests, newItemIds = new Set() }) {
+function TestsView({ tests: allTests, acknowledgedTests, setAcknowledgedTests, newItemIds = new Set(), device }) {
+  const src = useSourceFilter('tests', allTests);
+  const tests = src.filtered;
   const [initialNewCount] = useStateT(() => newItemIds.size);
   const [bannerDismissed, setBannerDismissed] = useStateT(false);
   const [pipeline,    setPipeline]    = usePersisted('helm.tests.pipeline', 'all');
@@ -91,6 +95,19 @@ function TestsView({ tests, acknowledgedTests, setAcknowledgedTests, newItemIds 
     return <span className={`pill ${cls}`}>{r}</span>;
   };
 
+  // A phone gets its own layout: dropdown filters, one row of totals, tappable run rows.
+  if (device === 'phone') {
+    return <PhoneTests
+      src={src} tests={tests} pipelines={pipelines} statuses={statuses}
+      pipeline={pipeline} setPipeline={setPipeline} results={results} setResults={setResults}
+      failedCount={failedCount} acknowledgedCount={acknowledgedCount}
+      totalRuns={totalRuns} totalTests={totalTests} totalPassed={totalPassed} totalFailed={totalFailed} passRate={passRate}
+      grouped={grouped} collapsed={collapsed} setCollapsed={setCollapsed} expandedRun={expandedRun} setExpandedRun={setExpandedRun}
+      dispResult={dispResult} acknowledgedSet={acknowledgedSet} toggleAck={toggleAck}
+      newItemIds={newItemIds} initialNewCount={initialNewCount} bannerDismissed={bannerDismissed} setBannerDismissed={setBannerDismissed}
+      page={safePage} totalPages={totalPages} pageSize={pageSize} setPage={setPage}/>;
+  }
+
   return (
     <React.Fragment>
       <div className="m-appbar">
@@ -106,6 +123,7 @@ function TestsView({ tests, acknowledgedTests, setAcknowledgedTests, newItemIds 
       </div>
 
       <div className="m-screen">
+        <SourceSwitch {...src}/>
       {initialNewCount > 0 && !bannerDismissed && (
         <NotificationBanner
           label={`${initialNewCount} new test result${initialNewCount !== 1 ? 's' : ''} since your last visit`}

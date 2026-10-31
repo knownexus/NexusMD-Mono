@@ -39,3 +39,31 @@ export async function listCommits(get, repo, branch, top = 50) {
     url: c.remoteUrl || '',
   }));
 }
+
+const at = (branch) => `versionDescriptor.version=${enc(branch)}&versionDescriptor.versionType=branch`;
+
+// One folder level, folders first. `path` is '/' for the root.
+export async function listItems(get, repo, branch, path = '/') {
+  const r = await get(`${enc(repo.project)}/_apis/git/repositories/${repo.id}/items?scopePath=${enc(path)}&recursionLevel=OneLevel&${at(branch)}&api-version=7.0`);
+  return (r?.value || [])
+    .filter(i => i.path !== path && i.path !== path.replace(/\/$/, ''))
+    .map(i => ({ path: i.path, name: i.path.split('/').pop(), isFolder: !!i.isFolder }))
+    .sort((a, b) => (b.isFolder - a.isFolder) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
+
+// Text content of one file.
+export async function getFile(get, repo, branch, path) {
+  const r = await get(`${enc(repo.project)}/_apis/git/repositories/${repo.id}/items?path=${enc(path)}&includeContent=true&${at(branch)}&api-version=7.0`);
+  return typeof r === 'string' ? r : String(r?.content ?? '');
+}
+
+// Commits grouped by local calendar day, newest first (input order kept within a day).
+export function groupCommitsByDay(commits) {
+  const groups = [];
+  for (const c of commits) {
+    const day = c.date ? new Date(c.date).toDateString() : 'Unknown date';
+    const last = groups[groups.length - 1];
+    if (last && last.day === day) last.commits.push(c); else groups.push({ day, commits: [c] });
+  }
+  return groups;
+}

@@ -226,25 +226,35 @@ export function QuickAddList({ section, rows, setRows, sessionUnlocked, onUnlock
   const statusCol = section.cols.find(c => c.t === 'status');
   const updateRow = (id, patch) => setRows(rows.map(r => r.id === id ? { ...r, ...patch } : r));
   const deleteRow = (id) => { setRows(rows.filter(r => r.id !== id)); if (openId === id) setOpenId(null); };
-  const submit = () => {
+  // `openAfter` opens the new row's full editor, for "Add with all fields".
+  const submit = (openAfter) => {
     const t = text.trim(); if (!t) return;
-    setRows([...rows, plNewRow(section, qaParse(t, section))]);
+    const row = plNewRow(section, qaParse(t, section));
+    setRows([...rows, row]);
     setText('');
+    if (openAfter === true) setOpenId(row.id);
   };
+  // On a phone the bar sits under the list (see planner-v2.css) and has buttons, as there is no Enter key.
+  const phone = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width:600px)').matches;
   const hasDate = section.cols.some(c => c.t === 'date');
   const hasPrio = section.cols.some(c => c.t === 'prio');
   return (
-    <div>
+    <div className="qa-list">
       <div className="qa-bar">
         <span className="ic"><Icon name="plus" size={14}/></span>
         <input
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') submit(); }}
-          placeholder={`Add to ${section.title.toLowerCase()}… press Enter`}
+          placeholder={`Add to ${section.title.toLowerCase()}…${phone ? '' : ' press Enter'}`}
+          aria-label={`Add to ${section.title}`}
         />
         <span className="kbd">↵</span>
+        <button type="button" className="qa-add" disabled={!text.trim()} onClick={() => submit()}>Add</button>
       </div>
+      {phone && text.trim() && (
+        <button type="button" className="qa-more" onClick={() => submit(true)}>Add with all fields</button>
+      )}
       {(hasDate || hasPrio) && (
         <div className="qa-hint">
           <span>Shortcuts:</span>
@@ -252,7 +262,7 @@ export function QuickAddList({ section, rows, setRows, sessionUnlocked, onUnlock
           {hasPrio && <span><code>p1</code>–<code>p4</code> priority</span>}
         </div>
       )}
-      {rows.length === 0 && <div className="empty" style={{ padding: '26px 20px', fontSize: 12.5 }}>Nothing here yet — type above to add the first entry.</div>}
+      {rows.length === 0 && <div className="empty" style={{ padding: '26px 20px', fontSize: 12.5 }}>Nothing here yet — type {phone ? 'below' : 'above'} to add the first entry.</div>}
       {rows.map(r => {
         const rowLocked = r._confidential && !sessionUnlocked;
         if (rowLocked) return (

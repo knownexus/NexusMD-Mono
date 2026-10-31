@@ -706,6 +706,22 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGloba
       {effectiveNavMode === 'tabs' && (
         <div>
           <div style={{ marginBottom: 14 }}>
+            {isPhone ? (
+              <div className="m-chipscroll" style={{ marginBottom: 0 }}>
+                {navGroups.map(g => {
+                  const { counts = 0, hasAlert = false } = navStats[g.id] || {}
+                  return (
+                    <button key={g.id} type="button"
+                      className={`m-chip${activeGroup === g.id ? ' active' : ''}${hasAlert ? ' alert' : ''}`}
+                      onClick={() => setActiveGroup(g.id)}>
+                      <span className="m-chip-ic"><Icon name={g.icon} size={13}/></span>
+                      {g.label}
+                      {g.ids && counts > 0 && <span className="m-chip-count">{counts}</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
             <div className="pl-seg">
               {navGroups.map(g => (
                 <button key={g.id} className={activeGroup === g.id ? 'active' : ''} onClick={() => setActiveGroup(g.id)}>
@@ -713,6 +729,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGloba
                 </button>
               ))}
             </div>
+            )}
           </div>
           {activeGroup === 'overview' ? glance
             : (showGlobalNotesTab && activeGroup === 'mynotes') ? notesView

@@ -4,13 +4,16 @@ import { adoGet, adoPost, adoPatch, getAdoConfig } from '../ado-client.js';
 import { toast } from '../toast.jsx';
 import { HelmData } from '../data.jsx';
 import { ColHead } from '@nexusmd/ui';
+import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
 import { NotificationBanner } from '../components.jsx';
 // view-builds.jsx — Build pipelines status view
 
 // Grid template shared between header and every build row
 const BUILD_GRID = '28px 68px 1fr 160px 72px 80px 72px 148px 140px';
 
-function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItemIds = new Set() }) {
+function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuilds, newItemIds = new Set() }) {
+  const src = useSourceFilter('builds', allBuilds);
+  const builds = src.filtered;
   const [initialNewCount] = React.useState(() => newItemIds.size);
   const [bannerDismissed, setBannerDismissed] = React.useState(false);
   const [collapsed,        setCollapsed]        = usePersisted('helm.builds.collapsed', {});
@@ -173,7 +176,7 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
 
   return (
     <React.Fragment>
-      <div className="m-appbar">
+      <div className="m-appbar wrap">
         <div className="m-ab-lead">
           <h1>Builds</h1>
           <div className="m-ab-sub">{passing} passing · {failing} failing{acknowledged > 0 ? ` · ${acknowledged} acknowledged` : ''} · {running} running{cancelled > 0 ? ` · ${cancelled} cancelled` : ''}</div>
@@ -190,6 +193,7 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
       </div>
 
       <div className="m-screen">
+        <SourceSwitch {...src}/>
       {initialNewCount > 0 && !bannerDismissed && (
         <NotificationBanner
           label={`${initialNewCount} new build result${initialNewCount !== 1 ? 's' : ''} since your last visit`}
@@ -206,7 +210,7 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
 
       {/* ── Builds table card ── */}
       <div style={{ overflowX:'auto' }}>
-      <div className="card">
+      <div className="card m-bld-card">
         <div className="card-head" style={{ flexWrap:'wrap', gap:6 }}>
           <h3>Recent builds</h3>
           <span className="muted" style={{ fontSize:11.5 }}>Across all pipelines</span>
@@ -373,8 +377,8 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
 
                     {/* Build # */}
                     <div className="mono" style={{ fontSize:12, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', display:'flex', alignItems:'center', gap:5 }}>
-                      {HelmData.ORG && b.project
-                        ? <a href={`https://dev.azure.com/${encodeURIComponent(HelmData.ORG)}/${encodeURIComponent(b.project)}/_build/results?buildId=${b.id}`}
+                      {(b.source === 'github' ? b.url : HelmData.ORG && b.project)
+                        ? <a href={b.source === 'github' ? b.url : `https://dev.azure.com/${encodeURIComponent(HelmData.ORG)}/${encodeURIComponent(b.project)}/_build/results?buildId=${b.id}`}
                             target="_blank" rel="noopener" onClick={e => e.stopPropagation()}
                             style={{ color:'var(--accent)', textDecoration:'none' }}>#{b.id}</a>
                         : <span>#{b.id}</span>
@@ -429,7 +433,13 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
                     {/* Actions */}
                     <div style={{ display:'flex', justifyContent:'flex-end', gap:4 }}>
                       {/* Cancel — running builds only */}
-                      {b.status === 'running' && (
+                      {b.source === 'github' && b.url && (
+                        <a className="btn sm ghost" href={b.url} target="_blank" rel="noopener noreferrer"
+                          style={{ textDecoration:'none' }} onClick={e => e.stopPropagation()}>
+                          <Icon name="link" size={12}/> Open in GitHub
+                        </a>
+                      )}
+                      {b.status === 'running' && b.source !== 'github' && (
                         <button className="btn sm ghost" title="Cancel this build"
                           style={{ color:'var(--danger)' }}
                           disabled={actioning.has(b.id)}
@@ -438,7 +448,7 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
                         </button>
                       )}
                       {/* Rerun — completed builds */}
-                      {b.status !== 'running' && b.definitionId > 0 && (
+                      {b.status !== 'running' && b.definitionId > 0 && b.source !== 'github' && (
                         <button className="btn sm ghost" title="Re-run this pipeline"
                           disabled={actioning.has(b.id)}
                           onClick={e => { e.stopPropagation(); rerunBuild(b); }}>

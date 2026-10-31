@@ -114,12 +114,24 @@ button[style*="height:30"] { min-height: 44px !important; }
 
 /* ── Modals: bottom sheet on phone ─────────────────────────────── */
 @media (max-width: 600px) {
-  #modal-settings,
   #modal-create-workitem {
     align-items: flex-end !important;
     padding: 0 !important;
   }
-  #modal-settings > div,
+  /* The connection forms are full-screen pages: a header, a scrolling body and a footer that stays put. */
+  #modal-settings, #modal-jira {
+    align-items: stretch !important; padding: 0 !important; background: var(--bg) !important;
+  }
+  #modal-settings > div, #modal-jira > div {
+    width: 100% !important; max-width: 100% !important; height: 100% !important; max-height: 100% !important;
+    border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  }
+  #modal-settings > div > div:first-child, #modal-jira > div > div:first-child { padding: 14px 16px !important; }
+  #modal-settings > div > div:last-child, #modal-jira > div > div:last-child { padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)) !important; }
+  #modal-settings > div > div:nth-child(2), #modal-jira > div > div:nth-child(2) { padding: 14px 16px !important; }
+  #modal-settings .btn, #modal-jira .btn { min-height: 44px; }
+  #modal-settings input:not([type="checkbox"]), #modal-settings textarea, #modal-jira input:not([type="checkbox"]) { min-height: 44px; font-size: 15px !important; }
+  #modal-settings > div > div:last-child > div:last-child, #modal-jira > div > div:last-child > div:last-child { flex-wrap: wrap; }
   #modal-create-workitem > div {
     width: 100% !important;
     max-width: 100% !important;
@@ -130,7 +142,8 @@ button[style*="height:30"] { min-height: 44px !important; }
   }
 
   #modal-settings [style*="grid-template-columns: 1fr 1fr"],
-  #modal-settings [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+  #modal-settings [style*="grid-template-columns:1fr 1fr"],
+  #modal-settings [style*="grid-template-columns: 160px 1fr auto"] { grid-template-columns: 1fr !important; }
   #modal-create-workitem [style*="grid-template-columns: 1fr 1fr"],
   #modal-create-workitem [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
 }

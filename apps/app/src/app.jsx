@@ -12,10 +12,15 @@ import { getProfileKey } from './profile-keys.js';
 import {
   NexusDataProvider, renderContent, SEEN_FINGERPRINTS, DEFAULT_PROJECT_AREAS,
   loadWeekPlanner, saveWeekPlanner, ProjectAreasModal, DocumentsView, ApiClientProvider, ApiClientView, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
-  PRCommitsTab, PRFilesTab, CreateWIModal, WIDetail, PersonDetail, DetailDrawer, paletteFor,
+  PRCommitsTab, PRFilesTab, PRTabs, CreateWIModal, WIDetail, PersonDetail, DetailDrawer, paletteFor,
 } from '@nexusmd/ui';
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
+import { GithubSettingsModal } from './github-settings.jsx';
+import { DocumentsPhone } from './views/documents-phone.jsx';
+import './offline-queue-app.js';
+import { useFormAutosave, validateAdoForm } from './autosave-form.js';
+import { createGithubHttpAdapter } from './github-client.js';
 import { useOffScreens } from './work-screens.js';
 import { EditorScreen } from './editor-screen.jsx';
 import { GitView } from './git-view.jsx';
@@ -26,6 +31,7 @@ import { secureStorageAdapter } from './adapters/secureStorage.js';
 import { registerCloudDeepLink, hydrateCloudTokens } from './cloud-auth.js';
 import { startAppAutoSync } from './sync.js';
 import { DashboardView } from './views/view-dashboard.jsx';
+import { NotesView } from './views/view-notes.jsx';
 import { WorkItemsView } from './views/view-workitems.jsx';
 import { PRView } from './views/view-prs.jsx';
 import { BuildsView } from './views/view-builds.jsx';
@@ -128,6 +134,7 @@ const ALL_SECONDARY_TABS = [
   { id: 'builds',   label: 'Builds',   icon: 'build'        },
   { id: 'tests',    label: 'Tests',    icon: 'check-circle' },
   { id: 'calendar', label: 'Calendar', icon: 'planner'      },
+  { id: 'notes',    label: 'Notes',    icon: 'pin'          },
   { id: 'triage',   label: 'Triage',   icon: 'inbox'        },
   { id: 'team',     label: 'Team',     icon: 'team'         },
   { id: 'markdown', label: 'Documents', icon: 'doc'         },
@@ -220,6 +227,8 @@ function TabletRail({ view, navigate, navBadges, changeBadges, primaryTabs, rail
 }
 
 // ─── Settings modal (reads/writes localStorage via ado-client.js) ─────────────
+const FieldError = ({ msg }) => (msg ? <div role="alert" style={{ marginTop: 4, fontSize: 12, color: 'var(--danger)' }}>{msg}</div> : null);
+
 function SettingsModal({ open, onClose, onSaved }) {
   const [org, setOrg]         = useState('');
   const [pat, setPat]         = useState('');
@@ -241,6 +250,9 @@ function SettingsModal({ open, onClose, onSaved }) {
   const [status, setStatus]   = useState('');
   const [saving, setSaving]   = useState(false);
   const [discovering, setDiscovering] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [initial, setInitial] = useState({});
+  const phone = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width:600px)').matches;
   const [quickLinks, setQuickLinks] = useState([]);
 
   useEffect(() => {
@@ -260,7 +272,33 @@ function SettingsModal({ open, onClose, onSaved }) {
     let tweaks = {};
     try { tweaks = stored ? JSON.parse(stored) : {}; } catch (_) {}
     setQuickLinks(tweaks.quickLinks || DEFAULT_TWEAKS.quickLinks);
+    // What the form holds as it opens, so opening it never counts as a change.
+    setInitial({
+      org: c.org || '', pat: '', projects: (c.projects || []).join(', '), interval: c.refreshSecs || 30,
+      testProject: c.testProject || '', uatProject: c.uatProject || '', uatPipelineId: c.uatPipelineId || '',
+      uatBranch: c.uatBranch || '', adoWorkItems: c.workItems !== false, quickLinks: tweaks.quickLinks || DEFAULT_TWEAKS.quickLinks,
+    });
   }, [open]);
+
+  // On a phone the form saves as you type, once every field checks out.
+  const formValues = { org, pat, projects, interval, testProject, uatProject, uatPipelineId, uatBranch, adoWorkItems, quickLinks };
+  const form = useFormAutosave({
+    enabled: open && phone && Object.keys(initial).length > 0, values: formValues, initial, validate: validateAdoForm, hold: ['org'],
+    save: (v) => {
+      saveAdoConfig({
+        org: v.org.trim(), ...(v.pat.trim() ? { pat: v.pat.trim() } : {}),
+        projects: v.projects.split(/[,\n]+/).map(p => p.trim()).filter(Boolean),
+        refreshSecs: parseInt(v.interval, 10) || 30, testProject: v.testProject.trim(), uatProject: v.uatProject.trim(),
+        uatPipelineId: parseInt(v.uatPipelineId, 10) || 0, uatBranch: v.uatBranch.trim(), workItems: v.adoWorkItems,
+      });
+      let t = {}; try { t = JSON.parse(localStorage.getItem(getProfileKey('helm.tweaks')) || '{}'); } catch (_) {}
+      localStorage.setItem(getProfileKey('helm.tweaks'), JSON.stringify({ ...t, quickLinks: v.quickLinks }));
+    },
+  });
+  // Closing reloads the data once, if anything was saved.
+  // Only Done confirms a changed organisation; the X and a tap outside discard it.
+  const closeForm = (confirm = false) => { const flushed = phone && confirm === true && form.flush(); if (phone && (form.dirty || flushed)) onSaved?.(); onClose(); };
+  const fe = phone ? form.errors : {};
 
   const save = async () => {
     setSaving(true); setStatus('Saving…');
@@ -292,6 +330,21 @@ function SettingsModal({ open, onClose, onSaved }) {
     }
   };
 
+  // Checks the organisation and token against Azure DevOps and says who they belong to.
+  const testConnection = async () => {
+    const o = org.trim(), p = pat.trim() || getAdoConfig().pat;
+    if (!o || !p) { setStatus('Error: Enter the organisation and a token first.'); return; }
+    setTesting(true); setStatus('Testing…');
+    try {
+      saveAdoConfig({ org: o, pat: p });
+      setInitial(i => ({ ...i, org: o }));
+      const r = await adoGet('_apis/connectionData');
+      setStatus(`Connected as ${r?.authenticatedUser?.providerDisplayName || 'an unknown user'}`);
+    } catch (e) {
+      setStatus('Error: ' + (e?.message || 'connection failed'));
+    } finally { setTesting(false); }
+  };
+
   const discoverProjects = async () => {
     const currentOrg = org.trim();
     const currentPat = pat.trim() || getAdoConfig().pat;
@@ -318,7 +371,7 @@ function SettingsModal({ open, onClose, onSaved }) {
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '16px',
-    }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+    }} onClick={e => { if (e.target === e.currentTarget) closeForm(false); }}>
       <div style={{
         background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16,
         boxShadow: 'var(--shadow-pop)', width: 720, maxWidth: '100%',
@@ -329,7 +382,7 @@ function SettingsModal({ open, onClose, onSaved }) {
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em', flex: 1 }}>
             Azure DevOps Settings
           </h2>
-          <button className="btn icon ghost sm" onClick={onClose}><Icon name="x" size={14}/></button>
+          <button className="btn icon ghost sm" onClick={() => closeForm(false)} aria-label="Close"><Icon name="x" size={14}/></button>
         </div>
 
         {/* Scrollable body */}
@@ -350,11 +403,13 @@ function SettingsModal({ open, onClose, onSaved }) {
                   <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: -6 }}>Pull requests, builds and tests still come from Azure DevOps.</div>
                 )}
                 <SettField label="Organisation" hint="The name after dev.azure.com/">
-                  <input value={org} onChange={e => setOrg(e.target.value)} placeholder="your-org-name" style={settInputStyle}/>
+                  <input value={org} onChange={e => setOrg(e.target.value)} placeholder="your-org-name" style={settInputStyle} aria-invalid={!!fe.org}/>
+                  <FieldError msg={fe.org}/>
                 </SettField>
                 <SettField label="Personal Access Token" hint="Stored server-side only. Needs Work Items (Read & Write), Code (Read & Write), Build (Read & Execute), Test Management (Read), and Project and Team (Read) scopes.">
                   <input type="password" value={pat} onChange={e => setPat(e.target.value)}
-                    placeholder="Leave blank to keep existing PAT" style={settInputStyle}/>
+                    placeholder="Leave blank to keep existing PAT" style={settInputStyle} aria-invalid={!!fe.pat}/>
+                  <FieldError msg={fe.pat}/>
                 </SettField>
                 <SettField label="Projects" hint="Comma-separated project names.">
                   <textarea value={projects} onChange={e => setProjects(e.target.value)}
@@ -368,7 +423,8 @@ function SettingsModal({ open, onClose, onSaved }) {
                 </SettField>
                 <SettField label="Auto-refresh interval (seconds)">
                   <input type="number" value={interval} onChange={e => setInterval(e.target.value)}
-                    min={10} max={3600} style={{ ...settInputStyle, width: 120 }}/>
+                    min={10} max={3600} style={{ ...settInputStyle, width: 120 }} aria-invalid={!!fe.interval}/>
+                  <FieldError msg={fe.interval}/>
                 </SettField>
               </div>
             </div>
@@ -385,7 +441,8 @@ function SettingsModal({ open, onClose, onSaved }) {
                 </SettField>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <SettField label="UAT Pipeline ID">
-                    <input type="number" value={uatPipelineId} onChange={e => setUatPipelineId(e.target.value)} style={settInputStyle}/>
+                    <input type="number" value={uatPipelineId} onChange={e => setUatPipelineId(e.target.value)} style={settInputStyle} aria-invalid={!!fe.uatPipelineId}/>
+                    <FieldError msg={fe.uatPipelineId}/>
                   </SettField>
                   <SettField label="UAT Branch">
                     <input value={uatBranch} onChange={e => setUatBranch(e.target.value)} style={settInputStyle}/>
@@ -473,11 +530,13 @@ function SettingsModal({ open, onClose, onSaved }) {
               color: status.startsWith('Error') ? 'var(--danger)' : 'var(--success)',
             }}>{status}</div>
           )}
+          {phone && <div role="status" style={{ fontSize: 12.5, color: Object.keys(fe).length ? 'var(--danger)' : 'var(--text-subtle)' }}>{form.label}</div>}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button className="btn ghost" onClick={onClose}>Cancel</button>
-            <button className="btn primary" onClick={save} disabled={saving}>
-              {saving ? 'Saving…' : 'Save & reload'}
-            </button>
+            {!phone && <button className="btn ghost" onClick={onClose}>Cancel</button>}
+            <button className="btn ghost" onClick={testConnection} disabled={testing || saving}>{testing ? 'Testing…' : 'Test connection'}</button>
+            {phone
+              ? <button className="btn primary" onClick={() => closeForm(true)}>Done</button>
+              : <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save & reload'}</button>}
           </div>
         </div>
       </div>
@@ -545,6 +604,7 @@ function AppShell() {
   const [drawer, setDrawer]       = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [jiraSettingsOpen, setJiraSettingsOpen] = useState(false);
+  const [githubSettingsOpen, setGithubSettingsOpen] = useState(false);
   const [projectAreasOpen, setProjectAreasOpen] = useState(false);
   const [projectAreas, setProjectAreas] = useState(() => {
     try {
@@ -580,14 +640,26 @@ function AppShell() {
 
   // ── Flash toast state (mobile) ────────────────────────────────────────────
   const [mobileFlash, setMobileFlash] = useState(null);
-  const showFlash = useCallback((msg, icon) => {
-    setMobileFlash({ msg, icon, k: Date.now() });
+  // showFlash(msg, icon, undo): a toast; with an undo function it stays longer and offers Undo.
+  const showFlash = useCallback((msg, icon, undo) => {
+    setMobileFlash({ msg, icon, undo, k: Date.now() });
   }, []);
   useEffect(() => {
     if (!mobileFlash) return;
-    const t = setTimeout(() => setMobileFlash(null), 2600);
+    const t = setTimeout(() => setMobileFlash(null), mobileFlash.undo ? 6000 : 2600);
     return () => clearTimeout(t);
   }, [mobileFlash]);
+
+  // Changes made offline are sent when the connection returns; say what happened.
+  useEffect(() => {
+    const onFlushed = (e) => {
+      const { sent = 0, failed = [] } = e.detail || {};
+      if (failed.length) showFlash(`${failed.length} offline change${failed.length === 1 ? '' : 's'} could not be sent: ${failed[0].error?.message || 'rejected'}`, 'alert');
+      else if (sent) showFlash(`${sent} offline change${sent === 1 ? '' : 's'} synced`, 'check');
+    };
+    window.addEventListener('helm:queue-flushed', onFlushed);
+    return () => window.removeEventListener('helm:queue-flushed', onFlushed);
+  }, [showFlash]);
 
   // ── More sheet ────────────────────────────────────────────────────────────
   const [moreOpen, setMoreOpen] = useState(false);
@@ -717,6 +789,14 @@ function AppShell() {
     setPlannerData(prev => ({
       ...prev,
       teamNotes: [...(prev.teamNotes || []), newRow],
+    }));
+  }, []);
+
+  // A note becomes a task in this week's planner.
+  const addTaskFromNote = React.useCallback((title) => {
+    setPlannerData(prev => ({
+      ...prev,
+      tasks: [...(prev.tasks || []), { id: 't' + Date.now(), task: title, priority: '3 - Medium' }],
     }));
   }, []);
 
@@ -883,8 +963,53 @@ function AppShell() {
     if (!oldEv || oldEv.source === 'outlook') return;
     setCalendarEvents((prev) => prev.filter((e) => String(e.id) !== String(id)));
     syncOneOnOnePlanner(oldEv, null);
-    toast?.('Calendar entry deleted', 'success');
-  }, [calendarEvents, syncOneOnOnePlanner]);
+    // Undo puts the event back. A 1:1 also removed its planner row, which isn't rebuilt, so it gets no Undo.
+    if (oldEv.plannerSection === 'oneOnOnes') toast?.('Calendar entry deleted', 'success');
+    else showFlash('Calendar entry deleted', 'trash', () => setCalendarEvents((prev) => (prev.some((e) => String(e.id) === String(id)) ? prev : [...prev, oldEv])));
+  }, [calendarEvents, syncOneOnOnePlanner, showFlash]);
+
+  // Is this day in the week the Planner is showing? Only then can an event become a Meetings row.
+  const canAddToPlanner = React.useCallback((dateStr) => {
+    const w = weekForDate(dateStr), cur = getYearWeekForOffset(0);
+    return !!w && w.year === cur.year && w.week === cur.week;
+  }, [weekForDate]);
+
+  // A new event from the phone calendar: optionally a row in Planner > Meetings - schedule, and
+  // optionally pushed to Outlook. Undo removes both, except after an Outlook push (that copy stays).
+  const addCalendarEvent = React.useCallback((ev, { toPlanner, toOutlook } = {}) => {
+    const rowId = toPlanner && canAddToPlanner(ev.start.slice(0, 10)) ? 'ms' + Date.now() : null;
+    const withPlanner = rowId ? { ...ev, plannerSection: 'meetSched' } : ev;
+    setCalendarEvents((prev) => [...prev, withPlanner]);
+    if (rowId) {
+      const day = new Date(ev.start).toLocaleDateString('en-US', { weekday: 'long' });
+      setPlannerData((prev) => ({ ...prev, meetSched: [...(prev.meetSched || []), {
+        id: rowId, dayTime: `${day} ${ev.start.slice(11, 16)}`, meeting: ev.title, attendees: '', prep: '', owner: '', status: '',
+      }] }));
+    }
+    const pushed = !!(toOutlook && window.OutlookService?.isConnected());
+    if (pushed) window.OutlookService.createEvent({ title: ev.title, start: ev.start, end: ev.end, description: '' }).catch((err) => console.warn('Outlook createEvent failed:', err));
+    const undo = pushed ? undefined : () => {
+      setCalendarEvents((prev) => prev.filter((e) => e.id !== ev.id));
+      if (rowId) setPlannerData((prev) => ({ ...prev, meetSched: (prev.meetSched || []).filter((r) => r.id !== rowId) }));
+    };
+    showFlash(pushed ? 'Event added and sent to Outlook' : rowId ? 'Event added to Calendar and Planner' : 'Event added', 'check', undo);
+  }, [canAddToPlanner, showFlash]);
+
+  // An event that is already on the calendar becomes a row in Planner > Meetings - schedule.
+  const addEventToPlanner = React.useCallback((ev) => {
+    if (!canAddToPlanner(ev.start.slice(0, 10))) { showFlash("Only days in the Planner's week can be added", 'alert'); return; }
+    const rowId = 'ms' + Date.now();
+    const day = new Date(ev.start).toLocaleDateString('en-US', { weekday: 'long' });
+    setPlannerData((prev) => ({ ...prev, meetSched: [...(prev.meetSched || []), {
+      id: rowId, dayTime: `${day} ${new Date(ev.start).toTimeString().slice(0, 5)}`, meeting: ev.title, attendees: '', prep: '', owner: '', status: '',
+    }] }));
+    const mark = (section) => setCalendarEvents((prev) => prev.map((e) => (String(e.id) === String(ev.id) ? { ...e, plannerSection: section } : e)));
+    if (ev.source !== 'outlook') mark('meetSched');
+    showFlash('Added to Planner', 'check', () => {
+      setPlannerData((prev) => ({ ...prev, meetSched: (prev.meetSched || []).filter((r) => r.id !== rowId) }));
+      if (ev.source !== 'outlook') mark(ev.plannerSection);
+    });
+  }, [canAddToPlanner, showFlash]);
 
   const moveCalendarEvent = React.useCallback((id, newDateStr) => {
     const ev = (calendarEvents || []).find((e) => String(e.id) === String(id));
@@ -1018,22 +1143,26 @@ function AppShell() {
         newItemIds={newItemIds.tests} device={device}/>;
       case 'calendar': return <CalendarView calendarEvents={calendarEvents}
         onNavigatePlanner={navigateToPlanner} onUpdateEvent={updateCalendarEvent}
-        onDeleteEvent={deleteCalendarEvent} onMoveEvent={moveCalendarEvent} device={device}/>;
+        onDeleteEvent={deleteCalendarEvent} onMoveEvent={moveCalendarEvent} onAddEvent={addCalendarEvent}
+        onAddToPlanner={addEventToPlanner} onFlash={showFlash} canAddToPlanner={canAddToPlanner} device={device}/>;
       case 'triage': return <TriageView device={device}/>;
       case 'team': return <TeamView team={team} workItems={workItems}
         prs={HelmData?.PRS || []} onOpenItem={openWI} onOpenPerson={openPerson}
         onTeamChange={setTeam} onAddNote={addTeamNote}
         onScheduleOneOnOne={scheduleOneOnOne} device={device}/>;
       case 'planner': return <PlannerView data={plannerData} setData={setPlannerData}
-        themes={themes} setThemes={setThemes} onExportDocx={plannerExportDocx} device={device} onFlash={showFlash}/>;
+        themes={themes} setThemes={setThemes} onExportDocx={plannerExportDocx} device={device} onFlash={showFlash}
+        showGlobalNotesTab={device !== 'phone'}/>;
+      case 'notes': return <NotesView onAddTask={addTaskFromNote} onFlash={showFlash}/>;
       case 'lists': return <ListsView />;
-      case 'markdown': return <DocumentsView/>;
-      case 'editor': return <EditorScreen/>;
-      case 'git': return <GitView/>;
-      case 'api': return <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>;
+      case 'markdown': return device === 'phone' ? <DocumentsPhone onFlash={showFlash}/> : <DocumentsView/>;
+      case 'editor': return <EditorScreen onFlash={showFlash}/>;
+      case 'git': return <GitView onFlash={showFlash}/>;
+      case 'api': return withBar('API Client', <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>);
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
         onOpenConnection={() => setSettingsOpen(true)}
         onOpenJira={() => setJiraSettingsOpen(true)}
+        onOpenGithub={() => setGithubSettingsOpen(true)}
         onWorkScreensChanged={handleSettingsSaved}
         onOpenProjectAreas={() => setProjectAreasOpen(true)}
         onGoPlanner={() => navigate('planner')} device={device}/>;
@@ -1056,7 +1185,8 @@ function AppShell() {
         </div>
       )}
 
-      {mobileFlash && <Flash key={mobileFlash.k} msg={mobileFlash.msg} icon={mobileFlash.icon}/>}
+      {mobileFlash && <Flash key={mobileFlash.k} msg={mobileFlash.msg} icon={mobileFlash.icon}
+        onUndo={mobileFlash.undo ? () => { const u = mobileFlash.undo; setMobileFlash(null); u(); } : undefined}/>}
 
       <Sheet open={moreOpen} icon="more" title="More" sub="Secondary views"
         onClose={() => setMoreOpen(false)}>
@@ -1078,6 +1208,8 @@ function AppShell() {
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)}
         onSaved={handleSettingsSaved}/>
       <JiraSettingsModal open={jiraSettingsOpen} onClose={() => setJiraSettingsOpen(false)}
+        onSaved={handleSettingsSaved}/>
+      <GithubSettingsModal open={githubSettingsOpen} onClose={() => setGithubSettingsOpen(false)}
         onSaved={handleSettingsSaved}/>
       <ProjectAreasModal open={projectAreasOpen} onClose={() => setProjectAreasOpen(false)}
         areas={projectAreas} setAreas={setProjectAreas}/>
@@ -1105,7 +1237,38 @@ function NavItem({ item, active, onClick, count, changed }) {
   );
 }
 
-function PRDetail({ pr, onClose }) {
+// Screens from the shared package bring no app bar of their own: give them the standard one on a phone.
+const withBar = (title, node, phone = typeof window !== 'undefined' && window.matchMedia('(max-width:600px)').matches) => (!phone ? node : (
+  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div className="m-appbar"><div className="m-ab-lead"><h1>{title}</h1></div></div>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>{node}</div>
+  </div>
+));
+
+// A GitHub PR is shown by the shared tabs (overview, commits, files, threads, comments) over the
+// GitHub adapter; none of the ADO thread, reviewer, ref or complete endpoints below are used for it.
+function PRDetail(props) {
+  const { pr } = props;
+  if (pr?.source !== 'github') return <AdoPRDetail {...props}/>;
+  return (
+    <div>
+      <div className="drawer-section" style={{ paddingBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <span className="mono muted" style={{ fontSize: 12, flex: 1, minWidth: 0 }}>{pr.displayId}</span>
+          <span className="pill">{pr.draft ? 'Draft' : pr.status}</span>
+          {pr.url && <a href={pr.url} target="_blank" rel="noopener noreferrer" className="btn sm ghost" style={{ textDecoration: 'none' }}><Icon name="link" size={12}/> Open in GitHub</a>}
+        </div>
+        <div style={{ display: 'flex', gap: 8, fontSize: 12, alignItems: 'center', color: 'var(--text-muted)' }}>
+          <Icon name="git-branch" size={12}/>
+          <span className="mono">{pr.sourceBranch}</span><span>→</span><span className="mono">{pr.targetBranch || 'main'}</span>
+        </div>
+      </div>
+      <PRTabs pr={pr} http={null}/>
+    </div>
+  );
+}
+
+function AdoPRDetail({ pr, onClose }) {
   const { TEAM, ME } = HelmData;
   const [tab, setTab] = useState('overview');
   const [comment, setComment] = useState('');
@@ -1665,6 +1828,7 @@ const nexusDataValue = {
   pushPref:      helmPushPref,
   namespace:     'helm',
   workItemSource,
+  githubHttp:    createGithubHttpAdapter(),
 };
 // Subscribe to nexusmd:// deep links so cloud OAuth one-time codes are redeemed.
 registerCloudDeepLink();

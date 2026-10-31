@@ -1,5 +1,10 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
+import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
+import { PRSheetActions } from './pr-sheet-actions.jsx';
+import { PullRefresh } from '../pull-refresh.jsx';
+import { HelmData, HelmApi } from '../data.jsx';
+import { getGithubConfig } from '../github-client.js';
 import { Sheet, effectiveNeedsMe } from '../components.jsx';
 import { getProfileKey } from '../profile-keys.js';
 // view-prs.jsx — Mobile pull requests
@@ -12,7 +17,7 @@ const prStatusCls = pr => pr.status === 'merged' ? 'merged' : pr.draft ? 'draft'
 function PRRow({ pr, active, onDetail, needsMe }) {
   const statusCls = prStatusCls(pr);
   return (
-    <div className={`m-row${active ? ' row-flash' : ''}`}
+    <div className={`m-row compact${active ? ' row-flash' : ''}`}
       onClick={() => onDetail(pr)}>
       <div className={`pr-status ${statusCls}`}>
         <Icon name={pr.status === 'merged' ? 'merge' : 'git-branch'} size={14}/>
@@ -20,17 +25,19 @@ function PRRow({ pr, active, onDetail, needsMe }) {
       <div className="m-row-main">
         <div className="m-row-title">{pr.title}</div>
         <div className="m-row-meta">
-          <span className="m-id">{pr.repo}</span>
+          <span className="m-id">{pr.displayId || pr.repo}</span>
           {pr.author && <span className="m-id">{pr.author.split(' ')[0]}</span>}
           {pr.age && <span className="m-id">{pr.age}</span>}
           {needsMe && <span className="pill accent">Review</span>}
           {pr.draft && <span className="pill">Draft</span>}
         </div>
       </div>
-      <Icon name="chevron-right" size={16} className="chev"/>
     </div>
   );
 }
+
+// ADO vote values: 10 approved, 5 approved with suggestions, 0 none, -5 waiting, -10 rejected
+const voteLabel = v => v >= 10 ? 'approved' : v > 0 ? 'approved with suggestions' : v <= -10 ? 'rejected' : v < 0 ? 'waiting' : 'no vote';
 
 function loadPRViewState() {
   try {
@@ -55,7 +62,8 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
     } catch {}
   }, [seg, groupBy]);
 
-  const list = prs || [];
+  const src = useSourceFilter('prs', prs);
+  const list = src.filtered;
   const needsMeCount = useMemo(() => list.filter(p => needsMe(p)).length, [list, needsMeCriteria]);
 
   const filtered = useMemo(() => {
@@ -84,7 +92,8 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
         </div>
       </div>
 
-      <div className="m-screen">
+      <PullRefresh onRefresh={() => HelmApi?.load()}>
+        <SourceSwitch {...src}/>
         {/* Segmented control */}
         <div className="m-seg" style={{ marginBottom: 12 }}>
           <button type="button" className={seg === 'all' ? 'active' : ''} onClick={() => setSeg('all')}>
@@ -102,7 +111,7 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
           ? (
             <div className="m-empty">
               <div className="ei"><Icon name="pr" size={22}/></div>
-              <div className="et">No pull requests</div>
+              <div className="et">No pull requests here.</div>
             </div>
           )
           : groupBy === 'project'
@@ -139,7 +148,7 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
               </div>
             )
         }
-      </div>
+      </PullRefresh>
 
       {/* PR detail sheet */}
       <Sheet open={!!detailPR} size="tall"
@@ -179,7 +188,7 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
               {detailPR.age    && <><dt style={{ color:'var(--text-subtle)', fontSize:12 }}>Age</dt><dd style={{ margin:0, fontSize:13 }}>{detailPR.age}</dd></>}
               {(detailPR.reviewerDetails || []).length > 0 && (
                 <><dt style={{ color:'var(--text-subtle)', fontSize:12 }}>Reviewers</dt>
-                  <dd style={{ margin:0, fontSize:13 }}>{(detailPR.reviewerDetails || []).map(r => r.name).join(', ')}</dd></>
+                  <dd style={{ margin:0, fontSize:13 }}>{(detailPR.reviewerDetails || []).map(r => r.vote ? r.name + ' (' + voteLabel(r.vote) + ')' : r.name).join(', ')}</dd></>
               )}
             </div>
             {detailPR.description && (
@@ -187,6 +196,8 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
                 {detailPR.description.length > 500 ? detailPR.description.slice(0, 500) + '…' : detailPR.description}
               </div>
             )}
+            <PRSheetActions pr={detailPR} me={HelmData?.ME} githubLogin={getGithubConfig().login} onFlash={onFlash}
+              onChanged={() => { setDetailPR(null); HelmApi?.load().catch(() => {}); }}/>
           </>
         )}
       </Sheet>

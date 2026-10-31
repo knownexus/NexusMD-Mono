@@ -1,5 +1,12 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
+import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
+import { workItemSource } from '../work-item-source.js';
+import { PullRefresh } from '../pull-refresh.jsx';
+import { appQueue } from '../offline-queue-app.js';
+import { GithubIssueSheet } from './github-issue-sheet.jsx';
+import { getGithubConfig } from '../github-client.js';
+import { HelmData, HelmApi } from '../data.jsx';
 import { Sheet } from '../components.jsx';
 import { getProfileKey } from '../profile-keys.js';
 import { isTerminalState } from '@nexusmd/core';
@@ -25,9 +32,14 @@ const TYPE_ICON = t => {
   }
 };
 const LANES = ['To Do', 'Active', 'Blocked', 'In Review', 'Done'];
-const STATUS_ORDER = ['To Do', 'Active', 'Blocked', 'In Review', 'Done'];
+
+// GitHub issues are only open or closed.
+const GH_LANES = ['Open', 'Closed'];
+const projectOf = (w) => (w.source === 'github' ? (w.projectName || w.project) : w.project);
 
 function laneFilter(lane, w) {
+  if (lane === 'Open')      return !isTerminalState(w.state);
+  if (lane === 'Closed')    return isTerminalState(w.state);
   if (lane === 'Done')      return isTerminalState(w.state);
   if (lane === 'Blocked')   return /blocked/i.test(w.state);
   if (lane === 'In Review') return /review/i.test(w.state) && !/blocked/i.test(w.state);
@@ -39,8 +51,19 @@ function laneFilter(lane, w) {
   return false;
 }
 
+// Jira ids are stored as 'jira:TFP-123'; show the key.
+const shortId = (id) => String(id).replace(/^jira:/, '');
+
+// The states an item can move to: the provider's own workflow for it when it can say (Jira, GitHub),
+// else its type's workflow from the ADO metadata, else every state in use. Never the current one.
+export function stateChoices(wi, remote, typeStates, allStates) {
+  const key = Object.keys(typeStates || {}).find(k => k.toLowerCase() === String(wi.type || '').toLowerCase());
+  const pool = Array.isArray(remote) && remote.length ? remote : key ? typeStates[key] : allStates;
+  return [...new Set(pool || [])].filter(st => st && st !== wi.state);
+}
+
 // ── WorkRow — module-level to avoid remounts on parent re-render ──────────────
-function WorkRow({ wi, newItemIds, onOpen, team }) {
+function WorkRow({ wi, newItemIds, onOpen, onState, team }) {
   const assigneeName = wi.assignee && wi.assignee !== 'unassigned'
     ? ((team.find(t => t.id === wi.assignee)?.name || wi.assignee).split(' ')[0])
     : null;
@@ -53,8 +76,11 @@ function WorkRow({ wi, newItemIds, onOpen, team }) {
       <div className="m-row-main">
         <div className="m-row-title">{wi.title}</div>
         <div className="m-row-meta">
-          <span className="m-id">#{wi.id}</span>
-          {wi.state && <span className={`pill ${STATE_TONE(wi.state)}`}>{wi.state}</span>}
+          <span className="m-id">#{wi.displayId || shortId(wi.id)}</span>
+          {wi.state && (
+            <button type="button" className={`pill m-pillbtn ${STATE_TONE(wi.state)}`} aria-label={`State ${wi.state}. Change state`}
+              onClick={e => { e.stopPropagation(); onState?.(wi); }}>{wi.state} <Icon name="chevron-down" size={10}/></button>
+          )}
           {wi.priority >= 1 && wi.priority <= 2 && (
             <span className={`prio p${wi.priority}`}>P{wi.priority}</span>
           )}
@@ -99,7 +125,7 @@ function loadWIViewState() {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device }) {
+function WorkItemsView({ items, setItems, onOpen, onCreate, onFlash, team = [], newItemIds, device }) {
   const [search, setSearch]           = useState('');
   const [viewMode, setViewMode]       = useState('list');
   const [filterOpen, setFilterOpen]   = useState(false);
@@ -140,7 +166,39 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
     setAssigneeFilter(new Set());
   };
 
-  const list = items || [];
+  // Change an item's state from its row: a sheet of the states it can move to, applied at once, with Undo.
+  const [stateItem, setStateItem] = useState(null);
+  const [stateOptions, setStateOptions] = useState(null);
+  const [issueOpen, setIssueOpen] = useState(false);
+  const src = useSourceFilter('work', items);
+  const list = src.filtered;
+  const openStateSheet = (wi) => {
+    setStateItem(wi); setStateOptions(null);
+    Promise.resolve(workItemSource?.availableTargetStates?.(wi.id)).catch(() => null)
+      .then(remote => setStateOptions(stateChoices(wi, remote, HelmData?.WI_TYPE_STATES, allStates)));
+  };
+  const setStateLocal = (id, state) => setItems?.(prev => prev.map(w => (w.id === id ? { ...w, state } : w)));
+  const changeState = async (wi, state) => {
+    const before = wi.state;
+    const label = wi.displayId || shortId(wi.id);
+    setStateItem(null);
+    setStateLocal(wi.id, state);
+    try {
+      const r = await appQueue.run('wi.state', { id: wi.id, state }, `${label} to ${state}`);
+      // Offline: the change is kept and sent later, so it can't be taken back from here.
+      onFlash?.(r.queued ? `${label} saved as ${state}. It will sync when you're back online.` : `${label} moved to ${state}`, 'check', r.queued ? undefined : async () => {
+        setStateLocal(wi.id, before);
+        try { await appQueue.run('wi.state', { id: wi.id, state: before }, `${label} back to ${before}`); }
+        catch (e) { setStateLocal(wi.id, state); onFlash?.(`Could not undo: ${e?.message || 'failed'}`, 'alert'); }
+      });
+    } catch (e) {
+      setStateLocal(wi.id, before);
+      onFlash?.(`Could not change state: ${e?.message || 'failed'}`, 'alert');
+    }
+  };
+
+  // Open / Closed when GitHub is the only provider; the usual five lanes otherwise.
+  const lanes = useMemo(() => (list.length > 0 && list.every(w => w.source === 'github') ? GH_LANES : LANES), [list]);
 
   const allTypes     = useMemo(() => [...new Set(list.map(w => w.type).filter(Boolean))],  [list]);
   const allStates    = useMemo(() => [...new Set(list.map(w => w.state).filter(Boolean))], [list]);
@@ -176,15 +234,15 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
     sortedFiltered.forEach(w => {
       const key =
         groupBy === 'user'    ? (w.assignee || 'unassigned') :
-        groupBy === 'project' ? (w.project  || 'Unknown')    :
-        /* status */ (LANES.find(lane => laneFilter(lane, w)) || w.state || 'Unknown');
+        groupBy === 'project' ? (projectOf(w) || 'Unknown')   :
+        /* status */ (lanes.find(lane => laneFilter(lane, w)) || w.state || 'Unknown');
       if (!buckets[key]) buckets[key] = [];
       buckets[key].push(w);
     });
 
     if (groupBy === 'status') {
-      const known = STATUS_ORDER.filter(s => buckets[s]);
-      const rest  = Object.keys(buckets).filter(k => !STATUS_ORDER.includes(k)).sort();
+      const known = lanes.filter(s => buckets[s]);
+      const rest  = Object.keys(buckets).filter(k => !lanes.includes(k)).sort();
       return orderGroups([...known, ...rest].map(k => ({ key: k, label: k, items: buckets[k] })), groupOrders?.[groupBy]);
     }
     if (groupBy === 'user') {
@@ -196,11 +254,11 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
     }
     // project
     return orderGroups(Object.keys(buckets).sort().map(k => ({ key: k, label: k, items: buckets[k] })), groupOrders?.[groupBy]);
-  }, [sortedFiltered, groupBy, team, groupOrders]);
+  }, [sortedFiltered, groupBy, team, groupOrders, lanes]);
 
   const boardLanes = useMemo(() => {
     if (!groupBy || groupBy === 'status') {
-      return LANES.map(lane => ({
+      return lanes.map(lane => ({
         key: lane,
         label: lane,
         items: sortedFiltered.filter(w => laneFilter(lane, w)),
@@ -220,13 +278,13 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
       }));
     }
     // project
-    const projects = [...new Set(sortedFiltered.map(w => w.project || 'Unknown'))].sort();
+    const projects = [...new Set(sortedFiltered.map(w => projectOf(w) || 'Unknown'))].sort();
     return projects.map(proj => ({
       key: proj,
       label: proj,
-      items: sortedFiltered.filter(w => (w.project || 'Unknown') === proj),
+      items: sortedFiltered.filter(w => (projectOf(w) || 'Unknown') === proj),
     }));
-  }, [sortedFiltered, groupBy, team]);
+  }, [sortedFiltered, groupBy, team, lanes]);
 
   const userBoardData = useMemo(() => {
     if (viewMode !== 'board' || groupBy !== 'user') return null;
@@ -239,7 +297,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
     return ids.map(userId => ({
       userId,
       label: memberName(userId),
-      lanes: LANES.map(lane => ({
+      lanes: lanes.map(lane => ({
         key: lane,
         label: lane,
         items: sortedFiltered.filter(w =>
@@ -247,7 +305,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
         ),
       })),
     }));
-  }, [sortedFiltered, viewMode, groupBy, team]);
+  }, [sortedFiltered, viewMode, groupBy, team, lanes]);
 
   return (
     <>
@@ -262,7 +320,8 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
         </div>
       </div>
 
-      <div className="m-screen" style={{ paddingBottom: 80 }}>
+      <PullRefresh style={{ paddingBottom: 80 }} onRefresh={() => HelmApi?.load()}>
+        <SourceSwitch {...src}/>
         {/* Search + filter bar */}
         <div className="m-filterbar" style={{ marginBottom: 12 }}>
           <div className="m-search" style={{ flex: 1 }}>
@@ -278,12 +337,37 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
           </button>
         </div>
 
+        {/* One-tap state chips with counts; the sheet keeps the rarer filters */}
+        {allStates.length > 1 && (
+          <div className="m-chipscroll" style={{ marginBottom: 8 }}>
+            <button type="button" className={`m-chip${stateFilter.size === 0 ? ' active' : ''}`}
+              onClick={() => setStateFilter(new Set())}>
+              All <span className="m-chip-count">{list.length}</span>
+            </button>
+            {allStates.map(s => (
+              <button key={s} type="button" className={`m-chip${stateFilter.has(s) ? ' active' : ''}`}
+                onClick={() => toggle(setStateFilter)(s)}>
+                {s} <span className="m-chip-count">{list.filter(w => w.state === s).length}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {viewMode === 'list' ? (
           sortedFiltered.length === 0
             ? (
               <div className="m-empty">
                 <div className="ei"><Icon name="work" size={22}/></div>
-                <div className="et">{search || filterCount > 0 ? 'No matches' : 'No items'}</div>
+                <div className="et">{search || filterCount > 0 ? 'No items match' : 'No items'}</div>
+                {(search || filterCount > 0) && (
+                  <>
+                    <div className="es">Try a different search or filter.</div>
+                    <button type="button" className="btn m-btn-lg" style={{ marginTop: 12 }}
+                      onClick={() => { setSearch(''); clearFilters(); }}>
+                      Clear filters
+                    </button>
+                  </>
+                )}
               </div>
             )
             : groupedList
@@ -301,7 +385,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
                         <div className="m-card flush">
                           {items.map(wi => (
                             <WorkRow key={wi.id} wi={wi} newItemIds={newItemIds}
-                              onOpen={onOpen} team={team}/>
+                              onOpen={onOpen} onState={openStateSheet} team={team}/>
                           ))}
                         </div>
                       )}
@@ -312,7 +396,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
                 <div className="m-card flush">
                   {sortedFiltered.map(wi => (
                     <WorkRow key={wi.id} wi={wi} newItemIds={newItemIds}
-                      onOpen={onOpen} team={team}/>
+                      onOpen={onOpen} onState={openStateSheet} team={team}/>
                   ))}
                 </div>
               )
@@ -352,7 +436,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
                               style={{ fontSize: 12, width: 18, height: 18 }}>
                               <Icon name={TYPE_ICON(wi.type)} size={13}/>
                             </span>
-                            <span className="m-id">#{wi.id}</span>
+                            <span className="m-id">#{wi.displayId || shortId(wi.id)}</span>
                           </div>
                           <div style={{ fontSize: 13, lineHeight: 1.4 }}>{wi.title}</div>
                         </div>
@@ -390,7 +474,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
                         style={{ fontSize: 12, width: 18, height: 18 }}>
                         <Icon name={TYPE_ICON(wi.type)} size={13}/>
                       </span>
-                      <span className="m-id">#{wi.id}</span>
+                      <span className="m-id">#{wi.displayId || shortId(wi.id)}</span>
                     </div>
                     <div style={{ fontSize: 13, lineHeight: 1.4 }}>{wi.title}</div>
                   </div>
@@ -404,10 +488,33 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
             ))}
           </div>
         )}
-      </div>
+      </PullRefresh>
+
+      <Sheet open={!!stateItem} icon="check-circle" title="Change state" sub={stateItem ? `${stateItem.displayId || shortId(stateItem.id)} · now ${stateItem.state}` : ''}
+        onClose={() => setStateItem(null)}>
+        {!stateOptions && <div className="muted" style={{ padding: 8 }}>Loading states…</div>}
+        {stateOptions && stateOptions.length === 0 && <div className="m-empty"><div className="et">No other states</div><div className="es">This item can't move anywhere from here.</div></div>}
+        {stateOptions && stateOptions.length > 0 && (
+          <div className="m-card flush">
+            {stateOptions.map(st => (
+              <div key={st} className="m-row" onClick={() => changeState(stateItem, st)}>
+                <div className="m-row-main"><span className={`pill ${STATE_TONE(st)}`}>{st}</span></div>
+                <Icon name="chevron-right" size={16} className="chev"/>
+              </div>
+            ))}
+          </div>
+        )}
+      </Sheet>
+
+      <GithubIssueSheet open={issueOpen} onClose={() => setIssueOpen(false)} repos={getGithubConfig().repos}
+        onCreated={({ id, repo, title }) => {
+          onFlash?.(`Created ${String(id).replace(/^gh:/, '')}: ${title}`.slice(0, 90), 'check');
+          HelmApi?.load().catch(() => {});
+        }}/>
 
       {/* FAB */}
-      <button type="button" className="m-fab" onClick={onCreate} aria-label="New work item">
+      <button type="button" className="m-fab" onClick={() => (src.source === 'github' ? setIssueOpen(true) : onCreate())}
+        aria-label={src.source === 'github' ? 'New GitHub issue' : 'New work item'}>
         <Icon name="plus" size={24}/>
       </button>
 

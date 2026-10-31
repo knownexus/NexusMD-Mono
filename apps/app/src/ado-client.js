@@ -3,6 +3,7 @@
 import { CapacitorHttp } from '@capacitor/core';
 import { makeAdoConfig } from '@nexusmd/core';
 import { getProfileKey } from './profile-keys.js';
+import { nativeHttp } from './native-http.js';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 // Read/write logic lives in @nexusmd/core; the app keeps its `helm.android.*` key
@@ -40,7 +41,7 @@ async function adoRequest(method, path, body) {
   let resp;
   // CapacitorHttp.request is available on-device; fall back to fetch in browser.
   if (CapacitorHttp?.request) {
-    resp = await CapacitorHttp.request({
+    resp = await nativeHttp({
       method,
       url,
       headers,
@@ -85,7 +86,7 @@ export function createAdoHttpAdapter() {
       }
 
       if (CapacitorHttp?.request) {
-        const resp = await CapacitorHttp.request({
+        const resp = await nativeHttp({
           method, url, headers,
           ...(options.body !== undefined ? { data: options.body } : {}),
         })

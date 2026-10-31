@@ -39,4 +39,11 @@ describe('workItemSource routing', () => {
     await expect(workItemSource.loadDetail('jira:ABC-1')).rejects.toThrow('Jira is not configured')
     expect(workItemSource.webUrl({ id: 'jira:ABC-1' })).toBeNull()
   })
+
+  it('reports GitHub as not configured while it is off, and still sends ADO ids to ADO', async () => {
+    const { workItemSource } = await import('./work-item-source.js')
+    await expect(workItemSource.loadDetail('gh:acme/web#7')).rejects.toThrow('GitHub is not configured')
+    global.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ fields: {} }), text: async () => '' }))
+    await expect(workItemSource.loadDetail(5, 'P')).resolves.toBeTruthy()
+  })
 })

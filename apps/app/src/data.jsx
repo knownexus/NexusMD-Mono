@@ -2,13 +2,14 @@
 // All ADO fetch/map/derive logic is in @nexusmd/core. Only planner/theme
 // storage helpers and the HelmData/HelmApi window shims live here.
 import {
-  loadAdoData, loadCachedAdoData, loadJiraData, loadCachedJiraData, buildSnapshot, refreshProviders,
+  loadAdoData, loadCachedAdoData, loadJiraData, loadCachedJiraData, loadCachedGithubData, loadGithubData, buildSnapshot, refreshProviders,
   isTerminalState, isActiveState, isReviewState, isBlockedState, stateCategory,
   timeAgo, adoTypeToHelm, adoStateToHelm, slugify,
 } from '@nexusmd/core';
 import { getAdoConfig, isAdoConfigured, usesAdoWorkItems, createAdoHttpAdapter } from './ado-client.js';
 import { skippedFetches } from './work-screens.js';
 import { getJiraConfig, isJiraActive, createJiraHttpAdapter } from './jira-client.js';
+import { getGithubConfig, isGithubConfigured, usesGithubWorkItems, createGithubHttpAdapter } from './github-client.js';
 import { localStorageAdapter } from '@nexusmd/web-adapters';
 import { getProfileKey } from './profile-keys.js';
 
@@ -61,6 +62,7 @@ function mergedSnapshot() {
   return buildSnapshot({
     adoConfig: getAdoConfig(), adoConfigured: isAdoConfigured(), adoWorkItems: usesAdoWorkItems(),
     jiraConfig: getJiraConfig(), jiraActive: isJiraActive(),
+    githubConfig: getGithubConfig(), githubActive: isGithubConfigured(), githubWorkItems: usesGithubWorkItems(),
     storage: localStorageAdapter, empty: {},
   });
 }
@@ -68,7 +70,8 @@ function mergedSnapshot() {
 async function runLoad(isRefresh = false) {
   const adoOn = isAdoConfigured() && getActiveProfileType() !== 'manual';
   const jiraOn = isJiraActive() && getActiveProfileType() !== 'manual';
-  if (!adoOn && !jiraOn) {
+  const githubOn = isGithubConfigured() && getActiveProfileType() !== 'manual';
+  if (!adoOn && !jiraOn && !githubOn) {
     HelmData.configured = false;
     HelmData.loaded = true;
     window.dispatchEvent(new CustomEvent('helmdata:loaded'));
@@ -93,9 +96,17 @@ async function runLoad(isRefresh = false) {
               { isRefresh: !!prior?._jiraMeta, priorData: prior });
           },
         },
+        github: {
+          configured: githubOn,
+          run: () => {
+            const prior = loadCachedGithubData(getGithubConfig(), { storage: localStorageAdapter });
+            return loadGithubData(getGithubConfig(), { http: createGithubHttpAdapter(), storage: localStorageAdapter },
+              { isRefresh: !!prior, priorData: prior, skip: { ...skippedFetches(), workItems: !usesGithubWorkItems() } });
+          },
+        },
       },
     });
-    applyToShim({ ...mergedSnapshot(), loaded: true, configured: true });
+    applyToShim({ ...mergedSnapshot(), loaded: true, configured: true, loadedAt: Date.now() });
   } catch (err) {
     console.error('[data.jsx] load failed:', err);
     HelmData.loaded = true;
@@ -106,7 +117,7 @@ async function runLoad(isRefresh = false) {
 export const HelmApi = window.HelmApi = { load: () => runLoad(true) };
 
 // Stale-while-revalidate: show cache immediately, then fetch fresh data.
-const cached = (isAdoConfigured() || isJiraActive()) ? mergedSnapshot() : loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter });
+const cached = (isAdoConfigured() || isJiraActive() || isGithubConfigured()) ? mergedSnapshot() : loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter });
 if (cached && (cached.TEAM?.length || cached.WORK_ITEMS?.length || cached.PRS?.length)) {
   Object.assign(HelmData, cached, { loaded: true, configured: true });
   window.dispatchEvent(new CustomEvent('helmdata:loaded'));

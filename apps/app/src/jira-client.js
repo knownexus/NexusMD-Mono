@@ -1,7 +1,6 @@
 // jira-client.js — Jira Cloud binding for the Android app: profile-scoped config, an http
 // adapter over CapacitorHttp (native HTTP, so no CORS), and the Jira half of the routed
 // workItemSource. Logic lives in @nexusmd/core.
-import { CapacitorHttp } from '@capacitor/core';
 import {
   makeJiraConfig, makeJiraClient, loadCachedJiraData, jiraKeyFromId,
   loadJiraDetail, loadJiraComments, addJiraComment, loadJiraRawFields,
@@ -11,6 +10,7 @@ import {
 } from '@nexusmd/core';
 import { localStorageAdapter } from '@nexusmd/web-adapters';
 import { getProfileKey } from './profile-keys.js';
+import { nativeHttp } from './native-http.js';
 
 const rawStorage = {
   get: (k) => localStorage.getItem(k),
@@ -27,7 +27,7 @@ const parseJson = (s) => { try { return JSON.parse(s); } catch { return s; } };
 // Same contract as the desktop adapter: { ok, status, headers.get, text(), json() }.
 export function createJiraHttpAdapter({
   getConfig = getJiraConfig,
-  request = (req) => CapacitorHttp.request(req),
+  request = (req) => nativeHttp(req),
 } = {}) {
   return {
     async fetch(path, options = {}) {

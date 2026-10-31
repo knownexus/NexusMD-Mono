@@ -5,6 +5,7 @@
 import { adoMoveToCategory } from '@nexusmd/core';
 import { createRoutedWorkItemSource } from '@nexusmd/ui';
 import { createJiraWorkItemSource, isJiraActive } from './jira-client.js';
+import { androidGithubSource, isGithubConfigured } from './github-client.js';
 import { adoGet, adoPost, adoPatch } from './ado-client.js';
 import { HelmData } from './data.jsx';
 
@@ -68,12 +69,15 @@ export const adoWorkItemSource = {
   },
 };
 
-// Routes jira:KEY ids to Jira and everything else to ADO. The Jira half is only exposed
-// while Jira is connected, so the source follows connection changes without a reload.
+// Routes jira:KEY ids to Jira, gh:owner/repo#n ids to GitHub and everything else to ADO. Each half is
+// only exposed while that provider is connected, so the source follows connection changes without a reload.
 const jiraSource = createJiraWorkItemSource();
 export const workItemSource = createRoutedWorkItemSource({
   ado: adoWorkItemSource,
   jira: new Proxy(jiraSource, {
     get: (t, k) => (isJiraActive() ? t[k] : () => { throw new Error('Jira is not configured'); }),
+  }),
+  github: new Proxy(androidGithubSource, {
+    get: (t, k) => (isGithubConfigured() ? t[k] : () => { throw new Error('GitHub is not configured'); }),
   }),
 });
