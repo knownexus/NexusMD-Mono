@@ -1,4 +1,5 @@
 // view-dashboard.jsx — Mobile dashboard
+import { useState, useEffect } from 'react';
 import { Icon } from '../icons.jsx';
 import { effectiveNeedsMe } from '../components.jsx';
 import { HelmData, HelmApi } from '../data.jsx';
@@ -29,6 +30,21 @@ function DashboardView({
   const needsMePrs = prs.filter(p => effectiveNeedsMe(p, needsMeCriteria)).slice(0, 4);
   const recentAct  = activity.slice(0, 8);
 
+  // Tiles drill down in place; null shows the default Blockers / Needs-review cards.
+  const [drill, setDrill] = useState(null);
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine !== false);
+  useEffect(() => {
+    const up = () => setOnline(true), down = () => setOnline(false);
+    window.addEventListener('online', up); window.addEventListener('offline', down);
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down); };
+  }, []);
+  const toggleDrill = (k) => setDrill(d => (d === k ? null : k));
+  const drillList = drill === 'open'    ? wi.filter(w => !isTerminalState(w.state)).slice(0, 8)
+                  : drill === 'blocked' ? wi.filter(w => /blocked/i.test(w.state)).slice(0, 8)
+                  : null;
+  const drillPrs  = drill === 'review'  ? prs.filter(p => effectiveNeedsMe(p, needsMeCriteria)).slice(0, 8) : null;
+  const initials  = (name = '') => name.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('');
+
   const navTo = (view, filter) => window.dispatchEvent(
     new CustomEvent('helm:navigate', { detail: { view, filter } })
   );
@@ -43,6 +59,7 @@ function DashboardView({
           </div>
         </div>
         <div className="m-ab-actions">
+          {sprint.daysLeft > 0 && <span className="m-daysleft">{sprint.daysLeft} days left</span>}
           <button type="button" className="m-iconbtn" title="Refresh"
             onClick={() => HelmApi?.load().catch(() => {})}>
             <Icon name="refresh" size={18}/>
@@ -50,21 +67,28 @@ function DashboardView({
         </div>
       </div>
 
+      {!online && (
+        <div className="m-offline">
+          <Icon name="alert" size={14}/>
+          <span>Offline. Changes are saved and sync later.</span>
+        </div>
+      )}
+
       <div className="m-screen">
         {/* Stat tiles */}
         <div className="m-stats"
           style={device === 'tablet' ? { gridTemplateColumns: 'repeat(4,1fr)' } : {}}>
-          <div className="m-stat" onClick={() => navTo('work')}>
+          <div className={`m-stat${drill === 'open' ? ' on' : ''}`} onClick={() => toggleDrill('open')}>
             <div className="v">{openCount}</div>
             <div className="l">Open items</div>
           </div>
-          <div className={`m-stat${blockedCount > 0 ? ' alert' : ''}`}
-            onClick={() => navTo('work', 'blocked')}>
+          <div className={`m-stat${blockedCount > 0 ? ' alert' : ''}${drill === 'blocked' ? ' on' : ''}`}
+            onClick={() => toggleDrill('blocked')}>
             <div className="v">{blockedCount}</div>
             <div className="l">Blocked</div>
           </div>
-          <div className={`m-stat${needsMeCount > 0 ? ' warn' : ''}`}
-            onClick={() => navTo('pr')}>
+          <div className={`m-stat${needsMeCount > 0 ? ' warn' : ''}${drill === 'review' ? ' on' : ''}`}
+            onClick={() => toggleDrill('review')}>
             <div className="v">{needsMeCount}</div>
             <div className="l">Needs my review</div>
           </div>
@@ -74,6 +98,43 @@ function DashboardView({
             <div className="l">Failed builds</div>
           </div>
         </div>
+
+        {/* Tile drill-down */}
+        {(drillList || drillPrs) && (
+          <div className="m-card" style={{ marginTop: 12, marginBottom: 12 }}>
+            <div className="m-card-h">
+              <h3>{drill === 'open' ? 'Open items' : drill === 'blocked' ? 'Blocked' : 'Needs my review'}</h3>
+              <button type="button" className="m-linkbtn"
+                onClick={() => navTo(drill === 'review' ? 'pr' : 'work', drill === 'blocked' ? 'blocked' : undefined)}>
+                See all
+              </button>
+            </div>
+            <div className="m-card-body flush">
+              {(drillList || drillPrs).length === 0 && <div className="m-row-sub" style={{ padding: 16 }}>Nothing here.</div>}
+              {(drillList || []).map(item => (
+                <div key={item.id} className="m-row" onClick={() => onOpenItem(item)}>
+                  <div className="m-row-main">
+                    <div className="m-row-title">{item.title}</div>
+                    <div className="m-row-meta"><span className="m-id">#{item.id}</span></div>
+                  </div>
+                  <Icon name="chevron-right" size={16} className="chev"/>
+                </div>
+              ))}
+              {(drillPrs || []).map(pr => (
+                <div key={pr.id} className="m-row" onClick={() => onOpenPR(pr)}>
+                  <div className="m-row-main">
+                    <div className="m-row-title">{pr.title}</div>
+                    <div className="m-row-meta">
+                      <span className="m-id">{pr.repo}</span>
+                      {pr.age && <span className="m-id">{pr.age}</span>}
+                    </div>
+                  </div>
+                  <Icon name="chevron-right" size={16} className="chev"/>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Sprint progress */}
         {sprintItems.length > 0 && !hiddenDashWidgets.includes('sprint') && (
@@ -175,6 +236,7 @@ function DashboardView({
             <div className="m-card-body flush">
               {recentAct.map((a, i) => (
                 <div key={i} className="m-row" style={{ cursor:'default' }}>
+                  <span className="m-avatar">{initials(a.who)}</span>
                   <div className="m-row-main">
                     <div className="m-row-title" style={{ fontSize:13.5 }}>
                       <span style={{ fontWeight:600 }}>{a.who}</span>

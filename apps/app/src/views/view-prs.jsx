@@ -12,7 +12,7 @@ const prStatusCls = pr => pr.status === 'merged' ? 'merged' : pr.draft ? 'draft'
 function PRRow({ pr, active, onDetail, needsMe }) {
   const statusCls = prStatusCls(pr);
   return (
-    <div className={`m-row${active ? ' row-flash' : ''}`}
+    <div className={`m-row compact${active ? ' row-flash' : ''}`}
       onClick={() => onDetail(pr)}>
       <div className={`pr-status ${statusCls}`}>
         <Icon name={pr.status === 'merged' ? 'merge' : 'git-branch'} size={14}/>
@@ -27,10 +27,12 @@ function PRRow({ pr, active, onDetail, needsMe }) {
           {pr.draft && <span className="pill">Draft</span>}
         </div>
       </div>
-      <Icon name="chevron-right" size={16} className="chev"/>
     </div>
   );
 }
+
+// ADO vote values: 10 approved, 5 approved with suggestions, 0 none, -5 waiting, -10 rejected
+const voteLabel = v => v >= 10 ? 'approved' : v > 0 ? 'approved with suggestions' : v <= -10 ? 'rejected' : v < 0 ? 'waiting' : 'no vote';
 
 function loadPRViewState() {
   try {
@@ -102,7 +104,7 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
           ? (
             <div className="m-empty">
               <div className="ei"><Icon name="pr" size={22}/></div>
-              <div className="et">No pull requests</div>
+              <div className="et">No pull requests here.</div>
             </div>
           )
           : groupBy === 'project'
@@ -179,7 +181,7 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
               {detailPR.age    && <><dt style={{ color:'var(--text-subtle)', fontSize:12 }}>Age</dt><dd style={{ margin:0, fontSize:13 }}>{detailPR.age}</dd></>}
               {(detailPR.reviewerDetails || []).length > 0 && (
                 <><dt style={{ color:'var(--text-subtle)', fontSize:12 }}>Reviewers</dt>
-                  <dd style={{ margin:0, fontSize:13 }}>{(detailPR.reviewerDetails || []).map(r => r.name).join(', ')}</dd></>
+                  <dd style={{ margin:0, fontSize:13 }}>{(detailPR.reviewerDetails || []).map(r => r.vote ? r.name + ' (' + voteLabel(r.vote) + ')' : r.name).join(', ')}</dd></>
               )}
             </div>
             {detailPR.description && (

@@ -449,3 +449,29 @@
 @media (prefers-reduced-motion: reduce) {
   .m-sheet, .m-sheet-veil, .m-flash, .m-fab { animation: none !important; transition: none !important; }
 }
+
+/* ---------- Home: drill-down tiles, offline banner, activity avatars ---------- */
+.m-stat.on { border-color: var(--accent-border); background: var(--accent-soft); }
+.m-offline {
+  flex-shrink: 0; display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; background: var(--warning-soft); color: var(--warning);
+  font-size: 12.5px; font-weight: 500;
+}
+.m-daysleft {
+  padding: 5px 10px; border-radius: 999px; margin-right: 4px;
+  background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.m-linkbtn {
+  border: 0; background: none; padding: 6px 4px; min-height: 32px;
+  color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.m-avatar {
+  width: 28px; height: 28px; flex-shrink: 0; align-self: center; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-3); color: var(--text); font-size: 10.5px; font-weight: 700;
+}
+
+/* ---------- Compact rows (PR list): denser, whole row is the tap target ---------- */
+.m-row.compact { padding-top: 9px; padding-bottom: 9px; min-height: 56px; }
+.m-row.compact .m-row-title { font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.m-row.compact .m-row-meta { margin-top: 4px; gap: 6px; }

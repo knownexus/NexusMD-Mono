@@ -278,12 +278,37 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
           </button>
         </div>
 
+        {/* One-tap state chips with counts; the sheet keeps the rarer filters */}
+        {allStates.length > 1 && (
+          <div className="m-chipscroll" style={{ marginBottom: 8 }}>
+            <button type="button" className={`m-chip${stateFilter.size === 0 ? ' active' : ''}`}
+              onClick={() => setStateFilter(new Set())}>
+              All <span className="m-chip-count">{list.length}</span>
+            </button>
+            {allStates.map(s => (
+              <button key={s} type="button" className={`m-chip${stateFilter.has(s) ? ' active' : ''}`}
+                onClick={() => toggle(setStateFilter)(s)}>
+                {s} <span className="m-chip-count">{list.filter(w => w.state === s).length}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {viewMode === 'list' ? (
           sortedFiltered.length === 0
             ? (
               <div className="m-empty">
                 <div className="ei"><Icon name="work" size={22}/></div>
-                <div className="et">{search || filterCount > 0 ? 'No matches' : 'No items'}</div>
+                <div className="et">{search || filterCount > 0 ? 'No items match' : 'No items'}</div>
+                {(search || filterCount > 0) && (
+                  <>
+                    <div className="es">Try a different search or filter.</div>
+                    <button type="button" className="btn m-btn-lg" style={{ marginTop: 12 }}
+                      onClick={() => { setSearch(''); clearFilters(); }}>
+                      Clear filters
+                    </button>
+                  </>
+                )}
               </div>
             )
             : groupedList
