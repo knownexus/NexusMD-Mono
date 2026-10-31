@@ -64,3 +64,10 @@ export function makeGitBackend({ adoGet, getAdoProjects, githubHttp, getGithubCo
     },
   };
 }
+
+// The providers that have repos, in a fixed order, and which one to show: the saved choice if it
+// still has repos, otherwise the first that does.
+export const SOURCE_ORDER = ['ado', 'github'];
+export const sourcesOf = (repos) => SOURCE_ORDER.filter(p => (repos || []).some(r => (r.provider || 'ado') === p));
+export const pickSource = (saved, available) => (available.includes(saved) ? saved : available[0] || null);
+export const sourceLabel = (p) => (p === 'github' ? 'GitHub' : 'Azure DevOps');

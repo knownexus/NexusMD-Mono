@@ -67,3 +67,25 @@ describe('git backend', () => {
     expect(providerName({ provider: 'ado' })).toBe('Azure DevOps')
   })
 })
+
+import { sourcesOf, pickSource, sourceLabel } from './git-backend.js'
+
+describe('repo sources', () => {
+  const ado = { id: '1', provider: 'ado' }, gh = { id: 'gh:a/b', provider: 'github' }
+  it('lists only the providers that have repos, in a fixed order', () => {
+    expect(sourcesOf([gh, ado])).toEqual(['ado', 'github'])
+    expect(sourcesOf([gh])).toEqual(['github'])
+    expect(sourcesOf([])).toEqual([])
+    expect(sourcesOf([{ id: 'old' }])).toEqual(['ado'])
+  })
+  it('keeps the saved choice while it still has repos, else the first available', () => {
+    expect(pickSource('github', ['ado', 'github'])).toBe('github')
+    expect(pickSource('github', ['ado'])).toBe('ado')
+    expect(pickSource(null, ['github'])).toBe('github')
+    expect(pickSource('ado', [])).toBeNull()
+  })
+  it('names the sources', () => {
+    expect(sourceLabel('github')).toBe('GitHub')
+    expect(sourceLabel('ado')).toBe('Azure DevOps')
+  })
+})

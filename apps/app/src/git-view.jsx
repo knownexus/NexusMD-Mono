@@ -8,7 +8,7 @@ import { Sheet } from './components.jsx';
 import { adoGet, getAdoConfig } from './ado-client.js';
 import { getGithubConfig, isGithubConfigured, createGithubHttpAdapter } from './github-client.js';
 import { groupCommitsByDay } from './git-browser.js';
-import { makeGitBackend, providerName, isGithubRepo } from './git-backend.js';
+import { makeGitBackend, providerName, sourcesOf, pickSource, sourceLabel } from './git-backend.js';
 import { getProfileKey } from './profile-keys.js';
 
 const errText = (e) => e?.message || String(e);
@@ -17,6 +17,8 @@ const backend = makeGitBackend({
   githubHttp: createGithubHttpAdapter(), getGithubConfig, isGithubConfigured,
 });
 const RECENT_KEY = 'helm.git.recent';
+const SOURCE_KEY = 'helm.git.source';
+const loadSource = () => { try { return localStorage.getItem(getProfileKey(SOURCE_KEY)); } catch { return null; } };
 const loadRecent = () => { try { return JSON.parse(localStorage.getItem(getProfileKey(RECENT_KEY)) || '[]'); } catch { return []; } };
 const saveRecent = (ids) => { try { localStorage.setItem(getProfileKey(RECENT_KEY), JSON.stringify(ids)); } catch {} };
 const isMarkdown = (p) => /\.(md|markdown)$/i.test(p);
@@ -29,7 +31,6 @@ function RepoRow({ repo, onOpen }) {
         <div className="m-row-title">{repo.name}</div>
         <div className="m-row-sub">{repo.project}</div>
       </div>
-      {isGithubRepo(repo) && <span className="pill">GitHub</span>}
       <Icon name="chevron-right" size={16} className="chev"/>
     </div>
   );
@@ -80,6 +81,7 @@ export function GitView({ onFlash }) {
   const [repos, setRepos] = useState(null);
   const [query, setQuery] = useState('');
   const [recent, setRecent] = useState(loadRecent);
+  const [savedSource, setSavedSource] = useState(loadSource);
   const [repo, setRepo] = useState(null);
   const [branches, setBranches] = useState(null);
   const [branch, setBranch] = useState(null);
@@ -130,11 +132,16 @@ export function GitView({ onFlash }) {
   };
   const leaveRepo = () => { setRepo(null); setOpenFile(null); setError(''); };
 
+  // One source at a time: the switch appears only when both providers have repos.
+  const sources = useMemo(() => sourcesOf(repos), [repos]);
+  const source = pickSource(savedSource, sources);
+  const chooseSource = (p) => { setSavedSource(p); setQuery(''); try { localStorage.setItem(getProfileKey(SOURCE_KEY), p); } catch {} };
+  const inSource = useMemo(() => (repos || []).filter(r => (r.provider || 'ado') === source), [repos, source]);
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (repos || []).filter(r => !q || `${r.project}/${r.name}`.toLowerCase().includes(q));
-  }, [repos, query]);
-  const recentRepos = recent.map(id => (repos || []).find(r => r.id === id)).filter(Boolean);
+    return inSource.filter(r => !q || `${r.project}/${r.name}`.toLowerCase().includes(q));
+  }, [inSource, query]);
+  const recentRepos = recent.map(id => inSource.find(r => r.id === id)).filter(Boolean);
 
   if (repo && openFile) {
     return <FileViewer repo={repo} branch={branch} path={openFile} onBack={() => setOpenFile(null)} onFlash={onFlash}/>;
@@ -144,9 +151,19 @@ export function GitView({ onFlash }) {
     return (
       <>
         <div className="m-appbar">
-          <div className="m-ab-lead"><div><h1>Repos</h1><div className="m-ab-sub">{[getAdoConfig().projects?.length ? 'Azure DevOps' : null, isGithubConfigured() ? 'GitHub' : null].filter(Boolean).join(' and ') || 'No repositories connected'}</div></div></div>
+          <div className="m-ab-lead"><div><h1>Repos</h1><div className="m-ab-sub">{source ? sourceLabel(source) : 'No repositories connected'}</div></div></div>
         </div>
         <div className="m-screen">
+          {sources.length > 1 && (
+            <div className="m-seg" role="tablist" aria-label="Source" style={{ marginBottom: 12 }}>
+              {sources.map(p => (
+                <button key={p} type="button" role="tab" aria-selected={p === source} className={p === source ? 'active' : ''}
+                  onClick={() => chooseSource(p)}>
+                  {sourceLabel(p)} <span style={{ opacity: 0.6, fontSize: 11 }}>{(repos || []).filter(r => (r.provider || 'ado') === p).length}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="m-search" style={{ marginBottom: 12 }}>
             <span className="si"><Icon name="search" size={16}/></span>
             <input type="search" enterKeyHint="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search repositories…"/>
@@ -161,7 +178,7 @@ export function GitView({ onFlash }) {
           )}
           {repos && (
             <>
-              <div className="m-sec-h"><span className="lbl">All repositories</span><span className="line"/><span className="cnt">{shown.length}</span></div>
+              <div className="m-sec-h"><span className="lbl">{source ? `${sourceLabel(source)} repositories` : 'Repositories'}</span><span className="line"/><span className="cnt">{shown.length}</span></div>
               {shown.length === 0
                 ? <div className="muted" style={{ fontSize: 13 }}>No repositories match.</div>
                 : <div className="m-card flush">{shown.map(r => <RepoRow key={r.id} repo={r} onOpen={pickRepo}/>)}</div>}
