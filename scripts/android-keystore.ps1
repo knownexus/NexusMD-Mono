@@ -66,3 +66,12 @@ Write-Host 'The base64 keystore is on your clipboard. In GitHub: Settings > Secr
 Write-Host '  ANDROID_KEYSTORE_BASE64   (paste)'
 Write-Host '  ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (= upload), ANDROID_KEY_PASSWORD'
 Write-Host 'Then back the .jks and the passwords up.'
+
+# The key's fingerprint is public. Pin it as a repository VARIABLE so a build signed with any other key fails:
+# a new key looks like a new, unknown developer to Play Protect and cannot update installed copies.
+$env:NEXUS_STOREPASS = $storePass
+try { $fp = (keytool -list -v -keystore $jks -storepass:env NEXUS_STOREPASS -alias $alias | Select-String 'SHA256:' | Select-Object -First 1).Line.Split(':',2)[1].Trim() }
+finally { Remove-Item Env:NEXUS_STOREPASS -ErrorAction SilentlyContinue }
+Write-Host ''
+Write-Host 'Signing key SHA-256 (add as the Actions VARIABLE ANDROID_CERT_SHA256, not a secret):'
+Write-Host "  $fp"

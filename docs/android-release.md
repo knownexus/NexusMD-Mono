@@ -88,3 +88,15 @@ For installs that did not come from Play, the app can update itself from a GitHu
 - **Play and GitHub installs do not mix.** Play re-signs the app, so a release APK cannot replace a
   Play install (Android rejects it as a signature mismatch). The updater hides itself on Play installs.
   To move a phone from one to the other, uninstall first (this clears the app's data; export a backup).
+
+## Fewer install warnings (sideloaded APKs)
+
+- **Install the release APK, never the debug one.** The "Android debug APK" workflow output is signed with
+  Android's public debug key, which Play Protect distrusts most. Releases come from **Android APK release**.
+- **Never change the signing key.** Lock it in once: run `scripts/android-keystore.ps1` (it prints the key's
+  SHA-256), then add that value as the Actions **variable** `ANDROID_CERT_SHA256` (a variable, not a secret; it is public).
+  Both release workflows then refuse to build with any other key, and **Android APK release** also checks the
+  finished APK is signed with it (not unsigned, not the debug key). A new key cannot update installed copies and
+  looks like a new, unknown developer to Play Protect.
+- Warnings that remain outside Play: "install unknown apps" (once, per installing app) and Play Protect's
+  "unrecognised developer" prompt on first install. Google Play internal testing has neither.

@@ -2,6 +2,8 @@ name: Android debug APK
 
 # Builds a debug APK of the Android app (apps/app) and keeps it as a run artifact, so a change can
 # be installed on a phone without Android Studio. Debug builds need no signing secrets.
+# They are signed with Android's public debug key, which Play Protect flags: install releases
+# from the "Android APK release" workflow instead.
 on:
   push:
     branches: [master]
