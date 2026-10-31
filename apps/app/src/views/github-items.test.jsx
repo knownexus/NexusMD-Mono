@@ -2,7 +2,7 @@ import React from 'react'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-vi.mock('@capacitor/core', () => ({ CapacitorHttp: undefined }))
+vi.mock('@capacitor/core', () => ({ CapacitorHttp: undefined, registerPlugin: () => ({}), Capacitor: { isNativePlatform: () => false } }))
 
 import { WorkItemsView } from './view-workitems.jsx'
 import { PRView } from './view-prs.jsx'
