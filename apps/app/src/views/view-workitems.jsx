@@ -39,6 +39,9 @@ function laneFilter(lane, w) {
   return false;
 }
 
+// Jira ids are stored as 'jira:TFP-123'; show the key.
+const shortId = (id) => String(id).replace(/^jira:/, '');
+
 // ── WorkRow — module-level to avoid remounts on parent re-render ──────────────
 function WorkRow({ wi, newItemIds, onOpen, team }) {
   const assigneeName = wi.assignee && wi.assignee !== 'unassigned'
@@ -53,7 +56,7 @@ function WorkRow({ wi, newItemIds, onOpen, team }) {
       <div className="m-row-main">
         <div className="m-row-title">{wi.title}</div>
         <div className="m-row-meta">
-          <span className="m-id">#{wi.id}</span>
+          <span className="m-id">#{shortId(wi.id)}</span>
           {wi.state && <span className={`pill ${STATE_TONE(wi.state)}`}>{wi.state}</span>}
           {wi.priority >= 1 && wi.priority <= 2 && (
             <span className={`prio p${wi.priority}`}>P{wi.priority}</span>
@@ -377,7 +380,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
                               style={{ fontSize: 12, width: 18, height: 18 }}>
                               <Icon name={TYPE_ICON(wi.type)} size={13}/>
                             </span>
-                            <span className="m-id">#{wi.id}</span>
+                            <span className="m-id">#{shortId(wi.id)}</span>
                           </div>
                           <div style={{ fontSize: 13, lineHeight: 1.4 }}>{wi.title}</div>
                         </div>
@@ -415,7 +418,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
                         style={{ fontSize: 12, width: 18, height: 18 }}>
                         <Icon name={TYPE_ICON(wi.type)} size={13}/>
                       </span>
-                      <span className="m-id">#{wi.id}</span>
+                      <span className="m-id">#{shortId(wi.id)}</span>
                     </div>
                     <div style={{ fontSize: 13, lineHeight: 1.4 }}>{wi.title}</div>
                   </div>

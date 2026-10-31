@@ -4,6 +4,9 @@ import { Icon } from '../icons.jsx';
 import { effectiveNeedsMe } from '../components.jsx';
 import { HelmData, HelmApi } from '../data.jsx';
 
+// Jira ids are stored as 'jira:TFP-123'; show the key.
+const shortId = (id) => String(id).replace(/^jira:/, '');
+
 function DashboardView({
   onOpenItem, onOpenPR, quickLinks, team = [], acknowledgedSet,
   needsMeCriteria, device, hiddenDashWidgets = [],
@@ -115,7 +118,7 @@ function DashboardView({
                 <div key={item.id} className="m-row" onClick={() => onOpenItem(item)}>
                   <div className="m-row-main">
                     <div className="m-row-title">{item.title}</div>
-                    <div className="m-row-meta"><span className="m-id">#{item.id}</span></div>
+                    <div className="m-row-meta"><span className="m-id">#{shortId(item.id)}</span></div>
                   </div>
                   <Icon name="chevron-right" size={16} className="chev"/>
                 </div>
@@ -186,7 +189,7 @@ function DashboardView({
                   <div className="m-row-main">
                     <div className="m-row-title">{item.title}</div>
                     <div className="m-row-meta">
-                      <span className="m-id">#{item.id}</span>
+                      <span className="m-id">#{shortId(item.id)}</span>
                       {item.assignee && (
                         <span className="m-id">
                           {(team.find(t => t.id === item.assignee)?.name || item.assignee).split(' ')[0]}
