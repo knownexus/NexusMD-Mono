@@ -6,7 +6,8 @@ import React from 'react';
 import { usePersisted } from '@nexusmd/ui';
 import { TOOLS } from './docs-frame.jsx';
 import { MarkdownPhone } from './md-phone.jsx';
-import { JsonPhone, RegexPhone } from './json-regex-phone.jsx';
+import { JsonPhone } from './json-phone.jsx';
+import { RegexPhone } from './regex-phone.jsx';
 
 export function DocumentsPhone({ onFlash }) {
   const [tool, setTool] = usePersisted('documents_active_tab', 'markdown');

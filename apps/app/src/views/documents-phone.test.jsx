@@ -6,7 +6,8 @@ vi.mock('@capacitor/core', () => ({ CapacitorHttp: undefined }))
 
 import { DocumentsPhone } from './documents-phone.jsx'
 import { applyFormat, autoNameOf, wordCount, FORMATS } from './md-phone.jsx'
-import { jsonAutoName, parseJson, patternError, regexAutoName, flagsToString } from './json-regex-phone.jsx'
+import { jsonAutoName, parseJson } from './json-phone.jsx'
+import { patternError, regexAutoName, flagsToString, statusOf, groupLines, FLAGS } from './regex-phone.jsx'
 
 beforeEach(() => { localStorage.clear() })
 afterEach(cleanup)
@@ -85,5 +86,48 @@ describe('Documents on a phone', () => {
     expect(screen.getByText('Invalid JSON')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Tree' }))
     expect(screen.getByRole('alert').textContent).toMatch(/Fix the JSON/)
+  })
+})
+
+describe('regex tool', () => {
+  it('names every flag and says what it does', () => {
+    expect(FLAGS.map(x => x.f).join('')).toBe('gimsu')
+    for (const x of FLAGS) { expect(x.name.length).toBeGreaterThan(2); expect(x.does.length).toBeGreaterThan(8) }
+  })
+  it('summarises the result beside the pattern', () => {
+    expect(statusOf('', '', 0)).toEqual({ text: 'enter a pattern', tone: '' })
+    expect(statusOf('(', 'bad', 0).tone).toBe('danger')
+    expect(statusOf('a', '', 1)).toEqual({ text: '1 match', tone: 'success' })
+    expect(statusOf('a', '', 3).text).toBe('3 matches')
+    expect(statusOf('a', '', 0).tone).toBe('warning')
+  })
+  it('lists capture groups, numbered and named', () => {
+    expect(groupLines({ groups: ['a', 'b'], named: { year: '2024' } })).toEqual([
+      { label: '$1', value: 'a' }, { label: '$2', value: 'b' }, { label: 'year', value: '2024' },
+    ])
+  })
+
+  it('shows flags by name with what they do, not bare letters', async () => {
+    localStorage.setItem('documents_active_tab', JSON.stringify('regex'))
+    render(<DocumentsPhone/>)
+    const flags = await screen.findByRole('group', { name: 'Flags' })
+    expect(flags.textContent).toMatch(/Global/)
+    expect(flags.textContent).toMatch(/Ignore case/)
+    expect(screen.getByText(/find every match, not just the first/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Ignore case/ }))
+    expect(screen.getByText(/A and a count as the same letter/)).toBeTruthy()
+  })
+
+  it('substitutes, runs unit tests and generates code', async () => {
+    localStorage.setItem('documents_active_tab', JSON.stringify('regex'))
+    render(<DocumentsPhone/>)
+    fireEvent.change(await screen.findByLabelText('Pattern'), { target: { value: '(\\w+)@(\\w+)' } })
+    fireEvent.click(screen.getByRole('tab', { name: 'Substitution' }))
+    fireEvent.change(screen.getByLabelText('Replacement'), { target: { value: '$1 at $2' } })
+    expect(screen.getByLabelText('Replaced text').textContent).toMatch(/support at example/)
+    fireEvent.click(screen.getByRole('tab', { name: 'Tests' }))
+    expect(screen.getAllByText(/should (not )?match/).length).toBe(2)
+    fireEvent.click(screen.getByRole('tab', { name: 'Code' }))
+    expect(document.querySelector('.m-rx-code').textContent).toMatch(/\w\+/)
   })
 })

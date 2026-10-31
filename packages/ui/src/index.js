@@ -159,6 +159,6 @@ export {
 // phone layout): autosave, regex matching and the JSON helpers.
 export { useDocumentAutosave, relativeTime, generateId } from './views/document-store.js'
 export {
-  findMatches, buildOverlaySegments, splitMatchByGroups, genCode, REFERENCE_DATA,
+  findMatches, buildOverlaySegments, splitMatchByGroups, runUnitTests, genCode, REFERENCE_DATA,
 } from './views/regex-tester-helpers.js'
 export { typeOf } from './views/json-editor-helpers.js'
