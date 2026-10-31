@@ -16,6 +16,8 @@ const PROVIDERS = {
   ado:       { keySuffix: 'ado.auth',       api: '/api/ado/auth',    from: 'ado' },
   microsoft: { keySuffix: 'microsoft.auth', api: '/api/ms/auth',     from: 'microsoft' },
   github:    { keySuffix: 'github.auth',    api: '/api/github/auth', from: 'github' },
+  // Google sign-in for the calendar. Same server endpoints as Drive, kept as its own connection.
+  google:    { keySuffix: 'google.auth',    api: '/api/google/auth', from: 'google' },
 }
 const BY_FROM = {
   gdrive:    PROVIDERS.gdrive,
@@ -23,6 +25,7 @@ const BY_FROM = {
   ado:       PROVIDERS.ado,
   microsoft: PROVIDERS.microsoft,
   github:    PROVIDERS.github,
+  google:    PROVIDERS.google,
 }
 
 // tokenCache is keyed by the RESOLVED profile key so a profile switch can never
@@ -64,6 +67,7 @@ function makeBinding(key) {
         const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
         if (!res.ok) return
         const { url } = await res.json()
+        markPending(cfg.from)
         openBrowser(url)
       } catch {}
     },
@@ -89,6 +93,24 @@ function makeBinding(key) {
   }
 }
 
+// A sign-in only counts if this app started it: connect() records the provider, and
+// redeem() takes that record exactly once. Stops a stray or crafted nexusmd://oauth link
+// from storing tokens in a slot the user never signed into.
+const PENDING_KEY = 'nexusmd.oauth.pending'
+const PENDING_TTL_MS = 10 * 60 * 1000
+export function markPending(from, now = Date.now()) {
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify({ from, at: now })) } catch {}
+}
+export function takePending(from, now = Date.now()) {
+  try {
+    const p = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null')
+    const ok = Boolean(p && p.from === from && now - p.at >= 0 && now - p.at <= PENDING_TTL_MS)
+    // Only a matching link uses the record up, so a forged one can't cancel the real sign-in.
+    if (ok || (p && now - p.at > PENDING_TTL_MS)) localStorage.removeItem(PENDING_KEY)
+    return ok
+  } catch { return false }
+}
+
 async function redeem(url) {
   let u
   try { u = new URL(url) } catch { return }
@@ -96,6 +118,10 @@ async function redeem(url) {
   const otc = u.searchParams.get('otc')
   const cfg = from && BY_FROM[from]
   if (!cfg || !otc) return
+  if (u.protocol !== 'nexusmd:' || u.hostname !== 'oauth') return
+  // The link's own path must name the same provider, and this app must have started that sign-in.
+  if (u.pathname.replace(/^\/+/, '') !== cfg.from) return
+  if (!takePending(cfg.from)) return
   try {
     const res = await fetch(`${API_BASE}${cfg.api}/exchange`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -128,6 +154,10 @@ export async function hydrateCloudTokens() {
   window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
 }
 
+// Bearer-style access for other modules (Google Calendar): current token, or a refreshed one.
+export function getOAuthToken(from, opts) { return makeBinding(from).getToken(opts) }
+export function isOAuthConnected(from) { return makeBinding(from).isConnected() }
+
 export const appCloudProviders = [
   makeGoogleDriveProvider(makeBinding('gdrive')),
   makeOneDriveProvider(makeBinding('onedrive')),
@@ -143,6 +173,7 @@ export function makeAppOAuthService(from) {
         const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
         if (!res.ok) { toast?.(`${from} sign-in is not configured on the server.`, 'error'); return }
         const { url } = await res.json()
+        markPending(cfg.from)
         openBrowser(url)
       } catch { toast?.('Sign-in failed. Please try again.', 'error') }
     },

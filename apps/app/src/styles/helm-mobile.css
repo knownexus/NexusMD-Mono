@@ -702,8 +702,13 @@
   padding: 4px 8px; border: 1px solid var(--accent-border); border-left: 3px solid var(--accent); border-radius: 8px;
   background: var(--accent-soft); color: var(--text); font: inherit; cursor: pointer;
 }
-.m-tl-ev .t { font-size: 12.5px; font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.m-tl-ev .m { font-size: 11px; color: var(--text-muted); }
+.m-tl-ev .t { flex-shrink: 0; font-size: 12.5px; font-weight: 600; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.m-tl-ev .m { flex-shrink: 0; font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+/* Too short for two lines: title then time on one row (the title is what you need). Beside another event: title only. */
+.m-tl-ev.short { flex-direction: row; align-items: center; gap: 6px; padding: 2px 8px; }
+.m-tl-ev.short .t { flex: 0 1 auto; min-width: 0; display: block; white-space: nowrap; text-overflow: ellipsis; }
+.m-tl-ev.short .m { flex: none; }
+.m-tl-ev.short.narrow .m { display: none; }
 .m-tl-ev.now { border-color: var(--success); border-left-color: var(--success); }
 .m-tl-ev.soon { border-left-color: var(--warning); }
 .m-nowline { position: absolute; left: 44px; right: 0; z-index: 3; height: 0; border-top: 2px solid var(--danger); pointer-events: none; }
