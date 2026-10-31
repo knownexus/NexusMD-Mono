@@ -12,11 +12,12 @@ import { getProfileKey } from './profile-keys.js';
 import {
   NexusDataProvider, renderContent, SEEN_FINGERPRINTS, DEFAULT_PROJECT_AREAS,
   loadWeekPlanner, saveWeekPlanner, ProjectAreasModal, DocumentsView, ApiClientProvider, ApiClientView, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
-  PRCommitsTab, PRFilesTab, CreateWIModal, WIDetail, PersonDetail, DetailDrawer, paletteFor,
+  PRCommitsTab, PRFilesTab, PRTabs, CreateWIModal, WIDetail, PersonDetail, DetailDrawer, paletteFor,
 } from '@nexusmd/ui';
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
 import { GithubSettingsModal } from './github-settings.jsx';
+import { createGithubHttpAdapter } from './github-client.js';
 import { useOffScreens } from './work-screens.js';
 import { EditorScreen } from './editor-screen.jsx';
 import { GitView } from './git-view.jsx';
@@ -1122,7 +1123,30 @@ function NavItem({ item, active, onClick, count, changed }) {
   );
 }
 
-function PRDetail({ pr, onClose }) {
+// A GitHub PR is shown by the shared tabs (overview, commits, files, threads, comments) over the
+// GitHub adapter; none of the ADO thread, reviewer, ref or complete endpoints below are used for it.
+function PRDetail(props) {
+  const { pr } = props;
+  if (pr?.source !== 'github') return <AdoPRDetail {...props}/>;
+  return (
+    <div>
+      <div className="drawer-section" style={{ paddingBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <span className="mono muted" style={{ fontSize: 12, flex: 1, minWidth: 0 }}>{pr.displayId}</span>
+          <span className="pill">{pr.draft ? 'Draft' : pr.status}</span>
+          {pr.url && <a href={pr.url} target="_blank" rel="noopener noreferrer" className="btn sm ghost" style={{ textDecoration: 'none' }}><Icon name="link" size={12}/> Open in GitHub</a>}
+        </div>
+        <div style={{ display: 'flex', gap: 8, fontSize: 12, alignItems: 'center', color: 'var(--text-muted)' }}>
+          <Icon name="git-branch" size={12}/>
+          <span className="mono">{pr.sourceBranch}</span><span>→</span><span className="mono">{pr.targetBranch || 'main'}</span>
+        </div>
+      </div>
+      <PRTabs pr={pr} http={null}/>
+    </div>
+  );
+}
+
+function AdoPRDetail({ pr, onClose }) {
   const { TEAM, ME } = HelmData;
   const [tab, setTab] = useState('overview');
   const [comment, setComment] = useState('');
@@ -1682,6 +1706,7 @@ const nexusDataValue = {
   pushPref:      helmPushPref,
   namespace:     'helm',
   workItemSource,
+  githubHttp:    createGithubHttpAdapter(),
 };
 // Subscribe to nexusmd:// deep links so cloud OAuth one-time codes are redeemed.
 registerCloudDeepLink();

@@ -25,9 +25,14 @@ const TYPE_ICON = t => {
   }
 };
 const LANES = ['To Do', 'Active', 'Blocked', 'In Review', 'Done'];
-const STATUS_ORDER = ['To Do', 'Active', 'Blocked', 'In Review', 'Done'];
+
+// GitHub issues are only open or closed.
+const GH_LANES = ['Open', 'Closed'];
+const projectOf = (w) => (w.source === 'github' ? (w.projectName || w.project) : w.project);
 
 function laneFilter(lane, w) {
+  if (lane === 'Open')      return !isTerminalState(w.state);
+  if (lane === 'Closed')    return isTerminalState(w.state);
   if (lane === 'Done')      return isTerminalState(w.state);
   if (lane === 'Blocked')   return /blocked/i.test(w.state);
   if (lane === 'In Review') return /review/i.test(w.state) && !/blocked/i.test(w.state);
@@ -56,7 +61,7 @@ function WorkRow({ wi, newItemIds, onOpen, team }) {
       <div className="m-row-main">
         <div className="m-row-title">{wi.title}</div>
         <div className="m-row-meta">
-          <span className="m-id">#{shortId(wi.id)}</span>
+          <span className="m-id">#{wi.displayId || shortId(wi.id)}</span>
           {wi.state && <span className={`pill ${STATE_TONE(wi.state)}`}>{wi.state}</span>}
           {wi.priority >= 1 && wi.priority <= 2 && (
             <span className={`prio p${wi.priority}`}>P{wi.priority}</span>
@@ -144,6 +149,8 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
   };
 
   const list = items || [];
+  // Open / Closed when GitHub is the only provider; the usual five lanes otherwise.
+  const lanes = useMemo(() => (list.length > 0 && list.every(w => w.source === 'github') ? GH_LANES : LANES), [list]);
 
   const allTypes     = useMemo(() => [...new Set(list.map(w => w.type).filter(Boolean))],  [list]);
   const allStates    = useMemo(() => [...new Set(list.map(w => w.state).filter(Boolean))], [list]);
@@ -179,15 +186,15 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
     sortedFiltered.forEach(w => {
       const key =
         groupBy === 'user'    ? (w.assignee || 'unassigned') :
-        groupBy === 'project' ? (w.project  || 'Unknown')    :
-        /* status */ (LANES.find(lane => laneFilter(lane, w)) || w.state || 'Unknown');
+        groupBy === 'project' ? (projectOf(w) || 'Unknown')   :
+        /* status */ (lanes.find(lane => laneFilter(lane, w)) || w.state || 'Unknown');
       if (!buckets[key]) buckets[key] = [];
       buckets[key].push(w);
     });
 
     if (groupBy === 'status') {
-      const known = STATUS_ORDER.filter(s => buckets[s]);
-      const rest  = Object.keys(buckets).filter(k => !STATUS_ORDER.includes(k)).sort();
+      const known = lanes.filter(s => buckets[s]);
+      const rest  = Object.keys(buckets).filter(k => !lanes.includes(k)).sort();
       return orderGroups([...known, ...rest].map(k => ({ key: k, label: k, items: buckets[k] })), groupOrders?.[groupBy]);
     }
     if (groupBy === 'user') {
@@ -199,11 +206,11 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
     }
     // project
     return orderGroups(Object.keys(buckets).sort().map(k => ({ key: k, label: k, items: buckets[k] })), groupOrders?.[groupBy]);
-  }, [sortedFiltered, groupBy, team, groupOrders]);
+  }, [sortedFiltered, groupBy, team, groupOrders, lanes]);
 
   const boardLanes = useMemo(() => {
     if (!groupBy || groupBy === 'status') {
-      return LANES.map(lane => ({
+      return lanes.map(lane => ({
         key: lane,
         label: lane,
         items: sortedFiltered.filter(w => laneFilter(lane, w)),
@@ -223,13 +230,13 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
       }));
     }
     // project
-    const projects = [...new Set(sortedFiltered.map(w => w.project || 'Unknown'))].sort();
+    const projects = [...new Set(sortedFiltered.map(w => projectOf(w) || 'Unknown'))].sort();
     return projects.map(proj => ({
       key: proj,
       label: proj,
-      items: sortedFiltered.filter(w => (w.project || 'Unknown') === proj),
+      items: sortedFiltered.filter(w => (projectOf(w) || 'Unknown') === proj),
     }));
-  }, [sortedFiltered, groupBy, team]);
+  }, [sortedFiltered, groupBy, team, lanes]);
 
   const userBoardData = useMemo(() => {
     if (viewMode !== 'board' || groupBy !== 'user') return null;
@@ -242,7 +249,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
     return ids.map(userId => ({
       userId,
       label: memberName(userId),
-      lanes: LANES.map(lane => ({
+      lanes: lanes.map(lane => ({
         key: lane,
         label: lane,
         items: sortedFiltered.filter(w =>
@@ -250,7 +257,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
         ),
       })),
     }));
-  }, [sortedFiltered, viewMode, groupBy, team]);
+  }, [sortedFiltered, viewMode, groupBy, team, lanes]);
 
   return (
     <>
@@ -380,7 +387,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
                               style={{ fontSize: 12, width: 18, height: 18 }}>
                               <Icon name={TYPE_ICON(wi.type)} size={13}/>
                             </span>
-                            <span className="m-id">#{shortId(wi.id)}</span>
+                            <span className="m-id">#{wi.displayId || shortId(wi.id)}</span>
                           </div>
                           <div style={{ fontSize: 13, lineHeight: 1.4 }}>{wi.title}</div>
                         </div>
@@ -418,7 +425,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
                         style={{ fontSize: 12, width: 18, height: 18 }}>
                         <Icon name={TYPE_ICON(wi.type)} size={13}/>
                       </span>
-                      <span className="m-id">#{shortId(wi.id)}</span>
+                      <span className="m-id">#{wi.displayId || shortId(wi.id)}</span>
                     </div>
                     <div style={{ fontSize: 13, lineHeight: 1.4 }}>{wi.title}</div>
                   </div>

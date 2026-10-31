@@ -20,7 +20,7 @@ function PRRow({ pr, active, onDetail, needsMe }) {
       <div className="m-row-main">
         <div className="m-row-title">{pr.title}</div>
         <div className="m-row-meta">
-          <span className="m-id">{pr.repo}</span>
+          <span className="m-id">{pr.displayId || pr.repo}</span>
           {pr.author && <span className="m-id">{pr.author.split(' ')[0]}</span>}
           {pr.age && <span className="m-id">{pr.age}</span>}
           {needsMe && <span className="pill accent">Review</span>}

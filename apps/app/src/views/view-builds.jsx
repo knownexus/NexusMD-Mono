@@ -373,8 +373,8 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
 
                     {/* Build # */}
                     <div className="mono" style={{ fontSize:12, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', display:'flex', alignItems:'center', gap:5 }}>
-                      {HelmData.ORG && b.project
-                        ? <a href={`https://dev.azure.com/${encodeURIComponent(HelmData.ORG)}/${encodeURIComponent(b.project)}/_build/results?buildId=${b.id}`}
+                      {(b.source === 'github' ? b.url : HelmData.ORG && b.project)
+                        ? <a href={b.source === 'github' ? b.url : `https://dev.azure.com/${encodeURIComponent(HelmData.ORG)}/${encodeURIComponent(b.project)}/_build/results?buildId=${b.id}`}
                             target="_blank" rel="noopener" onClick={e => e.stopPropagation()}
                             style={{ color:'var(--accent)', textDecoration:'none' }}>#{b.id}</a>
                         : <span>#{b.id}</span>
@@ -429,7 +429,13 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
                     {/* Actions */}
                     <div style={{ display:'flex', justifyContent:'flex-end', gap:4 }}>
                       {/* Cancel — running builds only */}
-                      {b.status === 'running' && (
+                      {b.source === 'github' && b.url && (
+                        <a className="btn sm ghost" href={b.url} target="_blank" rel="noopener noreferrer"
+                          style={{ textDecoration:'none' }} onClick={e => e.stopPropagation()}>
+                          <Icon name="link" size={12}/> Open in GitHub
+                        </a>
+                      )}
+                      {b.status === 'running' && b.source !== 'github' && (
                         <button className="btn sm ghost" title="Cancel this build"
                           style={{ color:'var(--danger)' }}
                           disabled={actioning.has(b.id)}
@@ -438,7 +444,7 @@ function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItem
                         </button>
                       )}
                       {/* Rerun — completed builds */}
-                      {b.status !== 'running' && b.definitionId > 0 && (
+                      {b.status !== 'running' && b.definitionId > 0 && b.source !== 'github' && (
                         <button className="btn sm ghost" title="Re-run this pipeline"
                           disabled={actioning.has(b.id)}
                           onClick={e => { e.stopPropagation(); rerunBuild(b); }}>

@@ -118,7 +118,7 @@ function DashboardView({
                 <div key={item.id} className="m-row" onClick={() => onOpenItem(item)}>
                   <div className="m-row-main">
                     <div className="m-row-title">{item.title}</div>
-                    <div className="m-row-meta"><span className="m-id">#{shortId(item.id)}</span></div>
+                    <div className="m-row-meta"><span className="m-id">#{item.displayId || shortId(item.id)}</span></div>
                   </div>
                   <Icon name="chevron-right" size={16} className="chev"/>
                 </div>
@@ -189,7 +189,7 @@ function DashboardView({
                   <div className="m-row-main">
                     <div className="m-row-title">{item.title}</div>
                     <div className="m-row-meta">
-                      <span className="m-id">#{shortId(item.id)}</span>
+                      <span className="m-id">#{item.displayId || shortId(item.id)}</span>
                       {item.assignee && (
                         <span className="m-id">
                           {(team.find(t => t.id === item.assignee)?.name || item.assignee).split(' ')[0]}
