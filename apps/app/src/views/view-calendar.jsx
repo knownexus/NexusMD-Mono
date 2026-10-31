@@ -295,11 +295,11 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
       )}
 
       <div className="m-appbar">
-        <div className="m-ab-lead">
-          <h1>Calendar</h1>
-          <div className="m-ab-sub">{headerTitle}</div>
+        <div className="m-ab-lead" style={{ flex:'0 0 auto' }}>
+          <div><h1>Calendar</h1><div className="m-ab-sub">{headerTitle}</div></div>
         </div>
-        <div className="m-ab-actions" style={{ gap:8 }}>
+        {/* Wraps under the title rather than squeezing it when the screen is only a little wider than a phone. */}
+        <div className="m-ab-actions" style={{ gap:8, flexWrap:'wrap', justifyContent:'flex-end', marginLeft:'auto' }}>
           <OutlookBanner config={outlookConfig} onSaveConfig={setOutlookConfig} connected={outlookConnected}
             displayName={outlookDisplayName} syncing={outlookSyncing} error={outlookError}
             onConnect={handleConnect} onDisconnect={handleDisconnect}
