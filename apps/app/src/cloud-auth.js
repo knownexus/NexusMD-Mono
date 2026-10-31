@@ -104,8 +104,10 @@ export function markPending(from, now = Date.now()) {
 export function takePending(from, now = Date.now()) {
   try {
     const p = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null')
-    localStorage.removeItem(PENDING_KEY)
-    return Boolean(p && p.from === from && now - p.at >= 0 && now - p.at <= PENDING_TTL_MS)
+    const ok = Boolean(p && p.from === from && now - p.at >= 0 && now - p.at <= PENDING_TTL_MS)
+    // Only a matching link uses the record up, so a forged one can't cancel the real sign-in.
+    if (ok || (p && now - p.at > PENDING_TTL_MS)) localStorage.removeItem(PENDING_KEY)
+    return ok
   } catch { return false }
 }
 
@@ -116,6 +118,7 @@ async function redeem(url) {
   const otc = u.searchParams.get('otc')
   const cfg = from && BY_FROM[from]
   if (!cfg || !otc) return
+  if (u.protocol !== 'nexusmd:' || u.hostname !== 'oauth') return
   // The link's own path must name the same provider, and this app must have started that sign-in.
   if (u.pathname.replace(/^\/+/, '') !== cfg.from) return
   if (!takePending(cfg.from)) return
