@@ -19,6 +19,8 @@ import { JiraSettingsModal } from './jira-settings.jsx';
 import { GithubSettingsModal } from './github-settings.jsx';
 import { DocumentsPhone } from './views/documents-phone.jsx';
 import './offline-queue-app.js';
+import { resolveNav, fromResolved, PHONE_BAR_MAX } from './nav-config.js';
+import { useNavPref } from './nav-pref.js';
 import { useFormAutosave, validateAdoForm } from './autosave-form.js';
 import { createGithubHttpAdapter } from './github-client.js';
 import { useOffScreens } from './work-screens.js';
@@ -576,10 +578,6 @@ function AppShell() {
   const visibleSecondaryTabs = secondaryTabs.filter(t =>
     t.id !== 'markdown' || tweaks.showMarkdown !== false
   );
-  const RAIL_PINNED = visibleSecondaryTabs.filter(t =>
-    ['builds', 'tests', 'team', 'settings'].includes(t.id) ||
-    (t.id === 'markdown' && tweaks.showMarkdown !== false)
-  );
 
   // Sync render-time globals so child components can read them without prop drilling
   window.helmTypeLabels = tweaks.typeLabels || false;
@@ -643,6 +641,18 @@ function AppShell() {
     return () => mq.removeEventListener('change', handler);
   }, []);
   const device = isPhone ? 'phone' : 'tablet';
+
+  // Your own layout, if you made one: which screens sit in the bar and which in More, in your order.
+  // Without one, the phone shows the main tabs and a wider screen also pins Builds, Tests, Team,
+  // Settings and Documents. A phone's bar holds five; a wider screen shows whatever is saved.
+  const [navPref, setNavPref] = useNavPref();
+  const navAvailable = [...primaryTabs, ...visibleSecondaryTabs].filter((t, i, a) => a.findIndex(x => x.id === t.id) === i);
+  const legacyRail = ['builds', 'tests', 'team', 'settings'];
+  const navDefaults = isPhone
+    ? primaryTabs.map(t => t.id)
+    : [...primaryTabs.map(t => t.id), ...visibleSecondaryTabs.filter(t => legacyRail.includes(t.id) || t.id === 'markdown').map(t => t.id)];
+  const nav = resolveNav(navAvailable, navPref, navDefaults, { max: isPhone ? PHONE_BAR_MAX : Infinity });
+  const navForEditor = resolveNav(navAvailable, navPref, navDefaults, { max: Infinity });
 
   // ── Flash toast state (mobile) ────────────────────────────────────────────
   const [mobileFlash, setMobileFlash] = useState(null);
@@ -1170,6 +1180,8 @@ function AppShell() {
         onOpenJira={() => setJiraSettingsOpen(true)}
         onOpenGithub={() => setGithubSettingsOpen(true)}
         onWorkScreensChanged={handleSettingsSaved}
+        nav={navForEditor} navMax={isPhone ? PHONE_BAR_MAX : 8}
+        onNavChange={(p) => setNavPref(p)} onNavReset={() => setNavPref(null)}
         onOpenProjectAreas={() => setProjectAreasOpen(true)}
         onGoPlanner={() => navigate('planner')} device={device}/>;
       default: return null;
@@ -1182,12 +1194,12 @@ function AppShell() {
       {device === 'phone' ? (
         <>
           <div className="m-main">{activeScreen}</div>
-          <MobileBottomNav view={view} navigate={navigate} navBadges={navBadges} changeBadges={changeBadges} setMoreOpen={setMoreOpen} primaryTabs={primaryTabs} secondaryTabs={visibleSecondaryTabs}/>
+          <MobileBottomNav view={view} navigate={navigate} navBadges={navBadges} changeBadges={changeBadges} setMoreOpen={setMoreOpen} primaryTabs={nav.bar} secondaryTabs={nav.more}/>
         </>
       ) : (
         <div className="m-bodyrow">
-          <TabletRail view={view} navigate={navigate} navBadges={navBadges} changeBadges={changeBadges} primaryTabs={primaryTabs} railPinned={RAIL_PINNED}
-            onMore={() => setMoreOpen(true)} moreActive={!primaryTabs.some(t => t.id === view) && !RAIL_PINNED.some(t => t.id === view)}/>
+          <TabletRail view={view} navigate={navigate} navBadges={navBadges} changeBadges={changeBadges} primaryTabs={nav.bar} railPinned={[]}
+            onMore={() => setMoreOpen(true)} moreActive={nav.more.some(t => t.id === view)}/>
           <div className="m-main">{activeScreen}</div>
         </div>
       )}
@@ -1198,7 +1210,7 @@ function AppShell() {
       <Sheet open={moreOpen} icon="more" title="More" sub="Secondary views"
         onClose={() => setMoreOpen(false)}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {visibleSecondaryTabs.map(s => (
+          {nav.more.map(s => (
             <button key={s.id} className="m-action"
               onClick={() => { navigate(s.id); setMoreOpen(false); }}>
               <span className="ai"><Icon name={s.icon} size={18}/></span>

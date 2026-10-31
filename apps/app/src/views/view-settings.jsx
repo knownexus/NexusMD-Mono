@@ -18,6 +18,7 @@ import { getAdoConfig } from '../ado-client.js';
 import { getJiraConfig } from '../jira-client.js';
 import { getGithubConfig } from '../github-client.js';
 import { appQueue } from '../offline-queue-app.js';
+import { NavSettings } from './nav-settings.jsx';
 import { syncLabel } from '../sync-status.js';
 import { connectionsSummary, privacySummary, dataSummary } from '../settings-summary.js';
 // view-settings.jsx — Settings & profile page (planner-redesign port)
@@ -64,7 +65,7 @@ function vsTimeZones() {
   return result;
 }
 
-function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection, onOpenJira, onOpenGithub, onOpenProjectAreas, onGoPlanner }) {
+function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection, onOpenJira, onOpenGithub, nav, navMax, onNavChange, onNavReset, onOpenProjectAreas, onGoPlanner }) {
   // Phone: a grouped list of categories, each opening as its own page. Wider screens keep the rail.
   const [phone, setPhone] = useStateVS(() => window.matchMedia('(max-width:600px)').matches);
   useEffectVS(() => {
@@ -345,6 +346,11 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
                   options={[['labels', 'Labels'], ['icons', 'Icons']]}
                   onChange={v => setTweak('sidebar', v)}/>
               </VsRow>
+              {nav && (
+                <VsFullRow title="Navigation" desc="Choose which screens are in the bar, and their order">
+                  <NavSettings nav={nav} max={navMax} onChange={onNavChange} onReset={onNavReset}/>
+                </VsFullRow>
+              )}
               <VsRow title="Work-item type labels" desc="Show type names next to type icons in lists">
                 <PlToggle checked={tweaks.typeLabels} onChange={v => setTweak('typeLabels', v)}/>
               </VsRow>
