@@ -21,8 +21,11 @@ store review for most updates, available to named testers within minutes.
 2. **Make the upload keystore.** In PowerShell, from the repo root: `pwsh scripts/android-keystore.ps1`.
    It asks for the passwords itself, writes `keystore.properties`, and copies the base64 keystore to
    your clipboard. Back the `.jks` and both passwords up.
-3. **GitHub secrets** (Settings > Secrets and variables > Actions): `ANDROID_KEYSTORE_BASE64`
-   (paste), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (`upload`), `ANDROID_KEY_PASSWORD`.
+3. **A GitHub environment named `release`** (Settings > Environments > New environment): add yourself
+   as a required reviewer and limit deployment branches to `master`. Add the secrets to *that
+   environment* (not as repository secrets): `ANDROID_KEYSTORE_BASE64` (paste),
+   `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (`upload`), `ANDROID_KEY_PASSWORD`. The workflow
+   only runs from `master`, and the environment rules are what stop another branch reading them.
 4. **Host the privacy policy** (`docs/privacy-policy.md`, after you fill the marked gaps) at a public
    URL. GitHub Pages or a public gist is fine. Play needs the URL.
 

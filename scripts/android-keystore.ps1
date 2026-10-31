@@ -33,7 +33,9 @@ if ($LASTEXITCODE -ne 0) { throw 'keytool failed.' }
 
 function Read-Plain($prompt) {
   $s = Read-Host $prompt -AsSecureString
-  [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))
+  $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)
+  try { [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr) }
+  finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
 }
 Write-Host 'Enter the same passwords again so the build can sign (kept only in the git-ignored file).'
 $storePass = Read-Plain 'Keystore password'
@@ -41,7 +43,11 @@ $keyPass = Read-Plain 'Key password (press Enter if keytool said it is the same 
 if (-not $keyPass) { $keyPass = $storePass }
 
 # Check they work before writing anything.
-keytool -list -keystore $jks -storepass $storePass -alias $alias | Out-Null
+# The password goes through a short-lived environment variable, not the command line, where any
+# process on the machine could read it.
+$env:NEXUS_STOREPASS = $storePass
+try { keytool -list -keystore $jks -storepass:env NEXUS_STOREPASS -alias $alias | Out-Null }
+finally { Remove-Item Env:NEXUS_STOREPASS -ErrorAction SilentlyContinue }
 if ($LASTEXITCODE -ne 0) { throw 'That keystore password does not open the keystore.' }
 
 @(

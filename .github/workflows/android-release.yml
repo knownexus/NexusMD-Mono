@@ -2,7 +2,8 @@ name: Android release bundle
 
 # Builds the signed Android App Bundle (.aab) that Google Play takes, and keeps it as a run artifact.
 # Run it by hand from the Actions tab (Run workflow). It needs four repository secrets, set once:
-#   ANDROID_KEYSTORE_BASE64  the upload keystore, base64-encoded (scripts/android-keystore.ps1 prints it)
+#   ANDROID_KEYSTORE_BASE64  the upload keystore, base64-encoded (scripts/android-keystore.ps1 copies it)
+# Add them as ENVIRONMENT secrets on an environment named "release", not as repository secrets.
 #   ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
 # Without them the run stops with a message saying which is missing. See docs/android-release.md.
 on:
@@ -13,11 +14,23 @@ on:
         default: '1.2.0'
         required: true
 
+permissions:
+  contents: read
+
 jobs:
   bundle:
     name: Signed release bundle
     runs-on: ubuntu-latest
+    # The signing secrets belong to the "release" environment (Settings > Environments), limited to
+    # master and requiring your approval, so a run from any other branch cannot read them.
+    environment: release
+    if: github.ref == 'refs/heads/master'
     steps:
+      - name: Check the version name
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Version name must look like 1.2.0"; exit 1; }
       - name: Check the signing secrets exist
         env:
           K: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -63,7 +76,10 @@ jobs:
           } > keystore.properties
       - name: Build the signed bundle
         working-directory: apps/app/android
-        run: ./gradlew bundleRelease --no-daemon -PversionCode=${{ github.run_number }} -PversionName=${{ inputs.version_name }}
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: ./gradlew bundleRelease --no-daemon "-PversionCode=$RUN_NUMBER" "-PversionName=$VERSION_NAME"
       - name: Remove the signing config
         if: always()
         run: rm -f apps/app/android/keystore.properties "$RUNNER_TEMP/upload.jks"
