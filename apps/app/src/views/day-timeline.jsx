@@ -27,10 +27,13 @@ export function DayTimeline({ events, isToday, onPick, onAddAt }) {
       ))}
       {items.map(it => {
         const badge = eventBadge(it.ev, now);
+        const height = Math.max((it.endMin - it.startMin) * HOUR_PX / 60 - 2, 24);
+        // A block too short for two lines shows the title and time on one row; side by side with another, title only.
+        const short = height < 44;
         return (
-          <button key={it.ev.id} type="button" role="listitem" className={`m-tl-ev${badge ? ` ${badge}` : ''}`}
+          <button key={it.ev.id} type="button" role="listitem" className={`m-tl-ev${badge ? ` ${badge}` : ''}${short ? ' short' : ''}${it.cols > 1 ? ' narrow' : ''}`}
             style={{
-              top: (it.startMin - from * 60) * HOUR_PX / 60, height: Math.max((it.endMin - it.startMin) * HOUR_PX / 60 - 2, 22),
+              top: (it.startMin - from * 60) * HOUR_PX / 60, height,
               left: `calc(${LABEL_W + 4}px + (100% - ${LABEL_W + 4}px) * ${it.col / it.cols})`,
               width: `calc((100% - ${LABEL_W + 4}px) / ${it.cols} - 3px)`,
             }}
