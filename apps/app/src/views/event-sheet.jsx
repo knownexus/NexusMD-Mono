@@ -15,7 +15,7 @@ const when = (ev) => {
 export function EventSheet({ ev, onClose, onMoveLater, onAddToPlanner, onDetails, onDelete, canAddToPlanner }) {
   if (!ev) return <Sheet open={false} onClose={onClose}/>;
   const url = joinUrlOf(ev);
-  const local = ev.source !== 'outlook';
+  const local = ev.source !== 'outlook' && ev.source !== 'google';
   const badge = eventBadge(ev);
   const day = ev.start.slice(0, 10);
   const canPlan = !ev.plannerSection && !!canAddToPlanner?.(day);

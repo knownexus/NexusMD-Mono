@@ -9,6 +9,8 @@ import { NewEventSheet } from './calendar-new-event.jsx';
 import { DayTimeline } from './day-timeline.jsx';
 import { EventSheet } from './event-sheet.jsx';
 import { shiftEvent, eventBadge } from '../calendar-phone.js';
+import { fetchGoogleEvents } from '../google-calendar.js';
+import { isOAuthConnected } from '../cloud-auth.js';
 import {
   OutlookService, getWeekDays, getMonthGrid, getYearMonths, getAgendaDays,
   nowTopPx, todayStr, isoDate, MONTH_NAMES, MONTH_SHORT,
@@ -98,13 +100,39 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
       .then(evs => setOutlookEvents(evs)).catch(e=>setOutlookError(e.message)).finally(()=>setOutlookSyncing(false));
   }, [outlookConnected, calView, offset]);
 
+  // Google Calendar (read-only): events for the same window the Outlook fetch uses.
+  const [googleEvents, setGoogleEvents] = useStateCal([]);
+  const [googleError, setGoogleError]   = useStateCal(null);
+  const [googleTick, setGoogleTick]     = useStateCal(0);
+  useEffectCal(() => {
+    const bump = () => setGoogleTick(t => t + 1);
+    window.addEventListener('nexusmd:cloud-auth-changed', bump);
+    return () => window.removeEventListener('nexusmd:cloud-auth-changed', bump);
+  }, []);
+  useEffectCal(() => {
+    if (!isOAuthConnected('google')) { setGoogleEvents([]); setGoogleError(null); return; }
+    let startD, endD;
+    if (calView==='month') {
+      const { days } = getMonthGrid(offset);
+      startD = days[0]; endD = new Date(days[days.length-1].getTime()+86400000);
+    } else {
+      const days = getWeekDays(offset, calView==='workweek');
+      startD = days[0]; endD = new Date(days[days.length-1].getTime()+86400000);
+    }
+    let live = true;
+    fetchGoogleEvents(startD, endD)
+      .then(evs => { if (live) { setGoogleEvents(evs); setGoogleError(null); } })
+      .catch(e => { if (live) setGoogleError(e.message); });
+    return () => { live = false; };
+  }, [calView, offset, googleTick]);
+
   const handleConnect    = async () => { try { const a=await OutlookService.signIn(); setOutlookConnected(true); setOutlookDisplayName(a.name||a.username); } catch(e){ setOutlookError(e.message); } };
   const handleDisconnect = async () => { await OutlookService.signOut(); setOutlookConnected(false); setOutlookDisplayName(null); setOutlookEvents([]); };
 
   const allEvents = useMemoCal(() => {
     const local = (calendarEvents||[]).map(ev=>({source:'local',...ev}));
-    return [...local,...outlookEvents];
-  }, [calendarEvents, outlookEvents]);
+    return [...local,...outlookEvents,...googleEvents];
+  }, [calendarEvents, outlookEvents, googleEvents]);
 
   // Build event-by-day map for current view window
   const viewDays = useMemoCal(() => {
@@ -212,6 +240,7 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
         </div>
       </div>
       <div className="m-screen">
+        {googleError && <div className="m-hint" role="alert" style={{ marginTop: 0, marginBottom: 10, color: 'var(--danger)' }}>Google Calendar couldn’t load: {googleError}</div>}
         <div className="m-seg" style={{ marginBottom: 12 }}>
           <button type="button" className={phoneMode === 'agenda' ? 'active' : ''} onClick={() => setPhoneMode('agenda')}>Agenda</button>
           <button type="button" className={phoneMode === 'month' ? 'active' : ''} onClick={() => setPhoneMode('month')}>Month</button>
@@ -305,6 +334,7 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
       </div>
 
       <div className="m-screen">
+        {googleError && <div className="m-hint" role="alert" style={{ marginTop: 0, marginBottom: 10, color: 'var(--danger)' }}>Google Calendar couldn’t load: {googleError}</div>}
       {/* ── View content ── */}
       {(calView==='week'||calView==='workweek') && weekDays && (
         <WeekGrid days={weekDays} eventsByDay={eventsByDay} today={today}

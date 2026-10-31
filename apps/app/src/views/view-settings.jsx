@@ -169,6 +169,13 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
       ],
     },
     {
+      id: 'google',
+      label: 'Google',
+      icon: 'calendar',
+      desc: 'Sign in with Google — shows your Google Calendar events',
+      ...makeAppOAuthService('google'),
+    },
+    {
       id: 'github',
       label: 'GitHub',
       icon: 'pr',

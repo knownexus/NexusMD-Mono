@@ -16,6 +16,8 @@ const PROVIDERS = {
   ado:       { keySuffix: 'ado.auth',       api: '/api/ado/auth',    from: 'ado' },
   microsoft: { keySuffix: 'microsoft.auth', api: '/api/ms/auth',     from: 'microsoft' },
   github:    { keySuffix: 'github.auth',    api: '/api/github/auth', from: 'github' },
+  // Google sign-in for the calendar. Same server endpoints as Drive, kept as its own connection.
+  google:    { keySuffix: 'google.auth',    api: '/api/google/auth', from: 'google' },
 }
 const BY_FROM = {
   gdrive:    PROVIDERS.gdrive,
@@ -23,6 +25,7 @@ const BY_FROM = {
   ado:       PROVIDERS.ado,
   microsoft: PROVIDERS.microsoft,
   github:    PROVIDERS.github,
+  google:    PROVIDERS.google,
 }
 
 // tokenCache is keyed by the RESOLVED profile key so a profile switch can never
@@ -127,6 +130,10 @@ export async function hydrateCloudTokens() {
   }
   window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
 }
+
+// Bearer-style access for other modules (Google Calendar): current token, or a refreshed one.
+export function getOAuthToken(from, opts) { return makeBinding(from).getToken(opts) }
+export function isOAuthConnected(from) { return makeBinding(from).isConnected() }
 
 export const appCloudProviders = [
   makeGoogleDriveProvider(makeBinding('gdrive')),
