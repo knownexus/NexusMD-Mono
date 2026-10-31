@@ -22,7 +22,7 @@ import { appSync } from '../sync.js';
 //   - helm.planner.*           → planner view prefs (same keys the planner View menu writes)
 //   - window.helmConfidential  → password change (hashPassword/load/saveConfidentialConfig)
 // Requires planner-ui.jsx (PlFld, PlModal) + @nexusmd/ui planner-v2.css.
-const { useState: useStateVS, useMemo: useMemoVS, useRef: useRefVS } = React;
+const { useState: useStateVS, useMemo: useMemoVS, useRef: useRefVS, useEffect: useEffectVS } = React;
 
 // Local pref hook — persists to localStorage and pushes to server prefs.
 function usePrefVS(key, fallback) {
@@ -59,7 +59,16 @@ function vsTimeZones() {
 }
 
 function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection, onOpenJira, onOpenProjectAreas, onGoPlanner }) {
-  const [subPage, setSubPage] = useStateVS('profile');
+  // Phone: a grouped list of categories, each opening as its own page. Wider screens keep the rail.
+  const [phone, setPhone] = useStateVS(() => window.matchMedia('(max-width:600px)').matches);
+  useEffectVS(() => {
+    const mq = window.matchMedia('(max-width:600px)');
+    const h = e => setPhone(e.matches);
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, []);
+  const [subPage, setSubPage] = useStateVS(() => (window.matchMedia('(max-width:600px)').matches ? null : 'profile'));
+  const page = subPage || (phone ? null : 'profile');
   const offScreens = useOffScreens();
   const [pwOpen, setPwOpen] = useStateVS(false);
   const isManual = useProfile?.()?.activeProfile?.type === 'manual';
@@ -203,6 +212,15 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
     { id: 'integrations', label: 'Integrations', icon: 'lock' },
   ];
 
+  const SUMMARY = {
+    profile:      () => [displayName || me.name, profRole].filter(Boolean).join(' · ') || 'Name, role, time zone',
+    appearance:   () => `Theme and ${tweaks.density || 'balanced'} density`,
+    planner:      () => 'Landing page, navigation, entry style',
+    profiles:     () => 'Switch or add profiles',
+    privacy:      () => 'Confidential password',
+    data:         () => 'Storage, sync and versions',
+    integrations: () => 'Azure DevOps, Jira, GitHub, email digest',
+  };
   const shownName = displayName || me.name || '—';
   const initials = (shownName === '—' ? (me.name || '?') : shownName)
     .split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
@@ -211,24 +229,45 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
   return (
     <React.Fragment>
       <div className="m-appbar">
+        {phone && page && (
+          <button type="button" className="m-iconbtn" aria-label="Back to settings" onClick={() => setSubPage(null)}>
+            <Icon name="chevron-left" size={18}/>
+          </button>
+        )}
         <div className="m-ab-lead">
-          <h1>Settings</h1>
-          <div className="m-ab-sub">Profile, appearance, and planner preferences</div>
+          <div>
+            <h1>{phone && page ? (NAV.find(n => n.id === page)?.label || 'Settings') : 'Settings'}</h1>
+            {!(phone && page) && <div className="m-ab-sub">Profile, appearance, and planner preferences</div>}
+          </div>
         </div>
         <div className="m-ab-actions">
         </div>
       </div>
       <div className="m-screen" data-screen-label="Settings">
-      <div className="set-layout">
-        <div className="pl-rail" style={{ top: 16 }}>
+      {phone && !page && (
+        <div className="m-card flush">
+          {NAV.map(n => (
+            <div key={n.id} className="m-row" onClick={() => setSubPage(n.id)}>
+              <span className="m-fileic"><Icon name={n.icon} size={17}/></span>
+              <div className="m-row-main">
+                <div className="m-row-title">{n.label}</div>
+                <div className="m-row-sub">{SUMMARY[n.id]?.()}</div>
+              </div>
+              <Icon name="chevron-right" size={16} className="chev"/>
+            </div>
+          ))}
+        </div>
+      )}
+      {!(phone && !page) && <div className="set-layout">
+        {!phone && <div className="pl-rail" style={{ top: 16 }}>
           {NAV.map(n => (
             <button key={n.id} className={`pl-rail-item ${subPage === n.id ? 'active' : ''}`} onClick={() => setSubPage(n.id)}>
               <span className="ic"><Icon name={n.icon} size={14}/></span>{n.label}
             </button>
           ))}
-        </div>
+        </div>}
         <div style={{ minWidth: 0 }}>
-          {subPage === 'profile' && (
+          {page === 'profile' && (
             <VsCard title="Profile" icon="team">
               <div className="set-row" style={{ gap: 16 }}>
                 {photo
@@ -282,7 +321,7 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
             </VsCard>
           )}
 
-          {subPage === 'appearance' && (
+          {page === 'appearance' && (
             <VsCard title="Appearance" icon="sun">
               <ThemeModeSettings tweaks={tweaks} setTweak={setTweak}/>
               <VsRow title="Density" desc="Row height and padding everywhere">
@@ -337,7 +376,7 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
             </VsCard>
           )}
 
-          {subPage === 'planner' && (
+          {page === 'planner' && (
             <VsCard title="Planner preferences" icon="planner">
               <VsRow title="Landing view" desc="What you see when opening the Planner">
                 <VsSeg value={plLanding}
@@ -372,7 +411,7 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
             </VsCard>
           )}
 
-          {subPage === 'profiles' && (
+          {page === 'profiles' && (
             <>
               <VsProfiles profileApi={useProfile()} showOrgLabel={false} />
               <BackupRestoreCard fileIO={appFileIO} showExportSingle={true} cloudProviders={appCloudProviders} />
@@ -380,7 +419,7 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
             </>
           )}
 
-          {subPage === 'privacy' && (
+          {page === 'privacy' && (
             <VsCard title="Confidential sections" icon="lock">
               <VsRow title="Password" desc={confCfg.hash ? 'Set — protects confidential sections and rows' : 'Not set yet — created on first lock'}>
                 <button className="btn sm" onClick={() => setPwOpen(true)}>{confCfg.hash ? 'Change password' : 'Set password'}</button>
@@ -401,7 +440,7 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
             </VsCard>
           )}
 
-          {subPage === 'data' && (
+          {page === 'data' && (
             <VsCard title="Data & sync" icon="inbox">
               <VsRow title="Export this week" desc="Download as JSON or Word (.docx) from the planner header">
                 <button className="btn sm" onClick={() => {
@@ -424,11 +463,11 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
             </VsCard>
           )}
 
-          {subPage === 'integrations' && (
+          {page === 'integrations' && (
             <IntegrationsView services={appOAuthServices} />
           )}
         </div>
-      </div>
+      </div>}
       <VsPasswordModal open={pwOpen} onClose={() => setPwOpen(false)}/>
       </div>
     </React.Fragment>

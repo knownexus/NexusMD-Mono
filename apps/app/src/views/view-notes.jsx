@@ -105,7 +105,8 @@ export function NotesView({ onAddTask, onFlash }) {
   const remove = (id) => { setNotes(ns => ns.filter(n => n.id !== id)); setOpenId(null); };
 
   const toggleLock = (note) => {
-    if (note.confidential) return patch(note.id, { confidential: false });
+    // A locked note can't be un-protected without the password.
+    if (note.confidential) return unlocked ? patch(note.id, { confidential: false }) : setModal('unlock');
     if (!loadConfidentialConfig().hash) { setPendingLock(note.id); return setModal('setpw'); }
     patch(note.id, { confidential: true });
   };
@@ -135,7 +136,7 @@ export function NotesView({ onAddTask, onFlash }) {
       <>
         <NoteEditor note={current} unlocked={unlocked} weekLabel={weekLabel}
           onPatch={(p) => patch(current.id, p)} onBack={() => setOpenId(null)}
-          onDelete={() => remove(current.id)} onToggleLock={() => toggleLock(current)}
+          onDelete={() => (current.confidential && !unlocked ? setModal('unlock') : remove(current.id))} onToggleLock={() => toggleLock(current)}
           onAddTask={(t) => { onAddTask?.(t); onFlash?.(`Added as a task in ${weekLabel}`); }}/>
         {modals}
       </>
