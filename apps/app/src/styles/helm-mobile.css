@@ -544,3 +544,12 @@
 .m-app[data-device="phone"] .ac-main { flex: 1 0 auto; overflow-y: visible; padding: 14px; }
 .m-app[data-device="phone"] .ac-empty { padding: 28px 0; }
 .m-app[data-device="phone"] .m-iconbtn { width: 44px; height: 44px; }
+
+/* ---------- Connection sheets (GitHub): hints, switch row, checklist rows ---------- */
+.m-hint { font-size: 12px; line-height: 1.45; color: var(--text-subtle); margin-top: 6px; }
+.m-hint.bad { color: var(--danger); }
+.m-ok { padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-top: 10px; background: var(--success-soft); color: var(--success); }
+.m-switchrow { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: 14px; cursor: pointer; }
+.m-switchrow input { width: 20px; height: 20px; accent-color: var(--accent); flex-shrink: 0; }
+.m-checkrow { align-items: center; gap: 12px; cursor: pointer; }
+.m-checkrow input { width: 20px; height: 20px; accent-color: var(--accent); flex-shrink: 0; }

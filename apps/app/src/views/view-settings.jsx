@@ -58,7 +58,7 @@ function vsTimeZones() {
   return result;
 }
 
-function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection, onOpenJira, onOpenProjectAreas, onGoPlanner }) {
+function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection, onOpenJira, onOpenGithub, onOpenProjectAreas, onGoPlanner }) {
   // Phone: a grouped list of categories, each opening as its own page. Wider screens keep the rail.
   const [phone, setPhone] = useStateVS(() => window.matchMedia('(max-width:600px)').matches);
   useEffectVS(() => {
@@ -311,6 +311,11 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
               {!isManual && onOpenJira && (
                 <VsRow title="Jira account" desc="Site, email, API token and projects">
                   <button className="btn sm ghost" onClick={onOpenJira}>Manage</button>
+                </VsRow>
+              )}
+              {!isManual && onOpenGithub && (
+                <VsRow title="GitHub account" desc="Token, repositories, issues, pull requests and Actions runs">
+                  <button className="btn sm ghost" onClick={onOpenGithub}>Manage</button>
                 </VsRow>
               )}
               {!isManual && onOpenProjectAreas && (

@@ -16,6 +16,7 @@ import {
 } from '@nexusmd/ui';
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
+import { GithubSettingsModal } from './github-settings.jsx';
 import { useOffScreens } from './work-screens.js';
 import { EditorScreen } from './editor-screen.jsx';
 import { GitView } from './git-view.jsx';
@@ -547,6 +548,7 @@ function AppShell() {
   const [drawer, setDrawer]       = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [jiraSettingsOpen, setJiraSettingsOpen] = useState(false);
+  const [githubSettingsOpen, setGithubSettingsOpen] = useState(false);
   const [projectAreasOpen, setProjectAreasOpen] = useState(false);
   const [projectAreas, setProjectAreas] = useState(() => {
     try {
@@ -1046,6 +1048,7 @@ function AppShell() {
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
         onOpenConnection={() => setSettingsOpen(true)}
         onOpenJira={() => setJiraSettingsOpen(true)}
+        onOpenGithub={() => setGithubSettingsOpen(true)}
         onWorkScreensChanged={handleSettingsSaved}
         onOpenProjectAreas={() => setProjectAreasOpen(true)}
         onGoPlanner={() => navigate('planner')} device={device}/>;
@@ -1090,6 +1093,8 @@ function AppShell() {
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)}
         onSaved={handleSettingsSaved}/>
       <JiraSettingsModal open={jiraSettingsOpen} onClose={() => setJiraSettingsOpen(false)}
+        onSaved={handleSettingsSaved}/>
+      <GithubSettingsModal open={githubSettingsOpen} onClose={() => setGithubSettingsOpen(false)}
         onSaved={handleSettingsSaved}/>
       <ProjectAreasModal open={projectAreasOpen} onClose={() => setProjectAreasOpen(false)}
         areas={projectAreas} setAreas={setProjectAreas}/>
