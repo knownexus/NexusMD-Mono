@@ -3,6 +3,9 @@ import { useState, useEffect } from 'react';
 import { Icon } from '../icons.jsx';
 import { effectiveNeedsMe } from '../components.jsx';
 import { HelmData, HelmApi } from '../data.jsx';
+import { appQueue } from '../offline-queue-app.js';
+import { PullRefresh } from '../pull-refresh.jsx';
+import { syncLabel, offlineText } from '../sync-status.js';
 
 // Jira ids are stored as 'jira:TFP-123'; show the key.
 const shortId = (id) => String(id).replace(/^jira:/, '');
@@ -36,6 +39,15 @@ function DashboardView({
   // Tiles drill down in place; null shows the default Blockers / Needs-review cards.
   const [drill, setDrill] = useState(null);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine !== false);
+  // Changes kept for later, and a clock so "Updated 2m ago" keeps moving.
+  const [pending, setPending] = useState(() => appQueue.count());
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const onQ = (e) => setPending(e.detail?.count ?? appQueue.count());
+    const t = setInterval(() => setTick(n => n + 1), 30000);
+    window.addEventListener('helm:queue', onQ);
+    return () => { window.removeEventListener('helm:queue', onQ); clearInterval(t); };
+  }, []);
   useEffect(() => {
     const up = () => setOnline(true), down = () => setOnline(false);
     window.addEventListener('online', up); window.addEventListener('offline', down);
@@ -58,7 +70,12 @@ function DashboardView({
         <div className="m-ab-lead">
           <div>
             <h1>Home</h1>
-            {sprint.name && <div className="m-ab-sub">{sprint.name}</div>}
+            {(sprint.name || HelmData?.loadedAt) && (
+              <div className="m-ab-sub">
+                {[sprint.name, syncLabel(HelmData?.loadedAt)].filter(Boolean).join(' · ')}
+                {online && pending > 0 && <span className="m-pending"> · {pending} waiting to sync</span>}
+              </div>
+            )}
           </div>
         </div>
         <div className="m-ab-actions">
@@ -73,11 +90,11 @@ function DashboardView({
       {!online && (
         <div className="m-offline">
           <Icon name="alert" size={14}/>
-          <span>Offline. Changes are saved and sync later.</span>
+          <span>{offlineText(pending)}</span>
         </div>
       )}
 
-      <div className="m-screen">
+      <PullRefresh onRefresh={() => HelmApi?.load()}>
         {/* Stat tiles */}
         <div className="m-stats"
           style={device === 'tablet' ? { gridTemplateColumns: 'repeat(4,1fr)' } : {}}>
@@ -263,7 +280,7 @@ function DashboardView({
             <div className="es">No open items or blocked work</div>
           </div>
         )}
-      </div>
+      </PullRefresh>
     </>
   );
 }

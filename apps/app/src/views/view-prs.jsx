@@ -1,6 +1,10 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
 import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
+import { PRSheetActions } from './pr-sheet-actions.jsx';
+import { PullRefresh } from '../pull-refresh.jsx';
+import { HelmData, HelmApi } from '../data.jsx';
+import { getGithubConfig } from '../github-client.js';
 import { Sheet, effectiveNeedsMe } from '../components.jsx';
 import { getProfileKey } from '../profile-keys.js';
 // view-prs.jsx — Mobile pull requests
@@ -88,7 +92,7 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
         </div>
       </div>
 
-      <div className="m-screen">
+      <PullRefresh onRefresh={() => HelmApi?.load()}>
         <SourceSwitch {...src}/>
         {/* Segmented control */}
         <div className="m-seg" style={{ marginBottom: 12 }}>
@@ -144,7 +148,7 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
               </div>
             )
         }
-      </div>
+      </PullRefresh>
 
       {/* PR detail sheet */}
       <Sheet open={!!detailPR} size="tall"
@@ -192,6 +196,7 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
                 {detailPR.description.length > 500 ? detailPR.description.slice(0, 500) + '…' : detailPR.description}
               </div>
             )}
+            <PRSheetActions pr={detailPR} me={HelmData?.ME} githubLogin={getGithubConfig().login} onFlash={onFlash}/>
           </>
         )}
       </Sheet>

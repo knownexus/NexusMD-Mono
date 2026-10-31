@@ -106,7 +106,7 @@ async function runLoad(isRefresh = false) {
         },
       },
     });
-    applyToShim({ ...mergedSnapshot(), loaded: true, configured: true });
+    applyToShim({ ...mergedSnapshot(), loaded: true, configured: true, loadedAt: Date.now() });
   } catch (err) {
     console.error('[data.jsx] load failed:', err);
     HelmData.loaded = true;

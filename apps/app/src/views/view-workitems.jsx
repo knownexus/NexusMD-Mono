@@ -2,7 +2,9 @@ import React from 'react';
 import { Icon } from '../icons.jsx';
 import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
 import { workItemSource } from '../work-item-source.js';
-import { HelmData } from '../data.jsx';
+import { PullRefresh } from '../pull-refresh.jsx';
+import { appQueue } from '../offline-queue-app.js';
+import { HelmData, HelmApi } from '../data.jsx';
 import { Sheet } from '../components.jsx';
 import { getProfileKey } from '../profile-keys.js';
 import { isTerminalState } from '@nexusmd/core';
@@ -179,10 +181,11 @@ function WorkItemsView({ items, setItems, onOpen, onCreate, onFlash, team = [], 
     setStateItem(null);
     setStateLocal(wi.id, state);
     try {
-      await workItemSource.saveField(wi.id, 'System.State', state);
-      onFlash?.(`${label} moved to ${state}`, 'check', async () => {
+      const r = await appQueue.run('wi.state', { id: wi.id, state }, `${label} to ${state}`);
+      // Offline: the change is kept and sent later, so it can't be taken back from here.
+      onFlash?.(r.queued ? `${label} saved as ${state}. It will sync when you're back online.` : `${label} moved to ${state}`, 'check', r.queued ? undefined : async () => {
         setStateLocal(wi.id, before);
-        try { await workItemSource.saveField(wi.id, 'System.State', before); }
+        try { await appQueue.run('wi.state', { id: wi.id, state: before }, `${label} back to ${before}`); }
         catch (e) { setStateLocal(wi.id, state); onFlash?.(`Could not undo: ${e?.message || 'failed'}`, 'alert'); }
       });
     } catch (e) {
@@ -314,7 +317,7 @@ function WorkItemsView({ items, setItems, onOpen, onCreate, onFlash, team = [], 
         </div>
       </div>
 
-      <div className="m-screen" style={{ paddingBottom: 80 }}>
+      <PullRefresh style={{ paddingBottom: 80 }} onRefresh={() => HelmApi?.load()}>
         <SourceSwitch {...src}/>
         {/* Search + filter bar */}
         <div className="m-filterbar" style={{ marginBottom: 12 }}>
@@ -482,7 +485,7 @@ function WorkItemsView({ items, setItems, onOpen, onCreate, onFlash, team = [], 
             ))}
           </div>
         )}
-      </div>
+      </PullRefresh>
 
       <Sheet open={!!stateItem} icon="check-circle" title="Change state" sub={stateItem ? `${stateItem.displayId || shortId(stateItem.id)} · now ${stateItem.state}` : ''}
         onClose={() => setStateItem(null)}>

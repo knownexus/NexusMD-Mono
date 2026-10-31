@@ -671,3 +671,15 @@
 /* A state pill you can tap to change the state */
 .m-pillbtn { border: 0; font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; min-height: 28px; }
 .m-pillbtn:active { filter: brightness(.94); }
+
+/* PR sheet: vote and comment */
+.m-pr-actions { margin-top: 16px; }
+.m-votes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+.m-votes .btn { justify-content: center; text-align: center; line-height: 1.2; }
+
+/* Pull to refresh, and the "waiting to sync" note */
+.m-pull { display: flex; align-items: center; justify-content: center; gap: 8px; overflow: hidden; font-size: 12.5px; color: var(--text-muted); transition: height .12s ease; margin: -4px 0 4px; }
+.m-spin { animation: mSpin .8s linear infinite; }
+@keyframes mSpin { to { transform: rotate(360deg); } }
+.m-pending { color: var(--warning); }
+.m-screen, [class~="m-screen"] { overscroll-behavior-y: contain; }

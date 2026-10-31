@@ -18,6 +18,7 @@ import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
 import { GithubSettingsModal } from './github-settings.jsx';
 import { DocumentsPhone } from './views/documents-phone.jsx';
+import './offline-queue-app.js';
 import { createGithubHttpAdapter } from './github-client.js';
 import { useOffScreens } from './work-screens.js';
 import { EditorScreen } from './editor-screen.jsx';
@@ -595,6 +596,17 @@ function AppShell() {
     const t = setTimeout(() => setMobileFlash(null), mobileFlash.undo ? 6000 : 2600);
     return () => clearTimeout(t);
   }, [mobileFlash]);
+
+  // Changes made offline are sent when the connection returns; say what happened.
+  useEffect(() => {
+    const onFlushed = (e) => {
+      const { sent = 0, failed = [] } = e.detail || {};
+      if (failed.length) showFlash(`${failed.length} offline change${failed.length === 1 ? '' : 's'} could not be sent: ${failed[0].error?.message || 'rejected'}`, 'alert');
+      else if (sent) showFlash(`${sent} offline change${sent === 1 ? '' : 's'} synced`, 'check');
+    };
+    window.addEventListener('helm:queue-flushed', onFlushed);
+    return () => window.removeEventListener('helm:queue-flushed', onFlushed);
+  }, [showFlash]);
 
   // ── More sheet ────────────────────────────────────────────────────────────
   const [moreOpen, setMoreOpen] = useState(false);
