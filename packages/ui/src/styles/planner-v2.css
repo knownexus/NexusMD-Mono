@@ -45,6 +45,7 @@
 .glance-group .gg-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
 .glance-group .gg-head .ic { color: var(--text-subtle); display: flex; }
 .glance-group .gg-meta { font-size: 11.5px; color: var(--text-subtle); }
+.glance-group .gg-next { font-size: 11.5px; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .glance-group .gg-bar { height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
 .glance-group .gg-bar > div { height: 100%; background: var(--success); border-radius: 2px; transition: width .3s; }
 

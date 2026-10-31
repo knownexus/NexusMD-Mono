@@ -143,7 +143,7 @@ export function GlanceView({ data, themes, sections, groups, onOpenGroup, onOpen
         <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--text-subtle)', margin: '6px 0 10px' }}>Sections</div>
         <div className="glance-groups">
           {groups.filter(g => g.ids && g.ids.length).map(g => {
-            let total = 0, done = 0, alerts = 0;
+            let total = 0, done = 0, alerts = 0, next = null;
             g.ids.forEach(id => {
               const sec = sections.find(s => s.id === id);
               if (!sec || sec.type !== 'table') return;
@@ -152,6 +152,13 @@ export function GlanceView({ data, themes, sections, groups, onOpenGroup, onOpen
               done += rows.filter(r => r.status === 'Done').length;
               const dateCol = sec.cols.find(c => c.t === 'date');
               alerts += rows.filter(r => r.status === 'Blocked' || (dateCol && plIsOverdueYmd(r[dateCol.k], r.status))).length;
+              // The next thing due in this group: the earliest open item that has a date.
+              const mainCol = sec.cols.find(c => c.main) || sec.cols[0];
+              if (dateCol) rows.forEach(r => {
+                if (!PL_OPEN(r.status || '')) return;
+                const d = plParseYmd(r[dateCol.k]);
+                if (d && (!next || d < next.date)) next = { date: d, title: r[mainCol.k] || '(untitled)' };
+              });
             });
             const hasThemes = g.ids.includes('themes');
             const meta = [];
@@ -167,6 +174,7 @@ export function GlanceView({ data, themes, sections, groups, onOpenGroup, onOpen
                   {alerts > 0 && <span className="pill danger" style={{ marginLeft: 'auto' }}>{alerts}</span>}
                 </span>
                 <span className="gg-meta">{meta.length ? meta.join(' · ') : 'Empty'}</span>
+                {next && <span className="gg-next">Next: {next.title} · {next.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
                 <span className="gg-bar"><div style={{ width: total ? `${Math.round(done / total * 100)}%` : '0%' }}></div></span>
               </button>
             );
