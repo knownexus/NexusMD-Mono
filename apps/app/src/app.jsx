@@ -1101,23 +1101,31 @@ function AppShell() {
         </div>
       </div>
     );
-    // Manual profiles have no ADO connection by design — skip the gate entirely.
-    // For ADO profiles, allow Settings through so the user can reach Profiles to switch.
-    if (!configured && activeProfile?.type !== 'manual' && view !== 'settings') return (
+    // Manual profiles have no integration by design — skip the gate entirely.
+    // Otherwise ask for the profile's primary one; Settings stays reachable so the user can switch profiles.
+    if (!configured && activeProfile?.type !== 'manual' && view !== 'settings') {
+      const t = activeProfile?.type || 'ado';
+      const prov = {
+        ado:    { name: 'Azure DevOps', hint: 'Enter your organisation, PAT, and project names to get started.', open: () => setSettingsOpen(true) },
+        jira:   { name: 'Jira',         hint: 'Enter your Jira site, email, and API token to get started.',      open: () => setJiraSettingsOpen(true) },
+        github: { name: 'GitHub',       hint: 'Enter your GitHub token and repositories to get started.',        open: () => setGithubSettingsOpen(true) },
+      }[t] || {};
+      return (
       <div className="m-screen">
         <div className="m-empty" style={{ paddingTop: 80 }}>
           <div className="ei"><Icon name="settings" size={22}/></div>
-          <div className="et">Connect to Azure DevOps</div>
+          <div className="et">Connect to {prov.name}</div>
           <div style={{ maxWidth: 260, margin: '8px auto 0', lineHeight: 1.5, fontSize: 13.5 }}>
-            Enter your organisation, PAT, and project names to get started.
+            {prov.hint}
           </div>
           <button className="btn primary m-btn-lg" style={{ marginTop: 20 }}
-            onClick={() => setSettingsOpen(true)}>
+            onClick={prov.open}>
             <Icon name="settings" size={14}/> Configure connection
           </button>
         </div>
       </div>
-    );
+      );
+    }
     switch (view) {
       case 'dashboard': return <DashboardView onOpenItem={openWI} onOpenPR={openPR}
         widgetOrder={tweaks.widgetOrder} setWidgetOrder={arr => setTweak('widgetOrder', arr)}

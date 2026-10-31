@@ -1,5 +1,5 @@
 import React from 'react';
-import { ProfileProvider as UiProfileProvider, useProfile, localUpsertProfiles } from '@nexusmd/ui';
+import { ProfileProvider as UiProfileProvider, ProfileGate, useProfile, localUpsertProfiles } from '@nexusmd/ui';
 
 // The app is local-only (no server): the shared ProfileProvider's localStorage
 // cache IS the source of truth, so this store only mints new profiles locally.
@@ -28,6 +28,6 @@ const appProfileStore = {
 };
 
 export function ProfileProvider({ children }) {
-  return <UiProfileProvider namespace="helm" store={appProfileStore}>{children}</UiProfileProvider>;
+  return <UiProfileProvider namespace="helm" store={appProfileStore}><ProfileGate>{children}</ProfileGate></UiProfileProvider>;
 }
 export { useProfile };

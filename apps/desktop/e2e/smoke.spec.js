@@ -35,8 +35,8 @@ test.describe('desktop shell smoke', () => {
 
     await win.getByText('Settings').first().click()
     await win.getByText('Profiles', { exact: true }).click()
-    // VsProfiles (the default profile seeded on first run) + the new backup card.
-    await expect(win.getByText('Default').first()).toBeVisible({ timeout: 15_000 })
+    // VsProfiles (the profile launchApp creates) + the new backup card.
+    await expect(win.getByText('E2E').first()).toBeVisible({ timeout: 15_000 })
     await expect(win.getByText('Backup & Restore')).toBeVisible()
     await expect(win.getByText('Back up all profiles')).toBeVisible()
 
