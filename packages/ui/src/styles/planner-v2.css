@@ -325,3 +325,23 @@
   70% { background: var(--accent-soft); }
   100% { background: transparent; }
 }
+
+/* Quick-add: hidden controls on a wide screen; on a phone the bar sits under the list, with an Add button */
+.qa-bar .qa-add, .qa-more { display: none; }
+@media (max-width: 600px) {
+  .qa-list { display: flex; flex-direction: column; }
+  .qa-list > .qa-bar { order: 90; border-top: 1px solid var(--border); border-bottom: 0; padding: 8px 12px; min-height: 52px; }
+  .qa-list > .qa-more { order: 91; }
+  .qa-list > .qa-hint { order: 92; border-bottom: 0; }
+  .qa-bar input { font-size: 15px; min-height: 40px; }
+  .qa-bar .kbd { display: none; }
+  .qa-bar .qa-add {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-width: 64px; min-height: 40px; padding: 0 14px;
+    border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-fg, #fff); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .qa-bar .qa-add:disabled { background: var(--surface-3); color: var(--text-subtle); cursor: default; }
+  .qa-more {
+    display: block; width: 100%; min-height: 44px; border: 0; border-top: 1px solid var(--border); background: var(--surface-2);
+    color: var(--accent); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  }
+}
