@@ -1028,7 +1028,7 @@ function AppShell() {
         themes={themes} setThemes={setThemes} onExportDocx={plannerExportDocx} device={device} onFlash={showFlash}/>;
       case 'lists': return <ListsView />;
       case 'markdown': return <DocumentsView/>;
-      case 'editor': return <EditorScreen/>;
+      case 'editor': return <EditorScreen onFlash={showFlash}/>;
       case 'git': return <GitView onFlash={showFlash}/>;
       case 'api': return <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>;
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}

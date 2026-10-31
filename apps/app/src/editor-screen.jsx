@@ -8,6 +8,8 @@ import { editorWorkspace, WORKSPACE_ROOT } from './adapters/editor-workspace.js'
 import { pickerAdapter } from './adapters/picker.js';
 import { createSafApi, createEditorApi, safAvailable } from './adapters/editor-saf.js';
 import { getProfileKey } from './profile-keys.js';
+import { Icon } from './icons.jsx';
+import { Sheet } from './components.jsx';
 
 const storage = {
   get: key => { try { return localStorage.getItem(getProfileKey(key)); } catch { return null; } },
@@ -33,7 +35,7 @@ const host = {
   },
 };
 
-export function EditorScreen() {
+function DesktopEditorScreen() {
   const s = useEditorStore(editorStore);
   const [name, setName] = React.useState('');
   const active = s.docs.find(d => d.path === s.active);
@@ -64,4 +66,120 @@ export function EditorScreen() {
       </div>
     </div>
   );
+}
+
+// Phone: browse the workspace folder by folder, then open a file full screen. The tablet and
+// desktop layout above is unchanged.
+const BAD_NAME = /[\/:*?"<>|]/;
+
+function PhoneEditorScreen({ onFlash }) {
+  const s = useEditorStore(editorStore);
+  const [dir, setDir] = React.useState(WORKSPACE_ROOT);
+  const [entries, setEntries] = React.useState(null);
+  const [sheet, setSheet] = React.useState(false);
+  const [name, setName] = React.useState('');
+  const [nameError, setNameError] = React.useState('');
+  const active = s.docs.find(d => d.path === s.active);
+
+  const refresh = React.useCallback(() => {
+    setEntries(null);
+    editorApi.list(dir).then(r => setEntries(r?.entries || [])).catch(() => setEntries([]));
+  }, [dir]);
+  React.useEffect(refresh, [refresh, active]);
+
+  const crumbs = dir.slice(WORKSPACE_ROOT.length).split('/').filter(Boolean);
+  const up = () => setDir(dir.slice(0, dir.lastIndexOf('/')) || WORKSPACE_ROOT);
+
+  const create = async () => {
+    const n = name.trim();
+    if (!n) return setNameError('Enter a name.');
+    if (BAD_NAME.test(n)) return setNameError('A name cannot contain \ / : * ? " < > |');
+    const path = `${dir}/${n}`;
+    const r = await editorApi.write(path, '', { overwrite: false });
+    if (r?.conflict) return setNameError('A file with that name is already here.');
+    setSheet(false); setName(''); setNameError('');
+    editorStore.openPath(path);
+  };
+  const importFile = async () => {
+    try {
+      const p = await host.adapters.picker.pickFile();
+      if (p) { setSheet(false); refresh(); editorStore.openPath(p.path); }
+    } catch (e) { setNameError(e?.message || 'Could not import that file.'); }
+  };
+  const share = async () => {
+    try { await navigator.share({ title: active.name, text: active.text }); }
+    catch { onFlash?.('Sharing is not available here'); }
+  };
+
+  if (active) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+        <div className="m-appbar">
+          <button type="button" className="m-iconbtn" aria-label="Back" onClick={() => editorStore.close(active.path)}><Icon name="chevron-left" size={18}/></button>
+          <div className="m-ab-lead"><div><h1 style={{ fontSize: 16 }}>{active.name}</h1></div></div>
+          <div className="m-ab-actions">
+            {navigator.share && <button type="button" className="m-iconbtn" title="Share" disabled={active.status !== 'ready'} onClick={share}><Icon name="send" size={17}/></button>}
+            <button type="button" className="m-linkbtn" disabled={active.status !== 'ready'}
+              onClick={() => { pickerAdapter.saveFile(active.name, active.text); onFlash?.('Exported'); }}>Export</button>
+          </div>
+        </div>
+        <div style={{ flex: 1, overflow: 'hidden' }}><EditorApp host={host} store={editorStore} api={editorApi}/></div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="m-appbar">
+        <div className="m-ab-lead"><div><h1>Documents</h1><div className="m-ab-sub">{crumbs.length ? crumbs.join(' / ') : 'Workspace'}</div></div></div>
+        <div className="m-ab-actions">
+          <button type="button" className="m-iconbtn" aria-label="New or import" onClick={() => { setNameError(''); setSheet(true); }}><Icon name="plus" size={20}/></button>
+        </div>
+      </div>
+      <div className="m-screen">
+        {!entries && <div className="muted">Loading…</div>}
+        {entries && (
+          <div className="m-card flush">
+            {dir !== WORKSPACE_ROOT && (
+              <div className="m-row" onClick={up}><div className="m-row-main"><div className="m-row-title">Up one folder</div></div></div>
+            )}
+            {entries.length === 0 && <div className="muted" style={{ padding: 16, fontSize: 13 }}>This folder is empty.</div>}
+            {entries.map(e => (
+              <div key={e.name} className="m-row"
+                onClick={() => (e.kind === 'dir' ? setDir(`${dir}/${e.name}`) : editorStore.openPath(`${dir}/${e.name}`))}>
+                <span className="m-fileic"><Icon name={e.kind === 'dir' ? 'folder' : 'doc'} size={16}/></span>
+                <div className="m-row-main"><div className="m-row-title">{e.name}</div></div>
+                {e.kind === 'dir' && <Icon name="chevron-right" size={16} className="chev"/>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <Sheet open={sheet} icon="plus" title="New document" onClose={() => setSheet(false)}>
+        <div className="m-fld">
+          <label>Name</label>
+          <input type="text" value={name} autoFocus placeholder="notes.md"
+            onChange={e => { setName(e.target.value); setNameError(''); }}
+            onKeyDown={e => { if (e.key === 'Enter') create(); }}/>
+          {nameError && <div className="m-error" style={{ marginTop: 8 }}>{nameError}</div>}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="btn ghost m-btn-lg" onClick={importFile}>Import from device</button>
+          <button type="button" className="btn primary m-btn-lg" style={{ flex: 1 }} onClick={create}>Create</button>
+        </div>
+        <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>Import copies a text file into this folder.</div>
+      </Sheet>
+    </>
+  );
+}
+
+export function EditorScreen({ onFlash }) {
+  const [phone, setPhone] = React.useState(() => window.matchMedia('(max-width:600px)').matches);
+  React.useEffect(() => {
+    const mq = window.matchMedia('(max-width:600px)');
+    const h = e => setPhone(e.matches);
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, []);
+  return phone ? <PhoneEditorScreen onFlash={onFlash}/> : <DesktopEditorScreen/>;
 }
