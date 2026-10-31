@@ -161,4 +161,4 @@ export { useDocumentAutosave, relativeTime, generateId } from './views/document-
 export {
   findMatches, buildOverlaySegments, splitMatchByGroups, runUnitTests, genCode, REFERENCE_DATA,
 } from './views/regex-tester-helpers.js'
-export { typeOf } from './views/json-editor-helpers.js'
+export { typeOf, getAtPath, replaceAtPath, addFieldAtPath, deleteAtPath, coerceVal } from './views/json-editor-helpers.js'

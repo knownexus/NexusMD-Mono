@@ -715,3 +715,10 @@
 .m-diff-del { color: var(--danger); font-weight: 600; }
 .m-learn { flex-shrink: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-top: 10px; padding: 10px 14px; border: 1px solid var(--accent-border); border-radius: var(--radius-lg); background: var(--accent-soft); }
 .m-learn pre { margin: 4px 0 0; font-family: var(--mono); font-size: 13px; white-space: pre-wrap; }
+
+/* JSON tree: editable rows */
+.m-tree-row { align-items: stretch; min-height: 44px; }
+.m-tree-caret.tap { width: 36px; justify-content: center; align-items: center; border: 0; background: none; padding: 0; cursor: pointer; flex-shrink: 0; }
+.m-tree-caret:not(.tap) { width: 18px; }
+.m-tree-body { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0 6px 0 0; text-align: left; font: inherit; color: inherit; cursor: pointer; border-radius: 8px; }
+.m-tree-body:active { background: var(--accent-soft); }

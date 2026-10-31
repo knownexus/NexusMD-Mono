@@ -4,6 +4,8 @@ import React from 'react';
 import { useDocumentAutosave, typeOf } from '@nexusmd/ui';
 import { Icon } from '../icons.jsx';
 import { ToolFrame, DocsSheet } from './docs-frame.jsx';
+import { JsonNodeSheet } from './json-node-sheet.jsx';
+import { searchPaths, pathKey, isContainer } from '../json-tree.js';
 
 const { useState, useMemo, useEffect } = React;
 const copy = (text) => navigator.clipboard?.writeText(text).catch(() => {});
@@ -45,21 +47,29 @@ const preview = (v) => {
   return t === 'object' ? `{ ${Object.keys(v).length} }` : t === 'array' ? `[ ${v.length} ]` : t === 'string' ? JSON.stringify(v) : String(v);
 };
 
-function TreeNode({ k, v, depth, path, flipped, flip }) {
+// One row of the tree. The caret opens and closes a group or list; tapping the row edits it. While
+// searching, only matching rows and the groups above them are shown, all opened.
+function TreeNode({ k, v, depth, path, flipped, flip, onEdit, search }) {
   const t = typeOf(v);
-  const container = t === 'object' || t === 'array';
-  const open = container && (depth < 2) !== flipped.has(path);
+  const container = isContainer(v);
+  const id = pathKey(path);
+  if (search.active && !search.show.has(id)) return null;
+  const open = container && (search.active ? true : (depth < 2) !== flipped.has(id));
   return (
     <div className="m-tree-node">
-      <div className={`m-tree-row${container ? ' tap' : ''}`} onClick={container ? () => flip(path) : undefined}>
-        <span className="m-tree-caret">{container ? <Icon name={open ? 'chevron-down' : 'chevron-right'} size={13}/> : null}</span>
-        {k != null && <span className="m-tree-key">{k}</span>}
-        <span className={`m-tree-val ${t}`}>{preview(v)}</span>
+      <div className="m-tree-row">
+        {container
+          ? <button type="button" className="m-tree-caret tap" aria-label={open ? 'Collapse' : 'Expand'} aria-expanded={open} onClick={() => flip(id)}><Icon name={open ? 'chevron-down' : 'chevron-right'} size={14}/></button>
+          : <span className="m-tree-caret"/>}
+        <button type="button" className="m-tree-body" onClick={() => onEdit(path)} aria-label={k == null ? 'Edit the whole document' : `Edit ${k}`}>
+          {k != null && <span className="m-tree-key">{k}</span>}
+          <span className={`m-tree-val ${t}`}>{preview(v)}</span>
+        </button>
       </div>
       {open && (
         <div className="m-tree-kids">
           {(t === 'array' ? v.map((x, i) => [i, x]) : Object.entries(v)).map(([ck, cv]) => (
-            <TreeNode key={ck} k={ck} v={cv} depth={depth + 1} path={`${path}/${ck}`} flipped={flipped} flip={flip}/>
+            <TreeNode key={ck} k={ck} v={cv} depth={depth + 1} path={[...path, ck]} flipped={flipped} flip={flip} onEdit={onEdit} search={search}/>
           ))}
         </div>
       )}
@@ -76,11 +86,20 @@ export function JsonPhone({ tool, setTool, onFlash }) {
   const [mode, setMode] = useState('edit');
   const [sheet, setSheet] = useState(false);
   const [flipped, setFlipped] = useState(() => new Set());
+  const [editPath, setEditPath] = useState(null);
+  const [term, setTerm] = useState('');
   const parsed = useMemo(() => parseJson(d.content), [d.content]);
   const flip = (p) => setFlipped(s => { const n = new Set(s); n.has(p) ? n.delete(p) : n.add(p); return n; });
   const current = d.docs.find(x => x.id === d.currentDocId);
   const title = current ? (current.name ?? current.autoName) : 'New document';
 
+  const search = useMemo(() => (parsed.ok ? searchPaths(parsed.value, term) : { show: new Set(), count: 0, active: false }), [parsed, term]);
+  // An edit rewrites the document; Undo puts the text back as it was.
+  const applyEdit = (next, message) => {
+    const before = d.content;
+    d.setContent(JSON.stringify(next, null, 2));
+    onFlash?.(message, 'check', () => d.setContent(before));
+  };
   const act = (fn) => { if (parsed.ok) d.setContent(fn(parsed.value)); };
   const status = d.saveStatus === 'saving' ? 'Saving…' : d.saveStatus === 'saved' ? 'Saved' : '';
 
@@ -109,13 +128,23 @@ export function JsonPhone({ tool, setTool, onFlash }) {
             {!parsed.ok && d.content.trim() && <div className="m-error" role="alert">{parsed.message}</div>}
           </>
         ) : (
-          <div className="m-docs-preview">
-            {parsed.ok
-              ? <TreeNode k={null} v={parsed.value} depth={0} path="" flipped={flipped} flip={flip}/>
-              : <div className="m-error" role="alert">Fix the JSON to see the tree. {parsed.message}</div>}
-          </div>
+          <>
+            <div className="m-search" style={{ marginBottom: 10 }}>
+              <span className="si"><Icon name="search" size={16}/></span>
+              <input type="search" value={term} onChange={e => setTerm(e.target.value)} placeholder="Search names and values" aria-label="Search the tree" disabled={!parsed.ok}/>
+            </div>
+            {search.active && <div className="m-hint" style={{ marginTop: -4, marginBottom: 8 }}>{search.count} match{search.count === 1 ? '' : 'es'}</div>}
+            <div className="m-docs-preview">
+              {parsed.ok
+                ? (search.active && search.count === 0
+                    ? <div className="muted">Nothing matches “{term}”.</div>
+                    : <TreeNode k={null} v={parsed.value} depth={0} path={[]} flipped={flipped} flip={flip} onEdit={setEditPath} search={search}/>)
+                : <div className="m-error" role="alert">Fix the JSON to see the tree. {parsed.message}</div>}
+            </div>
+          </>
         )}
       </ToolFrame>
+      {parsed.ok && <JsonNodeSheet data={parsed.value} path={editPath} onClose={() => setEditPath(null)} onApply={applyEdit}/>}
       <DocsSheet open={sheet} onClose={() => setSheet(false)} docs={d.docs} currentDocId={d.currentDocId} name="JSON documents"
         onOpen={(id) => { d.openDoc(id); setMode('edit'); }} onNew={() => { d.newDoc(); setMode('edit'); }} onRename={d.renameDoc} onDelete={d.deleteDoc}/>
     </>
