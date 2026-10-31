@@ -36,6 +36,9 @@ export async function launchApp({ seed = {}, prefs = null, args = [], headed = p
   }, seed)
   await win.reload()
   await win.waitForLoadState('domcontentloaded')
+  // A file given on the command line was handed over before this reload and is lost with it. Hand it over again
+  // the way a second launch does.
+  if (args.some(a => !a.startsWith('-'))) await app.evaluate(({ app: a }) => a.emit('second-instance', {}, process.argv, process.cwd()))
   return {
     app, win,
     async close() {

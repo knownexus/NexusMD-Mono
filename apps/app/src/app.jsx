@@ -3,7 +3,7 @@ import { Icon } from './icons.jsx';
 import ReactDOM from 'react-dom/client';
 import { adoGet, adoPost, adoPatch, adoPut, getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js';
 import { toast } from './toast.jsx';
-import { helmPushPref, effectiveNeedsMe, StatusBar, Flash, Sheet } from './components.jsx';
+import { helmPushPref, effectiveNeedsMe, Flash, Sheet } from './components.jsx';
 import { getIsoYearWeek, getMondayOfDate, getYearWeekForOffset } from '@nexusmd/core';
 import { HelmData, HelmApi } from './data.jsx';
 import { useProfile, ProfileProvider } from './profile-context.jsx';
@@ -1186,7 +1186,6 @@ function AppShell() {
 
   return (
     <div className="m-app" data-device={device}>
-      <StatusBar/>
       {device === 'phone' ? (
         <>
           <div className="m-main">{activeScreen}</div>

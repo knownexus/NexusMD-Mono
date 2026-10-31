@@ -6,23 +6,13 @@
   color: var(--text);
   font-family: var(--sans);
   overflow: hidden;
+  /* The window draws edge-to-edge (target SDK 36), so keep clear of the system status bar. The real clock and
+     battery live there; the app draws none of its own. --safe-area-inset-top comes from Capacitor. */
+  padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
   -webkit-font-smoothing: antialiased;
   font-feature-settings: 'ss01','cv11';
 }
 .m-app * { box-sizing: border-box; }
-
-/* iOS-style status bar */
-.m-statusbar {
-  height: 44px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 26px 0 28px;
-  font-size: 14px; font-weight: 600; letter-spacing: .02em;
-  color: var(--text);
-  background: var(--surface);
-}
-.m-statusbar .sb-icons { display: flex; align-items: center; gap: 6px; }
-.m-statusbar svg { display: block; }
-.m-app[data-device="tablet"] .m-statusbar { padding: 0 22px; height: 30px; font-size: 13px; }
 
 /* ---------- Top app bar ---------- */
 .m-appbar {
