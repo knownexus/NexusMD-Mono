@@ -16,7 +16,16 @@
 $ErrorActionPreference = 'Stop'
 
 if (-not (Get-Command keytool -ErrorAction SilentlyContinue)) {
-  throw 'keytool was not found. Install a JDK (Temurin 21) and make sure its bin folder is on PATH.'
+  # Not on PATH: use the one in JAVA_HOME or in Android Studio's bundled JDK, if either exists.
+  $candidates = @(
+    $(if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin' }),
+    (Join-Path $env:ProgramFiles 'Android\Android Studio\jbr\bin'),
+    (Join-Path $env:LOCALAPPDATA 'Programs\Android Studio\jbr\bin')
+  ) | Where-Object { $_ -and (Test-Path (Join-Path $_ 'keytool.exe')) }
+  if (-not $candidates) {
+    throw 'keytool was not found. Install a JDK (Temurin 21) or Android Studio, or put a JDK bin folder on PATH.'
+  }
+  $env:PATH = "$($candidates | Select-Object -First 1);$env:PATH"
 }
 
 $dir = Join-Path $HOME 'nexus-keys'
