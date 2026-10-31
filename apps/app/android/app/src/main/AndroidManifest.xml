@@ -30,6 +30,14 @@
                 <data android:scheme="nexusmd" android:host="oauth" />
             </intent-filter>
 
+            <!-- Google sign-in redirect: com.knownexus.nexus:/oauth2redirect?code=&state= (see google-oauth.js) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.knownexus.nexus" />
+            </intent-filter>
+
         </activity>
 
         <provider

@@ -131,3 +131,14 @@ describe('ArtifactDownload plugin: Java and JavaScript agree', () => {
     expect(java).toContain('"api.github.com"')
   })
 })
+
+describe('Google sign-in redirect', () => {
+  const oauth = read('src', 'google-oauth.js')
+  const scheme = oauth.match(/REDIRECT_SCHEME = '([^']+)'/)[1]
+
+  it('uses the app id as the redirect scheme and the manifest opens the app for it', () => {
+    // Google requires an Android client's custom scheme to be the package name.
+    expect(scheme).toBe(namespace)
+    expect(manifest).toMatch(new RegExp(`<data android:scheme="${scheme.replace(/\./g, '\.')}"\s*/>`))
+  })
+})

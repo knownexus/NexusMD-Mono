@@ -7,17 +7,21 @@ import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/core'
 import { toast } from './toast.jsx'
 import { deepLinkAdapter } from './adapters/deepLink.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
+import {
+  SCOPES, makePkce, randomString, buildAuthUrl, parseRedirect,
+  exchangeCode, refreshAccessToken, markGooglePending, takeGooglePending,
+} from './google-oauth.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'
 
 const PROVIDERS = {
-  gdrive:    { keySuffix: 'gdrive.auth',    api: '/api/google/auth', from: 'gdrive' },
+  gdrive:    { keySuffix: 'gdrive.auth',    from: 'gdrive', scope: SCOPES.drive },
   onedrive:  { keySuffix: 'onedrive.auth',  api: '/api/ms/auth',     from: 'onedrive' },
   ado:       { keySuffix: 'ado.auth',       api: '/api/ado/auth',    from: 'ado' },
   microsoft: { keySuffix: 'microsoft.auth', api: '/api/ms/auth',     from: 'microsoft' },
   github:    { keySuffix: 'github.auth',    api: '/api/github/auth', from: 'github' },
-  // Google sign-in for the calendar. Same server endpoints as Drive, kept as its own connection.
-  google:    { keySuffix: 'google.auth',    api: '/api/google/auth', from: 'google' },
+  // Google sign-in for the calendar: its own connection (own scope), same client ID as Drive. Both talk to Google directly.
+  google:    { keySuffix: 'google.auth',    from: 'google', scope: SCOPES.calendar },
 }
 const BY_FROM = {
   gdrive:    PROVIDERS.gdrive,
@@ -70,7 +74,70 @@ export async function signInFailure(res) {
 
 // Ask the sign-in server for the provider's consent URL and open it in the system browser. Every way this can
 // fail says so, instead of the button doing nothing.
+// The Google client ID: entered under Settings > Integrations > Google, or baked in at build time.
+export async function googleClientId() {
+  try {
+    const k = resolveKey('google.oauthCreds')
+    const raw = k ? await secureStorageAdapter.get(k) : null
+    const id = raw ? JSON.parse(raw).clientId : ''
+    if (id && id.trim()) return id.trim()
+  } catch { /* fall through */ }
+  return (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim()
+}
+
+async function startGoogleSignIn(cfg) {
+  const clientId = await googleClientId()
+  if (!clientId) {
+    toast?.('Add your Google client ID first: Settings > Integrations > Google.', 'error')
+    return
+  }
+  try {
+    const { verifier, challenge } = await makePkce()
+    const state = randomString(16)
+    markGooglePending({ from: cfg.from, state, verifier })
+    openBrowser(buildAuthUrl({ clientId, scope: cfg.scope, challenge, state }))
+  } catch {
+    toast?.('Could not start Google sign-in on this device.', 'error')
+  }
+}
+
+// The browser has come back with a code: trade it, with the verifier kept from the start, for tokens.
+async function redeemGoogle({ code, state, error }) {
+  const pending = takeGooglePending(state)
+  if (!pending) return
+  if (error || !code) { toast?.(`Google sign-in was not completed (${error || 'no code'}).`, 'error'); return }
+  const cfg = BY_FROM[pending.from]
+  try {
+    const clientId = await googleClientId()
+    const auth = await exchangeCode({ clientId, code, verifier: pending.verifier })
+    await writeAuth(cfg.keySuffix, auth)
+    window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
+    window.location.reload()
+  } catch (e) {
+    toast?.(`Google sign-in failed: ${e.message}`, 'error')
+  }
+}
+
+// A current access token, refreshed from Google with the stored refresh token when it has expired (or on demand).
+async function googleToken(cfg, { force } = {}) {
+  const auth = readAuth(cfg.keySuffix)
+  if (!auth?.accessToken) return null
+  if (!force && (!auth.expiresAt || auth.expiresAt - Date.now() > 60_000)) return auth.accessToken
+  if (!auth.refreshToken) return force ? null : auth.accessToken
+  try {
+    const clientId = await googleClientId()
+    const fresh = await refreshAccessToken({ clientId, refreshToken: auth.refreshToken })
+    await writeAuth(cfg.keySuffix, { ...auth, ...fresh })
+    return fresh.accessToken
+  } catch (e) {
+    // Access was revoked or the refresh token expired: forget it so the app asks the user to sign in again.
+    if (e.code === 'invalid_grant') { await clearAuth(cfg.keySuffix); window.dispatchEvent(new Event('nexusmd:cloud-auth-changed')) }
+    return null
+  }
+}
+
 export async function startSignIn(cfg) {
+  if (cfg.scope) return startGoogleSignIn(cfg)
   try {
     const returnUri = `nexusmd://oauth/${cfg.from}`
     const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
@@ -93,6 +160,7 @@ function makeBinding(key) {
       window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
     },
     async getToken({ force } = {}) {
+      if (cfg.scope) return googleToken(cfg, { force })
       const auth = readAuth(cfg.keySuffix)
       if (!auth?.accessToken) return null
       if (!force) return auth.accessToken
@@ -129,6 +197,8 @@ export function takePending(from, now = Date.now()) {
 }
 
 async function redeem(url) {
+  const google = parseRedirect(url)
+  if (google) return redeemGoogle(google)
   let u
   try { u = new URL(url) } catch { return }
   const from = u.searchParams.get('provider')
