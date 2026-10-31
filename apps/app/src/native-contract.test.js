@@ -107,3 +107,27 @@ describe('SafFolder plugin: Java and JavaScript agree', () => {
     for (const key of ['uri', 'name', 'cancelled']) expect(pluginJava).toContain(`"${key}"`)
   })
 })
+
+describe('ArtifactDownload plugin: Java and JavaScript agree', () => {
+  const java = fs.readFileSync(path.join(javaDir, 'ArtifactDownloadPlugin.java'), 'utf8')
+  const js = read('src', 'build-artifacts.js')
+  const name = java.match(/@CapacitorPlugin\(\s*name\s*=\s*"([^"]+)"/)[1]
+  const methods = [...java.matchAll(/@PluginMethod[^\n]*\n\s*public void (\w+)\(PluginCall/g)].map(m => m[1])
+
+  it('registers under the name the JavaScript asks for and implements what it calls', () => {
+    expect(js).toContain(`registerPlugin('${name}')`)
+    for (const m of new Set([...js.matchAll(/\bplugin\.(\w+)\(/g)].map(x => x[1]))) expect(methods).toContain(m)
+  })
+
+  it('is registered by the activity before the bridge starts', () => {
+    const at = mainActivity.indexOf('registerPlugin(ArtifactDownloadPlugin.class)')
+    expect(at).toBeGreaterThan(-1)
+    expect(at).toBeLessThan(mainActivity.search(/^\s*super\.onCreate\(/m))
+  })
+
+  it('reads the keys the JavaScript sends and only talks to the two API hosts', () => {
+    for (const key of ['url', 'filename', 'headers', 'cancelled', 'bytes']) expect(java).toContain(`"${key}"`)
+    expect(java).toContain('"dev.azure.com"')
+    expect(java).toContain('"api.github.com"')
+  })
+})

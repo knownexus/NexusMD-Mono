@@ -6,6 +6,7 @@ import { HelmData } from '../data.jsx';
 import { ColHead } from '@nexusmd/ui';
 import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
 import { NotificationBanner } from '../components.jsx';
+import { BuildArtifactsSheet } from './build-artifacts-sheet.jsx';
 // view-builds.jsx — Build pipelines status view
 
 // Grid template shared between header and every build row
@@ -23,6 +24,7 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
   const [pipelineMenuOpen, setPipelineMenuOpen] = React.useState(false);
   const [deployStatus,     setDeployStatus]     = React.useState(null);
   const [actioning,        setActioning]        = React.useState(new Set());
+  const [artifactBuild,    setArtifactBuild]    = React.useState(null);
 
   const acknowledgedSet = React.useMemo(() => new Set(acknowledgedBuilds || []), [acknowledgedBuilds]);
   const toggleAck = (id) => setAcknowledgedBuilds(prev =>
@@ -455,6 +457,13 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                           <Icon name="refresh" size={12}/> {actioning.has(b.id) ? '…' : 'Rerun'}
                         </button>
                       )}
+                      {/* Artifacts — finished builds */}
+                      {b.status !== 'running' && (
+                        <button className="btn sm ghost" title="Download this build's artifacts"
+                          onClick={e => { e.stopPropagation(); setArtifactBuild(b); }}>
+                          <Icon name="download" size={12}/> Artifacts
+                        </button>
+                      )}
                       {/* Ack / Unack — failed builds */}
                       {b.status === 'failed' && (
                         acknowledgedSet.has(b.id)
@@ -498,6 +507,7 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
       </div>
       </div>
       </div>
+      <BuildArtifactsSheet build={artifactBuild} onClose={() => setArtifactBuild(null)}/>
     </React.Fragment>
   );
 }

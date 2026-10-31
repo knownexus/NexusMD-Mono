@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
         // Local plugins register before super.onCreate builds the bridge.
         registerPlugin(SafFolderPlugin.class);
         registerPlugin(AppUpdatePlugin.class);
+        registerPlugin(ArtifactDownloadPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
