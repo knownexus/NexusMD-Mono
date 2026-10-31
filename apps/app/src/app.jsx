@@ -1029,7 +1029,7 @@ function AppShell() {
       case 'lists': return <ListsView />;
       case 'markdown': return <DocumentsView/>;
       case 'editor': return <EditorScreen/>;
-      case 'git': return <GitView/>;
+      case 'git': return <GitView onFlash={showFlash}/>;
       case 'api': return <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>;
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
         onOpenConnection={() => setSettingsOpen(true)}

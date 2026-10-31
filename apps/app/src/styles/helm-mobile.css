@@ -492,3 +492,14 @@
 .m-day.today .num { color: var(--accent); }
 .m-day.out { opacity: .4; }
 .m-day.sel { background: var(--accent-soft); border-color: var(--accent-border); }
+
+/* ---------- Repos: breadcrumbs, file rows, code viewer ---------- */
+.m-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 8px; font-size: 13px; color: var(--text-subtle); }
+.m-crumbs button { border: 0; background: none; padding: 6px 2px; min-height: 32px; font: inherit; color: var(--accent); cursor: pointer; }
+.m-fileic { display: flex; color: var(--text-subtle); flex-shrink: 0; align-self: center; }
+.m-code { font-family: var(--mono); font-size: 12px; line-height: 1.55; overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 8px 0; }
+.m-code .ln { display: flex; }
+.m-code .no { flex: none; width: 42px; padding-right: 10px; text-align: right; color: var(--text-subtle); user-select: none; }
+.m-code .tx { white-space: pre; padding-right: 12px; }
+.m-code.wrap .tx { white-space: pre-wrap; word-break: break-word; min-width: 0; }
+.m-error { padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 10px; background: var(--danger-soft); color: var(--danger); }
