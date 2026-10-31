@@ -144,7 +144,9 @@ button[style*="height:30"] { min-height: 44px !important; }
     overflow-x: auto;
     gap: 6px;
     padding-bottom: 4px;
+    scrollbar-width: none;
   }
+  .set-layout > .pl-rail::-webkit-scrollbar { display: none; }
   .set-layout > .pl-rail .pl-rail-item { flex: none; white-space: nowrap; }
   .set-layout .set-row { flex-wrap: wrap; }
   .set-layout [style*="grid-template-columns: 1fr 1fr"] { grid-template-columns: 1fr !important; }
