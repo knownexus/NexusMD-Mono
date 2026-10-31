@@ -14,6 +14,12 @@ import {
 import { appFileIO } from '../file-io.js';
 import { appCloudProviders, makeAppOAuthService } from '../cloud-auth.js';
 import { appSync } from '../sync.js';
+import { getAdoConfig } from '../ado-client.js';
+import { getJiraConfig } from '../jira-client.js';
+import { getGithubConfig } from '../github-client.js';
+import { appQueue } from '../offline-queue-app.js';
+import { syncLabel } from '../sync-status.js';
+import { connectionsSummary, privacySummary, dataSummary } from '../settings-summary.js';
 // view-settings.jsx — Settings & profile page (planner-redesign port)
 // Works with the app's existing infrastructure:
 //   - tweaks / setTweak        → helm.tweaks (theme, density, sidebar, typeLabels)
@@ -217,9 +223,9 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
     appearance:   () => `Theme and ${tweaks.density || 'balanced'} density`,
     planner:      () => 'Landing page, navigation, entry style',
     profiles:     () => 'Switch or add profiles',
-    privacy:      () => 'Confidential password',
-    data:         () => 'Storage, sync and versions',
-    integrations: () => 'Azure DevOps, Jira, GitHub, email digest',
+    privacy:      () => privacySummary({ hasPassword: !!confCfg.hash, autoRelock }),
+    data:         () => dataSummary({ pending: appQueue.count(), loadedLabel: syncLabel(HelmData?.loadedAt) }),
+    integrations: () => connectionsSummary({ ado: getAdoConfig(), jira: getJiraConfig(), github: getGithubConfig() }),
   };
   const shownName = displayName || me.name || '—';
   const initials = (shownName === '—' ? (me.name || '?') : shownName)

@@ -247,6 +247,7 @@ function SettingsModal({ open, onClose, onSaved }) {
   const [status, setStatus]   = useState('');
   const [saving, setSaving]   = useState(false);
   const [discovering, setDiscovering] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [quickLinks, setQuickLinks] = useState([]);
 
   useEffect(() => {
@@ -296,6 +297,20 @@ function SettingsModal({ open, onClose, onSaved }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Checks the organisation and token against Azure DevOps and says who they belong to.
+  const testConnection = async () => {
+    const o = org.trim(), p = pat.trim() || getAdoConfig().pat;
+    if (!o || !p) { setStatus('Error: Enter the organisation and a token first.'); return; }
+    setTesting(true); setStatus('Testing…');
+    try {
+      saveAdoConfig({ org: o, pat: p });
+      const r = await adoGet('_apis/connectionData');
+      setStatus(`Connected as ${r?.authenticatedUser?.providerDisplayName || 'an unknown user'}`);
+    } catch (e) {
+      setStatus('Error: ' + (e?.message || 'connection failed'));
+    } finally { setTesting(false); }
   };
 
   const discoverProjects = async () => {
@@ -481,6 +496,7 @@ function SettingsModal({ open, onClose, onSaved }) {
           )}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button className="btn ghost" onClick={onClose}>Cancel</button>
+            <button className="btn ghost" onClick={testConnection} disabled={testing || saving}>{testing ? 'Testing…' : 'Test connection'}</button>
             <button className="btn primary" onClick={save} disabled={saving}>
               {saving ? 'Saving…' : 'Save & reload'}
             </button>

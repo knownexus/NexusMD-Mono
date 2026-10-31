@@ -58,7 +58,7 @@ export function JiraSettingsModal({ open, onClose, onSaved }) {
   if (!open) return null;
   const isError = status.startsWith('Error');
   return (
-    <div style={{
+    <div id="modal-jira" style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>

@@ -18,8 +18,18 @@ export function eventBadge(ev, now = Date.now()) {
   return '';
 }
 
+// Only an https link to Teams is ever followed: the link comes from event data, which anyone who
+// sends an invitation can influence, so a javascript: or look-alike address must not get through.
+const TEAMS_HOSTS = ['teams.microsoft.com', 'teams.live.com'];
+export function safeTeamsUrl(raw) {
+  try {
+    const u = new URL(String(raw || '').trim());
+    return u.protocol === 'https:' && !u.username && !u.password && TEAMS_HOSTS.includes(u.hostname.toLowerCase()) ? u.href : '';
+  } catch { return ''; }
+}
+
 // The meeting's join link: the one Outlook gave, else a Teams link written in the text.
-export const joinUrlOf = (ev) => ev?.joinUrl || String(ev?.description || '').match(TEAMS_RE)?.[0] || '';
+export const joinUrlOf = (ev) => safeTeamsUrl(ev?.joinUrl) || safeTeamsUrl(String(ev?.description || '').match(TEAMS_RE)?.[0]) || '';
 
 // The same event `minutes` later (start and end), as local stamps.
 export function shiftEvent(ev, minutes) {

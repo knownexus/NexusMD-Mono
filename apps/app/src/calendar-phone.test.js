@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { eventBadge, joinUrlOf, shiftEvent, layoutDay, hourRange, stamp } from './calendar-phone.js'
+import { eventBadge, joinUrlOf, safeTeamsUrl, shiftEvent, layoutDay, hourRange, stamp } from './calendar-phone.js'
 
 const at = (h, m = 0) => new Date(2026, 10, 2, h, m)            // 2 Nov 2026, local
 const ev = (id, start, end, extra = {}) => ({ id, title: id, start: stamp(start), end: end ? stamp(end) : undefined, ...extra })
@@ -26,6 +26,25 @@ describe('joining a meeting', () => {
     expect(joinUrlOf({ description: 'Join: https://teams.microsoft.com/l/meetup-join/xyz?a=1 thanks' })).toBe('https://teams.microsoft.com/l/meetup-join/xyz?a=1')
     expect(joinUrlOf({ description: 'Room 4' })).toBe('')
     expect(joinUrlOf(null)).toBe('')
+  })
+})
+
+describe('only Teams links over https are followed', () => {
+  it('refuses scripts, other schemes, look-alike hosts and embedded credentials', () => {
+    expect(safeTeamsUrl('javascript:alert(1)')).toBe('')
+    expect(safeTeamsUrl('data:text/html,<script>1</script>')).toBe('')
+    expect(safeTeamsUrl('http://teams.microsoft.com/l/meetup-join/a')).toBe('')
+    expect(safeTeamsUrl('https://teams.microsoft.com.evil.example/l/a')).toBe('')
+    expect(safeTeamsUrl('https://evil.example/teams.microsoft.com/')).toBe('')
+    expect(safeTeamsUrl('https://teams.microsoft.com@evil.example/l/a')).toBe('')
+    expect(safeTeamsUrl('https://user:pw@teams.microsoft.com/l/a')).toBe('')
+    expect(safeTeamsUrl('not a url')).toBe('')
+    expect(safeTeamsUrl(undefined)).toBe('')
+  })
+  it('accepts a real Teams link, and ignores a bad joinUrl in favour of a good one in the text', () => {
+    expect(safeTeamsUrl('https://teams.microsoft.com/l/meetup-join/abc?x=1')).toBe('https://teams.microsoft.com/l/meetup-join/abc?x=1')
+    expect(joinUrlOf({ joinUrl: 'javascript:alert(1)' })).toBe('')
+    expect(joinUrlOf({ joinUrl: 'javascript:alert(1)', description: 'https://teams.live.com/meet/9' })).toBe('https://teams.live.com/meet/9')
   })
 })
 
