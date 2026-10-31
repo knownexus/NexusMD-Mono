@@ -35,7 +35,7 @@ function NoteEditor({ note, unlocked, weekLabel, onPatch, onBack, onDelete, onAd
           <button type="button" className="m-iconbtn" title="Delete note" onClick={onDelete}><Icon name="trash" size={17}/></button>
         </div>
       </div>
-      <div className="m-screen" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="m-screen" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: 14 }}>
         {note.confidential && (
           <div className="m-confnote"><Icon name="lock" size={13}/> Confidential. Hidden when notes lock.</div>
         )}

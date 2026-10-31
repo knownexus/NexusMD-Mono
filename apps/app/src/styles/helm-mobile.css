@@ -87,7 +87,7 @@
   display: flex; gap: 7px; align-items: center;
   overflow-x: auto; scrollbar-width: none;
   margin: 0 -14px 12px; padding: 2px 14px 4px;
-  scroll-snap-type: x proximity;
+  scroll-snap-type: x proximity; scroll-padding-left: 14px;
 }
 .m-chipscroll::-webkit-scrollbar { display: none; }
 .m-chip {

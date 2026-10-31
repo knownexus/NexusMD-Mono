@@ -213,7 +213,7 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
   ];
 
   const SUMMARY = {
-    profile:      () => [displayName || me.name, profRole].filter(Boolean).join(' · ') || 'Name, role, time zone',
+    profile:      () => [displayName || (/^loading/i.test(me.name || '') ? '' : me.name), profRole].filter(Boolean).join(' · ') || 'Name, role, time zone',
     appearance:   () => `Theme and ${tweaks.density || 'balanced'} density`,
     planner:      () => 'Landing page, navigation, entry style',
     profiles:     () => 'Switch or add profiles',

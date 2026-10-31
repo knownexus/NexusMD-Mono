@@ -70,7 +70,7 @@ function DesktopEditorScreen() {
 
 // Phone: browse the workspace folder by folder, then open a file full screen. The tablet and
 // desktop layout above is unchanged.
-const BAD_NAME = /[\/:*?"<>|]/;
+const BAD_NAME = /[\\/:*?"<>|]/;
 
 function PhoneEditorScreen({ onFlash }) {
   const s = useEditorStore(editorStore);
@@ -93,7 +93,7 @@ function PhoneEditorScreen({ onFlash }) {
   const create = async () => {
     const n = name.trim();
     if (!n) return setNameError('Enter a name.');
-    if (BAD_NAME.test(n)) return setNameError('A name cannot contain \ / : * ? " < > |');
+    if (BAD_NAME.test(n)) return setNameError('A name cannot contain \\ / : * ? " < > |');
     const path = `${dir}/${n}`;
     const r = await editorApi.write(path, '', { overwrite: false });
     if (r?.conflict) return setNameError('A file with that name is already here.');
