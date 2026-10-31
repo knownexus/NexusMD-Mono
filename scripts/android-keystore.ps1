@@ -16,7 +16,16 @@
 $ErrorActionPreference = 'Stop'
 
 if (-not (Get-Command keytool -ErrorAction SilentlyContinue)) {
-  throw 'keytool was not found. Install a JDK (Temurin 21) and make sure its bin folder is on PATH.'
+  # Not on PATH: use the one in JAVA_HOME or in Android Studio's bundled JDK, if either exists.
+  $candidates = @(
+    $(if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin' }),
+    (Join-Path $env:ProgramFiles 'Android\Android Studio\jbr\bin'),
+    (Join-Path $env:LOCALAPPDATA 'Programs\Android Studio\jbr\bin')
+  ) | Where-Object { $_ -and (Test-Path (Join-Path $_ 'keytool.exe')) }
+  if (-not $candidates) {
+    throw 'keytool was not found. Install a JDK (Temurin 21) or Android Studio, or put a JDK bin folder on PATH.'
+  }
+  $env:PATH = "$($candidates | Select-Object -First 1);$env:PATH"
 }
 
 $dir = Join-Path $HOME 'nexus-keys'
@@ -27,20 +36,32 @@ $alias = 'upload'
 if (Test-Path $jks) { throw "$jks already exists. Move it away first, or delete it if you are sure: re-running would not replace it." }
 New-Item -ItemType Directory -Force $dir | Out-Null
 
-Write-Host "keytool will now ask for a keystore password and your details. Remember the password."
-keytool -genkeypair -v -keystore $jks -alias $alias -keyalg RSA -keysize 2048 -validity 10000
-if ($LASTEXITCODE -ne 0) { throw 'keytool failed.' }
-
 function Read-Plain($prompt) {
   $s = Read-Host $prompt -AsSecureString
   $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)
   try { [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr) }
   finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
 }
-Write-Host 'Enter the same passwords again so the build can sign (kept only in the git-ignored file).'
+
+# Asked here, not by keytool: keytool's own prompt needs a real console and fails in IDE terminals and
+# the `!` shortcut ("The handle is invalid"). Run this in an ordinary PowerShell window.
+Write-Host 'Choose a password for the keystore (at least 6 characters). You will need it again; keep it safe.'
 $storePass = Read-Plain 'Keystore password'
-$keyPass = Read-Plain 'Key password (press Enter if keytool said it is the same as the keystore password)'
-if (-not $keyPass) { $keyPass = $storePass }
+if ($storePass.Length -lt 6) { throw 'The password must be at least 6 characters.' }
+if ($storePass -ne (Read-Plain 'Repeat the password')) { throw 'The passwords do not match.' }
+$keyPass = $storePass   # the key shares the keystore password (PKCS12)
+$who = Read-Host 'Your name or company, for the certificate'
+if (-not $who) { $who = 'NexusMD' }
+
+# The password goes through a short-lived environment variable, not the command line, where any
+# process on the machine could read it.
+$env:NEXUS_STOREPASS = $storePass
+try {
+  keytool -genkeypair -v -keystore $jks -alias $alias -keyalg RSA -keysize 2048 -validity 10000 `
+    -dname "CN=$who" -storepass:env NEXUS_STOREPASS -keypass:env NEXUS_STOREPASS
+}
+finally { Remove-Item Env:NEXUS_STOREPASS -ErrorAction SilentlyContinue }
+if ($LASTEXITCODE -ne 0) { throw 'keytool failed.' }
 
 # Check they work before writing anything.
 # The password goes through a short-lived environment variable, not the command line, where any
@@ -66,3 +87,12 @@ Write-Host 'The base64 keystore is on your clipboard. In GitHub: Settings > Secr
 Write-Host '  ANDROID_KEYSTORE_BASE64   (paste)'
 Write-Host '  ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (= upload), ANDROID_KEY_PASSWORD'
 Write-Host 'Then back the .jks and the passwords up.'
+
+# The key's fingerprint is public. Pin it as a repository VARIABLE so a build signed with any other key fails:
+# a new key looks like a new, unknown developer to Play Protect and cannot update installed copies.
+$env:NEXUS_STOREPASS = $storePass
+try { $fp = (keytool -list -v -keystore $jks -storepass:env NEXUS_STOREPASS -alias $alias | Select-String 'SHA256:' | Select-Object -First 1).Line.Split(':',2)[1].Trim() }
+finally { Remove-Item Env:NEXUS_STOREPASS -ErrorAction SilentlyContinue }
+Write-Host ''
+Write-Host 'Signing key SHA-256 (add as the Actions VARIABLE ANDROID_CERT_SHA256, not a secret):'
+Write-Host "  $fp"

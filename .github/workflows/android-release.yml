@@ -74,6 +74,23 @@ jobs:
             echo "keyAlias=$A"
             echo "keyPassword=$KP"
           } > keystore.properties
+      - name: Check the signing key is the one users already trust
+        env:
+          P: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          A: ${{ secrets.ANDROID_KEY_ALIAS }}
+          EXPECTED: ${{ vars.ANDROID_CERT_SHA256 }}
+        run: |
+          fp=$(keytool -list -v -keystore "$RUNNER_TEMP/upload.jks" -storepass:env P -alias "$A" | awk '/SHA256:/{print $2; exit}')
+          [ -n "$fp" ] || { echo "::error::Could not read the signing key's fingerprint"; exit 1; }
+          norm() { echo "$1" | tr -d ': ' | tr 'a-f' 'A-F'; }
+          echo "Signing key SHA-256: $fp"
+          echo "Signing key SHA-256: \`$fp\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$EXPECTED" ]; then
+            echo "::warning::ANDROID_CERT_SHA256 is not set, so the key is not checked. Set that variable (Settings > Secrets and variables > Actions > Variables) to $fp to lock it in."
+          elif [ "$(norm "$fp")" != "$(norm "$EXPECTED")" ]; then
+            echo "::error::This keystore is not the one users have installed (expected $EXPECTED, got $fp). An APK signed with it cannot update their app, and Play Protect treats a new key as a new, unknown developer."
+            exit 1
+          fi
       - name: Build the signed bundle
         working-directory: apps/app/android
         env:

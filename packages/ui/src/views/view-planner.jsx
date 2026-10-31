@@ -626,7 +626,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGloba
     return (
       <React.Fragment>
         {header}
-        {isPhone ? <div className="m-screen">{content}</div> : content}
+        <div className={isPhone ? "m-screen" : "pl-body"}>{content}</div>
         {modals}
       </React.Fragment>
     )
@@ -758,7 +758,7 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGloba
         </div>
       )}
 
-      {isPhone ? <div className="m-screen">{innerContent}</div> : innerContent}
+      <div className={isPhone ? "m-screen" : "pl-body"}>{innerContent}</div>
 
       {isPhone && (
         <React.Fragment>

@@ -188,7 +188,7 @@ function MobileBottomNav({ view, navigate, navBadges, changeBadges, setMoreOpen,
   );
 }
 
-function TabletRail({ view, navigate, navBadges, changeBadges, primaryTabs, railPinned }) {
+function TabletRail({ view, navigate, navBadges, changeBadges, primaryTabs, railPinned, secondaryTabs, setMoreOpen }) {
   return (
     <div className="m-rail">
       <div className="m-rail-brand">
@@ -225,6 +225,11 @@ function TabletRail({ view, navigate, navBadges, changeBadges, primaryTabs, rail
           {n.label}
         </button>
       ))}
+      <button type="button" className={`m-railitem${secondaryTabs.some(s => s.id === view && !railPinned.some(p => p.id === s.id)) ? ' active' : ''}`}
+        onClick={() => setMoreOpen(true)}>
+        <span className="m-navicon"><Icon name="more" size={21}/></span>
+        More
+      </button>
     </div>
   );
 }
@@ -1193,7 +1198,7 @@ function AppShell() {
         </>
       ) : (
         <div className="m-bodyrow">
-          <TabletRail view={view} navigate={navigate} navBadges={navBadges} changeBadges={changeBadges} primaryTabs={primaryTabs} railPinned={RAIL_PINNED}/>
+          <TabletRail view={view} navigate={navigate} navBadges={navBadges} changeBadges={changeBadges} primaryTabs={primaryTabs} railPinned={RAIL_PINNED} secondaryTabs={visibleSecondaryTabs} setMoreOpen={setMoreOpen}/>
           <div className="m-main">{activeScreen}</div>
         </div>
       )}
