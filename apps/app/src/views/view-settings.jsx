@@ -65,6 +65,32 @@ function vsTimeZones() {
   return result;
 }
 
+// Reorder the navigation: each group (main bar, More) keeps its screens; up/down moves one within its group.
+export function NavOrderCard({ groups, onMove, onReset }) {
+  return (
+    <VsCard title="Navigation order" icon="more">
+      {groups.map(g => (
+        <React.Fragment key={g.id}>
+          <div className="set-row"><div className="info"><div className="d" style={{ fontWeight: 600 }}>{g.title}</div></div></div>
+          {g.tabs.map((t, i) => (
+            <div key={t.id} className="set-row" style={{ gap: 10 }}>
+              <span className="m-fileic"><Icon name={t.icon} size={16}/></span>
+              <div className="info"><div className="t">{t.label}</div></div>
+              <button type="button" className="btn sm ghost" aria-label={`Move ${t.label} up`} disabled={i === 0}
+                onClick={() => onMove(g.id, t.id, -1)}><Icon name="arrow-up" size={13}/></button>
+              <button type="button" className="btn sm ghost" aria-label={`Move ${t.label} down`} disabled={i === g.tabs.length - 1}
+                onClick={() => onMove(g.id, t.id, +1)}><Icon name="arrow-down" size={13}/></button>
+            </div>
+          ))}
+        </React.Fragment>
+      ))}
+      <VsRow title="Default order" desc="Put every screen back where it started">
+        <button type="button" className="btn sm" onClick={onReset}>Reset</button>
+      </VsRow>
+    </VsCard>
+  );
+}
+
 // Updates from GitHub releases. Hidden off the phone and on Play installs, which Play updates itself.
 function AppUpdateRow() {
   const [state, setState] = useStateVS({ busy: false });
@@ -92,7 +118,7 @@ function AppUpdateRow() {
   );
 }
 
-function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection, onOpenJira, onOpenGithub, onOpenProjectAreas, onGoPlanner }) {
+function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onResetNav, onWorkScreensChanged, onOpenConnection, onOpenJira, onOpenGithub, onOpenProjectAreas, onGoPlanner }) {
   // Phone: a grouped list of categories, each opening as its own page. Wider screens keep the rail.
   const [phone, setPhone] = useStateVS(() => window.matchMedia('(max-width:600px)').matches);
   useEffectVS(() => {
@@ -371,6 +397,7 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
           )}
 
           {page === 'appearance' && (
+            <React.Fragment>
             <VsCard title="Appearance" icon="sun">
               <ThemeModeSettings tweaks={tweaks} setTweak={setTweak}/>
               <VsRow title="Density" desc="Row height and padding everywhere">
@@ -423,6 +450,8 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
                 />
               </VsRow>
             </VsCard>
+            {onMoveNav && <NavOrderCard groups={navGroups} onMove={onMoveNav} onReset={onResetNav}/>}
+            </React.Fragment>
           )}
 
           {page === 'planner' && (
