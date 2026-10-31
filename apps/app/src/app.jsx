@@ -296,7 +296,8 @@ function SettingsModal({ open, onClose, onSaved }) {
     },
   });
   // Closing reloads the data once, if anything was saved.
-  const closeForm = () => { const flushed = phone && form.flush(); if (phone && (form.dirty || flushed)) onSaved?.(); onClose(); };
+  // Only Done confirms a changed organisation; the X and a tap outside discard it.
+  const closeForm = (confirm = false) => { const flushed = phone && confirm === true && form.flush(); if (phone && (form.dirty || flushed)) onSaved?.(); onClose(); };
   const fe = phone ? form.errors : {};
 
   const save = async () => {
@@ -336,6 +337,7 @@ function SettingsModal({ open, onClose, onSaved }) {
     setTesting(true); setStatus('Testing…');
     try {
       saveAdoConfig({ org: o, pat: p });
+      setInitial(i => ({ ...i, org: o }));
       const r = await adoGet('_apis/connectionData');
       setStatus(`Connected as ${r?.authenticatedUser?.providerDisplayName || 'an unknown user'}`);
     } catch (e) {
@@ -369,7 +371,7 @@ function SettingsModal({ open, onClose, onSaved }) {
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '16px',
-    }} onClick={e => { if (e.target === e.currentTarget) closeForm(); }}>
+    }} onClick={e => { if (e.target === e.currentTarget) closeForm(false); }}>
       <div style={{
         background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16,
         boxShadow: 'var(--shadow-pop)', width: 720, maxWidth: '100%',
@@ -380,7 +382,7 @@ function SettingsModal({ open, onClose, onSaved }) {
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em', flex: 1 }}>
             Azure DevOps Settings
           </h2>
-          <button className="btn icon ghost sm" onClick={closeForm} aria-label="Close"><Icon name="x" size={14}/></button>
+          <button className="btn icon ghost sm" onClick={() => closeForm(false)} aria-label="Close"><Icon name="x" size={14}/></button>
         </div>
 
         {/* Scrollable body */}
@@ -533,7 +535,7 @@ function SettingsModal({ open, onClose, onSaved }) {
             {!phone && <button className="btn ghost" onClick={onClose}>Cancel</button>}
             <button className="btn ghost" onClick={testConnection} disabled={testing || saving}>{testing ? 'Testing…' : 'Test connection'}</button>
             {phone
-              ? <button className="btn primary" onClick={closeForm}>Done</button>
+              ? <button className="btn primary" onClick={() => closeForm(true)}>Done</button>
               : <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save & reload'}</button>}
           </div>
         </div>

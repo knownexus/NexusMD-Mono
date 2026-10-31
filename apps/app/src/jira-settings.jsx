@@ -44,8 +44,10 @@ export function JiraSettingsModal({ open, onClose, onSaved }) {
     }),
   });
   // Closing refetches the Jira data once, if anything was saved.
-  const closeForm = () => {
-    const flushed = phone && form.flush();
+  // Only Done confirms a changed site. The X and a tap outside discard it: fields already saved as you
+  // typed stay saved, but the new address is not saved.
+  const closeForm = (confirm = false) => {
+    const flushed = phone && confirm === true && form.flush();
     if (phone && (form.dirty || flushed)) { try { localStorage.removeItem(JIRA_CACHE_KEY); } catch (_) {} onSaved?.(); }
     onClose();
   };
@@ -59,6 +61,8 @@ export function JiraSettingsModal({ open, onClose, onSaved }) {
     setBusy(true); setStatus('Testing…');
     try {
       saveJiraConfig(connection());
+      // The tested address is now the saved one: later comparisons start from it.
+      setInitial(i => ({ ...i, site: site.trim(), email: email.trim() }));
       const me = await makeJiraClient(createJiraHttpAdapter()).get('rest/api/3/myself');
       setStatus(`Connected as ${me?.displayName || 'unknown user'}`);
     } catch (e) {
@@ -82,7 +86,7 @@ export function JiraSettingsModal({ open, onClose, onSaved }) {
     <div id="modal-jira" style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-    }} onClick={e => { if (e.target === e.currentTarget) closeForm(); }}>
+    }} onClick={e => { if (e.target === e.currentTarget) closeForm(false); }}>
       <div style={{
         background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16,
         boxShadow: 'var(--shadow-pop)', width: 520, maxWidth: '100%',
@@ -90,7 +94,7 @@ export function JiraSettingsModal({ open, onClose, onSaved }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 24px 16px', borderBottom: '1px solid var(--border)' }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, flex: 1 }}>Jira Cloud Settings</h2>
-          <button className="btn icon ghost sm" onClick={closeForm} aria-label="Close"><Icon name="x" size={14}/></button>
+          <button className="btn icon ghost sm" onClick={() => closeForm(false)} aria-label="Close"><Icon name="x" size={14}/></button>
         </div>
         <div style={{ padding: '16px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
@@ -129,7 +133,7 @@ export function JiraSettingsModal({ open, onClose, onSaved }) {
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button className="btn ghost" onClick={test} disabled={busy}>{busy ? 'Testing…' : 'Test connection'}</button>
             {phone
-              ? <button className="btn primary" onClick={closeForm}>Done</button>
+              ? <button className="btn primary" onClick={() => closeForm(true)}>Done</button>
               : <button className="btn primary" onClick={save} disabled={busy}>Save &amp; connect</button>}
           </div>
         </div>
