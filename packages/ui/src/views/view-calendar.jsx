@@ -868,14 +868,14 @@ function MonthView({ eventsByDay, monthGrid, today, onEventClick, onMoveEvent })
   return (
     <div className="card" style={{ padding:0,overflow:'hidden',border:'1px solid var(--border)' }}>
       {/* Weekday headers */}
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',borderBottom:'1px solid var(--border)',background:'var(--surface-2)' }}>
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',borderBottom:'1px solid var(--border)',background:'var(--surface-2)' }}>
         {DAY_SHORT.map(d => (
           <div key={d} style={{ padding:'10px 0',textAlign:'center',fontSize:10.5,fontWeight:700,color:'var(--text-subtle)',letterSpacing:'.06em',textTransform:'uppercase' }}>{d}</div>
         ))}
       </div>
       {/* Weeks */}
       {weeks.map((week,wi) => (
-        <div key={wi} style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',borderBottom:wi<5?'1px solid var(--border)':'none' }}>
+        <div key={wi} style={{ display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',borderBottom:wi<5?'1px solid var(--border)':'none' }}>
           {week.map(d => {
             const key = isoDate(d);
             const isToday = key===today;
@@ -887,7 +887,7 @@ function MonthView({ eventsByDay, monthGrid, today, onEventClick, onMoveEvent })
                 onDragOver={onMoveEvent ? (e)=>{ e.preventDefault(); e.dataTransfer.dropEffect='move'; if(dragKey!==key) setDragKey(key); } : undefined}
                 onDragLeave={onMoveEvent ? ()=>setDragKey(k=>k===key?null:k) : undefined}
                 onDrop={onMoveEvent ? (e)=>{ e.preventDefault(); setDragKey(null); const id=e.dataTransfer.getData('text/plain'); if(id) onMoveEvent(id, key); } : undefined}
-                style={{ minHeight:100,padding:'6px 6px 4px',borderLeft:week.indexOf(d)>0?'1px solid var(--border)':'none',position:'relative',transition:'background .12s',background:dragKey===key?'color-mix(in srgb,var(--accent) 10%,var(--surface))':isToday?'color-mix(in srgb,var(--accent) 4%,var(--surface))':'var(--surface)' }}>
+                style={{ height:112,minWidth:0,overflow:'hidden',boxSizing:'border-box',padding:'6px 6px 4px',borderLeft:week.indexOf(d)>0?'1px solid var(--border)':'none',position:'relative',transition:'background .12s',background:dragKey===key?'color-mix(in srgb,var(--accent) 10%,var(--surface))':isToday?'color-mix(in srgb,var(--accent) 4%,var(--surface))':'var(--surface)' }}>
                 {/* Date number */}
                 <div style={{ marginBottom:4,display:'flex',justifyContent:'center' }}>
                   <span style={{ width:26,height:26,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',
@@ -936,24 +936,24 @@ function YearView({ year, allEvents, today, onDayClick }) {
   }, [allEvents]);
 
   return (
-    <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16 }}>
+    <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(188px,1fr))',gap:16 }}>
       {Array.from({ length:12 }, (_,mi) => {
         const miniDays = getMiniMonth(year, mi);
         const weeks = Array.from({ length:6 }, (_,i) => miniDays.slice(i*7,i*7+7));
         return (
-          <div key={mi} className="card" style={{ padding:'14px 12px' }}>
+          <div key={mi} className="card" style={{ padding:'14px 12px',minWidth:0,overflow:'hidden' }}>
             <div style={{ fontSize:12,fontWeight:700,color:'var(--text)',marginBottom:10,textAlign:'center',letterSpacing:'.02em' }}>
               {MONTH_NAMES[mi]}
             </div>
             {/* Mini day headers */}
-            <div style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',marginBottom:4 }}>
+            <div style={{ display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',marginBottom:4 }}>
               {DAY_SHORT.map(d => (
                 <div key={d} style={{ textAlign:'center',fontSize:8.5,fontWeight:600,color:'var(--text-subtle)',letterSpacing:'.04em' }}>{d[0]}</div>
               ))}
             </div>
             {/* Mini weeks */}
             {weeks.map((week,wi) => (
-              <div key={wi} style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',marginBottom:1 }}>
+              <div key={wi} style={{ display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',marginBottom:1 }}>
                 {week.map(d => {
                   const key = isoDate(d);
                   const isToday = key===today;
