@@ -67,6 +67,7 @@ function makeBinding(key) {
         const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
         if (!res.ok) return
         const { url } = await res.json()
+        markPending(cfg.from)
         openBrowser(url)
       } catch {}
     },
@@ -92,6 +93,22 @@ function makeBinding(key) {
   }
 }
 
+// A sign-in only counts if this app started it: connect() records the provider, and
+// redeem() takes that record exactly once. Stops a stray or crafted nexusmd://oauth link
+// from storing tokens in a slot the user never signed into.
+const PENDING_KEY = 'nexusmd.oauth.pending'
+const PENDING_TTL_MS = 10 * 60 * 1000
+export function markPending(from, now = Date.now()) {
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify({ from, at: now })) } catch {}
+}
+export function takePending(from, now = Date.now()) {
+  try {
+    const p = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null')
+    localStorage.removeItem(PENDING_KEY)
+    return Boolean(p && p.from === from && now - p.at >= 0 && now - p.at <= PENDING_TTL_MS)
+  } catch { return false }
+}
+
 async function redeem(url) {
   let u
   try { u = new URL(url) } catch { return }
@@ -99,6 +116,9 @@ async function redeem(url) {
   const otc = u.searchParams.get('otc')
   const cfg = from && BY_FROM[from]
   if (!cfg || !otc) return
+  // The link's own path must name the same provider, and this app must have started that sign-in.
+  if (u.pathname.replace(/^\/+/, '') !== cfg.from) return
+  if (!takePending(cfg.from)) return
   try {
     const res = await fetch(`${API_BASE}${cfg.api}/exchange`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -150,6 +170,7 @@ export function makeAppOAuthService(from) {
         const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
         if (!res.ok) { toast?.(`${from} sign-in is not configured on the server.`, 'error'); return }
         const { url } = await res.json()
+        markPending(cfg.from)
         openBrowser(url)
       } catch { toast?.('Sign-in failed. Please try again.', 'error') }
     },
