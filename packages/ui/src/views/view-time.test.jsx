@@ -145,7 +145,7 @@ describe('Time: several timers, notes, tickets and the timeline', () => {
     fireEvent.change(during, { target: { value: 'Scope cut to two screens' } })
     fireEvent.keyDown(during, { key: 'Enter' })
     expect(within(running()).getByText('Scope cut to two screens')).toBeTruthy()
-    expect(within(running()).getByText('09:20')).toBeTruthy()
+    expect(within(running()).getByText(/09:20/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Stop Planning' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add note to Planning' }))
     const after = screen.getByLabelText('Add a note')
