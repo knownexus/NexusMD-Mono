@@ -172,8 +172,11 @@ function SettingsView({ tweaks, setTweak, onWorkScreensChanged, onOpenConnection
       id: 'google',
       label: 'Google',
       icon: 'calendar',
-      desc: 'Sign in with Google — shows your Google Calendar events',
+      desc: 'Sign in with Google — shows your Google Calendar events and backs up to Google Drive',
       ...makeAppOAuthService('google'),
+      credFields: [
+        { key: 'clientId', label: 'Client ID (Android)', hint: 'From Google Cloud Console → Credentials → Create OAuth client ID → Android. No secret needed. See docs/google-sign-in.md' },
+      ],
     },
     {
       id: 'github',
