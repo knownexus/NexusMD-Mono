@@ -8,11 +8,16 @@ import {
   loadConfidentialConfig, ConfidentialUnlockModal, ConfidentialSetPasswordModal, saveConfidentialConfig,
 } from '@nexusmd/ui';
 import { Icon } from '../icons.jsx';
+import { getProfileKey } from '../profile-keys.js';
 import { getYearWeekForOffset } from '@nexusmd/core';
 
 const { useState, useEffect, useRef, useCallback } = React;
 
-const LOCK_AFTER_MS = 5 * 60 * 1000;
+// Settings > Confidential > Auto re-lock: on locks again after 15 minutes idle; off keeps notes unlocked
+// until you leave this screen.
+export const RELOCK_AFTER_MS = 15 * 60 * 1000;
+export const relockDelay = (pref) => (pref === '1' ? RELOCK_AFTER_MS : null);
+const readRelockPref = () => { try { return localStorage.getItem(getProfileKey('helm.confidential.autoRelock')); } catch { return null; } };
 const snippet = (body) => (body || '').replace(/[#>*`\-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 110);
 const titleOf = (n) => (n.title || snippet(n.body)).slice(0, 160);
 
@@ -90,10 +95,11 @@ export function NotesView({ onAddTask, onFlash }) {
   }), []);
   const patch = (id, p) => setNotes(ns => ns.map(n => (n.id === id ? { ...n, ...p, updatedAt: new Date().toISOString() } : n)));
 
-  // One unlock opens every confidential note; it lapses after LOCK_AFTER_MS without activity.
+  // One unlock opens every confidential note; with Auto re-lock on it lapses after 15 idle minutes.
   const touch = useCallback(() => {
     clearTimeout(idleTimer.current);
-    idleTimer.current = setTimeout(() => setUnlocked(false), LOCK_AFTER_MS);
+    const ms = relockDelay(readRelockPref());
+    if (ms) idleTimer.current = setTimeout(() => setUnlocked(false), ms);
   }, []);
   useEffect(() => { if (unlocked) touch(); return () => clearTimeout(idleTimer.current); }, [unlocked, touch, notes]);
 
@@ -102,7 +108,19 @@ export function NotesView({ onAddTask, onFlash }) {
     setNotes(ns => [n, ...ns]);
     setOpenId(n.id);
   };
-  const remove = (id) => { setNotes(ns => ns.filter(n => n.id !== id)); setOpenId(null); };
+  const remove = (id) => {
+    const at = notes.findIndex(n => n.id === id);
+    const gone = notes[at];
+    setNotes(ns => ns.filter(n => n.id !== id));
+    setOpenId(null);
+    if (gone) onFlash?.('Note deleted', 'trash', () => setNotes(ns => (ns.some(n => n.id === gone.id) ? ns : [...ns.slice(0, at), gone, ...ns.slice(at)])));
+  };
+  const toggleDone = (n) => {
+    const before = { status: n.status, completedWeek: n.completedWeek ?? null };
+    const done = n.status === 'done';
+    patch(n.id, done ? { status: 'open', completedWeek: null } : { status: 'done', completedWeek: weekLabel });
+    onFlash?.(done ? 'Note reopened' : 'Note completed', 'check', () => patch(n.id, before));
+  };
 
   const toggleLock = (note) => {
     // A locked note can't be un-protected without the password.
@@ -149,7 +167,7 @@ export function NotesView({ onAddTask, onFlash }) {
       <div key={n.id} className="m-row" onClick={() => setOpenId(n.id)}>
         <button type="button" className={`m-check${n.status === 'done' ? ' on' : ''}`}
           aria-label={n.status === 'done' ? 'Reopen' : 'Mark complete'}
-          onClick={e => { e.stopPropagation(); patch(n.id, n.status === 'done' ? { status: 'open', completedWeek: null } : { status: 'done', completedWeek: weekLabel }); }}>
+          onClick={e => { e.stopPropagation(); toggleDone(n); }}>
           <Icon name="check" size={12}/>
         </button>
         <div className="m-row-main">

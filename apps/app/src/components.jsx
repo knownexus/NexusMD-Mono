@@ -64,12 +64,14 @@ export { NotificationBanner };
 export { Sheet } from '@nexusmd/ui';
 
 // ─── Flash — mobile toast ─────────────────────────────────────────────────────
-function Flash({ msg, icon }) {
+// A toast. With `onUndo` it stays longer and offers Undo.
+function Flash({ msg, icon, onUndo }) {
   if (!msg) return null;
   return (
-    <div className="m-flash">
+    <div className={`m-flash${onUndo ? ' has-undo' : ''}`} role="status">
       <Icon name={icon || 'check'} size={15}/>
-      {msg}
+      <span style={{ flex: 1, minWidth: 0 }}>{msg}</span>
+      {onUndo && <button type="button" className="m-flash-undo" onClick={onUndo}>Undo</button>}
     </div>
   );
 }

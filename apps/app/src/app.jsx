@@ -586,12 +586,13 @@ function AppShell() {
 
   // ── Flash toast state (mobile) ────────────────────────────────────────────
   const [mobileFlash, setMobileFlash] = useState(null);
-  const showFlash = useCallback((msg, icon) => {
-    setMobileFlash({ msg, icon, k: Date.now() });
+  // showFlash(msg, icon, undo): a toast; with an undo function it stays longer and offers Undo.
+  const showFlash = useCallback((msg, icon, undo) => {
+    setMobileFlash({ msg, icon, undo, k: Date.now() });
   }, []);
   useEffect(() => {
     if (!mobileFlash) return;
-    const t = setTimeout(() => setMobileFlash(null), 2600);
+    const t = setTimeout(() => setMobileFlash(null), mobileFlash.undo ? 6000 : 2600);
     return () => clearTimeout(t);
   }, [mobileFlash]);
 
@@ -897,8 +898,37 @@ function AppShell() {
     if (!oldEv || oldEv.source === 'outlook') return;
     setCalendarEvents((prev) => prev.filter((e) => String(e.id) !== String(id)));
     syncOneOnOnePlanner(oldEv, null);
-    toast?.('Calendar entry deleted', 'success');
-  }, [calendarEvents, syncOneOnOnePlanner]);
+    // Undo puts the event back. A 1:1 also removed its planner row, which isn't rebuilt, so it gets no Undo.
+    if (oldEv.plannerSection === 'oneOnOnes') toast?.('Calendar entry deleted', 'success');
+    else showFlash('Calendar entry deleted', 'trash', () => setCalendarEvents((prev) => (prev.some((e) => String(e.id) === String(id)) ? prev : [...prev, oldEv])));
+  }, [calendarEvents, syncOneOnOnePlanner, showFlash]);
+
+  // Is this day in the week the Planner is showing? Only then can an event become a Meetings row.
+  const canAddToPlanner = React.useCallback((dateStr) => {
+    const w = weekForDate(dateStr), cur = getYearWeekForOffset(0);
+    return !!w && w.year === cur.year && w.week === cur.week;
+  }, [weekForDate]);
+
+  // A new event from the phone calendar: optionally a row in Planner > Meetings - schedule, and
+  // optionally pushed to Outlook. Undo removes both, except after an Outlook push (that copy stays).
+  const addCalendarEvent = React.useCallback((ev, { toPlanner, toOutlook } = {}) => {
+    const rowId = toPlanner && canAddToPlanner(ev.start.slice(0, 10)) ? 'ms' + Date.now() : null;
+    const withPlanner = rowId ? { ...ev, plannerSection: 'meetSched' } : ev;
+    setCalendarEvents((prev) => [...prev, withPlanner]);
+    if (rowId) {
+      const day = new Date(ev.start).toLocaleDateString('en-US', { weekday: 'long' });
+      setPlannerData((prev) => ({ ...prev, meetSched: [...(prev.meetSched || []), {
+        id: rowId, dayTime: `${day} ${ev.start.slice(11, 16)}`, meeting: ev.title, attendees: '', prep: '', owner: '', status: '',
+      }] }));
+    }
+    const pushed = !!(toOutlook && window.OutlookService?.isConnected());
+    if (pushed) window.OutlookService.createEvent({ title: ev.title, start: ev.start, end: ev.end, description: '' }).catch((err) => console.warn('Outlook createEvent failed:', err));
+    const undo = pushed ? undefined : () => {
+      setCalendarEvents((prev) => prev.filter((e) => e.id !== ev.id));
+      if (rowId) setPlannerData((prev) => ({ ...prev, meetSched: (prev.meetSched || []).filter((r) => r.id !== rowId) }));
+    };
+    showFlash(pushed ? 'Event added and sent to Outlook' : rowId ? 'Event added to Calendar and Planner' : 'Event added', 'check', undo);
+  }, [canAddToPlanner, showFlash]);
 
   const moveCalendarEvent = React.useCallback((id, newDateStr) => {
     const ev = (calendarEvents || []).find((e) => String(e.id) === String(id));
@@ -1032,7 +1062,8 @@ function AppShell() {
         newItemIds={newItemIds.tests} device={device}/>;
       case 'calendar': return <CalendarView calendarEvents={calendarEvents}
         onNavigatePlanner={navigateToPlanner} onUpdateEvent={updateCalendarEvent}
-        onDeleteEvent={deleteCalendarEvent} onMoveEvent={moveCalendarEvent} device={device}/>;
+        onDeleteEvent={deleteCalendarEvent} onMoveEvent={moveCalendarEvent} onAddEvent={addCalendarEvent}
+        canAddToPlanner={canAddToPlanner} device={device}/>;
       case 'triage': return <TriageView device={device}/>;
       case 'team': return <TeamView team={team} workItems={workItems}
         prs={HelmData?.PRS || []} onOpenItem={openWI} onOpenPerson={openPerson}
@@ -1073,7 +1104,8 @@ function AppShell() {
         </div>
       )}
 
-      {mobileFlash && <Flash key={mobileFlash.k} msg={mobileFlash.msg} icon={mobileFlash.icon}/>}
+      {mobileFlash && <Flash key={mobileFlash.k} msg={mobileFlash.msg} icon={mobileFlash.icon}
+        onUndo={mobileFlash.undo ? () => { const u = mobileFlash.undo; setMobileFlash(null); u(); } : undefined}/>}
 
       <Sheet open={moreOpen} icon="more" title="More" sub="Secondary views"
         onClose={() => setMoreOpen(false)}>

@@ -1,6 +1,8 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
 import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
+import { workItemSource } from '../work-item-source.js';
+import { HelmData } from '../data.jsx';
 import { Sheet } from '../components.jsx';
 import { getProfileKey } from '../profile-keys.js';
 import { isTerminalState } from '@nexusmd/core';
@@ -48,8 +50,16 @@ function laneFilter(lane, w) {
 // Jira ids are stored as 'jira:TFP-123'; show the key.
 const shortId = (id) => String(id).replace(/^jira:/, '');
 
+// The states an item can move to: the provider's own workflow for it when it can say (Jira, GitHub),
+// else its type's workflow from the ADO metadata, else every state in use. Never the current one.
+export function stateChoices(wi, remote, typeStates, allStates) {
+  const key = Object.keys(typeStates || {}).find(k => k.toLowerCase() === String(wi.type || '').toLowerCase());
+  const pool = Array.isArray(remote) && remote.length ? remote : key ? typeStates[key] : allStates;
+  return [...new Set(pool || [])].filter(st => st && st !== wi.state);
+}
+
 // ── WorkRow — module-level to avoid remounts on parent re-render ──────────────
-function WorkRow({ wi, newItemIds, onOpen, team }) {
+function WorkRow({ wi, newItemIds, onOpen, onState, team }) {
   const assigneeName = wi.assignee && wi.assignee !== 'unassigned'
     ? ((team.find(t => t.id === wi.assignee)?.name || wi.assignee).split(' ')[0])
     : null;
@@ -63,7 +73,10 @@ function WorkRow({ wi, newItemIds, onOpen, team }) {
         <div className="m-row-title">{wi.title}</div>
         <div className="m-row-meta">
           <span className="m-id">#{wi.displayId || shortId(wi.id)}</span>
-          {wi.state && <span className={`pill ${STATE_TONE(wi.state)}`}>{wi.state}</span>}
+          {wi.state && (
+            <button type="button" className={`pill m-pillbtn ${STATE_TONE(wi.state)}`} aria-label={`State ${wi.state}. Change state`}
+              onClick={e => { e.stopPropagation(); onState?.(wi); }}>{wi.state} <Icon name="chevron-down" size={10}/></button>
+          )}
           {wi.priority >= 1 && wi.priority <= 2 && (
             <span className={`prio p${wi.priority}`}>P{wi.priority}</span>
           )}
@@ -108,7 +121,7 @@ function loadWIViewState() {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device }) {
+function WorkItemsView({ items, setItems, onOpen, onCreate, onFlash, team = [], newItemIds, device }) {
   const [search, setSearch]           = useState('');
   const [viewMode, setViewMode]       = useState('list');
   const [filterOpen, setFilterOpen]   = useState(false);
@@ -149,8 +162,35 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
     setAssigneeFilter(new Set());
   };
 
+  // Change an item's state from its row: a sheet of the states it can move to, applied at once, with Undo.
+  const [stateItem, setStateItem] = useState(null);
+  const [stateOptions, setStateOptions] = useState(null);
   const src = useSourceFilter('work', items);
   const list = src.filtered;
+  const openStateSheet = (wi) => {
+    setStateItem(wi); setStateOptions(null);
+    Promise.resolve(workItemSource?.availableTargetStates?.(wi.id)).catch(() => null)
+      .then(remote => setStateOptions(stateChoices(wi, remote, HelmData?.WI_TYPE_STATES, allStates)));
+  };
+  const setStateLocal = (id, state) => setItems?.(prev => prev.map(w => (w.id === id ? { ...w, state } : w)));
+  const changeState = async (wi, state) => {
+    const before = wi.state;
+    const label = wi.displayId || shortId(wi.id);
+    setStateItem(null);
+    setStateLocal(wi.id, state);
+    try {
+      await workItemSource.saveField(wi.id, 'System.State', state);
+      onFlash?.(`${label} moved to ${state}`, 'check', async () => {
+        setStateLocal(wi.id, before);
+        try { await workItemSource.saveField(wi.id, 'System.State', before); }
+        catch (e) { setStateLocal(wi.id, state); onFlash?.(`Could not undo: ${e?.message || 'failed'}`, 'alert'); }
+      });
+    } catch (e) {
+      setStateLocal(wi.id, before);
+      onFlash?.(`Could not change state: ${e?.message || 'failed'}`, 'alert');
+    }
+  };
+
   // Open / Closed when GitHub is the only provider; the usual five lanes otherwise.
   const lanes = useMemo(() => (list.length > 0 && list.every(w => w.source === 'github') ? GH_LANES : LANES), [list]);
 
@@ -339,7 +379,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
                         <div className="m-card flush">
                           {items.map(wi => (
                             <WorkRow key={wi.id} wi={wi} newItemIds={newItemIds}
-                              onOpen={onOpen} team={team}/>
+                              onOpen={onOpen} onState={openStateSheet} team={team}/>
                           ))}
                         </div>
                       )}
@@ -350,7 +390,7 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
                 <div className="m-card flush">
                   {sortedFiltered.map(wi => (
                     <WorkRow key={wi.id} wi={wi} newItemIds={newItemIds}
-                      onOpen={onOpen} team={team}/>
+                      onOpen={onOpen} onState={openStateSheet} team={team}/>
                   ))}
                 </div>
               )
@@ -443,6 +483,22 @@ function WorkItemsView({ items, onOpen, onCreate, team = [], newItemIds, device 
           </div>
         )}
       </div>
+
+      <Sheet open={!!stateItem} icon="check-circle" title="Change state" sub={stateItem ? `${stateItem.displayId || shortId(stateItem.id)} · now ${stateItem.state}` : ''}
+        onClose={() => setStateItem(null)}>
+        {!stateOptions && <div className="muted" style={{ padding: 8 }}>Loading states…</div>}
+        {stateOptions && stateOptions.length === 0 && <div className="m-empty"><div className="et">No other states</div><div className="es">This item can't move anywhere from here.</div></div>}
+        {stateOptions && stateOptions.length > 0 && (
+          <div className="m-card flush">
+            {stateOptions.map(st => (
+              <div key={st} className="m-row" onClick={() => changeState(stateItem, st)}>
+                <div className="m-row-main"><span className={`pill ${STATE_TONE(st)}`}>{st}</span></div>
+                <Icon name="chevron-right" size={16} className="chev"/>
+              </div>
+            ))}
+          </div>
+        )}
+      </Sheet>
 
       {/* FAB */}
       <button type="button" className="m-fab" onClick={onCreate} aria-label="New work item">

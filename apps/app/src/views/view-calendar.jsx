@@ -5,6 +5,7 @@
 // MSAL sign-in (a Capacitor webview can't do popups).
 import React from 'react';
 import { Icon } from '../icons.jsx';
+import { NewEventSheet } from './calendar-new-event.jsx';
 import {
   OutlookService, getWeekDays, getMonthGrid, getYearMonths, getAgendaDays,
   nowTopPx, todayStr, isoDate, MONTH_NAMES, MONTH_SHORT,
@@ -27,12 +28,13 @@ const dayOffset = (d, unit) => {
 };
 const fmtTime = iso => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDeleteEvent, onMoveEvent, device }) {
+function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDeleteEvent, onMoveEvent, onAddEvent, canAddToPlanner, device }) {
   const phone = device === 'phone';
   const [tView, setCalView]               = useStateCal('week');
   const [tOffset, setOffset]              = useStateCal(0);
   const [phoneMode, setPhoneMode]         = useStateCal('agenda');
   const [selDay, setSelDay]               = useStateCal(() => new Date());
+  const [newEventOpen, setNewEventOpen]   = useStateCal(false);
   const calView = phone ? (phoneMode === 'agenda' ? 'week' : 'month') : tView;
   const offset  = phone ? dayOffset(selDay, phoneMode === 'agenda' ? 'week' : 'month') : tOffset;
   const [selectedEvent, setSelectedEvent] = useStateCal(null);
@@ -162,7 +164,10 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
   const dayList = (
     <div className="m-card flush" style={{ marginTop: 12 }}>
       {dayEvents.length === 0 && (
-        <div className="m-empty" style={{ padding: 24 }}><div className="et">Nothing scheduled</div></div>
+        <div className="m-empty" style={{ padding: 24 }}>
+          <div className="et">Nothing scheduled</div>
+          {onAddEvent && <button type="button" className="btn m-btn-lg" style={{ marginTop: 12 }} onClick={() => setNewEventOpen(true)}>Add an event</button>}
+        </div>
       )}
       {dayEvents.map(ev => (
         <div key={ev.id} className="m-row" onClick={() => setSelectedEvent(ev)}>
@@ -229,6 +234,12 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
         )}
         {dayList}
       </div>
+      {onAddEvent && (
+        <button type="button" className="m-fab" aria-label="New event" onClick={() => setNewEventOpen(true)}><Icon name="plus" size={24}/></button>
+      )}
+      <NewEventSheet open={newEventOpen} onClose={() => setNewEventOpen(false)} dayKey={selKey}
+        onAdd={(ev, opts) => { onAddEvent(ev, opts); setSelDay(new Date(ev.start)); }}
+        canAddToPlanner={canAddToPlanner} outlookConnected={outlookConnected}/>
     </React.Fragment>
   );
 

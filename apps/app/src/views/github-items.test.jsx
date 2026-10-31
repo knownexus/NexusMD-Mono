@@ -78,3 +78,19 @@ describe('source switch', () => {
     expect(screen.queryByRole('tablist', { name: 'Source' })).toBeNull()
   })
 })
+
+import { stateChoices } from './view-workitems.jsx'
+
+describe('changing an item\'s state', () => {
+  const wi = { id: 5, type: 'bug', state: 'Active' }
+  it('prefers the provider\'s own workflow for the item', () => {
+    expect(stateChoices(wi, ['Active', 'Resolved'], { Bug: ['New'] }, ['x'])).toEqual(['Resolved'])
+  })
+  it('uses the type\'s workflow when the provider cannot say, matching the type case-insensitively', () => {
+    expect(stateChoices(wi, null, { Bug: ['New', 'Active', 'Closed'], Task: ['To Do'] }, ['x'])).toEqual(['New', 'Closed'])
+  })
+  it('falls back to every state in use, never offering the current one', () => {
+    expect(stateChoices(wi, null, {}, ['Active', 'Done', 'New', 'Done'])).toEqual(['Done', 'New'])
+    expect(stateChoices(wi, [], undefined, [])).toEqual([])
+  })
+})
