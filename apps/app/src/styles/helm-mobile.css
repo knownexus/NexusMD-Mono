@@ -561,3 +561,11 @@
   position: relative; z-index: 12;
 }
 .m-app[data-device="phone"] .page-head h1 { font-size: 21px !important; font-weight: 600 !important; letter-spacing: -0.02em; }
+
+/* Checkboxes inside a .m-fld are checkboxes, not text fields: .m-fld input restyles every input. */
+.m-fld input[type="checkbox"], .m-fld input[type="radio"],
+.m-checkrow input[type="checkbox"], .m-switchrow input[type="checkbox"] {
+  appearance: auto; -webkit-appearance: auto;
+  width: 22px; height: 22px; min-height: 0; padding: 0; margin: 0;
+  border-radius: 4px; background: initial; border: initial; accent-color: var(--accent);
+}
