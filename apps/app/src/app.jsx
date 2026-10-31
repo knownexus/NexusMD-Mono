@@ -13,6 +13,7 @@ import {
   NexusDataProvider, renderContent, SEEN_FINGERPRINTS, DEFAULT_PROJECT_AREAS,
   loadWeekPlanner, saveWeekPlanner, ProjectAreasModal, DocumentsView, ApiClientProvider, ApiClientView, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
   PRCommitsTab, PRFilesTab, PRTabs, CreateWIModal, WIDetail, PersonDetail, DetailDrawer, paletteFor,
+  TimeView, ticketsFromWorkItems,
 } from '@nexusmd/ui';
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
@@ -110,6 +111,7 @@ const NAV_PRIMARY = [
 const NAV_SECONDARY = [
   { id: 'triage',   label: 'Triage',   icon: 'inbox'   },
   { id: 'team',     label: 'Team',     icon: 'team'    },
+  { id: 'time',     label: 'Time',     icon: 'clock'   },
   { id: 'planner',  label: 'Planner',  icon: 'planner' },
   { id: 'markdown', label: 'Documents', icon: 'doc'    },
   { id: 'api',      label: 'API Client', icon: 'link'   },
@@ -134,6 +136,7 @@ const ALL_SECONDARY_TABS = [
   { id: 'builds',   label: 'Builds',   icon: 'build'        },
   { id: 'tests',    label: 'Tests',    icon: 'check-circle' },
   { id: 'calendar', label: 'Calendar', icon: 'planner'      },
+  { id: 'time',     label: 'Time',     icon: 'clock'        },
   { id: 'notes',    label: 'Notes',    icon: 'pin'          },
   { id: 'triage',   label: 'Triage',   icon: 'inbox'        },
   { id: 'team',     label: 'Team',     icon: 'team'         },
@@ -571,7 +574,7 @@ function AppShell() {
     t.id !== 'markdown' || tweaks.showMarkdown !== false
   );
   const RAIL_PINNED = visibleSecondaryTabs.filter(t =>
-    ['builds', 'tests', 'team', 'settings'].includes(t.id) ||
+    ['builds', 'tests', 'team', 'time', 'settings'].includes(t.id) ||
     (t.id === 'markdown' && tweaks.showMarkdown !== false)
   );
 
@@ -693,6 +696,8 @@ function AppShell() {
 
   // Work items state (live editable)
   const [workItems, setWorkItems] = useState(() => HelmData.WORK_ITEMS);
+  // The tickets the Time screen offers: the work items already loaded for this profile.
+  const getTimeTickets = useCallback(() => ticketsFromWorkItems(workItems), [workItems]);
   const [prs, setPrs] = useState(() => HelmData.PRS);
   const [calendarEvents, setCalendarEvents] = usePersisted('helm.calendar.events', []);
   const [acknowledgedBuilds, setAcknowledgedBuilds] = usePersisted('helm.builds.acknowledged', [], { sync: true });
@@ -1161,6 +1166,7 @@ function AppShell() {
       case 'planner': return <PlannerView data={plannerData} setData={setPlannerData}
         themes={themes} setThemes={setThemes} onExportDocx={plannerExportDocx} device={device} onFlash={showFlash}
         showGlobalNotesTab={device !== 'phone'}/>;
+      case 'time': return withBar('Time', <TimeView storageKey={getProfileKey('nexusmd.timelog.v1')} getTickets={getTimeTickets}/>);
       case 'notes': return <NotesView onAddTask={addTaskFromNote} onFlash={showFlash}/>;
       case 'lists': return <ListsView />;
       case 'markdown': return device === 'phone' ? <DocumentsPhone onFlash={showFlash}/> : <DocumentsView/>;

@@ -10,7 +10,7 @@ const nsh = readFileSync(join(import.meta.dirname, 'installer.nsh'), 'utf8')
 
 describe('the list of apps the installer offers', () => {
   it('has every app, once, in the order of the sidebar', () => {
-    expect(apps.map(a => a.id).sort()).toEqual(['api-client', 'calendar', 'database', 'devenv', 'documents', 'editor', 'git', 'notes', 'planner', 'work'])
+    expect(apps.map(a => a.id).sort()).toEqual(['api-client', 'calendar', 'database', 'devenv', 'documents', 'editor', 'git', 'notes', 'planner', 'time', 'work'])
     const orders = apps.map(a => a.order ?? 0)
     expect(orders).toEqual([...orders].sort((a, b) => a - b))
   })
