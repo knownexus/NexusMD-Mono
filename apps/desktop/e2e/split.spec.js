@@ -31,6 +31,7 @@ const MARKERS = {
   planner: ['Carry-over prompt'],
   calendar: ['Google Calendar is not configured.', 'OutlookService not initialised'],
   documents: ['Global — find all matches'],
+  time: ['Copy as markdown'],
 }
 const markerList = () => Object.entries(MARKERS).flatMap(([id, markers]) => markers.map(marker => [id, marker]))
 

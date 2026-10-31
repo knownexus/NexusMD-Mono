@@ -1,8 +1,9 @@
 /* Time: the day tape is the one loud thing here; the rest is ruled lists on the app's own tokens. */
 .tl-page {
+  container: tl / inline-size;
   --tl-c0: var(--accent); --tl-c1: var(--info); --tl-c2: var(--success);
   --tl-c3: var(--violet); --tl-c4: #b0566d; --tl-c5: #2f8486;
-  max-width: 1120px; margin: 0 auto; padding: var(--pad-5) var(--pad-5) 64px;
+  width: 100%; max-width: 1120px; margin: 0 auto; padding: var(--pad-5) var(--pad-5) 64px;
   display: flex; flex-direction: column; gap: 22px; color: var(--text); font-family: var(--sans);
 }
 .tl-num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -106,20 +107,13 @@
 .tl-tasks-bar i { display: block; height: 100%; border-radius: 2px; }
 
 .tl-undo {
-  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px;
+  position: fixed; left: 50%; bottom: calc(var(--bottom-bar-h, 0px) + env(safe-area-inset-bottom, 0px) + 24px); z-index: 50; max-width: calc(100vw - 24px); transform: translateX(-50%); display: flex; align-items: center; gap: 14px;
   padding: 8px 8px 8px 16px; background: var(--text); color: var(--surface); border-radius: var(--radius); font-size: 13px; box-shadow: var(--shadow-pop);
 }
 
 .tl-page :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tl-input:focus-visible { outline: 0; }
 
-@media (max-width: 860px) {
-  .tl-cols { grid-template-columns: 1fr; }
-  .tl-clock { font-size: 34px; }
-  .tl-row { grid-template-columns: 18px 9px minmax(0, 1fr) 60px; }
-  .tl-range { display: none; }
-  .tl-actions { grid-column: 3 / -1; justify-content: flex-start; opacity: 1; }
-}
 @media (prefers-reduced-motion: reduce) {
   .tl-pulse { animation: none; }
   .tl-actions { transition: none; }
@@ -156,6 +150,7 @@
 .tl-note-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
 .tl-note-x { width: 22px; height: 22px; opacity: 0; }
 .tl-notes li:hover .tl-note-x, .tl-note-x:focus-visible { opacity: 1; }
+.tl-more { display: none; }
 .tl-row-extra { grid-column: 3 / -1; display: flex; flex-direction: column; gap: 8px; padding: 0 0 12px; }
 .tl-note-start { margin-top: -2px; }
 
@@ -187,10 +182,6 @@
 .tl-ev-note { white-space: pre-wrap; overflow-wrap: anywhere; }
 .tl-ev-verb { font-weight: 600; }
 
-@media (max-width: 860px) {
-  .tl-run { grid-template-columns: minmax(0, 1fr) auto; }
-  .tl-run .tl-stop { grid-column: 1 / -1; }
-}
 
 /* Marks: a diamond on the tape, in the list and on the timeline. */
 .tl-diamond { display: inline-block; width: 7px; height: 7px; margin-right: 5px; background: var(--text); transform: rotate(45deg); }
@@ -216,3 +207,90 @@
   font-size: 13px;
 }
 .tl-bulk .tl-select { flex: 1; min-width: 240px; }
+
+/* Touch has no hover: everything that waits for a hover is simply shown. */
+@media (hover: none) {
+  .tl-actions, .tl-check, .tl-note-x { opacity: 1; }
+  .tl-icon { width: 38px; height: 38px; }
+}
+
+/* Medium: the week sits under the log instead of beside it. */
+@container tl (max-width: 860px) {
+  .tl-cols { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .tl-clock { font-size: 34px; }
+}
+
+/* Narrow (a phone, or a squeezed pane): one column, two-line rows, thumb-sized targets. */
+@container tl (max-width: 560px) {
+  .tl-page { padding: 14px 14px 32px; gap: 16px; }
+  .tl-page .btn { min-height: 42px; }
+  .tl-page .btn.sm { min-height: 38px; }
+  .tl-page .tl-edit, .tl-input { font-size: 16px; min-height: 40px; }
+
+  .tl-running.idle { padding: 14px 16px; }
+  /* A running timer: its name across the top, then the clock with Mark and Stop beside it. */
+  .tl-run { padding: 14px 16px; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'main main' 'clock btns' 'notes notes'; gap: 6px 12px; }
+  .tl-run-main { grid-area: main; }
+  .tl-run .tl-now-title > span:last-child { white-space: normal; overflow: visible; }
+  .tl-run .tl-clock { grid-area: clock; font-size: 30px; align-self: center; }
+  .tl-run .tl-run-btns { grid-area: btns; grid-column: auto; display: flex; gap: 6px; }
+  .tl-run-btns .btn { min-width: 0; padding-inline: 12px; justify-content: center; }
+  .tl-run-notes { grid-area: notes; }
+  .tl-run .tl-stop { min-width: 0; }
+  .tl-notes li { grid-template-columns: 50px minmax(0, 1fr) auto; }
+  .tl-mark-item { grid-template-columns: 62px minmax(0, 1fr) auto !important; }
+
+  .tl-field { flex-wrap: wrap; padding: 6px; gap: 6px; }
+  .tl-input { flex: 1 1 100%; padding: 6px 8px; }
+  .tl-field > .btn { flex: 1 1 0; justify-content: center; }
+  .tl-field > .btn.primary { flex: 2 1 0; }
+  .tl-suggest li, .tl-select .tl-suggest li { min-height: 44px; }
+  .tl-recent { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -14px; padding: 0 14px 2px; }
+  .tl-recent > * { flex: none; }
+  .tl-recent-btn { min-height: 34px; }
+
+  .tl-bars { height: 92px; }
+  .tl-tabs button { padding: 10px 0 12px; }
+
+  .tl-row {
+    grid-template-columns: 22px 9px minmax(0, 1fr) auto; row-gap: 2px; align-items: center; padding: 10px 0 6px; min-height: 0;
+  }
+  .tl-check { grid-column: 1; grid-row: 1; width: 18px; height: 18px; }
+  .tl-row > .tl-dot { grid-column: 2; grid-row: 1; }
+  .tl-row > .tl-what { grid-column: 3; grid-row: 1; }
+  .tl-row > .tl-dur { grid-column: 4; grid-row: 1; width: auto; }
+  .tl-row > .tl-range { grid-column: 3 / -1; grid-row: 2; display: block; font-size: 11.5px; }
+  /* Actions: Continue and a ⋯ sit beside the time; ⋯ opens the rest on their own line. */
+  .tl-row > .tl-actions { grid-column: 3 / -1; grid-row: 2; justify-self: end; justify-content: flex-end; gap: 0; margin: -4px -8px -4px 0; opacity: 1; }
+  .tl-more { display: grid; }
+  .tl-row:not(.open) .tl-secondary { display: none; }
+  .tl-row.open > .tl-actions { grid-row: 3; justify-self: stretch; justify-content: flex-start; margin: 0 -8px; }
+  .tl-row > .tl-row-extra { grid-column: 3 / -1; grid-row: 4; padding-bottom: 10px; }
+  .tl-icon { width: 42px; height: 40px; }
+  .tl-assign { min-height: 28px; }
+
+  .tl-row.editing { grid-template-columns: 9px minmax(0, 1fr); gap: 10px 10px; padding: 12px 0; }
+  .tl-row.editing > .tl-dot { grid-column: 1; grid-row: 1; }
+  .tl-row.editing > .tl-what { grid-column: 2; grid-row: 1; }
+  .tl-row.editing > .tl-edit-times { grid-column: 1 / -1; grid-row: 2; }
+  .tl-row.editing > .tl-actions { grid-column: 1 / -1; grid-row: 3; margin: 0; justify-self: stretch; }
+  .tl-row.editing > .tl-actions .btn { flex: 1; justify-content: center; }
+  .tl-row.editing > .tl-hint { grid-column: 1 / -1; grid-row: 4; }
+  .tl-edit-times { gap: 12px; }
+  .tl-edit-times > .tl-tfield { flex: 1 1 100%; }
+  .tl-edit-times > .tl-tfield:nth-last-child(-n+2) { flex: 1 1 40%; }
+  .tl-nudge { display: grid; grid-template-columns: 40px 1fr 40px; }
+  .tl-nudge button { height: 40px; }
+  .tl-nudge .tl-edit { width: 100%; }
+  .tl-select { min-width: 0; width: 100%; }
+  .tl-markat > * { flex: 1 1 100%; }
+  .tl-markat .btn { flex: 1 1 40%; justify-content: center; }
+
+  .tl-bulk { padding: 10px 12px; margin-inline: -4px; }
+  .tl-bulk .tl-select { flex: 1 1 100%; min-width: 0; }
+
+  .tl-tl-head { flex-wrap: wrap; gap: 10px; }
+  .tl-ev { grid-template-columns: 44px 16px minmax(0, 1fr); }
+  .tl-events::before { left: 58px; }
+  .tl-undo { left: 12px; right: 12px; transform: none; justify-content: space-between; }
+}
