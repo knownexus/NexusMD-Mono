@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 
 // Dev only: forwards the app's Atlassian / Azure DevOps calls from Node, because those hosts send no
 // CORS headers to a browser. Only those hosts are allowed. See src/native-http.js.
-const hostAllowed = (h) => h === 'dev.azure.com'
+const hostAllowed = (h) => h === 'dev.azure.com' || h === 'api.github.com'
   || (h.endsWith('.atlassian.net') && h.length > '.atlassian.net'.length)
   || (h.endsWith('.visualstudio.com') && h.length > '.visualstudio.com'.length);
 const MAX_BODY = 1024 * 1024;
