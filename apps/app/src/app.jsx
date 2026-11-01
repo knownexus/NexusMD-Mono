@@ -1193,7 +1193,7 @@ function AppShell() {
         showGlobalNotesTab={device !== 'phone'}/>;
       case 'time': return withBar('Time', <TimeView storageKey={getProfileKey('nexusmd.timelog.v1')} getTickets={getTimeTickets}/>);
       case 'notes': return <NotesView onAddTask={addTaskFromNote} onFlash={showFlash}/>;
-      case 'lists': return <ListsView />;
+      case 'lists': return <ListsView device={device}/>;
       case 'markdown': return device === 'phone' ? <DocumentsPhone onFlash={showFlash}/> : <DocumentsView/>;
       case 'editor': return <EditorScreen onFlash={showFlash}/>;
       case 'git': return <GitView onFlash={showFlash}/>;

@@ -1,4 +1,4 @@
-// Home widgets: the pure configuration (no React). The render functions live in the app's home-widgets.jsx.
+// Home widgets: the pure configuration (no React). The render functions live in @nexusmd/ui (home-widgets.jsx).
 export const WIDGET_PAGES = [
   ['dashboard', 'Home'], ['work', 'Work items'], ['pr', 'Pull requests'], ['builds', 'Builds'], ['tests', 'Tests'],
   ['calendar', 'Calendar'], ['planner', 'Planner'], ['lists', 'Lists'], ['time', 'Time'], ['notes', 'Notes'],

@@ -109,6 +109,14 @@ export { WorkItemsView, WorkItemIdLink } from './views/view-workitems.jsx'
 export { WI_TYPE_STATES_CACHE_KEY } from './views/wi-cache-key.js'
 export { DashboardView } from './views/view-dashboard.jsx'
 
+// Lists (manual profiles) and the optional Home widgets, shared by the apps. Prop/ctx-driven: each app passes
+// its data and storage seams (see the headers of these files).
+export { ListsView } from './views/view-lists.jsx'
+export { WidgetHost, WidgetSheet, WIDGET_TYPES } from './home-widgets.jsx'
+export {
+  Card as WidgetCard, TimeWidget, NotesWidget, LatestBuild, LatestTest, storageTimerStore,
+} from './dashboard-interactive-widgets.jsx'
+
 // Planner v2 subsystem (shared web + app). Chips (StatusChip/PrioChip/PlModal/
 // PlFld/DueLabel) are exported above via planner-chips; here we add the planner
 // constants, input primitives, notes, editors and glance.
