@@ -58,6 +58,8 @@ public sealed class TestFactory : WebApplicationFactory<Program>
                 ["Jwt:SigningKey"]       = new string('k', 64),
                 ["Accounts:DbPath"]      = Path.Combine(ContentRoot, "accounts.db"),
                 ["Accounts:SetupToken"]  = "test-setup-token",
+                // Effectively off for the suite (every test shares one client IP); rate-limit tests override it.
+                ["RateLimit:PermitPerMinute"] = "100000",
             });
             // Applied last so they win over the defaults above.
             cfg.AddInMemoryCollection(Overrides);

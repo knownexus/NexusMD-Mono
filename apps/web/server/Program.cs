@@ -36,6 +36,38 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
+// The app runs behind a reverse proxy (Railway). Honour X-Forwarded-For/Proto so the client IP is the real
+// one. Known networks/proxies are cleared because the proxy address is not known up front; ForwardLimit stays
+// at its default of 1, so only the right-most (proxy-appended) X-Forwarded-For entry is used and a
+// client-supplied header cannot spoof its address. Set Proxy:TrustForwardedHeaders=false when not behind a proxy.
+builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+                       | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+    o.KnownNetworks.Clear();
+    o.KnownProxies.Clear();
+});
+
+// Per-client-IP fixed-window limit (default 20 requests/minute, RateLimit:PermitPerMinute) shared by the
+// anonymous account endpoints. Read lazily so the host's final configuration (and test overrides) apply.
+builder.Services.AddRateLimiter(o => o.RejectionStatusCode = StatusCodes.Status429TooManyRequests);
+builder.Services
+    .AddOptions<Microsoft.AspNetCore.RateLimiting.RateLimiterOptions>()
+    .Configure<IConfiguration>((o, cfg) =>
+    {
+        var permit = cfg.GetValue("RateLimit:PermitPerMinute", 20);
+        if (permit < 1) permit = 20;
+        o.AddPolicy(NexusMDWeb.Api.Controllers.AccountController.AnonymousRateLimitPolicy, ctx =>
+            System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = permit,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }));
+    });
+
 builder.Services.AddControllers();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
@@ -68,12 +100,15 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 NexusMDWeb.Api.Services.Auth.JwtKeyResolver.Resolve(app.Configuration, app.Environment); // fail fast on a missing/short signing key
 
+if (app.Configuration.GetValue("Proxy:TrustForwardedHeaders", true))
+    app.UseForwardedHeaders(); // must run first so everything downstream sees the real client IP/scheme
 app.UseCors("CapacitorApp");
 app.UseMiddleware<NexusMDWeb.Api.Services.Auth.LegacyEndpointGate>();
 
 // Serve the single-page frontend from wwwroot/
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

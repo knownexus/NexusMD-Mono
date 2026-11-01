@@ -129,22 +129,27 @@ public sealed class AccountRepositoryTests : IDisposable
     }
 
     [Fact]
-    public void FifthFailedLogin_LocksForFifteenMinutes_AndResetClears()
+    public void FifthReservedAttempt_LocksForFifteenMinutes_AndResetClears()
     {
         var u = _repo.CreateUser(NewUser("carol"));
         for (var i = 1; i <= 4; i++)
         {
-            var (f, until) = _repo.RecordFailedLogin(u.Id);
+            var (ok, f, until) = _repo.TryReserveLoginAttempt(u.Id);
+            Assert.True(ok);
             Assert.Equal(i, f);
             Assert.Null(until);
         }
 
-        var (failures, lockedUntil) = _repo.RecordFailedLogin(u.Id);
+        var (allowed, failures, lockedUntil) = _repo.TryReserveLoginAttempt(u.Id);
+        Assert.True(allowed); // the attempt that reaches the limit is still verified
         Assert.Equal(5, failures);
         Assert.NotNull(lockedUntil);
         var delta = lockedUntil!.Value - DateTime.UtcNow;
         Assert.InRange(delta.TotalMinutes, 14, 15.1);
         Assert.NotNull(_repo.FindById(u.Id)!.LockedUntil);
+
+        var (allowed6, _, _) = _repo.TryReserveLoginAttempt(u.Id);
+        Assert.False(allowed6);
 
         _repo.ResetFailures(u.Id);
         var after = _repo.FindById(u.Id)!;
@@ -153,15 +158,69 @@ public sealed class AccountRepositoryTests : IDisposable
     }
 
     [Fact]
-    public void SetDisabled_And_UpdateCredentials_Persist()
+    public void ResetFailuresIfCount_OnlyResetsWhenTheCountStillMatches()
     {
-        var u = _repo.CreateUser(NewUser("dave"));
-        _repo.SetDisabled(u.Id, true);
-        Assert.True(_repo.FindById(u.Id)!.Disabled);
-        _repo.SetDisabled(u.Id, false);
-        Assert.False(_repo.FindById(u.Id)!.Disabled);
+        var u = _repo.CreateUser(NewUser("cond1"));
+        _repo.TryReserveLoginAttempt(u.Id);                        // count 1
+        var (_, second, _) = _repo.TryReserveLoginAttempt(u.Id);   // count 2
 
-        _repo.UpdateCredentials(u.Id, "bmV3c2FsdA==", 700000, "bmV3aGFzaA==", "bmV3d3ByaXY=", "bmV3d2NvbnQ=");
+        _repo.ResetFailuresIfCount(u.Id, 1);                       // stale: a later attempt exists
+        Assert.Equal(2, _repo.FindById(u.Id)!.FailedLogins);
+
+        _repo.ResetFailuresIfCount(u.Id, second);
+        Assert.Equal(0, _repo.FindById(u.Id)!.FailedLogins);
+    }
+
+    [Fact]
+    public void ConcurrentReservations_AllowExactlyFive()
+    {
+        var u = _repo.CreateUser(NewUser("conc1"));
+        var results = new (bool allowed, int failures, DateTime? until)[24];
+        Parallel.For(0, results.Length, i => results[i] = _repo.TryReserveLoginAttempt(u.Id));
+
+        Assert.Equal(5, results.Count(r => r.allowed));
+        Assert.Equal(new[] { 1, 2, 3, 4, 5 }, results.Where(r => r.allowed).Select(r => r.failures).OrderBy(x => x));
+        Assert.Equal(5, _repo.FindById(u.Id)!.FailedLogins);
+    }
+
+    [Fact]
+    public void CreateFirstUser_OnlyOneWins_EvenWhenRacing()
+    {
+        var results = new UserRecord?[8];
+        Parallel.For(0, results.Length, i => results[i] = _repo.CreateFirstUser(NewUser("first" + i, "admin")));
+
+        Assert.Single(results, r => r != null);
+        Assert.Single(_repo.ListUsers());
+        Assert.Null(_repo.CreateFirstUser(NewUser("late", "admin")));
+    }
+
+    [Fact]
+    public void CreateSessionIfCredentialsCurrent_RefusesAStaleAuthHash()
+    {
+        var u = _repo.CreateUser(NewUser("stale1"));
+        _repo.ChangeCredentials(u.Id, "bmV3c2FsdA==", 700000, "new-hash", "d3ByaXY=", "d2NvbnQ=", "rh0");
+
+        Assert.Null(_repo.CreateSessionIfCredentialsCurrent(u.Id, "rh1", "aGFzaA=="));  // old hash
+        Assert.False(_repo.RotateSession("rh1", "rh2").Ok);
+        Assert.NotNull(_repo.CreateSessionIfCredentialsCurrent(u.Id, "rh3", "new-hash"));
+    }
+
+    [Fact]
+    public void ChangeCredentials_UpdatesRevokesEverythingAndCreatesOneSession()
+    {
+        var u = _repo.CreateUser(NewUser("chg1"));
+        var s1 = _repo.CreateSession(u.Id, "a1");
+        var s2 = _repo.CreateSession(u.Id, "a2");
+        var other = _repo.CreateUser(NewUser("chg-other"));
+        var so = _repo.CreateSession(other.Id, "o1");
+        for (var i = 0; i < 3; i++) _repo.TryReserveLoginAttempt(u.Id);
+
+        var sid = _repo.ChangeCredentials(u.Id, "bmV3c2FsdA==", 700000, "bmV3aGFzaA==", "bmV3d3ByaXY=", "bmV3d2NvbnQ=", "fresh");
+
+        Assert.False(_repo.SessionExists(s1));
+        Assert.False(_repo.SessionExists(s2));
+        Assert.True(_repo.SessionExists(sid));
+        Assert.True(_repo.SessionExists(so));
         var r = _repo.FindById(u.Id)!;
         Assert.Equal("bmV3c2FsdA==", r.Salt);
         Assert.Equal(700000, r.Iterations);
@@ -169,6 +228,32 @@ public sealed class AccountRepositoryTests : IDisposable
         Assert.Equal("bmV3d3ByaXY=", r.WrappedPrivateKey);
         Assert.Equal("bmV3d2NvbnQ=", r.WrappedContainerKey);
         Assert.Equal("cHVi", r.PublicKey); // public key unchanged
+        Assert.Equal(0, r.FailedLogins);
+        Assert.True(_repo.RotateSession("fresh", "fresh2").Ok);
+    }
+
+    [Fact]
+    public void ChangeCredentials_WithAStaleExpectedHash_ChangesNothing()
+    {
+        var u = _repo.CreateUser(NewUser("chg2"));
+        var live = _repo.CreateSession(u.Id, "keep");
+
+        var sid = _repo.ChangeCredentials(u.Id, "bmV3c2FsdA==", 700000, "x", "d3ByaXY=", "d2NvbnQ=", "fresh", expectedAuthHash: "not-the-hash");
+
+        Assert.Null(sid);
+        Assert.True(_repo.SessionExists(live));
+        Assert.Equal("aGFzaA==", _repo.FindById(u.Id)!.AuthHash);
+        Assert.NotNull(_repo.ChangeCredentials(u.Id, "bmV3c2FsdA==", 700000, "x", "d3ByaXY=", "d2NvbnQ=", "fresh", expectedAuthHash: "aGFzaA=="));
+    }
+
+    [Fact]
+    public void SetDisabled_Persists()
+    {
+        var u = _repo.CreateUser(NewUser("dave"));
+        _repo.SetDisabled(u.Id, true);
+        Assert.True(_repo.FindById(u.Id)!.Disabled);
+        _repo.SetDisabled(u.Id, false);
+        Assert.False(_repo.FindById(u.Id)!.Disabled);
     }
 
     // ---- Invites -------------------------------------------------------------------
@@ -298,7 +383,7 @@ public sealed class AccountRepositoryTests : IDisposable
     private UserRecord LockedUser(string name)
     {
         var u = _repo.CreateUser(NewUser(name));
-        for (var i = 0; i < 5; i++) _repo.RecordFailedLogin(u.Id);
+        for (var i = 0; i < 5; i++) _repo.TryReserveLoginAttempt(u.Id);
         Assert.NotNull(_repo.FindById(u.Id)!.LockedUntil);
         return u;
     }
@@ -309,8 +394,9 @@ public sealed class AccountRepositoryTests : IDisposable
         var u = LockedUser("lock1");
         Sql("UPDATE Users SET LockedUntil=$p WHERE Id=$id", ("$p", NowMs() - 1000), ("$id", u.Id));
 
-        var (failures, until) = _repo.RecordFailedLogin(u.Id);
+        var (allowed, failures, until) = _repo.TryReserveLoginAttempt(u.Id);
 
+        Assert.True(allowed);
         Assert.Equal(1, failures);
         Assert.Null(until);
         var r = _repo.FindById(u.Id)!;
@@ -324,8 +410,9 @@ public sealed class AccountRepositoryTests : IDisposable
         var u = LockedUser("lock2");
         var before = _repo.FindById(u.Id)!;
 
-        var (failures, until) = _repo.RecordFailedLogin(u.Id);
+        var (allowed, failures, until) = _repo.TryReserveLoginAttempt(u.Id);
 
+        Assert.False(allowed);
         Assert.Equal(5, failures);
         Assert.Equal(before.LockedUntil, until);
         var after = _repo.FindById(u.Id)!;

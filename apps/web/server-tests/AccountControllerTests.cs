@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using NexusMDWeb.Api.Data;
 using NexusMDWeb.Tests.Infrastructure;
@@ -176,6 +177,28 @@ public sealed class AccountControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Whitespace_only_setup_token_counts_as_unset()
+    {
+        var (f, http) = NewHost(f => f.Overrides["Accounts:SetupToken"] = "   ");
+
+        var res = await Setup(http, NewCreds(), "   ");
+
+        Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+        Assert.False(f.Services.GetRequiredService<AccountRepository>().AnyUser());
+    }
+
+    [Fact]
+    public void Account_actions_fail_closed_only_the_six_anonymous_ones_are_open()
+    {
+        var t = typeof(NexusMDWeb.Api.Controllers.AccountController);
+        Assert.NotEmpty(t.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), inherit: true));
+        var anonymous = t.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly)
+            .Where(m => m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute), false).Length > 0)
+            .Select(m => m.Name).OrderBy(n => n).ToArray();
+        Assert.Equal(new[] { "Login", "Params", "Redeem", "Refresh", "Setup", "Status" }, anonymous);
+    }
+
+    [Fact]
     public async Task Setup_a_second_time_is_409()
     {
         var (_, http) = NewHost();
@@ -190,12 +213,12 @@ public sealed class AccountControllerTests : IDisposable
     public async Task Concurrent_setup_calls_yield_exactly_one_201()
     {
         var (f, http) = NewHost();
-        var calls = Enumerable.Range(0, 4).Select(i => Task.Run(() => Setup(http, NewCreds("admin" + i)))).ToArray();
+        var calls = Enumerable.Range(0, 8).Select(i => Task.Run(() => Setup(http, NewCreds("admin" + i)))).ToArray();
 
         var results = await Task.WhenAll(calls);
 
         Assert.Single(results, r => r.StatusCode == HttpStatusCode.Created);
-        Assert.Equal(3, results.Count(r => r.StatusCode == HttpStatusCode.Conflict));
+        Assert.Equal(7, results.Count(r => r.StatusCode == HttpStatusCode.Conflict));
         Assert.Single(f.Services.GetRequiredService<AccountRepository>().ListUsers());
     }
 
@@ -231,6 +254,12 @@ public sealed class AccountControllerTests : IDisposable
     [InlineData("  ab  ")]                   // too short after trim
     [InlineData("has\u0007bell")]            // control character
     [InlineData("line\nbreak")]              // control character
+    [InlineData("ab​cd")]               // zero-width space (Cf)
+    [InlineData("ab‮cd")]               // right-to-left override (Cf)
+    [InlineData("ab cd")]               // non-breaking space inside
+    [InlineData("ab　cd")]               // ideographic space inside
+    [InlineData("abㅤcd")]               // hangul filler (invisible letter)
+    [InlineData("abcd")]               // private use
     public async Task Bad_usernames_are_400(string username)
     {
         var (_, http) = NewHost();
@@ -699,5 +728,212 @@ public sealed class AccountControllerTests : IDisposable
         Assert.Equal(bob.WrappedPrivateKey, stored.WrappedPrivateKey);
         Assert.Equal(bob.PublicKey, stored.PublicKey);
         Assert.Equal(bob.SaltB64, stored.Salt);
+    }
+
+    // ---- fix round 1 -------------------------------------------------------------------
+
+    private static long Scalar(TestFactory f, string sql, params (string, object)[] args)
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(f.ContentRoot, "accounts.db")}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        foreach (var (k, v) in args) cmd.Parameters.AddWithValue(k, v);
+        var scalar = cmd.ExecuteScalar();
+        return scalar is null or DBNull ? 0 : Convert.ToInt64(scalar);
+    }
+
+    private static void Exec(TestFactory f, string sql, params (string, object)[] args)
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(f.ContentRoot, "accounts.db")}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        foreach (var (k, v) in args) cmd.Parameters.AddWithValue(k, v);
+        cmd.ExecuteNonQuery();
+    }
+
+    [Fact]
+    public async Task Concurrent_wrong_key_logins_are_capped_at_five_verifications_and_the_rest_are_423()
+    {
+        var (f, http) = NewHost();
+        var (admin, _) = await SetupAdmin(http);
+
+        var calls = Enumerable.Range(0, 12)
+            .Select(_ => Task.Run(() => Login(http, admin.Username, RandomNumberGenerator.GetBytes(32)))).ToArray();
+        var results = await Task.WhenAll(calls);
+
+        var unauthorized = results.Count(r => r.StatusCode == HttpStatusCode.Unauthorized);
+        var locked = results.Count(r => r.StatusCode == (HttpStatusCode)423);
+        Assert.True(unauthorized <= 5, $"{unauthorized} attempts were verified");
+        Assert.Equal(12, unauthorized + locked);
+        Assert.True(locked >= 7);
+        var u = f.Services.GetRequiredService<AccountRepository>().FindByUsername("admin")!;
+        Assert.Equal(5, u.FailedLogins);
+        Assert.NotNull(u.LockedUntil);
+        Assert.Equal((HttpStatusCode)423, (await Login(http, admin.Username, admin.AuthKey)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Change_password_wrong_key_attempts_reserve_atomically_too()
+    {
+        var (f, http) = NewHost();
+        var (admin, setup) = await SetupAdmin(http);
+        var next = NewCreds("admin");
+
+        var calls = Enumerable.Range(0, 10).Select(_ => Task.Run(() =>
+            Authed(http, HttpMethod.Post, "/api/account/change-password", Str(setup, "accessToken"),
+                ChangeBody(RandomNumberGenerator.GetBytes(32), next)))).ToArray();
+        var results = await Task.WhenAll(calls);
+
+        Assert.True(results.Count(r => r.StatusCode == HttpStatusCode.Unauthorized) <= 5);
+        Assert.Equal(10, results.Count(r => r.StatusCode is HttpStatusCode.Unauthorized or (HttpStatusCode)423));
+        Assert.Equal(5, f.Services.GetRequiredService<AccountRepository>().FindByUsername("admin")!.FailedLogins);
+        _ = admin;
+    }
+
+    [Fact]
+    public async Task Successful_change_password_resets_the_failure_counter()
+    {
+        var (f, http) = NewHost();
+        var (admin, setup) = await SetupAdmin(http);
+        for (var i = 0; i < 2; i++)
+            await Authed(http, HttpMethod.Post, "/api/account/change-password", Str(setup, "accessToken"),
+                ChangeBody(RandomNumberGenerator.GetBytes(32), NewCreds("admin")));
+
+        var res = await Authed(http, HttpMethod.Post, "/api/account/change-password", Str(setup, "accessToken"),
+            ChangeBody(admin.AuthKey, NewCreds("admin")));
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Equal(0, f.Services.GetRequiredService<AccountRepository>().FindByUsername("admin")!.FailedLogins);
+    }
+
+    /// <summary>Repository whose session creation can be interleaved with another request (a test seam).</summary>
+    private sealed class RacyRepository(Microsoft.Extensions.Configuration.IConfiguration cfg) : AccountRepository(cfg)
+    {
+        public Action? BeforeCreateSession;
+
+        public override string? CreateSessionIfCredentialsCurrent(string userId, string refreshHash, string expectedAuthHash)
+        {
+            var hook = BeforeCreateSession;
+            BeforeCreateSession = null;
+            hook?.Invoke();
+            return base.CreateSessionIfCredentialsCurrent(userId, refreshHash, expectedAuthHash);
+        }
+    }
+
+    [Fact]
+    public async Task Login_racing_a_password_change_never_leaves_a_session_for_the_old_credentials()
+    {
+        RacyRepository? racy = null;
+        using var f = new TestFactory();
+        using var derived = f.WithWebHostBuilder(b => b.ConfigureTestServices(services =>
+        {
+            foreach (var d in services.Where(d => d.ServiceType == typeof(AccountRepository)).ToList()) services.Remove(d);
+            services.AddSingleton<AccountRepository>(sp =>
+                racy = new RacyRepository(sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()));
+        }));
+        var http = derived.CreateClient();
+        var (admin, _) = await SetupAdmin(http);
+        var userId = racy!.FindByUsername("admin")!.Id;
+
+        // Between the key being verified and the session being created, the password is changed elsewhere.
+        racy.BeforeCreateSession = () => racy.ChangeCredentials(userId, RandB64(16), 600000, "replaced-hash",
+            RandB64(100), RandB64(60), "hook-refresh-hash");
+
+        var res = await Login(http, admin.Username, admin.AuthKey);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
+        // Only the session created together with the new credentials is alive; nothing for the old ones.
+        Assert.Equal(1, Scalar(f, "SELECT COUNT(*) FROM Sessions WHERE RevokedAt IS NULL"));
+        Assert.Equal(1, Scalar(f, "SELECT COUNT(*) FROM Sessions WHERE RevokedAt IS NULL AND RefreshHash='hook-refresh-hash'"));
+        // The failed attempt did not leave the account counting failures against the right key.
+        Assert.Equal(0, racy.FindByUsername("admin")!.FailedLogins);
+    }
+
+    [Fact]
+    public async Task Rate_limit_returns_429_on_the_21st_anonymous_request_and_spares_other_endpoints()
+    {
+        var (_, http) = NewHost(f => f.Overrides["RateLimit:PermitPerMinute"] = "20");
+
+        for (var i = 0; i < 20; i++)
+            Assert.Equal(HttpStatusCode.OK, (await http.GetAsync("/api/account/status")).StatusCode);
+
+        Assert.Equal((HttpStatusCode)429, (await http.GetAsync("/api/account/status")).StatusCode);
+        // The limit is shared across the anonymous account endpoints.
+        Assert.Equal((HttpStatusCode)429, (await http.GetAsync("/api/account/params?username=someone")).StatusCode);
+        Assert.Equal((HttpStatusCode)429, (await Login(http, "someone", RandomNumberGenerator.GetBytes(32))).StatusCode);
+        // Unrelated endpoints are not limited.
+        Assert.NotEqual((HttpStatusCode)429, (await http.GetAsync("/api/google/auth/url")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Rate_limit_is_per_client_ip_using_the_forwarded_for_header()
+    {
+        var (_, http) = NewHost(f => f.Overrides["RateLimit:PermitPerMinute"] = "3");
+
+        HttpRequestMessage From(string ip)
+        {
+            var r = new HttpRequestMessage(HttpMethod.Get, "/api/account/status");
+            r.Headers.Add("X-Forwarded-For", ip);
+            return r;
+        }
+
+        for (var i = 0; i < 3; i++) Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(From("203.0.113.7"))).StatusCode);
+        Assert.Equal((HttpStatusCode)429, (await http.SendAsync(From("203.0.113.7"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(From("203.0.113.8"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Forwarded_headers_can_be_switched_off()
+    {
+        var (_, http) = NewHost(f =>
+        {
+            f.Overrides["RateLimit:PermitPerMinute"] = "2";
+            f.Overrides["Proxy:TrustForwardedHeaders"] = "false";
+        });
+
+        HttpRequestMessage From(string ip)
+        {
+            var r = new HttpRequestMessage(HttpMethod.Get, "/api/account/status");
+            r.Headers.Add("X-Forwarded-For", ip);
+            return r;
+        }
+
+        Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(From("203.0.113.7"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(From("203.0.113.8"))).StatusCode);
+        // Different spoofed IPs share one bucket when the header is not trusted.
+        Assert.Equal((HttpStatusCode)429, (await http.SendAsync(From("203.0.113.9"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Role_change_in_the_database_is_reflected_in_the_next_refresh_token_claim()
+    {
+        var (f, http) = NewHost();
+        var (_, setup) = await SetupAdmin(http);
+        Assert.Equal("admin", RoleClaim(Str(setup, "accessToken")));
+
+        Exec(f, "UPDATE Users SET Role='user' WHERE UsernameKey='admin'");
+        var refreshed = await ExpectSession(
+            await http.PostAsJsonAsync("/api/account/refresh", new { refreshToken = Str(setup, "refreshToken") }), HttpStatusCode.OK);
+
+        Assert.Equal("user", RoleClaim(Str(refreshed, "accessToken")));
+        Assert.Equal("user", refreshed.GetProperty("user").GetProperty("role").GetString());
+    }
+
+    private static string RoleClaim(string jwt) =>
+        new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(jwt).Claims.First(c => c.Type == "role").Value;
+
+    [Fact]
+    public async Task Change_password_for_a_user_who_no_longer_exists_is_401_not_500()
+    {
+        var (f, http) = NewHost();
+        var (admin, setup) = await SetupAdmin(http);
+        Exec(f, "DELETE FROM Users");
+
+        var res = await Authed(http, HttpMethod.Post, "/api/account/change-password", Str(setup, "accessToken"),
+            ChangeBody(admin.AuthKey, NewCreds("admin")));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
     }
 }

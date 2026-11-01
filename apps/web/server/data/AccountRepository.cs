@@ -44,6 +44,10 @@ public class AccountRepository
     {
         using var conn = OpenConnection();
         using var cmd = conn.CreateCommand();
+        // WAL: readers never block the (serialised) writer, so concurrent requests queue on the busy
+        // timeout instead of failing with "database is locked". The mode is persistent in the db file.
+        cmd.CommandText = "PRAGMA journal_mode=WAL";
+        cmd.ExecuteNonQuery();
         cmd.CommandText = @"
             CREATE TABLE IF NOT EXISTS Users (
                 Id                  TEXT    PRIMARY KEY,
@@ -149,7 +153,7 @@ public class AccountRepository
     public UserRecord CreateUser(NewUser u)
     {
         using var conn = OpenConnection();
-        var id = InsertUser(conn, null, u);
+        var id = InsertUser(conn, null, u)!;
         return FindById(id)!;
     }
 
@@ -175,21 +179,34 @@ public class AccountRepository
                 cmd.Parameters.AddWithValue("$ch", HashInvite(inviteCode));
                 if (cmd.ExecuteNonQuery() != 1) throw new InvalidInviteException();
             }
-            id = InsertUser(conn, tx, user); // throws -> transaction disposed uncommitted -> invite not consumed
+            id = InsertUser(conn, tx, user)!; // throws -> transaction disposed uncommitted -> invite not consumed
             tx.Commit();
         }
         return FindById(id)!;
     }
 
-    private static string InsertUser(SqliteConnection conn, SqliteTransaction? tx, NewUser u)
+    /// <summary>
+    /// Creates the very first account only if the Users table is empty. The check and the insert are one
+    /// statement, so racing callers (threads or processes) cannot both succeed. Returns null if any user exists.
+    /// </summary>
+    public UserRecord? CreateFirstUser(NewUser u)
+    {
+        using var conn = OpenConnection();
+        var id = InsertUser(conn, null, u, onlyIfEmpty: true);
+        return id is null ? null : FindById(id);
+    }
+
+    private static string? InsertUser(SqliteConnection conn, SqliteTransaction? tx, NewUser u, bool onlyIfEmpty = false)
     {
         var id = Guid.NewGuid().ToString("N");
         var now = Now();
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
-        cmd.CommandText = @"INSERT INTO Users
-            (Id,Username,UsernameKey,Role,Salt,Iterations,AuthHash,PublicKey,WrappedPrivateKey,WrappedContainerKey,CreatedAt)
-            VALUES ($id,$un,$uk,$ro,$sa,$it,$ah,$pk,$wp,$wc,$ca)";
+        const string cols = "Id,Username,UsernameKey,Role,Salt,Iterations,AuthHash,PublicKey,WrappedPrivateKey,WrappedContainerKey,CreatedAt";
+        const string vals = "$id,$un,$uk,$ro,$sa,$it,$ah,$pk,$wp,$wc,$ca";
+        cmd.CommandText = onlyIfEmpty
+            ? $"INSERT INTO Users ({cols}) SELECT {vals} WHERE NOT EXISTS (SELECT 1 FROM Users)"
+            : $"INSERT INTO Users ({cols}) VALUES ({vals})";
         cmd.Parameters.AddWithValue("$id", id);
         cmd.Parameters.AddWithValue("$un", u.Username.Trim());
         cmd.Parameters.AddWithValue("$uk", UsernameKey(u.Username));
@@ -203,13 +220,12 @@ public class AccountRepository
         cmd.Parameters.AddWithValue("$ca", now);
         try
         {
-            cmd.ExecuteNonQuery();
+            return cmd.ExecuteNonQuery() == 1 ? id : null;
         }
         catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == SqliteConstraintUnique) // UNIQUE on UsernameKey only
         {
             throw new DuplicateUsernameException(u.Username);
         }
-        return id;
     }
 
     public UserRecord? FindByUsername(string username)
@@ -244,28 +260,39 @@ public class AccountRepository
     }
 
     /// <summary>
-    /// Records a failed login in a single atomic statement. From the 5th consecutive failure the account is
-    /// locked for 15 minutes. While a lock is active nothing changes (no increment, no extension). Once a
-    /// lock has expired the next failure starts a fresh count at 1 with the lock cleared.
+    /// Reserves a login (or password-change) attempt BEFORE the secret is verified, in one conditional
+    /// UPDATE...RETURNING, so concurrent guesses cannot all slip past a lock check. Allowed only when the
+    /// account is not currently locked. Each allowed reservation counts as a failure up front: the count
+    /// restarts at 1 if an earlier lock has expired, otherwise increments, and reaching
+    /// <see cref="MaxFailedLogins"/> sets the lock for <see cref="LockoutDuration"/>. A successful attempt
+    /// must call <see cref="ResetFailuresIfCount"/>. When not allowed nothing changes (no increment, no
+    /// extension) and the current count and lock expiry are returned.
     /// </summary>
-    public (int failures, DateTime? lockedUntil) RecordFailedLogin(string id)
+    public (bool allowed, int failures, DateTime? lockedUntil) TryReserveLoginAttempt(string id)
     {
-        const string stillLocked = "(LockedUntil IS NOT NULL AND LockedUntil > $now)";
-        const string newCount = "(CASE WHEN " + stillLocked + " THEN FailedLogins WHEN LockedUntil IS NOT NULL THEN 1 ELSE FailedLogins + 1 END)";
+        const string newCount = "(CASE WHEN LockedUntil IS NOT NULL THEN 1 ELSE FailedLogins + 1 END)";
         using var conn = OpenConnection();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"UPDATE Users SET
-                FailedLogins = " + newCount + @",
-                LockedUntil  = CASE WHEN " + stillLocked + @" THEN LockedUntil WHEN " + newCount + @" >= $max THEN $lu ELSE NULL END
-            WHERE Id=$id RETURNING FailedLogins, LockedUntil";
         var now = DateTime.UtcNow;
-        cmd.Parameters.AddWithValue("$now", ToMs(now));
-        cmd.Parameters.AddWithValue("$max", MaxFailedLogins);
-        cmd.Parameters.AddWithValue("$lu", ToMs(now + LockoutDuration));
-        cmd.Parameters.AddWithValue("$id", id);
-        using var r = cmd.ExecuteReader();
-        if (!r.Read()) return (0, null);
-        return (r.GetInt32(0), r.IsDBNull(1) ? null : FromMs(r.GetInt64(1)));
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"UPDATE Users SET
+                    FailedLogins = " + newCount + @",
+                    LockedUntil  = CASE WHEN " + newCount + @" >= $max THEN $lu ELSE NULL END
+                WHERE Id=$id AND (LockedUntil IS NULL OR LockedUntil <= $now)
+                RETURNING FailedLogins, LockedUntil";
+            cmd.Parameters.AddWithValue("$now", ToMs(now));
+            cmd.Parameters.AddWithValue("$max", MaxFailedLogins);
+            cmd.Parameters.AddWithValue("$lu", ToMs(now + LockoutDuration));
+            cmd.Parameters.AddWithValue("$id", id);
+            using var r = cmd.ExecuteReader();
+            if (r.Read()) return (true, r.GetInt32(0), r.IsDBNull(1) ? null : FromMs(r.GetInt64(1)));
+        }
+        // Not allowed: the user is locked (or does not exist).
+        using var sel = conn.CreateCommand();
+        sel.CommandText = "SELECT FailedLogins, LockedUntil FROM Users WHERE Id=$id";
+        sel.Parameters.AddWithValue("$id", id);
+        using var s = sel.ExecuteReader();
+        return s.Read() ? (false, s.GetInt32(0), s.IsDBNull(1) ? null : FromMs(s.GetInt64(1))) : (false, 0, null);
     }
 
     public void ResetFailures(string id)
@@ -274,6 +301,21 @@ public class AccountRepository
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "UPDATE Users SET FailedLogins=0, LockedUntil=NULL WHERE Id=$id";
         cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Clears the failure counter and lock only if the stored count is still the one produced by this
+    /// caller's reservation. If concurrent attempts have since advanced the count (possibly setting a lock),
+    /// nothing is cleared.
+    /// </summary>
+    public void ResetFailuresIfCount(string id, int expectedCount)
+    {
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Users SET FailedLogins=0, LockedUntil=NULL WHERE Id=$id AND FailedLogins=$c";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$c", expectedCount);
         cmd.ExecuteNonQuery();
     }
 
@@ -294,20 +336,48 @@ public class AccountRepository
         tx.Commit();
     }
 
-    public void UpdateCredentials(string id, string salt, int iterations, string authHash,
-                                  string wrappedPrivateKey, string wrappedContainerKey)
+    /// <summary>
+    /// Replaces a user's credentials, revokes ALL of their sessions and creates one new session (for the
+    /// new credentials) in a single transaction, so no session for the old credentials can survive.
+    /// Resets the failure counter. Returns the new session id, or null (nothing changed) if the user does not exist or,
+    /// when <paramref name="expectedAuthHash"/> is given, no longer has that auth hash.
+    /// </summary>
+    public string? ChangeCredentials(string id, string salt, int iterations, string authHash,
+                                    string wrappedPrivateKey, string wrappedContainerKey, string newRefreshHash,
+                                    string? expectedAuthHash = null)
     {
         using var conn = OpenConnection();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"UPDATE Users SET Salt=$sa, Iterations=$it, AuthHash=$ah,
-            WrappedPrivateKey=$wp, WrappedContainerKey=$wc, FailedLogins=0, LockedUntil=NULL WHERE Id=$id";
-        cmd.Parameters.AddWithValue("$sa", salt);
-        cmd.Parameters.AddWithValue("$it", iterations);
-        cmd.Parameters.AddWithValue("$ah", authHash);
-        cmd.Parameters.AddWithValue("$wp", wrappedPrivateKey);
-        cmd.Parameters.AddWithValue("$wc", wrappedContainerKey);
-        cmd.Parameters.AddWithValue("$id", id);
-        cmd.ExecuteNonQuery();
+        using var tx = conn.BeginTransaction();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = @"UPDATE Users SET Salt=$sa, Iterations=$it, AuthHash=$ah,
+                WrappedPrivateKey=$wp, WrappedContainerKey=$wc, FailedLogins=0, LockedUntil=NULL
+                WHERE Id=$id AND ($ea IS NULL OR AuthHash=$ea)";
+            cmd.Parameters.AddWithValue("$ea", (object?)expectedAuthHash ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$sa", salt);
+            cmd.Parameters.AddWithValue("$it", iterations);
+            cmd.Parameters.AddWithValue("$ah", authHash);
+            cmd.Parameters.AddWithValue("$wp", wrappedPrivateKey);
+            cmd.Parameters.AddWithValue("$wc", wrappedContainerKey);
+            cmd.Parameters.AddWithValue("$id", id);
+            if (cmd.ExecuteNonQuery() != 1) return null; // transaction disposed uncommitted
+        }
+        RevokeUserSessions(conn, tx, id, null);
+        var sid = Guid.NewGuid().ToString("N");
+        using (var ins = conn.CreateCommand())
+        {
+            ins.Transaction = tx;
+            ins.CommandText = "INSERT INTO Sessions (Id,UserId,RefreshHash,CreatedAt,ExpiresAt) VALUES ($id,$uid,$rh,$ca,$ex)";
+            ins.Parameters.AddWithValue("$id", sid);
+            ins.Parameters.AddWithValue("$uid", id);
+            ins.Parameters.AddWithValue("$rh", newRefreshHash);
+            ins.Parameters.AddWithValue("$ca", Now());
+            ins.Parameters.AddWithValue("$ex", Now() + (long)SessionIdleLifetime.TotalMilliseconds);
+            ins.ExecuteNonQuery();
+        }
+        tx.Commit();
+        return sid;
     }
 
     // ---- Invites -----------------------------------------------------------------------
@@ -387,6 +457,28 @@ public class AccountRepository
         cmd.Parameters.AddWithValue("$ex", Now() + (long)SessionIdleLifetime.TotalMilliseconds);
         cmd.ExecuteNonQuery();
         return id;
+    }
+
+    /// <summary>
+    /// Creates a session only if the user still exists, is not disabled and still has
+    /// <paramref name="expectedAuthHash"/> (the hash the caller just verified a key against), in one
+    /// statement. Returns the session id, or null if the credentials changed (or the user was disabled)
+    /// in the meantime. Virtual so tests can interleave another request at this seam.
+    /// </summary>
+    public virtual string? CreateSessionIfCredentialsCurrent(string userId, string refreshHash, string expectedAuthHash)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"INSERT INTO Sessions (Id,UserId,RefreshHash,CreatedAt,ExpiresAt)
+            SELECT $id,$uid,$rh,$ca,$ex FROM Users WHERE Id=$uid AND AuthHash=$ah AND Disabled=0";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$uid", userId);
+        cmd.Parameters.AddWithValue("$rh", refreshHash);
+        cmd.Parameters.AddWithValue("$ca", Now());
+        cmd.Parameters.AddWithValue("$ex", Now() + (long)SessionIdleLifetime.TotalMilliseconds);
+        cmd.Parameters.AddWithValue("$ah", expectedAuthHash);
+        return cmd.ExecuteNonQuery() == 1 ? id : null;
     }
 
     /// <summary>True if the session exists, is not revoked or idle-expired, and its user is not disabled.</summary>

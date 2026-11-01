@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using NexusMDWeb.Api.Data;
 using NexusMDWeb.Api.Models;
 using NexusMDWeb.Api.Services.Auth;
@@ -18,6 +19,7 @@ namespace NexusMDWeb.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/account")]
+[Authorize] // fail closed: every action needs a bearer token unless it is explicitly [AllowAnonymous]
 [RequestSizeLimit(MaxBodyBytes)]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class AccountController(
@@ -38,8 +40,8 @@ public class AccountController(
     private const int AuthKeyBytes = 32;
     private const int FakeIterations = 600_000;
 
-    // Setup is "check no users, then insert": serialise it so two concurrent calls cannot both succeed.
-    private static readonly object SetupLock = new();
+    /// <summary>Name of the per-IP fixed-window rate-limit policy for the anonymous endpoints (see Program.cs).</summary>
+    public const string AnonymousRateLimitPolicy = "account-anon";
 
     // Verified against for unknown usernames so the response time does not reveal whether a user exists.
     private static readonly Lazy<string> DummyHash = new(() => PasswordHasher.Hash(new byte[AuthKeyBytes]));
@@ -60,10 +62,14 @@ public class AccountController(
     // ---- status / params ---------------------------------------------------------------
 
     // GET /api/account/status -> { needsSetup }
+    [AllowAnonymous]
+    [EnableRateLimiting(AnonymousRateLimitPolicy)]
     [HttpGet("status")]
     public IActionResult Status() => Ok(new { needsSetup = !accounts.AnyUser() });
 
     // GET /api/account/params?username= -> { salt, iterations }. Unknown users get a stable fake salt.
+    [AllowAnonymous]
+    [EnableRateLimiting(AnonymousRateLimitPolicy)]
     [HttpGet("params")]
     public IActionResult Params([FromQuery] string? username)
     {
@@ -76,30 +82,32 @@ public class AccountController(
     // ---- setup / redeem ----------------------------------------------------------------
 
     // POST /api/account/setup -> 201 session. Creates the first (admin) account; needs Accounts:SetupToken.
+    [AllowAnonymous]
+    [EnableRateLimiting(AnonymousRateLimitPolicy)]
     [HttpPost("setup")]
     public IActionResult Setup([FromBody] CreateAccountRequest? req)
     {
         if (req is null) return Err(400, "request body is required");
 
         var configured = config["Accounts:SetupToken"];
-        if (string.IsNullOrEmpty(configured) || !ConstantTimeEquals(req.SetupToken ?? "", configured))
+        if (string.IsNullOrWhiteSpace(configured) || !ConstantTimeEquals(req.SetupToken ?? "", configured))
             return Err(403, "setup is not available");
 
         if (!TryParseCreate(req, "admin", out var newUser, out var error)) return Err(400, error);
 
-        UserRecord created;
-        lock (SetupLock)
-        {
-            if (accounts.AnyUser()) return Err(409, "setup has already been completed");
-            try { created = accounts.CreateUser(newUser); }
-            catch (DuplicateUsernameException) { return Err(409, "setup has already been completed"); }
-        }
+        // The "no users yet" guard is part of the INSERT itself, so racing calls (even across processes) cannot both win.
+        UserRecord? created;
+        try { created = accounts.CreateFirstUser(newUser); }
+        catch (DuplicateUsernameException) { created = null; }
+        if (created is null) return Err(409, "setup has already been completed");
 
         log.LogInformation("Initial admin account {UserId} created", created.Id);
         return StatusCode(StatusCodes.Status201Created, BuildSession(created));
     }
 
     // POST /api/account/redeem -> 201 session. Invite-only registration.
+    [AllowAnonymous]
+    [EnableRateLimiting(AnonymousRateLimitPolicy)]
     [HttpPost("redeem")]
     public IActionResult Redeem([FromBody] CreateAccountRequest? req)
     {
@@ -119,6 +127,8 @@ public class AccountController(
     // ---- login / refresh / logout ------------------------------------------------------
 
     // POST /api/account/login -> 200 session | 401 | 403 disabled | 423 locked
+    [AllowAnonymous]
+    [EnableRateLimiting(AnonymousRateLimitPolicy)]
     [HttpPost("login")]
     public IActionResult Login([FromBody] LoginRequest? req)
     {
@@ -133,26 +143,36 @@ public class AccountController(
             return InvalidCredentials();
         }
 
-        // Check the lock first: while locked we neither verify the key nor record a failure.
-        if (IsLocked(user)) return Locked(user.LockedUntil!.Value);
+        // Reserve the attempt atomically BEFORE verifying: a locked account is refused (423) without
+        // verifying the key or touching the counter, and concurrent guesses cannot all pass a stale lock check.
+        var (allowed, count, reservedLock) = accounts.TryReserveLoginAttempt(user.Id);
+        if (!allowed) return reservedLock is { } held ? Locked(held) : InvalidCredentials();
 
         if (!PasswordHasher.Verify(authKey, user.AuthHash))
         {
-            var (failures, lockedUntil) = accounts.RecordFailedLogin(user.Id);
-            if (lockedUntil is { } until && until > DateTime.UtcNow)
+            // The reservation already counted this failure; if it was the one that hit the limit, say so.
+            if (reservedLock is { } until && until > DateTime.UtcNow)
             {
-                log.LogWarning("Account {UserId} locked after {Failures} failed logins", user.Id, failures);
+                log.LogWarning("Account {UserId} locked after {Failures} failed logins", user.Id, count);
                 return Locked(until);
             }
             return InvalidCredentials();
         }
 
         if (user.Disabled) return Err(403, "this account is disabled");
-        if (user.FailedLogins > 0 || user.LockedUntil != null) accounts.ResetFailures(user.Id);
-        return Ok(BuildSession(user));
+
+        // The session is only created if the credentials we just verified against are still current.
+        var (refresh, refreshHash) = tokens.NewRefreshToken();
+        if (accounts.CreateSessionIfCredentialsCurrent(user.Id, refreshHash, user.AuthHash) is null)
+            return InvalidCredentials();
+        accounts.ResetFailuresIfCount(user.Id, count); // no-op if concurrent attempts have advanced the count
+        var (access, expiresIn) = tokens.IssueAccess(user);
+        return Ok(SessionPayload(user, access, refresh, expiresIn));
     }
 
     // POST /api/account/refresh -> 200 rotated session | 401
+    [AllowAnonymous]
+    [EnableRateLimiting(AnonymousRateLimitPolicy)]
     [HttpPost("refresh")]
     public IActionResult Refresh([FromBody] RefreshRequest? req)
     {
@@ -179,7 +199,6 @@ public class AccountController(
     }
 
     // POST /api/account/logout (auth) -> 204. Revokes the caller's own session identified by its refresh token.
-    [Authorize]
     [HttpPost("logout")]
     public IActionResult Logout([FromBody] RefreshRequest? req)
     {
@@ -195,7 +214,6 @@ public class AccountController(
 
     // POST /api/account/change-password (auth) -> 200 new session. Revokes every existing session
     // (including the caller's); the client adopts the returned session.
-    [Authorize]
     [HttpPost("change-password")]
     public IActionResult ChangePassword([FromBody] ChangePasswordRequest? req)
     {
@@ -210,25 +228,33 @@ public class AccountController(
         var user = accounts.FindById(userId);
         if (user is null) return Unauthorized();
         if (user.Disabled) return Err(403, "this account is disabled");
-        if (IsLocked(user)) return Locked(user.LockedUntil!.Value);
+
+        // Same atomic reservation as login, so currentAuthKey cannot be brute-forced through this endpoint.
+        var (allowed, count, reservedLock) = accounts.TryReserveLoginAttempt(user.Id);
+        if (!allowed) return reservedLock is { } held ? Locked(held) : InvalidCredentials();
 
         if (!PasswordHasher.Verify(currentKey, user.AuthHash))
         {
-            var (failures, lockedUntil) = accounts.RecordFailedLogin(user.Id);
-            if (lockedUntil is { } until && until > DateTime.UtcNow)
+            if (reservedLock is { } until && until > DateTime.UtcNow)
             {
-                log.LogWarning("Account {UserId} locked after {Failures} failed password-change attempts", user.Id, failures);
+                log.LogWarning("Account {UserId} locked after {Failures} failed password-change attempts", user.Id, count);
                 return Locked(until);
             }
             return InvalidCredentials();
         }
 
-        accounts.UpdateCredentials(user.Id, req.Salt!, req.Iterations, PasswordHasher.Hash(newKey),
-            req.WrappedPrivateKey!, req.WrappedContainerKey!);
-        accounts.RevokeAllSessions(user.Id);
-        log.LogInformation("Password changed for {UserId}; all sessions revoked", user.Id);
+        // Credentials, revocation of every session and the new session commit together, and only if the
+        // auth hash we verified against is still current. This also resets the failure counter.
+        var (refresh, refreshHash) = tokens.NewRefreshToken();
+        var sessionId = accounts.ChangeCredentials(user.Id, req.Salt!, req.Iterations, PasswordHasher.Hash(newKey),
+            req.WrappedPrivateKey!, req.WrappedContainerKey!, refreshHash, expectedAuthHash: user.AuthHash);
+        if (sessionId is null) return InvalidCredentials();
+        log.LogInformation("Password changed for {UserId}; all other sessions revoked", user.Id);
 
-        return Ok(BuildSession(accounts.FindById(user.Id)!));
+        var fresh = accounts.FindById(user.Id);
+        if (fresh is null) return Unauthorized();
+        var (access, expiresIn) = tokens.IssueAccess(fresh);
+        return Ok(SessionPayload(fresh, access, refresh, expiresIn));
     }
 
     // ---- session building --------------------------------------------------------------
@@ -268,7 +294,6 @@ public class AccountController(
         return StatusCode(423, new { error = "account temporarily locked", retryAfterSeconds = seconds });
     }
 
-    private static bool IsLocked(UserRecord user) => user.LockedUntil is { } until && until > DateTime.UtcNow;
 
     // ---- validation --------------------------------------------------------------------
 
@@ -327,15 +352,30 @@ public class AccountController(
         try { normalized = raw.Normalize(NormalizationForm.FormC).Trim(); }
         catch (ArgumentException) { return false; } // malformed Unicode (e.g. lone surrogate)
         if (normalized.Length < MinUsernameChars || normalized.Length > MaxUsernameChars) return false;
-        foreach (var c in normalized)
+        foreach (var c in normalized.EnumerateRunes())
         {
-            // U+FFFD is what invalid UTF-8/UTF-16 decodes to: treat it as malformed input.
-            if (char.IsControl(c) || c == '�') return false;
-            var cat = char.GetUnicodeCategory(c);
-            if (cat is UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator) return false;
+            if (!IsAllowedUsernameChar(c)) return false;
         }
         name = normalized;
         return true;
+    }
+
+    // Invisible letters that Unicode classifies as ordinary letters/symbols but render as blank.
+    private const string InvisibleLookalikes = "\u115F\u1160\u2800\u3164\uFFA0";
+
+    /// <summary>
+    /// Rejects control, format (Cf, e.g. zero-width and bidi overrides), line/paragraph separators, private-use,
+    /// unassigned, any space other than ASCII space, a few blank-looking letters, and U+FFFD (what invalid
+    /// UTF-8/UTF-16 decodes to, i.e. malformed input).
+    /// </summary>
+    private static bool IsAllowedUsernameChar(Rune c)
+    {
+        if (c.Value == 0xFFFD || (c.IsBmp && InvisibleLookalikes.Contains((char)c.Value))) return false;
+        return Rune.GetUnicodeCategory(c) is not (
+            UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.LineSeparator
+            or UnicodeCategory.ParagraphSeparator or UnicodeCategory.PrivateUse or UnicodeCategory.OtherNotAssigned
+            or UnicodeCategory.Surrogate)
+            && (c.Value == 0x20 || Rune.GetUnicodeCategory(c) != UnicodeCategory.SpaceSeparator);
     }
 
     private static bool ConstantTimeEquals(string a, string b) =>
