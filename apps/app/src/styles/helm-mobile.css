@@ -538,7 +538,8 @@
 .m-app[data-device="phone"] .m-appbar.wrap .m-ab-lead { flex: 1 1 100%; }
 .m-app[data-device="phone"] .m-appbar.wrap .m-ab-actions { flex: 1 1 100%; justify-content: flex-start; gap: 8px; }
 
-/* ---------- Builds table: keep every column readable and swipe sideways ---------- */
+/* ---------- Builds table: keep every column readable and swipe sideways (phone and narrow tablets) ---------- */
+.m-app .m-bld-card { min-width: 1080px; }
 .m-app[data-device="phone"] .m-bld-card { min-width: 880px; }
 
 /* ---------- Phone form fields are tall enough to tap ---------- */

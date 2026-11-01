@@ -956,8 +956,8 @@ function YearView({ year, allEvents, today, onDayClick }) {
               <div key={wi} style={{ display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',marginBottom:1 }}>
                 {week.map(d => {
                   const key = isoDate(d);
-                  const isToday = key===today;
                   const inMonth = d.getMonth()===mi;
+                  const isToday = key===today && inMonth;
                   const evs = eventMap[key]||[];
                   return (
                     <div key={key} onClick={evs.length?()=>onDayClick(key):undefined}
