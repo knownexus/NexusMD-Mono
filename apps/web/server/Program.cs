@@ -9,22 +9,6 @@ builder.Configuration.AddJsonFile(
 // JWT bearer auth. Jwt:SigningKey must be >= 32 bytes; outside Development it is mandatory.
 // Resolved lazily (after the host's final configuration is built) so that test hosts and
 // environment overrides are honoured; validated eagerly right after builder.Build().
-var devEphemeralKey = new Lazy<string>(() =>
-    Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48)));
-string ResolveJwtKey(IConfiguration cfg, IHostEnvironment env)
-{
-    var key = cfg["Jwt:SigningKey"];
-    if (string.IsNullOrWhiteSpace(key))
-    {
-        if (!env.IsDevelopment())
-            throw new InvalidOperationException("Jwt:SigningKey is required (>= 32 bytes) outside Development.");
-        return devEphemeralKey.Value; // Development only: tokens do not survive a restart.
-    }
-    if (System.Text.Encoding.UTF8.GetByteCount(key) < 32)
-        throw new InvalidOperationException("Jwt:SigningKey must be at least 32 bytes.");
-    return key;
-}
-
 builder.Services
     .AddAuthentication(Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();
@@ -37,11 +21,15 @@ builder.Services
         o.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuer = cfg["Jwt:Issuer"] ?? "nexusmd",
+            ValidIssuer = NexusMDWeb.Api.Services.Auth.JwtKeyResolver.Issuer(cfg),
             ValidateAudience = false,
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
-                System.Text.Encoding.UTF8.GetBytes(ResolveJwtKey(cfg, env))),
+                System.Text.Encoding.UTF8.GetBytes(NexusMDWeb.Api.Services.Auth.JwtKeyResolver.Resolve(cfg, env))),
+            // MapInboundClaims=false keeps short claim names, so point the role/name lookups at them
+            // (otherwise [Authorize(Roles=...)] would look for the long ClaimTypes.Role URI).
+            NameClaimType = "unique_name",
+            RoleClaimType = "role",
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(30),
         };
@@ -60,6 +48,10 @@ builder.Services.AddSingleton<NexusMDWeb.Api.Services.OAuth.IOneTimeCodeStore,
 builder.Services.AddSingleton<NexusMDWeb.Api.Data.ProfileRepository>();
 builder.Services.AddSingleton<NexusMDWeb.Api.Services.ProfileService>();
 
+// Accounts: SQLite store, password hashing (auth-key hash) and JWT/refresh token issuing.
+builder.Services.AddSingleton<NexusMDWeb.Api.Data.AccountRepository>();
+builder.Services.AddSingleton<NexusMDWeb.Api.Services.Auth.TokenService>();
+
 // Allow the Capacitor Android app to call the API. "nexus.app" is the
 // WebView's virtual hostname (capacitor.config.json); "nexusmd.app" is the
 // deployed API/web origin used as the desktop/app VITE_API_BASE default.
@@ -74,7 +66,7 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
-ResolveJwtKey(app.Configuration, app.Environment); // fail fast on a missing/short signing key
+NexusMDWeb.Api.Services.Auth.JwtKeyResolver.Resolve(app.Configuration, app.Environment); // fail fast on a missing/short signing key
 
 app.UseCors("CapacitorApp");
 app.UseMiddleware<NexusMDWeb.Api.Services.Auth.LegacyEndpointGate>();
