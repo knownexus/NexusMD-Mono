@@ -3,6 +3,7 @@ import { createAccountSync } from '../src/modules/account/account-sync.js'
 import { createKeyRegistry } from '../src/modules/account/key-registry.js'
 import { AccountError } from '../src/modules/account/account-client.js'
 import { generateContainerKey, encryptJson, decryptJson, opaqueId } from '../src/modules/account/crypto.js'
+import { contentHash } from '../src/modules/sync/hash.js'
 import * as core from '../src/index.js'
 
 const META = 'nexusmd.account.meta'
@@ -94,10 +95,10 @@ async function decryptAll(srv, ck) {
 }
 
 let clock = 1_000_000
-function device({ srv, ck, init = {}, secrets = {}, deviceId = 'dev-a', devicePrefs = null, ns = 'nexusmd', now }) {
+function device({ srv, ck, init = {}, secrets = {}, deviceId = 'dev-a', devicePrefs = null, ns = 'nexusmd', now, getActiveProfileId }) {
   const storage = fakeStorage(init)
   const secure = fakeSecure(storage, ns, secrets)
-  const registry = createKeyRegistry({ namespace: ns })
+  const registry = createKeyRegistry({ namespace: ns, getActiveProfileId })
   const sync = createAccountSync({
     client: srv.client, containerKey: ck, registry, storage, secure, devicePrefs, deviceId,
     metaKey: `${ns}.account.meta`, now: now || (() => (clock += 1000)),
@@ -261,24 +262,135 @@ describe('createAccountSync', () => {
     expect(a.storage.getItem('nexusmd.p.1.github.login')).toBe('b-only')
   })
 
-  it('last writer wins by updatedAt when both sides changed a tracked entry', async () => {
-    const srv = fakeServer()
-    const ck = await generateContainerKey()
-    let t = 1000
-    const now = () => t
-    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'base' }, now })
-    await a.sync.syncNow()
-    const b = device({ srv, ck, deviceId: 'dev-b', now })
-    await b.sync.syncNow()
-    // B edits and pushes at a time later than A's (unpushed) local edit is seen
-    t = 5000
-    a.storage.setItem('nexusmd.p.1.ado.org', 'a-edit')
-    b.storage.setItem('nexusmd.p.1.ado.org', 'b-edit')
-    t = 9000
-    await b.sync.push()
-    t = 3000 // A detects its own change at an earlier time than B's write
-    await a.sync.pull()
-    expect(a.storage.getItem('nexusmd.p.1.ado.org')).toBe('b-edit')
+  describe('last writer wins by the time an edit was first observed', () => {
+    const ORG = 'nexusmd.p.1.ado.org'
+    async function pair() {
+      const srv = fakeServer()
+      const ck = await generateContainerKey()
+      const clockRef = { t: 100 }
+      const now = () => clockRef.t
+      const a = device({ srv, ck, init: { [ORG]: 'base' }, now })
+      await a.sync.syncNow()
+      const b = device({ srv, ck, deviceId: 'dev-b', now })
+      await b.sync.syncNow()
+      return { srv, ck, a, b, clockRef }
+    }
+
+    it('an older offline edit loses to a newer remote edit, everywhere', async () => {
+      const { srv, ck, a, b, clockRef } = await pair()
+      clockRef.t = 1000
+      a.storage.setItem(ORG, 'a-offline-edit')
+      srv.fail = 'offline'
+      expect((await a.sync.syncNow()).error.code).toBe('offline') // offline, but the edit is observed now
+      srv.fail = null
+      clockRef.t = 2000
+      b.storage.setItem(ORG, 'b-edit')
+      await b.sync.syncNow()
+      clockRef.t = 3000
+      await a.sync.syncNow()
+      expect(a.storage.getItem(ORG)).toBe('b-edit')
+      expect((await decryptAll(srv, ck))['p.1.ado.org'].value).toBe('b-edit')
+      await b.sync.syncNow()
+      expect(b.storage.getItem(ORG)).toBe('b-edit')
+    })
+
+    it('a newer edit wins even when the older edit reaches the server later', async () => {
+      const { srv, ck, a, b, clockRef } = await pair()
+      clockRef.t = 1000
+      b.storage.setItem(ORG, 'b-older-edit')
+      await b.sync.observe()
+      clockRef.t = 2000
+      a.storage.setItem(ORG, 'a-newer-edit')
+      await a.sync.observe()
+      clockRef.t = 2500
+      await b.sync.syncNow() // pushes B's edit, stamped 1000
+      expect((await decryptAll(srv, ck))['p.1.ado.org'].updatedAt).toBe(1000)
+      clockRef.t = 3000
+      await a.sync.syncNow()
+      expect(a.storage.getItem(ORG)).toBe('a-newer-edit')
+      const stored = (await decryptAll(srv, ck))['p.1.ado.org']
+      expect(stored.value).toBe('a-newer-edit')
+      expect(stored.updatedAt).toBe(2000)
+      clockRef.t = 3500
+      await b.sync.syncNow()
+      expect(b.storage.getItem(ORG)).toBe('a-newer-edit')
+    })
+
+    it('a tie goes to the remote value', async () => {
+      const { srv, ck, a, b, clockRef } = await pair()
+      clockRef.t = 1000
+      a.storage.setItem(ORG, 'a-edit')
+      await a.sync.observe()
+      b.storage.setItem(ORG, 'b-edit')
+      await b.sync.syncNow()
+      await a.sync.syncNow()
+      expect(a.storage.getItem(ORG)).toBe('b-edit')
+      expect((await decryptAll(srv, ck))['p.1.ado.org'].value).toBe('b-edit')
+    })
+
+    it('a local deletion loses to a newer remote edit and beats an older one', async () => {
+      const { srv, ck, a, b, clockRef } = await pair()
+      clockRef.t = 1000
+      a.storage.removeItem(ORG)
+      await a.sync.observe()
+      clockRef.t = 2000
+      b.storage.setItem(ORG, 'b-edit')
+      await b.sync.syncNow()
+      clockRef.t = 3000
+      await a.sync.syncNow()
+      expect(a.storage.getItem(ORG)).toBe('b-edit') // restored: the remote edit is newer
+
+      clockRef.t = 4000
+      b.storage.setItem(ORG, 'b-older-edit')
+      await b.sync.observe()
+      clockRef.t = 5000
+      a.storage.removeItem(ORG)
+      await a.sync.observe()
+      clockRef.t = 5500
+      await b.sync.syncNow()
+      clockRef.t = 6000
+      await a.sync.syncNow()
+      expect(a.storage.getItem(ORG)).toBeNull()
+      expect((await decryptAll(srv, ck))['p.1.ado.org'].deleted).toBe(true)
+      clockRef.t = 6500
+      await b.sync.syncNow()
+      expect(b.storage.getItem(ORG)).toBeNull()
+    })
+
+    it('a remote updatedAt far in the future is clamped to now + 5 minutes', async () => {
+      const { srv, ck, a, b, clockRef } = await pair()
+      const skewed = device({ srv, ck, deviceId: 'dev-skew', now: () => clockRef.t + 365 * 24 * 3600 * 1000 })
+      await skewed.sync.syncNow()
+      skewed.storage.setItem(ORG, 'from-the-future')
+      await skewed.sync.syncNow()
+      clockRef.t = 1000
+      await a.sync.pull()
+      expect(a.storage.getItem(ORG)).toBe('from-the-future')
+      const m = JSON.parse(a.storage.getItem(META)).entries['p.1.ado.org']
+      expect(m.updatedAt).toBe(1000 + 5 * 60 * 1000)
+      // a forced re-push does not carry the far-future time on
+      await a.sync.seed()
+      expect((await decryptAll(srv, ck))['p.1.ado.org'].updatedAt).toBeLessThanOrEqual(1000 + 5 * 60 * 1000)
+      expect(b.storage.getItem(ORG)).toBe('base')
+    })
+  })
+
+  describe('a joining device never overwrites account values', () => {
+    for (const op of ['push', 'seed']) {
+      it(`${op}() before any pull keeps the remote value and uploads only local-only keys`, async () => {
+        const srv = fakeServer()
+        const ck = await generateContainerKey()
+        const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'from-a' } })
+        await a.sync.seed()
+        const b = device({ srv, ck, deviceId: 'dev-b', init: { 'nexusmd.p.1.ado.org': 'from-b', 'nexusmd.p.1.github.login': 'b-only' } })
+        const r = await b.sync[op]()
+        expect(r.error).toBeUndefined()
+        const stored = await decryptAll(srv, ck)
+        expect(stored['p.1.ado.org'].value).toBe('from-a')
+        expect(stored['p.1.github.login'].value).toBe('b-only')
+        expect(b.storage.getItem('nexusmd.p.1.ado.org')).toBe('from-a')
+      })
+    }
   })
 
   it('a stale push conflicts, re-pulls, re-merges and retries once', async () => {
@@ -307,7 +419,18 @@ describe('createAccountSync', () => {
     const r = await a.sync.push()
     expect(r.pushed).toBe(1)
     expect(r.tooLarge).toEqual(['nexusmd:big.blob'])
-    expect((await a.sync.push()).pushed).toBe(0)
+    const calls = srv.putCalls
+    const again = await a.sync.syncNow()
+    expect(again.pushed).toBe(0)
+    expect(again.tooLarge).toEqual(['nexusmd:big.blob']) // still reported, not re-sent
+    expect(srv.putCalls).toBe(calls)
+    // a new local value is tried again
+    a.storage.setItem('nexusmd.big.blob', 'y'.repeat(1000))
+    await a.sync.push()
+    expect(srv.putCalls).toBe(calls + 1)
+    a.storage.setItem('nexusmd.big.blob', 'small now')
+    expect((await a.sync.push()).pushed).toBe(1)
+    expect((await a.sync.push()).tooLarge).toEqual([])
   })
 
   it('secrets round trip through the secure adapter; account secrets never leave', async () => {
@@ -319,6 +442,8 @@ describe('createAccountSync', () => {
     await b.sync.syncNow()
     expect(b.secure.set).toHaveBeenCalledWith('google.auth', 'g-token')
     expect(await b.secure.get('google.auth')).toBe('g-token')
+    expect([...b.storage.map.values()].join('|')).not.toContain('g-token') // only the adapter holds it
+    expect([...a.storage.map.values()].join('|')).not.toContain('g-token')
     expect(await b.secure.get('account.session')).toBeNull()
     const ids = Object.keys(await decryptAll(srv, ck))
     expect(ids).toEqual(['sec:nexusmd:google.auth'])
@@ -416,10 +541,23 @@ describe('createAccountSync', () => {
     const ck = await generateContainerKey()
     const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x' } })
     await a.sync.syncNow()
-    srv.items.clear()
-    const r = await a.sync.pull()
+    const b = device({ srv, ck, deviceId: 'dev-b' })
+    await b.sync.syncNow()
+    expect(b.storage.getItem('nexusmd.p.1.ado.org')).toBe('x')
+    const cursor = metaOf(b).cursor
+    expect(cursor).toBeGreaterThan(0)
+    // the server still holds the items but answers with an empty feed (and even a reset cursor)
+    srv.client.getChanges = async () => ({ items: [], cursor: 0 })
+    const applied = vi.fn()
+    b.sync.onApplied(applied)
+    const r = await b.sync.syncNow()
+    expect(r.error).toBeUndefined()
     expect(r.applied).toBe(0)
-    expect(a.storage.getItem('nexusmd.p.1.ado.org')).toBe('x')
+    expect(r.pushed).toBe(0)
+    expect(applied).not.toHaveBeenCalled()
+    expect(b.storage.getItem('nexusmd.p.1.ado.org')).toBe('x')
+    expect(metaOf(b).cursor).toBe(cursor)
+    expect((await decryptAll(srv, ck))['p.1.ado.org'].deleted).toBeFalsy()
   })
 
   it('a failed pull returns { error }, deletes nothing and leaves meta untouched', async () => {
@@ -429,13 +567,21 @@ describe('createAccountSync', () => {
     await a.sync.syncNow()
     a.storage.setItem('nexusmd.p.1.ado.org', 'changed-while-offline') // so push needs the network
     const before = new Map(a.storage.map)
+    before.delete(META)
+    const serverState = (m) => ({ cursor: m.cursor, entries: Object.fromEntries(Object.entries(m.entries).map(([id, e]) => [id, [e.hash, e.revision, e.deleted]])) })
+    const metaBefore = serverState(metaOf(a))
     srv.fail = 'offline'
     for (const op of ['pull', 'push', 'syncNow', 'seed']) {
       const r = await a.sync[op]()
       expect(r.error).toBeInstanceOf(AccountError)
       expect(r.error.code).toBe('offline')
     }
-    expect(a.storage.map).toEqual(before)
+    const after = new Map(a.storage.map)
+    after.delete(META)
+    expect(after).toEqual(before)
+    // meta may only gain the observation stamp of the offline edit
+    expect(serverState(metaOf(a))).toEqual(metaBefore)
+    expect(metaOf(a).entries['p.1.ado.org'].changedAt).toBeGreaterThan(0)
     expect(await a.secure.get('google.auth')).toBe('t')
   })
 
@@ -598,5 +744,229 @@ describe('createAccountSync', () => {
       storage, secure: fakeSecure(storage), devicePrefs: null, deviceId: 'd', metaKey: META,
     })
     expect(() => { sync.start(); sync.stop() }).not.toThrow()
+  })
+})
+
+describe('createAccountSync data-safety rules', () => {
+  it('profiles: an unpushed local rename survives a concurrent remote addition', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const P = 'nexusmd.profiles'
+    const a = device({ srv, ck, init: { [P]: JSON.stringify([{ id: '1', name: 'Work' }]) } })
+    await a.sync.syncNow()
+    const b = device({ srv, ck, deviceId: 'dev-b' })
+    await b.sync.syncNow()
+    a.storage.setItem(P, JSON.stringify([{ id: '1', name: 'Office' }]))
+    b.storage.setItem(P, JSON.stringify([{ id: '1', name: 'Work' }, { id: '2', name: 'Home' }]))
+    await b.sync.syncNow()
+    await a.sync.syncNow()
+    await b.sync.syncNow()
+    const norm = (raw) => JSON.parse(raw).map((p) => `${p.id}:${p.name}`).sort()
+    expect(norm(a.storage.getItem(P))).toEqual(['1:Office', '2:Home'])
+    expect(norm(b.storage.getItem(P))).toEqual(['1:Office', '2:Home'])
+    expect(norm((await decryptAll(srv, ck)).profiles.value)).toEqual(['1:Office', '2:Home'])
+    // converged: nothing left to push on either side
+    expect((await a.sync.syncNow()).pushed).toBe(0)
+    expect((await b.sync.syncNow()).pushed).toBe(0)
+  })
+
+  it('JSON values that differ only in key order cause no re-push and no onApplied', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({
+      srv, ck,
+      init: {
+        'nexusmd.custom.obj': '{"a":1,"b":[1,2]}',
+        'nexusmd.profiles': JSON.stringify([{ id: '1', name: 'W' }]),
+      },
+    })
+    await a.sync.seed()
+    const b = device({
+      srv, ck, deviceId: 'dev-b',
+      init: {
+        'nexusmd.custom.obj': '{ "b": [1, 2], "a": 1 }',
+        'nexusmd.profiles': '[{"name":"W","id":"1"}]',
+      },
+    })
+    const applied = vi.fn()
+    b.sync.onApplied(applied)
+    const calls = srv.putCalls
+    const r = await b.sync.syncNow()
+    expect(r.applied).toBe(0)
+    expect(r.pushed).toBe(0)
+    expect(applied).not.toHaveBeenCalled()
+    expect(srv.putCalls).toBe(calls)
+    expect(b.storage.getItem('nexusmd.custom.obj')).toBe('{ "b": [1, 2], "a": 1 }')
+  })
+
+  it('skips an entry whose local value changes while the pull is running and reconciles it next sync', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const ORG = 'nexusmd.p.1.ado.org'
+    const a = device({ srv, ck, init: { [ORG]: 'v1' } })
+    await a.sync.syncNow()
+    const b = device({ srv, ck, deviceId: 'dev-b' })
+    await b.sync.syncNow()
+    a.storage.setItem(ORG, 'v2')
+    await a.sync.syncNow()
+    const orig = b.storage.getItem
+    let reads = 0
+    // the first read is the snapshot; the user types before the engine gets to write
+    b.storage.getItem = (k) => {
+      if (k === ORG && ++reads === 2) b.storage.map.set(ORG, 'typed-meanwhile')
+      return orig(k)
+    }
+    const r = await b.sync.pull()
+    b.storage.getItem = orig
+    expect(r.applied).toBe(0)
+    expect(b.storage.getItem(ORG)).toBe('typed-meanwhile')
+    await b.sync.syncNow() // the held-back item is seen again; B's edit is newer and is pushed
+    expect(b.storage.getItem(ORG)).toBe('typed-meanwhile')
+    expect((await decryptAll(srv, ck))['p.1.ado.org'].value).toBe('typed-meanwhile')
+  })
+
+  it('skips a secret whose value changes while the pull is running', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, secrets: { 'google.auth': 't1' } })
+    await a.sync.syncNow()
+    const b = device({ srv, ck, deviceId: 'dev-b' })
+    await b.sync.syncNow()
+    await a.secure.set('google.auth', 't2')
+    await a.sync.syncNow()
+    const orig = b.secure.get.getMockImplementation()
+    let reads = 0
+    b.secure.get.mockImplementation(async (name) => {
+      if (name === 'google.auth' && ++reads === 2) b.secure.vals.set(name, 'refreshed-meanwhile')
+      return orig(name)
+    })
+    await b.sync.pull()
+    b.secure.get.mockImplementation(orig)
+    expect(await b.secure.get('google.auth')).toBe('refreshed-meanwhile')
+  })
+
+  it('stores keyed fingerprints for secrets, never a plain hash of the value', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, secrets: { 'google.auth': '1234' } })
+    await a.sync.syncNow()
+    const m = metaOf(a).entries['sec:nexusmd:google.auth']
+    expect(m).toBeTruthy()
+    expect(m.hash).not.toBe(contentHash('1234'))
+    expect(m.hash).not.toBe(contentHash(1234))
+    expect(m.hash.length).toBeGreaterThanOrEqual(40) // an HMAC-SHA256, not a 32-bit FNV
+    expect(a.storage.getItem(META)).not.toContain('1234')
+    expect((await a.sync.push()).pushed).toBe(0) // the fingerprint still detects "unchanged"
+    await a.secure.set('google.auth', '1235')
+    expect((await a.sync.push()).pushed).toBe(1)
+  })
+
+  it('never tombstones the tweaks halves when the tweaks key vanishes', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, init: { 'nexusmd.tweaks': JSON.stringify({ theme: 'dark', widgets: ['x'] }) } })
+    await a.sync.syncNow()
+    const b = device({ srv, ck, deviceId: 'dev-b', init: { 'nexusmd.tweaks': JSON.stringify({ widgets: ['b'] }) } })
+    await b.sync.syncNow()
+    a.storage.removeItem('nexusmd.tweaks')
+    const r = await a.sync.syncNow()
+    expect(r.pushed).toBe(0)
+    expect((await decryptAll(srv, ck))['tweaks.account'].deleted).toBeFalsy()
+    const blob = await decryptJson(srv.prefs.get('dev-a').ciphertext, ck, 'nexusmd-device-prefs|dev-a')
+    expect(blob.entries['tweaks.device'].value).toEqual({ widgets: ['x'] })
+    await b.sync.syncNow()
+    expect(JSON.parse(b.storage.getItem('nexusmd.tweaks'))).toEqual({ theme: 'dark', widgets: ['b'] })
+  })
+
+  it('never tombstones the tweaks halves when the Android active profile has no tweaks key', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    let active = '1'
+    const phone = device({
+      srv, ck, ns: 'helm', deviceId: 'phone', getActiveProfileId: () => active,
+      init: { 'helm.p.1.tweaks': JSON.stringify({ theme: 'dark', navOrder: ['a'] }), 'helm.p.1.android.org': 'o' },
+    })
+    await phone.sync.syncNow()
+    const rev = srv.prefs.get('phone').revision
+    active = '2'
+    phone.storage.setItem('helm.p.1.android.org', 'o2') // something else still changes and syncs
+    const r = await phone.sync.syncNow()
+    expect(r.error).toBeUndefined()
+    expect(r.pushed).toBe(1)
+    const items = await decryptAll(srv, ck)
+    expect(items['tweaks.account'].deleted).toBeFalsy()
+    expect(items['tweaks.account'].value).toEqual({ theme: 'dark' })
+    const blob = await decryptJson(srv.prefs.get('phone').ciphertext, ck, 'nexusmd-device-prefs|phone')
+    expect(blob.entries['tweaks.device'].value).toEqual({ navOrder: ['a'] })
+    expect(srv.prefs.get('phone').revision).toBe(rev)
+  })
+
+  it('a device without a devicePrefs adapter keeps the blob\'s shell prefs when it re-pushes', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const shell = { zoomFactor: 1.2 }
+    const one = device({ srv, ck, deviceId: 'dev-a', devicePrefs: { collect: async () => shell, apply: async () => {} }, init: { 'nexusmd.sidebar.width': '300' } })
+    await one.sync.syncNow()
+    const two = device({ srv, ck, deviceId: 'dev-a', devicePrefs: null })
+    await two.sync.syncNow()
+    expect(two.storage.getItem('nexusmd.sidebar.width')).toBe('300')
+    two.storage.setItem('nexusmd.sidebar.width', '250')
+    const r = await two.sync.syncNow()
+    expect(r.devicePrefs).toBe(true)
+    const blob = await decryptJson(srv.prefs.get('dev-a').ciphertext, ck, 'nexusmd-device-prefs|dev-a')
+    expect(blob.entries['nexusmd:sidebar.width'].value).toBe('250')
+    expect(blob.prefs).toEqual(shell)
+  })
+
+  it('shell device prefs use the observed edit time too', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const clockRef = { t: 100 }
+    const now = () => clockRef.t
+    const prefsOf = (init) => {
+      const state = { value: init }
+      return { state, collect: async () => state.value, apply: vi.fn(async (v) => { state.value = v }) }
+    }
+    const p1 = prefsOf({ zoom: 1 })
+    const p2 = prefsOf({ zoom: 1 })
+    const one = device({ srv, ck, deviceId: 'dev-a', devicePrefs: p1, now })
+    await one.sync.syncNow()
+    const two = device({ srv, ck, deviceId: 'dev-a', devicePrefs: p2, now })
+    await two.sync.syncNow()
+    clockRef.t = 1000
+    p1.state.value = { zoom: 1.5 }
+    await one.sync.observe()
+    clockRef.t = 2000
+    p2.state.value = { zoom: 2 }
+    await two.sync.syncNow()
+    clockRef.t = 3000
+    await one.sync.syncNow()
+    expect(p1.state.value).toEqual({ zoom: 2 })
+    const blob = await decryptJson(srv.prefs.get('dev-a').ciphertext, ck, 'nexusmd-device-prefs|dev-a')
+    expect(blob.prefs).toEqual({ zoom: 2 })
+  })
+
+  it('a push interrupted after the first batch records meta only for acknowledged items', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const init = {}
+    for (let i = 0; i < 120; i++) init[`nexusmd.k${i}`] = `v${i}`
+    const a = device({ srv, ck, init })
+    const orig = srv.client.putItems
+    let batches = 0
+    srv.client.putItems = async (list) => {
+      batches++
+      if (batches === 2) throw new AccountError('offline', 0)
+      return orig(list)
+    }
+    const r = await a.sync.push()
+    expect(r.error.code).toBe('offline')
+    expect(batches).toBe(2)
+    const tracked = Object.values(metaOf(a).entries).filter((e) => e.level === 'account' && e.revision > 0)
+    expect(tracked).toHaveLength(50)
+    expect(srv.items.size).toBe(50)
+    const again = await a.sync.push()
+    expect(again.pushed).toBe(70)
+    expect(srv.items.size).toBe(120)
   })
 })

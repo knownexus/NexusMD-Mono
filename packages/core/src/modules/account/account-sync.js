@@ -6,22 +6,28 @@
 //   device-level entries   plus the shell's device prefs, one encrypted blob per device bound to
 //   (and tweaks.device)    'nexusmd-device-prefs|<deviceId>': { v, entries, prefs, prefsUpdatedAt }
 //
-// Rules: the first sync of a device takes the remote value for keys both sides hold; after that
-// a remote change replaces an unchanged local value, and when both changed the newer updatedAt
-// wins (a local change counts as made now). Lists with a registry merger (profiles) are merged.
-// A remote deletion is applied only to a local value still equal to the last synced one; a local
-// removal is pushed only for an entry that was synced. Network failures never touch local data:
-// every public method resolves to { error } instead of throwing.
+// Rules, per entry:
+//   - never seen from the server (no meta entry): the remote value wins on any conflict, so a
+//     joining device (push, seed or pull alike) never overwrites account values
+//   - local unchanged since the last sync: the remote change is applied
+//   - both changed: last writer wins by the time each edit was first OBSERVED (`changedAt`,
+//     stamped by observe()/every snapshot; the pushed updatedAt is that stamp); a tie goes to
+//     the remote; remote times more than 5 minutes ahead are clamped
+//   - lists with a registry merger (profiles) are merged, an unpushed local edit winning
+//   - a remote deletion is applied only to a local value still equal to the last synced one; a
+//     local removal is pushed only for an entry that was synced; tweaks halves never delete
+// Network failures never touch local data: every public method resolves to { error }.
 import { singleFlight } from '../sync/single-flight.js'
-import { encryptJson, decryptJson } from './crypto.js'
+import { encryptJson } from './crypto.js'
 import {
-  DEVICE_CONTEXT, isPlainObject, hashOf, loadMeta, saveMeta, isFirstSync, readSnapshot,
-  resolveTarget, validValue, writeLocal, mergeRaw, encodeItem, decodeItem,
+  DEVICE_CONTEXT, isPlainObject, hashOf, fingerprint, loadMeta, saveMeta, readSnapshot,
+  resolveTarget, validValue, localChanged, stampChanges, unchangedSince, writeLocal, mergeRaw,
+  encodeItem, decodeDeviceBlob, decodeChange, fetchFeed,
 } from './account-sync-state.js'
 
 const PAGE = 500
 const BATCH = 50
-const MAX_PAGES = 10000
+const MAX_SKEW_MS = 5 * 60 * 1000
 
 const num = (v) => (Number.isFinite(v) ? v : 0)
 
@@ -34,100 +40,116 @@ export function createAccountSync({
   const errorListeners = new Set()
   const load = () => loadMeta(storage, metaKey)
   const save = (meta) => saveMeta(storage, metaKey, meta)
+  const clampAt = (at) => Math.min(num(at), now() + MAX_SKEW_MS)
 
   const emit = (set, arg) => {
     for (const cb of [...set]) {
       try { cb(arg) } catch { /* a listener must not break sync */ }
     }
   }
+  const emitApplied = (applied) => { if (applied) emit(appliedListeners, { applied }) }
 
-  // ---- reconcile one remote entry ------------------------------------------------------
+  // ---- local observation -------------------------------------------------------------
 
-  /** True when the remote value should replace (or delete) the local one. */
-  function remoteWins(local, m, remote, first) {
-    const localHash = local ? hashOf(local.value) : null
-    const syncedHash = m && !m.deleted ? m.hash : null
-    const localChanged = m ? localHash !== syncedHash : local != null
-    if (!localChanged) return true
-    if (remote.deleted) return false
-    if (first) return true
-    if (localHash === hashOf(remote.value)) return true
-    return remote.updatedAt > now()
+  /** Snapshot plus change stamps (meta is mutated; the caller saves). */
+  async function localState(meta) {
+    const s = await readSnapshot(ctx, ck)
+    s.dirty = stampChanges(meta, s.snap, s.isUnavailable, now())
+    return s
   }
 
-  /** Apply one decoded remote entry; record the server state in meta. Returns true if local changed. */
-  async function reconcile(meta, snap, target, remote, first) {
-    if (!remote.deleted && !validValue(target, remote.value)) return false
+  /** Collect the shell's device prefs and stamp a change. Null without an adapter. */
+  async function stampPrefs(meta) {
+    if (!devicePrefs) return null
+    const raw = await devicePrefs.collect()
+    const prefs = isPlainObject(raw) ? raw : null
+    const hash = hashOf(prefs)
+    const dp = meta.devicePrefs
+    if (dp.prefsHash == null || hash === dp.prefsHash) {
+      delete dp.prefsChangedAt
+      delete dp.prefsChangedHash
+    } else if (dp.prefsChangedAt == null || dp.prefsChangedHash !== hash) {
+      dp.prefsChangedAt = now()
+      dp.prefsChangedHash = hash
+    }
+    return { prefs, hash }
+  }
+
+  async function observeInner() {
+    const meta = load()
+    const before = JSON.stringify(meta)
+    await localState(meta)
+    await stampPrefs(meta)
+    if (JSON.stringify(meta) !== before) save(meta)
+    return {}
+  }
+
+  // ---- reconcile one remote entry ----------------------------------------------------
+
+  function remoteWins(local, m, remote, remoteHash, unavailable) {
+    if (unavailable) return !remote.deleted // nothing local to protect; deletions wait
+    if (!m) return remote.deleted ? !local : true
+    if (!localChanged(m, local)) return true
+    if (remote.deleted) return false
+    if (local && local.hash === remoteHash) return true
+    return clampAt(remote.updatedAt) >= (m.changedAt ?? now())
+  }
+
+  /**
+   * Apply one decoded remote entry and record the server state in meta.
+   * Returns 'applied' | 'same' | 'kept' | 'raced' (local changed under us; nothing recorded).
+   */
+  async function reconcile(meta, state, target, remote) {
+    if (!remote.deleted && !validValue(target, remote.value)) return 'kept'
+    const { snap, isUnavailable } = state
     const local = snap.get(remote.id)
     const m = meta.entries[remote.id]
-    let value = remote.value
-    let write
-    const merger = registry.mergers && registry.mergers[remote.id]
-    const merged = !remote.deleted && local && merger && target.kind === 'plain'
-      ? mergeRaw(merger, local.value, remote.value) : null
-    if (merged != null) {
-      value = merged
-      write = true
-    } else {
-      write = remoteWins(local, m, remote, first)
-    }
-    meta.entries[remote.id] = {
-      hash: remote.deleted ? null : hashOf(remote.value),
-      updatedAt: remote.updatedAt,
+    const remoteHash = remote.deleted ? null : await fingerprint(target, remote.value, ck)
+    const merger = target.kind === 'plain' && registry.mergers && registry.mergers[remote.id]
+    const merged = !remote.deleted && local && merger
+      ? mergeRaw(merger, local.value, remote.value, !!m && localChanged(m, local)) : null
+    const write = merged != null || remoteWins(local, m, remote, remoteHash, isUnavailable(remote.id))
+    if (write && !(await unchangedSince(ctx, target, local))) return 'raced'
+    const rec = {
+      hash: remoteHash,
+      updatedAt: clampAt(remote.updatedAt),
       ...(remote.revision != null ? { revision: remote.revision } : {}),
       level: target.level,
       deleted: !!remote.deleted,
     }
-    return write ? writeLocal(ctx, target, value, remote.deleted) : false
+    const keepsLocal = !write || (merged != null && merged !== remote.value)
+    if (keepsLocal && m && m.changedAt != null) Object.assign(rec, { changedAt: m.changedAt, changedHash: m.changedHash })
+    meta.entries[remote.id] = rec
+    if (!write) return 'kept'
+    return (await writeLocal(ctx, target, merged != null ? merged : remote.value, remote.deleted)) ? 'applied' : 'same'
   }
 
-  // ---- pull ----------------------------------------------------------------------------
-
-  /** The whole feed since `since`, fetched before anything is written locally. */
-  async function fetchFeed(since) {
-    const items = []
-    let cursor = since
-    for (let i = 0; i < MAX_PAGES; i++) {
-      const page = await client.getChanges(cursor, PAGE)
-      const list = Array.isArray(page && page.items) ? page.items : []
-      const next = Number.isInteger(page && page.cursor) ? page.cursor : cursor
-      items.push(...list)
-      if (!list.length || next <= cursor) break
-      cursor = next
-    }
-    return { items, cursor }
-  }
-
-  async function decodeChange(c) {
-    if (!isPlainObject(c) || !Number.isInteger(c.revision)) return null
-    // Tombstones carry an encrypted payload too; without one the id cannot be verified.
-    const p = await decodeItem(ck, c.id, c.ciphertext)
-    if (!p) return null
-    return { id: p.id, value: p.value, updatedAt: num(p.updatedAt), deleted: p.deleted === true, revision: c.revision }
-  }
+  // ---- pull --------------------------------------------------------------------------
 
   async function pullItems() {
     const meta = load()
-    const first = isFirstSync(meta)
-    const feed = await fetchFeed(meta.cursor)
+    const feed = await fetchFeed(client, meta.cursor, PAGE)
     const latest = new Map()
     for (const c of feed.items) {
       if (!isPlainObject(c) || typeof c.id !== 'string') continue
       const prev = latest.get(c.id)
       if (!prev || num(c.cursor) >= num(prev.cursor)) latest.set(c.id, c)
     }
-    const { snap } = await readSnapshot(ctx)
+    const state = await localState(meta)
     let applied = 0
+    let hold = Infinity
     for (const c of latest.values()) {
-      const remote = await decodeChange(c)
+      const remote = await decodeChange(ck, c)
       if (!remote) continue
       const target = resolveTarget(registry, remote.id)
       if (!target || target.level !== 'account') continue
       const m = meta.entries[remote.id]
       if (m && m.revision === remote.revision) continue // already seen (often our own write)
-      if (await reconcile(meta, snap, target, remote, first)) applied++
+      const res = await reconcile(meta, state, target, remote)
+      if (res === 'raced') hold = Math.min(hold, num(c.cursor) - 1) // seen again next pull
+      else if (res === 'applied') applied++
     }
-    meta.cursor = Math.max(meta.cursor, feed.cursor)
+    meta.cursor = Math.max(meta.cursor, Math.min(feed.cursor, hold))
     save(meta)
     return applied
   }
@@ -137,47 +159,50 @@ export function createAccountSync({
     const r = await client.getDevicePrefs(deviceId)
     const meta = load()
     const dp = meta.devicePrefs
-    if (!r || !Number.isInteger(r.revision) || r.revision === dp.revision || !r.ciphertext) return 0
-    let blob
-    try { blob = await decryptJson(r.ciphertext, ck, DEVICE_CONTEXT + deviceId) } catch { return 0 }
-    if (!isPlainObject(blob)) return 0
-    const first = !dp.revision
+    if (!isPlainObject(r) || !Number.isInteger(r.revision) || r.revision === dp.revision) return 0
+    const blob = await decodeDeviceBlob(ck, deviceId, r.ciphertext)
+    if (!blob) {
+      // Empty or unreadable: adopt the revision so this device's next push can replace it.
+      dp.revision = r.revision
+      save(meta)
+      return 0
+    }
+    const state = await localState(meta)
     const entries = isPlainObject(blob.entries) ? blob.entries : {}
-    const { snap } = await readSnapshot(ctx)
     let applied = 0
+    let raced = false
+    const count = (res) => { if (res === 'raced') raced = true; else if (res === 'applied') applied++ }
     const seen = new Set()
     for (const [id, e] of Object.entries(entries)) {
       const target = resolveTarget(registry, id)
       if (!isPlainObject(e) || !target || target.level !== 'device') continue
       seen.add(id)
-      const remote = { id, value: e.value, updatedAt: num(e.updatedAt), deleted: false }
-      if (await reconcile(meta, snap, target, remote, first)) applied++
+      count(await reconcile(meta, state, target, { id, value: e.value, updatedAt: num(e.updatedAt), deleted: false }))
     }
-    // A tracked device entry missing from the blob was removed on (another install of) this device.
+    // A tracked device entry missing from a newer blob was removed by another install of this device.
     for (const [id, m] of Object.entries(meta.entries)) {
-      if (m.level !== 'device' || m.deleted || seen.has(id)) continue
+      if (m.level !== 'device' || m.deleted || seen.has(id) || state.isUnavailable(id)) continue
       const target = resolveTarget(registry, id)
-      if (!target) continue
-      if (await reconcile(meta, snap, target, { id, value: null, updatedAt: 0, deleted: true }, first)) applied++
+      if (!target || target.kind === 'tweaks') continue
+      count(await reconcile(meta, state, target, { id, value: null, updatedAt: 0, deleted: true }))
     }
-    const remotePrefs = isPlainObject(blob.prefs) ? blob.prefs : null
-    if (devicePrefs && remotePrefs) {
-      const local = await devicePrefs.collect()
-      const localHash = hashOf(local)
-      const unchanged = dp.prefsHash == null || localHash === dp.prefsHash
-      if ((unchanged || num(blob.prefsUpdatedAt) > now()) && localHash !== hashOf(remotePrefs)) {
-        await devicePrefs.apply(remotePrefs)
-        applied++
+    if (devicePrefs && isPlainObject(blob.prefs)) {
+      const cur = await stampPrefs(meta)
+      const remoteHash = hashOf(blob.prefs)
+      const wins = dp.prefsHash == null || cur.hash === dp.prefsHash || cur.hash === remoteHash
+        || clampAt(blob.prefsUpdatedAt) >= (dp.prefsChangedAt ?? now())
+      if (wins) {
+        if (cur.hash !== remoteHash) {
+          await devicePrefs.apply(blob.prefs)
+          applied++
+        }
+        delete dp.prefsChangedAt
+        delete dp.prefsChangedHash
       }
+      dp.prefsHash = remoteHash
+      dp.prefsUpdatedAt = clampAt(blob.prefsUpdatedAt)
     }
-    const values = {}
-    for (const [id, e] of Object.entries(entries)) if (isPlainObject(e)) values[id] = e.value
-    meta.devicePrefs = {
-      hash: hashOf({ entries: values, prefs: remotePrefs }),
-      revision: r.revision,
-      prefsHash: hashOf(remotePrefs),
-      prefsUpdatedAt: num(blob.prefsUpdatedAt),
-    }
+    if (!raced) dp.revision = r.revision // a raced entry is looked at again next pull
     save(meta)
     return applied
   }
@@ -189,36 +214,44 @@ export function createAccountSync({
       applied += await pullDevice()
       return { applied }
     } finally {
-      if (applied) emit(appliedListeners, { applied })
+      emitApplied(applied)
     }
   }
 
-  // ---- push ----------------------------------------------------------------------------
+  // ---- push --------------------------------------------------------------------------
 
   async function pushItemsRound(force) {
     const meta = load()
-    const { snap, unreadable } = await readSnapshot(ctx)
+    const { snap, isUnavailable } = await localState(meta)
+    const t = now()
     const out = []
+    const tooLarge = []
+    for (const id of Object.keys(meta.tooLarge)) if (!snap.has(id)) delete meta.tooLarge[id]
     for (const [id, e] of snap) {
       if (e.level !== 'account') continue
       const m = meta.entries[id]
-      const hash = hashOf(e.value)
-      if (!force && m && !m.deleted && m.hash === hash) continue
-      out.push({ id, value: e.value, hash, deleted: false, ifMatch: (m && m.revision) || 0 })
+      const changed = !m || localChanged(m, e)
+      if (!force && !changed) continue
+      if (meta.tooLarge[id] === e.hash) { tooLarge.push(id); continue } // rejected before, unchanged since
+      const updatedAt = changed ? (m && m.changedAt != null ? m.changedAt : t) : clampAt(m.updatedAt ?? t)
+      out.push({ id, value: e.value, hash: e.hash, deleted: false, ifMatch: (m && m.revision) || 0, updatedAt })
     }
     for (const [id, m] of Object.entries(meta.entries)) {
-      if (m.level !== 'account' || m.deleted || !(m.revision > 0) || snap.has(id) || unreadable.has(id)) continue
-      if (!resolveTarget(registry, id)) continue
-      out.push({ id, value: null, hash: null, deleted: true, ifMatch: m.revision })
+      if (m.level !== 'account' || m.deleted || !(m.revision > 0) || snap.has(id) || isUnavailable(id)) continue
+      const target = resolveTarget(registry, id)
+      if (!target || target.kind === 'tweaks') continue // tweaks halves are never deleted
+      out.push({ id, value: null, hash: null, deleted: true, ifMatch: m.revision, updatedAt: m.changedAt ?? t })
     }
-    const result = { pushed: 0, conflicts: [], tooLarge: [] }
+    save(meta) // the observation stamps survive a failed upload
+    const result = { pushed: 0, conflicts: [], tooLarge }
     for (let i = 0; i < out.length; i += BATCH) {
       const chunk = out.slice(i, i + BATCH)
-      const t = now()
       const byWid = new Map()
       const wire = []
       for (const c of chunk) {
-        const payload = c.deleted ? { id: c.id, value: null, updatedAt: t, deleted: true } : { id: c.id, value: c.value, updatedAt: t }
+        const payload = c.deleted
+          ? { id: c.id, value: null, updatedAt: c.updatedAt, deleted: true }
+          : { id: c.id, value: c.value, updatedAt: c.updatedAt }
         const { wid, ciphertext } = await encodeItem(ck, c.id, payload)
         byWid.set(wid, c)
         wire.push({ id: wid, ifMatch: c.ifMatch, ciphertext, deleted: c.deleted })
@@ -229,10 +262,12 @@ export function createAccountSync({
         if (!c) continue
         byWid.delete(res.id)
         if (res.status === 'ok' && Number.isInteger(res.revision)) {
-          meta.entries[c.id] = { hash: c.hash, updatedAt: t, revision: res.revision, level: 'account', deleted: c.deleted }
+          meta.entries[c.id] = { hash: c.hash, updatedAt: c.updatedAt, revision: res.revision, level: 'account', deleted: c.deleted }
+          delete meta.tooLarge[c.id]
           result.pushed++
         } else if (res.status === 'too_large') {
-          result.tooLarge.push(c.id)
+          if (!c.deleted) meta.tooLarge[c.id] = c.hash
+          tooLarge.push(c.id)
         } else {
           result.conflicts.push(c.id)
         }
@@ -244,37 +279,55 @@ export function createAccountSync({
   }
 
   async function pushDeviceRound(force) {
-    if (!deviceId) return 0
+    if (!deviceId) return { pushed: false }
     const meta = load()
     const dp = meta.devicePrefs
-    const { snap, unreadable } = await readSnapshot(ctx)
-    for (const id of unreadable) if (resolveTarget(registry, id)?.level === 'device') return 0
-    const prefs = devicePrefs ? await devicePrefs.collect() : null
-    const values = {}
-    for (const [id, e] of snap) if (e.level === 'device') values[id] = e.value
-    const hash = hashOf({ entries: values, prefs: isPlainObject(prefs) ? prefs : null })
-    if (!force && hash === dp.hash) return 0
-    if (!dp.revision && !Object.keys(values).length && !isPlainObject(prefs)) return 0 // nothing to keep
-    const t = now()
-    const entries = {}
-    for (const [id, value] of Object.entries(values)) {
-      const m = meta.entries[id]
-      entries[id] = { value, updatedAt: m && !m.deleted && m.hash === hashOf(value) ? m.updatedAt : t }
-    }
-    const prefsHash = hashOf(isPlainObject(prefs) ? prefs : null)
-    const prefsUpdatedAt = prefsHash === dp.prefsHash && dp.prefsUpdatedAt ? dp.prefsUpdatedAt : t
-    const blob = { v: 1, entries, prefs: isPlainObject(prefs) ? prefs : null, prefsUpdatedAt }
-    const ciphertext = await encryptJson(blob, ck, DEVICE_CONTEXT + deviceId)
-    const res = await client.putDevicePrefs(deviceId, ciphertext, dp.revision || 0)
-    meta.devicePrefs = { hash, revision: res.revision, prefsHash, prefsUpdatedAt }
-    for (const [id, e] of Object.entries(entries)) {
-      meta.entries[id] = { hash: hashOf(e.value), updatedAt: e.updatedAt, level: 'device', deleted: false }
-    }
-    for (const [id, m] of Object.entries(meta.entries)) {
-      if (m.level === 'device' && !m.deleted && !(id in entries)) meta.entries[id] = { ...m, hash: null, deleted: true }
-    }
+    const { snap, isUnavailable } = await localState(meta)
+    const cur = await stampPrefs(meta)
     save(meta)
-    return 1
+    const t = now()
+    const local = [...snap].filter(([, e]) => e.level === 'device')
+    const removed = Object.entries(meta.entries).filter(([id, m]) => m.level === 'device' && !m.deleted
+      && !snap.has(id) && !isUnavailable(id) && resolveTarget(registry, id))
+    const changed = removed.length > 0
+      || local.some(([id, e]) => !meta.entries[id] || localChanged(meta.entries[id], e))
+      || (cur != null && cur.hash !== dp.prefsHash)
+    if (!force && !changed) return { pushed: false }
+    if (!local.length && !removed.length && !cur && !dp.revision) return { pushed: false }
+
+    // Build on the stored blob: it keeps what this install cannot judge (and the shell prefs
+    // when this platform has no adapter). A newer blob than ours is a conflict: pull it first.
+    const r = await client.getDevicePrefs(deviceId)
+    if (!isPlainObject(r) || r.revision !== (dp.revision || 0)) return { conflict: true }
+    const prev = (await decodeDeviceBlob(ck, deviceId, r.ciphertext)) || {}
+    const entries = {}
+    for (const [id, e] of Object.entries(isPlainObject(prev.entries) ? prev.entries : {})) {
+      if (isPlainObject(e) && (!resolveTarget(registry, id) || isUnavailable(id))) entries[id] = e
+    }
+    for (const [id, e] of local) {
+      const m = meta.entries[id]
+      const ch = !m || localChanged(m, e)
+      entries[id] = { value: e.value, updatedAt: ch ? (m && m.changedAt != null ? m.changedAt : t) : clampAt(m.updatedAt ?? t) }
+    }
+    const prefs = cur ? cur.prefs : (isPlainObject(prev.prefs) ? prev.prefs : null)
+    const prefsUpdatedAt = cur
+      ? (cur.hash === dp.prefsHash ? (dp.prefsUpdatedAt ?? t) : (dp.prefsChangedAt ?? t))
+      : num(prev.prefsUpdatedAt)
+    const blob = { v: 1, entries, prefs, prefsUpdatedAt }
+    let res
+    try {
+      res = await client.putDevicePrefs(deviceId, await encryptJson(blob, ck, DEVICE_CONTEXT + deviceId), r.revision)
+    } catch (e) {
+      if (e && e.code === 'conflict') return { conflict: true }
+      throw e
+    }
+    for (const [id, e] of local) meta.entries[id] = { hash: e.hash, updatedAt: entries[id].updatedAt, level: 'device', deleted: false }
+    for (const [id, m] of removed) meta.entries[id] = { hash: null, updatedAt: m.changedAt ?? t, level: 'device', deleted: true }
+    meta.devicePrefs = cur
+      ? { revision: res.revision, prefsHash: cur.hash, prefsUpdatedAt }
+      : { ...dp, revision: res.revision }
+    save(meta)
+    return { pushed: true }
   }
 
   async function pushInner(force) {
@@ -287,24 +340,16 @@ export function createAccountSync({
       pushed += r.pushed
     }
     let conflicts = r.conflicts.length
-    let device = 0
-    const isConflict = (e) => !!e && e.code === 'conflict'
-    try {
-      device = await pushDeviceRound(force)
-    } catch (e) {
-      if (!isConflict(e)) throw e
-      await pullDevice()
-      try {
-        device = await pushDeviceRound(false)
-      } catch (e2) {
-        if (!isConflict(e2)) throw e2
-        conflicts++
-      }
+    let d = await pushDeviceRound(force)
+    if (d.conflict) {
+      emitApplied(await pullDevice())
+      d = await pushDeviceRound(false)
+      if (d.conflict) conflicts++
     }
-    return { pushed, conflicts, tooLarge: r.tooLarge, devicePrefs: device > 0 }
+    return { pushed, conflicts, tooLarge: r.tooLarge, devicePrefs: !!d.pushed }
   }
 
-  // ---- public surface ------------------------------------------------------------------
+  // ---- public surface ----------------------------------------------------------------
 
   // Public operations run one at a time so a push never interleaves with a pull.
   let chain = Promise.resolve()
@@ -322,7 +367,10 @@ export function createAccountSync({
     }
   })
 
+  const observe = () => guarded(observeInner)
+
   const syncNow = singleFlight(() => guarded(async () => {
+    await observeInner() // stamps an offline edit even when the network calls below fail
     const pulled = await pullInner()
     const pushed = await pushInner(false)
     const meta = load()
@@ -331,14 +379,19 @@ export function createAccountSync({
     return { applied: pulled.applied, ...pushed }
   }))
 
+  /** A sync, or (when one is already running) at least an observation of local edits. */
+  const kick = () => syncNow().then((r) => (r && r.skipped ? observe() : r))
+
   let timer = null
-  let onVisible = null
+  let onVisibility = null
   let onOnline = null
 
   return {
     async snapshot() {
-      return (await readSnapshot(ctx)).snap
+      return (await readSnapshot(ctx, ck)).snap
     },
+    /** Local only: stamp the time of local edits, no network, nothing applied. */
+    observe,
     pull: () => guarded(pullInner),
     push: () => guarded(() => pushInner(false)),
     seed: () => guarded(() => pushInner(true)),
@@ -346,26 +399,26 @@ export function createAccountSync({
 
     start() {
       if (timer) return
-      timer = setInterval(() => { syncNow() }, intervalMs)
+      timer = setInterval(kick, intervalMs)
       const doc = globalThis.document
       if (doc && typeof doc.addEventListener === 'function') {
-        onVisible = () => { if (doc.visibilityState === 'visible') syncNow() }
-        doc.addEventListener('visibilitychange', onVisible)
+        onVisibility = () => { if (doc.visibilityState === 'visible') kick(); else observe() }
+        doc.addEventListener('visibilitychange', onVisibility)
       }
       if (typeof globalThis.addEventListener === 'function') {
-        onOnline = () => { syncNow() }
+        onOnline = kick
         globalThis.addEventListener('online', onOnline)
       }
-      syncNow()
+      kick()
     },
 
     stop() {
       if (timer) clearInterval(timer)
       timer = null
       const doc = globalThis.document
-      if (onVisible && doc && typeof doc.removeEventListener === 'function') doc.removeEventListener('visibilitychange', onVisible)
+      if (onVisibility && doc && typeof doc.removeEventListener === 'function') doc.removeEventListener('visibilitychange', onVisibility)
       if (onOnline && typeof globalThis.removeEventListener === 'function') globalThis.removeEventListener('online', onOnline)
-      onVisible = null
+      onVisibility = null
       onOnline = null
     },
 
