@@ -12,6 +12,8 @@ import { makeGitBackend, providerName, sourcesOf, pickSource, sourceLabel } from
 import { getProfileKey } from './profile-keys.js';
 
 const errText = (e) => e?.message || String(e);
+export const listRepoChoices = () => backend.listRepos();
+export const REPO_PICK = 'helm.dash.repo';
 const backend = makeGitBackend({
   adoGet, getAdoProjects: () => getAdoConfig().projects || [],
   githubHttp: createGithubHttpAdapter(), getGithubConfig, isGithubConfigured,
@@ -100,6 +102,13 @@ export function GitView({ onFlash }) {
     backend.listRepos().then(({ repos, errors }) => {
       setRepos(repos);
       if (errors.length) setError(errText(errors[0]));
+      // The Home repo widget names the repo to open.
+      const want = window.NexusMDNav?.repoId;
+      if (want) {
+        window.NexusMDNav = { ...window.NexusMDNav, repoId: null };
+        const hit = repos.find(r => r.id === want);
+        if (hit) pickRepo(hit);
+      }
     }).catch(e => setError(errText(e)));
   }, []);
 

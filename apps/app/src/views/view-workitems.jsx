@@ -76,6 +76,7 @@ function WorkRow({ wi, newItemIds, onOpen, onState, team }) {
       <div className="m-row-main">
         <div className="m-row-title">{wi.title}</div>
         <div className="m-row-meta">
+          {window.helmTypeLabels && wi.type && <span className="m-id" style={{ fontWeight: 600 }}>{wi.type}</span>}
           <span className="m-id">#{wi.displayId || shortId(wi.id)}</span>
           {wi.state && (
             <button type="button" className={`pill m-pillbtn ${STATE_TONE(wi.state)}`} aria-label={`State ${wi.state}. Change state`}

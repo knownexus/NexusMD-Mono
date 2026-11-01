@@ -145,6 +145,7 @@ export {
 export { plannerExportDocx } from './planner/docx.js'
 export { PlannerView } from './views/view-planner.jsx'
 export { TimeView, ticketsFromWorkItems } from './views/view-time.jsx'
+export { emptyLog, runningEntries, startEntry, stopEntry, addNote, addMark, durationMs } from './views/time-log.js'
 
 // App-shell pieces shared by the web and app hosts.
 export { ProjectAreasModal } from './views/project-areas-modal.jsx'
