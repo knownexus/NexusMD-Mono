@@ -8,13 +8,32 @@ import { Avatar, NotificationBanner, ProjectChip, usePersisted } from '../app-co
 import { Icon } from '../icons.jsx'
 import { toast } from '../toast.jsx'
 import { useNexusData } from '../data-context.jsx'
-import { formatDateTime, resolveFields, BUILDS_TABLE_COLUMNS } from '@nexusmd/core'
+import {
+  formatDateTime, resolveFields, toggleField, reorderField, BUILDS_TABLE_COLUMNS,
+  visibleColumns, gridTemplate, minTableWidth,
+} from '@nexusmd/core'
 
 export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, newItemIds = new Set(), onOpenBuild }) {
   const { data: NexusMDData } = useNexusData()
-  const [buildsCfg] = usePersisted('nexusmd.fields.buildsTable', [])
-  const visibleBuildCols = resolveFields(BUILDS_TABLE_COLUMNS, buildsCfg).filter(f => f.visible)
-  const buildGrid = visibleBuildCols.map(c => c.width).join(' ')
+  // Column visibility/order: the same config Settings → Fields → Builds table edits, so the toolbar's Columns menu
+  // and Settings stay in step. Locked columns (status dot, build #, actions) always show.
+  const [buildsCfg, setBuildsCfg] = usePersisted('nexusmd.fields.buildsTable', [], { sync: true })
+  const buildCols = resolveFields(BUILDS_TABLE_COLUMNS, buildsCfg)
+  const hiddenBuildCols = buildCols.filter(f => !f.visible).map(f => f.key)
+  const visibleBuildCols = visibleColumns(buildCols, hiddenBuildCols)
+  const buildGrid = gridTemplate(buildCols, hiddenBuildCols)
+  const buildMinWidth = minTableWidth(buildCols, hiddenBuildCols)
+  // Write back the resolved list, so columns added to the catalog since the config was saved can be toggled/moved.
+  const fullBuildsCfg = buildCols.map(f => ({ key: f.key, visible: f.visible }))
+  const toggleBuildCol = key => setBuildsCfg(toggleField(fullBuildsCfg, BUILDS_TABLE_COLUMNS, key))
+  const menuCols = buildCols.filter(f => !f.locked)
+  const moveBuildCol = (key, dir) => {
+    const i = menuCols.findIndex(f => f.key === key), j = i + dir
+    if (i < 0 || j < 0 || j >= menuCols.length) return
+    setBuildsCfg(reorderField(fullBuildsCfg, BUILDS_TABLE_COLUMNS, key, menuCols[j].key))
+  }
+  const [columnsMenuOpen, setColumnsMenuOpen] = React.useState(false)
+  const columnsMenuRef = React.useRef(null)
   const [initialNewCount] = React.useState(() => newItemIds.size)
   const [bannerDismissed, setBannerDismissed] = React.useState(false)
   const [collapsed,        setCollapsed]        = React.useState({})
@@ -42,6 +61,17 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [pipelineMenuOpen])
+
+  // Close columns menu on outside click
+  React.useEffect(() => {
+    if (!columnsMenuOpen) return
+    const onDoc = e => {
+      if (columnsMenuRef.current && !columnsMenuRef.current.contains(e.target))
+        setColumnsMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [columnsMenuOpen])
 
   const deployToUat = async () => {
     if (!confirm('Trigger a UAT deployment? This will queue the configured UAT pipeline in Azure DevOps.')) return
@@ -472,6 +502,41 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
             )}
           </div>
 
+          {/* Columns — hide/reorder (same config as Settings → Fields → Builds table) */}
+          <div style={{ position:'relative' }} ref={columnsMenuRef}>
+            <button className="btn sm ghost" aria-haspopup="true" aria-expanded={columnsMenuOpen} onClick={() => setColumnsMenuOpen(o => !o)}
+              style={hiddenBuildCols.length > 0 ? { color:'var(--accent)' } : {}}>
+              <Icon name="filter" size={12}/> Columns
+              <span style={{
+                marginLeft:4, fontSize:10.5, fontWeight:600,
+                color: hiddenBuildCols.length > 0 ? 'var(--accent)' : 'var(--text-subtle)',
+              }}>
+                {menuCols.length - hiddenBuildCols.length}/{menuCols.length}
+              </span>
+              <Icon name="arrow-right" size={10} style={{ transform:'rotate(90deg)', opacity:0.5, marginLeft:2 }}/>
+            </button>
+            {columnsMenuOpen && (
+              <div role="menu" style={{
+                position:'absolute', right:0, top:'110%', zIndex:60,
+                background:'var(--surface)', border:'1px solid var(--border)',
+                borderRadius:10, boxShadow:'var(--shadow-pop)',
+                padding:'6px 0', minWidth:220, maxHeight:320, overflowY:'auto',
+              }}>
+                {menuCols.map((f, i) => (
+                  <div key={f.key} style={{ display:'flex', alignItems:'center', gap:4, padding:'2px 8px 2px 12px' }}>
+                    <label style={{ display:'flex', alignItems:'center', gap:8, flex:1, padding:'4px 0', cursor:'pointer', userSelect:'none' }}>
+                      <input type="checkbox" checked={f.visible} onChange={() => toggleBuildCol(f.key)}
+                        style={{ cursor:'pointer', accentColor:'var(--accent)', flexShrink:0 }}/>
+                      <span style={{ fontSize:12.5 }}>{f.label}</span>
+                    </label>
+                    <button type="button" className="btn sm ghost" aria-label={`Move ${f.label} left`} disabled={i === 0} onClick={() => moveBuildCol(f.key, -1)}><Icon name="arrow-up" size={12}/></button>
+                    <button type="button" className="btn sm ghost" aria-label={`Move ${f.label} right`} disabled={i === menuCols.length - 1} onClick={() => moveBuildCol(f.key, 1)}><Icon name="arrow-down" size={12}/></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div style={{ width:1, height:16, background:'var(--border)', margin:'0 2px' }}/>
           <button className="btn sm ghost" onClick={() => {
             const n = {}
@@ -484,6 +549,9 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
           <button className="btn sm ghost" onClick={() => setCollapsed({})}><Icon name="chevron-down" size={12}/> Expand all</button>
         </div>
 
+        {/* Table: never narrower than its shown columns need (scrolls sideways instead), so hiding a column shrinks it. */}
+        <div style={{ overflowX:'auto' }}>
+        <div data-testid="builds-table" style={{ minWidth: buildMinWidth }}>
         {/* ── Column headers ── */}
         <div style={{
           display:'grid', gridTemplateColumns: buildGrid,
@@ -576,6 +644,8 @@ export function BuildsView({ builds, acknowledgedBuilds, setAcknowledgedBuilds, 
           {grouped.length === 0 && (
             <div className="empty">No builds match the selected filter.</div>
           )}
+        </div>
+        </div>
         </div>
       </div>
     </div>

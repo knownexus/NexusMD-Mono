@@ -5,6 +5,7 @@ import { toast } from '../toast.jsx';
 import { refreshNow } from '../refresh.js';
 import { HelmData } from '../data.jsx';
 import { ColHead } from '@nexusmd/ui';
+import { visibleColumns, gridTemplate, minTableWidth, orderColumns } from '@nexusmd/core';
 import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
 import { NotificationBanner, Sheet } from '../components.jsx';
 import { BuildArtifactsSheet } from './build-artifacts-sheet.jsx';
@@ -12,23 +13,18 @@ import { BuildArtifactsSheet } from './build-artifacts-sheet.jsx';
 
 // Grid template shared between header and every build row
 // The columns the user can hide (the status dot and the actions always stay), with their widths.
-const COLS = [['build', 'Build', '100px'], ['actor', 'Triggered by', 'minmax(120px,1fr)'], ['branch', 'Branch', '160px'],
-  ['commit', 'Commit', '72px'], ['reason', 'Reason', '130px'], ['duration', 'Duration', '72px'], ['date', 'Date', '148px']];
-const orderedCols = (saved) => {
-  const known = COLS.map(c => c[0]);
-  const first = (Array.isArray(saved) ? saved : []).filter((id, i, a) => known.includes(id) && a.indexOf(id) === i);
-  return [...first, ...known.filter(id => !first.includes(id))];
-};
-// With the stretchy "Triggered by" column hidden, the actions column takes the spare width instead, so the rows
-// still fill the table.
-const gridFor = (hidden, order) => ['28px', ...order.filter(id => !hidden.includes(id)).map(id => COLS.find(c => c[0] === id)[2]),
-  hidden.includes('actor') ? 'minmax(140px, 1fr)' : '140px'].join(' ');
-// The narrowest the table can be with these columns: the card's fixed minimum width used to ignore hidden columns.
-const minWidthFor = (hidden, order) => {
-  const w = order.filter(id => !hidden.includes(id)).map(id => parseInt(String(COLS.find(c => c[0] === id)[2]).replace(/^minmax\((\d+)px.*$/, '$1'), 10));
-  const cells = w.length + 2;
-  return 28 + 140 + w.reduce((a, b) => a + b, 0) + (cells - 1) * 8 + 28;
-};
+const COLS = [
+  { id: 'build', label: 'Build', width: '100px' }, { id: 'actor', label: 'Triggered by', width: 'minmax(120px,1fr)' },
+  { id: 'branch', label: 'Branch', width: '160px' }, { id: 'commit', label: 'Commit', width: '72px' },
+  { id: 'reason', label: 'Reason', width: '130px' }, { id: 'duration', label: 'Duration', width: '72px' },
+  { id: 'date', label: 'Date', width: '148px' },
+];
+const STATUS_COL = { id: 'status', label: '', width: '28px', locked: true };
+const ACTIONS_COL = { id: 'actions', label: '', width: '140px', locked: true };
+const colLabel = (id) => COLS.find(c => c.id === id).label;
+// The full row: status dot first, the user's columns in their saved order, actions last. With the stretchy
+// "Triggered by" column hidden, the actions column takes the spare width (core's gridTemplate does this).
+const rowCols = (order) => [STATUS_COL, ...order.map(id => COLS.find(c => c.id === id)), ACTIONS_COL];
 
 // On a phone the table's ~770px of fixed columns cannot fit, so each build becomes a small card: status, number and
 // date on the first line, who/what next, then the actions wrapping underneath.
@@ -102,8 +98,9 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
   const [sortDir,          setSortDir]          = usePersisted('helm.builds.sortDir', 'desc');
   const [hiddenCols,      setHiddenCols]      = usePersisted('helm.builds.hiddenCols', []);
   const [colOrderSaved, setColOrder] = usePersisted('helm.builds.colOrder', []);
-  const colOrder = orderedCols(colOrderSaved);
-  const BUILD_GRID = gridFor(hiddenCols, colOrder);
+  const colOrder = orderColumns(colOrderSaved, COLS).map(c => c.id);
+  const BUILD_GRID = gridTemplate(rowCols(colOrder), hiddenCols);
+  const minTableW = minTableWidth(rowCols(colOrder), hiddenCols);
   const moveCol = (id, dir) => {
     const i = colOrder.indexOf(id), j = i + dir;
     if (j < 0 || j >= colOrder.length) return;
@@ -285,7 +282,7 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
 
       {/* ── Builds table card ── */}
       <div style={{ overflowX:'auto' }}>
-      <div className="card m-bld-card" style={{ minWidth: phone ? Math.min(880, minWidthFor(hiddenCols, colOrder)) : minWidthFor(hiddenCols, colOrder) }}>
+      <div className="card m-bld-card" style={{ minWidth: phone ? Math.min(880, minTableW) : minTableW }}>
         <div className="card-head" style={{ flexWrap:'wrap', gap:6 }}>
           {/* Status filter */}
           <DropMenu label={statuses.length === 0 ? 'All statuses' : statuses.length === 1 ? STATUS_OPTS.find(o => o[0] === statuses[0])[1] : `${statuses.length} statuses`}
@@ -347,16 +344,16 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
           </DropMenu>
 
           {/* Columns */}
-          <DropMenu label="Columns" icon="filter" active={hiddenCols.length > 0} badge={`${COLS.length - hiddenCols.filter(h => COLS.some(c => c[0] === h)).length}/${COLS.length}`} align="right">
+          <DropMenu label="Columns" icon="filter" active={hiddenCols.length > 0} badge={`${visibleColumns(COLS, hiddenCols).length}/${COLS.length}`} align="right">
             {colOrder.map((id, i) => (
               <div key={id} style={{ display:'flex', alignItems:'center', gap:4, padding:'2px 8px 2px 12px' }}>
                 <label style={{ display:'flex', alignItems:'center', gap:8, flex:1, padding:'4px 0', cursor:'pointer', userSelect:'none' }}>
                   <input type="checkbox" checked={col(id)} style={{ accentColor:'var(--accent)' }}
                     onChange={() => setHiddenCols(h => h.includes(id) ? h.filter(x => x !== id) : [...h, id])}/>
-                  <span style={{ fontSize:12.5 }}>{COLS.find(c => c[0] === id)[1]}</span>
+                  <span style={{ fontSize:12.5 }}>{colLabel(id)}</span>
                 </label>
-                <button type="button" className="btn sm ghost" aria-label={`Move ${COLS.find(c => c[0] === id)[1]} left`} disabled={i === 0} onClick={() => moveCol(id, -1)}><Icon name="arrow-up" size={12}/></button>
-                <button type="button" className="btn sm ghost" aria-label={`Move ${COLS.find(c => c[0] === id)[1]} right`} disabled={i === colOrder.length - 1} onClick={() => moveCol(id, 1)}><Icon name="arrow-down" size={12}/></button>
+                <button type="button" className="btn sm ghost" aria-label={`Move ${colLabel(id)} left`} disabled={i === 0} onClick={() => moveCol(id, -1)}><Icon name="arrow-up" size={12}/></button>
+                <button type="button" className="btn sm ghost" aria-label={`Move ${colLabel(id)} right`} disabled={i === colOrder.length - 1} onClick={() => moveCol(id, 1)}><Icon name="arrow-down" size={12}/></button>
               </div>
             ))}
           </DropMenu>

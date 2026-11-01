@@ -49,6 +49,8 @@ const EXPECTED = [
   // Field/column visibility catalogs + resolver (configurable cards & tables)
   'WI_CARD_FIELDS', 'WI_TABLE_COLUMNS', 'PR_CARD_FIELDS', 'BUILDS_TABLE_COLUMNS', 'TESTS_TABLE_COLUMNS',
   'defaultConfig', 'resolveFields', 'reorderField', 'toggleField',
+  // Builds table column layout (shared by mobile + desktop Builds views)
+  'visibleColumns', 'gridTemplate', 'minTableWidth', 'orderColumns',
   // Shared PR REST helpers (threads/comments/resolve/reopen/commits/file changes/description)
   'fetchPRThreads', 'postPRThread', 'postPRReply', 'setPRThreadStatus',
   'fetchPRCommits', 'fetchPRFileChanges', 'fetchFileContent', 'updatePRDescription',
