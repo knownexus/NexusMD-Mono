@@ -870,7 +870,11 @@ public sealed class AccountControllerTests : IDisposable
     [Fact]
     public async Task Rate_limit_is_per_client_ip_using_the_forwarded_for_header()
     {
-        var (_, http) = NewHost(f => f.Overrides["RateLimit:PermitPerMinute"] = "3");
+        var (_, http) = NewHost(f =>
+        {
+            f.Overrides["RateLimit:PermitPerMinute"] = "3";
+            f.Overrides["Proxy:TrustForwardedHeaders"] = "true";
+        });
 
         HttpRequestMessage From(string ip)
         {
@@ -890,7 +894,7 @@ public sealed class AccountControllerTests : IDisposable
         var (_, http) = NewHost(f =>
         {
             f.Overrides["RateLimit:PermitPerMinute"] = "2";
-            f.Overrides["Proxy:TrustForwardedHeaders"] = "false";
+            // Proxy:TrustForwardedHeaders deliberately unset: the default must not trust the header.
         });
 
         HttpRequestMessage From(string ip)

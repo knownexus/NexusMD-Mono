@@ -36,10 +36,10 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
-// The app runs behind a reverse proxy (Railway). Honour X-Forwarded-For/Proto so the client IP is the real
-// one. Known networks/proxies are cleared because the proxy address is not known up front; ForwardLimit stays
-// at its default of 1, so only the right-most (proxy-appended) X-Forwarded-For entry is used and a
-// client-supplied header cannot spoof its address. Set Proxy:TrustForwardedHeaders=false when not behind a proxy.
+// When behind a trusted reverse proxy (e.g. Railway) set Proxy:TrustForwardedHeaders=true to honour
+// X-Forwarded-For/Proto so the client IP is the real one. Known networks/proxies are cleared because the proxy
+// address is not known up front; ForwardLimit stays at its default of 1, so only the right-most
+// (proxy-appended) X-Forwarded-For entry is used. Never enable this when the app is directly reachable.
 builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(o =>
 {
     o.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
@@ -100,7 +100,9 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 NexusMDWeb.Api.Services.Auth.JwtKeyResolver.Resolve(app.Configuration, app.Environment); // fail fast on a missing/short signing key
 
-if (app.Configuration.GetValue("Proxy:TrustForwardedHeaders", true))
+// Off by default: with KnownProxies/KnownNetworks cleared, any caller could spoof X-Forwarded-For. Enable
+// (Proxy:TrustForwardedHeaders=true) only when a trusted reverse proxy fronts the app and is the sole way in.
+if (app.Configuration.GetValue("Proxy:TrustForwardedHeaders", false))
     app.UseForwardedHeaders(); // must run first so everything downstream sees the real client IP/scheme
 app.UseCors("CapacitorApp");
 app.UseMiddleware<NexusMDWeb.Api.Services.Auth.LegacyEndpointGate>();
