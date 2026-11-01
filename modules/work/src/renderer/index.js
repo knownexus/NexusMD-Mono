@@ -1,3 +1,4 @@
+import React from 'react'
 import { createAdoHttpAdapter } from './ado-client.js'
 import { WorkProvider } from './work-provider.jsx'
 import { WorkTopbar, WorkBanner } from './work-slots.jsx'
@@ -8,6 +9,14 @@ import {
 import { WorkIntegrationsPanel, WorkBoardPanel, WorkCardsPanel, WorkDataRows } from './work-settings.jsx'
 import { WorkScreensCard } from './work-screens-card.jsx'
 import { useOffScreens } from './work-screens.js'
+import { ListsApp, useListsHidden } from './lists-view.jsx'
+
+// The screens switched off in Settings, plus Lists unless the profile is a manual one.
+function useWorkOffViews() {
+  const off = useOffScreens()
+  const listsHidden = useListsHidden()
+  return React.useMemo(() => (listsHidden ? [...off, 'lists'] : off), [off, listsHidden])
+}
 
 // What the shell gets from the Work app (see apps/desktop/src/shell/modules.js).
 //   adapters        added to the core adapter set before initCore: `http` is what enables the Azure DevOps modules
@@ -30,12 +39,13 @@ export default {
     tests: TestsApp,
     team: TeamApp,
     triage: TriageApp,
+    lists: ListsApp,
   },
   provider: WorkProvider,
   topbar: WorkTopbar,
   banner: WorkBanner,
   useNavBadges: () => useWorkNavBadges(),
-  useOffViews: () => useOffScreens(),
+  useOffViews: () => useWorkOffViews(),
   settingsCard: WorkScreensCard,
   settingsPanels: {
     integrations: WorkIntegrationsPanel,

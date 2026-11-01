@@ -3,7 +3,7 @@ import { buildRegistry, installedIdsFromHost, isUninstalledView, resolveView, BU
 
 // The sidebar order users have always had; the manifests must reproduce it exactly.
 const ORIGINAL_NAV_ORDER = [
-  'dashboard', 'calendar', 'work', 'prs', 'builds', 'tests', 'team', 'triage',
+  'dashboard', 'calendar', 'work', 'prs', 'builds', 'tests', 'team', 'triage', 'lists',
   'planner', 'notes', 'markdown', 'api-client', 'db-manager', 'devenv', 'git',
 ]
 // The Editor is new, so it comes after everything users already have.
@@ -74,7 +74,7 @@ describe('Calendar and Planner as apps of their own', () => {
   })
   it('can be installed without Work, and Work without them', () => {
     expect(buildRegistry(['planner', 'calendar']).nav.map(n => n.id)).toEqual(['calendar', 'planner'])
-    expect(buildRegistry(['work']).nav.map(n => n.id)).toEqual(['dashboard', 'work', 'prs', 'builds', 'tests', 'team', 'triage'])
+    expect(buildRegistry(['work']).nav.map(n => n.id)).toEqual(['dashboard', 'work', 'prs', 'builds', 'tests', 'team', 'triage', 'lists'])
   })
 })
 

@@ -13,8 +13,8 @@ describe('work app manifest', () => {
     expect(manifest.id).toBe('work')
   })
 
-  it('owns the seven screens it always had, in the sidebar order users know', () => {
-    expect(manifest.nav.map(n => n.id)).toEqual(['dashboard', 'work', 'prs', 'builds', 'tests', 'team', 'triage'])
+  it('owns the seven screens it always had, in the sidebar order users know, then Lists', () => {
+    expect(manifest.nav.map(n => n.id)).toEqual(['dashboard', 'work', 'prs', 'builds', 'tests', 'team', 'triage', 'lists'])
   })
 
   it('has a handler for every channel it exposes, and nothing else under jira:', () => {

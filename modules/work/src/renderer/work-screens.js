@@ -7,7 +7,8 @@ import manifest from '../../app.manifest.json'
 // go, and for the screens with data of their own (Pull Requests, Builds, Tests) nothing is fetched.
 // Team and Triage only hide: the team list and the work items are what the rest of Work runs on.
 
-export const WORK_SCREENS = manifest.nav.map(({ id, label }) => ({ id, label }))
+// Lists isn't one of them: it shows for manual profiles only, whatever is set here (see lists-view.jsx).
+export const WORK_SCREENS = manifest.nav.filter(({ id }) => id !== 'lists').map(({ id, label }) => ({ id, label }))
 
 // The screens that load something of their own, and the loader's `skip` flag for each.
 export const FETCHED_BY = { prs: 'prs', builds: 'builds', tests: 'tests' }

@@ -15,7 +15,8 @@ const EMPTY = []
 
 // The people the screens show: the roster from the data, minus people removed in the Team screen,
 // plus the ones added there. The Team screen itself lists removed people too (to restore them).
-function useTeamRoster(data) {
+// Lists (lists-view.jsx) uses it for its owner picker.
+export function useTeamRoster(data) {
   const [customTeam, setCustomTeam] = React.useState(() => {
     try {
       const k = getProfileKey('nexusmd.team.custom')
