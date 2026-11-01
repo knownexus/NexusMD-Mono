@@ -54,6 +54,21 @@ describe('skip rules', () => {
     'helm.account.meta',
     'helm.sec.account.keys',
     'helm.workitems.status.v1',
+    // queued unsent mutations must not replay on another device
+    'helm.offlineQueue',
+    'helm.p.1.offlineQueue',
+    // large virtual-file blobs and device-bound SAF URIs, bare and profile-scoped
+    'helm.android.editorfs:/notes/a.md',
+    'helm.p.1.android.editorfs:/notes/a.md',
+    'helm.android.apifs:coll/req.json',
+    'helm.p.1.android.apifs:coll/req.json',
+    'helm.android.editor.safFolders',
+    'helm.p.1.android.editor.safFolders',
+    // device-local migration markers
+    'helm.migrated',
+    'helm.planner.legacyMigrated',
+    'helm.p.1.planner.legacyMigrated',
+    'nexusmd.migrated',
   ]
   it.each(never)('classify(%s) is null', (key) => {
     const reg = key.startsWith('helm.') ? android() : desktop()
@@ -92,8 +107,9 @@ describe('profiles and active profile', () => {
     expect(reg.toStorageKey('activeProfileId')).toBe(`${ns}.activeProfileId`)
   })
 
-  it('migration meta key stays platform-private', () => {
-    expect(android().classify('helm.migrated')).toEqual({ id: 'helm:migrated', level: 'account' })
+  it('migration markers are not synced', () => {
+    expect(android().classify('helm.migrated')).toBeNull()
+    expect(android().classify('helm.planner.legacyMigrated')).toBeNull()
   })
 })
 
@@ -174,6 +190,35 @@ describe('platform-private keys', () => {
     expect(desktop().classify('nexusmd.theme')).toEqual({ id: 'nexusmd:theme', level: 'account' })
   })
 
+  it('toStorageKey accepts only the canonical id classify produces', () => {
+    const d = desktop(), a = android()
+    // non-canonical spellings of keys that classify to another id
+    expect(d.toStorageKey('nexusmd:tweaks')).toBeNull()
+    expect(d.toStorageKey('nexusmd:p.1.tweaks')).toBeNull()
+    expect(d.toStorageKey('nexusmd:profiles')).toBeNull()
+    expect(d.toStorageKey('nexusmd:activeProfileId')).toBeNull()
+    expect(d.toStorageKey('nexusmd:p.1.ado.org')).toBeNull()
+    expect(d.toStorageKey('nexusmd:ado.org')).toBeNull()
+    expect(a.toStorageKey('helm:p.1.android.org')).toBeNull()
+    expect(a.toStorageKey('helm:p.1.android.github.pat')).toBeNull()
+    // canonical forms still work
+    expect(d.toStorageKey('p.1.ado.org')).toBe('nexusmd.p.1.ado.org')
+    expect(d.toStorageKey('nexusmd:p.1.ado.auth')).toBe('nexusmd.p.1.ado.auth')
+    expect(a.toStorageKey('tweaks.device')).toBe('helm.tweaks')
+  })
+
+  it('every id classify produces round-trips exactly', () => {
+    const keys = [
+      ['nexusmd', 'nexusmd.profiles'], ['nexusmd', 'nexusmd.activeProfileId'], ['nexusmd', 'nexusmd.p.1.ado.org'],
+      ['nexusmd', 'nexusmd.p.1.google.auth'], ['nexusmd', 'nexusmd.sidebar.width'], ['helm', 'helm.p.1.android.jira.site'],
+      ['helm', 'helm.p.1.google.auth'], ['helm', 'helm.theme'],
+    ]
+    for (const [ns, key] of keys) {
+      const reg = ns === 'helm' ? android() : desktop()
+      expect(reg.toStorageKey(reg.classify(key).id)).toBe(key)
+    }
+  })
+
   it('unknown neutral ids return null', () => {
     expect(desktop().toStorageKey('p.1.ado.nothing')).toBeNull()
     expect(desktop().toStorageKey('')).toBeNull()
@@ -228,8 +273,24 @@ describe('tweaks', () => {
     expect(reg.classify('helm.p.abc.tweaks').split).toBe(true)
     // another profile's tweaks would collide on the same id, so they are not synced
     expect(reg.classify('helm.p.zzz.tweaks')).toBeNull()
+    // a leftover bare key is ambiguous once an active profile is known
+    expect(reg.classify('helm.tweaks')).toBeNull()
     const none = createKeyRegistry({ namespace: 'helm', getActiveProfileId: () => '' })
     expect(none.toStorageKey('tweaks.account')).toBe('helm.tweaks')
+    expect(none.classify('helm.tweaks').split).toBe(true)
+    expect(none.classify('helm.p.abc.tweaks')).toBeNull()
+  })
+
+  it('without getActiveProfileId any tweaks key shape is accepted', () => {
+    const reg = createKeyRegistry({ namespace: 'helm' })
+    expect(reg.classify('helm.tweaks').split).toBe(true)
+    expect(reg.classify('helm.p.zzz.tweaks').split).toBe(true)
+  })
+
+  it('desktop with an active profile accepts only the global tweaks key', () => {
+    const reg = createKeyRegistry({ namespace: 'nexusmd', getActiveProfileId: () => 'abc' })
+    expect(reg.classify('nexusmd.tweaks').split).toBe(true)
+    expect(reg.classify('nexusmd.p.abc.tweaks')).toBeNull()
   })
 
   it('desktop tweaks stay at the global key even with an active profile', () => {
@@ -288,9 +349,53 @@ describe('mergers.profiles', () => {
     expect(out).toEqual([{ id: 'a', name: 'new', color: 'red' }, { id: 'c' }, { id: 'b' }])
   })
 
+  it('duplicate ids inside one list are deterministic: last wins field by field', () => {
+    const reg = desktop()
+    expect(reg.mergers.profiles(
+      [{ id: 'a', name: '1', color: 'red' }, { id: 'a', name: '2' }], [],
+    )).toEqual([{ id: 'a', name: '2', color: 'red' }])
+    expect(reg.mergers.profiles(
+      [], [{ id: 'a', name: '1' }, { id: 'b' }, { id: 'a', name: '3' }],
+    )).toEqual([{ id: 'a', name: '3' }, { id: 'b' }])
+  })
+
   it('tolerates non-arrays', () => {
     expect(desktop().mergers.profiles(undefined, [{ id: 'a' }])).toEqual([{ id: 'a' }])
     expect(desktop().mergers.profiles([{ id: 'a' }], 'x')).toEqual([{ id: 'a' }])
+  })
+})
+
+describe('prototype safety', () => {
+  const evil = () => JSON.parse('{"__proto__": {"x": 1}, "constructor": {"y": 2}, "prototype": 3, "theme": "dark", "sidebarWidth": 7}')
+
+  it('splitTweaks ignores __proto__, constructor and prototype', () => {
+    const { account, device } = desktop().splitTweaks(evil())
+    expect(account).toEqual({ theme: 'dark' })
+    expect(device).toEqual({ sidebarWidth: 7 })
+    expect(Object.getPrototypeOf(device)).toBe(Object.prototype)
+    expect({}.x).toBeUndefined()
+    expect(Object.prototype.x).toBeUndefined()
+  })
+
+  it('mergeTweaks ignores them on either side and in local', () => {
+    const reg = desktop()
+    const out = reg.mergeTweaks(evil(), { account: evil(), device: evil() })
+    expect(out).toEqual({ theme: 'dark', sidebarWidth: 7 })
+    expect(Object.prototype.hasOwnProperty.call(out, '__proto__')).toBe(false)
+    expect(Object.getPrototypeOf(out)).toBe(Object.prototype)
+    expect(out.x).toBeUndefined()
+    expect({}.x).toBeUndefined()
+    expect(Object.prototype.y).toBeUndefined()
+  })
+
+  it('profile merger ignores unsafe keys and ids', () => {
+    const reg = desktop()
+    const entry = JSON.parse('{"id": "a", "__proto__": {"polluted": true}, "name": "n"}')
+    const out = reg.mergers.profiles([], [entry, JSON.parse('{"id": "__proto__"}')])
+    expect(out).toEqual([{ id: 'a', name: 'n' }])
+    expect(Object.getPrototypeOf(out[0])).toBe(Object.prototype)
+    expect(out[0].polluted).toBeUndefined()
+    expect({}.polluted).toBeUndefined()
   })
 })
 

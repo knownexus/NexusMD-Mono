@@ -43,6 +43,12 @@ const NEVER_SYNC = [
   /\.calendar\.events(?:\.|$)/,
   /\.lists(?:\.|$)/,
   /\.timelog(?:\.|$)/,
+  // Device-local state: queued unsent mutations (must not replay on another device), large
+  // virtual-file blobs, SAF folder URIs that mean nothing elsewhere, and migration markers.
+  /^(?:nexusmd|helm)\.(?:p\.[^.]+\.)?offlineQueue$/,
+  /\.android\.(?:editorfs|apifs):/,
+  /\.android\.editor\.safFolders$/,
+  /^(?:nexusmd|helm)\.(?:p\.[^.]+\.)?(?:migrated|planner\.legacyMigrated)$/,
 ]
 
 // Connection fields that mean the same thing on both platforms but are stored under different
@@ -83,6 +89,13 @@ const TWEAKS_DEVICE_ID = 'tweaks.device'
 
 const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v)
 
+// Remote JSON can carry own '__proto__' / 'constructor' / 'prototype' properties; assigning them
+// with a plain `obj[k] = v` could reach Object.prototype. They are never kept.
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+const ownSafeEntries = (obj) => (isPlainObject(obj)
+  ? Object.keys(obj).filter(k => !UNSAFE_KEYS.has(k)).map(k => [k, obj[k]])
+  : [])
+
 export function createKeyRegistry({ namespace, getActiveProfileId } = {}) {
   if (!NAMESPACES.includes(namespace)) {
     throw new Error(`createKeyRegistry requires namespace 'nexusmd' or 'helm' (got ${JSON.stringify(namespace)})`)
@@ -122,9 +135,11 @@ export function createKeyRegistry({ namespace, getActiveProfileId } = {}) {
     if (!pid && name === 'activeProfileId') return { id: 'activeProfileId', level: 'device' }
 
     if (name === 'tweaks') {
-      // Several profiles' tweaks would collide on one id: only the active profile's is synced.
-      const active = activeProfile()
-      if (pid && active && pid !== active) return null
+      // Several tweaks keys (global, per profile) would collide on one id. When the platform
+      // supplies getActiveProfileId, exactly one key is the tweaks key (see tweaksKey) and any
+      // other shape is ignored. Without it every shape is accepted, which is only safe when the
+      // device holds a single tweaks key.
+      if (getActiveProfileId && storageKey !== tweaksKey()) return null
       return { id: TWEAKS_ACCOUNT_ID, level: 'account', split: true, accountId: TWEAKS_ACCOUNT_ID, deviceId: TWEAKS_DEVICE_ID }
     }
 
@@ -149,7 +164,9 @@ export function createKeyRegistry({ namespace, getActiveProfileId } = {}) {
       if (own[1] !== namespace) return null
       key = `${prefix}${own[2]}`
     } else if (id === TWEAKS_ACCOUNT_ID || id === TWEAKS_DEVICE_ID) {
+      // Both halves live in the one tweaks key, which classify names by the account id.
       key = tweaksKey()
+      return classify(key)?.accountId === TWEAKS_ACCOUNT_ID ? key : null
     } else if (id === 'profiles' || id === 'activeProfileId') {
       key = `${prefix}${id}`
     } else {
@@ -159,15 +176,16 @@ export function createKeyRegistry({ namespace, getActiveProfileId } = {}) {
       key = `${prefix}${m[1] ? `p.${m[1]}.` : ''}${alias[namespace]}`
     }
 
-    // A remote id must never be able to name a key that is not synced in the first place.
-    return classify(key) ? key : null
+    // Accept only the canonical id classify gives this key, so a remote id can neither name a
+    // key that is not synced nor reach a key through a second spelling (e.g. 'nexusmd:tweaks').
+    return classify(key)?.id === id ? key : null
   }
 
   function splitTweaks(obj) {
     const account = {}
     const device = {}
     if (!isPlainObject(obj)) return { account, device }
-    for (const [k, v] of Object.entries(obj)) {
+    for (const [k, v] of ownSafeEntries(obj)) {
       if (TWEAK_ACCOUNT_FIELDS.includes(k)) account[k] = v
       else device[k] = v
     }
@@ -175,35 +193,35 @@ export function createKeyRegistry({ namespace, getActiveProfileId } = {}) {
   }
 
   function mergeTweaks(local, { account, device } = {}) {
-    const out = isPlainObject(local) ? { ...local } : {}
-    if (isPlainObject(account)) {
-      for (const [k, v] of Object.entries(account)) if (TWEAK_ACCOUNT_FIELDS.includes(k)) out[k] = v
-    }
-    if (isPlainObject(device)) {
-      for (const [k, v] of Object.entries(device)) if (!TWEAK_ACCOUNT_FIELDS.includes(k)) out[k] = v
-    }
+    const out = {}
+    for (const [k, v] of ownSafeEntries(local)) out[k] = v
+    for (const [k, v] of ownSafeEntries(account)) if (TWEAK_ACCOUNT_FIELDS.includes(k)) out[k] = v
+    for (const [k, v] of ownSafeEntries(device)) if (!TWEAK_ACCOUNT_FIELDS.includes(k)) out[k] = v
     return out
   }
 
-  // Union by id, local order first. For the same id the remote's fields win (it is the newer
-  // edit from another device); fields only the local has are kept. Nothing is ever deleted.
+  // Union by id, local entries first (in their order), then remote-only ones. For the same id the
+  // entries are combined field by field and the later one wins: remote over local, and the last
+  // of two duplicates inside one list. That is the Milestone 1 rule; it does not claim the remote
+  // is newer. Nothing is ever deleted.
   const mergeProfiles = (local, remote) => {
     const out = []
     const index = new Map()
-    const take = (list, overwrite) => {
+    const take = (list) => {
       if (!Array.isArray(list)) return
       for (const p of list) {
-        if (!isPlainObject(p) || typeof p.id !== 'string' || !p.id) continue
+        if (!isPlainObject(p) || typeof p.id !== 'string' || !p.id || UNSAFE_KEYS.has(p.id)) continue
+        const fields = Object.fromEntries(ownSafeEntries(p))
         if (index.has(p.id)) {
-          if (overwrite) out[index.get(p.id)] = { ...out[index.get(p.id)], ...p }
+          out[index.get(p.id)] = { ...out[index.get(p.id)], ...fields }
         } else {
           index.set(p.id, out.length)
-          out.push({ ...p })
+          out.push(fields)
         }
       }
     }
-    take(local, false)
-    take(remote, true)
+    take(local)
+    take(remote)
     return out
   }
 
