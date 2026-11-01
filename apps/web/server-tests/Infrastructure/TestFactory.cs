@@ -22,6 +22,11 @@ public sealed class TestFactory : WebApplicationFactory<Program>
     public string ContentRoot { get; } =
         Path.Combine(Path.GetTempPath(), $"nexusmd-web-test-{Guid.NewGuid():N}");
 
+    /// <summary>
+    /// Config overrides applied after the defaults. Set before the first CreateClient/Services access.
+    /// </summary>
+    public IDictionary<string, string?> Overrides { get; } = new Dictionary<string, string?>();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         Directory.CreateDirectory(Path.Combine(ContentRoot, "wwwroot"));
@@ -49,7 +54,13 @@ public sealed class TestFactory : WebApplicationFactory<Program>
                 ["Microsoft:Tenant"]     = "common",
                 ["OAuth:NativeReturnPrefixes:0"] = "nexusmd://",
                 ["OAuth:NativeReturnPrefixes:1"] = "http://127.0.0.1",
+                ["Web:LegacyEndpoints"]  = "true",
+                ["Jwt:SigningKey"]       = new string('k', 64),
+                ["Accounts:DbPath"]      = Path.Combine(ContentRoot, "accounts.db"),
+                ["Accounts:SetupToken"]  = "test-setup-token",
             });
+            // Applied last so they win over the defaults above.
+            cfg.AddInMemoryCollection(Overrides);
         });
     }
 
