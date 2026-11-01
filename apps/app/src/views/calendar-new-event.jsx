@@ -28,26 +28,27 @@ export function buildEvent({ title, day, time, length }, id = String(Date.now())
   return { event: { id, title: name, start: localStamp(start), end: localStamp(end), type: 'meeting', description: '' } };
 }
 
-export function NewEventSheet({ open, onClose, dayKey, startTime, onAdd, canAddToPlanner, outlookConnected }) {
+export function NewEventSheet({ open, onClose, dayKey, startTime, onAdd, canAddToPlanner, outlookConnected, googleConnected }) {
   const [title, setTitle] = React.useState('');
   const [day, setDay] = React.useState(dayKey);
   const [time, setTime] = React.useState(defaultStart(dayKey));
   const [length, setLength] = React.useState(30);
   const [toPlanner, setToPlanner] = React.useState(false);
   const [toOutlook, setToOutlook] = React.useState(false);
+  const [toGoogle, setToGoogle] = React.useState(false);
   const [error, setError] = React.useState('');
 
   React.useEffect(() => {
     if (!open) return;
     setTitle(''); setDay(dayKey); setTime(startTime || defaultStart(dayKey)); setLength(30);
-    setToPlanner(false); setToOutlook(false); setError('');
+    setToPlanner(false); setToOutlook(false); setToGoogle(false); setError('');
   }, [open, dayKey, startTime]);
 
   const plannerOk = !!canAddToPlanner?.(day);
   const submit = () => {
     const r = buildEvent({ title, day, time, length });
     if (r.error) { setError(r.error); return; }
-    onAdd(r.event, { toPlanner: toPlanner && plannerOk, toOutlook: toOutlook && !!outlookConnected });
+    onAdd(r.event, { toPlanner: toPlanner && plannerOk, toOutlook: toOutlook && !!outlookConnected, toGoogle: toGoogle && !!googleConnected });
     onClose();
   };
 
@@ -85,6 +86,13 @@ export function NewEventSheet({ open, onClose, dayKey, startTime, onAdd, canAddT
         <label className="m-switchrow">
           <input type="checkbox" checked={toOutlook} onChange={e => setToOutlook(e.target.checked)}/>
           <span>Save to Outlook<span className="m-hint" style={{ display: 'block', marginTop: 2 }}>
+            Off keeps it on this device only. It can't be undone here once sent.</span></span>
+        </label>
+      )}
+      {googleConnected && (
+        <label className="m-switchrow">
+          <input type="checkbox" checked={toGoogle} onChange={e => setToGoogle(e.target.checked)}/>
+          <span>Save to Google Calendar<span className="m-hint" style={{ display: 'block', marginTop: 2 }}>
             Off keeps it on this device only. It can't be undone here once sent.</span></span>
         </label>
       )}

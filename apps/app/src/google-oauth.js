@@ -11,7 +11,7 @@ export const REDIRECT_SCHEME = 'com.knownexus.nexus';
 export const REDIRECT_URI = `${REDIRECT_SCHEME}:/oauth2redirect`;
 export const SCOPES = {
   drive: 'https://www.googleapis.com/auth/drive.file',
-  calendar: 'https://www.googleapis.com/auth/calendar.readonly',
+  calendar: 'https://www.googleapis.com/auth/calendar.events',
 };
 
 const base64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');

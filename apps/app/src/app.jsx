@@ -3,6 +3,7 @@ import { Icon } from './icons.jsx';
 import ReactDOM from 'react-dom/client';
 import { adoGet, adoPost, adoPatch, adoPut, getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js';
 import { toast } from './toast.jsx';
+import { createGoogleEvent } from './google-calendar.js';
 import { refreshNow } from './refresh.js';
 import { helmPushPref, effectiveNeedsMe, Flash, Sheet } from './components.jsx';
 import { getIsoYearWeek, getMondayOfDate, getYearWeekForOffset } from '@nexusmd/core';
@@ -992,23 +993,35 @@ function AppShell() {
 
   // A new event from the phone calendar: optionally a row in Planner > Meetings - schedule, and
   // optionally pushed to Outlook. Undo removes both, except after an Outlook push (that copy stays).
-  const addCalendarEvent = React.useCallback((ev, { toPlanner, toOutlook } = {}) => {
+  const addCalendarEvent = React.useCallback(async (ev, { toPlanner, toOutlook, toGoogle } = {}) => {
     const rowId = toPlanner && canAddToPlanner(ev.start.slice(0, 10)) ? 'ms' + Date.now() : null;
     const withPlanner = rowId ? { ...ev, plannerSection: 'meetSched' } : ev;
-    setCalendarEvents((prev) => [...prev, withPlanner]);
     if (rowId) {
       const day = new Date(ev.start).toLocaleDateString('en-US', { weekday: 'long' });
       setPlannerData((prev) => ({ ...prev, meetSched: [...(prev.meetSched || []), {
         id: rowId, dayTime: `${day} ${ev.start.slice(11, 16)}`, meeting: ev.title, attendees: '', prep: '', owner: '', status: '',
       }] }));
     }
-    const pushed = !!(toOutlook && window.OutlookService?.isConnected());
-    if (pushed) window.OutlookService.createEvent({ title: ev.title, start: ev.start, end: ev.end, description: '' }).catch((err) => console.warn('Outlook createEvent failed:', err));
-    const undo = pushed ? undefined : () => {
+    // Each calendar it is sent to either takes it or says why not; the event is never lost.
+    let googleOk = false; const problems = [];
+    if (toGoogle) {
+      try { await createGoogleEvent({ title: ev.title, start: ev.start, end: ev.end }); googleOk = true; window.dispatchEvent(new Event('nexusmd:google-calendar-changed')); }
+      catch (err) { problems.push(`Google Calendar: ${err?.message || 'failed'}`); }
+    }
+    let outlookOk = false;
+    if (toOutlook && window.OutlookService?.isConnected()) {
+      try { await window.OutlookService.createEvent({ title: ev.title, start: ev.start, end: ev.end, description: '' }); outlookOk = true; }
+      catch (err) { problems.push(`Outlook: ${err?.message || 'failed'}`); }
+    }
+    // Google shows its own copy, so keep a local one only if it did not arrive there (or Planner links to it).
+    if (!googleOk || rowId) setCalendarEvents((prev) => [...prev, withPlanner]);
+    const sent = [googleOk && 'Google Calendar', outlookOk && 'Outlook'].filter(Boolean);
+    const undo = sent.length ? undefined : () => {
       setCalendarEvents((prev) => prev.filter((e) => e.id !== ev.id));
       if (rowId) setPlannerData((prev) => ({ ...prev, meetSched: (prev.meetSched || []).filter((r) => r.id !== rowId) }));
     };
-    showFlash(pushed ? 'Event added and sent to Outlook' : rowId ? 'Event added to Calendar and Planner' : 'Event added', 'check', undo);
+    const base = sent.length ? `Event added and sent to ${sent.join(' and ')}` : rowId ? 'Event added to Calendar and Planner' : 'Event added';
+    showFlash(problems.length ? `${base}. Could not send to ${problems.join('; ')}. Saved on this device.` : base, problems.length ? 'alert' : 'check', undo);
   }, [canAddToPlanner, showFlash]);
 
   // An event that is already on the calendar becomes a row in Planner > Meetings - schedule.

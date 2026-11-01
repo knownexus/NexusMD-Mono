@@ -108,7 +108,8 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
   useEffectCal(() => {
     const bump = () => setGoogleTick(t => t + 1);
     window.addEventListener('nexusmd:cloud-auth-changed', bump);
-    return () => window.removeEventListener('nexusmd:cloud-auth-changed', bump);
+    window.addEventListener('nexusmd:google-calendar-changed', bump);
+    return () => { window.removeEventListener('nexusmd:cloud-auth-changed', bump); window.removeEventListener('nexusmd:google-calendar-changed', bump); };
   }, []);
   useEffectCal(() => {
     if (!isOAuthConnected('google')) { setGoogleEvents([]); setGoogleError(null); return; }
@@ -284,7 +285,7 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
         }}/>
       <NewEventSheet open={newEventOpen} onClose={() => { setNewEventOpen(false); setNewEventTime(null); }} dayKey={selKey} startTime={newEventTime}
         onAdd={(ev, opts) => { onAddEvent(ev, opts); setSelDay(new Date(ev.start)); }}
-        canAddToPlanner={canAddToPlanner} outlookConnected={outlookConnected}/>
+        canAddToPlanner={canAddToPlanner} outlookConnected={outlookConnected} googleConnected={isOAuthConnected('google')}/>
     </React.Fragment>
   );
 
@@ -346,7 +347,7 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
       {onAddEvent && (
         <NewEventSheet open={newEventOpen} onClose={() => { setNewEventOpen(false); setNewEventTime(null); setNewEventDay(null); }}
           dayKey={newEventDay || today} startTime={newEventTime}
-          onAdd={(ev, opts) => onAddEvent(ev, opts)} canAddToPlanner={canAddToPlanner} outlookConnected={outlookConnected}/>
+          onAdd={(ev, opts) => onAddEvent(ev, opts)} canAddToPlanner={canAddToPlanner} outlookConnected={outlookConnected} googleConnected={isOAuthConnected('google')}/>
       )}
       {(calView==='week'||calView==='workweek') && weekDays && (
         <WeekGrid days={weekDays} eventsByDay={eventsByDay} today={today}

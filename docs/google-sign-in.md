@@ -15,7 +15,7 @@ and refreshes them the same way.
 2. **Enable two APIs** (APIs & Services > Library): **Google Calendar API** and **Google Drive API**.
 3. **Set up the consent screen** (APIs & Services > OAuth consent screen / Google Auth Platform):
    - User type **External**, app name "NexusMD", your email as support and developer contact.
-   - Add the scopes `.../auth/calendar.readonly` and `.../auth/drive.file`.
+   - Add the scopes `.../auth/calendar.events` and `.../auth/drive.file`.
    - Leave the app in **Testing** and add **your own Google account** under *Test users* (up to 100).
      Testing mode needs no Google review. Note: in Testing mode, Google expires the refresh token after
      7 days, so you will be asked to sign in again about weekly. Publishing the app ("In production") removes

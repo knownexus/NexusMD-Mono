@@ -45,7 +45,7 @@ describe('New event sheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add event' }))
     const [ev, opts] = onAdd.mock.calls[0]
     expect(ev.title).toBe('Retro'); expect(ev.start).toBe('2026-11-05T09:00')
-    expect(opts).toEqual({ toPlanner: true, toOutlook: false })
+    expect(opts).toEqual({ toPlanner: true, toOutlook: false, toGoogle: false })
     expect(onClose).toHaveBeenCalled()
   })
   it('offers Planner only for the planner week, and Outlook only when connected', () => {
