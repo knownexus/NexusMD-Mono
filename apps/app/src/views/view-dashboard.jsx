@@ -6,7 +6,7 @@ import { HelmData, HelmApi } from '../data.jsx';
 import { refreshNow } from '../refresh.js';
 import { appQueue } from '../offline-queue-app.js';
 import { PullRefresh } from '../pull-refresh.jsx';
-import { syncLabel, offlineText } from '../sync-status.js';
+import { syncLabel, offlineText } from '@nexusmd/core';
 import { WidgetHost, WidgetSheet, newWidgetsAfterSave } from './home-widgets.jsx';
 
 // Jira ids are stored as 'jira:TFP-123'; show the key.

@@ -19,7 +19,7 @@ import { getJiraConfig } from '../jira-client.js';
 import { getGithubConfig } from '../github-client.js';
 import { checkForUpdate, installUpdate } from '../app-update.js';
 import { appQueue } from '../offline-queue-app.js';
-import { syncLabel } from '../sync-status.js';
+import { syncLabel } from '@nexusmd/core';
 import { connectionsSummary, privacySummary, dataSummary } from '../settings-summary.js';
 // view-settings.jsx — Settings & profile page (planner-redesign port)
 // Works with the app's existing infrastructure:

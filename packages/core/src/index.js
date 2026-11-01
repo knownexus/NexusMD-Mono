@@ -17,6 +17,7 @@ export { validateProfile, buildProfile, generateProfileId, CURRENT_PROFILE_VERSI
 export { makeProfileKeys } from './profiles/profile-keys.js'
 export * from './modules/ado/index.js'
 export * from './modules/offline-queue/index.js'
+export * from './modules/nav/index.js'
 export * from './modules/workitems/index.js'
 export * from './modules/jira/index.js'
 export * from './modules/github/index.js'

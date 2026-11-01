@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { orderTabs, moveTab, placeTabs } from './nav-order.js'
+import { orderTabs, moveTab, placeTabs } from '../src/modules/nav/order.js'
 
 const tabs = ['a', 'b', 'c', 'd'].map(id => ({ id, label: id.toUpperCase() }))
 const ids = (list) => list.map(t => t.id)

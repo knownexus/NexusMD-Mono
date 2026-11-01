@@ -2,7 +2,7 @@ import React from 'react'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { PullRefresh, dampPull, pullLabel, PULL_TRIGGER } from './pull-refresh.jsx'
-import { syncLabel, offlineText } from './sync-status.js'
+import { syncLabel, offlineText } from '@nexusmd/core'
 
 afterEach(cleanup)
 
