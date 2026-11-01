@@ -4,7 +4,8 @@ import React from 'react';
 import { Sheet } from '../components.jsx';
 import { Icon } from '../icons.jsx';
 import { toast } from '../toast.jsx';
-import { listArtifacts, saveArtifact, formatSize, downloadsSupported } from '../build-artifacts.js';
+import { formatSize } from '@nexusmd/core';
+import { listArtifacts, saveArtifact, downloadsSupported } from '../build-artifacts.js';
 
 export function BuildArtifactsSheet({ build, onClose, list = listArtifacts, save = saveArtifact, supported = downloadsSupported }) {
   const [items, setItems] = React.useState(null);

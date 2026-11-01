@@ -51,6 +51,8 @@ const EXPECTED = [
   'defaultConfig', 'resolveFields', 'reorderField', 'toggleField',
   // Builds table column layout (shared by mobile + desktop Builds views)
   'visibleColumns', 'gridTemplate', 'minTableWidth', 'orderColumns',
+  // Build artifacts (listing + per-provider auth; saving is per platform)
+  'formatSize', 'mapAdoArtifacts', 'mapGithubArtifacts', 'listArtifacts', 'authHeaders', 'isArtifactApiUrl', 'ARTIFACT_API_ORIGINS',
   // Shared PR REST helpers (threads/comments/resolve/reopen/commits/file changes/description)
   'fetchPRThreads', 'postPRThread', 'postPRReply', 'setPRThreadStatus',
   'fetchPRCommits', 'fetchPRFileChanges', 'fetchFileContent', 'updatePRDescription',
