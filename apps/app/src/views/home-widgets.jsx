@@ -8,18 +8,13 @@ import { HelmData } from '../data.jsx';
 import { getProfileKey } from '../profile-keys.js';
 import { Card, TimeWidget, NotesWidget, LatestBuild, LatestTest } from './dashboard-interactive-widgets.jsx';
 import { listRepoChoices } from '../git-view.jsx';
+import { WIDGET_CONFIG_TYPES, pageLabel, newWidgetsAfterSave } from '@nexusmd/core';
+
+export { newWidgetsAfterSave };
 
 const { useState, useEffect } = React;
 const sameDay = (iso, d) => typeof iso === 'string' && iso.slice(0, 10) === d;
 const readLists = () => { try { return JSON.parse(localStorage.getItem(getProfileKey('helm.lists')) || '{}').lists || []; } catch { return []; } };
-const PAGES = [
-  ['dashboard', 'Home'], ['work', 'Work items'], ['pr', 'Pull requests'], ['builds', 'Builds'], ['tests', 'Tests'],
-  ['calendar', 'Calendar'], ['planner', 'Planner'], ['lists', 'Lists'], ['time', 'Time'], ['notes', 'Notes'],
-  ['triage', 'Triage'], ['team', 'Team'], ['markdown', 'Documents'], ['api', 'API Client'], ['editor', 'Editor'], ['git', 'Repos'],
-];
-const pageLabel = (id) => (PAGES.find(p => p[0] === id) || [])[1] || id;
-const COUNT = { key: 'count', label: 'How many to show', kind: 'number', min: 1, max: 15 };
-
 function Row({ title, sub, onClick }) {
   return (
     <div className="m-row" onClick={onClick}>
@@ -36,12 +31,8 @@ const Empty = ({ text }) => <div className="m-row-sub" style={{ padding: 16 }}>{
 // ── The types ─────────────────────────────────────────────────────────────────────────────────────────────────
 // `page` is the screen the widget belongs to (it is not offered when that screen is switched off). `half` widgets
 // share a row with another half widget by default; every widget has a Width setting.
-export const WIDGET_TYPES = {
+const WIDGET_RENDERERS = {
   pr: {
-    label: 'Pull requests', desc: 'A list of pull requests', page: 'pr', icon: 'pr',
-    defaults: { filter: 'needsme', count: 5 },
-    fields: [{ key: 'filter', label: 'Show', kind: 'select', options: [['needsme', 'Needs my review'], ['all', 'All'], ['drafts', 'Drafts']] }, COUNT],
-    title: (c) => ({ needsme: 'Needs my review', all: 'Pull requests', drafts: 'Draft PRs' }[c.filter] || 'Pull requests'),
     render: (c, x) => {
       const prs = HelmData?.PRS || [];
       const list = c.filter === 'needsme' ? prs.filter(x.needsMe) : c.filter === 'drafts' ? prs.filter(p => p.draft) : prs;
@@ -55,8 +46,6 @@ export const WIDGET_TYPES = {
     },
   },
   builds: {
-    label: 'Builds', desc: 'The latest builds, with the newest up front', page: 'builds', icon: 'build',
-    defaults: { count: 3 }, fields: [COUNT],
     render: (c, x) => {
       const list = (HelmData?.BUILDS || []).slice(0, c.count);
       return (
@@ -71,8 +60,6 @@ export const WIDGET_TYPES = {
     },
   },
   tests: {
-    label: 'Test runs', desc: 'The latest test runs, with the newest up front', page: 'tests', icon: 'check-circle',
-    defaults: { count: 3 }, fields: [COUNT],
     render: (c, x) => {
       const list = (HelmData?.TESTS || []).slice(0, c.count);
       return (
@@ -86,10 +73,6 @@ export const WIDGET_TYPES = {
     },
   },
   repo: {
-    label: 'Repo', desc: 'Jump straight into one repository', page: 'git', icon: 'git-branch', half: true,
-    defaults: { repoId: '', repoName: '' }, needsRepo: true,
-    fields: [],
-    title: (c) => c.repoName || 'Repo',
     render: (c, x) => (
       <Card icon="git-branch" title={c.repoName || 'Repo'}>
         <div style={{ padding: 12 }}>
@@ -99,8 +82,6 @@ export const WIDGET_TYPES = {
     ),
   },
   mywork: {
-    label: 'Assigned to me', desc: 'Your open work items', page: 'work', icon: 'work',
-    defaults: { count: 5 }, fields: [COUNT],
     render: (c, x) => {
       const me = HelmData?.ME?.id;
       const all = (HelmData?.WORK_ITEMS || []).filter(w => me && w.assignee === me && !x.isTerminalState(w.state));
@@ -114,8 +95,6 @@ export const WIDGET_TYPES = {
     },
   },
   calendar: {
-    label: 'Today', desc: 'Today’s calendar events', page: 'calendar', icon: 'planner',
-    defaults: { count: 5 }, fields: [COUNT],
     render: (c, x) => {
       const today = new Date().toISOString().slice(0, 10);
       const ev = (x.calendarEvents || []).filter(e => sameDay(e.start, today)).sort((a, b) => String(a.start).localeCompare(String(b.start)));
@@ -129,8 +108,6 @@ export const WIDGET_TYPES = {
     },
   },
   planner: {
-    label: 'Planner tasks', desc: 'Your open planner tasks', page: 'planner', icon: 'planner',
-    defaults: { count: 5 }, fields: [COUNT],
     render: (c, x) => {
       const open = ((x.plannerData || {}).tasks || []).filter(t => t.status !== 'Done' && (t.task || '').trim());
       return (
@@ -143,8 +120,6 @@ export const WIDGET_TYPES = {
     },
   },
   lists: {
-    label: 'Lists', desc: 'Your lists and their item counts', page: 'lists', icon: 'work',
-    defaults: { count: 5 }, fields: [COUNT],
     render: (c, x) => {
       const lists = readLists();
       return (
@@ -157,8 +132,6 @@ export const WIDGET_TYPES = {
     },
   },
   team: {
-    label: 'Team', desc: 'Who is around', page: 'team', icon: 'team',
-    defaults: { count: 5 }, fields: [COUNT],
     render: (c, x) => {
       const members = (x.team?.length ? x.team : HelmData?.TEAM || []).slice(0, c.count);
       return (
@@ -171,20 +144,12 @@ export const WIDGET_TYPES = {
     },
   },
   time: {
-    label: 'Time', desc: 'Start, pause, mark and stop timers', page: 'time', icon: 'clock',
-    defaults: {}, fields: [],
     render: (c, x) => <TimeWidget storageKey={getProfileKey('nexusmd.timelog.v1')} navTo={x.navTo}/>,
   },
   notes: {
-    label: 'Quick note', desc: 'Jot a note down', page: 'notes', icon: 'pin',
-    defaults: {}, fields: [],
     render: (c, x) => <NotesWidget navTo={x.navTo}/>,
   },
   shortcut: {
-    label: 'Shortcut', desc: 'A button that opens one page', icon: 'link', half: true,
-    defaults: { to: 'triage' },
-    fields: [{ key: 'to', label: 'Opens', kind: 'select', options: PAGES.filter(p => p[0] !== 'dashboard' && p[0] !== 'settings') }],
-    title: (c) => pageLabel(c.to),
     render: (c, x) => (
       <div className="m-card" style={{ marginBottom: 12, cursor: 'pointer' }} onClick={() => x.navTo(c.to)}>
         <div className="m-card-h" style={{ borderBottom: 0 }}>
@@ -195,6 +160,10 @@ export const WIDGET_TYPES = {
     ),
   },
 };
+
+export const WIDGET_TYPES = Object.fromEntries(
+  Object.entries(WIDGET_CONFIG_TYPES).map(([k, t]) => [k, { ...t, render: WIDGET_RENDERERS[k].render }]),
+);
 
 const WIDTHS = [['half', 'Half width'], ['full', 'Full width']];
 const widthOf = (w) => w.config?.width || (WIDGET_TYPES[w.type]?.half ? 'half' : 'full');
@@ -300,4 +269,3 @@ export function WidgetSheet({ open, widget, offScreens = [], onClose, onSave, on
   );
 }
 
-export const newWidgetsAfterSave = (list, w) => (list.some(x => x.id === w.id) ? list.map(x => (x.id === w.id ? w : x)) : [...list, w]);

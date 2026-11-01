@@ -138,6 +138,8 @@ const EXPECTED = [
   // Lists model (custom trackers for manual profiles)
   'FIELD_DEFS', 'DEFAULT_STATUSES', 'DEFAULT_FIELDS', 'PRIORITY_LABELS', 'BUCKET_ORDER', 'BUCKET_LABELS',
   'toBucket', 'readLists', 'writeLists', 'newListId', 'safeListUrl',
+  // Home widget configuration
+  'WIDGET_PAGES', 'pageLabel', 'WIDGET_CONFIG_TYPES', 'newWidgetsAfterSave',
 ].sort()
 
 describe('public API surface', () => {
