@@ -36,7 +36,7 @@ import { NotesView } from './views/view-notes.jsx';
 import { WorkItemsView } from './views/view-workitems.jsx';
 import { PRView } from './views/view-prs.jsx';
 import { BuildsView } from './views/view-builds.jsx';
-import { orderTabs, moveTab } from './nav-order.js';
+import { orderTabs, moveTab, placeTabs } from './nav-order.js';
 import { TestsView } from './views/view-tests.jsx';
 import { CalendarView } from './views/view-calendar.jsx';
 import { TriageView } from './views/view-triage.jsx';
@@ -79,7 +79,8 @@ const DEFAULT_TWEAKS = /*EDITMODE-BEGIN*/{
   "widgetHeights": {},
   "quickLinks": [],
   "showMarkdown": true,
-  "hiddenDashWidgets": []
+  "hiddenDashWidgets": [],
+  "navPlacement": {}
 }/*EDITMODE-END*/;
 
 const adoHttp = createAdoHttpAdapter();
@@ -175,7 +176,7 @@ function MobileBottomNav({ view, navigate, navBadges, changeBadges, setMoreOpen,
               <Icon name={n.icon} size={21}/>
               {badge > 0 && <span className="m-nav-badge">{badge > 9 ? '9+' : badge}</span>}
             </span>
-            {n.label}
+            <span className="m-lbl">{n.label}</span>
           </button>
         );
       })}
@@ -183,7 +184,7 @@ function MobileBottomNav({ view, navigate, navBadges, changeBadges, setMoreOpen,
         className={`m-navitem${secondaryTabs.some(s => s.id === view) ? ' active' : ''}`}
         onClick={() => setMoreOpen(true)}>
         <span className="m-navicon"><Icon name="more" size={21}/></span>
-        More
+        <span className="m-lbl">More</span>
       </button>
     </div>
   );
@@ -214,7 +215,7 @@ function TabletRail({ view, navigate, navBadges, changeBadges, primaryTabs, rail
               <Icon name={n.icon} size={21}/>
               {badge > 0 && <span className="m-nav-badge">{badge > 9 ? '9+' : badge}</span>}
             </span>
-            {n.label}
+            <span className="m-lbl">{n.label}</span>
           </button>
         );
       })}
@@ -223,13 +224,13 @@ function TabletRail({ view, navigate, navBadges, changeBadges, primaryTabs, rail
         <button key={n.id} type="button" className={`m-railitem${n.id === view ? ' active' : ''}`}
           onClick={() => navigate(n.id)}>
           <span className="m-navicon"><Icon name={n.icon} size={21}/></span>
-          {n.label}
+          <span className="m-lbl">{n.label}</span>
         </button>
       ))}
       <button type="button" className={`m-railitem${secondaryTabs.some(s => s.id === view && !railPinned.some(p => p.id === s.id)) ? ' active' : ''}`}
         onClick={() => setMoreOpen(true)}>
         <span className="m-navicon"><Icon name="more" size={21}/></span>
-        More
+        <span className="m-lbl">More</span>
       </button>
     </div>
   );
@@ -575,8 +576,9 @@ function AppShell() {
   const offScreens = useOffScreens();
   const typeTabs = tabsForType(activeProfile?.type || 'ado');
   // Each group keeps its place (bottom bar / More); the order inside it is the user's (Settings > Appearance).
-  const allPrimary = orderTabs(typeTabs.primary, tweaks.navOrder);
-  const allSecondary = orderTabs(typeTabs.secondary, tweaks.navOrder);
+  const placed = placeTabs(typeTabs.primary, typeTabs.secondary, tweaks.navPlacement);
+  const allPrimary = orderTabs(placed.primary, tweaks.navOrder);
+  const allSecondary = orderTabs(placed.secondary, tweaks.navOrder);
   const primaryTabs = allPrimary.filter(t => !offScreens.includes(t.id));
   const secondaryTabs = allSecondary.filter(t => !offScreens.includes(t.id));
   const visibleSecondaryTabs = secondaryTabs.filter(t =>
@@ -1095,7 +1097,7 @@ function AppShell() {
     const h = (e) => {
       const target = e.detail?.view;
       if (!target) return;
-      window.NexusMDNav = { pendingFilter: e.detail.filter || null, view: target };
+      window.NexusMDNav = { pendingFilter: e.detail.filter || null, view: target, repoId: e.detail.repoId || null };
       navigate(target);
     };
     window.addEventListener('helm:navigate', h);
@@ -1149,7 +1151,8 @@ function AppShell() {
         setPlannerData={setPlannerData}
         widgetWidths={tweaks.widgetWidths || {}} setWidgetWidths={ww => setTweak('widgetWidths', ww)}
         widgetHeights={tweaks.widgetHeights || {}} setWidgetHeights={wh => setTweak('widgetHeights', wh)}
-        hiddenDashWidgets={tweaks.hiddenDashWidgets || []}
+        hiddenDashWidgets={tweaks.hiddenDashWidgets || []} offScreens={offScreens}
+        calendarEvents={calendarEvents} plannerData={plannerData} showMarkdown={tweaks.showMarkdown !== false}
         device={device} onFlash={showFlash}/>;
       case 'work': return <WorkItemsView items={workItems} setItems={setWorkItems}
         onOpen={openWI} onCreate={() => { setCreatePrefill(null); setCreateOpen(true); }}
@@ -1185,7 +1188,8 @@ function AppShell() {
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
         navGroups={[{ id: 'main', title: device === 'phone' ? 'Bottom bar' : 'Sidebar', tabs: primaryTabs }, { id: 'more', title: device === 'phone' ? 'More menu' : 'More and sidebar footer', tabs: visibleSecondaryTabs }]}
         onMoveNav={(groupId, id, dir) => setTweak('navOrder', moveTab(tweaks.navOrder, groupId === 'main' ? primaryTabs : visibleSecondaryTabs, id, dir))}
-        onResetNav={() => setTweak('navOrder', [])}
+        onPlaceNav={(id, where) => setTweak('navPlacement', { ...(tweaks.navPlacement || {}), [id]: where })}
+        onResetNav={() => { setTweak('navOrder', []); setTweak('navPlacement', {}); }}
         onOpenConnection={() => setSettingsOpen(true)}
         onOpenJira={() => setJiraSettingsOpen(true)}
         onOpenGithub={() => setGithubSettingsOpen(true)}
@@ -1197,7 +1201,7 @@ function AppShell() {
   })();
 
   return (
-    <div className="m-app" data-device={device}>
+    <div className="m-app" data-device={device} data-sidebar={tweaks.sidebar || "labels"}>
       {device === 'phone' ? (
         <>
           <div className="m-main">{activeScreen}</div>

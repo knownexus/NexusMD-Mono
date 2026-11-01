@@ -25,3 +25,13 @@ export function moveTab(order, groupTabs, id, dir) {
   [ids[from], ids[to]] = [ids[to], ids[from]];
   return [...ids, ...(Array.isArray(order) ? order : []).filter(x => !ids.includes(x))];
 }
+
+// Splits `primary` and `secondary` (the default bar and More groups) again after the user's moves. `placement`
+// maps a screen id to 'main' (bottom bar / sidebar) or 'more'; screens it does not mention stay where they started.
+export function placeTabs(primary, secondary, placement) {
+  const p = placement && typeof placement === 'object' ? placement : {};
+  const main = new Set(primary.map(t => t.id));
+  const all = [...primary, ...secondary];
+  const where = (t) => p[t.id] === 'main' || p[t.id] === 'more' ? p[t.id] : (main.has(t.id) ? 'main' : 'more');
+  return { primary: all.filter(t => where(t) === 'main'), secondary: all.filter(t => where(t) === 'more') };
+}

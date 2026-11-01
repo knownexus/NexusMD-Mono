@@ -3,6 +3,7 @@ import { toast } from '../toast.jsx';
 import { helmPushPref } from '../components.jsx';
 import { HelmData } from '../data.jsx';
 import { getProfileKey } from '../profile-keys.js';
+import { PAGE_WIDGETS } from './dashboard-page-widgets.jsx';
 import { Icon } from '../icons.jsx';
 import { useProfile } from '../profile-context.jsx';
 import { marked } from 'marked';
@@ -66,7 +67,7 @@ function vsTimeZones() {
 }
 
 // Reorder the navigation: each group (main bar, More) keeps its screens; up/down moves one within its group.
-export function NavOrderCard({ groups, onMove, onReset }) {
+export function NavOrderCard({ groups, onMove, onReset, onPlace }) {
   return (
     <VsCard title="Navigation order" icon="more">
       {groups.map(g => (
@@ -80,6 +81,13 @@ export function NavOrderCard({ groups, onMove, onReset }) {
                 onClick={() => onMove(g.id, t.id, -1)}><Icon name="arrow-up" size={13}/></button>
               <button type="button" className="btn sm ghost" aria-label={`Move ${t.label} down`} disabled={i === g.tabs.length - 1}
                 onClick={() => onMove(g.id, t.id, +1)}><Icon name="arrow-down" size={13}/></button>
+              {onPlace && (
+                <button type="button" className="btn sm ghost"
+                  aria-label={g.id === 'main' ? `Move ${t.label} to More` : `Move ${t.label} to the bar`}
+                  onClick={() => onPlace(t.id, g.id === 'main' ? 'more' : 'main')}>
+                  {g.id === 'main' ? 'To More' : 'To bar'}
+                </button>
+              )}
             </div>
           ))}
         </React.Fragment>
@@ -118,7 +126,7 @@ function AppUpdateRow() {
   );
 }
 
-function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onResetNav, onWorkScreensChanged, onOpenConnection, onOpenJira, onOpenGithub, onOpenProjectAreas, onGoPlanner }) {
+function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onPlaceNav, onResetNav, onWorkScreensChanged, onOpenConnection, onOpenJira, onOpenGithub, onOpenProjectAreas, onGoPlanner }) {
   // Phone: a grouped list of categories, each opening as its own page. Wider screens keep the rail.
   const [phone, setPhone] = useStateVS(() => window.matchMedia('(max-width:600px)').matches);
   useEffectVS(() => {
@@ -443,6 +451,18 @@ function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onResetNav,
                   onChange={v => toggleDashWidget('needsme', v)}
                 />
               </VsRow>
+              {[['mywork', 'Assigned to me', 'Your open work items'], ['builds', 'Builds widget', 'Latest pipeline runs'], ['tests', 'Test runs widget', 'Latest test runs']]
+                .filter(([id]) => !offScreens.includes(id))
+                .map(([id, title, desc]) => (
+                  <VsRow key={id} title={title} desc={`${desc} on the home page`}>
+                    <PlToggle checked={!(tweaks.hiddenDashWidgets || []).includes(id)} onChange={v => toggleDashWidget(id, v)}/>
+                  </VsRow>
+                ))}
+              {PAGE_WIDGETS.filter(w => !offScreens.includes(w.page) && (w.id !== 'markdown' || tweaks.showMarkdown !== false)).map(w => (
+                <VsRow key={w.id} title={`${w.title} widget`} desc={`${w.desc} on the home page`}>
+                  <PlToggle checked={!(tweaks.hiddenDashWidgets || []).includes(w.id)} onChange={v => toggleDashWidget(w.id, v)}/>
+                </VsRow>
+              ))}
               <VsRow title="Recent activity" desc="Show the team activity feed on the home page">
                 <PlToggle
                   checked={!(tweaks.hiddenDashWidgets || []).includes('activity')}
@@ -450,7 +470,7 @@ function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onResetNav,
                 />
               </VsRow>
             </VsCard>
-            {onMoveNav && <NavOrderCard groups={navGroups} onMove={onMoveNav} onReset={onResetNav}/>}
+            {onMoveNav && <NavOrderCard groups={navGroups} onMove={onMoveNav} onPlace={onPlaceNav} onReset={onResetNav}/>}
             </React.Fragment>
           )}
 

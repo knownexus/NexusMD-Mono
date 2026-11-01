@@ -743,3 +743,16 @@
   padding: 16px max(20px, env(safe-area-inset-right, 0px)) 32px 20px;
   box-sizing: border-box;
 }
+
+/* ---------- Settings > Appearance: sidebar and density ---------- */
+.m-app[data-sidebar="icons"] .m-lbl { display: none; }
+.m-app[data-sidebar="icons"] .m-railitem { padding: 12px 0; }
+.m-app[data-sidebar="icons"] .m-navitem { padding-top: 0; }
+[data-density="compact"] .m-row { padding: 8px 12px; min-height: 42px; }
+[data-density="compact"] .m-card-h { padding: 8px 12px; }
+[data-density="compact"] .m-card-body { padding: 8px 12px; }
+[data-density="compact"] .m-screen { padding-top: 8px; }
+[data-density="cozy"] .m-row { padding: 18px 16px; min-height: 68px; }
+[data-density="cozy"] .m-card-h { padding: 16px 16px; }
+[data-density="cozy"] .m-card-body { padding: 16px 16px; }
+[data-density="cozy"] .m-screen { padding-top: 20px; }
