@@ -19,6 +19,7 @@ export * from './modules/ado/index.js'
 export * from './modules/workitems/index.js'
 export * from './modules/jira/index.js'
 export * from './modules/github/index.js'
+export * from './modules/account/index.js'
 export { effectiveNeedsMe, effectiveTeamActivity } from './modules/pr/index.js'
 export { mergeTeamRoster, enrichTeamMember, enrichTeam } from './modules/team/index.js'
 export {
