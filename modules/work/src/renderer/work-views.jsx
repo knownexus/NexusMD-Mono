@@ -9,6 +9,7 @@ import { isJiraActive } from './jira-client.js'
 import { NotConfigured } from './not-configured.jsx'
 import { useWork } from './work-context.js'
 import { useOffScreens } from './work-screens.js'
+import { HomeWidgets } from './home-widgets.jsx'
 
 // Stable fallback so fullRoster (a memo dependency) doesn't change identity every render.
 const EMPTY = []
@@ -83,6 +84,7 @@ export function DashboardApp({ host, tweaks, setTweak }) {
   const acknowledgedSet = new Set([...acknowledgedBuilds, ...acknowledgedTests])
   const { capabilities } = host
   return (
+    <>
     <DashboardView
       onOpenItem={openItem} onOpenPR={openPR}
       widgetOrder={tweaks.widgetOrder} setWidgetOrder={arr => setTweak('widgetOrder', arr)}
@@ -96,6 +98,9 @@ export function DashboardApp({ host, tweaks, setTweak }) {
       acknowledgedSet={acknowledgedSet}
       offViews={offViews}
     />
+    {/* The optional widgets, added from the sheet, as on mobile's Home (kept in the homeWidgets tweak). */}
+    <HomeWidgets host={host} tweaks={tweaks} setTweak={setTweak} team={effectiveTeam} needsMeCriteria={needsMeCriteria} />
+    </>
   )
 }
 

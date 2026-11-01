@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act, cleanup } from '@testing-library/react'
+import { render, screen, act, cleanup, fireEvent } from '@testing-library/react'
 import { createCapabilities } from '@nexusmd/shell-sdk'
 
 const seen = {}
@@ -84,6 +84,14 @@ describe('Dashboard', () => {
     mount(<DashboardApp host={hostWith().host} tweaks={tweaks} setTweak={vi.fn()} />)
     act(() => seen.dashboard.setWidgetWidths({ sprint: 2 }))
     expect(Object.entries(localStorage).some(([k, v]) => k.includes('nexusmd.dash.widgetWidths') && v === '{"sprint":2}')).toBe(true)
+  })
+
+  it('has the Home widgets under it, kept in the homeWidgets tweak', () => {
+    const setTweak = vi.fn()
+    mount(<DashboardApp host={hostWith().host} tweaks={{ ...tweaks, homeWidgets: [{ id: 'w1', type: 'mywork', config: { count: 5 } }] }} setTweak={setTweak} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Assigned to me widget' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(setTweak).toHaveBeenCalledWith('homeWidgets', [])
   })
 
   it('treats the builds and tests the user has acknowledged as one set', () => {

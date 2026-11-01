@@ -66,6 +66,8 @@ const DEFAULT_TWEAKS = {
   theme: 'light', lightTheme: 'parchment', dimTheme: 'umber', darkTheme: 'cobalt',
   density: 'balanced', sidebar: 'labels', typeLabels: false,
   widgetOrder: DASH_WIDGET_ORDER,
+  // The optional Home widgets under the Dashboard ({ id, type, config }), none until added; as on mobile.
+  homeWidgets: [],
   navOrder: DEFAULT_NAV_ORDER,
   navHidden: [],
   quickLinks: [
