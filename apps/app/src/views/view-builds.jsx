@@ -10,7 +10,15 @@ import { BuildArtifactsSheet } from './build-artifacts-sheet.jsx';
 // view-builds.jsx — Build pipelines status view
 
 // Grid template shared between header and every build row
-const BUILD_GRID = '28px 100px minmax(120px,1fr) 160px 72px 130px 72px 148px 140px';
+// The columns the user can hide (the status dot and the actions always stay), with their widths.
+const COLS = [['build', 'Build', '100px'], ['actor', 'Triggered by', 'minmax(120px,1fr)'], ['branch', 'Branch', '160px'],
+  ['commit', 'Commit', '72px'], ['reason', 'Reason', '130px'], ['duration', 'Duration', '72px'], ['date', 'Date', '148px']];
+const orderedCols = (saved) => {
+  const known = COLS.map(c => c[0]);
+  const first = (Array.isArray(saved) ? saved : []).filter((id, i, a) => known.includes(id) && a.indexOf(id) === i);
+  return [...first, ...known.filter(id => !first.includes(id))];
+};
+const gridFor = (hidden, order) => ['28px', ...order.filter(id => !hidden.includes(id)).map(id => COLS.find(c => c[0] === id)[2]), '140px'].join(' ');
 
 // On a phone the table's ~770px of fixed columns cannot fit, so each build becomes a small card: status, number and
 // date on the first line, who/what next, then the actions wrapping underneath.
@@ -36,6 +44,19 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
   const [collapsed,        setCollapsed]        = usePersisted('helm.builds.collapsed', {});
   const [resultFilter,     setResultFilter]     = usePersisted('helm.builds.resultFilter', 'all');
   const [sortDir,          setSortDir]          = usePersisted('helm.builds.sortDir', 'desc');
+  const [hiddenCols,      setHiddenCols]      = usePersisted('helm.builds.hiddenCols', []);
+  const [colOrderSaved, setColOrder] = usePersisted('helm.builds.colOrder', []);
+  const colOrder = orderedCols(colOrderSaved);
+  const BUILD_GRID = gridFor(hiddenCols, colOrder);
+  const moveCol = (id, dir) => {
+    const i = colOrder.indexOf(id), j = i + dir;
+    if (j < 0 || j >= colOrder.length) return;
+    const n = [...colOrder]; [n[i], n[j]] = [n[j], n[i]]; setColOrder(n);
+  };
+  const col = (id) => !hiddenCols.includes(id);
+  // A cell takes its place from the saved column order (the phone card lays out by its own rules).
+  const colPos = (id) => 1 + colOrder.filter(x => !hiddenCols.includes(x)).indexOf(id);
+  const W = ({ id, children }) => (phone ? children : <div style={{ order: colPos(id), minWidth: 0 }}>{children}</div>);
   const [hiddenPipelines,  setHiddenPipelines]  = usePersisted('helm.builds.hiddenPipelines', [], { sync: true });
   const [pipelineMenuOpen, setPipelineMenuOpen] = React.useState(false);
   const [deployStatus,     setDeployStatus]     = React.useState(null);
@@ -231,10 +252,6 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
       <div style={{ overflowX:'auto' }}>
       <div className="card m-bld-card">
         <div className="card-head" style={{ flexWrap:'wrap', gap:6 }}>
-          <h3>Recent builds</h3>
-          <span className="muted" style={{ fontSize:11.5 }}>Across all pipelines</span>
-          <div className="spacer"/>
-
           {/* Result filters */}
           <FilterChip active={resultFilter === 'all'}     count={resultCounts.all}     onClick={() => setResultFilter('all')}>All</FilterChip>
           <FilterChip active={resultFilter === 'success'} count={resultCounts.success} onClick={() => setResultFilter('success')}
@@ -250,8 +267,35 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
           <FilterChip active={resultFilter === 'cancelled'} count={resultCounts.cancelled} onClick={() => setResultFilter('cancelled')}
             icon={<span style={{ width:6, height:6, borderRadius:'50%', background:'var(--text-muted)' }}/>}>Cancelled</FilterChip>
 
-          <div style={{ width:1, height:16, background:'var(--border)', margin:'0 2px' }}/>
+          <details style={{ position:'relative' }}>
+            <summary className="btn sm ghost" style={{ listStyle:'none', cursor:'pointer', ...(hiddenCols.length ? { color:'var(--accent)' } : {}) }}>
+              <Icon name="filter" size={12}/> Columns <span style={{ fontSize:10.5, marginLeft:4 }}>{COLS.length - hiddenCols.length}/{COLS.length}</span>
+            </summary>
+            <div style={{ position:'absolute', right:0, top:'110%', zIndex:60, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, boxShadow:'var(--shadow-pop)', padding:'6px 0', minWidth:180 }}>
+              {colOrder.map((id, i) => (
+                <div key={id} style={{ display:'flex', alignItems:'center', gap:4, padding:'2px 8px 2px 12px' }}>
+                  <label style={{ display:'flex', alignItems:'center', gap:8, flex:1, padding:'4px 0', cursor:'pointer', userSelect:'none' }}>
+                    <input type="checkbox" checked={col(id)} style={{ accentColor:'var(--accent)' }}
+                      onChange={() => setHiddenCols(h => h.includes(id) ? h.filter(x => x !== id) : [...h, id])}/>
+                    <span style={{ fontSize:12.5 }}>{COLS.find(c => c[0] === id)[1]}</span>
+                  </label>
+                  <button type="button" className="btn sm ghost" aria-label={`Move ${COLS.find(c => c[0] === id)[1]} left`} disabled={i === 0} onClick={() => moveCol(id, -1)}><Icon name="arrow-up" size={12}/></button>
+                  <button type="button" className="btn sm ghost" aria-label={`Move ${COLS.find(c => c[0] === id)[1]} right`} disabled={i === colOrder.length - 1} onClick={() => moveCol(id, 1)}><Icon name="arrow-down" size={12}/></button>
+                </div>
+              ))}
+            </div>
+          </details>
 
+          <div style={{ width:1, height:16, background:'var(--border)', margin:'0 2px' }}/>
+          {(() => {
+            const allCollapsed = grouped.length > 0 && grouped.every(g => collapsed[g.name]);
+            return (
+              <button className="btn sm ghost" onClick={() => {
+                if (allCollapsed) { setCollapsed({}); return; }
+                const n = {}; grouped.forEach(g => { n[g.name] = true; }); setCollapsed(n);
+              }}><Icon name={allCollapsed ? 'chevron-down' : 'chevron-right'} size={12}/> {allCollapsed ? 'Expand all' : 'Collapse all'}</button>
+            );
+          })()}
           {/* Pipeline visibility */}
           <div style={{ position:'relative' }} ref={pipelineMenuRef}>
             <button className="btn sm ghost" onClick={() => setPipelineMenuOpen(o => !o)}
@@ -311,12 +355,6 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
               </div>
             )}
           </div>
-
-          <div style={{ width:1, height:16, background:'var(--border)', margin:'0 2px' }}/>
-          <button className="btn sm ghost" onClick={() => {
-            const n = {}; grouped.forEach(g => { n[g.name] = true; }); setCollapsed(n);
-          }}><Icon name="chevron-right" size={12}/> Collapse all</button>
-          <button className="btn sm ghost" onClick={() => setCollapsed({})}><Icon name="chevron-down" size={12}/> Expand all</button>
         </div>
 
         {/* ── Column headers ── */}
@@ -328,27 +366,27 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
           position:'sticky', top:0, zIndex:10,
         }}>
           {/* Status */}
-          <div/>
+          <div style={{ order: 0 }}/>
           {/* Build # */}
-          <ColHead>Build</ColHead>
+          {col('build') && <W id="build"><ColHead>Build</ColHead></W>}
           {/* Triggered by */}
-          <ColHead>Triggered by</ColHead>
+          {col('actor') && <W id="actor"><ColHead>Triggered by</ColHead></W>}
           {/* Branch */}
-          <ColHead><Icon name="git-branch" size={11} style={{ marginRight:3, opacity:0.7 }}/>Branch</ColHead>
+          {col('branch') && <W id="branch"><ColHead><Icon name="git-branch" size={11} style={{ marginRight:3, opacity:0.7 }}/>Branch</ColHead></W>}
           {/* Commit */}
-          <ColHead>Commit</ColHead>
+          {col('commit') && <W id="commit"><ColHead>Commit</ColHead></W>}
           {/* Reason */}
-          <ColHead>Reason</ColHead>
+          {col('reason') && <W id="reason"><ColHead>Reason</ColHead></W>}
           {/* Duration */}
-          <ColHead>Duration</ColHead>
+          {col('duration') && <W id="duration"><ColHead>Duration</ColHead></W>}
           {/* Date — sortable */}
-          <ColHead
+          {col('date') && <W id="date"><ColHead
             sortable
             sortDir={sortDir}
             onSort={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
-          >Date</ColHead>
+          >Date</ColHead></W>}
           {/* Actions */}
-          <div/>
+          <div style={{ order: 99 }}/>
         </div>
 
         {/* ── Pipeline groups ── */}
@@ -390,11 +428,12 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                     }}>
 
                     {/* Status dot */}
-                    <div style={{ display:'flex', justifyContent:'center', ...(phone ? { order:0 } : null) }}>
+                    <div style={{ display:'flex', justifyContent:'center', order:0 }}>
                       <div className={`build-dot ${dotClass[dispStatus(b)]}`}/>
                     </div>
 
                     {/* Build # */}
+{col('build') && (<W id="build">
                     <div className="mono" style={{ fontSize:12, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', display:'flex', alignItems:'center', gap:5, ...(phone ? { order:1 } : null) }}>
                       {(b.source === 'github' ? b.url : HelmData.ORG && b.project)
                         ? <a href={b.source === 'github' ? b.url : `https://dev.azure.com/${encodeURIComponent(HelmData.ORG)}/${encodeURIComponent(b.project)}/_build/results?buildId=${b.id}`}
@@ -404,8 +443,10 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                       }
                       {isNew && <span style={{ fontSize:9, fontWeight:700, background:'var(--accent)', color:'var(--accent-fg)', padding:'1px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:'0.05em', flexShrink:0 }}>New</span>}
                     </div>
+</W>)}
 
                     {/* Triggered by / failure reason */}
+{col('actor') && (<W id="actor">
                     <div style={{ minWidth:0, ...(phone ? { order:3, flex:'1 1 100%' } : null) }}>
                       {b.failureReason
                         ? <span style={{ fontSize:12.5, color: dispStatus(b) === 'acknowledged' ? 'var(--warning)' : 'var(--danger)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'block' }}
@@ -416,8 +457,10 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                           </span>
                       }
                     </div>
+</W>)}
 
                     {/* Branch */}
+{col('branch') && (<W id="branch">
                     <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', ...(phone ? { order:4, maxWidth:'55%' } : null) }}>
                       <span style={{
                         display:'inline-flex', alignItems:'center', gap:4,
@@ -427,11 +470,15 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                         fontFamily:'var(--mono)',
                       }} title={b.branch}>{b.branch}</span>
                     </div>
+</W>)}
 
                     {/* Commit */}
+{col('commit') && (<W id="commit">
                     <div className="mono muted" style={{ fontSize:11.5, ...(phone ? { order:4 } : null) }}>{b.commit}</div>
+</W>)}
 
                     {/* Reason */}
+{col('reason') && (<W id="reason">
                     <div style={phone ? { display:'none' } : undefined}>
                       {b.reason
                         ? <span className="pill" style={{ fontSize:10.5, textTransform:'capitalize' }}>
@@ -440,17 +487,22 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                         : <span className="muted" style={{ fontSize:11.5 }}>—</span>
                       }
                     </div>
+</W>)}
 
                     {/* Duration */}
+{col('duration') && (<W id="duration">
                     <div className="build-meta" style={phone ? { order:4 } : undefined}>{b.duration}</div>
+</W>)}
 
                     {/* Date */}
+{col('date') && (<W id="date">
                     <div className="build-meta" style={phone ? { order:2, marginLeft:'auto' } : undefined} title={b.finishTime ? new Date(b.finishTime).toLocaleString() : ''}>
                       {b.when}
                     </div>
+</W>)}
 
                     {/* Actions */}
-                    <div style={{ display:'flex', justifyContent: phone ? 'flex-start' : 'flex-end', gap:4, ...(phone ? { order:5, flex:'1 1 100%', flexWrap:'wrap', paddingTop:2 } : null) }}>
+                    <div style={{ display:'flex', justifyContent: phone ? 'flex-start' : 'flex-end', gap:4, ...(phone ? { order:5, flex:'1 1 100%', flexWrap:'wrap', paddingTop:2 } : { order:99 }) }}>
                       {/* Cancel — running builds only */}
                       {b.source === 'github' && b.url && (
                         <a className="btn sm ghost" href={b.url} target="_blank" rel="noopener noreferrer"
