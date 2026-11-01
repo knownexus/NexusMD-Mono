@@ -20,6 +20,7 @@ export * from './modules/offline-queue/index.js'
 export * from './modules/nav/index.js'
 export * from './modules/json/index.js'
 export * from './modules/markdown/index.js'
+export * from './modules/lists/index.js'
 export * from './modules/workitems/index.js'
 export * from './modules/jira/index.js'
 export * from './modules/github/index.js'
@@ -42,12 +43,13 @@ export {
 export { planProfileScopeMigration } from './modules/profiles/migrate.js'
 export { stableStringify, contentHash } from './modules/sync/hash.js'
 export {
-  mergeRows, mergeKeyVal, mergeText, mergeSet, mergePlannerWeek,
+  mergeRows, mergeKeyVal, mergeText, mergeSet, mergePlannerWeek, mergeLists,
 } from './modules/sync/merge.js'
 export { reconcileItem } from './modules/sync/reconcile.js'
 export { encryptSync, decryptSync } from './modules/sync/crypto.js'
 export {
   plannerCollection, notesCollection, teamCustomCollection, teamRemovedCollection, tweaksCollection,
+  listsCollection,
 } from './modules/sync/collections.js'
 export { createSyncRuntime } from './modules/sync/runtime.js'
 export { startAutoSync } from './modules/sync/auto.js'

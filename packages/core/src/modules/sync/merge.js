@@ -81,6 +81,57 @@ export function mergeSet(base, local, remote) {
   return { merged: out, conflicts: [] }
 }
 
+// Lists (`{ lists: [{ id, name, color, fields, statuses, items }] }`): lists are
+// matched by id; each list's `items` merge by id with mergeRows (keep both on a
+// true conflict) and its other fields merge key-value (newest wins via `prefer`).
+// Whole-list mergeRows is not enough: edits to different items of one list on
+// two devices would duplicate the whole list. A list deleted on one side is
+// dropped unless the other side changed it, in which case it is kept.
+const withoutItems = (list) => {
+  if (!list) return list
+  const { items: _items, ...rest } = list
+  return rest
+}
+const withoutLists = (v) => {
+  if (!v || typeof v !== 'object') return null
+  const { lists: _lists, ...rest } = v
+  return rest
+}
+function mergeOneList(bv, lv, rv, prefer) {
+  const meta = mergeKeyVal(withoutItems(bv), withoutItems(lv), withoutItems(rv), { prefer })
+  const hasItems = [bv, lv, rv].some(x => x && 'items' in x)
+  const items = hasItems ? mergeRows(bv?.items, lv?.items, rv?.items) : null
+  const merged = hasItems ? { ...meta.merged, items: items.merged } : meta.merged
+  return { merged, conflicts: [...meta.conflicts, ...(items ? items.conflicts : [])] }
+}
+
+export function mergeLists(base, local, remote, { prefer = 'local' } = {}) {
+  const listsOf = (v) => asArray(v && v.lists)
+  const b = byId(listsOf(base), 'id'), l = byId(listsOf(local), 'id'), r = byId(listsOf(remote), 'id')
+  const ids = new Set([...l.keys(), ...r.keys(), ...b.keys()])
+  const lists = []
+  const conflicts = []
+  for (const id of ids) {
+    const bv = b.get(id), lv = l.get(id), rv = r.get(id)
+    if (lv && rv) {
+      const res = mergeOneList(bv, lv, rv, prefer)
+      lists.push(res.merged)
+      for (const c of res.conflicts) conflicts.push({ ...c, listId: id })
+    } else if (lv || rv) {
+      const kept = lv || rv
+      if (!bv) lists.push(kept)                               // added on one side
+      else if (!eq(kept, bv)) {                               // deleted on one side, changed on the other → keep
+        lists.push(kept)
+        conflicts.push({ kind: 'list', id, from: lv ? 'remote-delete' : 'local-delete' })
+      }
+      // else: deleted on one side, untouched on the other → dropped
+    }
+  }
+  // Any top-level keys besides `lists` are kept with a key-value merge.
+  const top = mergeKeyVal(withoutLists(base), withoutLists(local), withoutLists(remote), { prefer })
+  return { merged: { ...top.merged, lists }, conflicts: [...conflicts, ...top.conflicts] }
+}
+
 export function mergePlannerWeek(base, local, remote, { from = 'remote', prefer = 'local' } = {}) {
   const b = base || {}, l = local || {}, r = remote || {}
   const bd = b.data || {}, ld = l.data || {}, rd = r.data || {}

@@ -9,9 +9,9 @@ const EXPECTED = [
   'BUNDLE_EXT', 'BUNDLE_FORMAT', 'BUNDLE_FORMAT_ENC', 'BUNDLE_VERSION',
   'encodeBundle', 'decodeBundle', 'planProfileScopeMigration',
   'stableStringify', 'contentHash',
-  'mergeRows', 'mergeKeyVal', 'mergeText', 'mergeSet', 'mergePlannerWeek', 'reconcileItem',
+  'mergeRows', 'mergeKeyVal', 'mergeText', 'mergeSet', 'mergePlannerWeek', 'mergeLists', 'reconcileItem',
   'encryptSync', 'decryptSync', 'plannerCollection', 'notesCollection', 'teamCustomCollection',
-  'teamRemovedCollection', 'tweaksCollection', 'createSyncRuntime', 'startAutoSync', 'singleFlight',
+  'teamRemovedCollection', 'tweaksCollection', 'listsCollection', 'createSyncRuntime', 'startAutoSync', 'singleFlight',
   'exportBundle', 'importBundle', 'createSyncController', 'graphFetch', 'graphJSON', 'graphList', 'makeGoogleDriveProvider', 'makeOneDriveProvider',
   'makeWorkItemTypeDefsStore', 'fetchWorkItemTypes', 'fetchProjectFieldTypes', 'fetchTypeFields',
   'fetchClassificationPaths', 'loadWorkItemTypeDefs', 'fieldBucket', 'fieldGroup', 'TYPE_LAYOUTS',
@@ -135,6 +135,9 @@ const EXPECTED = [
   'classifyJiraField', 'normaliseCreateFields', 'layoutCreateFields', 'buildJiraCreatePayload',
   'fetchJiraCreateTypes', 'fetchJiraCreateFields', 'fetchJiraLinkTypes', 'createJiraIssue',
   'fetchJiraBoards', 'fetchJiraBoardColumns', 'fetchJiraBoardConfig', 'jiraColumnForStatus',
+  // Lists model (custom trackers for manual profiles)
+  'FIELD_DEFS', 'DEFAULT_STATUSES', 'DEFAULT_FIELDS', 'PRIORITY_LABELS', 'BUCKET_ORDER', 'BUCKET_LABELS',
+  'toBucket', 'readLists', 'writeLists', 'newListId',
 ].sort()
 
 describe('public API surface', () => {

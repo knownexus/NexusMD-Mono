@@ -8,7 +8,7 @@ import { singleFlight } from './single-flight.js';
 import { exportBundle, importBundle } from './local-bundle.js';
 import {
   plannerCollection, notesCollection, teamCustomCollection,
-  teamRemovedCollection, tweaksCollection,
+  teamRemovedCollection, tweaksCollection, listsCollection,
 } from './collections.js';
 import { hashPassword } from '../planner/confidential.js';
 
@@ -45,6 +45,7 @@ export function createSyncController({
     return [
       plannerCollection(opts), notesCollection(opts),
       teamCustomCollection(opts), teamRemovedCollection(opts), tweaksCollection(opts),
+      listsCollection(opts),
     ];
   };
 

@@ -1,6 +1,6 @@
 // collections.js — sync collection adapters. Each adapter enumerates/reads/writes
 // a localStorage-backed data type and names its core merge strategy.
-import { mergePlannerWeek, mergeRows, mergeSet, mergeKeyVal } from './merge.js';
+import { mergePlannerWeek, mergeRows, mergeSet, mergeKeyVal, mergeLists } from './merge.js';
 
 export function plannerCollection({ storage, getProfileKey, namespace }) {
   const bare = (key) => `${namespace}.planner.week.${key}`;
@@ -74,5 +74,14 @@ export function tweaksCollection({ storage, getProfileKey, namespace }) {
   return singletonCollection({
     id: 'tweaks', bareKey: `${namespace}.tweaks`,
     merge: (b, l, r, ctx) => mergeKeyVal(b, l, r, ctx), storage, getProfileKey,
+  });
+}
+
+// Lists ({ lists: [...] }) at `${namespace}.lists`: `helm.lists` on mobile, the
+// key mobile already uses, so no migration. Merged per list, then per item.
+export function listsCollection({ storage, getProfileKey, namespace }) {
+  return singletonCollection({
+    id: 'lists', bareKey: `${namespace}.lists`,
+    merge: (b, l, r, ctx) => mergeLists(b, l, r, ctx), storage, getProfileKey,
   });
 }
