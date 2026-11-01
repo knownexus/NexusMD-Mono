@@ -51,3 +51,13 @@ export function toBucket(status) {
 
 export const BUCKET_ORDER  = ['notstarted', 'inprogress', 'done', 'blocked']
 export const BUCKET_LABELS = { notstarted: 'Not started', inprogress: 'In progress', done: 'Done', blocked: 'Blocked' }
+
+// ── URL safety ───────────────────────────────────────────────────────────────
+// Synced list data is untrusted: only http(s) strings may become an href.
+export function safeListUrl(v) {
+  if (typeof v !== 'string' || v !== v.trim()) return null
+  try {
+    const p = new URL(v).protocol
+    return p === 'http:' || p === 'https:' ? v : null
+  } catch (_) { return null }
+}

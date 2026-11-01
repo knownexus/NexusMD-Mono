@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  readLists, writeLists, newListId, toBucket,
+  readLists, writeLists, newListId, toBucket, safeListUrl,
   FIELD_DEFS, DEFAULT_STATUSES, DEFAULT_FIELDS, PRIORITY_LABELS, BUCKET_ORDER, BUCKET_LABELS,
 } from '../src/index.js'
 
@@ -80,5 +80,18 @@ describe('Lists constants', () => {
     expect(DEFAULT_FIELDS).toEqual(['owner', 'status', 'due', 'priority', 'notes'])
     expect(BUCKET_ORDER).toEqual(['notstarted', 'inprogress', 'done', 'blocked'])
     expect(BUCKET_LABELS).toEqual({ notstarted: 'Not started', inprogress: 'In progress', done: 'Done', blocked: 'Blocked' })
+  })
+})
+
+describe('safeListUrl', () => {
+  it('accepts http and https URLs', () => {
+    expect(safeListUrl('https://a.com/x')).toBe('https://a.com/x')
+    expect(safeListUrl('http://a.com')).toBe('http://a.com')
+  })
+  it('rejects other schemes, malformed strings and non-strings', () => {
+    for (const v of ['javascript:alert(1)', 'JaVaScRiPt:alert(1)', 'data:text/html,x', 'ftp://a.com', 'not a url', '',
+      ' https://a.com', 'https://a.com ', '\tjavascript:alert(1)', 42, null, undefined, {}]) {
+      expect(safeListUrl(v)).toBeNull()
+    }
   })
 })
