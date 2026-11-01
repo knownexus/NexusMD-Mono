@@ -7,6 +7,32 @@ const { app, dialog, ipcMain } = require('electron');
 let updater = null;
 const getAutoUpdater = () => (updater ??= require('electron-updater').autoUpdater);
 
+const REPO = 'knownexus/NexusMD-Mono';
+
+/**
+ * The repo's releases hold more than the desktop app (android-v*, apps-latest), and electron-updater's
+ * github provider follows whichever came last, so an Android release made the check 404 on a missing
+ * latest.yml. This finds the newest published desktop release (a v<number> tag) and points the
+ * updater at its files. If that lookup fails, the updater's own feed is left alone.
+ */
+async function useNewestDesktopRelease(autoUpdater, fetchFn = globalThis.fetch) {
+  try {
+    const res = await fetchFn(`https://api.github.com/repos/${REPO}/releases?per_page=50`, {
+      headers: { Accept: 'application/vnd.github+json' },
+    });
+    if (!res.ok) return;
+    const releases = await res.json();
+    const release = releases.find(r => !r.draft && !r.prerelease && /^v\d/.test(r.tag_name));
+    if (!release) return;
+    autoUpdater.setFeedURL({
+      provider: 'generic',
+      url: `https://github.com/${REPO}/releases/download/${release.tag_name}`,
+    });
+  } catch (err) {
+    console.warn('[updater] could not look up the newest desktop release:', err.message);
+  }
+}
+
 /**
  * Initialize auto-update behaviour.
  * Checks for updates silently on launch; prompts the user when one is found.
@@ -24,9 +50,11 @@ function initUpdater(win) {
   autoUpdater.autoInstallOnAppQuit = true;
 
   // Silent check on startup
-  autoUpdater.checkForUpdatesAndNotify().catch(() => {
-    // Network unavailable or no update — silently ignore
-  });
+  useNewestDesktopRelease(autoUpdater)
+    .then(() => autoUpdater.checkForUpdatesAndNotify())
+    .catch(() => {
+      // Network unavailable or no update — silently ignore
+    });
 
   autoUpdater.on('update-available', info => {
     if (!win || win.isDestroyed()) return;
@@ -85,6 +113,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function checkWithRetry(autoUpdater, wait = sleep) {
   for (let attempt = 0; ; attempt++) {
     try {
+      if (typeof autoUpdater.setFeedURL === 'function') await useNewestDesktopRelease(autoUpdater);
       return await autoUpdater.checkForUpdates();
     } catch (err) {
       if (attempt >= RETRY_DELAYS_MS.length || !isNetworkError(err)) throw err;

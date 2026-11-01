@@ -135,4 +135,5 @@ jobs:
         run: |
           mv ./*.apk "nexusmd-android-$VERSION_NAME.apk"
           gh release create "android-v$VERSION_NAME" "nexusmd-android-$VERSION_NAME.apk" \
-            --target "$TARGET_SHA" --title "Android $VERSION_NAME" --generate-notes
+            --target "$TARGET_SHA" --title "Android $VERSION_NAME" --generate-notes \
+            --latest=false
