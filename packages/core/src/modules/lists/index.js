@@ -10,7 +10,9 @@ export function readLists({ storage, getProfileKey, namespace }) {
   try {
     const s = storage.getItem(storageKey(getProfileKey, namespace))
     const data = s ? JSON.parse(s) : null
-    return data && typeof data === 'object' ? data : { lists: [] }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return { lists: [] }
+    // Sync can land any remote value here verbatim; malformed lists load as no lists.
+    return { ...data, lists: Array.isArray(data.lists) ? data.lists.filter(l => l && typeof l === 'object') : [] }
   } catch (_) { return { lists: [] } }
 }
 

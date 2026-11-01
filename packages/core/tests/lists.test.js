@@ -25,6 +25,16 @@ describe('readLists', () => {
     expect(readLists({ storage: undefined, getProfileKey, namespace: 'helm' })).toEqual({ lists: [] })
   })
 
+  it('always returns a lists array of objects for malformed stored values', () => {
+    const KEY = 'helm.p.p1.lists'
+    const read = (raw) => readLists({ storage: memStorage({ [KEY]: raw }), getProfileKey, namespace: 'helm' })
+    expect(read('{}')).toEqual({ lists: [] })
+    expect(read('[]')).toEqual({ lists: [] })
+    expect(read('{"lists":null}')).toEqual({ lists: [] })
+    expect(read('{"lists":"x"}')).toEqual({ lists: [] })
+    expect(read('{"lists":[null,{"id":"a"}]}')).toEqual({ lists: [{ id: 'a' }] })
+  })
+
   it('reads the mobile key helm.lists under the profile scope', () => {
     const storage = memStorage({ 'helm.p.p1.lists': JSON.stringify({ lists: [{ id: 'a', name: 'A' }] }) })
     expect(readLists({ storage, getProfileKey, namespace: 'helm' })).toEqual({ lists: [{ id: 'a', name: 'A' }] })
