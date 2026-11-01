@@ -36,6 +36,7 @@ import { NotesView } from './views/view-notes.jsx';
 import { WorkItemsView } from './views/view-workitems.jsx';
 import { PRView } from './views/view-prs.jsx';
 import { BuildsView } from './views/view-builds.jsx';
+import { orderTabs, moveTab } from './nav-order.js';
 import { TestsView } from './views/view-tests.jsx';
 import { CalendarView } from './views/view-calendar.jsx';
 import { TriageView } from './views/view-triage.jsx';
@@ -572,7 +573,10 @@ function AppShell() {
   const [tweaks, setTweak] = useTweaks(storedTweaks);
 
   const offScreens = useOffScreens();
-  const { primary: allPrimary, secondary: allSecondary } = tabsForType(activeProfile?.type || 'ado');
+  const typeTabs = tabsForType(activeProfile?.type || 'ado');
+  // Each group keeps its place (bottom bar / More); the order inside it is the user's (Settings > Appearance).
+  const allPrimary = orderTabs(typeTabs.primary, tweaks.navOrder);
+  const allSecondary = orderTabs(typeTabs.secondary, tweaks.navOrder);
   const primaryTabs = allPrimary.filter(t => !offScreens.includes(t.id));
   const secondaryTabs = allSecondary.filter(t => !offScreens.includes(t.id));
   const visibleSecondaryTabs = secondaryTabs.filter(t =>
@@ -1179,6 +1183,9 @@ function AppShell() {
       case 'git': return <GitView onFlash={showFlash}/>;
       case 'api': return withBar('API Client', <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>);
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
+        navGroups={[{ id: 'main', title: device === 'phone' ? 'Bottom bar' : 'Sidebar', tabs: primaryTabs }, { id: 'more', title: device === 'phone' ? 'More menu' : 'More and sidebar footer', tabs: visibleSecondaryTabs }]}
+        onMoveNav={(groupId, id, dir) => setTweak('navOrder', moveTab(tweaks.navOrder, groupId === 'main' ? primaryTabs : visibleSecondaryTabs, id, dir))}
+        onResetNav={() => setTweak('navOrder', [])}
         onOpenConnection={() => setSettingsOpen(true)}
         onOpenJira={() => setJiraSettingsOpen(true)}
         onOpenGithub={() => setGithubSettingsOpen(true)}
