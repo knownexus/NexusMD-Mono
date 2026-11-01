@@ -9,6 +9,7 @@ import {
 import * as core from '../src/index.js'
 
 const ITER = 1000
+const CTX = 'nexusmd-item|test'
 
 function b64ToBytes(b64) {
   return Uint8Array.from(Buffer.from(b64, 'base64'))
@@ -90,8 +91,8 @@ describe('account crypto: container key', () => {
     const ck2 = await importContainerKey(exportContainerKey(ck))
     expect(exportContainerKey(ck2)).toBe(exportContainerKey(ck))
     expect(b64ToBytes(exportContainerKey(ck)).length).toBe(32)
-    const blob = await encryptJson({ a: 1 }, ck)
-    expect(await decryptJson(blob, ck2)).toEqual({ a: 1 })
+    const blob = await encryptJson({ a: 1 }, ck, CTX)
+    expect(await decryptJson(blob, ck2, CTX)).toEqual({ a: 1 })
     expect(await opaqueId('x', ck)).toBe(await opaqueId('x', ck2))
   })
 
@@ -117,27 +118,27 @@ describe('account crypto: encryptJson / decryptJson', () => {
   it('round trips and uses a random IV per call', async () => {
     const ck = await generateContainerKey()
     const value = { title: 'note', n: [1, 2, 3], nested: { ok: true } }
-    const a = await encryptJson(value, ck)
-    const b = await encryptJson(value, ck)
+    const a = await encryptJson(value, ck, CTX)
+    const b = await encryptJson(value, ck, CTX)
     expect(a).not.toBe(b)
-    expect(await decryptJson(a, ck)).toEqual(value)
-    expect(await decryptJson(b, ck)).toEqual(value)
+    expect(await decryptJson(a, ck, CTX)).toEqual(value)
+    expect(await decryptJson(b, ck, CTX)).toEqual(value)
   })
 
   it('throws after a byte is flipped (IV, ciphertext or tag)', async () => {
     const ck = await generateContainerKey()
-    const blob = await encryptJson({ secret: 'x' }, ck)
+    const blob = await encryptJson({ secret: 'x' }, ck, CTX)
     const len = b64ToBytes(blob).length
     for (const idx of [0, 13, len - 1]) {
-      await expect(decryptJson(flipByte(blob, idx), ck)).rejects.toThrow()
+      await expect(decryptJson(flipByte(blob, idx), ck, CTX)).rejects.toThrow()
     }
   })
 
   it('throws with the wrong key', async () => {
     const ck1 = await generateContainerKey()
     const ck2 = await generateContainerKey()
-    const blob = await encryptJson('hello', ck1)
-    await expect(decryptJson(blob, ck2)).rejects.toThrow()
+    const blob = await encryptJson('hello', ck1, CTX)
+    await expect(decryptJson(blob, ck2, CTX)).rejects.toThrow()
   })
 })
 
@@ -187,5 +188,106 @@ describe('account crypto: key pair', () => {
     const { privateKey } = await generateKeyPair()
     const wrapped = await wrapPrivateKey(privateKey, a.vaultKey)
     await expect(unwrapPrivateKey(wrapped, b.vaultKey)).rejects.toThrow()
+  })
+})
+
+describe('account crypto: hardening', () => {
+  const salt = bytesToB64(new Uint8Array(16).fill(3))
+
+  describe('deriveKeys input validation', () => {
+    it('rejects invalid iteration counts', async () => {
+      for (const bad of [999, 0, -5, 10_000_001, 1000.5, NaN, Infinity, '1000', undefined, null]) {
+        await expect(deriveKeys('pw', salt, bad)).rejects.toThrow()
+      }
+    })
+
+    it('accepts the inclusive bounds 1000', async () => {
+      await expect(deriveKeys('pw', salt, 1000)).resolves.toBeTruthy()
+    })
+
+    it('rejects salts that are not exactly 16 bytes', async () => {
+      for (const len of [0, 8, 15, 17, 32]) {
+        await expect(deriveKeys('pw', bytesToB64(new Uint8Array(len)), ITER)).rejects.toThrow()
+      }
+    })
+  })
+
+  describe('AES-GCM context binding', () => {
+    it('requires a non-empty string context for encryptJson and decryptJson', async () => {
+      const ck = await generateContainerKey()
+      for (const bad of [undefined, null, '', 5, {}]) {
+        await expect(encryptJson({ a: 1 }, ck, bad)).rejects.toThrow(/context/i)
+      }
+      const blob = await encryptJson({ a: 1 }, ck, CTX)
+      for (const bad of [undefined, null, '', 5, {}]) {
+        await expect(decryptJson(blob, ck, bad)).rejects.toThrow(/context/i)
+      }
+    })
+
+    it('fails to decrypt under a different context', async () => {
+      const ck = await generateContainerKey()
+      const blob = await encryptJson({ a: 1 }, ck, 'nexusmd-item|aaa')
+      expect(await decryptJson(blob, ck, 'nexusmd-item|aaa')).toEqual({ a: 1 })
+      await expect(decryptJson(blob, ck, 'nexusmd-item|bbb')).rejects.toThrow()
+      await expect(decryptJson(blob, ck, 'nexusmd-device-prefs|aaa')).rejects.toThrow()
+    })
+
+    it('binds wrapped container keys and private keys to distinct fixed labels', async () => {
+      const { vaultKey } = await deriveKeys('pw', salt, ITER)
+      const ck = await generateContainerKey()
+      const { privateKey } = await generateKeyPair()
+      const wrappedCk = await wrapContainerKey(ck, vaultKey)
+      const wrappedPk = await wrapPrivateKey(privateKey, vaultKey)
+      // Each unwraps under its own label.
+      await expect(unwrapContainerKey(wrappedCk, vaultKey)).resolves.toBeTruthy()
+      await expect(unwrapPrivateKey(wrappedPk, vaultKey)).resolves.toBeTruthy()
+      // Cross-use must fail.
+      await expect(unwrapPrivateKey(wrappedCk, vaultKey)).rejects.toThrow()
+      await expect(unwrapContainerKey(wrappedPk, vaultKey)).rejects.toThrow()
+    })
+
+    it('uses the documented AAD labels', async () => {
+      const { vaultKey } = await deriveKeys('pw', salt, ITER)
+      const ck = await generateContainerKey()
+      const wrapped = b64ToBytes(await wrapContainerKey(ck, vaultKey))
+      const open = (label) => crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: wrapped.subarray(0, 12), additionalData: new TextEncoder().encode(label) },
+        vaultKey, wrapped.subarray(12))
+      await expect(open('nexusmd-wrap-ck')).resolves.toBeTruthy()
+      await expect(open('nexusmd-wrap-pk')).rejects.toThrow()
+    })
+  })
+
+  describe('encryptJson serialisability', () => {
+    it('rejects values JSON.stringify cannot serialise', async () => {
+      const ck = await generateContainerKey()
+      for (const bad of [undefined, () => 1, Symbol('x')]) {
+        await expect(encryptJson(bad, ck, CTX)).rejects.toThrow(/serial/i)
+      }
+    })
+
+    it('still accepts null, primitives and objects', async () => {
+      const ck = await generateContainerKey()
+      for (const ok of [null, 0, false, '', [], { a: [1] }]) {
+        expect(await decryptJson(await encryptJson(ok, ck, CTX), ck, CTX)).toEqual(ok)
+      }
+    })
+  })
+
+  describe('password normalisation', () => {
+    it('derives the same authKey for NFC and NFD forms of the same password', async () => {
+      const nfc = 'café'
+      const nfd = 'café'
+      expect(nfc).not.toBe(nfd)
+      const a = await deriveKeys(nfc, salt, ITER)
+      const b = await deriveKeys(nfd, salt, ITER)
+      expect(a.authKey).toBe(b.authKey)
+    })
+
+    it('treats NFKC-equivalent compatibility forms as equal', async () => {
+      const a = await deriveKeys('Ａpass', salt, ITER) // fullwidth A
+      const b = await deriveKeys('Apass', salt, ITER)
+      expect(a.authKey).toBe(b.authKey)
+    })
   })
 })

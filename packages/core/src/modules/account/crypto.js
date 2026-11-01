@@ -20,6 +20,13 @@ const VAULT_INFO = 'nexusmd-vault'
 const CK_ENC_INFO = 'nexusmd-ck-enc'
 const CK_ID_INFO = 'nexusmd-ck-id'
 const ECDH = { name: 'ECDH', namedCurve: 'P-256' }
+const MIN_PBKDF2_ITERATIONS = 1000
+const MAX_PBKDF2_ITERATIONS = 10_000_000
+
+// Fixed AES-GCM additional-data labels so a blob wrapped for one purpose cannot be
+// opened as another. Item/device blobs take a caller-supplied context instead.
+const WRAP_CK_AAD = new TextEncoder().encode('nexusmd-wrap-ck')
+const WRAP_PK_AAD = new TextEncoder().encode('nexusmd-wrap-pk')
 
 const enc = new TextEncoder()
 const dec = new TextDecoder()
@@ -64,9 +71,9 @@ async function hkdfBits(ikm, info, bits) {
 }
 
 /** AES-GCM encrypt; returns iv || ciphertext+tag. */
-async function aesSeal(key, plain) {
+async function aesSeal(key, plain, aad) {
   const iv = randomBytes(IV_BYTES)
-  const ct = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv }, key, plain))
+  const ct = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv, additionalData: aad }, key, plain))
   const out = new Uint8Array(iv.length + ct.length)
   out.set(iv, 0)
   out.set(ct, iv.length)
@@ -74,11 +81,11 @@ async function aesSeal(key, plain) {
 }
 
 /** Inverse of aesSeal; throws on wrong key or tampering. */
-async function aesOpen(key, sealed) {
+async function aesOpen(key, sealed, aad) {
   if (sealed.length <= IV_BYTES) throw new Error('Ciphertext too short')
   const iv = sealed.subarray(0, IV_BYTES)
   const ct = sealed.subarray(IV_BYTES)
-  return new Uint8Array(await subtle().decrypt({ name: 'AES-GCM', iv }, key, ct))
+  return new Uint8Array(await subtle().decrypt({ name: 'AES-GCM', iv, additionalData: aad }, key, ct))
 }
 
 /** @returns {string} 16 random bytes, base64 */
@@ -94,9 +101,16 @@ export function randomSalt() {
  * @returns {Promise<{ authKey: string, vaultKey: CryptoKey }>}
  */
 export async function deriveKeys(password, saltB64, iterations) {
-  const pwKey = await subtle().importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits'])
+  if (typeof password !== 'string') throw new Error('Password must be a string')
+  if (!Number.isInteger(iterations) || iterations < MIN_PBKDF2_ITERATIONS || iterations > MAX_PBKDF2_ITERATIONS) {
+    throw new Error(`Invalid PBKDF2 iteration count (expected an integer from ${MIN_PBKDF2_ITERATIONS} to ${MAX_PBKDF2_ITERATIONS})`)
+  }
+  const salt = fromB64(saltB64)
+  if (salt.length !== SALT_BYTES) throw new Error(`Invalid salt (expected ${SALT_BYTES} bytes)`)
+  // NFKC so visually identical passwords in different Unicode forms derive the same keys.
+  const pwKey = await subtle().importKey('raw', enc.encode(password.normalize('NFKC')), 'PBKDF2', false, ['deriveBits'])
   const master = new Uint8Array(await subtle().deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: fromB64(saltB64), iterations },
+    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations },
     pwKey,
     512,
   ))
@@ -133,24 +147,45 @@ export async function importContainerKey(b64) {
 
 /** Wrap a container key under the vault key. @returns {Promise<string>} base64 iv||ct */
 export async function wrapContainerKey(ck, vaultKey) {
-  return toB64(await aesSeal(vaultKey, ck.raw))
+  return toB64(await aesSeal(vaultKey, ck.raw, WRAP_CK_AAD))
 }
 
 /** Unwrap a container key; rejects with a wrong vault key or tampered data. */
 export async function unwrapContainerKey(wrapped, vaultKey) {
-  const raw = await aesOpen(vaultKey, fromB64(wrapped))
+  const raw = await aesOpen(vaultKey, fromB64(wrapped), WRAP_CK_AAD)
   if (raw.length !== CK_BYTES) throw new Error('Invalid container key')
   return buildContainerKey(raw)
 }
 
-/** @returns {Promise<string>} base64 iv||ct of the JSON-serialised value */
-export async function encryptJson(value, ck) {
-  return toB64(await aesSeal(ck.enc, enc.encode(JSON.stringify(value))))
+function contextBytes(context) {
+  if (typeof context !== 'string' || context.length === 0) {
+    throw new Error('A non-empty string context is required')
+  }
+  return enc.encode(context)
 }
 
-/** Rejects on tampering or a wrong key. */
-export async function decryptJson(blob, ck) {
-  return JSON.parse(dec.decode(await aesOpen(ck.enc, fromB64(blob))))
+/**
+ * @param {unknown} value JSON-serialisable value
+ * @param {object} ck ContainerKey
+ * @param {string} context non-empty AES-GCM additional data, e.g. 'nexusmd-item|<opaqueId>'
+ * @returns {Promise<string>} base64 iv||ct of the JSON-serialised value
+ */
+export async function encryptJson(value, ck, context) {
+  const aad = contextBytes(context)
+  let json
+  try {
+    json = JSON.stringify(value)
+  } catch (e) {
+    throw new Error(`Value cannot be serialised to JSON: ${e.message}`)
+  }
+  if (typeof json !== 'string') throw new Error('Value cannot be serialised to JSON')
+  return toB64(await aesSeal(ck.enc, enc.encode(json), aad))
+}
+
+/** Rejects on tampering, a wrong key or a different context. */
+export async function decryptJson(blob, ck, context) {
+  const aad = contextBytes(context)
+  return JSON.parse(dec.decode(await aesOpen(ck.enc, fromB64(blob), aad)))
 }
 
 /** Deterministic, name-hiding identifier: HMAC-SHA256(name), base64url. */
@@ -172,11 +207,11 @@ export async function generateKeyPair() {
 /** Wrap the private key (PKCS8) under the vault key. @returns {Promise<string>} base64 iv||ct */
 export async function wrapPrivateKey(privateKey, vaultKey) {
   const pkcs8 = new Uint8Array(await subtle().exportKey('pkcs8', privateKey))
-  return toB64(await aesSeal(vaultKey, pkcs8))
+  return toB64(await aesSeal(vaultKey, pkcs8, WRAP_PK_AAD))
 }
 
 /** Unwrap a private key. The result is extractable so it can be re-wrapped on password change. */
 export async function unwrapPrivateKey(wrapped, vaultKey) {
-  const pkcs8 = await aesOpen(vaultKey, fromB64(wrapped))
+  const pkcs8 = await aesOpen(vaultKey, fromB64(wrapped), WRAP_PK_AAD)
   return subtle().importKey('pkcs8', pkcs8, ECDH, true, ['deriveBits'])
 }
