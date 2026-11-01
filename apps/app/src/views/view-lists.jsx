@@ -3,55 +3,21 @@ import { toast } from '../toast.jsx';
 import { HelmData } from '../data.jsx';
 import { getProfileKey } from '../profile-keys.js';
 import { Icon } from '../icons.jsx';
+import {
+  readLists as readLists_, writeLists as writeLists_, newListId, safeListUrl, toBucket,
+  FIELD_DEFS, DEFAULT_STATUSES, DEFAULT_FIELDS, PRIORITY_LABELS, BUCKET_ORDER, BUCKET_LABELS,
+} from '@nexusmd/core';
 // view-lists.jsx — Custom Lists view for manual profiles.
 // Manages lists (collections of items with configurable fields) stored at
 // getProfileKey('helm.lists') as { lists: [...] }.
 
 const { useState: useLSt, useEffect: useLEff, useMemo: useLMm, useRef: useLRef, useCallback: useLCb } = React;
 
-// ── Storage ──────────────────────────────────────────────────────────────────
-function readLists() {
-  try {
-    const s = localStorage.getItem(getProfileKey('helm.lists'));
-    return s ? JSON.parse(s) : { lists: [] };
-  } catch (_) { return { lists: [] }; }
-}
-
-function writeLists(data) {
-  localStorage.setItem(getProfileKey('helm.lists'), JSON.stringify(data));
-}
-
-function newId() {
-  return Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
-}
-
-// ── Field types ──────────────────────────────────────────────────────────────
-const FIELD_DEFS = [
-  { id: 'owner',    label: 'Owner',     type: 'text'     },
-  { id: 'status',   label: 'Status',    type: 'status'   },
-  { id: 'due',      label: 'Due date',  type: 'date'     },
-  { id: 'priority', label: 'Priority',  type: 'priority' },
-  { id: 'notes',    label: 'Notes',     type: 'text'     },
-  { id: 'number',   label: 'Number',    type: 'number'   },
-  { id: 'url',      label: 'URL',       type: 'url'      },
-  { id: 'check',    label: 'Checkbox',  type: 'boolean'  },
-];
-
-const PRIORITY_LABELS = ['P1', 'P2', 'P3', 'P4'];
-const DEFAULT_STATUSES = ['Not started', 'In progress', 'Done', 'Blocked'];
-const DEFAULT_FIELDS   = ['owner', 'status', 'due', 'priority', 'notes'];
-
-// ── Status bucket mapping (for Board view) ───────────────────────────────────
-function toBucket(status) {
-  const s = (status || '').toLowerCase();
-  if (/done|complet|closed|finish/.test(s)) return 'done';
-  if (/block/.test(s)) return 'blocked';
-  if (/progress|active|start|doing/.test(s)) return 'inprogress';
-  return 'notstarted';
-}
-
-const BUCKET_ORDER  = ['notstarted', 'inprogress', 'done', 'blocked'];
-const BUCKET_LABELS = { notstarted: 'Not started', inprogress: 'In progress', done: 'Done', blocked: 'Blocked' };
+// ── Storage (core model, mobile namespace 'helm') ─────────────────────────────
+const listsStore = { storage: localStorage, getProfileKey, namespace: 'helm' };
+const readLists = () => readLists_(listsStore);
+const writeLists = (data) => writeLists_(listsStore, data);
+const newId = newListId;
 
 // ── ListEditor modal ──────────────────────────────────────────────────────────
 function ListEditor({ list, onSave, onClose }) {
@@ -123,7 +89,7 @@ function ListEditor({ list, onSave, onClose }) {
 function ItemEditor({ item, list, onSave, onClose }) {
   const isNew = !item;
   const [vals, setVals] = useLSt(() => {
-    const init = { title: '', owner: '', status: list.statuses[0] || '', due: '', priority: '', notes: '', number: '', url: '', check: false };
+    const init = { title: '', owner: '', status: (list.statuses || [])[0] || '', due: '', priority: '', notes: '', number: '', url: '', check: false };
     return item ? { ...init, ...item } : init;
   });
 
@@ -139,7 +105,7 @@ function ItemEditor({ item, list, onSave, onClose }) {
       case 'status':
         return (
           <select value={vals.status} onChange={e => set('status', e.target.value)}>
-            {list.statuses.map(s => <option key={s}>{s}</option>)}
+            {(list.statuses || []).map(s => <option key={s}>{s}</option>)}
           </select>
         );
       case 'priority':
@@ -185,7 +151,7 @@ function ItemEditor({ item, list, onSave, onClose }) {
       <PlFld label="Title">
         <input value={vals.title} autoFocus onChange={e => set('title', e.target.value)} />
       </PlFld>
-      {list.fields.map(fid => {
+      {(list.fields || []).map(fid => {
         const def = FIELD_DEFS.find(f => f.id === fid);
         if (!def) return null;
         return <PlFld key={fid} label={def.label}>{renderField(def)}</PlFld>;
@@ -266,7 +232,11 @@ function ListDetailView({ list, onUpdate }) {
   const renderCell = (item, def) => {
     const v = item[def.id];
     if (def.type === 'boolean') return v ? '✓' : '—';
-    if (def.type === 'url' && v) return <a href={v} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', fontSize: 12 }}>{v.replace(/^https?:\/\//, '').slice(0, 30)}</a>;
+    if (def.type === 'url' && v) {
+      const href = safeListUrl(v);
+      if (!href) return String(v);
+      return <a href={href} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', fontSize: 12 }}>{href.replace(/^https?:\/\//, '').slice(0, 30)}</a>;
+    }
     if (def.id === 'status' && v) {
       const bucket = toBucket(v);
       const bg = bucket === 'done' ? '#e8f5e9' : bucket === 'blocked' ? '#fce4ec' : bucket === 'inprogress' ? '#fff3e0' : 'var(--surface-2)';
