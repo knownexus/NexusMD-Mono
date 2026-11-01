@@ -151,6 +151,60 @@ describe('PRTabs', () => {
   })
 })
 
+describe('PR comments through a host offline queue', () => {
+  const renderQ = async (prIn, offlineQueue, extra = {}) => {
+    const { NexusDataProvider } = await import('../data-context.jsx')
+    const { ToastHost } = await import('../toast.jsx')
+    const http = makeHttp([{ match: '/threads?api-version', json: { value: [] } }])
+    render(<NexusDataProvider value={{ data: {}, offlineQueue, ...extra }}><PRTabs pr={prIn} http={http} /><ToastHost /></NexusDataProvider>)
+    return http
+  }
+  const post = (text) => {
+    fireEvent.change(screen.getByLabelText('Add a comment'), { target: { value: text } })
+    fireEvent.click(screen.getByRole('button', { name: 'Post comment' }))
+  }
+
+  it('an ADO comment kept offline stays shown and says it will be sent', async () => {
+    const { QUEUED_TOAST } = await import('../offline-queued.js')
+    const run = vi.fn(async () => ({ queued: true }))
+    const http = await renderQ(pr, { run })
+    post('Later')
+    expect(await screen.findByText(QUEUED_TOAST)).toBeTruthy()
+    expect(screen.getByText('Later')).toBeTruthy()
+    expect(run).toHaveBeenCalledWith('ado-comment', { pr: { id: 5, project: 'Proj', repoId: 'r1' }, text: 'Later' }, 'Comment on #5')
+    expect(http.fetch.mock.calls.some(([, o]) => o?.method === 'POST')).toBe(false)
+  })
+
+  it('an ADO comment sent through the queue shows the posted thread', async () => {
+    const run = vi.fn(async () => ({ done: true, result: { id: 9, status: 'active', comments: [{ id: 1, commentType: 1, content: 'Now', author: { displayName: 'Me' } }] } }))
+    await renderQ(pr, { run })
+    post('Now')
+    expect(await screen.findByText('Comment posted')).toBeTruthy()
+    expect(screen.getByText('Me')).toBeTruthy()
+  })
+
+  it('a provider rejection is shown and the text is given back, as before', async () => {
+    const run = vi.fn(async () => { throw new Error('HTTP 409') })
+    await renderQ(pr, { run })
+    post('Nope')
+    expect(await screen.findByText('Failed to post comment: HTTP 409')).toBeTruthy()
+    expect(screen.getByLabelText('Add a comment').value).toBe('Nope')
+  })
+
+  it('a GitHub comment goes through the queue as github-comment', async () => {
+    const { QUEUED_TOAST } = await import('../offline-queued.js')
+    const ghPr = { id: 'gh:acme/web#7', source: 'github', number: 7, repo: 'acme/web', displayId: 'acme/web#7' }
+    const githubHttp = { fetch: vi.fn(async () => ({ ok: true, status: 200, headers: { get: () => null }, text: async () => '[]', json: async () => [] })) }
+    const run = vi.fn(async () => ({ queued: true }))
+    await renderQ(ghPr, { run }, { githubHttp })
+    await screen.findByText('No comments yet.')
+    post('gh later')
+    expect(await screen.findByText(QUEUED_TOAST)).toBeTruthy()
+    expect(run).toHaveBeenCalledWith('github-comment', { pr: { repo: 'acme/web', number: 7 }, text: 'gh later' }, 'Comment on acme/web#7')
+    expect(screen.getByLabelText('Add a comment').value).toBe('')
+  })
+})
+
 describe('PRTabs for a GitHub pull request', () => {
   const ghPr = {
     id: 'gh:acme/web#7', source: 'github', number: 7, repo: 'acme/web', displayId: 'acme/web#7',

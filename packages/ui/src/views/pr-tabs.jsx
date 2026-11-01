@@ -2,6 +2,7 @@ import React from 'react';
 import { fetchPRCommits, fetchPRFileChanges, fetchFileContent, fetchPRThreads, postPRThread, postPRReply, setPRThreadStatus, updatePRDescription, timeAgo, makeGithubClient, displayIdOf } from '@nexusmd/core';
 import { renderContent, mdToHtml } from './render-content.js';
 import { toast } from '../toast.jsx';
+import { QUEUED_TOAST } from '../offline-queued.js';
 import { Icon } from '../icons.jsx';
 import { useNexusData } from '../data-context.jsx';
 import { GithubPRCommitsTab, GithubPRFilesTab, GithubPRThreadsPanel, GithubPRDescription } from './pr-tabs-github.jsx';
@@ -310,6 +311,8 @@ function PRDescriptionField({ pr, http, description, onSaved }) {
 // Comment thread list: add top-level comment, reply, resolve/reopen.
 // Ported from PRDetail's thread state/handlers in apps/app/src/app.jsx:2561-2704.
 function PRThreadsPanel({ pr, http }) {
+  // A host's offline queue (desktop): a new comment goes through it, so with no connection it is kept.
+  const { offlineQueue } = useNexusData();
   const [threadState, setThreadState] = useState({ status: 'idle', threads: [], error: null });
   const [comment, setComment] = useState('');
   const [posting, setPosting] = useState(false);
@@ -340,7 +343,15 @@ function PRThreadsPanel({ pr, http }) {
     setThreadState(prev => ({ ...prev, status: 'ok', threads: [...prev.threads, optimisticThread] }));
     setComment('');
     try {
-      const data = await postPRThread(http, { project: pr.project, repoId: pr.repoId, prId: pr.id, content });
+      let data;
+      if (offlineQueue) {
+        const r = await offlineQueue.run('ado-comment', { pr: { id: pr.id, project: pr.project, repoId: pr.repoId }, text: content }, `Comment on ${pr.displayId || `#${pr.id}`}`);
+        // Kept for later: the optimistic thread stays until the next refresh brings the real one.
+        if (r.queued) { toast?.(QUEUED_TOAST, 'success'); return; }
+        data = r.result;
+      } else {
+        data = await postPRThread(http, { project: pr.project, repoId: pr.repoId, prId: pr.id, content });
+      }
       if (data && data.id != null) {
         setThreadState(prev => ({ ...prev, threads: prev.threads.map(t => t.id === tempId ? data : t) }));
       }

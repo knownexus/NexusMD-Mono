@@ -1,5 +1,6 @@
-import { createCapabilities } from '@nexusmd/shell-sdk'
+import { capabilities } from './capabilities.js'
 import { registry } from './registry.js'
+import { appQueue, flushQueue } from '../offline-queue-app.js'
 import { makeShellOAuthService, makeNativeGoogleBinding } from '../cloud-auth.js'
 import { desktopSync } from '../sync.js'
 import { secureStorageAdapter } from '../adapters/secureStorage.js'
@@ -15,7 +16,9 @@ import { windowControlsAdapter } from '../adapters/windowControls.js'
 //   cloud          the shell's Google/Microsoft sign-in (the Accounts card in Settings)
 //   sync           the shell's cloud backup
 //   adapters       the shell's own adapters apps may use: secureStorage (saved passwords), picker (file dialogs), windowControls
-export const capabilities = createCapabilities()
+//   offlineQueue   provider writes kept while offline: run(kind, payload, label) -> { done, result } | { queued: true },
+//                  count(), flush(). An app that can send them provides the 'work.offlineSend' capability.
+export { capabilities }
 
 // An app can ask for a view while the page is still loading (the Editor does, for a file the app was
 // launched with), before the shell has mounted and started listening. The latest such request waits
@@ -41,4 +44,9 @@ export const host = {
   },
   sync: { syncOnce: () => desktopSync.syncOnce() },
   adapters: { secureStorage: secureStorageAdapter, picker: pickerAdapter, windowControls: windowControlsAdapter },
+  offlineQueue: {
+    run: (kind, payload, label) => appQueue.run(kind, payload, label),
+    count: () => appQueue.count(),
+    flush: () => flushQueue(),
+  },
 }

@@ -6,6 +6,7 @@ import {
 import { linkAdapter } from '@nexusmd/shell-sdk'
 import { createAdoHttpAdapter, getAdoConfig } from './ado-client.js'
 import { PersonSummary, PersonActions } from './person-summary.jsx'
+import { withQueuedVotes } from './offline.js'
 
 const SOURCE_NAMES = { jira: 'Jira', github: 'GitHub' }
 
@@ -26,12 +27,17 @@ export function DetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR, 
   const kind = drawer?.kind
   const d    = drawer?.data
   const http = React.useMemo(() => createAdoHttpAdapter(), [])
-  const { workItemSource, data, githubHttp } = useNexusData()
-  const prActions = React.useMemo(() => makePRActions({
-    adoHttp: http,
-    adoMeId: data?.ME?.adoId || '',
-    githubClient: githubHttp ? makeGithubClient(githubHttp) : null,
-  }), [http, data?.ME?.adoId, githubHttp])
+  const { workItemSource, data, githubHttp, offlineQueue } = useNexusData()
+  const prActions = React.useMemo(() => {
+    const adoMeId = data?.ME?.adoId || ''
+    const actions = makePRActions({
+      adoHttp: http,
+      adoMeId,
+      githubClient: githubHttp ? makeGithubClient(githubHttp) : null,
+    })
+    // On desktop, votes made offline are kept and sent when the connection returns.
+    return offlineQueue ? withQueuedVotes(actions, offlineQueue, { adoMeId }) : actions
+  }, [http, data?.ME?.adoId, githubHttp, offlineQueue])
 
   const title = !d ? '' : kind === 'wi' ? d.title : kind === 'pr' ? d.title : kind === 'person' ? d.name : kind === 'build' ? d.pipeline : ''
 
@@ -41,7 +47,8 @@ export function DetailDrawer({ drawer, onClose, setItems, onOpenItem, onOpenPR, 
     try {
       const r = await workItemSource.moveToCategory(d.id, 'Completed', d)
       setItems?.(arr => arr.map(w => w.id === d.id ? { ...w, state: r.state, stateCategory: r.stateCategory } : w))
-      toast?.('Marked done', 'success')
+      // A queued move has already said it will be sent later.
+      if (!r?.queued) toast?.('Marked done', 'success')
       onClose()
     } catch (e) {
       toast?.('Could not update: ' + (e?.message || 'unknown error'), 'error')

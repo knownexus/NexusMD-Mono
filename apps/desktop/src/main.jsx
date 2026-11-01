@@ -6,8 +6,9 @@ import { initCore, createNoOpAdapters } from '@nexusmd/core'
 import {
   Icon, CardFrame, NexusDataProvider, ToastHost,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
-  THEME_MODES, paletteFor, ProfileGate,
+  THEME_MODES, paletteFor, ProfileGate, toast,
 } from '@nexusmd/ui'
+import { startQueueFlushing } from './offline-queue-app.js'
 import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, visibleNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
 import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider } from './profile-context.jsx'
@@ -494,4 +495,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>
 )
 
-if (!popout) startDesktopAutoSync()
+if (!popout) {
+  startDesktopAutoSync()
+  // Changes made offline are sent when the connection returns (and shortly after start); say what happened.
+  window.addEventListener('nexusmd:queue-flushed', (e) => {
+    const { sent = 0, failed = [] } = e.detail || {}
+    if (failed.length) toast(`${failed.length} offline change${failed.length === 1 ? '' : 's'} could not be sent: ${failed[0].error?.message || 'rejected'}`, 'error')
+    else if (sent) toast(`${sent} offline change${sent === 1 ? '' : 's'} synced`, 'success')
+  })
+  startQueueFlushing()
+}

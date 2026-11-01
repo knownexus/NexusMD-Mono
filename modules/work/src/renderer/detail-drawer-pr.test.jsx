@@ -5,8 +5,10 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ value: [] }), text: async () => '' }))
 vi.mock('./ado-client.js', () => ({ createAdoHttpAdapter: () => ({ fetch }), getAdoConfig: () => ({ org: 'myorg' }) }))
 
-import { NexusDataProvider } from '@nexusmd/ui'
+import { createOfflineQueue } from '@nexusmd/core'
+import { NexusDataProvider, ToastHost, QUEUED_TOAST } from '@nexusmd/ui'
 import { DetailDrawer } from './detail-drawer.jsx'
+import { makeOfflineSender } from './offline.js'
 
 afterEach(() => { cleanup(); fetch.mockClear() })
 
@@ -41,5 +43,51 @@ describe('PR actions in the drawer', () => {
   it('offers no Approve on a merged PR', () => {
     mount({ ...pr, status: 'merged' }, vi.fn())
     expect(screen.queryByText('Approve')).toBeNull()
+  })
+})
+
+describe('PR votes with the desktop offline queue', () => {
+  // The queue the shell gives Work, over Work's own sender, as on desktop.
+  function withQueue(online) {
+    const send = makeOfflineSender({ adoHttp: { fetch }, githubHttp: () => null, workItemSource: () => ({}) })
+    const store = new Map()
+    const offlineQueue = createOfflineQueue({
+      storage: { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) },
+      key: () => 'q',
+      handlers: Object.fromEntries(['ado-vote', 'ado-comment', 'github-vote', 'github-comment', 'work-state'].map(k => [k, p => send(k, p)])),
+      isOnline: () => online,
+    })
+    return offlineQueue
+  }
+  const mountQ = (offlineQueue, onPRChanged = vi.fn()) => render(
+    <NexusDataProvider value={{ ...value, offlineQueue }}>
+      <DetailDrawer drawer={{ kind: 'pr', data: pr }} onClose={() => {}} onPRChanged={onPRChanged} />
+      <ToastHost />
+    </NexusDataProvider>,
+  )
+
+  it('offline, the vote is kept and the queued toast shows', async () => {
+    const q = withQueue(false)
+    const onPRChanged = vi.fn()
+    mountQ(q, onPRChanged)
+    fireEvent.click(screen.getByText('Approve'))
+    expect(await screen.findByText(QUEUED_TOAST)).toBeTruthy()
+    expect(fetch.mock.calls.some(([, o]) => o?.method === 'PUT')).toBe(false)
+    expect(q.list()).toMatchObject([{ kind: 'ado-vote', payload: { pr: { id: 7, project: 'Proj', repoId: 'r1' }, vote: 10, adoId: 'me-1' } }])
+    expect(onPRChanged).toHaveBeenCalledWith(7, { myVote: 10 })
+  })
+
+  it('a provider rejection is shown, not queued', async () => {
+    const ordinary = fetch.getMockImplementation()
+    fetch.mockImplementation(async (p, o) => (o?.method === 'PUT'
+      ? { ok: false, status: 409, json: async () => ({}), text: async () => JSON.stringify({ message: 'TF401019: conflict' }) }
+      : ordinary(p, o)))
+    try {
+      const q = withQueue(true)
+      mountQ(q)
+      fireEvent.click(screen.getByText('Approve'))
+      expect(await screen.findByText('Approve failed: TF401019: conflict')).toBeTruthy()
+      expect(q.count()).toBe(0)
+    } finally { fetch.mockImplementation(ordinary) }
   })
 })

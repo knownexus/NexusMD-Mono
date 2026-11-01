@@ -5,7 +5,9 @@ import React from 'react';
 import { fetchGithubPRCommits, fetchGithubPRFiles, fetchGithubPRThreads, postGithubPRComment, timeAgo } from '@nexusmd/core';
 import { renderContent, mdToHtml } from './render-content.js';
 import { toast } from '../toast.jsx';
+import { QUEUED_TOAST } from '../offline-queued.js';
 import { Icon } from '../icons.jsx';
+import { useNexusData } from '../data-context.jsx';
 
 const { useState, useEffect } = React;
 
@@ -131,13 +133,22 @@ export function GithubPRThreadsPanel({ pr, client }) {
   const [state, setState] = useLoad(fetchGithubPRThreads, pr, client);
   const [comment, setComment] = useState('');
   const [posting, setPosting] = useState(false);
+  // A host's offline queue (desktop): with no connection the comment is kept and sent later.
+  const { offlineQueue } = useNexusData();
 
   const postComment = async () => {
     const text = comment.trim();
     if (!text || !client) return;
     setPosting(true);
     try {
-      const c = await postGithubPRComment(client, ref(pr), text);
+      let c;
+      if (offlineQueue) {
+        const r = await offlineQueue.run('github-comment', { pr: ref(pr), text }, `Comment on ${pr.displayId || `${pr.repo}#${pr.number}`}`);
+        if (r.queued) { setComment(''); toast?.(QUEUED_TOAST, 'success'); return; }
+        c = r.result;
+      } else {
+        c = await postGithubPRComment(client, ref(pr), text);
+      }
       setState(prev => {
         const threads = prev.value.slice();
         const i = threads.findIndex(t => t.id === 'conversation');

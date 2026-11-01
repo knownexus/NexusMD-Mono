@@ -4,7 +4,8 @@ import { localStorageAdapter } from '@nexusmd/web-adapters'
 import { NexusDataProvider, useSeenTracking, SEEN_FINGERPRINTS } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useLocalItems } from './items-state.js'
-import { getAdoConfig, usesAdoWorkItems } from './ado-client.js'
+import { getAdoConfig, usesAdoWorkItems, createAdoHttpAdapter } from './ado-client.js'
+import { makeOfflineSender, withQueuedStateChanges } from './offline.js'
 import { getJiraConfig, isJiraActive, createJiraWorkItemSource } from './jira-client.js'
 import { getGithubConfig, usesGithubWorkItems, isGithubConfigured, desktopGithubSource, createGithubHttpAdapter } from './github-client.js'
 import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
@@ -193,7 +194,30 @@ export function WorkProvider({ host, view, children }) {
   // GitHub issues are routed only while "Load GitHub issues" is on.
   const githubSource = usesGithubWorkItems() ? desktopGithubSource : null
   // Stable across data refreshes: only a Jira- or GitHub-source change produces a new identity.
-  const workItemSource = useRoutedWorkItemSource(desktopWorkItemSource, jiraSource, githubSource)
+  const routedSource = useRoutedWorkItemSource(desktopWorkItemSource, jiraSource, githubSource)
+
+  // The shell's offline queue (desktop): state changes, PR votes and PR comments made with no
+  // connection are kept and sent when it returns. Work sends them, with its own clients; the queue
+  // replays through the plain routed source so a replay is never queued again.
+  const offlineQueue = host.offlineQueue || null
+  const routedRef = React.useRef(routedSource)
+  routedRef.current = routedSource
+  const workItemSource = React.useMemo(
+    () => (offlineQueue ? withQueuedStateChanges(routedSource, offlineQueue) : routedSource),
+    [routedSource, offlineQueue],
+  )
+  React.useEffect(() => {
+    const caps = host.capabilities
+    if (!offlineQueue || !caps?.provide) return undefined
+    const off = caps.provide('work.offlineSend', makeOfflineSender({
+      adoHttp: createAdoHttpAdapter(),
+      githubHttp: () => githubHttp,
+      workItemSource: () => routedRef.current,
+    }))
+    // Anything kept from before (an earlier session) can go now that Work can send it.
+    offlineQueue.flush?.()
+    return off
+  }, [host, offlineQueue])
 
   const nexusDataValue = React.useMemo(() => ({
     data:           snapshot,
@@ -204,7 +228,8 @@ export function WorkProvider({ host, view, children }) {
     workItemSource,
     buildSource:    desktopBuildSource,
     githubHttp,
-  }), [snapshot, workItemSource, refreshAllData])
+    ...(offlineQueue ? { offlineQueue } : {}),
+  }), [snapshot, workItemSource, refreshAllData, offlineQueue])
 
   const work = {
     refreshAllData, refreshInterval, setRefreshInterval, refreshLeft, refreshPaused, setRefreshPaused,

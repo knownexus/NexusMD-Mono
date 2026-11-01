@@ -57,6 +57,16 @@ it('approve calls action, disables buttons while pending, ignores second click',
   expect(toast).toHaveBeenCalledWith('Approved', 'success')
 })
 
+it('a vote kept for later shows the queued toast instead of the success one', async () => {
+  const { QUEUED_TOAST } = await import('../offline-queued.js')
+  const actions = mk({ approve: vi.fn(async () => ({ patch: { myVote: 10 }, warnings: [], queued: true })) })
+  const { onChanged } = setup({ actions })
+  fireEvent.click(screen.getByText('Approve'))
+  await waitFor(() => expect(toast).toHaveBeenCalledWith(QUEUED_TOAST, 'success'))
+  expect(toast).not.toHaveBeenCalledWith('Approved', 'success')
+  expect(onChanged).toHaveBeenCalledWith({ myVote: 10 })
+})
+
 it('wait for author', async () => {
   const { actions, onChanged } = setup()
   fireEvent.click(screen.getByText('Wait for author'))

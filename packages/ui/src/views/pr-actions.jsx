@@ -1,7 +1,9 @@
 // PRActions — Approve / Wait for author / Reject / Merge buttons for a pull request.
-// `actions` is the object returned by makePRActions (core).
+// `actions` is the object returned by makePRActions (core). A host with an offline queue may wrap it:
+// an action that resolves with `queued: true` was kept for later, and says so.
 import React, { useState } from 'react'
 import { toast } from '../toast.jsx'
+import { QUEUED_TOAST } from '../offline-queued.js'
 
 export function PRActions({ pr, actions, onChanged, confirm = (...a) => window.confirm(...a) }) {
   const [busy, setBusy] = useState(false)
@@ -13,8 +15,8 @@ export function PRActions({ pr, actions, onChanged, confirm = (...a) => window.c
     if (busy) return false
     setBusy(true)
     try {
-      const { patch, warnings = [] } = await fn()
-      toast?.(typeof successText === 'function' ? successText() : successText, 'success')
+      const { patch, warnings = [], queued } = await fn()
+      toast?.(queued ? QUEUED_TOAST : typeof successText === 'function' ? successText() : successText, 'success')
       warnings.forEach(w => toast?.(w, 'warning'))
       onChanged?.(patch)
       return true
