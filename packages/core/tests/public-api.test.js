@@ -27,7 +27,7 @@ const EXPECTED = [
   'PL_PRIOS', 'PL_STATUSES', 'PROJECT_COLORS', 'STATES', 'activateProfile',
   'addManualColumn', 'adoStateToHelm', 'adoTypeToHelm', 'appendAuditEntry', 'buildAlertKey',
   'buildDigest', 'buildEmptyPlannerData', 'buildProfile', 'buildTriageCsv', 'core',
-  'createNoOpAdapters', 'createProfile', 'createTimer', 'decryptConfidentialFromServer',
+  'createNoOpAdapters', 'createOfflineQueue', 'isNetworkError', 'createProfile', 'createTimer', 'decryptConfidentialFromServer',
   'deleteProfile', 'deriveActivity',
   'derivePrSparkline', 'deriveProjects', 'deriveSprint', 'effectiveNeedsMe', 'effectiveTeamActivity',
   'elapsedMs', 'encryptConfidentialForServer',

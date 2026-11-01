@@ -1,8 +1,7 @@
 // offline-queue-app.js — the app's offline queue: the handlers that really send a state change, a PR
 // vote or a PR comment, the event the UI listens to for the number waiting, and the flush that runs
 // when the connection returns (and shortly after start).
-import { makeGithubClient } from '@nexusmd/core';
-import { createOfflineQueue } from './offline-queue.js';
+import { makeGithubClient, createOfflineQueue } from '@nexusmd/core';
 import { workItemSource } from './work-item-source.js';
 import { adoPost, adoPut } from './ado-client.js';
 import { createGithubHttpAdapter } from './github-client.js';

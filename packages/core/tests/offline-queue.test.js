@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createOfflineQueue, isNetworkError } from './offline-queue.js'
+import { createOfflineQueue, isNetworkError } from '../src/modules/offline-queue/index.js'
 
 const memory = () => { const m = {}; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = v } } }
 const make = (handlers, online = { v: true }, emit = vi.fn()) => ({
