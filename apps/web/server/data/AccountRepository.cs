@@ -1,3 +1,4 @@
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Data.Sqlite;
@@ -647,6 +648,180 @@ public class AccountRepository
             DELETE FROM RetiredRefresh WHERE SessionId NOT IN (SELECT Id FROM Sessions WHERE RevokedAt IS NULL);";
         cmd.Parameters.AddWithValue("$now", Now());
         cmd.ExecuteNonQuery();
+    }
+
+    // ---- Devices -----------------------------------------------------------------------
+
+    public const int MaxDevicesPerUser = 50;
+
+    public IReadOnlyList<DeviceRecord> ListDevices(string userId)
+    {
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Id,Name,Platform,UpdatedAt FROM Devices WHERE UserId=$uid ORDER BY CreatedAt, Id";
+        cmd.Parameters.AddWithValue("$uid", userId);
+        var list = new List<DeviceRecord>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) list.Add(new DeviceRecord(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt64(3)));
+        return list;
+    }
+
+    /// <summary>
+    /// Registers a device unless the user already has <see cref="MaxDevicesPerUser"/>. The count check and the
+    /// insert are one statement, so racing creates cannot exceed the cap. Null when the cap is reached.
+    /// </summary>
+    public DeviceRecord? CreateDevice(string userId, string name, string platform)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        var now = Now();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"INSERT INTO Devices (Id,UserId,Name,Platform,Revision,CreatedAt,UpdatedAt)
+            SELECT $id,$uid,$name,$pl,0,$now,$now WHERE (SELECT COUNT(*) FROM Devices WHERE UserId=$uid) < $max";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$uid", userId);
+        cmd.Parameters.AddWithValue("$name", name);
+        cmd.Parameters.AddWithValue("$pl", platform);
+        cmd.Parameters.AddWithValue("$now", now);
+        cmd.Parameters.AddWithValue("$max", MaxDevicesPerUser);
+        return cmd.ExecuteNonQuery() == 1 ? new DeviceRecord(id, name, platform, now) : null;
+    }
+
+    /// <summary>Renames one of the user's devices. Null if it does not exist or belongs to someone else.</summary>
+    public DeviceRecord? RenameDevice(string userId, string id, string name)
+    {
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"UPDATE Devices SET Name=$name, UpdatedAt=$now WHERE Id=$id AND UserId=$uid
+            RETURNING Id,Name,Platform,UpdatedAt";
+        cmd.Parameters.AddWithValue("$name", name);
+        cmd.Parameters.AddWithValue("$now", Now());
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$uid", userId);
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? new DeviceRecord(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt64(3)) : null;
+    }
+
+    public bool DeleteDevice(string userId, string id)
+    {
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM Devices WHERE Id=$id AND UserId=$uid";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$uid", userId);
+        return cmd.ExecuteNonQuery() == 1;
+    }
+
+    /// <summary>The device's prefs blob and revision (0 and empty when never written). Null if not the user's device.</summary>
+    public (long revision, string ciphertext)? GetDevicePrefs(string userId, string id)
+    {
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Revision, Prefs FROM Devices WHERE Id=$id AND UserId=$uid";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$uid", userId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        return (r.GetInt64(0), r.IsDBNull(1) ? "" : r.GetString(1));
+    }
+
+    /// <summary>
+    /// Compare-and-set of a device's prefs blob: one conditional UPDATE, so of any number of concurrent
+    /// writers holding the same <paramref name="expectedRevision"/> exactly one wins.
+    /// </summary>
+    public WriteResult PutDevicePrefs(string userId, string id, long expectedRevision, string ciphertext)
+    {
+        using var conn = OpenConnection();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"UPDATE Devices SET Prefs=$p, Revision=Revision+1, UpdatedAt=$now
+                WHERE Id=$id AND UserId=$uid AND Revision=$exp RETURNING Revision";
+            cmd.Parameters.AddWithValue("$p", ciphertext);
+            cmd.Parameters.AddWithValue("$now", Now());
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.Parameters.AddWithValue("$uid", userId);
+            cmd.Parameters.AddWithValue("$exp", expectedRevision);
+            using var r = cmd.ExecuteReader();
+            if (r.Read()) return new WriteResult(WriteStatus.Ok, r.GetInt64(0));
+        }
+        using var sel = conn.CreateCommand();
+        sel.CommandText = "SELECT EXISTS(SELECT 1 FROM Devices WHERE Id=$id AND UserId=$uid)";
+        sel.Parameters.AddWithValue("$id", id);
+        sel.Parameters.AddWithValue("$uid", userId);
+        return new WriteResult(Convert.ToInt64(sel.ExecuteScalar()) == 1 ? WriteStatus.Conflict : WriteStatus.NotFound);
+    }
+
+    // ---- Items -------------------------------------------------------------------------
+
+    /// <summary>Writes one item (see <see cref="WriteItems"/>).</summary>
+    public WriteResult WriteItem(string userId, ItemWrite write) => WriteItems(userId, new[] { write })[0];
+
+    /// <summary>
+    /// Applies independent compare-and-set writes in one transaction (BEGIN IMMEDIATE, so writers are
+    /// serialised and the revision check, cursor assignment and upsert cannot interleave). Entry i of the result
+    /// is Ok (with the new revision and the per-user cursor, MAX(Cursor)+1) or Conflict; a conflict neither
+    /// writes nor consumes a cursor and does not affect the other writes.
+    /// </summary>
+    public IReadOnlyList<WriteResult> WriteItems(string userId, IReadOnlyList<ItemWrite> writes)
+    {
+        var results = new List<WriteResult>(writes.Count);
+        if (writes.Count == 0) return results;
+        using var conn = OpenConnection();
+        using var tx = conn.BeginTransaction(IsolationLevel.Serializable); // BEGIN IMMEDIATE
+        using var sel = conn.CreateCommand();
+        sel.Transaction = tx;
+        sel.CommandText = "SELECT Revision FROM Items WHERE UserId=$uid AND Id=$id";
+        sel.Parameters.AddWithValue("$uid", userId);
+        var selId = sel.Parameters.Add("$id", SqliteType.Text);
+        using var cur = conn.CreateCommand();
+        cur.Transaction = tx;
+        cur.CommandText = "SELECT COALESCE(MAX(Cursor),0)+1 FROM Items WHERE UserId=$uid";
+        cur.Parameters.AddWithValue("$uid", userId);
+        using var up = conn.CreateCommand();
+        up.Transaction = tx;
+        up.CommandText = @"INSERT INTO Items (UserId,Id,Revision,Cursor,Ciphertext,Deleted,UpdatedAt)
+            VALUES ($uid,$id,$rev,$cur,$ct,$del,$now)
+            ON CONFLICT (UserId,Id) DO UPDATE SET Revision=$rev, Cursor=$cur, Ciphertext=$ct, Deleted=$del, UpdatedAt=$now";
+        up.Parameters.AddWithValue("$uid", userId);
+        var upId = up.Parameters.Add("$id", SqliteType.Text);
+        var upRev = up.Parameters.Add("$rev", SqliteType.Integer);
+        var upCur = up.Parameters.Add("$cur", SqliteType.Integer);
+        var upCt = up.Parameters.Add("$ct", SqliteType.Text);
+        var upDel = up.Parameters.Add("$del", SqliteType.Integer);
+        var upNow = up.Parameters.Add("$now", SqliteType.Integer);
+
+        foreach (var w in writes)
+        {
+            selId.Value = w.Id;
+            var found = sel.ExecuteScalar();
+            var current = found is null ? 0L : Convert.ToInt64(found);
+            if (current != w.IfMatch) { results.Add(new WriteResult(WriteStatus.Conflict)); continue; }
+            var cursor = Convert.ToInt64(cur.ExecuteScalar());
+            var revision = current + 1;
+            upId.Value = w.Id; upRev.Value = revision; upCur.Value = cursor;
+            upCt.Value = w.Ciphertext; upDel.Value = w.Deleted ? 1 : 0; upNow.Value = Now();
+            up.ExecuteNonQuery();
+            results.Add(new WriteResult(WriteStatus.Ok, revision, cursor));
+        }
+        tx.Commit();
+        return results;
+    }
+
+    /// <summary>Up to <paramref name="limit"/> of the user's items with Cursor greater than <paramref name="since"/>, oldest first.</summary>
+    public IReadOnlyList<ItemRecord> GetItemChanges(string userId, long since, int limit)
+    {
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"SELECT Id,Revision,Cursor,Ciphertext,Deleted,UpdatedAt FROM Items
+            WHERE UserId=$uid AND Cursor>$since ORDER BY Cursor LIMIT $limit";
+        cmd.Parameters.AddWithValue("$uid", userId);
+        cmd.Parameters.AddWithValue("$since", since);
+        cmd.Parameters.AddWithValue("$limit", limit);
+        var list = new List<ItemRecord>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new ItemRecord(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetString(3), r.GetInt32(4) != 0, r.GetInt64(5)));
+        return list;
     }
 
     private static UserRecord MapUser(SqliteDataReader r) => new(

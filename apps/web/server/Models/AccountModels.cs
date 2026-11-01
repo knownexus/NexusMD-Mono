@@ -52,3 +52,19 @@ public class InvalidInviteException : Exception
 {
     public InvalidInviteException() : base("The invite is invalid, expired or already used.") { }
 }
+
+// ---- devices and items -------------------------------------------------------------------
+
+/// <summary>A registered device. Timestamps are Unix milliseconds (UTC).</summary>
+public record DeviceRecord(string Id, string Name, string Platform, long UpdatedAt);
+
+public enum WriteStatus { Ok, Conflict, NotFound }
+
+/// <summary>Result of a conditional write: the new revision (and item cursor) on <see cref="WriteStatus.Ok"/>.</summary>
+public record WriteResult(WriteStatus Status, long Revision = 0, long Cursor = 0);
+
+/// <summary>One row of the per-user item feed. <c>Ciphertext</c> is an opaque client-encrypted blob (kept for tombstones too).</summary>
+public record ItemRecord(string Id, long Revision, long Cursor, string Ciphertext, bool Deleted, long UpdatedAt);
+
+/// <summary>One write in a batch. <c>IfMatch</c> is the expected current revision (0 = create).</summary>
+public record ItemWrite(string Id, long IfMatch, string Ciphertext, bool Deleted);
