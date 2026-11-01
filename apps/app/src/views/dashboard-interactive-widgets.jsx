@@ -10,7 +10,6 @@ import { Icon } from '../icons.jsx';
 import { HelmData } from '../data.jsx';
 import { getProfileKey } from '../profile-keys.js';
 import { BuildArtifactsSheet } from './build-artifacts-sheet.jsx';
-import { listRepoChoices, REPO_PICK } from '../git-view.jsx';
 
 const { useState, useEffect } = React;
 const lsGet = (k, d) => { try { const v = localStorage.getItem(getProfileKey(k)); return v == null ? d : v; } catch { return d; } };
@@ -117,50 +116,6 @@ export function NotesWidget({ navTo }) {
         <textarea style={{ ...field, height: 64, padding: 10, resize: 'none' }} value={text} placeholder="Jot something down…" onChange={e => setText(e.target.value)}/>
         <button type="submit" className="btn sm primary" disabled={!text.trim()}>{saved ? 'Saved' : 'Save'}</button>
       </form>
-    </Card>
-  );
-}
-
-// Repos: pick the repository once; Open goes straight to it.
-export function ReposWidget({ navTo }) {
-  const [repos, setRepos] = useState(null);
-  const [pick, setPick] = useState(() => lsGet(REPO_PICK, ''));
-  useEffect(() => {
-    let live = true;
-    listRepoChoices().then(r => live && setRepos(r.repos || [])).catch(() => live && setRepos([]));
-    return () => { live = false; };
-  }, []);
-  const choose = (id) => { setPick(id); lsSet(REPO_PICK, id); };
-  const repo = (repos || []).find(r => r.id === pick);
-  return (
-    <Card icon="git-branch" title="Repo" onMore={() => navTo('git')}>
-      <div style={{ display: 'flex', gap: 8, padding: 12 }}>
-        <select style={field} value={pick} onChange={e => choose(e.target.value)} aria-label="Repository">
-          <option value="">{repos === null ? 'Loading repos…' : 'Choose a repo'}</option>
-          {(repos || []).map(r => <option key={r.id} value={r.id}>{r.project ? `${r.project} / ${r.name}` : r.name}</option>)}
-        </select>
-        <button type="button" className="btn sm primary" disabled={!repo} onClick={() => navTo('git', undefined, repo.id)}>Open</button>
-      </div>
-    </Card>
-  );
-}
-
-// Pull requests: choose which list to show.
-const PR_SEGS = [['all', 'All'], ['needsme', 'Needs me'], ['drafts', 'Drafts']];
-export function PrWidget({ prs = [], needsMe, onOpenPR, navTo }) {
-  const [seg, setSegRaw] = useState(() => lsGet('helm.dash.prSeg', 'needsme'));
-  const setSeg = (s) => { setSegRaw(s); lsSet('helm.dash.prSeg', s); };
-  const list = seg === 'needsme' ? prs.filter(needsMe) : seg === 'drafts' ? prs.filter(p => p.draft) : prs;
-  return (
-    <Card icon="pr" title="Pull requests" meta={list.length} onMore={() => navTo('pr')}>
-      <div className="m-chipscroll" style={{ padding: '10px 12px 4px' }}>
-        {PR_SEGS.map(([id, label]) => (
-          <button key={id} type="button" className={`m-chip${seg === id ? ' active' : ''}`} onClick={() => setSeg(id)}>{label}</button>
-        ))}
-      </div>
-      {list.length === 0 ? <Empty text="Nothing here."/> : list.slice(0, 5).map(pr => (
-        <Row key={pr.id} title={pr.title} sub={[pr.repo, pr.age].filter(Boolean).join(' · ')} onClick={() => onOpenPR(pr)}/>
-      ))}
     </Card>
   );
 }

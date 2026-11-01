@@ -7,11 +7,13 @@ import {
   useDocumentAutosave, findMatches, buildOverlaySegments, splitMatchByGroups, runUnitTests, genCode, REFERENCE_DATA,
 } from '@nexusmd/ui';
 import { Icon } from '../icons.jsx';
+import { toast } from '../toast.jsx';
 import { Sheet } from '../components.jsx';
 import { ToolFrame, DocsSheet } from './docs-frame.jsx';
 
 const { useState, useMemo, useEffect } = React;
-const copy = (text) => navigator.clipboard?.writeText(text).catch(() => {});
+const copy = (text) => (navigator.clipboard?.writeText(text) ?? Promise.reject(new Error('Copying is not available here.')))
+  .then(() => toast('Copied', 'success'), (e) => toast(`Could not copy. ${e?.message || ''}`.trim(), 'error'));
 
 // What each flag does, in words: a phone has no hover, so these are shown, not tucked in a tooltip.
 export const FLAGS = [

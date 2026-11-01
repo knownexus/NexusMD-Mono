@@ -214,12 +214,12 @@ async function redeem(url) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: otc }),
     })
-    if (!res.ok) return
+    if (!res.ok) { toast('Sign-in could not be completed. Try again.', 'error'); return }
     const { accessToken, refreshToken } = await res.json()
     await writeAuth(cfg.keySuffix, { accessToken, refreshToken })
     window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
     window.location.reload()
-  } catch {}
+  } catch (e) { toast(`Sign-in could not be completed. ${e?.message || ''}`.trim(), 'error') }
 }
 
 export function registerCloudDeepLink() {

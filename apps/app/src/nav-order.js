@@ -26,12 +26,24 @@ export function moveTab(order, groupTabs, id, dir) {
   return [...ids, ...(Array.isArray(order) ? order : []).filter(x => !ids.includes(x))];
 }
 
-// Splits `primary` and `secondary` (the default bar and More groups) again after the user's moves. `placement`
-// maps a screen id to 'main' (bottom bar / sidebar) or 'more'; screens it does not mention stay where they started.
-export function placeTabs(primary, secondary, placement) {
+// Splits `primary` and `secondary` (the default bar and More groups) again after the user's moves. `placement` maps a
+// screen id to 'main' (bottom bar / sidebar), 'footer' (the tablet sidebar's footer) or 'more'; screens it does not
+// mention stay where they started. `defaultFooter` names the screens that start in the footer, on a tablet. On a phone
+// there is no footer: those screens sit in More.
+export function placeTabs(primary, secondary, placement, { tablet = false, defaultFooter = [] } = {}) {
   const p = placement && typeof placement === 'object' ? placement : {};
   const main = new Set(primary.map(t => t.id));
+  const where = (t) => {
+    const w = p[t.id];
+    if (w === 'main' || w === 'more') return w;
+    if (w === 'footer') return tablet ? 'footer' : 'more';
+    if (main.has(t.id)) return 'main';
+    return tablet && defaultFooter.includes(t.id) ? 'footer' : 'more';
+  };
   const all = [...primary, ...secondary];
-  const where = (t) => p[t.id] === 'main' || p[t.id] === 'more' ? p[t.id] : (main.has(t.id) ? 'main' : 'more');
-  return { primary: all.filter(t => where(t) === 'main'), secondary: all.filter(t => where(t) === 'more') };
+  return {
+    primary: all.filter(t => where(t) === 'main'),
+    footer: all.filter(t => where(t) === 'footer'),
+    secondary: all.filter(t => where(t) === 'more'),
+  };
 }

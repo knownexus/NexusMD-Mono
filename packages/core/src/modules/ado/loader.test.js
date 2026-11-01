@@ -48,3 +48,22 @@ describe('loadAdoData skip', () => {
     expect(http.paths.some(p => p.includes('queryOrder=queueTimeDescending'))).toBe(true)
   })
 })
+
+describe('loadAdoData when Azure DevOps cannot be reached', () => {
+  it('throws and leaves the cached data alone instead of saving an empty load', async () => {
+    const storage = memStorage()
+    storage.set = undefined
+    const writes = []
+    const store = { get: () => null, set: (k, v) => writes.push([k, v]) }
+    const down = { fetch: async () => { throw new Error('Network request failed') } }
+    await expect(loadAdoData(config, { http: down, storage: store }, { isRefresh: true })).rejects.toThrow(/Network/)
+    expect(writes).toEqual([])
+  })
+
+  it('still saves when some requests succeed', async () => {
+    const writes = []
+    const store = { get: () => null, set: (k, v) => writes.push([k, v]) }
+    await loadAdoData(config, { http: fakeHttp(), storage: store })
+    expect(writes.length).toBe(1)
+  })
+})

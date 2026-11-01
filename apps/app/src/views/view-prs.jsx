@@ -8,6 +8,8 @@ import { getGithubConfig } from '../github-client.js';
 import { Sheet, effectiveNeedsMe } from '../components.jsx';
 import { getProfileKey } from '../profile-keys.js';
 // view-prs.jsx — Mobile pull requests
+import { refreshNow } from '../refresh.js';
+
 const { useState, useMemo, useEffect } = React;
 
 // ── Module-level pure helpers ─────────────────────────────────────────────────
@@ -86,13 +88,13 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
             <Icon name="layers" size={18}/>
           </button>
           <button type="button" className="m-iconbtn"
-            onClick={() => HelmApi?.load().catch(() => {})} title="Refresh">
+            onClick={() => refreshNow()} title="Refresh">
             <Icon name="refresh" size={18}/>
           </button>
         </div>
       </div>
 
-      <PullRefresh onRefresh={() => HelmApi?.load()}>
+      <PullRefresh onRefresh={refreshNow}>
         <SourceSwitch {...src}/>
         {/* Segmented control */}
         <div className="m-seg" style={{ marginBottom: 12 }}>
@@ -197,7 +199,7 @@ function PRView({ prs, onOpen, needsMeCriteria, setNeedsMeCriteria, newItemIds, 
               </div>
             )}
             <PRSheetActions pr={detailPR} me={HelmData?.ME} githubLogin={getGithubConfig().login} onFlash={onFlash}
-              onChanged={() => { setDetailPR(null); HelmApi?.load().catch(() => {}); }}/>
+              onChanged={() => { setDetailPR(null); refreshNow(); }}/>
           </>
         )}
       </Sheet>

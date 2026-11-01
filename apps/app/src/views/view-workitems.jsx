@@ -1,4 +1,5 @@
 import React from 'react';
+import { refreshNow } from '../refresh.js';
 import { Icon } from '../icons.jsx';
 import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
 import { workItemSource } from '../work-item-source.js';
@@ -321,7 +322,7 @@ function WorkItemsView({ items, setItems, onOpen, onCreate, onFlash, team = [], 
         </div>
       </div>
 
-      <PullRefresh style={{ paddingBottom: 80 }} onRefresh={() => HelmApi?.load()}>
+      <PullRefresh style={{ paddingBottom: 80 }} onRefresh={refreshNow}>
         <SourceSwitch {...src}/>
         {/* Search + filter bar */}
         <div className="m-filterbar" style={{ marginBottom: 12 }}>
@@ -510,7 +511,7 @@ function WorkItemsView({ items, setItems, onOpen, onCreate, onFlash, team = [], 
       <GithubIssueSheet open={issueOpen} onClose={() => setIssueOpen(false)} repos={getGithubConfig().repos}
         onCreated={({ id, repo, title }) => {
           onFlash?.(`Created ${String(id).replace(/^gh:/, '')}: ${title}`.slice(0, 90), 'check');
-          HelmApi?.load().catch(() => {});
+          refreshNow();
         }}/>
 
       {/* FAB */}

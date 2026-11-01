@@ -122,7 +122,7 @@ export function MarkdownPhone({ tool, setTool, onFlash }) {
     try {
       if (navigator.share) await navigator.share({ title: name, text: m.content });
       else { await pickerAdapter.saveFile(name, m.content); onFlash?.('Exported'); }
-    } catch { /* cancelled */ }
+    } catch (e) { if (e?.name !== 'AbortError') onFlash?.(`Could not export. ${e?.message || ''}`.trim(), 'alert'); }
   };
 
   const status = m.status === 'saving' ? 'Saving…' : m.status === 'saved' ? 'Saved' : '';

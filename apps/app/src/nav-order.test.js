@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { orderTabs, moveTab } from './nav-order.js'
+import { orderTabs, moveTab, placeTabs } from './nav-order.js'
 
 const tabs = ['a', 'b', 'c', 'd'].map(id => ({ id, label: id.toUpperCase() }))
 const ids = (list) => list.map(t => t.id)
@@ -41,5 +41,22 @@ describe('moveTab', () => {
     const both = moveTab(afterOther, tabs, 'b', -1)              // then move in the first group
     expect(ids(orderTabs(other, both))).toEqual(['y', 'x'])
     expect(ids(orderTabs(tabs, both))).toEqual(['b', 'a', 'c', 'd'])
+  })
+})
+
+describe('placeTabs', () => {
+  const primary = [{ id: 'home' }, { id: 'work' }]
+  const secondary = [{ id: 'builds' }, { id: 'notes' }]
+  const opts = { tablet: true, defaultFooter: ['builds'] }
+  const idsOf = (r) => [ids(r.primary), ids(r.footer), ids(r.secondary)]
+  it('starts as the defaults, with the footer only on a tablet', () => {
+    expect(idsOf(placeTabs(primary, secondary, {}, opts))).toEqual([['home', 'work'], ['builds'], ['notes']])
+    expect(idsOf(placeTabs(primary, secondary, {}, { tablet: false, defaultFooter: ['builds'] }))).toEqual([['home', 'work'], [], ['builds', 'notes']])
+  })
+  it('moves a screen to the bar, the footer or More', () => {
+    expect(idsOf(placeTabs(primary, secondary, { notes: 'footer', builds: 'main', work: 'more' }, opts))).toEqual([['home', 'builds'], ['notes'], ['work']])
+  })
+  it('puts a footer choice in More on a phone', () => {
+    expect(idsOf(placeTabs(primary, secondary, { notes: 'footer' }, { tablet: false }))[2]).toContain('notes')
   })
 })

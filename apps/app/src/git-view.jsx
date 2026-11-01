@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { timeAgo } from '@nexusmd/core';
 import { MarkdownPreview } from '@nexusmd/ui';
 import { Icon } from './icons.jsx';
+import { toast } from './toast.jsx';
 import { Sheet } from './components.jsx';
 import { adoGet, getAdoConfig } from './ado-client.js';
 import { getGithubConfig, isGithubConfigured, createGithubHttpAdapter } from './github-client.js';
@@ -24,7 +25,8 @@ const loadSource = () => { try { return localStorage.getItem(getProfileKey(SOURC
 const loadRecent = () => { try { return JSON.parse(localStorage.getItem(getProfileKey(RECENT_KEY)) || '[]'); } catch { return []; } };
 const saveRecent = (ids) => { try { localStorage.setItem(getProfileKey(RECENT_KEY), JSON.stringify(ids)); } catch {} };
 const isMarkdown = (p) => /\.(md|markdown)$/i.test(p);
-const copy = (text) => navigator.clipboard?.writeText(text).catch(() => {});
+const copy = (text) => (navigator.clipboard?.writeText(text) ?? Promise.reject(new Error('Copying is not available here.')))
+  .then(() => toast('Copied', 'success'), (e) => toast(`Could not copy. ${e?.message || ''}`.trim(), 'error'));
 
 function RepoRow({ repo, onOpen }) {
   return (

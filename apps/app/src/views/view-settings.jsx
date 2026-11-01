@@ -3,7 +3,6 @@ import { toast } from '../toast.jsx';
 import { helmPushPref } from '../components.jsx';
 import { HelmData } from '../data.jsx';
 import { getProfileKey } from '../profile-keys.js';
-import { PAGE_WIDGETS } from './dashboard-page-widgets.jsx';
 import { Icon } from '../icons.jsx';
 import { useProfile } from '../profile-context.jsx';
 import { marked } from 'marked';
@@ -69,30 +68,34 @@ function vsTimeZones() {
 // Reorder the navigation: each group (main bar, More) keeps its screens; up/down moves one within its group.
 export function NavOrderCard({ groups, onMove, onReset, onPlace }) {
   return (
-    <VsCard title="Navigation order" icon="more">
+    <VsCard title="Navigation" icon="more" id="appearance-navigation">
+      <div className="d" style={{ padding: '10px 14px 4px' }}>Reorder with the arrows. Use "Move to" to put a screen in the bar, the sidebar footer or More.</div>
       {groups.map(g => (
-        <React.Fragment key={g.id}>
-          <div className="set-row"><div className="info"><div className="d" style={{ fontWeight: 600 }}>{g.title}</div></div></div>
+        <details key={g.id} open={g.id === 'main'} style={{ borderTop: '1px solid var(--border)' }}>
+          <summary style={{ padding: '10px 14px', cursor: 'pointer', fontWeight: 600, display: 'flex', gap: 8, alignItems: 'center' }}>
+            {g.title}<span className="d" style={{ fontWeight: 400 }}>{g.tabs.length}</span>
+          </summary>
+          {g.tabs.length === 0 && <div className="d" style={{ padding: '0 14px 10px' }}>Nothing here. Move a screen in.</div>}
           {g.tabs.map((t, i) => (
-            <div key={t.id} className="set-row" style={{ gap: 10 }}>
+            <div key={t.id} className="set-row" style={{ gap: 6, padding: '4px 14px' }}>
               <span className="m-fileic"><Icon name={t.icon} size={16}/></span>
               <div className="info"><div className="t">{t.label}</div></div>
               <button type="button" className="btn sm ghost" aria-label={`Move ${t.label} up`} disabled={i === 0}
                 onClick={() => onMove(g.id, t.id, -1)}><Icon name="arrow-up" size={13}/></button>
               <button type="button" className="btn sm ghost" aria-label={`Move ${t.label} down`} disabled={i === g.tabs.length - 1}
                 onClick={() => onMove(g.id, t.id, +1)}><Icon name="arrow-down" size={13}/></button>
-              {onPlace && (
-                <button type="button" className="btn sm ghost"
-                  aria-label={g.id === 'main' ? `Move ${t.label} to More` : `Move ${t.label} to the bar`}
-                  onClick={() => onPlace(t.id, g.id === 'main' ? 'more' : 'main')}>
-                  {g.id === 'main' ? 'To More' : 'To bar'}
-                </button>
+              {onPlace && groups.length > 1 && (
+                <select aria-label={`Move ${t.label} to`} value="" style={{ maxWidth: 110, height: 32, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)' }}
+                  onChange={e => { if (e.target.value) onPlace(t.id, e.target.value); }}>
+                  <option value="">Move to…</option>
+                  {groups.filter(o => o.id !== g.id).map(o => <option key={o.id} value={o.id}>{o.short || o.title}</option>)}
+                </select>
               )}
             </div>
           ))}
-        </React.Fragment>
+        </details>
       ))}
-      <VsRow title="Default order" desc="Put every screen back where it started">
+      <VsRow title="Default layout" desc="Put every screen back where it started">
         <button type="button" className="btn sm" onClick={onReset}>Reset</button>
       </VsRow>
     </VsCard>
@@ -406,68 +409,48 @@ function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onPlaceNav,
 
           {page === 'appearance' && (
             <React.Fragment>
-            <VsCard title="Appearance" icon="sun">
+            <VsCard title="Theme" icon="sun" id="appearance-theme">
               <ThemeModeSettings tweaks={tweaks} setTweak={setTweak}/>
-              <VsRow title="Density" desc="Row height and padding everywhere">
+            </VsCard>
+            <VsCard title="Layout" icon="settings" id="appearance-layout">
+              <VsRow title="Density" desc="Row height and padding">
                 <VsSeg value={tweaks.density}
                   options={[['compact', 'Compact'], ['balanced', 'Balanced'], ['cozy', 'Cozy']]}
                   onChange={v => setTweak('density', v)}/>
               </VsRow>
-              <VsRow title="Sidebar" desc="Full labels or icons only">
+              <VsRow title="Sidebar" desc="Labels or icons only">
                 <VsSeg value={tweaks.sidebar}
                   options={[['labels', 'Labels'], ['icons', 'Icons']]}
                   onChange={v => setTweak('sidebar', v)}/>
               </VsRow>
-              <VsRow title="Work-item type labels" desc="Show type names next to type icons in lists">
+              <VsRow title="Type labels" desc="Name the work-item type in lists">
                 <PlToggle checked={tweaks.typeLabels} onChange={v => setTweak('typeLabels', v)}/>
               </VsRow>
+            </VsCard>
+            <VsCard title="Screens" icon="dashboard" id="appearance-screens">
               {WORK_SCREENS.map(s => (
-                <VsRow key={s.id} title={`${s.label} screen`} desc="Show it in the navigation; switching it off also stops loading its data">
+                <VsRow key={s.id} title={s.label} desc="Off stops loading its data too">
                   <PlToggle checked={!offScreens.includes(s.id)}
                     onChange={on => { setOffScreens(on ? offScreens.filter(x => x !== s.id) : [...offScreens, s.id]); onWorkScreensChanged?.(); }}/>
                 </VsRow>
               ))}
-              <VsRow title="Documents tab" desc="Show Markdown, JSON editor and Regex tester in the navigation">
-                <PlToggle
-                  checked={tweaks.showMarkdown !== false}
-                  onChange={v => setTweak('showMarkdown', v)}
-                />
+              <VsRow title="Documents" desc="Markdown, JSON and regex tools">
+                <PlToggle checked={tweaks.showMarkdown !== false} onChange={v => setTweak('showMarkdown', v)}/>
               </VsRow>
-              <VsRow title="Sprint progress" desc="Show the sprint burndown widget on the home page">
-                <PlToggle
-                  checked={!(tweaks.hiddenDashWidgets || []).includes('sprint')}
-                  onChange={v => toggleDashWidget('sprint', v)}
-                />
+            </VsCard>
+            <VsCard title="Home cards" icon="dashboard" id="appearance-home">
+              <div className="d" style={{ padding: '10px 14px 0' }}>Add more from the Home screen with Add widget.</div>
+              <VsRow title="Sprint progress" desc="Burndown">
+                <PlToggle checked={!(tweaks.hiddenDashWidgets || []).includes('sprint')} onChange={v => toggleDashWidget('sprint', v)}/>
               </VsRow>
-              <VsRow title="Blockers widget" desc="Show blocked work items on the home page">
-                <PlToggle
-                  checked={!(tweaks.hiddenDashWidgets || []).includes('blockers')}
-                  onChange={v => toggleDashWidget('blockers', v)}
-                />
+              <VsRow title="Blockers" desc="Blocked work items">
+                <PlToggle checked={!(tweaks.hiddenDashWidgets || []).includes('blockers')} onChange={v => toggleDashWidget('blockers', v)}/>
               </VsRow>
-              <VsRow title="PRs needing review" desc="Show pull requests waiting for your review on the home page">
-                <PlToggle
-                  checked={!(tweaks.hiddenDashWidgets || []).includes('needsme')}
-                  onChange={v => toggleDashWidget('needsme', v)}
-                />
+              <VsRow title="Needs my review" desc="Pull requests waiting on you">
+                <PlToggle checked={!(tweaks.hiddenDashWidgets || []).includes('needsme')} onChange={v => toggleDashWidget('needsme', v)}/>
               </VsRow>
-              {[['mywork', 'Assigned to me', 'Your open work items'], ['builds', 'Builds widget', 'Latest pipeline runs'], ['tests', 'Test runs widget', 'Latest test runs']]
-                .filter(([id]) => !offScreens.includes(id))
-                .map(([id, title, desc]) => (
-                  <VsRow key={id} title={title} desc={`${desc} on the home page`}>
-                    <PlToggle checked={!(tweaks.hiddenDashWidgets || []).includes(id)} onChange={v => toggleDashWidget(id, v)}/>
-                  </VsRow>
-                ))}
-              {PAGE_WIDGETS.filter(w => !offScreens.includes(w.page) && (w.id !== 'markdown' || tweaks.showMarkdown !== false)).map(w => (
-                <VsRow key={w.id} title={`${w.title} widget`} desc={`${w.desc} on the home page`}>
-                  <PlToggle checked={!(tweaks.hiddenDashWidgets || []).includes(w.id)} onChange={v => toggleDashWidget(w.id, v)}/>
-                </VsRow>
-              ))}
-              <VsRow title="Recent activity" desc="Show the team activity feed on the home page">
-                <PlToggle
-                  checked={!(tweaks.hiddenDashWidgets || []).includes('activity')}
-                  onChange={v => toggleDashWidget('activity', v)}
-                />
+              <VsRow title="Recent activity" desc="Team feed">
+                <PlToggle checked={!(tweaks.hiddenDashWidgets || []).includes('activity')} onChange={v => toggleDashWidget('activity', v)}/>
               </VsRow>
             </VsCard>
             {onMoveNav && <NavOrderCard groups={navGroups} onMove={onMoveNav} onPlace={onPlaceNav} onReset={onResetNav}/>}

@@ -9,6 +9,7 @@ import { pickerAdapter } from './adapters/picker.js';
 import { createSafApi, createEditorApi, safAvailable } from './adapters/editor-saf.js';
 import { getProfileKey } from './profile-keys.js';
 import { Icon } from './icons.jsx';
+import { toast } from './toast.jsx';
 import { Sheet } from './components.jsx';
 
 const storage = {
@@ -45,9 +46,12 @@ function DesktopEditorScreen() {
     if (!n) return;
     // Inside the open folder, or the workspace when none is open.
     const path = `${s.folder || WORKSPACE_ROOT}/${n.split(/[\\/]/).join('_')}`;
-    const r = await editorApi.write(path, '', { overwrite: false });
-    // An existing file of that name is simply opened.
-    if (r?.ok || r?.conflict) { setName(''); editorStore.openPath(path); }
+    try {
+      const r = await editorApi.write(path, '', { overwrite: false });
+      // An existing file of that name is simply opened.
+      if (r?.ok || r?.conflict) { setName(''); editorStore.openPath(path); }
+      else toast('Could not create the file.', 'error');
+    } catch (e) { toast(`Could not create the file. ${e?.message || ''}`.trim(), 'error'); }
   };
 
   return (
@@ -95,10 +99,13 @@ function PhoneEditorScreen({ onFlash }) {
     if (!n) return setNameError('Enter a name.');
     if (BAD_NAME.test(n)) return setNameError('A name cannot contain \\ / : * ? " < > |');
     const path = `${dir}/${n}`;
-    const r = await editorApi.write(path, '', { overwrite: false });
-    if (r?.conflict) return setNameError('A file with that name is already here.');
-    setSheet(false); setName(''); setNameError('');
-    editorStore.openPath(path);
+    try {
+      const r = await editorApi.write(path, '', { overwrite: false });
+      if (r?.conflict) return setNameError('A file with that name is already here.');
+      if (r && r.ok === false) return setNameError('Could not create the file.');
+      setSheet(false); setName(''); setNameError('');
+      editorStore.openPath(path);
+    } catch (e) { setNameError(e?.message || 'Could not create the file.'); }
   };
   const importFile = async () => {
     try {
@@ -108,7 +115,7 @@ function PhoneEditorScreen({ onFlash }) {
   };
   const share = async () => {
     try { await navigator.share({ title: active.name, text: active.text }); }
-    catch { onFlash?.('Sharing is not available here'); }
+    catch (e) { if (e?.name !== 'AbortError') onFlash?.('Sharing is not available here'); }
   };
 
   if (active) {

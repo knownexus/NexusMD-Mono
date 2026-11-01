@@ -3,12 +3,14 @@
 import React from 'react';
 import { useDocumentAutosave, typeOf } from '@nexusmd/ui';
 import { Icon } from '../icons.jsx';
+import { toast } from '../toast.jsx';
 import { ToolFrame, DocsSheet } from './docs-frame.jsx';
 import { JsonNodeSheet } from './json-node-sheet.jsx';
 import { searchPaths, pathKey, isContainer } from '../json-tree.js';
 
 const { useState, useMemo, useEffect } = React;
-const copy = (text) => navigator.clipboard?.writeText(text).catch(() => {});
+const copy = (text) => (navigator.clipboard?.writeText(text) ?? Promise.reject(new Error('Copying is not available here.')))
+  .then(() => toast('Copied', 'success'), (e) => toast(`Could not copy. ${e?.message || ''}`.trim(), 'error'));
 
 // Opens the most recently edited saved document on first show, so the tool resumes where it was left.
 function useResume(docs, currentDocId, openDoc) {
