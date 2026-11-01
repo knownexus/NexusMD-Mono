@@ -31,20 +31,25 @@ export async function loadAdoData(
   const { org, projects: cfgProjects = [], testProject, uatBranch = '', refreshSecs = 30 } = config
   const testProj = testProject || cfgProjects[0] || ''
 
-  async function get(path) {
-    const res = await http.fetch(path, { method: 'GET' })
-    if (!res.ok) throw new Error(`ADO GET ${path} → ${res.status}`)
-    return res.json()
+  // Most requests below are allowed to fail on their own (the page shows what it has), so count them: a load
+  // where every request failed (the phone just woke up with no network yet) must not replace good data.
+  let reqOk = 0
+  let reqFailed = 0
+  let lastError = null
+  async function send(path, init) {
+    try {
+      const res = await http.fetch(path, init)
+      if (!res.ok) throw new Error(`ADO ${init.method} ${path} → ${res.status}`)
+      reqOk++
+      return res.json()
+    } catch (e) { reqFailed++; lastError = e; throw e }
   }
-  async function post(path, body) {
-    const res = await http.fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) throw new Error(`ADO POST ${path} → ${res.status}`)
-    return res.json()
-  }
+  const get = (path) => send(path, { method: 'GET' })
+  const post = (path, body) => send(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 
   // ── Parallel fetches ───────────────────────────────────────────────────────
   const meP = !isRefresh
@@ -346,6 +351,8 @@ export async function loadAdoData(
   const avgResolutionDays = summaryResult?.avgResolutionDays ?? null
 
   // ── Assemble ──────────────────────────────────────────────────────────────
+  if (reqFailed > 0 && reqOk === 0) throw lastError || new Error('Azure DevOps could not be reached')
+
   const data = {
     ORG: org,
     TEAM: helmTeam.length > 0 ? helmTeam : (priorData?.TEAM || []),

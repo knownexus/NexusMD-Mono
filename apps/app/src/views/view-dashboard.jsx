@@ -3,18 +3,18 @@ import { useState, useEffect } from 'react';
 import { Icon } from '../icons.jsx';
 import { effectiveNeedsMe } from '../components.jsx';
 import { HelmData, HelmApi } from '../data.jsx';
+import { refreshNow } from '../refresh.js';
 import { appQueue } from '../offline-queue-app.js';
 import { PullRefresh } from '../pull-refresh.jsx';
 import { syncLabel, offlineText } from '../sync-status.js';
-import { PageWidgets } from './dashboard-page-widgets.jsx';
-import { PrWidget, LatestBuild, LatestTest } from './dashboard-interactive-widgets.jsx';
+import { WidgetHost, WidgetSheet, newWidgetsAfterSave } from './home-widgets.jsx';
 
 // Jira ids are stored as 'jira:TFP-123'; show the key.
 const shortId = (id) => String(id).replace(/^jira:/, '');
 
 function DashboardView({
   onOpenItem, onOpenPR, quickLinks, team = [], acknowledgedSet,
-  needsMeCriteria, device, hiddenDashWidgets = [], offScreens = [], calendarEvents = [], plannerData = {}, showMarkdown = true,
+  needsMeCriteria, device, hiddenDashWidgets = [], offScreens = [], calendarEvents = [], plannerData = {}, homeWidgets = [], setHomeWidgets,
 }) {
   const wi      = HelmData?.WORK_ITEMS || [];
   const prs     = HelmData?.PRS || [];
@@ -37,15 +37,9 @@ function DashboardView({
   const blockers   = wi.filter(w => /blocked/i.test(w.state)).slice(0, 5);
   const needsMePrs = prs.filter(p => effectiveNeedsMe(p, needsMeCriteria)).slice(0, 4);
   const recentAct  = activity.slice(0, 8);
-  const meId = HelmData?.ME?.id;
-  const myAll = wi.filter(w => meId && w.assignee === meId && !isTerminalState(w.state));
-  const myWork = myAll.slice(0, 5), myWorkCount = myAll.length;
-  const showBuilds = !offScreens.includes('builds'), showTests = !offScreens.includes('tests');
-  const recentBuilds = builds.slice(0, 5);
-  const recentTests = (HelmData?.TESTS || []).slice(0, 5);
-
   // Tiles drill down in place; null shows the default Blockers / Needs-review cards.
   const [drill, setDrill] = useState(null);
+  const [widgetSheet, setWidgetSheet] = useState(null);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine !== false);
   // Changes kept for later, and a clock so "Updated 2m ago" keeps moving.
   const [pending, setPending] = useState(() => appQueue.count());
@@ -89,7 +83,7 @@ function DashboardView({
         <div className="m-ab-actions">
           {sprint.daysLeft > 0 && <span className="m-daysleft">{sprint.daysLeft} days left</span>}
           <button type="button" className="m-iconbtn" title="Refresh"
-            onClick={() => HelmApi?.load().catch(() => {})}>
+            onClick={refreshNow}>
             <Icon name="refresh" size={18}/>
           </button>
         </div>
@@ -102,7 +96,7 @@ function DashboardView({
         </div>
       )}
 
-      <PullRefresh onRefresh={() => HelmApi?.load()}>
+      <PullRefresh onRefresh={refreshNow}>
         {/* Stat tiles */}
         <div className="m-stats"
           style={device === 'tablet' ? { gridTemplateColumns: 'repeat(4,1fr)' } : {}}>
@@ -229,22 +223,22 @@ function DashboardView({
           </div>
         )}
 
-        {/* My work */}
-        {myWork.length > 0 && !hiddenDashWidgets.includes('mywork') && (
+        {/* PRs needing review */}
+        {needsMePrs.length > 0 && !hiddenDashWidgets.includes('needsme') && (
           <div className="m-card" style={{ marginBottom: 12 }}>
             <div className="m-card-h">
-              <span className="ic"><Icon name="work" size={15}/></span>
-              <h3>Assigned to me</h3>
-              <span className="meta">{myWorkCount}</span>
+              <span className="ic"><Icon name="pr" size={15}/></span>
+              <h3>Needs my review</h3>
+              <span className="meta">{needsMeCount}</span>
             </div>
             <div className="m-card-body flush">
-              {myWork.map(item => (
-                <div key={item.id} className="m-row" onClick={() => onOpenItem(item)}>
+              {needsMePrs.map(pr => (
+                <div key={pr.id} className="m-row" onClick={() => onOpenPR(pr)}>
                   <div className="m-row-main">
-                    <div className="m-row-title">{item.title}</div>
+                    <div className="m-row-title">{pr.title}</div>
                     <div className="m-row-meta">
-                      <span className="m-id">#{item.displayId || shortId(item.id)}</span>
-                      {item.state && <span className="m-id">{item.state}</span>}
+                      <span className="m-id">{pr.repo}</span>
+                      {pr.age && <span className="m-id">{pr.age}</span>}
                     </div>
                   </div>
                   <Icon name="chevron-right" size={16} className="chev"/>
@@ -252,59 +246,6 @@ function DashboardView({
               ))}
             </div>
           </div>
-        )}
-
-        {/* Builds */}
-        {showBuilds && recentBuilds.length > 0 && !hiddenDashWidgets.includes('builds') && (
-          <div className="m-card" style={{ marginBottom: 12 }}>
-            <div className="m-card-h">
-              <span className="ic"><Icon name="build" size={15}/></span>
-              <h3>Builds</h3>
-              <button type="button" className="m-linkbtn" onClick={() => navTo('builds')}>See all</button>
-            </div>
-            <div className="m-card-body flush">
-              <LatestBuild build={recentBuilds[0]} navTo={navTo}/>
-              {recentBuilds.slice(1).map(b => (
-                <div key={b.id} className="m-row" onClick={() => navTo('builds')}>
-                  <div className="m-row-main">
-                    <div className="m-row-title">{b.pipeline || 'Pipeline'}</div>
-                    <div className="m-row-meta">
-                      <span className="m-id" style={{ color: b.status === 'failed' ? 'var(--danger)' : b.status === 'success' ? 'var(--success)' : undefined }}>{b.status}</span>
-                      {b.branch && <span className="m-id">{String(b.branch).replace(/^refs\/heads\//, '')}</span>}
-                    </div>
-                  </div>
-                  <Icon name="chevron-right" size={16} className="chev"/>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Tests */}
-        {showTests && recentTests.length > 0 && !hiddenDashWidgets.includes('tests') && (
-          <div className="m-card" style={{ marginBottom: 12 }}>
-            <div className="m-card-h">
-              <span className="ic"><Icon name="check-circle" size={15}/></span>
-              <h3>Test runs</h3>
-              <button type="button" className="m-linkbtn" onClick={() => navTo('tests')}>See all</button>
-            </div>
-            <div className="m-card-body flush">
-              <LatestTest run={recentTests[0]} navTo={navTo}/>
-              {recentTests.slice(1).map((t, i) => (
-                <div key={t.id || i} className="m-row" onClick={() => navTo('tests')}>
-                  <div className="m-row-main">
-                    <div className="m-row-title">{t.name || t.title || t.pipeline || 'Test run'}</div>
-                    <div className="m-row-meta"><span className="m-id">{t.result || t.status || ''}</span></div>
-                  </div>
-                  <Icon name="chevron-right" size={16} className="chev"/>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!hiddenDashWidgets.includes('needsme') && !offScreens.includes('pr') && (
-          <PrWidget prs={prs} needsMe={p => effectiveNeedsMe(p, needsMeCriteria)} onOpenPR={onOpenPR} navTo={navTo}/>
         )}
 
         {/* Recent activity */}
@@ -333,7 +274,15 @@ function DashboardView({
           </div>
         )}
 
-        <PageWidgets hidden={hiddenDashWidgets} offScreens={offScreens} calendarEvents={calendarEvents} plannerData={plannerData} team={team} navTo={navTo} showMarkdown={showMarkdown}/>
+        {/* Optional widgets, added from the menu */}
+        <WidgetHost widgets={homeWidgets} offScreens={offScreens} onEdit={w => setWidgetSheet({ widget: w })}
+          ctx={{ navTo, onOpenPR, onOpenItem, team, calendarEvents, plannerData, isTerminalState, needsMe: p => effectiveNeedsMe(p, needsMeCriteria) }}/>
+        <button type="button" className="btn m-btn-lg" style={{ width: '100%', justifyContent: 'center', marginBottom: 12 }}
+          onClick={() => setWidgetSheet({ widget: null })}><Icon name="plus" size={14}/> Add widget</button>
+        <WidgetSheet open={!!widgetSheet} widget={widgetSheet?.widget || null} offScreens={offScreens}
+          onClose={() => setWidgetSheet(null)}
+          onSave={w => { setHomeWidgets?.(newWidgetsAfterSave(homeWidgets, w)); setWidgetSheet(null); }}
+          onRemove={w => { setHomeWidgets?.(homeWidgets.filter(x => x.id !== w.id)); setWidgetSheet(null); }}/>
 
         {/* Empty state */}
         {openCount === 0 && blockers.length === 0 && needsMePrs.length === 0 && (

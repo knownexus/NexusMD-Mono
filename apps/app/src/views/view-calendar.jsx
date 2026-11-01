@@ -127,7 +127,7 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
   }, [calView, offset, googleTick]);
 
   const handleConnect    = async () => { try { const a=await OutlookService.signIn(); setOutlookConnected(true); setOutlookDisplayName(a.name||a.username); } catch(e){ setOutlookError(e.message); } };
-  const handleDisconnect = async () => { await OutlookService.signOut(); setOutlookConnected(false); setOutlookDisplayName(null); setOutlookEvents([]); };
+  const handleDisconnect = async () => { try { await OutlookService.signOut(); setOutlookConnected(false); setOutlookDisplayName(null); setOutlookEvents([]); } catch(e){ setOutlookError(e.message || 'Could not sign out.'); } };
 
   const allEvents = useMemoCal(() => {
     const local = (calendarEvents||[]).map(ev=>({source:'local',...ev}));

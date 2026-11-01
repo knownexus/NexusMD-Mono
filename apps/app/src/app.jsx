@@ -3,6 +3,7 @@ import { Icon } from './icons.jsx';
 import ReactDOM from 'react-dom/client';
 import { adoGet, adoPost, adoPatch, adoPut, getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js';
 import { toast } from './toast.jsx';
+import { refreshNow } from './refresh.js';
 import { helmPushPref, effectiveNeedsMe, Flash, Sheet } from './components.jsx';
 import { getIsoYearWeek, getMondayOfDate, getYearWeekForOffset } from '@nexusmd/core';
 import { HelmData, HelmApi } from './data.jsx';
@@ -80,7 +81,8 @@ const DEFAULT_TWEAKS = /*EDITMODE-BEGIN*/{
   "quickLinks": [],
   "showMarkdown": true,
   "hiddenDashWidgets": [],
-  "navPlacement": {}
+  "navPlacement": {},
+  "homeWidgets": []
 }/*EDITMODE-END*/;
 
 const adoHttp = createAdoHttpAdapter();
@@ -573,21 +575,29 @@ function AppShell() {
   })();
   const [tweaks, setTweak] = useTweaks(storedTweaks);
 
+  // ── Mobile device detection ───────────────────────────────────────────────
+  const [isPhone, setIsPhone] = useState(() => window.matchMedia('(max-width:600px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width:600px)');
+    const handler = e => setIsPhone(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  const device = isPhone ? 'phone' : 'tablet';
+
   const offScreens = useOffScreens();
   const typeTabs = tabsForType(activeProfile?.type || 'ado');
   // Each group keeps its place (bottom bar / More); the order inside it is the user's (Settings > Appearance).
-  const placed = placeTabs(typeTabs.primary, typeTabs.secondary, tweaks.navPlacement);
+  const placed = placeTabs(typeTabs.primary, typeTabs.secondary, tweaks.navPlacement, { tablet: device === 'tablet', defaultFooter: ['builds', 'tests', 'team', 'time', 'settings', 'markdown'] });
   const allPrimary = orderTabs(placed.primary, tweaks.navOrder);
   const allSecondary = orderTabs(placed.secondary, tweaks.navOrder);
+  const allFooter = orderTabs(placed.footer, tweaks.navOrder);
   const primaryTabs = allPrimary.filter(t => !offScreens.includes(t.id));
   const secondaryTabs = allSecondary.filter(t => !offScreens.includes(t.id));
   const visibleSecondaryTabs = secondaryTabs.filter(t =>
     t.id !== 'markdown' || tweaks.showMarkdown !== false
   );
-  const RAIL_PINNED = visibleSecondaryTabs.filter(t =>
-    ['builds', 'tests', 'team', 'time', 'settings'].includes(t.id) ||
-    (t.id === 'markdown' && tweaks.showMarkdown !== false)
-  );
+  const RAIL_PINNED = allFooter.filter(t => !offScreens.includes(t.id) && (t.id !== 'markdown' || tweaks.showMarkdown !== false));
 
   // Sync render-time globals so child components can read them without prop drilling
   window.helmTypeLabels = tweaks.typeLabels || false;
@@ -641,16 +651,6 @@ function AppShell() {
   const [dataLoaded, setDataLoaded]     = useState(HelmData.loaded);
   const [autoRefreshPaused, setAutoRefreshPaused] = useState(false);
   const [autoRefreshLeft, setAutoRefreshLeft] = useState(HelmData.REFRESH_SECS || 30);
-
-  // ── Mobile device detection ───────────────────────────────────────────────
-  const [isPhone, setIsPhone] = useState(() => window.matchMedia('(max-width:600px)').matches);
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width:600px)');
-    const handler = e => setIsPhone(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-  const device = isPhone ? 'phone' : 'tablet';
 
   // ── Flash toast state (mobile) ────────────────────────────────────────────
   const [mobileFlash, setMobileFlash] = useState(null);
@@ -796,7 +796,7 @@ function AppShell() {
   // After settings saved → reload live data
   const handleSettingsSaved = useCallback(() => {
     setDataLoaded(false);
-    HelmApi?.load().catch(() => {});
+    refreshNow();
   }, []);
 
   const addTeamNote = React.useCallback(async (dev, text) => {
@@ -1152,7 +1152,8 @@ function AppShell() {
         widgetWidths={tweaks.widgetWidths || {}} setWidgetWidths={ww => setTweak('widgetWidths', ww)}
         widgetHeights={tweaks.widgetHeights || {}} setWidgetHeights={wh => setTweak('widgetHeights', wh)}
         hiddenDashWidgets={tweaks.hiddenDashWidgets || []} offScreens={offScreens}
-        calendarEvents={calendarEvents} plannerData={plannerData} showMarkdown={tweaks.showMarkdown !== false}
+        calendarEvents={calendarEvents} plannerData={plannerData}
+        homeWidgets={tweaks.homeWidgets || []} setHomeWidgets={w => setTweak('homeWidgets', w)}
         device={device} onFlash={showFlash}/>;
       case 'work': return <WorkItemsView items={workItems} setItems={setWorkItems}
         onOpen={openWI} onCreate={() => { setCreatePrefill(null); setCreateOpen(true); }}
@@ -1186,8 +1187,10 @@ function AppShell() {
       case 'git': return <GitView onFlash={showFlash}/>;
       case 'api': return withBar('API Client', <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>);
       case 'settings': return <SettingsView tweaks={tweaks} setTweak={setTweak}
-        navGroups={[{ id: 'main', title: device === 'phone' ? 'Bottom bar' : 'Sidebar', tabs: primaryTabs }, { id: 'more', title: device === 'phone' ? 'More menu' : 'More and sidebar footer', tabs: visibleSecondaryTabs }]}
-        onMoveNav={(groupId, id, dir) => setTweak('navOrder', moveTab(tweaks.navOrder, groupId === 'main' ? primaryTabs : visibleSecondaryTabs, id, dir))}
+        navGroups={[{ id: 'main', title: device === 'phone' ? 'Bottom bar' : 'Sidebar', short: device === 'phone' ? 'the bar' : 'the sidebar', tabs: primaryTabs },
+          ...(device === 'phone' ? [] : [{ id: 'footer', title: 'Sidebar footer', short: 'the footer', tabs: RAIL_PINNED }]),
+          { id: 'more', title: 'More menu', short: 'More', tabs: visibleSecondaryTabs }]}
+        onMoveNav={(groupId, id, dir) => setTweak('navOrder', moveTab(tweaks.navOrder, groupId === 'main' ? primaryTabs : groupId === 'footer' ? RAIL_PINNED : visibleSecondaryTabs, id, dir))}
         onPlaceNav={(id, where) => setTweak('navPlacement', { ...(tweaks.navPlacement || {}), [id]: where })}
         onResetNav={() => { setTweak('navOrder', []); setTweak('navPlacement', {}); }}
         onOpenConnection={() => setSettingsOpen(true)}

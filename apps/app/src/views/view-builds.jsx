@@ -2,10 +2,11 @@ import React from 'react';
 import { Icon } from '../icons.jsx';
 import { adoGet, adoPost, adoPatch, getAdoConfig } from '../ado-client.js';
 import { toast } from '../toast.jsx';
+import { refreshNow } from '../refresh.js';
 import { HelmData } from '../data.jsx';
 import { ColHead } from '@nexusmd/ui';
 import { useSourceFilter, SourceSwitch } from '../source-switch.jsx';
-import { NotificationBanner } from '../components.jsx';
+import { NotificationBanner, Sheet } from '../components.jsx';
 import { BuildArtifactsSheet } from './build-artifacts-sheet.jsx';
 // view-builds.jsx — Build pipelines status view
 
@@ -36,13 +37,59 @@ function usePhone() {
   return phone;
 }
 
+// The build statuses the Status menu can pick between.
+const STATUS_OPTS = [['success', 'Passed', 'var(--success)'], ['failed', 'Failed', 'var(--danger)'], ['acknowledged', 'Acknowledged', 'var(--warning)'],
+  ['partial', 'Partial', 'var(--warning)'], ['running', 'Running', 'var(--info)'], ['cancelled', 'Cancelled', 'var(--text-muted)']];
+
+// A button with a menu under it. The menu is fixed to the window, so the table's scroll box cannot clip it, and it
+// closes on an outside tap, Escape, or scrolling the page.
+function DropMenu({ label, icon, active, badge, align = 'left', children }) {
+  const [open, setOpen] = React.useState(false);
+  const [pos, setPos] = React.useState(null);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (!e || !ref.current || !ref.current.contains(e.target)) setOpen(false); };
+    const key = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); document.removeEventListener('keydown', key); };
+  }, [open]);
+  const toggle = () => {
+    if (!open) {
+      const r = ref.current.getBoundingClientRect();
+      const width = Math.min(300, window.innerWidth - 16);
+      const left = Math.max(8, Math.min(align === 'right' ? r.right - width : r.left, window.innerWidth - width - 8));
+      setPos({ left, top: r.bottom + 4, width, maxHeight: Math.max(160, window.innerHeight - r.bottom - 16) });
+    }
+    setOpen(o => !o);
+  };
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button type="button" className="btn sm ghost" aria-haspopup="true" aria-expanded={open} onClick={toggle} style={active ? { color: 'var(--accent)' } : undefined}>
+        {icon && <Icon name={icon} size={12}/>} {label}
+        {badge != null && <span style={{ marginLeft: 4, fontSize: 10.5, fontWeight: 600 }}>{badge}</span>}
+        <Icon name="arrow-right" size={10} style={{ transform: 'rotate(90deg)', opacity: 0.5, marginLeft: 2 }}/>
+      </button>
+      {open && pos && (
+        <div role="menu" style={{ position: 'fixed', left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight, overflowY: 'auto', zIndex: 300,
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: '6px 0' }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuilds, newItemIds = new Set() }) {
   const src = useSourceFilter('builds', allBuilds);
   const builds = src.filtered;
   const [initialNewCount] = React.useState(() => newItemIds.size);
   const [bannerDismissed, setBannerDismissed] = React.useState(false);
   const [collapsed,        setCollapsed]        = usePersisted('helm.builds.collapsed', {});
-  const [resultFilter,     setResultFilter]     = usePersisted('helm.builds.resultFilter', 'all');
+  const [statuses,         setStatuses]         = usePersisted('helm.builds.statuses', []);
   const [sortDir,          setSortDir]          = usePersisted('helm.builds.sortDir', 'desc');
   const [hiddenCols,      setHiddenCols]      = usePersisted('helm.builds.hiddenCols', []);
   const [colOrderSaved, setColOrder] = usePersisted('helm.builds.colOrder', []);
@@ -58,10 +105,10 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
   const colPos = (id) => 1 + colOrder.filter(x => !hiddenCols.includes(x)).indexOf(id);
   const W = ({ id, children }) => (phone ? children : <div style={{ order: colPos(id), minWidth: 0 }}>{children}</div>);
   const [hiddenPipelines,  setHiddenPipelines]  = usePersisted('helm.builds.hiddenPipelines', [], { sync: true });
-  const [pipelineMenuOpen, setPipelineMenuOpen] = React.useState(false);
   const [deployStatus,     setDeployStatus]     = React.useState(null);
   const [actioning,        setActioning]        = React.useState(new Set());
   const [artifactBuild,    setArtifactBuild]    = React.useState(null);
+  const [detailBuild,      setDetailBuild]      = React.useState(null);
   const phone = usePhone();
 
   const acknowledgedSet = React.useMemo(() => new Set(acknowledgedBuilds || []), [acknowledgedBuilds]);
@@ -69,19 +116,6 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
     prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
   );
   const dispStatus = (b) => (b.status === 'failed' && acknowledgedSet.has(b.id)) ? 'acknowledged' : b.status;
-  const pipelineMenuRef = React.useRef(null);
-
-  // Close pipeline menu on outside click
-  React.useEffect(() => {
-    if (!pipelineMenuOpen) return;
-    const onDoc = e => {
-      if (pipelineMenuRef.current && !pipelineMenuRef.current.contains(e.target))
-        setPipelineMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [pipelineMenuOpen]);
-
   const deployToUat = async () => {
     if (!confirm('Trigger a UAT deployment? This will queue the configured UAT pipeline in Azure DevOps.')) return;
     setDeployStatus('deploying');
@@ -170,23 +204,15 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
 
   // ── Filter + sort ───────────────────────────────────────────
   const filteredBuilds = React.useMemo(() => {
-    let list;
-    if (resultFilter === 'all') {
-      list = builds;
-    } else if (resultFilter === 'acknowledged') {
-      list = builds.filter(b => b.status === 'failed' && acknowledgedSet.has(b.id));
-    } else if (resultFilter === 'failed') {
-      list = builds.filter(b => b.status === 'failed' && !acknowledgedSet.has(b.id));
-    } else {
-      list = builds.filter(b => b.status === resultFilter);
-    }
+    const kindOf = (b) => (b.status === 'failed' ? (acknowledgedSet.has(b.id) ? 'acknowledged' : 'failed') : b.status);
+    let list = statuses.length ? builds.filter(b => statuses.includes(kindOf(b))) : builds;
     list = list.filter(b => !hiddenSet.has(b.pipeline || 'Pipeline'));
     return [...list].sort((a, b) => {
       const da = a.finishTime ? new Date(a.finishTime).getTime() : 0;
       const db = b.finishTime ? new Date(b.finishTime).getTime() : 0;
       return sortDir === 'desc' ? db - da : da - db;
     });
-  }, [builds, resultFilter, hiddenSet, sortDir, acknowledgedSet]);
+  }, [builds, statuses, hiddenSet, sortDir, acknowledgedSet]);
 
   // ── Group by pipeline ───────────────────────────────────────
   const grouped = React.useMemo(() => {
@@ -228,7 +254,7 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
             <Icon name={deployStatus === 'ok' ? 'check' : deployStatus === 'err' ? 'x' : 'send'} size={13}/>
             {deployStatus === 'deploying' ? ' Deploying…' : deployStatus === 'ok' ? ' Queued!' : deployStatus === 'err' ? ' Failed' : ' Deploy to UAT'}
           </button>
-          <button type="button" className="btn sm ghost"><Icon name="refresh" size={13}/> Refresh</button>
+          <button type="button" className="btn sm ghost" onClick={refreshNow}><Icon name="refresh" size={13}/> Refresh</button>
         </div>
       </div>
 
@@ -252,70 +278,27 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
       <div style={{ overflowX:'auto' }}>
       <div className="card m-bld-card">
         <div className="card-head" style={{ flexWrap:'wrap', gap:6 }}>
-          {/* Result filters */}
-          <FilterChip active={resultFilter === 'all'}     count={resultCounts.all}     onClick={() => setResultFilter('all')}>All</FilterChip>
-          <FilterChip active={resultFilter === 'success'} count={resultCounts.success} onClick={() => setResultFilter('success')}
-            icon={<span style={{ width:6, height:6, borderRadius:'50%', background:'var(--success)' }}/>}>Passed</FilterChip>
-          <FilterChip active={resultFilter === 'failed'}  count={resultCounts.failed}  onClick={() => setResultFilter('failed')}
-            icon={<span style={{ width:6, height:6, borderRadius:'50%', background:'var(--danger)' }}/>}>Failed</FilterChip>
-          <FilterChip active={resultFilter === 'acknowledged'} count={resultCounts.acknowledged} onClick={() => setResultFilter('acknowledged')}
-            icon={<span style={{ width:6, height:6, borderRadius:'50%', background:'var(--warning)' }}/>}>Acknowledged</FilterChip>
-          <FilterChip active={resultFilter === 'partial'} count={resultCounts.partial} onClick={() => setResultFilter('partial')}
-            icon={<span style={{ width:6, height:6, borderRadius:'50%', background:'var(--warning)' }}/>}>Partial</FilterChip>
-          <FilterChip active={resultFilter === 'running'} count={resultCounts.running} onClick={() => setResultFilter('running')}
-            icon={<span style={{ width:6, height:6, borderRadius:'50%', background:'var(--info)' }}/>}>Running</FilterChip>
-          <FilterChip active={resultFilter === 'cancelled'} count={resultCounts.cancelled} onClick={() => setResultFilter('cancelled')}
-            icon={<span style={{ width:6, height:6, borderRadius:'50%', background:'var(--text-muted)' }}/>}>Cancelled</FilterChip>
+          {/* Status filter */}
+          <DropMenu label={statuses.length === 0 ? 'All statuses' : statuses.length === 1 ? STATUS_OPTS.find(o => o[0] === statuses[0])[1] : `${statuses.length} statuses`}
+            icon="filter" active={statuses.length > 0} badge={resultCounts.all}>
+            <label style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 12px', cursor:'pointer', userSelect:'none' }}>
+              <input type="checkbox" checked={statuses.length === 0} style={{ accentColor:'var(--accent)' }} onChange={() => setStatuses([])}/>
+              <span style={{ flex:1, fontSize:12.5, fontWeight:600 }}>All</span>
+              <span className="muted" style={{ fontSize:11.5 }}>{resultCounts.all}</span>
+            </label>
+            {STATUS_OPTS.map(([id, text, color]) => (
+              <label key={id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 12px', cursor:'pointer', userSelect:'none' }}>
+                <input type="checkbox" checked={statuses.includes(id)} style={{ accentColor:'var(--accent)' }}
+                  onChange={() => setStatuses(st => (st.includes(id) ? st.filter(x => x !== id) : [...st, id]))}/>
+                <span style={{ width:6, height:6, borderRadius:'50%', background:color }}/>
+                <span style={{ flex:1, fontSize:12.5 }}>{text}</span>
+                <span className="muted" style={{ fontSize:11.5 }}>{resultCounts[id] ?? 0}</span>
+              </label>
+            ))}
+          </DropMenu>
 
-          <details style={{ position:'relative' }}>
-            <summary className="btn sm ghost" style={{ listStyle:'none', cursor:'pointer', ...(hiddenCols.length ? { color:'var(--accent)' } : {}) }}>
-              <Icon name="filter" size={12}/> Columns <span style={{ fontSize:10.5, marginLeft:4 }}>{COLS.length - hiddenCols.length}/{COLS.length}</span>
-            </summary>
-            <div style={{ position:'absolute', right:0, top:'110%', zIndex:60, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, boxShadow:'var(--shadow-pop)', padding:'6px 0', minWidth:180 }}>
-              {colOrder.map((id, i) => (
-                <div key={id} style={{ display:'flex', alignItems:'center', gap:4, padding:'2px 8px 2px 12px' }}>
-                  <label style={{ display:'flex', alignItems:'center', gap:8, flex:1, padding:'4px 0', cursor:'pointer', userSelect:'none' }}>
-                    <input type="checkbox" checked={col(id)} style={{ accentColor:'var(--accent)' }}
-                      onChange={() => setHiddenCols(h => h.includes(id) ? h.filter(x => x !== id) : [...h, id])}/>
-                    <span style={{ fontSize:12.5 }}>{COLS.find(c => c[0] === id)[1]}</span>
-                  </label>
-                  <button type="button" className="btn sm ghost" aria-label={`Move ${COLS.find(c => c[0] === id)[1]} left`} disabled={i === 0} onClick={() => moveCol(id, -1)}><Icon name="arrow-up" size={12}/></button>
-                  <button type="button" className="btn sm ghost" aria-label={`Move ${COLS.find(c => c[0] === id)[1]} right`} disabled={i === colOrder.length - 1} onClick={() => moveCol(id, 1)}><Icon name="arrow-down" size={12}/></button>
-                </div>
-              ))}
-            </div>
-          </details>
-
-          <div style={{ width:1, height:16, background:'var(--border)', margin:'0 2px' }}/>
-          {(() => {
-            const allCollapsed = grouped.length > 0 && grouped.every(g => collapsed[g.name]);
-            return (
-              <button className="btn sm ghost" onClick={() => {
-                if (allCollapsed) { setCollapsed({}); return; }
-                const n = {}; grouped.forEach(g => { n[g.name] = true; }); setCollapsed(n);
-              }}><Icon name={allCollapsed ? 'chevron-down' : 'chevron-right'} size={12}/> {allCollapsed ? 'Expand all' : 'Collapse all'}</button>
-            );
-          })()}
           {/* Pipeline visibility */}
-          <div style={{ position:'relative' }} ref={pipelineMenuRef}>
-            <button className="btn sm ghost" onClick={() => setPipelineMenuOpen(o => !o)}
-              style={hiddenPipelines.length > 0 ? { color:'var(--accent)' } : {}}>
-              <Icon name="filter" size={12}/> Pipelines
-              <span style={{
-                marginLeft:4, fontSize:10.5, fontWeight:600,
-                color: hiddenPipelines.length > 0 ? 'var(--accent)' : 'var(--text-subtle)',
-              }}>
-                {visibleCount}/{allPipelines.length}
-              </span>
-              <Icon name="arrow-right" size={10} style={{ transform:'rotate(90deg)', opacity:0.5, marginLeft:2 }}/>
-            </button>
-            {pipelineMenuOpen && (
-              <div style={{
-                position:'absolute', right:0, top:'110%', zIndex:60,
-                background:'var(--surface)', border:'1px solid var(--border)',
-                borderRadius:10, boxShadow:'var(--shadow-pop)',
-                padding:'6px 0', minWidth:220, maxHeight:320, overflowY:'auto',
-              }}>
+          <DropMenu label="Pipelines" icon="filter" active={hiddenPipelines.length > 0} badge={`${visibleCount}/${allPipelines.length}`}>
                 {/* Select all / none */}
                 <div style={{
                   display:'flex', gap:6, padding:'4px 12px 8px',
@@ -352,9 +335,33 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                     </label>
                   );
                 })}
+          </DropMenu>
+
+          {/* Columns */}
+          <DropMenu label="Columns" icon="filter" active={hiddenCols.length > 0} badge={`${COLS.length - hiddenCols.filter(h => COLS.some(c => c[0] === h)).length}/${COLS.length}`} align="right">
+            {colOrder.map((id, i) => (
+              <div key={id} style={{ display:'flex', alignItems:'center', gap:4, padding:'2px 8px 2px 12px' }}>
+                <label style={{ display:'flex', alignItems:'center', gap:8, flex:1, padding:'4px 0', cursor:'pointer', userSelect:'none' }}>
+                  <input type="checkbox" checked={col(id)} style={{ accentColor:'var(--accent)' }}
+                    onChange={() => setHiddenCols(h => h.includes(id) ? h.filter(x => x !== id) : [...h, id])}/>
+                  <span style={{ fontSize:12.5 }}>{COLS.find(c => c[0] === id)[1]}</span>
+                </label>
+                <button type="button" className="btn sm ghost" aria-label={`Move ${COLS.find(c => c[0] === id)[1]} left`} disabled={i === 0} onClick={() => moveCol(id, -1)}><Icon name="arrow-up" size={12}/></button>
+                <button type="button" className="btn sm ghost" aria-label={`Move ${COLS.find(c => c[0] === id)[1]} right`} disabled={i === colOrder.length - 1} onClick={() => moveCol(id, 1)}><Icon name="arrow-down" size={12}/></button>
               </div>
-            )}
-          </div>
+            ))}
+          </DropMenu>
+
+          <div style={{ width:1, height:16, background:'var(--border)', margin:'0 2px' }}/>
+          {(() => {
+            const allCollapsed = grouped.length > 0 && grouped.every(g => collapsed[g.name]);
+            return (
+              <button className="btn sm ghost" onClick={() => {
+                if (allCollapsed) { setCollapsed({}); return; }
+                const n = {}; grouped.forEach(g => { n[g.name] = true; }); setCollapsed(n);
+              }}><Icon name={allCollapsed ? 'chevron-down' : 'chevron-right'} size={12}/> {allCollapsed ? 'Expand all' : 'Collapse all'}</button>
+            );
+          })()}
         </div>
 
         {/* ── Column headers ── */}
@@ -422,7 +429,9 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                   const isNew = newItemIds.has(b.id);
                   return (
                   <div key={`${g.name}-${b.id}`}
-                    className="build-row"
+                    className="build-row" role="button" tabIndex={0}
+                    onClick={() => setDetailBuild(b)}
+                    onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) setDetailBuild(b); }}
                     style={{ ...(phone ? PHONE_ROW : { display:'grid', gridTemplateColumns: BUILD_GRID, alignItems:'center', gap:8, padding:'0 14px' }), cursor:'pointer',
                       ...(isNew ? { background: 'color-mix(in srgb, var(--accent) 7%, var(--surface))', boxShadow: 'inset 3px 0 0 var(--accent)' } : {}),
                     }}>
@@ -504,12 +513,6 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                     {/* Actions */}
                     <div style={{ display:'flex', justifyContent: phone ? 'flex-start' : 'flex-end', gap:4, ...(phone ? { order:5, flex:'1 1 100%', flexWrap:'wrap', paddingTop:2 } : { order:99 }) }}>
                       {/* Cancel — running builds only */}
-                      {b.source === 'github' && b.url && (
-                        <a className="btn sm ghost" href={b.url} target="_blank" rel="noopener noreferrer"
-                          style={{ textDecoration:'none' }} onClick={e => e.stopPropagation()}>
-                          <Icon name="link" size={12}/> Open in GitHub
-                        </a>
-                      )}
                       {b.status === 'running' && b.source !== 'github' && (
                         <button className="btn sm ghost" title="Cancel this build"
                           style={{ color:'var(--danger)' }}
@@ -524,13 +527,6 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
                           disabled={actioning.has(b.id)}
                           onClick={e => { e.stopPropagation(); rerunBuild(b); }}>
                           <Icon name="refresh" size={12}/> {actioning.has(b.id) ? '…' : 'Rerun'}
-                        </button>
-                      )}
-                      {/* Artifacts — finished builds */}
-                      {b.status !== 'running' && (
-                        <button className="btn sm ghost" title="Download this build's artifacts"
-                          onClick={e => { e.stopPropagation(); setArtifactBuild(b); }}>
-                          <Icon name="download" size={12}/> Artifacts
                         </button>
                       )}
                       {/* Ack / Unack — failed builds */}
@@ -576,6 +572,43 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
       </div>
       </div>
       </div>
+      <Sheet open={!!detailBuild} icon="build" title={detailBuild ? `${detailBuild.pipeline || 'Pipeline'} #${detailBuild.id}` : ''} sub={detailBuild ? dispStatus(detailBuild) : ''}
+        onClose={() => setDetailBuild(null)}>
+        {detailBuild && (() => {
+          const b = detailBuild;
+          const webUrl = b.source === 'github' ? b.url : (HelmData.ORG && b.project ? `https://dev.azure.com/${encodeURIComponent(HelmData.ORG)}/${encodeURIComponent(b.project)}/_build/results?buildId=${b.id}` : '');
+          const facts = [
+            ['Status', dispStatus(b)], ['Branch', b.branch], ['Commit', b.commit], ['Triggered by', b.actor],
+            ['Reason', reasonLabel[b.reason] || b.reason], ['Duration', b.duration], ['Finished', b.finishTime ? new Date(b.finishTime).toLocaleString() : b.when],
+          ].filter(([, v]) => v);
+          return (
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              {b.failureReason && <div className="m-error">{b.failureReason}</div>}
+              <div>
+                {facts.map(([k, v]) => (
+                  <div key={k} className="set-row" style={{ padding:'6px 0' }}>
+                    <div className="info"><div className="d">{k}</div></div>
+                    <div className="mono" style={{ fontSize:12.5, textAlign:'right', overflowWrap:'anywhere' }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                {webUrl && (
+                  <a className="btn m-btn-lg" href={webUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration:'none' }}>
+                    <Icon name="link" size={14}/> {b.source === 'github' ? 'Open in GitHub' : 'Open in Azure DevOps'}
+                  </a>
+                )}
+                {b.status !== 'running' && (
+                  <button type="button" className="btn m-btn-lg" onClick={() => { setArtifactBuild(b); setDetailBuild(null); }}>
+                    <Icon name="download" size={14}/> Artifacts
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </Sheet>
+
       <BuildArtifactsSheet build={artifactBuild} onClose={() => setArtifactBuild(null)}/>
     </React.Fragment>
   );

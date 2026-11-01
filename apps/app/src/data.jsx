@@ -2,7 +2,7 @@
 // All ADO fetch/map/derive logic is in @nexusmd/core. Only planner/theme
 // storage helpers and the HelmData/HelmApi window shims live here.
 import {
-  loadAdoData, loadCachedAdoData, loadJiraData, loadCachedJiraData, loadCachedGithubData, loadGithubData, buildSnapshot, refreshProviders,
+  loadAdoData, loadCachedAdoData, loadJiraData, loadCachedJiraData, loadCachedGithubData, loadGithubData, buildSnapshot, refreshProviders, readProviderStatus,
   isTerminalState, isActiveState, isReviewState, isBlockedState, stateCategory,
   timeAgo, adoTypeToHelm, adoStateToHelm, slugify,
 } from '@nexusmd/core';
@@ -79,6 +79,8 @@ async function runLoad(isRefresh = false) {
   }
   const adapters = { http: createAdoHttpAdapter(), storage: localStorageAdapter };
   const priorData = isRefresh ? { ...HelmData } : null;
+  const startedAt = Date.now();
+  const configuredIds = [adoOn && 'ado', jiraOn && 'jira', githubOn && 'github'].filter(Boolean);
   try {
     // Each provider records its own outcome; one failing keeps the other's data and its own cache.
     await refreshProviders({
@@ -106,7 +108,11 @@ async function runLoad(isRefresh = false) {
         },
       },
     });
-    applyToShim({ ...mergedSnapshot(), loaded: true, configured: true, loadedAt: Date.now() });
+    // A provider that could not be reached keeps its cached data; say so, so a refresh never looks like it worked.
+    const status = readProviderStatus(localStorageAdapter);
+    const failed = configuredIds.filter(id => status[id]?.status === 'error' && (status[id].at || 0) >= startedAt);
+    applyToShim({ ...mergedSnapshot(), loaded: true, configured: true, loadedAt: failed.length === configuredIds.length ? HelmData.loadedAt : Date.now() });
+    return { failed: failed.map(id => ({ id, error: status[id].error })) };
   } catch (err) {
     console.error('[data.jsx] load failed:', err);
     HelmData.loaded = true;
@@ -114,7 +120,14 @@ async function runLoad(isRefresh = false) {
   }
 }
 
-export const HelmApi = window.HelmApi = { load: () => runLoad(true) };
+const PROVIDER_NAMES = { ado: 'Azure DevOps', jira: 'Jira', github: 'GitHub' };
+// Rejects when a provider could not be reached (its cached data stays on screen) so callers can tell the user.
+export const HelmApi = window.HelmApi = {
+  load: async () => {
+    const r = await runLoad(true);
+    if (r?.failed?.length) throw new Error(r.failed.map(f => `${PROVIDER_NAMES[f.id] || f.id}: ${f.error}`).join('; '));
+  },
+};
 
 // Stale-while-revalidate: show cache immediately, then fetch fresh data.
 const cached = (isAdoConfigured() || isJiraActive() || isGithubConfigured()) ? mergedSnapshot() : loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter });

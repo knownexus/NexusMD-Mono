@@ -47,11 +47,12 @@ describe('GitHub pull requests', () => {
 describe('GitHub runs', () => {
   const run = { id: 991, source: 'github', url: 'https://github.com/acme/web/actions/runs/991', pipeline: 'CI', status: 'failed', branch: 'main', definitionId: 5, project: 'acme-web', actor: 'octo', when: '1h' }
 
-  it('opens in GitHub and has no re-run or cancel', () => {
+  it('opens in GitHub from the build details, and has no re-run or cancel', () => {
     render(<BuildsView builds={[run, { ...run, id: 992, status: 'running' }]} acknowledgedBuilds={[]} setAcknowledgedBuilds={() => {}}/>)
-    const links = screen.getAllByText(/Open in GitHub/)
-    expect(links.length).toBeGreaterThan(0)
-    expect(links[0].closest('a').getAttribute('href')).toBe('https://github.com/acme/web/actions/runs/991')
+    expect(screen.queryByText(/Open in GitHub/)).toBeNull()
+    fireEvent.click(document.querySelector('.build-row'))
+    const link = screen.getByText(/Open in GitHub/)
+    expect(link.closest('a').getAttribute('href')).toBe('https://github.com/acme/web/actions/runs/991')
     expect(screen.queryByText('Rerun')).toBeNull()
     expect(screen.queryByText('Cancel')).toBeNull()
   })
