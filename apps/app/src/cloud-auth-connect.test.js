@@ -40,7 +40,7 @@ describe('connecting Google (no server)', () => {
     const url = new URL(window.open.mock.calls[0][0])
     expect(url.origin + url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth')
     expect(url.searchParams.get('client_id')).toBe('cid.apps.googleusercontent.com')
-    expect(url.searchParams.get('scope')).toMatch(/calendar\.readonly/)
+    expect(url.searchParams.get('scope')).toMatch(/calendar\.events/)
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
     expect(fetchSpy).not.toHaveBeenCalled()
   })

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 vi.mock('./cloud-auth.js', () => ({ getOAuthToken: vi.fn() }))
-import { fetchGoogleEvents, toCalendarEvent } from './google-calendar.js'
+import { fetchGoogleEvents, toCalendarEvent, createGoogleEvent } from './google-calendar.js'
 
 const ok = (body) => ({ ok: true, status: 200, json: async () => body })
 const range = [new Date('2026-11-02T00:00:00Z'), new Date('2026-11-09T00:00:00Z')]
@@ -41,5 +41,23 @@ describe('google calendar', () => {
 
   it('throws when not signed in', async () => {
     await expect(fetchGoogleEvents(...range, { token: async () => null, fetchFn: vi.fn() })).rejects.toThrow('401')
+  })
+})
+
+describe('createGoogleEvent', () => {
+  const ev = { title: 'Standup', start: '2026-11-02T09:00', end: '2026-11-02T09:30' }
+  const ok = (body) => ({ ok: true, status: 200, json: async () => body })
+  it('posts the event with the token and returns it as a calendar event', async () => {
+    const calls = []
+    const fetchFn = async (url, init) => { calls.push([url, init]); return ok({ id: 'g1', summary: 'Standup', start: { dateTime: '2026-11-02T09:00:00Z' }, end: { dateTime: '2026-11-02T09:30:00Z' } }) }
+    const out = await createGoogleEvent(ev, { token: async () => 'tok', fetchFn })
+    expect(calls[0][1].method).toBe('POST')
+    expect(calls[0][1].headers.Authorization).toBe('Bearer tok')
+    expect(JSON.parse(calls[0][1].body).summary).toBe('Standup')
+    expect(out).toMatchObject({ id: 'google-g1', source: 'google', title: 'Standup' })
+  })
+  it('tells the user to sign in again when Google refuses the permission', async () => {
+    const fetchFn = async () => ({ ok: false, status: 403, json: async () => ({}) })
+    await expect(createGoogleEvent(ev, { token: async () => 'tok', fetchFn })).rejects.toThrow(/sign in again/)
   })
 })
