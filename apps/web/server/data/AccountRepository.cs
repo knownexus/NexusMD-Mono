@@ -465,6 +465,28 @@ public class AccountRepository
         return new RotateResult(false, false, null);
     }
 
+    /// <summary>
+    /// Revokes the live session that owns <paramref name="refreshHash"/>, but only if it belongs to
+    /// <paramref name="userId"/>. Returns false when no such live session exists.
+    /// </summary>
+    public bool RevokeSessionByRefreshHash(string refreshHash, string userId)
+    {
+        using var conn = OpenConnection();
+        using var tx = conn.BeginTransaction();
+        string? sid = null;
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "SELECT Id FROM Sessions WHERE RefreshHash=$rh AND UserId=$uid AND RevokedAt IS NULL";
+            cmd.Parameters.AddWithValue("$rh", refreshHash);
+            cmd.Parameters.AddWithValue("$uid", userId);
+            sid = cmd.ExecuteScalar() as string;
+        }
+        if (sid != null) RevokeSessionById(conn, tx, sid);
+        tx.Commit();
+        return sid != null;
+    }
+
     public void RevokeSession(string sessionId)
     {
         using var conn = OpenConnection();
