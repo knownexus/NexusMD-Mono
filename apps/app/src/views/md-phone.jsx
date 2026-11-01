@@ -7,7 +7,7 @@ import { Icon } from '../icons.jsx';
 import { pickerAdapter } from '../adapters/picker.js';
 import { Sheet } from '../components.jsx';
 import { ToolFrame, DocsSheet } from './docs-frame.jsx';
-import { CHEAT, learnTarget, diffLines, diffCounts, collapseDiff } from '../md-extras.js';
+import { CHEAT, learnTarget, diffLines, diffCounts, collapseDiff } from '@nexusmd/core';
 
 // The desktop layout's own setting, so learn mode is on or off in both.
 const LEARN_KEY = 'md_learn_mode';

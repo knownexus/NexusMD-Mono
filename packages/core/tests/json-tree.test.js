@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { searchPaths, validateKey, editNode, addChild, removeNode, describePath, pathKey, rawOf } from './json-tree.js'
+import { searchPaths, validateKey, editNode, addChild, removeNode, describePath, pathKey, rawOf } from '../src/modules/json/tree.js'
 
 const data = { name: 'Alice', age: 28, tags: ['dev', 'mentor'], address: { city: 'Bristol', zip: 'BS1' } }
 

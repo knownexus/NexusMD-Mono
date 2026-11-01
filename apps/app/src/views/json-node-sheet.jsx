@@ -2,10 +2,10 @@
 // it; for a group or list, add a field or item. The sheet only builds the next tree: the caller saves
 // it and offers Undo.
 import React from 'react';
-import { getAtPath, typeOf } from '@nexusmd/ui';
+import { getAtPath, typeOf } from '@nexusmd/core';
 import { Icon } from '../icons.jsx';
 import { Sheet } from '../components.jsx';
-import { TYPE_OPTIONS, isContainer, rawOf, describePath, editNode, addChild, removeNode } from '../json-tree.js';
+import { TYPE_OPTIONS, isContainer, rawOf, describePath, editNode, addChild, removeNode } from '@nexusmd/core';
 
 export function JsonNodeSheet({ data, path, onClose, onApply }) {
   const open = !!path;

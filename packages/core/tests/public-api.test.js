@@ -27,7 +27,7 @@ const EXPECTED = [
   'PL_PRIOS', 'PL_STATUSES', 'PROJECT_COLORS', 'STATES', 'activateProfile',
   'addManualColumn', 'adoStateToHelm', 'adoTypeToHelm', 'appendAuditEntry', 'buildAlertKey',
   'buildDigest', 'buildEmptyPlannerData', 'buildProfile', 'buildTriageCsv', 'core',
-  'createNoOpAdapters', 'createOfflineQueue', 'isNetworkError', 'orderTabs', 'moveTab', 'placeTabs', 'syncLabel', 'offlineText', 'createProfile', 'createTimer', 'decryptConfidentialFromServer',
+  'createNoOpAdapters', 'createOfflineQueue', 'isNetworkError', 'TYPE_OPTIONS', 'isContainer', 'pathKey', 'describePath', 'rawOf', 'searchPaths', 'validateKey', 'editNode', 'addChild', 'removeNode', 'typeOf', 'getAtPath', 'setValueAtPath', 'replaceAtPath', 'addFieldAtPath', 'deleteAtPath', 'coerceVal', 'allContainerPaths', 'highlightSegments', 'CHEAT', 'learnTarget', 'MAX_DIFF_LINES', 'diffLines', 'diffCounts', 'collapseDiff', 'orderTabs', 'moveTab', 'placeTabs', 'syncLabel', 'offlineText', 'createProfile', 'createTimer', 'decryptConfidentialFromServer',
   'deleteProfile', 'deriveActivity',
   'derivePrSparkline', 'deriveProjects', 'deriveSprint', 'effectiveNeedsMe', 'effectiveTeamActivity',
   'elapsedMs', 'encryptConfidentialForServer',

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   typeOf, getAtPath, setValueAtPath, deleteAtPath, replaceAtPath,
   addFieldAtPath, coerceVal, allContainerPaths, highlightSegments,
-} from '../src/views/json-editor-helpers.js'
+} from '../src/modules/json/helpers.js'
 
 describe('typeOf', () => {
   it('distinguishes array, null, and primitive types', () => {

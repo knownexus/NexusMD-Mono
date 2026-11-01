@@ -6,7 +6,7 @@ import { Icon } from '../icons.jsx'
 import {
   typeOf, setValueAtPath, deleteAtPath, replaceAtPath, addFieldAtPath,
   coerceVal, allContainerPaths, highlightSegments,
-} from './json-editor-helpers.js'
+} from '@nexusmd/core'
 import { useDocumentAutosave, relativeTime } from './document-store.js'
 import { DocumentsModal } from './documents-modal.jsx'
 

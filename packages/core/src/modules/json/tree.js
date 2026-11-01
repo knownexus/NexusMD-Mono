@@ -1,7 +1,7 @@
 // json-tree.js — the pure logic behind editing JSON in the phone tree: which nodes a search shows,
 // checking an edit, and applying it. Builds on the shared path helpers; every function returns a new
 // tree and leaves the old one alone, so an edit can be undone by keeping the text it came from.
-import { getAtPath, replaceAtPath, addFieldAtPath, deleteAtPath, coerceVal, typeOf } from '@nexusmd/ui';
+import { getAtPath, replaceAtPath, addFieldAtPath, deleteAtPath, coerceVal, typeOf } from './helpers.js';
 
 export const TYPE_OPTIONS = [
   ['string', 'Text'], ['number', 'Number'], ['boolean', 'True / False'],

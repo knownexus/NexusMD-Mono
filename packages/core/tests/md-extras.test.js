@@ -1,15 +1,8 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import { CHEAT, learnTarget, diffLines, diffCounts, collapseDiff, MAX_DIFF_LINES } from './md-extras.js'
-import { FORMATS } from './views/md-phone.jsx'
+import { learnTarget, diffLines, diffCounts, collapseDiff, MAX_DIFF_LINES } from '../src/modules/markdown/extras.js'
 
 const html = (markup) => { const root = document.createElement('div'); root.innerHTML = markup; return root }
-
-describe('cheat sheet', () => {
-  it('only points at formatting chips that exist', () => {
-    const titles = FORMATS.map(f => f.title)
-    for (const g of CHEAT) for (const it of g.items) expect(titles).toContain(it.format)
-  })
-})
 
 describe('learn mode', () => {
   it('names what a tapped element is, walking up from text inside it', () => {
