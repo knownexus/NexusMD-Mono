@@ -19,7 +19,16 @@ const orderedCols = (saved) => {
   const first = (Array.isArray(saved) ? saved : []).filter((id, i, a) => known.includes(id) && a.indexOf(id) === i);
   return [...first, ...known.filter(id => !first.includes(id))];
 };
-const gridFor = (hidden, order) => ['28px', ...order.filter(id => !hidden.includes(id)).map(id => COLS.find(c => c[0] === id)[2]), '140px'].join(' ');
+// With the stretchy "Triggered by" column hidden, the actions column takes the spare width instead, so the rows
+// still fill the table.
+const gridFor = (hidden, order) => ['28px', ...order.filter(id => !hidden.includes(id)).map(id => COLS.find(c => c[0] === id)[2]),
+  hidden.includes('actor') ? 'minmax(140px, 1fr)' : '140px'].join(' ');
+// The narrowest the table can be with these columns: the card's fixed minimum width used to ignore hidden columns.
+const minWidthFor = (hidden, order) => {
+  const w = order.filter(id => !hidden.includes(id)).map(id => parseInt(String(COLS.find(c => c[0] === id)[2]).replace(/^minmax\((\d+)px.*$/, '$1'), 10));
+  const cells = w.length + 2;
+  return 28 + 140 + w.reduce((a, b) => a + b, 0) + (cells - 1) * 8 + 28;
+};
 
 // On a phone the table's ~770px of fixed columns cannot fit, so each build becomes a small card: status, number and
 // date on the first line, who/what next, then the actions wrapping underneath.
@@ -276,7 +285,7 @@ function BuildsView({ builds: allBuilds, acknowledgedBuilds, setAcknowledgedBuil
 
       {/* ── Builds table card ── */}
       <div style={{ overflowX:'auto' }}>
-      <div className="card m-bld-card">
+      <div className="card m-bld-card" style={{ minWidth: phone ? Math.min(880, minWidthFor(hiddenCols, colOrder)) : minWidthFor(hiddenCols, colOrder) }}>
         <div className="card-head" style={{ flexWrap:'wrap', gap:6 }}>
           {/* Status filter */}
           <DropMenu label={statuses.length === 0 ? 'All statuses' : statuses.length === 1 ? STATUS_OPTS.find(o => o[0] === statuses[0])[1] : `${statuses.length} statuses`}

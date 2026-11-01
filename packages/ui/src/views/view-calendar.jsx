@@ -172,17 +172,33 @@ function getAgendaDays(offset) {
   return Array.from({ length:42 }, (_,i) => { const d = new Date(start); d.setDate(start.getDate()+i); return d; });
 }
 
-function eventTopPx(start) {
+function eventTopPx(start, from = CAL_START_HOUR) {
   const d = new Date(start);
-  return Math.max(0, (d.getHours() + d.getMinutes()/60 - CAL_START_HOUR) * CAL_PX_PER_HOUR);
+  return Math.max(0, (d.getHours() + d.getMinutes()/60 - from) * CAL_PX_PER_HOUR);
 }
 function eventHeightPx(start, end) {
   return Math.max(24, (new Date(end) - new Date(start)) / 3600000 * CAL_PX_PER_HOUR);
 }
-function nowTopPx() {
+function nowTopPx(from = CAL_START_HOUR, to = CAL_END_HOUR) {
   const n = new Date(); const h = n.getHours() + n.getMinutes()/60;
-  if (h < CAL_START_HOUR || h > CAL_END_HOUR) return null;
-  return (h - CAL_START_HOUR) * CAL_PX_PER_HOUR;
+  if (h < from || h > to) return null;
+  return (h - from) * CAL_PX_PER_HOUR;
+}
+// The hours the week grid draws: 7am to 8pm, stretched to take in any timed event outside them.
+function calHourRange(days, eventsByDay) {
+  let a = CAL_START_HOUR, b = CAL_END_HOUR;
+  for (const d of days) {
+    for (const ev of eventsByDay[isoDate(d)] || []) {
+      if (typeof ev.start !== 'string' || ev.start.length <= 10) continue;
+      const st = new Date(ev.start);
+      if (Number.isNaN(st.getTime())) continue;
+      let en = new Date(ev.end);
+      if (Number.isNaN(en.getTime()) || en <= st) en = new Date(st.getTime() + 3600000);
+      a = Math.min(a, st.getHours());
+      b = Math.max(b, en.toDateString() === st.toDateString() ? Math.min(24, Math.ceil(en.getHours() + en.getMinutes()/60)) : 24);
+    }
+  }
+  return [a, b];
 }
 function fmt12(iso) {
   if (!iso) return ''; const d = new Date(iso);
@@ -608,8 +624,8 @@ function OutlookBanner({ config, onSaveConfig, connected, displayName, syncing, 
 }
 
 // ── DayColumn (week / work-week view) ─────────────────────────
-function DayColumn({ date, events, isToday, onEventClick, nowPx, onMoveEvent, onUpdateEvent, onNewGoogleEvent }) {
-  const totalPx = (CAL_END_HOUR - CAL_START_HOUR) * CAL_PX_PER_HOUR;
+function DayColumn({ date, events, isToday, onEventClick, nowPx, onMoveEvent, onUpdateEvent, onNewGoogleEvent, onNewEvent, from = CAL_START_HOUR, to = CAL_END_HOUR }) {
+  const totalPx = (to - from) * CAL_PX_PER_HOUR;
   const laid = useMemoCal(() => layoutDayEvents(events), [events]);
   const [dragOver, setDragOver] = useStateCal(false);
 
@@ -621,8 +637,8 @@ function DayColumn({ date, events, isToday, onEventClick, nowPx, onMoveEvent, on
   const computePreview = (type, origStart, origEnd, deltaY, shiftKey) => {
     const deltaMs = (deltaY / CAL_PX_PER_HOUR) * 3600000;
     const dur = origEnd.getTime() - origStart.getTime();
-    const dayStart = new Date(origStart); dayStart.setHours(CAL_START_HOUR, 0, 0, 0);
-    const dayEnd   = new Date(origStart); dayEnd.setHours(CAL_END_HOUR, 0, 0, 0);
+    const dayStart = new Date(origStart); dayStart.setHours(from, 0, 0, 0);
+    const dayEnd   = new Date(origStart); dayEnd.setHours(to, 0, 0, 0);
     let ps, pe;
     if (type === 'move') {
       ps = snapTime(new Date(origStart.getTime() + deltaMs), shiftKey);
@@ -689,16 +705,17 @@ function DayColumn({ date, events, isToday, onEventClick, nowPx, onMoveEvent, on
   const dragLayout = dragId ? laid.find(l => String(l.ev.id) === dragId) : null;
 
   const handleBgClick = (e) => {
-    if (!onNewGoogleEvent || drag) return;
+    const add = onNewEvent || onNewGoogleEvent;
+    if (!add || drag) return;
     if (e.target.closest?.('.cal-event')) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
-    const totalHours = CAL_START_HOUR + y / CAL_PX_PER_HOUR;
-    const h = Math.max(CAL_START_HOUR, Math.min(CAL_END_HOUR - 1, Math.floor(totalHours)));
+    const totalHours = from + y / CAL_PX_PER_HOUR;
+    const h = Math.max(from, Math.min(to - 1, Math.floor(totalHours)));
     const rawMin = Math.round(((totalHours - Math.floor(totalHours)) * 60) / 15) * 15;
     const m = rawMin >= 60 ? 0 : rawMin;
     const pad = n => String(n).padStart(2, '0');
-    onNewGoogleEvent(isoDate(date), `${pad(h)}:${pad(m)}`);
+    add(isoDate(date), `${pad(h)}:${pad(m)}`);
   };
 
   return (
@@ -709,8 +726,8 @@ function DayColumn({ date, events, isToday, onEventClick, nowPx, onMoveEvent, on
       onDrop={onMoveEvent ? handleDrop : undefined}
       style={{ flex:1,minWidth:0,position:'relative',height:totalPx,borderLeft:'1px solid var(--border)',
         background:dragOver?'color-mix(in srgb,var(--accent) 10%,transparent)':isToday?'color-mix(in srgb,var(--accent) 3%,transparent)':'transparent',
-        transition:'background .12s', cursor: onNewGoogleEvent && !drag ? 'cell' : undefined }}>
-      {Array.from({ length:(CAL_END_HOUR-CAL_START_HOUR)*2 }, (_,i) => (
+        transition:'background .12s', cursor: (onNewEvent || onNewGoogleEvent) && !drag ? 'cell' : undefined }}>
+      {Array.from({ length:(to-from)*2 }, (_,i) => (
         <div key={i} style={{ position:'absolute',top:i*(CAL_PX_PER_HOUR/2),left:0,right:0,
           borderTop:i===0?'none':i%2===0?'1px solid var(--border)':'1px dashed color-mix(in srgb,var(--border) 55%,transparent)',pointerEvents:'none' }}/>
       ))}
@@ -721,7 +738,7 @@ function DayColumn({ date, events, isToday, onEventClick, nowPx, onMoveEvent, on
       )}
       {laid.map(({ ev, col, totalCols }) => {
         const cfg = EVENT_CFG[ev.type] || EVENT_CFG.meeting;
-        const top = eventTopPx(ev.start), height = eventHeightPx(ev.start, ev.end);
+        const top = eventTopPx(ev.start, from), height = eventHeightPx(ev.start, ev.end);
         const g = 3, colW = 100 / totalCols;
         const isShort = height < 38;
         const canTimeDrag = !!onUpdateEvent && ev.source !== 'outlook' && ev.source !== 'google';
@@ -811,18 +828,33 @@ function DayColumn({ date, events, isToday, onEventClick, nowPx, onMoveEvent, on
 }
 
 // ── WeekGrid (shared by Week + Work Week) ─────────────────────────
-function WeekGrid({ days, eventsByDay, today, isCurrentPeriod, nowPx, onEventClick, scrollRef, onMoveEvent, onUpdateEvent, onNewGoogleEvent }) {
-  const totalPx   = (CAL_END_HOUR - CAL_START_HOUR) * CAL_PX_PER_HOUR;
-  const hourSlots = Array.from({ length: CAL_END_HOUR - CAL_START_HOUR }, (_,i) => CAL_START_HOUR+i);
+function WeekGrid({ days, eventsByDay, today, isCurrentPeriod, onEventClick, scrollRef, onMoveEvent, onUpdateEvent, onNewGoogleEvent, onNewEvent }) {
+  const [from, to] = calHourRange(days, eventsByDay);
+  const totalPx   = (to - from) * CAL_PX_PER_HOUR;
+  const hourSlots = Array.from({ length: to - from }, (_,i) => from+i);
+  const add = onNewEvent || onNewGoogleEvent;
+  // The scroll box has a scrollbar the day headers do not, which pushed every header off its column. Pad the header by its width.
+  const [sbw, setSbw] = useStateCal(0);
+  useEffectCal(() => {
+    const el = scrollRef?.current; if (!el) return undefined;
+    const measure = () => setSbw(el.offsetWidth - el.clientWidth);
+    measure(); window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [scrollRef, from, to, days.length]);
+  // The now line follows the stretched hours, and moves on every minute.
+  const [, setTick] = useStateCal(0);
+  useEffectCal(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
+  const nowPx = nowTopPx(from, to);
+  const pad = n => String(n).padStart(2, '0');
   return (
     <div className="card" style={{ padding:0,overflow:'hidden',border:'1px solid var(--border)' }}>
       {/* Day headers */}
-      <div style={{ display:'flex',borderBottom:'1px solid var(--border)',background:'var(--surface)',position:'sticky',top:0,zIndex:10,boxShadow:'0 1px 0 var(--border)' }}>
+      <div style={{ display:'flex',borderBottom:'1px solid var(--border)',background:'var(--surface)',position:'sticky',top:0,zIndex:10,boxShadow:'0 1px 0 var(--border)',paddingRight:sbw }}>
         <div style={{ width:CAL_TIME_W,flexShrink:0 }}/>
         {days.map(d => {
           const key = isoDate(d), isToday = key===today;
           return (
-            <div key={key} style={{ flex:1,padding:'10px 4px 8px',textAlign:'center',borderLeft:'1px solid var(--border)',background:isToday?'color-mix(in srgb,var(--accent) 4%,var(--surface))':'transparent' }}>
+            <div key={key} style={{ flex:1,minWidth:0,padding:'10px 4px 8px',textAlign:'center',borderLeft:'1px solid var(--border)',background:isToday?'color-mix(in srgb,var(--accent) 4%,var(--surface))':'transparent' }}>
               <div style={{ fontSize:10,fontWeight:700,letterSpacing:'.07em',color:isToday?'var(--accent)':'var(--text-subtle)',textTransform:'uppercase',marginBottom:4 }}>
                 {d.toLocaleDateString([],{weekday:'short'})}
               </div>
@@ -843,16 +875,18 @@ function WeekGrid({ days, eventsByDay, today, isCurrentPeriod, nowPx, onEventCli
             <div className="cal-now-dot" style={{ position:'absolute',top:nowPx-4.5,right:8,zIndex:5,width:9,height:9,borderRadius:'50%',background:'var(--danger)',boxShadow:'0 0 0 3px color-mix(in srgb,var(--danger) 25%,transparent)' }}/>
           )}
           {hourSlots.map((h,i) => (
-            <div key={h} style={{ position:'absolute',top:i*CAL_PX_PER_HOUR,right:10,left:0,display:'flex',alignItems:'flex-start',justifyContent:'flex-end',paddingTop:3 }}>
+            <div key={h} role={add ? 'button' : undefined} title={add ? 'Add an event at this time' : undefined}
+              onClick={add ? () => add(isoDate(days.find(d => isoDate(d)===today) || days[0]), pad(h) + ':00') : undefined}
+              style={{ position:'absolute',top:i*CAL_PX_PER_HOUR,right:10,left:0,display:'flex',alignItems:'flex-start',justifyContent:'flex-end',paddingTop:3,cursor:add?'pointer':undefined }}>
               <span style={{ fontSize:10,fontWeight:500,color:'var(--text-subtle)',fontFamily:'var(--mono)',userSelect:'none' }}>
-                {h<12?`${h}`:h===12?'12':`${h-12}`}<span style={{ fontSize:8,marginLeft:1 }}>{h<12?'am':'pm'}</span>
+                {h===0||h===24?'12':h<12?`${h}`:h===12?'12':`${h-12}`}<span style={{ fontSize:8,marginLeft:1 }}>{h<12||h===24?'am':'pm'}</span>
               </span>
             </div>
           ))}
         </div>
         {days.map(d => {
           const key = isoDate(d);
-          return <DayColumn key={key} date={d} events={eventsByDay[key]||[]} isToday={key===today} onEventClick={onEventClick} nowPx={isCurrentPeriod?nowPx:null} onMoveEvent={onMoveEvent} onUpdateEvent={onUpdateEvent} onNewGoogleEvent={onNewGoogleEvent}/>;
+          return <DayColumn key={key} date={d} events={eventsByDay[key]||[]} isToday={key===today} onEventClick={onEventClick} nowPx={isCurrentPeriod?nowPx:null} onMoveEvent={onMoveEvent} onUpdateEvent={onUpdateEvent} onNewGoogleEvent={onNewGoogleEvent} onNewEvent={onNewEvent} from={from} to={to}/>;
         })}
       </div>
     </div>
@@ -1066,5 +1100,5 @@ export {
   eventTopPx, eventHeightPx, nowTopPx, fmt12, fmtDuration, isoDate, todayStr,
   snapTime, formatLocalISO, layoutDayEvents, MONTH_NAMES, MONTH_SHORT, DAY_SHORT,
   MicrosoftLogo, EventDetailModal, OutlookSetupModal, OutlookBanner,
-  DayColumn, WeekGrid, MonthView, YearView, AgendaView,
+  calHourRange, DayColumn, WeekGrid, MonthView, YearView, AgendaView,
 };

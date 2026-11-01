@@ -41,6 +41,7 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
   const [selDay, setSelDay]               = useStateCal(() => new Date());
   const [newEventOpen, setNewEventOpen]   = useStateCal(false);
   const [newEventTime, setNewEventTime]   = useStateCal(null);
+  const [newEventDay, setNewEventDay]     = useStateCal(null);
   const [actionEvent, setActionEvent]     = useStateCal(null);
   const calView = phone ? (phoneMode === 'agenda' ? 'week' : 'month') : tView;
   const offset  = phone ? dayOffset(selDay, phoneMode === 'agenda' ? 'week' : 'month') : tOffset;
@@ -305,6 +306,12 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
             onConnect={handleConnect} onDisconnect={handleDisconnect}
             allowSetup={false} allowSignIn={false}/>
 
+          {onAddEvent && (
+            <button type="button" className="btn sm primary" onClick={() => { setNewEventDay(null); setNewEventTime(null); setNewEventOpen(true); }}>
+              <Icon name="plus" size={13}/> New event
+            </button>
+          )}
+
           {/* View switcher */}
           <div style={{ display:'flex',alignItems:'center',background:'var(--surface-2)',borderRadius:10,border:'1px solid var(--border)',padding:'3px 4px',gap:2 }}>
             {VIEWS.map(v => (
@@ -336,10 +343,16 @@ function CalendarView({ calendarEvents, onNavigatePlanner, onUpdateEvent, onDele
       <div className="m-screen">
         {googleError && <div className="m-hint" role="alert" style={{ marginTop: 0, marginBottom: 10, color: 'var(--danger)' }}>Google Calendar couldn’t load: {googleError}</div>}
       {/* ── View content ── */}
+      {onAddEvent && (
+        <NewEventSheet open={newEventOpen} onClose={() => { setNewEventOpen(false); setNewEventTime(null); setNewEventDay(null); }}
+          dayKey={newEventDay || today} startTime={newEventTime}
+          onAdd={(ev, opts) => onAddEvent(ev, opts)} canAddToPlanner={canAddToPlanner} outlookConnected={outlookConnected}/>
+      )}
       {(calView==='week'||calView==='workweek') && weekDays && (
         <WeekGrid days={weekDays} eventsByDay={eventsByDay} today={today}
-          isCurrentPeriod={isCurrentPeriod} nowPx={nowPx}
-          onEventClick={setSelectedEvent} scrollRef={scrollRef} onMoveEvent={onMoveEvent} onUpdateEvent={onUpdateEvent}/>
+          isCurrentPeriod={isCurrentPeriod}
+          onEventClick={setSelectedEvent} scrollRef={scrollRef} onMoveEvent={onMoveEvent} onUpdateEvent={onUpdateEvent}
+          onNewEvent={onAddEvent ? (day, time) => { setNewEventDay(day); setNewEventTime(time); setNewEventOpen(true); } : undefined}/>
       )}
 
       {calView==='month' && monthGrid && (
