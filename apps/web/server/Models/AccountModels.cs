@@ -46,3 +46,9 @@ public class DuplicateUsernameException : Exception
     public DuplicateUsernameException(string username)
         : base($"Username '{username}' is already taken.") { }
 }
+
+/// <summary>The invite code is unknown, already redeemed, revoked or expired.</summary>
+public class InvalidInviteException : Exception
+{
+    public InvalidInviteException() : base("The invite is invalid, expired or already used.") { }
+}

@@ -14,6 +14,10 @@ public class AccountRepository
 {
     public const int MaxFailedLogins = 5;
     public static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
+    /// <summary>Sliding idle lifetime of a session; each successful rotation pushes it out again.</summary>
+    public static readonly TimeSpan SessionIdleLifetime = TimeSpan.FromDays(30);
+
+    private const int SqliteConstraintUnique = 2067; // SQLITE_CONSTRAINT_UNIQUE
 
     private const string UserColumns =
         "Id,Username,Role,Salt,Iterations,AuthHash,PublicKey,WrappedPrivateKey,WrappedContainerKey,Disabled,FailedLogins,LockedUntil,CreatedAt";
@@ -72,7 +76,8 @@ public class AccountRepository
                 RefreshHash TEXT    NOT NULL UNIQUE,
                 CreatedAt   INTEGER NOT NULL,
                 RotatedAt   INTEGER,
-                RevokedAt   INTEGER
+                RevokedAt   INTEGER,
+                ExpiresAt   INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS IX_Sessions_UserId ON Sessions (UserId);
             -- Hashes of refresh tokens that were already rotated; replaying one revokes its session.
@@ -81,6 +86,7 @@ public class AccountRepository
                 SessionId TEXT    NOT NULL,
                 RetiredAt INTEGER NOT NULL
             );
+            CREATE INDEX IF NOT EXISTS IX_RetiredRefresh_SessionId ON RetiredRefresh (SessionId);
             CREATE TABLE IF NOT EXISTS Devices (
                 Id        TEXT    PRIMARY KEY,
                 UserId    TEXT    NOT NULL,
@@ -104,6 +110,21 @@ public class AccountRepository
             );
             CREATE INDEX IF NOT EXISTS IX_Items_Cursor ON Items (UserId, Cursor);";
         cmd.ExecuteNonQuery();
+
+        // Databases created before Sessions.ExpiresAt existed: add the column and give live sessions a fresh idle window.
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Sessions') WHERE name='ExpiresAt'";
+        var hasExpires = Convert.ToInt64(cmd.ExecuteScalar()) == 1;
+        if (!hasExpires)
+        {
+            cmd.CommandText = "ALTER TABLE Sessions ADD COLUMN ExpiresAt INTEGER NOT NULL DEFAULT 0";
+            cmd.ExecuteNonQuery();
+            cmd.CommandText = "UPDATE Sessions SET ExpiresAt=$exp";
+            cmd.Parameters.AddWithValue("$exp", Now() + (long)SessionIdleLifetime.TotalMilliseconds);
+            cmd.ExecuteNonQuery();
+            cmd.Parameters.Clear();
+        }
+        cmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_Sessions_ExpiresAt ON Sessions (ExpiresAt)";
+        cmd.ExecuteNonQuery();
     }
 
     private static long Now() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -111,7 +132,9 @@ public class AccountRepository
     private static DateTime FromMs(long ms) => DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime;
     private static string Sha256Hex(string s) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(s))).ToLowerInvariant();
-    private static string UsernameKey(string username) => username.Trim().ToLowerInvariant();
+    // NFC first so composed/decomposed forms of the same name collide; then trim and lower-case.
+    private static string UsernameKey(string username) =>
+        username.Normalize(NormalizationForm.FormC).Trim().ToLowerInvariant();
 
     // ---- Users -------------------------------------------------------------------------
 
@@ -125,10 +148,45 @@ public class AccountRepository
 
     public UserRecord CreateUser(NewUser u)
     {
+        using var conn = OpenConnection();
+        var id = InsertUser(conn, null, u);
+        return FindById(id)!;
+    }
+
+    /// <summary>
+    /// Consumes the invite and creates the user in one transaction, so a duplicate username (or any
+    /// other failure) does not burn the invite.
+    /// </summary>
+    /// <exception cref="InvalidInviteException">Unknown, used, expired or revoked invite.</exception>
+    /// <exception cref="DuplicateUsernameException">Username already taken.</exception>
+    public UserRecord CreateUserFromInvite(string inviteCode, NewUser user)
+    {
+        if (string.IsNullOrWhiteSpace(inviteCode)) throw new InvalidInviteException();
+        string id;
+        using (var conn = OpenConnection())
+        using (var tx = conn.BeginTransaction())
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = @"UPDATE Invites SET RedeemedAt=$now
+                    WHERE CodeHash=$ch AND RedeemedAt IS NULL AND RevokedAt IS NULL AND ExpiresAt>$now";
+                cmd.Parameters.AddWithValue("$now", Now());
+                cmd.Parameters.AddWithValue("$ch", HashInvite(inviteCode));
+                if (cmd.ExecuteNonQuery() != 1) throw new InvalidInviteException();
+            }
+            id = InsertUser(conn, tx, user); // throws -> transaction disposed uncommitted -> invite not consumed
+            tx.Commit();
+        }
+        return FindById(id)!;
+    }
+
+    private static string InsertUser(SqliteConnection conn, SqliteTransaction? tx, NewUser u)
+    {
         var id = Guid.NewGuid().ToString("N");
         var now = Now();
-        using var conn = OpenConnection();
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = @"INSERT INTO Users
             (Id,Username,UsernameKey,Role,Salt,Iterations,AuthHash,PublicKey,WrappedPrivateKey,WrappedContainerKey,CreatedAt)
             VALUES ($id,$un,$uk,$ro,$sa,$it,$ah,$pk,$wp,$wc,$ca)";
@@ -147,11 +205,11 @@ public class AccountRepository
         {
             cmd.ExecuteNonQuery();
         }
-        catch (SqliteException ex) when (ex.SqliteErrorCode == 19) // SQLITE_CONSTRAINT (UNIQUE on UsernameKey)
+        catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == SqliteConstraintUnique) // UNIQUE on UsernameKey only
         {
             throw new DuplicateUsernameException(u.Username);
         }
-        return FindById(id)!;
+        return id;
     }
 
     public UserRecord? FindByUsername(string username)
@@ -185,35 +243,29 @@ public class AccountRepository
         return list;
     }
 
-    /// <summary>Increments the failure counter; from the 5th consecutive failure the account is locked for 15 minutes.</summary>
+    /// <summary>
+    /// Records a failed login in a single atomic statement. From the 5th consecutive failure the account is
+    /// locked for 15 minutes. While a lock is active nothing changes (no increment, no extension). Once a
+    /// lock has expired the next failure starts a fresh count at 1 with the lock cleared.
+    /// </summary>
     public (int failures, DateTime? lockedUntil) RecordFailedLogin(string id)
     {
+        const string stillLocked = "(LockedUntil IS NOT NULL AND LockedUntil > $now)";
+        const string newCount = "(CASE WHEN " + stillLocked + " THEN FailedLogins WHEN LockedUntil IS NOT NULL THEN 1 ELSE FailedLogins + 1 END)";
         using var conn = OpenConnection();
-        using var tx = conn.BeginTransaction();
-        int failures;
-        using (var cmd = conn.CreateCommand())
-        {
-            cmd.Transaction = tx;
-            cmd.CommandText = "UPDATE Users SET FailedLogins = FailedLogins + 1 WHERE Id=$id RETURNING FailedLogins";
-            cmd.Parameters.AddWithValue("$id", id);
-            var res = cmd.ExecuteScalar();
-            if (res == null) { tx.Commit(); return (0, null); }
-            failures = Convert.ToInt32(res);
-        }
-
-        DateTime? lockedUntil = null;
-        if (failures >= MaxFailedLogins)
-        {
-            lockedUntil = DateTime.UtcNow + LockoutDuration;
-            using var cmd = conn.CreateCommand();
-            cmd.Transaction = tx;
-            cmd.CommandText = "UPDATE Users SET LockedUntil=$lu WHERE Id=$id";
-            cmd.Parameters.AddWithValue("$lu", ToMs(lockedUntil.Value));
-            cmd.Parameters.AddWithValue("$id", id);
-            cmd.ExecuteNonQuery();
-        }
-        tx.Commit();
-        return (failures, lockedUntil);
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"UPDATE Users SET
+                FailedLogins = " + newCount + @",
+                LockedUntil  = CASE WHEN " + stillLocked + @" THEN LockedUntil WHEN " + newCount + @" >= $max THEN $lu ELSE NULL END
+            WHERE Id=$id RETURNING FailedLogins, LockedUntil";
+        var now = DateTime.UtcNow;
+        cmd.Parameters.AddWithValue("$now", ToMs(now));
+        cmd.Parameters.AddWithValue("$max", MaxFailedLogins);
+        cmd.Parameters.AddWithValue("$lu", ToMs(now + LockoutDuration));
+        cmd.Parameters.AddWithValue("$id", id);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return (0, null);
+        return (r.GetInt32(0), r.IsDBNull(1) ? null : FromMs(r.GetInt64(1)));
     }
 
     public void ResetFailures(string id)
@@ -225,14 +277,21 @@ public class AccountRepository
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>Enables/disables a user. Disabling also revokes all of the user's sessions in the same transaction.</summary>
     public void SetDisabled(string id, bool disabled)
     {
         using var conn = OpenConnection();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Users SET Disabled=$d WHERE Id=$id";
-        cmd.Parameters.AddWithValue("$d", disabled ? 1 : 0);
-        cmd.Parameters.AddWithValue("$id", id);
-        cmd.ExecuteNonQuery();
+        using var tx = conn.BeginTransaction();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "UPDATE Users SET Disabled=$d WHERE Id=$id";
+            cmd.Parameters.AddWithValue("$d", disabled ? 1 : 0);
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+        }
+        if (disabled) RevokeUserSessions(conn, tx, id, null);
+        tx.Commit();
     }
 
     public void UpdateCredentials(string id, string salt, int iterations, string authHash,
@@ -320,22 +379,25 @@ public class AccountRepository
         var id = Guid.NewGuid().ToString("N");
         using var conn = OpenConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO Sessions (Id,UserId,RefreshHash,CreatedAt) VALUES ($id,$uid,$rh,$ca)";
+        cmd.CommandText = "INSERT INTO Sessions (Id,UserId,RefreshHash,CreatedAt,ExpiresAt) VALUES ($id,$uid,$rh,$ca,$ex)";
         cmd.Parameters.AddWithValue("$id", id);
         cmd.Parameters.AddWithValue("$uid", userId);
         cmd.Parameters.AddWithValue("$rh", refreshHash);
         cmd.Parameters.AddWithValue("$ca", Now());
+        cmd.Parameters.AddWithValue("$ex", Now() + (long)SessionIdleLifetime.TotalMilliseconds);
         cmd.ExecuteNonQuery();
         return id;
     }
 
-    /// <summary>True if the session exists and has not been revoked.</summary>
+    /// <summary>True if the session exists, is not revoked or idle-expired, and its user is not disabled.</summary>
     public bool SessionExists(string sessionId)
     {
         using var conn = OpenConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT EXISTS(SELECT 1 FROM Sessions WHERE Id=$id AND RevokedAt IS NULL)";
+        cmd.CommandText = @"SELECT EXISTS(SELECT 1 FROM Sessions s JOIN Users u ON u.Id=s.UserId
+            WHERE s.Id=$id AND s.RevokedAt IS NULL AND s.ExpiresAt>$now AND u.Disabled=0)";
         cmd.Parameters.AddWithValue("$id", sessionId);
+        cmd.Parameters.AddWithValue("$now", Now());
         return Convert.ToInt64(cmd.ExecuteScalar()) == 1;
     }
 
@@ -352,11 +414,15 @@ public class AccountRepository
         using (var upd = conn.CreateCommand())
         {
             upd.Transaction = tx;
-            upd.CommandText = @"UPDATE Sessions SET RefreshHash=$new, RotatedAt=$now
-                WHERE RefreshHash=$old AND RevokedAt IS NULL RETURNING Id,UserId";
+            // Sliding idle expiry: a successful rotation pushes ExpiresAt out by SessionIdleLifetime.
+            upd.CommandText = @"UPDATE Sessions SET RefreshHash=$new, RotatedAt=$now, ExpiresAt=$exp
+                WHERE RefreshHash=$old AND RevokedAt IS NULL AND ExpiresAt>$now
+                  AND UserId IN (SELECT Id FROM Users WHERE Disabled=0)
+                RETURNING Id,UserId";
             upd.Parameters.AddWithValue("$new", newHash);
             upd.Parameters.AddWithValue("$old", oldHash);
             upd.Parameters.AddWithValue("$now", Now());
+            upd.Parameters.AddWithValue("$exp", Now() + (long)SessionIdleLifetime.TotalMilliseconds);
             string? sid = null, uid = null;
             using (var r = upd.ExecuteReader())
             {
@@ -371,6 +437,7 @@ public class AccountRepository
                 ret.Parameters.AddWithValue("$sid", sid);
                 ret.Parameters.AddWithValue("$now", Now());
                 ret.ExecuteNonQuery();
+                PurgeStale(conn, tx);
                 tx.Commit();
                 return new RotateResult(true, false, uid, sid);
             }
@@ -389,12 +456,7 @@ public class AccountRepository
             }
             if (sid != null)
             {
-                using var rev = conn.CreateCommand();
-                rev.Transaction = tx;
-                rev.CommandText = "UPDATE Sessions SET RevokedAt=$now WHERE Id=$id AND RevokedAt IS NULL";
-                rev.Parameters.AddWithValue("$now", Now());
-                rev.Parameters.AddWithValue("$id", sid);
-                rev.ExecuteNonQuery();
+                RevokeSessionById(conn, tx, sid);
                 tx.Commit();
                 return new RotateResult(false, true, uid, sid);
             }
@@ -406,22 +468,70 @@ public class AccountRepository
     public void RevokeSession(string sessionId)
     {
         using var conn = OpenConnection();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Sessions SET RevokedAt=$now WHERE Id=$id AND RevokedAt IS NULL";
-        cmd.Parameters.AddWithValue("$now", Now());
-        cmd.Parameters.AddWithValue("$id", sessionId);
-        cmd.ExecuteNonQuery();
+        using var tx = conn.BeginTransaction();
+        RevokeSessionById(conn, tx, sessionId);
+        tx.Commit();
     }
 
     /// <summary>Revokes all of a user's sessions, optionally keeping one (e.g. the caller's).</summary>
     public void RevokeAllSessions(string userId, string? exceptSessionId = null)
     {
         using var conn = OpenConnection();
+        using var tx = conn.BeginTransaction();
+        RevokeUserSessions(conn, tx, userId, exceptSessionId);
+        tx.Commit();
+    }
+
+    // A revoked session can never rotate again, so its retired-token rows are dead weight: drop them.
+    private static void RevokeSessionById(SqliteConnection conn, SqliteTransaction tx, string sessionId)
+    {
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "UPDATE Sessions SET RevokedAt=$now WHERE Id=$id AND RevokedAt IS NULL";
+            cmd.Parameters.AddWithValue("$now", Now());
+            cmd.Parameters.AddWithValue("$id", sessionId);
+            cmd.ExecuteNonQuery();
+        }
+        using (var del = conn.CreateCommand())
+        {
+            del.Transaction = tx;
+            del.CommandText = "DELETE FROM RetiredRefresh WHERE SessionId=$id";
+            del.Parameters.AddWithValue("$id", sessionId);
+            del.ExecuteNonQuery();
+        }
+    }
+
+    private static void RevokeUserSessions(SqliteConnection conn, SqliteTransaction tx, string userId, string? exceptSessionId)
+    {
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "UPDATE Sessions SET RevokedAt=$now WHERE UserId=$uid AND RevokedAt IS NULL AND ($ex IS NULL OR Id<>$ex)";
+            cmd.Parameters.AddWithValue("$now", Now());
+            cmd.Parameters.AddWithValue("$uid", userId);
+            cmd.Parameters.AddWithValue("$ex", (object?)exceptSessionId ?? DBNull.Value);
+            cmd.ExecuteNonQuery();
+        }
+        using (var del = conn.CreateCommand())
+        {
+            del.Transaction = tx;
+            del.CommandText = @"DELETE FROM RetiredRefresh
+                WHERE SessionId IN (SELECT Id FROM Sessions WHERE UserId=$uid AND RevokedAt IS NOT NULL)";
+            del.Parameters.AddWithValue("$uid", userId);
+            del.ExecuteNonQuery();
+        }
+    }
+
+    // Opportunistic cleanup run on successful rotations: idle-expired sessions, then retired rows whose
+    // session is gone or revoked.
+    private static void PurgeStale(SqliteConnection conn, SqliteTransaction tx)
+    {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Sessions SET RevokedAt=$now WHERE UserId=$uid AND RevokedAt IS NULL AND ($ex IS NULL OR Id<>$ex)";
+        cmd.Transaction = tx;
+        cmd.CommandText = @"DELETE FROM Sessions WHERE ExpiresAt<=$now;
+            DELETE FROM RetiredRefresh WHERE SessionId NOT IN (SELECT Id FROM Sessions WHERE RevokedAt IS NULL);";
         cmd.Parameters.AddWithValue("$now", Now());
-        cmd.Parameters.AddWithValue("$uid", userId);
-        cmd.Parameters.AddWithValue("$ex", (object?)exceptSessionId ?? DBNull.Value);
         cmd.ExecuteNonQuery();
     }
 

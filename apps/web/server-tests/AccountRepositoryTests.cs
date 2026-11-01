@@ -32,6 +32,30 @@ public sealed class AccountRepositoryTests : IDisposable
     private static NewUser NewUser(string username, string role = "user") =>
         new(username, role, "c2FsdA==", 600000, "aGFzaA==", "cHVi", "d3ByaXY=", "d2NvbnQ=");
 
+    private string DbFile => Path.Combine(_dir, "accounts.db");
+
+    private void Sql(string sql, params (string, object)[] args)
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbFile}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        foreach (var (k, v) in args) cmd.Parameters.AddWithValue(k, v);
+        cmd.ExecuteNonQuery();
+    }
+
+    private long Scalar(string sql, params (string, object)[] args)
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbFile}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        foreach (var (k, v) in args) cmd.Parameters.AddWithValue(k, v);
+        return Convert.ToInt64(cmd.ExecuteScalar());
+    }
+
+    private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
     // ---- PasswordHasher ------------------------------------------------------------
 
     [Fact]
@@ -267,6 +291,232 @@ public sealed class AccountRepositoryTests : IDisposable
         var sid = _repo.CreateSession(u.Id, "r1");
         _repo.RevokeSession(sid);
         Assert.False(_repo.RotateSession("r1", "r2").Ok);
+    }
+
+    // ---- Fix round 1 ---------------------------------------------------------------
+
+    private UserRecord LockedUser(string name)
+    {
+        var u = _repo.CreateUser(NewUser(name));
+        for (var i = 0; i < 5; i++) _repo.RecordFailedLogin(u.Id);
+        Assert.NotNull(_repo.FindById(u.Id)!.LockedUntil);
+        return u;
+    }
+
+    [Fact]
+    public void Lockout_AfterExpiry_StartsAFreshCount()
+    {
+        var u = LockedUser("lock1");
+        Sql("UPDATE Users SET LockedUntil=$p WHERE Id=$id", ("$p", NowMs() - 1000), ("$id", u.Id));
+
+        var (failures, until) = _repo.RecordFailedLogin(u.Id);
+
+        Assert.Equal(1, failures);
+        Assert.Null(until);
+        var r = _repo.FindById(u.Id)!;
+        Assert.Equal(1, r.FailedLogins);
+        Assert.Null(r.LockedUntil);
+    }
+
+    [Fact]
+    public void Lockout_FailureWhileLocked_DoesNotIncrementOrExtend()
+    {
+        var u = LockedUser("lock2");
+        var before = _repo.FindById(u.Id)!;
+
+        var (failures, until) = _repo.RecordFailedLogin(u.Id);
+
+        Assert.Equal(5, failures);
+        Assert.Equal(before.LockedUntil, until);
+        var after = _repo.FindById(u.Id)!;
+        Assert.Equal(5, after.FailedLogins);
+        Assert.Equal(before.LockedUntil, after.LockedUntil);
+    }
+
+    [Fact]
+    public void Session_ExpiredCannotRotate_AndIsNotActive()
+    {
+        var u = _repo.CreateUser(NewUser("exp1"));
+        var sid = _repo.CreateSession(u.Id, "e1");
+        Assert.True(_repo.SessionExists(sid));
+        Sql("UPDATE Sessions SET ExpiresAt=$p WHERE Id=$id", ("$p", NowMs() - 1000), ("$id", sid));
+
+        Assert.False(_repo.SessionExists(sid));
+        var r = _repo.RotateSession("e1", "e2");
+        Assert.False(r.Ok);
+        Assert.False(r.Reused);
+    }
+
+    [Fact]
+    public void Session_IdleExpiryIs30Days_AndRotationExtendsIt()
+    {
+        var u = _repo.CreateUser(NewUser("exp2"));
+        var sid = _repo.CreateSession(u.Id, "x1");
+        var thirtyDays = (long)TimeSpan.FromDays(30).TotalMilliseconds;
+        var created = Scalar("SELECT ExpiresAt FROM Sessions WHERE Id=$id", ("$id", sid));
+        Assert.InRange(created - NowMs(), thirtyDays - 60_000, thirtyDays + 1000);
+
+        Sql("UPDATE Sessions SET ExpiresAt=$p WHERE Id=$id", ("$p", NowMs() + 3_600_000), ("$id", sid));
+        Assert.True(_repo.RotateSession("x1", "x2").Ok);
+
+        var extended = Scalar("SELECT ExpiresAt FROM Sessions WHERE Id=$id", ("$id", sid));
+        Assert.InRange(extended - NowMs(), thirtyDays - 60_000, thirtyDays + 1000);
+    }
+
+    [Fact]
+    public void RevokedSession_RetiredRowsAreDeleted()
+    {
+        var u = _repo.CreateUser(NewUser("ret1"));
+        var s1 = _repo.CreateSession(u.Id, "a1");
+        Assert.True(_repo.RotateSession("a1", "a2").Ok);
+        Assert.Equal(1, Scalar("SELECT COUNT(*) FROM RetiredRefresh WHERE SessionId=$s", ("$s", s1)));
+        _repo.RevokeSession(s1);
+        Assert.Equal(0, Scalar("SELECT COUNT(*) FROM RetiredRefresh WHERE SessionId=$s", ("$s", s1)));
+
+        var s2 = _repo.CreateSession(u.Id, "b1");
+        Assert.True(_repo.RotateSession("b1", "b2").Ok);
+        _repo.RevokeAllSessions(u.Id);
+        Assert.Equal(0, Scalar("SELECT COUNT(*) FROM RetiredRefresh WHERE SessionId=$s", ("$s", s2)));
+
+        var s3 = _repo.CreateSession(u.Id, "c1");
+        Assert.True(_repo.RotateSession("c1", "c2").Ok);
+        Assert.True(_repo.RotateSession("c1", "c3").Reused); // reuse revokes the session
+        Assert.Equal(0, Scalar("SELECT COUNT(*) FROM RetiredRefresh WHERE SessionId=$s", ("$s", s3)));
+    }
+
+    [Fact]
+    public void Rotation_PurgesExpiredSessionsAndTheirRetiredRows()
+    {
+        var u = _repo.CreateUser(NewUser("purge"));
+        var old = _repo.CreateSession(u.Id, "p1");
+        Assert.True(_repo.RotateSession("p1", "p2").Ok);
+        Sql("UPDATE Sessions SET ExpiresAt=$p WHERE Id=$id", ("$p", NowMs() - 1000), ("$id", old));
+        var live = _repo.CreateSession(u.Id, "q1");
+
+        Assert.True(_repo.RotateSession("q1", "q2").Ok);
+
+        Assert.Equal(0, Scalar("SELECT COUNT(*) FROM Sessions WHERE Id=$id", ("$id", old)));
+        Assert.Equal(0, Scalar("SELECT COUNT(*) FROM RetiredRefresh WHERE SessionId=$id", ("$id", old)));
+        Assert.Equal(1, Scalar("SELECT COUNT(*) FROM RetiredRefresh WHERE SessionId=$id", ("$id", live)));
+        Assert.Equal(1, Scalar("SELECT COUNT(*) FROM pragma_index_list('RetiredRefresh') WHERE name='IX_RetiredRefresh_SessionId'"));
+    }
+
+    [Fact]
+    public void SetDisabled_RevokesAllSessions()
+    {
+        var u = _repo.CreateUser(NewUser("dis1"));
+        var other = _repo.CreateUser(NewUser("dis2"));
+        var s1 = _repo.CreateSession(u.Id, "d1");
+        var s2 = _repo.CreateSession(u.Id, "d2");
+        var so = _repo.CreateSession(other.Id, "d3");
+
+        _repo.SetDisabled(u.Id, true);
+
+        Assert.False(_repo.SessionExists(s1));
+        Assert.False(_repo.SessionExists(s2));
+        Assert.True(_repo.SessionExists(so));
+        Assert.Equal(2, Scalar("SELECT COUNT(*) FROM Sessions WHERE UserId=$u AND RevokedAt IS NOT NULL", ("$u", u.Id)));
+
+        // Re-enabling does not resurrect the sessions.
+        _repo.SetDisabled(u.Id, false);
+        Assert.False(_repo.SessionExists(s1));
+        Assert.False(_repo.RotateSession("d1", "d1b").Ok);
+    }
+
+    [Fact]
+    public void DisabledOwner_BlocksRotationAndSessionExists_EvenIfSessionWasNotRevoked()
+    {
+        var u = _repo.CreateUser(NewUser("dis3"));
+        var sid = _repo.CreateSession(u.Id, "z1");
+        Sql("UPDATE Users SET Disabled=1 WHERE Id=$id", ("$id", u.Id)); // bypass SetDisabled
+
+        Assert.False(_repo.SessionExists(sid));
+        Assert.False(_repo.RotateSession("z1", "z2").Ok);
+    }
+
+    [Fact]
+    public void CreateUser_OtherConstraintFailuresPropagate_NotMappedToDuplicate()
+    {
+        // A null role never reaches SQLite (parameter binding throws first), so provoke a different
+        // constraint failure (SQLITE_CONSTRAINT_TRIGGER, 1811) with a trigger.
+        Sql("CREATE TRIGGER trg_reject BEFORE INSERT ON Users WHEN NEW.Username='boom' BEGIN SELECT RAISE(ABORT,'rejected'); END");
+
+        var ex = Record.Exception(() => _repo.CreateUser(NewUser("boom")));
+
+        Assert.IsType<Microsoft.Data.Sqlite.SqliteException>(ex);
+        Assert.Equal(1811, ((Microsoft.Data.Sqlite.SqliteException)ex!).SqliteExtendedErrorCode);
+        Assert.False(_repo.AnyUser());
+    }
+
+    [Fact]
+    public void CreateUserFromInvite_CreatesUserAndConsumesInviteOnce()
+    {
+        var admin = _repo.CreateUser(NewUser("admin", "admin"));
+        var (_, code) = _repo.CreateInvite(admin.Id, TimeSpan.FromHours(1));
+
+        var created = _repo.CreateUserFromInvite(code, NewUser("newbie"));
+
+        Assert.Equal("newbie", created.Username);
+        Assert.Equal("user", created.Role);
+        Assert.NotNull(_repo.FindByUsername("newbie"));
+        Assert.Throws<InvalidInviteException>(() => _repo.CreateUserFromInvite(code, NewUser("second")));
+        Assert.Null(_repo.FindByUsername("second"));
+        Assert.False(_repo.RedeemInvite(code));
+    }
+
+    [Fact]
+    public void CreateUserFromInvite_DuplicateUsernameLeavesInviteRedeemable()
+    {
+        var admin = _repo.CreateUser(NewUser("admin", "admin"));
+        var (_, code) = _repo.CreateInvite(admin.Id, TimeSpan.FromHours(1));
+
+        Assert.Throws<DuplicateUsernameException>(() => _repo.CreateUserFromInvite(code, NewUser("ADMIN")));
+
+        var created = _repo.CreateUserFromInvite(code, NewUser("someone-else"));
+        Assert.Equal("someone-else", created.Username);
+    }
+
+    [Fact]
+    public void CreateUserFromInvite_RejectsUnknownExpiredAndRevokedInvites()
+    {
+        var admin = _repo.CreateUser(NewUser("admin", "admin"));
+        var (_, expired) = _repo.CreateInvite(admin.Id, TimeSpan.FromSeconds(-1));
+        var (revId, revoked) = _repo.CreateInvite(admin.Id, TimeSpan.FromHours(1));
+        _repo.RevokeInvite(revId);
+
+        Assert.Throws<InvalidInviteException>(() => _repo.CreateUserFromInvite("NOPE", NewUser("u1")));
+        Assert.Throws<InvalidInviteException>(() => _repo.CreateUserFromInvite(expired, NewUser("u2")));
+        Assert.Throws<InvalidInviteException>(() => _repo.CreateUserFromInvite(revoked, NewUser("u3")));
+        Assert.Null(_repo.FindByUsername("u1"));
+        Assert.Null(_repo.FindByUsername("u2"));
+        Assert.Null(_repo.FindByUsername("u3"));
+    }
+
+    [Fact]
+    public void Username_ComposedAndDecomposedFormsConflict()
+    {
+        var composed = "René";          // e with acute, precomposed
+        var decomposed = "René";       // e + combining acute
+        _repo.CreateUser(NewUser(composed));
+
+        Assert.Throws<DuplicateUsernameException>(() => _repo.CreateUser(NewUser(decomposed)));
+        Assert.NotNull(_repo.FindByUsername(decomposed.ToUpperInvariant()));
+        Assert.Equal(composed, _repo.FindByUsername(decomposed)!.Username);
+    }
+
+    [Fact]
+    public async Task RotateSession_ConcurrentSameOldHash_ExactlyOneSucceeds()
+    {
+        var u = _repo.CreateUser(NewUser("race"));
+        _repo.CreateSession(u.Id, "old");
+
+        var tasks = Enumerable.Range(0, 8)
+            .Select(i => Task.Run(() => _repo.RotateSession("old", $"new-{i}")))
+            .ToArray();
+        var results = await Task.WhenAll(tasks);
+
+        Assert.Equal(1, results.Count(r => r.Ok));
+        Assert.All(results.Where(r => !r.Ok), r => Assert.True(r.Reused || r.UserId == null));
     }
 
     // ---- Shared JWT key rule -------------------------------------------------------
