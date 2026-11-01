@@ -108,6 +108,7 @@ function fakeServer({ paramsOverride, failRefresh } = {}) {
         : json(200, { salt: 'AAAAAAAAAAAAAAAAAAAAAA==', iterations: MIN_ITERATIONS })
     }
     if (key === 'POST /api/account/setup') {
+      if (state.rejectSetup) return json(403, { error: 'wrong setup token' })
       if (!state.needsSetup) return json(409, { error: 'already set up' })
       state.needsSetup = false
       return json(201, issue(create(req.body, 'admin')))
@@ -147,10 +148,11 @@ function fakeServer({ paramsOverride, failRefresh } = {}) {
         wrappedPrivateKey: req.body.wrappedPrivateKey,
         wrappedContainerKey: req.body.wrappedContainerKey,
       })
-      // Revoke every session except the caller's.
-      const caller = /^Bearer (.+)$/.exec(req.headers.authorization)[1]
-      for (const t of [...state.accessTokens.keys()]) if (t !== caller) state.accessTokens.delete(t)
-      return new Response(null, { status: 204 })
+      // Ruling 10: revoke every session, the caller's included, and issue a fresh one.
+      for (const [t, id] of [...state.accessTokens]) if (id === user.id) state.accessTokens.delete(t)
+      for (const [t, id] of [...state.refreshTokens]) if (id === user.id) state.refreshTokens.delete(t)
+      state.lastChange = issue(user)
+      return json(200, state.lastChange)
     }
     return state.extra ? state.extra(req, userFor(req)) : json(404, {})
   }
@@ -235,6 +237,14 @@ describe('setup and redeem', () => {
     expect(session.role).toBe('user')
   })
 
+  it('maps a rejected setup token (403) to forbidden, not disabled', async () => {
+    const { server, client, store } = setup()
+    server.state.rejectSetup = true
+    await expect(client.setup({ setupToken: 'bad', username: 'ada', password: 'pw' }))
+      .rejects.toMatchObject({ code: 'forbidden', status: 403 })
+    expect(store.saves).toEqual([])
+  })
+
   it('maps 409 to conflict', async () => {
     const { client } = setup()
     await client.setup({ setupToken: 't', username: 'ada', password: 'pw' })
@@ -290,8 +300,40 @@ describe('login', () => {
 
   it('rejects malformed params (non-integer iterations)', async () => {
     const bad = setup({ paramsOverride: { salt: 'AAAAAAAAAAAAAAAAAAAAAA==', iterations: '1000' } })
-    await expect(bad.client.login({ username: 'ada', password: 'pw' })).rejects.toMatchObject({ code: 'invalid' })
+    await expect(bad.client.login({ username: 'ada', password: 'pw' })).rejects.toMatchObject({ code: 'server' })
     expect(bad.server.state.requests.some((r) => r.path === '/api/account/login')).toBe(false)
+  })
+
+  it.each([
+    ['a salt that is not 16 bytes', { salt: 'AAAA', iterations: ITER }],
+    ['a salt that is not base64', { salt: '!!!not base64***', iterations: ITER }],
+    ['no salt', { iterations: ITER }],
+    ['iterations above the upper bound', { salt: 'AAAAAAAAAAAAAAAAAAAAAA==', iterations: 10_000_001 }],
+    ['a fractional iteration count', { salt: 'AAAAAAAAAAAAAAAAAAAAAA==', iterations: 1000.5 }],
+  ])('rejects params with %s as an AccountError before any login request', async (_n, paramsOverride) => {
+    const bad = setup({ paramsOverride })
+    await expect(bad.client.login({ username: 'ada', password: 'pw' }))
+      .rejects.toMatchObject({ name: 'AccountError', code: 'server' })
+    expect(bad.server.state.requests.map((r) => r.path)).toEqual(['/api/account/params'])
+  })
+
+  it('surfaces an unusable stored wrapped key as keys-corrupt and saves no session', async () => {
+    const before = ctx.store.value
+    ctx.server.state.users.get('ada').wrappedContainerKey = Buffer.alloc(40, 7).toString('base64')
+    await expect(ctx.client.login({ username: 'ada', password: 'correct horse' }))
+      .rejects.toMatchObject({ name: 'AccountError', code: 'keys-corrupt', status: 0 })
+    expect(ctx.store.saves).toEqual([])
+    expect(await ctx.client.getSession()).toEqual(before)
+  })
+
+  it('does not hold the session in memory when persisting it fails', async () => {
+    const store = memoryStore()
+    store.save = async () => { throw new Error('disk full') }
+    const client = createAccountClient({
+      baseUrl: BASE, fetch: ctx.server.fetch, sessionStore: store, minIterations: ITER,
+    })
+    await expect(client.login({ username: 'ada', password: 'correct horse' })).rejects.toThrow('disk full')
+    expect(await client.getSession()).toBeNull()
   })
 
   it('wrong password -> invalid and nothing saved', async () => {
@@ -391,6 +433,42 @@ describe('authenticated calls and refresh', () => {
     expect(ctx.store.value.refreshToken).toBe('rt-1')
   })
 
+  it('maps an authed 403 to forbidden, not disabled', async () => {
+    ctx.server.state.extra = () => json(403, { error: 'admin only' })
+    await expect(ctx.client.listUsers()).rejects.toMatchObject({ code: 'forbidden', status: 403 })
+    expect(ctx.server.state.refreshCalls).toBe(0)
+  })
+
+  it('two parallel 401s trigger exactly one refresh', async () => {
+    ctx.server.state.rejectAccess.add('at-1')
+    const [a, b] = await Promise.all([ctx.client.listDevices(), ctx.client.listDevices()])
+    expect(a).toHaveLength(1)
+    expect(b).toHaveLength(1)
+    expect(ctx.server.state.refreshCalls).toBe(1)
+    expect(ctx.store.value.refreshToken).toBe('rt-2')
+  })
+
+  it('two clients sharing one store do not replay a consumed refresh token', async () => {
+    const other = createAccountClient({
+      baseUrl: BASE, fetch: ctx.server.fetch, sessionStore: ctx.store, minIterations: ITER,
+    })
+    await other.getSession() // loads at-1 / rt-1 into the second client
+    ctx.server.state.rejectAccess.add('at-1')
+    await ctx.client.listDevices() // rotates rt-1 -> rt-2 and persists it
+    expect(ctx.server.state.refreshCalls).toBe(1)
+    await expect(other.listDevices()).resolves.toHaveLength(1)
+    // The second client adopted the persisted rotation instead of replaying rt-1.
+    expect(ctx.server.state.refreshCalls).toBe(1)
+    expect(ctx.store.value.refreshToken).toBe('rt-2')
+  })
+
+  it('keeps the old token in memory when persisting the rotated one fails', async () => {
+    ctx.server.state.rejectAccess.add('at-1')
+    ctx.store.save = async () => { throw new Error('disk full') }
+    await expect(ctx.client.listDevices()).rejects.toThrow('disk full')
+    expect((await ctx.client.getSession()).refreshToken).toBe('rt-1')
+  })
+
   it('without any session, authed calls fail with session-expired and make no request', async () => {
     const { client, server } = setup()
     await expect(client.listDevices()).rejects.toMatchObject({ code: 'session-expired' })
@@ -465,15 +543,39 @@ describe('changePassword', () => {
     expect(store.value.containerKey).toBe(first.session.containerKey)
   })
 
-  it('keeps the caller signed in after the other sessions are revoked', async () => {
+  it('adopts the session issued by change-password (all old sessions are revoked)', async () => {
     const { server, store, client } = setup()
     await client.setup({ setupToken: 't', username: 'ada', password: 'old pw' })
     server.state.extra = (req, user) => (user ? json(200, []) : json(401, {}))
-    await client.changePassword({ currentPassword: 'old pw', newPassword: 'new pw' })
+    const result = await client.changePassword({ currentPassword: 'old pw', newPassword: 'new pw' })
+    const issued = server.state.lastChange
+    expect(store.value.accessToken).toBe(issued.accessToken)
+    expect(store.value.refreshToken).toBe(issued.refreshToken)
+    expect(result.session).toEqual(store.value)
+    expect(exportContainerKey(result.containerKey)).toBe(store.value.containerKey)
+    // The pre-change tokens are dead server-side; the adopted ones work without a refresh.
+    expect(server.state.accessTokens.has('at-1')).toBe(false)
     server.state.requests.length = 0
-    await client.listDevices()
+    await expect(client.listDevices()).resolves.toEqual([])
     expect(server.state.refreshCalls).toBe(0)
-    expect(store.value).not.toBeNull()
+  })
+
+  it('leaves the stored session untouched when change-password fails', async () => {
+    const { server, store, client } = setup()
+    await client.setup({ setupToken: 't', username: 'ada', password: 'old pw' })
+    const before = store.value
+    const orig = server.fetch
+    const failing = createAccountClient({
+      baseUrl: BASE,
+      fetch: async (url, init) => (new URL(url).pathname === '/api/account/change-password'
+        ? json(500, { error: 'boom' })
+        : orig(url, init)),
+      sessionStore: store,
+      minIterations: ITER,
+    })
+    await expect(failing.changePassword({ currentPassword: 'old pw', newPassword: 'new pw' }))
+      .rejects.toMatchObject({ code: 'server', status: 500 })
+    expect(store.value).toEqual(before)
   })
 
   it('wrong current password -> invalid and nothing changes', async () => {
@@ -574,5 +676,52 @@ describe('devices, prefs, items and admin', () => {
     expect(calls.at(-1).path).toBe('/api/admin/users/u2/disable')
     await ctx.client.setUserDisabled('u2', false)
     expect(calls.at(-1).path).toBe('/api/admin/users/u2/enable')
+  })
+})
+
+describe('malformed 2xx responses', () => {
+  const clientFor = (handler) => createAccountClient({
+    baseUrl: BASE,
+    fetch: handler,
+    sessionStore: memoryStore({
+      refreshToken: 'rt', accessToken: 'at', username: 'ada', userId: 'u1', role: 'admin', containerKey: 'x',
+    }),
+    minIterations: ITER,
+  })
+
+  it('status() on a non-JSON body raises a server error instead of needsSetup:false', async () => {
+    const client = clientFor(async () => new Response('<html>proxy</html>', { status: 200 }))
+    await expect(client.status()).rejects.toMatchObject({ name: 'AccountError', code: 'server' })
+  })
+
+  it('status() on an empty body raises a server error', async () => {
+    const client = clientFor(async () => new Response(null, { status: 200 }))
+    await expect(client.status()).rejects.toMatchObject({ code: 'server' })
+  })
+
+  it.each([
+    ['empty', () => new Response(null, { status: 200 })],
+    ['non-JSON', () => new Response('ok', { status: 200 })],
+    ['missing results', () => json(200, {})],
+  ])('putItems with a %s body raises a server error', async (_n, make) => {
+    const client = clientFor(async () => make())
+    await expect(client.putItems([{ id: 'a', ifMatch: 0, ciphertext: 'c' }]))
+      .rejects.toMatchObject({ code: 'server' })
+  })
+
+  it('other read calls reject an empty 200 body', async () => {
+    const client = clientFor(async () => new Response(null, { status: 200 }))
+    await expect(client.listDevices()).rejects.toMatchObject({ code: 'server' })
+    await expect(client.getDevicePrefs('d')).rejects.toMatchObject({ code: 'server' })
+    await expect(client.getChanges(0)).rejects.toMatchObject({ code: 'server' })
+    await expect(client.listUsers()).rejects.toMatchObject({ code: 'server' })
+    await expect(client.createInvite({})).rejects.toMatchObject({ code: 'server' })
+  })
+
+  it('keeps 204 handling for calls that return no body', async () => {
+    const client = clientFor(async () => new Response(null, { status: 204 }))
+    await expect(client.deleteDevice('d')).resolves.toBeNull()
+    await expect(client.revokeInvite('i')).resolves.toBeNull()
+    await expect(client.setUserDisabled('u', true)).resolves.toBeNull()
   })
 })

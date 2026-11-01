@@ -21,7 +21,9 @@ import {
 
 export class AccountError extends Error {
   /**
-   * @param {'locked'|'invalid'|'disabled'|'conflict'|'offline'|'session-expired'|'not-found'|'server'} code
+   * @param {'locked'|'invalid'|'disabled'|'forbidden'|'conflict'|'offline'|'session-expired'|'keys-corrupt'|'not-found'|'server'} code
+   *   'disabled' is only produced by a login 403; any other 403 (wrong setup token, non-admin) is 'forbidden'.
+   *   'keys-corrupt' means the server accepted the credentials but the wrapped keys do not open.
    * @param {number} status HTTP status, or 0 when no response was received
    * @param {string} [message]
    */
@@ -33,10 +35,13 @@ export class AccountError extends Error {
   }
 }
 
-function codeForStatus(status) {
+const MAX_ITERATIONS = 10_000_000 // mirrors the deriveKeys upper bound
+const SALT_BYTES = 16
+
+function codeForStatus(status, login) {
   if (status === 401 || status === 400) return 'invalid'
   if (status === 423) return 'locked'
-  if (status === 403) return 'disabled'
+  if (status === 403) return login ? 'disabled' : 'forbidden'
   if (status === 409) return 'conflict'
   if (status === 404) return 'not-found'
   return 'server'
@@ -88,15 +93,25 @@ export function createAccountClient({
     return { status: res.status, ok: res.ok, data: await readBody(res) }
   }
 
-  function check(r) {
-    if (!r.ok) throw new AccountError(codeForStatus(r.status), r.status, messageOf(r.data, r.status))
+  /** Throws for non-2xx. `login` marks the one call where a 403 means the account is disabled. */
+  function check(r, { login = false } = {}) {
+    if (!r.ok) throw new AccountError(codeForStatus(r.status, login), r.status, messageOf(r.data, r.status))
     return r.data
   }
 
+  /** A 2xx body that is missing, non-JSON or the wrong shape is a server error, never a silent default. */
+  function shaped(data, ok, what) {
+    if (!ok(data)) throw new AccountError('server', 0, `Malformed ${what} response`)
+    return data
+  }
+  const isObject = (d) => !!d && typeof d === 'object' && !Array.isArray(d)
+  const isArray = (d) => Array.isArray(d)
+
+  /** Persist first: if the store rejects, memory must not hold a token the store never saw. */
   async function setSession(next) {
+    await sessionStore.save(next)
     session = next
     loaded = true
-    await sessionStore.save(next)
   }
 
   async function current() {
@@ -126,8 +141,18 @@ export function createAccountClient({
   function refresh() {
     if (refreshing) return refreshing
     refreshing = (async () => {
-      const s = await current()
-      if (!s || !s.refreshToken) throw new AccountError('session-expired', 401, 'Not signed in')
+      // Re-read the store: another client sharing it may already have rotated the token.
+      const mem = await current()
+      const stored = (await sessionStore.load()) || null
+      if (!stored || !stored.refreshToken) {
+        if (mem) await setSession(null)
+        throw new AccountError('session-expired', 401, 'Not signed in')
+      }
+      if (mem && stored.refreshToken !== mem.refreshToken) {
+        session = stored
+        return stored
+      }
+      const s = stored
       const r = await send('POST', '/api/account/refresh', { body: { refreshToken: s.refreshToken } })
       if (r.status === 401) {
         await setSession(null)
@@ -172,8 +197,18 @@ export function createAccountClient({
     if (
       !params || typeof params.salt !== 'string'
       || !Number.isInteger(params.iterations)
+      || params.iterations > MAX_ITERATIONS
     ) {
-      throw new AccountError('invalid', 0, 'Malformed key parameters from server')
+      throw new AccountError('server', 0, 'Malformed key parameters from server')
+    }
+    let saltLength
+    try {
+      saltLength = atob(params.salt).length
+    } catch {
+      saltLength = -1
+    }
+    if (saltLength !== SALT_BYTES) {
+      throw new AccountError('server', 0, 'Malformed key parameters from server')
     }
     if (params.iterations < minIterations) {
       throw new AccountError('invalid', 0,
@@ -212,15 +247,25 @@ export function createAccountClient({
   /** Params + derive + authenticate. Returns the raw server session and the derived vault key. */
   async function authenticate(username, password) {
     const params = await fetchParams(username)
-    const { authKey, vaultKey } = await deriveKeys(password, params.salt, params.iterations)
-    const resp = check(await send('POST', '/api/account/login', { body: { username, authKey } }))
+    let keys
+    try {
+      keys = await deriveKeys(password, params.salt, params.iterations)
+    } catch {
+      throw new AccountError('server', 0, 'Could not derive keys from the server parameters')
+    }
+    const { authKey, vaultKey } = keys
+    const resp = check(await send('POST', '/api/account/login', { body: { username, authKey } }), { login: true })
     return { resp, vaultKey, authKey }
   }
 
   return {
     async status() {
-      const data = check(await send('GET', '/api/account/status'))
-      return { needsSetup: !!(data && data.needsSetup) }
+      const data = shaped(
+        check(await send('GET', '/api/account/status')),
+        (d) => isObject(d) && typeof d.needsSetup === 'boolean',
+        'status',
+      )
+      return { needsSetup: data.needsSetup }
     },
 
     setup({ setupToken, username, password }) {
@@ -237,7 +282,8 @@ export function createAccountClient({
       try {
         ck = await unwrapContainerKey(resp.wrappedContainerKey, vaultKey)
       } catch {
-        throw new AccountError('invalid', 0, 'Could not unlock the account keys')
+        // The server accepted the credentials, so this is damaged key material, not a wrong password.
+        throw new AccountError('keys-corrupt', 0, 'The stored account keys could not be opened')
       }
       const next = buildSession(resp, exportContainerKey(ck))
       await setSession(next)
@@ -264,9 +310,10 @@ export function createAccountClient({
     },
 
     /**
-     * Re-authenticates with the current password (proving it and fetching the wrapped keys),
-     * re-wraps the container key and private key under the new password with a fresh salt, and
-     * adopts the new session (the server revokes the caller's other sessions).
+     * Re-authenticates with the current password (proving it and fetching the wrapped keys) and
+     * re-wraps the container key and private key under the new password with a fresh salt. The
+     * server revokes every session of the user, this one included, and answers 200 with a freshly
+     * issued session; that session replaces the stored one and is returned.
      */
     async changePassword({ currentPassword, newPassword }) {
       const s = await current()
@@ -278,7 +325,7 @@ export function createAccountClient({
         ck = await unwrapContainerKey(resp.wrappedContainerKey, oldVault)
         privateKey = await unwrapPrivateKey(resp.wrappedPrivateKey, oldVault)
       } catch {
-        throw new AccountError('invalid', 0, 'Could not unlock the account keys')
+        throw new AccountError('keys-corrupt', 0, 'The stored account keys could not be opened')
       }
       const iterations = minIterations
       const salt = randomSalt()
@@ -291,21 +338,42 @@ export function createAccountClient({
         wrappedPrivateKey: await wrapPrivateKey(privateKey, vaultKey),
         wrappedContainerKey: await wrapContainerKey(ck, vaultKey),
       }
-      // Use the freshly issued tokens: the server keeps the caller's session and revokes the rest.
-      await setSession(buildSession(resp, exportContainerKey(ck)))
-      await authed('POST', '/api/account/change-password', { body })
-      return { session, containerKey: await importContainerKey(session.containerKey) }
+      // Authorise with the token the verification login just issued; the stored session stays
+      // as it was until the server confirms the change.
+      const data = check(await send('POST', '/api/account/change-password', { body, token: resp.accessToken }))
+      let next
+      try {
+        next = buildSession(data, exportContainerKey(ck))
+      } catch (e) {
+        // The change happened and every old session is revoked, so the stored one is useless.
+        await setSession(null)
+        throw e
+      }
+      await setSession(next)
+      return { session: next, containerKey: ck }
     },
 
-    listDevices: () => authed('GET', '/api/devices'),
-    createDevice: ({ name, platform }) => authed('POST', '/api/devices', { body: { name, platform } }),
+    listDevices: async () => shaped(await authed('GET', '/api/devices'), isArray, 'device list'),
+    createDevice: async ({ name, platform }) => shaped(
+      await authed('POST', '/api/devices', { body: { name, platform } }),
+      isObject,
+      'device',
+    ),
     renameDevice: (id, name) => authed('PUT', `/api/devices/${encodeURIComponent(id)}`, { body: { name } }),
     deleteDevice: (id) => authed('DELETE', `/api/devices/${encodeURIComponent(id)}`),
-    getDevicePrefs: (id) => authed('GET', `/api/devices/${encodeURIComponent(id)}/prefs`),
-    putDevicePrefs: (id, ciphertext, revision) => authed('PUT', `/api/devices/${encodeURIComponent(id)}/prefs`, {
-      body: { ciphertext },
-      headers: { 'If-Match': String(revision) },
-    }),
+    getDevicePrefs: async (id) => shaped(
+      await authed('GET', `/api/devices/${encodeURIComponent(id)}/prefs`),
+      (d) => isObject(d) && Number.isInteger(d.revision),
+      'device prefs',
+    ),
+    putDevicePrefs: async (id, ciphertext, revision) => shaped(
+      await authed('PUT', `/api/devices/${encodeURIComponent(id)}/prefs`, {
+        body: { ciphertext },
+        headers: { 'If-Match': String(revision) },
+      }),
+      (d) => isObject(d) && Number.isInteger(d.revision),
+      'device prefs',
+    ),
 
     async putItems(items) {
       const body = {
@@ -316,19 +384,31 @@ export function createAccountClient({
           deleted: !!i.deleted,
         })),
       }
-      const data = await authed('POST', '/api/items/batch', { body })
+      const data = shaped(
+        await authed('POST', '/api/items/batch', { body }),
+        (d) => isObject(d) && Array.isArray(d.results),
+        'item batch',
+      )
       return data.results
     },
 
     getChanges(since = 0, limit) {
       const q = `since=${encodeURIComponent(since)}${limit ? `&limit=${encodeURIComponent(limit)}` : ''}`
-      return authed('GET', `/api/items/changes?${q}`)
+      return authed('GET', `/api/items/changes?${q}`).then((d) => shaped(
+        d,
+        (x) => isObject(x) && Array.isArray(x.items),
+        'item changes',
+      ))
     },
 
-    createInvite: ({ ttlHours } = {}) => authed('POST', '/api/admin/invites', { body: { ttlHours } }),
-    listInvites: () => authed('GET', '/api/admin/invites'),
+    createInvite: async ({ ttlHours } = {}) => shaped(
+      await authed('POST', '/api/admin/invites', { body: { ttlHours } }),
+      isObject,
+      'invite',
+    ),
+    listInvites: async () => shaped(await authed('GET', '/api/admin/invites'), isArray, 'invite list'),
     revokeInvite: (id) => authed('DELETE', `/api/admin/invites/${encodeURIComponent(id)}`),
-    listUsers: () => authed('GET', '/api/admin/users'),
+    listUsers: async () => shaped(await authed('GET', '/api/admin/users'), isArray, 'user list'),
     setUserDisabled: (id, disabled) => authed(
       'POST',
       `/api/admin/users/${encodeURIComponent(id)}/${disabled ? 'disable' : 'enable'}`,
