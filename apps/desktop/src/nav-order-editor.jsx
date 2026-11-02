@@ -59,9 +59,10 @@ export function NavOrderEditor({ nav, order, onChange, hidden = [], onHiddenChan
       )}
       <span data-testid="nav-order-item">{item.label}</span>
       {isHidden(item.id) && <span style={{ marginLeft: onPlacementChange ? 0 : 'auto', fontSize: 11, color: 'var(--text-subtle)' }}>Hidden</span>}
+      {/* Its own padding: base.css gives every select 7px top and bottom, which leaves 26px too little for the text. */}
       {onPlacementChange && (
         <select aria-label={`Move ${item.label} to`} value="" onChange={e => { if (e.target.value) place(item.id, e.target.value) }}
-          style={{ marginLeft: 'auto', fontSize: 12, height: 26, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)' }}>
+          style={{ marginLeft: 'auto', fontSize: 12, height: 26, padding: '0 6px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)' }}>
           <option value="">Move to…</option>
           {NAV_PLACES.filter(p => p.id !== group.id).map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
         </select>
@@ -71,14 +72,14 @@ export function NavOrderEditor({ nav, order, onChange, hidden = [], onHiddenChan
 
   if (!onPlacementChange) {
     return (
-      <div className="nav-order-editor" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div className="nav-order-editor" style={{ display: 'flex', flexDirection: 'column', gap: 4, alignSelf: 'stretch' }}>
         {groups[0].items.map(item => row(item, groups[0]))}
       </div>
     )
   }
 
   return (
-    <div className="nav-order-editor" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="nav-order-editor" style={{ display: 'flex', flexDirection: 'column', gap: 10, alignSelf: 'stretch' }}>
       {groups.map(group => {
         const headingId = `nav-order-group-${group.id}`
         return (
