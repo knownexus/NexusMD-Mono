@@ -235,4 +235,66 @@ describe('AccountGate', () => {
     await waitFor(() => expect(window.location.reload).toHaveBeenCalled());
     expect(a.client.createDevice).toHaveBeenCalledTimes(1);
   });
+
+  describe('switching accounts on one install', () => {
+    const withBinding = (bound, clientOver) => {
+      if (bound) localStorage.setItem('test.bound', bound);
+      const a = mkAccount(clientOver);
+      a.boundUserKey = 'test.bound';
+      a.clearLocal = vi.fn(async () => {});
+      a.deviceStore.set = vi.fn((id) => { deviceId = id; });
+      return a;
+    };
+
+    it('warns when a different user signs in; Continue clears local data and the device id, then shows the picker', async () => {
+      deviceId = 'olddev';
+      const a = withBinding('someone-else');
+      mount(a);
+      await signIn();
+      expect(await screen.findByText(/settings from another account/)).toBeTruthy();
+      expect(screen.getByText(/Continue as ann/)).toBeTruthy();
+      expect(a.clearLocal).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      expect(await screen.findByLabelText('This is a new device')).toBeTruthy();
+      expect(a.clearLocal).toHaveBeenCalledTimes(1);
+      expect(a.deviceStore.set).toHaveBeenCalledWith(null);
+      expect(localStorage.getItem('test.bound')).toBeNull();
+    });
+
+    it('Cancel logs out and returns to the login screen without clearing', async () => {
+      const a = withBinding('someone-else');
+      mount(a);
+      await signIn();
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+      expect(await screen.findByLabelText('Username')).toBeTruthy();
+      expect(a.client.logout).toHaveBeenCalled();
+      expect(a.clearLocal).not.toHaveBeenCalled();
+      expect(localStorage.getItem('test.bound')).toBe('someone-else');
+    });
+
+    it('the same user skips the warning', async () => {
+      const a = withBinding('u1');
+      mount(a);
+      await signIn();
+      expect(await screen.findByRole('button', { name: 'Continue' })).toBeTruthy();
+      expect(screen.queryByText(/settings from another account/)).toBeNull();
+    });
+
+    it('no bound user (first account on this install) skips the warning', async () => {
+      const a = withBinding(null);
+      mount(a);
+      await signIn();
+      expect(await screen.findByRole('button', { name: 'Continue' })).toBeTruthy();
+      expect(screen.queryByText(/settings from another account/)).toBeNull();
+    });
+
+    it('records the user id after a device is picked', async () => {
+      const a = withBinding(null);
+      mount(a);
+      await signIn();
+      fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+      await waitFor(() => expect(window.location.reload).toHaveBeenCalled());
+      expect(localStorage.getItem('test.bound')).toBe('u1');
+    });
+  });
 });

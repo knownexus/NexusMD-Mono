@@ -214,19 +214,42 @@ function DeviceScreen({ account, auth, onDone }) {
   );
 }
 
+// Warn that the previous account's settings on this device will be removed before another account signs in.
+function SwitchScreen({ username, onContinue, onCancel }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const go = async () => {
+    setBusy(true); setError('');
+    try { await onContinue(); } catch (e) { setError(accountErrorMessage(e)); setBusy(false); }
+  };
+  return (
+    <Shell>
+      <h2>Different account</h2>
+      <p>This device has settings from another account. Continue as {username} and remove them from this device?</p>
+      {error && <p className="profile-setup__error" role="alert">{error}</p>}
+      <button className="profile-setup__btn" disabled={busy} onClick={go}>Continue</button>
+      <button className="profile-setup__type" disabled={busy} onClick={onCancel}>Cancel</button>
+    </Shell>
+  );
+}
+
 /**
  * Gate that requires an account (or an explicit opt-out) before rendering `children`.
  * @param {{ account: {
  *   client: object, sessionStore: object,
- *   deviceStore: { get(): string|null, set(id: string): void },
+ *   deviceStore: { get(): string|null, set(id: string|null): void },  // set(null) must clear the stored id
+ *   boundUserKey?: string,           // localStorage key holding the userId this install's local data belongs to
+ *   clearLocal?: () => Promise<void>, // removes the previous account's local data (see core clearAccountLocalData)
  *   createSync: (containerKey: object, deviceId: string) => object,
  *   platform: 'windows'|'android'|'web'|'other',
  *   deviceNameDefault: () => string, optOutKey: string },
  *   reloadOnApplied?: boolean, children: React.ReactNode }} props
+ *   When a different user signs in than `boundUserKey` records, the gate warns, then calls `clearLocal()`
+ *   and `deviceStore.set(null)` before the device picker; both props absent keeps the old behaviour.
  *   `reloadOnApplied` (default true) reloads the page when a background pull changed local data.
  */
 export function AccountGate({ account, reloadOnApplied = true, children }) {
-  const { client, deviceStore, createSync, optOutKey } = account;
+  const { client, deviceStore, createSync, optOutKey, boundUserKey, clearLocal } = account;
   // phase: loading | auth | device | restoring | ready
   const [phase, setPhase] = useState('loading');
   const [session, setSession] = useState(null);
@@ -306,13 +329,24 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
 
   const onAuthed = (r) => {
     try { localStorage.removeItem(optOutKey); } catch { /* storage unavailable */ }
-    if (expiredUser && r.session.userId === expiredUser && deviceStore.get()) {
+    let foreign = false;
+    try { const b = boundUserKey ? localStorage.getItem(boundUserKey) : null; foreign = !!b && b !== r.session.userId; } catch { /* storage unavailable */ }
+    if (!foreign && expiredUser && r.session.userId === expiredUser && deviceStore.get()) {
       // The same user signing back in on this device after an expiry: nothing to restore, keep local data as is.
       setSession(r.session); setCk(r.containerKey); setExpiredUser(null); setPhase('ready');
       return;
     }
     setAuthed(r);
-    setPhase('device');
+    setPhase(foreign && clearLocal ? 'confirm' : 'device');
+  };
+
+  const cancelSwitch = async () => {
+    try { await client.logout(); } catch { /* local session is cleared regardless */ }
+    await showAuth();
+  };
+
+  const bindUser = () => {
+    try { if (boundUserKey && authed) localStorage.setItem(boundUserKey, authed.session.userId); } catch { /* storage unavailable */ }
   };
 
   const value = useMemo(() => ({ sync, session, signOut }), [sync, session, signOut]);
@@ -320,7 +354,17 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
   if (phase === 'loading') return null;
   if (phase === 'ready') return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
   if (phase === 'device') {
-    return <DeviceScreen account={account} auth={authed} onDone={() => { setPhase('restoring'); window.location.reload(); }} />;
+    return <DeviceScreen account={account} auth={authed} onDone={() => { bindUser(); setPhase('restoring'); window.location.reload(); }} />;
+  }
+  if (phase === 'confirm') {
+    return (
+      <SwitchScreen username={authed.session.username} onCancel={cancelSwitch} onContinue={async () => {
+        await clearLocal();
+        deviceStore.set(null);
+        try { localStorage.removeItem(boundUserKey); } catch { /* storage unavailable */ }
+        setPhase('device');
+      }} />
+    );
   }
   if (phase === 'restoring') return <Shell><p>Restoring your settings…</p></Shell>;
   return <AuthScreen client={client} needsSetup={needsSetup} notice={notice} onAuthed={onAuthed} onOptOut={optOut} />;
