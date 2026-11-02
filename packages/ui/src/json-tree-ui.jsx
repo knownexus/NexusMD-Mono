@@ -52,6 +52,10 @@ export function JsonNodeSheet({ data, path, startAdding = false, overlay = false
     onApply(r.next, Array.isArray(node) ? 'Item added' : `Added ${child.key.trim()}`); onClose();
   };
   const remove = () => { onApply(removeNode(data, path), `Deleted ${describePath(path)}`); onClose(); };
+  // Enter submits from a one-line field; in a text value Enter is a new line and Ctrl/Cmd+Enter submits.
+  const submit = () => (adding ? add() : save());
+  const onEnter = (e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } };
+  const onCtrlEnter = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } };
 
   const valueField = (t, value, set, id) => {
     if (t === 'boolean') {
@@ -65,8 +69,8 @@ export function JsonNodeSheet({ data, path, startAdding = false, overlay = false
     if (t === 'null') return <div className="m-hint" style={{ marginTop: 0 }}>The value is empty (null).</div>;
     if (t === 'object' || t === 'array') return <div className="m-hint" style={{ marginTop: 0 }}>{t === 'object' ? 'A group of named fields.' : 'An ordered list.'}</div>;
     return t === 'string'
-      ? <textarea id={id} style={{ minHeight: 80 }} value={value} onChange={e => { set(e.target.value); setError(''); }} aria-label="Value"/>
-      : <input id={id} inputMode="decimal" value={value} onChange={e => { set(e.target.value); setError(''); }} aria-label="Value"/>;
+      ? <textarea id={id} style={{ minHeight: 80 }} value={value} onKeyDown={onCtrlEnter} onChange={e => { set(e.target.value); setError(''); }} aria-label="Value"/>
+      : <input id={id} inputMode="decimal" value={value} onKeyDown={onEnter} onChange={e => { set(e.target.value); setError(''); }} aria-label="Value"/>;
   };
 
   const sheet = (
@@ -77,7 +81,7 @@ export function JsonNodeSheet({ data, path, startAdding = false, overlay = false
           {path.length > 0 && !adding && (confirmDelete
             ? <button type="button" className="btn m-btn-lg" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={remove}>Delete for sure</button>
             : <button type="button" className="btn ghost m-btn-lg" style={{ color: 'var(--danger)' }} onClick={() => setConfirmDelete(true)} aria-label="Delete"><Icon name="trash" size={15}/> Delete</button>)}
-          <button type="button" className="btn primary m-btn-lg" style={{ flex: 1 }} onClick={adding ? add : save}>{adding ? (Array.isArray(node) ? 'Add item' : 'Add field') : 'Save'}</button>
+          <button type="button" className="btn primary m-btn-lg" style={{ flex: 1 }} onClick={submit}>{adding ? (Array.isArray(node) ? 'Add item' : 'Add field') : 'Save'}</button>
         </>
       )}>
       {!adding && (
@@ -85,7 +89,7 @@ export function JsonNodeSheet({ data, path, startAdding = false, overlay = false
           {path.length > 0 && !inList && (
             <div className="m-fld">
               <label htmlFor="jn-key">Name</label>
-              <input id="jn-key" value={key} onChange={e => { setKey(e.target.value); setError(''); }} spellCheck={false} autoCapitalize="off"/>
+              <input id="jn-key" value={key} onKeyDown={onEnter} onChange={e => { setKey(e.target.value); setError(''); }} spellCheck={false} autoCapitalize="off"/>
             </div>
           )}
           <div className="m-fld">
@@ -109,7 +113,7 @@ export function JsonNodeSheet({ data, path, startAdding = false, overlay = false
           {!Array.isArray(node) && (
             <div className="m-fld">
               <label htmlFor="jn-ckey">Name</label>
-              <input id="jn-ckey" autoFocus value={child.key} onChange={e => { setChild({ ...child, key: e.target.value }); setError(''); }} spellCheck={false} autoCapitalize="off"/>
+              <input id="jn-ckey" autoFocus value={child.key} onKeyDown={onEnter} onChange={e => { setChild({ ...child, key: e.target.value }); setError(''); }} spellCheck={false} autoCapitalize="off"/>
             </div>
           )}
           <div className="m-fld">

@@ -23,6 +23,25 @@ afterEach(() => {
 
 const rows = () => [...document.querySelectorAll('.m-diff > div')].map(d => (d.classList.contains('gap') ? `gap:${d.textContent}` : `${d.className.replace('ln', '').trim() || 'same'}:${d.textContent}`))
 
+describe('desktop cheat sheet and learn mode (from core MD_CHEAT_GROUPS / LEARN_ELEMENTS)', () => {
+  it('lists the same entries in the cheat sheet and annotates the preview for hover', async () => {
+    localStorage.setItem('md_documents', JSON.stringify({ docs: [
+      { id: 'a', name: null, autoName: 'Notes', content: '# Big title\n\nsome **bold** and `x()`\n\n---', createdAt: 1, updatedAt: 1 },
+    ] }))
+    localStorage.setItem('md_learn_mode', 'true')
+    localStorage.setItem('md_cheatsheet_open', 'true')
+    render(<MarkdownViewer/>)
+    fireEvent.click(screen.getByText(/^Documents \(/))
+    fireEvent.click(screen.getAllByText('Notes').find(el => el.tagName === 'DIV'))
+    expect(screen.getByText('Fenced code block with syntax highlighting')).toBeTruthy()
+    expect(screen.getAllByText('Horiz. Rule').length).toBeGreaterThan(0) // the toolbar and the panel
+    await waitFor(() => expect(document.querySelector('.md-content h1')?.getAttribute('data-md-source')).toBe('# Big title'))
+    expect(document.querySelector('.md-content strong').getAttribute('data-md-source')).toBe('**bold**')
+    expect(document.querySelector('.md-content p > code').getAttribute('data-md-source')).toBe('`x()`')
+    expect(document.querySelector('.md-content hr').getAttribute('data-md-source')).toBe('---')
+  })
+})
+
 describe('Markdown Compare differences', () => {
   it('Compare shows added/removed counts and collapses unchanged context', async () => {
     localStorage.setItem('md_documents', JSON.stringify({ docs: [

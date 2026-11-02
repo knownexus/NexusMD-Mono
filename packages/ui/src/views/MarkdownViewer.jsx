@@ -7,6 +7,7 @@ import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { MARKDOWN_CONTENT_CSS, followPreviewLink, renderPreview, useHighlightJs, useMarkdownTextSize, useCtrlWheelTextSize, TextSizeControls } from './markdown-preview.jsx';
 import { MarkdownDiff } from '../md-extras-ui.jsx';
+import { MD_CHEAT_GROUPS, LEARN_ELEMENTS } from '@nexusmd/core';
 export { slugifyHeading, addHeadingAnchors, followPreviewLink } from './markdown-preview.jsx';
 const { useState: useStateMD, useEffect: useEffectMD, useRef: useRefMD, useCallback: useCallbackMD } = React;
 
@@ -35,57 +36,6 @@ const TRACKABLE_ELEMENTS = {
   'code-block':   'pre',
   table:          'table',
 };
-
-const CHEAT_GROUPS = [
-  {
-    label: 'Text Formatting',
-    items: [
-      { label: 'Bold',          learnKey: 'bold',          syntax: '**text**',        description: 'Make text bold',                           before: '**',        after: '**',         placeholder: 'bold text',       inline: true  },
-      { label: 'Italic',        learnKey: 'italic',        syntax: '*text*',           description: 'Make text italic',                         before: '*',         after: '*',          placeholder: 'italic text',     inline: true  },
-      { label: 'Strikethrough', learnKey: 'strikethrough', syntax: '~~text~~',         description: 'Strike through text',                      before: '~~',        after: '~~',         placeholder: 'strikethrough',   inline: true  },
-      { label: 'Inline Code',   learnKey: 'inline-code',   syntax: '`code`',           description: 'Inline code or variable names',            before: '`',         after: '`',          placeholder: 'code',            inline: true  },
-    ],
-  },
-  {
-    label: 'Structure',
-    items: [
-      { label: 'H1',            learnKey: 'heading',       syntax: '# Heading 1',      description: 'Top-level heading',                        before: '\n# ',      after: '',           placeholder: 'Heading 1',       inline: false },
-      { label: 'H2',            learnKey: 'heading',       syntax: '## Heading 2',     description: 'Second-level heading',                     before: '\n## ',     after: '',           placeholder: 'Heading 2',       inline: false },
-      { label: 'H3',            learnKey: 'heading',       syntax: '### Heading 3',    description: 'Third-level heading',                      before: '\n### ',    after: '',           placeholder: 'Heading 3',       inline: false },
-      { label: 'Blockquote',    learnKey: 'blockquote',    syntax: '> text',           description: 'Indented quote block',                     before: '\n> ',      after: '',           placeholder: 'blockquote text', inline: false },
-      { label: 'Horiz. Rule',   learnKey: 'hr',            syntax: '---',              description: 'Horizontal divider line',                  before: '\n---\n',   after: '',           placeholder: '',                inline: false },
-    ],
-  },
-  {
-    label: 'Lists',
-    items: [
-      { label: '• Bullet List', learnKey: 'bullet-list',   syntax: '- item',           description: 'Unordered list item',                      before: '\n- ',      after: '',           placeholder: 'list item',       inline: false },
-      { label: '1. Numbered',   learnKey: 'numbered-list', syntax: '1. item',          description: 'Ordered list item',                        before: '\n1. ',     after: '',           placeholder: 'list item',       inline: false },
-      { label: '☐ Task',        learnKey: 'task-list',     syntax: '- [ ] task',       description: 'Checkbox task item',                       before: '\n- [ ] ', after: '',           placeholder: 'task item',       inline: false },
-    ],
-  },
-  {
-    label: 'Links & Media',
-    items: [
-      { label: 'Link',          learnKey: 'link',          syntax: '[text](url)',       description: 'Clickable hyperlink',                      before: '[',         after: '](url)',     placeholder: 'link text',       inline: true  },
-      { label: 'Image',         learnKey: 'image',         syntax: '![alt](url)',       description: 'Embedded image',                           before: '![',        after: '](image-url)', placeholder: 'alt text',     inline: true  },
-    ],
-  },
-  {
-    label: 'Code',
-    items: [
-      { label: 'Code Block',    learnKey: 'code-block',    syntax: '```lang\ncode\n```', description: 'Fenced code block with syntax highlighting', before: '\n```\n', after: '\n```\n',  placeholder: 'code here',       inline: false },
-    ],
-  },
-  {
-    label: 'Table',
-    items: [
-      { label: 'Table',         learnKey: 'table',         syntax: '| Col | Col |',    description: '3-column table with header row',
-        before: '\n| Header | Header | Header |\n| --- | --- | --- |\n| Cell | Cell | Cell |\n',
-        after: '', placeholder: '', inline: false },
-    ],
-  },
-];
 
 // ── Storage helpers ────────────────────────────────────────────────
 
@@ -418,41 +368,13 @@ function DocumentsModal({ docs, currentDocId, markedReady, hasUnsavedContent, on
 
 // ── annotatePreview ───────────────────────────────────────────────
 
+// The Markdown behind each preview element, shown on hover in learn mode. The table (and the phone's
+// tap lookup, learnTarget) is @nexusmd/core's LEARN_ELEMENTS; later rows win on the same element.
 function annotatePreview(container) {
-  const rules = [
-    { sel: 'h1',                   src: el => `# ${el.textContent.trim()}` },
-    { sel: 'h2',                   src: el => `## ${el.textContent.trim()}` },
-    { sel: 'h3',                   src: el => `### ${el.textContent.trim()}` },
-    { sel: 'h4',                   src: el => `#### ${el.textContent.trim()}` },
-    { sel: 'h5',                   src: el => `##### ${el.textContent.trim()}` },
-    { sel: 'h6',                   src: el => `###### ${el.textContent.trim()}` },
-    { sel: 'strong',               src: el => `**${el.textContent.trim()}**` },
-    { sel: 'em',                   src: el => `*${el.textContent.trim()}*` },
-    { sel: 'del',                  src: el => `~~${el.textContent.trim()}~~` },
-    { sel: 'p > code, li > code',  src: el => `\`${el.textContent}\`` },
-    { sel: 'blockquote',           src: el => `> ${el.textContent.trim().split('\n')[0].trim()}` },
-    { sel: 'a[href]',              src: el => `[${el.textContent.trim()}](${el.getAttribute('href')})` },
-    { sel: 'img',                  src: el => `![${el.alt}](${el.getAttribute('src')})` },
-    { sel: 'pre',                  src: el => {
-        const lang = el.getAttribute('data-lang') || '';
-        const code = el.querySelector('code')?.textContent?.trim() || '';
-        return `\`\`\`${lang}\n${code.slice(0, 60)}${code.length > 60 ? '…' : ''}\n\`\`\``;
-      }
-    },
-    { sel: 'table',                src: () => '| Col | Col |\n| --- | --- |' },
-    { sel: 'hr',                   src: () => '---' },
-    { sel: 'li.task-list-item',    src: el => {
-        const checked = el.querySelector('input[type="checkbox"]')?.checked;
-        return `- [${checked ? 'x' : ' '}] ${el.textContent.trim()}`;
-      }
-    },
-    { sel: 'ul:not(.contains-task-list)', src: () => '- item\n- item' },
-    { sel: 'ol',                          src: () => '1. item\n2. item' },
-  ];
-
-  rules.forEach(({ sel, src }) => {
+  LEARN_ELEMENTS.forEach(({ sel, source }) => {
+    if (!sel) return;
     container.querySelectorAll(sel).forEach(el => {
-      try { el.setAttribute('data-md-source', src(el)); } catch {}
+      try { el.setAttribute('data-md-source', source(el)); } catch {}
     });
   });
 }
@@ -464,7 +386,7 @@ function CheatSheetPanel({ filter, onFilterChange, learningProgress, onInsert, o
   const masteredCount = Object.values(learningProgress).filter(Boolean).length;
 
   const filtered = filter.trim().toLowerCase();
-  const visibleGroups = CHEAT_GROUPS.map(g => ({
+  const visibleGroups = MD_CHEAT_GROUPS.map(g => ({
     ...g,
     items: filtered
       ? g.items.filter(i =>
@@ -598,7 +520,7 @@ function MarkdownToolbar({ onInsert }) {
       padding: '4px 8px', flexShrink: 0, flexWrap: 'wrap',
       background: 'var(--surface)', borderBottom: '1px solid var(--border)',
     }}>
-      {CHEAT_GROUPS.map((group, gi) => (
+      {MD_CHEAT_GROUPS.map((group, gi) => (
         <React.Fragment key={group.label}>
           {gi > 0 && (
             <div style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 4px', flexShrink: 0 }} />
