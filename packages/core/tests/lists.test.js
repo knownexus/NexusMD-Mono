@@ -35,6 +35,27 @@ describe('readLists', () => {
     expect(read('{"lists":[null,{"id":"a"}]}')).toEqual({ lists: [{ id: 'a' }] })
   })
 
+  it('normalises malformed list fields from synced data and keeps the valid parts', () => {
+    const KEY = 'helm.p.p1.lists'
+    const read = (lists) => readLists({ storage: memStorage({ [KEY]: JSON.stringify({ lists }) }), getProfileKey, namespace: 'helm' })
+    expect(read([{ id: 'a', items: {}, fields: 'x', statuses: 5, name: {} }]))
+      .toEqual({ lists: [{ id: 'a', items: [], fields: [], statuses: DEFAULT_STATUSES, name: '' }] })
+    expect(read([{ id: 'b', name: 7, items: [null, 'x', { id: '1', title: 't' }], fields: ['owner', 3, 'due'], statuses: ['Open', null, 'Done'] }]))
+      .toEqual({ lists: [{ id: 'b', name: '7', items: [{ id: '1', title: 't' }], fields: ['owner', 'due'], statuses: ['Open', 'Done'] }] })
+  })
+
+  it('keeps valid stored data byte-identical through read and write', () => {
+    const KEY = 'helm.p.p1.lists'
+    const raw = JSON.stringify({ v: 1, lists: [
+      { id: 'a', name: 'A', color: '#fff', fields: ['owner', 'status'], statuses: ['Open', 'Done'], items: [{ id: '1', title: 'x', status: 'Open', children: [] }] },
+      { id: 'b', name: 'Bare' },
+    ] })
+    const storage = memStorage({ [KEY]: raw })
+    const ctx = { storage, getProfileKey, namespace: 'helm' }
+    writeLists(ctx, readLists(ctx))
+    expect(storage.getItem(KEY)).toBe(raw)
+  })
+
   it('reads the mobile key helm.lists under the profile scope', () => {
     const storage = memStorage({ 'helm.p.p1.lists': JSON.stringify({ lists: [{ id: 'a', name: 'A' }] }) })
     expect(readLists({ storage, getProfileKey, namespace: 'helm' })).toEqual({ lists: [{ id: 'a', name: 'A' }] })
@@ -68,6 +89,11 @@ describe('toBucket', () => {
     expect(toBucket('Doing')).toBe('inprogress')
     expect(toBucket('')).toBe('notstarted')
     expect(toBucket(undefined)).toBe('notstarted')
+  })
+  it('does not throw on a non-string status from synced data', () => {
+    expect(toBucket(42)).toBe('notstarted')
+    expect(toBucket(null)).toBe('notstarted')
+    expect(toBucket({})).toBe('notstarted')
   })
 })
 

@@ -12,8 +12,28 @@ export function readLists({ storage, getProfileKey, namespace }) {
     const data = s ? JSON.parse(s) : null
     if (!data || typeof data !== 'object' || Array.isArray(data)) return { lists: [] }
     // Sync can land any remote value here verbatim; malformed lists load as no lists.
-    return { ...data, lists: Array.isArray(data.lists) ? data.lists.filter(l => l && typeof l === 'object') : [] }
+    return { ...data, lists: Array.isArray(data.lists) ? data.lists.filter(isObject).map(normaliseList) : [] }
   } catch (_) { return { lists: [] } }
+}
+
+const isObject = v => !!v && typeof v === 'object' && !Array.isArray(v)
+const isString = v => typeof v === 'string'
+
+// A list's fields as the views expect them. Absent fields stay absent and valid ones are kept as
+// they are (so valid data round-trips unchanged); a present but malformed one is replaced.
+function normaliseList(list) {
+  const out = { ...list }
+  const fix = (key, valid, fallback) => {
+    if (!(key in list)) return
+    const v = list[key]
+    if (!Array.isArray(v)) { out[key] = fallback(); return }
+    if (!v.every(valid)) out[key] = v.filter(valid)
+  }
+  fix('items', isObject, () => [])
+  fix('fields', isString, () => [])
+  fix('statuses', isString, () => [...DEFAULT_STATUSES])
+  if ('name' in list && !isString(list.name)) out.name = typeof list.name === 'number' ? String(list.name) : ''
+  return out
 }
 
 export function writeLists({ storage, getProfileKey, namespace }, data) {
@@ -42,7 +62,7 @@ export const DEFAULT_FIELDS   = ['owner', 'status', 'due', 'priority', 'notes']
 
 // ── Status bucket mapping (for Board view) ───────────────────────────────────
 export function toBucket(status) {
-  const s = (status || '').toLowerCase()
+  const s = String(status ?? '').toLowerCase()
   if (/done|complet|closed|finish/.test(s)) return 'done'
   if (/block/.test(s)) return 'blocked'
   if (/progress|active|start|doing/.test(s)) return 'inprogress'
