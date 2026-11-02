@@ -39,6 +39,33 @@ export function isSharedImport(id) {
   return id.startsWith(EDITOR_KIT) && SCRIPT.test(id)
 }
 
+// A CommonJS library an app bundles (react-grid-layout, say) calls require('react'). The app is an ES module
+// with React left to the import map, and an ES module has no require, so the bundle would throw when it
+// loads. This points such a library's shared imports at a small ES module that re-exports the shared one:
+// the library gets the same React as the shell, through an import instead of a require.
+const VIA = '\0nexusmd-shared-for-cjs:'
+
+// Whether this is a shared CommonJS library imported from a third-party package, which the app's build must
+// route through sharedForThirdParty instead of leaving external.
+export function sharedFromThirdParty(source, importer) {
+  return COMMONJS.includes(source) && !!importer && /[\\/]node_modules[\\/]/.test(importer)
+}
+
+export function sharedForThirdParty() {
+  return {
+    name: 'nexusmd-shared-for-third-party',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      return sharedFromThirdParty(source, importer) ? VIA + source : null
+    },
+    load(id) {
+      if (!id.startsWith(VIA)) return null
+      const specifier = id.slice(VIA.length)
+      return `export * from '${specifier}'\nexport { default } from '${specifier}'\n`
+    },
+  }
+}
+
 export function importMap(prefix = './shared/') {
   return { imports: Object.fromEntries(SHARED_SPECIFIERS.map(s => [s, `${prefix}${sharedName(s)}.js`])) }
 }

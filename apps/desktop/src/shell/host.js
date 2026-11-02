@@ -18,6 +18,8 @@ import { windowControlsAdapter } from '../adapters/windowControls.js'
 //   sync           the shell's cloud backup
 //   adapters       the shell's own adapters apps may use: secureStorage (saved passwords), picker (file dialogs), windowControls,
 //                  artifacts (saveArtifact(item, { pat, org? }) -> { saved, path? }: a build artifact saved where the user picks)
+//   display        the screen the window is on: get() -> Promise<display>, onChange(cb) -> unsubscribe
+//                  (display = { id, width, height, scaleFactor, physicalWidth, physicalHeight }; electron/ipc/display.cjs)
 //   offlineQueue   provider writes kept while offline: run(kind, payload, label) -> { done, result } | { queued: true },
 //                  count(), flush(). An app that can send them provides the 'work.offlineSend' capability.
 export { capabilities }
@@ -31,6 +33,15 @@ export function takeWaitingNavigation() {
   waitingView = null
   return view
 }
+
+// Outside Electron (tests, a browser) the page's own screen stands in.
+function pageDisplay() {
+  const s = typeof window !== 'undefined' ? window.screen : null
+  const scaleFactor = (typeof window !== 'undefined' && window.devicePixelRatio) || 1
+  const width = s?.width || 0, height = s?.height || 0
+  return { id: 'page', width, height, scaleFactor, physicalWidth: Math.round(width * scaleFactor), physicalHeight: Math.round(height * scaleFactor) }
+}
+const bridge = () => (typeof window !== 'undefined' ? window.electronAPI?.display : undefined)
 
 export const host = {
   capabilities,
@@ -46,6 +57,10 @@ export const host = {
   },
   sync: { syncOnce: () => desktopSync.syncOnce() },
   adapters: { secureStorage: secureStorageAdapter, picker: pickerAdapter, windowControls: windowControlsAdapter, artifacts: artifactsAdapter },
+  display: {
+    get: () => (bridge() ? bridge().get() : Promise.resolve(pageDisplay())),
+    onChange: cb => bridge()?.onChange?.(cb) || (() => {}),
+  },
   offlineQueue: {
     run: (kind, payload, label) => appQueue.run(kind, payload, label),
     count: () => appQueue.count(),

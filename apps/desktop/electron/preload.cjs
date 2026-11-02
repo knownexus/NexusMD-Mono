@@ -196,6 +196,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     close:    () => ipcRenderer.send('window:close'),
   },
 
+  // ── Display (the screen the window is on; electron/ipc/display.cjs) ─────────
+  // get() → { id, width, height, scaleFactor, physicalWidth, physicalHeight }; onChange(cb) → unsubscribe.
+  display: {
+    get: () => ipcRenderer.invoke('display:get'),
+    onChange: (callback) => {
+      const listener = (_e, d) => callback(d);
+      ipcRenderer.on('display:changed', listener);
+      return () => ipcRenderer.removeListener('display:changed', listener);
+    },
+  },
+
   // ── Notification (renderer → main) ─────────────────────────────────────────
   showNotification: (title, body) => ipcRenderer.send('show-notification', { title, body }),
 

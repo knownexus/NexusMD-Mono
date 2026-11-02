@@ -97,9 +97,12 @@ export function DashboardApp({ host, tweaks, setTweak }) {
       team={effectiveTeam}
       acknowledgedSet={acknowledgedSet}
       offViews={offViews}
+      // One grid for the built-in cards and the added widgets, each moved and resized, a layout per screen.
+      renderWidgets={cards => (
+        <HomeWidgets host={host} tweaks={tweaks} setTweak={setTweak} team={effectiveTeam} needsMeCriteria={needsMeCriteria}
+          cards={cards} widgetWidths={widgetWidths} widgetHeights={widgetHeights} />
+      )}
     />
-    {/* The optional widgets, added from the sheet, as on mobile's Home (kept in the homeWidgets tweak). */}
-    <HomeWidgets host={host} tweaks={tweaks} setTweak={setTweak} team={effectiveTeam} needsMeCriteria={needsMeCriteria} />
     </>
   )
 }

@@ -115,7 +115,7 @@ export { DashboardView } from './views/view-dashboard.jsx'
 // Lists (manual profiles) and the optional Home widgets, shared by the apps. Prop/ctx-driven: each app passes
 // its data and storage seams (see the headers of these files).
 export { ListsView } from './views/view-lists.jsx'
-export { WidgetHost, WidgetSheet, WIDGET_TYPES } from './home-widgets.jsx'
+export { WidgetHost, WidgetSheet, WidgetBody, WIDGET_TYPES } from './home-widgets.jsx'
 export {
   Card as WidgetCard, TimeWidget, NotesWidget, LatestBuild, LatestTest, storageTimerStore,
 } from './dashboard-interactive-widgets.jsx'
