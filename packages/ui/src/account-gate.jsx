@@ -283,6 +283,14 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
         if (s && deviceStore.get()) {
           const key = await importContainerKey(s.containerKey);
           if (!alive) return;
+          let bound = null;
+          try { bound = boundUserKey ? localStorage.getItem(boundUserKey) : null; } catch { /* storage unavailable */ }
+          if (bound && clearLocal && bound !== s.userId) {
+            // The stored session belongs to a different user than this install's data (the app was
+            // restarted on the switch warning): never sync until the data is cleared or sign-in is cancelled.
+            setAuthed({ session: s, containerKey: key }); setPhase('confirm');
+            return;
+          }
           setSession(s); setCk(key); setPhase('ready');
           return;
         }

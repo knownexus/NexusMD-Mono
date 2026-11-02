@@ -297,4 +297,59 @@ describe('AccountGate', () => {
       expect(localStorage.getItem('test.bound')).toBe('u1');
     });
   });
+
+  describe('restart with a stored session', () => {
+    const boot = (bound, clearLocal) => {
+      deviceId = 'olddev';
+      if (bound) localStorage.setItem('test.bound', bound);
+      const a = mkAccount({ getSession: vi.fn(async () => ({ ...SESSION, userId: 'uB', username: 'bea' })) });
+      a.boundUserKey = 'test.bound';
+      a.clearLocal = clearLocal || vi.fn(async () => {});
+      return a;
+    };
+
+    it('shows the switch warning, not the app, when the bound user differs; no sync is created', async () => {
+      const a = boot('uA');
+      mount(a);
+      expect(await screen.findByText(/Continue as bea/)).toBeTruthy();
+      expect(screen.queryByText('shell')).toBeNull();
+      expect(a.createSync).not.toHaveBeenCalled();
+      expect(sync.start).not.toHaveBeenCalled();
+    });
+
+    it('lands on the warning again after a clearLocal failure and restart', async () => {
+      const a = boot('uA', vi.fn(async () => { throw new Error('disk'); }));
+      const first = mount(a);
+      fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+      expect(await screen.findByText('disk')).toBeTruthy();
+      expect(localStorage.getItem('test.bound')).toBe('uA');
+      expect(a.deviceStore.set).not.toHaveBeenCalled();
+      first.unmount();
+      mount(a);
+      expect(await screen.findByText(/Continue as bea/)).toBeTruthy();
+      expect(a.createSync).not.toHaveBeenCalled();
+    });
+
+    it('Cancel from the boot-time warning logs out without clearing', async () => {
+      const a = boot('uA');
+      mount(a);
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+      expect(await screen.findByLabelText('Username')).toBeTruthy();
+      expect(a.client.logout).toHaveBeenCalled();
+      expect(a.clearLocal).not.toHaveBeenCalled();
+    });
+
+    it('a matching bound user renders the app as before', async () => {
+      const a = boot('uB');
+      mount(a);
+      expect(await screen.findByText('shell')).toBeTruthy();
+      expect(sync.start).toHaveBeenCalledTimes(1);
+    });
+
+    it('no bound user renders the app as before', async () => {
+      const a = boot(null);
+      mount(a);
+      expect(await screen.findByText('shell')).toBeTruthy();
+    });
+  });
 });
