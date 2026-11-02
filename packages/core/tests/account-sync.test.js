@@ -716,6 +716,49 @@ describe('createAccountSync', () => {
     expect(JSON.parse(b.storage.getItem('nexusmd.tweaks'))).toEqual({ theme: 'dark' })
   })
 
+  describe('a device removed from the account (device prefs answer 404)', () => {
+    const removedServer = () => {
+      const srv = fakeServer()
+      const gone = () => { throw new AccountError('not-found', 404, 'device not found') }
+      srv.removeDevice = (id) => {
+        const { getDevicePrefs, putDevicePrefs } = srv.client
+        srv.client.getDevicePrefs = async (d) => (d === id ? gone() : getDevicePrefs(d))
+        srv.client.putDevicePrefs = async (d, ...rest) => (d === id ? gone() : putDevicePrefs(d, ...rest))
+      }
+      return srv
+    }
+
+    it('syncNow still pushes account items and reports not-found through onError', async () => {
+      const srv = removedServer()
+      const ck = await generateContainerKey()
+      const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x', 'nexusmd.sidebar.width': '300' } })
+      await a.sync.syncNow()
+      srv.removeDevice('dev-a')
+      a.storage.setItem('nexusmd.p.1.ado.org', 'y')
+      const errors = []
+      a.sync.onError((e) => errors.push(e))
+      const r = await a.sync.syncNow()
+      expect(r.error).toMatchObject({ name: 'AccountError', code: 'not-found' })
+      expect(errors.map((e) => e.code)).toEqual(['not-found'])
+      expect((await decryptAll(srv, ck))['p.1.ado.org'].value).toBe('y')
+      // and again on the next sync: still pushing, still reporting
+      a.storage.setItem('nexusmd.p.1.ado.org', 'z')
+      const r2 = await a.sync.syncNow()
+      expect(r2.error).toMatchObject({ code: 'not-found' })
+      expect((await decryptAll(srv, ck))['p.1.ado.org'].value).toBe('z')
+    })
+
+    it('push and seed report it too after pushing items', async () => {
+      const srv = removedServer()
+      const ck = await generateContainerKey()
+      srv.removeDevice('dev-a')
+      const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x', 'nexusmd.sidebar.width': '300' } })
+      const r = await a.sync.seed()
+      expect(r.error).toMatchObject({ code: 'not-found' })
+      expect((await decryptAll(srv, ck))['p.1.ado.org'].value).toBe('x')
+    })
+  })
+
   it('a stale device blob write conflicts, re-pulls the blob and retries', async () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()

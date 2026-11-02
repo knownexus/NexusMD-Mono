@@ -19,6 +19,7 @@
 // Network failures never touch local data: every public method resolves to { error }.
 import { singleFlight } from '../sync/single-flight.js'
 import { encryptJson } from './crypto.js'
+import { AccountError } from './account-client.js'
 import {
   DEVICE_CONTEXT, isPlainObject, hashOf, fingerprint, loadMeta, saveMeta, readSnapshot,
   resolveTarget, validValue, localChanged, stampChanges, unchangedSince, writeLocal, mergeRaw,
@@ -200,9 +201,29 @@ export function createAccountSync({
     return applied
   }
 
+  // ---- a removed device --------------------------------------------------------------
+  // The server answers 404 for the prefs of a device that was removed from the account. That
+  // must not stop this install from syncing account items: the device calls are skipped for the
+  // rest of the operation, which then reports AccountError 'not-found' (see reportingRemoved).
+  let deviceRemoved = false
+  const isGone = (e) => !!e && e.code === 'not-found'
+
+  /** The device blob, or null when the device was removed. */
+  async function fetchDevicePrefs() {
+    if (deviceRemoved) return null
+    try {
+      return await client.getDevicePrefs(deviceId)
+    } catch (e) {
+      if (!isGone(e)) throw e
+      deviceRemoved = true
+      return null
+    }
+  }
+
   async function pullDevice() {
     if (!deviceId) return 0
-    const r = await client.getDevicePrefs(deviceId)
+    const r = await fetchDevicePrefs()
+    if (r == null) return 0
     const meta = load()
     const dp = meta.devicePrefs
     if (!isPlainObject(r) || !Number.isInteger(r.revision) || r.revision === dp.revision) return 0
@@ -327,7 +348,7 @@ export function createAccountSync({
   }
 
   async function pushDeviceRound(force) {
-    if (!deviceId) return { pushed: false }
+    if (!deviceId || deviceRemoved) return { pushed: false }
     const meta = load()
     const dp = meta.devicePrefs
     const { snap, isUnavailable } = await localState(meta)
@@ -345,7 +366,8 @@ export function createAccountSync({
 
     // Build on the stored blob: it keeps what this install cannot judge (and the shell prefs
     // when this platform has no adapter). A newer blob than ours is a conflict: pull it first.
-    const r = await client.getDevicePrefs(deviceId)
+    const r = await fetchDevicePrefs()
+    if (r == null) return { pushed: false }
     if (!isPlainObject(r) || r.revision !== (dp.revision || 0)) return { conflict: true }
     const prev = (await decodeDeviceBlob(ck, deviceId, r.ciphertext)) || {}
     const entries = {}
@@ -367,6 +389,7 @@ export function createAccountSync({
       res = await client.putDevicePrefs(deviceId, await encryptJson(blob, ck, DEVICE_CONTEXT + deviceId), r.revision)
     } catch (e) {
       if (e && e.code === 'conflict') return { conflict: true }
+      if (isGone(e)) { deviceRemoved = true; return { pushed: false } }
       throw e
     }
     for (const [id, e] of local) meta.entries[id] = { hash: e.hash, updatedAt: entries[id].updatedAt, level: 'device', deleted: false }
@@ -415,17 +438,27 @@ export function createAccountSync({
     }
   })
 
+  // Runs fn with the device calls enabled, then reports a removed device as AccountError
+  // 'not-found' (onError and { error }) once the account items are done.
+  const reportingRemoved = (fn) => async () => {
+    deviceRemoved = false
+    const r = await fn()
+    if (deviceRemoved) throw new AccountError('not-found', 404, 'This device was removed from the account')
+    return r
+  }
+
   const observe = () => guarded(observeInner)
 
-  const syncNow = singleFlight(() => guarded(async () => {
+  const syncNow = singleFlight(() => guarded(reportingRemoved(async () => {
     await observeInner() // stamps an offline edit even when the network calls below fail
     const pulled = await pullInner()
     const pushed = await pushInner(false)
+    if (deviceRemoved) return null // reported by reportingRemoved; not a completed sync
     const meta = load()
     meta.lastSyncAt = now()
     save(meta)
     return { applied: pulled.applied, ...pushed }
-  }))
+  })))
 
   /** A sync, or (when one is already running) at least an observation of local edits. */
   const kick = () => syncNow().then((r) => (r && r.skipped ? observe() : r))
@@ -440,9 +473,9 @@ export function createAccountSync({
     },
     /** Local only: stamp the time of local edits, no network, nothing applied. */
     observe,
-    pull: () => guarded(pullInner),
-    push: () => guarded(() => pushInner(false)),
-    seed: () => guarded(() => pushInner(true)),
+    pull: () => guarded(reportingRemoved(pullInner)),
+    push: () => guarded(reportingRemoved(() => pushInner(false))),
+    seed: () => guarded(reportingRemoved(() => pushInner(true))),
     syncNow,
 
     start() {
@@ -476,7 +509,10 @@ export function createAccountSync({
       return () => appliedListeners.delete(cb)
     },
 
-    /** cb(error) for every failed operation; a 'session-expired' code means sign in again. */
+    /**
+     * cb(error) for every failed operation; a 'session-expired' code means sign in again, and
+     * 'not-found' means this device was removed from the account (pick a device again).
+     */
     onError(cb) {
       errorListeners.add(cb)
       return () => errorListeners.delete(cb)
