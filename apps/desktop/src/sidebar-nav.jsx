@@ -78,7 +78,10 @@ export function SidebarNav({
 
   return (
     <nav aria-label="Sidebar" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0 }}>
-      <div role="group" aria-label="Main screens" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* The screens scroll when the window is too short for them; the footer group, status and
+          Settings below stay in view, so nothing is ever drawn over them. */}
+      <div className="sidebar-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
+      <div role="group" aria-label="Main screens" style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
         {main.map(item => button(item, { number: numberOf(item) }))}
       </div>
       {more.length > 0 && (
@@ -105,19 +108,21 @@ export function SidebarNav({
             {!iconsOnly && <span aria-hidden="true" style={{ marginLeft: 'auto', display: 'inline-flex' }}><Icon name={moreOpen ? 'chevron-down' : 'chevron-right'} size={14} /></span>}
           </button>
           <div id="sidebar-more" role="group" aria-label="More" hidden={!moreOpen}
-            style={{ display: moreOpen ? 'flex' : 'none', flexDirection: 'column', gap: 2 }}>
+            style={{ display: moreOpen ? 'flex' : 'none', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
             {more.map(item => button(item, { indent: !iconsOnly, number: numberOf(item) }))}
           </div>
         </>
       )}
-      <div style={{ marginTop: 'auto' }} />
-      {footer.length > 0 && (
-        <div role="group" aria-label="Footer screens" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {footer.map(item => button(item, { number: numberOf(item) }))}
-        </div>
-      )}
-      {status}
-      {button(SETTINGS_NAV)}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+        {footer.length > 0 && (
+          <div role="group" aria-label="Footer screens" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {footer.map(item => button(item, { number: numberOf(item) }))}
+          </div>
+        )}
+        {status}
+        {button(SETTINGS_NAV)}
+      </div>
     </nav>
   )
 }

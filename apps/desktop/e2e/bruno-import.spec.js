@@ -142,7 +142,8 @@ test('runs imported Bruno scripts and tests, edits an environment, and scrolls a
 
     // Sending List items fetches the token through bru.runRequest, then its Bruno tests pass.
     await win.locator('.ac-tree-item', { hasText: 'List items' }).click()
-    await win.getByRole('button', { name: 'Tests', exact: true }).click()
+    // The request editor's "Tests" tab, not the sidebar's Tests screen (also a button named "Tests").
+    await win.locator('button.ac-tab', { hasText: /^Tests$/ }).click()
     await expect(win.locator('.ac-script-hint').first()).toBeVisible()
     await win.getByRole('button', { name: 'Send' }).click()
     await expect(win.locator('.ac-test-row.pass', { hasText: 'returns items' })).toBeVisible({ timeout: 10_000 })
