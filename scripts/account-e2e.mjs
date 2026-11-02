@@ -10,7 +10,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {
-  createAccountClient, createAccountSync, createKeyRegistry,
+  createAccountClient, createAccountSync, createKeyRegistry, makeProfileKeys,
 } from '../packages/core/src/index.js'
 
 const API_BASE = process.env.API_BASE
@@ -144,6 +144,11 @@ async function main() {
   eq(await b.secure.get('ado.pat'), PAT, 'ADO PAT (secret) arrives')
   eq(await b.secure.get(SECRET_NAME), SECRET_VALUE, 'OAuth secret arrives')
   eq(b.storage.getItem(`${NS}.profiles`), JSON.stringify([{ id: '1', name: 'Work' }]), 'profiles arrive')
+  // activeProfileId is device-level, so B has none of its own: the restore makes the first profile
+  // active, and the app's normal read path (makeProfileKeys, as shell-sdk binds it) finds the values.
+  eq(b.storage.getItem(`${NS}.activeProfileId`), '1', 'B gets an active profile after a new-device restore')
+  const { getProfileKey: keyOnB } = makeProfileKeys({ namespace: NS, getActiveId: () => b.storage.getItem(`${NS}.activeProfileId`) })
+  eq(b.storage.getItem(keyOnB('ado.org')), ORG, "the app's profile-key read on B finds the ADO org")
   const tweaksB = JSON.parse(b.storage.getItem(`${NS}.tweaks`) || '{}')
   eq(tweaksB.theme, THEME, 'account-level tweak (theme) arrives')
   eq(tweaksB.density, 'compact', 'account-level tweak (density) arrives')

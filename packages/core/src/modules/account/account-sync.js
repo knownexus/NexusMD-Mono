@@ -131,6 +131,28 @@ export function createAccountSync({
 
   // ---- pull --------------------------------------------------------------------------
 
+  /**
+   * The active profile is device-level, so a new device restores the profiles and their scoped
+   * settings (`<ns>.p.<pid>.*`) but no active id, and the app would then read unscoped keys.
+   * After a pull that wrote the profiles list, when the active id is missing or names no listed
+   * profile, make the first profile active (the
+   * one the UI already shows). A device blob that carries this device's own choice still wins
+   * when pullDevice applies it. Returns true when it wrote.
+   */
+  function ensureActiveProfile() {
+    const listKey = registry.toStorageKey('profiles')
+    const activeKey = registry.toStorageKey('activeProfileId')
+    if (!listKey || !activeKey) return false
+    let list
+    try { list = JSON.parse(storage.getItem(listKey) || '[]') } catch { return false }
+    const ids = Array.isArray(list) ? list.filter((p) => isPlainObject(p) && typeof p.id === 'string' && p.id).map((p) => p.id) : []
+    if (!ids.length) return false
+    const cur = storage.getItem(activeKey)
+    if (cur && ids.includes(cur)) return false
+    storage.setItem(activeKey, ids[0])
+    return true
+  }
+
   async function pullItems() {
     const meta = load()
     const feed = await fetchFeed(client, meta.cursor, pageSize)
@@ -140,20 +162,39 @@ export function createAccountSync({
       const prev = latest.get(c.id)
       if (!prev || num(c.cursor) >= num(prev.cursor)) latest.set(c.id, c)
     }
-    const state = await localState(meta)
-    let applied = 0
-    let hold = Infinity
+    const decoded = []
     for (const c of latest.values()) {
       const remote = await decodeChange(ck, c)
-      if (!remote) continue
+      if (remote) decoded.push({ c, remote })
+    }
+    // The profiles list goes first, so the active profile is settled before profile-scoped
+    // entries resolve their keys (Android keeps its tweaks per profile).
+    decoded.sort((x, y) => (y.remote.id === 'profiles') - (x.remote.id === 'profiles'))
+    let state = await localState(meta)
+    let applied = 0
+    let hold = Infinity
+    let settled = false
+    let profilesApplied = false // this pull wrote the profiles list (a restore)
+    const settle = async () => {
+      settled = true
+      if (!profilesApplied || !ensureActiveProfile()) return
+      applied++
+      state = await localState(meta) // key names under the new active profile
+    }
+    for (const { c, remote } of decoded) {
+      if (!settled && remote.id !== 'profiles') await settle()
       const target = resolveTarget(registry, remote.id)
       if (!target || target.level !== 'account') continue
       const m = meta.entries[remote.id]
       if (m && m.revision === remote.revision) continue // already seen (often our own write)
       const res = await reconcile(meta, state, target, remote)
       if (res === 'held') hold = Math.min(hold, num(c.cursor) - 1) // seen again next pull
-      else if (res === 'applied') applied++
+      else if (res === 'applied') {
+        applied++
+        if (remote.id === 'profiles') profilesApplied = true
+      }
     }
+    if (!settled) await settle()
     meta.cursor = Math.max(meta.cursor, Math.min(feed.cursor, hold))
     save(meta)
     return applied

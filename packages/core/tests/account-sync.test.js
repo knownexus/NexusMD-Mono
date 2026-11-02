@@ -613,6 +613,67 @@ describe('createAccountSync', () => {
     expect(ids(a)).toEqual(['1', '2'])
   })
 
+  describe('a new device gets an active profile', () => {
+    const PROFILES = JSON.stringify([{ id: 'p1', name: 'Work' }, { id: 'p2', name: 'Home' }])
+
+    it('desktop: the first restored profile becomes active, so the app reads the restored connection', async () => {
+      const srv = fakeServer()
+      const ck = await generateContainerKey()
+      const a = device({ srv, ck, init: { 'nexusmd.profiles': PROFILES, 'nexusmd.activeProfileId': 'p2', 'nexusmd.p.p1.ado.org': 'contoso' } })
+      await a.sync.seed()
+      const b = device({ srv, ck, deviceId: 'dev-b' })
+      const r = await b.sync.pull()
+      expect(r.error).toBeUndefined()
+      expect(b.storage.getItem('nexusmd.activeProfileId')).toBe('p1')
+      // the app's normal read path (shell-sdk / profile-keys bind makeProfileKeys the same way)
+      const { getProfileKey } = core.makeProfileKeys({ namespace: 'nexusmd', getActiveId: () => b.storage.getItem('nexusmd.activeProfileId') })
+      expect(b.storage.getItem(getProfileKey('ado.org'))).toBe('contoso')
+    })
+
+    it('Android: the active profile is set before the account tweaks land, so the theme is in the key the app reads', async () => {
+      const srv = fakeServer()
+      const ck = await generateContainerKey()
+      const a = device({ srv, ck, init: { 'nexusmd.profiles': PROFILES, 'nexusmd.tweaks': JSON.stringify({ theme: 'dark' }), 'nexusmd.p.p1.ado.org': 'contoso' } })
+      await a.sync.seed()
+      let st = null
+      const phone = device({ srv, ck, ns: 'helm', deviceId: 'phone', getActiveProfileId: () => st.getItem('helm.activeProfileId') })
+      st = phone.storage
+      const r = await phone.sync.pull()
+      expect(r.error).toBeUndefined()
+      expect(st.getItem('helm.activeProfileId')).toBe('p1')
+      const { getProfileKey } = core.makeProfileKeys({ namespace: 'helm', bareWhenInactive: true, getActiveId: () => st.getItem('helm.activeProfileId') })
+      expect(st.getItem(getProfileKey('helm.android.org'))).toBe('contoso')
+      expect(JSON.parse(st.getItem(getProfileKey('helm.tweaks')))).toEqual({ theme: 'dark' })
+      expect(st.getItem('helm.tweaks')).toBeNull()
+    })
+
+    it('keeps an active profile that exists, and a reinstall restores its own active profile', async () => {
+      const srv = fakeServer()
+      const ck = await generateContainerKey()
+      const a = device({ srv, ck, init: { 'nexusmd.profiles': PROFILES, 'nexusmd.activeProfileId': 'p2' } })
+      await a.sync.seed()
+      const again = device({ srv, ck, deviceId: 'dev-a' })
+      await again.sync.pull()
+      expect(again.storage.getItem('nexusmd.activeProfileId')).toBe('p2')
+      const c = device({ srv, ck, deviceId: 'dev-c', init: { 'nexusmd.activeProfileId': 'p2' } })
+      await c.sync.pull()
+      expect(c.storage.getItem('nexusmd.activeProfileId')).toBe('p2')
+    })
+
+    it('an unknown active id is replaced; no profiles leaves it alone', async () => {
+      const srv = fakeServer()
+      const ck = await generateContainerKey()
+      const a = device({ srv, ck, init: { 'nexusmd.profiles': PROFILES } })
+      await a.sync.seed()
+      const b = device({ srv, ck, deviceId: 'dev-b', init: { 'nexusmd.activeProfileId': 'gone' } })
+      await b.sync.pull()
+      expect(b.storage.getItem('nexusmd.activeProfileId')).toBe('p1')
+      const empty = device({ srv: fakeServer(), ck, deviceId: 'dev-e' })
+      await empty.sync.pull()
+      expect(empty.storage.getItem('nexusmd.activeProfileId')).toBeNull()
+    })
+  })
+
   it('device prefs, device-level keys and the tweaks device half go to the device blob, not the item feed', async () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
