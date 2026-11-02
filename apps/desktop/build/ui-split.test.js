@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -59,6 +59,24 @@ describe('the two sides of @nexusmd/ui', () => {
     expect(barrel).toMatch(/export \{ EventDetailModal \} from ".*view-calendar\.jsx"/)
     expect(barrel).not.toContain('view-planner')
     expect(ownedNames(analysis, 'calendar').map(n => n.name)).toContain('WeekGrid')
+  })
+
+  it('has every name an app barrel re-exports really exported by the file it points at, also under an alias', () => {
+    const line = /^export \{ (\w+)(?: as (\w+))? \} from "([^"]+)"$/gm
+    let checked = 0
+    for (const id of analysis.appIds) {
+      for (const [, source, , file] of appUiBarrelSource(analysis, id).matchAll(line)) {
+        expect(exportedNames(readFileSync(file, 'utf8')), `${id}: ${source} from ${file}`).toContain(source)
+        checked++
+      }
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
+
+  it('points an aliased barrel export (Card as WidgetCard) at the name its file exports', () => {
+    const work = appUiBarrelSource(analysis, 'work')
+    expect(work).toMatch(/export \{ Card as WidgetCard \} from ".*dashboard-interactive-widgets\.jsx"/)
+    expect(work).not.toMatch(/export \{ WidgetCard \} from/)
   })
 
   it('has no two shared files exporting the same name (export * would drop both)', () => {
