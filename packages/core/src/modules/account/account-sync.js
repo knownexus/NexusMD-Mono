@@ -87,7 +87,9 @@ export function createAccountSync({
   // ---- reconcile one remote entry ----------------------------------------------------
 
   function remoteWins(local, m, remote, remoteHash, unavailable) {
-    if (unavailable) return !remote.deleted // nothing local to protect; deletions wait
+    // Unavailable without a pending local edit (see reconcile): an absent tweaks key or a
+    // broken entry is repaired from the account; deletions wait until it can be read.
+    if (unavailable) return !remote.deleted
     if (!m) return remote.deleted ? !local : true
     if (!localChanged(m, local)) return true
     if (remote.deleted) return false
@@ -97,19 +99,22 @@ export function createAccountSync({
 
   /**
    * Apply one decoded remote entry and record the server state in meta.
-   * Returns 'applied' | 'same' | 'kept' | 'raced' (local changed under us; nothing recorded).
+   * Returns 'applied' | 'same' | 'kept' | 'held' (nothing recorded; the entry is looked at
+   * again next pull): local changed under us, or local exists but cannot be read right now
+   * while it holds an unpushed edit.
    */
   async function reconcile(meta, state, target, remote) {
     if (!remote.deleted && !validValue(target, remote.value)) return 'kept'
-    const { snap, isUnavailable } = state
+    const { snap, isUnavailable, isUnreadable, rawOf } = state
     const local = snap.get(remote.id)
     const m = meta.entries[remote.id]
+    if (isUnreadable(remote.id) && m && m.changedAt != null) return 'held'
     const remoteHash = remote.deleted ? null : await fingerprint(target, remote.value, ck)
     const merger = target.kind === 'plain' && registry.mergers && registry.mergers[remote.id]
     const merged = !remote.deleted && local && merger
       ? mergeRaw(merger, local.value, remote.value, !!m && localChanged(m, local)) : null
     const write = merged != null || remoteWins(local, m, remote, remoteHash, isUnavailable(remote.id))
-    if (write && !(await unchangedSince(ctx, target, local))) return 'raced'
+    if (write && !(await unchangedSince(ctx, target, rawOf(remote.id)))) return 'held'
     const rec = {
       hash: remoteHash,
       updatedAt: clampAt(remote.updatedAt),
@@ -146,7 +151,7 @@ export function createAccountSync({
       const m = meta.entries[remote.id]
       if (m && m.revision === remote.revision) continue // already seen (often our own write)
       const res = await reconcile(meta, state, target, remote)
-      if (res === 'raced') hold = Math.min(hold, num(c.cursor) - 1) // seen again next pull
+      if (res === 'held') hold = Math.min(hold, num(c.cursor) - 1) // seen again next pull
       else if (res === 'applied') applied++
     }
     meta.cursor = Math.max(meta.cursor, Math.min(feed.cursor, hold))
@@ -170,8 +175,8 @@ export function createAccountSync({
     const state = await localState(meta)
     const entries = isPlainObject(blob.entries) ? blob.entries : {}
     let applied = 0
-    let raced = false
-    const count = (res) => { if (res === 'raced') raced = true; else if (res === 'applied') applied++ }
+    let held = false
+    const count = (res) => { if (res === 'held') held = true; else if (res === 'applied') applied++ }
     const seen = new Set()
     for (const [id, e] of Object.entries(entries)) {
       const target = resolveTarget(registry, id)
@@ -202,7 +207,7 @@ export function createAccountSync({
       dp.prefsHash = remoteHash
       dp.prefsUpdatedAt = clampAt(blob.prefsUpdatedAt)
     }
-    if (!raced) dp.revision = r.revision // a raced entry is looked at again next pull
+    if (!held) dp.revision = r.revision // a held entry is looked at again next pull
     save(meta)
     return applied
   }

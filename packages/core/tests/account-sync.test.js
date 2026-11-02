@@ -465,6 +465,103 @@ describe('createAccountSync', () => {
     expect((await decryptAll(srv, ck))['sec:nexusmd:google.auth'].deleted).toBeFalsy()
   })
 
+  describe('an unreadable local entry', () => {
+    const NAME = 'google.auth'
+    async function synced() {
+      const srv = fakeServer()
+      const ck = await generateContainerKey()
+      const clockRef = { t: 100 }
+      const now = () => clockRef.t
+      const a = device({ srv, ck, secrets: { [NAME]: 't-old' }, now })
+      await a.sync.syncNow()
+      const b = device({ srv, ck, deviceId: 'dev-b', now })
+      await b.sync.syncNow()
+      const real = a.secure.get.getMockImplementation()
+      const lock = (impl) => a.secure.get.mockImplementation(async (n) => (n === NAME ? impl() : real(n)))
+      const unlock = () => a.secure.get.mockImplementation(real)
+      return { srv, ck, a, b, clockRef, lock, unlock }
+    }
+
+    it('keeps an unpushed local secret edit while the keystore is locked, and reconciles it once readable', async () => {
+      const { srv, ck, a, b, clockRef, lock, unlock } = await synced()
+      clockRef.t = 1000
+      await b.secure.set(NAME, 't-remote-older')
+      await b.sync.observe()
+      clockRef.t = 2000
+      await a.secure.set(NAME, 't-local')
+      await a.sync.observe()
+      lock(() => null) // the stored blob is still there, it just does not open right now
+      clockRef.t = 2500
+      await b.sync.syncNow()
+      clockRef.t = 3000
+      const r = await a.sync.pull()
+      expect(r.error).toBeUndefined()
+      expect(r.applied).toBe(0)
+      expect(a.secure.vals.get(NAME)).toBe('t-local')
+      expect(a.secure.set).not.toHaveBeenCalledWith(NAME, 't-remote-older')
+      unlock()
+      clockRef.t = 3500
+      await a.sync.syncNow() // the held item is fetched again; A's edit (2000) beats B's (1000)
+      expect(a.secure.vals.get(NAME)).toBe('t-local')
+      expect((await decryptAll(srv, ck))[`sec:nexusmd:${NAME}`].value).toBe('t-local')
+    })
+
+    it('repairs a locked or broken secret from the remote when there is no pending local edit', async () => {
+      const { a, b, lock } = await synced()
+      lock(() => null)
+      await b.secure.set(NAME, 't-remote')
+      await b.sync.syncNow()
+      const r = await a.sync.pull()
+      expect(r.applied).toBe(1)
+      expect(a.secure.vals.get(NAME)).toBe('t-remote')
+    })
+
+    it('stays safe when secure.get throws', async () => {
+      const { a, b, clockRef, lock } = await synced()
+      clockRef.t = 1000
+      await a.secure.set(NAME, 't-local')
+      await a.sync.observe()
+      lock(() => { throw new Error('keystore unavailable') })
+      clockRef.t = 2000
+      await b.secure.set(NAME, 't-remote')
+      await b.sync.syncNow()
+      const r = await a.sync.pull()
+      expect(r.error).toBeUndefined()
+      expect(a.secure.vals.get(NAME)).toBe('t-local')
+      expect(a.secure.set).not.toHaveBeenCalledWith(NAME, 't-remote')
+    })
+
+    it('keeps unreadable tweaks with a pending edit, and repairs them from the remote without one', async () => {
+      const srv = fakeServer()
+      const ck = await generateContainerKey()
+      const clockRef = { t: 100 }
+      const now = () => clockRef.t
+      const T = 'nexusmd.tweaks'
+      const a = device({ srv, ck, init: { [T]: JSON.stringify({ theme: 'dark' }) }, now })
+      await a.sync.syncNow()
+      const b = device({ srv, ck, deviceId: 'dev-b', now })
+      await b.sync.syncNow()
+      clockRef.t = 1000
+      a.storage.setItem(T, JSON.stringify({ theme: 'light' }))
+      await a.sync.observe()
+      a.storage.setItem(T, '{not json') // the local value exists but cannot be read
+      clockRef.t = 2000
+      b.storage.setItem(T, JSON.stringify({ theme: 'dim' }))
+      await b.sync.syncNow()
+      await a.sync.pull()
+      expect(a.storage.getItem(T)).toBe('{not json')
+
+      const c = device({ srv, ck, deviceId: 'dev-c', init: { [T]: JSON.stringify({ theme: 'dim' }) }, now })
+      await c.sync.syncNow()
+      c.storage.setItem(T, '{broken')
+      clockRef.t = 3000
+      b.storage.setItem(T, JSON.stringify({ theme: 'sepia' }))
+      await b.sync.syncNow()
+      await c.sync.pull()
+      expect(JSON.parse(c.storage.getItem(T))).toEqual({ theme: 'sepia' })
+    })
+  })
+
   it('profiles are unioned by id instead of last-writer-wins', async () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()

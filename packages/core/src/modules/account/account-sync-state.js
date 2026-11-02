@@ -89,10 +89,13 @@ export function resolveTarget(registry, id) {
  * that cannot be judged this round: a secure entry that does not open, tweaks that do not
  * parse, or a tweaks half whose key is absent (removed, or another Android profile is active).
  * Unavailable ids are never pushed, never tombstoned and never stamped.
+ * `isUnreadable(id)` narrows that to a local value that exists but cannot be read right now
+ * (it may still hold an unpushed edit). `rawOf(id)` is the raw local value the snapshot saw
+ * (null when absent, or for a secret that does not open), for the write-race check.
  */
 export async function readSnapshot({ registry, storage, secure, metaKey }, ck) {
   const snap = new Map()
-  const unreadable = new Set()
+  const unreadable = new Map() // id -> raw value seen (null for a secret that does not open)
   const keys = []
   for (let i = 0; i < storage.length; i++) {
     const k = storage.key(i)
@@ -106,7 +109,7 @@ export async function readSnapshot({ registry, storage, secure, metaKey }, ck) {
       if (!id || registry.secretName(id) !== name) continue // account secrets never leave
       let value = null
       try { value = await secure.get(name) } catch { value = null }
-      if (typeof value !== 'string') { unreadable.add(id); continue }
+      if (typeof value !== 'string') { unreadable.set(id, null); continue }
       snap.set(id, { level: 'account', value, raw: value, storageKey: key, secret: true, name, hash: await secretFingerprint(value, ck) })
       continue
     }
@@ -116,7 +119,7 @@ export async function readSnapshot({ registry, storage, secure, metaKey }, ck) {
     if (raw == null) continue
     if (c.split) {
       const obj = parseJson(raw)
-      if (!isPlainObject(obj)) { unreadable.add(c.accountId); unreadable.add(c.deviceId); continue }
+      if (!isPlainObject(obj)) { unreadable.set(c.accountId, raw); unreadable.set(c.deviceId, raw); continue }
       const { account, device } = registry.splitTweaks(obj)
       snap.set(c.accountId, { level: 'account', value: account, raw, storageKey: key, secret: false, half: 'account', hash: hashOf(account) })
       snap.set(c.deviceId, { level: 'device', value: device, raw, storageKey: key, secret: false, half: 'device', hash: hashOf(device) })
@@ -124,9 +127,11 @@ export async function readSnapshot({ registry, storage, secure, metaKey }, ck) {
     }
     snap.set(c.id, { level: c.level, value: raw, raw, storageKey: key, secret: false, hash: hashOf(raw) })
   }
+  const isUnreadable = (id) => unreadable.has(id)
   const isUnavailable = (id) => unreadable.has(id)
     || (!snap.has(id) && resolveTarget(registry, id)?.kind === 'tweaks')
-  return { snap, isUnavailable }
+  const rawOf = (id) => (snap.has(id) ? snap.get(id).raw : unreadable.has(id) ? unreadable.get(id) : null)
+  return { snap, isUnavailable, isUnreadable, rawOf }
 }
 
 /** True when the local fingerprint differs from the server state recorded in `m`. */
@@ -160,14 +165,14 @@ export function stampChanges(meta, snap, isUnavailable, t) {
   return dirty
 }
 
-/** The local value at `target` right now, compared with what the snapshot saw. */
-export async function unchangedSince({ storage, secure }, target, local) {
+/** The local value at `target` right now equals `seen`, the raw value the snapshot saw. */
+export async function unchangedSince({ storage, secure }, target, seen) {
   if (target.kind === 'secret') {
     let current = null
     try { current = await secure.get(target.name) } catch { return false }
-    return current === (local ? local.value : null)
+    return current === seen
   }
-  return storage.getItem(target.key) === (local ? local.raw : null)
+  return storage.getItem(target.key) === seen
 }
 
 /**
