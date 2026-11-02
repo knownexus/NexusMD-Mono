@@ -1,7 +1,8 @@
 import React from 'react'
-import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
+import { render, renderHook, screen, fireEvent, cleanup, within } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { SidebarNav } from './sidebar-nav.jsx'
+import { SidebarNav, useNumberKeys } from './sidebar-nav.jsx'
+import { sidebarGroups, shortcutNav } from './layout.js'
 
 beforeEach(() => localStorage.clear())
 afterEach(cleanup)
@@ -33,7 +34,7 @@ describe('SidebarNav', () => {
     fireEvent.click(toggle)
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     const more = screen.getByRole('group', { name: 'More' })
-    expect(within(more).getAllByRole('button').map(b => b.textContent)).toEqual(['Calendar'])
+    expect(within(more).getAllByRole('button').map(b => b.textContent.replace(/\d+$/, ''))).toEqual(['Calendar'])
   })
 
   it('placement naming a missing id is ignored', () => {
@@ -46,7 +47,7 @@ describe('SidebarNav', () => {
   it('renders the footer group above the status, and Settings stays last', () => {
     render(<SidebarNav {...props({ placement: { builds: 'footer' } })} status={<div data-testid="status">Updated 5m ago</div>} />)
     const footer = screen.getByRole('group', { name: 'Footer screens' })
-    expect(within(footer).getAllByRole('button').map(b => b.textContent)).toEqual(['Builds'])
+    expect(within(footer).getAllByRole('button').map(b => b.textContent.replace(/\d+$/, ''))).toEqual(['Builds'])
     const buttons = within(screen.getByRole('navigation', { name: 'Sidebar' })).getAllByRole('button')
     expect(buttons[buttons.length - 1].textContent).toBe('Settings')
     // footer group, then the status, then Settings
@@ -64,6 +65,29 @@ describe('SidebarNav', () => {
     expect(onSelect).toHaveBeenCalledWith('work')
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     expect(onSelect).toHaveBeenLastCalledWith('settings')
+  })
+
+  it('numbers the screens across main, More and footer, in the order shown', () => {
+    render(<SidebarNav {...props({ placement: { calendar: 'more', dashboard: 'footer' } })} />)
+    fireEvent.click(screen.getByRole('button', { name: /More/ }))
+    const hint = label => screen.getByRole('button', { name: new RegExp(`^${label}`) }).querySelector('span[aria-hidden="true"]')?.textContent
+    expect(hint('Work Items')).toBe('1')
+    expect(hint('Builds')).toBe('2')
+    expect(hint('Calendar')).toBe('3')
+    expect(hint('Dashboard')).toBe('4')
+  })
+
+  it('a screen moved to More or the footer still opens with its number key', () => {
+    const setView = vi.fn()
+    const groups = sidebarGroups(NAV, { order: NAV.map(n => n.id), placement: { calendar: 'more', dashboard: 'footer' } })
+    renderHook(() => useNumberKeys(shortcutNav(groups), setView))
+    const press = key => fireEvent.keyDown(window, { key })
+    press('3'); expect(setView).toHaveBeenLastCalledWith('calendar')
+    press('4'); expect(setView).toHaveBeenLastCalledWith('dashboard')
+    press('1'); expect(setView).toHaveBeenLastCalledWith('work')
+    setView.mockClear()
+    press('5'); fireEvent.keyDown(window, { key: '3', ctrlKey: true })
+    expect(setView).not.toHaveBeenCalled()
   })
 
   it('keeps hidden and switched-off screens out of every group', () => {

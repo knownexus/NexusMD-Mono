@@ -79,6 +79,11 @@ export function sidebarGroups(nav, { order, hidden, placement, off } = {}) {
   return { main: keep(g.main), more: keep(g.more), footer: keep(g.footer) }
 }
 
+// The screens the number keys 1-9 open, in the order the sidebar shows them: main, then More, then footer.
+export function shortcutNav({ main = [], more = [], footer = [] } = {}) {
+  return [...main, ...more, ...footer]
+}
+
 // Whether the window drops its sidebar: only one app is installed and it has a single screen, so there
 // is nothing to switch between (an app with several screens, like Work, keeps its sidebar).
 export function isBareStandalone(mode, navCount) {

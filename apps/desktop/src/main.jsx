@@ -9,8 +9,8 @@ import {
   THEME_MODES, paletteFor, ProfileGate, toast,
 } from '@nexusmd/ui'
 import { startQueueFlushing } from './offline-queue-app.js'
-import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, sidebarGroups, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
-import { SidebarNav } from './sidebar-nav.jsx'
+import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, sidebarGroups, shortcutNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
+import { SidebarNav, useNumberKeys } from './sidebar-nav.jsx'
 import { SidebarSyncStatus } from './sync-indicator.jsx'
 import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider } from './profile-context.jsx'
@@ -230,31 +230,16 @@ function App() {
     return () => window.removeEventListener('nexusmd:navigate', handler)
   }, [])
 
-  // What the sidebar shows, in its groups and order; the number keys jump to the main list's entry with that number.
+  // What the sidebar shows, in its groups and order; the number keys jump to the entry with that number,
+  // counted across main, More and footer in the order shown (as the sidebar's hints number them).
   const navGroups = sidebarGroups(INSTALLED_NAV, { order: tweaks.navOrder, hidden: tweaks.navHidden, placement: tweaks.navPlacement, off: offViews })
-  const shownNav = navGroups.main
-  const shownNavRef = React.useRef(shownNav)
-  shownNavRef.current = shownNav
+  useNumberKeys(shortcutNav(navGroups), setView)
   // On a screen that is switched off (it was the start screen, or a saved or linked one): move to the
   // first one still on, or Settings if the sidebar is empty.
   const fallbackView = (navGroups.main[0] || navGroups.more[0] || navGroups.footer[0])?.id || SETTINGS_NAV.id
   React.useEffect(() => {
     if (offViews.includes(view)) setView(fallbackView)
   }, [offViews, view, fallbackView])
-  React.useEffect(() => {
-    const handler = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      const idx = parseInt(e.key, 10)
-      if (idx >= 1 && idx <= 9) {
-        const target = shownNavRef.current[idx - 1]
-        if (target) setView(target.id)
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [])
-
   // Ctrl+B collapses the sidebar to icons, or expands it back to labels.
   React.useEffect(() => {
     const handler = e => {
