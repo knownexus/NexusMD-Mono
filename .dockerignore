@@ -1,0 +1,25 @@
+# Docker build context is the repo root; keep it small and keep secrets/local state out of images.
+.git
+.gitignore
+.worktrees
+.superpowers
+.claude
+**/node_modules
+**/bin
+**/obj
+**/dist
+**/wwwroot
+**/coverage
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/appsettings.user.json
+**/appsettings.Development.json
+apps/web/server/data
+apps/desktop
+apps/app
+apps/web/e2e
+apps/web/server-tests
+apps/web/src
+docs
+**/*.log

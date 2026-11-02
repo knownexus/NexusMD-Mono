@@ -64,3 +64,6 @@ apps/desktop/installer/apps.generated.nsh
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Local server secrets (OAuth client secrets etc.); never commit. Use env vars (see docs/railway-deploy.md).
+apps/web/server/appsettings.user.json
