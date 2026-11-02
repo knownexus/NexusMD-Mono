@@ -674,11 +674,11 @@ public sealed class DevicesItemsTests : IDisposable
     [Fact]
     public async Task Changes_page_byte_budget_cuts_pages_short_but_always_returns_one_item_and_paging_visits_each_item_once()
     {
-        var h = await NewHost(o => o["Items:MaxPageBytes"] = "100");
+        var h = await NewHost(o => o["Items:MaxPageBytes"] = "400");
         for (var i = 0; i < 5; i++) await PutItem(h, h.Admin, "bud-" + i, new string((char)('a' + i), 40), 0);
 
         var first = await Changes(h, h.Admin, "?limit=500");
-        Assert.Equal(2, first.GetProperty("items").GetArrayLength()); // 40 + 40 = 80; a third would make 120 > 100
+        Assert.Equal(2, first.GetProperty("items").GetArrayLength()); // each row counts 40 + 5 (id) + 128 = 173; two = 346, a third would make 519 > 400
         Assert.True(first.GetProperty("hasMore").GetBoolean());
         Assert.Equal(2, first.GetProperty("cursor").GetInt64());
 
@@ -713,34 +713,39 @@ public sealed class DevicesItemsTests : IDisposable
         Assert.False(p2.GetProperty("hasMore").GetBoolean());
     }
 
+    // A row is charged UTF-8 ciphertext bytes + UTF-8 id bytes + 128 (fixed per-row overhead).
+    private static long Sz(string id, int ciphertextBytes) => ciphertextBytes + id.Length + 128;
+
     [Fact]
     public async Task Single_put_over_the_user_quota_is_413_with_code_quota_and_replacement_counts_only_the_difference()
     {
-        var h = await NewHost(o => o["Items:MaxUserBytes"] = "100");
+        var h = await NewHost(o => o["Items:MaxUserBytes"] = "1000");
         var a = h.Admin;
         static string Code(JsonElement b) => b.GetProperty("code").GetString()!;
 
-        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, a, "qa", new string('a', 60), 0)).status);
-        var over = await PutItem(h, a, "qb", new string('b', 60), 0);
+        Assert.Equal(530, Sz("qa", 400));
+        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, a, "qa", new string('a', 400), 0)).status);   // total 530
+        var over = await PutItem(h, a, "qb", new string('b', 400), 0);                                   // would be 1060
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, over.status);
         Assert.Equal("quota", Code(over.body));
         Assert.Equal(1, (await Changes(h, a)).GetProperty("items").GetArrayLength());
 
-        // Replacing qa counts only the size difference: 60 -> 100 is +40 (total 100, allowed); 100 -> 101 is not.
-        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, a, "qa", new string('a', 100), 1)).status);
-        var tooBig = await PutItem(h, a, "qa", new string('a', 101), 2);
+        // Replacing qa counts only the size difference: growing to exactly 1000 total (870 + 2 + 128) is allowed, one more byte is not.
+        Assert.Equal(1000, Sz("qa", 870));
+        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, a, "qa", new string('a', 870), 1)).status);
+        var tooBig = await PutItem(h, a, "qa", new string('a', 871), 2);
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, tooBig.status);
         Assert.Equal("quota", Code(tooBig.body));
-        // Shrinking is always allowed and frees room; a tombstone's ciphertext still counts.
-        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, a, "qa", new string('t', 10), 2, deleted: true)).status);
-        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, a, "qb", new string('b', 90), 0)).status);
+        // Shrinking is always allowed and frees room; a tombstone's ciphertext (and overhead) still counts.
+        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, a, "qa", new string('t', 10), 2, deleted: true)).status); // total 140
+        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, a, "qb", new string('b', 730), 0)).status);              // 140 + 860 = 1000 exactly
         var full = await PutItem(h, a, "qc", "z", 0);
         Assert.Equal("quota", Code(full.body));
 
         // Rejected writes consumed no cursor (create, replace, tombstone, create = 4), and another user has their own quota.
         Assert.Equal(4, (await Changes(h, a)).GetProperty("cursor").GetInt64());
         var bob = await NewUser(h);
-        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, bob, "qa", new string('a', 100), 0)).status);
+        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, bob, "qa", new string('a', 870), 0)).status);
 
         // Device prefs are not part of the item quota.
         var dev = await CreateDevice(h, a);
@@ -749,18 +754,29 @@ public sealed class DevicesItemsTests : IDisposable
     }
 
     [Fact]
+    public async Task Many_tiny_items_consume_quota_through_the_per_row_overhead()
+    {
+        var h = await NewHost(o => o["Items:MaxUserBytes"] = "1000");
+        // Each 1-byte item with a 3-char id costs 1 + 3 + 128 = 132: seven fit (924), the eighth (1056) does not.
+        for (var i = 0; i < 7; i++) Assert.Equal(HttpStatusCode.OK, (await PutItem(h, h.Admin, $"t0{i}", "c", 0)).status);
+        var eighth = await PutItem(h, h.Admin, "t07", "c", 0);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, eighth.status);
+        Assert.Equal("quota", eighth.body.GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task Batch_items_over_the_user_quota_get_status_quota_and_the_rest_still_succeed()
     {
-        var h = await NewHost(o => o["Items:MaxUserBytes"] = "100");
+        var h = await NewHost(o => o["Items:MaxUserBytes"] = "1000");
         var a = h.Admin;
         var body = await Batch(h, a, new object[]
         {
-            new { id = "b-one", ifMatch = 0, ciphertext = new string('a', 60), deleted = false },   // ok (60)
-            new { id = "b-two", ifMatch = 0, ciphertext = new string('b', 60), deleted = false },   // quota (would be 120)
-            new { id = "b-three", ifMatch = 0, ciphertext = new string('c', 40), deleted = false }, // ok (100)
-            new { id = "b-four", ifMatch = 0, ciphertext = "d", deleted = false },                  // quota (101)
-            new { id = "b-one", ifMatch = 1, ciphertext = new string('e', 20), deleted = false },   // ok, replaces 60 with 20 (60)
-            new { id = "b-four", ifMatch = 0, ciphertext = new string('f', 40), deleted = false },  // ok (100)
+            new { id = "b-one", ifMatch = 0, ciphertext = new string('a', 300), deleted = false },   // ok: 433
+            new { id = "b-two", ifMatch = 0, ciphertext = new string('b', 500), deleted = false },   // quota: 433 + 633 = 1066
+            new { id = "b-three", ifMatch = 0, ciphertext = new string('c', 300), deleted = false }, // ok: 433 + 435 = 868
+            new { id = "b-four", ifMatch = 0, ciphertext = "d", deleted = false },                   // quota: 868 + 135 = 1003
+            new { id = "b-one", ifMatch = 1, ciphertext = new string('e', 100), deleted = false },   // ok: replaces 433 with 233 -> 668
+            new { id = "b-four", ifMatch = 0, ciphertext = new string('f', 198), deleted = false },  // ok: 668 + 332 = 1000 exactly
         });
         var r = body.GetProperty("results").EnumerateArray().ToArray();
         Assert.Equal(new[] { "ok", "quota", "ok", "quota", "ok", "ok" }, r.Select(x => Str(x, "status")).ToArray());
@@ -784,37 +800,207 @@ public sealed class DevicesItemsTests : IDisposable
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await PutItem(h, h.Admin, "escaped-two", ct + "a", 0)).status);
     }
 
+    // ---- migration of an existing Items table ------------------------------------------
+
+    private static (string path, Func<NexusMDWeb.Api.Data.AccountRepository> open) LegacyDb(string createSql)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"nexusmd-mig-{Guid.NewGuid():N}.db");
+        using (var conn = new SqliteConnection($"Data Source={path}"))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = createSql;
+            cmd.ExecuteNonQuery();
+        }
+        var cfg = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Accounts:DbPath"] = path }).Build();
+        return (path, () => new NexusMDWeb.Api.Data.AccountRepository(cfg));
+    }
+
+    private static void CleanUp(string path)
+    {
+        SqliteConnection.ClearAllPools();
+        foreach (var f in new[] { path, path + "-wal", path + "-shm" }) try { File.Delete(f); } catch { }
+    }
+
+    private static Dictionary<string, long> Sizes(string path)
+    {
+        using var conn = new SqliteConnection($"Data Source={path}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Id, Size FROM Items";
+        using var r = cmd.ExecuteReader();
+        var d = new Dictionary<string, long>();
+        while (r.Read()) d[r.GetString(0)] = r.GetInt64(1);
+        return d;
+    }
+
+    private const string LegacyItemsTable = @"CREATE TABLE Items (UserId TEXT NOT NULL, Id TEXT NOT NULL, Revision INTEGER NOT NULL,
+        Cursor INTEGER NOT NULL, Ciphertext TEXT NOT NULL, Deleted INTEGER NOT NULL DEFAULT 0,
+        UpdatedAt INTEGER NOT NULL, PRIMARY KEY (UserId, Id));";
+
     [Fact]
     public void An_items_table_created_before_the_size_column_is_migrated_and_counts_toward_the_quota()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"nexusmd-mig-{Guid.NewGuid():N}.db");
+        var (path, open) = LegacyDb(LegacyItemsTable
+            + "INSERT INTO Items VALUES ('u1','old-item',1,1,'" + new string('a', 70) + "',0,1);");
         try
         {
-            using (var conn = new SqliteConnection($"Data Source={path}"))
-            {
-                conn.Open();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"CREATE TABLE Items (UserId TEXT NOT NULL, Id TEXT NOT NULL, Revision INTEGER NOT NULL,
-                    Cursor INTEGER NOT NULL, Ciphertext TEXT NOT NULL, Deleted INTEGER NOT NULL DEFAULT 0,
-                    UpdatedAt INTEGER NOT NULL, PRIMARY KEY (UserId, Id));
-                    INSERT INTO Items VALUES ('u1','old-item',1,1,'" + new string('a', 70) + "',0,1);";
-                cmd.ExecuteNonQuery();
-            }
-            var cfg = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?> { ["Accounts:DbPath"] = path }).Build();
-            var repo = new NexusMDWeb.Api.Data.AccountRepository(cfg);
+            var repo = open();
+            Assert.Equal(70 + 8 + 128, Sizes(path)["old-item"]); // 206
 
-            // The old 70-byte row now counts: 70 + 40 > 100, but replacing it with 100 bytes is +30 only.
-            var blocked = repo.WriteItem("u1", new NexusMDWeb.Api.Models.ItemWrite("new-item", 0, new string('b', 40), false), 100);
+            // The old row now counts 206: 206 + (40 + 8 + 128) > 300, but replacing it with 164 bytes (+94) lands on exactly 300.
+            var blocked = repo.WriteItem("u1", new NexusMDWeb.Api.Models.ItemWrite("new-item", 0, new string('b', 40), false), 300);
             Assert.Equal(NexusMDWeb.Api.Models.WriteStatus.Quota, blocked.Status);
-            var replaced = repo.WriteItem("u1", new NexusMDWeb.Api.Models.ItemWrite("old-item", 1, new string('c', 100), false), 100);
+            var replaced = repo.WriteItem("u1", new NexusMDWeb.Api.Models.ItemWrite("old-item", 1, new string('c', 164), false), 300);
             Assert.Equal(NexusMDWeb.Api.Models.WriteStatus.Ok, replaced.Status);
+            var over = repo.WriteItem("u1", new NexusMDWeb.Api.Models.ItemWrite("old-item", 2, new string('c', 165), false), 300);
+            Assert.Equal(NexusMDWeb.Api.Models.WriteStatus.Quota, over.Status);
         }
-        finally
+        finally { CleanUp(path); }
+    }
+
+    [Fact]
+    public void Migration_backfills_the_utf8_byte_size_not_the_character_count_and_is_idempotent()
+    {
+        // "é€😀" is 3 characters (4 UTF-16 units) but 2 + 3 + 4 = 9 UTF-8 bytes; the id "ünï" is 2 + 1 + 2 = 5 bytes.
+        var (path, open) = LegacyDb(LegacyItemsTable
+            + "INSERT INTO Items VALUES ('u1','ünï',1,1,'é€😀',0,1);"
+            + "INSERT INTO Items VALUES ('u1','plain',1,2,'abc',1,1);");
+        try
         {
-            SqliteConnection.ClearAllPools();
-            foreach (var f in new[] { path, path + "-wal", path + "-shm" }) try { File.Delete(f); } catch { }
+            open();
+            var sizes = Sizes(path);
+            Assert.Equal(9 + 5 + 128, sizes["ünï"]);
+            Assert.Equal(3 + 5 + 128, sizes["plain"]);
+            open(); // a second start changes nothing
+            Assert.Equal(sizes, Sizes(path));
         }
+        finally { CleanUp(path); }
+    }
+
+    [Fact]
+    public void Startup_repairs_rows_left_with_size_zero_by_a_half_applied_migration()
+    {
+        // The Size column exists (the ALTER ran) but the backfill did not: rows with a ciphertext still have Size 0.
+        var (path, open) = LegacyDb(@"CREATE TABLE Items (UserId TEXT NOT NULL, Id TEXT NOT NULL, Revision INTEGER NOT NULL,
+            Cursor INTEGER NOT NULL, Size INTEGER NOT NULL DEFAULT 0, Ciphertext TEXT NOT NULL, Deleted INTEGER NOT NULL DEFAULT 0,
+            UpdatedAt INTEGER NOT NULL, PRIMARY KEY (UserId, Id));
+            INSERT INTO Items VALUES ('u1','half-done',1,1,0,'é€😀',0,1);
+            INSERT INTO Items VALUES ('u1','empty-one',1,2,0,'',0,1);
+            INSERT INTO Items VALUES ('u1','already-ok',1,3,777,'abc',0,1);");
+        try
+        {
+            open();
+            var sizes = Sizes(path);
+            Assert.Equal(9 + 9 + 128, sizes["half-done"]);
+            Assert.Equal(0, sizes["empty-one"]);     // nothing to charge for: left alone
+            Assert.Equal(777, sizes["already-ok"]);  // a non-zero Size is never rewritten
+        }
+        finally { CleanUp(path); }
+    }
+
+    // ---- ciphertext alphabet (base64 / base64url only) and response escaping ------------
+
+    public static IEnumerable<object[]> BadCiphertexts() => new[]
+    {
+        new object[] { "has space" },
+        new object[] { "emoji\U0001F600" },
+        new object[] { "café" },
+        new object[] { "a.b" },
+        new object[] { "a\nb" },
+        new object[] { "<script>" },
+        new object[] { "quote\"" },
+        new object[] { "back\\slash" },
+        new object[] { "a\u0000b" },
+    };
+
+    [Theory]
+    [MemberData(nameof(BadCiphertexts))]
+    public async Task Single_put_rejects_ciphertext_outside_the_base64_alphabet(string ciphertext)
+    {
+        var h = await NewHost();
+        var res = await Send(h.Http, HttpMethod.Put, "/api/items/abcdefgh", h.Admin.AccessToken, new { ciphertext, deleted = false }, "0");
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Equal("invalid_ciphertext", Str(await Json(res), "code"));
+        Assert.Equal(0, (await Changes(h, h.Admin)).GetProperty("items").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Empty_or_missing_ciphertext_is_invalid_ciphertext_and_every_base64_and_base64url_character_is_accepted()
+    {
+        var h = await NewHost();
+        foreach (var body in new object[] { new { ciphertext = "", deleted = false }, new { deleted = false } })
+        {
+            var res = await Send(h.Http, HttpMethod.Put, "/api/items/abcdefgh", h.Admin.AccessToken, body, "0");
+            Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+            Assert.Equal("invalid_ciphertext", Str(await Json(res), "code"));
+        }
+        const string all = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-";
+        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, h.Admin, "abcdefgh", all, 0)).status);
+        Assert.Equal(all, Str((await Changes(h, h.Admin)).GetProperty("items").EnumerateArray().Single(), "ciphertext"));
+    }
+
+    [Fact]
+    public async Task Batch_item_with_a_non_base64_ciphertext_is_invalid_and_siblings_succeed()
+    {
+        var h = await NewHost();
+        var body = await Batch(h, h.Admin, new object[]
+        {
+            new { id = "good-one", ifMatch = 0, ciphertext = "QUJD+/==", deleted = false },
+            new { id = "bad-one", ifMatch = 0, ciphertext = "not base64!", deleted = false },
+            new { id = "bad-two", ifMatch = 0, ciphertext = "éé", deleted = false },
+            new { id = "good-two", ifMatch = 0, ciphertext = "dGVzdA", deleted = true },
+        });
+        Assert.Equal(new[] { "ok", "invalid", "invalid", "ok" },
+            body.GetProperty("results").EnumerateArray().Select(x => Str(x, "status")).ToArray());
+        Assert.Equal(new[] { "good-one", "good-two" },
+            (await Changes(h, h.Admin)).GetProperty("items").EnumerateArray().Select(i => Str(i, "id")).ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(BadCiphertexts))]
+    public async Task Prefs_put_rejects_ciphertext_outside_the_base64_alphabet(string ciphertext)
+    {
+        var h = await NewHost();
+        var dev = await CreateDevice(h, h.Admin);
+        var res = await Send(h.Http, HttpMethod.Put, $"/api/devices/{dev}/prefs", h.Admin.AccessToken, new { ciphertext }, "0");
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Equal(0, (await Json(await Send(h.Http, HttpMethod.Get, $"/api/devices/{dev}/prefs", h.Admin.AccessToken))).GetProperty("revision").GetInt64());
+    }
+
+    [Fact]
+    public async Task Prefs_put_rejects_an_empty_ciphertext_and_accepts_base64()
+    {
+        var h = await NewHost();
+        var dev = await CreateDevice(h, h.Admin);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await Send(h.Http, HttpMethod.Put, $"/api/devices/{dev}/prefs", h.Admin.AccessToken, new { ciphertext = "" }, "0")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await Send(h.Http, HttpMethod.Put, $"/api/devices/{dev}/prefs", h.Admin.AccessToken, new { ciphertext = "QUJD+/==" }, "0")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Responses_do_not_expand_plus_and_slash_so_a_page_stays_near_its_byte_budget()
+    {
+        // Two rows fit a 1000-byte budget (each charged 300 + 7 + 128 = 435; the first two = 870, a third would exceed it).
+        var h = await NewHost(o => o["Items:MaxPageBytes"] = "1000");
+        var ct = string.Concat(Enumerable.Repeat("+/", 150)); // 300 chars, every one of them '+' or '/'
+        for (var i = 0; i < 4; i++) Assert.Equal(HttpStatusCode.OK, (await PutItem(h, h.Admin, $"esc-{i:D3}", ct, 0)).status);
+
+        var res = await Send(h.Http, HttpMethod.Get, "/api/items/changes", h.Admin.AccessToken);
+        var bytes = await res.Content.ReadAsByteArrayAsync();
+        var text = System.Text.Encoding.UTF8.GetString(bytes);
+        Assert.DoesNotContain("\\u002B", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, JsonDocument.Parse(text).RootElement.GetProperty("items").GetArrayLength());
+        // 600 ciphertext bytes plus the JSON envelope: nowhere near what 6x '+' expansion (>1800 bytes) would give.
+        Assert.True(bytes.Length < 1000 + 512, $"page was {bytes.Length} bytes");
+
+        // Prefs GET and device endpoints use the same encoder.
+        var dev = await CreateDevice(h, h.Admin);
+        await Send(h.Http, HttpMethod.Put, $"/api/devices/{dev}/prefs", h.Admin.AccessToken, new { ciphertext = ct }, "0");
+        var prefs = await Send(h.Http, HttpMethod.Get, $"/api/devices/{dev}/prefs", h.Admin.AccessToken);
+        Assert.DoesNotContain("\\u002B", await prefs.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<HttpResponseMessage> PostRawBatch(Host h, string json)

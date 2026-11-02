@@ -19,6 +19,9 @@ namespace NexusMDWeb.Api.Controllers;
 /// Contract (pinned):
 ///  - <c>updatedAt</c> is Unix milliseconds (UTC) everywhere in this controller.
 ///  - Item statuses in a batch result are exactly: ok | conflict | too_large | invalid | quota.
+///  - Ciphertext must be a non-empty base64/base64url string (A-Za-z0-9+/=_-): single PUT 400 {code:"invalid_ciphertext"},
+///    batch item status "invalid". Each row is charged ciphertext bytes + id bytes + 128 against quota and page budget.
+///  - Responses are written with relaxed JSON escaping so "+" and "/" are not expanded on the wire.
 ///  - Single PUT: 409 {code:"conflict"} stale revision; 413 {code:"too_large"} over Items:MaxBytes;
 ///    413 {code:"quota"} over the per-user Items:MaxUserBytes.
 ///  - The changes feed is paged by BOTH a row limit and a byte budget (Items:MaxPageBytes), so a page may hold
@@ -28,6 +31,7 @@ namespace NexusMDWeb.Api.Controllers;
 [Route("api/items")]
 [Authorize] // any role; fail closed
 [LiveUserCheck]
+[RelaxedJsonEscaping]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class ItemsController(AccountRepository accounts, IConfiguration config, ILogger<ItemsController> log) : ControllerBase
 {
@@ -48,9 +52,10 @@ public class ItemsController(AccountRepository accounts, IConfiguration config, 
     {
         if (!IsValidId(id)) return Err(400, $"id must be 1-{MaxIdChars} characters of A-Z a-z 0-9 _ -");
         if (!DevicesController.TryReadIfMatch(Request, out var ifMatch)) return Err(400, "If-Match must be the current revision (a non-negative integer, 0 to create)");
-        if (string.IsNullOrEmpty(req?.Ciphertext)) return Err(400, "ciphertext is required");
+        if (string.IsNullOrEmpty(req?.Ciphertext)) return InvalidCiphertext();
         if (Encoding.UTF8.GetByteCount(req.Ciphertext) > ItemLimits.MaxBytes(config))
             return StatusCode(StatusCodes.Status413PayloadTooLarge, new { error = "ciphertext is too large", code = "too_large" });
+        if (!CiphertextRules.IsValid(req.Ciphertext)) return InvalidCiphertext();
 
         var result = accounts.WriteItem(CallerId(), new ItemWrite(id, ifMatch, req.Ciphertext, req.Deleted), ItemLimits.MaxUserBytes(config));
         switch (result.Status)
@@ -158,6 +163,9 @@ public class ItemsController(AccountRepository accounts, IConfiguration config, 
 
     private IActionResult Err(int status, string message) => StatusCode(status, new { error = message });
 
+    private IActionResult InvalidCiphertext() =>
+        StatusCode(StatusCodes.Status400BadRequest, new { error = "ciphertext must be a non-empty base64 or base64url string", code = "invalid_ciphertext" });
+
     /// <summary>Item ids are opaque base64url strings (HMAC output): 1-128 characters of [A-Za-z0-9_-].</summary>
     internal static bool IsValidId(string? id)
     {
@@ -169,7 +177,7 @@ public class ItemsController(AccountRepository accounts, IConfiguration config, 
 
     /// <summary>
     /// Strictly typed read of one batch entry: an object with a valid string id, a non-negative integer ifMatch,
-    /// a non-empty string ciphertext and (when present) a boolean deleted. Anything else is not parsed.
+    /// a non-empty base64/base64url ciphertext and (when present) a boolean deleted. Anything else is not parsed.
     /// </summary>
     private static bool TryParseItem(JsonElement el, out ItemWrite write)
     {
@@ -180,7 +188,7 @@ public class ItemsController(AccountRepository accounts, IConfiguration config, 
             || !im.TryGetInt64(out var ifMatch) || ifMatch < 0) return false;
         if (!el.TryGetProperty("ciphertext", out var ct) || ct.ValueKind != JsonValueKind.String) return false;
         var ciphertext = ct.GetString();
-        if (string.IsNullOrEmpty(ciphertext)) return false;
+        if (!CiphertextRules.IsValid(ciphertext)) return false;
         var deleted = false;
         if (el.TryGetProperty("deleted", out var del))
         {

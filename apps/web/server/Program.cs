@@ -105,6 +105,20 @@ NexusMDWeb.Api.Services.Auth.JwtKeyResolver.Resolve(app.Configuration, app.Envir
 if (app.Configuration.GetValue("Proxy:TrustForwardedHeaders", false))
     app.UseForwardedHeaders(); // must run first so everything downstream sees the real client IP/scheme
 app.UseCors("CapacitorApp");
+// Diagnostics: a SqliteException that escapes a request (e.g. SQLITE_BUSY under contention) becomes a bare 500.
+// Record which error it was. Only the error codes and the matched route are logged: no message, SQL, parameters or ids.
+app.Use(async (ctx, next) =>
+{
+    try { await next(); }
+    catch (Microsoft.Data.Sqlite.SqliteException ex)
+    {
+        ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("NexusMDWeb.Sqlite").LogWarning(
+            "SQLite error escaped {Method} {Endpoint}: code {Code}, extended code {ExtendedCode}",
+            ctx.Request.Method, ctx.GetEndpoint()?.DisplayName ?? "(no endpoint)", ex.SqliteErrorCode, ex.SqliteExtendedErrorCode);
+        throw;
+    }
+});
+
 app.UseMiddleware<NexusMDWeb.Api.Services.Auth.LegacyEndpointGate>();
 
 // Serve the single-page frontend from wwwroot/

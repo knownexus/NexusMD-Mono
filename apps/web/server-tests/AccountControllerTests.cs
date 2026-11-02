@@ -765,9 +765,12 @@ public sealed class AccountControllerTests : IDisposable
 
         var unauthorized = results.Count(r => r.StatusCode == HttpStatusCode.Unauthorized);
         var locked = results.Count(r => r.StatusCode == (HttpStatusCode)423);
-        Assert.True(unauthorized <= 5, $"{unauthorized} attempts were verified");
-        Assert.Equal(12, unauthorized + locked);
-        Assert.True(locked >= 7);
+        // On any mismatch show every response (status + body) so an intermittent 5xx can be diagnosed.
+        string Dump() => string.Join(" | ", results.Select(r =>
+            $"{(int)r.StatusCode}:{r.Content.ReadAsStringAsync().GetAwaiter().GetResult()}"));
+        Assert.True(unauthorized <= 5, $"{unauthorized} attempts were verified: {Dump()}");
+        Assert.True(12 == unauthorized + locked, $"expected 12 x 401/423 but got {unauthorized} x 401 and {locked} x 423: {Dump()}");
+        Assert.True(locked >= 7, $"only {locked} x 423: {Dump()}");
         var u = f.Services.GetRequiredService<AccountRepository>().FindByUsername("admin")!;
         Assert.Equal(5, u.FailedLogins);
         Assert.NotNull(u.LockedUntil);

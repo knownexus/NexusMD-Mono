@@ -86,3 +86,45 @@ public sealed class ItemBodyLimitAttribute(bool batch) : Attribute, IResourceFil
 
     public void OnResourceExecuted(ResourceExecutedContext context) { }
 }
+
+/// <summary>
+/// Ciphertext is client-produced base64 or base64url text, so the only characters it may contain are
+/// A-Z a-z 0-9 + / = _ -. Rejecting everything else at write time means the stored bytes equal the JSON text
+/// that is sent back (no characters that a serialiser would expand), which keeps byte budgets honest.
+/// </summary>
+public static class CiphertextRules
+{
+    private static readonly System.Buffers.SearchValues<char> Alphabet = System.Buffers.SearchValues.Create(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-");
+
+    /// <summary>True for a non-empty string made only of base64 / base64url characters.</summary>
+    public static bool IsValid([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string? ciphertext) =>
+        !string.IsNullOrEmpty(ciphertext) && !ciphertext.AsSpan().ContainsAnyExcept(Alphabet);
+}
+
+/// <summary>
+/// Serialises the controller's object results with relaxed JSON escaping, so '+' and '/' (all over base64
+/// ciphertext) are written as themselves instead of the 6-byte \u002B form. Without this a response page that is
+/// within its byte budget could be several times larger on the wire.
+/// </summary>
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
+public sealed class RelaxedJsonEscapingAttribute : Attribute, IResultFilter
+{
+    private static readonly Microsoft.AspNetCore.Mvc.Formatters.SystemTextJsonOutputFormatter Formatter = new(
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver(),
+        });
+
+    public void OnResultExecuting(ResultExecutingContext context)
+    {
+        if (context.Result is ObjectResult result)
+        {
+            result.Formatters.Clear();
+            result.Formatters.Add(Formatter);
+        }
+    }
+
+    public void OnResultExecuted(ResultExecutedContext context) { }
+}

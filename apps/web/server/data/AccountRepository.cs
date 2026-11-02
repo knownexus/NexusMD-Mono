@@ -30,7 +30,8 @@ public class AccountRepository
         var dbPath = config["Accounts:DbPath"] ?? "accounts.db";
         if (!Path.IsPathRooted(dbPath))
             dbPath = Path.Combine(AppContext.BaseDirectory, dbPath);
-        _connectionString = $"Data Source={dbPath}";
+        // Explicit busy timeout (seconds): writers wait for the lock instead of failing with SQLITE_BUSY.
+        _connectionString = new SqliteConnectionStringBuilder { DataSource = dbPath, DefaultTimeout = 30 }.ToString();
         Initialise();
     }
 
@@ -132,19 +133,46 @@ public class AccountRepository
         cmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_Sessions_ExpiresAt ON Sessions (ExpiresAt)";
         cmd.ExecuteNonQuery();
 
-        // Databases created before Items.Size existed: add the column and fill it with each row's UTF-8 byte length.
+        MigrateItemSizes(conn);
+    }
+
+    /// <summary>
+    /// Items.Size (the quota/page charge, see <see cref="ItemSize"/>) was added after the table first shipped.
+    /// Runs in ONE BEGIN IMMEDIATE transaction so the ALTER and the backfill apply together or not at all and
+    /// concurrent starters serialise (the column check is repeated inside the lock). The repair step also
+    /// backfills any row still at Size=0 with a non-empty ciphertext, so a database left half-migrated by an
+    /// earlier build heals on the next start. Both use the same formula as new writes: UTF-8 bytes of the
+    /// ciphertext + UTF-8 bytes of the id + <see cref="RowOverheadBytes"/>.
+    /// </summary>
+    private static void MigrateItemSizes(SqliteConnection conn)
+    {
+        const string sizeSql = "LENGTH(CAST(Ciphertext AS BLOB)) + LENGTH(CAST(Id AS BLOB)) + 128";
+        using var tx = conn.BeginTransaction(IsolationLevel.Serializable);
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Items') WHERE name='Size'";
         if (Convert.ToInt64(cmd.ExecuteScalar()) == 0)
         {
             cmd.CommandText = "ALTER TABLE Items ADD COLUMN Size INTEGER NOT NULL DEFAULT 0";
             cmd.ExecuteNonQuery();
-            cmd.CommandText = "UPDATE Items SET Size=LENGTH(CAST(Ciphertext AS BLOB))";
-            cmd.ExecuteNonQuery();
         }
+        // Partial index: finding "no unsized rows" at startup costs nothing, however large the table is.
+        cmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_Items_Unsized ON Items (UserId) WHERE Size=0";
+        cmd.ExecuteNonQuery();
+        cmd.CommandText = $"UPDATE Items SET Size={sizeSql} WHERE Size=0 AND Ciphertext<>''";
+        cmd.ExecuteNonQuery();
         // Covering index so a user's total stored bytes (quota check) never reads the ciphertext pages.
         cmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_Items_Usage ON Items (UserId, Size)";
         cmd.ExecuteNonQuery();
+        tx.Commit();
     }
+
+    /// <summary>Fixed per-row charge on top of the ciphertext and id bytes, so many tiny items still consume quota.</summary>
+    public const int RowOverheadBytes = 128;
+
+    /// <summary>What an item row is charged against the user's quota and the changes-page byte budget.</summary>
+    public static long ItemSize(string id, string ciphertext) =>
+        Encoding.UTF8.GetByteCount(ciphertext) + Encoding.UTF8.GetByteCount(id) + RowOverheadBytes;
 
     private static long Now() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     private static long ToMs(DateTime utc) => new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToUnixTimeMilliseconds();
@@ -823,7 +851,7 @@ public class AccountRepository
                 if (r.Read()) { current = r.GetInt64(0); oldSize = r.GetInt64(1); }
             }
             if (current != w.IfMatch) { results.Add(new WriteResult(WriteStatus.Conflict)); continue; }
-            long size = Encoding.UTF8.GetByteCount(w.Ciphertext);
+            var size = ItemSize(w.Id, w.Ciphertext);
             var delta = size - oldSize;
             if (delta > 0 && total + delta > maxUserBytes) { results.Add(new WriteResult(WriteStatus.Quota)); continue; }
             var cursor = Convert.ToInt64(cur.ExecuteScalar());
@@ -841,30 +869,58 @@ public class AccountRepository
     /// <summary>
     /// One page of the user's items with Cursor greater than <paramref name="since"/>, oldest first: at most
     /// <paramref name="limit"/> rows and (after the first, which is always included) at most
-    /// <paramref name="maxPageBytes"/> of ciphertext in total. <c>hasMore</c> is true when rows exist beyond the
-    /// page, whichever limit cut it. Row sizes come from the Size column and a ciphertext is only read once its
-    /// row is accepted, so no more than the budget plus one item is ever materialised.
+    /// <paramref name="maxPageBytes"/> of charged size in total (<see cref="ItemSize"/>). <c>hasMore</c> is true
+    /// when rows exist beyond the page, whichever limit cut it.
+    /// Two steps inside one read transaction (a consistent snapshot): first the metadata of up to limit+1 rows
+    /// WITHOUT the ciphertext column, from which the page is decided using the stored Size; then the ciphertext
+    /// of the accepted rows only, by cursor range. A rejected row's ciphertext is never loaded, so at most the
+    /// budget plus one item is ever materialised. Cursors are unique per user, so the range is exact.
     /// </summary>
     public (IReadOnlyList<ItemRecord> items, bool hasMore) GetItemChanges(string userId, long since, int limit, long maxPageBytes)
     {
         using var conn = OpenConnection();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"SELECT Id,Revision,Cursor,Size,Deleted,UpdatedAt,Ciphertext FROM Items
-            WHERE UserId=$uid AND Cursor>$since ORDER BY Cursor LIMIT $limit";
-        cmd.Parameters.AddWithValue("$uid", userId);
-        cmd.Parameters.AddWithValue("$since", since);
-        cmd.Parameters.AddWithValue("$limit", (long)limit + 1); // one extra row only to learn whether more exist
-        var list = new List<ItemRecord>();
-        long bytes = 0;
-        using var r = cmd.ExecuteReader();
-        while (r.Read())
+        using var tx = conn.BeginTransaction(IsolationLevel.ReadCommitted); // deferred: one WAL snapshot for both reads
+
+        var meta = new List<(string id, long revision, long cursor, bool deleted, long updatedAt)>();
+        var hasMore = false;
+        using (var cmd = conn.CreateCommand())
         {
-            var size = r.GetInt64(3);
-            if (list.Count >= limit || (list.Count > 0 && bytes + size > maxPageBytes)) return (list, true);
-            bytes += size;
-            list.Add(new ItemRecord(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetString(6), r.GetInt32(4) != 0, r.GetInt64(5)));
+            cmd.Transaction = tx;
+            cmd.CommandText = @"SELECT Id,Revision,Cursor,Size,Deleted,UpdatedAt FROM Items
+                WHERE UserId=$uid AND Cursor>$since ORDER BY Cursor LIMIT $limit";
+            cmd.Parameters.AddWithValue("$uid", userId);
+            cmd.Parameters.AddWithValue("$since", since);
+            cmd.Parameters.AddWithValue("$limit", (long)limit + 1); // one extra row only to learn whether more exist
+            long bytes = 0;
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var size = r.GetInt64(3);
+                if (meta.Count >= limit || (meta.Count > 0 && bytes + size > maxPageBytes)) { hasMore = true; break; }
+                bytes += size;
+                meta.Add((r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetInt32(4) != 0, r.GetInt64(5)));
+            }
         }
-        return (list, false);
+        if (meta.Count == 0) return (Array.Empty<ItemRecord>(), hasMore);
+
+        var list = new List<ItemRecord>(meta.Count);
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = @"SELECT Cursor,Ciphertext FROM Items
+                WHERE UserId=$uid AND Cursor>$since AND Cursor<=$last ORDER BY Cursor";
+            cmd.Parameters.AddWithValue("$uid", userId);
+            cmd.Parameters.AddWithValue("$since", since);
+            cmd.Parameters.AddWithValue("$last", meta[^1].cursor);
+            using var r = cmd.ExecuteReader();
+            foreach (var m in meta)
+            {
+                if (!r.Read() || r.GetInt64(0) != m.cursor)
+                    throw new InvalidOperationException("Item changes snapshot is inconsistent.");
+                list.Add(new ItemRecord(m.id, m.revision, m.cursor, r.GetString(1), m.deleted, m.updatedAt));
+            }
+        }
+        return (list, hasMore);
     }
 
     private static UserRecord MapUser(SqliteDataReader r) => new(

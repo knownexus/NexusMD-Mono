@@ -17,11 +17,13 @@ namespace NexusMDWeb.Api.Controllers;
 ///  - <c>updatedAt</c> is Unix milliseconds (UTC) everywhere in this controller.
 ///  - <c>PUT /api/devices/{id}/prefs</c> returns <c>{ revision }</c> only; <c>GET</c> returns <c>{ revision, ciphertext }</c>.
 ///  - Creating a device beyond the per-user cap is 409 with <c>code: "device_limit"</c>.
+///  - Prefs ciphertext must be non-empty base64/base64url (400 otherwise); responses use relaxed JSON escaping.
 /// </summary>
 [ApiController]
 [Route("api/devices")]
 [Authorize] // any role; fail closed
 [LiveUserCheck]
+[RelaxedJsonEscaping]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class DevicesController(AccountRepository accounts, IConfiguration config, ILogger<DevicesController> log) : ControllerBase
 {
@@ -92,8 +94,9 @@ public class DevicesController(AccountRepository accounts, IConfiguration config
     {
         if (!TryNormalizeId(id, out var key)) return Err(404, "device not found");
         if (!TryReadIfMatch(Request, out var expected)) return Err(400, "If-Match must be the current revision (a non-negative integer)");
-        if (req?.Ciphertext is null) return Err(400, "ciphertext is required");
+        if (string.IsNullOrEmpty(req?.Ciphertext)) return InvalidCiphertext();
         if (Encoding.UTF8.GetByteCount(req.Ciphertext) > ItemLimits.MaxBytes(config)) return Err(413, "ciphertext is too large");
+        if (!CiphertextRules.IsValid(req.Ciphertext)) return InvalidCiphertext();
 
         var result = accounts.PutDevicePrefs(CallerId(), key, expected, req.Ciphertext);
         switch (result.Status)
@@ -111,6 +114,9 @@ public class DevicesController(AccountRepository accounts, IConfiguration config
     private string CallerId() => User.FindFirst("sub")?.Value ?? "";
 
     private IActionResult Err(int status, string message) => StatusCode(status, new { error = message });
+
+    private IActionResult InvalidCiphertext() =>
+        StatusCode(StatusCodes.Status400BadRequest, new { error = "ciphertext must be a non-empty base64 or base64url string", code = "invalid_ciphertext" });
 
     private static object Shape(DeviceRecord d) => new { id = d.Id, name = d.Name, platform = d.Platform, updatedAt = d.UpdatedAt };
 
