@@ -60,6 +60,13 @@ describe('build artifacts', () => {
     expect(isArtifactApiUrl('jira', 'https://api.github.com/a')).toBe(false)
   })
 
+  it('an ADO URL with no configured org is not an API URL, and gets no auth (as on desktop)', () => {
+    expect(isArtifactApiUrl('ado', 'https://dev.azure.com/acme/a', {})).toBe(false)
+    expect(isArtifactApiUrl('ado', 'https://dev.azure.com/acme/a')).toBe(false)
+    expect(isArtifactApiUrl('ado', 'https://dev.azure.com/acme/a', { org: '' })).toBe(false)
+    expect(authHeaders('ado', { ado: { pat: 'x' }, github: {}, url: 'https://dev.azure.com/acme/P/x' })).toEqual({})
+  })
+
   it('formats sizes', () => {
     expect(formatSize(0)).toBe('')
     expect(formatSize(512)).toBe('512 B')

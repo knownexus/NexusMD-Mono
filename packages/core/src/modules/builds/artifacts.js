@@ -54,14 +54,16 @@ export async function listArtifacts(build, { ado, github, org } = {}) {
 // dev.azure.com/{org}; there is no on-prem server URL), so plain http never gets a token.
 export const ARTIFACT_API_ORIGINS = { ado: 'https://dev.azure.com', github: 'https://api.github.com' };
 
-// Whether `url` is on the provider's own API origin (and, for ADO, under the configured org).
+// Whether `url` is on the provider's own API origin (and, for ADO, under the configured org, which is
+// required).
 export function isArtifactApiUrl(provider, url, { org } = {}) {
   const origin = ARTIFACT_API_ORIGINS[provider];
   if (!origin) return false;
   let u;
   try { u = new URL(url); } catch { return false; }
   if (u.origin !== origin) return false;
-  if (provider === 'ado' && org) return u.pathname.startsWith(`/${encodeURIComponent(org)}/`);
+  // ADO needs the org: without one no dev.azure.com URL is the configured org's (as on desktop).
+  if (provider === 'ado') return !!org && u.pathname.startsWith(`/${encodeURIComponent(org)}/`);
   return true;
 }
 
