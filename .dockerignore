@@ -15,7 +15,7 @@
 **/*.db-shm
 **/appsettings.user.json
 **/appsettings.Development.json
-apps/web/server/data
+apps/web/server/data/profiles
 apps/desktop
 apps/app
 apps/web/e2e

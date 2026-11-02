@@ -52,18 +52,24 @@ Optional tuning:
 | `Items__MaxPageBytes` | 16 MiB | Ciphertext budget per changes page |
 | `Items__MaxUserBytes` | 1 GiB | Storage quota per user |
 | `Items__MaxBatchBytes` | 64 MiB | Largest batch request body |
-| `Web__LegacyEndpoints` | false | Leave unset/false in production. The old unauthenticated Profiles/Config/Files/Ado endpoints stay disabled. |
+| `Web__LegacyEndpoints` | false | Leave unset/false in production. The old unauthenticated Profiles/Config/Files/Ado endpoints stay disabled; this includes the legacy `PUT /api/config`, which writes `appsettings.user.json`. |
+| `Logging__LogLevel__Default` | Debug (from `appsettings.json`) | Set to `Information` in production. |
 
 ## 4. First run
 
 1. Set the variables above and deploy. Check the deploy logs for a clean start (a missing or short
    `Jwt__SigningKey` aborts startup with an explicit message).
 2. `GET https://nexusmd.app/api/account/status` should return `{"needsSetup":true}`.
-3. Create the first admin with `POST /api/account/setup`. The request carries client-derived account material
-   (`username`, `salt`, `iterations`, `authKey`, `publicKey`, `wrappedPrivateKey`, `wrappedContainerKey`) plus
-   `setupToken`, so it is not practical to hand-write: use the login screen in the NexusMD app pointed at the
-   server, which performs the key derivation and sends the setup token you enter. The endpoint returns 409 once an
-   account exists and 403 if the token is wrong or unset.
+3. Create the first admin with `POST /api/account/setup`. This cannot be done with plain curl: the client must
+   derive and send the `authKey`, `salt`, `iterations`, `publicKey`, `wrappedPrivateKey` and
+   `wrappedContainerKey` from the password (end-to-end encryption), alongside `username` and `setupToken` (the value
+   of `Accounts__SetupToken`). At this commit no shipped client UI calls it yet. The first admin is created by the
+   NexusMD app's first-run screen (planned, Task 11 of `docs/superpowers/plans/2026-11-01-accounts-m1.md`) or, until
+   then, by the end-to-end script `scripts/account-e2e.mjs` (planned, Task 14), which performs the client-side key
+   derivation. Responses: 201 with a session (`accessToken`, `refreshToken`, `expiresIn`, `user`, `salt`,
+   `iterations`, `publicKey`, `wrappedPrivateKey`, `wrappedContainerKey`); 403 if the setup token is wrong or missing
+   or setup is disabled (empty `Accounts__SetupToken`); 409 once an account already exists. Remove
+   `Accounts__SetupToken` from the Railway variables after setup.
 4. Signed in as the admin, create invites with `POST /api/admin/invites` (body `{ "ttlHours": n }`), and list or
    revoke them with `GET` / `DELETE /api/admin/invites[/{id}]`. Users register with an invite via
    `POST /api/account/redeem`. Manage accounts with `GET /api/admin/users` and

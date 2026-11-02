@@ -14,6 +14,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 COPY --from=build /out .
 
+# Runs as root on purpose: Railway mounts volumes root-owned, so a non-root user could not write /data.
 # SQLite databases live on the volume Railway mounts at /data (single replica only).
 RUN mkdir -p /data
 ENV Accounts__DbPath=/data/accounts.db \
