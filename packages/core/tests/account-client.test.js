@@ -114,6 +114,7 @@ function fakeServer({ paramsOverride, failRefresh } = {}) {
       return json(201, issue(create(req.body, 'admin')))
     }
     if (key === 'POST /api/account/redeem') {
+      if (state.rejectInvite) return json(400, { error: 'the invite is invalid, expired or already used' })
       if (state.users.has(req.body.username.toLowerCase())) return json(409, { error: 'taken' })
       return json(201, issue(create(req.body, 'user')))
     }
@@ -235,6 +236,15 @@ describe('setup and redeem', () => {
     expect(req.body.inviteCode).toBe('INV')
     expect(req.raw).not.toContain('"password"')
     expect(session.role).toBe('user')
+  })
+
+  it('maps a rejected invite (400 on redeem) to invalid-invite, not a wrong password', async () => {
+    const { server, client, store } = setup()
+    server.state.needsSetup = false
+    server.state.rejectInvite = true
+    await expect(client.redeem({ inviteCode: 'OLD', username: 'bob', password: 'pw' }))
+      .rejects.toMatchObject({ name: 'AccountError', code: 'invalid-invite', status: 400 })
+    expect(store.saves).toEqual([])
   })
 
   it('maps a rejected setup token (403) to forbidden, not disabled', async () => {

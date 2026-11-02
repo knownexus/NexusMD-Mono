@@ -186,6 +186,19 @@ describe('AccountGate', () => {
     await waitFor(() => expect(a.client.redeem).toHaveBeenCalledWith({ inviteCode: 'abc', username: 'bob', password: 'pw' }));
   });
 
+  it('a rejected invite says the invite is the problem, not the password', async () => {
+    const a = mkAccount({ redeem: vi.fn(async () => { throw Object.assign(err('invalid-invite'), { status: 400 }); }) });
+    mount(a);
+    fireEvent.click(await screen.findByRole('button', { name: 'Redeem an invite' }));
+    fireEvent.change(screen.getByLabelText('Invite code'), { target: { value: 'old' } });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'bob' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'pw' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(await screen.findByText('This invite code is invalid, expired or already used.')).toBeTruthy();
+    expect(screen.queryByText('Username or password is incorrect.')).toBeNull();
+  });
+
   it('signs out through useAccount: stops sync, logs out, shows login', async () => {
     deviceId = 'd1';
     const a = mkAccount({ getSession: vi.fn(async () => SESSION) });

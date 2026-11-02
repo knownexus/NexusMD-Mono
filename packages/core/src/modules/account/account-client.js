@@ -21,7 +21,7 @@ import {
 
 export class AccountError extends Error {
   /**
-   * @param {'locked'|'invalid'|'disabled'|'forbidden'|'conflict'|'offline'|'session-expired'|'keys-corrupt'|'not-found'|'server'} code
+   * @param {'locked'|'invalid'|'invalid-invite'|'disabled'|'forbidden'|'conflict'|'offline'|'session-expired'|'keys-corrupt'|'not-found'|'server'} code
    *   'disabled' is only produced by a login 403; any other 403 (wrong setup token, non-admin) is 'forbidden'.
    *   'keys-corrupt' means the server accepted the credentials but the wrapped keys do not open.
    * @param {number} status HTTP status, or 0 when no response was received
@@ -272,8 +272,14 @@ export function createAccountClient({
       return createAccount('/api/account/setup', { setupToken }, { username, password })
     },
 
-    redeem({ inviteCode, username, password }) {
-      return createAccount('/api/account/redeem', { inviteCode }, { username, password })
+    async redeem({ inviteCode, username, password }) {
+      try {
+        return await createAccount('/api/account/redeem', { inviteCode }, { username, password })
+      } catch (e) {
+        // A 400 here is about the invite (invalid, expired or already used), never a wrong password.
+        if (e instanceof AccountError && e.status === 400) throw new AccountError('invalid-invite', 400, e.message)
+        throw e
+      }
     },
 
     async login({ username, password }) {

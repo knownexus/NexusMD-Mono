@@ -9,6 +9,7 @@ const { useState, useEffect, useMemo, useCallback, useContext, createContext } =
 
 const MESSAGES = {
   invalid: 'Username or password is incorrect.',
+  'invalid-invite': 'This invite code is invalid, expired or already used.',
   locked: 'Too many failed attempts. This account is locked for a while; try again later.',
   disabled: 'This account has been disabled. Ask an administrator.',
   forbidden: 'That was not accepted. Check the setup token or invite code, or your permissions.',
