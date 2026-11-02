@@ -20,8 +20,8 @@ and every other device is signed out and has to log in again.
 
 ## What the first run looks like
 
-This is the designed flow. The screens are built in the shared UI package and wired into the desktop and Android
-apps.
+This describes the flow of the shared sign-in screens (the account gate and Account card in the shared UI package),
+which the desktop and Android apps use.
 
 1. Sign-in gate. On start-up, if you are not signed in and have not opted out, NexusMD shows the gate before
    anything else.
@@ -30,6 +30,14 @@ apps.
    - Otherwise it asks for username and password, with a tab to redeem an invite code.
    - "Use without an account" skips all of this. The app works exactly as before, nothing is uploaded, and you can
      sign in later.
+   - A different account on the same install. If this install last held another account's settings and a
+     different user signs in, the app warns: "This device has settings from another account. Continue as <name>
+     and remove them from this device?" Continue removes this install's synced settings and secrets (the items
+     listed as synced below) before the new account's settings are restored. Cancel signs out and changes nothing.
+     Data that milestone 1 does not sync (planner weeks and notes, calendar events, lists, time log) is not
+     removed, so it stays on the device and is visible to the next account.
+   - The same account again. If the same user signs back in (for example after the session expired), local data is
+     kept as it is and the device picker is skipped.
 2. Device picker. After signing in you choose which device this is: one of the devices already on your account, or
    "This is a new device" with a name (for example "Work laptop"). Choosing an existing device restores that
    device's own preferences.
@@ -41,7 +49,8 @@ apps.
    log out. Administrators also see invites and users.
 
 Sync then runs in the background and when the app is shown again. If you are offline the app keeps working with
-what it has and syncs later. If your session has expired you see the gate again, and nothing local is wiped.
+what it has and syncs later. If your session has expired you see the gate again, and nothing local is wiped; signing back in as the same user keeps local data. Local
+data is only removed when a different account signs in, as described above.
 
 ## What is synced, and at which level
 
@@ -74,15 +83,19 @@ that has never synced a value does not overwrite the account's value when it joi
 
 Only an administrator can add people. There is no public sign-up.
 
-1. The first account is created with the server's `SETUP_TOKEN` environment variable. Setup works once.
-2. An administrator opens Settings, Account, Invites, and creates an invite. The code is shown once, so copy it
-   then. Invites are single use. They expire after 7 days unless a different length (1 hour to 30 days) is chosen,
-   and an unused invite can be revoked.
+1. The first account is created with the one-time setup token, set on the server as the `Accounts__SetupToken`
+   environment variable. Setup works once; remove the variable after the first account exists (see
+   [railway-deploy.md](railway-deploy.md)).
+2. An administrator opens the Account card in Settings and chooses "Create invite". The code is shown once, so
+   copy it then. Invites are single use and expire after 7 days. The server API also supports choosing the expiry
+   (1 hour to 30 days), listing invites and revoking an unused one, but the app does not offer these yet.
 3. The invitee opens the app, chooses "Redeem an invite" on the gate, enters the code and picks a username and
    password. Their account keys are created on their device.
-4. Administrators can disable a user. A disabled user is signed out everywhere and cannot log in.
+4. Administrators can disable and re-enable users from the Account card. A disabled user is signed out everywhere
+   and cannot log in.
 
-After five failed password attempts an account is locked for 15 minutes.
+After five failed password attempts an account is locked for 15 minutes. Wrong current-password attempts when
+changing a password count towards the same limit.
 
 ## Windows and Android sign-in tokens
 
