@@ -5,7 +5,40 @@ import { describe, it, expect, vi } from 'vitest'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
-const { checkForUpdatesManually } = require('./updater.cjs')
+const { checkForUpdatesManually, useNewestDesktopRelease } = require('./updater.cjs')
+
+describe('useNewestDesktopRelease', () => {
+  const rel = (tag_name, extra = {}) => ({ tag_name, draft: false, prerelease: false, ...extra })
+  const respond = (body, ok = true) => vi.fn(async () => ({ ok, status: ok ? 200 : 500, json: async () => body }))
+  const updaterMock = () => ({ setFeedURL: vi.fn() })
+  const BASE = 'https://github.com/knownexus/NexusMD-Mono/releases/download/'
+
+  it('skips an android-v release listed first in favour of the newest v<semver> tag, with a timeout', async () => {
+    const u = updaterMock()
+    const fetchFn = respond([rel('android-v1.4.2'), rel('apps-latest'), rel('v1.2'), rel('v1.2.3/../x'), rel('v2.0.1'), rel('v2.0.0')])
+    await useNewestDesktopRelease(u, fetchFn)
+    expect(u.setFeedURL).toHaveBeenCalledWith({ provider: 'generic', url: `${BASE}v2.0.1` })
+    expect(fetchFn.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('skips draft and prerelease entries', async () => {
+    const u = updaterMock()
+    await useNewestDesktopRelease(u, respond([rel('v3.0.0', { draft: true }), rel('v2.1.0-beta.1', { prerelease: true }), rel('v2.0.0-rc.1'), rel('v1.9.0')]))
+    expect(u.setFeedURL).toHaveBeenCalledWith({ provider: 'generic', url: `${BASE}v2.0.0-rc.1` })
+  })
+
+  it('leaves the feed untouched on a non-ok response', async () => {
+    const u = updaterMock()
+    await useNewestDesktopRelease(u, respond([rel('v2.0.0')], false))
+    expect(u.setFeedURL).not.toHaveBeenCalled()
+  })
+
+  it('catches a non-array body without throwing and leaves the feed untouched', async () => {
+    const u = updaterMock()
+    await expect(useNewestDesktopRelease(u, respond({ message: 'API rate limit exceeded' }))).resolves.toBeUndefined()
+    expect(u.setFeedURL).not.toHaveBeenCalled()
+  })
+})
 
 function deps({ packaged = true, version = '1.1.0', check } = {}) {
   return {

@@ -15,18 +15,22 @@ const REPO = 'knownexus/NexusMD-Mono';
  * latest.yml. This finds the newest published desktop release (a v<number> tag) and points the
  * updater at its files. If that lookup fails, the updater's own feed is left alone.
  */
+const DESKTOP_TAG = /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+
 async function useNewestDesktopRelease(autoUpdater, fetchFn = globalThis.fetch) {
   try {
     const res = await fetchFn(`https://api.github.com/repos/${REPO}/releases?per_page=50`, {
       headers: { Accept: 'application/vnd.github+json' },
+      signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return;
     const releases = await res.json();
-    const release = releases.find(r => !r.draft && !r.prerelease && /^v\d/.test(r.tag_name));
+    if (!Array.isArray(releases)) return;
+    const release = releases.find(r => r && !r.draft && !r.prerelease && typeof r.tag_name === 'string' && DESKTOP_TAG.test(r.tag_name));
     if (!release) return;
     autoUpdater.setFeedURL({
       provider: 'generic',
-      url: `https://github.com/${REPO}/releases/download/${release.tag_name}`,
+      url: `https://github.com/${REPO}/releases/download/${encodeURIComponent(release.tag_name)}`,
     });
   } catch (err) {
     console.warn('[updater] could not look up the newest desktop release:', err.message);
@@ -188,4 +192,4 @@ function registerUpdaterIpc(getWin = () => null) {
   });
 }
 
-module.exports = { initUpdater, registerUpdaterIpc, checkForUpdatesManually };
+module.exports = { initUpdater, registerUpdaterIpc, checkForUpdatesManually, useNewestDesktopRelease };
