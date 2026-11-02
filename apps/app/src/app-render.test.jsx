@@ -27,7 +27,8 @@ describe('app shell', () => {
     const onError = e => errors.push(e.error?.message || e.message)
     window.addEventListener('error', onError)
 
-    await import('./main.jsx')
+    // Wait for the app module main.jsx loads (see app-resilience.test.jsx boot), not only for a render.
+    await (await import('./main.jsx')).appReady
 
     const root = document.getElementById('root')
     await vi.waitFor(() => expect(root.children.length).toBeGreaterThan(0), { timeout: 15000 })
