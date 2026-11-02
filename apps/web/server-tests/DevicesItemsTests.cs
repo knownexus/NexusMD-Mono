@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Configuration;
 using NexusMDWeb.Tests.Infrastructure;
 using Xunit;
 
@@ -366,8 +367,47 @@ public sealed class DevicesItemsTests : IDisposable
         Assert.Equal("secret-item", Str(aliceFeed.EnumerateArray().Single(), "ciphertext"));
         var bobFeed = (await Changes(h, bob)).GetProperty("items");
         Assert.Equal("bob-version", Str(bobFeed.EnumerateArray().Single(), "ciphertext"));
-        // Bob cannot update Alice's item by guessing the revision: his own copy is at 1, a write with Alice's rev conflicts only on his own row.
+        // Bob already has his own copy of the id, so creating it again (ifMatch 0) conflicts on HIS row only.
         Assert.Equal(HttpStatusCode.Conflict, (await PutItem(h, bob, "alice-item", "x", 0)).status);
+    }
+
+    [Fact]
+    public async Task Single_put_with_another_users_revision_only_affects_the_callers_own_row_space()
+    {
+        var h = await NewHost();
+        var alice = await NewUser(h);
+        var bob = await NewUser(h);
+        await PutItem(h, alice, "shared-id", "a1", 0);
+        await PutItem(h, alice, "shared-id", "a2", 1); // Alice's row: revision 2
+
+        // Bob presents Alice's current revision (2): he has no such row, so it is a conflict, not an update of hers.
+        Assert.Equal(HttpStatusCode.Conflict, (await PutItem(h, bob, "shared-id", "evil", 2)).status);
+        var aliceRow = (await Changes(h, alice)).GetProperty("items").EnumerateArray().Single();
+        Assert.Equal("a2", Str(aliceRow, "ciphertext"));
+        Assert.Equal(2, aliceRow.GetProperty("revision").GetInt64());
+        Assert.Equal(0, (await Changes(h, bob)).GetProperty("items").GetArrayLength());
+
+        // Creating the same id as Bob (ifMatch 0) makes his own revision-1 row; Alice's stays at revision 2.
+        var created = await PutItem(h, bob, "shared-id", "b1", 0);
+        Assert.Equal(HttpStatusCode.OK, created.status);
+        Assert.Equal(1, created.body.GetProperty("revision").GetInt64());
+        aliceRow = (await Changes(h, alice)).GetProperty("items").EnumerateArray().Single();
+        Assert.Equal("a2", Str(aliceRow, "ciphertext"));
+        Assert.Equal(2, aliceRow.GetProperty("revision").GetInt64());
+    }
+
+    [Fact]
+    public async Task Concurrent_device_creates_at_49_devices_produce_exactly_one_success()
+    {
+        var h = await NewHost();
+        for (var i = 0; i < 49; i++) await CreateDevice(h, h.Admin, $"d{i}");
+        var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(i =>
+            Send(h.Http, HttpMethod.Post, "/api/devices", h.Admin.AccessToken, new { name = "race" + i, platform = "web" })));
+        Assert.Equal(1, results.Count(r => r.StatusCode == HttpStatusCode.Created));
+        var losers = results.Where(r => r.StatusCode != HttpStatusCode.Created).ToArray();
+        Assert.Equal(7, losers.Count(r => r.StatusCode == HttpStatusCode.Conflict));
+        foreach (var l in losers) Assert.Equal("device_limit", Str(await Json(l), "code"));
+        Assert.Equal(50, (await Json(await Send(h.Http, HttpMethod.Get, "/api/devices", h.Admin.AccessToken))).GetArrayLength());
     }
 
     // ---- items: single put -------------------------------------------------------------
@@ -560,7 +600,8 @@ public sealed class DevicesItemsTests : IDisposable
             Assert.True(page.GetProperty("cursor").GetInt64() >= cursor);
             cursor = page.GetProperty("cursor").GetInt64();
             pages++;
-            if (items.Length < 2) break;
+            if (!page.GetProperty("hasMore").GetBoolean()) { Assert.True(items.Length <= 2); break; }
+            Assert.Equal(2, items.Length);
         }
         Assert.Equal(new[] { "pg-0", "pg-1", "pg-2", "pg-3", "pg-4" }, seen);
         Assert.Equal(3, pages);
@@ -593,11 +634,241 @@ public sealed class DevicesItemsTests : IDisposable
     [InlineData("?limit=0")]
     [InlineData("?limit=-5")]
     [InlineData("?limit=abc")]
+    [InlineData("?limit=")]
+    [InlineData("?limit=1.5")]
+    [InlineData("?limit=0x10")]
     public async Task Changes_validates_since_and_limit(string query)
     {
         var h = await NewHost();
         var res = await Send(h.Http, HttpMethod.Get, "/api/items/changes" + query, h.Admin.AccessToken);
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("?limit=1001")]
+    [InlineData("?limit=99999999999999999999")]
+    [InlineData("?limit=00000000000000000000000000000000000000000000000000000000000000000000000000000000000001000")]
+    [InlineData("?since=0&limit=123456789012345678901234567890")]
+    public async Task Changes_clamps_overlong_limit_values_to_1000(string query)
+    {
+        var h = await NewHost();
+        await PutItem(h, h.Admin, "one-item", "c", 0);
+        var page = await Changes(h, h.Admin, query);
+        Assert.Equal(1, page.GetProperty("items").GetArrayLength());
+        Assert.False(page.GetProperty("hasMore").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Changes_has_more_reflects_the_count_cut()
+    {
+        var h = await NewHost();
+        for (var i = 0; i < 5; i++) await PutItem(h, h.Admin, "cnt-" + i, "c", 0);
+        Assert.True((await Changes(h, h.Admin, "?limit=4")).GetProperty("hasMore").GetBoolean());
+        Assert.False((await Changes(h, h.Admin, "?limit=5")).GetProperty("hasMore").GetBoolean()); // exactly limit rows, none beyond
+        Assert.False((await Changes(h, h.Admin, "?limit=6")).GetProperty("hasMore").GetBoolean());
+        var empty = await Changes(h, h.Admin, "?since=5");
+        Assert.False(empty.GetProperty("hasMore").GetBoolean());
+        Assert.Equal(5, empty.GetProperty("cursor").GetInt64());
+    }
+
+    [Fact]
+    public async Task Changes_page_byte_budget_cuts_pages_short_but_always_returns_one_item_and_paging_visits_each_item_once()
+    {
+        var h = await NewHost(o => o["Items:MaxPageBytes"] = "100");
+        for (var i = 0; i < 5; i++) await PutItem(h, h.Admin, "bud-" + i, new string((char)('a' + i), 40), 0);
+
+        var first = await Changes(h, h.Admin, "?limit=500");
+        Assert.Equal(2, first.GetProperty("items").GetArrayLength()); // 40 + 40 = 80; a third would make 120 > 100
+        Assert.True(first.GetProperty("hasMore").GetBoolean());
+        Assert.Equal(2, first.GetProperty("cursor").GetInt64());
+
+        var seen = new List<string>();
+        long cursor = 0;
+        for (var guard = 0; guard < 10; guard++)
+        {
+            var page = await Changes(h, h.Admin, $"?since={cursor}");
+            var items = page.GetProperty("items").EnumerateArray().ToArray();
+            Assert.NotEmpty(items);
+            seen.AddRange(items.Select(i => Str(i, "id")));
+            Assert.Equal(items[^1].GetProperty("cursor").GetInt64(), page.GetProperty("cursor").GetInt64());
+            cursor = page.GetProperty("cursor").GetInt64();
+            if (!page.GetProperty("hasMore").GetBoolean()) break;
+        }
+        Assert.Equal(new[] { "bud-0", "bud-1", "bud-2", "bud-3", "bud-4" }, seen);
+        Assert.Equal(5, cursor);
+    }
+
+    [Fact]
+    public async Task Changes_single_over_budget_item_is_returned_alone()
+    {
+        var h = await NewHost(o => o["Items:MaxPageBytes"] = "10");
+        await PutItem(h, h.Admin, "big-one", new string('x', 50), 0);
+        await PutItem(h, h.Admin, "big-two", new string('y', 50), 0);
+
+        var p1 = await Changes(h, h.Admin);
+        Assert.Equal("big-one", Str(p1.GetProperty("items").EnumerateArray().Single(), "id"));
+        Assert.True(p1.GetProperty("hasMore").GetBoolean());
+        var p2 = await Changes(h, h.Admin, $"?since={p1.GetProperty("cursor").GetInt64()}");
+        Assert.Equal("big-two", Str(p2.GetProperty("items").EnumerateArray().Single(), "id"));
+        Assert.False(p2.GetProperty("hasMore").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Single_put_over_the_user_quota_is_413_with_code_quota_and_replacement_counts_only_the_difference()
+    {
+        var h = await NewHost(o => o["Items:MaxUserBytes"] = "100");
+        var a = h.Admin;
+        static string Code(JsonElement b) => b.GetProperty("code").GetString()!;
+
+        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, a, "qa", new string('a', 60), 0)).status);
+        var over = await PutItem(h, a, "qb", new string('b', 60), 0);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, over.status);
+        Assert.Equal("quota", Code(over.body));
+        Assert.Equal(1, (await Changes(h, a)).GetProperty("items").GetArrayLength());
+
+        // Replacing qa counts only the size difference: 60 -> 100 is +40 (total 100, allowed); 100 -> 101 is not.
+        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, a, "qa", new string('a', 100), 1)).status);
+        var tooBig = await PutItem(h, a, "qa", new string('a', 101), 2);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, tooBig.status);
+        Assert.Equal("quota", Code(tooBig.body));
+        // Shrinking is always allowed and frees room; a tombstone's ciphertext still counts.
+        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, a, "qa", new string('t', 10), 2, deleted: true)).status);
+        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, a, "qb", new string('b', 90), 0)).status);
+        var full = await PutItem(h, a, "qc", "z", 0);
+        Assert.Equal("quota", Code(full.body));
+
+        // Rejected writes consumed no cursor (create, replace, tombstone, create = 4), and another user has their own quota.
+        Assert.Equal(4, (await Changes(h, a)).GetProperty("cursor").GetInt64());
+        var bob = await NewUser(h);
+        Assert.Equal(HttpStatusCode.OK, (await PutItem(h, bob, "qa", new string('a', 100), 0)).status);
+
+        // Device prefs are not part of the item quota.
+        var dev = await CreateDevice(h, a);
+        var prefs = await Send(h.Http, HttpMethod.Put, $"/api/devices/{dev}/prefs", a.AccessToken, new { ciphertext = new string('p', 500) }, "0");
+        Assert.Equal(HttpStatusCode.OK, prefs.StatusCode);
+    }
+
+    [Fact]
+    public async Task Batch_items_over_the_user_quota_get_status_quota_and_the_rest_still_succeed()
+    {
+        var h = await NewHost(o => o["Items:MaxUserBytes"] = "100");
+        var a = h.Admin;
+        var body = await Batch(h, a, new object[]
+        {
+            new { id = "b-one", ifMatch = 0, ciphertext = new string('a', 60), deleted = false },   // ok (60)
+            new { id = "b-two", ifMatch = 0, ciphertext = new string('b', 60), deleted = false },   // quota (would be 120)
+            new { id = "b-three", ifMatch = 0, ciphertext = new string('c', 40), deleted = false }, // ok (100)
+            new { id = "b-four", ifMatch = 0, ciphertext = "d", deleted = false },                  // quota (101)
+            new { id = "b-one", ifMatch = 1, ciphertext = new string('e', 20), deleted = false },   // ok, replaces 60 with 20 (60)
+            new { id = "b-four", ifMatch = 0, ciphertext = new string('f', 40), deleted = false },  // ok (100)
+        });
+        var r = body.GetProperty("results").EnumerateArray().ToArray();
+        Assert.Equal(new[] { "ok", "quota", "ok", "quota", "ok", "ok" }, r.Select(x => Str(x, "status")).ToArray());
+        // Rejected items consume no cursor: 1,2,3,4 for the four successes.
+        Assert.Equal(new long[] { 1, 0, 2, 0, 3, 4 }, r.Select(x => x.GetProperty("cursor").GetInt64()).ToArray());
+        Assert.Equal(3, (await Changes(h, a)).GetProperty("items").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Single_put_just_under_the_limit_is_not_rejected_when_the_serialiser_escapes_characters()
+    {
+        // System.Text.Json writes '+' as + (6 bytes on the wire): one '+' in every 16 characters adds ~31% to
+        // the body, beyond a flat 4 KB envelope but within the proportional allowance.
+        var h = await NewHost(o => o["Items:MaxBytes"] = "20000");
+        var ct = string.Concat(Enumerable.Repeat("abcdefghijklmno+", 1250)); // 20000 chars
+        Assert.Equal(20000, ct.Length);
+        var res = await PutItem(h, h.Admin, "escaped-one", ct, 0);
+        Assert.Equal(HttpStatusCode.OK, res.status);
+        Assert.Equal(ct, Str((await Changes(h, h.Admin)).GetProperty("items").EnumerateArray().Single(), "ciphertext"));
+        // One character over the limit is still rejected (by the ciphertext check).
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await PutItem(h, h.Admin, "escaped-two", ct + "a", 0)).status);
+    }
+
+    [Fact]
+    public void An_items_table_created_before_the_size_column_is_migrated_and_counts_toward_the_quota()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"nexusmd-mig-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var conn = new SqliteConnection($"Data Source={path}"))
+            {
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"CREATE TABLE Items (UserId TEXT NOT NULL, Id TEXT NOT NULL, Revision INTEGER NOT NULL,
+                    Cursor INTEGER NOT NULL, Ciphertext TEXT NOT NULL, Deleted INTEGER NOT NULL DEFAULT 0,
+                    UpdatedAt INTEGER NOT NULL, PRIMARY KEY (UserId, Id));
+                    INSERT INTO Items VALUES ('u1','old-item',1,1,'" + new string('a', 70) + "',0,1);";
+                cmd.ExecuteNonQuery();
+            }
+            var cfg = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["Accounts:DbPath"] = path }).Build();
+            var repo = new NexusMDWeb.Api.Data.AccountRepository(cfg);
+
+            // The old 70-byte row now counts: 70 + 40 > 100, but replacing it with 100 bytes is +30 only.
+            var blocked = repo.WriteItem("u1", new NexusMDWeb.Api.Models.ItemWrite("new-item", 0, new string('b', 40), false), 100);
+            Assert.Equal(NexusMDWeb.Api.Models.WriteStatus.Quota, blocked.Status);
+            var replaced = repo.WriteItem("u1", new NexusMDWeb.Api.Models.ItemWrite("old-item", 1, new string('c', 100), false), 100);
+            Assert.Equal(NexusMDWeb.Api.Models.WriteStatus.Ok, replaced.Status);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (var f in new[] { path, path + "-wal", path + "-shm" }) try { File.Delete(f); } catch { }
+        }
+    }
+
+    private static async Task<HttpResponseMessage> PostRawBatch(Host h, string json)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/items/batch")
+        { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", h.Admin.AccessToken);
+        return await h.Http.SendAsync(req);
+    }
+
+    [Fact]
+    public async Task Batch_item_with_a_wrong_type_is_invalid_without_failing_its_siblings()
+    {
+        var h = await NewHost();
+        var json = """
+        { "items": [
+          { "id": "good-one", "ifMatch": 0, "ciphertext": "ok", "deleted": false },
+          { "id": 5, "ifMatch": 0, "ciphertext": "ok", "deleted": false },
+          { "id": "str-match", "ifMatch": "0", "ciphertext": "ok", "deleted": false },
+          { "id": "frac-match", "ifMatch": 0.5, "ciphertext": "ok", "deleted": false },
+          { "id": "neg-match", "ifMatch": -1, "ciphertext": "ok", "deleted": false },
+          { "id": "null-match", "ifMatch": null, "ciphertext": "ok", "deleted": false },
+          { "id": "bad-del", "ifMatch": 0, "ciphertext": "ok", "deleted": "yes" },
+          { "id": "bad-ct", "ifMatch": 0, "ciphertext": 7, "deleted": false },
+          "just a string",
+          null,
+          [1, 2],
+          { "id": "good-two", "ifMatch": 0, "ciphertext": "ok", "deleted": true }
+        ] }
+        """;
+        var res = await PostRawBatch(h, json);
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var r = (await Json(res)).GetProperty("results").EnumerateArray().ToArray();
+        Assert.Equal(new[] { "ok", "invalid", "invalid", "invalid", "invalid", "invalid", "invalid", "invalid", "invalid", "invalid", "invalid", "ok" },
+            r.Select(x => Str(x, "status")).ToArray());
+        Assert.Equal("good-one", Str(r[0], "id"));
+        Assert.Equal("good-two", Str(r[11], "id"));
+        Assert.Equal(new[] { "good-one", "good-two" },
+            (await Changes(h, h.Admin)).GetProperty("items").EnumerateArray().Select(i => Str(i, "id")).ToArray());
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("5")]
+    [InlineData("\"x\"")]
+    [InlineData("{\"items\":5}")]
+    [InlineData("{\"items\":{}}")]
+    [InlineData("{\"items\":\"x\"}")]
+    [InlineData("{\"items\":null}")]
+    public async Task Batch_body_that_is_not_an_object_with_an_items_array_is_400(string json)
+    {
+        var h = await NewHost();
+        Assert.Equal(HttpStatusCode.BadRequest, (await PostRawBatch(h, json)).StatusCode);
     }
 
     [Fact]

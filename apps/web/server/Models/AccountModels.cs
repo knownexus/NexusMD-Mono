@@ -58,7 +58,7 @@ public class InvalidInviteException : Exception
 /// <summary>A registered device. Timestamps are Unix milliseconds (UTC).</summary>
 public record DeviceRecord(string Id, string Name, string Platform, long UpdatedAt);
 
-public enum WriteStatus { Ok, Conflict, NotFound }
+public enum WriteStatus { Ok, Conflict, NotFound, Quota }
 
 /// <summary>Result of a conditional write: the new revision (and item cursor) on <see cref="WriteStatus.Ok"/>.</summary>
 public record WriteResult(WriteStatus Status, long Revision = 0, long Cursor = 0);

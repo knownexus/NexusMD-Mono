@@ -12,6 +12,11 @@ namespace NexusMDWeb.Api.Controllers;
 /// The caller's registered devices and each device's encrypted prefs blob. Everything is scoped to the user id
 /// in the token's <c>sub</c> claim: another user's (or a malformed) device id is a plain 404, never a 403 or a
 /// 500, so ids cannot be probed. Prefs are opaque client-encrypted ciphertext and are never logged.
+///
+/// Contract (pinned):
+///  - <c>updatedAt</c> is Unix milliseconds (UTC) everywhere in this controller.
+///  - <c>PUT /api/devices/{id}/prefs</c> returns <c>{ revision }</c> only; <c>GET</c> returns <c>{ revision, ciphertext }</c>.
+///  - Creating a device beyond the per-user cap is 409 with <c>code: "device_limit"</c>.
 /// </summary>
 [ApiController]
 [Route("api/devices")]

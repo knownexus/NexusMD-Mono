@@ -108,6 +108,7 @@ public class AccountRepository
                 Id         TEXT    NOT NULL,
                 Revision   INTEGER NOT NULL,
                 Cursor     INTEGER NOT NULL,
+                Size       INTEGER NOT NULL DEFAULT 0,
                 Ciphertext TEXT    NOT NULL,
                 Deleted    INTEGER NOT NULL DEFAULT 0,
                 UpdatedAt  INTEGER NOT NULL,
@@ -129,6 +130,19 @@ public class AccountRepository
             cmd.Parameters.Clear();
         }
         cmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_Sessions_ExpiresAt ON Sessions (ExpiresAt)";
+        cmd.ExecuteNonQuery();
+
+        // Databases created before Items.Size existed: add the column and fill it with each row's UTF-8 byte length.
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Items') WHERE name='Size'";
+        if (Convert.ToInt64(cmd.ExecuteScalar()) == 0)
+        {
+            cmd.CommandText = "ALTER TABLE Items ADD COLUMN Size INTEGER NOT NULL DEFAULT 0";
+            cmd.ExecuteNonQuery();
+            cmd.CommandText = "UPDATE Items SET Size=LENGTH(CAST(Ciphertext AS BLOB))";
+            cmd.ExecuteNonQuery();
+        }
+        // Covering index so a user's total stored bytes (quota check) never reads the ciphertext pages.
+        cmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_Items_Usage ON Items (UserId, Size)";
         cmd.ExecuteNonQuery();
     }
 
@@ -754,15 +768,19 @@ public class AccountRepository
     // ---- Items -------------------------------------------------------------------------
 
     /// <summary>Writes one item (see <see cref="WriteItems"/>).</summary>
-    public WriteResult WriteItem(string userId, ItemWrite write) => WriteItems(userId, new[] { write })[0];
+    public WriteResult WriteItem(string userId, ItemWrite write, long maxUserBytes = long.MaxValue) =>
+        WriteItems(userId, new[] { write }, maxUserBytes)[0];
 
     /// <summary>
     /// Applies independent compare-and-set writes in one transaction (BEGIN IMMEDIATE, so writers are
-    /// serialised and the revision check, cursor assignment and upsert cannot interleave). Entry i of the result
-    /// is Ok (with the new revision and the per-user cursor, MAX(Cursor)+1) or Conflict; a conflict neither
+    /// serialised and the revision check, quota check, cursor assignment and upsert cannot interleave).
+    /// Entry i of the result is Ok (with the new revision and the per-user cursor, MAX(Cursor)+1), Conflict
+    /// (stale revision) or Quota (the write would push the user's total stored ciphertext bytes, live and
+    /// tombstoned rows alike, over <paramref name="maxUserBytes"/>; replacing a row counts only the size
+    /// difference, and a write that does not grow the total is never refused). A rejected write neither
     /// writes nor consumes a cursor and does not affect the other writes.
     /// </summary>
-    public IReadOnlyList<WriteResult> WriteItems(string userId, IReadOnlyList<ItemWrite> writes)
+    public IReadOnlyList<WriteResult> WriteItems(string userId, IReadOnlyList<ItemWrite> writes, long maxUserBytes = long.MaxValue)
     {
         var results = new List<WriteResult>(writes.Count);
         if (writes.Count == 0) return results;
@@ -770,22 +788,28 @@ public class AccountRepository
         using var tx = conn.BeginTransaction(IsolationLevel.Serializable); // BEGIN IMMEDIATE
         using var sel = conn.CreateCommand();
         sel.Transaction = tx;
-        sel.CommandText = "SELECT Revision FROM Items WHERE UserId=$uid AND Id=$id";
+        sel.CommandText = "SELECT Revision, Size FROM Items WHERE UserId=$uid AND Id=$id";
         sel.Parameters.AddWithValue("$uid", userId);
         var selId = sel.Parameters.Add("$id", SqliteType.Text);
         using var cur = conn.CreateCommand();
         cur.Transaction = tx;
         cur.CommandText = "SELECT COALESCE(MAX(Cursor),0)+1 FROM Items WHERE UserId=$uid";
         cur.Parameters.AddWithValue("$uid", userId);
+        using var usage = conn.CreateCommand();
+        usage.Transaction = tx;
+        usage.CommandText = "SELECT COALESCE(SUM(Size),0) FROM Items WHERE UserId=$uid";
+        usage.Parameters.AddWithValue("$uid", userId);
+        var total = Convert.ToInt64(usage.ExecuteScalar());
         using var up = conn.CreateCommand();
         up.Transaction = tx;
-        up.CommandText = @"INSERT INTO Items (UserId,Id,Revision,Cursor,Ciphertext,Deleted,UpdatedAt)
-            VALUES ($uid,$id,$rev,$cur,$ct,$del,$now)
-            ON CONFLICT (UserId,Id) DO UPDATE SET Revision=$rev, Cursor=$cur, Ciphertext=$ct, Deleted=$del, UpdatedAt=$now";
+        up.CommandText = @"INSERT INTO Items (UserId,Id,Revision,Cursor,Size,Ciphertext,Deleted,UpdatedAt)
+            VALUES ($uid,$id,$rev,$cur,$size,$ct,$del,$now)
+            ON CONFLICT (UserId,Id) DO UPDATE SET Revision=$rev, Cursor=$cur, Size=$size, Ciphertext=$ct, Deleted=$del, UpdatedAt=$now";
         up.Parameters.AddWithValue("$uid", userId);
         var upId = up.Parameters.Add("$id", SqliteType.Text);
         var upRev = up.Parameters.Add("$rev", SqliteType.Integer);
         var upCur = up.Parameters.Add("$cur", SqliteType.Integer);
+        var upSize = up.Parameters.Add("$size", SqliteType.Integer);
         var upCt = up.Parameters.Add("$ct", SqliteType.Text);
         var upDel = up.Parameters.Add("$del", SqliteType.Integer);
         var upNow = up.Parameters.Add("$now", SqliteType.Integer);
@@ -793,35 +817,54 @@ public class AccountRepository
         foreach (var w in writes)
         {
             selId.Value = w.Id;
-            var found = sel.ExecuteScalar();
-            var current = found is null ? 0L : Convert.ToInt64(found);
+            long current = 0, oldSize = 0;
+            using (var r = sel.ExecuteReader())
+            {
+                if (r.Read()) { current = r.GetInt64(0); oldSize = r.GetInt64(1); }
+            }
             if (current != w.IfMatch) { results.Add(new WriteResult(WriteStatus.Conflict)); continue; }
+            long size = Encoding.UTF8.GetByteCount(w.Ciphertext);
+            var delta = size - oldSize;
+            if (delta > 0 && total + delta > maxUserBytes) { results.Add(new WriteResult(WriteStatus.Quota)); continue; }
             var cursor = Convert.ToInt64(cur.ExecuteScalar());
             var revision = current + 1;
-            upId.Value = w.Id; upRev.Value = revision; upCur.Value = cursor;
+            upId.Value = w.Id; upRev.Value = revision; upCur.Value = cursor; upSize.Value = size;
             upCt.Value = w.Ciphertext; upDel.Value = w.Deleted ? 1 : 0; upNow.Value = Now();
             up.ExecuteNonQuery();
+            total += delta;
             results.Add(new WriteResult(WriteStatus.Ok, revision, cursor));
         }
         tx.Commit();
         return results;
     }
 
-    /// <summary>Up to <paramref name="limit"/> of the user's items with Cursor greater than <paramref name="since"/>, oldest first.</summary>
-    public IReadOnlyList<ItemRecord> GetItemChanges(string userId, long since, int limit)
+    /// <summary>
+    /// One page of the user's items with Cursor greater than <paramref name="since"/>, oldest first: at most
+    /// <paramref name="limit"/> rows and (after the first, which is always included) at most
+    /// <paramref name="maxPageBytes"/> of ciphertext in total. <c>hasMore</c> is true when rows exist beyond the
+    /// page, whichever limit cut it. Row sizes come from the Size column and a ciphertext is only read once its
+    /// row is accepted, so no more than the budget plus one item is ever materialised.
+    /// </summary>
+    public (IReadOnlyList<ItemRecord> items, bool hasMore) GetItemChanges(string userId, long since, int limit, long maxPageBytes)
     {
         using var conn = OpenConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"SELECT Id,Revision,Cursor,Ciphertext,Deleted,UpdatedAt FROM Items
+        cmd.CommandText = @"SELECT Id,Revision,Cursor,Size,Deleted,UpdatedAt,Ciphertext FROM Items
             WHERE UserId=$uid AND Cursor>$since ORDER BY Cursor LIMIT $limit";
         cmd.Parameters.AddWithValue("$uid", userId);
         cmd.Parameters.AddWithValue("$since", since);
-        cmd.Parameters.AddWithValue("$limit", limit);
+        cmd.Parameters.AddWithValue("$limit", (long)limit + 1); // one extra row only to learn whether more exist
         var list = new List<ItemRecord>();
+        long bytes = 0;
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new ItemRecord(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetString(3), r.GetInt32(4) != 0, r.GetInt64(5)));
-        return list;
+        {
+            var size = r.GetInt64(3);
+            if (list.Count >= limit || (list.Count > 0 && bytes + size > maxPageBytes)) return (list, true);
+            bytes += size;
+            list.Add(new ItemRecord(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetString(6), r.GetInt32(4) != 0, r.GetInt64(5)));
+        }
+        return (list, false);
     }
 
     private static UserRecord MapUser(SqliteDataReader r) => new(

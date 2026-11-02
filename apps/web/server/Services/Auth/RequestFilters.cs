@@ -34,10 +34,25 @@ public static class ItemLimits
 {
     public const long DefaultMaxBytes = 26_214_400;        // 25 MiB of ciphertext per item / prefs blob
     public const long DefaultMaxBatchBytes = 67_108_864;   // 64 MiB for a whole batch request body
-    public const long JsonOverheadBytes = 4096;            // room for the JSON envelope around one ciphertext
+    public const long DefaultMaxPageBytes = 16_777_216;    // 16 MiB of ciphertext per changes page
+    public const long DefaultMaxUserBytes = 1_073_741_824; // 1 GiB of item ciphertext per user
+    public const long JsonOverheadBytes = 4096;            // fixed room for the JSON envelope around one ciphertext
 
     public static long MaxBytes(IConfiguration cfg) => Positive(cfg["Items:MaxBytes"], DefaultMaxBytes);
     public static long MaxBatchBytes(IConfiguration cfg) => Positive(cfg["Items:MaxBatchBytes"], DefaultMaxBatchBytes);
+    public static long MaxPageBytes(IConfiguration cfg) => Positive(cfg["Items:MaxPageBytes"], DefaultMaxPageBytes);
+    public static long MaxUserBytes(IConfiguration cfg) => Positive(cfg["Items:MaxUserBytes"], DefaultMaxUserBytes);
+
+    /// <summary>
+    /// Largest request body accepted for a single ciphertext write: the ciphertext limit plus 1/6 headroom for
+    /// JSON string escaping (a serialiser may write '+' as +) plus a fixed envelope allowance. This only
+    /// bounds what is read; the exact limit is still enforced on the decoded ciphertext.
+    /// </summary>
+    public static long MaxSingleBodyBytes(IConfiguration cfg)
+    {
+        var max = MaxBytes(cfg);
+        return max + max / 6 + JsonOverheadBytes;
+    }
 
     private static long Positive(string? raw, long fallback) =>
         long.TryParse(raw, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var v) && v > 0
@@ -46,7 +61,7 @@ public static class ItemLimits
 
 /// <summary>
 /// Caps the request body before it is buffered. <c>Items:MaxBytes</c> (plus envelope overhead) for a single
-/// item or prefs write, <c>Items:MaxBatchBytes</c> for a batch. Enforced both via the server's per-request
+/// item or prefs write (see <see cref="ItemLimits.MaxSingleBodyBytes"/>), <c>Items:MaxBatchBytes</c> for a batch. Enforced both via the server's per-request
 /// body-size feature (covers chunked uploads on Kestrel) and an up-front Content-Length check (413).
 /// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
@@ -58,7 +73,7 @@ public sealed class ItemBodyLimitAttribute(bool batch) : Attribute, IResourceFil
     {
         var http = context.HttpContext;
         var cfg = http.RequestServices.GetRequiredService<IConfiguration>();
-        var limit = batch ? ItemLimits.MaxBatchBytes(cfg) : ItemLimits.MaxBytes(cfg) + ItemLimits.JsonOverheadBytes;
+        var limit = batch ? ItemLimits.MaxBatchBytes(cfg) : ItemLimits.MaxSingleBodyBytes(cfg);
 
         if (http.Request.ContentLength is long len && len > limit)
         {
