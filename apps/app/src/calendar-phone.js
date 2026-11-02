@@ -1,6 +1,7 @@
 // calendar-phone.js — the pure parts of the phone calendar: which events are on now or starting soon,
 // where a Teams meeting is joined, moving an event later, and laying a day's events out on an hour
 // timeline with overlapping events side by side.
+import { eventBadge as coreEventBadge } from '@nexusmd/core';
 export const SOON_MIN = 30;
 export const TEAMS_RE = /https?:\/\/(?:teams\.microsoft\.com|teams\.live\.com)\/[^\s"'<>)]+/i;
 
@@ -9,14 +10,7 @@ export const stamp = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d
 const ms = (iso) => new Date(iso).getTime();
 
 // 'now' while it is on, 'soon' when it starts within SOON_MIN minutes, otherwise ''.
-export function eventBadge(ev, now = Date.now()) {
-  const s = ms(ev?.start);
-  if (Number.isNaN(s)) return '';
-  const e = ev.end ? ms(ev.end) : s + 3600000;
-  if (now >= s && now < e) return 'now';
-  if (s > now && s - now <= SOON_MIN * 60000) return 'soon';
-  return '';
-}
+export const eventBadge = (ev, now = Date.now()) => coreEventBadge(ev, now, SOON_MIN) || '';
 
 // Only an https link to Teams is ever followed: the link comes from event data, which anyone who
 // sends an invitation can influence, so a javascript: or look-alike address must not get through.

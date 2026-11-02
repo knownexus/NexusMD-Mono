@@ -65,6 +65,7 @@ export {
   isAllDayEvent, getEventsForDay, sortEventsByTime,
   buildAlertKey, pendingAlerts,
 } from './modules/calendar/index.js'
+export { eventBadge } from './modules/calendar/now-soon.js'
 export { buildDigest } from './modules/digest/index.js'
 export { appendAuditEntry, readAuditLog } from './modules/audit/index.js'
 export {

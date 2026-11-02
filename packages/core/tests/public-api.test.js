@@ -25,7 +25,7 @@ const EXPECTED = [
   'ITrayAdapter', 'IUpdateAdapter', 'IScriptRunnerAdapter', 'IRawHttpAdapter',
   'PLANNER_SECTIONS', 'PL_GROUPS', 'PL_OPEN',
   'PL_PRIOS', 'PL_STATUSES', 'PROJECT_COLORS', 'STATES', 'activateProfile',
-  'addManualColumn', 'adoStateToHelm', 'adoTypeToHelm', 'appendAuditEntry', 'buildAlertKey',
+  'addManualColumn', 'adoStateToHelm', 'adoTypeToHelm', 'appendAuditEntry', 'buildAlertKey', 'eventBadge',
   'buildDigest', 'buildEmptyPlannerData', 'buildProfile', 'buildTriageCsv', 'core',
   'createNoOpAdapters', 'createOfflineQueue', 'isNetworkError', 'TYPE_OPTIONS', 'isContainer', 'pathKey', 'describePath', 'rawOf', 'searchPaths', 'validateKey', 'editNode', 'addChild', 'removeNode', 'typeOf', 'getAtPath', 'setValueAtPath', 'replaceAtPath', 'addFieldAtPath', 'deleteAtPath', 'coerceVal', 'allContainerPaths', 'highlightSegments', 'MD_CHEAT_GROUPS', 'CHEAT', 'LEARN_ELEMENTS', 'markdownSourceOf', 'learnTarget', 'MAX_DIFF_LINES', 'diffLines', 'diffCounts', 'collapseDiff', 'orderTabs', 'moveTab', 'placeTabs', 'syncLabel', 'offlineText', 'createProfile', 'createTimer', 'decryptConfidentialFromServer',
   'deleteProfile', 'deriveActivity',

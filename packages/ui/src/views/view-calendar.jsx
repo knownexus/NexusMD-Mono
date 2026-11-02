@@ -11,7 +11,7 @@ import React from 'react';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { Avatar } from '../app-components.jsx';
 import { Icon } from '../icons.jsx';
-import { graphJSON, graphFetch } from '@nexusmd/core';
+import { graphJSON, graphFetch, eventBadge } from '@nexusmd/core';
 
 // ── OutlookService — MSAL + shared Graph client ─────────────────
 const OutlookService = (() => {
@@ -123,6 +123,19 @@ if (!document.getElementById('nexusmd-ui-cal-styles')) {
 
 // ────────────────────────────────────────────────────────────────
 const { useState: useStateCal, useMemo: useMemoCal, useEffect: useEffectCal, useRef: useRefCal } = React;
+
+// Re-renders the caller once a minute (cleared on unmount) so Now/Soon badges stay current.
+function useMinuteTick() {
+  const [, setTick] = useStateCal(0);
+  useEffectCal(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
+}
+
+// "Now" while an event is on, "Soon" when it starts within 30 minutes (rules in @nexusmd/core).
+function EventBadge({ ev }) {
+  const b = eventBadge(ev);
+  if (!b) return null;
+  return <span className={`pill ${b === 'now' ? 'success' : 'warning'}`} style={{ marginLeft:6,flexShrink:0 }}>{b === 'now' ? 'Now' : 'Soon'}</span>;
+}
 
 const CAL_START_HOUR  = 7;
 const CAL_END_HOUR    = 20;
@@ -774,7 +787,7 @@ function DayColumn({ date, events, isToday, onEventClick, nowPx, onMoveEvent, on
               WebkitLineClamp:isShort?undefined:2,WebkitBoxOrient:isShort?undefined:'vertical',
               paddingTop: showGrips ? 4 : 0,
             }}>
-              {ev.title}
+              {ev.title}<EventBadge ev={ev}/>
             </div>
             {height > 42 && (
               <div style={{ fontSize:10,color:cfg.text,opacity:.72,marginTop:2,fontFamily:'var(--mono)' }}>
@@ -1027,6 +1040,7 @@ function YearView({ year, allEvents, today, onDayClick }) {
 
 // ── AgendaView ─────────────────────────────────────────────────────
 function AgendaView({ agendaDays, eventsByDay, today, onEventClick }) {
+  useMinuteTick();
   const daysWithContext = agendaDays.map(d => ({
     d,
     key: isoDate(d),
@@ -1073,7 +1087,7 @@ function AgendaView({ agendaDays, eventsByDay, today, onEventClick }) {
                       {ev.end && <div style={{ fontSize:10,color:'var(--text-subtle)',fontFamily:'var(--mono)' }}>{fmtDuration(ev.start,ev.end)}</div>}
                     </div>
                     <div style={{ flex:1,minWidth:0 }}>
-                      <div style={{ fontSize:13.5,fontWeight:600,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{ev.title}</div>
+                      <div style={{ fontSize:13.5,fontWeight:600,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{ev.title}<EventBadge ev={ev}/></div>
                       {ev.personName && <div style={{ fontSize:11,color:'var(--text-muted)',marginTop:2 }}>{ev.personName}</div>}
                       {ev.description && !ev.personName && <div style={{ fontSize:11,color:'var(--text-muted)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{ev.description}</div>}
                     </div>
