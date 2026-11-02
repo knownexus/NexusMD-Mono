@@ -102,6 +102,13 @@ async function main() {
   const userClientA = createAccountClient({ baseUrl: API_BASE, sessionStore: memorySessionStore() })
   const redeemed = await userClientA.redeem({ inviteCode: invite.code, username: USER, password: PASSWORD })
   check(redeemed.session.role === 'user', 'invitee redeems into a normal user')
+  try {
+    await createAccountClient({ baseUrl: API_BASE, sessionStore: memorySessionStore() })
+      .redeem({ inviteCode: invite.code, username: `${USER}-again`, password: PASSWORD })
+    check(false, 'a used invite is rejected')
+  } catch (e) {
+    eq(e && e.code, 'invalid-invite', 'a used invite is rejected as invalid-invite (not a wrong password)')
+  }
   const users = await adminClient.listUsers()
   check(users.some((u) => u.username === USER), 'admin sees the second user')
 
@@ -155,6 +162,16 @@ async function main() {
   check(!('widgets' in tweaksB), "A's device-level tweak (widgets) does not leak to B's device")
   check(b.storage.getItem(`${NS}.sidebar.width`) === null, "A's per-device sidebar width does not leak to B")
   check(b.state.applied === null, "A's device prefs are not applied to device B")
+
+  console.log('Desktop B removed from the account while still in use')
+  await userClientB.deleteDevice(deviceB.id)
+  const ORG2 = `${ORG}-renamed`
+  b.storage.setItem(`${NS}.p.1.ado.org`, ORG2)
+  const afterRemoval = await b.sync.syncNow()
+  eq(afterRemoval.error && afterRemoval.error.code, 'not-found', 'a sync on the removed device reports not-found')
+  const seenByA = await a.sync.pull()
+  check(!seenByA.error, 'A pulls without error')
+  eq(a.storage.getItem(`${NS}.p.1.ado.org`), ORG2, "the removed device's account change still reached the account")
 
   console.log('Desktop A reinstall (wipe local data, log in, same device)')
   const a2 = makeDevice({ client: userClientA, ck: ckA, deviceId: deviceA.id })
