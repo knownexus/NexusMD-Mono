@@ -34,6 +34,7 @@ vi.mock('@nexusmd/ui', () => ({
     <button role="switch" aria-checked={checked} onClick={() => onChange(!checked)}>{checked ? 'On' : 'Off'}</button>
   ),
   VsProfiles: () => <div data-testid="vs-profiles">VsProfiles</div>,
+  AccountCard: () => <div data-testid="account-card">AccountCard</div>,
   BackupRestoreCard: () => <div data-testid="backup-restore">BackupRestoreCard</div>,
   BundlePasswordModal: () => null,
   CloudSyncCard: () => <div data-testid="cloud-sync">CloudSyncCard</div>,

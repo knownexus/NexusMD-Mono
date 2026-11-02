@@ -6,7 +6,7 @@ import { initCore, createNoOpAdapters } from '@nexusmd/core'
 import {
   Icon, CardFrame, NexusDataProvider, ToastHost,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
-  THEME_MODES, paletteFor, ProfileGate,
+  THEME_MODES, paletteFor, ProfileGate, AccountGate, useAccount,
 } from '@nexusmd/ui'
 import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, visibleNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
 import { DesktopSettings } from './desktop-settings.jsx'
@@ -36,6 +36,7 @@ import {
 } from './shell/modules.js'
 import { host, takeWaitingNavigation } from './shell/host.js'
 import { AppUpdatesBanner } from './app-updates.jsx'
+import { account } from './account.js'
 
 const adapters = {
   ...createNoOpAdapters(),
@@ -149,6 +150,19 @@ function WindowControls() {
   );
 }
 
+// Account sync stamps the time of a local edit when it observes it, so last-writer-wins needs an
+// observe() after settings change and when the window goes away. The gate owns start()/stop().
+function useObserveForSync(tweaks) {
+  const { sync } = useAccount()
+  React.useEffect(() => { sync?.observe() }, [sync, tweaks])
+  React.useEffect(() => {
+    if (!sync) return undefined
+    const onHide = () => { sync.observe() }
+    window.addEventListener('pagehide', onHide)
+    return () => window.removeEventListener('pagehide', onHide)
+  }, [sync])
+}
+
 function App() {
   // Start on the first installed app's first view (Dashboard in a full install).
   const [view, setView]         = React.useState(() => resolveView(takeWaitingNavigation()) || FIRST_VIEW)
@@ -157,6 +171,7 @@ function App() {
   React.useEffect(() => { setVisited(v => (v.includes(view) ? v : [...v, view])) }, [view])
   const [sidebarWidth, setSidebarWidth] = usePersistedState('nexusmd.sidebar.width', 220)
   const [tweaks, setTweaksState] = React.useState(loadTweaks)
+  useObserveForSync(tweaks)
 
   // Fall back to clientWidth when innerWidth is 0 (e.g. jsdom in tests) so the
   // sidebar doesn't spuriously start collapsed.
@@ -488,7 +503,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AppErrorBoundary>
       <ProfileProvider>
-        {popout ? <popout.Component spec={popout.spec} adapter={popout.adapter} /> : <ProfileGate><App /></ProfileGate>}
+        {popout ? <popout.Component spec={popout.spec} adapter={popout.adapter} /> : <AccountGate account={account}><ProfileGate><App /></ProfileGate></AccountGate>}
       </ProfileProvider>
     </AppErrorBoundary>
   </React.StrictMode>
