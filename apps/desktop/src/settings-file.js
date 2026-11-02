@@ -8,7 +8,7 @@
 // Secrets are stored encrypted under a key that never leaves this machine's IndexedDB, so the
 // raw `nexusmd.sec.*` values would be useless elsewhere: they are decrypted on export, carried
 // inside the password-encrypted file, and re-encrypted with the new machine's key on import.
-import { encryptConfidentialForServer, decryptConfidentialFromServer } from '@nexusmd/core'
+import { encryptConfidentialForServer, decryptConfidentialFromServer, isSkippedKey } from '@nexusmd/core'
 
 export const SETTINGS_FORMAT     = 'nexusmd-settings'
 export const SETTINGS_FORMAT_ENC = 'nexusmd-settings-enc'
@@ -17,18 +17,10 @@ export const SETTINGS_EXT        = '.nmdsettings'
 
 const SECRET_PREFIX = 'nexusmd.sec.'
 
-// Caches and in-flight state: rebuilt on their own, and stale or wrong on another machine.
-const SKIP = [
-  /^nexusmd\.sec\./,           // carried decrypted in `secrets` instead
-  /^nexusmd\.oauth\.pending$/,
-  /^nexusmd\.sync\.base\./,
-  /\.cache(\.v\d+)?$/,
-  /\.wiTypeDefs\./,
-  /\.git\.snapshot$/,
-  /^nexusmd\.workitems\.status\.v\d+$/,
-]
-
-export const isExported = (key) => !SKIP.some(re => re.test(key))
+// Secrets (`nexusmd.sec.*`) are carried decrypted in `secrets` instead; caches and in-flight state
+// are rebuilt on their own and stale or wrong on another machine. The skip list is shared with
+// account sync and lives in @nexusmd/core.
+export const isExported = (key) => !isSkippedKey(key)
 
 // SHA-256(password + salt) as hex → AES-256-GCM key material. Own salt, so a settings file
 // password can't be tried against a profile bundle's keyspace or the other way round.
