@@ -36,12 +36,16 @@ function fakeSecure(storage, ns = 'nexusmd', init = {}) {
 }
 
 // In-memory server honouring revisions and cursors (task 5 API shape).
-function fakeServer({ maxBytes = Infinity } = {}) {
+// Pages are bounded by `limit` and by a byte budget (`pageBytes`, at least one item per page),
+// and say `hasMore` (Ruling 18) unless `legacy` emulates a server from before that field.
+// `quotaBytes` is a per-user storage quota answered with the 'quota' item status.
+function fakeServer({ maxBytes = Infinity, pageBytes = Infinity, legacy = false, quotaBytes = Infinity } = {}) {
   const items = new Map()
   const prefs = new Map()
   let cursor = 0
+  const stored = () => [...items.values()].reduce((n, i) => n + (i.ciphertext || '').length, 0)
   const srv = {
-    items, prefs, requests: [], fail: null, putCalls: 0,
+    items, prefs, requests: [], fail: null, putCalls: 0, changesCalls: 0,
     tamper: null,
     check() {
       if (srv.fail) throw new AccountError(srv.fail, srv.fail === 'session-expired' ? 401 : 0)
@@ -56,6 +60,9 @@ function fakeServer({ maxBytes = Infinity } = {}) {
           const rev = cur ? cur.revision : 0
           if (i.ifMatch !== rev) return { id: i.id, status: 'conflict' }
           if ((i.ciphertext || '').length > maxBytes) return { id: i.id, status: 'too_large' }
+          if (stored() - (cur ? (cur.ciphertext || '').length : 0) + (i.ciphertext || '').length > quotaBytes) {
+            return { id: i.id, status: 'quota' }
+          }
           const next = { id: i.id, revision: rev + 1, cursor: ++cursor, ciphertext: i.ciphertext, deleted: !!i.deleted, updatedAt: new Date().toISOString() }
           items.set(i.id, next)
           return { id: i.id, status: 'ok', revision: next.revision, cursor: next.cursor }
@@ -63,9 +70,21 @@ function fakeServer({ maxBytes = Infinity } = {}) {
       },
       async getChanges(since = 0, limit = 500) {
         srv.check()
-        let list = [...items.values()].filter((i) => i.cursor > since).sort((a, b) => a.cursor - b.cursor).slice(0, limit)
+        srv.changesCalls++
+        const newer = [...items.values()].filter((i) => i.cursor > since).sort((a, b) => a.cursor - b.cursor)
+        let list = []
+        let bytes = 0
+        for (const i of newer) {
+          if (list.length >= limit) break
+          const size = (i.ciphertext || '').length
+          if (list.length && bytes + size > pageBytes) break
+          list.push(i)
+          bytes += size
+        }
+        const hasMore = newer.length > list.length
         if (srv.tamper) list = srv.tamper(list)
-        return { items: list.map((i) => ({ ...i })), cursor: list.length ? list[list.length - 1].cursor : since }
+        const page = { items: list.map((i) => ({ ...i })), cursor: list.length ? list[list.length - 1].cursor : since }
+        return legacy ? page : { ...page, hasMore }
       },
       async getDevicePrefs(id) {
         srv.check()
@@ -95,13 +114,13 @@ async function decryptAll(srv, ck) {
 }
 
 let clock = 1_000_000
-function device({ srv, ck, init = {}, secrets = {}, deviceId = 'dev-a', devicePrefs = null, ns = 'nexusmd', now, getActiveProfileId }) {
+function device({ srv, ck, init = {}, secrets = {}, deviceId = 'dev-a', devicePrefs = null, ns = 'nexusmd', now, getActiveProfileId, pageSize }) {
   const storage = fakeStorage(init)
   const secure = fakeSecure(storage, ns, secrets)
   const registry = createKeyRegistry({ namespace: ns, getActiveProfileId })
   const sync = createAccountSync({
     client: srv.client, containerKey: ck, registry, storage, secure, devicePrefs, deviceId,
-    metaKey: `${ns}.account.meta`, now: now || (() => (clock += 1000)),
+    metaKey: `${ns}.account.meta`, now: now || (() => (clock += 1000)), pageSize,
   })
   return { storage, secure, sync, registry }
 }
@@ -410,6 +429,25 @@ describe('createAccountSync', () => {
     expect((await decryptAll(srv, ck))['p.1.ado.pat'].value).toBe('pat-from-b')
     await a.sync.pull()
     expect(a.storage.getItem('nexusmd.p.1.ado.pat')).toBe('pat-from-b')
+  })
+
+  it('quota rejections are reported and not re-sent until the value changes', async () => {
+    const srv = fakeServer({ quotaBytes: 400 })
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'small', 'nexusmd.big.blob': 'x'.repeat(300) } })
+    const r = await a.sync.push()
+    expect(r.pushed).toBe(1)
+    expect(r.quota).toEqual(['nexusmd:big.blob'])
+    expect(r.tooLarge).toEqual([])
+    const calls = srv.putCalls
+    const again = await a.sync.syncNow()
+    expect(again.pushed).toBe(0)
+    expect(again.quota).toEqual(['nexusmd:big.blob'])
+    expect(srv.putCalls).toBe(calls)
+    a.storage.setItem('nexusmd.big.blob', 'fits')
+    const third = await a.sync.push()
+    expect(third.pushed).toBe(1)
+    expect(third.quota).toEqual([])
   })
 
   it('too_large items are skipped and reported', async () => {
@@ -769,6 +807,85 @@ describe('createAccountSync', () => {
     expect(r.applied).toBe(120)
     expect(metaOf(b).cursor).toBe(120)
     expect((await b.sync.pull()).applied).toBe(0)
+  })
+
+  describe('change feed paging (hasMore)', () => {
+    async function seeded(n, opts) {
+      const srv = fakeServer(opts)
+      const ck = await generateContainerKey()
+      const init = {}
+      for (let i = 0; i < n; i++) init[`nexusmd.k${i}`] = `v${i}`
+      const a = device({ srv, ck, init })
+      await a.sync.seed()
+      return { srv, ck }
+    }
+
+    it('collects every item across byte-limited pages that hold fewer items than the limit', async () => {
+      const { srv, ck } = await seeded(120, { pageBytes: 1000 })
+      const b = device({ srv, ck, deviceId: 'dev-b' })
+      srv.changesCalls = 0
+      const r = await b.sync.pull()
+      expect(r.error).toBeUndefined()
+      expect(r.applied).toBe(120)
+      expect(srv.changesCalls).toBeGreaterThan(5) // many short pages, each with hasMore: true
+      expect(metaOf(b).cursor).toBe(120)
+      for (let i = 0; i < 120; i++) expect(b.storage.getItem(`nexusmd.k${i}`)).toBe(`v${i}`)
+    })
+
+    it('stops on hasMore: false even when the page is full', async () => {
+      const { srv, ck } = await seeded(100)
+      const b = device({ srv, ck, deviceId: 'dev-b', pageSize: 50 })
+      srv.changesCalls = 0
+      expect((await b.sync.pull()).applied).toBe(100)
+      expect(srv.changesCalls).toBe(2)
+    })
+
+    it('falls back to "a full page means more" when the server omits hasMore', async () => {
+      const { srv, ck } = await seeded(120, { legacy: true })
+      const b = device({ srv, ck, deviceId: 'dev-b', pageSize: 50 })
+      srv.changesCalls = 0
+      expect((await b.sync.pull()).applied).toBe(120)
+      expect(srv.changesCalls).toBe(3) // 50, 50, 20: a short page ends the feed
+      expect(metaOf(b).cursor).toBe(120)
+      const c = device({ srv, ck, deviceId: 'dev-c' }) // default page of 500: one request
+      srv.changesCalls = 0
+      expect((await c.sync.pull()).applied).toBe(120)
+      expect(srv.changesCalls).toBe(1)
+    })
+
+    for (const [name, page] of [
+      ['an empty page', (since) => ({ items: [], cursor: since, hasMore: true })],
+      ['the same items again', (since, first) => ({ items: first, cursor: since, hasMore: true })],
+    ]) {
+      it(`a hasMore: true page that does not advance the cursor (${name}) ends with a server error and changes nothing`, async () => {
+        const { srv, ck } = await seeded(3)
+        const b = device({ srv, ck, deviceId: 'dev-b', init: { 'nexusmd.k0': 'local-b', 'nexusmd.other': 'keep' } })
+        await b.sync.syncNow()
+        const before = new Map(b.storage.map)
+        const cursor = metaOf(b).cursor
+        const first = (await srv.client.getChanges(0)).items
+        let calls = 0
+        srv.client.getChanges = async (since) => { calls++; return page(since, first) }
+        const r = await b.sync.pull()
+        expect(r.error).toBeInstanceOf(AccountError)
+        expect(r.error.code).toBe('server')
+        expect(calls).toBe(1)
+        expect(b.storage.map).toEqual(before)
+        expect(metaOf(b).cursor).toBe(cursor)
+      })
+    }
+
+    it('caps a pull at 1000 pages and continues from there next time', async () => {
+      const srv = fakeServer()
+      const ck = await generateContainerKey()
+      const b = device({ srv, ck, deviceId: 'dev-b' })
+      let calls = 0
+      srv.client.getChanges = async (since) => { calls++; return { items: [], cursor: since + 1, hasMore: true } }
+      const r = await b.sync.pull()
+      expect(r.error).toBeUndefined()
+      expect(calls).toBe(1000)
+      expect(metaOf(b).cursor).toBe(1000)
+    })
   })
 
   it('onApplied fires only when a pull changed local data', async () => {

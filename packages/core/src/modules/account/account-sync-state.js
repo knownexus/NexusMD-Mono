@@ -6,7 +6,7 @@
 // Meta (JSON at `metaKey`, never synced: the registry rejects `.account.` keys):
 //   { cursor,
 //     entries: { [id]: { hash, updatedAt, revision?, level, deleted, changedAt?, changedHash? } },
-//     tooLarge: { [id]: hash },
+//     rejected: { [id]: { hash, status: 'too_large' | 'quota' } },  (not re-sent until hash changes)
 //     devicePrefs: { revision, prefsHash, prefsUpdatedAt, prefsChangedAt?, prefsChangedHash? },
 //     lastSyncAt }
 // An entry describes the SERVER state last seen for that id. No entry means the server value
@@ -14,6 +14,7 @@
 // differ from `hash` (`changedHash` is the local fingerprint observed then).
 import { contentHash } from '../sync/hash.js'
 import { encryptJson, decryptJson, opaqueId } from './crypto.js'
+import { AccountError } from './account-client.js'
 
 export const ITEM_CONTEXT = 'nexusmd-item|'
 export const DEVICE_CONTEXT = 'nexusmd-device-prefs|'
@@ -44,7 +45,7 @@ export const secretFingerprint = (value, ck) => opaqueId(`fp|${value}`, ck)
 export const fingerprint = (target, value, ck) => (target.kind === 'secret' ? secretFingerprint(value, ck) : hashOf(value))
 
 export function emptyMeta() {
-  return { cursor: 0, entries: {}, tooLarge: {}, devicePrefs: { revision: 0 } }
+  return { cursor: 0, entries: {}, rejected: {}, devicePrefs: { revision: 0 } }
 }
 
 export function loadMeta(storage, metaKey) {
@@ -55,7 +56,7 @@ export function loadMeta(storage, metaKey) {
   return {
     cursor: Number.isInteger(m.cursor) && m.cursor > 0 ? m.cursor : 0,
     entries,
-    tooLarge: isPlainObject(m.tooLarge) ? { ...m.tooLarge } : {},
+    rejected: isPlainObject(m.rejected) ? { ...m.rejected } : {},
     devicePrefs: { revision: 0, ...(isPlainObject(m.devicePrefs) ? m.devicePrefs : {}) },
     ...(m.lastSyncAt ? { lastSyncAt: m.lastSyncAt } : {}),
   }
@@ -262,17 +263,25 @@ export async function decodeChange(ck, c) {
   return { id: p.id, value: p.value, updatedAt: num(p.updatedAt), deleted: p.deleted === true, revision: c.revision }
 }
 
-/** The whole change feed since `since` (paged until an empty page), fetched before any write. */
-export async function fetchFeed(client, since, pageSize = 500, maxPages = 10000) {
+/**
+ * The change feed since `since`, fetched before anything is written locally. Pages while the
+ * server says `hasMore: true` (pages are bounded by bytes too, so a short page can have more
+ * behind it); a server without `hasMore` is paged while its pages come back full. A page that
+ * claims more but does not advance the cursor is a server error, so nothing is applied. At most
+ * `maxPages` pages per pull: the rest follows from the stored cursor on the next pull.
+ */
+export async function fetchFeed(client, since, pageSize = 500, maxPages = 1000) {
   const items = []
   let cursor = since
   for (let i = 0; i < maxPages; i++) {
     const page = await client.getChanges(cursor, pageSize)
     const list = Array.isArray(page && page.items) ? page.items : []
     const next = Number.isInteger(page && page.cursor) ? page.cursor : cursor
+    const more = page && typeof page.hasMore === 'boolean' ? page.hasMore : list.length >= pageSize
     items.push(...list)
-    if (!list.length || next <= cursor) break
-    cursor = next
+    if (next > cursor) cursor = next
+    else if (more) throw new AccountError('server', 0, 'The change feed did not advance')
+    if (!more) break
   }
   return { items, cursor }
 }

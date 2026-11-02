@@ -622,7 +622,11 @@ describe('devices, prefs, items and admin', () => {
       if (key === 'POST /api/items/batch') {
         return json(200, { results: req.body.items.map((i) => ({ id: i.id, status: i.ifMatch === 0 ? 'ok' : 'conflict', revision: 1, cursor: 1 })) })
       }
-      if (key === 'GET /api/items/changes') return json(200, { items: [], cursor: Number(req.query.get('since')) })
+      if (key === 'GET /api/items/changes') {
+        const since = Number(req.query.get('since'))
+        const hasMore = { 43: true, 44: false, 45: 'yes', 46: null }[since]
+        return json(200, { items: [], cursor: since, ...(hasMore !== undefined ? { hasMore } : {}) })
+      }
       if (key === 'POST /api/admin/invites') return json(200, { id: 'i1', code: 'CODE', expiresAt: 'x' })
       if (key === 'GET /api/admin/invites') return json(200, [{ id: 'i1' }])
       if (key === 'DELETE /api/admin/invites/i1') return new Response(null, { status: 204 })
@@ -664,6 +668,16 @@ describe('devices, prefs, items and admin', () => {
 
     expect(await ctx.client.getChanges(42)).toEqual({ items: [], cursor: 42 })
     expect(calls.at(-1).query.get('since')).toBe('42')
+  })
+
+  it('getChanges passes hasMore through, leaves it undefined for an older server and rejects a non-boolean', async () => {
+    expect(await ctx.client.getChanges(43)).toEqual({ items: [], cursor: 43, hasMore: true })
+    expect(await ctx.client.getChanges(44)).toEqual({ items: [], cursor: 44, hasMore: false })
+    const old = await ctx.client.getChanges(42)
+    expect(old.hasMore).toBeUndefined()
+    expect('hasMore' in old).toBe(false)
+    await expect(ctx.client.getChanges(45)).rejects.toMatchObject({ name: 'AccountError', code: 'server' })
+    await expect(ctx.client.getChanges(46)).rejects.toMatchObject({ name: 'AccountError', code: 'server' })
   })
 
   it('admin calls', async () => {

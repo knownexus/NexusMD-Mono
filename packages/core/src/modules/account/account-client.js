@@ -392,11 +392,16 @@ export function createAccountClient({
       return data.results
     },
 
+    /**
+     * One page of the change feed: `{ items, cursor, hasMore }`. Pages are bounded by count and
+     * bytes, so a short page can still have more behind it; `hasMore` is undefined when an
+     * older server omits it.
+     */
     getChanges(since = 0, limit) {
       const q = `since=${encodeURIComponent(since)}${limit ? `&limit=${encodeURIComponent(limit)}` : ''}`
       return authed('GET', `/api/items/changes?${q}`).then((d) => shaped(
         d,
-        (x) => isObject(x) && Array.isArray(x.items),
+        (x) => isObject(x) && Array.isArray(x.items) && (!('hasMore' in x) || typeof x.hasMore === 'boolean'),
         'item changes',
       ))
     },

@@ -25,15 +25,15 @@ import {
   encodeItem, decodeDeviceBlob, decodeChange, fetchFeed,
 } from './account-sync-state.js'
 
-const PAGE = 500
 const BATCH = 50
 const MAX_SKEW_MS = 5 * 60 * 1000
 
 const num = (v) => (Number.isFinite(v) ? v : 0)
 
+/** `pageSize` is the change-feed page limit requested from the server (default 500). */
 export function createAccountSync({
   client, containerKey: ck, registry, storage, secure, devicePrefs = null, deviceId, metaKey,
-  now = Date.now, intervalMs = 60000,
+  now = Date.now, intervalMs = 60000, pageSize = 500,
 }) {
   const ctx = { registry, storage, secure, metaKey }
   const appliedListeners = new Set()
@@ -133,7 +133,7 @@ export function createAccountSync({
 
   async function pullItems() {
     const meta = load()
-    const feed = await fetchFeed(client, meta.cursor, PAGE)
+    const feed = await fetchFeed(client, meta.cursor, pageSize)
     const latest = new Map()
     for (const c of feed.items) {
       if (!isPlainObject(c) || typeof c.id !== 'string') continue
@@ -230,14 +230,16 @@ export function createAccountSync({
     const { snap, isUnavailable } = await localState(meta)
     const t = now()
     const out = []
-    const tooLarge = []
-    for (const id of Object.keys(meta.tooLarge)) if (!snap.has(id)) delete meta.tooLarge[id]
+    // Items the server rejected for size or quota wait until their value changes.
+    const rejected = { too_large: [], quota: [] }
+    for (const id of Object.keys(meta.rejected)) if (!snap.has(id)) delete meta.rejected[id]
     for (const [id, e] of snap) {
       if (e.level !== 'account') continue
       const m = meta.entries[id]
       const changed = !m || localChanged(m, e)
       if (!force && !changed) continue
-      if (meta.tooLarge[id] === e.hash) { tooLarge.push(id); continue } // rejected before, unchanged since
+      const held = meta.rejected[id]
+      if (held && held.hash === e.hash && rejected[held.status]) { rejected[held.status].push(id); continue }
       const updatedAt = changed ? (m && m.changedAt != null ? m.changedAt : t) : clampAt(m.updatedAt ?? t)
       out.push({ id, value: e.value, hash: e.hash, deleted: false, ifMatch: (m && m.revision) || 0, updatedAt })
     }
@@ -248,7 +250,7 @@ export function createAccountSync({
       out.push({ id, value: null, hash: null, deleted: true, ifMatch: m.revision, updatedAt: m.changedAt ?? t })
     }
     save(meta) // the observation stamps survive a failed upload
-    const result = { pushed: 0, conflicts: [], tooLarge }
+    const result = { pushed: 0, conflicts: [], tooLarge: rejected.too_large, quota: rejected.quota }
     for (let i = 0; i < out.length; i += BATCH) {
       const chunk = out.slice(i, i + BATCH)
       const byWid = new Map()
@@ -268,11 +270,11 @@ export function createAccountSync({
         byWid.delete(res.id)
         if (res.status === 'ok' && Number.isInteger(res.revision)) {
           meta.entries[c.id] = { hash: c.hash, updatedAt: c.updatedAt, revision: res.revision, level: 'account', deleted: c.deleted }
-          delete meta.tooLarge[c.id]
+          delete meta.rejected[c.id]
           result.pushed++
-        } else if (res.status === 'too_large') {
-          if (!c.deleted) meta.tooLarge[c.id] = c.hash
-          tooLarge.push(c.id)
+        } else if (res.status === 'too_large' || res.status === 'quota') {
+          if (!c.deleted) meta.rejected[c.id] = { hash: c.hash, status: res.status }
+          rejected[res.status].push(c.id)
         } else {
           result.conflicts.push(c.id)
         }
@@ -351,7 +353,7 @@ export function createAccountSync({
       d = await pushDeviceRound(false)
       if (d.conflict) conflicts++
     }
-    return { pushed, conflicts, tooLarge: r.tooLarge, devicePrefs: !!d.pushed }
+    return { pushed, conflicts, tooLarge: r.tooLarge, quota: r.quota, devicePrefs: !!d.pushed }
   }
 
   // ---- public surface ----------------------------------------------------------------
