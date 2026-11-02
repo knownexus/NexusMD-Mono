@@ -24,7 +24,7 @@ function PasswordForm({ client }) {
   const submit = async (e) => {
     e.preventDefault();
     setOk(false);
-    if (next !== confirm) { setMsg('Passwords do not match.'); return; }
+    if (next !== confirm) { setCur(''); setNext(''); setConfirm(''); setMsg('Passwords do not match.'); return; }
     const args = { currentPassword: cur, newPassword: next };
     setCur(''); setNext(''); setConfirm('');
     setBusy(true); setMsg('');

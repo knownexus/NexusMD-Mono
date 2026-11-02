@@ -196,4 +196,43 @@ describe('AccountGate', () => {
     expect(a.client.logout).toHaveBeenCalled();
     expect(sync.stop).toHaveBeenCalled();
   });
+
+  it('re-login by the same user after expiry returns to the app without the picker', async () => {
+    deviceId = 'd1';
+    const a = mkAccount({ getSession: vi.fn(async () => SESSION) });
+    mount(a);
+    await screen.findByText('shell');
+    errorCb({ code: 'session-expired' });
+    await signIn();
+    expect(await screen.findByText('shell')).toBeTruthy();
+    expect(a.client.listDevices).not.toHaveBeenCalled();
+  });
+
+  it('a different user after expiry goes through the device picker', async () => {
+    deviceId = 'd1';
+    const a = mkAccount({
+      getSession: vi.fn(async () => SESSION),
+      login: vi.fn(async () => ({ session: { ...SESSION, userId: 'u2', username: 'bob' }, containerKey: CK })),
+    });
+    mount(a);
+    await screen.findByText('shell');
+    errorCb({ code: 'session-expired' });
+    await signIn('bob', 'pw');
+    expect(await screen.findByRole('button', { name: 'Continue' })).toBeTruthy();
+    expect(screen.queryByText('shell')).toBeNull();
+  });
+
+  it('retrying Continue reuses the device created by the failed attempt', async () => {
+    const a = mkAccount({
+      listDevices: vi.fn(async () => []),
+      getChanges: vi.fn().mockRejectedValueOnce(err('offline')).mockResolvedValue({ items: [{ id: 'x' }] }),
+    });
+    mount(a);
+    await signIn();
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText(/Cannot reach the server/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(window.location.reload).toHaveBeenCalled());
+    expect(a.client.createDevice).toHaveBeenCalledTimes(1);
+  });
 });

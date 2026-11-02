@@ -103,4 +103,17 @@ describe('AccountCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
     expect(signOut).toHaveBeenCalled();
   });
+
+  it('clears the password fields when the confirmation does not match', async () => {
+    const { client } = mount();
+    fireEvent.change(await screen.findByLabelText('Current password'), { target: { value: 'old' } });
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a' } });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'b' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByText('Passwords do not match.')).toBeTruthy();
+    expect(screen.getByLabelText('Current password').value).toBe('');
+    expect(screen.getByLabelText('New password').value).toBe('');
+    expect(screen.getByLabelText('Confirm new password').value).toBe('');
+    expect(client.changePassword).not.toHaveBeenCalled();
+  });
 });

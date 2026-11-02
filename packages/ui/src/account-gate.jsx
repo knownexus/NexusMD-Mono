@@ -131,6 +131,7 @@ function DeviceScreen({ account, auth, onDone }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [offer, setOffer] = useState(null); // sync awaiting the upload/skip decision
+  const created = React.useRef(null); // device created by a failed earlier attempt
 
   useEffect(() => {
     let alive = true;
@@ -157,7 +158,10 @@ function DeviceScreen({ account, auth, onDone }) {
     setBusy(true); setError('');
     try {
       let id = choice;
-      if (choice === 'new') id = (await client.createDevice({ name: name.trim() || deviceNameDefault(), platform })).id;
+      if (choice === 'new') {
+        if (!created.current) created.current = (await client.createDevice({ name: name.trim() || deviceNameDefault(), platform })).id;
+        id = created.current;
+      }
       deviceStore.set(id);
       const sync = createSync(auth.containerKey, id);
       const empty = ((await client.getChanges(0, 1)).items || []).length === 0;
@@ -230,7 +234,9 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [notice, setNotice] = useState('');
   const [authed, setAuthed] = useState(null);
-  const [relogin, setRelogin] = useState(false);
+  const [expiredUser, setExpiredUser] = useState(null); // userId whose session expired
+  const sessionRef = React.useRef(null);
+  sessionRef.current = session;
 
   const showAuth = useCallback(async (msg = '') => {
     setNotice(msg);
@@ -275,7 +281,8 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
     const offs = [sync.onError((e) => {
       if (e && e.code === 'session-expired') {
         sync.stop();
-        setSession(null); setCk(null); setRelogin(true);
+        setExpiredUser(sessionRef.current ? sessionRef.current.userId : null);
+        setSession(null); setCk(null);
         showAuth(accountErrorMessage(e));
       }
     })];
@@ -288,7 +295,7 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
     if (sync) sync.stop();
     try { await client.logout(); } catch { /* local session is cleared regardless */ }
     try { localStorage.removeItem(optOutKey); } catch { /* storage unavailable */ }
-    setSession(null); setCk(null); setRelogin(false);
+    setSession(null); setCk(null); setExpiredUser(null);
     await showAuth();
   }, [sync, client, optOutKey, showAuth]);
 
@@ -299,9 +306,9 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
 
   const onAuthed = (r) => {
     try { localStorage.removeItem(optOutKey); } catch { /* storage unavailable */ }
-    if (relogin && deviceStore.get()) {
-      // The same device signing back in after an expiry: nothing to restore, keep local data as is.
-      setSession(r.session); setCk(r.containerKey); setRelogin(false); setPhase('ready');
+    if (expiredUser && r.session.userId === expiredUser && deviceStore.get()) {
+      // The same user signing back in on this device after an expiry: nothing to restore, keep local data as is.
+      setSession(r.session); setCk(r.containerKey); setExpiredUser(null); setPhase('ready');
       return;
     }
     setAuthed(r);
