@@ -36,8 +36,9 @@ which the desktop and Android apps use.
      listed as synced below) before the new account's settings are restored. Cancel signs out and changes nothing.
      Data that milestone 1 does not sync (planner weeks and notes, calendar events, lists, time log) is not
      removed, so it stays on the device and is visible to the next account.
-   - The same account again. If the same user signs back in (for example after the session expired), local data is
-     kept as it is and the device picker is skipped.
+   - The same account again. Signing in as the same user never removes local data. If your session simply expired,
+     signing back in goes straight into the app and skips the device picker. After you log out yourself, signing
+     in again shows the device picker (step 2) and restores as usual.
 2. Device picker. After signing in you choose which device this is: one of the devices already on your account, or
    "This is a new device" with a name (for example "Work laptop"). Choosing an existing device restores that
    device's own preferences.
@@ -46,11 +47,11 @@ which the desktop and Android apps use.
    becomes the starting point for your other devices.
 4. Account card. In Settings (the "Data & sync" tab on desktop, the settings screen on Android) the Account card
    shows your sign-in, the time of the last sync, "Sync now", your devices (rename, remove), change password and
-   log out. Administrators also see invites and users.
+   log out. Administrators can also create invites and disable or enable users.
 
 Sync then runs in the background and when the app is shown again. If you are offline the app keeps working with
-what it has and syncs later. If your session has expired you see the gate again, and nothing local is wiped; signing back in as the same user keeps local data. Local
-data is only removed when a different account signs in, as described above.
+what it has and syncs later. If your session has expired you see the gate again, and nothing local is wiped.
+Local data is only removed when a different account signs in, as described above.
 
 ## What is synced, and at which level
 
