@@ -16,6 +16,12 @@ const readDisplayName = () => {
 
 function ListsView({ device = 'phone' } = {}) {
   const [data, setData] = React.useState(() => readLists(listsStore()));
+  // A sync pull that changed the lists: read them again, so a later edit does not write stale data back.
+  React.useEffect(() => {
+    const onApplied = (e) => { if (e?.detail?.collId === 'lists') setData(readLists(listsStore())); };
+    document.addEventListener('nexusmd:sync-applied', onApplied);
+    return () => document.removeEventListener('nexusmd:sync-applied', onApplied);
+  }, []);
   const onChange = (next) => { setData(next); writeLists(listsStore(), next); };
   return (
     <SharedListsView data={data} onChange={onChange} toast={toast} Icon={Icon} device={device}
