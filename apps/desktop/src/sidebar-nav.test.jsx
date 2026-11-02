@@ -56,6 +56,19 @@ describe('SidebarNav', () => {
     expect(status.compareDocumentPosition(buttons[buttons.length - 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('scrolls the screens when they do not fit, with the footer, status and Settings pinned below', () => {
+    render(<SidebarNav {...props({ placement: { work: 'footer', builds: 'more' }, status: <div>status line</div> })} />)
+    const list = screen.getByRole('group', { name: 'Main screens' }).closest('.sidebar-scroll')
+    expect(list).not.toBeNull()
+    expect(list.style.overflowY).toBe('auto')
+    // The More toggle scrolls with the screens; the footer group, status and Settings do not.
+    expect(within(list).getByRole('button', { name: /More/ })).toBeTruthy()
+    expect(within(list).queryByRole('group', { name: 'Footer screens' })).toBeNull()
+    expect(within(list).queryByText('status line')).toBeNull()
+    expect(within(list).queryByRole('button', { name: 'Settings' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy()
+  })
+
   it('marks the current screen and opens screens from any group', () => {
     const onSelect = vi.fn()
     render(<SidebarNav {...props({ onSelect, view: 'builds', placement: { builds: 'footer', work: 'more' } })} />)

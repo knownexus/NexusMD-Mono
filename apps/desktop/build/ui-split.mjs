@@ -43,15 +43,24 @@ export function specifiersOf(source) {
   return found
 }
 
-// The names the barrel exports, each with the file it comes from.
-export function barrelNames(uiSrc) {
+// The names the barrel exports: each public name with the file it comes from and the name that file
+// exports it under (they differ for `export { Card as WidgetCard } from './x.jsx'`).
+export function barrelEntries(uiSrc) {
   const barrel = join(uiSrc, 'index.js')
-  const names = new Map()
+  const entries = new Map()
   for (const m of readFileSync(barrel, 'utf8').matchAll(/export\s*\{([^}]*)\}\s*from\s*'([^']+)'/g)) {
     const file = resolveRelative(barrel, m[2])
-    for (const entry of m[1].split(',').map(s => s.trim()).filter(Boolean)) names.set(entry.split(/\s+as\s+/).pop(), file)
+    for (const entry of m[1].split(',').map(s => s.trim()).filter(Boolean)) {
+      const [source, name = source] = entry.split(/\s+as\s+/)
+      entries.set(name, { file, source })
+    }
   }
-  return names
+  return entries
+}
+
+// The names the barrel exports, each with the file it comes from.
+export function barrelNames(uiSrc) {
+  return new Map([...barrelEntries(uiSrc)].map(([name, { file }]) => [name, file]))
 }
 
 // The names a folder's code imports from '@nexusmd/ui'. Anything else we cannot follow (a namespace
@@ -91,6 +100,7 @@ function reachFrom(files, uiSrc) {
 // A file reached by exactly one app and by nothing else is that app's.
 export function analyzeUi(root = repoRoot, extraConsumers = {}) {
   const uiSrc = join(root, 'packages', 'ui', 'src')
+  const entries = barrelEntries(uiSrc)
   const names = barrelNames(uiSrc)
   const consumers = { ...extraConsumers }
   const modulesDir = join(root, 'modules')
@@ -115,7 +125,7 @@ export function analyzeUi(root = repoRoot, extraConsumers = {}) {
     const who = Object.keys(reached).filter(id => reached[id].has(file))
     owners.set(file, who.length === 1 && appIds.includes(who[0]) ? who[0] : 'shared')
   }
-  return { uiSrc, names, owners, appIds }
+  return { uiSrc, names, entries, owners, appIds }
 }
 
 export const sharedFiles = analysis => [...analysis.owners].filter(([, owner]) => owner === 'shared').map(([file]) => file).sort()
@@ -123,7 +133,7 @@ export const ownedFiles = (analysis, id) => [...analysis.owners].filter(([, owne
 
 // The names an app imports that live in its own files: those it builds in, the rest come from the shell.
 export function ownedNames(analysis, id) {
-  return [...analysis.names].filter(([, file]) => analysis.owners.get(file) === id).map(([name, file]) => ({ name, file }))
+  return [...analysis.entries].filter(([, { file }]) => analysis.owners.get(file) === id).map(([name, { file, source }]) => ({ name, file, source }))
 }
 
 // Every name a file exports, so two shared files exporting the same one (which `export *` would drop
@@ -162,7 +172,7 @@ export function sharedUiEntrySource(analysis) {
 // from the shell's copy (which the page's import map supplies).
 export function appUiBarrelSource(analysis, id) {
   const lines = ["export * from '@nexusmd/ui'"]
-  for (const { name, file } of ownedNames(analysis, id)) lines.push(`export { ${name} } from ${JSON.stringify(file.split(sep).join('/'))}`)
+  for (const { name, file, source } of ownedNames(analysis, id)) lines.push(`export { ${source === name ? name : `${source} as ${name}`} } from ${JSON.stringify(file.split(sep).join('/'))}`)
   return lines.join('\n') + '\n'
 }
 
