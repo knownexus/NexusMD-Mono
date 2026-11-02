@@ -80,6 +80,7 @@ if (process.platform === 'win32' && app.isPackaged) {
 const appTable = splitApps ? appRegistry.modulesFromScan(splitApps) : undefined;
 const fileIpc        = require('./ipc/file.cjs');
 const pickerIpc      = require('./ipc/picker.cjs');
+const artifactsIpc   = require('./ipc/artifacts.cjs');
 const badgeIpc       = require('./ipc/badge.cjs');
 const deepLinkIpc    = require('./ipc/deepLink.cjs');
 const trayIpc        = require('./ipc/tray-ipc.cjs');
@@ -455,6 +456,7 @@ app.whenReady().then(async () => {
   // Register Phase 6 IPC handlers
   fileIpc.register(ipcMain);
   pickerIpc.register(ipcMain, () => mainWindow);
+  artifactsIpc.register(ipcMain, () => mainWindow);
   badgeIpc.register(ipcMain);
   deepLinkIpc.register(ipcMain, () => mainWindow);
   trayIpc.register(ipcMain, () => mainWindow, () => tray);

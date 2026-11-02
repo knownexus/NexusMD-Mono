@@ -10,6 +10,7 @@ import { getJiraConfig, isJiraActive, createJiraWorkItemSource } from './jira-cl
 import { getGithubConfig, usesGithubWorkItems, isGithubConfigured, desktopGithubSource, createGithubHttpAdapter } from './github-client.js'
 import { useRoutedWorkItemSource } from './use-routed-work-item-source.js'
 import { desktopBuildSource } from './desktop-build-source.js'
+import { makeBuildArtifacts } from './build-artifacts.js'
 import { CreateWorkItemDrawer } from './create-work-item-drawer.jsx'
 import { DetailDrawer } from './detail-drawer.jsx'
 import { ProjectAreasModal } from './project-areas-modal.jsx'
@@ -219,6 +220,10 @@ export function WorkProvider({ host, view, children }) {
     return off
   }, [host, offlineQueue])
 
+  // The build drawer's artifacts, where the shell can save files (null hides them).
+  const artifactsAdapter = host.adapters?.artifacts
+  const buildArtifacts = React.useMemo(() => makeBuildArtifacts(artifactsAdapter), [artifactsAdapter])
+
   const nexusDataValue = React.useMemo(() => ({
     data:           snapshot,
     api:            { load: refreshAllData },
@@ -227,9 +232,10 @@ export function WorkProvider({ host, view, children }) {
     pushPref:       () => {},
     workItemSource,
     buildSource:    desktopBuildSource,
+    buildArtifacts,
     githubHttp,
     ...(offlineQueue ? { offlineQueue } : {}),
-  }), [snapshot, workItemSource, refreshAllData, offlineQueue])
+  }), [snapshot, workItemSource, refreshAllData, offlineQueue, buildArtifacts])
 
   const work = {
     refreshAllData, refreshInterval, setRefreshInterval, refreshLeft, refreshPaused, setRefreshPaused,

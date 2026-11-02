@@ -145,6 +145,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveFile:      (name, text) => ipcRenderer.invoke('picker:saveFile', name, text),
   },
 
+  // ── Build artifacts ─────────────────────────────────────────────────────────
+  // Saves a build artifact where the user picks. Sends the item and its provider's token only;
+  // the main process builds the headers and decides where the token may go.
+  artifacts: {
+    save: (item, credentials) => ipcRenderer.invoke('artifacts:save', { item, credentials }),
+  },
+
   // ── Badge adapter IPC ───────────────────────────────────────────────────────
   badge: {
     set:   (count) => ipcRenderer.invoke('badge:set', count),

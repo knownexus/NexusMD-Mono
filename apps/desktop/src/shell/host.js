@@ -5,6 +5,7 @@ import { makeShellOAuthService, makeNativeGoogleBinding } from '../cloud-auth.js
 import { desktopSync } from '../sync.js'
 import { secureStorageAdapter } from '../adapters/secureStorage.js'
 import { pickerAdapter } from '../adapters/picker.js'
+import { artifactsAdapter } from '../adapters/artifacts.js'
 import { windowControlsAdapter } from '../adapters/windowControls.js'
 
 // Everything an installed app may ask of the shell. Apps never import each other or the shell's
@@ -15,7 +16,8 @@ import { windowControlsAdapter } from '../adapters/windowControls.js'
 //   navigate       switch the shell to a view
 //   cloud          the shell's Google/Microsoft sign-in (the Accounts card in Settings)
 //   sync           the shell's cloud backup
-//   adapters       the shell's own adapters apps may use: secureStorage (saved passwords), picker (file dialogs), windowControls
+//   adapters       the shell's own adapters apps may use: secureStorage (saved passwords), picker (file dialogs), windowControls,
+//                  artifacts (saveArtifact(item, { pat, org? }) -> { saved, path? }: a build artifact saved where the user picks)
 //   offlineQueue   provider writes kept while offline: run(kind, payload, label) -> { done, result } | { queued: true },
 //                  count(), flush(). An app that can send them provides the 'work.offlineSend' capability.
 export { capabilities }
@@ -43,7 +45,7 @@ export const host = {
     makeNativeGoogleBinding: (...args) => makeNativeGoogleBinding(...args),
   },
   sync: { syncOnce: () => desktopSync.syncOnce() },
-  adapters: { secureStorage: secureStorageAdapter, picker: pickerAdapter, windowControls: windowControlsAdapter },
+  adapters: { secureStorage: secureStorageAdapter, picker: pickerAdapter, windowControls: windowControlsAdapter, artifacts: artifactsAdapter },
   offlineQueue: {
     run: (kind, payload, label) => appQueue.run(kind, payload, label),
     count: () => appQueue.count(),

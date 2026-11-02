@@ -61,6 +61,7 @@ const DEFAULTS = {
   googleAuth: null,          // optional Google OAuth client (web only); null → widgets show "connect"
   workItemSource: apiWorkItemSource, // data ops for WorkItemDetail (web/desktop: /api; app: ado-client)
   buildSource: apiBuildSource,       // data ops for BuildDetail's failure timeline (web/desktop: /api; desktop: ado-client)
+  buildArtifacts: null,      // { list(build), save(item) -> { saved, path? } } where the platform can save files (desktop); null → BuildDetail shows no Artifacts
   plannerOnWeekSaved: null,  // web only: fired after a planner week is saved (Google-Drive sync); null → no-op
 }
 

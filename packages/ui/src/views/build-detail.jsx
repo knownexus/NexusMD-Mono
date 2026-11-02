@@ -1,12 +1,14 @@
 import React from 'react'
-import { formatDateTime } from '@nexusmd/core'
+import { formatDateTime, formatSize } from '@nexusmd/core'
 import { Avatar, ProjectChip } from '../app-components.jsx'
+import { Icon } from '../icons.jsx'
+import { toast } from '../toast.jsx'
 import { useNexusData } from '../data-context.jsx'
 
 const ERROR_STATUSES = ['failed', 'partial', 'cancelled']
 
 export function BuildDetail({ build }) {
-  const { buildSource } = useNexusData()
+  const { buildSource, buildArtifacts } = useNexusData()
   const showErrors = ERROR_STATUSES.includes(build.status)
   const [loading, setLoading] = React.useState(showErrors)
   const [error, setError] = React.useState(null)
@@ -39,11 +41,11 @@ export function BuildDetail({ build }) {
         <MetaRow label="Finished">{build.finishTime ? formatDateTime(build.finishTime) : '—'}</MetaRow>
       </div>
 
+      {buildArtifacts && <BuildArtifacts build={build} source={buildArtifacts} />}
+
       {showErrors && (
         <div className="drawer-section">
-          <h4 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 8px' }}>
-            Errors
-          </h4>
+          <h4 style={SECTION_TITLE}>Errors</h4>
           {loading && <div style={{ color: 'var(--text-subtle)', fontSize: 13 }}>Loading errors…</div>}
           {!loading && error && <div style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</div>}
           {!loading && !error && failedRecords?.length === 0 && (
@@ -64,6 +66,61 @@ export function BuildDetail({ build }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const SECTION_TITLE = { fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 8px' }
+
+// The build's artifacts, each with a Download button. Shown only where the platform supplies
+// `buildArtifacts` (desktop saves through its main process; web has none).
+function BuildArtifacts({ build, source }) {
+  const [items, setItems] = React.useState(null)
+  const [error, setError] = React.useState('')
+  const [busy, setBusy] = React.useState('')
+
+  React.useEffect(() => {
+    let live = true
+    setItems(null); setError(''); setBusy('')
+    source.list(build)
+      .then(r => { if (live) setItems(r || []) })
+      .catch(e => { if (live) { setItems([]); setError(e?.message || 'Could not load the artifacts.') } })
+    return () => { live = false }
+  }, [build.id, build.source, source]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const download = async (item) => {
+    setBusy(item.url)
+    try {
+      const r = await source.save(item)
+      if (r?.saved) toast(`Saved ${item.filename}${r.bytes ? ` (${formatSize(r.bytes)})` : ''}.`, 'success')
+    } catch (e) {
+      toast(e?.message || 'Download failed.', 'error')
+    }
+    setBusy('')
+  }
+
+  const muted = { color: 'var(--text-subtle)', fontSize: 13 }
+  return (
+    <div className="drawer-section">
+      <h4 style={SECTION_TITLE}>Artifacts</h4>
+      {items === null && <div style={muted}>Loading artifacts…</div>}
+      {error && <div style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</div>}
+      {items && !error && items.length === 0 && <div style={muted}>This build published no artifacts.</div>}
+      {items && items.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {items.map(item => (
+            <div key={item.url} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{item.expired ? 'Expired' : (formatSize(item.size) || 'Zip')}</div>
+              </div>
+              <button type="button" className="btn sm" disabled={item.expired || busy === item.url} onClick={() => download(item)}>
+                <Icon name="download" size={12}/> {busy === item.url ? 'Saving…' : 'Download'}
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>

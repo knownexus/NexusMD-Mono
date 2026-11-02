@@ -4,8 +4,30 @@ import { oauthAdapter } from './oauth.js'
 import { windowControlsAdapter } from './windowControls.js'
 import { logsAdapter } from './logs.js'
 import { appPrefsAdapter } from './appPrefs.js'
+import { artifactsAdapter } from './artifacts.js'
 
 afterEach(() => { delete window.electronAPI })
+
+describe('artifactsAdapter', () => {
+  const item = { provider: 'ado', url: 'https://dev.azure.com/acme/P/x', filename: 'drop.zip' }
+
+  it('saves through the bridge and reports where, or that the dialog was cancelled', async () => {
+    expect(artifactsAdapter.available()).toBe(false)
+    const save = vi.fn()
+      .mockResolvedValueOnce({ saved: true, path: 'C:\\d\\drop.zip', bytes: 3 })
+      .mockResolvedValueOnce({ saved: false })
+    window.electronAPI = { artifacts: { save } }
+    expect(artifactsAdapter.available()).toBe(true)
+    expect(await artifactsAdapter.saveArtifact(item, { org: 'acme', pat: 'p' })).toEqual({ saved: true, path: 'C:\\d\\drop.zip', bytes: 3 })
+    expect(save).toHaveBeenCalledWith(item, { org: 'acme', pat: 'p' })
+    expect(await artifactsAdapter.saveArtifact(item, { org: 'acme', pat: 'p' })).toEqual({ saved: false })
+  })
+
+  it('passes on the main process\'s error without the IPC wrapping', async () => {
+    window.electronAPI = { artifacts: { save: vi.fn(async () => { throw new Error("Error invoking remote method 'artifacts:save': Error: Download failed: HTTP 404") }) } }
+    await expect(artifactsAdapter.saveArtifact(item, {})).rejects.toThrow(/^Download failed: HTTP 404$/)
+  })
+})
 
 describe('linkAdapter', () => {
   it('reports availability from the bridge and forwards both link kinds', async () => {

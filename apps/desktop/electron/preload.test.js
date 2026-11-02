@@ -64,6 +64,12 @@ describe('preload bridge', () => {
     off()
   })
 
+  it('bridges artifact saving as the item and the provider token, nothing else', () => {
+    const item = { provider: 'github', url: 'https://api.github.com/x/zip', filename: 'a.zip' }
+    exposed.artifacts.save(item, { pat: 'g' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('artifacts:save', { item, credentials: { pat: 'g' } })
+  })
+
   it('bridges the Jira proxy', () => {
     exposed.jira.request({ url: 'https://acme.atlassian.net/rest/api/3/myself' })
     expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('jira:request', { url: 'https://acme.atlassian.net/rest/api/3/myself' })

@@ -59,6 +59,15 @@ describe('the data it provides to the screens', () => {
     expect(data.workItemSource).toBeTruthy()
     expect(data.buildSource).toBeTruthy()
   })
+  it('offers build artifacts only where the shell can save them', () => {
+    mount()
+    expect(data.buildArtifacts).toBeNull()
+    cleanup()
+    host.adapters.artifacts = { available: () => true, saveArtifact: vi.fn() }
+    mount()
+    expect(typeof data.buildArtifacts.list).toBe('function')
+    expect(typeof data.buildArtifacts.save).toBe('function')
+  })
   it('shares the refresh and the unseen markers through useWork', () => {
     mount()
     expect(work.refreshAllData).toBe(refreshSpy)
