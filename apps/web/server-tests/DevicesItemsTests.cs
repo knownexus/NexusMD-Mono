@@ -800,6 +800,86 @@ public sealed class DevicesItemsTests : IDisposable
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await PutItem(h, h.Admin, "escaped-two", ct + "a", 0)).status);
     }
 
+    // ---- transaction modes ---------------------------------------------------------------
+
+    private sealed class HookedRepo(IConfiguration cfg, Action hook) : NexusMDWeb.Api.Data.AccountRepository(cfg)
+    {
+        public override void AfterChangesMetadataRead() => hook();
+    }
+
+    [Fact]
+    public void A_writer_commits_without_waiting_while_a_changes_read_transaction_is_open_and_the_reader_keeps_its_snapshot()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"nexusmd-snap-{Guid.NewGuid():N}.db");
+        try
+        {
+            var cfg = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["Accounts:DbPath"] = path }).Build();
+            NexusMDWeb.Api.Data.AccountRepository? repo = null;
+            var writer = default(NexusMDWeb.Api.Models.WriteResult);
+            var elapsed = TimeSpan.Zero;
+            repo = new HookedRepo(cfg, () =>
+            {
+                // The reader's transaction is open right now (metadata read, ciphertext not yet read).
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                writer = repo!.WriteItem("u1", new NexusMDWeb.Api.Models.ItemWrite("item-a", 1, "CHANGED", false));
+                elapsed = sw.Elapsed;
+            });
+            Assert.Equal(NexusMDWeb.Api.Models.WriteStatus.Ok, repo.WriteItem("u1", new NexusMDWeb.Api.Models.ItemWrite("item-a", 0, "ORIGINAL", false)).Status);
+            Assert.Equal(NexusMDWeb.Api.Models.WriteStatus.Ok, repo.WriteItem("u1", new NexusMDWeb.Api.Models.ItemWrite("item-b", 0, "SECOND", false)).Status);
+
+            var (items, hasMore) = repo.GetItemChanges("u1", 0, 500, 1_000_000);
+
+            Assert.Equal(NexusMDWeb.Api.Models.WriteStatus.Ok, writer.Status);
+            Assert.True(elapsed < TimeSpan.FromSeconds(5), $"writer waited {elapsed}");
+            // The reader still sees the state from when its transaction began.
+            Assert.False(hasMore);
+            Assert.Equal(new[] { "ORIGINAL", "SECOND" }, items.Select(i => i.Ciphertext).ToArray());
+            Assert.Equal(new long[] { 1, 1 }, items.Select(i => i.Revision).ToArray());
+            // And the writer's commit is visible to the next read.
+            var (after, _) = repo.GetItemChanges("u1", 0, 500, 1_000_000);
+            Assert.Equal(new[] { "SECOND", "CHANGED" }, after.Select(i => i.Ciphertext).ToArray());
+        }
+        finally { CleanUp(path); }
+    }
+
+    [Fact]
+    public void Microsoft_Data_Sqlite_begins_every_transaction_as_immediate_unless_deferred_is_requested()
+    {
+        // Guards the assumption the repository relies on: BeginTransaction() (any isolation level) takes the write
+        // lock up front (so a read-then-write inside it can never hit SQLITE_BUSY_SNAPSHOT), and only
+        // BeginTransaction(deferred: true) is a plain BEGIN that leaves other writers free.
+        var path = Path.Combine(Path.GetTempPath(), $"nexusmd-tx-{Guid.NewGuid():N}.db");
+        var cs = $"Data Source={path};Default Timeout=1";
+        try
+        {
+            using (var c = new SqliteConnection(cs))
+            {
+                c.Open();
+                using var m = c.CreateCommand();
+                m.CommandText = "PRAGMA journal_mode=WAL; CREATE TABLE t(x)";
+                m.ExecuteNonQuery();
+            }
+            bool OtherWriterBlocked(Func<SqliteConnection, SqliteTransaction> begin)
+            {
+                using var a = new SqliteConnection(cs);
+                a.Open();
+                using var tx = begin(a);
+                using var b = new SqliteConnection(cs);
+                b.Open();
+                using var cmd = b.CreateCommand();
+                cmd.CommandText = "BEGIN IMMEDIATE; ROLLBACK;";
+                try { cmd.ExecuteNonQuery(); return false; }
+                catch (SqliteException e) when (e.SqliteErrorCode == 5) { return true; }
+            }
+            Assert.True(OtherWriterBlocked(c => c.BeginTransaction()));
+            Assert.True(OtherWriterBlocked(c => c.BeginTransaction(System.Data.IsolationLevel.Serializable)));
+            Assert.True(OtherWriterBlocked(c => c.BeginTransaction(System.Data.IsolationLevel.ReadCommitted)));
+            Assert.False(OtherWriterBlocked(c => c.BeginTransaction(deferred: true)));
+        }
+        finally { CleanUp(path); }
+    }
+
     // ---- migration of an existing Items table ------------------------------------------
 
     private static (string path, Func<NexusMDWeb.Api.Data.AccountRepository> open) LegacyDb(string createSql)

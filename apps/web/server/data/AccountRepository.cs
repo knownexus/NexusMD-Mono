@@ -866,6 +866,9 @@ public class AccountRepository
         return results;
     }
 
+    /// <summary>Test seam: runs inside the changes read transaction, after the metadata step and before the ciphertext step.</summary>
+    public virtual void AfterChangesMetadataRead() { }
+
     /// <summary>
     /// One page of the user's items with Cursor greater than <paramref name="since"/>, oldest first: at most
     /// <paramref name="limit"/> rows and (after the first, which is always included) at most
@@ -879,7 +882,10 @@ public class AccountRepository
     public (IReadOnlyList<ItemRecord> items, bool hasMore) GetItemChanges(string userId, long since, int limit, long maxPageBytes)
     {
         using var conn = OpenConnection();
-        using var tx = conn.BeginTransaction(IsolationLevel.ReadCommitted); // deferred: one WAL snapshot for both reads
+        // Plain BEGIN (deferred): no lock is taken until the first read, which pins one WAL snapshot for both steps.
+        // Microsoft.Data.Sqlite otherwise begins EVERY transaction as BEGIN IMMEDIATE (whatever the isolation level),
+        // which would make a slow reader hold the write lock and stall all writers.
+        using var tx = conn.BeginTransaction(deferred: true);
 
         var meta = new List<(string id, long revision, long cursor, bool deleted, long updatedAt)>();
         var hasMore = false;
@@ -901,6 +907,7 @@ public class AccountRepository
                 meta.Add((r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetInt32(4) != 0, r.GetInt64(5)));
             }
         }
+        AfterChangesMetadataRead();
         if (meta.Count == 0) return (Array.Empty<ItemRecord>(), hasMore);
 
         var list = new List<ItemRecord>(meta.Count);
