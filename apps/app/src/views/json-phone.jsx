@@ -1,11 +1,10 @@
 // json-phone.jsx — the JSON tool on a phone: one focused pane, Edit or Tree. It shares the desktop
 // layout's autosave hook and storage key, so saved documents carry over.
 import React from 'react';
-import { useDocumentAutosave } from '@nexusmd/ui';
+import { useDocumentAutosave, JsonNodeSheet } from '@nexusmd/ui';
 import { Icon } from '../icons.jsx';
 import { toast } from '../toast.jsx';
 import { ToolFrame, DocsSheet } from './docs-frame.jsx';
-import { JsonNodeSheet } from './json-node-sheet.jsx';
 import { typeOf, searchPaths, pathKey, isContainer } from '@nexusmd/core';
 
 const { useState, useMemo, useEffect } = React;

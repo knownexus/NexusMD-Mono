@@ -4,13 +4,14 @@
 import React from 'react'
 import { Icon } from '../icons.jsx'
 import {
-  typeOf, setValueAtPath, deleteAtPath, replaceAtPath, addFieldAtPath,
-  coerceVal, allContainerPaths, highlightSegments,
+  typeOf, setValueAtPath, deleteAtPath, allContainerPaths, highlightSegments, searchPaths,
+  pathKey as searchKey,
 } from '@nexusmd/core'
 import { useDocumentAutosave, relativeTime } from './document-store.js'
 import { DocumentsModal } from './documents-modal.jsx'
+import { JsonNodeSheet } from '../json-tree-ui.jsx'
 
-const { useState, useEffect, useRef, useCallback } = React
+const { useState, useEffect, useRef, useCallback, useMemo } = React
 
 const SAMPLE = {
   name: 'Alice Johnson',
@@ -24,14 +25,6 @@ const SAMPLE = {
 const SAMPLE_TEXT = JSON.stringify(SAMPLE, null, 2)
 const EMPTY_TEXT = '{}'
 const DOCS_STORAGE_KEY = 'json_editor_documents'
-const TYPE_OPTIONS = [
-  ['string', 'Text (string)'],
-  ['number', 'Number'],
-  ['boolean', 'True / False (boolean)'],
-  ['null', 'Empty (null)'],
-  ['object', 'Group (object { })'],
-  ['array', 'List (array [ ])'],
-]
 
 // A saved doc's display name: prefer a top-level "name"/"title" string field
 // if the JSON has one, otherwise a truncated one-line snippet of the text.
@@ -71,7 +64,7 @@ export function JsonEditorView() {
   const [collapsed, setCollapsed] = useState(() => new Set())
   const [selectedPath, setSelectedPath] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [modal, setModal] = useState(null)
+  const [sheet, setSheet] = useState(null) // { path, adding } — the node being edited, or a group/list being added to
   const [panelHidden, setPanelHidden] = useState({ left: false, right: false })
   const [leftWidth, setLeftWidth] = useState(null)
   const [toastMsg, setToastMsg] = useState(null)
@@ -95,6 +88,9 @@ export function JsonEditorView() {
       setRawError(err.message)
     }
   }, [rawText])
+
+  // While searching, only the matching nodes and the groups above them are shown (all opened).
+  const search = useMemo(() => searchPaths(data, searchTerm), [data, searchTerm])
 
   const pushHistory = useCallback((text) => {
     setHistory(prev => [...prev.slice(0, histIdx + 1), text])
@@ -211,44 +207,25 @@ export function JsonEditorView() {
     e.target.value = ''
   }
 
-  function openAddModal(path, containerType) {
-    setModal({ mode: 'add', path, containerType, key: '', type: 'string', value: '' })
-  }
-  function openEditModal(path, keyLabel, curVal) {
-    const type = typeOf(curVal)
-    setModal({
-      mode: 'edit', path, key: String(keyLabel), type,
-      value: (type === 'string' || type === 'number' || type === 'boolean') ? curVal : '',
-    })
-  }
-  function closeModal() { setModal(null) }
-  function submitModal() {
-    if (!modal) return
-    const val = coerceVal(modal.type, modal.value)
-    if (modal.mode === 'add') {
-      const key = modal.containerType === 'array' ? null : modal.key.trim()
-      if (modal.containerType !== 'array' && !key) { setModal(null); return }
-      commit(addFieldAtPath(data, modal.path, key, val))
-    } else {
-      const isArrayIndex = modal.path.length > 0 && typeof modal.path[modal.path.length - 1] === 'number'
-      commit(replaceAtPath(data, modal.path, isArrayIndex ? undefined : modal.key.trim(), val))
-    }
-    setModal(null)
+  // Editing and adding go through the shared node sheet (@nexusmd/ui json-tree-ui.jsx), which checks
+  // the change with @nexusmd/core (no duplicate names, numbers must be numbers) before it is applied.
+  function openAddModal(path) { setSheet({ path, adding: true }) }
+  function openEditModal(path) { setSheet({ path, adding: false }) }
+  function closeSheet() { setSheet(null) }
+  function applySheet(next, message) {
+    commit(next)
+    showToast(message)
   }
 
   // Keyboard shortcuts — read the latest handlers via a ref so this effect
   // mounts once instead of re-subscribing (and risking stale closures) on
   // every render.
   const latestRef = useRef(null)
-  latestRef.current = { undo, redo, downloadJSON, closeModal, submitModal, modal }
+  latestRef.current = { undo, redo, downloadJSON, sheet }
   useEffect(() => {
     function onKeyDown(e) {
       const cur = latestRef.current
-      if (cur.modal) {
-        if (e.key === 'Escape') { e.preventDefault(); cur.closeModal() }
-        if (e.key === 'Enter') { e.preventDefault(); cur.submitModal() }
-        return
-      }
+      if (cur.sheet) return // the sheet handles its own keys (Escape closes it)
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); cur.undo() }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); cur.redo() }
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); cur.downloadJSON() }
@@ -386,27 +363,30 @@ export function JsonEditorView() {
           <div style={{ padding: '4px 12px', fontSize: 10.5, color: 'var(--text-subtle)', fontFamily: 'var(--mono)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {selectedPath.length ? '/ ' + selectedPath.join(' / ') : '/'}
           </div>
+          {search.active && (
+            <div role="status" style={{ padding: '4px 12px', fontSize: 11.5, color: 'var(--text-subtle)', borderBottom: '1px solid var(--border)' }}>
+              {search.count} match{search.count === 1 ? '' : 'es'}
+            </div>
+          )}
           <div style={{ flex: 1, overflowY: 'auto', padding: '6px 4px 20px' }}>
-            <JsonTreeNode
-              value={data} keyLabel="root" path={[]} searchTerm={searchTerm}
-              collapsed={collapsed} setCollapsed={setCollapsed} selectedPath={selectedPath}
-              onSelect={setSelectedPath}
-              onInlineCommit={(path, val) => commit(setValueAtPath(data, path, val))}
-              onOpenAdd={openAddModal} onOpenEdit={openEditModal}
-              onDelete={(path) => commit(deleteAtPath(data, path))}
-            />
+            {search.active && search.count === 0 ? (
+              <div style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: 12.5 }}>Nothing matches “{searchTerm.trim()}”.</div>
+            ) : (
+              <JsonTreeNode
+                value={data} keyLabel="root" path={[]} searchTerm={searchTerm} search={search}
+                collapsed={collapsed} setCollapsed={setCollapsed} selectedPath={selectedPath}
+                onSelect={setSelectedPath}
+                onInlineCommit={(path, val) => commit(setValueAtPath(data, path, val))}
+                onOpenAdd={openAddModal} onOpenEdit={openEditModal}
+                onDelete={(path) => commit(deleteAtPath(data, path))}
+              />
+            )}
           </div>
         </div>
       </div>
 
-      {modal && (
-        <JsonEditorModal
-          modal={modal}
-          onChange={patch => setModal(m => ({ ...m, ...patch }))}
-          onSubmit={submitModal}
-          onCancel={closeModal}
-        />
-      )}
+      <JsonNodeSheet overlay data={data} path={sheet?.path ?? null} startAdding={!!sheet?.adding}
+        onClose={closeSheet} onApply={applySheet}/>
 
       {showDocsModal && (
         <DocumentsModal
@@ -440,14 +420,16 @@ export function JsonEditorView() {
   )
 }
 
-function JsonTreeNode({ value, keyLabel, path, searchTerm, collapsed, setCollapsed, selectedPath, onSelect, onInlineCommit, onOpenAdd, onOpenEdit, onDelete }) {
+function JsonTreeNode({ value, keyLabel, path, searchTerm, search, collapsed, setCollapsed, selectedPath, onSelect, onInlineCommit, onOpenAdd, onOpenEdit, onDelete }) {
   const [editingInline, setEditingInline] = useState(false)
   const [inlineVal, setInlineVal] = useState('')
 
   const type = typeOf(value)
   const isContainer = type === 'object' || type === 'array'
   const pathKey = path.join('.')
-  const isCollapsed = collapsed.has(pathKey)
+  // A search hides what doesn't match and opens every group on the way to a match.
+  const hidden = search.active && !search.show.has(searchKey(path))
+  const isCollapsed = !search.active && collapsed.has(pathKey)
   const isSelected = selectedPath.join('.') === pathKey
 
   function toggle() {
@@ -478,6 +460,7 @@ function JsonTreeNode({ value, keyLabel, path, searchTerm, collapsed, setCollaps
     )
   }
 
+  if (hidden) return null
   return (
     <div>
       <div
@@ -493,7 +476,7 @@ function JsonTreeNode({ value, keyLabel, path, searchTerm, collapsed, setCollaps
 
         {keyLabel !== 'root' && (
           <>
-            <span style={{ fontWeight: 500, fontSize: 13, flexShrink: 0 }}>{renderHighlighted(String(keyLabel))}</span>
+            <span className="je-key" style={{ fontWeight: 500, fontSize: 13, flexShrink: 0 }}>{renderHighlighted(String(keyLabel))}</span>
             <span style={{ color: 'var(--text-subtle)', margin: '0 6px 0 4px', flexShrink: 0 }}>→</span>
           </>
         )}
@@ -531,12 +514,12 @@ function JsonTreeNode({ value, keyLabel, path, searchTerm, collapsed, setCollaps
         <div style={{ paddingLeft: 18, borderLeft: '1.5px solid var(--border)', marginLeft: 10 }}>
           {type === 'object'
             ? Object.entries(value).map(([k, v]) => (
-                <JsonTreeNode key={k} value={v} keyLabel={k} path={[...path, k]} searchTerm={searchTerm}
+                <JsonTreeNode key={k} value={v} keyLabel={k} path={[...path, k]} searchTerm={searchTerm} search={search}
                   collapsed={collapsed} setCollapsed={setCollapsed} selectedPath={selectedPath} onSelect={onSelect}
                   onInlineCommit={onInlineCommit} onOpenAdd={onOpenAdd} onOpenEdit={onOpenEdit} onDelete={onDelete}/>
               ))
             : value.map((v, i) => (
-                <JsonTreeNode key={i} value={v} keyLabel={i} path={[...path, i]} searchTerm={searchTerm}
+                <JsonTreeNode key={i} value={v} keyLabel={i} path={[...path, i]} searchTerm={searchTerm} search={search}
                   collapsed={collapsed} setCollapsed={setCollapsed} selectedPath={selectedPath} onSelect={onSelect}
                   onInlineCommit={onInlineCommit} onOpenAdd={onOpenAdd} onOpenEdit={onOpenEdit} onDelete={onDelete}/>
               ))}
@@ -560,72 +543,3 @@ function ValuePill({ type, value, renderText }) {
     </span>
   )
 }
-
-function JsonEditorModal({ modal, onChange, onSubmit, onCancel }) {
-  const { mode, containerType, key, type, value } = modal
-  const keyDisabled = containerType === 'array' || (mode === 'edit' && modal.path.length > 0 && typeof modal.path[modal.path.length - 1] === 'number')
-
-  return (
-    <div
-      onClick={e => { if (e.target === e.currentTarget) onCancel() }}
-      style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-    >
-      <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', padding: '1.4rem 1.5rem', width: 340, boxShadow: 'var(--shadow-pop)' }}>
-        <h3 style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 16 }}>{mode === 'add' ? 'Add field' : `Edit "${key || 'root'}"`}</h3>
-
-        <label style={modalLabelStyle}>Key</label>
-        <input
-          value={keyDisabled ? '(auto-index)' : key} disabled={keyDisabled}
-          onChange={e => onChange({ key: e.target.value })}
-          placeholder="e.g. username" style={modalInputStyle}
-        />
-
-        <label style={modalLabelStyle}>Type</label>
-        <select value={type} onChange={e => onChange({ type: e.target.value, value: '' })} style={modalInputStyle}>
-          {TYPE_OPTIONS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-        </select>
-
-        {type === 'string' && (
-          <div style={{ marginTop: 12 }}>
-            <label style={modalLabelStyle}>Value</label>
-            <input value={value} onChange={e => onChange({ value: e.target.value })} placeholder="Enter text…" style={modalInputStyle}/>
-          </div>
-        )}
-        {type === 'number' && (
-          <div style={{ marginTop: 12 }}>
-            <label style={modalLabelStyle}>Value</label>
-            <input type="number" value={value} onChange={e => onChange({ value: e.target.value })} placeholder="e.g. 42" style={modalInputStyle}/>
-          </div>
-        )}
-        {type === 'boolean' && (
-          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-            {[true, false].map(v => (
-              <button key={String(v)} onClick={() => onChange({ value: v })}
-                style={{
-                  flex: 1, padding: '9px 0', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontWeight: 500,
-                  border: `1.5px solid ${value === v ? 'var(--accent)' : 'var(--border)'}`,
-                  background: value === v ? 'var(--accent-soft)' : 'var(--surface-2)',
-                  color: value === v ? 'var(--accent)' : 'var(--text)',
-                }}>{String(v)}</button>
-            ))}
-          </div>
-        )}
-        {(type === 'null' || type === 'object' || type === 'array') && (
-          <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', borderRadius: 'var(--radius-sm)', fontSize: 12.5, color: 'var(--text-muted)' }}>
-            {type === 'null' && 'This field will be set to null — it exists but has no value.'}
-            {type === 'object' && 'Creates an empty group { }. You can add fields inside it after saving.'}
-            {type === 'array' && 'Creates an empty list [ ]. You can add items inside it after saving.'}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 8, marginTop: 18, justifyContent: 'flex-end' }}>
-          <button className="je-btn" onClick={onCancel}>Cancel</button>
-          <button className="je-btn" title="Save field" style={{ background: 'var(--accent)', color: 'var(--accent-fg)', borderColor: 'var(--accent)' }} onClick={onSubmit}>Save</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-const modalLabelStyle = { display: 'block', fontSize: 11, color: 'var(--text-subtle)', marginBottom: 5, marginTop: 13, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600 }
-const modalInputStyle = { width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 13, background: 'var(--surface)', color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }

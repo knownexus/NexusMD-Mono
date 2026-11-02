@@ -6,6 +6,7 @@ import React from 'react';
 import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { MARKDOWN_CONTENT_CSS, followPreviewLink, renderPreview, useHighlightJs, useMarkdownTextSize, useCtrlWheelTextSize, TextSizeControls } from './markdown-preview.jsx';
+import { MarkdownDiff } from '../md-extras-ui.jsx';
 export { slugifyHeading, addHeadingAnchors, followPreviewLink } from './markdown-preview.jsx';
 const { useState: useStateMD, useEffect: useEffectMD, useRef: useRefMD, useCallback: useCallbackMD } = React;
 
@@ -647,6 +648,7 @@ function MarkdownViewer() {
   const [docs, setDocs]                 = useStateMD(loadDocs);
   const [currentDocId, setCurrentDocId] = useStateMD(null);
   const [compareDocId, setCompareDocId] = useStateMD(null);   // shown beside the open document in the Compare view
+  const [compareShows, setCompareShows] = useStateMD('preview'); // the Compare pane: the other document's 'preview', or the 'diff' against it
   const [showModal, setShowModal]       = useStateMD(false);
   const [saveStatus, setSaveStatus]     = useStateMD('');
   const [learnMode, setLearnMode]           = useStateMD(() => localStorage.getItem(LEARN_MODE_KEY) === 'true');
@@ -1400,18 +1402,34 @@ function MarkdownViewer() {
                     title={currentDocId ? "Open this document, and show the current one here" : "Save the open document first"}
                     style={{ ...paneSelectStyle, cursor: currentDocId ? "pointer" : "default", opacity: currentDocId ? 1 : .5 }}
                   >⇄ Swap</button>
+                  <div role="group" aria-label="Compare shows" style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
+                    {[["preview", "Preview"], ["diff", "Differences"]].map(([v, label]) => (
+                      <button key={v} type="button" aria-pressed={compareShows === v} onClick={() => setCompareShows(v)}
+                        title={v === "diff" ? "Lines added and removed in the open document, compared with this one" : "This document's preview"}
+                        style={{ ...paneSelectStyle, cursor: "pointer",
+                          background: compareShows === v ? "var(--accent-soft)" : "var(--surface)",
+                          color: compareShows === v ? "var(--accent)" : "var(--text-muted)",
+                          borderColor: compareShows === v ? "var(--accent-border)" : "var(--border)" }}>{label}</button>
+                    ))}
+                  </div>
                 </>
               )}
             </PaneHeader>
-            <div ref={compareScrollRef} style={{ flex: 1, overflowY: "auto", padding: "28px 36px" }}>
+            <div ref={compareScrollRef} style={{ flex: 1, overflowY: "auto", padding: compareDoc && compareShows === "diff" ? "16px 20px" : "28px 36px" }}>
               {compareDoc ? (
-                <div
-                  className="md-content"
-                  ref={compareRef}
-                  data-testid="compare-preview"
-                  onClick={e => followPreviewLink(e, e.currentTarget)}
-                  style={{ maxWidth: 740, margin: "0 auto", lineHeight: 1.8, color: "var(--text)", fontSize: `${textSize}%` }}
-                />
+                <>
+                  {/* Kept in the page while the differences show, so its rendered preview survives a switch back. */}
+                  <div
+                    className="md-content"
+                    ref={compareRef}
+                    data-testid="compare-preview"
+                    onClick={e => followPreviewLink(e, e.currentTarget)}
+                    style={{ maxWidth: 740, margin: "0 auto", lineHeight: 1.8, color: "var(--text)", fontSize: `${textSize}%`, ...(compareShows === "diff" ? { display: "none" } : {}) }}
+                  />
+                  {compareShows === "diff" && (
+                    <MarkdownDiff before={compareDoc.content ?? ''} after={markdown} otherName={displayName(compareDoc)} />
+                  )}
+                </>
               ) : (
                 <p style={{ color: "var(--text-muted)", textAlign: "center", marginTop: 40 }}>
                   No other documents to compare with yet.

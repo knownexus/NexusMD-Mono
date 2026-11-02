@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, fireEvent, act } from '@testing-library/react'
+import { render, cleanup, fireEvent, act, screen, within } from '@testing-library/react'
 import React from 'react'
 import { NexusDataProvider, JsonEditorView } from '../src/index.js'
 
@@ -60,7 +60,7 @@ describe('JsonEditorView — undo/redo', () => {
     expect(textarea.value).toBe('{"greeting":"hi"}')
   })
 
-  it('undoes a field added via the modal, disabling correctly at the history boundary (StrictMode)', () => {
+  it('undoes a field added via the sheet, disabling correctly at the history boundary (StrictMode)', () => {
     const { getByTitle, getByPlaceholderText, getByText, queryByText } = render(
       <React.StrictMode>
         <NexusDataProvider value={{ storage: memStorage(), getProfileKey: k => k, pushPref: () => {} }}>
@@ -70,9 +70,9 @@ describe('JsonEditorView — undo/redo', () => {
     )
 
     fireEvent.click(getByTitle('Add field'))
-    fireEvent.change(getByPlaceholderText('e.g. username'), { target: { value: 'nickname' } })
-    fireEvent.change(getByPlaceholderText('Enter text…'), { target: { value: 'Ally' } })
-    fireEvent.click(getByTitle('Save field'))
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText('Name'), { target: { value: 'nickname' } })
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText('Value'), { target: { value: 'Ally' } })
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Add field' }))
     expect(getByText('nickname')).toBeTruthy()
 
     fireEvent.click(getByTitle('Ctrl+Z'))
@@ -100,13 +100,13 @@ describe('JsonEditorView — inline edit and delete', () => {
   })
 })
 
-describe('JsonEditorView — add/edit modal', () => {
+describe('JsonEditorView — add/edit sheet', () => {
   it('adds a new string field to the root object', () => {
     const { getByTitle, getByPlaceholderText, getByText } = renderEditor()
     fireEvent.click(getByTitle('Add field'))
-    fireEvent.change(getByPlaceholderText('e.g. username'), { target: { value: 'nickname' } })
-    fireEvent.change(getByPlaceholderText('Enter text…'), { target: { value: 'Ally' } })
-    fireEvent.click(getByTitle('Save field'))
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText('Name'), { target: { value: 'nickname' } })
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText('Value'), { target: { value: 'Ally' } })
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Add field' }))
     expect(getByText('nickname')).toBeTruthy()
     expect(getByText('Ally')).toBeTruthy()
   })

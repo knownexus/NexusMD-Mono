@@ -92,6 +92,8 @@ export { renderContent, mdToHtml } from './views/render-content.js'
 export { MarkdownViewer, displayName } from './views/MarkdownViewer.jsx'
 export { MarkdownPreview, TextSizeControls, useMarkdownTextSize, useCtrlWheelTextSize } from './views/markdown-preview.jsx'
 export { JsonEditorView } from './views/view-json-editor.jsx'
+export { JsonNodeSheet } from './json-tree-ui.jsx'
+export { MarkdownDiff } from './md-extras-ui.jsx'
 export { RegexTesterView } from './views/view-regex-tester.jsx'
 export { DocumentsView } from './views/view-documents.jsx'
 

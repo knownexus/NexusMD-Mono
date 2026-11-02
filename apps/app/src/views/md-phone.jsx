@@ -2,12 +2,12 @@
 // sits above the keyboard, autosave into the same `md_documents` store the desktop layout uses, and
 // Export. Opens on the most recently edited document.
 import React from 'react';
-import { MarkdownPreview, generateId } from '@nexusmd/ui';
+import { MarkdownPreview, MarkdownDiff, generateId } from '@nexusmd/ui';
 import { Icon } from '../icons.jsx';
 import { pickerAdapter } from '../adapters/picker.js';
 import { Sheet } from '../components.jsx';
 import { ToolFrame, DocsSheet } from './docs-frame.jsx';
-import { CHEAT, learnTarget, diffLines, diffCounts, collapseDiff } from '@nexusmd/core';
+import { CHEAT, learnTarget } from '@nexusmd/core';
 
 // The desktop layout's own setting, so learn mode is on or off in both.
 const LEARN_KEY = 'md_learn_mode';
@@ -107,7 +107,6 @@ export function MarkdownPhone({ tool, setTool, onFlash }) {
   const toggleLearn = () => setLearn(v => { const n = !v; try { localStorage.setItem(LEARN_KEY, String(n)); } catch { /* ignore */ } setHit(null); return n; });
   const insertFromCheat = (item) => { setCheat(false); setMode('edit'); setPending(FORMATS.find(x => x.title === item.format) || null); };
   React.useEffect(() => { if (pending && mode === 'edit' && ta.current) { format(pending); setPending(null); } }, [pending, mode]); // eslint-disable-line react-hooks/exhaustive-deps
-  const diff = React.useMemo(() => (mode === 'compare' && other ? diffLines(other.content || '', m.content) : undefined), [mode, other, m.content]);
   const title = current ? (current.name ?? current.autoName) : 'New document';
 
   const format = (f) => {
@@ -164,22 +163,7 @@ export function MarkdownPhone({ tool, setTool, onFlash }) {
                     {others.map(d => <option key={d.id} value={d.id}>{d.name ?? d.autoName}</option>)}
                   </select>
                 </div>
-                {diff === null && <div className="m-hint">These documents are too long to compare on a phone.</div>}
-                {diff && (() => {
-                  const c = diffCounts(diff);
-                  return (
-                    <>
-                      <div className="m-hint" style={{ marginTop: 0, marginBottom: 8 }}>
-                        {c.added === 0 && c.removed === 0 ? 'No differences.' : <><span className="m-diff-add">+{c.added} added</span> · <span className="m-diff-del">−{c.removed} removed</span> compared with {other.name ?? other.autoName}</>}
-                      </div>
-                      <div className="m-diff" role="region" aria-label="Differences">
-                        {collapseDiff(diff).map((d, i) => d.t === 'gap'
-                          ? <div key={i} className="gap">⋯ {d.v}</div>
-                          : <div key={i} className={`ln ${d.t === '+' ? 'add' : d.t === '-' ? 'del' : ''}`}><span className="sg">{d.t === '=' ? ' ' : d.t === '+' ? '+' : '−'}</span><span className="tx">{d.v || ' '}</span></div>)}
-                      </div>
-                    </>
-                  );
-                })()}
+                <MarkdownDiff before={other.content || ''} after={m.content} otherName={other.name ?? other.autoName}/>
               </>
             )}
           </div>
