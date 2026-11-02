@@ -41,6 +41,10 @@ export { ViewDbManager } from './views/ViewDbManager.jsx'
 export { ProfileProvider, useProfile, localUpsertProfiles } from './profile-context.jsx'
 export { ProfileGate } from './profile-gate.jsx'
 
+// Optional NexusMD account (settings sync): sign-in gate, settings card, and the useAccount() hook.
+export { AccountGate, useAccount, accountErrorMessage } from './account-gate.jsx'
+export { AccountCard } from './account-card.jsx'
+
 
 // Global toast notifications.
 export { toast, ToastHost, NexusMDToastBus } from './toast.jsx'

@@ -433,7 +433,8 @@ function CloudPickerModal({ open, label, files, busy, onClose, onPick }) {
 }
 
 // fileIO: { saveFile(name, text) → Promise, pickFile() → Promise<string|null> }
-function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [] }) {
+// `accountSlot`: optional node rendered with the data/sync cards (the app passes its AccountCard here).
+function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [], accountSlot = null }) {
   const { profiles, activeProfile, exportBundle, importBundle } = useProfile();
   const [mode, setMode] = useStateVS(null);     // 'export-all' | 'export-one' | 'import'
   const [pendingText, setPendingText] = useStateVS(null);
@@ -523,6 +524,7 @@ function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [
         ))}
       </div>
     </VsCard>
+    {accountSlot}
     <CloudPickerModal
       open={picker != null}
       label={picker?.provider?.label || ''}
