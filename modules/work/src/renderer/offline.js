@@ -22,14 +22,22 @@ export function makeOfflineSender({ adoHttp, githubHttp, workItemSource }) {
     if (!http) throw new Error('GitHub is not configured')
     return makeGithubClient(http)
   }
+  // The routed work-item source's method, or a plain Error: the queue keeps any TypeError as a
+  // network failure, so a missing method must not surface as one (it would never send and would
+  // block the rest of the queue).
+  const sourceMethod = name => {
+    const source = workItemSource()
+    if (typeof source?.[name] !== 'function') throw new Error(`The work item source cannot ${name}`)
+    return source[name].bind(source)
+  }
   const senders = {
     'ado-vote': ({ pr, vote, adoId }) => voteAdoPR(adoHttp, { project: pr.project, repoId: pr.repoId, prId: pr.id, reviewerId: adoId }, vote),
     'ado-comment': ({ pr, text }) => postPRThread(adoHttp, { project: pr.project, repoId: pr.repoId, prId: pr.id, content: text }),
     'github-vote': ({ pr, event }) => reviewGithubPR(gh(), ghRef(pr), event),
     'github-comment': ({ pr, text }) => postGithubPRComment(gh(), ghRef(pr), text),
     'work-state': ({ id, state, category, item }) => (category
-      ? workItemSource().moveToCategory(id, category, item)
-      : workItemSource().saveField(id, 'System.State', state)),
+      ? sourceMethod('moveToCategory')(id, category, item)
+      : sourceMethod('saveField')(id, 'System.State', state)),
   }
   return async (kind, payload) => {
     if (!senders[kind]) throw new Error(`Unknown offline action: ${kind}`)

@@ -4,6 +4,7 @@ const toast = vi.hoisted(() => vi.fn())
 vi.mock('@nexusmd/ui', async (orig) => ({ ...(await orig()), toast }))
 
 import { QUEUED_TOAST } from '@nexusmd/ui'
+import { createOfflineQueue } from '@nexusmd/core'
 import { makeOfflineSender, withQueuedVotes, withQueuedStateChanges } from './offline.js'
 
 beforeEach(() => toast.mockReset())
@@ -36,6 +37,36 @@ describe('makeOfflineSender', () => {
     expect(source.saveField).toHaveBeenCalledWith(4, 'System.State', 'Active')
     await send('work-state', { id: 4, category: 'Completed', item: { id: 4, type: 'Bug', state: 'Active' } })
     expect(source.moveToCategory).toHaveBeenCalledWith(4, 'Completed', { id: 4, type: 'Bug', state: 'Active' })
+  })
+
+  it('a work source lacking the method throws a plain Error (not a TypeError), so the queue does not keep it', async () => {
+    const send = makeOfflineSender({ adoHttp: { fetch: vi.fn() }, githubHttp: () => null, workItemSource: () => ({}) })
+    const err = await send('work-state', { id: 4, category: 'Completed', item: { id: 4 } }).catch(e => e)
+    expect(err).toBeInstanceOf(Error)
+    expect(err).not.toBeInstanceOf(TypeError)
+    expect(err.message).toMatch(/moveToCategory/)
+    const err2 = await makeOfflineSender({ adoHttp: {}, githubHttp: () => null, workItemSource: () => null })('work-state', { id: 4, state: 'Active' }).catch(e => e)
+    expect(err2).not.toBeInstanceOf(TypeError)
+    expect(err2.message).toMatch(/saveField/)
+
+    // Through the real queue: surfaced to the caller, not queued; and an already-queued one is dropped
+    // on flush (reported), so it does not block the operations behind it.
+    const store = new Map()
+    const storage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) }
+    const sent = []
+    const queue = createOfflineQueue({
+      storage, key: () => 'q', isOnline: () => true,
+      handlers: { 'work-state': p => send('work-state', p), 'ok': p => { sent.push(p) } },
+    })
+    await expect(queue.run('work-state', { id: 4, category: 'Completed', item: { id: 4 } })).rejects.toThrow(/moveToCategory/)
+    expect(queue.count()).toBe(0)
+    queue.enqueue('work-state', { id: 4, category: 'Completed', item: { id: 4 } })
+    queue.enqueue('ok', { n: 1 })
+    const r = await queue.flush()
+    expect(r.sent).toBe(1)
+    expect(r.failed).toHaveLength(1)
+    expect(sent).toEqual([{ n: 1 }])
+    expect(queue.count()).toBe(0)
   })
 
   it('rejects an unknown kind', async () => {
