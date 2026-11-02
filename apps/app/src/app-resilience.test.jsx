@@ -31,6 +31,8 @@ const seedProfile = () => {
   if (localStorage.getItem('helm.activeProfileId')) return
   localStorage.setItem('helm.profiles', JSON.stringify([{ id: 'test', name: 'Test', initials: 'TE', color: '#6c8ebf', type: 'ado', createdAt: 1 }]))
   localStorage.setItem('helm.activeProfileId', 'test')
+  // The account gate is optional: these launches are for people who chose to use the app without one.
+  localStorage.setItem('helm.account.optOut', '1')
 }
 
 async function boot({ width = 412 } = {}) {

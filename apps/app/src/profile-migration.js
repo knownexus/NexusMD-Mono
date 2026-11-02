@@ -62,7 +62,10 @@ function pruneOldMigrationKeys() {
   const toDelete = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
-    if (k && k.startsWith('helm.') && !k.startsWith('helm.p.') && !keep.has(k)) {
+    // Account state (device id, sync meta, opt-out) and encrypted secrets (incl. the account session) are
+    // flat, device-wide keys: never prune them.
+    if (k && k.startsWith('helm.') && !k.startsWith('helm.p.') && !k.startsWith('helm.account.')
+        && !k.startsWith('helm.sec.') && !keep.has(k)) {
       toDelete.push(k);
     }
   }
