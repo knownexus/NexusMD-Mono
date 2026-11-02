@@ -6,7 +6,7 @@ import { initCore, createNoOpAdapters } from '@nexusmd/core'
 import {
   Icon, CardFrame, NexusDataProvider, ToastHost,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
-  THEME_MODES, paletteFor, ProfileGate, AccountGate, useAccount,
+  THEME_MODES, paletteFor, ProfileGate, AccountGate,
 } from '@nexusmd/ui'
 import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, visibleNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
 import { DesktopSettings } from './desktop-settings.jsx'
@@ -37,6 +37,7 @@ import {
 import { host, takeWaitingNavigation } from './shell/host.js'
 import { AppUpdatesBanner } from './app-updates.jsx'
 import { account } from './account.js'
+import { useObserveForSync } from './observe-sync.js'
 
 const adapters = {
   ...createNoOpAdapters(),
@@ -148,19 +149,6 @@ function WindowControls() {
       </button>
     </div>
   );
-}
-
-// Account sync stamps the time of a local edit when it observes it, so last-writer-wins needs an
-// observe() after settings change and when the window goes away. The gate owns start()/stop().
-function useObserveForSync(tweaks) {
-  const { sync } = useAccount()
-  React.useEffect(() => { sync?.observe() }, [sync, tweaks])
-  React.useEffect(() => {
-    if (!sync) return undefined
-    const onHide = () => { sync.observe() }
-    window.addEventListener('pagehide', onHide)
-    return () => window.removeEventListener('pagehide', onHide)
-  }, [sync])
 }
 
 function App() {

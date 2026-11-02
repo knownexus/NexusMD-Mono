@@ -102,6 +102,12 @@ describe('settings file: account and desktop prefs helpers', () => {
     for (const k of ['nexusmd.account.userId', 'nexusmd.account.deviceId', 'nexusmd.account.meta', 'nexusmd.account.optOut']) expect(isExported(k)).toBe(false)
   })
 
+  it('also withholds nested account secrets but not lookalike names', async () => {
+    const from = memStorage({ 'nexusmd.sec.p.x.account.token': 'enc:t', 'nexusmd.sec.accountant': 'enc:a' })
+    const payload = await collectSettings({ storage: from, secure: memSecure(from), prefs: {} })
+    expect(payload.secrets).toEqual({ accountant: 'a' })
+  })
+
   it('round-trips desktop prefs through the extracted helpers', async () => {
     const prefs = { getCloseToTray: () => false, getZoomFactor: () => 1.2, getLoginItemEnabled: () => true, getDisabledApps: () => ['git'] }
     const d = await collectDesktopPrefs(prefs)

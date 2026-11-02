@@ -38,6 +38,13 @@ describe('desktop account wiring', () => {
     expect(arg.secure).toBeTruthy()
   })
 
+  it('deviceStore.set(null) removes the id instead of storing "null"', () => {
+    account.deviceStore.set('dev1')
+    account.deviceStore.set(null)
+    expect(localStorage.getItem('nexusmd.account.deviceId')).toBeNull()
+    expect(account.deviceStore.get()).toBeNull()
+  })
+
   it('createSync snapshots connection settings but not planner weeks', async () => {
     localStorage.setItem('nexusmd.p.abc.ado.org', 'contoso')
     localStorage.setItem('nexusmd.p.abc.planner.week.2026-W01', '{"x":1}')

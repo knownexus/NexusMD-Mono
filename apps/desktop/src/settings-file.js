@@ -18,13 +18,14 @@ export const SETTINGS_EXT        = '.nmdsettings'
 const SECRET_PREFIX = 'nexusmd.sec.'
 // The signed-in account's own session (refresh token, wrapped keys) lives in secure storage under
 // `account.session`. It belongs to this machine only: never exported, never imported.
-const ACCOUNT_SECRET_PREFIX = 'account.'
+// Same rule as the key registry's account-secret test.
+const isAccountSecret = (name) => /(?:^|\.)account\./.test(name)
 
 // Secrets (`nexusmd.sec.*`) are carried decrypted in `secrets` instead; caches and in-flight state
 // are rebuilt on their own and stale or wrong on another machine. The skip list is shared with
 // account sync and lives in @nexusmd/core.
 // `nexusmd.account.*` (device id, sync meta, bound user, opt-out) is this machine's own account state.
-export const isExported = (key) => !isSkippedKey(key) && !/^nexusmd.account./.test(key)
+export const isExported = (key) => !isSkippedKey(key) && !key.startsWith('nexusmd.account.')
 
 // SHA-256(password + salt) as hex → AES-256-GCM key material. Own salt, so a settings file
 // password can't be tried against a profile bundle's keyspace or the other way round.
@@ -110,7 +111,7 @@ export async function collectSettings({ storage, secure, prefs }) {
   for (const k of keys) {
     if (!k.startsWith(SECRET_PREFIX)) continue
     const name  = k.slice(SECRET_PREFIX.length)
-    if (name.startsWith(ACCOUNT_SECRET_PREFIX)) continue
+    if (isAccountSecret(name)) continue
     const value = await secure.get(name)
     if (value != null) secrets[name] = value
   }
@@ -133,7 +134,7 @@ export async function applySettings(payload, { storage, secure, prefs, installed
 
   let secrets = 0
   for (const [name, v] of Object.entries(payload.secrets || {})) {
-    if (typeof v !== 'string' || name.startsWith(ACCOUNT_SECRET_PREFIX)) continue
+    if (typeof v !== 'string' || isAccountSecret(name)) continue
     await secure.set(name, v)
     secrets++
   }

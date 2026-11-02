@@ -24,6 +24,7 @@ import { registry } from './shell/registry.js'
 import { host } from './shell/host.js'
 import { pickerAdapter } from './adapters/picker.js'
 import { account } from './account.js'
+import { useObserveOnSettingsChange } from './observe-sync.js'
 
 const settInputStyle = {
   width: '100%', padding: '7px 10px',
@@ -388,6 +389,7 @@ export const visibleSettingsTabs = (reg = registry) =>
 export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
   const profileApi = useProfile()
   const [tab, setTab] = React.useState('profile')
+  useObserveOnSettingsChange(tab)
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>

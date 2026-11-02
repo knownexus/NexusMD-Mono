@@ -29,7 +29,13 @@ const sessionStore = {
 
 const deviceStore = {
   get() { try { return localStorage.getItem(DEVICE_KEY) } catch { return null } },
-  set(id) { try { localStorage.setItem(DEVICE_KEY, id) } catch { /* storage unavailable */ } },
+  // set(null) clears the id (the gate does this after a confirmed account switch).
+  set(id) {
+    try {
+      if (id == null) localStorage.removeItem(DEVICE_KEY)
+      else localStorage.setItem(DEVICE_KEY, id)
+    } catch { /* storage unavailable */ }
+  },
 }
 
 // Per-device prefs owned by the main process; the sync keeps one encrypted blob of them per device.
@@ -38,13 +44,15 @@ const devicePrefs = {
   apply: (prefs) => applyDesktopPrefs(prefs, appPrefsAdapter, registry.installedApps.map(a => a.id)),
 }
 
+const keyRegistry = createKeyRegistry({ namespace: 'nexusmd' })
+
 const client = createAccountClient({ baseUrl: API_BASE, sessionStore })
 
 function createSync(containerKey, deviceId) {
   return createAccountSync({
     client,
     containerKey,
-    registry: createKeyRegistry({ namespace: 'nexusmd' }),
+    registry: keyRegistry,
     storage: localStorage,
     secure: secureStorageAdapter,
     devicePrefs,
@@ -66,7 +74,7 @@ export const account = {
   optOutKey: OPT_OUT_KEY,
   boundUserKey: USER_KEY,
   clearLocal: () => clearAccountLocalData({
-    registry: createKeyRegistry({ namespace: 'nexusmd' }),
+    registry: keyRegistry,
     storage: localStorage,
     secure: secureStorageAdapter,
     metaKey: META_KEY,
