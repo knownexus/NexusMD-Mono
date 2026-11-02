@@ -35,7 +35,9 @@ export function ListsApp() {
 
   const onChange = next => {
     setData(next)
-    try { writeLists(store(), next) } catch { toast?.('Could not save the list.', 'error') }
+    try { writeLists(store(), next) } catch { toast?.('Could not save the list.', 'error'); return }
+    // Tell the sync controller, so the edit goes out on the debounced change trigger.
+    try { document.dispatchEvent(new CustomEvent('nexusmd:data-changed', { detail: { collId: 'lists' } })) } catch {}
   }
 
   return (

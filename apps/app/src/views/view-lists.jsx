@@ -22,7 +22,12 @@ function ListsView({ device = 'phone' } = {}) {
     document.addEventListener('nexusmd:sync-applied', onApplied);
     return () => document.removeEventListener('nexusmd:sync-applied', onApplied);
   }, []);
-  const onChange = (next) => { setData(next); writeLists(listsStore(), next); };
+  const onChange = (next) => {
+    setData(next);
+    writeLists(listsStore(), next);
+    // Tell the sync controller, so the edit goes out on the debounced change trigger.
+    try { document.dispatchEvent(new CustomEvent('nexusmd:data-changed', { detail: { collId: 'lists' } })); } catch (_) {}
+  };
   return (
     <SharedListsView data={data} onChange={onChange} toast={toast} Icon={Icon} device={device}
       team={HelmData?.TEAM || []} displayName={readDisplayName()}/>

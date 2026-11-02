@@ -45,15 +45,21 @@ describe('Lists on desktop', () => {
     expect(offViews()).toContain('lists')
   })
 
-  it('adding an item writes nexusmd.lists', () => {
+  it('adding an item writes nexusmd.lists and dispatches nexusmd:data-changed for lists', () => {
     localStorage.setItem(KEY, JSON.stringify({ lists: [{ id: 'l1', name: 'Groceries', fields: [], statuses: ['Open'], items: [] }] }))
-    mountLists()
-    expect(screen.getAllByText('Groceries').length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByText('+ Add item'))
-    fireEvent.change(screen.getByRole('dialog').querySelector('input'), { target: { value: 'Milk' } })
-    fireEvent.click(screen.getByText('Save'))
+    const seen = []
+    const onChanged = e => seen.push(e.detail)
+    document.addEventListener('nexusmd:data-changed', onChanged)
+    try {
+      mountLists()
+      expect(screen.getAllByText('Groceries').length).toBeGreaterThan(0)
+      fireEvent.click(screen.getByText('+ Add item'))
+      fireEvent.change(screen.getByRole('dialog').querySelector('input'), { target: { value: 'Milk' } })
+      fireEvent.click(screen.getByText('Save'))
+    } finally { document.removeEventListener('nexusmd:data-changed', onChanged) }
     const saved = JSON.parse(localStorage.getItem(KEY))
     expect(saved.lists[0].items.map(i => i.title)).toEqual(['Milk'])
+    expect(seen).toContainEqual({ collId: 'lists' })
   })
 
   it('a pulled sync update (nexusmd:sync-applied for lists) re-renders the new data', () => {

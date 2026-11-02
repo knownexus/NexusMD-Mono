@@ -38,4 +38,20 @@ describe('Lists view sync', () => {
     expect(screen.getAllByText('After').length).toBeGreaterThan(0)
     expect(screen.queryByText('Before')).toBeNull()
   })
+
+  it('an edit writes the lists and dispatches nexusmd:data-changed for lists', () => {
+    seed([{ id: 'l1', name: 'Groceries', fields: [], statuses: ['Open'], items: [] }])
+    const seen = []
+    const onChanged = (e) => seen.push(e.detail)
+    document.addEventListener('nexusmd:data-changed', onChanged)
+    try {
+      render(<ListsView />)
+      fireEvent.click(screen.getByText('+ Add item'))
+      fireEvent.change(screen.getByRole('dialog').querySelector('input'), { target: { value: 'Milk' } })
+      fireEvent.click(screen.getByText('Save'))
+    } finally { document.removeEventListener('nexusmd:data-changed', onChanged) }
+    const saved = JSON.parse(localStorage.getItem(getProfileKey('helm.lists')))
+    expect(saved.lists[0].items.map(i => i.title)).toEqual(['Milk'])
+    expect(seen).toContainEqual({ collId: 'lists' })
+  })
 })
