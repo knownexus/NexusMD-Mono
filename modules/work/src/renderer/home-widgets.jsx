@@ -4,16 +4,19 @@ import {
   isTerminalState, newWidgetsAfterSave, readLists, getYearWeekForOffset,
 } from '@nexusmd/core'
 import {
-  WidgetHost, WidgetSheet, Sheet, Icon, storageTimerStore, useNexusData, useEffectiveNeedsMe, useProfile,
+  WidgetSheet, Sheet, Icon, WIDGET_TYPES, storageTimerStore, useNexusData, useEffectiveNeedsMe, useProfile,
   loadWeekPlanner,
 } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useWork } from './work-context.js'
 import { useOffScreens } from './work-screens.js'
+import { DashboardGrid, useDisplay } from './dashboard-grid.jsx'
 
-// The optional Home widgets at the bottom of the Dashboard: the shared host and sheet (@nexusmd/ui), as on
-// mobile's Home. The chosen widgets are the `homeWidgets` tweak; the `ctx` they read is built here from
-// what the desktop holds. Widgets whose screen is switched off or not installed are neither shown nor offered.
+// The desktop Dashboard's widget grid: DashboardView's built-in cards (`cards`) and the optional Home
+// widgets, together in one grid (dashboard-grid.jsx) where each can be moved and resized, with a layout per
+// screen (the `dashLayouts` tweak). The Home widgets and their sheet are shared with mobile (@nexusmd/ui);
+// the chosen ones are the `homeWidgets` tweak and the `ctx` they read is built here from what the desktop
+// holds. Widgets whose screen is switched off or not installed are neither shown nor offered.
 
 const DEFAULT_CRITERIA = { votes: [0], includeDrafts: false }
 const NO_TEAM = []
@@ -58,13 +61,20 @@ function currentPlanner() {
   return loadWeekPlanner(year, week)?.data || {}
 }
 
-export function HomeWidgets({ host, tweaks = {}, setTweak, team = NO_TEAM, needsMeCriteria = DEFAULT_CRITERIA }) {
+const NO_CARDS = []
+const NO_SIZES = {}
+
+export function HomeWidgets({
+  host, tweaks = {}, setTweak, team = NO_TEAM, needsMeCriteria = DEFAULT_CRITERIA,
+  cards = NO_CARDS, widgetWidths = NO_SIZES, widgetHeights = NO_SIZES, gridWidth,
+}) {
   const { data = {} } = useNexusData() || {}
   const { openItem, openPR } = useWork()
   const effectiveNeedsMe = useEffectiveNeedsMe()
   const { activeProfile } = useProfile() || {}
   const workOff = useOffScreens()
   const [sheet, setSheet] = React.useState(null)
+  const display = useDisplay(host)
 
   // Re-read what lives in storage when a sync pull lands, or the profile changes.
   const [stamp, setStamp] = React.useState(0)
@@ -100,14 +110,22 @@ export function HomeWidgets({ host, tweaks = {}, setTweak, team = NO_TEAM, needs
     // notes: the shared default (loadGlobalNotes/saveGlobalNotes), which is what the Notes app uses.
   }
 
+  const shown = widgets.filter(w => w && WIDGET_TYPES[w.type] && !offScreens.includes(WIDGET_TYPES[w.type].page))
+
+  // Until the screen is known, nothing is placed (so no layout is drawn for the wrong screen).
   return (
     <div style={{ marginTop: 16 }}>
-      <WidgetHost widgets={widgets} offScreens={offScreens} ctx={ctx} onEdit={w => setSheet({ widget: w })} />
-      <button type="button" className="btn" style={{ width: '100%', justifyContent: 'center', marginBottom: 12 }}
-        onClick={() => setSheet({ widget: null })}>
-        <Icon name="plus" size={13} /> Add widget
-      </button>
-      <WidgetSheet open={!!sheet} widget={sheet?.widget || null} offScreens={offScreens} Sheet={OverlaySheet}
+      {display && (
+        <DashboardGrid cards={cards} widgets={shown} widgetTypes={WIDGET_TYPES} ctx={ctx} onEdit={w => setSheet({ widget: w })}
+          display={display} layouts={tweaks.dashLayouts || {}} onLayoutsChange={next => setTweak?.('dashLayouts', next)}
+          widgetWidths={widgetWidths} widgetHeights={widgetHeights} width={gridWidth}
+          footer={(
+            <button type="button" className="btn sm" onClick={() => setSheet({ widget: null })}>
+              <Icon name="plus" size={13} /> Add widget
+            </button>
+          )} />
+      )}
+      <WidgetSheet open={!!sheet} widget={sheet?.widget || null} offScreens={offScreens} Sheet={OverlaySheet} showWidth={false}
         onClose={() => setSheet(null)}
         onSave={w => { save(newWidgetsAfterSave(widgets, w)); setSheet(null) }}
         onRemove={w => { save(widgets.filter(x => x.id !== w.id)); setSheet(null) }} />

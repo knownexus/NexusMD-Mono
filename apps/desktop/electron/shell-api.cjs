@@ -12,6 +12,8 @@
 // is released before any app built after it (app-release.mjs refuses until then).
 //
 // 2: the shared markdown preview (MarkdownPreview, text size) from @nexusmd/ui, which Editor 1.0.3+ uses.
-const SHELL_API = 2;
+// 3: host.display (the screen the window is on) and, from @nexusmd/ui, DashboardView's renderWidgets and
+//    home-widgets' WidgetBody, which the Work app's Dashboard grid uses.
+const SHELL_API = 3;
 
 module.exports = { SHELL_API };

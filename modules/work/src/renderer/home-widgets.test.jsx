@@ -9,8 +9,8 @@ vi.mock('@nexusmd/ui', async importOriginal => {
   return {
     ...ui,
     useProfile: () => profile,
-    // The real host, recording the ctx it was given.
-    WidgetHost: props => { hostCtx.push(props.ctx); return ui.WidgetHost(props) },
+    // The real widget, recording the ctx it was given.
+    WidgetBody: props => { hostCtx.push(props.ctx); return ui.WidgetBody(props) },
   }
 })
 vi.mock('@nexusmd/shell-sdk', async importOriginal => ({

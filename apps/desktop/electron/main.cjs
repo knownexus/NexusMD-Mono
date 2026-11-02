@@ -3,7 +3,7 @@
 
 const log = require('electron-log');
 const path = require('path');
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeTheme, net, shell } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeTheme, net, screen, shell } = require('electron');
 const { pinUserData } = require('./user-data.cjs');
 
 // Must run before anything reads app.getPath('userData') (logs, prefs, stores).
@@ -87,6 +87,7 @@ const trayIpc        = require('./ipc/tray-ipc.cjs');
 const logsIpc        = require('./ipc/logs.cjs');
 const oauthIpc       = require('./ipc/oauth.cjs');
 const loginItemIpc   = require('./ipc/login-item.cjs');
+const displayIpc     = require('./ipc/display.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
 const { buildLinkMenuTemplate } = require('./link-window/link-context-menu.cjs');
@@ -124,6 +125,7 @@ let appModules = null;
 let appUpdater = null;
 let tray = null;
 let forceQuit = false;
+let displayWatch = null;
 
 // ---------------------------------------------------------------------------
 // Window factory
@@ -462,6 +464,9 @@ app.whenReady().then(async () => {
   trayIpc.register(ipcMain, () => mainWindow, () => tray);
   logsIpc.register(ipcMain);
   oauthIpc.register(ipcMain);
+  // Which screen the window is on (the Dashboard keeps a layout per screen).
+  displayWatch = displayIpc.register(ipcMain, { screen, getWindow: () => mainWindow });
+  displayWatch.watch(mainWindow);
   // Apps split into their own package (Git Workspace, ...): each registers its own IPC and windows.
   appModules = appRegistry.registerModules({
     ipcMain, BrowserWindow, dialog,
@@ -487,6 +492,7 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = createMainWindow();
+      displayWatch?.watch(mainWindow);
     } else {
       mainWindow.show();
       mainWindow.focus();

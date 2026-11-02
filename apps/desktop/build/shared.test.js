@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SHARED_SPECIFIERS, sharedName, isSharedImport, importMap, sharedEntrySource, editorKitSpecifiers } from './shared.mjs'
+import { SHARED_SPECIFIERS, sharedName, isSharedImport, importMap, sharedEntrySource, editorKitSpecifiers, sharedFromThirdParty, sharedForThirdParty } from './shared.mjs'
 
 describe('which libraries are shared', () => {
   it('includes React, the workspace libraries and editor-kit\'s code files', () => {
@@ -70,5 +70,24 @@ describe('sharedEntrySource', () => {
     expect(sharedEntrySource('react/jsx-runtime')).toMatch(/\bjsx\b.*\bjsxs\b|\bjsxs\b.*\bjsx\b/)
     expect(sharedEntrySource('react-dom/client')).toContain('createRoot')
     expect(sharedEntrySource('react-dom')).toContain('createPortal')
+  })
+})
+
+describe('a third-party CommonJS library inside an app', () => {
+  const lib = 'C:/repos/x/node_modules/react-grid-layout/build/ReactGridLayout.js'
+  const winLib = String.raw`C:\repos\x\node_modules\react-draggable\build\cjs.js`
+
+  it('gets the shared React through an ES module, not a require the app could not make', () => {
+    expect(sharedFromThirdParty('react', lib)).toBe(true)
+    expect(sharedFromThirdParty('react-dom', winLib)).toBe(true)
+    // The app's own code, and libraries of the workspace, keep the import map's module.
+    expect(sharedFromThirdParty('react', 'C:/repos/x/modules/work/src/renderer/dashboard-grid.jsx')).toBe(false)
+    expect(sharedFromThirdParty('@nexusmd/ui', lib)).toBe(false)
+
+    const plugin = sharedForThirdParty()
+    const id = plugin.resolveId('react', lib)
+    expect(plugin.resolveId('react', 'C:/repos/x/modules/work/src/a.jsx')).toBeNull()
+    expect(plugin.load(id)).toBe("export * from 'react'\nexport { default } from 'react'\n")
+    expect(plugin.load('other')).toBeNull()
   })
 })

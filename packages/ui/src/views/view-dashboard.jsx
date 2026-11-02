@@ -251,7 +251,7 @@ function TeamWorkloadCard({ team }) {
   );
 }
 
-export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrder, quickLinks, density, team: teamProp, acknowledgedSet, needsMeCriteria, setPlannerData, widgetWidths = {}, setWidgetWidths, widgetHeights = {}, setWidgetHeights, offViews = [] }) {
+export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrder, quickLinks, density, team: teamProp, acknowledgedSet, needsMeCriteria, setPlannerData, widgetWidths = {}, setWidgetWidths, widgetHeights = {}, setWidgetHeights, offViews = [], renderWidgets }) {
   const { data: NexusMDData, api: NexusMDApi } = useNexusData();
   const effectiveNeedsMe = useEffectiveNeedsMe();
   const { PRS, BUILDS, WORK_ITEMS, ACTIVITY, SPRINT, RESOLVED_WI, AVG_RESOLUTION_DAYS } = NexusMDData;
@@ -437,7 +437,9 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
         {!isOff('team') && <TeamWorkloadCard team={TEAM} />}
       </div>
 
-      {/* Single ordered grid — span:2 widgets get full width, span:1 auto-place */}
+      {/* renderWidgets (desktop): the cards go to the caller's own grid, which places and sizes them itself. */}
+      {renderWidgets ? renderWidgets(widgetOrder.filter(id => widgets[id]).map(id => ({ id, ...widgets[id], onHide: hideWidget }))) : (
+      /* Single ordered grid — span:2 widgets get full width, span:1 auto-place */
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
         {widgetOrder.filter(id => widgets[id]).map(id => {
           const defaultWide = widgets[id].span === 2;
@@ -467,6 +469,7 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
           );
         })}
       </div>
+      )}
     </div>
   );
 }

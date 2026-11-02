@@ -53,6 +53,16 @@ describe('WidgetSheet', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ type: 'builds', config: expect.objectContaining({ count: 7 }) }))
   })
 
+  it('asks for a width unless the host sizes widgets itself (showWidth=false)', () => {
+    const { unmount } = render(<WidgetSheet open widget={null} onClose={() => {}} onSave={() => {}} onRemove={() => {}}/>)
+    fireEvent.click(screen.getByText('Builds'))
+    expect(screen.getByText('Width')).toBeTruthy()
+    unmount()
+    render(<WidgetSheet open widget={null} showWidth={false} onClose={() => {}} onSave={() => {}} onRemove={() => {}}/>)
+    fireEvent.click(screen.getByText('Builds'))
+    expect(screen.queryByText('Width')).toBeNull()
+  })
+
   it('offers repos from listRepoChoices and uses the Sheet it is given', async () => {
     const Sheet = ({ open, title, children }) => open ? <div data-testid="my-sheet"><h2>{title}</h2>{children}</div> : null
     const listRepoChoices = vi.fn(() => Promise.resolve({ repos: [{ id: 'r1', name: 'Repo One' }] }))

@@ -8,7 +8,8 @@ let profile = { activeProfile: { type: 'manual' } }
 vi.mock('@nexusmd/ui', async importOriginal => ({
   ...(await importOriginal()),
   useProfile: () => profile,
-  DashboardView: p => { seen.dashboard = p; return <div>dashboard view</div> },
+  // Hands its grid one card, as the real one hands over its built-in cards.
+  DashboardView: p => { seen.dashboard = p; return <div>dashboard view{p.renderWidgets?.([{ id: 'review', title: 'Needs your review', span: 1, render: () => <div>review card</div> }])}</div> },
   WorkItemsView: p => { seen.work = p; return <div>work items view</div> },
   PRView: p => { seen.prs = p; return <div>prs view</div> },
   BuildsView: p => { seen.builds = p; return <div>builds view</div> },
@@ -86,9 +87,12 @@ describe('Dashboard', () => {
     expect(Object.entries(localStorage).some(([k, v]) => k.includes('nexusmd.dash.widgetWidths') && v === '{"sprint":2}')).toBe(true)
   })
 
-  it('has the Home widgets under it, kept in the homeWidgets tweak', () => {
+  it('puts its cards and the Home widgets (the homeWidgets tweak) in one grid', () => {
     const setTweak = vi.fn()
     mount(<DashboardApp host={hostWith().host} tweaks={{ ...tweaks, homeWidgets: [{ id: 'w1', type: 'mywork', config: { count: 5 } }] }} setTweak={setTweak} />)
+    const cells = screen.getAllByTestId('dash-cell').map(c => c.dataset.key)
+    expect(cells).toEqual(['card:review', 'w:w1'])
+    expect(screen.getByText('review card')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Edit Assigned to me widget' }))
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
     expect(setTweak).toHaveBeenCalledWith('homeWidgets', [])

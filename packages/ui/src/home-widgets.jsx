@@ -177,6 +177,23 @@ export const WIDGET_TYPES = Object.fromEntries(
 const WIDTHS = [['half', 'Half width'], ['full', 'Full width']];
 const widthOf = (w) => w.config?.width || (WIDGET_TYPES[w.type]?.half ? 'half' : 'full');
 
+// One widget as it shows on Home, with its ⋯ (settings) button: what WidgetHost puts in each cell, and what
+// the desktop Dashboard's own grid puts in its cells. Its parent must be positioned (the button is absolute).
+export function WidgetBody({ widget: w, ctx = {}, onEdit }) {
+  const t = WIDGET_TYPES[w.type];
+  if (!t) return null;
+  const c = { ...t.defaults, ...(w.config || {}) };
+  return (
+    <>
+      {t.render(c, ctx || {})}
+      <button type="button" className="m-iconbtn" aria-label={`Edit ${t.title ? t.title(c) : t.label} widget`}
+        style={{ position: 'absolute', top: 2, right: 2, width: 30, height: 30, opacity: 0.7 }} onClick={() => onEdit?.(w)}>
+        <Icon name="more" size={15}/>
+      </button>
+    </>
+  );
+}
+
 // ── Host: the widgets, in a grid so half-width ones sit side by side ─────────────────────────────────────────
 // Widgets of an unknown type, or whose page is in offScreens, are skipped.
 export function WidgetHost({ widgets = [], offScreens = [], ctx = {}, onEdit }) {
@@ -185,19 +202,11 @@ export function WidgetHost({ widgets = [], offScreens = [], ctx = {}, onEdit }) 
   const x = ctx || {};
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', columnGap: 12 }}>
-      {shown.map(w => {
-        const t = WIDGET_TYPES[w.type];
-        const c = { ...t.defaults, ...(w.config || {}) };
-        return (
-          <div key={w.id} style={{ gridColumn: widthOf(w) === 'half' ? 'span 1' : 'span 2', minWidth: 0, position: 'relative' }}>
-            {t.render(c, x)}
-            <button type="button" className="m-iconbtn" aria-label={`Edit ${t.title ? t.title(c) : t.label} widget`}
-              style={{ position: 'absolute', top: 2, right: 2, width: 30, height: 30, opacity: 0.7 }} onClick={() => onEdit?.(w)}>
-              <Icon name="more" size={15}/>
-            </button>
-          </div>
-        );
-      })}
+      {shown.map(w => (
+        <div key={w.id} style={{ gridColumn: widthOf(w) === 'half' ? 'span 1' : 'span 2', minWidth: 0, position: 'relative' }}>
+          <WidgetBody widget={w} ctx={x} onEdit={onEdit}/>
+        </div>
+      ))}
     </div>
   );
 }
@@ -225,7 +234,8 @@ function RepoPicker({ value, onPick, listRepoChoices }) {
 // One sheet for both: pick a type (new), set it up, Add / Save. Editing also offers Remove.
 // `Sheet` defaults to the shared bottom sheet; `listRepoChoices()` → Promise<{ repos: [{ id, name, project? }] }>
 // feeds the Repo widget's picker.
-export function WidgetSheet({ open, widget, offScreens = [], onClose, onSave, onRemove, Sheet = DefaultSheet, listRepoChoices }) {
+// showWidth=false leaves out the half/full Width choice, for a host that sizes widgets itself (desktop).
+export function WidgetSheet({ open, widget, offScreens = [], onClose, onSave, onRemove, Sheet = DefaultSheet, listRepoChoices, showWidth = true }) {
   const editing = !!widget;
   const [type, setType] = useState(null);
   const [config, setConfig] = useState({});
@@ -268,11 +278,13 @@ export function WidgetSheet({ open, widget, offScreens = [], onClose, onSave, on
                     onChange={e => set({ [f.key]: Math.min(f.max, Math.max(f.min, Number(e.target.value) || f.min)) })}/>}
             </label>
           ))}
-          <label className="m-fld"><span>Width</span>
-            <select style={inputStyle} value={config.width || (t.half ? 'half' : 'full')} onChange={e => set({ width: e.target.value })}>
-              {WIDTHS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          </label>
+          {showWidth && (
+            <label className="m-fld"><span>Width</span>
+              <select style={inputStyle} value={config.width || (t.half ? 'half' : 'full')} onChange={e => set({ width: e.target.value })}>
+                {WIDTHS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </label>
+          )}
           <div style={{ display: 'flex', gap: 8 }}>
             {editing && <button type="button" className="btn m-btn-lg" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => onRemove(widget)}>Remove</button>}
             <button type="button" className="btn primary m-btn-lg" style={{ flex: 1 }} disabled={!ready}

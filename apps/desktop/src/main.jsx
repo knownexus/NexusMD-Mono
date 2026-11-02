@@ -70,6 +70,8 @@ const DEFAULT_TWEAKS = {
   widgetOrder: DASH_WIDGET_ORDER,
   // The optional Home widgets under the Dashboard ({ id, type, config }), none until added; as on mobile.
   homeWidgets: [],
+  // Where each Dashboard widget sits, per screen resolution: { "3840x1600": { cols, items } } (modules/work dashboard-layout.js).
+  dashLayouts: {},
   navOrder: DEFAULT_NAV_ORDER,
   navHidden: [],
   // Where each screen sits in the sidebar ({ [id]: 'main' | 'more' | 'footer' }); unplaced screens stay in the main list.
@@ -377,7 +379,7 @@ function App() {
         {registry.isInstalled('work') && (
           <TweakSection title="Dashboard">
             <TweakButton label="Reset widget order"
-              onClick={() => setTweak('widgetOrder', DASH_WIDGET_ORDER)}/>
+              onClick={() => { setTweak('widgetOrder', DASH_WIDGET_ORDER); setTweak('dashLayouts', {}) }}/>
           </TweakSection>
         )}
       </TweaksPanel>
