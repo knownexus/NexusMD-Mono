@@ -124,14 +124,17 @@ function AuthScreen({ client, needsSetup, notice, onAuthed, onOptOut }) {
 }
 
 // Pick a saved device or register this one, then restore (pull) or upload (seed) its settings.
-function DeviceScreen({ account, auth, onDone }) {
+// `onDeviceStored` runs the moment the device id is stored (the gate binds the install to the user
+// there, so a failed restore never leaves an unbound install); `onCancel` signs out from the upload
+// screen without uploading anything.
+function DeviceScreen({ account, auth, notice, onDeviceStored, onCancel, onDone }) {
   const { client, deviceStore, createSync, platform, deviceNameDefault } = account;
   const [devices, setDevices] = useState(null);
   const [choice, setChoice] = useState('new');
   const [name, setName] = useState(() => deviceNameDefault());
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [offer, setOffer] = useState(null); // sync awaiting the upload/skip decision
+  const [error, setError] = useState(notice || '');
+  const [offer, setOffer] = useState(null); // sync awaiting the upload/cancel decision
   const created = React.useRef(null); // device created by a failed earlier attempt
 
   useEffect(() => {
@@ -164,6 +167,7 @@ function DeviceScreen({ account, auth, onDone }) {
         id = created.current;
       }
       deviceStore.set(id);
+      onDeviceStored();
       const sync = createSync(auth.containerKey, id);
       const empty = ((await client.getChanges(0, 1)).items || []).length === 0;
       const hasLocal = (await sync.snapshot()).size > 0;
@@ -176,15 +180,20 @@ function DeviceScreen({ account, auth, onDone }) {
   };
 
   if (offer) {
+    // Once sync runs it uploads every local setting, so there is no "not now": continue, or sign out.
+    const cancel = async () => {
+      setBusy(true); setError('');
+      try { await onCancel(); } catch (e) { setError(accountErrorMessage(e)); setBusy(false); }
+    };
     return (
       <Shell>
-        <h2>Upload this device's settings?</h2>
-        <p>Your account is empty. Upload the settings on this device so your other devices can use them.</p>
+        <h2>Upload this device's settings</h2>
+        <p>Your account is empty. This device's settings will be uploaded to your account, including saved
+          connections and sign-in tokens, so your other devices can use them.</p>
+        <p>Cancel signs you out; nothing is uploaded.</p>
         {error && <p className="profile-setup__error" role="alert">{error}</p>}
-        <button className="profile-setup__btn" disabled={busy} onClick={() => run(() => offer.seed())}>
-          Upload this device's settings
-        </button>
-        <button className="profile-setup__type" disabled={busy} onClick={() => run(() => offer.pull())}>Not now</button>
+        <button className="profile-setup__btn" disabled={busy} onClick={() => run(() => offer.seed())}>Continue</button>
+        <button className="profile-setup__type" disabled={busy} onClick={cancel}>Cancel (sign out)</button>
       </Shell>
     );
   }
@@ -216,6 +225,7 @@ function DeviceScreen({ account, auth, onDone }) {
 }
 
 // Warn that the previous account's settings on this device will be removed before another account signs in.
+// Without `onContinue` (the shell cannot clear local data) the screen only refuses: never sync a foreign session.
 function SwitchScreen({ username, onContinue, onCancel }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -223,6 +233,16 @@ function SwitchScreen({ username, onContinue, onCancel }) {
     setBusy(true); setError('');
     try { await onContinue(); } catch (e) { setError(accountErrorMessage(e)); setBusy(false); }
   };
+  if (!onContinue) {
+    return (
+      <Shell>
+        <h2>Different account</h2>
+        <p>This device has settings from another account, and they cannot be removed here, so {username} cannot
+          sign in on this device. Sign out, then sign in with the account this device belongs to.</p>
+        <button className="profile-setup__btn" onClick={onCancel}>Sign out</button>
+      </Shell>
+    );
+  }
   return (
     <Shell>
       <h2>Different account</h2>
@@ -246,7 +266,11 @@ function SwitchScreen({ username, onContinue, onCancel }) {
  *   deviceNameDefault: () => string, optOutKey: string },
  *   reloadOnApplied?: boolean, children: React.ReactNode }} props
  *   When a different user signs in than `boundUserKey` records, the gate warns, then calls `clearLocal()`
- *   and `deviceStore.set(null)` before the device picker; both props absent keeps the old behaviour.
+ *   and `deviceStore.set(null)` before the device picker. With `boundUserKey` but no `clearLocal` the gate
+ *   fails closed: a different user is refused (sign out only) and never synced. Both absent keeps the old
+ *   behaviour. The user is bound the moment the device id is stored.
+ *   A sync error 'not-found' (this device was removed from the account) stops sync, clears the device id
+ *   and shows the device picker.
  *   `reloadOnApplied` (default true) reloads the page when a background pull changed local data.
  */
 export function AccountGate({ account, reloadOnApplied = true, children }) {
@@ -259,8 +283,12 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
   const [notice, setNotice] = useState('');
   const [authed, setAuthed] = useState(null);
   const [expiredUser, setExpiredUser] = useState(null); // userId whose session expired
+  const [deviceNotice, setDeviceNotice] = useState('');
   const sessionRef = React.useRef(null);
   sessionRef.current = session;
+  const ckRef = React.useRef(null);
+  ckRef.current = ck;
+  const prevBound = React.useRef(undefined); // the bound user before this device pick (undefined: not bound yet)
 
   const showAuth = useCallback(async (msg = '') => {
     setNotice(msg);
@@ -286,9 +314,10 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
           if (!alive) return;
           let bound = null;
           try { bound = boundUserKey ? localStorage.getItem(boundUserKey) : null; } catch { /* storage unavailable */ }
-          if (bound && clearLocal && bound !== s.userId) {
+          if (bound && bound !== s.userId) {
             // The stored session belongs to a different user than this install's data (the app was
             // restarted on the switch warning): never sync until the data is cleared or sign-in is cancelled.
+            // Without clearLocal the warning can only refuse (fail closed).
             setAuthed({ session: s, containerKey: key }); setPhase('confirm');
             return;
           }
@@ -316,6 +345,14 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
         setExpiredUser(sessionRef.current ? sessionRef.current.userId : null);
         setSession(null); setCk(null);
         showAuth(accountErrorMessage(e));
+      } else if (e && e.code === 'not-found') {
+        // This device was removed from the account: its prefs are gone, so pick a device again.
+        sync.stop();
+        deviceStore.set(null);
+        setAuthed({ session: sessionRef.current, containerKey: ckRef.current });
+        setDeviceNotice('This device was removed from your account. Choose which device this is.');
+        setSession(null); setCk(null);
+        setPhase('device');
       }
     })];
     if (reloadOnApplied) offs.push(sync.onApplied(() => window.location.reload()));
@@ -346,7 +383,8 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
       return;
     }
     setAuthed(r);
-    setPhase(foreign && clearLocal ? 'confirm' : 'device');
+    setDeviceNotice('');
+    setPhase(foreign ? 'confirm' : 'device');
   };
 
   const cancelSwitch = async () => {
@@ -355,7 +393,25 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
   };
 
   const bindUser = () => {
-    try { if (boundUserKey && authed) localStorage.setItem(boundUserKey, authed.session.userId); } catch { /* storage unavailable */ }
+    try {
+      if (!boundUserKey || !authed) return;
+      if (prevBound.current === undefined) prevBound.current = localStorage.getItem(boundUserKey);
+      localStorage.setItem(boundUserKey, authed.session.userId);
+    } catch { /* storage unavailable */ }
+  };
+
+  // Cancel on the upload screen: nothing was uploaded, so the install goes back to how it was.
+  const cancelUpload = async () => {
+    deviceStore.set(null);
+    try {
+      if (boundUserKey && prevBound.current !== undefined) {
+        if (prevBound.current == null) localStorage.removeItem(boundUserKey);
+        else localStorage.setItem(boundUserKey, prevBound.current);
+      }
+    } catch { /* storage unavailable */ }
+    prevBound.current = undefined;
+    try { await client.logout(); } catch { /* local session is cleared regardless */ }
+    await showAuth();
   };
 
   const value = useMemo(() => ({ sync, session, signOut }), [sync, session, signOut]);
@@ -363,16 +419,19 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
   if (phase === 'loading') return null;
   if (phase === 'ready') return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
   if (phase === 'device') {
-    return <DeviceScreen account={account} auth={authed} onDone={() => { bindUser(); setPhase('restoring'); window.location.reload(); }} />;
+    return (
+      <DeviceScreen account={account} auth={authed} notice={deviceNotice} onDeviceStored={bindUser} onCancel={cancelUpload}
+        onDone={() => { setPhase('restoring'); window.location.reload(); }} />
+    );
   }
   if (phase === 'confirm') {
     return (
-      <SwitchScreen username={authed.session.username} onCancel={cancelSwitch} onContinue={async () => {
+      <SwitchScreen username={authed.session.username} onCancel={cancelSwitch} onContinue={clearLocal ? async () => {
         await clearLocal();
         deviceStore.set(null);
         try { localStorage.removeItem(boundUserKey); } catch { /* storage unavailable */ }
         setPhase('device');
-      }} />
+      } : undefined} />
     );
   }
   if (phase === 'restoring') return <Shell><p>Restoring your settings…</p></Shell>;

@@ -35,19 +35,26 @@ which the desktop and Android apps use.
      and remove them from this device?" Continue removes this install's synced settings and secrets (the items
      listed as synced below) before the new account's settings are restored. Cancel signs out and changes nothing.
      Data that milestone 1 does not sync (planner weeks and notes, calendar events, lists, time log) is not
-     removed, so it stays on the device and is visible to the next account.
+     removed, so it stays on the device and is visible to the next account. The install is tied to an account as
+     soon as a device is chosen, even if the first download then fails.
    - The same account again. Signing in as the same user never removes local data. If your session simply expired,
      signing back in goes straight into the app and skips the device picker. After you log out yourself, signing
      in again shows the device picker (step 2) and restores as usual.
 2. Device picker. After signing in you choose which device this is: one of the devices already on your account, or
    "This is a new device" with a name (for example "Work laptop"). Choosing an existing device restores that
    device's own preferences.
-3. Restore or upload. If the account already holds your settings, they are downloaded and the app reloads. If the
-   account is empty and this device has local settings, you are offered "Upload this device's settings", which
-   becomes the starting point for your other devices.
+3. Restore or upload. If the account already holds your settings, they are downloaded and the app reloads. On a
+   new device the first profile becomes the active one, so its restored connections are used straight away. If the
+   account is empty and this device has local settings, the app tells you that this device's settings (including
+   saved connections and sign-in tokens) will be uploaded to your account and become the starting point for your
+   other devices. Continue uploads them; Cancel signs you out and nothing is uploaded. There is no way to sign in
+   without uploading: once sync runs it uploads this device's settings.
 4. Account card. In Settings (the "Data & sync" tab on desktop, the settings screen on Android) the Account card
    shows your sign-in, the time of the last sync, "Sync now", your devices (rename, remove), change password and
-   log out. Administrators can also create invites and disable or enable users.
+   log out. Administrators can also create invites and disable or enable users. The device you are using cannot be
+   removed, and removing another device asks first. If a removed device is still in use, its next sync still
+   uploads its account settings, then it stops syncing and shows the device picker so you can choose which device
+   it is again.
 
 Sync then runs in the background and when the app is shown again. If you are offline the app keeps working with
 what it has and syncs later. If your session has expired you see the gate again, and nothing local is wiped.

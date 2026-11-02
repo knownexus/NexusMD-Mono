@@ -103,18 +103,112 @@ describe('AccountGate', () => {
     expect(a.deviceStore.set).toHaveBeenCalledWith('dnew');
   });
 
-  it('offers to upload local settings to an empty account and seeds', async () => {
-    const a = mkAccount(
-      { listDevices: vi.fn(async () => []), getChanges: vi.fn(async () => ({ items: [], cursor: 0, hasMore: false })) },
-      { snapshot: vi.fn(async () => new Map([['a', {}]])) },
-    );
-    mount(a);
+  describe('an empty account and a device with local settings', () => {
+    const emptyAccount = () => {
+      const a = mkAccount(
+        { listDevices: vi.fn(async () => []), getChanges: vi.fn(async () => ({ items: [], cursor: 0, hasMore: false })) },
+        { snapshot: vi.fn(async () => new Map([['a', {}]])) },
+      );
+      a.boundUserKey = 'test.bound';
+      a.clearLocal = vi.fn(async () => {});
+      return a;
+    };
+
+    it('says the settings will be uploaded, with no "Not now"; Continue seeds', async () => {
+      const a = emptyAccount();
+      mount(a);
+      await signIn();
+      fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+      expect(await screen.findByText(/settings will be uploaded to your account/)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Not now' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await waitFor(() => expect(window.location.reload).toHaveBeenCalled());
+      expect(sync.seed).toHaveBeenCalled();
+      expect(sync.pull).not.toHaveBeenCalled();
+    });
+
+    it('Cancel signs out and uploads nothing', async () => {
+      const a = emptyAccount();
+      mount(a);
+      await signIn();
+      fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+      fireEvent.click(await screen.findByRole('button', { name: /Cancel/ }));
+      expect(await screen.findByLabelText('Username')).toBeTruthy();
+      expect(a.client.logout).toHaveBeenCalled();
+      expect(sync.seed).not.toHaveBeenCalled();
+      expect(sync.pull).not.toHaveBeenCalled();
+      expect(sync.start).not.toHaveBeenCalled();
+      expect(deviceId).toBeNull();
+      expect(localStorage.getItem('test.bound')).toBeNull(); // nothing of this account is on the device
+      expect(window.location.reload).not.toHaveBeenCalled();
+    });
+  });
+
+  it('a failed restore after the device pick still binds the install to the user', async () => {
+    localStorage.setItem('keep', '1');
+    const a = mkAccount({}, { pull: vi.fn(async () => ({ error: err('offline') })) });
+    a.boundUserKey = 'test.bound';
+    a.clearLocal = vi.fn(async () => {});
+    const first = mount(a);
     await signIn();
-    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
-    fireEvent.click(await screen.findByRole('button', { name: "Upload this device's settings" }));
+    fireEvent.click(await screen.findByLabelText(/Laptop/));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText(/Cannot reach the server/)).toBeTruthy();
+    expect(deviceId).toBe('d1');
+    expect(localStorage.getItem('test.bound')).toBe('u1');
+    first.unmount();
+    // later, another user signs in on this install: the switch warning appears
+    a.client.login = vi.fn(async () => ({ session: { ...SESSION, userId: 'u2', username: 'bob' }, containerKey: CK }));
+    mount(a);
+    await signIn('bob', 'pw');
+    expect(await screen.findByText(/settings from another account/)).toBeTruthy();
+  });
+
+  describe('boundUserKey without clearLocal fails closed', () => {
+    it('a different user at sign-in is refused, not synced', async () => {
+      localStorage.setItem('test.bound', 'someone-else');
+      const a = mkAccount();
+      a.boundUserKey = 'test.bound';
+      mount(a);
+      await signIn();
+      expect(await screen.findByText(/settings from another account/)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+      expect(screen.queryByLabelText('This is a new device')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+      expect(await screen.findByLabelText('Username')).toBeTruthy();
+      expect(a.client.logout).toHaveBeenCalled();
+      expect(a.createSync).not.toHaveBeenCalled();
+      expect(localStorage.getItem('test.bound')).toBe('someone-else');
+    });
+
+    it('a different user in the stored session at boot is refused, not synced', async () => {
+      deviceId = 'olddev';
+      localStorage.setItem('test.bound', 'uA');
+      const a = mkAccount({ getSession: vi.fn(async () => SESSION) });
+      a.boundUserKey = 'test.bound';
+      mount(a);
+      expect(await screen.findByText(/settings from another account/)).toBeTruthy();
+      expect(screen.queryByText('shell')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+      expect(a.createSync).not.toHaveBeenCalled();
+    });
+  });
+
+  it('a device removed from the account stops sync, forgets the device id and shows the picker', async () => {
+    deviceId = 'd9';
+    const a = mkAccount({ getSession: vi.fn(async () => SESSION) });
+    mount(a);
+    await screen.findByText('shell');
+    errorCb(err('not-found'));
+    expect(await screen.findByText(/removed from your account/)).toBeTruthy();
+    expect(screen.queryByText('shell')).toBeNull();
+    expect(sync.stop).toHaveBeenCalled();
+    expect(a.deviceStore.set).toHaveBeenCalledWith(null);
+    fireEvent.click(await screen.findByLabelText(/Laptop/));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     await waitFor(() => expect(window.location.reload).toHaveBeenCalled());
-    expect(sync.seed).toHaveBeenCalled();
-    expect(sync.pull).not.toHaveBeenCalled();
+    expect(a.deviceStore.set).toHaveBeenLastCalledWith('d1');
+    expect(a.createSync).toHaveBeenLastCalledWith(expect.anything(), 'd1');
   });
 
   it('stored session and device render children without a network call', async () => {

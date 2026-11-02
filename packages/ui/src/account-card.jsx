@@ -57,6 +57,7 @@ function PasswordForm({ client }) {
 function Devices({ client, currentId }) {
   const [devices, setDevices] = useState(null);
   const [editing, setEditing] = useState(null); // { id, name }
+  const [removing, setRemoving] = useState(null); // id awaiting confirmation; the current device has no Remove
   const [msg, setMsg] = useState('');
 
   const load = useCallback(() => client.listDevices().then(setDevices, (e) => { setDevices([]); setMsg(accountErrorMessage(e)); }), [client]);
@@ -88,9 +89,18 @@ function Devices({ client, currentId }) {
                 {d.platform}{d.id === currentId ? ' (this device)' : ''}
               </span>
               <button className="btn sm ghost" aria-label={`Rename ${d.name}`} onClick={() => setEditing({ id: d.id, name: d.name })}>Rename</button>
-              {d.id !== currentId && (
-                <button className="btn sm ghost" aria-label={`Remove ${d.name}`} onClick={() => act(() => client.deleteDevice(d.id))}>Remove</button>
-              )}
+              {d.id !== currentId && (removing === d.id ? (
+                <>
+                  <span style={{ fontSize: 12.5 }}>
+                    Remove {d.name}? If it is still in use it stops syncing and asks which device it is next time.
+                  </span>
+                  <button className="btn sm" aria-label={`Confirm remove ${d.name}`}
+                    onClick={() => { setRemoving(null); act(() => client.deleteDevice(d.id)); }}>Remove</button>
+                  <button className="btn sm ghost" aria-label={`Keep ${d.name}`} onClick={() => setRemoving(null)}>Cancel</button>
+                </>
+              ) : (
+                <button className="btn sm ghost" aria-label={`Remove ${d.name}`} onClick={() => setRemoving(d.id)}>Remove</button>
+              ))}
             </>
           )}
         </div>

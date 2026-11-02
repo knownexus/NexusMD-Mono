@@ -72,7 +72,19 @@ describe('AccountCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(client.renameDevice).toHaveBeenCalledWith('d2', 'Pixel'));
     fireEvent.click(await screen.findByRole('button', { name: 'Remove Phone' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm remove Phone' }));
     await waitFor(() => expect(client.deleteDevice).toHaveBeenCalledWith('d2'));
+  });
+
+  it('asks before removing a device and says what removing an in-use device does', async () => {
+    const { client } = mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Phone' }));
+    expect(screen.getByText(/stops syncing/)).toBeTruthy();
+    expect(client.deleteDevice).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep Phone' }));
+    expect(screen.queryByText(/stops syncing/)).toBeNull();
+    expect(client.deleteDevice).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Remove Phone' })).toBeTruthy();
   });
 
   it('changes the password with password inputs and clears them', async () => {
