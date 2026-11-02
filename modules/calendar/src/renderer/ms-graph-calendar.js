@@ -8,17 +8,20 @@ export async function fetchCalendarEvents(getToken, startISO, endISO) {
     '/me/calendarView',
     `?startDateTime=${encodeURIComponent(startISO)}`,
     `&endDateTime=${encodeURIComponent(endISO)}`,
-    '&$select=id,subject,start,end,location,body',
+    '&$select=id,subject,start,end,location,body,isAllDay',
     '&$top=100',
     '&$orderby=start/dateTime',
   ].join('')
   const data = await graphJSON(getToken, path, { headers: { Prefer: 'outlook.timezone="UTC"' } })
   const toISO = (s) => (s && !s.endsWith('Z') ? s + 'Z' : s)
+  // An all-day event's start/end are its own day (end exclusive), date-only as the calendar expects for
+  // all-day events (no badge, no alert): the date part as Graph gives it, with no timezone shift.
+  const dayOf = (s) => (typeof s === 'string' && /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : toISO(s))
   return (data.value || []).map((ev) => ({
     id: `outlook-${ev.id}`,
     title: ev.subject || '(No title)',
-    start: toISO(ev.start?.dateTime),
-    end: toISO(ev.end?.dateTime),
+    start: ev.isAllDay ? dayOf(ev.start?.dateTime) : toISO(ev.start?.dateTime),
+    end: ev.isAllDay ? dayOf(ev.end?.dateTime) : toISO(ev.end?.dateTime),
     type: 'meeting',
     personId: null,
     personName: null,

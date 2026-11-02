@@ -11,7 +11,7 @@ import React from 'react';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { Avatar } from '../app-components.jsx';
 import { Icon } from '../icons.jsx';
-import { graphJSON, graphFetch, eventBadge } from '@nexusmd/core';
+import { graphJSON, graphFetch, eventBadge, isAllDayEvent } from '@nexusmd/core';
 
 // ── OutlookService — MSAL + shared Graph client ─────────────────
 const OutlookService = (() => {
@@ -63,12 +63,16 @@ const OutlookService = (() => {
     async fetchWeekEvents(startISO, endISO) {
       const path = ['/me/calendarView',
         `?startDateTime=${encodeURIComponent(startISO)}`,`&endDateTime=${encodeURIComponent(endISO)}`,
-        '&$select=id,subject,start,end,location,body,onlineMeeting','&$top=100','&$orderby=start/dateTime'].join('');
+        '&$select=id,subject,start,end,location,body,onlineMeeting,isAllDay','&$top=100','&$orderby=start/dateTime'].join('');
       const data = await graphJSON(getToken, path, { headers: { Prefer: 'outlook.timezone="UTC"' } });
       const toISO = s => (s && !s.endsWith('Z') ? s + 'Z' : s);
+      // An all-day event's start/end are its own day (end exclusive), date-only as the calendar expects
+      // for all-day events (no badge, no alert): the date part as Graph gives it, with no timezone shift.
+      const dayOf = s => (typeof s === 'string' && /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : toISO(s));
+      const when = (ev, s) => (ev.isAllDay ? dayOf(s) : toISO(s));
       return (data.value || []).map(ev => ({
         id: `outlook-${ev.id}`, title: ev.subject || '(No title)',
-        start: toISO(ev.start?.dateTime), end: toISO(ev.end?.dateTime),
+        start: when(ev, ev.start?.dateTime), end: when(ev, ev.end?.dateTime),
         type:'meeting', personId:null, personName:null, plannerSection:null,
         description: ev.location?.displayName || '', source:'outlook',
         joinUrl: ev.onlineMeeting?.joinUrl || '',
@@ -751,7 +755,9 @@ function DayColumn({ date, events, isToday, onEventClick, nowPx, onMoveEvent, on
       )}
       {laid.map(({ ev, col, totalCols }) => {
         const cfg = EVENT_CFG[ev.type] || EVENT_CFG.meeting;
-        const top = eventTopPx(ev.start, from), height = eventHeightPx(ev.start, ev.end);
+        // An all-day event (date-only start) fills its day's column instead of being placed by the clock.
+        const allDay = isAllDayEvent(ev);
+        const top = allDay ? 0 : eventTopPx(ev.start, from), height = allDay ? totalPx : eventHeightPx(ev.start, ev.end);
         const g = 3, colW = 100 / totalCols;
         const isShort = height < 38;
         const canTimeDrag = !!onUpdateEvent && ev.source !== 'outlook' && ev.source !== 'google';

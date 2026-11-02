@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { OutlookService } from '../src/index.js'
+import { eventBadge } from '@nexusmd/core'
 
 const acquireTokenSilent = vi.fn()
 const acquireTokenPopup = vi.fn()
@@ -38,6 +39,20 @@ describe('OutlookService (MSAL + shared Graph client)', () => {
     const [url, opts] = global.fetch.mock.calls[0]
     expect(url).toContain('https://graph.microsoft.com/v1.0/me/calendarView')
     expect(opts.headers.Authorization).toBe('Bearer silent-token')
+  })
+
+  it('maps an all-day event to its own date (date-only start/end), so it gets no Now/Soon badge', async () => {
+    acquireTokenSilent.mockResolvedValue({ accessToken: 'silent-token' })
+    global.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ value: [
+      { id: 'ad', subject: 'Holiday', isAllDay: true, start: { dateTime: '2026-07-02T00:00:00.0000000' }, end: { dateTime: '2026-07-03T00:00:00.0000000' } },
+      { id: 't', subject: 'Standup', start: { dateTime: '2026-07-02T09:00:00.0000000' }, end: { dateTime: '2026-07-02T09:15:00.0000000' } },
+    ] }) })
+    const [allDay, timed] = await OutlookService.fetchWeekEvents('a', 'b')
+    expect(global.fetch.mock.calls[0][0]).toContain('isAllDay')
+    expect(allDay).toMatchObject({ start: '2026-07-02', end: '2026-07-03' })
+    expect(timed.start).toBe('2026-07-02T09:00:00.0000000Z')
+    expect(eventBadge(allDay, new Date(2026, 6, 2, 12).getTime())).toBeNull()
+    expect(eventBadge(timed, Date.parse('2026-07-02T09:05:00Z'))).toBe('now')
   })
 
   it('falls back to acquireTokenPopup when acquireTokenSilent rejects', async () => {

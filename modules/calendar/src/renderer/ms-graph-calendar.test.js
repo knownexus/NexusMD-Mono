@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { eventBadge, isAllDayEvent } from '@nexusmd/core'
 import { fetchCalendarEvents, createCalendarEvent, toLocalDateTimeString } from './ms-graph-calendar.js'
 
 beforeEach(() => {
@@ -26,6 +27,24 @@ describe('fetchCalendarEvents', () => {
         description: 'Room 4', source: 'outlook',
       },
     ])
+  })
+
+  it('maps an all-day event to its own date (date-only start/end), so it gets no Now/Soon badge', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ value: [
+        { id: 'ad', subject: 'Holiday', isAllDay: true, start: { dateTime: '2026-07-02T00:00:00.0000000' }, end: { dateTime: '2026-07-03T00:00:00.0000000' } },
+        { id: 't', subject: 'Standup', isAllDay: false, start: { dateTime: '2026-07-02T09:00:00.0000000' }, end: { dateTime: '2026-07-02T09:15:00.0000000' } },
+      ] }),
+    })
+    const [allDay, timed] = await fetchCalendarEvents(vi.fn(async () => 't'), 'a', 'b')
+    expect(global.fetch.mock.calls[0][0]).toContain('isAllDay')
+    expect(allDay.start).toBe('2026-07-02')
+    expect(allDay.end).toBe('2026-07-03')
+    expect(timed.start).toBe('2026-07-02T09:00:00.0000000Z')
+    expect(isAllDayEvent(allDay)).toBe(true)
+    expect(eventBadge(allDay, new Date(2026, 6, 2, 12).getTime())).toBeNull()
+    expect(eventBadge(timed, Date.parse('2026-07-02T09:05:00Z'))).toBe('now')
   })
 
   it('defaults the title when subject is missing', async () => {
