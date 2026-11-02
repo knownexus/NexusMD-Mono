@@ -437,12 +437,13 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
                 <ZoomSlider />
               </VsRow>
               {nav && (
-                <VsFullRow title="Sidebar" desc="Drag to reorder the navigation sidebar; untick an entry to hide it">
+                <VsFullRow title="Sidebar" desc={'Drag to reorder the navigation sidebar; untick an entry to hide it. Use "Move to" to put a screen in the sidebar, More or the footer'}>
                   <NavOrderEditor nav={nav} order={tweaks.navOrder}
                     onChange={ids => setTweak('navOrder', ids)}
-                    hidden={tweaks.navHidden || []} onHiddenChange={ids => setTweak('navHidden', ids)} />
+                    hidden={tweaks.navHidden || []} onHiddenChange={ids => setTweak('navHidden', ids)}
+                    placement={tweaks.navPlacement || {}} onPlacementChange={p => setTweak('navPlacement', p)} />
                   <button className="btn sm ghost"
-                    onClick={() => { setTweak('navOrder', defaultNavOrder); setTweak('navHidden', []) }}>Reset sidebar</button>
+                    onClick={() => { setTweak('navOrder', defaultNavOrder); setTweak('navPlacement', {}); setTweak('navHidden', []) }}>Reset sidebar</button>
                 </VsFullRow>
               )}
             </VsCard>

@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { NavOrderEditor } from './nav-order-editor.jsx'
 
@@ -65,5 +65,49 @@ describe('NavOrderEditor', () => {
     fireEvent.dragStart(rows[0], { dataTransfer: dt })
     fireEvent.drop(rows[2], { dataTransfer: dt })
     expect(onChange).toHaveBeenCalledWith(['calendar', 'work', 'dashboard'])
+  })
+
+  it('moving a screen to More removes it from the main sidebar and lists it under More', () => {
+    const onPlacementChange = vi.fn()
+    const order = ['dashboard', 'calendar', 'work']
+    const { rerender } = render(<NavOrderEditor nav={NAV} order={order} onChange={vi.fn()} placement={{}} onPlacementChange={onPlacementChange} />)
+    const group = name => screen.getByRole('group', { name })
+    const labels = name => within(group(name)).queryAllByTestId('nav-order-item').map(el => el.textContent)
+    expect(labels('Sidebar')).toEqual(['Dashboard', 'Calendar', 'Work Items'])
+    expect(labels('More')).toEqual([])
+    fireEvent.change(screen.getByRole('combobox', { name: 'Move Calendar to' }), { target: { value: 'more' } })
+    expect(onPlacementChange).toHaveBeenCalledWith({ calendar: 'more' })
+    rerender(<NavOrderEditor nav={NAV} order={order} onChange={vi.fn()} placement={{ calendar: 'more' }} onPlacementChange={onPlacementChange} />)
+    expect(labels('Sidebar')).toEqual(['Dashboard', 'Work Items'])
+    expect(labels('More')).toEqual(['Calendar'])
+    fireEvent.change(screen.getByRole('combobox', { name: 'Move Work Items to' }), { target: { value: 'footer' } })
+    expect(onPlacementChange).toHaveBeenLastCalledWith({ calendar: 'more', work: 'footer' })
+  })
+
+  it('placement naming a missing id is ignored', () => {
+    render(<NavOrderEditor nav={NAV} order={['dashboard', 'calendar', 'work']} onChange={vi.fn()} placement={{ ghost: 'more' }} onPlacementChange={vi.fn()} />)
+    expect(within(screen.getByRole('group', { name: 'Sidebar' })).getAllByTestId('nav-order-item')).toHaveLength(3)
+    expect(within(screen.getByRole('group', { name: 'More' })).queryAllByTestId('nav-order-item')).toHaveLength(0)
+  })
+
+  it('reorders within a group, keeping the other groups in place', () => {
+    const onChange = vi.fn()
+    render(<NavOrderEditor nav={NAV} order={['dashboard', 'calendar', 'work']} onChange={onChange} placement={{ calendar: 'more' }} onPlacementChange={vi.fn()} />)
+    const rows = within(screen.getByRole('group', { name: 'Sidebar' })).getAllByTestId('nav-order-row')
+    const dt = makeDataTransfer()
+    fireEvent.dragStart(rows[1], { dataTransfer: dt })
+    fireEvent.drop(rows[0], { dataTransfer: dt })
+    expect(onChange).toHaveBeenCalledWith(['work', 'calendar', 'dashboard'])
+  })
+
+  it('dropping a row on another group moves it there', () => {
+    const onChange = vi.fn()
+    const onPlacementChange = vi.fn()
+    render(<NavOrderEditor nav={NAV} order={['dashboard', 'calendar', 'work']} onChange={onChange} placement={{ calendar: 'more' }} onPlacementChange={onPlacementChange} />)
+    const dt = makeDataTransfer()
+    fireEvent.dragStart(within(screen.getByRole('group', { name: 'Sidebar' })).getAllByTestId('nav-order-row')[0], { dataTransfer: dt })
+    fireEvent.drop(within(screen.getByRole('group', { name: 'More' })).getAllByTestId('nav-order-row')[0], { dataTransfer: dt })
+    expect(onPlacementChange).toHaveBeenCalledWith({ calendar: 'more', dashboard: 'more' })
+    expect(onChange).not.toHaveBeenCalled()
   })
 })

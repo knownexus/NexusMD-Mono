@@ -112,7 +112,17 @@ describe('DesktopSettings tab navigation', () => {
     expect(setTweak).toHaveBeenLastCalledWith('navHidden', ['calendar', 'work'])
     fireEvent.click(screen.getByRole('button', { name: 'Reset sidebar' }))
     expect(setTweak).toHaveBeenCalledWith('navOrder', ['dashboard', 'calendar', 'work'])
+    expect(setTweak).toHaveBeenCalledWith('navPlacement', {})
     expect(setTweak).toHaveBeenLastCalledWith('navHidden', [])
+  })
+
+  it('moves a sidebar entry to More from the Appearance tab', () => {
+    const setTweak = vi.fn()
+    const props = { ...defaultProps, setTweak, tweaks: { ...defaultProps.tweaks, navPlacement: { work: 'footer' } } }
+    render(<DesktopSettings {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Move Calendar to' }), { target: { value: 'more' } })
+    expect(setTweak).toHaveBeenLastCalledWith('navPlacement', { work: 'footer', calendar: 'more' })
   })
 
   it('shows Planner tab content when clicked', () => {

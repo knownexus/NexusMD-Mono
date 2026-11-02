@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { effectiveSidebar, SIDEBAR_BREAKPOINT, orderedNav, visibleNav, toggledSidebar, mountedViews, mergeNavOrder } from './layout.js'
+import { effectiveSidebar, SIDEBAR_BREAKPOINT, orderedNav, visibleNav, toggledSidebar, mountedViews, mergeNavOrder, sidebarGroups, placedNav } from './layout.js'
 
 describe('mergeNavOrder', () => {
   it('keeps the places of apps that are not installed', () => {
@@ -91,5 +91,34 @@ describe('isBareStandalone', () => {
     expect(isBareStandalone('standalone', 1)).toBe(true)
     expect(isBareStandalone('standalone', 7)).toBe(false)   // Work keeps its sidebar
     expect(isBareStandalone('combined', 1)).toBe(false)
+  })
+})
+
+describe('sidebarGroups', () => {
+  const NAV = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }]
+  const ids = g => ({ main: g.main.map(i => i.id), more: g.more.map(i => i.id), footer: g.footer.map(i => i.id) })
+
+  it('starts with every screen in the main sidebar, in the saved order', () => {
+    expect(ids(sidebarGroups(NAV, { order: ['c', 'a', 'b', 'd'] }))).toEqual({ main: ['c', 'a', 'b', 'd'], more: [], footer: [] })
+  })
+
+  it('moves placed screens to More or the footer, keeping the order inside each group', () => {
+    const g = sidebarGroups(NAV, { order: ['d', 'c', 'b', 'a'], placement: { a: 'more', c: 'more', b: 'footer' } })
+    expect(ids(g)).toEqual({ main: ['d'], more: ['c', 'a'], footer: ['b'] })
+  })
+
+  it('placement naming a missing id is ignored', () => {
+    const g = sidebarGroups(NAV, { placement: { ghost: 'more', b: 'footer', c: 'nowhere' } })
+    expect(ids(g)).toEqual({ main: ['a', 'c', 'd'], more: [], footer: ['b'] })
+  })
+
+  it('leaves out hidden and switched-off screens wherever they are placed', () => {
+    const g = sidebarGroups(NAV, { placement: { a: 'more', b: 'footer' }, hidden: ['a'], off: ['b', 'c'] })
+    expect(ids(g)).toEqual({ main: ['d'], more: [], footer: [] })
+  })
+
+  it('placedNav keeps hidden screens, for the Settings editor', () => {
+    const g = placedNav(['a', 'b', 'c', 'd'], { b: 'more' }, NAV)
+    expect(ids(g)).toEqual({ main: ['a', 'c', 'd'], more: ['b'], footer: [] })
   })
 })

@@ -1,3 +1,5 @@
+import { placeTabs } from '@nexusmd/core'
+
 // Sidebar auto-collapse logic. Below the breakpoint the rail forces icon-only
 // mode regardless of the user's saved preference; at or above it, the saved
 // preference wins. Pure so it can be unit-tested independently of React.
@@ -49,6 +51,32 @@ export function mergeNavOrder(stored, shownIds) {
 export function visibleNav(navOrder, hidden, nav) {
   const gone = new Set(Array.isArray(hidden) ? hidden : [])
   return orderedNav(navOrder, nav).filter(item => !gone.has(item.id))
+}
+
+// Where a screen can sit in the sidebar: the main list, the collapsible More group, or the footer above
+// Settings. Saved per profile as tweaks.navPlacement ({ [id]: 'main' | 'more' | 'footer' }).
+export const NAV_PLACES = [
+  { id: 'main', label: 'Sidebar' },
+  { id: 'more', label: 'More' },
+  { id: 'footer', label: 'Footer' },
+]
+// Screens that start in the footer before the user moves anything. None: every screen starts in the main list.
+export const DEFAULT_FOOTER = []
+
+// orderedNav split by the user's placement, with core's placeTabs (the desktop sidebar has a footer, as
+// mobile's tablet sidebar does). Screens the placement does not mention stay in the main list, and a
+// placement naming a screen that is not here is ignored. Hidden screens are kept (the Settings editor lists them).
+export function placedNav(navOrder, placement, nav) {
+  const placed = placeTabs(orderedNav(navOrder, nav), [], placement, { tablet: true, defaultFooter: DEFAULT_FOOTER })
+  return { main: placed.primary, more: placed.secondary, footer: placed.footer }
+}
+
+// What each sidebar group shows: placedNav without the screens the user hid or an app switched off.
+export function sidebarGroups(nav, { order, hidden, placement, off } = {}) {
+  const gone = new Set([...(Array.isArray(hidden) ? hidden : []), ...(Array.isArray(off) ? off : [])])
+  const g = placedNav(order, placement, nav)
+  const keep = items => items.filter(item => !gone.has(item.id))
+  return { main: keep(g.main), more: keep(g.more), footer: keep(g.footer) }
 }
 
 // Whether the window drops its sidebar: only one app is installed and it has a single screen, so there

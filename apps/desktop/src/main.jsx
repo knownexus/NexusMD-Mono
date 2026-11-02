@@ -9,7 +9,9 @@ import {
   THEME_MODES, paletteFor, ProfileGate, toast,
 } from '@nexusmd/ui'
 import { startQueueFlushing } from './offline-queue-app.js'
-import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, visibleNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
+import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, sidebarGroups, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
+import { SidebarNav } from './sidebar-nav.jsx'
+import { SidebarSyncStatus } from './sync-indicator.jsx'
 import { DesktopSettings } from './desktop-settings.jsx'
 import { ProfileProvider } from './profile-context.jsx'
 import { getProfileKey, usePersistedState } from '@nexusmd/shell-sdk'
@@ -70,6 +72,8 @@ const DEFAULT_TWEAKS = {
   homeWidgets: [],
   navOrder: DEFAULT_NAV_ORDER,
   navHidden: [],
+  // Where each screen sits in the sidebar ({ [id]: 'main' | 'more' | 'footer' }); unplaced screens stay in the main list.
+  navPlacement: {},
   quickLinks: [
     { label: 'UAT Testing', url: 'https://uat.example.com/', color: 'var(--info)' },
     { label: 'Dev Testing', url: 'https://dev.example.com/', color: 'var(--success)' },
@@ -226,13 +230,14 @@ function App() {
     return () => window.removeEventListener('nexusmd:navigate', handler)
   }, [])
 
-  // What the sidebar shows, in its order; the number keys jump to the entry with that number.
-  const shownNav = visibleNav(tweaks.navOrder, tweaks.navHidden, INSTALLED_NAV).filter(item => !offViews.includes(item.id))
+  // What the sidebar shows, in its groups and order; the number keys jump to the main list's entry with that number.
+  const navGroups = sidebarGroups(INSTALLED_NAV, { order: tweaks.navOrder, hidden: tweaks.navHidden, placement: tweaks.navPlacement, off: offViews })
+  const shownNav = navGroups.main
   const shownNavRef = React.useRef(shownNav)
   shownNavRef.current = shownNav
   // On a screen that is switched off (it was the start screen, or a saved or linked one): move to the
   // first one still on, or Settings if the sidebar is empty.
-  const fallbackView = shownNav[0]?.id || SETTINGS_NAV.id
+  const fallbackView = (navGroups.main[0] || navGroups.more[0] || navGroups.footer[0])?.id || SETTINGS_NAV.id
   React.useEffect(() => {
     if (offViews.includes(view)) setView(fallbackView)
   }, [offViews, view, fallbackView])
@@ -279,68 +284,13 @@ function App() {
             <Icon name="dashboard" size={18} />
             {!iconsOnly && <strong style={{ fontSize: 14 }}>NexusMD</strong>}
           </div>
-          {shownNav.map((item, idx) => (
-            <button
-              key={item.id}
-              onClick={() => setView(item.id)}
-              className={`nav-item ${view === item.id ? 'active' : ''}`}
-              title={iconsOnly ? item.label : undefined}
-              style={{
-                display: 'flex', alignItems: 'center',
-                justifyContent: iconsOnly ? 'center' : 'flex-start',
-                gap: 10, padding: iconsOnly ? '8px' : '8px 10px',
-                border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
-                background: view === item.id ? 'var(--accent-soft, rgba(127,127,127,0.12))' : 'transparent',
-                color: view === item.id ? 'var(--accent)' : 'var(--text-muted)',
-                font: 'inherit', fontSize: 13, position: 'relative',
-              }}
-            >
-              <Icon name={item.icon} size={16} />
-              {!iconsOnly && item.label}
-              {changeBadges[item.id] > 0 && (
-                iconsOnly ? (
-                  <span style={{
-                    position: 'absolute', top: 4, right: 4, width: 8, height: 8,
-                    background: 'var(--accent)', borderRadius: '50%',
-                  }} />
-                ) : (
-                  <span style={{
-                    marginLeft: 'auto', minWidth: 18, height: 18,
-                    background: 'var(--accent)', color: 'var(--on-accent)',
-                    borderRadius: 9, fontSize: 11, fontWeight: 700,
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    padding: '0 5px',
-                  }}>
-                    {changeBadges[item.id] > 99 ? '99+' : changeBadges[item.id]}
-                  </span>
-                )
-              )}
-              {!iconsOnly && tweaks.sidebar === 'labels' && idx < 9 && !changeBadges[item.id] && (
-                <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-subtle)', opacity: 0.5 }}>
-                  {idx + 1}
-                </span>
-              )}
-            </button>
-          ))}
-          <div style={{ marginTop: 'auto' }} />
-          <button
-            key={SETTINGS_NAV.id}
-            onClick={() => setView(SETTINGS_NAV.id)}
-            className={`nav-item ${view === SETTINGS_NAV.id ? 'active' : ''}`}
-            title={iconsOnly ? SETTINGS_NAV.label : undefined}
-            style={{
-              display: 'flex', alignItems: 'center',
-              justifyContent: iconsOnly ? 'center' : 'flex-start',
-              gap: 10, padding: iconsOnly ? '8px' : '8px 10px',
-              border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
-              background: view === SETTINGS_NAV.id ? 'var(--accent-soft, rgba(127,127,127,0.12))' : 'transparent',
-              color: view === SETTINGS_NAV.id ? 'var(--accent)' : 'var(--text-muted)',
-              font: 'inherit', fontSize: 13, position: 'relative',
-            }}
-          >
-            <Icon name={SETTINGS_NAV.icon} size={16} />
-            {!iconsOnly && SETTINGS_NAV.label}
-          </button>
+          <SidebarNav
+            nav={INSTALLED_NAV} order={tweaks.navOrder} hidden={tweaks.navHidden}
+            placement={tweaks.navPlacement} off={offViews}
+            view={view} onSelect={setView} iconsOnly={iconsOnly}
+            showNumbers={tweaks.sidebar === 'labels'} badges={changeBadges}
+            status={<SidebarSyncStatus iconsOnly={iconsOnly} />}
+          />
           <button
             className="nav-item"
             onClick={() => setTweak('sidebar', toggledSidebar(tweaks.sidebar))}
