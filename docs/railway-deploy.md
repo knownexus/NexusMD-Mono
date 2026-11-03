@@ -54,6 +54,7 @@ Optional tuning:
 | `Items__MaxPageBytes` | 16 MiB | Ciphertext budget per changes page |
 | `Items__MaxUserBytes` | 1 GiB | Storage quota per user |
 | `Items__MaxBatchBytes` | 64 MiB | Largest batch request body |
+| `Sync__MinFormat` | 1 | Oldest sync format accepted for writes; clients below it get 426 `client_outdated` (current clients send 2) |
 | `Web__LegacyEndpoints` | false | Leave unset/false in production. The old unauthenticated Profiles/Config/Files/Ado endpoints stay disabled; this includes the legacy `PUT /api/config`, which writes `appsettings.user.json`. |
 | `Logging__LogLevel__Default` | Debug (from `appsettings.json`) | Set to `Information` in production. |
 

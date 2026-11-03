@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using NexusMDWeb.Api.Data;
 using NexusMDWeb.Api.Models;
 using NexusMDWeb.Api.Services.Auth;
+using NexusMDWeb.Api.Services.Sync;
 
 namespace NexusMDWeb.Api.Controllers;
 
@@ -92,6 +93,7 @@ public class DevicesController(AccountRepository accounts, IConfiguration config
     [ItemBodyLimit(batch: false)]
     public IActionResult PutPrefs(string id, [FromBody] PutPrefsRequest? req)
     {
+        if (SyncFormatGate.IsOutdated(Request, config)) return SyncFormatGate.Outdated();
         if (!TryNormalizeId(id, out var key)) return Err(404, "device not found");
         if (!TryReadIfMatch(Request, out var expected)) return Err(400, "If-Match must be the current revision (a non-negative integer)");
         if (string.IsNullOrEmpty(req?.Ciphertext)) return InvalidCiphertext();

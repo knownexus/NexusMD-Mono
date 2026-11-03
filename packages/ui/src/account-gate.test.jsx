@@ -67,6 +67,12 @@ describe('AccountGate', () => {
     expect(screen.getByLabelText('Password').value).toBe('');
   });
 
+  it('shows the update message when the client is outdated', async () => {
+    mount(mkAccount({ login: vi.fn(async () => { throw err('client-outdated'); }) }));
+    await signIn();
+    expect(await screen.findByText('This version of NexusMD can no longer sync. Update NexusMD to keep syncing.')).toBeTruthy();
+  });
+
   it('shows the lock message when locked', async () => {
     mount(mkAccount({ login: vi.fn(async () => { throw err('locked'); }) }));
     await signIn();

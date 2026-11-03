@@ -19,6 +19,7 @@ const MESSAGES = {
   'keys-corrupt': 'Your account keys could not be opened. Contact an administrator.',
   server: 'The server had a problem. Try again shortly.',
   'not-found': 'That could not be found.',
+  'client-outdated': 'This version of NexusMD can no longer sync. Update NexusMD to keep syncing.',
 };
 
 /** Plain-language message for an `AccountError` (or any error). */
