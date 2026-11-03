@@ -1,19 +1,21 @@
 // The desktop Dashboard's layout, one per screen (pure; dashboard-grid.jsx draws it).
 //
-// Every widget on the Dashboard, built-in card or added widget, is an item { i, x, y, w, h } in a grid
-// of `cols` columns and ROW_HEIGHT-px rows. The `dashLayouts` tweak keeps one layout per screen
-// resolution: { "3840x1600": { cols, items: [...] }, ... }. A screen that has none starts from the
+// Every part of the Dashboard (the greeting, its buttons, the stat cards, the built-in cards and the
+// added widgets) is an item { i, x, y, w, h } in a grid of `cols` columns and ROW_HEIGHT-px rows. The
+// `dashLayouts` tweak keeps one layout per screen resolution: { "3840x1600": { cols, rowHeight, items } }. A screen that has none starts from the
 // nearest resolution that has one, scaled to its own columns, and failing that from the old
 // order/width/height settings; it is saved only when something is moved or resized there.
 
-export const ROW_HEIGHT = 40
+export const ROW_HEIGHT = 20
+// Layouts saved before rows were 20px say nothing about it; theirs were 40px.
+const OLD_ROW_HEIGHT = 40
 export const MARGIN = 16
 export const COL_PX = 320
 export const MIN_COLS = 4
 export const MAX_COLS = 16
-const CARD_ROWS = 8
-const WIDGET_ROWS = 6
-export const MIN_H = 3
+const CARD_ROWS = 12
+const WIDGET_ROWS = 9
+export const MIN_H = 1
 
 /** The key a screen's layout is saved under: its real resolution, e.g. "3840x2160". */
 export function screenKey(display) {
@@ -31,10 +33,11 @@ export function colsFor(display) {
 const rowsForPx = px => Math.max(MIN_H, Math.ceil((px + MARGIN) / (ROW_HEIGHT + MARGIN)))
 const half = cols => Math.max(1, Math.floor(cols / 2))
 
-// What a widget is, for its default size. `wide` true/false; `rows` its height in rows.
-// entries: { key, wide, rows }
+// What a widget is, for its default size: `frac` of the columns (else `wide`: all, or half), `rows` high.
+// entries: { key, wide, frac?, rows, top? }   top: a part of the page's head, placed above the rest
 function sizeOf(entry, cols) {
-  return { w: entry.wide ? cols : half(cols), h: entry.rows || CARD_ROWS }
+  const w = entry.frac ? Math.min(cols, Math.max(1, Math.round(cols * entry.frac))) : entry.wide ? cols : half(cols)
+  return { w, h: entry.rows || CARD_ROWS }
 }
 
 /** Lays entries out left to right, wrapping into rows, from the top (or from row `startY`). */
@@ -59,26 +62,30 @@ export function flow(entries, cols, startY = 0) {
  */
 export function entriesFor({ cards = [], widgets = [], widgetWidths = {}, widgetHeights = {} }) {
   return [
-    ...cards.map(c => ({
-      key: `card:${c.id}`,
-      wide: widgetWidths[c.id] !== undefined ? !!widgetWidths[c.id] : c.span === 2,
-      rows: widgetHeights[c.id] ? rowsForPx(widgetHeights[c.id]) : CARD_ROWS,
-    })),
+    ...cards.map(c => (c.bare
+      ? { key: `card:${c.id}`, wide: false, frac: c.frac, rows: c.rows || MIN_H, top: !!c.top }
+      : {
+          key: `card:${c.id}`,
+          wide: widgetWidths[c.id] !== undefined ? !!widgetWidths[c.id] : c.span === 2,
+          rows: widgetHeights[c.id] ? rowsForPx(widgetHeights[c.id]) : CARD_ROWS,
+        })),
     ...widgets.map(w => ({ key: `w:${w.id}`, wide: !w.half, rows: WIDGET_ROWS })),
   ]
 }
 
 const widthOfKey = key => Number(String(key).split('x')[0]) || 0
 
-// A saved layout fitted to `cols`: positions and widths scaled from the columns it was made with.
+// A saved layout fitted to `cols` and today's rows: positions and widths scaled from the columns it was
+// made with, heights and rows from the row height it was made with (so it keeps its size on screen).
 function scaled(layout, cols) {
   const from = layout.cols || cols
-  if (from === cols) return layout.items
   const k = cols / from
+  const rowFrom = layout.rowHeight || OLD_ROW_HEIGHT
+  const v = (rowFrom + MARGIN) / (ROW_HEIGHT + MARGIN)
   return layout.items.map(it => {
     const w = Math.min(cols, Math.max(1, Math.round(it.w * k)))
     const x = Math.min(cols - w, Math.max(0, Math.round(it.x * k)))
-    return { ...it, x, w }
+    return v === 1 ? { ...it, x, w } : { ...it, x, w, y: Math.round(it.y * v), h: Math.round(it.h * v) }
   })
 }
 
@@ -110,15 +117,20 @@ export function layoutFor(saved, key, cols, entries) {
       return { i: it.i, w, x: Math.min(cols - w, Math.max(0, Math.round(it.x) || 0)), y: Math.max(0, Math.round(it.y) || 0), h: Math.max(MIN_H, Math.round(it.h) || MIN_H) }
     })
   const placed = new Set(kept.map(it => it.i))
-  const bottom = kept.reduce((m, it) => Math.max(m, it.y + it.h), 0)
-  const added = flow(entries.filter(e => !placed.has(e.key)), cols, bottom)
-  return { items: [...kept, ...added], own: src.own }
+  const missing = entries.filter(e => !placed.has(e.key))
+  // Parts of the page's head that the layout doesn't have yet go above everything, which moves down.
+  const top = flow(missing.filter(e => e.top), cols)
+  const drop = top.reduce((m, it) => Math.max(m, it.y + it.h), 0)
+  const moved = kept.map(it => (drop ? { ...it, y: it.y + drop } : it))
+  const bottom = moved.reduce((m, it) => Math.max(m, it.y + it.h), drop)
+  const added = flow(missing.filter(e => !e.top), cols, bottom)
+  return { items: [...top, ...moved, ...added], own: src.own }
 }
 
 /** dashLayouts with this screen's layout set to `items` (only the fields the grid needs). */
 export function withLayout(saved, key, cols, items) {
   const clean = items.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }))
-  return { ...(saved && typeof saved === 'object' ? saved : {}), [key]: { cols, items: clean } }
+  return { ...(saved && typeof saved === 'object' ? saved : {}), [key]: { cols, rowHeight: ROW_HEIGHT, items: clean } }
 }
 
 /** dashLayouts without this screen's layout (Reset layout). */

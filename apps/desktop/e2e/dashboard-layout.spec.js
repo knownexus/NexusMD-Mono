@@ -56,21 +56,34 @@ test('widgets move and resize, and each screen keeps its own layout', async () =
     await expect(win.locator('[data-key="w:n1"]')).toBeVisible()
     await expect(win.getByText(/Layout for this 3840×1600 screen \(not arranged yet\)/)).toBeVisible()
 
-    // Drag the Quick note to the top left.
-    const before = await box(win, 'w:n1')
-    const firstCard = await box(win, 'card:review')
-    await drag(win, win.locator('[data-key="w:n1"] > .widget-grab'), firstCard.x - before.x + 20, firstCard.y - before.y + 10)
-    await expect.poll(async () => (await tweaks(win)).dashLayouts?.['3840x1600']?.items?.length || 0).toBeGreaterThan(0)
-    const moved = (await tweaks(win)).dashLayouts['3840x1600'].items.find(it => it.i === 'w:n1')
-    expect(moved).toMatchObject({ x: 0, y: 0 })
+    // The page's head is in the grid too: the greeting, its buttons and the stat cards each have a grip.
+    for (const key of ['card:page-greeting', 'card:page-actions', 'card:stat-prs', 'card:stat-blockers']) {
+      await expect(win.locator(`[data-key="${key}"] > .widget-grab`)).toHaveCount(1)
+    }
+    const layout = async () => (await tweaks(win)).dashLayouts?.['3840x1600']?.items || []
+    const item = async key => (await layout()).find(it => it.i === key)
 
-    // Resize it from its corner: narrower (it starts full width) and taller.
+    // Narrow the greeting from its right edge, to make room on the top row.
+    const gb = await box(win, 'card:page-greeting')
+    await drag(win, win.locator('[data-key="card:page-greeting"] > .react-resizable-handle-e'), -gb.width * 0.5, 0)
+    await expect.poll(async () => (await item('card:page-greeting'))?.w ?? 99).toBeLessThanOrEqual(3)
+
+    // Shrink the Quick note from its corner (it starts full width), then drop it on the top row, next to the greeting.
     const nb = await box(win, 'w:n1')
-    const handle = win.locator('[data-key="w:n1"] > .react-resizable-handle-se')
-    await drag(win, handle, -nb.width * 0.5, 120)
-    await expect.poll(async () => (await tweaks(win)).dashLayouts['3840x1600'].items.find(it => it.i === 'w:n1').w).toBeLessThan(moved.w)
-    const resized = (await tweaks(win)).dashLayouts['3840x1600'].items.find(it => it.i === 'w:n1')
-    expect(resized.h).toBeGreaterThan(moved.h)
+    await drag(win, win.locator('[data-key="w:n1"] > .react-resizable-handle-se'), -nb.width * 0.75, 120)
+    await expect.poll(async () => (await item('w:n1')).w).toBeLessThanOrEqual(3)
+    const sized = await item('w:n1')
+    expect(sized.h).toBeGreaterThan(9)
+    await settled(win)
+    const greet = await box(win, 'card:page-greeting')
+    // Its left edge goes just past the greeting's right edge (the grip is in the middle of its top).
+    const note = await box(win, 'w:n1')
+    await drag(win, win.locator('[data-key="w:n1"] > .widget-grab'), greet.x + greet.width + 24 - note.x, greet.y - note.y)
+    await expect.poll(async () => (await item('w:n1')).y).toBe(0)
+    const resized = await item('w:n1')
+    expect(resized.x).toBeGreaterThanOrEqual((await item('card:page-greeting')).w)
+    await settled(win)
+    await noOverlap(win)
     await shot(win, 'dash-4k')
 
     // Another monitor: 1080p. Fewer columns, starts from the 4K layout scaled, and saves nothing yet.
@@ -97,7 +110,7 @@ test('widgets move and resize, and each screen keeps its own layout', async () =
     await app.evaluate(() => globalThis.__nexusmdSetDisplay('3840x1600@1'))
     await expect(grid).toHaveAttribute('data-screen', '3840x1600')
     expect((await tweaks(win)).dashLayouts['3840x1600'].items.find(it => it.i === 'w:n1')).toEqual(resized)
-    await expect.poll(async () => (await box(win, 'w:n1')).x).toBeLessThan(firstCard.x + 5)
+    await expect.poll(async () => (await box(win, 'w:n1')).y).toBeLessThan((await box(win, 'card:stat-prs')).y)
 
     // Both survive a reload; Reset layout clears only the screen it's on.
     await win.reload()

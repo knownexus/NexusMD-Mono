@@ -24,6 +24,23 @@ describe('DashboardGrid', () => {
     expect(screen.queryByRole('button', { name: 'Reset layout' })).toBeNull()
   })
 
+  it("draws the page's head parts bare, movable like the rest, and not hideable", () => {
+    const head = [
+      { id: 'page-greeting', title: 'Greeting', bare: true, top: true, frac: 0.5, rows: 2, render: () => <h1>Hello</h1> },
+      { id: 'stat-prs', title: 'Needs your review', bare: true, top: true, frac: 0.25, rows: 4, render: () => <div>0 PRs</div> },
+    ]
+    const { container } = grid({ cards: [...head, ...cards] })
+    expect(screen.getAllByTestId('dash-cell').map(c => c.dataset.key).slice(0, 2)).toEqual(['card:page-greeting', 'card:stat-prs'])
+    const greeting = container.querySelector('[data-key="card:page-greeting"]')
+    expect(greeting.classList.contains('is-bare')).toBe(true)
+    expect(greeting.querySelector('.dash-cell-bare h1').textContent).toBe('Hello')
+    expect(greeting.querySelector('.card')).toBeNull()
+    expect(greeting.querySelector('.widget-grab')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Hide Greeting' })).toBeNull()
+    // Half of 6 columns, on the top row.
+    expect(greeting.style.width).toBe(`${(1600 - 16 * 5) / 6 * 3 + 16 * 2}px`)
+  })
+
   it("a card's × hides it", () => {
     grid()
     fireEvent.click(screen.getByRole('button', { name: 'Hide Needs your review' }))
