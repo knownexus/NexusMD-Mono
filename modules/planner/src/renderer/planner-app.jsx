@@ -40,7 +40,7 @@ export function PlannerApp({ host }) {
       entryStyle={prefs.entry}
       carryPrompt={prefs.carryPrompt}
       showGlobalNotesTab={false}
-      onCloudSync={cloudSync}
+      onCloudSync={host.sync?.enabled && !host.sync.enabled() ? undefined : cloudSync}
     />
   )
 }

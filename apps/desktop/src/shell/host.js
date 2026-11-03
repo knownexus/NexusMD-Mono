@@ -3,6 +3,7 @@ import { registry } from './registry.js'
 import { appQueue, flushQueue } from '../offline-queue-app.js'
 import { makeShellOAuthService, makeNativeGoogleBinding } from '../cloud-auth.js'
 import { desktopSync } from '../sync.js'
+import { isLegacyCloudSyncOn } from '../legacy-cloud-sync.js'
 import { secureStorageAdapter } from '../adapters/secureStorage.js'
 import { pickerAdapter } from '../adapters/picker.js'
 import { artifactsAdapter } from '../adapters/artifacts.js'
@@ -55,7 +56,11 @@ export const host = {
     makeOAuthService: (...args) => makeShellOAuthService(...args),
     makeNativeGoogleBinding: (...args) => makeNativeGoogleBinding(...args),
   },
-  sync: { syncOnce: () => desktopSync.syncOnce() },
+  // The Google Drive / OneDrive backup: off unless the Settings switch is on.
+  sync: {
+    enabled: () => isLegacyCloudSyncOn(),
+    syncOnce: async () => (isLegacyCloudSyncOn() ? desktopSync.syncOnce() : { skipped: 'disabled' }),
+  },
   adapters: { secureStorage: secureStorageAdapter, picker: pickerAdapter, windowControls: windowControlsAdapter, artifacts: artifactsAdapter },
   display: {
     get: () => (bridge() ? bridge().get() : Promise.resolve(pageDisplay())),

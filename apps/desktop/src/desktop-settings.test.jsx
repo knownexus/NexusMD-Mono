@@ -2,7 +2,7 @@ import React from 'react'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 
-const { getToken } = vi.hoisted(() => ({ getToken: vi.fn() }))
+const { getToken, startAuto, stopAuto } = vi.hoisted(() => ({ getToken: vi.fn(), startAuto: vi.fn(), stopAuto: vi.fn() }))
 
 vi.mock('./profile-keys.js', () => ({ getProfileKey: k => k }))
 vi.mock('./profile-context.jsx', () => ({ useProfile: () => ({}) }))
@@ -13,7 +13,7 @@ vi.mock('./cloud-auth.js', () => ({
   makeNativeMicrosoftBinding: () => ({ isConnected: () => false, connect: vi.fn(), disconnect: vi.fn(), getToken }),
   decodeJwtClaims: vi.fn(),
 }))
-vi.mock('./sync.js', () => ({ desktopSync: {} }))
+vi.mock('./sync.js', () => ({ desktopSync: { startAuto, stopAuto } }))
 vi.mock('./file-io.js', () => ({ desktopFileIO: {} }))
 vi.mock('./ado-client.js', () => ({
   getAdoConfig: () => ({ org: '', projects: [] }),
@@ -59,7 +59,7 @@ beforeEach(() => {
     setZoomFactor: vi.fn(),
     onZoomChanged: vi.fn(() => () => {}),
   })
-  getToken.mockReset(); getToken.mockResolvedValue('fake.token.value')
+  startAuto.mockClear(); stopAuto.mockClear(); getToken.mockReset(); getToken.mockResolvedValue('fake.token.value')
 })
 afterEach(() => { cleanup(); localStorage.clear() })
 
@@ -172,6 +172,11 @@ describe('DesktopSettings tab navigation', () => {
     expect(sw.getAttribute('aria-checked')).toBe('false')
     fireEvent.click(sw)
     expect(localStorage.getItem('nexusmd.feature.legacyCloudSync')).toBe('1')
+    expect(startAuto).toHaveBeenCalledTimes(1)
+    expect(stopAuto).not.toHaveBeenCalled()
+    fireEvent.click(sw)
+    expect(localStorage.getItem('nexusmd.feature.legacyCloudSync')).toBe('0')
+    expect(stopAuto).toHaveBeenCalledTimes(1)
   })
 
   it('shows Confidential tab content when clicked', () => {

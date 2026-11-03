@@ -31,3 +31,19 @@ describe('host.navigate', () => {
     expect(takeWaitingNavigation()).toBe('editor')
   })
 })
+
+describe('host.sync (legacy Cloud sync)', () => {
+  it('does nothing with the backup switch off, and syncs with it on', async () => {
+    const { desktopSync } = await import('../sync.js')
+    desktopSync.syncOnce = vi.fn(async () => ({ pushed: 1 }))
+    localStorage.setItem('nexusmd.feature.legacyCloudSync', '0')
+    expect(host.sync.enabled()).toBe(false)
+    expect(await host.sync.syncOnce()).toEqual({ skipped: 'disabled' })
+    expect(desktopSync.syncOnce).not.toHaveBeenCalled()
+    localStorage.setItem('nexusmd.feature.legacyCloudSync', '1')
+    expect(host.sync.enabled()).toBe(true)
+    await host.sync.syncOnce()
+    expect(desktopSync.syncOnce).toHaveBeenCalledTimes(1)
+    localStorage.clear()
+  })
+})

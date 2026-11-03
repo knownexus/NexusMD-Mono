@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-const { startAuto, stopAuto } = vi.hoisted(() => ({ startAuto: vi.fn(), stopAuto: vi.fn() }))
-vi.mock('@nexusmd/core', () => ({ createSyncController: () => ({ startAuto, stopAuto }) }))
+const { startAuto } = vi.hoisted(() => ({ startAuto: vi.fn() }))
+vi.mock('@nexusmd/core', () => ({ createSyncController: () => ({ startAuto }) }))
 vi.mock('@nexusmd/web-adapters', () => ({ domDispatch: {}, domSubscribeForeground: {}, domSubscribeChange: {} }))
 vi.mock('./cloud-auth.js', () => ({ desktopCloudProviders: [] }))
 vi.mock('./profile-keys.js', () => ({ getProfileKey: k => k, getActiveProfileId: () => 'p' }))
