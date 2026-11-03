@@ -15,6 +15,7 @@
 import { contentHash } from '../sync/hash.js'
 import { encryptJson, decryptJson, opaqueId } from './crypto.js'
 import { AccountError } from './account-client.js'
+import { MACHINE_WRITTEN } from './key-registry.js'
 
 export const ITEM_CONTEXT = 'nexusmd-item|'
 export const DEVICE_CONTEXT = 'nexusmd-device-prefs|'
@@ -66,6 +67,56 @@ export function saveMeta(storage, metaKey, meta) {
   storage.setItem(metaKey, JSON.stringify(meta))
 }
 
+// ---- records and fields (registry v2) ------------------------------------------------
+// A collection key (`kind: 'collection'`) holds a list of records, each synced as its own item
+// `<base id>#<record id>`; a field map (`kind: 'fields'`, the per-profile tweaks) syncs one item
+// per property, `<base id>#<field>`. An item's value is the record (or field value) as JSON with
+// object keys sorted recursively, so the same record hashes the same on every device.
+
+// Property names never read from or written to a field map (they could reach Object.prototype).
+const UNSAFE_FIELDS = new Set(['__proto__', 'constructor', 'prototype'])
+
+/** JSON with object keys sorted at every depth. */
+export function stableJson(value) {
+  const norm = (v) => {
+    if (Array.isArray(v)) return v.map(norm)
+    if (isPlainObject(v)) {
+      const out = {}
+      for (const k of Object.keys(v).sort()) if (v[k] !== undefined) out[k] = norm(v[k])
+      return out
+    }
+    return v
+  }
+  return JSON.stringify(norm(value === undefined ? null : value))
+}
+
+/** A record's id as a string, or null when the record has none that can be synced. */
+const recordIdOf = (r) => {
+  if (!isPlainObject(r)) return null
+  if (typeof r.id === 'string') return r.id ? r.id : null
+  return Number.isFinite(r.id) ? String(r.id) : null
+}
+
+/** The record array in a parsed collection: [] when an object lacks it yet, null on a wrong shape. */
+function recordsOf(parsed, path) {
+  if (path == null) return Array.isArray(parsed) ? parsed : null
+  if (!isPlainObject(parsed)) return null
+  if (parsed[path] === undefined) return []
+  return Array.isArray(parsed[path]) ? parsed[path] : null
+}
+
+/** Index of the first record with `recordId` (later duplicates are never synced), or -1. */
+const findRecord = (list, recordId) => list.findIndex((r) => recordIdOf(r) === recordId)
+
+const isAutoField = (field) => MACHINE_WRITTEN.some((re) => re.test(field))
+
+/** `<base>#<sub>` split at the first `#`, or null. */
+function splitSubId(id) {
+  const i = id.indexOf('#')
+  if (i <= 0 || i === id.length - 1) return null
+  return { base: id.slice(0, i), sub: id.slice(i + 1) }
+}
+
 /** Where a canonical id lives on this device, or null (other platform, account secret, not synced). */
 export function resolveTarget(registry, id) {
   if (typeof id !== 'string' || !id) return null
@@ -73,10 +124,23 @@ export function resolveTarget(registry, id) {
     const name = registry.secretName(id)
     return name ? { kind: 'secret', name, level: 'account' } : null
   }
+  const parts = id.includes('#') ? splitSubId(id) : null
+  if (parts) {
+    const baseKey = registry.toStorageKey(parts.base)
+    const bc = baseKey ? registry.classify(baseKey) : null
+    if (bc && bc.kind === 'collection') {
+      return { kind: 'record', key: baseKey, path: bc.collection.path, recordId: parts.sub, level: bc.level, auto: !!bc.auto }
+    }
+    if (bc && bc.kind === 'fields') {
+      if (UNSAFE_FIELDS.has(parts.sub)) return null
+      return { kind: 'field', key: baseKey, field: parts.sub, level: bc.level, auto: !!bc.auto || isAutoField(parts.sub) }
+    }
+  }
   const key = registry.toStorageKey(id)
   if (!key) return null
   const c = registry.classify(key)
   if (!c) return null
+  if (c.kind === 'collection' || c.kind === 'fields') return null // synced as its records / fields
   if (c.split) {
     const half = id === c.accountId ? 'account' : id === c.deviceId ? 'device' : null
     return half ? { kind: 'tweaks', key, half, level: half } : null
@@ -97,6 +161,10 @@ export function resolveTarget(registry, id) {
 export async function readSnapshot({ registry, storage, secure, metaKey }, ck) {
   const snap = new Map()
   const unreadable = new Map() // id -> raw value seen (null for a secret that does not open)
+  // Collection / field-map containers by base id: the storage key and its raw value (the
+  // write-race baseline of every record or field in it), and the ones that do not parse.
+  const containers = new Map() // base id -> { key, raw }
+  const unreadableBases = new Set()
   const keys = []
   for (let i = 0; i < storage.length; i++) {
     const k = storage.key(i)
@@ -126,13 +194,53 @@ export async function readSnapshot({ registry, storage, secure, metaKey }, ck) {
       snap.set(c.deviceId, { level: 'device', value: device, raw, storageKey: key, secret: false, half: 'device', hash: hashOf(device) })
       continue
     }
+    if (c.kind === 'collection' || c.kind === 'fields') {
+      containers.set(c.id, { key, raw })
+      const parsed = parseJson(raw)
+      const auto = !!c.auto
+      if (c.kind === 'collection') {
+        const list = recordsOf(parsed, c.collection.path)
+        if (!list) { unreadableBases.add(c.id); continue }
+        for (const r of list) {
+          const recordId = recordIdOf(r)
+          const id = recordId == null ? null : `${c.id}#${recordId}`
+          if (!id || snap.has(id)) continue // no id, or a later duplicate: kept locally, never synced
+          const value = stableJson(r)
+          snap.set(id, { level: c.level, value, raw, storageKey: key, secret: false, kind: 'record', recordId, auto, hash: hashOf(value) })
+        }
+      } else {
+        if (!isPlainObject(parsed)) { unreadableBases.add(c.id); continue }
+        for (const field of Object.keys(parsed)) {
+          if (UNSAFE_FIELDS.has(field)) continue
+          const value = stableJson(parsed[field])
+          snap.set(`${c.id}#${field}`, {
+            level: c.level, value, raw, storageKey: key, secret: false, kind: 'field', field, auto: auto || isAutoField(field), hash: hashOf(value),
+          })
+        }
+      }
+      continue
+    }
     snap.set(c.id, { level: c.level, value: raw, raw, storageKey: key, secret: false, hash: hashOf(raw) })
   }
-  const isUnreadable = (id) => unreadable.has(id)
-  const isUnavailable = (id) => unreadable.has(id)
+  const baseOf = (id) => (typeof id === 'string' && id.includes('#') ? splitSubId(id)?.base : undefined)
+  const isUnreadable = (id) => unreadable.has(id) || unreadableBases.has(baseOf(id))
+  const isUnavailable = (id) => isUnreadable(id)
     || (!snap.has(id) && resolveTarget(registry, id)?.kind === 'tweaks')
-  const rawOf = (id) => (snap.has(id) ? snap.get(id).raw : unreadable.has(id) ? unreadable.get(id) : null)
-  return { snap, isUnavailable, isUnreadable, rawOf }
+  const rawOf = (id) => {
+    const cont = containers.get(baseOf(id))
+    if (cont) return cont.raw // a record or field: the race check looks at the whole container
+    return snap.has(id) ? snap.get(id).raw : unreadable.has(id) ? unreadable.get(id) : null
+  }
+  /**
+   * After this device wrote a record or field, the container's new raw value is the baseline,
+   * so the next record of the same key in this round is not mistaken for a race.
+   */
+  const noteWritten = (target) => {
+    if (!target || (target.kind !== 'record' && target.kind !== 'field')) return
+    const c = registry.classify(target.key)
+    if (c && c.id) containers.set(c.id, { key: target.key, raw: storage.getItem(target.key) })
+  }
+  return { snap, isUnavailable, isUnreadable, rawOf, noteWritten }
 }
 
 /** True when the local fingerprint differs from the server state recorded in `m`. */
@@ -194,6 +302,8 @@ export async function writeLocal({ registry, storage, secure }, target, value, d
     return true
   }
   const before = storage.getItem(target.key)
+  if (target.kind === 'record') return writeRecord(storage, target, before, value, deleted)
+  if (target.kind === 'field') return writeField(storage, target, before, value, deleted)
   if (target.kind === 'tweaks') {
     if (deleted) return false // tweaks halves are never deleted, only replaced
     const local = parseJson(before)
@@ -211,6 +321,63 @@ export async function writeLocal({ registry, storage, secure }, target, value, d
   }
   if (before != null && hashOf(before) === hashOf(value)) return false
   storage.setItem(target.key, value)
+  return true
+}
+
+/**
+ * One record of a collection: replaced in place (the first with its id), appended when new,
+ * removed on `deleted`. The key itself is never removed, and a container that does not parse
+ * (or has the wrong shape) is never written. An absent key is created around the record.
+ */
+function writeRecord(storage, target, before, value, deleted) {
+  let container
+  let list
+  if (before == null) {
+    if (deleted) return false
+    list = []
+    container = target.path == null ? list : { [target.path]: list }
+  } else {
+    container = parseJson(before)
+    list = recordsOf(container, target.path)
+    if (!list) return false
+    if (target.path != null && container[target.path] === undefined) container[target.path] = list
+  }
+  const i = findRecord(list, target.recordId)
+  if (deleted) {
+    if (i < 0) return false
+    list.splice(i, 1)
+  } else {
+    const rec = parseJson(value)
+    if (!isPlainObject(rec) || recordIdOf(rec) !== target.recordId) return false
+    if (i >= 0) {
+      if (stableJson(list[i]) === stableJson(rec)) return false
+      list[i] = rec
+    } else {
+      list.push(rec)
+    }
+  }
+  storage.setItem(target.key, JSON.stringify(container))
+  return true
+}
+
+/** One field of a field map: set or removed; every other field is kept. */
+function writeField(storage, target, before, value, deleted) {
+  let obj = {}
+  if (before != null) {
+    obj = parseJson(before)
+    if (!isPlainObject(obj)) return false
+  }
+  const has = Object.prototype.hasOwnProperty.call(obj, target.field)
+  if (deleted) {
+    if (!has) return false
+    delete obj[target.field]
+  } else {
+    const v = parseJson(value)
+    if (v === undefined) return false
+    if (has && stableJson(obj[target.field]) === stableJson(v)) return false
+    obj[target.field] = v
+  }
+  storage.setItem(target.key, JSON.stringify(obj))
   return true
 }
 
@@ -297,4 +464,14 @@ export async function decodeDeviceBlob(ck, deviceId, ciphertext) {
   }
 }
 
-export const validValue = (target, value) => (target.kind === 'tweaks' ? isPlainObject(value) : typeof value === 'string')
+/** A remote value fits its target: tweaks halves are objects, records a JSON object carrying the record's id. */
+export function validValue(target, value) {
+  if (target.kind === 'tweaks') return isPlainObject(value)
+  if (typeof value !== 'string') return false
+  if (target.kind === 'record') {
+    const rec = parseJson(value)
+    return isPlainObject(rec) && recordIdOf(rec) === target.recordId
+  }
+  if (target.kind === 'field') return parseJson(value) !== undefined
+  return true
+}

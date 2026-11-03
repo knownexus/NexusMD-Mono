@@ -1309,3 +1309,62 @@ describe('createAccountSync data-safety rules', () => {
     expect(srv.items.size).toBe(120)
   })
 })
+
+describe('records and fields (registry v2)', () => {
+  const L = 'nexusmd.p.A.lists'
+  const lists = (d) => JSON.parse(d.storage.getItem(L)).lists
+
+  it('syncs a collection record by record: several records of one key land in one pull, order kept', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, init: { [L]: JSON.stringify({ lists: [{ id: 'l1', n: 1 }, { id: 'l2', n: 2 }] }) } })
+    expect((await a.sync.push()).pushed).toBe(2)
+    expect(Object.keys(await decryptAll(srv, ck)).sort()).toEqual(['nexusmd:p.A.lists#l1', 'nexusmd:p.A.lists#l2'])
+    const b = device({ srv, ck, deviceId: 'dev-b', init: { [L]: JSON.stringify({ lists: [{ id: 'mine' }] }) } })
+    const r = await b.sync.pull()
+    expect(r.applied).toBe(2)
+    expect(lists(b)).toEqual([{ id: 'mine' }, { id: 'l1', n: 1 }, { id: 'l2', n: 2 }])
+    // one record edited on a: only that record is pushed, b takes it in place
+    a.storage.setItem(L, JSON.stringify({ lists: [{ id: 'l1', n: 1 }, { id: 'l2', n: 22 }] }))
+    expect((await a.sync.push()).pushed).toBe(1)
+    await b.sync.pull()
+    expect(lists(b)).toEqual([{ id: 'mine' }, { id: 'l1', n: 1 }, { id: 'l2', n: 22 }])
+    // a record removed on a is removed on b, the others stay
+    a.storage.setItem(L, JSON.stringify({ lists: [{ id: 'l2', n: 22 }] }))
+    expect((await a.sync.push()).pushed).toBe(1)
+    await b.sync.pull()
+    expect(lists(b)).toEqual([{ id: 'mine' }, { id: 'l2', n: 22 }])
+  })
+
+  it('an unreadable collection on the receiver holds its remote records and pushes no tombstones', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, init: { [L]: JSON.stringify({ lists: [{ id: 'l1' }] }) } })
+    await a.sync.push()
+    const b = device({ srv, ck, deviceId: 'dev-b', init: { [L]: '{hand edited' } })
+    await b.sync.syncNow()
+    expect(b.storage.getItem(L)).toBe('{hand edited') // never overwritten
+    expect(metaOf(b).entries['nexusmd:p.A.lists#l1']).toBeUndefined() // held: seen again next pull
+    expect((await decryptAll(srv, ck))['nexusmd:p.A.lists#l1'].deleted).toBeUndefined()
+    // once repaired, the record arrives
+    b.storage.setItem(L, JSON.stringify({ lists: [] }))
+    await b.sync.syncNow()
+    expect(lists(b)).toEqual([{ id: 'l1' }])
+    // a synced device whose key turns unreadable does not tombstone its records
+    a.storage.setItem(L, 'not json')
+    const pushed = await a.sync.push()
+    expect(pushed.pushed).toBe(0)
+    expect((await decryptAll(srv, ck))['nexusmd:p.A.lists#l1'].deleted).toBeUndefined()
+  })
+
+  it('tweaks sync field by field; a field the remote never touches is kept', async () => {
+    const T = 'nexusmd.p.A.tweaks'
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, init: { [T]: JSON.stringify({ theme: 'dark', layout: { b: 1, a: 2 } }) } })
+    expect((await a.sync.push()).pushed).toBe(2)
+    const b = device({ srv, ck, deviceId: 'dev-b', init: { [T]: JSON.stringify({ localOnly: 1 }) } })
+    await b.sync.pull()
+    expect(JSON.parse(b.storage.getItem(T))).toEqual({ localOnly: 1, theme: 'dark', layout: { a: 2, b: 1 } })
+  })
+})

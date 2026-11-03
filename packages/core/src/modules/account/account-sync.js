@@ -109,7 +109,10 @@ export function createAccountSync({
     const { snap, isUnavailable, isUnreadable, rawOf } = state
     const local = snap.get(remote.id)
     const m = meta.entries[remote.id]
-    if (isUnreadable(remote.id) && m && m.changedAt != null) return 'held'
+    // A record or field whose container does not parse is never written (that would drop the
+    // other records): it waits until the key is readable again.
+    const inContainer = target.kind === 'record' || target.kind === 'field'
+    if (isUnreadable(remote.id) && (inContainer || (m && m.changedAt != null))) return 'held'
     const remoteHash = remote.deleted ? null : await fingerprint(target, remote.value, ck)
     const merger = target.kind === 'plain' && registry.mergers && registry.mergers[remote.id]
     const merged = !remote.deleted && local && merger
@@ -127,7 +130,9 @@ export function createAccountSync({
     if (keepsLocal && m && m.changedAt != null) Object.assign(rec, { changedAt: m.changedAt, changedHash: m.changedHash })
     meta.entries[remote.id] = rec
     if (!write) return 'kept'
-    return (await writeLocal(ctx, target, merged != null ? merged : remote.value, remote.deleted)) ? 'applied' : 'same'
+    const changed = await writeLocal(ctx, target, merged != null ? merged : remote.value, remote.deleted)
+    if (changed && state.noteWritten) state.noteWritten(target) // the next record of this key compares against it
+    return changed ? 'applied' : 'same'
   }
 
   // ---- pull --------------------------------------------------------------------------
