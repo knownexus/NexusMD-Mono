@@ -102,8 +102,31 @@ NexusMDWeb.Api.Services.Auth.JwtKeyResolver.Resolve(app.Configuration, app.Envir
 
 // Off by default: with KnownProxies/KnownNetworks cleared, any caller could spoof X-Forwarded-For. Enable
 // (Proxy:TrustForwardedHeaders=true) only when a trusted reverse proxy fronts the app and is the sole way in.
+// TEMPORARY diagnostic (remove after the Railway client-IP check): logs, for /api/account/status only, the raw
+// connection address and proxy headers, then the client IP the app ends up using. Off unless Diag:LogClientIp=true.
+var diagClientIp = app.Configuration.GetValue("Diag:LogClientIp", false);
+static string DiagClean(string? v) => v is null ? "(none)" : new string(v.Take(200).Where(c => !char.IsControl(c)).ToArray());
+if (diagClientIp)
+    app.Use(async (ctx, next) =>
+    {
+        if (ctx.Request.Path.Equals("/api/account/status", StringComparison.OrdinalIgnoreCase))
+            ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("NexusMDWeb.Diag").LogInformation(
+                "DIAG raw remote={Remote} xff={Xff} xrealip={XRealIp}",
+                ctx.Connection.RemoteIpAddress?.ToString() ?? "(none)",
+                DiagClean(ctx.Request.Headers["X-Forwarded-For"].ToString()),
+                DiagClean(ctx.Request.Headers["X-Real-IP"].ToString()));
+        await next();
+    });
 if (app.Configuration.GetValue("Proxy:TrustForwardedHeaders", false))
     app.UseForwardedHeaders(); // must run first so everything downstream sees the real client IP/scheme
+if (diagClientIp)
+    app.Use(async (ctx, next) =>
+    {
+        if (ctx.Request.Path.Equals("/api/account/status", StringComparison.OrdinalIgnoreCase))
+            ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("NexusMDWeb.Diag").LogInformation(
+                "DIAG used remote={Remote}", ctx.Connection.RemoteIpAddress?.ToString() ?? "(none)");
+        await next();
+    });
 app.UseCors("CapacitorApp");
 // Diagnostics: a SqliteException that escapes a request (e.g. SQLITE_BUSY under contention) becomes a bare 500.
 // Record which error it was. Only the error codes and the matched route are logged: no message, SQL, parameters or ids.
