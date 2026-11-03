@@ -11,7 +11,7 @@ import { oauthAdapter } from './adapters/oauth.js'
 import { deepLinkAdapter } from './adapters/deepLink.js'
 import { beginSignIn, finishSignIn } from './oauth-pending.js'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd-api-production.up.railway.app'
 
 const PROVIDERS = {
   gdrive:    { keySuffix: 'gdrive.auth',    api: '/api/google/auth', from: 'gdrive' },

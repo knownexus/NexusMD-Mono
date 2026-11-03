@@ -6,7 +6,7 @@ import { createAccountClient, createAccountSync, createKeyRegistry, clearAccount
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 import { getActiveProfileId } from './profile-keys.js'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd-api-production.up.railway.app'
 
 const SESSION_KEY = 'account.session'         // secure storage -> helm.sec.account.session
 const DEVICE_KEY  = 'helm.account.deviceId'   // never synced (the registry skips `.account.` keys)

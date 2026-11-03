@@ -12,7 +12,7 @@ import {
   exchangeCode, refreshAccessToken, markGooglePending, takeGooglePending,
 } from './google-oauth.js'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd-api-production.up.railway.app'
 
 const PROVIDERS = {
   gdrive:    { keySuffix: 'gdrive.auth',    from: 'gdrive', scope: SCOPES.drive },

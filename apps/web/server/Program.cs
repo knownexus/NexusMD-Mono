@@ -84,14 +84,15 @@ builder.Services.AddSingleton<NexusMDWeb.Api.Services.ProfileService>();
 builder.Services.AddSingleton<NexusMDWeb.Api.Data.AccountRepository>();
 builder.Services.AddSingleton<NexusMDWeb.Api.Services.Auth.TokenService>();
 
-// Allow the Capacitor Android app to call the API. "nexus.app" is the
-// WebView's virtual hostname (capacitor.config.json); "nexusmd.app" is the
-// deployed API/web origin used as the desktop/app VITE_API_BASE default.
+// Allow the apps to call the API. "nexus.app" is the Android WebView's virtual hostname (capacitor.config.json);
+// "null" is the desktop app, whose Electron window is loaded from file:// and so sends "Origin: null";
+// "nexusmd.app" is the web origin. Allowing "null" is safe because the API authenticates with a bearer token in
+// the Authorization header, never a cookie: a page cannot act as a user without already holding their token.
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("CapacitorApp", policy =>
     {
-        policy.WithOrigins("https://nexusmd.app", "https://nexus.app")
+        policy.WithOrigins("https://nexusmd.app", "https://nexus.app", "null")
               .WithHeaders("Content-Type", "Authorization", "X-Requested-With")
               .WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS");
     });

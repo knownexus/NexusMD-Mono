@@ -25,8 +25,9 @@ Nothing here has been run for you. Do each step yourself (or explicitly ask for 
 2. Add a volume to the service and mount it at `/data`. Without it the databases are lost on every deploy.
 3. Keep the service at **one replica**. The stores are SQLite files; never scale replicas above 1.
 4. Do not enable a public TCP proxy for the service. Expose it only through the HTTP domain.
-5. Attach the `nexusmd.app` custom domain (or a subdomain, e.g. `api.nexusmd.app`) and add the DNS records Railway
-   shows. The examples below use `https://nexusmd.app`; substitute your real host.
+5. The service uses Railway's generated domain, `https://nexusmd-api-production.up.railway.app` (`railway domain`). The desktop and Android apps
+   default to it (`API_BASE` in `apps/*/src/account.js` and `cloud-auth.js`, and `apps/app/.env.production`). To move
+   to a custom domain later, attach it in Railway, add its DNS records, and change those defaults.
 
 ## 3. Environment variables
 
@@ -40,8 +41,8 @@ Required:
 | `Profiles__DbPath` | `/data/profiles.db` (image default) |
 | `Proxy__TrustForwardedHeaders` | `true`. **Required behind Railway.** Without it `Request.Scheme` is `http`, so the redirect URIs the Google and Microsoft controllers build (`{scheme}://{host}/api/google/auth/native-callback` and `/api/ms/auth/native-callback`) will not match the registered `https` URIs, and the per-IP rate limiter collapses every client onto the proxy's address. |
 | `Proxy__ClientIpHeader` | `X-Real-IP`. **Required behind Railway.** Railway sends `X-Forwarded-For: <client>, <edge ip>` with an edge address that changes between requests, so without this every request lands in a fresh rate-limit partition and the per-IP limit never engages. `X-Real-IP` carries the client address alone. Read only while `Proxy__TrustForwardedHeaders` is true; an unparseable value falls back to the `X-Forwarded-For` address. |
-| `Google__ClientId`, `Google__ClientSecret` | Google web OAuth client. Register `https://nexusmd.app/api/google/auth/native-callback` as an authorized redirect URI. |
-| `Microsoft__ClientId`, `Microsoft__ClientSecret`, `Microsoft__Tenant` | Entra app registration. Register `https://nexusmd.app/api/ms/auth/native-callback` as a redirect URI. `Microsoft__Tenant` defaults to `common` when empty. |
+| `Google__ClientId`, `Google__ClientSecret` | Google web OAuth client. Register `https://nexusmd-api-production.up.railway.app/api/google/auth/native-callback` as an authorized redirect URI. |
+| `Microsoft__ClientId`, `Microsoft__ClientSecret`, `Microsoft__Tenant` | Entra app registration. Register `https://nexusmd-api-production.up.railway.app/api/ms/auth/native-callback` as a redirect URI. `Microsoft__Tenant` defaults to `common` when empty. |
 | `OAuth__NativeReturnPrefixes__0` | `nexusmd://` (add `__1`, ... for further allowed return prefixes). Be aware this is merged index-by-index with the `appsettings.json` list (`nexusmd://`, `http://127.0.0.1`), so index 0 is replaced but the loopback entry at index 1 stays allowed unless you also set `OAuth__NativeReturnPrefixes__1` to something else. |
 
 Optional tuning:
@@ -60,7 +61,7 @@ Optional tuning:
 
 1. Set the variables above and deploy. Check the deploy logs for a clean start (a missing or short
    `Jwt__SigningKey` aborts startup with an explicit message).
-2. `GET https://nexusmd.app/api/account/status` should return `{"needsSetup":true}`.
+2. `GET https://nexusmd-api-production.up.railway.app/api/account/status` should return `{"needsSetup":true}`.
 3. Create the first admin with `POST /api/account/setup`. This cannot be done with plain curl: the client must
    derive and send the `authKey`, `salt`, `iterations`, `publicKey`, `wrappedPrivateKey` and
    `wrappedContainerKey` from the password (end-to-end encryption), alongside `username` and `setupToken` (the value
@@ -85,7 +86,7 @@ Optional tuning:
    `X-Forwarded-For` and `X-Real-IP` values and sets both itself. That is only safe if the service is reachable
    solely through Railway's edge. Verify empirically: from one machine, send
    more than `RateLimit__PermitPerMinute` requests to `/api/account/status` within a minute, each with a different
-   fake header (`curl -H "X-Forwarded-For: 203.0.113.<n>" https://nexusmd.app/api/account/status`). You should
+   fake header (`curl -H "X-Forwarded-For: 203.0.113.<n>" https://nexusmd-api-production.up.railway.app/api/account/status`). You should
    still receive HTTP 429 after the limit; if every request succeeds, either a client-supplied header is being
    trusted or the client address is not being read (check `Proxy__ClientIpHeader`). Repeat with fake
    `X-Real-IP` headers. Also confirm requests from a second network are not throttled by the first

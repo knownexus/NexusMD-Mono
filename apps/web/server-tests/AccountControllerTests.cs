@@ -955,6 +955,34 @@ public sealed class AccountControllerTests : IDisposable
         Assert.Equal((HttpStatusCode)429, (await http.SendAsync(Bad())).StatusCode);
     }
 
+    static HttpRequestMessage Preflight(string origin)
+    {
+        var r = new HttpRequestMessage(HttpMethod.Options, "/api/account/login");
+        r.Headers.Add("Origin", origin);
+        r.Headers.Add("Access-Control-Request-Method", "POST");
+        r.Headers.Add("Access-Control-Request-Headers", "content-type,authorization");
+        return r;
+    }
+
+    [Theory]
+    [InlineData("null")]              // the desktop app: Electron loads its window from file://
+    [InlineData("https://nexus.app")] // the Android app's WebView
+    public async Task Cors_allows_the_desktop_and_android_app_origins(string origin)
+    {
+        var (_, http) = NewHost(_ => { });
+        var res = await http.SendAsync(Preflight(origin));
+        Assert.True(res.Headers.TryGetValues("Access-Control-Allow-Origin", out var allowed));
+        Assert.Equal(origin, Assert.Single(allowed!));
+    }
+
+    [Fact]
+    public async Task Cors_does_not_allow_other_web_origins()
+    {
+        var (_, http) = NewHost(_ => { });
+        var res = await http.SendAsync(Preflight("https://evil.example"));
+        Assert.False(res.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
     [Fact]
     public async Task Forwarded_headers_can_be_switched_off()
     {

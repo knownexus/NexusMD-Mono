@@ -6,7 +6,7 @@ import { appPrefsAdapter } from './adapters/appPrefs.js'
 import { collectDesktopPrefs, applyDesktopPrefs } from './settings-file.js'
 import { registry } from './shell/registry.js'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd.app'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd-api-production.up.railway.app'
 
 const SESSION_KEY = 'account.session'          // secure storage -> nexusmd.sec.account.session
 const DEVICE_KEY  = 'nexusmd.account.deviceId' // never synced (the registry skips `.account.` keys)
