@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  createKeyRegistry, TWEAK_ACCOUNT_FIELDS, ALIASES, SYNC_SKIP, isSkippedKey,
+  createKeyRegistry, TWEAK_ACCOUNT_FIELDS, ALIASES, SYNC_SKIP, isSkippedKey, COLLECTIONS, MACHINE_WRITTEN,
 } from '../src/modules/account/key-registry.js'
 import * as core from '../src/index.js'
 
@@ -26,17 +26,15 @@ describe('skip rules', () => {
     'nexusmd.sec.x',
     'nexusmd.sync.base.y',
     'nexusmd.p.1.git.snapshot',
+    // registry v2: desktop content syncs only under a profile (see 'registry v2' below)
     'nexusmd.planner.week.2026-W40',
-    'nexusmd.p.1.planner.week.2026-W40',
     'nexusmd.planner.globalNotes',
-    'nexusmd.p.1.planner.globalNotes',
     'nexusmd.planner.versions',
     'nexusmd.account.meta',
     'nexusmd.account.deviceId',
+    'nexusmd.p.1.account.x',
     'nexusmd.sec.account.keys',
-    'nexusmd.p.1.calendar.events',
     'nexusmd.lists',
-    'nexusmd.p.1.lists',
     'nexusmd.timelog.v1',
     'nexusmd.oauth.pending',
     'nexusmd.ado.cache.v1',
@@ -101,8 +99,9 @@ describe('skip rules', () => {
 describe('profiles and active profile', () => {
   it.each([['nexusmd', desktop], ['helm', android]])('%s profiles and activeProfileId', (ns, make) => {
     const reg = make()
-    expect(reg.classify(`${ns}.profiles`)).toEqual({ id: 'profiles', level: 'account' })
-    expect(reg.classify(`${ns}.activeProfileId`)).toEqual({ id: 'activeProfileId', level: 'device' })
+    const auto = ns === 'nexusmd' ? { auto: false } : {} // registry v2 marks every desktop result
+    expect(reg.classify(`${ns}.profiles`)).toEqual({ id: 'profiles', level: 'account', ...auto })
+    expect(reg.classify(`${ns}.activeProfileId`)).toEqual({ id: 'activeProfileId', level: 'device', ...auto })
     expect(reg.toStorageKey('profiles')).toBe(`${ns}.profiles`)
     expect(reg.toStorageKey('activeProfileId')).toBe(`${ns}.activeProfileId`)
   })
@@ -117,8 +116,8 @@ describe('aliases', () => {
   it('ado org is shared between desktop and Android', () => {
     const d = desktop().classify('nexusmd.p.1.ado.org')
     const a = android().classify('helm.p.1.android.org')
-    expect(d).toEqual({ id: 'p.1.ado.org', level: 'account' })
-    expect(a).toEqual(d)
+    expect(d).toEqual({ id: 'p.1.ado.org', level: 'account', auto: false })
+    expect(a).toEqual({ id: d.id, level: d.level })
     expect(desktop().toStorageKey(d.id)).toBe('nexusmd.p.1.ado.org')
     expect(android().toStorageKey(d.id)).toBe('helm.p.1.android.org')
   })
@@ -156,12 +155,16 @@ describe('aliases', () => {
       const aKey = `helm.${scope}${row.helm}`
       const d = desktop().classify(dKey)
       const a = android().classify(aKey)
-      expect(d).not.toBeNull()
-      expect(d).toEqual(a)
-      expect(d.id).toBe(`${scope}${row.id}`)
-      expect(d.level).toBe('account')
+      expect(a).toEqual({ id: `${scope}${row.id}`, level: 'account' })
+      expect(android().toStorageKey(a.id)).toBe(aKey)
+      if (!scope) {
+        // registry v2: desktop keeps connection fields only under a profile
+        expect(d).toBeNull()
+        expect(desktop().toStorageKey(a.id)).toBeNull()
+        return
+      }
+      expect(d).toEqual({ id: a.id, level: 'account', auto: false })
       expect(desktop().toStorageKey(d.id)).toBe(dKey)
-      expect(android().toStorageKey(d.id)).toBe(aKey)
     })
   })
 })
@@ -170,7 +173,7 @@ describe('platform-private keys', () => {
   it('google tokens keep their namespace and never cross platforms', () => {
     const d = desktop().classify('nexusmd.p.1.google.auth')
     const a = android().classify('helm.p.1.google.auth')
-    expect(d).toEqual({ id: 'nexusmd:p.1.google.auth', level: 'account' })
+    expect(d).toEqual({ id: 'nexusmd:p.1.google.auth', level: 'account', auto: true })
     expect(a).toEqual({ id: 'helm:p.1.google.auth', level: 'account' })
     expect(d.id).not.toBe(a.id)
     expect(desktop().toStorageKey(d.id)).toBe('nexusmd.p.1.google.auth')
@@ -185,16 +188,22 @@ describe('platform-private keys', () => {
 
   it('unaliased account-level keys round trip within the namespace', () => {
     const c = desktop().classify('nexusmd.p.1.team.custom')
-    expect(c).toEqual({ id: 'nexusmd:p.1.team.custom', level: 'account' })
+    expect(c).toEqual({ id: 'nexusmd:p.1.team.custom', level: 'account', auto: false })
     expect(desktop().toStorageKey(c.id)).toBe('nexusmd.p.1.team.custom')
-    expect(desktop().classify('nexusmd.theme')).toEqual({ id: 'nexusmd:theme', level: 'account' })
+    expect(android().classify('helm.theme')).toEqual({ id: 'helm:theme', level: 'account' })
+    // registry v2: a global desktop key is not synced
+    expect(desktop().classify('nexusmd.theme')).toBeNull()
+    expect(desktop().toStorageKey('nexusmd:theme')).toBeNull()
   })
 
   it('toStorageKey accepts only the canonical id classify produces', () => {
     const d = desktop(), a = android()
     // non-canonical spellings of keys that classify to another id
     expect(d.toStorageKey('nexusmd:tweaks')).toBeNull()
-    expect(d.toStorageKey('nexusmd:p.1.tweaks')).toBeNull()
+    expect(a.toStorageKey('helm:p.1.tweaks')).toBeNull()
+    // registry v2: the per-profile desktop tweaks key is canonical (a field map)
+    expect(d.toStorageKey('nexusmd:p.1.tweaks')).toBe('nexusmd.p.1.tweaks')
+    expect(d.toStorageKey('nexusmd:p.1.lists#l1')).toBeNull()
     expect(d.toStorageKey('nexusmd:profiles')).toBeNull()
     expect(d.toStorageKey('nexusmd:activeProfileId')).toBeNull()
     expect(d.toStorageKey('nexusmd:p.1.ado.org')).toBeNull()
@@ -210,7 +219,8 @@ describe('platform-private keys', () => {
   it('every id classify produces round-trips exactly', () => {
     const keys = [
       ['nexusmd', 'nexusmd.profiles'], ['nexusmd', 'nexusmd.activeProfileId'], ['nexusmd', 'nexusmd.p.1.ado.org'],
-      ['nexusmd', 'nexusmd.p.1.google.auth'], ['nexusmd', 'nexusmd.sidebar.width'], ['helm', 'helm.p.1.android.jira.site'],
+      ['nexusmd', 'nexusmd.p.1.google.auth'], ['nexusmd', 'nexusmd.p.1.sidebar.width'], ['nexusmd', 'nexusmd.p.1.tweaks'],
+      ['nexusmd', 'nexusmd.p.1.lists'], ['nexusmd', 'nexusmd.feature.x'], ['helm', 'helm.p.1.android.jira.site'],
       ['helm', 'helm.p.1.google.auth'], ['helm', 'helm.theme'],
     ]
     for (const [ns, key] of keys) {
@@ -232,16 +242,20 @@ describe('device-level keys', () => {
     'builds.hiddenCols', 'builds.colOrder', 'builds.statuses', 'wi.view', 'wi.collapsed.board',
     'wi.assignees.neg', 'notif.digest', 'refreshInterval', 'markdown.textSize',
   ]
-  it.each(deviceKeys)('%s is device level, plain and profile-scoped', (name) => {
-    expect(desktop().classify(`nexusmd.${name}`)).toEqual({ id: `nexusmd:${name}`, level: 'device' })
-    expect(desktop().classify(`nexusmd.p.7.${name}`)).toEqual({ id: `nexusmd:p.7.${name}`, level: 'device' })
+  it.each(deviceKeys)('%s is device level on Android; on desktop only sidebar.width stays device level', (name) => {
     expect(android().classify(`helm.p.7.${name}`)).toEqual({ id: `helm:p.7.${name}`, level: 'device' })
+    // registry v2: desktop syncs it only under a profile, and only sidebar.width is still per device
+    expect(desktop().classify(`nexusmd.${name}`)).toBeNull()
+    const d = desktop().classify(`nexusmd.p.7.${name}`)
+    expect(d.id).toBe(`nexusmd:p.7.${name}`)
+    expect(d.level).toBe(name === 'sidebar.width' ? 'device' : 'account')
   })
 
   it('other builds and wi neighbours default to account level', () => {
-    expect(desktop().classify('nexusmd.builds.acknowledged').level).toBe('account')
-    expect(desktop().classify('nexusmd.builds.hiddenPipelines').level).toBe('account')
-    expect(desktop().classify('nexusmd.ui.drawerWidth').level).toBe('account')
+    expect(android().classify('helm.builds.acknowledged').level).toBe('account')
+    expect(desktop().classify('nexusmd.p.1.builds.acknowledged').level).toBe('account')
+    expect(desktop().classify('nexusmd.p.1.builds.hiddenPipelines').level).toBe('account')
+    expect(desktop().classify('nexusmd.p.1.ui.drawerWidth').level).toBe('account')
   })
 })
 
@@ -252,18 +266,19 @@ describe('tweaks', () => {
     ])
   })
 
-  it('classifies desktop (global) and Android (profile-scoped) tweaks as a split', () => {
+  it('classifies Android tweaks as a split; desktop tweaks are a per-profile field map (registry v2)', () => {
     const want = { id: 'tweaks.account', level: 'account', split: true, accountId: 'tweaks.account', deviceId: 'tweaks.device' }
-    expect(desktop().classify('nexusmd.tweaks')).toEqual(want)
-    expect(desktop().classify('nexusmd.p.1.tweaks')).toEqual(want)
     expect(android().classify('helm.tweaks')).toEqual(want)
     expect(android().classify('helm.p.1.tweaks')).toEqual(want)
+    expect(desktop().classify('nexusmd.tweaks')).toBeNull()
+    expect(desktop().classify('nexusmd.p.1.tweaks')).toEqual({ id: 'nexusmd:p.1.tweaks', level: 'account', kind: 'fields', auto: false })
   })
 
-  it('toStorageKey for both tweak ids is the namespace tweaks key', () => {
-    expect(desktop().toStorageKey('tweaks.account')).toBe('nexusmd.tweaks')
-    expect(desktop().toStorageKey('tweaks.device')).toBe('nexusmd.tweaks')
+  it('toStorageKey for both tweak ids is the namespace tweaks key (Android only)', () => {
     expect(android().toStorageKey('tweaks.account')).toBe('helm.tweaks')
+    expect(android().toStorageKey('tweaks.device')).toBe('helm.tweaks')
+    expect(desktop().toStorageKey('tweaks.account')).toBeNull()
+    expect(desktop().toStorageKey('tweaks.device')).toBeNull()
   })
 
   it('Android tweaks follow the active profile when one is known', () => {
@@ -287,15 +302,16 @@ describe('tweaks', () => {
     expect(reg.classify('helm.p.zzz.tweaks').split).toBe(true)
   })
 
-  it('desktop with an active profile accepts only the global tweaks key', () => {
+  it('desktop accepts every profile tweaks key, whatever the active profile (registry v2)', () => {
     const reg = createKeyRegistry({ namespace: 'nexusmd', getActiveProfileId: () => 'abc' })
-    expect(reg.classify('nexusmd.tweaks').split).toBe(true)
-    expect(reg.classify('nexusmd.p.abc.tweaks')).toBeNull()
+    expect(reg.classify('nexusmd.tweaks')).toBeNull()
+    expect(reg.classify('nexusmd.p.abc.tweaks').id).toBe('nexusmd:p.abc.tweaks')
+    expect(reg.classify('nexusmd.p.zzz.tweaks').id).toBe('nexusmd:p.zzz.tweaks')
   })
 
-  it('desktop tweaks stay at the global key even with an active profile', () => {
+  it('desktop has no split tweak ids even with an active profile (registry v2)', () => {
     const reg = createKeyRegistry({ namespace: 'nexusmd', getActiveProfileId: () => 'abc' })
-    expect(reg.toStorageKey('tweaks.account')).toBe('nexusmd.tweaks')
+    expect(reg.toStorageKey('tweaks.account')).toBeNull()
   })
 
   it('splitTweaks puts account fields in account and everything else, unknown included, in device', () => {
@@ -433,5 +449,140 @@ describe('public api', () => {
     expect(core.KEY_ALIASES).toBe(ALIASES)
     expect(core.SYNC_SKIP).toBe(SYNC_SKIP)
     expect(core.isSkippedKey).toBe(isSkippedKey)
+  })
+})
+
+describe('registry v2 (nexusmd): profile scope, collections, field maps, machine-written', () => {
+  it('collection keys are record collections with the path of their record array', () => {
+    expect(desktop().classify('nexusmd.p.A.planner.globalNotes')).toEqual({
+      id: 'nexusmd:p.A.planner.globalNotes', kind: 'collection', collection: { path: null }, level: 'account', auto: false,
+    })
+    expect(desktop().classify('nexusmd.p.A.lists').collection.path).toBe('lists')
+    expect(desktop().classify('nexusmd.p.A.timelog.v1').collection.path).toBe('entries')
+  })
+
+  it('COLLECTIONS has the exact name -> path table', () => {
+    const want = {
+      'planner.globalNotes': null, 'planner.versions': null, 'calendar.events': null, lists: 'lists',
+      'timelog.v1': 'entries', md_documents: 'docs', json_editor_documents: null,
+      regex_tester_documents: null, 'dbManager.savedQueries': null,
+    }
+    expect(COLLECTIONS).toHaveLength(Object.keys(want).length)
+    for (const [name, path] of Object.entries(want)) {
+      const c = desktop().classify(`nexusmd.p.A.${name}`)
+      expect(c.kind).toBe('collection')
+      expect(c.collection).toEqual({ path })
+      expect(c.level).toBe('account')
+    }
+    expect(COLLECTIONS.every(c => c.name instanceof RegExp)).toBe(true)
+  })
+
+  it('formerly never-synced content now syncs under a profile', () => {
+    expect(desktop().classify('nexusmd.p.A.planner.week.2026-W40')).toEqual({
+      id: 'nexusmd:p.A.planner.week.2026-W40', level: 'account', auto: false,
+    })
+    expect(desktop().classify('nexusmd.p.A.calendar.events').kind).toBe('collection')
+    expect(desktop().classify('nexusmd.p.A.planner.versions').kind).toBe('collection')
+  })
+
+  it('the per-profile tweaks key is a field map', () => {
+    expect(desktop().classify('nexusmd.p.A.tweaks')).toEqual({
+      id: 'nexusmd:p.A.tweaks', level: 'account', kind: 'fields', auto: false,
+    })
+    const reg = createKeyRegistry({ namespace: 'nexusmd', getActiveProfileId: () => 'A' })
+    expect(reg.classify('nexusmd.p.B.tweaks').kind).toBe('fields')
+    expect(reg.toStorageKey('nexusmd:p.B.tweaks')).toBe('nexusmd.p.B.tweaks')
+  })
+
+  it('global keys outside a profile do not sync, except profiles, activeProfileId and feature.*', () => {
+    const d = desktop()
+    expect(d.classify('nexusmd.tweaks')).toBeNull()
+    expect(d.classify('nexusmd.refreshInterval')).toBeNull()
+    expect(d.classify('nexusmd.theme')).toBeNull()
+    expect(d.classify('nexusmd.sidebar.width')).toBeNull()
+    expect(d.classify('nexusmd.ado.org')).toBeNull()
+    expect(d.classify('nx-db:saved-queries')).toBeNull()
+    expect(d.toStorageKey('tweaks.account')).toBeNull()
+    expect(d.toStorageKey('tweaks.device')).toBeNull()
+    expect(d.toStorageKey('ado.org')).toBeNull()
+    expect(d.classify('nexusmd.profiles')).toEqual({ id: 'profiles', level: 'account', auto: false })
+    expect(d.classify('nexusmd.activeProfileId')).toEqual({ id: 'activeProfileId', level: 'device', auto: false })
+    expect(d.classify('nexusmd.feature.legacyCloudSync')).toEqual({ id: 'nexusmd:feature.legacyCloudSync', level: 'device', auto: false })
+    expect(d.toStorageKey('nexusmd:feature.legacyCloudSync')).toBe('nexusmd.feature.legacyCloudSync')
+  })
+
+  it('only sidebar.width stays device level; the rest of M1 device keys follow the profile', () => {
+    const d = desktop()
+    expect(d.classify('nexusmd.p.A.refreshInterval').level).toBe('account')
+    expect(d.classify('nexusmd.p.A.sidebar.width').level).toBe('device')
+    for (const name of ['fields.wiCard', 'builds.sortDir', 'wi.view', 'notif.digest', 'markdown.textSize']) {
+      expect(d.classify(`nexusmd.p.A.${name}`).level).toBe('account')
+    }
+  })
+
+  it('machine-written values are marked auto', () => {
+    const d = desktop()
+    expect(d.classify('nexusmd.p.A.github.auth').auto).toBe(true)
+    expect(d.classify('nexusmd.p.A.github.repos').auto).toBe(false)
+    for (const name of ['google.auth', 'seenPr', 'builds.collapsed', 'wi.collapsed.board', 'dbManager.openConnections',
+      'dbManager.listHidden', 'dbManager.lastType', 'apiClient.collapsedDirs', 'planner.reminderDismissed',
+      'planner.landing', 'editor.recent']) {
+      expect(d.classify(`nexusmd.p.A.${name}`).auto).toBe(true)
+    }
+    for (const name of ['team.custom', 'editor.recentFoo', 'planner.week.2026-W40', 'dbManager.savedQueries']) {
+      expect(d.classify(`nexusmd.p.A.${name}`).auto).toBe(false)
+    }
+    expect(MACHINE_WRITTEN.every(re => re instanceof RegExp)).toBe(true)
+  })
+
+  it('connection-field secrets get neutral ids', () => {
+    const d = desktop()
+    expect(d.secretId('nexusmd.p.A.ado.pat')).toBe('p.A.ado.pat')
+    expect(d.secretName('p.A.ado.pat')).toBe('nexusmd.p.A.ado.pat')
+    expect(d.secretId('nexusmd.p.A.jira.apiToken')).toBe('p.A.jira.apiToken')
+    expect(d.secretName(d.secretId('nexusmd.p.A.github.pat'))).toBe('nexusmd.p.A.github.pat')
+    // other secrets keep their platform-private id
+    expect(d.secretId('nexusmd.p.A.github.auth')).toBe('sec:nexusmd:nexusmd.p.A.github.auth')
+    expect(d.secretName('sec:nexusmd:nexusmd.p.A.github.auth')).toBe('nexusmd.p.A.github.auth')
+    expect(d.secretName('p.A.ado.nothing')).toBeNull()
+    expect(d.secretName('ado.pat')).toBeNull()
+    expect(android().secretName('p.A.ado.pat')).toBeNull()
+  })
+
+  it('profileOf names the profile an item belongs to', () => {
+    const d = desktop()
+    expect(d.profileOf('nexusmd:p.A.lists#l1')).toBe('A')
+    expect(d.profileOf('p.A.ado.pat')).toBe('A')
+    expect(d.profileOf('sec:nexusmd:nexusmd.p.A.github.auth')).toBe('A')
+    expect(d.profileOf('sec:nexusmd:p.B.x')).toBe('B')
+    expect(d.profileOf('nexusmd:p.A.tweaks#theme')).toBe('A')
+    expect(d.profileOf('profiles')).toBeNull()
+    expect(d.profileOf('nexusmd:feature.x')).toBeNull()
+    expect(d.profileOf(null)).toBeNull()
+  })
+
+  it('wasDeviceLevelInM1 covers the old device names and the device tweaks fields', () => {
+    const d = desktop()
+    for (const name of ['sidebar.width', 'fields.wiCard', 'builds.collapsed', 'builds.statuses', 'wi.view',
+      'notif.digest', 'refreshInterval', 'markdown.textSize']) {
+      expect(d.wasDeviceLevelInM1(`nexusmd:p.A.${name}`)).toBe(true)
+    }
+    expect(d.wasDeviceLevelInM1('nexusmd:p.A.tweaks#sidebarWidth')).toBe(true)
+    expect(d.wasDeviceLevelInM1('nexusmd:p.A.tweaks#someFutureField')).toBe(true)
+    expect(d.wasDeviceLevelInM1('activeProfileId')).toBe(true)
+    for (const f of TWEAK_ACCOUNT_FIELDS) expect(d.wasDeviceLevelInM1(`nexusmd:p.A.tweaks#${f}`)).toBe(false)
+    expect(d.wasDeviceLevelInM1('nexusmd:p.A.builds.acknowledged')).toBe(false)
+    expect(d.wasDeviceLevelInM1('nexusmd:p.A.team.custom')).toBe(false)
+    expect(d.wasDeviceLevelInM1('p.A.ado.org')).toBe(false)
+    expect(d.wasDeviceLevelInM1('nexusmd:p.A.lists#l1')).toBe(false)
+  })
+
+  it('helm keeps the M1 rules (no auto, no collections, old device list)', () => {
+    const a = android()
+    expect(a.classify('helm.p.1.lists')).toBeNull()
+    expect(a.classify('helm.theme')).toEqual({ id: 'helm:theme', level: 'account' })
+    expect(a.classify('helm.p.1.refreshInterval')).toEqual({ id: 'helm:p.1.refreshInterval', level: 'device' })
+    expect(a.classify('helm.p.1.google.auth')).toEqual({ id: 'helm:p.1.google.auth', level: 'account' })
+    expect(a.secretId('helm.p.1.android.pat')).toBe('sec:helm:helm.p.1.android.pat')
   })
 })

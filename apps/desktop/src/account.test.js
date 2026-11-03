@@ -45,14 +45,17 @@ describe('desktop account wiring', () => {
     expect(account.deviceStore.get()).toBeNull()
   })
 
-  it('createSync snapshots connection settings but not planner weeks', async () => {
+  // registry v2: profile content (planner weeks) syncs; global keys outside a profile do not
+  it('createSync snapshots connection settings and profile planner weeks but not global keys', async () => {
     localStorage.setItem('nexusmd.p.abc.ado.org', 'contoso')
     localStorage.setItem('nexusmd.p.abc.planner.week.2026-W01', '{"x":1}')
+    localStorage.setItem('nexusmd.planner.week.2026-W02', '{"y":1}')
     const ck = await importContainerKey(await exportContainerKey(await generateContainerKey()))
     const sync = account.createSync(ck, 'dev1')
     const snap = await sync.snapshot()
     const entries = [...snap.entries()]
     expect(entries.some(([, e]) => e.storageKey === 'nexusmd.p.abc.ado.org' && e.value === 'contoso')).toBe(true)
-    expect(entries.some(([, e]) => e.storageKey.includes('planner.week'))).toBe(false)
+    expect(entries.some(([, e]) => e.storageKey === 'nexusmd.p.abc.planner.week.2026-W01')).toBe(true)
+    expect(entries.some(([, e]) => e.storageKey === 'nexusmd.planner.week.2026-W02')).toBe(false)
   })
 })

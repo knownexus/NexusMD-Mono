@@ -143,22 +143,24 @@ describe('createAccountSync', () => {
       srv, ck,
       init: {
         'nexusmd.p.1.ado.org': 'contoso',
-        'nexusmd.tweaks': JSON.stringify({ theme: 'dark', widgets: ['a'] }),
-        'nexusmd.sidebar.width': '240',
-        'nexusmd.planner.week.2026-W40': '{}',
+        'nexusmd.p.1.sidebar.width': '240',
+        'nexusmd.planner.week.2026-W40': '{}', // a global key: registry v2 syncs user data only under a profile
         'nexusmd.account.deviceId': 'dev-a',
       },
       secrets: { 'google.auth': 'tok', 'account.session': 'sess' },
     })
     const snap = await a.sync.snapshot()
     expect(snap.get('p.1.ado.org')).toMatchObject({ level: 'account', value: 'contoso', storageKey: 'nexusmd.p.1.ado.org', secret: false })
-    expect(snap.get('tweaks.account')).toMatchObject({ level: 'account', value: { theme: 'dark' } })
-    expect(snap.get('tweaks.device')).toMatchObject({ level: 'device', value: { widgets: ['a'] } })
-    expect(snap.get('nexusmd:sidebar.width')).toMatchObject({ level: 'device', value: '240' })
+    expect(snap.get('nexusmd:p.1.sidebar.width')).toMatchObject({ level: 'device', value: '240' })
     expect(snap.get('sec:nexusmd:google.auth')).toMatchObject({ level: 'account', value: 'tok', secret: true })
     const ids = [...snap.keys()]
     expect(ids.some((id) => id.includes('planner'))).toBe(false)
-    expect(ids.filter((id) => id.includes('account'))).toEqual(['tweaks.account'])
+    expect(ids.filter((id) => id.includes('account'))).toEqual([])
+    // the tweaks split is Android's (helm keeps the M1 registry rules)
+    const phone = device({ srv, ck, ns: 'helm', init: { 'helm.tweaks': JSON.stringify({ theme: 'dark', widgets: ['a'] }) } })
+    const psnap = await phone.sync.snapshot()
+    expect(psnap.get('tweaks.account')).toMatchObject({ level: 'account', value: { theme: 'dark' } })
+    expect(psnap.get('tweaks.device')).toMatchObject({ level: 'device', value: { widgets: ['a'] } })
   })
 
   it('first push uploads every account key encrypted; the server never sees plaintext', async () => {
@@ -168,7 +170,7 @@ describe('createAccountSync', () => {
       srv, ck,
       init: {
         'nexusmd.p.1.ado.org': 'contoso-org-value',
-        'nexusmd.tweaks': JSON.stringify({ theme: 'midnight-theme', widgets: ['widget-one-value'] }),
+        'nexusmd.p.1.team.custom': JSON.stringify({ theme: 'midnight-theme', widgets: ['widget-one-value'] }),
         'nexusmd.profiles': JSON.stringify([{ id: '1', name: 'WorkProfileName' }]),
       },
       secrets: { 'google.auth': 'secret-token-value', 'account.session': 'account-session-value' },
@@ -177,11 +179,11 @@ describe('createAccountSync', () => {
     expect(r.error).toBeUndefined()
     expect(r.pushed).toBe(4)
     const stored = await decryptAll(srv, ck)
-    expect(Object.keys(stored).sort()).toEqual(['p.1.ado.org', 'profiles', 'sec:nexusmd:google.auth', 'tweaks.account'])
+    expect(Object.keys(stored).sort()).toEqual(['nexusmd:p.1.team.custom', 'p.1.ado.org', 'profiles', 'sec:nexusmd:google.auth'])
     expect(stored['p.1.ado.org'].value).toBe('contoso-org-value')
     const wire = srv.requests.join('\n')
     for (const s of ['contoso-org-value', 'midnight-theme', 'WorkProfileName', 'secret-token-value', 'account-session-value',
-      'ado.org', 'tweaks', 'profiles', 'google.auth', 'widget-one-value']) {
+      'ado.org', 'team.custom', 'profiles', 'google.auth', 'widget-one-value']) {
       expect(wire).not.toContain(s)
     }
   })
@@ -245,24 +247,25 @@ describe('createAccountSync', () => {
     expect(a.storage.getItem('nexusmd.p.1.ado.org')).toBe('edited-on-b')
   })
 
+  // registry v2: desktop tweaks are a per-profile field map; the split tweaks merge is Android's
   it('two engines converge (A changes, B pulls, B changes later, A pulls)', async () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
-    const a = device({ srv, ck, init: { 'nexusmd.tweaks': JSON.stringify({ theme: 'light', widgets: ['a1'] }) } })
+    const a = device({ srv, ck, ns: 'helm', init: { 'helm.tweaks': JSON.stringify({ theme: 'light', widgets: ['a1'] }) } })
     await a.sync.syncNow()
-    const b = device({ srv, ck, deviceId: 'dev-b', init: { 'nexusmd.tweaks': JSON.stringify({ widgets: ['b1'] }) } })
+    const b = device({ srv, ck, ns: 'helm', deviceId: 'dev-b', init: { 'helm.tweaks': JSON.stringify({ widgets: ['b1'] }) } })
     await b.sync.syncNow()
-    expect(JSON.parse(b.storage.getItem('nexusmd.tweaks'))).toEqual({ theme: 'light', widgets: ['b1'] })
+    expect(JSON.parse(b.storage.getItem('helm.tweaks'))).toEqual({ theme: 'light', widgets: ['b1'] })
 
-    a.storage.setItem('nexusmd.tweaks', JSON.stringify({ theme: 'dark', widgets: ['a1'] }))
+    a.storage.setItem('helm.tweaks', JSON.stringify({ theme: 'dark', widgets: ['a1'] }))
     await a.sync.syncNow()
     await b.sync.syncNow()
-    expect(JSON.parse(b.storage.getItem('nexusmd.tweaks')).theme).toBe('dark')
+    expect(JSON.parse(b.storage.getItem('helm.tweaks')).theme).toBe('dark')
 
-    b.storage.setItem('nexusmd.tweaks', JSON.stringify({ theme: 'dim', widgets: ['b1'] }))
+    b.storage.setItem('helm.tweaks', JSON.stringify({ theme: 'dim', widgets: ['b1'] }))
     await b.sync.syncNow()
     await a.sync.syncNow()
-    expect(JSON.parse(a.storage.getItem('nexusmd.tweaks'))).toEqual({ theme: 'dim', widgets: ['a1'] })
+    expect(JSON.parse(a.storage.getItem('helm.tweaks'))).toEqual({ theme: 'dim', widgets: ['a1'] })
   })
 
   it('first sync on B takes the remote value for shared keys and pushes B-only keys', async () => {
@@ -434,17 +437,17 @@ describe('createAccountSync', () => {
   it('quota rejections are reported and not re-sent until the value changes', async () => {
     const srv = fakeServer({ quotaBytes: 400 })
     const ck = await generateContainerKey()
-    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'small', 'nexusmd.big.blob': 'x'.repeat(300) } })
+    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'small', 'nexusmd.p.1.big.blob': 'x'.repeat(300) } })
     const r = await a.sync.push()
     expect(r.pushed).toBe(1)
-    expect(r.quota).toEqual(['nexusmd:big.blob'])
+    expect(r.quota).toEqual(['nexusmd:p.1.big.blob'])
     expect(r.tooLarge).toEqual([])
     const calls = srv.putCalls
     const again = await a.sync.syncNow()
     expect(again.pushed).toBe(0)
-    expect(again.quota).toEqual(['nexusmd:big.blob'])
+    expect(again.quota).toEqual(['nexusmd:p.1.big.blob'])
     expect(srv.putCalls).toBe(calls)
-    a.storage.setItem('nexusmd.big.blob', 'fits')
+    a.storage.setItem('nexusmd.p.1.big.blob', 'fits')
     const third = await a.sync.push()
     expect(third.pushed).toBe(1)
     expect(third.quota).toEqual([])
@@ -453,20 +456,20 @@ describe('createAccountSync', () => {
   it('too_large items are skipped and reported', async () => {
     const srv = fakeServer({ maxBytes: 300 })
     const ck = await generateContainerKey()
-    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'small', 'nexusmd.big.blob': 'x'.repeat(1000) } })
+    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'small', 'nexusmd.p.1.big.blob': 'x'.repeat(1000) } })
     const r = await a.sync.push()
     expect(r.pushed).toBe(1)
-    expect(r.tooLarge).toEqual(['nexusmd:big.blob'])
+    expect(r.tooLarge).toEqual(['nexusmd:p.1.big.blob'])
     const calls = srv.putCalls
     const again = await a.sync.syncNow()
     expect(again.pushed).toBe(0)
-    expect(again.tooLarge).toEqual(['nexusmd:big.blob']) // still reported, not re-sent
+    expect(again.tooLarge).toEqual(['nexusmd:p.1.big.blob']) // still reported, not re-sent
     expect(srv.putCalls).toBe(calls)
     // a new local value is tried again
-    a.storage.setItem('nexusmd.big.blob', 'y'.repeat(1000))
+    a.storage.setItem('nexusmd.p.1.big.blob', 'y'.repeat(1000))
     await a.sync.push()
     expect(srv.putCalls).toBe(calls + 1)
-    a.storage.setItem('nexusmd.big.blob', 'small now')
+    a.storage.setItem('nexusmd.p.1.big.blob', 'small now')
     expect((await a.sync.push()).pushed).toBe(1)
     expect((await a.sync.push()).tooLarge).toEqual([])
   })
@@ -574,10 +577,10 @@ describe('createAccountSync', () => {
       const ck = await generateContainerKey()
       const clockRef = { t: 100 }
       const now = () => clockRef.t
-      const T = 'nexusmd.tweaks'
-      const a = device({ srv, ck, init: { [T]: JSON.stringify({ theme: 'dark' }) }, now })
+      const T = 'helm.tweaks' // the split tweaks are Android's (registry v2)
+      const a = device({ srv, ck, ns: 'helm', init: { [T]: JSON.stringify({ theme: 'dark' }) }, now })
       await a.sync.syncNow()
-      const b = device({ srv, ck, deviceId: 'dev-b', now })
+      const b = device({ srv, ck, ns: 'helm', deviceId: 'dev-b', now })
       await b.sync.syncNow()
       clockRef.t = 1000
       a.storage.setItem(T, JSON.stringify({ theme: 'light' }))
@@ -589,7 +592,7 @@ describe('createAccountSync', () => {
       await a.sync.pull()
       expect(a.storage.getItem(T)).toBe('{not json')
 
-      const c = device({ srv, ck, deviceId: 'dev-c', init: { [T]: JSON.stringify({ theme: 'dim' }) }, now })
+      const c = device({ srv, ck, ns: 'helm', deviceId: 'dev-c', init: { [T]: JSON.stringify({ theme: 'dim' }) }, now })
       await c.sync.syncNow()
       c.storage.setItem(T, '{broken')
       clockRef.t = 3000
@@ -633,7 +636,8 @@ describe('createAccountSync', () => {
     it('Android: the active profile is set before the account tweaks land, so the theme is in the key the app reads', async () => {
       const srv = fakeServer()
       const ck = await generateContainerKey()
-      const a = device({ srv, ck, init: { 'nexusmd.profiles': PROFILES, 'nexusmd.tweaks': JSON.stringify({ theme: 'dark' }), 'nexusmd.p.p1.ado.org': 'contoso' } })
+      // registry v2: desktop no longer syncs the shared tweaks halves, so another Android device seeds them
+      const a = device({ srv, ck, ns: 'helm', deviceId: 'phone-a', init: { 'helm.profiles': PROFILES, 'helm.tweaks': JSON.stringify({ theme: 'dark' }), 'helm.p.p1.android.org': 'contoso' } })
       await a.sync.seed()
       let st = null
       const phone = device({ srv, ck, ns: 'helm', deviceId: 'phone', getActiveProfileId: () => st.getItem('helm.activeProfileId') })
@@ -681,16 +685,16 @@ describe('createAccountSync', () => {
     const devicePrefs = { collect: vi.fn(async () => shell), apply: vi.fn(async () => {}) }
     const a = device({
       srv, ck, devicePrefs,
-      init: { 'nexusmd.sidebar.width': '300', 'nexusmd.tweaks': JSON.stringify({ theme: 'dark', widgets: ['w'] }), 'nexusmd.activeProfileId': '1' },
+      // registry v2: desktop keys live under a profile; only sidebar.width stays device level
+      init: { 'nexusmd.p.1.sidebar.width': '300', 'nexusmd.p.1.team.custom': 'tc', 'nexusmd.activeProfileId': '1' },
     })
     await a.sync.push()
     const items = await decryptAll(srv, ck)
-    expect(Object.keys(items)).toEqual(['tweaks.account'])
-    expect(items['tweaks.account'].value).toEqual({ theme: 'dark' })
+    expect(Object.keys(items)).toEqual(['nexusmd:p.1.team.custom'])
+    expect(items['nexusmd:p.1.team.custom'].value).toBe('tc')
     const blob = await decryptJson(srv.prefs.get('dev-a').ciphertext, ck, 'nexusmd-device-prefs|dev-a')
     expect(blob.prefs).toEqual(shell)
-    expect(blob.entries['nexusmd:sidebar.width'].value).toBe('300')
-    expect(blob.entries['tweaks.device'].value).toEqual({ widgets: ['w'] })
+    expect(blob.entries['nexusmd:p.1.sidebar.width'].value).toBe('300')
     expect(blob.entries.activeProfileId.value).toBe('1')
     expect(srv.requests.join('\n')).not.toContain('closeToTray')
 
@@ -704,16 +708,32 @@ describe('createAccountSync', () => {
     const again = device({ srv, ck, deviceId: 'dev-a', devicePrefs: { collect: async () => ({}), apply } })
     const r = await again.sync.pull()
     expect(r.applied).toBeGreaterThan(0)
-    expect(again.storage.getItem('nexusmd.sidebar.width')).toBe('300')
+    expect(again.storage.getItem('nexusmd.p.1.sidebar.width')).toBe('300')
     expect(again.storage.getItem('nexusmd.activeProfileId')).toBe('1')
-    expect(JSON.parse(again.storage.getItem('nexusmd.tweaks'))).toEqual({ theme: 'dark', widgets: ['w'] })
+    expect(again.storage.getItem('nexusmd.p.1.team.custom')).toBe('tc')
     expect(apply).toHaveBeenCalledWith(shell)
 
     // another device does not get dev-a's device prefs
     const b = device({ srv, ck, deviceId: 'dev-b' })
     await b.sync.pull()
-    expect(b.storage.getItem('nexusmd.sidebar.width')).toBeNull()
-    expect(JSON.parse(b.storage.getItem('nexusmd.tweaks'))).toEqual({ theme: 'dark' })
+    expect(b.storage.getItem('nexusmd.p.1.sidebar.width')).toBeNull()
+    expect(b.storage.getItem('nexusmd.p.1.team.custom')).toBe('tc')
+
+    // the tweaks device half (Android's split tweaks) goes to the device blob too
+    const psrv = fakeServer()
+    const phone = device({ srv: psrv, ck, ns: 'helm', deviceId: 'phone', devicePrefs, init: { 'helm.tweaks': JSON.stringify({ theme: 'dark', widgets: ['w'] }) } })
+    await phone.sync.push()
+    const pitems = await decryptAll(psrv, ck)
+    expect(Object.keys(pitems)).toEqual(['tweaks.account'])
+    expect(pitems['tweaks.account'].value).toEqual({ theme: 'dark' })
+    const pblob = await decryptJson(psrv.prefs.get('phone').ciphertext, ck, 'nexusmd-device-prefs|phone')
+    expect(pblob.entries['tweaks.device'].value).toEqual({ widgets: ['w'] })
+    const phoneAgain = device({ srv: psrv, ck, ns: 'helm', deviceId: 'phone', devicePrefs: { collect: async () => ({}), apply: async () => {} } })
+    await phoneAgain.sync.pull()
+    expect(JSON.parse(phoneAgain.storage.getItem('helm.tweaks'))).toEqual({ theme: 'dark', widgets: ['w'] })
+    const otherPhone = device({ srv: psrv, ck, ns: 'helm', deviceId: 'phone-b' })
+    await otherPhone.sync.pull()
+    expect(JSON.parse(otherPhone.storage.getItem('helm.tweaks'))).toEqual({ theme: 'dark' })
   })
 
   describe('a device removed from the account (device prefs answer 404)', () => {
@@ -731,7 +751,7 @@ describe('createAccountSync', () => {
     it('syncNow still pushes account items and reports not-found through onError', async () => {
       const srv = removedServer()
       const ck = await generateContainerKey()
-      const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x', 'nexusmd.sidebar.width': '300' } })
+      const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x', 'nexusmd.p.1.sidebar.width': '300' } })
       await a.sync.syncNow()
       srv.removeDevice('dev-a')
       a.storage.setItem('nexusmd.p.1.ado.org', 'y')
@@ -752,7 +772,7 @@ describe('createAccountSync', () => {
       const srv = removedServer()
       const ck = await generateContainerKey()
       srv.removeDevice('dev-a')
-      const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x', 'nexusmd.sidebar.width': '300' } })
+      const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x', 'nexusmd.p.1.sidebar.width': '300' } })
       const r = await a.sync.seed()
       expect(r.error).toMatchObject({ code: 'not-found' })
       expect((await decryptAll(srv, ck))['p.1.ado.org'].value).toBe('x')
@@ -762,16 +782,16 @@ describe('createAccountSync', () => {
   it('a stale device blob write conflicts, re-pulls the blob and retries', async () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
-    const first = device({ srv, ck, deviceId: 'dev-a', init: { 'nexusmd.sidebar.width': '300' } })
+    const first = device({ srv, ck, deviceId: 'dev-a', init: { 'nexusmd.p.1.sidebar.width': '300' } })
     await first.sync.push()
-    const second = device({ srv, ck, deviceId: 'dev-a', init: { 'nexusmd.sidebar.width': '200', 'nexusmd.wi.view': 'grid' } })
+    const second = device({ srv, ck, deviceId: 'dev-a', init: { 'nexusmd.p.1.sidebar.width': '200', 'nexusmd.p.2.sidebar.width': '222' } })
     const r = await second.sync.push() // never pulled: If-Match 0 is stale
     expect(r.error).toBeUndefined()
     expect(r.conflicts).toBe(0)
-    expect(second.storage.getItem('nexusmd.sidebar.width')).toBe('300') // first sync: remote wins
+    expect(second.storage.getItem('nexusmd.p.1.sidebar.width')).toBe('300') // first sync: remote wins
     const blob = await decryptJson(srv.prefs.get('dev-a').ciphertext, ck, 'nexusmd-device-prefs|dev-a')
-    expect(blob.entries['nexusmd:sidebar.width'].value).toBe('300')
-    expect(blob.entries['nexusmd:wi.view'].value).toBe('grid')
+    expect(blob.entries['nexusmd:p.1.sidebar.width'].value).toBe('300')
+    expect(blob.entries['nexusmd:p.2.sidebar.width'].value).toBe('222')
     expect(srv.prefs.get('dev-a').revision).toBe(2)
   })
 
@@ -901,7 +921,7 @@ describe('createAccountSync', () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
     const init = {}
-    for (let i = 0; i < 120; i++) init[`nexusmd.k${i}`] = `v${i}`
+    for (let i = 0; i < 120; i++) init[`nexusmd.p.1.k${i}`] = `v${i}`
     const a = device({ srv, ck, init })
     await a.sync.seed()
     const orig = srv.client.getChanges
@@ -918,7 +938,7 @@ describe('createAccountSync', () => {
       const srv = fakeServer(opts)
       const ck = await generateContainerKey()
       const init = {}
-      for (let i = 0; i < n; i++) init[`nexusmd.k${i}`] = `v${i}`
+      for (let i = 0; i < n; i++) init[`nexusmd.p.1.k${i}`] = `v${i}`
       const a = device({ srv, ck, init })
       await a.sync.seed()
       return { srv, ck }
@@ -933,7 +953,7 @@ describe('createAccountSync', () => {
       expect(r.applied).toBe(120)
       expect(srv.changesCalls).toBeGreaterThan(5) // many short pages, each with hasMore: true
       expect(metaOf(b).cursor).toBe(120)
-      for (let i = 0; i < 120; i++) expect(b.storage.getItem(`nexusmd.k${i}`)).toBe(`v${i}`)
+      for (let i = 0; i < 120; i++) expect(b.storage.getItem(`nexusmd.p.1.k${i}`)).toBe(`v${i}`)
     })
 
     it('stops on hasMore: false even when the page is full', async () => {
@@ -963,7 +983,7 @@ describe('createAccountSync', () => {
     ]) {
       it(`a hasMore: true page that does not advance the cursor (${name}) ends with a server error and changes nothing`, async () => {
         const { srv, ck } = await seeded(3)
-        const b = device({ srv, ck, deviceId: 'dev-b', init: { 'nexusmd.k0': 'local-b', 'nexusmd.other': 'keep' } })
+        const b = device({ srv, ck, deviceId: 'dev-b', init: { 'nexusmd.p.1.k0': 'local-b', 'nexusmd.p.1.other': 'keep' } })
         await b.sync.syncNow()
         const before = new Map(b.storage.map)
         const cursor = metaOf(b).cursor
@@ -1094,7 +1114,7 @@ describe('createAccountSync data-safety rules', () => {
     const a = device({
       srv, ck,
       init: {
-        'nexusmd.custom.obj': '{"a":1,"b":[1,2]}',
+        'nexusmd.p.1.custom.obj': '{"a":1,"b":[1,2]}',
         'nexusmd.profiles': JSON.stringify([{ id: '1', name: 'W' }]),
       },
     })
@@ -1102,7 +1122,7 @@ describe('createAccountSync data-safety rules', () => {
     const b = device({
       srv, ck, deviceId: 'dev-b',
       init: {
-        'nexusmd.custom.obj': '{ "b": [1, 2], "a": 1 }',
+        'nexusmd.p.1.custom.obj': '{ "b": [1, 2], "a": 1 }',
         'nexusmd.profiles': '[{"name":"W","id":"1"}]',
       },
     })
@@ -1114,7 +1134,7 @@ describe('createAccountSync data-safety rules', () => {
     expect(r.pushed).toBe(0)
     expect(applied).not.toHaveBeenCalled()
     expect(srv.putCalls).toBe(calls)
-    expect(b.storage.getItem('nexusmd.custom.obj')).toBe('{ "b": [1, 2], "a": 1 }')
+    expect(b.storage.getItem('nexusmd.p.1.custom.obj')).toBe('{ "b": [1, 2], "a": 1 }')
   })
 
   it('skips an entry whose local value changes while the pull is running and reconciles it next sync', async () => {
@@ -1179,21 +1199,22 @@ describe('createAccountSync data-safety rules', () => {
     expect((await a.sync.push()).pushed).toBe(1)
   })
 
+  // registry v2: the split tweaks are Android's
   it('never tombstones the tweaks halves when the tweaks key vanishes', async () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
-    const a = device({ srv, ck, init: { 'nexusmd.tweaks': JSON.stringify({ theme: 'dark', widgets: ['x'] }) } })
+    const a = device({ srv, ck, ns: 'helm', init: { 'helm.tweaks': JSON.stringify({ theme: 'dark', widgets: ['x'] }) } })
     await a.sync.syncNow()
-    const b = device({ srv, ck, deviceId: 'dev-b', init: { 'nexusmd.tweaks': JSON.stringify({ widgets: ['b'] }) } })
+    const b = device({ srv, ck, ns: 'helm', deviceId: 'dev-b', init: { 'helm.tweaks': JSON.stringify({ widgets: ['b'] }) } })
     await b.sync.syncNow()
-    a.storage.removeItem('nexusmd.tweaks')
+    a.storage.removeItem('helm.tweaks')
     const r = await a.sync.syncNow()
     expect(r.pushed).toBe(0)
     expect((await decryptAll(srv, ck))['tweaks.account'].deleted).toBeFalsy()
     const blob = await decryptJson(srv.prefs.get('dev-a').ciphertext, ck, 'nexusmd-device-prefs|dev-a')
     expect(blob.entries['tweaks.device'].value).toEqual({ widgets: ['x'] })
     await b.sync.syncNow()
-    expect(JSON.parse(b.storage.getItem('nexusmd.tweaks'))).toEqual({ theme: 'dark', widgets: ['b'] })
+    expect(JSON.parse(b.storage.getItem('helm.tweaks'))).toEqual({ theme: 'dark', widgets: ['b'] })
   })
 
   it('never tombstones the tweaks halves when the Android active profile has no tweaks key', async () => {
@@ -1223,16 +1244,16 @@ describe('createAccountSync data-safety rules', () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
     const shell = { zoomFactor: 1.2 }
-    const one = device({ srv, ck, deviceId: 'dev-a', devicePrefs: { collect: async () => shell, apply: async () => {} }, init: { 'nexusmd.sidebar.width': '300' } })
+    const one = device({ srv, ck, deviceId: 'dev-a', devicePrefs: { collect: async () => shell, apply: async () => {} }, init: { 'nexusmd.p.1.sidebar.width': '300' } })
     await one.sync.syncNow()
     const two = device({ srv, ck, deviceId: 'dev-a', devicePrefs: null })
     await two.sync.syncNow()
-    expect(two.storage.getItem('nexusmd.sidebar.width')).toBe('300')
-    two.storage.setItem('nexusmd.sidebar.width', '250')
+    expect(two.storage.getItem('nexusmd.p.1.sidebar.width')).toBe('300')
+    two.storage.setItem('nexusmd.p.1.sidebar.width', '250')
     const r = await two.sync.syncNow()
     expect(r.devicePrefs).toBe(true)
     const blob = await decryptJson(srv.prefs.get('dev-a').ciphertext, ck, 'nexusmd-device-prefs|dev-a')
-    expect(blob.entries['nexusmd:sidebar.width'].value).toBe('250')
+    expect(blob.entries['nexusmd:p.1.sidebar.width'].value).toBe('250')
     expect(blob.prefs).toEqual(shell)
   })
 
@@ -1268,7 +1289,7 @@ describe('createAccountSync data-safety rules', () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
     const init = {}
-    for (let i = 0; i < 120; i++) init[`nexusmd.k${i}`] = `v${i}`
+    for (let i = 0; i < 120; i++) init[`nexusmd.p.1.k${i}`] = `v${i}`
     const a = device({ srv, ck, init })
     const orig = srv.client.putItems
     let batches = 0
