@@ -6,6 +6,7 @@ import { domDispatch, domSubscribeForeground, domSubscribeChange } from '@nexusm
 import { desktopCloudProviders } from './cloud-auth.js'
 import { getProfileKey, getActiveProfileId } from './profile-keys.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
+import { isLegacyCloudSyncOn } from './legacy-cloud-sync.js'
 
 const KEY_ID = 'sync.keyhex'
 const keyStore = {
@@ -27,4 +28,5 @@ export const desktopSync = createSyncController({
   subscribeChange: domSubscribeChange,
 })
 
-export function startDesktopAutoSync() { desktopSync.startAuto() }
+// Only when the Google Drive / OneDrive backup switch is on (Settings > Data & sync).
+export function startDesktopAutoSync() { if (isLegacyCloudSyncOn()) desktopSync.startAuto() }
