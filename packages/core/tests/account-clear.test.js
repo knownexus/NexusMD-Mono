@@ -36,6 +36,25 @@ describe('clearAccountLocalData', () => {
     expect(core.clearAccountLocalData).toBe(clearAccountLocalData)
   })
 
+  it('keeps profile content (record collections and planner weeks) on an account switch', async () => {
+    const { m, storage, secure, registry } = setup()
+    const content = {
+      'nexusmd.p.a.lists': '{"lists":[]}',
+      'nexusmd.p.a.planner.week.2026-W45': '{"x":1}',
+      'nexusmd.p.a.planner.globalNotes': '[]',
+      'nexusmd.p.a.timelog.v1': '{"entries":[]}',
+      'nexusmd.p.a.md_documents': '{"docs":[]}',
+      'nexusmd.p.a.dbManager.savedQueries': '[]',
+    }
+    for (const [k, v] of Object.entries(content)) m.set(k, v)
+    m.set('nexusmd.p.a.github.repos', '["r"]')
+    m.set('nexusmd.p.a.ado.pat', 'plain-token')
+    m.set('nexusmd.sidebar.width', '240')
+    await clearAccountLocalData({ registry, storage, secure, metaKey: META })
+    for (const k of Object.keys(content)) expect(m.has(k), k).toBe(true)
+    for (const k of ['nexusmd.p.a.github.repos', 'nexusmd.p.a.ado.pat', 'nexusmd.sidebar.width']) expect(m.has(k), k).toBe(false)
+  })
+
   it('removes synced keys, secrets and meta but keeps skipped data and the account session', async () => {
     const { m, storage, secure, removed, registry } = setup()
     await clearAccountLocalData({ registry, storage, secure, metaKey: META })

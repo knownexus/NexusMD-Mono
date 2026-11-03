@@ -100,8 +100,14 @@ const M1_DEVICE_LEVEL = [
   /^markdown\.textSize$/,
 ]
 
-// nexusmd: the only per-device preference left (the window layout of this machine).
+// nexusmd: the only per-device preference left (the window layout of this machine). The app
+// writes it both globally and per profile; both forms sync, at device level.
 const DEVICE_LEVEL = [/^sidebar\.width$/]
+
+// nexusmd: connection fields that are credentials. They sync only as secrets (neutral id
+// `p.<pid>.<alias id>`, secure-storage name `nexusmd.p.<pid>.<alias name>`); a plaintext key
+// holding one is never synced (the token migration moves it into secure storage).
+const TOKEN_ALIAS_IDS = new Set(['ado.pat', 'github.pat', 'jira.apiToken'])
 
 // nexusmd content keys that hold many records, matched against the name after `p.<pid>.`.
 // `path` is where the record array sits in the stored JSON: null for an array at the root,
@@ -184,7 +190,9 @@ export function createKeyRegistry({ namespace, getActiveProfileId } = {}) {
     if (!pid) {
       if (name === 'profiles') return { id: 'profiles', level: 'account', auto: false }
       if (name === 'activeProfileId') return { id: 'activeProfileId', level: 'device', auto: false }
-      if (/^feature\./.test(name)) return { id: `${namespace}:${rest}`, level: 'device', auto: false }
+      if (/^feature\./.test(name) || DEVICE_LEVEL.some(re => re.test(name))) {
+        return { id: `${namespace}:${rest}`, level: 'device', auto: false }
+      }
       return null // global user data is not synced; it belongs under a profile
     }
     const auto = isMachineWritten(name)
@@ -194,6 +202,7 @@ export function createKeyRegistry({ namespace, getActiveProfileId } = {}) {
     if (coll) return { id, level: 'account', kind: 'collection', collection: { path: coll.path }, auto }
     const level = DEVICE_LEVEL.some(re => re.test(name)) ? 'device' : 'account'
     const alias = byName.get(name)
+    if (alias && TOKEN_ALIAS_IDS.has(alias.id)) return null // a token syncs only as a secret
     return { id: alias ? `p.${pid}.${alias.id}` : id, level, auto }
   }
 
@@ -226,6 +235,9 @@ export function createKeyRegistry({ namespace, getActiveProfileId } = {}) {
   function toStorageKey(id) {
     if (typeof id !== 'string' || !id) return null
     let key = null
+
+    const token = tokenSecretName(id)
+    if (token) return `${secPrefix}${token}`
 
     const secret = /^sec:(nexusmd|helm):(.+)$/.exec(id)
     if (secret) {
@@ -301,28 +313,39 @@ export function createKeyRegistry({ namespace, getActiveProfileId } = {}) {
 
   // Secure-storage entries, found by the platform as localStorage keys starting with secPrefix.
   // Account secrets are never synced (secretId returns null for them).
-  // nexusmd: a connection field kept as a secret (`nexusmd.p.<pid>.<alias name>`, e.g. ado.pat)
-  // gets the neutral alias id `p.<pid>.<alias id>`, shared with Android; other secrets keep the
-  // platform-private `sec:<ns>:<name>`. isSecretId stays true only for `sec:` ids: a neutral id
-  // alone does not say whether this device keeps that field as a secret or as a plain key.
+  // nexusmd: a token (TOKEN_ALIAS_IDS) kept as a secret (`nexusmd.p.<pid>.<alias name>`) gets the
+  // neutral alias id `p.<pid>.<alias id>`, shared with Android, and that id is always a secret
+  // id on this platform. Every other secret keeps the platform-private `sec:<ns>:<name>`.
   const neutralSecretId = (name) => {
     const m = /^nexusmd\.p\.([^.#]+)\.(.+)$/.exec(name)
     const alias = m && byName.get(m[2])
-    return alias ? `p.${m[1]}.${alias.id}` : null
+    return alias && TOKEN_ALIAS_IDS.has(alias.id) ? `p.${m[1]}.${alias.id}` : null
+  }
+  // The secure-storage name for a neutral token id, null for any other id (and on helm).
+  function tokenSecretName(id) {
+    if (!v2 || typeof id !== 'string') return null
+    const n = /^p\.([^.#]+)\.(.+)$/.exec(id)
+    const alias = n && TOKEN_ALIAS_IDS.has(n[2]) && byId.get(n[2])
+    return alias ? `nexusmd.p.${n[1]}.${alias.nexusmd}` : null
   }
   const secretId = (name) => {
     if (typeof name !== 'string' || !name || isAccountSecretName(name)) return null
+    if (v2 && name.includes('#')) return null // `#` separates record ids
     return (v2 && neutralSecretId(name)) || `sec:${namespace}:${name}`
   }
-  const isSecretId = (id) => typeof id === 'string' && id.startsWith('sec:')
+  const isSecretId = (id) => typeof id === 'string' && (id.startsWith('sec:') || !!tokenSecretName(id))
+  // A plaintext storage key holding a token (nexusmd). Never synced; account switch removes it.
+  const isPlainTokenKey = (key) => {
+    if (!v2 || typeof key !== 'string' || !key.startsWith(prefix)) return false
+    const { pid, name } = parse(key)
+    const alias = pid && byName.get(name)
+    return !!alias && TOKEN_ALIAS_IDS.has(alias.id)
+  }
   // The secure-storage name for a secret id of this platform, null for the other platform's.
   const secretName = (id) => {
     if (typeof id !== 'string') return null
-    if (v2) {
-      const n = /^p\.([^.#]+)\.(.+)$/.exec(id)
-      const alias = n && byId.get(n[2])
-      if (alias) return `nexusmd.p.${n[1]}.${alias.nexusmd}`
-    }
+    const token = tokenSecretName(id)
+    if (token) return token
     const m = /^sec:(nexusmd|helm):(.+)$/.exec(id)
     return m && m[1] === namespace && !isAccountSecretName(m[2]) ? m[2] : null
   }
@@ -360,6 +383,7 @@ export function createKeyRegistry({ namespace, getActiveProfileId } = {}) {
     secretId,
     isSecretId,
     secretName,
+    isPlainTokenKey,
     profileOf,
     wasDeviceLevelInM1,
   }

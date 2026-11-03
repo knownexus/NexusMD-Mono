@@ -205,7 +205,7 @@ describe('createAccountSync', () => {
   it('a removed key is pushed as a tombstone and the other device removes it', async () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
-    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x', 'nexusmd.p.1.ado.pat': 'p' } })
+    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x', 'nexusmd.p.1.ado.projects': 'p' } })
     await a.sync.syncNow()
     const b = device({ srv, ck, deviceId: 'dev-b' })
     await b.sync.syncNow()
@@ -216,7 +216,7 @@ describe('createAccountSync', () => {
     const r = await b.sync.pull()
     expect(r.applied).toBe(1)
     expect(b.storage.getItem('nexusmd.p.1.ado.org')).toBeNull()
-    expect(b.storage.getItem('nexusmd.p.1.ado.pat')).toBe('p')
+    expect(b.storage.getItem('nexusmd.p.1.ado.projects')).toBe('p')
   })
 
   it('a locally removed key that was never synced is not tombstoned', async () => {
@@ -224,8 +224,8 @@ describe('createAccountSync', () => {
     const ck = await generateContainerKey()
     const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x' } })
     await a.sync.push()
-    a.storage.setItem('nexusmd.p.1.ado.pat', 'never-pushed')
-    a.storage.removeItem('nexusmd.p.1.ado.pat')
+    a.storage.setItem('nexusmd.p.1.ado.projects', 'never-pushed')
+    a.storage.removeItem('nexusmd.p.1.ado.projects')
     expect((await a.sync.push()).pushed).toBe(0)
   })
 
@@ -418,20 +418,20 @@ describe('createAccountSync', () => {
   it('a stale push conflicts, re-pulls, re-merges and retries once', async () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
-    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'base', 'nexusmd.p.1.ado.pat': 'pat' } })
+    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'base', 'nexusmd.p.1.ado.projects': 'pat' } })
     await a.sync.syncNow()
     const b = device({ srv, ck, deviceId: 'dev-b' })
     await b.sync.syncNow()
-    a.storage.setItem('nexusmd.p.1.ado.pat', 'pat-from-a')
+    a.storage.setItem('nexusmd.p.1.ado.projects', 'pat-from-a')
     await a.sync.push()
-    b.storage.setItem('nexusmd.p.1.ado.pat', 'pat-from-b')
+    b.storage.setItem('nexusmd.p.1.ado.projects', 'pat-from-b')
     const r = await b.sync.push() // B has not pulled A's write: ifMatch is stale
     expect(r.error).toBeUndefined()
     expect(r.conflicts).toBe(0)
     expect(r.pushed).toBe(1)
-    expect((await decryptAll(srv, ck))['p.1.ado.pat'].value).toBe('pat-from-b')
+    expect((await decryptAll(srv, ck))['p.1.ado.projects'].value).toBe('pat-from-b')
     await a.sync.pull()
-    expect(a.storage.getItem('nexusmd.p.1.ado.pat')).toBe('pat-from-b')
+    expect(a.storage.getItem('nexusmd.p.1.ado.projects')).toBe('pat-from-b')
   })
 
   it('quota rejections are reported and not re-sent until the value changes', async () => {
@@ -862,24 +862,24 @@ describe('createAccountSync', () => {
   it('ignores items whose ciphertext was swapped or whose payload id does not match the wire id', async () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
-    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'org', 'nexusmd.p.1.ado.pat': 'pat' } })
+    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'org', 'nexusmd.p.1.ado.projects': 'pat' } })
     await a.sync.seed()
     const wOrg = await opaqueId('p.1.ado.org', ck)
-    const wPat = await opaqueId('p.1.ado.pat', ck)
+    const wPat = await opaqueId('p.1.ado.projects', ck)
     // 1. server swaps ciphertexts between the two items
     srv.tamper = (list) => list.map((i) => (i.id === wOrg ? { ...i, ciphertext: srv.items.get(wPat).ciphertext }
       : i.id === wPat ? { ...i, ciphertext: srv.items.get(wOrg).ciphertext } : i))
     const b = device({ srv, ck, deviceId: 'dev-b' })
     await b.sync.pull()
     expect(b.storage.getItem('nexusmd.p.1.ado.org')).toBeNull()
-    expect(b.storage.getItem('nexusmd.p.1.ado.pat')).toBeNull()
+    expect(b.storage.getItem('nexusmd.p.1.ado.projects')).toBeNull()
     // 2. a validly encrypted payload whose inner id names another entry
     srv.tamper = null
-    const forged = await encryptJson({ id: 'p.1.ado.pat', value: 'evil', updatedAt: 1 }, ck, `nexusmd-item|${wOrg}`)
+    const forged = await encryptJson({ id: 'p.1.ado.projects', value: 'evil', updatedAt: 1 }, ck, `nexusmd-item|${wOrg}`)
     srv.items.set(wOrg, { ...srv.items.get(wOrg), ciphertext: forged, cursor: 99, revision: 5 })
     const c = device({ srv, ck, deviceId: 'dev-c' })
     await c.sync.pull()
-    expect(c.storage.getItem('nexusmd.p.1.ado.pat')).toBe('pat')
+    expect(c.storage.getItem('nexusmd.p.1.ado.projects')).toBe('pat')
     expect(c.storage.getItem('nexusmd.p.1.ado.org')).toBeNull()
   })
 
@@ -911,7 +911,7 @@ describe('createAccountSync', () => {
   it('seed pushes everything local regardless of meta', async () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
-    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x', 'nexusmd.p.1.ado.pat': 'y' } })
+    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x', 'nexusmd.p.1.ado.projects': 'y' } })
     const r = await a.sync.seed()
     expect(r.pushed).toBe(2)
     expect(metaOf(a).entries['p.1.ado.org'].revision).toBe(1)

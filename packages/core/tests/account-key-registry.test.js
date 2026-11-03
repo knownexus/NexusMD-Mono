@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   createKeyRegistry, TWEAK_ACCOUNT_FIELDS, ALIASES, SYNC_SKIP, isSkippedKey, COLLECTIONS, MACHINE_WRITTEN,
 } from '../src/modules/account/key-registry.js'
+import { resolveTarget } from '../src/modules/account/account-sync-state.js'
 import * as core from '../src/index.js'
 
 const desktop = () => createKeyRegistry({ namespace: 'nexusmd' })
@@ -123,8 +124,11 @@ describe('aliases', () => {
   })
 
   it('github and jira fields use each platform key scheme', () => {
-    expect(desktop().classify('nexusmd.p.9.github.pat').id).toBe(android().classify('helm.p.9.android.github.pat').id)
-    expect(desktop().classify('nexusmd.p.9.jira.apiToken').id).toBe(android().classify('helm.p.9.android.jira.apiToken').id)
+    expect(desktop().classify('nexusmd.p.9.github.login').id).toBe(android().classify('helm.p.9.android.github.login').id)
+    expect(desktop().classify('nexusmd.p.9.jira.site').id).toBe(android().classify('helm.p.9.android.jira.site').id)
+    // registry v2: desktop tokens sync as secrets, under the same neutral id as Android's plain key
+    expect(desktop().secretId('nexusmd.p.9.github.pat')).toBe(android().classify('helm.p.9.android.github.pat').id)
+    expect(desktop().secretId('nexusmd.p.9.jira.apiToken')).toBe(android().classify('helm.p.9.android.jira.apiToken').id)
   })
 
   it('the other platform key shape is not an alias in this namespace', () => {
@@ -161,6 +165,13 @@ describe('aliases', () => {
         // registry v2: desktop keeps connection fields only under a profile
         expect(d).toBeNull()
         expect(desktop().toStorageKey(a.id)).toBeNull()
+        return
+      }
+      if (['ado.pat', 'github.pat', 'jira.apiToken'].includes(row.id)) {
+        // registry v2: a desktop token syncs only as a secret, never as a plaintext key
+        expect(d).toBeNull()
+        expect(desktop().secretId(dKey)).toBe(a.id)
+        expect(desktop().toStorageKey(a.id)).toBe(`nexusmd.sec.${dKey}`)
         return
       }
       expect(d).toEqual({ id: a.id, level: 'account', auto: false })
@@ -244,8 +255,10 @@ describe('device-level keys', () => {
   ]
   it.each(deviceKeys)('%s is device level on Android; on desktop only sidebar.width stays device level', (name) => {
     expect(android().classify(`helm.p.7.${name}`)).toEqual({ id: `helm:p.7.${name}`, level: 'device' })
-    // registry v2: desktop syncs it only under a profile, and only sidebar.width is still per device
-    expect(desktop().classify(`nexusmd.${name}`)).toBeNull()
+    // registry v2: desktop syncs it only under a profile, and only sidebar.width is still per
+    // device (it alone also syncs in its global form)
+    if (name === 'sidebar.width') expect(desktop().classify(`nexusmd.${name}`).level).toBe('device')
+    else expect(desktop().classify(`nexusmd.${name}`)).toBeNull()
     const d = desktop().classify(`nexusmd.p.7.${name}`)
     expect(d.id).toBe(`nexusmd:p.7.${name}`)
     expect(d.level).toBe(name === 'sidebar.width' ? 'device' : 'account')
@@ -499,7 +512,6 @@ describe('registry v2 (nexusmd): profile scope, collections, field maps, machine
     expect(d.classify('nexusmd.tweaks')).toBeNull()
     expect(d.classify('nexusmd.refreshInterval')).toBeNull()
     expect(d.classify('nexusmd.theme')).toBeNull()
-    expect(d.classify('nexusmd.sidebar.width')).toBeNull()
     expect(d.classify('nexusmd.ado.org')).toBeNull()
     expect(d.classify('nx-db:saved-queries')).toBeNull()
     expect(d.toStorageKey('tweaks.account')).toBeNull()
@@ -575,6 +587,44 @@ describe('registry v2 (nexusmd): profile scope, collections, field maps, machine
     expect(d.wasDeviceLevelInM1('nexusmd:p.A.team.custom')).toBe(false)
     expect(d.wasDeviceLevelInM1('p.A.ado.org')).toBe(false)
     expect(d.wasDeviceLevelInM1('nexusmd:p.A.lists#l1')).toBe(false)
+  })
+
+  it('the global sidebar.width stays device level and synced (spec call 6)', () => {
+    const d = desktop()
+    expect(d.classify('nexusmd.sidebar.width')).toEqual({ id: 'nexusmd:sidebar.width', level: 'device', auto: false })
+    expect(d.toStorageKey('nexusmd:sidebar.width')).toBe('nexusmd.sidebar.width')
+  })
+
+  it('tokens (ado.pat, github.pat, jira.apiToken) sync only as secrets, never as plain keys', () => {
+    const d = desktop()
+    for (const name of ['ado.pat', 'github.pat', 'jira.apiToken']) {
+      expect(d.classify(`nexusmd.p.A.${name}`)).toBeNull()
+      expect(d.isSecretId(`p.A.${name}`)).toBe(true)
+      expect(d.secretName(`p.A.${name}`)).toBe(`nexusmd.p.A.${name}`)
+      expect(d.secretId(`nexusmd.p.A.${name}`)).toBe(`p.A.${name}`)
+      expect(d.toStorageKey(`p.A.${name}`)).toBe(`nexusmd.sec.nexusmd.p.A.${name}`)
+      expect(d.isPlainTokenKey(`nexusmd.p.A.${name}`)).toBe(true)
+    }
+    // other connection fields stay plain, and a secret named like one is platform-private
+    expect(d.isSecretId('p.A.ado.org')).toBe(false)
+    expect(d.isPlainTokenKey('nexusmd.p.A.ado.org')).toBe(false)
+    expect(d.secretId('nexusmd.p.A.ado.org')).toBe('sec:nexusmd:nexusmd.p.A.ado.org')
+    expect(d.secretName('p.A.ado.org')).toBeNull()
+    expect(d.isSecretId('ado.pat')).toBe(false)
+  })
+
+  it('a neutral token id resolves to a secret target, never a plain key', () => {
+    const d = desktop()
+    expect(resolveTarget(d, 'p.A.ado.pat')).toEqual({ kind: 'secret', name: 'nexusmd.p.A.ado.pat', level: 'account' })
+    expect(resolveTarget(d, 'p.A.jira.apiToken')).toEqual({ kind: 'secret', name: 'nexusmd.p.A.jira.apiToken', level: 'account' })
+    expect(resolveTarget(d, 'p.A.ado.org')).toEqual({ kind: 'plain', key: 'nexusmd.p.A.ado.org', level: 'account' })
+    // Android keeps its M1 rules: the same id is a plain key there
+    expect(resolveTarget(android(), 'p.A.ado.pat')).toEqual({ kind: 'plain', key: 'helm.p.A.android.pat', level: 'account' })
+  })
+
+  it('secretId refuses a name holding the record separator', () => {
+    expect(desktop().secretId('nexusmd.p.A.x#y')).toBeNull()
+    expect(desktop().secretId('a#b')).toBeNull()
   })
 
   it('helm keeps the M1 rules (no auto, no collections, old device list)', () => {
