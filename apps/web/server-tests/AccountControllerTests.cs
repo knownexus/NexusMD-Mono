@@ -891,6 +891,70 @@ public sealed class AccountControllerTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(From("203.0.113.8"))).StatusCode);
     }
 
+    // Railway's edge sends "X-Forwarded-For: <client>, <edge ip>" where the edge ip changes between requests, and
+    // "X-Real-IP: <client>" (both are set by the edge; client-supplied values are dropped). Measured 2026-11-03.
+    static HttpRequestMessage FromRailway(string client, string edge)
+    {
+        var r = new HttpRequestMessage(HttpMethod.Get, "/api/account/status");
+        r.Headers.Add("X-Forwarded-For", $"{client}, {edge}");
+        r.Headers.Add("X-Real-IP", client);
+        return r;
+    }
+
+    [Fact]
+    public async Task Rate_limit_uses_the_configured_client_ip_header_when_the_proxy_edge_ip_varies()
+    {
+        var (_, http) = NewHost(f =>
+        {
+            f.Overrides["RateLimit:PermitPerMinute"] = "3";
+            f.Overrides["Proxy:TrustForwardedHeaders"] = "true";
+            f.Overrides["Proxy:ClientIpHeader"] = "X-Real-IP";
+        });
+
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(FromRailway("89.37.68.50", $"152.233.29.{i + 1}"))).StatusCode);
+        Assert.Equal((HttpStatusCode)429, (await http.SendAsync(FromRailway("89.37.68.50", "152.233.29.9"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(FromRailway("89.37.68.51", "152.233.29.9"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Client_ip_header_is_ignored_unless_forwarded_headers_are_trusted()
+    {
+        var (_, http) = NewHost(f =>
+        {
+            f.Overrides["RateLimit:PermitPerMinute"] = "2";
+            f.Overrides["Proxy:ClientIpHeader"] = "X-Real-IP"; // Proxy:TrustForwardedHeaders deliberately unset
+        });
+
+        Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(FromRailway("203.0.113.1", "152.233.29.1"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(FromRailway("203.0.113.2", "152.233.29.1"))).StatusCode);
+        // A caller cannot pick a fresh partition by changing the header: every request is the same connection.
+        Assert.Equal((HttpStatusCode)429, (await http.SendAsync(FromRailway("203.0.113.3", "152.233.29.1"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task An_unparseable_client_ip_header_falls_back_to_the_forwarded_address()
+    {
+        var (_, http) = NewHost(f =>
+        {
+            f.Overrides["RateLimit:PermitPerMinute"] = "2";
+            f.Overrides["Proxy:TrustForwardedHeaders"] = "true";
+            f.Overrides["Proxy:ClientIpHeader"] = "X-Real-IP";
+        });
+
+        HttpRequestMessage Bad()
+        {
+            var r = new HttpRequestMessage(HttpMethod.Get, "/api/account/status");
+            r.Headers.Add("X-Forwarded-For", "203.0.113.7");
+            r.Headers.Add("X-Real-IP", "not-an-ip");
+            return r;
+        }
+
+        Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(Bad())).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(Bad())).StatusCode);
+        Assert.Equal((HttpStatusCode)429, (await http.SendAsync(Bad())).StatusCode);
+    }
+
     [Fact]
     public async Task Forwarded_headers_can_be_switched_off()
     {

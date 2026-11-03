@@ -39,6 +39,7 @@ Required:
 | `Accounts__DbPath` | `/data/accounts.db` (image default) |
 | `Profiles__DbPath` | `/data/profiles.db` (image default) |
 | `Proxy__TrustForwardedHeaders` | `true`. **Required behind Railway.** Without it `Request.Scheme` is `http`, so the redirect URIs the Google and Microsoft controllers build (`{scheme}://{host}/api/google/auth/native-callback` and `/api/ms/auth/native-callback`) will not match the registered `https` URIs, and the per-IP rate limiter collapses every client onto the proxy's address. |
+| `Proxy__ClientIpHeader` | `X-Real-IP`. **Required behind Railway.** Railway sends `X-Forwarded-For: <client>, <edge ip>` with an edge address that changes between requests, so without this every request lands in a fresh rate-limit partition and the per-IP limit never engages. `X-Real-IP` carries the client address alone. Read only while `Proxy__TrustForwardedHeaders` is true; an unparseable value falls back to the `X-Forwarded-For` address. |
 | `Google__ClientId`, `Google__ClientSecret` | Google web OAuth client. Register `https://nexusmd.app/api/google/auth/native-callback` as an authorized redirect URI. |
 | `Microsoft__ClientId`, `Microsoft__ClientSecret`, `Microsoft__Tenant` | Entra app registration. Register `https://nexusmd.app/api/ms/auth/native-callback` as a redirect URI. `Microsoft__Tenant` defaults to `common` when empty. |
 | `OAuth__NativeReturnPrefixes__0` | `nexusmd://` (add `__1`, ... for further allowed return prefixes). Be aware this is merged index-by-index with the `appsettings.json` list (`nexusmd://`, `http://127.0.0.1`), so index 0 is replaced but the loopback entry at index 1 stays allowed unless you also set `OAuth__NativeReturnPrefixes__1` to something else. |
@@ -79,12 +80,15 @@ Optional tuning:
 ## 5. Security checks after the first deploy
 
 1. **Forwarded headers and exposure.** `Proxy__TrustForwardedHeaders=true` clears the known-proxy list and uses the
-   right-most `X-Forwarded-For` entry (`ForwardLimit` is 1). That is only safe if the service is reachable solely
-   through Railway's edge and the edge appends the real client address. Verify empirically: from one machine, send
+   right-most `X-Forwarded-For` entry (`ForwardLimit` is 1); `Proxy__ClientIpHeader=X-Real-IP` then replaces that
+   (Railway edge) address with the client one. Measured on 2026-11-03: Railway's edge drops client-supplied
+   `X-Forwarded-For` and `X-Real-IP` values and sets both itself. That is only safe if the service is reachable
+   solely through Railway's edge. Verify empirically: from one machine, send
    more than `RateLimit__PermitPerMinute` requests to `/api/account/status` within a minute, each with a different
    fake header (`curl -H "X-Forwarded-For: 203.0.113.<n>" https://nexusmd.app/api/account/status`). You should
-   still receive HTTP 429 after the limit; if every request succeeds, a client-supplied header is being trusted
-   and the rate-limit key can be spoofed. Also confirm requests from a second network are not throttled by the first
+   still receive HTTP 429 after the limit; if every request succeeds, either a client-supplied header is being
+   trusted or the client address is not being read (check `Proxy__ClientIpHeader`). Repeat with fake
+   `X-Real-IP` headers. Also confirm requests from a second network are not throttled by the first
    (the limiter is keyed on the real client, not the proxy). Confirm there is no public TCP proxy and no sibling
    service or network path that can reach the container directly. If you cannot confirm this, set
    `Proxy__TrustForwardedHeaders` back to false and accept the redirect URI and rate-limit limitations.
