@@ -12,7 +12,9 @@ import React from 'react'
 
 import { Icon } from '../icons.jsx'
 import { usePersisted } from '../app-components.jsx'
+import { useNexusData } from '../data-context.jsx'
 import { useApiClient } from '../api-client-context.jsx'
+import { usePathsMissing, notOnThisComputer } from '../use-paths-missing.js'
 import { JsonPretty } from '../json-pretty.jsx'
 import { EnvironmentEditor } from './api-client-env-editor.jsx'
 import {
@@ -121,6 +123,7 @@ function TreeNode({ node, depth, onSelect, selectedRefId, requests }) {
 }
 
 export function ApiClientView() {
+  const { getProfileKey } = useNexusData()
   const { adapters, available } = useApiClient()
 
   // Which collections are loaded, and which are collapsed — both persisted so
@@ -162,6 +165,21 @@ export function ApiClientView() {
     // trigger a reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [available])
+
+  // Folders that synced here from another computer may not exist on this one: they stay listed,
+  // disabled, and load once the folder appears (checked on mount and on window focus).
+  const missingDirs = usePathsMissing(loadedDirs)
+  React.useEffect(() => {
+    if (!available || !didMountLoad.current) return
+    loadedDirs.forEach(dir => {
+      if (missingDirs.has(dir) || !collections[dir]?.error) return
+      loadCollection(adapters.file, dir)
+        .then(loaded => setCollections(prev => ({ ...prev, [dir]: { ...loaded, activeEnv: '' } })))
+        .catch(() => {})
+    })
+    // Only a change in which folders exist should retry a collection that failed to load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingDirs])
 
   const updateCollection = (dir, patch) => {
     setCollections(prev => ({
@@ -263,7 +281,7 @@ export function ApiClientView() {
   const resolvedVars = async (dir) => {
     const col = collections[dir]
     if (!col?.activeEnv || !col.environments?.[col.activeEnv]) return {}
-    return resolveEnvironment(adapters.secureStorage, dir, col.activeEnv, col.environments[col.activeEnv])
+    return resolveEnvironment(adapters.secureStorage, dir, col.activeEnv, col.environments[col.activeEnv], getProfileKey)
   }
 
   // What a send or a run needs: the environment's vars, the session's runtime
@@ -420,6 +438,21 @@ export function ApiClientView() {
 
           {loadedDirs.map(dir => {
             const col = collections[dir]
+
+            if (missingDirs.has(dir)) {
+              return (
+                <div key={dir} className="ac-collection">
+                  <div className="ac-collection-head" aria-disabled="true" title={notOnThisComputer(dir)} style={{ cursor: 'not-allowed' }}>
+                    <span className="ac-collection-name ac-loading">{dir}</span>
+                    <div className="ac-collection-actions">
+                      <button className="btn sm icon ghost" onClick={() => unloadCollection(dir)} title="Remove">
+                        <Icon name="x" size={13}/>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
 
             if (!col) {
               return (

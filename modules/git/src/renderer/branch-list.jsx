@@ -1,6 +1,6 @@
 import React from 'react'
 import { worktreeName, branchLabel, worktreeId, wordMatch, matchesFilter, branchState, branchMeta, repoPills } from '@nexusmd/core'
-import { FoldAllButton } from '@nexusmd/ui'
+import { FoldAllButton, usePathsMissing, notOnThisComputer } from '@nexusmd/ui'
 
 const TONE_BADGE = { bad: 'bad', warn: 'warn', info: 'info', ok: 'ok', muted: '' }
 
@@ -45,13 +45,14 @@ export function BranchList({ repos, scoped, errors, collapsed, onToggleRepo, onS
   // The selected row stays in view when j / k move past the list's edge.
   const listRef = React.useRef(null)
   React.useEffect(() => { listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest' }) }, [selected])
+  const missing = usePathsMissing(repos.map(r => r.path))
   const narrowed = !!query.trim() || filter !== 'all'
   const groups = repos.map(r => {
     const all = scoped.worktrees.filter(t => t.repo === r.name)
     const trees = all.filter(t => treeShown(t, query, filter))
     const branches = filter === 'all' ? scoped.inactiveBranches.filter(b => b.repo === r.name && wordMatch(`${b.repo} ${b.name}`, query)) : []
-    return { name: r.name, all, trees, branches, error: errors.find(e => e.repo === r.name) }
-  }).filter(g => g.trees.length || g.branches.length || (g.error && !narrowed))
+    return { name: r.name, path: r.path, gone: missing.has(r.path), all, trees, branches, error: errors.find(e => e.repo === r.name) }
+  }).filter(g => g.gone ? !narrowed : (g.trees.length || g.branches.length || (g.error && !narrowed)))
 
   if (!groups.length) {
     return narrowed
@@ -71,11 +72,13 @@ export function BranchList({ repos, scoped, errors, collapsed, onToggleRepo, onS
       </div>
       {groups.map(g => {
         // A search unfolds everything it found.
-        const open = !collapsed.includes(g.name) || !!query.trim()
+        // A repository whose folder is not on this computer stays listed but cannot be opened.
+        const open = !g.gone && (!collapsed.includes(g.name) || !!query.trim())
         const n = g.all.length
         return (
           <section key={g.name} aria-label={g.name}>
-            <button type="button" className="nx-gw-repo-head" aria-expanded={open} onClick={() => onToggleRepo(g.name)}>
+            <button type="button" className="nx-gw-repo-head" aria-expanded={open} onClick={g.gone ? undefined : () => onToggleRepo(g.name)}
+              aria-disabled={g.gone ? 'true' : undefined} title={g.gone ? notOnThisComputer(g.path) : undefined} style={g.gone ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}>
               <span className="nx-gw-caret">{open ? '▾' : '▸'}</span>
               <span className="nx-gw-repo-name">{g.name}</span>
               <span className="nx-gw-repo-count">{`${n} ${n === 1 ? 'branch' : 'branches'}`}</span>
@@ -83,7 +86,7 @@ export function BranchList({ repos, scoped, errors, collapsed, onToggleRepo, onS
                 {repoPills(g.all).map(p => <span key={p.text} className={`nx-badge ${TONE_BADGE[p.tone]}`}>{p.text}</span>)}
               </span>
             </button>
-            {g.error && <div role="alert" style={{ color: 'var(--danger)', padding: '6px 10px', fontSize: 12.5 }}>{g.error.message}</div>}
+            {g.error && !g.gone && <div role="alert" style={{ color: 'var(--danger)', padding: '6px 10px', fontSize: 12.5 }}>{g.error.message}</div>}
             {open && (g.trees.length > 0 || g.branches.length > 0) && (
               <div className="nx-gw-rows">
                 {g.trees.map(t => <BranchRow key={t.path} tree={t} selected={selected === worktreeId(t)} onSelect={onSelect} />)}

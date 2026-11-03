@@ -8,6 +8,7 @@
 export { Icon } from './icons.jsx'
 export { NEXUSMD_THEMES, THEME_MODES, paletteFor, nextThemeMode, isDarkPalette } from './themes.js'
 export { FoldAllButton } from './fold-all-button.jsx'
+export { usePathsMissing, notOnThisComputer } from './use-paths-missing.js'
 export {
   StatusChip, PrioChip, PlModal, PlFld, DueLabel,
 } from './planner-chips.jsx'
