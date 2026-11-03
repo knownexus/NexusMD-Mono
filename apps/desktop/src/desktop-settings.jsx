@@ -71,7 +71,7 @@ export function DesktopAppCard() {
   const [loginItem, setLoginItem] = React.useState(false)
   const [closeToTray, setCloseToTray] = React.useState(true)
   const [outputPath, setOutputPath] = React.useState(() => {
-    try { return localStorage.getItem('nexusmd.outputPath') || '' } catch { return '' }
+    try { return localStorage.getItem(getProfileKey('nexusmd.outputPath')) || '' } catch { return '' }
   })
 
   React.useEffect(() => {
@@ -86,12 +86,12 @@ export function DesktopAppCard() {
     const picked = await appPrefsAdapter.pickOutputFolder()
     if (!picked) return
     setOutputPath(picked)
-    try { localStorage.setItem('nexusmd.outputPath', picked) } catch {}
+    try { localStorage.setItem(getProfileKey('nexusmd.outputPath'), picked) } catch {}
   }
 
   const clearFolder = () => {
     setOutputPath('')
-    try { localStorage.removeItem('nexusmd.outputPath') } catch {}
+    try { localStorage.removeItem(getProfileKey('nexusmd.outputPath')) } catch {}
   }
 
   return (

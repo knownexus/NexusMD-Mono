@@ -4,6 +4,7 @@ import React from 'react';
 import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { isDarkPalette } from '../themes.js';
+import { useNexusData } from '../data-context.jsx';
 
 const HLJS_SCRIPT = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js";
 const HLJS_LIGHT  = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css";
@@ -154,9 +155,9 @@ const TEXT_SIZE_KEY = 'nexusmd.markdown.textSize';
 const TEXT_SIZE_EVENT = 'nexusmd-markdown-text-size';
 export const TEXT_SIZES = [70, 80, 90, 100, 110, 125, 150, 175, 200];
 
-function readTextSize() {
+function readTextSize(key = TEXT_SIZE_KEY) {
   try {
-    const n = Number(localStorage.getItem(TEXT_SIZE_KEY));
+    const n = Number(localStorage.getItem(key));
     return TEXT_SIZES.includes(n) ? n : 100;
   } catch { return 100; }
 }
@@ -170,18 +171,21 @@ export function stepTextSize(size, dir) {
 
 // [size, setSize]: the shared text size, kept in step with every other view showing markdown.
 export function useMarkdownTextSize() {
-  const [size, setLocal] = React.useState(readTextSize);
+  // The size is a profile setting: it follows the profile between machines.
+  const { getProfileKey } = useNexusData();
+  const key = getProfileKey(TEXT_SIZE_KEY);
+  const [size, setLocal] = React.useState(() => readTextSize(key));
   React.useEffect(() => {
-    const sync = () => setLocal(readTextSize());
+    const sync = () => setLocal(readTextSize(key));
     window.addEventListener(TEXT_SIZE_EVENT, sync);
     window.addEventListener('storage', sync);
     return () => { window.removeEventListener(TEXT_SIZE_EVENT, sync); window.removeEventListener('storage', sync); };
-  }, []);
+  }, [key]);
   const setSize = React.useCallback(next => {
-    try { localStorage.setItem(TEXT_SIZE_KEY, String(next)); } catch { /* still changes for this session's views */ }
+    try { localStorage.setItem(key, String(next)); } catch { /* still changes for this session's views */ }
     setLocal(next);
     window.dispatchEvent(new Event(TEXT_SIZE_EVENT));
-  }, []);
+  }, [key]);
   return [size, setSize];
 }
 

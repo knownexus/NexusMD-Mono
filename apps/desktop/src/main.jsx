@@ -88,7 +88,7 @@ const DEFAULT_TWEAKS = {
 }
 
 function loadTweaks() {
-  try { const s = localStorage.getItem('nexusmd.tweaks'); return s ? { ...DEFAULT_TWEAKS, ...JSON.parse(s) } : DEFAULT_TWEAKS } catch { return DEFAULT_TWEAKS }
+  try { const s = localStorage.getItem(getProfileKey('nexusmd.tweaks')); return s ? { ...DEFAULT_TWEAKS, ...JSON.parse(s) } : DEFAULT_TWEAKS } catch { return DEFAULT_TWEAKS }
 }
 
 // nexusmd:// deep links: open a screen, or redeem a cloud OAuth one-time code.
@@ -195,7 +195,7 @@ function App() {
   const setTweak = React.useCallback((key, value) => {
     setTweaksState(prev => {
       const next = { ...prev, [key]: value }
-      try { localStorage.setItem('nexusmd.tweaks', JSON.stringify(next)) } catch (_) {}
+      try { localStorage.setItem(getProfileKey('nexusmd.tweaks'), JSON.stringify(next)) } catch (_) {}
       return next
     })
   }, [])

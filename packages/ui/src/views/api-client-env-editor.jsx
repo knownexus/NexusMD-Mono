@@ -5,15 +5,16 @@ import React from 'react'
 // var-resolve.js), so the editor loads and saves those separately.
 
 import { Icon } from '../icons.jsx'
+import { useNexusData } from '../data-context.jsx'
 import { secretStorageKey, setSecretVar, removeSecretVar } from '@nexusmd/core'
 
 const EMPTY_ROW = { key: '', value: '', secret: false }
 
-async function loadRows(secureStorage, dir, name, envDef) {
+async function loadRows(secureStorage, dir, name, envDef, profileKey) {
   const rows = []
   for (const [key, def] of Object.entries(envDef?.variables || {})) {
     const value = def?.secret
-      ? ((await secureStorage?.get?.(secretStorageKey(dir, name, key))) ?? '')
+      ? ((await secureStorage?.get?.(secretStorageKey(dir, name, key, profileKey))) ?? '')
       : (def?.value ?? '')
     rows.push({ key, value: String(value), secret: !!def?.secret })
   }
@@ -21,12 +22,12 @@ async function loadRows(secureStorage, dir, name, envDef) {
 }
 
 /** Writes secrets to secureStorage and returns the envDef to save to disk. */
-async function saveRows(secureStorage, dir, name, rows, previous) {
+async function saveRows(secureStorage, dir, name, rows, previous, profileKey) {
   const variables = {}
   for (const { key, value, secret } of rows) {
     if (!key) continue
     if (secret) {
-      await setSecretVar(secureStorage, dir, name, key, value)
+      await setSecretVar(secureStorage, dir, name, key, value, profileKey)
       variables[key] = { secret: true }
     } else {
       variables[key] = { value }
@@ -34,12 +35,13 @@ async function saveRows(secureStorage, dir, name, rows, previous) {
   }
   // A secret that was removed, renamed or made plain shouldn't linger in secureStorage.
   for (const [key, def] of Object.entries(previous?.variables || {})) {
-    if (def?.secret && !variables[key]?.secret) await removeSecretVar(secureStorage, dir, name, key)
+    if (def?.secret && !variables[key]?.secret) await removeSecretVar(secureStorage, dir, name, key, profileKey)
   }
   return { ...previous, variables }
 }
 
 export function EnvironmentEditor({ dir, name, envDef, secureStorage, onSave, onClose }) {
+  const { getProfileKey } = useNexusData()
   const [rows, setRows] = React.useState(null)
   const [error, setError] = React.useState(null)
   const [saving, setSaving] = React.useState(false)
@@ -48,7 +50,7 @@ export function EnvironmentEditor({ dir, name, envDef, secureStorage, onSave, on
     let cancelled = false
     setRows(null)
     setError(null)
-    loadRows(secureStorage, dir, name, envDef)
+    loadRows(secureStorage, dir, name, envDef, getProfileKey)
       .then(r => { if (!cancelled) setRows(r) })
       .catch(err => { if (!cancelled) setError(err?.message || String(err)) })
     return () => { cancelled = true }
@@ -61,7 +63,7 @@ export function EnvironmentEditor({ dir, name, envDef, secureStorage, onSave, on
     setSaving(true)
     setError(null)
     try {
-      await onSave(await saveRows(secureStorage, dir, name, rows, envDef))
+      await onSave(await saveRows(secureStorage, dir, name, rows, envDef, getProfileKey))
     } catch (err) {
       setError(err?.message || String(err))
     } finally {

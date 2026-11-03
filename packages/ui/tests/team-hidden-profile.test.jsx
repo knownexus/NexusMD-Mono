@@ -52,3 +52,13 @@ it('writes restores to the profile-scoped key and pushes the unscoped pref name'
   expect(storage.getItem('nexusmd.team.removed')).toBeNull()
   expect(pushPref).toHaveBeenCalledWith('nexusmd.team.removed', '[]')
 })
+
+it('reads the added people from the profile-scoped key and ignores the bare key', () => {
+  const storage = memStorage({
+    'nexusmd.team.custom': JSON.stringify([{ id: 'bare', name: 'Bare Person', initials: 'BP', role: 'Dev' }]),
+    'p1.nexusmd.team.custom': JSON.stringify([{ id: 'scoped', name: 'Scoped Person', initials: 'SP', role: 'Dev' }]),
+  })
+  const { queryByText } = renderTeam(storage)
+  expect(queryByText('Scoped Person')).toBeTruthy()
+  expect(queryByText('Bare Person')).toBeNull()
+})

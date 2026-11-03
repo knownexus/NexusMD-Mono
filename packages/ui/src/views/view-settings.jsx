@@ -41,20 +41,20 @@ function VsRow({ title, desc, children }) {
   );
 }
 
-// Which Settings sections are collapsed: one list of section ids, kept for this machine rather than
-// per profile (it is how the page is laid out, not a setting). Read and written in full each time
+// Which Settings sections are collapsed: one list of section ids, kept per profile, so the page is laid
+// out the same on every machine the profile is on. Read and written in full each time
 // so cards collapsed on different tabs never overwrite each other.
 const COLLAPSED_KEY = 'nexusmd.settings.collapsed';
-function readCollapsed() {
+function readCollapsed(key = COLLAPSED_KEY) {
   try {
-    const ids = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]');
+    const ids = JSON.parse(localStorage.getItem(key) || '[]');
     return Array.isArray(ids) ? ids : [];
   } catch { return []; }
 }
-function writeCollapsed(id, collapsed) {
+function writeCollapsed(id, collapsed, key = COLLAPSED_KEY) {
   try {
-    const ids = readCollapsed().filter(x => x !== id);
-    localStorage.setItem(COLLAPSED_KEY, JSON.stringify(collapsed ? [...ids, id] : ids));
+    const ids = readCollapsed(key).filter(x => x !== id);
+    localStorage.setItem(key, JSON.stringify(collapsed ? [...ids, id] : ids));
   } catch { /* storage unavailable: the section still collapses for this visit */ }
 }
 
@@ -63,12 +63,14 @@ function writeCollapsed(id, collapsed) {
 // `actions` sit at the right of the title bar; `flush` drops the body padding for rows (VsRow).
 function VsCard({ title, icon, children, id, actions, flush = true }) {
   const key = id || (typeof title === 'string' ? title : '');
-  const [collapsed, setCollapsed] = useStateVS(() => !!key && readCollapsed().includes(key));
+  const { getProfileKey } = useNexusData();
+  const storeKey = getProfileKey(COLLAPSED_KEY);
+  const [collapsed, setCollapsed] = useStateVS(() => !!key && readCollapsed(storeKey).includes(key));
   const bodyId = React.useId();
   const toggle = () => {
     const next = !collapsed;
     setCollapsed(next);
-    if (key) writeCollapsed(key, next);
+    if (key) writeCollapsed(key, next, storeKey);
   };
   return (
     <div className={`card set-card${collapsed ? ' collapsed' : ''}`}>

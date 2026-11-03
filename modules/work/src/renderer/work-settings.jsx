@@ -6,6 +6,7 @@ import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
 import { GithubConnectionCard } from './github-settings.jsx'
 import { QuickLinksCard } from './quick-links-card.jsx'
 import { useOptionalWork } from './work-context.js'
+import { getProfileKey } from '@nexusmd/shell-sdk'
 
 // Settings → Integrations: where Azure DevOps, Jira and GitHub are connected.
 export function WorkIntegrationsPanel() {
@@ -64,7 +65,7 @@ export function WorkDataRows() {
           onChange={e => {
             const v = Math.max(10, Math.min(3600, parseInt(e.target.value, 10) || 300))
             setRefreshInterval(v)
-            try { localStorage.setItem('nexusmd.refreshInterval', String(v)) } catch {}
+            try { localStorage.setItem(getProfileKey('nexusmd.refreshInterval'), String(v)) } catch {}
           }}
         />
       </VsRow>

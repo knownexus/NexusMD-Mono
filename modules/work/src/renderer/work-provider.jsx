@@ -53,7 +53,7 @@ export function WorkProvider({ host, view, children }) {
 
   const [refreshInterval, setRefreshInterval] = React.useState(() => {
     try {
-      const n = parseInt(localStorage.getItem('nexusmd.refreshInterval') || '300', 10)
+      const n = parseInt(localStorage.getItem(getProfileKey('nexusmd.refreshInterval')) || '300', 10)
       return Number.isFinite(n) && n > 0 ? n : 300
     } catch { return 300 }
   })

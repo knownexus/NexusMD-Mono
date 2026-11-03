@@ -158,3 +158,23 @@ describe('PersonActions', () => {
     window.removeEventListener('nexusmd:team-add-note', onAdd)
   })
 })
+
+describe('PersonSummary notes are profile-scoped', () => {
+  afterEach(cleanup)
+
+  it('reads the notes team view writes: the same profile-scoped team.notes key', () => {
+    const note = { id: 'n1', devId: 'alice', person: 'Alice Ng', note: 'Scoped note', date: '2026-07-01T00:00:00Z' }
+    const bare = { id: 'n2', devId: 'alice', person: 'Alice Ng', note: 'Bare note', date: '2026-07-01T00:00:00Z' }
+    const storage = memStorage({
+      'p1.nexusmd.team.notes': JSON.stringify([note]),
+      'nexusmd.team.notes': JSON.stringify([bare]),
+    })
+    render(
+      <NexusDataProvider value={{ storage, getProfileKey: k => 'p1.' + k }}>
+        <PersonSummary dev={{ id: 'alice', name: 'Alice Ng', active: [], blocked: [], myPRs: [], points: 0 }} onOpenItem={() => {}} onOpenPR={() => {}} />
+      </NexusDataProvider>
+    )
+    expect(screen.queryByText('Scoped note')).toBeTruthy()
+    expect(screen.queryByText('Bare note')).toBeNull()
+  })
+})

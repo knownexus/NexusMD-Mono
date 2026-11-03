@@ -1,20 +1,21 @@
 import React from 'react'
 import { Icon } from '@nexusmd/ui'
+import { getProfileKey } from '@nexusmd/shell-sdk'
 
 export function ProjectAreasModal({ open, onClose }) {
   const [areas, setAreas] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem('nexusmd.projectAreas.v3') || '[]') } catch { return [] }
+    try { return JSON.parse(localStorage.getItem(getProfileKey('nexusmd.projectAreas.v3')) || '[]') } catch { return [] }
   })
 
   React.useEffect(() => {
     if (open) {
-      try { setAreas(JSON.parse(localStorage.getItem('nexusmd.projectAreas.v3') || '[]')) } catch { setAreas([]) }
+      try { setAreas(JSON.parse(localStorage.getItem(getProfileKey('nexusmd.projectAreas.v3')) || '[]')) } catch { setAreas([]) }
     }
   }, [open])
 
   const save = (next) => {
     setAreas(next)
-    try { localStorage.setItem('nexusmd.projectAreas.v3', JSON.stringify(next)) } catch {}
+    try { localStorage.setItem(getProfileKey('nexusmd.projectAreas.v3'), JSON.stringify(next)) } catch {}
   }
 
   if (!open) return null
