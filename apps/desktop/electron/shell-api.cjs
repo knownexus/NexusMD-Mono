@@ -14,6 +14,8 @@
 // 2: the shared markdown preview (MarkdownPreview, text size) from @nexusmd/ui, which Editor 1.0.3+ uses.
 // 3: host.display (the screen the window is on) and, from @nexusmd/ui, DashboardView's renderWidgets and
 //    home-widgets' WidgetBody, which the Work app's Dashboard grid uses.
-const SHELL_API = 3;
+// 4: the Dashboard's head as grid items: DashboardView's bare parts and their styles (dash-cell-bare,
+//    dash-greeting) in @nexusmd/ui's stylesheet, which the Work app's grid uses.
+const SHELL_API = 4;
 
 module.exports = { SHELL_API };

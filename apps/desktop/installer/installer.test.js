@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { appsNsh, readApps } from './gen-apps-nsh.mjs'
+import { appsNsh, readApps, checklistColumns, MAX_ROWS } from './gen-apps-nsh.mjs'
 import { stagedPackageJson, productionClosure } from './stage.mjs'
 
 const apps = readApps()
@@ -45,6 +45,32 @@ describe('what goes inside the installed application\'s asar', () => {
     const names = [...productionClosure(['electron-log', 'electron-updater', '@nexusmd/main-kit']).keys()]
     expect(names).toContain('builder-util-runtime')
     expect(names.filter(n => n.startsWith('@nexusmd/app-') || n === 'mssql' || n.startsWith('@codemirror'))).toEqual([])
+  })
+})
+
+describe('the checklist page', () => {
+  // installer.nsh's NxCreateRow, in JS: where each app's checkbox goes (x in %, y in dialog units).
+  const place = (i, cols) => ({ x: (i % cols) * Math.floor(100 / cols), w: Math.floor(100 / cols) - 2, y: Math.floor(i / cols) * 14 + 32 })
+
+  it('lays the checkboxes out from the generated column count, not a fixed one', () => {
+    expect(nsh).toContain('${i} % ${NEXUS_APP_COLS}')
+    expect(nsh).toContain('${i} / ${NEXUS_APP_COLS}')
+    expect(nsh).not.toMatch(/\$\{i\} [/%] 5\b/)
+    expect(appsNsh(apps, 'C:\\apps')).toContain(`!define NEXUS_APP_COLS ${checklistColumns(apps.length)}`)
+  })
+
+  it('puts every app on the page, so each can be ticked (the 11th, Time, sat off the right edge)', () => {
+    for (const count of [1, 10, apps.length, 11, 21]) {
+      const cols = checklistColumns(count)
+      for (let i = 0; i < count; i++) {
+        const { x, w, y } = place(i, cols)
+        expect(x + w).toBeLessThanOrEqual(100)
+        expect(y).toBeLessThanOrEqual(32 + (MAX_ROWS - 1) * 14)
+      }
+    }
+    expect(checklistColumns(10)).toBe(2)
+    expect(checklistColumns(11)).toBe(3)
+    expect(() => checklistColumns(22)).toThrow(/don't fit/)
   })
 })
 

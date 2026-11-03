@@ -321,125 +321,160 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
     setWidgetOrder(widgetOrder.filter(x => x !== id));
   };
 
+  // ── The page's parts. On web they sit in a fixed header above the widgets; with renderWidgets (desktop)
+  // each is a widget of its own, so the caller's grid can move and resize it like any other.
+  const greetingEl = (
+    <div className="dash-greeting">
+      <h1>{greeting}</h1>
+      <div className="sub">{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} · {SPRINT.daysLeft} days left in {SPRINT.name}</div>
+    </div>
+  );
+  const actionsEl = (
+    <div className="page-head-actions">
+      {!isOff('triage') && <TriageStatusLine style={{ marginRight: 4 }} />}
+      <button className="btn sm ghost" onClick={() => NexusMDApi?.load().catch(() => {})}><Icon name="refresh" size={13}/> Refresh</button>
+      {!isOff('triage') && <TriageExportButton />}
+      {setPlannerData && <QuickNotePopover setPlannerData={setPlannerData}/>}
+      <AddWidgetPopover widgetOrder={widgetOrder} offViews={offViews} onAdd={id => setWidgetOrder(widgetOrder.includes(id) ? widgetOrder : [...widgetOrder, id])}/>
+      <button className="btn sm primary" onClick={() => window.dispatchEvent(new CustomEvent('nexusmd:create-wi'))}><Icon name="plus" size={13}/> New work item</button>
+    </div>
+  );
+  const hasLinks = (quickLinks || []).some(lnk => lnk.url && lnk.label);
+  const quickLinksEl = (
+    <div className="dash-quick-links" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 4 }}>Quick links</span>
+      {(quickLinks || []).filter(lnk => lnk.url && lnk.label).map((lnk, i) => {
+        let safeHref = '#';
+        try { const u = new URL(lnk.url, location.origin); if (u.protocol === 'http:' || u.protocol === 'https:') safeHref = u.href; } catch (_) {}
+        return (
+          <a key={i} href={safeHref} target="_blank" rel="noopener noreferrer" className="btn sm ghost"
+            style={{ textDecoration: 'none', borderColor: lnk.color, color: lnk.color }}>
+            {lnk.label}
+          </a>
+        );
+      })}
+    </div>
+  );
+  const prStat = isOff('prs') ? null : (() => {
+      const PR_SPARKLINE = NexusMDData.PR_SPARKLINE || [];
+      const prevCount = (() => {
+        try {
+          const s = localStorage.getItem('nexusmd_seen_pr');
+          if (!s) return null;
+          const parsed = JSON.parse(s);
+          return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? Object.keys(parsed).length : null;
+        } catch { return null; }
+      })();
+      const prDelta = prevCount != null ? needsMyReview.length - prevCount : null;
+      const prTrend = prDelta == null ? null
+        : prDelta > 0 ? { dir: 'up',   value: `+${prDelta}` }
+        : prDelta < 0 ? { dir: 'down',  value: `${prDelta}` }
+        :               { dir: 'flat',  value: '±0' };
+      return (
+        <ActionableStat
+          label="Needs your review"
+          value={needsMyReview.length}
+          meta={`${activePRs.length} active PRs total`}
+          trend={prTrend}
+          spark={PR_SPARKLINE} sparkColor="var(--accent)"
+          accent={needsMyReview.length ? 'var(--accent)' : null}
+          onClick={() => navigateTo('pr', { preset: 'needsMe' })}
+          title="Open PRs awaiting your review"
+          segments={[
+            { label: 'Stale',   value: stalePRs.length,   color: 'var(--warning)', onClick: () => navigateTo('pr', { preset: 'stale' }),   title: 'Active PRs older than 3 days' },
+            { label: 'CI fail', value: failingPRs.length, color: 'var(--danger)',  onClick: () => navigateTo('pr', { preset: 'failing' }), title: 'PRs with failing CI' },
+            { label: 'Drafts',  value: draftPRs.length,   color: 'var(--text-subtle)', onClick: () => navigateTo('pr', { preset: 'drafts' }), title: 'Draft PRs' },
+          ]}
+        />
+      );
+  })();
+  const activeStat = (
+    <StatWithHoverList
+      label="Active work items"
+      value={activeWorkItems.length}
+      meta="In progress, team-wide"
+      accent={activeWorkItems.length ? 'var(--accent)' : null}
+      onClick={() => navigateTo('work', { stateCategory: 'active' })}
+      title="Open active work items"
+      items={activeWorkItems}
+      team={TEAM}
+      onOpenItem={onOpenItem}
+    />
+  );
+  const reviewStat = (
+    <StatWithHoverList
+      label="Needs review"
+      value={reviewWorkItems.length}
+      meta="Awaiting review, team-wide"
+      accent={reviewWorkItems.length ? 'var(--violet)' : null}
+      onClick={() => navigateTo('work', { stateCategory: 'review' })}
+      title="Open work items in review"
+      items={reviewWorkItems}
+      team={TEAM}
+      onOpenItem={onOpenItem}
+    />
+  );
+  const blockersStat = (
+    <ActionableStat
+      label="Open blockers"
+      value={blockers.length}
+      meta={blockers.length ? blockers[0].title.slice(0, 32) + '…' : 'All clear'}
+      trend={null}
+      spark={[]} sparkColor="var(--danger)"
+      accent={blockers.length ? 'var(--danger)' : null}
+      onClick={() => navigateTo('work', { state: 'Blocked' })}
+      title="Open all blocked work items"
+      segments={[
+        { label: 'Critical',    value: criticalBlockers,    color: 'var(--danger)',  onClick: () => navigateTo('work', { state: 'Blocked', priority: 1 }), title: 'Priority-1 blockers' },
+        { label: 'High',        value: highBlockers,        color: 'var(--warning)', onClick: () => navigateTo('work', { state: 'Blocked', priority: 2 }), title: 'Priority-2 blockers' },
+        ...(isOff('builds') ? [] : [{ label: 'Build fails', value: failingBuilds.length, color: 'var(--danger)', onClick: () => navigateTo('builds', { status: 'failed' }), title: 'Failed builds' }]),
+      ]}
+    />
+  );
+  const teamStat = isOff('team') ? null : <TeamWorkloadCard team={TEAM} />;
+
+  const cardsInOrder = widgetOrder.filter(id => widgets[id]).map(id => ({ id, ...widgets[id], onHide: hideWidget }));
+  if (renderWidgets) {
+    // bare: drawn as they are (no card frame, can't be hidden); top: placed above everything else when new.
+    const part = (id, title, el, size) => (el ? [{ id, title, render: () => el, bare: true, top: true, ...size }] : []);
+    const quarter = { frac: 0.25, rows: 4 };
+    return (
+      <div>
+        {renderWidgets([
+          ...part('page-greeting', 'Greeting', greetingEl, { frac: 0.5, rows: 2 }),
+          ...part('page-actions', 'Actions', actionsEl, { frac: 0.5, rows: 2 }),
+          ...part('page-links', 'Quick links', hasLinks ? quickLinksEl : null, { frac: 1, rows: 1 }),
+          ...part('stat-prs', 'Needs your review', prStat, quarter),
+          ...part('stat-active', 'Active work items', activeStat, quarter),
+          ...part('stat-review', 'Needs review', reviewStat, quarter),
+          ...part('stat-blockers', 'Open blockers', blockersStat, quarter),
+          ...part('stat-team', 'Team workload', teamStat, quarter),
+          ...cardsInOrder,
+        ])}
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="page-head">
-        <div>
-          <h1>{greeting}</h1>
-          <div className="sub">{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} · {SPRINT.daysLeft} days left in {SPRINT.name}</div>
-        </div>
-        <div className="page-head-actions">
-          {!isOff('triage') && <TriageStatusLine style={{ marginRight: 4 }} />}
-          <button className="btn sm ghost" onClick={() => NexusMDApi?.load().catch(() => {})}><Icon name="refresh" size={13}/> Refresh</button>
-          {!isOff('triage') && <TriageExportButton />}
-          {setPlannerData && <QuickNotePopover setPlannerData={setPlannerData}/>}
-          <AddWidgetPopover widgetOrder={widgetOrder} offViews={offViews} onAdd={id => setWidgetOrder(widgetOrder.includes(id) ? widgetOrder : [...widgetOrder, id])}/>
-          <button className="btn sm primary" onClick={() => window.dispatchEvent(new CustomEvent('nexusmd:create-wi'))}><Icon name="plus" size={13}/> New work item</button>
-        </div>
+        {greetingEl}
+        {actionsEl}
       </div>
 
       {/* Quick-launch links */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 4 }}>Quick links</span>
-        {(quickLinks || []).filter(lnk => lnk.url && lnk.label).map((lnk, i) => {
-          let safeHref = '#';
-          try { const u = new URL(lnk.url, location.origin); if (u.protocol === 'http:' || u.protocol === 'https:') safeHref = u.href; } catch (_) {}
-          return (
-            <a key={i} href={safeHref} target="_blank" rel="noopener noreferrer" className="btn sm ghost"
-              style={{ textDecoration: 'none', borderColor: lnk.color, color: lnk.color }}>
-              {lnk.label}
-            </a>
-          );
-        })}
-      </div>
+      {quickLinksEl}
 
       {/* Top stats — clickable cards that drill into the relevant view */}
       <div className="stats">
-        {/* ── PRs ── */}
-        {!isOff('prs') && (() => {
-          const PR_SPARKLINE = NexusMDData.PR_SPARKLINE || [];
-          const prevCount = (() => {
-            try {
-              const s = localStorage.getItem('nexusmd_seen_pr');
-              if (!s) return null;
-              const parsed = JSON.parse(s);
-              return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? Object.keys(parsed).length : null;
-            } catch { return null; }
-          })();
-          const prDelta = prevCount != null ? needsMyReview.length - prevCount : null;
-          const prTrend = prDelta == null ? null
-            : prDelta > 0 ? { dir: 'up',   value: `+${prDelta}` }
-            : prDelta < 0 ? { dir: 'down',  value: `${prDelta}` }
-            :               { dir: 'flat',  value: '±0' };
-          return (
-            <ActionableStat
-              label="Needs your review"
-              value={needsMyReview.length}
-              meta={`${activePRs.length} active PRs total`}
-              trend={prTrend}
-              spark={PR_SPARKLINE} sparkColor="var(--accent)"
-              accent={needsMyReview.length ? 'var(--accent)' : null}
-              onClick={() => navigateTo('pr', { preset: 'needsMe' })}
-              title="Open PRs awaiting your review"
-              segments={[
-                { label: 'Stale',   value: stalePRs.length,   color: 'var(--warning)', onClick: () => navigateTo('pr', { preset: 'stale' }),   title: 'Active PRs older than 3 days' },
-                { label: 'CI fail', value: failingPRs.length, color: 'var(--danger)',  onClick: () => navigateTo('pr', { preset: 'failing' }), title: 'PRs with failing CI' },
-                { label: 'Drafts',  value: draftPRs.length,   color: 'var(--text-subtle)', onClick: () => navigateTo('pr', { preset: 'drafts' }), title: 'Draft PRs' },
-              ]}
-            />
-          );
-        })()}
-
-        {/* ── Active work items ── */}
-        <StatWithHoverList
-          label="Active work items"
-          value={activeWorkItems.length}
-          meta="In progress, team-wide"
-          accent={activeWorkItems.length ? 'var(--accent)' : null}
-          onClick={() => navigateTo('work', { stateCategory: 'active' })}
-          title="Open active work items"
-          items={activeWorkItems}
-          team={TEAM}
-          onOpenItem={onOpenItem}
-        />
-
-        {/* ── Needs review ── */}
-        <StatWithHoverList
-          label="Needs review"
-          value={reviewWorkItems.length}
-          meta="Awaiting review, team-wide"
-          accent={reviewWorkItems.length ? 'var(--violet)' : null}
-          onClick={() => navigateTo('work', { stateCategory: 'review' })}
-          title="Open work items in review"
-          items={reviewWorkItems}
-          team={TEAM}
-          onOpenItem={onOpenItem}
-        />
-
-        {/* ── Blockers ── */}
-        <ActionableStat
-          label="Open blockers"
-          value={blockers.length}
-          meta={blockers.length ? blockers[0].title.slice(0, 32) + '…' : 'All clear'}
-          trend={null}
-          spark={[]} sparkColor="var(--danger)"
-          accent={blockers.length ? 'var(--danger)' : null}
-          onClick={() => navigateTo('work', { state: 'Blocked' })}
-          title="Open all blocked work items"
-          segments={[
-            { label: 'Critical',    value: criticalBlockers,    color: 'var(--danger)',  onClick: () => navigateTo('work', { state: 'Blocked', priority: 1 }), title: 'Priority-1 blockers' },
-            { label: 'High',        value: highBlockers,        color: 'var(--warning)', onClick: () => navigateTo('work', { state: 'Blocked', priority: 2 }), title: 'Priority-2 blockers' },
-            ...(isOff('builds') ? [] : [{ label: 'Build fails', value: failingBuilds.length, color: 'var(--danger)', onClick: () => navigateTo('builds', { status: 'failed' }), title: 'Failed builds' }]),
-          ]}
-        />
-
-        {/* ── Team workload ── */}
-        {!isOff('team') && <TeamWorkloadCard team={TEAM} />}
+        {prStat}
+        {activeStat}
+        {reviewStat}
+        {blockersStat}
+        {teamStat}
       </div>
 
-      {/* renderWidgets (desktop): the cards go to the caller's own grid, which places and sizes them itself. */}
-      {renderWidgets ? renderWidgets(widgetOrder.filter(id => widgets[id]).map(id => ({ id, ...widgets[id], onHide: hideWidget }))) : (
-      /* Single ordered grid — span:2 widgets get full width, span:1 auto-place */
+      {/* Single ordered grid — span:2 widgets get full width, span:1 auto-place */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
         {widgetOrder.filter(id => widgets[id]).map(id => {
           const defaultWide = widgets[id].span === 2;
@@ -469,7 +504,6 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
           );
         })}
       </div>
-      )}
     </div>
   );
 }

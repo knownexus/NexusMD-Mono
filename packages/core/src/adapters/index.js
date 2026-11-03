@@ -147,7 +147,7 @@ export const IDbManagerAdapter = {
   getRows:     async (type, config, table, limit, offset) => Promise.reject(new Error('IDbManagerAdapter.getRows not implemented')),
   deleteRows:  async (type, config, table, primaryKey, values) => Promise.reject(new Error('IDbManagerAdapter.deleteRows not implemented')),
   updateCell:  async (type, config, table, primaryKey, primaryValue, column, value) => Promise.reject(new Error('IDbManagerAdapter.updateCell not implemented')),
-  runQuery:    async (type, config, sql) => Promise.reject(new Error('IDbManagerAdapter.runQuery not implemented')),
+  runQuery:    async (type, config, sql, opts) => Promise.reject(new Error('IDbManagerAdapter.runQuery not implemented')),
   insertRow:   async (type, config, table, values) => Promise.reject(new Error('IDbManagerAdapter.insertRow not implemented')),
   runDdl:      async (type, config, sql) => Promise.reject(new Error('IDbManagerAdapter.runDdl not implemented')),
 }

@@ -197,6 +197,39 @@ function isSingleStatement(sql) {
   return !bare.includes(';')
 }
 
+// Why `sql` can't be dry-run (run inside a transaction that is then rolled back), or null when it
+// can. Its own COMMIT or ROLLBACK would end that transaction early and keep the changes, and some
+// statements can't run inside a transaction at all. Strings, [names], "names" and comments don't count.
+const DRY_RUN_BLOCKERS = {
+  any: [
+    [/\b(COMMIT|ROLLBACK)\b/i, 'it commits or rolls back a transaction itself'],
+    [/\bBEGIN\s+(TRAN|TRANSACTION|DISTRIBUTED|DEFERRED|IMMEDIATE|EXCLUSIVE)\b/i, 'it starts a transaction itself'],
+    [/\bSAVE\s+(TRAN|TRANSACTION)\b|\bSAVEPOINT\b|\bRELEASE\s+(SAVEPOINT\s+)?\w/i, 'it uses savepoints'],
+  ],
+  sqlserver: [
+    [/\b(CREATE|ALTER|DROP)\s+DATABASE\b|\b(BACKUP|RESTORE)\s+(DATABASE|LOG)\b|\bRECONFIGURE\b|\bDBCC\b/i, "that statement can't run inside a transaction"],
+    [/\bxp_cmdshell\b|\bsp_send_dbmail\b/i, "what that procedure does outside the database can't be rolled back"],
+  ],
+  sqlite: [
+    // A bare BEGIN starts a transaction in SQLite (in T-SQL it opens a block).
+    [/(^|;)\s*BEGIN\s*(;|$)/i, 'it starts a transaction itself'],
+    [/\b(VACUUM|ATTACH|DETACH|PRAGMA)\b/i, "that statement can't be rolled back"],
+  ],
+}
+function dryRunBlocker(type, sql) {
+  const bare = String(sql)
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/'(?:[^']|'')*'/g, "''")
+    .replace(/\[(?:[^\]]|\]\])*\]/g, '[]')
+    .replace(/"(?:[^"]|"")*"/g, '""')
+    .trim()
+  for (const [re, why] of [...DRY_RUN_BLOCKERS.any, ...(DRY_RUN_BLOCKERS[type] ?? [])]) {
+    if (re.test(bare)) return why
+  }
+  return null
+}
+
 // better-sqlite3 binds numbers, strings, bigints, buffers and null only; a bit arrives as a boolean.
 const sqliteValue = v => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v)
 
@@ -558,51 +591,83 @@ function makeHandlers(drivers) {
     throw new Error(`Unknown database type: ${type}`)
   }
 
-  async function handleRunQuery(_e, { type, config, sql }) {
+  // `dryRun` runs the SQL inside a transaction that is always rolled back: the results and row
+  // counts are real, but nothing is kept. SQL that would end that transaction itself, or that can't
+  // run inside one, is refused instead of being run for real.
+  async function handleRunQuery(_e, { type, config, sql, dryRun = false }) {
     // Any statement runs; the Query tab asks before destructive ones. Leading comments are skipped
     // so SQLite's fallback below sees the first real keyword.
     const trimmed = sql.replace(/^(\s+|--[^\n]*(\n|$)|\/\*[\s\S]*?\*\/)*/, '').toUpperCase()
+    if (dryRun) {
+      const blocker = dryRunBlocker(type, sql)
+      if (blocker) throw new Error(`Can't dry-run this query: ${blocker}`)
+    }
 
     // Every result set the statement returns, each with its column names even when it has no rows,
     // so an empty SELECT still shows its headers. `columns`/`rows` are the first set's.
     const withSets = (sets, affected) => ({
       columns: sets[0]?.columns ?? [], rows: sets[0]?.rows ?? [], sets, affected: sets.length ? null : affected,
+      ...(dryRun ? { dryRun: true } : {}),
     })
 
     if (type === 'sqlserver') {
-      const pool    = await getSqlPool(config, drivers)
-      const request = pool.request()
-      // Rows as arrays, so two columns with the same name (a.id, b.id) both survive.
-      request.arrayRowMode = true
-      const result  = await request.query(sql)
-      const metas   = result.columns ?? []
-      const sets    = (result.recordsets ?? []).map((rs, i) => {
-        // One result set gives a flat list of column metadata; several give one list each.
-        const meta = Array.isArray(metas[0]) ? (metas[i] ?? []) : (i === 0 ? metas : [])
-        const columns = [...meta].sort((a, b) => a.index - b.index).map(c => c.name)
-        const rows = rs.map(r => (Array.isArray(r) ? r : columns.map(c => r[c])).map(v => v ?? null))
-        return { columns: columns.length ? columns : recordsetToRows(rs).columns, rows }
-      })
-      const affected = (result.rowsAffected ?? []).reduce((n, x) => n + x, 0)
-      return withSets(sets, affected)
+      const pool = await getSqlPool(config, drivers)
+      const run = async (request) => {
+        // Rows as arrays, so two columns with the same name (a.id, b.id) both survive.
+        request.arrayRowMode = true
+        const result  = await request.query(sql)
+        const metas   = result.columns ?? []
+        const sets    = (result.recordsets ?? []).map((rs, i) => {
+          // One result set gives a flat list of column metadata; several give one list each.
+          const meta = Array.isArray(metas[0]) ? (metas[i] ?? []) : (i === 0 ? metas : [])
+          const columns = [...meta].sort((a, b) => a.index - b.index).map(c => c.name)
+          const rows = rs.map(r => (Array.isArray(r) ? r : columns.map(c => r[c])).map(v => v ?? null))
+          return { columns: columns.length ? columns : recordsetToRows(rs).columns, rows }
+        })
+        const affected = (result.rowsAffected ?? []).reduce((n, x) => n + x, 0)
+        return withSets(sets, affected)
+      }
+      if (!dryRun) return run(pool.request())
+
+      const tx = pool.transaction()
+      await tx.begin()
+      try {
+        return await run(tx.request())
+      } finally {
+        // An error that dooms the transaction has the server roll it back itself (EABORT here).
+        try { await tx.rollback() } catch (err) {
+          if (err?.code !== 'EABORT') throw new Error(`The dry run couldn't be rolled back: ${err.message}`)
+        }
+      }
     }
 
     if (type === 'sqlite') {
-      const db   = getSqliteDb(config.filePath, drivers)
-      const stmt = db.prepare(sql)
-      const reads = typeof stmt.reader === 'boolean' ? stmt.reader : (trimmed.startsWith('SELECT') || trimmed.startsWith('WITH'))
-      if (reads) {
-        // better-sqlite3 knows the columns before any row is read.
-        if (typeof stmt.columns === 'function' && typeof stmt.raw === 'function') {
-          const columns = stmt.columns().map(c => c.name)
-          return withSets([{ columns, rows: stmt.raw(true).all().map(r => r.map(v => v ?? null)) }], null)
+      const db = getSqliteDb(config.filePath, drivers)
+      const run = () => {
+        const stmt = db.prepare(sql)
+        const reads = typeof stmt.reader === 'boolean' ? stmt.reader : (trimmed.startsWith('SELECT') || trimmed.startsWith('WITH'))
+        if (reads) {
+          // better-sqlite3 knows the columns before any row is read.
+          if (typeof stmt.columns === 'function' && typeof stmt.raw === 'function') {
+            const columns = stmt.columns().map(c => c.name)
+            return withSets([{ columns, rows: stmt.raw(true).all().map(r => r.map(v => v ?? null)) }], null)
+          }
+          const rawRows = stmt.all()
+          const columns = rawRows.length ? Object.keys(rawRows[0]) : []
+          return withSets([{ columns, rows: rawRows.map(r => columns.map(c => r[c] ?? null)) }], null)
         }
-        const rawRows = stmt.all()
-        const columns = rawRows.length ? Object.keys(rawRows[0]) : []
-        return withSets([{ columns, rows: rawRows.map(r => columns.map(c => r[c] ?? null)) }], null)
+        const info = stmt.run()
+        return withSets([], info.changes)
       }
-      const info = stmt.run()
-      return withSets([], info.changes)
+      if (!dryRun) return run()
+
+      if (db.inTransaction) throw new Error("Can't dry-run this query: the database is already in a transaction")
+      db.exec('BEGIN')
+      try {
+        return run()
+      } finally {
+        if (db.inTransaction) db.exec('ROLLBACK')
+      }
     }
 
     throw new Error(`Unknown database type: ${type}`)

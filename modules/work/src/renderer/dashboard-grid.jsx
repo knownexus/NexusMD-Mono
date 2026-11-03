@@ -50,6 +50,7 @@ function useWidth(ref, fixed) {
 }
 
 function Cell({ item, ctx, onEdit }) {
+  if (item.card?.bare) return <div className="dash-cell-bare">{item.card.render()}</div>
   if (item.card) {
     const c = item.card
     return (
@@ -68,7 +69,8 @@ function Cell({ item, ctx, onEdit }) {
 }
 
 /**
- *   cards        the built-in cards from DashboardView ([{ id, title, render, span, onHide }])
+ *   cards        DashboardView's parts and built-in cards ([{ id, title, render, span, onHide }]; a part of the
+ *                page's head is { bare, top, frac, rows }: drawn without a card frame, and can't be hidden)
  *   widgets      the added widgets to show ([{ id, type, config }], already filtered to what's on)
  *   widgetTypes  WIDGET_TYPES (for each added widget's default width)
  *   ctx, onEdit  what the added widgets read, and their ⋯ (settings)
@@ -88,7 +90,7 @@ export function DashboardGrid({
   const cols = colsFor(screen)
 
   const entries = entriesFor({
-    cards: cards.map(c => ({ id: c.id, span: c.span })),
+    cards: cards.map(c => ({ id: c.id, span: c.span, bare: c.bare, frac: c.frac, rows: c.rows, top: c.top })),
     widgets: widgets.map(w => ({ id: w.id, half: !!widgetTypes[w.type]?.half })),
     widgetWidths, widgetHeights,
   })
@@ -122,7 +124,7 @@ export function DashboardGrid({
           draggableHandle=".widget-grab" draggableCancel=".widget-hide, .m-iconbtn" resizeHandles={['se', 'e', 's']}
           onDragStop={save} onResizeStop={save}>
           {items.map(it => (
-            <div key={it.i} className="widget dash-cell" data-testid="dash-cell" data-key={it.i}>
+            <div key={it.i} className={`widget dash-cell${byKey.get(it.i)?.card?.bare ? ' is-bare' : ''}`} data-testid="dash-cell" data-key={it.i}>
               <div className="widget-grab" title="Drag to move" aria-label="Drag to move"><Icon name="grip" size={14}/></div>
               <Cell item={byKey.get(it.i)} ctx={ctx} onEdit={onEdit}/>
             </div>
