@@ -12,7 +12,9 @@ public static class SyncFormatGate
 
     public static bool IsOutdated(HttpRequest req, IConfiguration cfg)
     {
-        var min = cfg.GetValue<int?>("Sync:MinFormat") ?? 1;
+        // A missing or non-numeric setting accepts everyone (format 1) rather than failing every write.
+        var min = int.TryParse(cfg["Sync:MinFormat"], System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out var m) ? m : 1;
         var clientFormat = int.TryParse(req.Headers[HeaderName].ToString(), System.Globalization.NumberStyles.None,
             System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 1;
         return clientFormat < min;

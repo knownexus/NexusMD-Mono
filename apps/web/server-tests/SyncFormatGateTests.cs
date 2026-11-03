@@ -101,4 +101,33 @@ public sealed class SyncFormatGateTests : IDisposable
         var put = await Send(http, HttpMethod.Put, "/api/items/abcdefgh", token, new { ciphertext = "AAAA", deleted = false }, "0");
         Assert.Equal(HttpStatusCode.OK, put.StatusCode);
     }
+
+    [Fact]
+    public async Task Cors_preflight_allows_the_sync_format_header()
+    {
+        var (http, _, _) = await NewHost(null);
+        var r = new HttpRequestMessage(HttpMethod.Options, "/api/items/abcdefgh");
+        r.Headers.Add("Origin", "null");
+        r.Headers.Add("Access-Control-Request-Method", "PUT");
+        r.Headers.Add("Access-Control-Request-Headers", "content-type,authorization,x-sync-format");
+        var res = await http.SendAsync(r);
+        Assert.True(res.Headers.TryGetValues("Access-Control-Allow-Headers", out var allowed));
+        Assert.Contains("x-sync-format", string.Join(",", allowed!), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Gate_runs_before_id_and_if_match_validation()
+    {
+        var (http, token, _) = await NewHost("2");
+        await AssertOutdated(await Send(http, HttpMethod.Put, "/api/items/bad%20id!", token, new { ciphertext = "AAAA", deleted = false }));
+        await AssertOutdated(await Send(http, HttpMethod.Put, "/api/items/abcdefgh", token, new { ciphertext = "AAAA", deleted = false }));
+    }
+
+    [Fact]
+    public async Task Non_numeric_min_format_accepts_old_clients()
+    {
+        var (http, token, _) = await NewHost("two");
+        var put = await Send(http, HttpMethod.Put, "/api/items/abcdefgh", token, new { ciphertext = "AAAA", deleted = false }, "0");
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+    }
 }
