@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { screenKey, colsFor, entriesFor, flow, layoutFor, sourceFor, withLayout, withoutLayout } from './dashboard-layout.js'
+import { screenKey, colsFor, gridColsFor, SUB, entriesFor, flow, layoutFor, sourceFor, withLayout, withoutLayout } from './dashboard-layout.js'
 
 const display = (pw, ph, scale = 1) => ({ width: Math.round(pw / scale), height: Math.round(ph / scale), scaleFactor: scale, physicalWidth: pw, physicalHeight: ph })
 
@@ -16,6 +16,21 @@ describe('screens', () => {
     expect(colsFor(display(5120, 1440))).toBe(16)
     expect(colsFor(display(1024, 768))).toBe(4)
     expect(colsFor(display(7680, 2160))).toBe(16)
+  })
+})
+
+describe('sub-columns', () => {
+  it('splits each column into quarters', () => {
+    expect(SUB).toBe(4)
+    expect(gridColsFor(display(1920, 1080))).toBe(24)
+    expect(gridColsFor(display(3840, 1600))).toBe(48)
+  })
+
+  it('scales a layout saved with whole columns up exactly, so nothing moves', () => {
+    const entries = entriesFor({ cards: [{ id: 'review', span: 1 }], widgets: [{ id: 'time', half: true }] })
+    const saved = { '1920x1080': { cols: 6, rowHeight: 20, items: [{ i: 'card:review', x: 2, y: 4, w: 4, h: 5 }, { i: 'w:time', x: 0, y: 0, w: 2, h: 3 }] } }
+    const { items } = layoutFor(saved, '1920x1080', 24, entries)
+    expect(items).toEqual([{ i: 'card:review', x: 8, y: 4, w: 16, h: 5 }, { i: 'w:time', x: 0, y: 0, w: 8, h: 3 }])
   })
 })
 
