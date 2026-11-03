@@ -66,7 +66,7 @@ const NO_SIZES = {}
 
 export function HomeWidgets({
   host, tweaks = {}, setTweak, team = NO_TEAM, needsMeCriteria = DEFAULT_CRITERIA,
-  cards = NO_CARDS, widgetWidths = NO_SIZES, widgetHeights = NO_SIZES, gridWidth,
+  cards = NO_CARDS, hidden = NO_CARDS, widgetWidths = NO_SIZES, widgetHeights = NO_SIZES, gridWidth,
 }) {
   const { data = {} } = useNexusData() || {}
   const { openItem, openPR } = useWork()
@@ -118,7 +118,7 @@ export function HomeWidgets({
       {display && (
         <DashboardGrid cards={cards} widgets={shown} widgetTypes={WIDGET_TYPES} ctx={ctx} onEdit={w => setSheet({ widget: w })}
           display={display} layouts={tweaks.dashLayouts || {}} onLayoutsChange={next => setTweak?.('dashLayouts', next)}
-          widgetWidths={widgetWidths} widgetHeights={widgetHeights} width={gridWidth}
+          widgetWidths={widgetWidths} widgetHeights={widgetHeights} width={gridWidth} hidden={hidden}
           footer={(
             <button type="button" className="btn sm" onClick={() => setSheet({ widget: null })}>
               <Icon name="plus" size={13} /> Add widget
