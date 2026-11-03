@@ -1752,3 +1752,14 @@ button:focus-visible, .filter-chip:focus-visible { outline-offset: -1px; }
 .dash-rgl .react-resizable-handle:hover { opacity: 1; }
 .dash-grid-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 12px; }
 .dash-grid-screen { font-size: 11.5px; color: var(--text-subtle); margin-left: auto; }
+/* The page's head as grid items (DashboardView's parts with renderWidgets): no card around them, and the
+   greeting keeps the page-head look it has on web. */
+.dash-cell.is-bare { border-radius: var(--radius-lg); }
+.dash-cell.is-bare:hover { outline: 1px dashed var(--border); outline-offset: 2px; }
+.dash-cell-bare { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
+.dash-cell-bare > .page-head-actions { margin-left: 0; justify-content: flex-end; flex-wrap: wrap; }
+.dash-cell-bare > .dash-quick-links { margin-bottom: 0 !important; }
+.dash-cell-bare > .stat, .dash-cell-bare > .stat-clickable { flex: 1; min-height: 0; }
+.dash-cell-bare > .stat-clickable > .stat { flex: 1; }
+.dash-greeting h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+.dash-greeting .sub { color: var(--text-subtle); font-size: 13px; margin-top: 4px; }
