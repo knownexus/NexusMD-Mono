@@ -31,6 +31,8 @@ export async function launchApp({ seed = {}, prefs = null, args = [], headed = p
       localStorage.setItem('nexusmd.profiles', JSON.stringify([{ id, name: 'E2E', initials: 'E2', color: '#9a7e22', type: 'manual', createdAt: Date.now() }]))
       localStorage.setItem('nexusmd.activeProfileId', id)
     }
+    // The app has a server by default, so a fresh install asks to sign in first: take "Use without an account".
+    if (localStorage.getItem('nexusmd.account.optOut') === null) localStorage.setItem('nexusmd.account.optOut', '1')
     const id = localStorage.getItem('nexusmd.activeProfileId')
     for (const [k, v] of Object.entries(s)) localStorage.setItem(k.startsWith('profile:') ? `nexusmd.p.${id}.${k.slice(8)}` : k, JSON.stringify(v))
   }, seed)
