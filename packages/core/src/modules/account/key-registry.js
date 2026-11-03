@@ -37,7 +37,7 @@ export const SYNC_SKIP = [
   /\.cache(\.v\d+)?$/,
   /\.wiTypeDefs\./,
   /\.git\.snapshot$/,
-  /^(?:nexusmd|helm)\.workitems\.status\.v\d+$/,
+  /^(?:nexusmd|helm)\.(?:p\.[^.]+\.)?workitems\.status\.v\d+$/,
 ]
 
 export const isSkippedKey = (key) => SYNC_SKIP.some(re => re.test(key))

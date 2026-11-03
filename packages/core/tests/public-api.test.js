@@ -8,6 +8,7 @@ import * as core from '../src/index.js'
 const EXPECTED = [
   'BUNDLE_EXT', 'BUNDLE_FORMAT', 'BUNDLE_FORMAT_ENC', 'BUNDLE_VERSION',
   'encodeBundle', 'decodeBundle', 'planProfileScopeMigration',
+  'migrateToProfileScopeV2', 'moveTokensToSecureStorage', 'profileTokenNames', 'MIGRATION_V2_MARKER', 'createSecretCache', 'profileCacheStorage',
   'stableStringify', 'contentHash',
   'mergeRows', 'mergeKeyVal', 'mergeText', 'mergeSet', 'mergePlannerWeek', 'mergeLists', 'reconcileItem',
   'encryptSync', 'decryptSync', 'plannerCollection', 'notesCollection', 'teamCustomCollection',

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-vi.mock('@nexusmd/shell-sdk', () => ({ getProfileKey: k => `p.${k}` }))
+vi.mock('@nexusmd/shell-sdk', async (orig) => ({ ...(await orig()), getProfileKey: k => `p.${k}` }))
 
+import { profileSecrets } from '@nexusmd/shell-sdk'
 import { createGithubHttpAdapter, saveGithubConfig, getGithubConfig, isGithubConfigured, usesGithubWorkItems, desktopGithubSource } from './github-client.js'
 
 afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
@@ -11,7 +12,9 @@ const reply = (status) => ({ ok: status < 300, status, headers: new Headers(), t
 describe('config', () => {
   it('stores settings under profile-scoped github.* keys', () => {
     saveGithubConfig({ pat: 'ghp_x', repos: ['acme/web'], issues: false })
-    expect(localStorage.getItem('p.github.pat')).toBe('ghp_x')
+    // The token is a secret: secure storage (through the shell's cache), never plain localStorage.
+    expect(profileSecrets.peek('p.github.pat')).toBe('ghp_x')
+    expect(localStorage.getItem('p.github.pat')).toBeNull()
     expect(getGithubConfig().repos).toEqual(['acme/web'])
     expect(isGithubConfigured()).toBe(true)
     expect(usesGithubWorkItems()).toBe(false)

@@ -1,6 +1,7 @@
 import React from 'react'
 import { ProfileProvider as UiProfileProvider, useProfile, localUpsertProfiles } from '@nexusmd/ui'
-import { planProfileScopeMigration } from '@nexusmd/core'
+import { planProfileScopeMigration, migrateToProfileScopeV2, profileTokenNames } from '@nexusmd/core'
+import { secureStorageAdapter } from './adapters/secureStorage.js'
 
 // Desktop is local-only (no server), like the app: the shared ProfileProvider's
 // localStorage cache IS the source of truth. We use the canonical `nexusmd.`
@@ -22,6 +23,41 @@ function adoptFlatKeys(id, storage = window.localStorage) {
     const v = storage.getItem(from)
     if (v !== null) { storage.setItem(to, v); storage.removeItem(from) }
   }
+}
+
+function profileIds(storage) {
+  try {
+    const list = JSON.parse(storage.getItem(`${NS}.profiles`) || '[]')
+    return Array.isArray(list) ? list.map(p => p && p.id).filter(id => typeof id === 'string' && id) : []
+  } catch { return [] }
+}
+
+// At every start, before anything under the provider mounts (the account gate, so its sync never
+// sees half-moved data, and the screens): the one-time move of the remaining shared data into
+// profiles and of plain tokens into secure storage (core migrate-v2.js; adoptFlatKeys above has
+// already run when the first profile was made), then the profiles' tokens are loaded into the
+// secret cache the clients read synchronously. A failed move is logged and changes nothing (no
+// marker either, so the next start tries again); the app starts regardless.
+async function prepareProfileData({ storage = window.localStorage, secure = secureStorageAdapter } = {}) {
+  const profiles = profileIds(storage)
+  const activeProfileId = storage.getItem(`${NS}.activeProfileId`) || ''
+  try {
+    const { moved } = await migrateToProfileScopeV2({ storage, secure, namespace: NS, profiles, activeProfileId })
+    if (moved.length) console.info(`[profiles] moved ${moved.length} shared item(s) into profiles`)
+  } catch (err) {
+    console.error('[profiles] moving shared data into profiles failed; nothing was changed, the next start tries again:', err)
+  }
+  // Without an active profile, getProfileKey names a token without the `p.<pid>.` part.
+  const bare = profileTokenNames(NS, '_').map(n => n.replace(`${NS}.p._.`, `${NS}.`))
+  try { await secure.load?.([...profiles.flatMap(id => profileTokenNames(NS, id)), ...bare]) }
+  catch (err) { console.warn('[profiles] could not load the saved tokens:', err?.message || err) }
+}
+
+let booting = null
+/** The start-up work above, once per window; resolves when it is done (it never rejects). */
+export function bootProfileData() {
+  if (!booting) booting = prepareProfileData()
+  return booting
 }
 
 const desktopProfileStore = {
@@ -46,6 +82,13 @@ const desktopProfileStore = {
 }
 
 export function ProfileProvider({ children }) {
+  const [ready, setReady] = React.useState(false)
+  React.useEffect(() => {
+    let live = true
+    bootProfileData().finally(() => { if (live) setReady(true) })
+    return () => { live = false }
+  }, [])
+  if (!ready) return null
   return <UiProfileProvider namespace={NS} store={desktopProfileStore}>{children}</UiProfileProvider>
 }
 export { useProfile }

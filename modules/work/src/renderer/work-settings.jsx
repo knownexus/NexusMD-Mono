@@ -1,6 +1,7 @@
 import React from 'react'
 import { VsCard, VsRow, BoardColumnsCard, CardsAndTablesSettings, toast, WI_TYPE_STATES_CACHE_KEY } from '@nexusmd/ui'
 import { ADO_CACHE_KEY, JIRA_CACHE_KEY, GITHUB_CACHE_KEY } from '@nexusmd/core'
+import { workStorage } from './work-storage.js'
 import { AdoConnectionCard } from './ado-settings.jsx'
 import { JiraConnectionCard, WorkItemsDisplayCard } from './jira-settings.jsx'
 import { GithubConnectionCard } from './github-settings.jsx'
@@ -46,7 +47,7 @@ export function WorkDataRows() {
 
   const clearCache = () => {
     try {
-      localStorage.removeItem(ADO_CACHE_KEY)
+      workStorage.remove(ADO_CACHE_KEY) // kept under the profile
       localStorage.removeItem(JIRA_CACHE_KEY)
       localStorage.removeItem(GITHUB_CACHE_KEY)
       localStorage.removeItem(WI_TYPE_STATES_CACHE_KEY)

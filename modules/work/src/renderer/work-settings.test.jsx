@@ -48,7 +48,9 @@ describe('WorkDataRows (the refresh interval and cache rows of Data & sync)', ()
 
   it('clears only the cache keys (ADO, Jira, GitHub, type states) and re-fetches when Clear cache is clicked', () => {
     const refreshAllData = vi.fn().mockResolvedValue()
-    localStorage.setItem('nexusmd.ado.cache.v1', '{"WORK_ITEMS":[]}')
+    // The ADO cache is kept under the active profile.
+    localStorage.setItem('nexusmd.activeProfileId', 'P1')
+    localStorage.setItem('nexusmd.p.P1.ado.cache.v1', '{"WORK_ITEMS":[]}')
     localStorage.setItem('nexusmd.wi.wiTypeStates.cache', '{}')
     localStorage.setItem('nexusmd.jira.cache.v1', '{"WORK_ITEMS":[]}')
     localStorage.setItem('nexusmd.github.cache.v1', '{"WORK_ITEMS":[]}')
@@ -57,7 +59,7 @@ describe('WorkDataRows (the refresh interval and cache rows of Data & sync)', ()
     withWork(<WorkDataRows />, { refreshAllData })
     fireEvent.click(screen.getByRole('button', { name: 'Clear cache' }))
 
-    expect(localStorage.getItem('nexusmd.ado.cache.v1')).toBeNull()
+    expect(localStorage.getItem('nexusmd.p.P1.ado.cache.v1')).toBeNull()
     expect(localStorage.getItem('nexusmd.wi.wiTypeStates.cache')).toBeNull()
     expect(localStorage.getItem('nexusmd.jira.cache.v1')).toBeNull()
     expect(localStorage.getItem('nexusmd.github.cache.v1')).toBeNull()

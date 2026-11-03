@@ -1,6 +1,6 @@
 import React from 'react'
 import { defaultCreateProvider, loadCachedGithubData } from '@nexusmd/core'
-import { localStorageAdapter } from '@nexusmd/web-adapters'
+import { workStorage } from './work-storage.js'
 import { NexusDataProvider, useSeenTracking, SEEN_FINGERPRINTS } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useLocalItems } from './items-state.js'
@@ -78,7 +78,7 @@ export function WorkProvider({ host, view, children }) {
         const config = getGithubConfig()
         const snap = snapshotRef.current
         // Kept to the Git tab, issues and runs aren't in the snapshot: read GitHub's own cache.
-        const own = config.inWork ? snap : (loadCachedGithubData(config, { storage: localStorageAdapter }) || {})
+        const own = config.inWork ? snap : (loadCachedGithubData(config, { storage: workStorage }) || {})
         return {
           repos: config.repos,
           http: githubHttp,

@@ -11,8 +11,10 @@ const ALLOWED = [
   /^nexusmd\.account\./, /^nexusmd\.sec\./, /^nexusmd\.feature\./,
   // Machine keys: this install's own state, never user data.
   /^nexusmd\.sync\./, /^nexusmd\.oauth\.pending$/,
-  // Read-only device state the shell/core own: where profile files live, and fetched-data caches (not user data).
-  /^nexusmd\.profileDir$/, /^nexusmd\.workitems\.status\.v1$/, /^nexusmd\.ado\.cache\.v1$/,
+  // Read-only device state the shell/core own: where profile files live.
+  /^nexusmd\.profileDir$/,
+  // This machine's record of the start-up move of shared data into profiles (never synced).
+  /^nexusmd\.migrated\.v2$/,
 ]
 
 const HEADINGS = { settings: 'Settings', 'db-manager': 'Database Manager', markdown: 'Documents', team: 'Team', dashboard: 'Dashboard' }

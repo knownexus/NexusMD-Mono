@@ -3,6 +3,7 @@
 // of the routed workItemSource. Logic lives in @nexusmd/core.
 import { makeGithubConfig, makeGithubWorkItemSource } from '@nexusmd/core'
 import { getProfileKey } from '@nexusmd/shell-sdk'
+import { tokenStore } from './token-store.js'
 
 const rawStorage = {
   get: (k) => localStorage.getItem(k),
@@ -11,6 +12,7 @@ const rawStorage = {
 
 export const { getGithubConfig, saveGithubConfig, isGithubConfigured, usesGithubWorkItems } = makeGithubConfig({
   storage: rawStorage,
+  secrets: tokenStore,
   key: (name) => getProfileKey('github.' + name),
 })
 

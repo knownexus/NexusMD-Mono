@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-vi.mock('@nexusmd/shell-sdk', () => ({ getProfileKey: k => `p.${k}` }))
+vi.mock('@nexusmd/shell-sdk', async (orig) => ({ ...(await orig()), getProfileKey: k => `p.${k}` }))
 
+import { profileSecrets } from '@nexusmd/shell-sdk'
 import { createJiraHttpAdapter, createJiraWorkItemSource, saveJiraConfig, getJiraConfig, isJiraActive } from './jira-client.js'
 
 afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
@@ -16,6 +17,8 @@ describe('config', () => {
   it('stores settings under profile-scoped jira.* keys', () => {
     saveJiraConfig({ site: 'acme', email: 'me@acme.io', apiToken: 'tok', projectKeys: ['abc'] })
     expect(localStorage.getItem('p.jira.site')).toBe('https://acme.atlassian.net')
+    expect(profileSecrets.peek('p.jira.apiToken')).toBe('tok')
+    expect(localStorage.getItem('p.jira.apiToken')).toBeNull()
     expect(getJiraConfig().projectKeys).toEqual(['ABC'])
     expect(isJiraActive()).toBe(true)
   })

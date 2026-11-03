@@ -8,10 +8,25 @@ vi.mock('@nexusmd/ui', () => ({
   toast: () => {},
 }))
 vi.mock('./profile-keys.js', () => ({ getProfileKey: (k) => k }))
-vi.mock('./adapters/secureStorage.js', () => ({ secureStorageAdapter: { get: async () => null, set: async () => {} } }))
+// Tokens live in secure storage: the shared secret cache over a slow in-memory store (the
+// encrypted store is async), so a test can tell whether a write had reached it.
+const saved = vi.hoisted(() => new Map())
+vi.mock('./adapters/secureStorage.js', async () => {
+  const { createSecretCache } = await import('@nexusmd/core')
+  const tick = () => new Promise(r => setTimeout(r, 5))
+  return { secureStorageAdapter: createSecretCache({
+    get: async k => (saved.has(k) ? saved.get(k) : null),
+    set: async (k, v) => { await tick(); saved.set(k, v) },
+    remove: async k => { await tick(); saved.delete(k) },
+  }) }
+})
 
 import { makeNativeGoogleBinding, makeNativeMicrosoftBinding, makeShellOAuthService, setManualMicrosoftToken, decodeJwtClaims, redeem } from './cloud-auth.js'
 import { beginSignIn } from './oauth-pending.js'
+import { secureStorageAdapter as secure } from './adapters/secureStorage.js'
+
+const PROVIDER_KEYS = ['gdrive', 'onedrive', 'ado', 'microsoft', 'github', 'google'].map(p => `nexusmd.${p}.auth`)
+beforeEach(async () => { saved.clear(); for (const k of PROVIDER_KEYS) await secure.remove(k) })
 
 // Build a minimal JWT (header.payload.signature) with the given exp claim.
 const b64url = (obj) => btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
@@ -31,25 +46,28 @@ describe('makeNativeGoogleBinding', () => {
   })
 
   it('returns the cached token when unexpired', async () => {
-    localStorage.setItem(KEY, JSON.stringify({ accessToken: 'good', refreshToken: 'r', expiresAt: Date.now() + 3_600_000 }))
+    secure.set(KEY, JSON.stringify({ accessToken: 'good', refreshToken: 'r', expiresAt: Date.now() + 3_600_000 }))
     const b = makeNativeGoogleBinding()
     expect(await b.getToken()).toBe('good')
     expect(window.electronAPI.oauth.refresh).not.toHaveBeenCalled()
   })
 
   it('refreshes and re-stores when the token is expired', async () => {
-    localStorage.setItem(KEY, JSON.stringify({ accessToken: 'old', refreshToken: 'r', expiresAt: Date.now() - 1000 }))
+    secure.set(KEY, JSON.stringify({ accessToken: 'old', refreshToken: 'r', expiresAt: Date.now() - 1000 }))
     window.electronAPI.oauth.refresh.mockResolvedValue({ accessToken: 'new', expiresAt: Date.now() + 3_600_000 })
     const b = makeNativeGoogleBinding()
     expect(await b.getToken()).toBe('new')
     expect(window.electronAPI.oauth.refresh).toHaveBeenCalledWith('r', 'google')
-    expect(JSON.parse(localStorage.getItem(KEY)).accessToken).toBe('new')
+    expect(JSON.parse(secure.peek(KEY)).accessToken).toBe('new')
   })
 
   it('connect stores tokens returned by the native flow', async () => {
     window.electronAPI.oauth.start.mockResolvedValue({ accessToken: 'AT', refreshToken: 'RT', expiresAt: 42 })
     await makeNativeGoogleBinding().connect()
-    expect(JSON.parse(localStorage.getItem(KEY))).toMatchObject({ accessToken: 'AT', refreshToken: 'RT' })
+    expect(JSON.parse(secure.peek(KEY))).toMatchObject({ accessToken: 'AT', refreshToken: 'RT' })
+    // saved to secure storage before connect resolves, never as a plain key
+    expect(JSON.parse(saved.get(KEY))).toMatchObject({ accessToken: 'AT' })
+    expect(localStorage.getItem(KEY)).toBeNull()
   })
 })
 
@@ -64,16 +82,16 @@ describe('makeNativeMicrosoftBinding', () => {
     window.electronAPI.oauth.start.mockResolvedValue({ accessToken: 'AT', refreshToken: 'RT', expiresAt: 42 })
     await makeNativeMicrosoftBinding().connect()
     expect(window.electronAPI.oauth.start).toHaveBeenCalledWith('microsoft')
-    expect(JSON.parse(localStorage.getItem(KEY))).toMatchObject({ accessToken: 'AT', refreshToken: 'RT' })
+    expect(JSON.parse(secure.peek(KEY))).toMatchObject({ accessToken: 'AT', refreshToken: 'RT' })
   })
 
   it('persists a rotated refresh token on refresh', async () => {
-    localStorage.setItem(KEY, JSON.stringify({ accessToken: 'old', refreshToken: 'RT1', expiresAt: Date.now() - 1000 }))
+    secure.set(KEY, JSON.stringify({ accessToken: 'old', refreshToken: 'RT1', expiresAt: Date.now() - 1000 }))
     window.electronAPI.oauth.refresh.mockResolvedValue({ accessToken: 'new', refreshToken: 'RT2', expiresAt: Date.now() + 3_600_000 })
     const tok = await makeNativeMicrosoftBinding().getToken()
     expect(window.electronAPI.oauth.refresh).toHaveBeenCalledWith('RT1', 'microsoft')
     expect(tok).toBe('new')
-    expect(JSON.parse(localStorage.getItem(KEY)).refreshToken).toBe('RT2')
+    expect(JSON.parse(secure.peek(KEY)).refreshToken).toBe('RT2')
   })
 })
 
@@ -90,7 +108,7 @@ describe('makeShellOAuthService', () => {
   })
 
   it('renews an expired Microsoft sign-in natively, not through the web backend', async () => {
-    localStorage.setItem(KEY, JSON.stringify({ accessToken: 'stale', refreshToken: 'RT1', expiresAt: Date.now() - 1000 }))
+    secure.set(KEY, JSON.stringify({ accessToken: 'stale', refreshToken: 'RT1', expiresAt: Date.now() - 1000 }))
     window.electronAPI.oauth.refresh.mockResolvedValue({ accessToken: 'fresh', refreshToken: 'RT2', expiresAt: Date.now() + 3_600_000 })
     const ms = makeShellOAuthService('microsoft')
     expect(ms.isConnected()).toBe(true)
@@ -100,14 +118,14 @@ describe('makeShellOAuthService', () => {
   })
 
   it('renews natively when Graph rejects the token (force)', async () => {
-    localStorage.setItem(KEY, JSON.stringify({ accessToken: 'revoked', refreshToken: 'RT1', expiresAt: Date.now() + 3_600_000 }))
+    secure.set(KEY, JSON.stringify({ accessToken: 'revoked', refreshToken: 'RT1', expiresAt: Date.now() + 3_600_000 }))
     window.electronAPI.oauth.refresh.mockResolvedValue({ accessToken: 'fresh', expiresAt: Date.now() + 3_600_000 })
     expect(await makeShellOAuthService('microsoft').getToken({ force: true })).toBe('fresh')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('keeps the web-backend sign-in for other providers', async () => {
-    localStorage.setItem('nexusmd.github.auth', JSON.stringify({ accessToken: 'gh', refreshToken: 'r' }))
+    secure.set('nexusmd.github.auth', JSON.stringify({ accessToken: 'gh', refreshToken: 'r' }))
     const gh = makeShellOAuthService('github')
     expect(await gh.getToken()).toBe('gh')
     expect(typeof gh.loadCreds).toBe('function')
@@ -120,26 +138,26 @@ describe('setManualMicrosoftToken', () => {
 
   it('stores a pasted token so getToken serves it', async () => {
     setManualMicrosoftToken('  paste-me  ')
-    expect(JSON.parse(localStorage.getItem(KEY)).accessToken).toBe('paste-me')
+    expect(JSON.parse(secure.peek(KEY)).accessToken).toBe('paste-me')
     expect(await makeNativeMicrosoftBinding().getToken()).toBe('paste-me')
   })
 
   it('derives expiresAt from the JWT exp claim', () => {
     const exp = Math.floor(Date.now() / 1000) + 1800
     setManualMicrosoftToken(jwtWithExp(exp))
-    expect(JSON.parse(localStorage.getItem(KEY)).expiresAt).toBe(exp * 1000)
+    expect(JSON.parse(secure.peek(KEY)).expiresAt).toBe(exp * 1000)
   })
 
   it('falls back to a 1h TTL for non-JWT tokens', () => {
     const before = Date.now()
     setManualMicrosoftToken('opaque-token')
-    const { expiresAt } = JSON.parse(localStorage.getItem(KEY))
+    const { expiresAt } = JSON.parse(secure.peek(KEY))
     expect(expiresAt).toBeGreaterThanOrEqual(before + 60 * 60 * 1000)
   })
 
   it('ignores empty input', () => {
     setManualMicrosoftToken('   ')
-    expect(localStorage.getItem(KEY)).toBeNull()
+    expect(secure.peek(KEY)).toBeNull()
   })
 })
 
@@ -158,7 +176,8 @@ describe('redeem (the nexusmd://oauth link)', () => {
     const link = `nexusmd://oauth/gdrive?n=${n}&provider=gdrive&otc=CODE`
     await redeem(link)
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(localStorage.getItem('nexusmd.gdrive.auth'))).toMatchObject({ accessToken: 'AT' })
+    expect(JSON.parse(secure.peek('nexusmd.gdrive.auth'))).toMatchObject({ accessToken: 'AT' })
+    expect(localStorage.getItem('nexusmd.gdrive.auth')).toBeNull()
     await redeem(link)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -177,7 +196,7 @@ describe('redeem (the nexusmd://oauth link)', () => {
     const n = nonceOf(beginSignIn('gdrive'))
     await redeem(`nexusmd://elsewhere/gdrive?n=${n}&provider=gdrive&otc=EVIL`)
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(localStorage.getItem('nexusmd.gdrive.auth')).toBeNull()
+    expect(secure.peek('nexusmd.gdrive.auth')).toBeNull()
   })
 })
 
@@ -193,5 +212,17 @@ describe('decodeJwtClaims', () => {
 
   it('returns null for empty input', () => {
     expect(decodeJwtClaims('')).toBeNull()
+  })
+})
+
+describe('redeem waits for secure storage', () => {
+  it('the tokens reach secure storage before the page reloads', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ accessToken: 'AT', refreshToken: 'RT' }), text: async () => '' }))
+    let atReload = null
+    vi.stubGlobal('location', { ...window.location, reload: vi.fn(() => { atReload = saved.get('nexusmd.gdrive.auth') ?? null }) })
+    const n = new URL(beginSignIn('gdrive')).searchParams.get('n')
+    await redeem(`nexusmd://oauth/gdrive?n=${n}&provider=gdrive&otc=CODE`)
+    expect(window.location.reload).toHaveBeenCalled()
+    expect(JSON.parse(atReload)).toMatchObject({ accessToken: 'AT' })
   })
 })

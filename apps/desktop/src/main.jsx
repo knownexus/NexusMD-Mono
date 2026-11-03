@@ -2,7 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import '@nexusmd/ui/styles.css'
 
-import { initCore, createNoOpAdapters } from '@nexusmd/core'
+import { initCore, createNoOpAdapters, profileCacheStorage } from '@nexusmd/core'
 import {
   Icon, CardFrame, NexusDataProvider, ToastHost,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
@@ -13,7 +13,7 @@ import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, sidebarGroups, sho
 import { SidebarNav, useNumberKeys } from './sidebar-nav.jsx'
 import { SidebarSyncStatus } from './sync-indicator.jsx'
 import { DesktopSettings } from './desktop-settings.jsx'
-import { ProfileProvider } from './profile-context.jsx'
+import { ProfileProvider, bootProfileData } from './profile-context.jsx'
 import { getProfileKey, usePersistedState } from '@nexusmd/shell-sdk'
 import { redeem } from './cloud-auth.js'
 import { registerDeepLinks } from './shell/deep-links.js'
@@ -44,7 +44,8 @@ import { useObserveForSync } from './observe-sync.js'
 
 const adapters = {
   ...createNoOpAdapters(),
-  storage:       localStorageAdapter,
+  // The ADO cache and the providers' load status are kept per profile.
+  storage:       profileCacheStorage(localStorageAdapter, getProfileKey),
   network:       networkAdapter,
   lifecycle:     lifecycleAdapter,
   theme:         themeAdapter,
@@ -440,7 +441,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 )
 
 if (!popout) {
-  startDesktopAutoSync()
+  // Not before the start-up move of shared data into profiles is done (profile-context.jsx).
+  bootProfileData().then(startDesktopAutoSync)
   // Changes made offline are sent when the connection returns (and shortly after start); say what happened.
   window.addEventListener('nexusmd:queue-flushed', (e) => {
     const { sent = 0, failed = [] } = e.detail || {}

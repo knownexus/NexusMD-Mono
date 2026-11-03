@@ -40,6 +40,11 @@ describe('skip rules', () => {
     'nexusmd.oauth.pending',
     'nexusmd.ado.cache.v1',
     'nexusmd.workitems.status.v2',
+    // the profile-scoped caches (Task 8) are just as local
+    'nexusmd.p.1.ado.cache.v1',
+    'nexusmd.p.1.workitems.status.v1',
+    'nexusmd.migrated.v2',
+    'nexusmd.migrated.v2.backup.md_documents',
     'nexusmd.p.1.ado.wiTypeDefs.proj.Bug',
     'helm.sec.x',
     'helm.sync.base.y',
