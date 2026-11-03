@@ -32,7 +32,7 @@ describe('BranchCommits', () => {
     const adapter = adapterFor(3)
     render(<Harness adapter={adapter} />)
     expect(await screen.findByText('3 commits off master')).toBeTruthy()
-    expect(screen.getAllByRole('listitem')).toHaveLength(3)
+    expect(await screen.findAllByRole('listitem')).toHaveLength(3)
     expect(adapter.log.mock.calls[0][3]).toMatchObject({ ref: 'HEAD', filter: 'sinceBase', base: 'refs/heads/master' })
   })
 
@@ -57,7 +57,8 @@ describe('BranchCommits', () => {
     const onShowAll = vi.fn()
     render(<Harness adapter={adapterFor(12)} t={tree(12)} handlers={{ onShowAll }} />)
     await screen.findByText('12 commits off master')
-    expect(screen.getAllByRole('listitem')).toHaveLength(10)
+    // The header can show before the rows have loaded: wait for them too.
+    expect(await screen.findAllByRole('listitem')).toHaveLength(10)
     fireEvent.click(screen.getByRole('button', { name: 'Show all in History' }))
     expect(onShowAll).toHaveBeenCalled()
   })
@@ -129,7 +130,7 @@ describe('BranchCommits', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied') })
     render(<Harness adapter={adapterFor(3)} />)
     await screen.findByText('3 commits off master')
-    expect(screen.getAllByRole('listitem')).toHaveLength(3)
+    expect(await screen.findAllByRole('listitem')).toHaveLength(3)
     fireEvent.click(screen.getByRole('button', { name: /3 commits off master/ }))
     expect(screen.queryAllByRole('listitem')).toHaveLength(0)
   })
