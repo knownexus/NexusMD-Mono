@@ -29,9 +29,9 @@ const treeShown = (t, query, filter) => matchesFilter(t, filter) && wordMatch(`$
  * The worktrees the list shows, top to bottom, for j / k: narrowed by query/filter and, without a
  * query, leaving out folded repositories (pass collapsed = [] to ignore folding).
  */
-export function visibleTrees({ repos, scoped, query = '', filter = 'all', collapsed = [] }) {
+export function visibleTrees({ repos, scoped, query = '', filter = 'all', collapsed = [], missing = new Set() }) {
   const unfolded = !!query.trim()
-  return repos.flatMap(r => (unfolded || !collapsed.includes(r.name)
+  return repos.flatMap(r => (missing.has(r.path) ? [] : unfolded || !collapsed.includes(r.name)
     ? scoped.worktrees.filter(t => t.repo === r.name && treeShown(t, query, filter))
     : []))
 }
@@ -41,11 +41,13 @@ export function visibleTrees({ repos, scoped, query = '', filter = 'all', collap
  * "N branches" and status pills instead of a file count; rows show only non-default facts.
  * `query` word-matches "repo branch worktree"; `filter` is a BRANCH_FILTERS id.
  */
-export function BranchList({ repos, scoped, errors, collapsed, onToggleRepo, onSetCollapsed = () => {}, selected, onSelect, query = '', filter = 'all', onClearFilters = () => {} }) {
+export function BranchList({ repos, scoped, errors, collapsed, onToggleRepo, onSetCollapsed = () => {}, selected, onSelect, query = '', filter = 'all', onClearFilters = () => {}, missing: missingProp }) {
   // The selected row stays in view when j / k move past the list's edge.
   const listRef = React.useRef(null)
   React.useEffect(() => { listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest' }) }, [selected])
-  const missing = usePathsMissing(repos.map(r => r.path))
+  // The caller (view-git) can pass the missing set it already checked; otherwise check here.
+  const own = usePathsMissing(missingProp ? [] : repos.map(r => r.path))
+  const missing = missingProp ?? own
   const narrowed = !!query.trim() || filter !== 'all'
   const groups = repos.map(r => {
     const all = scoped.worktrees.filter(t => t.repo === r.name)

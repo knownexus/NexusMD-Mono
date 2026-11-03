@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const sameSet = (a, b) => a.size === b.size && [...a].every(x => b.has(x))
 
@@ -11,16 +11,18 @@ const sameSet = (a, b) => a.size === b.size && [...a].every(x => b.has(x))
 export function usePathsMissing(paths) {
   const [missing, setMissing] = useState(() => new Set())
   const key = JSON.stringify(paths)
+  const latest = useRef(0)
   useEffect(() => {
     let alive = true
     const list = JSON.parse(key)
     const check = async () => {
+      const run = ++latest.current
       const exists = window.electronAPI?.file?.exists
-      if (typeof exists !== 'function') { if (alive) setMissing(prev => (prev.size ? new Set() : prev)); return }
+      if (typeof exists !== 'function') { if (alive && run === latest.current) setMissing(prev => (prev.size ? new Set() : prev)); return }
       const found = await Promise.all(list.map(async p => {
         try { return (await window.electronAPI.file.exists(p)) !== false } catch { return true }
       }))
-      if (!alive) return
+      if (!alive || run !== latest.current) return
       const next = new Set(list.filter((_, i) => !found[i]))
       setMissing(prev => (sameSet(prev, next) ? prev : next))
     }
