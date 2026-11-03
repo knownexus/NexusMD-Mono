@@ -49,18 +49,23 @@ function useWidth(ref, fixed) {
   return width
 }
 
+function HideButton({ card }) {
+  if (!card.onHide) return null
+  return (
+    <button type="button" className="widget-hide" title="Hide widget (Show hidden, below, brings it back)" aria-label={`Hide ${card.title}`}
+      onMouseDown={e => e.stopPropagation()} onClick={() => card.onHide(card.id)}>
+      <Icon name="x" size={12}/>
+    </button>
+  )
+}
+
 function Cell({ item, ctx, onEdit }) {
-  if (item.card?.bare) return <div className="dash-cell-bare">{item.card.render()}</div>
+  if (item.card?.bare) return <><HideButton card={item.card}/><div className="dash-cell-bare">{item.card.render()}</div></>
   if (item.card) {
     const c = item.card
     return (
       <>
-        {c.onHide && (
-          <button type="button" className="widget-hide" title="Hide widget" aria-label={`Hide ${c.title}`}
-            onMouseDown={e => e.stopPropagation()} onClick={() => c.onHide(c.id)}>
-            <Icon name="x" size={12}/>
-          </button>
-        )}
+        <HideButton card={c}/>
         <CardFrame title={c.title} padded={false}>{c.render()}</CardFrame>
       </>
     )
@@ -68,9 +73,46 @@ function Cell({ item, ctx, onEdit }) {
   return <div className="dash-cell-body"><WidgetBody widget={item.widget} ctx={ctx} onEdit={onEdit}/></div>
 }
 
+// Below the grid (never hidden itself): brings back a hidden part of the page's head or built-in card.
+function ShowHiddenMenu({ hidden }) {
+  const [open, setOpen] = React.useState(false)
+  const ref = React.useRef(null)
+  React.useEffect(() => {
+    if (!open) return undefined
+    const onDown = e => { if (!ref.current?.contains(e.target)) setOpen(false) }
+    const onKey = e => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
+  if (!hidden.length) return null
+  return (
+    <div ref={ref} className="dash-hidden">
+      <button type="button" className="btn sm ghost" aria-expanded={open} onClick={() => setOpen(v => !v)}>
+        <Icon name="eye" size={13}/> Show hidden <span className="n">{hidden.length}</span>
+      </button>
+      {open && (
+        <div className="dash-hidden-pop" role="menu" aria-label="Hidden widgets">
+          {hidden.map(h => (
+            <div key={h.id} className="dash-hidden-row">
+              <div className="dash-hidden-text">
+                <div className="dash-hidden-title">{h.title}</div>
+                {h.description && <div className="muted">{h.description}</div>}
+              </div>
+              <button type="button" className="btn sm ghost" role="menuitem" aria-label={`Show ${h.title}`}
+                onClick={() => { h.onShow(); if (hidden.length === 1) setOpen(false) }}>Show</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /**
  *   cards        DashboardView's parts and built-in cards ([{ id, title, render, span, onHide }]; a part of the
- *                page's head is { bare, top, frac, rows }: drawn without a card frame, and can't be hidden)
+ *                page's head is { bare, top, frac, rows }: drawn without a card frame)
+ *   hidden       what has been hidden ([{ id, title, description?, onShow }]), offered by Show hidden
  *   widgets      the added widgets to show ([{ id, type, config }], already filtered to what's on)
  *   widgetTypes  WIDGET_TYPES (for each added widget's default width)
  *   ctx, onEdit  what the added widgets read, and their ⋯ (settings)
@@ -81,7 +123,7 @@ function Cell({ item, ctx, onEdit }) {
  */
 export function DashboardGrid({
   cards = [], widgets = [], widgetTypes = {}, ctx = {}, onEdit, display, layouts = {}, onLayoutsChange,
-  widgetWidths = {}, widgetHeights = {}, width: fixedWidth, footer,
+  widgetWidths = {}, widgetHeights = {}, width: fixedWidth, footer, hidden = [],
 }) {
   const ref = React.useRef(null)
   const width = useWidth(ref, fixedWidth)
@@ -133,6 +175,7 @@ export function DashboardGrid({
       ))}
       <div className="dash-grid-foot">
         {footer}
+        <ShowHiddenMenu hidden={hidden}/>
         <span className="dash-grid-screen" title="Each screen resolution keeps its own Dashboard layout">
           Layout for this {label} screen{own ? '' : ' (not arranged yet)'}
         </span>

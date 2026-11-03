@@ -251,7 +251,7 @@ function TeamWorkloadCard({ team }) {
   );
 }
 
-export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrder, quickLinks, density, team: teamProp, acknowledgedSet, needsMeCriteria, setPlannerData, widgetWidths = {}, setWidgetWidths, widgetHeights = {}, setWidgetHeights, offViews = [], renderWidgets }) {
+export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrder, quickLinks, density, team: teamProp, acknowledgedSet, needsMeCriteria, setPlannerData, widgetWidths = {}, setWidgetWidths, widgetHeights = {}, setWidgetHeights, offViews = [], renderWidgets, hiddenParts = [], setHiddenParts }) {
   const { data: NexusMDData, api: NexusMDApi } = useNexusData();
   const effectiveNeedsMe = useEffectiveNeedsMe();
   const { PRS, BUILDS, WORK_ITEMS, ACTIVITY, SPRINT, RESOLVED_WI, AVG_RESOLUTION_DAYS } = NexusMDData;
@@ -435,22 +435,36 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
 
   const cardsInOrder = widgetOrder.filter(id => widgets[id]).map(id => ({ id, ...widgets[id], onHide: hideWidget }));
   if (renderWidgets) {
-    // bare: drawn as they are (no card frame, can't be hidden); top: placed above everything else when new.
-    const part = (id, title, el, size) => (el ? [{ id, title, render: () => el, bare: true, top: true, ...size }] : []);
+    // The page's head as widgets. bare: drawn as they are (no card frame); top: placed above everything
+    // else when new. Each can be hidden (hiddenParts) like a built-in card, and shown again from the
+    // grid's Show hidden menu, which is why that menu lives below the grid rather than in the actions.
     const quarter = { frac: 0.25, rows: 4 };
+    const parts = [
+      ['page-greeting', 'Greeting', greetingEl, { frac: 0.5, rows: 2 }],
+      ['page-actions', 'Actions', actionsEl, { frac: 0.5, rows: 2 }],
+      ['page-links', 'Quick links', hasLinks ? quickLinksEl : null, { frac: 1, rows: 1 }],
+      ['stat-prs', 'Needs your review', prStat, quarter],
+      ['stat-active', 'Active work items', activeStat, quarter],
+      ['stat-review', 'Needs review', reviewStat, quarter],
+      ['stat-blockers', 'Open blockers', blockersStat, quarter],
+      ['stat-team', 'Team workload', teamStat, quarter],
+    ].filter(([, , el]) => el);
+    const hidePart = id => setHiddenParts?.([...new Set([...hiddenParts, id])]);
+    const shownParts = parts.filter(([id]) => !hiddenParts.includes(id)).map(([id, title, el, size]) => (
+      { id, title, render: () => el, bare: true, top: true, ...size, ...(setHiddenParts ? { onHide: hidePart } : {}) }
+    ));
+    // What the Show hidden menu offers: hidden parts first, then the built-in cards not on the Dashboard.
+    const hidden = [
+      ...(setHiddenParts ? parts.filter(([id]) => hiddenParts.includes(id)).map(([id, title]) => (
+        { id, title, onShow: () => setHiddenParts(hiddenParts.filter(x => x !== id)) }
+      )) : []),
+      ...ALL_WIDGET_IDS.filter(id => !widgetOrder.includes(id) && widgets[id] && !offViews.includes(WIDGET_VIEW[id])).map(id => (
+        { id, title: WIDGET_LABELS[id], description: WIDGET_DESCRIPTIONS[id], onShow: () => setWidgetOrder([...widgetOrder, id]) }
+      )),
+    ];
     return (
       <div>
-        {renderWidgets([
-          ...part('page-greeting', 'Greeting', greetingEl, { frac: 0.5, rows: 2 }),
-          ...part('page-actions', 'Actions', actionsEl, { frac: 0.5, rows: 2 }),
-          ...part('page-links', 'Quick links', hasLinks ? quickLinksEl : null, { frac: 1, rows: 1 }),
-          ...part('stat-prs', 'Needs your review', prStat, quarter),
-          ...part('stat-active', 'Active work items', activeStat, quarter),
-          ...part('stat-review', 'Needs review', reviewStat, quarter),
-          ...part('stat-blockers', 'Open blockers', blockersStat, quarter),
-          ...part('stat-team', 'Team workload', teamStat, quarter),
-          ...cardsInOrder,
-        ])}
+        {renderWidgets([...shownParts, ...cardsInOrder], { hidden })}
       </div>
     );
   }

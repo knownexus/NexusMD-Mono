@@ -63,6 +63,7 @@ import { pushNav, popNav } from './db-nav.js'
 import { headerMenuItems, rowMenuItems } from './db-grid-menus.js'
 import { StructurePanel, typeLabelOf } from './db-structure-panel.jsx'
 import { formatSql } from './db-sql-format.js'
+import { FREE, newDocId, docsOf, activeDoc, addDoc, ensureDoc, updateDoc, selectDoc, closeDoc, renameDoc, placeDoc } from './db-query-docs.js'
 
 // ─── Demo data (shown when no real DB is connected) ───────────────────────────
 
@@ -614,10 +615,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const [selectedRows, setSelectedRows] = useState(new Set()) // indices into tableData.rows
   const [editingCell, setEditingCell] = useState(null)        // { ri, ci } | null — ri indexes tableData.rows
   const [editValue, setEditValue]     = useState('')
-  const [sqlQuery, setSqlQuery]       = useState('')
-  const [queryTable, setQueryTable]   = useState(null)
-  const [queryResult, setQueryResult] = useState(null)
-  const [queryRunning, setQueryRunning] = useState(false)
+  const [queryDocs, setQueryDocs]     = useState({})          // each table's query tabs ('' = the New query page): see db-query-docs.js
   const [queryHistory, setQueryHistory] = useState([])        // newest first: { sql, at, ok, summary }
   const [freeQuery, setFreeQuery]     = useState(false)       // the New query page is showing (no table open)
   const [savedQueries, setSavedQueries] = useState(() => readPref(SAVED_KEY, [])) // { id, name, sql, conn | null, at }
@@ -631,7 +629,8 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const [nullFilter, setNullFilter]   = useState(null)        // { col, empty }: only the loaded rows whose col is (or isn't) NULL
   const [structureFocus, setStructureFocus] = useState(null)  // the foreign key Structure scrolls to and marks
   const [activeBuilder, setActiveBuilder] = useState(null)    // 'search' | 'insert' | 'update' | 'delete' | 'join' | 'aggregate' | null
-  const [riskyQuery, setRiskyQuery]   = useState(null)        // { sql, risks: [{ statement, explanation }] } awaiting confirmation
+  const [riskyQuery, setRiskyQuery]   = useState(null)        // { sql, owner, id, risks: [{ statement, explanation }] } awaiting confirmation
+  const [closingDoc, setClosingDoc]   = useState(null)        // { owner, doc }: a query tab with SQL in it, awaiting confirmation to close
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [tableFilter, setTableFilter] = useState('')
   const [listFilter, setListFilter]   = useState('all')       // all | starred | opened | hidden
@@ -783,9 +782,9 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     pendingScroll.current = scrollTop
     setEditingCell(null)
     setActiveTab(tab)
+    // A table keeps its query tabs; its first starts as a SELECT from it.
     if (tab === 'query') {
-      setQueryTable(name)
-      setSqlQuery(`SELECT * FROM ${quoteTable(name)}`)
+      setQueryDocs(s => ensureDoc(s, name, { sql: `SELECT * FROM ${quoteTable(name)}`, table: name }))
       setActiveBuilder(null)
     }
     setDbState(s => applyTableSelected(s, name))
@@ -1025,14 +1024,41 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
 
   // ── Query ──────────────────────────────────────────────────────────────────
 
-  // On a table's Query tab picking a table starts a SELECT from it. On the New query page the table
-  // is only there for the builders, so it never replaces SQL already written.
-  const handleQueryTableSelect = useCallback((name) => {
-    setQueryTable(name)
-    setSqlQuery(s => (freeQuery && s.trim() ? s : `SELECT * FROM ${quoteTable(name)}`))
-  }, [freeQuery])
+  // The query tab showing: the open table's, or the New query page's when no table is open.
+  const queryOwner = dbState.selectedTable ?? FREE
+  const currentDoc = activeDoc(queryDocs, queryOwner)
+  const sqlQuery = currentDoc?.sql ?? ''
+  const queryTable = currentDoc?.table ?? null
+  const queryResult = currentDoc?.result ?? null
+  const queryRunning = !!currentDoc?.running
 
-  // A blank query with no table open: for SQL that names its own tables. `sql` starts it with that text.
+  // Edits the tab showing for `owner`, making its first tab when it has none yet.
+  const editQuery = useCallback((owner, patch) => setQueryDocs(s => {
+    const next = ensureDoc(s, owner)
+    return updateDoc(next, owner, activeDoc(next, owner).id, patch)
+  }), [])
+  const setSqlQuery = useCallback(v => editQuery(queryOwner, d => ({ sql: typeof v === 'function' ? v(d.sql) : v })), [editQuery, queryOwner])
+
+  // A tab that can take other SQL without losing anything: blank, or the SELECT * its table started with.
+  const isUntouched = useCallback((owner, doc) => {
+    const sql = doc.sql.trim()
+    return !sql || (!!owner && sql === `SELECT * FROM ${quoteTable(owner)}`)
+  }, [])
+  // Puts `sql` in one of `owner`'s tabs (the one showing when it's untouched or already holds that
+  // SQL, else a new one) and returns that tab's id, so the query can be run straight away.
+  const placeQuery = useCallback((owner, sql, table = null) => {
+    const id = newDocId()
+    setQueryDocs(s => placeDoc(s, owner, { id, sql, table }, d => isUntouched(owner, d) || d.sql.trim() === sql.trim()))
+    return id
+  }, [isUntouched])
+
+  // Picking a table for the builders starts a SELECT from it, unless the tab already has SQL written.
+  const handleQueryTableSelect = useCallback((name) => {
+    editQuery(queryOwner, d => ({ table: name, ...(isUntouched(queryOwner, d) ? { sql: `SELECT * FROM ${quoteTable(name)}` } : {}) }))
+  }, [editQuery, isUntouched, queryOwner])
+
+  // The New query page, for SQL that names its own tables. Each New query is a tab of its own (the
+  // one showing is reused while blank); `sql` starts it with that text.
   const openNewQuery = useCallback((sql = '') => {
     loadSeq.current++
     setRowWhere(null)
@@ -1040,13 +1066,30 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     setDbState(s => ({ ...s, selectedTable: null, tableData: null, tableLoading: false, error: null }))
     setFreeQuery(true)
     // The table list opens a table on the tab in use: from here that's Browse, so opening one never
-    // swaps this SQL for a SELECT from it.
+    // lands on its Query tab with a SELECT the user didn't ask for.
     setActiveTab(t => (t === 'query' ? 'browse' : t))
-    setQueryTable(null)
     setActiveBuilder(null)
-    setQueryResult(null)
-    setSqlQuery(sql)
-  }, [])
+    placeQuery(FREE, sql)
+  }, [placeQuery])
+
+  // A table's Query tab, or the New query page, always shows at least one query tab.
+  const queryShowing = dbState.selectedTable ? activeTab === 'query' : freeQuery
+  useEffect(() => {
+    if (!queryShowing) return
+    const t = dbState.selectedTable
+    setQueryDocs(s => ensureDoc(s, t ?? FREE, t ? { sql: `SELECT * FROM ${quoteTable(t)}`, table: t } : undefined))
+  }, [queryShowing, dbState.selectedTable])
+
+  // The query tab strip.
+  const newQueryTab = () => { setActiveBuilder(null); setQueryDocs(s => addDoc(s, queryOwner, { table: dbState.selectedTable ?? null })) }
+  const selectQueryTab = (id) => { setActiveBuilder(null); setQueryDocs(s => selectDoc(s, queryOwner, id)) }
+  const removeQueryTab = (owner, id) => { setActiveBuilder(null); setQueryDocs(s => closeDoc(s, owner, id)) }
+  // A tab with SQL written in it asks first: that SQL isn't kept anywhere else.
+  const closeQueryTab = (doc) => {
+    if (isUntouched(queryOwner, doc)) removeQueryTab(queryOwner, doc.id)
+    else setClosingDoc({ owner: queryOwner, doc })
+  }
+  const renameQueryTab = (id, name) => setQueryDocs(s => renameDoc(s, queryOwner, id, name))
 
   const toggleBuilder = useCallback(async (name) => {
     setActiveBuilder(prev => (prev === name ? null : name))
@@ -1060,17 +1103,20 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const applyBuiltSql = useCallback((sql) => {
     setSqlQuery(sql)
     setActiveBuilder(null)
-  }, [])
+  }, [setSqlQuery])
 
-  // `confirmed` is set once the risky-query prompt has been accepted. A `dryRun` runs the SQL in a
-  // transaction that is rolled back: it needs no confirmation, since nothing it does is kept.
-  const runQuery = useCallback(async (override, confirmed = false, dryRun = false) => {
-    const sql = (typeof override === 'string' ? override : sqlQuery).trim()
-    if (!sql || queryRunning) return
+  // Runs `sql` (the tab showing's by default) and puts the result in the tab `owner`/`id`, which keeps
+  // it even if the user moves to another tab or table meanwhile. `confirmed` is set once the
+  // risky-query prompt has been accepted. A `dryRun` runs the SQL in a transaction that is rolled
+  // back: it needs no confirmation, since nothing it does is kept.
+  const runQuery = useCallback(async ({ sql: text, owner = queryOwner, id = currentDoc?.id, confirmed = false, dryRun = false } = {}) => {
+    const sql = (text ?? sqlQuery).trim()
+    if (!sql || !id) return
+    if (docsOf(queryDocs, owner).find(d => d.id === id)?.running) return
     const risks = confirmed || dryRun ? [] : describeRisks(sql)
-    if (risks.length) { setRiskyQuery({ sql, risks }); return }
-    setQueryResult(null)
-    setQueryRunning(true)
+    if (risks.length) { setRiskyQuery({ sql, owner, id, risks }); return }
+    const setQueryResult = result => setQueryDocs(s => updateDoc(s, owner, id, { result }))
+    setQueryDocs(s => updateDoc(s, owner, id, { result: null, running: true }))
     const started = performance.now()
     const tag = dryRun ? 'Dry run · ' : ''
     const log = (ok, summary) => setQueryHistory(h => [{ sql, at: Date.now(), ok, summary: tag + summary }, ...h.filter(q => q.sql !== sql)].slice(0, 25))
@@ -1104,9 +1150,9 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
       setQueryResult({ error: err.message, ms: Math.round(performance.now() - started) })
       log(false, err.message)
     } finally {
-      setQueryRunning(false)
+      setQueryDocs(s => updateDoc(s, owner, id, { running: false }))
     }
-  }, [db, session, isDemo, sqlQuery, queryRunning, dbState.selectedTable, refreshTable, refreshTables])
+  }, [db, session, isDemo, sqlQuery, queryOwner, currentDoc, queryDocs, dbState.selectedTable, refreshTable, refreshTables])
 
   // ── Saved queries ──────────────────────────────────────────────────────────
 
@@ -1141,20 +1187,21 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     persistSaved(savedQueries.filter(x => x.id !== q.id))
     notify(`Removed "${q.name}"`)
   }
-  // Runs a saved query against `table` (the open one by default) and shows the result in the Query tab.
-  const runSaved = (q, table = dbState.selectedTable) => {
+  // Runs a saved query against `table` (the open one by default) and shows the result in a query tab
+  // of `owner` (that table, or the New query page it was run from). It never writes over SQL in progress.
+  const runSaved = (q, table = dbState.selectedTable, owner = table ?? FREE) => {
     if (isTemplate(q) && !table) { notify(`Open a table to run "${q.name}" on`, 'info'); return }
     const sql = isTemplate(q) ? fillTemplate(q.sql, table) : q.sql
-    if (table && table !== dbState.selectedTable) openTable(table, 'query')
+    if (owner !== FREE && owner !== dbState.selectedTable) openTable(owner, 'query')
     setActiveTab('query')
-    if (table) setQueryTable(table)
     setActiveBuilder(null)
-    setSqlQuery(sql)
-    runQuery(sql)
+    const id = placeQuery(owner, sql, table)
+    runQuery({ sql, owner, id })
   }
+  // A saved or recent query picked in the Query tab: in the tab showing when that's untouched, else a new tab.
   const loadSaved = (q) => {
     const table = queryTable ?? dbState.selectedTable
-    setSqlQuery(isTemplate(q) && table ? fillTemplate(q.sql, table) : q.sql)
+    placeQuery(queryOwner, isTemplate(q) && table ? fillTemplate(q.sql, table) : q.sql, queryTable)
   }
 
   // ── Table list ─────────────────────────────────────────────────────────────
@@ -1442,6 +1489,8 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const queryFileName = shownQueryTable ? `${shownQueryTable}-query` : 'query'
   const queryPanel = (
     <QueryPanel
+      // Each query tab gets an editor of its own (its own undo history and Save form).
+      key={`${queryOwner}\n${currentDoc?.id ?? ''}`}
       tables={tables}
       queryTable={shownQueryTable}
       freeQuery={!dbState.selectedTable}
@@ -1450,17 +1499,23 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
       onSqlChange={setSqlQuery}
       queryResult={queryResult}
       running={queryRunning}
-      onRun={runQuery}
-      onDryRun={() => runQuery(undefined, false, true)}
+      onRun={() => runQuery()}
+      onDryRun={() => runQuery({ dryRun: true })}
+      docs={docsOf(queryDocs, queryOwner)}
+      activeDocId={currentDoc?.id ?? null}
+      onSelectDoc={selectQueryTab}
+      onNewDoc={newQueryTab}
+      onCloseDoc={closeQueryTab}
+      onRenameDoc={renameQueryTab}
       SqlEditor={SqlEditor}
       onFormat={() => setSqlQuery(formatSql(sqlQuery))}
       onExportScript={() => { if (!downloadText(`${queryFileName}.sql`, sqlQuery.replace(/\s*$/, '\n'), 'application/sql')) notify("Couldn't save the file", 'error') }}
       history={queryHistory}
-      onPickHistory={q => setSqlQuery(q.sql)}
+      onPickHistory={q => placeQuery(queryOwner, q.sql, queryTable)}
       onClearHistory={() => setQueryHistory([])}
       saved={savedHere}
       onSave={saveQuery}
-      onRunSaved={q => runSaved(q, shownQueryTable)}
+      onRunSaved={q => runSaved(q, shownQueryTable, queryOwner)}
       onLoadSaved={loadSaved}
       onDeleteSaved={deleteSaved}
       onCopyResult={async set => notify((await copyText(toCsv(set.columns, set.rows))) ? `Copied ${plural(set.rows.length, 'row')} as CSV` : "Couldn't reach the clipboard")}
@@ -1602,7 +1657,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
               onUseQuery={q => {
                 const m = q.sql.match(/\bFROM\s+([\w.[\]"]+)/i)
                 const t = m && tables.find(x => x === m[1].replace(/[[\]"]/g, ''))
-                if (t) { openTable(t, 'query'); setTimeout(() => setSqlQuery(q.sql)) }
+                if (t) { openTable(t, 'query'); placeQuery(t, q.sql) }
                 else openNewQuery(q.sql)
               }}
               onJump={() => setPaletteOpen(true)}
@@ -1666,7 +1721,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
               </div>
 
               <div className="nx-db-tabs" role="tablist" aria-label="View mode">
-                {[['browse', 'Browse', tableData && !dbState.tableLoading ? tableData.rows.length : null], ['structure', 'Structure', null], ['query', 'Query', null]].map(([id, label, n]) => (
+                {[['browse', 'Browse', tableData && !dbState.tableLoading ? tableData.rows.length : null], ['structure', 'Structure', null], ['query', 'Query', docsOf(queryDocs, dbState.selectedTable).length > 1 ? docsOf(queryDocs, dbState.selectedTable).length : null]].map(([id, label, n]) => (
                   <button key={id} type="button" role="tab" aria-selected={activeTab === id} className="nx-db-tab"
                     title={`${label} (${id[0]})`} onClick={() => { setActiveTab(id); setStructureFocus(null) }}>
                     {label}{n != null && <span className="n" aria-hidden="true">{n}</span>}
@@ -1816,8 +1871,19 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
           confirmLabel="Run query"
           busyLabel="Running…"
           icon="alert"
-          onConfirm={() => { const { sql } = riskyQuery; setRiskyQuery(null); runQuery(sql, true) }}
+          onConfirm={() => { const { sql, owner, id } = riskyQuery; setRiskyQuery(null); runQuery({ sql, owner, id, confirmed: true }) }}
           onCancel={() => setRiskyQuery(null)}
+        />
+      )}
+      {closingDoc && (
+        <ConfirmDialog
+          title={`Close ${closingDoc.doc.name}?`}
+          body={<span className="nx-db-muted">Its SQL isn't saved anywhere else. Save it first (Ctrl+S) to run it again later.</span>}
+          confirmLabel="Close query"
+          busyLabel="Closing…"
+          icon="x"
+          onConfirm={() => { const { owner, doc } = closingDoc; setClosingDoc(null); removeQueryTab(owner, doc.id) }}
+          onCancel={() => setClosingDoc(null)}
         />
       )}
     </div>
@@ -3199,6 +3265,7 @@ function SavedOverviewRow({ q, tables, onRun }) {
 function QueryPanel({
   tables, queryTable, freeQuery = false, onSelectTable, sqlQuery, onSqlChange, queryResult, running, onRun, onDryRun,
   SqlEditor = null, onFormat, onExportScript,
+  docs = [], activeDocId = null, onSelectDoc, onNewDoc, onCloseDoc, onRenameDoc,
   history, onPickHistory, onClearHistory, onCopyResult, onExportResult,
   saved = [], onSave, onRunSaved, onLoadSaved, onDeleteSaved,
   activeBuilder, onToggleBuilder, columns, columnsLoading, onBuildSql,
@@ -3220,6 +3287,9 @@ function QueryPanel({
   return (
     <div className="nx-db-query">
       <div className="nx-db-query-editor">
+        {onNewDoc && (
+          <QueryTabs docs={docs} activeId={activeDocId} onSelect={onSelectDoc} onNew={onNewDoc} onClose={onCloseDoc} onRename={onRenameDoc} />
+        )}
         <div className="nx-db-query-row">
           <label className="nx-db-show" htmlFor="db-query-table-select">{freeQuery ? 'Table for builders' : 'Table'}</label>
           <TableSelect
@@ -3403,6 +3473,46 @@ function QueryPanel({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Query tabs ───────────────────────────────────────────────────────────────
+
+// One tab per query the open table (or the New query page) has: click to switch, double-click to
+// rename, × to close, + for another. A running query shows a spinner on its tab.
+function QueryTabs({ docs, activeId, onSelect, onNew, onClose, onRename }) {
+  const [renaming, setRenaming] = useState(null) // { id, name }
+  const finish = (save) => {
+    if (save && renaming) onRename(renaming.id, renaming.name)
+    setRenaming(null)
+  }
+  return (
+    <div className="nx-db-qtabs" role="tablist" aria-label="Queries">
+      {docs.map(d => (
+        <div key={d.id} className="nx-db-qtab" data-active={d.id === activeId || undefined}>
+          {renaming?.id === d.id ? (
+            <input className="nx-db-qtab-rename" aria-label="Query name" autoFocus value={renaming.name}
+              onChange={e => setRenaming({ id: d.id, name: e.target.value })}
+              onBlur={() => finish(true)}
+              onKeyDown={e => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false) }} />
+          ) : (
+            <button type="button" role="tab" aria-selected={d.id === activeId} className="nx-db-qtab-name"
+              title={d.sql.trim() ? `${d.sql.trim().slice(0, 200)}\n\nDouble-click to rename` : 'Double-click to rename'}
+              onClick={() => onSelect(d.id)} onDoubleClick={() => setRenaming({ id: d.id, name: d.name })}>
+              {d.running && <span className="nx-db-spinner sm" aria-label="Running" />}
+              {!d.running && d.result?.error && <span className="nx-db-dot" data-tone="bad" aria-label="Failed" />}
+              {d.name}
+            </button>
+          )}
+          <button type="button" className="nx-db-qtab-close" aria-label={`Close ${d.name}`} title="Close this query" onClick={() => onClose(d)}>
+            <Icon name="x" size={11} />
+          </button>
+        </div>
+      ))}
+      <button type="button" className="nx-db-qtab-new" aria-label="New query tab" title="Another query, keeping this one" onClick={onNew}>
+        <Icon name="plus" size={12} />
+      </button>
     </div>
   )
 }

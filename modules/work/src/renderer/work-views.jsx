@@ -97,10 +97,12 @@ export function DashboardApp({ host, tweaks, setTweak }) {
       team={effectiveTeam}
       acknowledgedSet={acknowledgedSet}
       offViews={offViews}
+      hiddenParts={Array.isArray(tweaks.dashHiddenParts) ? tweaks.dashHiddenParts : []}
+      setHiddenParts={arr => setTweak('dashHiddenParts', arr)}
       // One grid for the built-in cards and the added widgets, each moved and resized, a layout per screen.
-      renderWidgets={cards => (
+      renderWidgets={(cards, { hidden } = {}) => (
         <HomeWidgets host={host} tweaks={tweaks} setTweak={setTweak} team={effectiveTeam} needsMeCriteria={needsMeCriteria}
-          cards={cards} widgetWidths={widgetWidths} widgetHeights={widgetHeights} />
+          cards={cards} hidden={hidden} widgetWidths={widgetWidths} widgetHeights={widgetHeights} />
       )}
     />
     </>
