@@ -63,13 +63,16 @@ Var NxDir
   ${EndIf}
 !macroend
 
+; Left to right in NEXUS_APP_COLS columns (apps.generated.nsh picks how many so every app fits the page).
 !macro NxCreateRow i id label product
-  !define /math NxCol ${i} / 5
-  !define /math NxRow ${i} % 5
+  !define /math NxCol ${i} % ${NEXUS_APP_COLS}
+  !define /math NxRow ${i} / ${NEXUS_APP_COLS}
   !define /math NxRowY ${NxRow} * 14
   !define /math NxY ${NxRowY} + 32
-  !define /math NxX ${NxCol} * 50
-  ${NSD_CreateCheckbox} ${NxX}% ${NxY}u 48% 12u "${label}"
+  !define /math NxColW 100 / ${NEXUS_APP_COLS}
+  !define /math NxX ${NxCol} * ${NxColW}
+  !define /math NxW ${NxColW} - 2
+  ${NSD_CreateCheckbox} ${NxX}% ${NxY}u ${NxW}% 12u "${label}"
   Pop $NxChk${i}
   ${If} $NxSel${i} == 1
     ${NSD_Check} $NxChk${i}
@@ -78,7 +81,9 @@ Var NxDir
   !undef NxRow
   !undef NxRowY
   !undef NxY
+  !undef NxColW
   !undef NxX
+  !undef NxW
 !macroend
 
 !macro NxReadRow i id label product
