@@ -1747,9 +1747,56 @@ button:focus-visible, .filter-chip:focus-visible { outline-offset: -1px; }
 .dash-stack > .dash-cell { max-height: 480px; }
 .dash-rgl .react-grid-placeholder { background: var(--accent-soft); border: 1px dashed var(--accent); border-radius: var(--radius-lg); opacity: 1; }
 .dash-rgl .react-grid-item.react-draggable-dragging { z-index: 3; box-shadow: var(--shadow-lg, 0 8px 24px rgba(0,0,0,.18)); }
-.dash-rgl .react-resizable-handle { opacity: 0; transition: opacity .12s; z-index: 2; }
+/* Resize from every edge and corner. The edges are thin strips running along each side, half over the
+   16px gap between widgets, so they leave the grip (top centre) and the widget's own buttons alone; the
+   grip and the Hide button sit above them. A strip shows an accent line while the pointer is on it. */
+.dash-rgl .react-grid-item > .react-resizable-handle { opacity: 0; transition: opacity .12s; z-index: 2; }
 .dash-rgl .react-grid-item:hover > .react-resizable-handle { opacity: .6; }
-.dash-rgl .react-resizable-handle:hover { opacity: 1; }
+.dash-rgl .react-grid-item > .react-resizable-handle:hover,
+.dash-rgl .react-grid-item.resizing > .react-resizable-handle { opacity: 1; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-n,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-s,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-e,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-w {
+  background: none; padding: 0; margin: 0; transform: none;
+}
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-n,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-s { left: 14px; right: 14px; width: auto; height: 10px; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-n { top: -6px; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-s { bottom: -6px; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-e,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-w { top: 14px; bottom: 14px; height: auto; width: 10px; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-e { right: -6px; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-w { left: -6px; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-n::after,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-s::after,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-e::after,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-w::after {
+  border: 0; border-radius: 2px; background: transparent; width: auto; height: auto; transition: background .12s;
+}
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-n::after,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-s::after { left: 0; right: 0; top: 4px; bottom: auto; height: 2px; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-e::after,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-w::after { top: 0; bottom: 0; left: 4px; right: auto; width: 2px; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-n:hover::after,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-s:hover::after,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-e:hover::after,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-w:hover::after { background: var(--accent); }
+/* Corners: small, on the very corner. */
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-ne,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-nw,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-se,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-sw { width: 14px; height: 14px; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-ne,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-nw { top: -4px; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-se,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-sw { bottom: -4px; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-ne,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-se { right: -4px; }
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-nw,
+.dash-rgl .react-grid-item > .react-resizable-handle.react-resizable-handle-sw { left: -4px; }
+/* The grip and the Hide button win over the handles they overlap. */
+.dash-rgl .dash-cell > .widget-grab, .dash-rgl .dash-cell > .widget-hide, .dash-rgl .dash-cell .widget-hide { z-index: 3; }
 .dash-grid-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 12px; }
 .dash-grid-screen { font-size: 11.5px; color: var(--text-subtle); margin-left: auto; }
 /* The page's head as grid items (DashboardView's parts with renderWidgets): no card around them, and the
@@ -1765,7 +1812,7 @@ button:focus-visible, .filter-chip:focus-visible { outline-offset: -1px; }
 .dash-greeting .sub { color: var(--text-subtle); font-size: 13px; margin-top: 4px; }
 
 /* Dashboard: a hidden part's or card's way back (below the grid), and the Hide button on the page's head parts. */
-.dash-cell.is-bare > .widget-hide { top: 2px; right: 2px; z-index: 2; }
+.dash-cell.is-bare > .widget-hide { top: 2px; right: 2px; z-index: 3; }
 .dash-hidden { position: relative; }
 .dash-hidden .n { font-size: 11px; color: var(--text-muted); margin-left: 2px; }
 .dash-hidden-pop { position: absolute; bottom: calc(100% + 6px); left: 0; width: 280px; max-height: 360px; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-pop); z-index: 100; }

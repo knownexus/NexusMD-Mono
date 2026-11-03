@@ -16,6 +16,12 @@ export const MAX_COLS = 16
 const CARD_ROWS = 12
 const WIDGET_ROWS = 9
 export const MIN_H = 1
+// Each column is split into SUB grid columns, so widgets move and resize in quarter-column steps.
+// A saved layout records the grid columns it was made with, so ones saved before (one grid column per
+// column) scale up exactly.
+export const SUB = 4
+// The narrowest a widget can be: half a column.
+export const MIN_W = SUB / 2
 
 /** The key a screen's layout is saved under: its real resolution, e.g. "3840x2160". */
 export function screenKey(display) {
@@ -28,6 +34,11 @@ export function screenKey(display) {
 export function colsFor(display) {
   const w = display?.width || 0
   return Math.min(MAX_COLS, Math.max(MIN_COLS, Math.round(w / COL_PX)))
+}
+
+/** Grid columns for a screen: SUB per column. */
+export function gridColsFor(display) {
+  return colsFor(display) * SUB
 }
 
 const rowsForPx = px => Math.max(MIN_H, Math.ceil((px + MARGIN) / (ROW_HEIGHT + MARGIN)))

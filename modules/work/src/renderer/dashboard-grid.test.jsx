@@ -19,7 +19,7 @@ describe('DashboardGrid', () => {
     const { container } = grid()
     expect(screen.getAllByTestId('dash-cell').map(c => c.dataset.key)).toEqual(['card:review', 'card:team', 'w:n1'])
     expect(screen.getAllByLabelText('Drag to move')).toHaveLength(3)
-    expect(container.querySelector('.dash-grid').dataset).toMatchObject({ screen: '1920x1080', cols: '6' })
+    expect(container.querySelector('.dash-grid').dataset).toMatchObject({ screen: '1920x1080', cols: '24' })
     expect(screen.getByText(/Layout for this 1920×1080 screen \(not arranged yet\)/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Reset layout' })).toBeNull()
   })
@@ -86,7 +86,7 @@ describe('DashboardGrid', () => {
 
   it('another screen gets its own columns', () => {
     const { container } = grid({ display: display(3840, 2160, 1.5) })
-    expect(container.querySelector('.dash-grid').dataset).toMatchObject({ screen: '3840x2160', cols: '8' })
+    expect(container.querySelector('.dash-grid').dataset).toMatchObject({ screen: '3840x2160', cols: '32' })
   })
 
   it('stacks in one column, without grips, in a narrow window', () => {

@@ -4,7 +4,7 @@ import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { CardFrame, Icon, WidgetBody } from '@nexusmd/ui'
 import {
-  ROW_HEIGHT, MARGIN, MIN_H, screenKey, colsFor, entriesFor, layoutFor, withLayout, withoutLayout,
+  ROW_HEIGHT, MARGIN, MIN_H, MIN_W, screenKey, gridColsFor, entriesFor, layoutFor, withLayout, withoutLayout,
 } from './dashboard-layout.js'
 
 // The desktop Dashboard's widgets — the built-in cards and the added (Home) widgets — in one grid where
@@ -15,6 +15,8 @@ import {
 // stays usable without overwriting the screen's arrangement.
 
 const STACK_BELOW = 900
+// Every edge and corner resizes. The edges are thin strips over the gap between widgets (base.css).
+const RESIZE_HANDLES = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']
 const NO_DISPLAY = { id: 'none', width: 1920, height: 1080, scaleFactor: 1, physicalWidth: 1920, physicalHeight: 1080 }
 
 /** The screen the window is on, from the shell (host.display), kept current as the window moves. */
@@ -129,7 +131,7 @@ export function DashboardGrid({
   const width = useWidth(ref, fixedWidth)
   const screen = display || NO_DISPLAY
   const key = screenKey(screen)
-  const cols = colsFor(screen)
+  const cols = gridColsFor(screen)
 
   const entries = entriesFor({
     cards: cards.map(c => ({ id: c.id, span: c.span, bare: c.bare, frac: c.frac, rows: c.rows, top: c.top })),
@@ -162,8 +164,8 @@ export function DashboardGrid({
       ) : (
         // key: a new screen is a new grid, laid out from that screen's own layout.
         <GridLayout key={key} className="dash-rgl" width={width} cols={cols} rowHeight={ROW_HEIGHT} margin={[MARGIN, MARGIN]}
-          containerPadding={[0, 0]} layout={items.map(it => ({ ...it, minH: MIN_H, minW: 1 }))} compactType="vertical"
-          draggableHandle=".widget-grab" draggableCancel=".widget-hide, .m-iconbtn" resizeHandles={['se', 'e', 's']}
+          containerPadding={[0, 0]} layout={items.map(it => ({ ...it, minH: MIN_H, minW: MIN_W }))} compactType="vertical"
+          draggableHandle=".widget-grab" draggableCancel=".widget-hide, .m-iconbtn" resizeHandles={RESIZE_HANDLES}
           onDragStop={save} onResizeStop={save}>
           {items.map(it => (
             <div key={it.i} className={`widget dash-cell${byKey.get(it.i)?.card?.bare ? ' is-bare' : ''}`} data-testid="dash-cell" data-key={it.i}>

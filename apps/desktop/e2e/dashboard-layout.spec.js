@@ -52,7 +52,7 @@ test('widgets move and resize, and each screen keeps its own layout', async () =
     await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(2400, 1400) })
     const grid = win.locator('.dash-grid')
     await expect(grid).toHaveAttribute('data-screen', '3840x1600', { timeout: 20_000 })
-    await expect(grid).toHaveAttribute('data-cols', '12')
+    await expect(grid).toHaveAttribute('data-cols', '48')
     await expect(win.locator('[data-key="w:n1"]')).toBeVisible()
     await expect(win.getByText(/Layout for this 3840×1600 screen \(not arranged yet\)/)).toBeVisible()
 
@@ -66,12 +66,12 @@ test('widgets move and resize, and each screen keeps its own layout', async () =
     // Narrow the greeting from its right edge, to make room on the top row.
     const gb = await box(win, 'card:page-greeting')
     await drag(win, win.locator('[data-key="card:page-greeting"] > .react-resizable-handle-e'), -gb.width * 0.5, 0)
-    await expect.poll(async () => (await item('card:page-greeting'))?.w ?? 99).toBeLessThanOrEqual(3)
+    await expect.poll(async () => (await item('card:page-greeting'))?.w ?? 99).toBeLessThanOrEqual(12)
 
     // Shrink the Quick note from its corner (it starts full width), then drop it on the top row, next to the greeting.
     const nb = await box(win, 'w:n1')
     await drag(win, win.locator('[data-key="w:n1"] > .react-resizable-handle-se'), -nb.width * 0.75, 120)
-    await expect.poll(async () => (await item('w:n1')).w).toBeLessThanOrEqual(3)
+    await expect.poll(async () => (await item('w:n1')).w).toBeLessThanOrEqual(12)
     const sized = await item('w:n1')
     expect(sized.h).toBeGreaterThan(9)
     await settled(win)
@@ -89,7 +89,7 @@ test('widgets move and resize, and each screen keeps its own layout', async () =
     // Another monitor: 1080p. Fewer columns, starts from the 4K layout scaled, and saves nothing yet.
     await app.evaluate(() => globalThis.__nexusmdSetDisplay('1920x1080@1'))
     await expect(grid).toHaveAttribute('data-screen', '1920x1080')
-    await expect(grid).toHaveAttribute('data-cols', '6')
+    await expect(grid).toHaveAttribute('data-cols', '24')
     await expect(win.getByText(/Layout for this 1920×1080 screen \(not arranged yet\)/)).toBeVisible()
     expect(Object.keys((await tweaks(win)).dashLayouts)).toEqual(['3840x1600'])
     const nAt1080 = await box(win, 'w:n1')
@@ -118,6 +118,74 @@ test('widgets move and resize, and each screen keeps its own layout', async () =
     expect(Object.keys((await tweaks(win)).dashLayouts).sort()).toEqual(['1920x1080', '3840x1600'])
     await win.getByRole('button', { name: 'Reset layout' }).click()
     await expect.poll(async () => Object.keys((await tweaks(win)).dashLayouts)).toEqual(['1920x1080'])
+  } finally {
+    await close()
+  }
+})
+
+test('widgets move and resize by a quarter of a column', async () => {
+  const { app, win, close } = await start()
+  try {
+    await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(2400, 1400) })
+    const grid = win.locator('.dash-grid')
+    await expect(grid).toHaveAttribute('data-cols', '48', { timeout: 20_000 })
+    const gw = (await grid.boundingBox()).width
+    const step = (gw + 16) / 48 // one grid column and its gap
+    const item = async key => ((await tweaks(win)).dashLayouts?.['3840x1600']?.items || []).find(it => it.i === key)
+
+    // The Quick note starts full width; narrow it to half, then nudge it right by one quarter-column.
+    const nb = await box(win, 'w:n1')
+    await drag(win, win.locator('[data-key="w:n1"] > .react-resizable-handle-e'), -nb.width / 2, 0)
+    await expect.poll(async () => (await item('w:n1'))?.w).toBe(24)
+    await settled(win)
+    await drag(win, win.locator('[data-key="w:n1"] > .widget-grab'), step * 1.1, 0)
+    await expect.poll(async () => (await item('w:n1')).x).toBe(1)
+    // And one quarter-column narrower from its right edge.
+    await settled(win)
+    await drag(win, win.locator('[data-key="w:n1"] > .react-resizable-handle-e'), -step * 1.1, 0)
+    await expect.poll(async () => (await item('w:n1')).w).toBe(23)
+    await settled(win)
+    await noOverlap(win)
+  } finally {
+    await close()
+  }
+})
+
+test('widgets resize from every edge and corner', async () => {
+  const { app, win, close } = await start()
+  try {
+    await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(2400, 1400) })
+    const grid = win.locator('.dash-grid')
+    await expect(grid).toHaveAttribute('data-cols', '48', { timeout: 20_000 })
+    const cell = win.locator('[data-key="w:n1"]')
+    for (const h of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) await expect(cell.locator(`> .react-resizable-handle-${h}`)).toHaveCount(1)
+    const item = async key => ((await tweaks(win)).dashLayouts?.['3840x1600']?.items || []).find(it => it.i === key)
+
+    // The Quick note starts full width: narrow it from its left edge, so its right edge stays put.
+    const nb = await box(win, 'w:n1')
+    await drag(win, cell.locator('> .react-resizable-handle-w'), nb.width / 2, 0)
+    await expect.poll(async () => (await item('w:n1'))?.x).toBe(24)
+    expect((await item('w:n1')).w).toBe(24)
+    await settled(win)
+
+    // Taller from its top edge.
+    const before = await item('w:n1')
+    await drag(win, cell.locator('> .react-resizable-handle-n'), 0, -150)
+    await expect.poll(async () => (await item('w:n1')).h).toBeGreaterThan(before.h)
+    await settled(win)
+
+    // Wider again from its top-left corner.
+    await drag(win, cell.locator('> .react-resizable-handle-nw'), -nb.width / 4, 0)
+    await expect.poll(async () => (await item('w:n1')).x).toBeLessThan(24)
+    await settled(win)
+    await noOverlap(win)
+    await shot(win, 'dash-resize-all')
+
+    // The grip still moves it (the top edge's handle doesn't cover it).
+    const at = await item('w:n1')
+    await drag(win, cell.locator('> .widget-grab'), -200, 0)
+    await expect.poll(async () => (await item('w:n1')).x).toBeLessThan(at.x)
+    expect((await item('w:n1')).w).toBe(at.w)
   } finally {
     await close()
   }
