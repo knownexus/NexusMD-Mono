@@ -871,9 +871,9 @@ describe('ViewDbManager — query command builders', () => {
     await waitFor(() => screen.getByRole('table'))
 
     fireEvent.click(screen.getByRole('tab', { name: 'Query' }))
-    // The query textarea should have been reset, not still showing whatever
-    // was left over from the previous connection's builder session.
-    expect(screen.getByLabelText('SQL query').value).toBe('')
+    // The query starts afresh (a table's first query tab is a SELECT from it), not still showing
+    // whatever was left over from the previous connection's builder session.
+    expect(screen.getByLabelText('SQL query').value).toBe('SELECT * FROM [patients]')
 
     const tableSelects = screen.getAllByLabelText('Tables')
     fireEvent.change(tableSelects[tableSelects.length - 1], { target: { value: 'patients' } })
@@ -2023,6 +2023,151 @@ describe('ViewDbManager — new query, dry run, format and export', () => {
     fireEvent.change(screen.getByTestId('cm'), { target: { value: 'SELECT 2' } })
     fireEvent.keyDown(screen.getByTestId('cm'), { key: 'Enter', ctrlKey: true })
     await waitFor(() => expect(adapters.dbManager.runQuery).toHaveBeenCalledWith('sqlite', expect.anything(), 'SELECT 2'))
+  })
+})
+
+describe('ViewDbManager — query tabs', () => {
+  let adapters
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter() }
+  })
+
+  afterEach(() => { cleanup() })
+
+  async function connect() {
+    render(<ViewDbManager adapters={adapters} />)
+    fireEvent.click(screen.getByText(/Connect to database/i))
+    fireEvent.click(screen.getByText('SQLite'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Connection string' }))
+    fireEvent.change(screen.getByLabelText(/connection string/i), { target: { value: '/q.db' } })
+    fireEvent.click(screen.getByText('Connect'))
+    await waitFor(() => screen.getByText('patients'))
+  }
+  // Opens `name` on its Query tab (the list opens a table on the tab in use).
+  async function queryOn(name) {
+    openTable(name)
+    await waitFor(() => screen.getByRole('tab', { name: 'Query' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Query' }))
+    await waitFor(() => screen.getByLabelText('SQL query'))
+  }
+  const sql = () => screen.getByLabelText('SQL query').value
+  const typeSql = v => fireEvent.change(screen.getByLabelText('SQL query'), { target: { value: v } })
+  const queryTabs = () => within(screen.getByRole('tablist', { name: 'Queries' }))
+
+  it('keeps each table’s query as it was when switching tables', async () => {
+    await connect()
+    await queryOn('patients')
+    expect(sql()).toBe('SELECT * FROM [patients]')
+    typeSql('SELECT name FROM patients WHERE id > 1')
+    openTable('staff')
+    await waitFor(() => expect(sql()).toBe('SELECT * FROM [staff]'))
+    typeSql('SELECT 2')
+    openTable('patients')
+    await waitFor(() => expect(sql()).toBe('SELECT name FROM patients WHERE id > 1'))
+    openTable('staff')
+    await waitFor(() => expect(sql()).toBe('SELECT 2'))
+  })
+
+  it('keeps each query’s result too', async () => {
+    await connect()
+    await queryOn('patients')
+    fireEvent.click(screen.getByText('Run query'))
+    await screen.findByText('1 row returned')
+    openTable('staff')
+    await waitFor(() => expect(sql()).toBe('SELECT * FROM [staff]'))
+    expect(screen.queryByText('1 row returned')).toBeNull()
+    openTable('patients')
+    expect(await screen.findByText('1 row returned')).toBeTruthy()
+  })
+
+  it('opens several queries on one table, each kept as it was', async () => {
+    await connect()
+    await queryOn('patients')
+    typeSql('SELECT 1')
+    fireEvent.click(screen.getByRole('button', { name: 'New query tab' }))
+    expect(queryTabs().getByRole('tab', { name: 'Query 2' }).getAttribute('aria-selected')).toBe('true')
+    expect(sql()).toBe('')
+    typeSql('SELECT 2')
+    fireEvent.click(queryTabs().getByRole('tab', { name: 'Query 1' }))
+    expect(sql()).toBe('SELECT 1')
+    fireEvent.click(queryTabs().getByRole('tab', { name: 'Query 2' }))
+    expect(sql()).toBe('SELECT 2')
+    // The table's Query tab counts them.
+    expect(screen.getByRole('tab', { name: 'Query' }).textContent).toBe('Query2')
+  })
+
+  it('puts a slow query’s result in its own tab, even after moving to another', async () => {
+    let finish
+    adapters.dbManager.runQuery.mockImplementationOnce(() => new Promise(r => { finish = r }))
+    await connect()
+    await queryOn('patients')
+    fireEvent.click(screen.getByText('Run query'))
+    await waitFor(() => expect(adapters.dbManager.runQuery).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('button', { name: 'New query tab' }))
+    await act(async () => { finish({ columns: ['n'], rows: [[7], [8]], affected: null }) })
+    expect(screen.queryByText('2 rows returned')).toBeNull()
+    fireEvent.click(queryTabs().getByRole('tab', { name: 'Query 1' }))
+    expect(await screen.findByText('2 rows returned')).toBeTruthy()
+  })
+
+  it('closes an untouched query straight away and asks before closing one with SQL written', async () => {
+    await connect()
+    await queryOn('patients')
+    fireEvent.click(screen.getByRole('button', { name: 'New query tab' }))
+    fireEvent.click(queryTabs().getByRole('button', { name: 'Close Query 2' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(queryTabs().queryByRole('tab', { name: 'Query 2' })).toBeNull()
+
+    typeSql('SELECT precious')
+    fireEvent.click(queryTabs().getByRole('button', { name: 'Close Query 1' }))
+    const prompt = within(await screen.findByRole('alertdialog'))
+    fireEvent.click(prompt.getByRole('button', { name: 'Cancel' }))
+    expect(sql()).toBe('SELECT precious')
+    fireEvent.click(queryTabs().getByRole('button', { name: 'Close Query 1' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Close query' }))
+    // The last tab closed leaves a fresh one.
+    await waitFor(() => expect(sql()).toBe(''))
+    expect(queryTabs().getAllByRole('tab')).toHaveLength(1)
+  })
+
+  it('renames a query tab by double-clicking it', async () => {
+    await connect()
+    await queryOn('patients')
+    fireEvent.doubleClick(queryTabs().getByRole('tab', { name: 'Query 1' }))
+    fireEvent.change(screen.getByLabelText('Query name'), { target: { value: 'Active patients' } })
+    fireEvent.keyDown(screen.getByLabelText('Query name'), { key: 'Enter' })
+    expect(queryTabs().getByRole('tab', { name: 'Active patients' })).toBeTruthy()
+  })
+
+  it('opens a picked recent query in a new tab rather than over SQL being written', async () => {
+    await connect()
+    await queryOn('patients')
+    fireEvent.click(screen.getByText('Run query'))
+    await screen.findByText('1 row returned')
+    typeSql('SELECT work_in_progress')
+    fireEvent.click(screen.getByText('Recent'))
+    fireEvent.click([...document.querySelectorAll('.nx-db-history-row')].find(b => b.querySelector('code')?.textContent === 'SELECT * FROM [patients]'))
+    expect(sql()).toBe('SELECT * FROM [patients]')
+    expect(queryTabs().getAllByRole('tab')).toHaveLength(2)
+    fireEvent.click(queryTabs().getByRole('tab', { name: 'Query 1' }))
+    expect(sql()).toBe('SELECT work_in_progress')
+  })
+
+  it('New query adds a tab on the New query page instead of replacing the one written', async () => {
+    await connect()
+    fireEvent.click(screen.getByRole('button', { name: /^New query$/ }))
+    typeSql('SELECT first')
+    fireEvent.click(screen.getByRole('button', { name: /^New query$/ }))
+    expect(sql()).toBe('')
+    expect(queryTabs().getAllByRole('tab')).toHaveLength(2)
+    // Visiting a table and coming back keeps both.
+    openTable('patients')
+    await waitFor(() => screen.getByRole('table'))
+    fireEvent.click(screen.getByRole('button', { name: /^New query$/ }))
+    expect(queryTabs().getAllByRole('tab')).toHaveLength(2)
+    fireEvent.click(queryTabs().getByRole('tab', { name: 'Query 1' }))
+    expect(sql()).toBe('SELECT first')
   })
 })
 

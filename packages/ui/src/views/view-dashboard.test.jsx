@@ -40,4 +40,31 @@ describe('DashboardView widgets', () => {
     review.onHide('review')
     expect(base.setWidgetOrder).toHaveBeenCalledWith(['team', 'activity'])
   })
+
+  it('lets the head parts be hidden, and lists them with the hidden cards to show again', () => {
+    const setHiddenParts = vi.fn(), setWidgetOrder = vi.fn()
+    const renderWidgets = vi.fn(() => null)
+    render(<DashboardView {...base} setWidgetOrder={setWidgetOrder} hiddenParts={['page-greeting', 'stat-prs']} setHiddenParts={setHiddenParts} renderWidgets={renderWidgets} />)
+    const [cards, { hidden }] = renderWidgets.mock.calls.at(-1)
+    expect(cards.map(c => c.id)).toEqual(['page-actions', 'stat-active', 'stat-review', 'stat-blockers', 'stat-team', 'review', 'team', 'activity'])
+    cards.find(c => c.id === 'stat-blockers').onHide('stat-blockers')
+    expect(setHiddenParts).toHaveBeenCalledWith(['page-greeting', 'stat-prs', 'stat-blockers'])
+
+    // Hidden parts first, then the built-in cards not on the Dashboard.
+    expect(hidden.map(h => h.id)).toEqual(['page-greeting', 'stat-prs', 'blockers', 'triage', 'resolvedme', 'inbox'])
+    expect(hidden[0].title).toBe('Greeting')
+    hidden[0].onShow()
+    expect(setHiddenParts).toHaveBeenLastCalledWith(['stat-prs'])
+    hidden.find(h => h.id === 'blockers').onShow()
+    expect(setWidgetOrder).toHaveBeenCalledWith(['review', 'team', 'activity', 'blockers'])
+  })
+
+  it('offers no hidden part for a screen that is switched off', () => {
+    const renderWidgets = vi.fn(() => null)
+    render(<DashboardView {...base} offViews={['team', 'prs']} hiddenParts={['stat-team', 'stat-prs', 'page-actions']} setHiddenParts={vi.fn()} renderWidgets={renderWidgets} />)
+    const [, { hidden }] = renderWidgets.mock.calls.at(-1)
+    expect(hidden.map(h => h.id)).not.toContain('stat-team')
+    expect(hidden.map(h => h.id)).not.toContain('stat-prs')
+    expect(hidden.map(h => h.id)).toContain('page-actions')
+  })
 })

@@ -219,6 +219,15 @@
 .nx-db-query { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
 .nx-db-query-editor { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--surface); }
 .nx-db-query-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+/* Query tabs: one per query on the open table (or the New query page). */
+.nx-db-qtabs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: -4px 0 0; }
+.nx-db-qtab { display: flex; align-items: center; height: 26px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text-muted); max-width: 220px; }
+.nx-db-qtab[data-active] { border-color: var(--accent); color: var(--text); background: var(--surface-2, var(--bg)); }
+.nx-db-qtab-name { display: flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0 4px 0 10px; border: 0; background: transparent; color: inherit; font: 600 12px var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.nx-db-qtab-close { display: grid; place-items: center; width: 20px; height: 20px; margin-right: 3px; border: 0; border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.nx-db-qtab-close:hover, .nx-db-qtab-new:hover { background: var(--surface-2, var(--border)); color: var(--text); }
+.nx-db-qtab-rename { width: 140px; height: 22px; margin: 0 2px 0 4px; padding: 0 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--text); font: 600 12px var(--sans); outline: none; }
+.nx-db-qtab-new { display: grid; place-items: center; width: 26px; height: 26px; border: 1px dashed var(--border); border-radius: var(--radius); background: transparent; color: var(--text-muted); cursor: pointer; }
 .nx-db-select { width: auto !important; min-width: 180px; max-width: 280px; height: 30px; padding: 0 8px !important; }
 .nx-db-sql { width: 100%; min-height: 120px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); font: 12.5px/1.6 var(--mono); resize: vertical; outline: none; tab-size: 2; box-sizing: border-box; }
 .nx-db-sql:focus { border-color: var(--accent); }

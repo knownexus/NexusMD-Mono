@@ -74,6 +74,8 @@ const DEFAULT_TWEAKS = {
   homeWidgets: [],
   // Where each Dashboard widget sits, per screen resolution: { "3840x1600": { cols, items } } (modules/work dashboard-layout.js).
   dashLayouts: {},
+  // The Dashboard's default parts (greeting, actions, quick links, stat cards) the user hid, by id.
+  dashHiddenParts: [],
   navOrder: DEFAULT_NAV_ORDER,
   navHidden: [],
   // Where each screen sits in the sidebar ({ [id]: 'main' | 'more' | 'footer' }); unplaced screens stay in the main list.
@@ -382,7 +384,7 @@ function App() {
         {registry.isInstalled('work') && (
           <TweakSection title="Dashboard">
             <TweakButton label="Reset widget order"
-              onClick={() => { setTweak('widgetOrder', DASH_WIDGET_ORDER); setTweak('dashLayouts', {}) }}/>
+              onClick={() => { setTweak('widgetOrder', DASH_WIDGET_ORDER); setTweak('dashLayouts', {}); setTweak('dashHiddenParts', []) }}/>
           </TweakSection>
         )}
       </TweaksPanel>

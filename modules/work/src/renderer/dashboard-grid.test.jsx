@@ -41,6 +41,28 @@ describe('DashboardGrid', () => {
     expect(greeting.style.width).toBe(`${(1600 - 16 * 5) / 6 * 3 + 16 * 2}px`)
   })
 
+  it("a head part with onHide gets a × too", () => {
+    const onHide = vi.fn()
+    grid({ cards: [{ id: 'page-greeting', title: 'Greeting', bare: true, top: true, frac: 0.5, rows: 2, render: () => <h1>Hello</h1>, onHide }, ...cards] })
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Greeting' }))
+    expect(onHide).toHaveBeenCalledWith('page-greeting')
+  })
+
+  it('Show hidden lists what was hidden and brings one back', () => {
+    const onShow = vi.fn()
+    grid({ hidden: [{ id: 'page-greeting', title: 'Greeting', onShow }, { id: 'triage', title: 'Triage queue', description: 'Unassigned items', onShow: vi.fn() }] })
+    fireEvent.click(screen.getByRole('button', { name: /Show hidden/ }))
+    const menu = screen.getByRole('menu', { name: 'Hidden widgets' })
+    expect(menu.textContent).toContain('Unassigned items')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show Greeting' }))
+    expect(onShow).toHaveBeenCalled()
+  })
+
+  it('has no Show hidden when nothing is hidden', () => {
+    grid()
+    expect(screen.queryByRole('button', { name: /Show hidden/ })).toBeNull()
+  })
+
   it("a card's × hides it", () => {
     grid()
     fireEvent.click(screen.getByRole('button', { name: 'Hide Needs your review' }))

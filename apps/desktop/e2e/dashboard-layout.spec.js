@@ -135,3 +135,35 @@ test('reads the real screen the window is on', async () => {
     await close()
   }
 })
+
+test('a default part of the Dashboard can be hidden, stays hidden, and comes back from Show hidden', async () => {
+  const { app, win, close } = await start()
+  try {
+    await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(2400, 1400) })
+    const greeting = win.locator('[data-key="card:page-greeting"]')
+    await expect(greeting).toBeVisible({ timeout: 20_000 })
+
+    await greeting.hover()
+    await win.getByRole('button', { name: 'Hide Greeting' }).click()
+    await expect(greeting).toHaveCount(0)
+    await win.locator('[data-key="card:stat-blockers"]').hover()
+    await win.getByRole('button', { name: 'Hide Open blockers' }).click()
+    await expect(win.locator('[data-key="card:stat-blockers"]')).toHaveCount(0)
+    expect((await tweaks(win)).dashHiddenParts).toEqual(['page-greeting', 'stat-blockers'])
+    await shot(win, 'hidden-parts')
+
+    // Still hidden after a reload.
+    await win.reload()
+    await expect(win.locator('.dash-grid')).toBeVisible({ timeout: 20_000 })
+    await expect(win.locator('[data-key="card:page-greeting"]')).toHaveCount(0)
+
+    await win.getByRole('button', { name: /Show hidden/ }).click()
+    await win.getByRole('menuitem', { name: 'Show Greeting' }).click()
+    await expect(win.locator('[data-key="card:page-greeting"]')).toBeVisible()
+    expect((await tweaks(win)).dashHiddenParts).toEqual(['stat-blockers'])
+    await settled(win)
+    await noOverlap(win)
+  } finally {
+    await close()
+  }
+})
