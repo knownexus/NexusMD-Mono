@@ -9,11 +9,12 @@ import { marked } from 'marked';
 import { WORK_SCREENS, useOffScreens, setOffScreens } from '../work-screens.js';
 import {
   PlToggle, VsRow, VsCard, VsFullRow, ThemeModeSettings, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard, CloudSyncCard,
-  IntegrationsView,
+  AccountCard, IntegrationsView,
 } from '@nexusmd/ui';
 import { appFileIO } from '../file-io.js';
 import { appCloudProviders, makeAppOAuthService } from '../cloud-auth.js';
 import { appSync } from '../sync.js';
+import { account } from '../account.js';
 import { getAdoConfig } from '../ado-client.js';
 import { getJiraConfig } from '../jira-client.js';
 import { getGithubConfig } from '../github-client.js';
@@ -495,7 +496,8 @@ function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onPlaceNav,
           {page === 'profiles' && (
             <>
               <VsProfiles profileApi={useProfile()} showOrgLabel={false} />
-              <BackupRestoreCard fileIO={appFileIO} showExportSingle={true} cloudProviders={appCloudProviders} />
+              <BackupRestoreCard fileIO={appFileIO} showExportSingle={true} cloudProviders={appCloudProviders}
+                accountSlot={<AccountCard account={account} />} />
               <CloudSyncCard controller={appSync} providers={appCloudProviders} fileIO={appFileIO} />
             </>
           )}

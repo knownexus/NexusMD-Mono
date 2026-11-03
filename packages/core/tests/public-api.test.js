@@ -46,6 +46,13 @@ const EXPECTED = [
   'plParseYmd', 'plSectionGroup', 'plTodayDate', 'qaParseDue', 'readAuditLog',
   'registerModule', 'remainingMs', 'resumeTimer', 'slugify', 'sortEventsByTime', 'startTimer', 'stateCategory', 'stopTimer', 'timeAgo',
   'validateProfile', 'weekKeyToOffset', 'weekStorageKey',
+  // Account crypto primitives (invite-only accounts + E2E encryption)
+  'MIN_ITERATIONS', 'randomSalt', 'deriveKeys', 'generateContainerKey', 'exportContainerKey',
+  'importContainerKey', 'wrapContainerKey', 'unwrapContainerKey', 'encryptJson', 'decryptJson',
+  'opaqueId', 'generateKeyPair', 'wrapPrivateKey', 'unwrapPrivateKey',
+  'createAccountClient', 'AccountError',
+  'createKeyRegistry', 'TWEAK_ACCOUNT_FIELDS', 'KEY_ALIASES', 'SYNC_SKIP', 'isSkippedKey',
+  'createAccountSync', 'clearAccountLocalData',
   // Field/column visibility catalogs + resolver (configurable cards & tables)
   'WI_CARD_FIELDS', 'WI_TABLE_COLUMNS', 'PR_CARD_FIELDS', 'BUILDS_TABLE_COLUMNS', 'TESTS_TABLE_COLUMNS',
   'defaultConfig', 'resolveFields', 'reorderField', 'toggleField',

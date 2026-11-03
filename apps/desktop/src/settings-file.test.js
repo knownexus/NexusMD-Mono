@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { collectSettings, applySettings, encodeSettings, decodeSettings, isExported } from './settings-file.js'
+import { collectSettings, applySettings, encodeSettings, decodeSettings, isExported, collectDesktopPrefs, applyDesktopPrefs } from './settings-file.js'
 
 function memStorage(init = {}) {
   const m = new Map(Object.entries(init))
@@ -81,5 +81,48 @@ describe('settings file', () => {
     expect(isExported('nexusmd.p.p1.jira.apiToken')).toBe(true)
     expect(isExported('nexusmd.p.p1.wi.groupOrder')).toBe(true)
     expect(isExported('nx-db:saved-queries')).toBe(true)
+  })
+})
+
+describe('settings file: account and desktop prefs helpers', () => {
+  it('never carries the account session secret out or in', async () => {
+    const from = memStorage({ 'nexusmd.tweaks': '{}', 'nexusmd.sec.account.session': 'enc:{"refreshToken":"r"}' })
+    const payload = await collectSettings({ storage: from, secure: memSecure(from), prefs: {} })
+    expect(payload.secrets).toEqual({})
+    expect(JSON.stringify(payload)).not.toContain('refreshToken')
+
+    const to = memStorage()
+    const res = await applySettings({ storage: {}, secrets: { 'account.session': 'evil', 'x.y': 'ok' } }, { storage: to, secure: memSecure(to), prefs: {} })
+    expect(to.dump()['nexusmd.sec.account.session']).toBeUndefined()
+    expect(to.dump()['nexusmd.sec.x.y']).toBe('enc:ok')
+    expect(res.secrets).toBe(1)
+  })
+
+  it('never exports the account state keys of this machine', () => {
+    for (const k of ['nexusmd.account.userId', 'nexusmd.account.deviceId', 'nexusmd.account.meta', 'nexusmd.account.optOut']) expect(isExported(k)).toBe(false)
+  })
+
+  it('also withholds nested account secrets but not lookalike names', async () => {
+    const from = memStorage({ 'nexusmd.sec.p.x.account.token': 'enc:t', 'nexusmd.sec.accountant': 'enc:a' })
+    const payload = await collectSettings({ storage: from, secure: memSecure(from), prefs: {} })
+    expect(payload.secrets).toEqual({ accountant: 'a' })
+  })
+
+  it('round-trips desktop prefs through the extracted helpers', async () => {
+    const prefs = { getCloseToTray: () => false, getZoomFactor: () => 1.2, getLoginItemEnabled: () => true, getDisabledApps: () => ['git'] }
+    const d = await collectDesktopPrefs(prefs)
+    expect(d).toEqual({ closeToTray: false, zoomFactor: 1.2, openAtLogin: true, disabledApps: ['git'] })
+    const out = { setCloseToTray: vi.fn(), setZoomFactor: vi.fn(), setLoginItemEnabled: vi.fn(), setDisabledApps: vi.fn() }
+    expect(await applyDesktopPrefs(d, out, ['git', 'work'])).toEqual(['git'])
+    expect(out.setCloseToTray).toHaveBeenCalledWith(false)
+    expect(out.setZoomFactor).toHaveBeenCalledWith(1.2)
+    expect(out.setLoginItemEnabled).toHaveBeenCalledWith(true)
+    expect(out.setDisabledApps).toHaveBeenCalledWith(['git'])
+  })
+
+  it('applyDesktopPrefs keeps all apps on when every installed app would be disabled', async () => {
+    const out = { setDisabledApps: vi.fn() }
+    expect(await applyDesktopPrefs({ disabledApps: ['git', 'work'] }, out, ['git'])).toEqual([])
+    expect(out.setDisabledApps).toHaveBeenCalledWith([])
   })
 })

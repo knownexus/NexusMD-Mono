@@ -6,7 +6,7 @@ import { initCore, createNoOpAdapters } from '@nexusmd/core'
 import {
   Icon, CardFrame, NexusDataProvider, ToastHost,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
-  THEME_MODES, paletteFor, ProfileGate, toast,
+  THEME_MODES, paletteFor, ProfileGate, AccountGate, toast,
 } from '@nexusmd/ui'
 import { startQueueFlushing } from './offline-queue-app.js'
 import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, sidebarGroups, shortcutNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
@@ -39,6 +39,8 @@ import {
 } from './shell/modules.js'
 import { host, takeWaitingNavigation } from './shell/host.js'
 import { AppUpdatesBanner } from './app-updates.jsx'
+import { account } from './account.js'
+import { useObserveForSync } from './observe-sync.js'
 
 const adapters = {
   ...createNoOpAdapters(),
@@ -166,6 +168,7 @@ function App() {
   React.useEffect(() => { setVisited(v => (v.includes(view) ? v : [...v, view])) }, [view])
   const [sidebarWidth, setSidebarWidth] = usePersistedState('nexusmd.sidebar.width', 220)
   const [tweaks, setTweaksState] = React.useState(loadTweaks)
+  useObserveForSync(tweaks)
 
   // Fall back to clientWidth when innerWidth is 0 (e.g. jsdom in tests) so the
   // sidebar doesn't spuriously start collapsed.
@@ -428,7 +431,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AppErrorBoundary>
       <ProfileProvider>
-        {popout ? <popout.Component spec={popout.spec} adapter={popout.adapter} /> : <ProfileGate><App /></ProfileGate>}
+        {popout ? <popout.Component spec={popout.spec} adapter={popout.adapter} /> : <AccountGate account={account}><ProfileGate><App /></ProfileGate></AccountGate>}
       </ProfileProvider>
     </AppErrorBoundary>
   </React.StrictMode>

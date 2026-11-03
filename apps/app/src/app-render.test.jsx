@@ -7,6 +7,8 @@ const seedProfile = () => {
   if (localStorage.getItem('helm.activeProfileId')) return
   localStorage.setItem('helm.profiles', JSON.stringify([{ id: 'test', name: 'Test', initials: 'TE', color: '#6c8ebf', type: 'ado', createdAt: 1 }]))
   localStorage.setItem('helm.activeProfileId', 'test')
+  // The account gate is optional: these launches are for people who chose to use the app without one.
+  localStorage.setItem('helm.account.optOut', '1')
 }
 
 describe('app shell', () => {
@@ -25,7 +27,8 @@ describe('app shell', () => {
     const onError = e => errors.push(e.error?.message || e.message)
     window.addEventListener('error', onError)
 
-    await import('./main.jsx')
+    // Wait for the app module main.jsx loads (see app-resilience.test.jsx boot), not only for a render.
+    await (await import('./main.jsx')).appReady
 
     const root = document.getElementById('root')
     await vi.waitFor(() => expect(root.children.length).toBeGreaterThan(0), { timeout: 15000 })

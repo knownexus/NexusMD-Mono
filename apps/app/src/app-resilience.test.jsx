@@ -31,15 +31,23 @@ const seedProfile = () => {
   if (localStorage.getItem('helm.activeProfileId')) return
   localStorage.setItem('helm.profiles', JSON.stringify([{ id: 'test', name: 'Test', initials: 'TE', color: '#6c8ebf', type: 'ado', createdAt: 1 }]))
   localStorage.setItem('helm.activeProfileId', 'test')
+  // The account gate is optional: these launches are for people who chose to use the app without one.
+  localStorage.setItem('helm.account.optOut', '1')
 }
 
+// main.jsx loads app.jsx with a dynamic import and app.jsx mounts into whatever #root exists when it
+// finishes. So boot waits for that import itself (however long a busy machine takes), never only
+// for a render with a deadline: a boot that gave up early would leave the import running, and it
+// would then mount a second React root into the next boot's #root (React then fails with "The node
+// to be removed is not a child of this node" and the root stays empty).
 async function boot({ width = 412 } = {}) {
   seedProfile()
   vi.resetModules()
   window.matchMedia = mediaFor(width)
   document.body.replaceChildren(Object.assign(document.createElement('div'), { id: 'root' }))
   Object.defineProperty(window, 'innerWidth', { value: width, configurable: true })
-  await import('./main.jsx')
+  const main = await import('./main.jsx')
+  await main.appReady
   await vi.waitFor(() => expect(root().children.length).toBeGreaterThan(0), { timeout: 15000 })
 }
 
@@ -53,6 +61,17 @@ describe('the app stays up', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
   afterEach(() => { window.removeEventListener('error', onError); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+
+  it('main.jsx exposes the app import, so a boot can wait for the app it started', async () => {
+    seedProfile()
+    vi.resetModules()
+    window.matchMedia = mediaFor(412)
+    document.body.replaceChildren(Object.assign(document.createElement('div'), { id: 'root' }))
+    const main = await import('./main.jsx')
+    expect(main.appReady).toBeInstanceOf(Promise)
+    await main.appReady
+    await vi.waitFor(() => expect(root().children.length).toBeGreaterThan(0), { timeout: 15000 })
+  }, 60000)
 
   it('opens every screen without throwing', async () => {
     await boot()

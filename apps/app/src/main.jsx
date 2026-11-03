@@ -37,4 +37,6 @@ initCore({
   file:          fileAdapter,
 });
 
-import('./app.jsx');
+// The app module mounts the React root when it loads. Exported so a test that boots the app can wait
+// for this import instead of leaving it running (it would mount into the next test's #root).
+export const appReady = import('./app.jsx');

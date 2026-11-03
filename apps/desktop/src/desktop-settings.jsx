@@ -2,7 +2,7 @@ import React from 'react'
 import {
   Icon,
   VsRow, VsCard, VsFullRow, ThemeModeSettings,
-  VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView,
+  VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView, AccountCard,
   PlToggle,
   toast,
 } from '@nexusmd/ui'
@@ -23,6 +23,8 @@ import { moduleSettingsCards, modulePanels } from './shell/modules.js'
 import { registry } from './shell/registry.js'
 import { host } from './shell/host.js'
 import { pickerAdapter } from './adapters/picker.js'
+import { account } from './account.js'
+import { useObserveOnSettingsChange } from './observe-sync.js'
 
 const settInputStyle = {
   width: '100%', padding: '7px 10px',
@@ -387,6 +389,7 @@ export const visibleSettingsTabs = (reg = registry) =>
 export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
   const profileApi = useProfile()
   const [tab, setTab] = React.useState('profile')
+  useObserveOnSettingsChange(tab)
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
@@ -469,6 +472,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
 
           {tab === 'data' && (
             <>
+              <AccountCard account={account} />
               <DesktopDataSyncCard />
               <SettingsFileCard />
               <LogsCard />
