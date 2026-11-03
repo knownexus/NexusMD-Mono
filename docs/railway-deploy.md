@@ -63,10 +63,9 @@ Optional tuning:
 3. Create the first admin with `POST /api/account/setup`. This cannot be done with plain curl: the client must
    derive and send the `authKey`, `salt`, `iterations`, `publicKey`, `wrappedPrivateKey` and
    `wrappedContainerKey` from the password (end-to-end encryption), alongside `username` and `setupToken` (the value
-   of `Accounts__SetupToken`). At this commit no shipped client UI calls it yet. The first admin is created by the
-   NexusMD app's first-run screen (planned, Task 11 of `docs/superpowers/plans/2026-11-01-accounts-m1.md`) or, until
-   then, by the end-to-end script `scripts/account-e2e.mjs` (planned, Task 14), which performs the client-side key
-   derivation. Responses: 201 with a session (`accessToken`, `refreshToken`, `expiresIn`, `user`, `salt`,
+   of `Accounts__SetupToken`). Do it from the NexusMD app: while the server reports `needsSetup`, the sign-in
+   screen shows a setup form that asks for the setup token, a username and a password, and derives the keys on the
+   device. Responses: 201 with a session (`accessToken`, `refreshToken`, `expiresIn`, `user`, `salt`,
    `iterations`, `publicKey`, `wrappedPrivateKey`, `wrappedContainerKey`); 403 if the setup token is wrong or missing
    or setup is disabled (empty `Accounts__SetupToken`); 409 once an account already exists. Remove
    `Accounts__SetupToken` from the Railway variables after setup.
