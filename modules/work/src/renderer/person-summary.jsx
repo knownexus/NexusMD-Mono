@@ -21,7 +21,7 @@ export function PersonSummary({ dev, onOpenItem, onOpenPR }) {
     const onChanged = () => setNotes(readTeamNotes(storage, dev.id, getProfileKey))
     window.addEventListener('nexusmd:team-notes-changed', onChanged)
     return () => window.removeEventListener('nexusmd:team-notes-changed', onChanged)
-  }, [storage, dev.id])
+  }, [storage, dev.id, getProfileKey])
 
   const deleteNote = (noteId) => {
     window.dispatchEvent(new CustomEvent('nexusmd:team-delete-note', { detail: { noteId } }))
