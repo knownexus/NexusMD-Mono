@@ -32,6 +32,9 @@ const mockSqliteDb = {
   pragma:  vi.fn(),
   prepare: vi.fn(() => mockSqliteStmt),
   close:   vi.fn(),
+  inTransaction: false,
+  // Tracks BEGIN/ROLLBACK the way better-sqlite3's inTransaction does.
+  exec: vi.fn((sql) => { if (/^BEGIN/i.test(sql)) mockSqliteDb.inTransaction = true; if (/^ROLLBACK/i.test(sql)) mockSqliteDb.inTransaction = false }),
 }
 
 // A plain constructor (not vi.fn) — `new`-ing a vi.fn mock whose
@@ -219,6 +222,38 @@ describe('db-manager IPC — SQLite', () => {
     const result = await ipc._invoke('db-manager:run-query', { ...cfg, sql: 'DROP TABLE users' })
     expect(mockSqliteDb.prepare.mock.calls.at(-1)[0]).toBe('DROP TABLE users')
     expect(result.error).toBeUndefined()
+  })
+
+  it('run-query dry-run runs inside a transaction and rolls it back', async () => {
+    mockSqliteDb.exec.mockClear()
+    const result = await ipc._invoke('db-manager:run-query', { ...cfg, sql: 'DELETE FROM users WHERE id = 99', dryRun: true })
+    expect(result).toMatchObject({ affected: 2, dryRun: true })
+    expect(mockSqliteDb.exec.mock.calls.map(c => c[0])).toEqual(['BEGIN', 'ROLLBACK'])
+    expect(mockSqliteDb.inTransaction).toBe(false)
+  })
+
+  it('run-query dry-run rolls back when the statement fails', async () => {
+    mockSqliteDb.exec.mockClear()
+    mockSqliteStmt.run.mockImplementationOnce(() => { throw new Error('constraint failed') })
+    await expect(ipc._invoke('db-manager:run-query', { ...cfg, sql: 'DELETE FROM users', dryRun: true })).rejects.toThrow('constraint failed')
+    expect(mockSqliteDb.exec.mock.calls.map(c => c[0])).toEqual(['BEGIN', 'ROLLBACK'])
+  })
+
+  it.each([
+    ['COMMIT', "UPDATE users SET name = 'x'; COMMIT"],
+    ['a bare BEGIN', 'BEGIN; DELETE FROM users'],
+    ['VACUUM', 'VACUUM'],
+  ])('run-query refuses to dry-run SQL with %s, running nothing', async (_label, sql) => {
+    mockSqliteDb.exec.mockClear()
+    mockSqliteDb.prepare.mockClear()
+    await expect(ipc._invoke('db-manager:run-query', { ...cfg, sql, dryRun: true })).rejects.toThrow("Can't dry-run this query")
+    expect(mockSqliteDb.exec).not.toHaveBeenCalled()
+    expect(mockSqliteDb.prepare).not.toHaveBeenCalled()
+  })
+
+  it('run-query dry-run ignores keywords inside strings and comments', async () => {
+    const result = await ipc._invoke('db-manager:run-query', { ...cfg, sql: "UPDATE users SET name = 'commit' WHERE id = 1 -- then ROLLBACK", dryRun: true })
+    expect(result.dryRun).toBe(true)
   })
 
   it('run-query allows DELETE', async () => {
@@ -451,7 +486,67 @@ describe('db-manager IPC — SQL Server statements', () => {
     queuedResults = []
     nextResult = { recordset: [], recordsets: [], rowsAffected: [1] }
     ipc = makeFakeIpcMain()
-    register(ipc, { drivers: { requireMssql: () => ({ connect: async () => ({ request: fakeRequest }) }) } })
+    txLog = []
+    rollbackError = null
+    register(ipc, { drivers: { requireMssql: () => ({ connect: async () => ({ request: fakeRequest, transaction: fakeTransaction }) }) } })
+  })
+
+  // A transaction whose requests are recorded like the pool's, logging begin and rollback.
+  let txLog, rollbackError
+  function fakeTransaction() {
+    return {
+      begin: async () => { txLog.push('begin') },
+      request: () => { const req = fakeRequest(); req.inTransaction = true; return req },
+      rollback: async () => { txLog.push('rollback'); if (rollbackError) throw rollbackError },
+      commit: async () => { txLog.push('commit') },
+    }
+  }
+
+  it('run-query dry-run runs the SQL in a transaction and rolls it back', async () => {
+    nextResult = { recordsets: [], rowsAffected: [4] }
+    const result = await ipc._invoke('db-manager:run-query', { ...cfg, sql: 'UPDATE T SET A = 1', dryRun: true })
+    expect(result).toMatchObject({ affected: 4, dryRun: true })
+    expect(requests[0]).toMatchObject({ sql: 'UPDATE T SET A = 1', inTransaction: true, arrayRowMode: true })
+    expect(txLog).toEqual(['begin', 'rollback'])
+  })
+
+  it('run-query dry-run rolls back when the SQL fails, and reports the SQL error', async () => {
+    queuedResults = [() => { throw new Error('Conversion failed') }]
+    await expect(ipc._invoke('db-manager:run-query', { ...cfg, sql: 'UPDATE T SET A = 1', dryRun: true })).rejects.toThrow('Conversion failed')
+    expect(txLog).toEqual(['begin', 'rollback'])
+  })
+
+  it('run-query dry-run accepts a transaction the server already rolled back', async () => {
+    rollbackError = Object.assign(new Error('Transaction has been aborted.'), { code: 'EABORT' })
+    queuedResults = [() => { throw new Error('deadlock') }]
+    await expect(ipc._invoke('db-manager:run-query', { ...cfg, sql: 'UPDATE T SET A = 1', dryRun: true })).rejects.toThrow('deadlock')
+  })
+
+  it('run-query dry-run says so when the rollback itself fails', async () => {
+    rollbackError = Object.assign(new Error('socket closed'), { code: 'ESOCKET' })
+    await expect(ipc._invoke('db-manager:run-query', { ...cfg, sql: 'UPDATE T SET A = 1', dryRun: true })).rejects.toThrow("couldn't be rolled back")
+  })
+
+  it.each([
+    ['its own COMMIT', 'BEGIN TRAN; UPDATE T SET A = 1; COMMIT'],
+    ['ROLLBACK', 'UPDATE T SET A = 1; ROLLBACK TRANSACTION'],
+    ['ALTER DATABASE', 'ALTER DATABASE d SET RECOVERY SIMPLE'],
+    ['BACKUP DATABASE', "BACKUP DATABASE d TO DISK = 'x.bak'"],
+  ])('run-query refuses to dry-run SQL with %s, running nothing', async (_label, sql) => {
+    await expect(ipc._invoke('db-manager:run-query', { ...cfg, sql, dryRun: true })).rejects.toThrow("Can't dry-run this query")
+    expect(requests).toHaveLength(0)
+    expect(txLog).toEqual([])
+  })
+
+  it('run-query dry-run allows a T-SQL BEGIN … END block and a table called Backup', async () => {
+    const result = await ipc._invoke('db-manager:run-query', { ...cfg, sql: 'IF 1 = 1 BEGIN SELECT * FROM Backup END', dryRun: true })
+    expect(result.dryRun).toBe(true)
+  })
+
+  it('run-query without dry-run uses no transaction', async () => {
+    await ipc._invoke('db-manager:run-query', { ...cfg, sql: 'UPDATE T SET A = 1' })
+    expect(txLog).toEqual([])
+    expect(requests[0].inTransaction).toBeUndefined()
   })
 
   // Pools are cached for the process, so these tests share one server name of their own.

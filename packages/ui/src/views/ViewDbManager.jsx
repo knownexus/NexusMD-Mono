@@ -62,6 +62,7 @@ import { readMinCols, writeMinCols } from './db-min-cols.js'
 import { pushNav, popNav } from './db-nav.js'
 import { headerMenuItems, rowMenuItems } from './db-grid-menus.js'
 import { StructurePanel, typeLabelOf } from './db-structure-panel.jsx'
+import { formatSql } from './db-sql-format.js'
 
 // ─── Demo data (shown when no real DB is connected) ───────────────────────────
 
@@ -155,15 +156,18 @@ function toCsv(columns, rows) {
   return [columns, ...rows].map(r => r.map(cell).join(',')).join('\r\n')
 }
 
-function downloadCsv(name, columns, rows) {
+// Saves `text` as a download called `fileName`; false when the browser refused.
+function downloadText(fileName, text, type) {
   try {
-    const url = URL.createObjectURL(new Blob([toCsv(columns, rows)], { type: 'text/csv' }))
-    const a = Object.assign(document.createElement('a'), { href: url, download: `${name}.csv` })
+    const url = URL.createObjectURL(new Blob([text], { type }))
+    const a = Object.assign(document.createElement('a'), { href: url, download: fileName })
     document.body.appendChild(a); a.click(); a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
     return true
   } catch { return false }
 }
+
+const downloadCsv = (name, columns, rows) => downloadText(`${name}.csv`, toCsv(columns, rows), 'text/csv')
 
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); return true } catch { return false }
@@ -300,7 +304,9 @@ function connectionToSave(type, fields, name) {
   return { meta, secret: authentication === AZURE_AD_INTERACTIVE ? '' : (fields.password || '') }
 }
 
-export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret, onSaveConnection }) {
+// `SqlEditor` (optional) is the Query tab's editor, as { value, onChange, ariaLabel }: the desktop
+// passes a syntax-highlighting one. Without it the Query tab uses a plain text box.
+export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret, onSaveConnection, SqlEditor = null }) {
   const [sessions, setSessions]       = useState([])          // { key, type, config, tables, connectionId?, name? }, in tab order
   const [activeKey, setActiveKey]     = useState(null)
   const [connecting, setConnecting]   = useState(null)        // saved connection id, 'new', or null
@@ -554,6 +560,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
           tabs={tabs}
           connecting={connecting != null}
           notify={notify}
+          SqlEditor={SqlEditor}
           onDisconnect={() => closeSession(s.key)}
         />
       ))}
@@ -599,7 +606,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
 
 // ─── One open connection ──────────────────────────────────────────────────────
 
-function DbSession({ session: openedSession, active, db, tabs, connecting, notify, onDisconnect }) {
+function DbSession({ session: openedSession, active, db, tabs, connecting, notify, onDisconnect, SqlEditor }) {
   const [dbState, setDbState]         = useState(() => applyConnected(createInitialState(), openedSession))
   const [activeTab, setActiveTab]     = useState('browse')
   const [search, setSearch]           = useState('')
@@ -612,6 +619,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const [queryResult, setQueryResult] = useState(null)
   const [queryRunning, setQueryRunning] = useState(false)
   const [queryHistory, setQueryHistory] = useState([])        // newest first: { sql, at, ok, summary }
+  const [freeQuery, setFreeQuery]     = useState(false)       // the New query page is showing (no table open)
   const [savedQueries, setSavedQueries] = useState(() => readPref(SAVED_KEY, [])) // { id, name, sql, conn | null, at }
   const [tableColumns, setTableColumns] = useState({})        // { [table]: Column[] }
   const [columnsFailed, setColumnsFailed] = useState({})      // { [table]: true } once its column types couldn't be read
@@ -765,6 +773,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const openTable = useCallback(async (name, tab = 'browse', { where = null, search: keep = '', sort: order = null, scrollTop = null } = {}) => {
     if (!name || !session) return
     const seq = ++loadSeq.current
+    setFreeQuery(false)
     setSelectedRows(new Set())
     setSearch(keep)
     setSort(order)
@@ -1016,9 +1025,27 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
 
   // ── Query ──────────────────────────────────────────────────────────────────
 
+  // On a table's Query tab picking a table starts a SELECT from it. On the New query page the table
+  // is only there for the builders, so it never replaces SQL already written.
   const handleQueryTableSelect = useCallback((name) => {
     setQueryTable(name)
-    setSqlQuery(`SELECT * FROM ${quoteTable(name)}`)
+    setSqlQuery(s => (freeQuery && s.trim() ? s : `SELECT * FROM ${quoteTable(name)}`))
+  }, [freeQuery])
+
+  // A blank query with no table open: for SQL that names its own tables. `sql` starts it with that text.
+  const openNewQuery = useCallback((sql = '') => {
+    loadSeq.current++
+    setRowWhere(null)
+    setNavStack([])
+    setDbState(s => ({ ...s, selectedTable: null, tableData: null, tableLoading: false, error: null }))
+    setFreeQuery(true)
+    // The table list opens a table on the tab in use: from here that's Browse, so opening one never
+    // swaps this SQL for a SELECT from it.
+    setActiveTab(t => (t === 'query' ? 'browse' : t))
+    setQueryTable(null)
+    setActiveBuilder(null)
+    setQueryResult(null)
+    setSqlQuery(sql)
   }, [])
 
   const toggleBuilder = useCallback(async (name) => {
@@ -1035,16 +1062,18 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     setActiveBuilder(null)
   }, [])
 
-  // `confirmed` is set once the risky-query prompt has been accepted.
-  const runQuery = useCallback(async (override, confirmed = false) => {
+  // `confirmed` is set once the risky-query prompt has been accepted. A `dryRun` runs the SQL in a
+  // transaction that is rolled back: it needs no confirmation, since nothing it does is kept.
+  const runQuery = useCallback(async (override, confirmed = false, dryRun = false) => {
     const sql = (typeof override === 'string' ? override : sqlQuery).trim()
     if (!sql || queryRunning) return
-    const risks = confirmed ? [] : describeRisks(sql)
+    const risks = confirmed || dryRun ? [] : describeRisks(sql)
     if (risks.length) { setRiskyQuery({ sql, risks }); return }
     setQueryResult(null)
     setQueryRunning(true)
     const started = performance.now()
-    const log = (ok, summary) => setQueryHistory(h => [{ sql, at: Date.now(), ok, summary }, ...h.filter(q => q.sql !== sql)].slice(0, 25))
+    const tag = dryRun ? 'Dry run · ' : ''
+    const log = (ok, summary) => setQueryHistory(h => [{ sql, at: Date.now(), ok, summary: tag + summary }, ...h.filter(q => q.sql !== sql)].slice(0, 25))
     try {
       let result
       if (isDemo) {
@@ -1052,16 +1081,22 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
         result = m && demoData.current[m[1]]
           ? { ...structuredClone(demoData.current[m[1]]), affected: null }
           : { error: 'Table not found in demo data' }
+        // The demo never writes, so a dry run there is as safe as one rolled back.
+        if (dryRun && !result.error) result.dryRun = true
       } else {
-        result = await db.runQuery(session.type, session.config, sql)
+        result = await (dryRun
+          ? db.runQuery(session.type, session.config, sql, { dryRun: true })
+          : db.runQuery(session.type, session.config, sql))
       }
       const ms = Math.round(performance.now() - started)
-      setQueryResult({ ...result, ms })
+      // A connection that ignored the request ran the SQL for real: say so rather than claim a rollback.
+      const unconfirmed = dryRun && !result.error && result.dryRun !== true
+      setQueryResult({ ...result, ms, ...(unconfirmed ? { dryRunIgnored: true } : {}) })
       if (result.error) log(false, result.error)
       else if (result.columns?.length) log(true, plural(result.rows.length, 'row'))
-      else log(true, result.affected != null ? `${plural(result.affected, 'row')} affected` : 'Executed')
-      // A write may have changed the open table, or the table list.
-      if (!result.error && !isDemo && MUTATING_SQL.test(sql)) {
+      else log(true, result.affected != null ? `${plural(result.affected, 'row')} ${dryRun ? 'would be ' : ''}affected` : 'Executed')
+      // A write may have changed the open table, or the table list (a dry run changes nothing).
+      if (!result.error && !isDemo && (!dryRun || unconfirmed) && MUTATING_SQL.test(sql)) {
         if (/^\s*(create|drop|alter)\b/i.test(sql)) refreshTables()
         else if (dbState.selectedTable) refreshTable()
       }
@@ -1391,7 +1426,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     previous: () => step(-1),
     browse: () => { if (dbState.selectedTable) setActiveTab('browse') },
     structure: () => { if (dbState.selectedTable) setActiveTab('structure') },
-    query: () => { if (dbState.selectedTable) setActiveTab('query') },
+    query: () => { if (dbState.selectedTable) setActiveTab('query'); else if (!freeQuery) openNewQuery() },
     refresh: () => { if (dbState.selectedTable) refreshTable() },
     back: goBack,
   } : {})
@@ -1401,6 +1436,45 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const connectedLabel = session ? `${typeLabel(session.type)} · ${plural(tables.length, 'table')}` : ''
   const meta = dbState.selectedTable ? tableMeta[dbState.selectedTable] : null
   const exportRows = () => visible.map(v => v.row)
+
+  // The Query tab's panel: on a table's Query tab, and on the New query page (where no table is open).
+  const shownQueryTable = queryTable ?? dbState.selectedTable
+  const queryFileName = shownQueryTable ? `${shownQueryTable}-query` : 'query'
+  const queryPanel = (
+    <QueryPanel
+      tables={tables}
+      queryTable={shownQueryTable}
+      freeQuery={!dbState.selectedTable}
+      onSelectTable={handleQueryTableSelect}
+      sqlQuery={sqlQuery}
+      onSqlChange={setSqlQuery}
+      queryResult={queryResult}
+      running={queryRunning}
+      onRun={runQuery}
+      onDryRun={() => runQuery(undefined, false, true)}
+      SqlEditor={SqlEditor}
+      onFormat={() => setSqlQuery(formatSql(sqlQuery))}
+      onExportScript={() => { if (!downloadText(`${queryFileName}.sql`, sqlQuery.replace(/\s*$/, '\n'), 'application/sql')) notify("Couldn't save the file", 'error') }}
+      history={queryHistory}
+      onPickHistory={q => setSqlQuery(q.sql)}
+      onClearHistory={() => setQueryHistory([])}
+      saved={savedHere}
+      onSave={saveQuery}
+      onRunSaved={q => runSaved(q, shownQueryTable)}
+      onLoadSaved={loadSaved}
+      onDeleteSaved={deleteSaved}
+      onCopyResult={async set => notify((await copyText(toCsv(set.columns, set.rows))) ? `Copied ${plural(set.rows.length, 'row')} as CSV` : "Couldn't reach the clipboard")}
+      onExportResult={(set, i) => downloadCsv(`${queryFileName}${i ? `-${i + 1}` : ''}`, set.columns, set.rows)}
+      activeBuilder={activeBuilder}
+      onToggleBuilder={toggleBuilder}
+      columns={tableColumns[shownQueryTable] ?? []}
+      columnsLoading={columnsLoading}
+      onBuildSql={applyBuiltSql}
+      allColumns={tableColumns}
+      onLoadColumnsFor={ensureColumnsLoaded}
+      onCreateView={canDdl ? sql => setDdl({ kind: 'view', sql }) : undefined}
+    />
+  )
 
   return (
     // Hidden while another connection's tab is showing; it stays mounted so nothing is lost.
@@ -1453,6 +1527,9 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
           <button type="button" className="btn sm ghost" aria-pressed={!listHidden}
             title={listHidden ? 'Show the table list beside the details' : 'Hide the table list to give the details the full width'}
             onClick={() => setHidden(!listHidden)}>{listHidden ? 'Show tables' : 'Hide tables'}</button>
+          <button type="button" className="btn sm ghost" title="Write SQL without opening a table first: name the tables in the query" onClick={() => openNewQuery()}>
+            <Icon name="edit" size={12} />New query
+          </button>
           {canDdl && (
             <button type="button" className="btn sm ghost" aria-haspopup="menu" title="Create a table or a view"
               onClick={e => showMenu(newMenu, 'New', menuPointFor(e.currentTarget))}>
@@ -1489,7 +1566,30 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
         )}
 
         <section aria-label="Details" className="nx-db-main">
-          {!dbState.selectedTable ? (
+          {!dbState.selectedTable && freeQuery ? (
+            <div className="nx-db-detail">
+              <div className="nx-db-dhead">
+                <div className="nx-db-dhead-title">
+                  <div className="nx-db-crumb">
+                    <button type="button" className="nx-db-crumb-link" onClick={() => setFreeQuery(false)}>{sessionName(session)}</button>
+                  </div>
+                  <div className="nx-db-dhead-name">
+                    <h2 className="nx-db-table-name">New query</h2>
+                  </div>
+                  <div className="nx-db-dhead-meta">
+                    <span>Name the tables in the SQL. Pick a table only to use the builders.</span>
+                  </div>
+                </div>
+                <div className="nx-db-dhead-actions">
+                  <button type="button" className="btn sm ghost" title="Close the query and go back to the overview" aria-label="Close query"
+                    onClick={() => setFreeQuery(false)}>
+                    <Icon name="x" size={13} />
+                  </button>
+                </div>
+              </div>
+              {queryPanel}
+            </div>
+          ) : !dbState.selectedTable ? (
             <Overview
               session={session}
               tables={tables}
@@ -1503,7 +1603,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                 const m = q.sql.match(/\bFROM\s+([\w.[\]"]+)/i)
                 const t = m && tables.find(x => x === m[1].replace(/[[\]"]/g, ''))
                 if (t) { openTable(t, 'query'); setTimeout(() => setSqlQuery(q.sql)) }
-                else notify('Open a table first, then pick the query from Recent in the Query tab', 'info')
+                else openNewQuery(q.sql)
               }}
               onJump={() => setPaletteOpen(true)}
               saved={savedHere}
@@ -1645,36 +1745,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
                 />
               )}
 
-              {activeTab === 'query' && (
-                <QueryPanel
-                  tables={tables}
-                  queryTable={queryTable ?? dbState.selectedTable}
-                  onSelectTable={handleQueryTableSelect}
-                  sqlQuery={sqlQuery}
-                  onSqlChange={setSqlQuery}
-                  queryResult={queryResult}
-                  running={queryRunning}
-                  onRun={runQuery}
-                  history={queryHistory}
-                  onPickHistory={q => setSqlQuery(q.sql)}
-                  onClearHistory={() => setQueryHistory([])}
-                  saved={savedHere}
-                  onSave={saveQuery}
-                  onRunSaved={q => runSaved(q, queryTable ?? dbState.selectedTable)}
-                  onLoadSaved={loadSaved}
-                  onDeleteSaved={deleteSaved}
-                  onCopyResult={async set => notify((await copyText(toCsv(set.columns, set.rows))) ? `Copied ${plural(set.rows.length, 'row')} as CSV` : "Couldn't reach the clipboard")}
-                  onExportResult={(set, i) => downloadCsv(`${queryTable ?? dbState.selectedTable}-query${i ? `-${i + 1}` : ''}`, set.columns, set.rows)}
-                  activeBuilder={activeBuilder}
-                  onToggleBuilder={toggleBuilder}
-                  columns={tableColumns[queryTable ?? dbState.selectedTable] ?? []}
-                  columnsLoading={columnsLoading}
-                  onBuildSql={applyBuiltSql}
-                  allColumns={tableColumns}
-                  onLoadColumnsFor={ensureColumnsLoaded}
-                  onCreateView={canDdl ? sql => setDdl({ kind: 'view', sql }) : undefined}
-                />
-              )}
+              {activeTab === 'query' && queryPanel}
             </div>
           )}
         </section>
@@ -3126,7 +3197,8 @@ function SavedOverviewRow({ q, tables, onRun }) {
 // ─── Query panel ──────────────────────────────────────────────────────────────
 
 function QueryPanel({
-  tables, queryTable, onSelectTable, sqlQuery, onSqlChange, queryResult, running, onRun,
+  tables, queryTable, freeQuery = false, onSelectTable, sqlQuery, onSqlChange, queryResult, running, onRun, onDryRun,
+  SqlEditor = null, onFormat, onExportScript,
   history, onPickHistory, onClearHistory, onCopyResult, onExportResult,
   saved = [], onSave, onRunSaved, onLoadSaved, onDeleteSaved,
   activeBuilder, onToggleBuilder, columns, columnsLoading, onBuildSql,
@@ -3136,16 +3208,26 @@ function QueryPanel({
   // Older results (and the demo) carry one set as columns/rows; a real run lists them all in `sets`.
   const resultSets = queryResult?.sets?.filter(s => s.columns?.length)
     ?? (queryResult?.columns?.length ? [{ columns: queryResult.columns, rows: queryResult.rows }] : [])
+  const hasSql = !!sqlQuery.trim()
+  // The editor's keys, the same in the plain text box and the highlighting editor. Returns true when it handled the key.
+  const editorKey = (e) => {
+    const mod = e.ctrlKey || e.metaKey
+    if (mod && e.key === 'Enter') { e.preventDefault(); if (e.shiftKey) onDryRun?.(); else onRun(); return true }
+    if (mod && e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); if (hasSql) onFormat?.(); return true }
+    if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); if (hasSql) setSaving(true); return true }
+    return false
+  }
   return (
     <div className="nx-db-query">
       <div className="nx-db-query-editor">
         <div className="nx-db-query-row">
-          <label className="nx-db-show" htmlFor="db-query-table-select">Table</label>
+          <label className="nx-db-show" htmlFor="db-query-table-select">{freeQuery ? 'Table for builders' : 'Table'}</label>
           <TableSelect
             id="db-query-table-select"
             tables={tables}
             value={queryTable ?? ''}
             onChange={onSelectTable}
+            placeholder={freeQuery ? 'None · the SQL names its tables' : undefined}
           />
           <span className="nx-db-divider" />
           <span className="nx-db-show">Builders</span>
@@ -3166,26 +3248,32 @@ function QueryPanel({
           allColumns={allColumns}
           onLoadColumnsFor={onLoadColumnsFor}
         />
-        <textarea
-          className="nx-db-sql"
-          value={sqlQuery}
-          onChange={e => onSqlChange(e.target.value)}
-          placeholder={'SELECT * FROM patients\nWHERE status = \'active\''}
-          rows={6}
-          onKeyDown={e => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); onRun() }
-            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (sqlQuery.trim()) setSaving(true) }
-            // Tab indents instead of leaving the editor.
-            else if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
-              e.preventDefault()
-              const el = e.target, s = el.selectionStart, end = el.selectionEnd
-              onSqlChange(el.value.slice(0, s) + '  ' + el.value.slice(end))
-              requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = s + 2 })
-            }
-          }}
-          aria-label="SQL query"
-          spellCheck={false}
-        />
+        {SqlEditor ? (
+          // Captured before the editor sees them, so its own Ctrl+Enter (new line) doesn't win.
+          <div className="nx-db-sql-cm" onKeyDownCapture={e => { if (editorKey(e)) e.stopPropagation() }}>
+            <SqlEditor value={sqlQuery} onChange={onSqlChange} ariaLabel="SQL query" />
+          </div>
+        ) : (
+          <textarea
+            className="nx-db-sql"
+            value={sqlQuery}
+            onChange={e => onSqlChange(e.target.value)}
+            placeholder={'SELECT * FROM patients\nWHERE status = \'active\''}
+            rows={6}
+            onKeyDown={e => {
+              if (editorKey(e)) return
+              // Tab indents instead of leaving the editor.
+              if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+                e.preventDefault()
+                const el = e.target, s = el.selectionStart, end = el.selectionEnd
+                onSqlChange(el.value.slice(0, s) + '  ' + el.value.slice(end))
+                requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = s + 2 })
+              }
+            }}
+            aria-label="SQL query"
+            spellCheck={false}
+          />
+        )}
         {saving && (
           <SaveQueryForm sql={sqlQuery} table={queryTable} existing={saved}
             onSave={entry => { onSave(entry); setSaving(false) }} onCancel={() => setSaving(false)} />
@@ -3214,6 +3302,18 @@ function QueryPanel({
           <span className="nx-db-spacer" />
           <span className="nx-db-muted"><span className="kbd">Ctrl Enter</span> to run</span>
           <button type="button" className="btn sm" onClick={() => onSqlChange('')} disabled={!sqlQuery}>Clear</button>
+          {onFormat && (
+            <button type="button" className="btn sm" onClick={onFormat} disabled={!hasSql}
+              title="Lay the SQL out a clause per line and upper-case its keywords (Ctrl+Shift+F)">
+              <Icon name="wand" size={12} />Format
+            </button>
+          )}
+          {onExportScript && (
+            <button type="button" className="btn sm" onClick={onExportScript} disabled={!hasSql}
+              title="Save the SQL in the editor as a .sql script file">
+              <Icon name="download" size={12} />Export as script
+            </button>
+          )}
           {onCreateView && (
             <button type="button" className="btn sm" onClick={() => onCreateView(sqlQuery)} disabled={!/^\s*(select|with)\b/i.test(sqlQuery)}
               title="Save this SELECT in the database as a view">
@@ -3224,7 +3324,13 @@ function QueryPanel({
             title="Save this query to run it again in one click (Ctrl+S)">
             <Icon name="star" size={12} />Save…
           </button>
-          <button type="button" className="btn sm accent" onClick={onRun} disabled={running || !sqlQuery.trim()}>
+          {onDryRun && (
+            <button type="button" className="btn sm" onClick={onDryRun} disabled={running || !hasSql}
+              title="Run the query inside a transaction, then roll it back: see what it returns and how many rows it would change, with nothing saved (Ctrl+Shift+Enter)">
+              <Icon name="undo" size={12} />Dry run
+            </button>
+          )}
+          <button type="button" className="btn sm accent" onClick={() => onRun()} disabled={running || !hasSql}>
             {running ? <span className="nx-db-spinner sm" aria-hidden="true" /> : <Icon name="play" size={12} />}
             Run query
           </button>
@@ -3233,6 +3339,18 @@ function QueryPanel({
 
       {queryResult && (
         <div className="nx-db-results">
+          {queryResult.dryRun && !queryResult.error && (
+            <div className="nx-db-alert info" role="status">
+              <Icon name="undo" size={14} />
+              <span><strong>Dry run</strong> · rolled back, nothing was saved. Identity and sequence numbers it used are not given back.</span>
+            </div>
+          )}
+          {queryResult.dryRunIgnored && (
+            <div className="nx-db-alert bad" role="alert">
+              <Icon name="alert" size={14} />
+              <span>This connection couldn't dry-run, so the query ran for real.</span>
+            </div>
+          )}
           {queryResult.error ? (
             <div className="nx-db-alert bad" role="alert">
               <Icon name="alert" size={14} />
@@ -3278,8 +3396,8 @@ function QueryPanel({
             <div className="nx-db-alert ok" role="status">
               <Icon name="check" size={14} />
               {queryResult.affected != null
-                ? `${plural(queryResult.affected, 'row')} affected`
-                : 'Query executed'}
+                ? `${plural(queryResult.affected, 'row')} ${queryResult.dryRun ? 'would be ' : ''}affected`
+                : queryResult.dryRun ? 'Query ran and was rolled back' : 'Query executed'}
               {queryResult.ms != null && <span className="nx-db-muted">{` · ${queryResult.ms} ms`}</span>}
             </div>
           )}

@@ -97,14 +97,16 @@ export const dbManagerAdapter = {
   },
 
   /**
-   * Run a raw SQL query (SELECT / DELETE / WITH only).
+   * Run raw SQL. With `dryRun` it runs inside a transaction that is rolled back, so nothing is kept
+   * (the result then carries `dryRun: true`).
    * @param {'sqlserver'|'sqlite'} type
    * @param {object} config
    * @param {string} sql
-   * @returns {Promise<{ columns: string[], rows: any[][], affected: number|null }>}
+   * @param {{ dryRun?: boolean }} [opts]
+   * @returns {Promise<{ columns: string[], rows: any[][], affected: number|null, dryRun?: true }>}
    */
-  runQuery(type, config, sql) {
-    return api().runQuery(type, config, sql)
+  runQuery(type, config, sql, { dryRun = false } = {}) {
+    return api().runQuery(type, config, sql, !!dryRun)
   },
 
   /**

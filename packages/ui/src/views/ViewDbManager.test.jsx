@@ -1,5 +1,5 @@
 // packages/ui/src/views/ViewDbManager.test.jsx
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { ViewDbManager } from './ViewDbManager.jsx'
 
@@ -1891,6 +1891,138 @@ describe('ViewDbManager — query results', () => {
     fireEvent.click(prompt.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('alertdialog')).toBeNull()
     expect(adapters.dbManager.runQuery).not.toHaveBeenCalled()
+  })
+})
+
+describe('ViewDbManager — new query, dry run, format and export', () => {
+  let adapters
+
+  beforeEach(() => {
+    adapters = { dbManager: makeAdapter() }
+  })
+
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+  async function connect(props = {}) {
+    render(<ViewDbManager adapters={adapters} {...props} />)
+    fireEvent.click(screen.getByText(/Connect to database/i))
+    fireEvent.click(screen.getByText('SQLite'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Connection string' }))
+    fireEvent.change(screen.getByLabelText(/connection string/i), { target: { value: '/q.db' } })
+    fireEvent.click(screen.getByText('Connect'))
+    await waitFor(() => screen.getByText('patients'))
+  }
+  const typeSql = sql => fireEvent.change(screen.getByLabelText('SQL query'), { target: { value: sql } })
+
+  it('New query opens a blank editor without opening a table, and runs SQL that names its own table', async () => {
+    await connect()
+    fireEvent.click(screen.getByRole('button', { name: /New query/ }))
+    expect(screen.getByRole('heading', { name: 'New query' })).toBeTruthy()
+    expect(screen.getByLabelText('SQL query').value).toBe('')
+    expect(adapters.dbManager.getRows).not.toHaveBeenCalled()
+    typeSql('SELECT * FROM staff WHERE id = 1')
+    fireEvent.click(screen.getByText('Run query'))
+    await waitFor(() => expect(adapters.dbManager.runQuery).toHaveBeenCalledWith('sqlite', expect.anything(), 'SELECT * FROM staff WHERE id = 1'))
+    expect(await screen.findByText('1 row returned')).toBeTruthy()
+  })
+
+  it('picking a table on the New query page keeps the SQL already written', async () => {
+    await connect()
+    fireEvent.click(screen.getByRole('button', { name: /New query/ }))
+    typeSql('SELECT 1')
+    fireEvent.change(screen.getByLabelText('Tables'), { target: { value: 'staff' } })
+    expect(screen.getByLabelText('SQL query').value).toBe('SELECT 1')
+  })
+
+  it('New query goes away when a table is opened, and the close button returns to the overview', async () => {
+    await connect()
+    fireEvent.click(screen.getByRole('button', { name: /New query/ }))
+    openTable('patients')
+    await waitFor(() => screen.getByRole('table'))
+    expect(screen.queryByRole('heading', { name: 'New query' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /New query/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close query' }))
+    expect(screen.queryByRole('heading', { name: 'New query' })).toBeNull()
+  })
+
+  it('Dry run runs without the destructive-query prompt, asks for a rollback and says nothing was saved', async () => {
+    adapters.dbManager.runQuery.mockResolvedValue({ columns: [], rows: [], sets: [], affected: 3, dryRun: true })
+    await connect()
+    fireEvent.click(screen.getByRole('button', { name: /New query/ }))
+    typeSql('DELETE FROM patients')
+    fireEvent.click(screen.getByRole('button', { name: /Dry run/ }))
+    await waitFor(() => expect(adapters.dbManager.runQuery).toHaveBeenCalledWith('sqlite', expect.anything(), 'DELETE FROM patients', { dryRun: true }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(await screen.findByText('3 rows would be affected')).toBeTruthy()
+    expect(screen.getByText(/rolled back, nothing was saved/)).toBeTruthy()
+  })
+
+  it('Ctrl+Shift+Enter dry-runs from the editor', async () => {
+    adapters.dbManager.runQuery.mockResolvedValue({ columns: ['id'], rows: [[1]], sets: [{ columns: ['id'], rows: [[1]] }], affected: null, dryRun: true })
+    await connect()
+    fireEvent.click(screen.getByRole('button', { name: /New query/ }))
+    typeSql('SELECT 1 AS id')
+    fireEvent.keyDown(screen.getByLabelText('SQL query'), { key: 'Enter', ctrlKey: true, shiftKey: true })
+    await waitFor(() => expect(adapters.dbManager.runQuery).toHaveBeenCalledWith('sqlite', expect.anything(), 'SELECT 1 AS id', { dryRun: true }))
+  })
+
+  it('warns when the connection ran a dry run for real', async () => {
+    adapters.dbManager.runQuery.mockResolvedValue({ columns: [], rows: [], sets: [], affected: 1 })
+    await connect()
+    fireEvent.click(screen.getByRole('button', { name: /New query/ }))
+    typeSql("UPDATE staff SET name = 'x' WHERE id = 1")
+    fireEvent.click(screen.getByRole('button', { name: /Dry run/ }))
+    expect(await screen.findByText(/couldn't dry-run, so the query ran for real/)).toBeTruthy()
+    expect(screen.queryByText(/nothing was saved/)).toBeNull()
+  })
+
+  it('shows the error when the dry run is refused', async () => {
+    adapters.dbManager.runQuery.mockRejectedValue(new Error("Can't dry-run this query: it commits or rolls back a transaction itself"))
+    await connect()
+    fireEvent.click(screen.getByRole('button', { name: /New query/ }))
+    typeSql('UPDATE staff SET a = 1; COMMIT')
+    fireEvent.click(screen.getByRole('button', { name: /Dry run/ }))
+    // In the result, and in Recent.
+    expect((await screen.findAllByText(/it commits or rolls back a transaction itself/)).length).toBeGreaterThan(0)
+    expect(screen.getByRole('alert').textContent).toMatch(/Can't dry-run this query/)
+  })
+
+  it('Format lays the SQL out', async () => {
+    await connect()
+    fireEvent.click(screen.getByRole('button', { name: /New query/ }))
+    typeSql('select id, name from staff where id = 1 and name is not null')
+    fireEvent.click(screen.getByRole('button', { name: /Format/ }))
+    expect(screen.getByLabelText('SQL query').value).toBe('SELECT\n  id,\n  name\nFROM staff\nWHERE id = 1\n  AND name IS NOT NULL')
+  })
+
+  it('Export as script saves the SQL as a .sql file', async () => {
+    const blobs = []
+    const { createObjectURL, revokeObjectURL } = URL
+    onTestFinished(() => Object.assign(URL, { createObjectURL, revokeObjectURL }))
+    URL.createObjectURL = vi.fn(b => { blobs.push(b); return 'blob:x' })
+    URL.revokeObjectURL = vi.fn()
+    const clicked = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () { clicked.push(this.download) })
+    await connect()
+    openTable('patients')
+    await waitFor(() => screen.getByRole('table'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Query' }))
+    typeSql('SELECT * FROM [patients]')
+    fireEvent.click(screen.getByRole('button', { name: /Export as script/ }))
+    expect(clicked).toEqual(['patients-query.sql'])
+    const text = await new Promise(resolve => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsText(blobs[0]) })
+    expect(text).toBe('SELECT * FROM [patients]\n')
+  })
+
+  it('uses the SqlEditor it is given, with the same keys', async () => {
+    const SqlEditor = ({ value, onChange, ariaLabel }) => (
+      <input data-testid="cm" aria-label={ariaLabel} value={value} onChange={e => onChange(e.target.value)} />
+    )
+    await connect({ SqlEditor })
+    fireEvent.click(screen.getByRole('button', { name: /New query/ }))
+    fireEvent.change(screen.getByTestId('cm'), { target: { value: 'SELECT 2' } })
+    fireEvent.keyDown(screen.getByTestId('cm'), { key: 'Enter', ctrlKey: true })
+    await waitFor(() => expect(adapters.dbManager.runQuery).toHaveBeenCalledWith('sqlite', expect.anything(), 'SELECT 2'))
   })
 })
 

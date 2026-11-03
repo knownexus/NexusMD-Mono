@@ -160,6 +160,7 @@
 .nx-db-alert { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin: 0; padding: 10px 14px; border-radius: var(--radius); background: var(--warning-soft); color: var(--warning); font-size: 12.5px; line-height: 1.45; }
 .nx-db-alert.bad { background: var(--danger-soft); color: var(--danger); }
 .nx-db-alert.ok { background: var(--success-soft); color: var(--success); }
+.nx-db-alert.info { background: var(--info-soft, color-mix(in srgb, var(--info) 14%, transparent)); color: var(--info); }
 .nx-db-alert .pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; }
 .nx-db-spinner { width: 14px; height: 14px; flex: none; border: 2px solid var(--surface-3); border-top-color: var(--accent); border-radius: 50%; animation: nx-db-spin .7s linear infinite; }
 .nx-db-spinner.sm { width: 11px; height: 11px; border-width: 1.5px; }
@@ -221,6 +222,10 @@
 .nx-db-select { width: auto !important; min-width: 180px; max-width: 280px; height: 30px; padding: 0 8px !important; }
 .nx-db-sql { width: 100%; min-height: 120px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); font: 12.5px/1.6 var(--mono); resize: vertical; outline: none; tab-size: 2; box-sizing: border-box; }
 .nx-db-sql:focus { border-color: var(--accent); }
+/* The highlighting SQL editor (when the host supplies one): resizable like the plain text box. */
+.nx-db-sql-cm { display: flex; height: 180px; min-height: 100px; resize: vertical; overflow: hidden; }
+.nx-db-sql-cm > div { min-height: 0 !important; }
+.nx-db-sql-cm .cm-editor { height: 100%; font-size: 12.5px; }
 .nx-db-query-run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .nx-db-query-run .btn { white-space: nowrap; }
 .nx-db-results { flex: 1 0 auto; display: flex; flex-direction: column; gap: 10px; min-height: 200px; padding: 14px 20px 20px; }

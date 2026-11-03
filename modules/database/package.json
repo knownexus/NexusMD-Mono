@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@nexusmd/core": "*",
+    "@nexusmd/editor-kit": "*",
     "@nexusmd/main-kit": "*",
     "@nexusmd/shell-sdk": "*",
     "@nexusmd/ui": "*",
