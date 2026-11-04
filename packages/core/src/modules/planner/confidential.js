@@ -26,6 +26,14 @@ export async function hashPassword(password) {
  * `passwordHash` (the hex string from hashPassword). Returns `{ iv, ciphertext }`
  * as hex + base64 strings, ready to ship to the server.
  */
+// Base64 in 32 KiB chunks: spreading every byte into String.fromCharCode overflows the call
+// stack for a payload of about a megabyte (a full profile backup or settings file).
+function bytesToB64(u8) {
+  let s = ''
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000))
+  return btoa(s)
+}
+
 export async function encryptConfidentialForServer(cfg, passwordHash) {
   const keyBytes = new Uint8Array(passwordHash.match(/.{2}/g).map(h => parseInt(h, 16)))
   const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt'])
@@ -34,7 +42,7 @@ export async function encryptConfidentialForServer(cfg, passwordHash) {
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
   return {
     iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
-    ciphertext: btoa(String.fromCharCode(...new Uint8Array(ciphertext))),
+    ciphertext: bytesToB64(new Uint8Array(ciphertext)),
   }
 }
 
