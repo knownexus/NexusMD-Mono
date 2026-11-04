@@ -202,7 +202,9 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
   const purgeProfile = useCallback(async (id, { sync = null } = {}) => {
     if (sync && typeof sync.purgeProfile === 'function') {
       const r = await sync.purgeProfile(id);
-      if (r && r.error) { toast?.(r.error.message || 'The profile could not be purged.', 'error'); return false; }
+      if (r && r.error && r.purgedLocally) {
+        toast?.('Purged on this computer. It reaches your other computers on the next sync.', 'info');
+      } else if (r && r.error) { toast?.(r.error.message || 'The profile could not be purged.', 'error'); return false; }
       setProfiles(readList());
       return true;
     }

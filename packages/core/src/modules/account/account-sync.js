@@ -822,7 +822,12 @@ export function createAccountSync({
       const meta = load()
       await purgeLocal(meta, pid)
       save(meta)
-      const r = await pushInner(false)
+      // The purge is done here; a failed upload is finished by the next sync (the tombstones wait in meta).
+      let r
+      try { r = await pushInner(false) } catch (error) {
+        emit(errorListeners, error)
+        return { error, purgedLocally: true }
+      }
       return r.conflicts ? { conflicts: r.conflicts } : {}
     }),
 

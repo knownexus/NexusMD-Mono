@@ -149,3 +149,17 @@ describe('profile lifecycle in sync', () => {
     expect(JSON.parse(stored.profiles.value).find(p => p.id === 'W').purgedAt).toEqual(expect.any(Number))
   })
 })
+
+describe('purge while offline', () => {
+  it('a purge whose upload fails is done here, says so, and reaches the server on the next sync', async () => {
+    const { srv, ck, a } = await pair()
+    srv.fail = 'offline'
+    const r = await a.sync.purgeProfile('W')
+    expect(r.error.code).toBe('offline')
+    expect(r.purgedLocally).toBe(true)
+    expect([...a.storage.map.keys()].filter(k => k.startsWith('nexusmd.p.W.'))).toEqual([])
+    srv.fail = null
+    await a.sync.syncNow()
+    for (const p of Object.values(await decryptAll(srv, ck)).filter(p => /p\.W\./.test(p.id))) expect(p.deleted, p.id).toBe(true)
+  })
+})

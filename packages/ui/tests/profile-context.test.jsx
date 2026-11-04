@@ -197,6 +197,16 @@ describe('desktop profile lifecycle (soft delete, restore, purge)', () => {
     expect(storage.getItem('nexusmd.p.H.ado.org')).toBe('acme')
   })
 
+  it('a sync purge whose upload failed is shown as purged here', async () => {
+    const { storage, ref } = setup([W, { ...H, deletedAt: 5 }])
+    const sync = { purgeProfile: vi.fn(async (pid) => {
+      storage.setItem('nexusmd.profiles', JSON.stringify([W, { id: pid, name: 'Home', updatedAt: 9, deletedAt: 5, purgedAt: 9 }]))
+      return { error: new Error('offline'), purgedLocally: true }
+    }) }
+    await act(async () => { await ref.api.purgeProfile('H', { sync }) })
+    expect(ref.api.deletedProfiles).toEqual([])
+  })
+
   it('an edit bumps updatedAt so it wins on the other devices', async () => {
     const { storage, ref } = setup()
     await act(async () => { await ref.api.updateProfile('W', { name: 'Job' }) })
