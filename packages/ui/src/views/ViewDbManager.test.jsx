@@ -1857,6 +1857,31 @@ describe('ViewDbManager — query results', () => {
     expect(screen.getByText('2 rows returned')).toBeTruthy()
   })
 
+  it('folds result sets away and copies only the ticked ones', async () => {
+    const writeText = vi.fn().mockResolvedValue()
+    Object.assign(navigator, { clipboard: { writeText } })
+    adapters.dbManager.runQuery.mockResolvedValue({
+      columns: ['a'], rows: [[1]], affected: null,
+      sets: [{ columns: ['a'], rows: [[1]] }, { columns: ['b'], rows: [[2]] }, { columns: ['c'], rows: [[3]] }],
+    })
+    await queryTab()
+    fireEvent.click(screen.getByText('Run query'))
+    await waitFor(() => expect(screen.getByText('Result 3 of 3')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse result 2' }))
+    expect(screen.queryByText('b')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
+    expect(screen.queryByText('a')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+    expect(screen.getByText('b')).toBeTruthy()
+
+    expect(screen.getByRole('button', { name: 'Copy selected' }).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select result 1' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select result 3' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy selected' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('a\r\n1\r\n\r\nc\r\n3'))
+  })
+
   it('runs a DECLARE batch without asking', async () => {
     await queryTab()
     const sql = 'DECLARE @n INT; SELECT @n = 1; SELECT @n AS n'
@@ -2012,6 +2037,39 @@ describe('ViewDbManager — new query, dry run, format and export', () => {
     expect(clicked).toEqual(['patients-query.sql'])
     const text = await new Promise(resolve => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsText(blobs[0]) })
     expect(text).toBe('SELECT * FROM [patients]\n')
+  })
+
+  describe('exporting the whole database', () => {
+    async function exportAs(item) {
+      const blobs = []
+      const { createObjectURL, revokeObjectURL } = URL
+      onTestFinished(() => Object.assign(URL, { createObjectURL, revokeObjectURL }))
+      URL.createObjectURL = vi.fn(b => { blobs.push(b); return 'blob:x' })
+      URL.revokeObjectURL = vi.fn()
+      const clicked = []
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () { clicked.push(this.download) })
+      await connect()
+      fireEvent.click(screen.getByRole('button', { name: /^Export/ }))
+      fireEvent.click(await screen.findByText(item))
+      await waitFor(() => expect(blobs.length).toBe(1))
+      const text = await new Promise(resolve => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsText(blobs[0]) })
+      return { text, clicked }
+    }
+
+    it('saves every table’s CREATE TABLE as one script', async () => {
+      const { text, clicked } = await exportAs('Export all schemas (.sql)')
+      expect(clicked[0]).toMatch(/-schema\.sql$/)
+      expect(text).toContain('CREATE TABLE [patients]')
+      expect(text).toContain('CREATE TABLE [staff]')
+      expect(text).toContain('PRIMARY KEY ([id])')
+    })
+
+    it('saves every table’s rows as INSERTs', async () => {
+      const { text, clicked } = await exportAs('Export all data (.sql)')
+      expect(clicked[0]).toMatch(/-data\.sql$/)
+      expect(text).toContain("INSERT INTO [patients] ([id], [name]) VALUES (1, 'Alice');")
+      expect(text).toContain("INSERT INTO [staff] ([id], [name]) VALUES (2, 'Bob');")
+    })
   })
 
   it('uses the SqlEditor it is given, with the same keys', async () => {

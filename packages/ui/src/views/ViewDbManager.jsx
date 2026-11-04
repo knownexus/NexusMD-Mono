@@ -52,6 +52,10 @@ import {
   followTargets,
   referencingTargets,
   buildInsertStatements,
+  orderByDependencies,
+  buildSchemaScript,
+  buildTableData,
+  joinDataScript,
   whereLabel,
 } from '@nexusmd/core'
 import { PlModal } from '../planner-chips.jsx'
@@ -156,6 +160,9 @@ function toCsv(columns, rows) {
   }
   return [columns, ...rows].map(r => r.map(cell).join(',')).join('\r\n')
 }
+
+// Several result sets as one CSV: each set's block, a blank line between.
+const toCsvBlocks = sets => sets.map(set => toCsv(set.columns, set.rows)).join('\r\n\r\n')
 
 // Saves `text` as a download called `fileName`; false when the browser refused.
 function downloadText(fileName, text, type) {
@@ -1308,6 +1315,66 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     { label: 'New view…', icon: 'eye', onSelect: () => setDdl({ kind: 'view', sql: '' }) },
   ]
 
+  // ── Export the whole database ──────────────────────────────────────────────
+  // A table's structure for the schema script, read once (the Structure tab's cache is reused).
+  const structureFor = async (table) => {
+    if (structuresRef.current[table]) return structuresRef.current[table]
+    if (isDemo || !db.getStructure) {
+      return { columns: await ensureColumnsLoaded(table, { quiet: true }) ?? [], foreignKeys: [], referencedBy: [], indexes: [] }
+    }
+    const r = await db.getStructure(session.type, session.config, table)
+    if (r?.ok === false) throw new Error(r.error || `Couldn't read the structure of ${table}`)
+    return { columns: r.columns ?? [], foreignKeys: r.foreignKeys ?? [], indexes: r.indexes ?? [] }
+  }
+  // Every row of a table, a page at a time.
+  const allRowsOf = async (table) => {
+    if (isDemo) return structuredClone(demoData.current[table] ?? { columns: [], rows: [] })
+    const PAGE = 5000
+    let columns = [], rows = []
+    for (let offset = 0; ; offset += PAGE) {
+      const page = await db.getRows(session.type, session.config, table, PAGE, offset)
+      columns = page.columns
+      rows = rows.concat(page.rows)
+      if (page.rows.length < PAGE) return { columns, rows }
+    }
+  }
+  const [exporting, setExporting] = useState(null) // 'schema' | 'data' while a database export runs
+  const exportDatabase = async (what) => {
+    if (exporting) return
+    const dialect = session.type === 'sqlserver' ? 'sqlserver' : 'sqlite'
+    const database = sessionName(session)
+    const names = tables.filter(t => !viewSet.has(t))
+    if (!names.length) { notify('There are no tables to export', 'info'); return }
+    setExporting(what)
+    try {
+      const structures = {}
+      for (const n of names) structures[n] = await structureFor(n)
+      const ordered = orderByDependencies(names, structures)
+      let text
+      if (what === 'schema') {
+        text = buildSchemaScript(dialect, ordered.map(name => ({ name, ...structures[name] })), { database })
+      } else {
+        const parts = []
+        for (const name of ordered) {
+          const { columns, rows } = await allRowsOf(name)
+          parts.push(buildTableData(dialect, name, columns, rows, structures[name].columns))
+        }
+        text = joinDataScript(parts, { database })
+      }
+      const file = `${database.replace(/[^\w.-]+/g, '_') || 'database'}-${what}.sql`
+      if (downloadText(file, text, 'application/sql')) notify(`Exported ${what === 'schema' ? 'the schemas' : 'the data'} of ${plural(names.length, 'table')}`)
+      else notify("Couldn't save the file", 'error')
+    } catch (err) {
+      notify(`Export failed: ${err.message}`, 'error')
+    } finally {
+      setExporting(null)
+    }
+  }
+  const exportMenu = [
+    { label: 'Export all schemas (.sql)', icon: 'download', onSelect: () => exportDatabase('schema') },
+    { label: 'Export all data (.sql)', icon: 'download', onSelect: () => exportDatabase('data') },
+  ]
+
   // ── Table and section menus (the "⋯" buttons and right-clicks) ─────────────
   const [menu, setMenu] = useState(null) // { items, x, y, alignRight, label }
   const closeMenu = useCallback(() => setMenu(null), [])
@@ -1520,6 +1587,8 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
       onDeleteSaved={deleteSaved}
       onCopyResult={async set => notify((await copyText(toCsv(set.columns, set.rows))) ? `Copied ${plural(set.rows.length, 'row')} as CSV` : "Couldn't reach the clipboard")}
       onExportResult={(set, i) => downloadCsv(`${queryFileName}${i ? `-${i + 1}` : ''}`, set.columns, set.rows)}
+      onCopyResults={async sets => notify((await copyText(toCsvBlocks(sets))) ? `Copied ${plural(sets.length, 'result')} as CSV` : "Couldn't reach the clipboard")}
+      onExportResults={sets => { if (!downloadText(`${queryFileName}-results.csv`, toCsvBlocks(sets), 'text/csv')) notify("Couldn't save the file", 'error') }}
       activeBuilder={activeBuilder}
       onToggleBuilder={toggleBuilder}
       columns={tableColumns[shownQueryTable] ?? []}
@@ -1584,6 +1653,11 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
             onClick={() => setHidden(!listHidden)}>{listHidden ? 'Show tables' : 'Hide tables'}</button>
           <button type="button" className="btn sm ghost" title="Write SQL without opening a table first: name the tables in the query" onClick={() => openNewQuery()}>
             <Icon name="edit" size={12} />New query
+          </button>
+          <button type="button" className="btn sm ghost" aria-haspopup="menu" disabled={!!exporting || !tables.length}
+            title="Export every table's schema, or all of the data, as a SQL script"
+            onClick={e => showMenu(exportMenu, 'Export', menuPointFor(e.currentTarget))}>
+            <Icon name="download" size={12} />{exporting ? 'Exporting…' : 'Export'}
           </button>
           {canDdl && (
             <button type="button" className="btn sm ghost" aria-haspopup="menu" title="Create a table or a view"
@@ -3266,7 +3340,7 @@ function QueryPanel({
   tables, queryTable, freeQuery = false, onSelectTable, sqlQuery, onSqlChange, queryResult, running, onRun, onDryRun,
   SqlEditor = null, onFormat, onExportScript,
   docs = [], activeDocId = null, onSelectDoc, onNewDoc, onCloseDoc, onRenameDoc,
-  history, onPickHistory, onClearHistory, onCopyResult, onExportResult,
+  history, onPickHistory, onClearHistory, onCopyResult, onExportResult, onCopyResults, onExportResults,
   saved = [], onSave, onRunSaved, onLoadSaved, onDeleteSaved,
   activeBuilder, onToggleBuilder, columns, columnsLoading, onBuildSql,
   allColumns, onLoadColumnsFor, onCreateView,
@@ -3275,6 +3349,14 @@ function QueryPanel({
   // Older results (and the demo) carry one set as columns/rows; a real run lists them all in `sets`.
   const resultSets = queryResult?.sets?.filter(s => s.columns?.length)
     ?? (queryResult?.columns?.length ? [{ columns: queryResult.columns, rows: queryResult.rows }] : [])
+  // Which result sets are folded away, and which are ticked for Copy / Export selected (by position).
+  const [folded, setFolded] = useState(() => new Set())
+  const [picked, setPicked] = useState(() => new Set())
+  useEffect(() => { setFolded(new Set()); setPicked(new Set()) }, [queryResult])
+  const flip = (setter, i) => setter(s => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n })
+  const several = resultSets.length > 1
+  const allPicked = several && picked.size === resultSets.length
+  const pickedSets = resultSets.filter((_, i) => picked.has(i))
   const hasSql = !!sqlQuery.trim()
   // The editor's keys, the same in the plain text box and the highlighting editor. Returns true when it handled the key.
   const editorKey = (e) => {
@@ -3428,9 +3510,28 @@ function QueryPanel({
             </div>
           ) : resultSets.length > 0 ? (
             // Every result set the batch returned, headers included even when a set has no rows.
-            resultSets.map((set, si) => (
+            <>
+            {several && (
+              <div className="nx-db-results-bar" role="toolbar" aria-label="Result sets">
+                <label className="nx-db-count">
+                  <input type="checkbox" checked={allPicked} onChange={() => setPicked(allPicked ? new Set() : new Set(resultSets.map((_, i) => i)))} aria-label="Select all results" /> Select all
+                </label>
+                <button type="button" className="btn sm ghost" onClick={() => setFolded(new Set())} disabled={!folded.size}><Icon name="expand" size={13} />Expand all</button>
+                <button type="button" className="btn sm ghost" onClick={() => setFolded(new Set(resultSets.map((_, i) => i)))} disabled={folded.size === resultSets.length}><Icon name="collapse" size={13} />Collapse all</button>
+                <span className="nx-db-spacer" />
+                <span className="nx-db-count">{`${picked.size} selected`}</span>
+                <button type="button" className="btn sm ghost" disabled={!picked.size} onClick={() => onCopyResults?.(pickedSets)}><Icon name="copy" size={13} />Copy selected</button>
+                <button type="button" className="btn sm ghost" disabled={!picked.size} onClick={() => onExportResults?.(pickedSets)}><Icon name="download" size={13} />Export selected</button>
+              </div>
+            )}
+            {resultSets.map((set, si) => (
               <div key={si} className="nx-db-result-set">
                 <div className="nx-db-results-head">
+                  <button type="button" className="btn sm ghost" aria-expanded={!folded.has(si)} aria-label={`${folded.has(si) ? 'Expand' : 'Collapse'} result ${si + 1}`}
+                    title={folded.has(si) ? 'Show this result' : 'Hide this result'} onClick={() => flip(setFolded, si)}>
+                    <Icon name={folded.has(si) ? 'chevron-right' : 'chevron-down'} size={13} />
+                  </button>
+                  {several && <input type="checkbox" checked={picked.has(si)} onChange={() => flip(setPicked, si)} aria-label={`Select result ${si + 1}`} />}
                   <span className="nx-db-dot" data-tone="ok" />
                   {resultSets.length > 1 && <span className="nx-db-count">{`Result ${si + 1} of ${resultSets.length}`}</span>}
                   <span className="nx-db-count strong">{plural(set.rows.length, 'row')} returned</span>
@@ -3439,7 +3540,7 @@ function QueryPanel({
                   <button type="button" className="btn sm ghost" onClick={() => onCopyResult(set)}><Icon name="copy" size={13} />Copy CSV</button>
                   <button type="button" className="btn sm ghost" onClick={() => onExportResult(set, si)}><Icon name="download" size={13} />Export</button>
                 </div>
-                <div className="nx-db-table-wrap boxed">
+                {!folded.has(si) && <div className="nx-db-table-wrap boxed">
                   <table className="nx-db-table">
                     <thead>
                       <tr>{set.columns.map((c, ci) => (
@@ -3459,9 +3560,10 @@ function QueryPanel({
                       )}
                     </tbody>
                   </table>
-                </div>
+                </div>}
               </div>
-            ))
+            ))}
+            </>
           ) : (
             <div className="nx-db-alert ok" role="status">
               <Icon name="check" size={14} />
