@@ -3,7 +3,7 @@
 
 const log = require('electron-log');
 const path = require('path');
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeTheme, net, screen, shell } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain: rawIpcMain, nativeTheme, net, screen, shell } = require('electron');
 const { pinUserData } = require('./user-data.cjs');
 
 // Must run before anything reads app.getPath('userData') (logs, prefs, stores).
@@ -28,10 +28,13 @@ log.transports.file.resolvePathFn = () => {
 // split-build apps' shimmed require('electron-log')) is routed into it by this transport, under the
 // module whose call chain it came from, else core. The flat file above stays until the Logs view
 // reads the per-module files.
-const { createLogHub, createElectronLogTransport } = require('@nexusmd/main-kit/logging');
+const { createLogHub, createElectronLogTransport, createLoggedIpc } = require('@nexusmd/main-kit/logging');
 const logHub = createLogHub({ dir: logsDir, level: app.isPackaged ? 'info' : 'debug' });
 log.transports.hub = createElectronLogTransport(logHub);
 global.logHub = logHub;
+// The shell's own handlers log their failures too (under core). Every ipcMain.handle/on below goes
+// through this; the apps get the real one in ctx (below) and are wrapped under their own ids instead.
+const ipcMain = createLoggedIpc(rawIpcMain, { hub: logHub, moduleId: 'core' });
 logHub.prune();
 setInterval(() => logHub.prune(), 24 * 60 * 60 * 1000).unref();
 // Entries are written in batches; make sure the last ones reach the disk however the process ends.
@@ -484,14 +487,14 @@ app.whenReady().then(async () => {
   displayWatch.watch(mainWindow);
   // Apps split into their own package (Git Workspace, ...): each registers its own IPC and windows.
   appModules = appRegistry.registerModules({
-    ipcMain, BrowserWindow, dialog,
+    ipcMain: rawIpcMain, BrowserWindow, dialog,
     argv: process.argv,
     onSecondInstance: (fn) => { secondInstanceListeners.add(fn); return () => secondInstanceListeners.delete(fn); },
     send: (channel, msg) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, msg); },
     preloadPath: path.join(__dirname, 'preload.cjs'),
     windowIcon: () => windowIconPath(nativeTheme.shouldUseDarkColors),
     loadRenderer,
-  }, process.env, appTable, log.scope('apps'), disabledApps);
+  }, process.env, appTable, log.scope('apps'), disabledApps, { hub: logHub });
   loginItemIpc.register(ipcMain, { app });
   // Start-on-login keeps the exe that turned it on; a packaged build takes it over from an older
   // copy (which may open only to the tray). Not in dev, where execPath is electron.exe itself.

@@ -42,6 +42,7 @@ const path = require('path');
 const nodeFs = require('fs');
 const { pathToFileURL } = require('url');
 const { SHELL_API } = require('./shell-api.cjs');
+const { createLoggedIpc } = require('@nexusmd/main-kit/logging');
 
 function parseInstalledIds(raw) {
   if (typeof raw !== 'string') return null;
@@ -242,14 +243,18 @@ function register(ipcMain, env = process.env, modules = MODULES, scanned = null,
 }
 
 // One app's view of ctx: the IPC it registers and the windows it opens are noted, so that stopping
-// the app (to run a newer version without restarting NexusMD) can take them away again.
-function scopeContext(ctx) {
+// the app (to run a newer version without restarting NexusMD) can take them away again. With a log
+// hub, the app also gets ctx.log (a logger of its own) and every handler it registers is logged under
+// its id when it fails, inside a correlation shared with whatever it calls.
+function scopeContext(ctx, appId = null, hub = null) {
   const handled = new Set();
   const listening = [];
   const windows = new Set();
   const scoped = { ...ctx };
+  const base = hub && appId && ctx.ipcMain ? createLoggedIpc(ctx.ipcMain, { hub, moduleId: appId }) : ctx.ipcMain;
+  if (hub && appId) scoped.log = hub.logger(appId);
   if (ctx.ipcMain) {
-    const ipc = ctx.ipcMain;
+    const ipc = base;
     scoped.ipcMain = {
       handle: (channel, fn) => { ipc.handle(channel, fn); handled.add(channel); },
       handleOnce: (channel, fn) => { ipc.handleOnce(channel, fn); handled.add(channel); },
@@ -272,8 +277,8 @@ function scopeContext(ctx) {
     ctx: scoped,
     windows: () => [...windows].filter(w => !w.isDestroyed()),
     release() {
-      for (const channel of handled) ctx.ipcMain.removeHandler(channel);
-      for (const [channel, fn] of listening) ctx.ipcMain.removeListener(channel, fn);
+      for (const channel of handled) base.removeHandler(channel);
+      for (const [channel, fn] of listening) base.removeListener(channel, fn);
       for (const win of windows) if (!win.isDestroyed()) win.close();
       handled.clear();
       listening.length = 0;
@@ -284,10 +289,13 @@ function scopeContext(ctx) {
 // Starts each installed app's main-process side. One app failing to start never stops the others,
 // and an app with no main-process side (most of them) simply has nothing to start.
 // Returns { disposeAll } for shutdown, busy(id) and restart(id, module) for applying an update.
-function registerModules(ctx, env = process.env, modules = MODULES, log = console, disabled = []) {
+function registerModules(ctx, env = process.env, modules = MODULES, log = console, disabled = [], { hub = null } = {}) {
   const started = new Map();
+  // A failure is logged twice on purpose: by the shell (core, so the app list reads as one story) and
+  // under the app's own id (so its log has it too).
+  const fail = (id, message, err) => { log.error(`app "${id}" ${message}`, err); hub?.logger(id).error(message, err); };
   const start = (id, mod) => {
-    const scope = scopeContext(ctx);
+    const scope = scopeContext(ctx, id, hub);
     try {
       started.set(id, { scope, handle: mod.main().register(scope.ctx) || null });
     } catch (err) {
@@ -299,16 +307,16 @@ function registerModules(ctx, env = process.env, modules = MODULES, log = consol
     const entry = started.get(id);
     if (!entry) return;
     started.delete(id);
-    try { await entry.handle?.dispose?.(); } catch (err) { log.error(`app "${id}" failed to shut down`, err); }
+    try { await entry.handle?.dispose?.(); } catch (err) { fail(id, 'failed to shut down', err); }
     entry.scope.release();
   };
   for (const id of installedModuleIds(env, modules, disabled)) {
     if (!modules[id].main) continue;
-    try { start(id, modules[id]); } catch (err) { log.error(`app "${id}" failed to start`, err); }
+    try { start(id, modules[id]); } catch (err) { fail(id, 'failed to start', err); }
   }
   return {
     disposeAll: () => Promise.allSettled([...started.entries()].map(async ([id, { handle }]) => {
-      try { await handle?.dispose?.(); } catch (err) { log.error(`app "${id}" failed to shut down`, err); }
+      try { await handle?.dispose?.(); } catch (err) { fail(id, 'failed to shut down', err); }
     })),
     // What stopping the app now would interrupt: work it reports (handle.busy(), optional) and its windows.
     busy: id => {
@@ -328,8 +336,8 @@ function registerModules(ctx, env = process.env, modules = MODULES, log = consol
         modules[id] = next;
         return { ok: true };
       } catch (err) {
-        log.error(`app "${id}" failed to start its new version; going back to the one it was running`, err);
-        try { if (previous?.main) start(id, previous); } catch (again) { log.error(`app "${id}" failed to start again`, again); }
+        fail(id, 'failed to start its new version; going back to the one it was running', err);
+        try { if (previous?.main) start(id, previous); } catch (again) { fail(id, 'failed to start again', again); }
         return { ok: false, error: err.message };
       }
     },

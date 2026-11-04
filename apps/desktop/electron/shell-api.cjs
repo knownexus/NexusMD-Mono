@@ -16,6 +16,8 @@
 //    home-widgets' WidgetBody, which the Work app's Dashboard grid uses.
 // 4: the Dashboard's head as grid items: DashboardView's bare parts and their styles (dash-cell-bare,
 //    dash-greeting) in @nexusmd/ui's stylesheet, which the Work app's grid uses.
-const SHELL_API = 4;
+// 5: ctx.log in an app's main register(): a logger of its own (error/warn/info/debug, scope()), and every
+//    ipcMain handler it registers is logged under its id when it fails.
+const SHELL_API = 5;
 
 module.exports = { SHELL_API };
