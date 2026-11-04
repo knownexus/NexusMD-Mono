@@ -126,6 +126,27 @@ describe('preload bridge', () => {
     expect(ipcRenderer.send).toHaveBeenLastCalledWith('log:ingest', entry)
   })
 
+  it('bridges the per-module log queries and the live tail', () => {
+    exposed.logs.modules()
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('logs:modules')
+    exposed.logs.query({ mods: ['git'] })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('logs:query', { mods: ['git'] })
+    exposed.logs.follow('c-abc123')
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('logs:follow', 'c-abc123')
+    exposed.logs.tailStart()
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('logs:tail-start')
+    exposed.logs.tailStop()
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('logs:tail-stop')
+    const cb = vi.fn()
+    const off = exposed.logs.onEntries(cb)
+    const [channel, handler] = ipcRenderer.on.mock.calls.at(-1)
+    expect(channel).toBe('logs:entries')
+    handler({}, [{ msg: 'x' }])
+    expect(cb).toHaveBeenCalledWith([{ msg: 'x' }])
+    off()
+    expect(ipcRenderer.removeListener).toHaveBeenLastCalledWith('logs:entries', handler)
+  })
+
   it('oauth.start and oauth.refresh invoke the right IPC channels', () => {
     // The fake ipcRenderer.invoke is captured on the exposed bridge indirectly; assert wiring
     // by calling through and checking the channel name.
