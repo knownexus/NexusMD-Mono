@@ -7,11 +7,16 @@ import { render, screen, waitFor } from '@testing-library/react'
 const saved = vi.hoisted(() => ({ map: new Map(), failSet: false }))
 vi.mock('./adapters/secureStorage.js', async () => {
   const { createSecretCache } = await import('@nexusmd/core')
-  return { secureStorageAdapter: createSecretCache({
+  const secureStorageAdapter = createSecretCache({
     get: async k => (saved.map.has(k) ? saved.map.get(k) : null),
     set: async (k, v) => { if (!saved.failSet) saved.map.set(k, v) }, // like the real one: a failed write is silent
     remove: async k => { saved.map.delete(k) },
-  }) }
+  })
+  const bundleSecureStorage = {
+    names: () => Object.keys(localStorage).filter(k => k.startsWith('nexusmd.sec.')).map(k => k.slice('nexusmd.sec.'.length)),
+    get: n => secureStorageAdapter.get(n), set: (n, v) => secureStorageAdapter.set(n, v), remove: n => secureStorageAdapter.remove(n),
+  }
+  return { secureStorageAdapter, bundleSecureStorage }
 })
 
 const seed = () => {

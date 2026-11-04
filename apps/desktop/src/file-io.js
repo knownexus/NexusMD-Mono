@@ -4,8 +4,9 @@
 import { pickerAdapter } from './adapters/picker.js'
 
 export const desktopFileIO = {
+  /** Resolves true once saved, false when the save dialog was cancelled. */
   async saveFile(filename, text) {
-    await pickerAdapter.saveFile(filename, text)
+    return (await pickerAdapter.saveFile(filename, text)) !== false
   },
   async pickFile() {
     const picked = await pickerAdapter.pickFile({ ext: '.nmdprofile,.nmdplanner' })

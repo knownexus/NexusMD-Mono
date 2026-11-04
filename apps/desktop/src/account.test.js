@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { importContainerKey, generateContainerKey, exportContainerKey } from '@nexusmd/core'
 const clear = vi.hoisted(() => vi.fn(async () => {}))
 vi.mock('@nexusmd/core', async (orig) => ({ ...(await orig()), clearAccountLocalData: clear }))
+const saved = vi.hoisted(() => ({ files: [], answer: true }))
+vi.mock('./file-io.js', () => ({ desktopFileIO: { saveFile: async (name, text) => { saved.files.push({ name, text }); return saved.answer } } }))
 
 import { account } from './account.js'
 
@@ -57,5 +59,28 @@ describe('desktop account wiring', () => {
     expect(entries.some(([, e]) => e.storageKey === 'nexusmd.p.abc.ado.org' && e.value === 'contoso')).toBe(true)
     expect(entries.some(([, e]) => e.storageKey === 'nexusmd.p.abc.planner.week.2026-W01')).toBe(true)
     expect(entries.some(([, e]) => e.storageKey === 'nexusmd.planner.week.2026-W02')).toBe(false)
+  })
+
+  it('unpushed lists this device\'s content that was never synced, by profile', async () => {
+    localStorage.setItem('nexusmd.p.W.md_documents', JSON.stringify({ docs: [{ id: 'd1' }] }))
+    expect(await account.unpushed()).toEqual([{ id: 'nexusmd:p.W.md_documents#d1', profileId: 'W' }])
+  })
+
+  it('exportBackup saves a password-encrypted bundle of every profile but purged ones', async () => {
+    const { decodeBundle } = await import('@nexusmd/core')
+    saved.files = []
+    localStorage.setItem('nexusmd.profiles', JSON.stringify([
+      { id: 'W', name: 'Work' }, { id: 'X', name: 'Gone', purgedAt: 5 }, { id: 'H', name: 'Home', deletedAt: 3 },
+    ]))
+    localStorage.setItem('nexusmd.p.W.md_documents', '{"docs":[]}')
+    expect(await account.exportBackup('pw')).toBe(true)
+    expect(saved.files).toHaveLength(1)
+    expect(saved.files[0].name).toMatch(/\.nmdprofile$/)
+    const payload = await decodeBundle(saved.files[0].text, 'pw')
+    expect(payload.profiles.map(p => p.id)).toEqual(['W', 'H'])
+    expect(payload.profiles[0].data.md_documents).toBe('{"docs":[]}')
+    saved.answer = false
+    expect(await account.exportBackup('pw')).toBe(false) // the save dialog was cancelled
+    saved.answer = true
   })
 })

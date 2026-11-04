@@ -36,7 +36,31 @@ describe('clearAccountLocalData', () => {
     expect(core.clearAccountLocalData).toBe(clearAccountLocalData)
   })
 
-  it('keeps profile content (record collections and planner weeks) on an account switch', async () => {
+  it('desktop: an account switch removes profile content too (the gate checked nothing is unsynced)', async () => {
+    const { m, storage, secure, registry } = setup()
+    const content = {
+      'nexusmd.p.a.lists': '{"lists":[]}',
+      'nexusmd.p.a.planner.week.2026-W45': '{"x":1}',
+      'nexusmd.p.a.md_documents': '{"docs":[]}',
+    }
+    for (const [k, v] of Object.entries(content)) m.set(k, v)
+    await clearAccountLocalData({ registry, storage, secure, metaKey: META })
+    for (const k of Object.keys(content)) expect(m.has(k), k).toBe(false)
+  })
+
+  it('Android keeps profile content (record collections and planner weeks) on an account switch', async () => {
+    const { m, storage, secure } = setup()
+    const registry = createKeyRegistry({ namespace: 'helm', getActiveProfileId: () => 'a' })
+    m.set('helm.p.a.lists', '[]')
+    m.set('helm.p.a.planner.week.2026-W45', '{"x":1}')
+    m.set('helm.p.a.ado.org', 'acme')
+    await clearAccountLocalData({ registry, storage, secure, metaKey: 'helm.account.meta' })
+    expect(m.has('helm.p.a.lists')).toBe(true)
+    expect(m.has('helm.p.a.planner.week.2026-W45')).toBe(true)
+    expect(m.has('helm.p.a.ado.org')).toBe(false)
+  })
+
+  it('desktop: settings, tokens and device keys go on an account switch', async () => {
     const { m, storage, secure, registry } = setup()
     const content = {
       'nexusmd.p.a.lists': '{"lists":[]}',
@@ -51,7 +75,6 @@ describe('clearAccountLocalData', () => {
     m.set('nexusmd.p.a.ado.pat', 'plain-token')
     m.set('nexusmd.sidebar.width', '240')
     await clearAccountLocalData({ registry, storage, secure, metaKey: META })
-    for (const k of Object.keys(content)) expect(m.has(k), k).toBe(true)
     for (const k of ['nexusmd.p.a.github.repos', 'nexusmd.p.a.ado.pat', 'nexusmd.sidebar.width']) expect(m.has(k), k).toBe(false)
   })
 

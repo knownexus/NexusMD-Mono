@@ -1,7 +1,7 @@
 import React from 'react'
 import { ProfileProvider as UiProfileProvider, useProfile, localUpsertProfiles } from '@nexusmd/ui'
 import { planProfileScopeMigration, migrateToProfileScopeV2, profileTokenNames } from '@nexusmd/core'
-import { secureStorageAdapter } from './adapters/secureStorage.js'
+import { secureStorageAdapter, bundleSecureStorage } from './adapters/secureStorage.js'
 
 // Desktop is local-only (no server), like the app: the shared ProfileProvider's
 // localStorage cache IS the source of truth. We use the canonical `nexusmd.`
@@ -79,24 +79,6 @@ const desktopProfileStore = {
     localUpsertProfiles(window.localStorage, NS, records, activeId)
   },
   activateOnImport: false,
-}
-
-// What profile bundles (.nmdprofile) use to carry a profile's secrets: the encrypted store keeps
-// each secret's ciphertext at `nexusmd.sec.<name>`, so its names are listed from localStorage.
-const SECRET_PREFIX = `${NS}.sec.`
-export const bundleSecureStorage = {
-  names: () => {
-    const out = []
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i)
-        if (k && k.startsWith(SECRET_PREFIX)) out.push(k.slice(SECRET_PREFIX.length))
-      }
-    } catch { /* storage unavailable: no secrets listed */ }
-    return out
-  },
-  get: (name) => secureStorageAdapter.get(name),
-  set: (name, value) => secureStorageAdapter.set(name, value),
 }
 
 export function ProfileProvider({ children }) {

@@ -26,7 +26,7 @@ import { purgeProfileLocal } from './account-clear.js'
 import {
   DEVICE_CONTEXT, isPlainObject, hashOf, fingerprint, loadMeta, saveMeta, readSnapshot,
   resolveTarget, validValue, localChanged, stampChanges, unchangedSince, writeLocal, mergeRaw,
-  encodeItem, decodeDeviceBlob, decodeChange, fetchFeed, stableJson, readSnapshot as readState,
+  encodeItem, decodeDeviceBlob, decodeChange, fetchFeed, stableJson, readSnapshot as readState, listUnpushed,
 } from './account-sync-state.js'
 
 // A secret's remote value in a conflict is kept sealed under the container key: meta lives in
@@ -825,6 +825,9 @@ export function createAccountSync({
       const r = await pushInner(false)
       return r.conflicts ? { conflicts: r.conflicts } : {}
     }),
+
+    /** Local values not on the server yet, plus open conflicts: [{ id, profileId }] (secrets not judged). */
+    unpushed: () => listUnpushed({ registry, storage, metaKey }),
 
     /** Purges brought by a pull that wait for the owner: [{ pid, name, unpushed: ids }]. */
     pendingPurges() {

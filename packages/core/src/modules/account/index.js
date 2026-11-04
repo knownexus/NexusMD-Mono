@@ -5,3 +5,4 @@ export {
 } from './key-registry.js'
 export { createAccountSync } from './account-sync.js'
 export { clearAccountLocalData } from './account-clear.js'
+export { listUnpushed } from './account-sync-state.js'

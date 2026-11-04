@@ -4,10 +4,11 @@
 // Removed: every setting and connection the registry maps to a synced id, plaintext tokens
 // (registry.isPlainTokenKey), every secure secret found under `<ns>.sec.` (except
 // `<ns>.sec.account.*`, which holds the session of the account signing in), and the sync meta.
-// Kept: content, i.e. record collections (`kind: 'collection'`: notes, lists, time log,
-// calendar, documents, saved queries) and planner weeks, even where the registry syncs them,
-// so switching account never deletes the owner's content. Keys the registry skips (caches,
-// device-local state) are left alone too.
+// Desktop (nexusmd): profile content goes too. The account gate first checks that nothing is
+// unsynced (core listUnpushed) and blocks the switch until it is synced or exported.
+// Android (helm): content is kept, i.e. record collections (`kind: 'collection'`) and planner
+// weeks, even where the registry syncs them. Keys the registry skips (caches, device-local
+// state) are left alone on both.
 
 /**
  * Remove one profile from this device: every `<ns>.p.<pid>.*` key and every secret whose name
@@ -33,7 +34,7 @@ export async function purgeProfileLocal({ storage, secure, namespace, pid }) {
   for (const k of keys) storage.removeItem(k)
 }
 
-const isContent = (key, c) => c.kind === 'collection' || /\.planner\.week\./.test(key)
+const isContent = (registry, key, c) => registry.namespace !== 'nexusmd' && (c.kind === 'collection' || /\.planner\.week\./.test(key))
 
 /**
  * @param {{ registry: object, storage: Storage, secure: { remove(name: string): Promise<void> }, metaKey: string }} opts
@@ -49,7 +50,7 @@ export async function clearAccountLocalData({ registry, storage, secure, metaKey
       if (registry.secretId(name)) secrets.push(name)
     } else if (k !== metaKey) {
       const c = registry.classify(k)
-      if ((c && !isContent(k, c)) || registry.isPlainTokenKey?.(k)) keys.push(k)
+      if ((c && !isContent(registry, k, c)) || registry.isPlainTokenKey?.(k)) keys.push(k)
     }
   }
   for (const name of secrets) {

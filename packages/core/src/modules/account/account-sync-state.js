@@ -247,6 +247,26 @@ export async function readSnapshot({ registry, storage, secure, metaKey }, ck) {
   return { snap, isUnavailable, isUnreadable, rawOf, noteWritten }
 }
 
+/**
+ * Local account-level values that differ from the last synced ones (or were never synced), plus
+ * open conflicts: [{ id, profileId }], sorted by id. Needs no account key, so an account switch can
+ * ask it about the previous account's data; secrets are not judged (they cannot be compared
+ * without that key, and a credential can be typed again).
+ */
+export async function listUnpushed({ registry, storage, metaKey }) {
+  const meta = loadMeta(storage, metaKey)
+  const noSecrets = { get: async () => null }
+  const { snap } = await readSnapshot({ registry, storage, secure: noSecrets, metaKey }, null)
+  const ids = new Set(Object.keys(meta.conflicts))
+  for (const [id, e] of snap) {
+    if (e.level !== 'account') continue
+    const m = meta.entries[id]
+    if (!m || localChanged(m, e)) ids.add(id)
+  }
+  const profileOf = (id) => (registry.profileOf ? registry.profileOf(id) : null)
+  return [...ids].sort().map((id) => ({ id, profileId: profileOf(id) }))
+}
+
 /** True when the local fingerprint differs from the server state recorded in `m`. */
 export function localChanged(m, local) {
   const localHash = local ? local.hash : null

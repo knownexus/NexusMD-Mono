@@ -17,3 +17,22 @@ const encrypted = createSecureStorageAdapter({
 profileSecrets.bind(encrypted)
 
 export const secureStorageAdapter = profileSecrets
+
+// What profile bundles (.nmdprofile) and profile purges use: the encrypted store keeps each
+// secret's ciphertext at `nexusmd.sec.<name>`, so its names are listed from localStorage.
+const SECRET_PREFIX = 'nexusmd.sec.'
+export const bundleSecureStorage = {
+  names: () => {
+    const out = []
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith(SECRET_PREFIX)) out.push(k.slice(SECRET_PREFIX.length))
+      }
+    } catch { /* storage unavailable: no secrets listed */ }
+    return out
+  },
+  get: (name) => secureStorageAdapter.get(name),
+  set: (name, value) => secureStorageAdapter.set(name, value),
+  remove: (name) => secureStorageAdapter.remove(name),
+}

@@ -1,7 +1,9 @@
 // account.js — the desktop's NexusMD account wiring for <AccountGate> and <AccountCard>: where the
 // session and device id live, and how the sync engine reads this machine's settings.
-import { createAccountClient, createAccountSync, createKeyRegistry, clearAccountLocalData } from '@nexusmd/core'
-import { secureStorageAdapter } from './adapters/secureStorage.js'
+import { createAccountClient, createAccountSync, createKeyRegistry, clearAccountLocalData, listUnpushed } from '@nexusmd/core'
+import { buildProfileBundle } from '@nexusmd/ui'
+import { secureStorageAdapter, bundleSecureStorage } from './adapters/secureStorage.js'
+import { desktopFileIO } from './file-io.js'
 import { appPrefsAdapter } from './adapters/appPrefs.js'
 import { collectDesktopPrefs, applyDesktopPrefs } from './settings-file.js'
 import { registry } from './shell/registry.js'
@@ -73,6 +75,19 @@ export const account = {
   deviceNameDefault,
   optOutKey: OPT_OUT_KEY,
   boundUserKey: USER_KEY,
+  // An account switch is blocked while this device holds content not synced yet (AccountGate).
+  unpushed: () => listUnpushed({ registry: keyRegistry, storage: localStorage, metaKey: META_KEY }),
+  // A .nmdprofile of every profile (purged ones excepted), with their secrets; true once saved.
+  exportBackup: async (password) => {
+    let profiles = []
+    try { profiles = JSON.parse(localStorage.getItem('nexusmd.profiles') || '[]') } catch { profiles = [] }
+    profiles = (Array.isArray(profiles) ? profiles : []).filter(p => p && typeof p.id === 'string' && !p.purgedAt)
+    const { filename, text } = await buildProfileBundle({
+      storage: localStorage, secure: bundleSecureStorage, namespace: 'nexusmd', profiles, scope: 'all',
+      activeId: localStorage.getItem('nexusmd.activeProfileId'), password,
+    })
+    return desktopFileIO.saveFile(filename, text)
+  },
   clearLocal: () => clearAccountLocalData({
     registry: keyRegistry,
     storage: localStorage,

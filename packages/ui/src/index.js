@@ -39,7 +39,7 @@ export { ViewDbManager } from './views/ViewDbManager.jsx'
 
 // Profile registry (active profile, CRUD, export/import). Each app wraps this
 // with a platform `store` (web REST vs app local) in its own profile-context.
-export { ProfileProvider, useProfile, localUpsertProfiles } from './profile-context.jsx'
+export { ProfileProvider, useProfile, localUpsertProfiles, buildProfileBundle } from './profile-context.jsx'
 export { ProfileGate } from './profile-gate.jsx'
 
 // Optional NexusMD account (settings sync): sign-in gate, settings card, and the useAccount() hook.

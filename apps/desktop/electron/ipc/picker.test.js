@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 const origRequire = Module.prototype.require
-const dialog = { showOpenDialog: vi.fn() }
+const dialog = { showOpenDialog: vi.fn(), showSaveDialog: vi.fn() }
 const handlers = {}
 let dir, file
 
@@ -42,5 +42,19 @@ describe('picker:pickFile', () => {
   it('returns null when the dialog is cancelled', async () => {
     dialog.showOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: [] })
     expect(await handlers['picker:pickFile'](null, { pathOnly: true })).toBeNull()
+  })
+})
+
+describe('picker:saveFile', () => {
+  it('writes the file and answers true', async () => {
+    const target = path.join(dir, 'backup.nmdprofile')
+    dialog.showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    expect(await handlers['picker:saveFile'](null, 'backup.nmdprofile', 'data')).toBe(true)
+    expect(fs.readFileSync(target, 'utf8')).toBe('data')
+  })
+
+  it('answers false when the dialog is cancelled', async () => {
+    dialog.showSaveDialog.mockResolvedValueOnce({ canceled: true, filePath: '' })
+    expect(await handlers['picker:saveFile'](null, 'x', 'data')).toBe(false)
   })
 })

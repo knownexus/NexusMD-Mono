@@ -26,6 +26,62 @@ const defaultStorage = () => {
   return null;
 };
 
+// A profile's keys (`<ns>.p.<id>.*`) by name without that prefix.
+function collectScopedFrom(storage, namespace, id) {
+  const pfx = `${namespace}.p.${id}.`;
+  const data = {};
+  try {
+    for (let i = 0; i < storage.length; i++) {
+      const k = storage.key(i);
+      if (k && k.startsWith(pfx)) data[k.slice(pfx.length)] = storage.getItem(k);
+    }
+  } catch (_) {}
+  return data;
+}
+
+// A profile's secrets, decrypted, by name without the `<ns>.p.<id>.` part.
+async function collectSecretsFrom(secure, namespace, id) {
+  const pfx = `${namespace}.p.${id}.`;
+  const out = {};
+  for (const name of secure.names()) {
+    if (!name.startsWith(pfx) || name.length === pfx.length) continue;
+    const v = await secure.get(name);
+    if (typeof v === 'string') out[name.slice(pfx.length)] = v;
+  }
+  return out;
+}
+
+/**
+ * Build an encrypted .nmdprofile bundle: `scope` 'all' (every record in `profiles`) or one id.
+ * `secure` (optional, see ProfileProvider) adds each profile's secrets. Resolves { filename, text }.
+ */
+export async function buildProfileBundle({ storage, secure = null, namespace = 'nexusmd', profiles, scope, activeId = null, password }) {
+  const picked = scope === 'all' ? profiles : profiles.filter(p => p.id === scope);
+  const out = [];
+  for (const p of picked) {
+    const rec = {
+      id: p.id, name: p.name, initials: p.initials, color: p.color, type: p.type,
+      orgLabel: p.orgLabel, createdAt: p.createdAt ?? Date.now(), config: p.config ?? null,
+      data: collectScopedFrom(storage, namespace, p.id),
+    };
+    if (secure) rec.secrets = await collectSecretsFrom(secure, namespace, p.id);
+    out.push(rec);
+  }
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    exportedBy: namespace === 'helm' ? 'app' : 'web',
+    activeId: scope === 'all' ? (activeId || null) : null,
+    profiles: out,
+  };
+  const text = await encodeBundle(payload, password);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const slug = (picked[0]?.name || 'profile').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  const filename = scope === 'all'
+    ? `nexusmd-backup-${stamp}${BUNDLE_EXT}`
+    : `nexusmd-profile-${slug}${BUNDLE_EXT}`;
+  return { filename, text };
+}
+
 export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = defaultStorage(), secure = null, children }) {
   const PROFILES_KEY = `${namespace}.profiles`;
   const ACTIVE_KEY   = `${namespace}.activeProfileId`;
@@ -160,44 +216,9 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
     return data;
   };
 
-  // A profile's secrets, decrypted, by name without the `<ns>.p.<id>.` part.
-  const collectSecrets = async (id) => {
-    const pfx = scopedPrefix(id);
-    const out = {};
-    for (const name of secure.names()) {
-      if (!name.startsWith(pfx) || name.length === pfx.length) continue;
-      const v = await secure.get(name);
-      if (typeof v === 'string') out[name.slice(pfx.length)] = v;
-    }
-    return out;
-  };
-
-  const exportBundle = useCallback(async ({ scope, password }) => {
-    const picked = scope === 'all' ? profiles : profiles.filter(p => p.id === scope);
-    const out = [];
-    for (const p of picked) {
-      const rec = {
-        id: p.id, name: p.name, initials: p.initials, color: p.color, type: p.type,
-        orgLabel: p.orgLabel, createdAt: p.createdAt ?? Date.now(), config: p.config ?? null,
-        data: collectScoped(p.id),
-      };
-      if (secure) rec.secrets = await collectSecrets(p.id);
-      out.push(rec);
-    }
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      exportedBy: namespace === 'helm' ? 'app' : 'web',
-      activeId: scope === 'all' ? (activeId || null) : null,
-      profiles: out,
-    };
-    const text = await encodeBundle(payload, password);
-    const stamp = new Date().toISOString().slice(0, 10);
-    const slug = (picked[0]?.name || 'profile').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-    const filename = scope === 'all'
-      ? `nexusmd-backup-${stamp}${BUNDLE_EXT}`
-      : `nexusmd-profile-${slug}${BUNDLE_EXT}`;
-    return { filename, text };
-  }, [profiles, activeId, namespace, storage, secure]);
+  const exportBundle = useCallback(
+    ({ scope, password }) => buildProfileBundle({ storage, secure, namespace, profiles, scope, activeId, password }),
+    [profiles, activeId, namespace, storage, secure]);
 
   const importBundle = useCallback(async ({ text, password }) => {
     const payload = await decodeBundle(text, password);

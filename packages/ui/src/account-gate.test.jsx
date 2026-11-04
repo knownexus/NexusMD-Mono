@@ -374,6 +374,98 @@ describe('AccountGate', () => {
       expect(localStorage.getItem('test.bound')).toBeNull();
     });
 
+    it('account switch with nothing unsynced clears content too', async () => {
+      const a = withBinding('someone-else');
+      a.unpushed = vi.fn(async () => []);
+      mount(a);
+      await signIn();
+      fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+      expect(await screen.findByLabelText('This is a new device')).toBeTruthy();
+      expect(a.unpushed).toHaveBeenCalled();
+      expect(a.clearLocal).toHaveBeenCalledTimes(1);
+    });
+
+    describe('with unsynced content', () => {
+      const UNSYNCED = [
+        { id: 'nexusmd:p.W.md_documents#d1', profileId: 'W' },
+        { id: 'nexusmd:p.W.lists#l1', profileId: 'W' },
+        { id: 'p.H.ado.org', profileId: 'H' },
+      ];
+      const blocked = () => {
+        const a = withBinding('someone-else');
+        a.unpushed = vi.fn(async () => UNSYNCED);
+        a.exportBackup = vi.fn(async () => true);
+        return a;
+      };
+
+      it('is blocked and lists the profiles with what is not synced; no Continue', async () => {
+        const a = blocked();
+        mount(a);
+        await signIn();
+        expect(await screen.findByText(/not been synced/)).toBeTruthy();
+        expect(screen.getByText(/W: 2 items/)).toBeTruthy();
+        expect(screen.getByText(/H: 1 item\b/)).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+        expect(a.clearLocal).not.toHaveBeenCalled();
+      });
+
+      it('Cancel and sync first signs out, says what to do, clears nothing', async () => {
+        const a = blocked();
+        mount(a);
+        await signIn();
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancel and sync first' }));
+        expect(await screen.findByText(/Sign in with the account this device belongs to/)).toBeTruthy();
+        expect(a.client.logout).toHaveBeenCalled();
+        expect(a.clearLocal).not.toHaveBeenCalled();
+        expect(localStorage.getItem('test.bound')).toBe('someone-else');
+      });
+
+      it('Export then Continue clears', async () => {
+        const a = blocked();
+        mount(a);
+        await signIn();
+        fireEvent.click(await screen.findByRole('button', { name: 'Export a backup' }));
+        fireEvent.change(screen.getByLabelText('Backup password'), { target: { value: 'pw' } });
+        fireEvent.change(screen.getByLabelText('Repeat password'), { target: { value: 'pw' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save backup' }));
+        await waitFor(() => expect(a.exportBackup).toHaveBeenCalledWith('pw'));
+        fireEvent.click(await screen.findByRole('button', { name: 'Continue and remove' }));
+        expect(await screen.findByLabelText('This is a new device')).toBeTruthy();
+        expect(a.clearLocal).toHaveBeenCalledTimes(1);
+      });
+
+      it('an export that is cancelled keeps the switch blocked', async () => {
+        const a = blocked();
+        a.exportBackup = vi.fn(async () => false);
+        mount(a);
+        await signIn();
+        fireEvent.click(await screen.findByRole('button', { name: 'Export a backup' }));
+        fireEvent.change(screen.getByLabelText('Backup password'), { target: { value: 'pw' } });
+        fireEvent.change(screen.getByLabelText('Repeat password'), { target: { value: 'pw' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save backup' }));
+        await waitFor(() => expect(a.exportBackup).toHaveBeenCalledTimes(1));
+        expect(screen.queryByRole('button', { name: 'Continue and remove' })).toBeNull();
+      });
+
+      it('Cancel clears nothing', async () => {
+        const a = blocked();
+        mount(a);
+        await signIn();
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+        expect(await screen.findByLabelText('Username')).toBeTruthy();
+        expect(a.clearLocal).not.toHaveBeenCalled();
+      });
+
+      it('without an export, the only ways out sign out', async () => {
+        const a = blocked();
+        delete a.exportBackup;
+        mount(a);
+        await signIn();
+        expect(await screen.findByText(/not been synced/)).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Export a backup' })).toBeNull();
+      });
+    });
+
     it('Cancel logs out and returns to the login screen without clearing', async () => {
       const a = withBinding('someone-else');
       mount(a);

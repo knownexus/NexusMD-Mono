@@ -4,6 +4,7 @@
 // sign-out/unmount, and reloads the page when a pull changed local data.
 import React from 'react';
 import { importContainerKey } from '@nexusmd/core';
+import { useProfile } from './profile-context.jsx';
 
 const { useState, useEffect, useMemo, useCallback, useContext, createContext } = React;
 
@@ -225,15 +226,100 @@ function DeviceScreen({ account, auth, notice, onDeviceStored, onCancel, onDone 
   );
 }
 
-// Warn that the previous account's settings on this device will be removed before another account signs in.
+// The profiles and item counts not synced yet, one line per profile ("Work: 2 items").
+function UnsyncedList({ items }) {
+  const profileApi = useProfile();
+  const nameOf = (pid) => {
+    const all = [...(profileApi?.profiles || []), ...(profileApi?.deletedProfiles || [])];
+    return all.find((p) => p.id === pid)?.name || pid || 'Shared';
+  };
+  const counts = new Map();
+  for (const { profileId } of items) counts.set(profileId, (counts.get(profileId) || 0) + 1);
+  return (
+    <ul>
+      {[...counts].map(([pid, n]) => <li key={pid || '-'}>{nameOf(pid)}: {n} item{n === 1 ? '' : 's'}</li>)}
+    </ul>
+  );
+}
+
+// Password for the backup file, twice; calls onSave(password).
+function BackupForm({ busy, onSave }) {
+  const [pw, setPw] = useState('');
+  const [again, setAgain] = useState('');
+  const mismatch = again !== '' && pw !== again;
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (pw && pw === again) onSave(pw); }}>
+      <Field label="Backup password" type="password" value={pw} onChange={setPw} autoFocus />
+      <Field label="Repeat password" type="password" value={again} onChange={setAgain} />
+      {mismatch && <p className="profile-setup__error" role="alert">The passwords do not match.</p>}
+      <button className="profile-setup__btn" type="submit" disabled={busy || !pw || pw !== again}>Save backup</button>
+    </form>
+  );
+}
+
+// Warn that the previous account's data on this device will be removed before another account signs in.
 // Without `onContinue` (the shell cannot clear local data) the screen only refuses: never sync a foreign session.
-function SwitchScreen({ username, onContinue, onCancel }) {
+// With `checkUnpushed`, content not synced yet blocks the switch (owner decision "protect unsynced"):
+// the previous account's session is gone at this point, so it cannot be synced from here. The owner
+// can cancel and sign in to that account to let it sync, or export a backup (`exportBackup(password)`,
+// resolving true once saved) and then remove it.
+function SwitchScreen({ username, onContinue, onCancel, onSyncFirst, checkUnpushed, exportBackup }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [unpushed, setUnpushed] = useState(checkUnpushed ? null : []);
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState(false);
+  useEffect(() => {
+    if (!checkUnpushed) return undefined;
+    let alive = true;
+    checkUnpushed().then(
+      (list) => { if (alive) setUnpushed(Array.isArray(list) ? list : []); },
+      () => { if (alive) { setUnpushed([{ id: '?', profileId: null }]); setError('Could not check this device for content that is not synced yet.'); } },
+    );
+    return () => { alive = false; };
+  }, [checkUnpushed]);
   const go = async () => {
     setBusy(true); setError('');
     try { await onContinue(); } catch (e) { setError(accountErrorMessage(e)); setBusy(false); }
   };
+  const saveBackup = async (password) => {
+    setBusy(true); setError('');
+    try {
+      if (await exportBackup(password)) { setExported(true); setExporting(false); }
+    } catch (e) {
+      setError(e?.message || 'The backup could not be saved.');
+    }
+    setBusy(false);
+  };
+  if (onContinue && unpushed === null) return <Shell><p>Checking this device…</p></Shell>;
+  if (onContinue && unpushed.length && !exported) {
+    return (
+      <Shell>
+        <h2>Different account</h2>
+        <p>This device has content from another account that has not been synced yet. Removing it now to
+          continue as {username} would lose it:</p>
+        <UnsyncedList items={unpushed} />
+        {error && <p className="profile-setup__error" role="alert">{error}</p>}
+        {exporting && <BackupForm busy={busy} onSave={saveBackup} />}
+        {exportBackup && !exporting && (
+          <button className="profile-setup__btn" disabled={busy} onClick={() => setExporting(true)}>Export a backup</button>
+        )}
+        <button className="profile-setup__type" disabled={busy} onClick={onSyncFirst}>Cancel and sync first</button>
+        <button className="profile-setup__type" disabled={busy} onClick={onCancel}>Cancel</button>
+      </Shell>
+    );
+  }
+  if (onContinue && exported) {
+    return (
+      <Shell>
+        <h2>Different account</h2>
+        <p>Backup saved. Continue as {username} and remove the other account&apos;s data from this device?</p>
+        {error && <p className="profile-setup__error" role="alert">{error}</p>}
+        <button className="profile-setup__btn" disabled={busy} onClick={go}>Continue and remove</button>
+        <button className="profile-setup__type" disabled={busy} onClick={onCancel}>Cancel</button>
+      </Shell>
+    );
+  }
   if (!onContinue) {
     return (
       <Shell>
@@ -262,6 +348,8 @@ function SwitchScreen({ username, onContinue, onCancel }) {
  *   deviceStore: { get(): string|null, set(id: string|null): void },  // set(null) must clear the stored id
  *   boundUserKey?: string,           // localStorage key holding the userId this install's local data belongs to
  *   clearLocal?: () => Promise<void>, // removes the previous account's local data (see core clearAccountLocalData)
+ *   unpushed?: () => Promise<Array<{ id, profileId }>>, // local content not synced yet (core listUnpushed): blocks a switch
+ *   exportBackup?: (password: string) => Promise<boolean>, // saves a .nmdprofile of every profile; true once saved
  *   createSync: (containerKey: object, deviceId: string) => object,
  *   platform: 'windows'|'android'|'web'|'other',
  *   deviceNameDefault: () => string, optOutKey: string },
@@ -392,6 +480,10 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
     try { await client.logout(); } catch { /* local session is cleared regardless */ }
     await showAuth();
   };
+  const syncFirst = async () => {
+    try { await client.logout(); } catch { /* local session is cleared regardless */ }
+    await showAuth('Sign in with the account this device belongs to and let it sync, then switch accounts.');
+  };
 
   const bindUser = () => {
     try {
@@ -427,7 +519,8 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
   }
   if (phase === 'confirm') {
     return (
-      <SwitchScreen username={authed.session.username} onCancel={cancelSwitch} onContinue={clearLocal ? async () => {
+      <SwitchScreen username={authed.session.username} onCancel={cancelSwitch} onSyncFirst={syncFirst}
+        checkUnpushed={account.unpushed} exportBackup={account.exportBackup} onContinue={clearLocal ? async () => {
         await clearLocal();
         deviceStore.set(null);
         try { localStorage.removeItem(boundUserKey); } catch { /* storage unavailable */ }
