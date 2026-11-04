@@ -116,6 +116,7 @@ const EXPECTED = [
   'formatSqlValue', 'formatCondition', 'quoteIdent', 'quoteTable',
   'buildSearchQuery', 'buildInsertQuery', 'buildUpdateQuery', 'buildDeleteQuery',
   'buildJoinQuery', 'buildAggregateQuery', 'sqlLiteral', 'buildInsertStatements',
+  'orderByDependencies', 'buildSchemaScript', 'buildTableData', 'joinDataScript',
   'followTargets', 'referencingTargets', 'whereLabel',
   // Work items module (ADO + Jira merged)
   'JIRA_ID_PREFIX', 'isJiraId', 'toJiraId', 'jiraKeyFromId', 'sourceOfId', 'displayIdOf',
