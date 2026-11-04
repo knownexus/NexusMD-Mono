@@ -483,7 +483,7 @@ app.whenReady().then(async () => {
   badgeIpc.register(ipcMain);
   deepLinkIpc.register(ipcMain, () => mainWindow);
   trayIpc.register(ipcMain, () => mainWindow, () => tray);
-  logsIpc.register(ipcMain);
+  logsIpc.register(ipcMain, { hub: logHub });
   oauthIpc.register(ipcMain);
   // Which screen the window is on (the Dashboard keeps a layout per screen).
   displayWatch = displayIpc.register(ipcMain, { screen, getWindow: () => mainWindow });

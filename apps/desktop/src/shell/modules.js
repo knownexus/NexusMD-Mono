@@ -77,7 +77,7 @@ export function moduleSettingsCards(mods = modules) {
 export function findPopout(hash, mods = modules) {
   for (const m of mods) {
     const spec = m.popout?.parse(hash)
-    if (spec) return { Component: m.popout.Component, adapter: m.popout.adapter, spec }
+    if (spec) return { id: m.id, Component: m.popout.Component, adapter: m.popout.adapter, spec }
   }
   return null
 }

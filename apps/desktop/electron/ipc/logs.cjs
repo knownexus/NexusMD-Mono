@@ -9,7 +9,17 @@ const modLog = moduleLogger('core');
 // The shell's logger under this scope; plain console when run outside the app (tests).
 const logger = () => (globalThis.log?.scope ? globalThis.log.scope('logs') : console);
 
-function register(ipcMain) {
+function register(ipcMain, { hub } = {}) {
+  // Entries from the renderer's logger and its error hooks (src/shell/renderer-log.js). Fire and
+  // forget: a logging call never waits on the main process. The hub validates, attributes to the
+  // module the entry names, rate-limits per window and marks it as coming from a renderer.
+  if (hub) {
+    ipcMain.on('log:ingest', (event, entry) => {
+      const id = event?.sender?.id;
+      hub.ingest(entry, { sender: `window-${id ?? '?'}`, win: id });
+    });
+  }
+
   const logsDir = path.join(app.getPath('userData'), 'logs');
 
   // Ensure logs directory exists

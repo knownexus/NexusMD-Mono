@@ -120,6 +120,12 @@ describe('preload bridge', () => {
     expect(exposed.update.logs).toBeUndefined()            // logs must NOT be under update
   })
 
+  it('sends renderer log entries to the hub without waiting on a reply', () => {
+    const entry = { mod: 'git', lvl: 'error', msg: 'diff failed' }
+    exposed.logging.ingest(entry)
+    expect(ipcRenderer.send).toHaveBeenLastCalledWith('log:ingest', entry)
+  })
+
   it('oauth.start and oauth.refresh invoke the right IPC channels', () => {
     // The fake ipcRenderer.invoke is captured on the exposed bridge indirectly; assert wiring
     // by calling through and checking the channel name.

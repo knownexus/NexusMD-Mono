@@ -251,6 +251,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (date) => ipcRenderer.invoke('logs:delete', { date }),
   },
 
+  // ── Renderer logging ───────────────────────────────────────────────────────
+  // ingest(entry): the renderer's logger and error hooks send entries to the shell's log hub, which
+  // files them under the module they name. Fire and forget (src/shell/renderer-log.js).
+  logging: {
+    ingest: (entry) => ipcRenderer.send('log:ingest', entry),
+  },
+
   // ── OAuth (native desktop flow) ────────────────────────────────────────────
   oauth: {
     start:   (provider = 'google') => ipcRenderer.invoke('oauth:start', { provider }),
