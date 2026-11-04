@@ -46,7 +46,7 @@ export const secretFingerprint = (value, ck) => opaqueId(`fp|${value}`, ck)
 export const fingerprint = (target, value, ck) => (target.kind === 'secret' ? secretFingerprint(value, ck) : hashOf(value))
 
 export function emptyMeta() {
-  return { cursor: 0, entries: {}, rejected: {}, conflicts: {}, devicePrefs: { revision: 0 } }
+  return { cursor: 0, entries: {}, rejected: {}, conflicts: {}, pendingPurges: {}, devicePrefs: { revision: 0 } }
 }
 
 export function loadMeta(storage, metaKey) {
@@ -59,6 +59,7 @@ export function loadMeta(storage, metaKey) {
     entries,
     rejected: isPlainObject(m.rejected) ? { ...m.rejected } : {},
     conflicts: isPlainObject(m.conflicts) ? Object.fromEntries(Object.entries(m.conflicts).filter(([, c]) => isPlainObject(c))) : {},
+    pendingPurges: isPlainObject(m.pendingPurges) ? Object.fromEntries(Object.entries(m.pendingPurges).filter(([, c]) => isPlainObject(c))) : {},
     devicePrefs: { revision: 0, ...(isPlainObject(m.devicePrefs) ? m.devicePrefs : {}) },
     ...(m.lastSyncAt ? { lastSyncAt: m.lastSyncAt } : {}),
   }

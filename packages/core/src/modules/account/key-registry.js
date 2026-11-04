@@ -311,6 +311,35 @@ export function createKeyRegistry({ namespace, getActiveProfileId } = {}) {
     return out
   }
 
+  // nexusmd (Task 5): profile records carry updatedAt / deletedAt / purgedAt. Per id the record
+  // with the larger updatedAt wins as a whole (so a soft delete or a restore syncs instead of
+  // being undone by the union); a purged record always wins and is kept forever as a tombstone
+  // without data (id, name, the three times). Records with the same updatedAt (or none) keep
+  // the Milestone 1 field merge, the later list winning.
+  const tombstone = (p) => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, deletedAt: p.deletedAt ?? null, purgedAt: p.purgedAt })
+  const time = (v) => (Number.isFinite(v) ? v : 0)
+  const mergeProfilesV2 = (local, remote) => {
+    const out = []
+    const index = new Map()
+    const take = (list) => {
+      if (!Array.isArray(list)) return
+      for (const p of list) {
+        if (!isPlainObject(p) || typeof p.id !== 'string' || !p.id || UNSAFE_KEYS.has(p.id)) continue
+        const next = Object.fromEntries(ownSafeEntries(p))
+        if (!index.has(p.id)) { index.set(p.id, out.length); out.push(next); continue }
+        const i = index.get(p.id)
+        const prev = out[i]
+        if (prev.purgedAt && !next.purgedAt) continue
+        if (next.purgedAt && !prev.purgedAt) { out[i] = next; continue }
+        const dt = time(next.updatedAt) - time(prev.updatedAt)
+        out[i] = dt > 0 ? next : dt < 0 ? prev : { ...prev, ...next }
+      }
+    }
+    take(local)
+    take(remote)
+    return out.map((p) => (p.purgedAt ? tombstone(p) : p))
+  }
+
   // Secure-storage entries, found by the platform as localStorage keys starting with secPrefix.
   // Account secrets are never synced (secretId returns null for them).
   // nexusmd: a token (TOKEN_ALIAS_IDS) kept as a secret (`nexusmd.p.<pid>.<alias name>`) gets the
@@ -379,7 +408,7 @@ export function createKeyRegistry({ namespace, getActiveProfileId } = {}) {
     toStorageKey,
     splitTweaks,
     mergeTweaks,
-    mergers: { profiles: mergeProfiles },
+    mergers: { profiles: v2 ? mergeProfilesV2 : mergeProfiles },
     secretId,
     isSecretId,
     secretName,

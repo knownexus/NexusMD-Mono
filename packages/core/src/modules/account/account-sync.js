@@ -22,6 +22,7 @@
 import { singleFlight } from '../sync/single-flight.js'
 import { encryptJson, decryptJson } from './crypto.js'
 import { AccountError } from './account-client.js'
+import { purgeProfileLocal } from './account-clear.js'
 import {
   DEVICE_CONTEXT, isPlainObject, hashOf, fingerprint, loadMeta, saveMeta, readSnapshot,
   resolveTarget, validValue, localChanged, stampChanges, unchangedSince, writeLocal, mergeRaw,
@@ -70,6 +71,68 @@ export function createAccountSync({
   // A conflict is kept in meta.conflicts until resolve()/keepBoth(); its id is never pushed
   // meanwhile, everything else keeps syncing. Android (helm) keeps last-writer-wins.
   const queues = registry.namespace === 'nexusmd'
+
+  // ---- profile lifecycle (desktop) ---------------------------------------------------
+  // A profile record with `purgedAt` is a tombstone: the profile's items are never written
+  // back here (a pull only records the server state), never pushed, and its local data goes
+  // as soon as nothing of it is unpushed. With unpushed edits the data is kept and the purge
+  // waits in meta.pendingPurges until confirmPurge(pid) (the owner can export first).
+  const pendingListeners = new Set()
+  const pendingCount = () => Object.keys(load().pendingPurges).length
+
+  function profilesList() {
+    const key = registry.toStorageKey('profiles')
+    try {
+      const list = JSON.parse((key && storage.getItem(key)) || '[]')
+      return Array.isArray(list) ? list.filter((p) => isPlainObject(p) && typeof p.id === 'string' && p.id) : []
+    } catch { return [] }
+  }
+  /** pid -> name of every purged profile (desktop only). */
+  function purgedProfiles() {
+    const out = new Map()
+    if (!queues) return out
+    for (const p of profilesList()) if (p.purgedAt) out.set(p.id, typeof p.name === 'string' ? p.name : p.id)
+    return out
+  }
+  const profileOfId = (id) => (registry.profileOf ? registry.profileOf(id) : null)
+  const inPurged = (purged, id) => { const pid = profileOfId(id); return !!pid && purged.has(pid) }
+
+  function hasLocalData(pid) {
+    const keyPrefix = `${registry.namespace}.p.${pid}.`
+    const secPrefix = `${registry.namespace}.sec.${keyPrefix}`
+    for (let i = 0; i < storage.length; i++) {
+      const k = storage.key(i)
+      if (typeof k === 'string' && (k.startsWith(keyPrefix) || k.startsWith(secPrefix))) return true
+    }
+    return false
+  }
+
+  /** Remove a profile's local data, its open conflicts and its pending purge (meta is mutated). */
+  async function purgeLocal(meta, pid) {
+    await purgeProfileLocal({ storage, secure, namespace: registry.namespace, pid })
+    for (const [id, c] of Object.entries(meta.conflicts)) if (c.profileId === pid || profileOfId(id) === pid) delete meta.conflicts[id]
+    delete meta.pendingPurges[pid]
+  }
+
+  /**
+   * After the profiles list was settled in a pull: purge here every purged profile that still has
+   * local data, or park it as pending when some of it is unpushed. True when data was removed.
+   */
+  async function applyPurges(meta, state) {
+    let removed = false
+    for (const [pid, name] of purgedProfiles()) {
+      if (meta.pendingPurges[pid] || !hasLocalData(pid)) continue
+      const unpushed = []
+      for (const [id, e] of state.snap) {
+        if (e.level !== 'account' || profileOfId(id) !== pid) continue
+        const m = meta.entries[id]
+        if (!m || localChanged(m, e) || meta.conflicts[id]) unpushed.push(id)
+      }
+      if (unpushed.length) meta.pendingPurges[pid] = { pid, name, unpushed: unpushed.sort() }
+      else { await purgeLocal(meta, pid); removed = true }
+    }
+    return removed
+  }
   const ownerEdited = (target) => queues && target.level === 'account' && !target.auto && target.kind !== 'tweaks'
 
   // ---- local observation -------------------------------------------------------------
@@ -78,6 +141,7 @@ export function createAccountSync({
   async function localState(meta) {
     const s = await readSnapshot(ctx, ck)
     s.dirty = stampChanges(meta, s.snap, s.isUnavailable, now())
+    s.purged = purgedProfiles()
     return s
   }
 
@@ -128,6 +192,17 @@ export function createAccountSync({
    */
   async function reconcile(meta, state, target, remote) {
     if (!remote.deleted && !validValue(target, remote.value)) return 'kept'
+    if (state.purged && inPurged(state.purged, remote.id)) {
+      meta.entries[remote.id] = {
+        hash: remote.deleted ? null : await fingerprint(target, remote.value, ck),
+        updatedAt: clampAt(remote.updatedAt),
+        ...(remote.revision != null ? { revision: remote.revision } : {}),
+        level: target.level,
+        deleted: !!remote.deleted,
+      }
+      delete meta.conflicts[remote.id]
+      return 'kept' // a purged profile is never written back here
+    }
     const { snap, isUnavailable, isUnreadable, rawOf } = state
     const local = snap.get(remote.id)
     const m = meta.entries[remote.id]
@@ -304,7 +379,7 @@ export function createAccountSync({
     if (!listKey || !activeKey) return false
     let list
     try { list = JSON.parse(storage.getItem(listKey) || '[]') } catch { return false }
-    const ids = Array.isArray(list) ? list.filter((p) => isPlainObject(p) && typeof p.id === 'string' && p.id).map((p) => p.id) : []
+    const ids = Array.isArray(list) ? list.filter((p) => isPlainObject(p) && typeof p.id === 'string' && p.id && !p.purgedAt).map((p) => p.id) : []
     if (!ids.length) return false
     const cur = storage.getItem(activeKey)
     if (cur && ids.includes(cur)) return false
@@ -336,9 +411,10 @@ export function createAccountSync({
     let profilesApplied = false // this pull wrote the profiles list (a restore)
     const settle = async () => {
       settled = true
-      if (!profilesApplied || !ensureActiveProfile()) return
-      applied++
-      state = await localState(meta) // key names under the new active profile
+      state.purged = purgedProfiles()
+      let reread = await applyPurges(meta, state)
+      if (profilesApplied && ensureActiveProfile()) { applied++; reread = true }
+      if (reread) state = await localState(meta) // key names under the new active profile / purged data gone
     }
     for (const { c, remote } of decoded) {
       if (!settled && remote.id !== 'profiles') await settle()
@@ -447,7 +523,7 @@ export function createAccountSync({
 
   async function pushItemsRound(force) {
     const meta = load()
-    const { snap, isUnavailable } = await localState(meta)
+    const { snap, isUnavailable, purged } = await localState(meta)
     const t = now()
     const out = []
     // Items the server rejected for size or quota wait until their value changes.
@@ -455,6 +531,7 @@ export function createAccountSync({
     for (const id of Object.keys(meta.rejected)) if (!snap.has(id)) delete meta.rejected[id]
     for (const [id, e] of snap) {
       if (e.level !== 'account' || meta.conflicts[id]) continue // a conflict waits for the owner
+      if (purged.has(profileOfId(id))) continue // a purged profile is never resurrected
       const m = meta.entries[id]
       const changed = !m || localChanged(m, e)
       if (!force && !changed) continue
@@ -465,6 +542,7 @@ export function createAccountSync({
     }
     for (const [id, m] of Object.entries(meta.entries)) {
       if (m.level !== 'account' || m.deleted || !(m.revision > 0) || snap.has(id) || isUnavailable(id) || meta.conflicts[id]) continue
+      if (meta.pendingPurges[profileOfId(id)]) continue // its data is kept until the owner confirms
       const target = resolveTarget(registry, id)
       if (!target || target.kind === 'tweaks') continue // tweaks halves are never deleted
       out.push({ id, value: null, hash: null, deleted: true, ifMatch: m.revision, updatedAt: m.changedAt ?? t })
@@ -589,6 +667,7 @@ export function createAccountSync({
   }
   const guarded = (fn) => serial(async () => {
     const before = conflictCount()
+    const pendingBefore = pendingCount()
     try {
       return await fn()
     } catch (error) {
@@ -597,6 +676,8 @@ export function createAccountSync({
     } finally {
       const count = conflictCount()
       if (count > before) emit(conflictListeners, { count })
+      const pending = pendingCount()
+      if (pending > pendingBefore) emit(pendingListeners, { count: pending })
     }
   })
 
@@ -706,6 +787,47 @@ export function createAccountSync({
      * record (id `<record id>-c<time>`, name/title passed through copyName). Resolves {} or { error }.
      */
     keepBoth: (id, opts) => guarded(() => keepBothInner(id, opts)),
+
+    /**
+     * Purge a profile everywhere: its record becomes a tombstone, every synced item of it is
+     * deleted on the server, and its local keys and secrets go. Resolves {} or { error }.
+     */
+    purgeProfile: (pid) => guarded(async () => {
+      const key = registry.toStorageKey('profiles')
+      const list = profilesList()
+      const p = list.find((r) => r.id === pid)
+      if (!key || !queues || !p) throw new AccountError('not-found', 0, 'No such profile')
+      if (!p.purgedAt) {
+        const t = now()
+        const tomb = { id: p.id, name: p.name, updatedAt: Math.max(t, (Number.isFinite(p.updatedAt) ? p.updatedAt : 0) + 1), deletedAt: p.deletedAt ?? t, purgedAt: t }
+        storage.setItem(key, JSON.stringify(list.map((r) => (r.id === pid ? tomb : r))))
+      }
+      const meta = load()
+      await purgeLocal(meta, pid)
+      save(meta)
+      const r = await pushInner(false)
+      return r.conflicts ? { conflicts: r.conflicts } : {}
+    }),
+
+    /** Purges brought by a pull that wait for the owner: [{ pid, name, unpushed: ids }]. */
+    pendingPurges() {
+      return Object.values(load().pendingPurges).map((p) => ({ pid: p.pid, name: p.name, unpushed: [...(p.unpushed || [])] }))
+    },
+
+    /** Discard a pending purge's local data (after the owner exported what they want to keep). */
+    confirmPurge: (pid) => guarded(async () => {
+      const meta = load()
+      if (!meta.pendingPurges[pid]) throw new AccountError('not-found', 0, 'No pending purge for this profile')
+      await purgeLocal(meta, pid)
+      save(meta)
+      return {}
+    }),
+
+    /** cb({ count }) whenever the pending-purge list grows. Returns an unsubscribe. */
+    onPendingPurge(cb) {
+      pendingListeners.add(cb)
+      return () => pendingListeners.delete(cb)
+    },
 
     /** cb({ count }) whenever the conflict queue grows. Returns an unsubscribe. */
     onConflict(cb) {

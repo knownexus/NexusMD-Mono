@@ -9,6 +9,30 @@
 // so switching account never deletes the owner's content. Keys the registry skips (caches,
 // device-local state) are left alone too.
 
+/**
+ * Remove one profile from this device: every `<ns>.p.<pid>.*` key and every secret whose name
+ * starts with `<ns>.p.<pid>.` (secrets are found by their `<ns>.sec.<name>` keys).
+ * @param {{ storage: Storage, secure: { remove(name: string): Promise<void> }, namespace: string, pid: string }} opts
+ */
+export async function purgeProfileLocal({ storage, secure, namespace, pid }) {
+  if (typeof pid !== 'string' || !pid || pid.includes('.')) throw new Error('purgeProfileLocal: a profile id is required')
+  const keyPrefix = `${namespace}.p.${pid}.`
+  const secPrefix = `${namespace}.sec.`
+  const keys = []
+  const secrets = []
+  for (let i = 0; i < storage.length; i++) {
+    const k = storage.key(i)
+    if (typeof k !== 'string') continue
+    if (k.startsWith(keyPrefix)) keys.push(k)
+    else if (k.startsWith(secPrefix + keyPrefix)) secrets.push(k.slice(secPrefix.length))
+  }
+  for (const name of secrets) {
+    try { await secure.remove(name) } catch { /* the stored blob key is removed below */ }
+    storage.removeItem(secPrefix + name)
+  }
+  for (const k of keys) storage.removeItem(k)
+}
+
 const isContent = (key, c) => c.kind === 'collection' || /\.planner\.week\./.test(key)
 
 /**
