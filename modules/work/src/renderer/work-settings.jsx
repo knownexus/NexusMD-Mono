@@ -47,9 +47,10 @@ export function WorkDataRows() {
 
   const clearCache = () => {
     try {
-      workStorage.remove(ADO_CACHE_KEY) // kept under the profile
-      localStorage.removeItem(JIRA_CACHE_KEY)
-      localStorage.removeItem(GITHUB_CACHE_KEY)
+      // kept under the profile
+      workStorage.remove(ADO_CACHE_KEY)
+      workStorage.remove(JIRA_CACHE_KEY)
+      workStorage.remove(GITHUB_CACHE_KEY)
       localStorage.removeItem(WI_TYPE_STATES_CACHE_KEY)
     } catch {}
     toast?.('Cache cleared — refreshing…', 'success')

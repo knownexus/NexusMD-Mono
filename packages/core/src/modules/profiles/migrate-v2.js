@@ -7,7 +7,7 @@
 //   - settings are copied into EVERY profile (each profile starts with the machine's settings);
 //   - content and credentials go to the ACTIVE profile only;
 //   - a value the profile already has is never overwritten (a list of people merges by id);
-//   - the global keys are removed afterwards; two global caches are simply dropped.
+//   - the global keys are removed afterwards; the global caches are simply dropped.
 // Content that loses to the profile's own, different copy is kept on this machine (never synced)
 // under `nexusmd.migrated.v2.backup.<old key>` rather than thrown away.
 //
@@ -47,7 +47,7 @@ const NS_SETTINGS = new Set([
   'settings.collapsed', 'outputPath',
 ])
 // Global caches: rebuilt per profile by the code, so dropped rather than carried.
-const NS_DROPPED = new Set(['ado.cache.v1', 'workitems.status.v1'])
+const NS_DROPPED = new Set(['ado.cache.v1', 'jira.cache.v1', 'github.cache.v1', 'workitems.status.v1'])
 
 const FIXED = {
   'nexusmd_seen_pr': { name: 'seenPr', scope: EVERY },

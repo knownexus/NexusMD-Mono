@@ -63,6 +63,8 @@ const GLOBALS = {
   // caches: dropped
   'nexusmd.ado.cache.v1': '{"WORK_ITEMS":[]}',
   'nexusmd.workitems.status.v1': '{}',
+  'nexusmd.jira.cache.v1': '{"WORK_ITEMS":[]}',
+  'nexusmd.github.cache.v1': '{"WORK_ITEMS":[]}',
 }
 const SETTINGS = {
   'nexusmd.tweaks': 'tweaks', 'nexusmd.refreshInterval': 'refreshInterval', 'nexusmd.markdown.textSize': 'markdown.textSize',
@@ -112,6 +114,10 @@ describe('migrateToProfileScopeV2', () => {
     expect(storage.getItem('nexusmd.ado.cache.v1')).toBeNull()
     expect(storage.getItem('nexusmd.workitems.status.v1')).toBeNull()
     expect(storage.getItem('nexusmd.p.A.ado.cache.v1')).toBeNull()
+    for (const k of ['jira', 'github']) {
+      expect(storage.getItem(`nexusmd.${k}.cache.v1`)).toBeNull()
+      expect(storage.getItem(`nexusmd.p.A.${k}.cache.v1`)).toBeNull()
+    }
     expect(storage.getItem(MIGRATION_V2_MARKER)).toBe('1')
     expect(moved).toContain('md_documents')
     expect(moved).toContain('nexusmd.tweaks')

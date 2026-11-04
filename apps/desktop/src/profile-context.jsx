@@ -81,6 +81,24 @@ const desktopProfileStore = {
   activateOnImport: false,
 }
 
+// What profile bundles (.nmdprofile) use to carry a profile's secrets: the encrypted store keeps
+// each secret's ciphertext at `nexusmd.sec.<name>`, so its names are listed from localStorage.
+const SECRET_PREFIX = `${NS}.sec.`
+export const bundleSecureStorage = {
+  names: () => {
+    const out = []
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith(SECRET_PREFIX)) out.push(k.slice(SECRET_PREFIX.length))
+      }
+    } catch { /* storage unavailable: no secrets listed */ }
+    return out
+  },
+  get: (name) => secureStorageAdapter.get(name),
+  set: (name, value) => secureStorageAdapter.set(name, value),
+}
+
 export function ProfileProvider({ children }) {
   const [ready, setReady] = React.useState(false)
   React.useEffect(() => {
@@ -89,6 +107,6 @@ export function ProfileProvider({ children }) {
     return () => { live = false }
   }, [])
   if (!ready) return null
-  return <UiProfileProvider namespace={NS} store={desktopProfileStore}>{children}</UiProfileProvider>
+  return <UiProfileProvider namespace={NS} store={desktopProfileStore} secure={bundleSecureStorage}>{children}</UiProfileProvider>
 }
 export { useProfile }

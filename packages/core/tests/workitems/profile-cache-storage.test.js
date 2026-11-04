@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { profileCacheStorage } from '../../src/modules/workitems/profile-cache-storage.js'
 import { ADO_CACHE_KEY } from '../../src/modules/ado/loader.js'
+import { JIRA_CACHE_KEY } from '../../src/modules/jira/loader.js'
+import { GITHUB_CACHE_KEY } from '../../src/modules/github/loader.js'
 import { WORK_ITEM_STATUS_KEY, readProviderStatus, recordProviderStatus } from '../../src/modules/workitems/status.js'
 import * as core from '../../src/index.js'
 
@@ -27,12 +29,26 @@ describe('profileCacheStorage', () => {
     expect(inner._m.has('nexusmd.p.P1.ado.cache.v1')).toBe(false)
   })
 
+  it('keeps the Jira and GitHub caches under the active profile', () => {
+    const inner = mem()
+    const s = profileCacheStorage(inner, pk)
+    s.set(JIRA_CACHE_KEY, { WORK_ITEMS: [1] })
+    s.set(GITHUB_CACHE_KEY, { WORK_ITEMS: [2] })
+    expect(inner._m.get('nexusmd.p.P1.jira.cache.v1')).toEqual({ WORK_ITEMS: [1] })
+    expect(inner._m.get('nexusmd.p.P1.github.cache.v1')).toEqual({ WORK_ITEMS: [2] })
+    expect(inner._m.has(JIRA_CACHE_KEY)).toBe(false)
+    expect(inner._m.has(GITHUB_CACHE_KEY)).toBe(false)
+    expect(s.get(JIRA_CACHE_KEY)).toEqual({ WORK_ITEMS: [1] })
+    s.remove(GITHUB_CACHE_KEY)
+    expect(inner._m.has('nexusmd.p.P1.github.cache.v1')).toBe(false)
+  })
+
   it('passes every other key through unchanged', () => {
     const inner = mem()
     const s = profileCacheStorage(inner, pk)
-    s.set('nexusmd.jira.cache.v1', 1)
-    expect(s.get('nexusmd.jira.cache.v1')).toBe(1)
-    expect(inner._m.get('nexusmd.jira.cache.v1')).toBe(1)
-    expect(s.keys()).toEqual(['nexusmd.jira.cache.v1'])
+    s.set('nexusmd.wi.wiTypeStates.cache', 1)
+    expect(s.get('nexusmd.wi.wiTypeStates.cache')).toBe(1)
+    expect(inner._m.get('nexusmd.wi.wiTypeStates.cache')).toBe(1)
+    expect(s.keys()).toEqual(['nexusmd.wi.wiTypeStates.cache'])
   })
 })

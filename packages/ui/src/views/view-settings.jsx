@@ -437,7 +437,7 @@ function CloudPickerModal({ open, label, files, busy, onClose, onPick }) {
 // fileIO: { saveFile(name, text) → Promise, pickFile() → Promise<string|null> }
 // `accountSlot`: optional node rendered with the data/sync cards (the app passes its AccountCard here).
 function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [], accountSlot = null }) {
-  const { profiles, activeProfile, exportBundle, importBundle } = useProfile();
+  const { profiles, activeProfile, exportBundle, importBundle, bundlesCarrySecrets } = useProfile();
   const [mode, setMode] = useStateVS(null);     // 'export-all' | 'export-one' | 'import'
   const [pendingText, setPendingText] = useStateVS(null);
   const [busy, setBusy] = useStateVS(false);
@@ -470,6 +470,8 @@ function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [
     try {
       if (mode === 'import') {
         const res = await importBundle({ text: pendingText, password });
+        const failed = res.secretsFailed?.length || 0;
+        if (failed) toast?.(`${failed} saved sign-in${failed !== 1 ? 's or tokens' : ' or token'} could not be restored on this computer: sign in again in Settings after the reload.`, 'error');
         toast?.(`Imported ${res.imported} profile${res.imported !== 1 ? 's' : ''}. Reloading…`, 'success');
         setTimeout(() => window.location.reload(), 700);
       } else {
@@ -488,7 +490,7 @@ function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [
     <VsCard title="Backup & Restore" icon="send" flush={false}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-          Export a password-encrypted <code>.nmdprofile</code> file you can keep as a backup or open in the other apps.
+          Export a password-encrypted <code>.nmdprofile</code> file you can keep as a backup or open in the other apps.{bundlesCarrySecrets && ' It includes the saved tokens and sign-ins, so choose a strong password.'}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {showExportSingle && activeProfile && (

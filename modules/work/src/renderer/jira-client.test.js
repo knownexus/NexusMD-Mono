@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 
 vi.mock('@nexusmd/shell-sdk', async (orig) => ({ ...(await orig()), getProfileKey: k => `p.${k}` }))
 
-import { profileSecrets } from '@nexusmd/shell-sdk'
+import { profileSecrets, getProfileKey } from '@nexusmd/shell-sdk'
 import { createJiraHttpAdapter, createJiraWorkItemSource, saveJiraConfig, getJiraConfig, isJiraActive } from './jira-client.js'
 
 afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
@@ -136,7 +136,7 @@ describe('createJiraWorkItemSource', () => {
 
   it('reads the board estimation field from the cached Jira data by default', async () => {
     saveJiraConfig({ site: 'acme', email: 'me@acme.io', apiToken: 'tok', projectKeys: ['ABC'] })
-    localStorage.setItem('nexusmd.jira.cache.v1', JSON.stringify({
+    localStorage.setItem(getProfileKey('nexusmd.jira.cache.v1'), JSON.stringify({
       SITE: 'https://acme.atlassian.net', WORK_ITEMS: [], BOARD_ESTIMATION_FIELD: 'customfield_10028',
       _jiraMeta: { ...meta, fieldIds: { storyPoints: 'customfield_10016' } },
     }))

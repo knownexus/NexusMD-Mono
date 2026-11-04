@@ -7,6 +7,12 @@
 // purge/export/import (`${namespace}.p.${id}.*`), and switch/delete reload —
 // while `store` supplies only the platform-specific create/update/activate/
 // remove/load. Missing store ops are treated as local-only no-ops (ok=true).
+//
+// `secure` (optional, desktop) is the platform's secure storage: { names(): string[], get(name),
+// set(name, value) }. With it, a .nmdprofile bundle (password-encrypted) also carries each exported
+// profile's secrets (tokens, OAuth sign-ins, connection secrets: every secure name under
+// `<ns>.p.<id>.`) decrypted, and an import writes them back into secure storage, never as plain
+// keys. Without it, bundles carry no secrets and any in a file are skipped.
 import React from 'react';
 import { encodeBundle, decodeBundle, BUNDLE_EXT } from '@nexusmd/core';
 import { toast } from './toast.jsx';
@@ -20,7 +26,7 @@ const defaultStorage = () => {
   return null;
 };
 
-export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = defaultStorage(), children }) {
+export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = defaultStorage(), secure = null, children }) {
   const PROFILES_KEY = `${namespace}.profiles`;
   const ACTIVE_KEY   = `${namespace}.activeProfileId`;
   const scopedPrefix = (id) => `${namespace}.p.${id}.`;
@@ -154,13 +160,30 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
     return data;
   };
 
+  // A profile's secrets, decrypted, by name without the `<ns>.p.<id>.` part.
+  const collectSecrets = async (id) => {
+    const pfx = scopedPrefix(id);
+    const out = {};
+    for (const name of secure.names()) {
+      if (!name.startsWith(pfx) || name.length === pfx.length) continue;
+      const v = await secure.get(name);
+      if (typeof v === 'string') out[name.slice(pfx.length)] = v;
+    }
+    return out;
+  };
+
   const exportBundle = useCallback(async ({ scope, password }) => {
     const picked = scope === 'all' ? profiles : profiles.filter(p => p.id === scope);
-    const out = picked.map(p => ({
-      id: p.id, name: p.name, initials: p.initials, color: p.color, type: p.type,
-      orgLabel: p.orgLabel, createdAt: p.createdAt ?? Date.now(), config: p.config ?? null,
-      data: collectScoped(p.id),
-    }));
+    const out = [];
+    for (const p of picked) {
+      const rec = {
+        id: p.id, name: p.name, initials: p.initials, color: p.color, type: p.type,
+        orgLabel: p.orgLabel, createdAt: p.createdAt ?? Date.now(), config: p.config ?? null,
+        data: collectScoped(p.id),
+      };
+      if (secure) rec.secrets = await collectSecrets(p.id);
+      out.push(rec);
+    }
     const payload = {
       exportedAt: new Date().toISOString(),
       exportedBy: namespace === 'helm' ? 'app' : 'web',
@@ -174,7 +197,7 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
       ? `nexusmd-backup-${stamp}${BUNDLE_EXT}`
       : `nexusmd-profile-${slug}${BUNDLE_EXT}`;
     return { filename, text };
-  }, [profiles, activeId, namespace, storage]);
+  }, [profiles, activeId, namespace, storage, secure]);
 
   const importBundle = useCallback(async ({ text, password }) => {
     const payload = await decodeBundle(text, password);
@@ -184,20 +207,27 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
     }));
     if (store.importProfiles) await store.importProfiles(records, payload.activeId ?? null);
     else localUpsertProfiles(storage, namespace, records, payload.activeId ?? null);
+    let secrets = 0;
+    const secretsFailed = [];
     for (const p of payload.profiles) {
       const pfx = scopedPrefix(p.id);
       for (const [k, v] of Object.entries(p.data || {})) {
         try { storage.setItem(pfx + k, v); } catch (_) {}
       }
+      if (!secure || !p.secrets || typeof p.secrets !== 'object') continue;
+      for (const [k, v] of Object.entries(p.secrets)) {
+        if (typeof v !== 'string' || !k) continue;
+        try { await secure.set(pfx + k, v); secrets++; } catch (_) { secretsFailed.push(k); }
+      }
     }
-    return { imported: records.length, names: records.map(r => r.name) };
-  }, [store, storage, namespace]);
+    return { imported: records.length, names: records.map(r => r.name), secrets, secretsFailed };
+  }, [store, storage, namespace, secure]);
 
   const value = useMemo(() => ({
     profiles, activeProfile, activeId, loading,
     switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile,
-    exportBundle, importBundle,
-  }), [profiles, activeProfile, activeId, loading, switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile, exportBundle, importBundle]);
+    exportBundle, importBundle, bundlesCarrySecrets: !!secure,
+  }), [profiles, activeProfile, activeId, loading, switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile, exportBundle, importBundle, secure]);
 
   return h(ProfileCtx.Provider, { value }, children);
 }

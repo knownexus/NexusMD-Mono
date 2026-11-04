@@ -87,3 +87,25 @@ describe('desktop ProfileProvider boot', () => {
     expect(localStorage.getItem('nexusmd.migrated.v2')).toBeNull()
   })
 })
+
+describe('desktop profile bundles', () => {
+  it('a .nmdprofile export carries the profile’s secrets and an import writes them back into secure storage', async () => {
+    const { useProfile } = await import('./profile-context.jsx')
+    localStorage.setItem('nexusmd.profiles', JSON.stringify([{ id: 'A', name: 'Work' }]))
+    localStorage.setItem('nexusmd.activeProfileId', 'A')
+    localStorage.setItem('nexusmd.migrated.v2', '1')
+    // The encrypted store keeps each secret's ciphertext at nexusmd.sec.<name>.
+    for (const [k, v] of [['nexusmd.p.A.ado.pat', 'pat-A'], ['nexusmd.account.session', 'sess']]) {
+      saved.map.set(k, v); localStorage.setItem(`nexusmd.sec.${k}`, 'ciphertext')
+    }
+    const api = { current: null }
+    function Grab() { api.current = useProfile(); return <div>child</div> }
+    render(<ProfileProvider><Grab /></ProfileProvider>)
+    await screen.findByText('child')
+    const { text } = await api.current.exportBundle({ scope: 'A', password: 'pw' })
+    saved.map.clear()
+    const res = await api.current.importBundle({ text, password: 'pw' })
+    expect(res.secrets).toBe(1)
+    expect([...saved.map.entries()]).toEqual([['nexusmd.p.A.ado.pat', 'pat-A']])
+  })
+})
