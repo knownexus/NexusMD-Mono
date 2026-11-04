@@ -28,7 +28,8 @@ function adoptFlatKeys(id, storage = window.localStorage) {
 function profileIds(storage) {
   try {
     const list = JSON.parse(storage.getItem(`${NS}.profiles`) || '[]')
-    return Array.isArray(list) ? list.map(p => p && p.id).filter(id => typeof id === 'string' && id) : []
+    // a purged profile is a tombstone: nothing moves into it, it has no tokens to load
+    return Array.isArray(list) ? list.filter(p => p && !p.purgedAt).map(p => p.id).filter(id => typeof id === 'string' && id) : []
   } catch { return [] }
 }
 
@@ -89,6 +90,6 @@ export function ProfileProvider({ children }) {
     return () => { live = false }
   }, [])
   if (!ready) return null
-  return <UiProfileProvider namespace={NS} store={desktopProfileStore} secure={bundleSecureStorage}>{children}</UiProfileProvider>
+  return <UiProfileProvider namespace={NS} store={desktopProfileStore} secure={bundleSecureStorage} lifecycle>{children}</UiProfileProvider>
 }
 export { useProfile }

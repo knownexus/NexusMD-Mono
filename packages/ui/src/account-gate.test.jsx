@@ -558,3 +558,62 @@ describe('AccountGate', () => {
     });
   });
 });
+
+describe('AccountGate pending purge', () => {
+  const PENDING = [{ pid: 'W', name: 'Work', unpushed: ['nexusmd:p.W.md_documents#d1', 'p.W.ado.org'] }];
+  const ready = (over = {}) => {
+    deviceId = 'd1';
+    let pendingCb = null;
+    const pending = [...PENDING];
+    const a = mkAccount({ getSession: vi.fn(async () => SESSION) }, {
+      pendingPurges: vi.fn(() => [...pending]),
+      onPendingPurge: vi.fn((cb) => { pendingCb = cb; return () => {}; }),
+      confirmPurge: vi.fn(async (pid) => { pending.splice(pending.findIndex(p => p.pid === pid), 1); return {}; }),
+      ...over,
+    });
+    a.exportBackup = vi.fn(async () => true);
+    return { a, fire: () => pendingCb && pendingCb({ count: pending.length }) };
+  };
+
+  it('a pending purge shows the names of discarded items and offers Export first, then Discard', async () => {
+    const { a } = ready();
+    mount(a);
+    expect(await screen.findByText('shell')).toBeTruthy();
+    expect(await screen.findByText(/Work was deleted for good on another device/)).toBeTruthy();
+    expect(screen.getByText('md_documents d1')).toBeTruthy();
+    expect(screen.getByText('ado.org')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Export first' }));
+    fireEvent.change(screen.getByLabelText('Backup password'), { target: { value: 'pw' } });
+    fireEvent.change(screen.getByLabelText('Repeat password'), { target: { value: 'pw' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save backup' }));
+    await waitFor(() => expect(a.exportBackup).toHaveBeenCalledWith('pw', 'W'));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(sync.confirmPurge).toHaveBeenCalledWith('W'));
+    expect(confirm).toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByText(/Work was deleted for good/)).toBeNull());
+    confirm.mockRestore();
+  });
+
+  it('Discard asks for confirmation; Later keeps the data and hides the notice', async () => {
+    const { a, fire } = ready();
+    mount(a);
+    await screen.findByText(/Work was deleted for good/);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(sync.confirmPurge).not.toHaveBeenCalled();
+    confirm.mockRestore();
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+    expect(screen.queryByText(/Work was deleted for good/)).toBeNull();
+    // a new pending purge brings it back
+    await React.act(async () => { fire(); });
+    expect(await screen.findByText(/Work was deleted for good/)).toBeTruthy();
+  });
+
+  it('no pending purge, no notice', async () => {
+    const { a } = ready({ pendingPurges: vi.fn(() => []) });
+    mount(a);
+    expect(await screen.findByText('shell')).toBeTruthy();
+    expect(screen.queryByText(/deleted for good/)).toBeNull();
+  });
+});

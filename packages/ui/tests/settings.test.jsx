@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, act } from '@testing-library/react'
+import { render, cleanup, act, fireEvent } from '@testing-library/react'
 import React from 'react'
 import {
   NexusDataProvider, PlToggle, VsRow, VsSeg, VsProfileEditor, VsProfiles, PROFILE_COLORS,
@@ -79,6 +79,45 @@ describe('shared settings primitives (web + app)', () => {
     const { container } = withProvider(<VsProfiles profileApi={profileApi} />)
     expect(container.textContent).toContain('Work')
     expect(container.textContent).toContain('Active')
+  })
+
+  describe('VsProfiles deleted profiles', () => {
+    const api = (over = {}) => ({
+      profiles: [{ id: 'W', name: 'Work', initials: 'WK', color: '#000', type: 'manual' }],
+      deletedProfiles: [{ id: 'H', name: 'Home', initials: 'HM', color: '#000', type: 'manual', deletedAt: Date.UTC(2026, 10, 1) }],
+      activeId: 'W',
+      switchProfile: vi.fn(), createProfile: vi.fn(), updateProfile: vi.fn(), deleteProfile: vi.fn(),
+      exportProfile: vi.fn(), importProfile: vi.fn(), restoreProfile: vi.fn(async () => {}), purgeProfile: vi.fn(async () => {}),
+      ...over,
+    })
+
+    it('lists deleted profiles apart, with Restore, and never offers to switch to them', () => {
+      const profileApi = api()
+      const { getByText, queryAllByRole } = withProvider(<VsProfiles profileApi={profileApi} />)
+      expect(getByText('Deleted profiles')).toBeTruthy()
+      expect(getByText('Home')).toBeTruthy()
+      expect(queryAllByRole('button', { name: 'Switch' })).toHaveLength(0) // Work is active, Home is deleted
+      fireEvent.click(getByText('Restore'))
+      expect(profileApi.restoreProfile).toHaveBeenCalledWith('H')
+    })
+
+    it('purge asks for confirmation first', () => {
+      const profileApi = api()
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      const { getByText } = withProvider(<VsProfiles profileApi={profileApi} />)
+      fireEvent.click(getByText('Purge'))
+      expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/Home.*every device/))
+      expect(profileApi.purgeProfile).not.toHaveBeenCalled()
+      confirm.mockReturnValue(true)
+      fireEvent.click(getByText('Purge'))
+      expect(profileApi.purgeProfile).toHaveBeenCalledWith('H', { sync: null }) // signed out: local only
+      confirm.mockRestore()
+    })
+
+    it('no Deleted profiles section when there are none', () => {
+      const { queryByText } = withProvider(<VsProfiles profileApi={api({ deletedProfiles: [] })} />)
+      expect(queryByText('Deleted profiles')).toBeNull()
+    })
   })
 
   describe('OAuthServiceCard', () => {

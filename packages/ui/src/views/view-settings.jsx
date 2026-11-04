@@ -10,6 +10,7 @@ import { Icon } from '../icons.jsx';
 import { NEXUSMD_THEMES, THEME_MODES } from '../themes.js';
 import { PlFld, PlModal } from '../planner-chips.jsx';
 import { toast } from '../toast.jsx';
+import { useAccount } from '../account-gate.jsx';
 import { hashPassword, loadConfidentialConfig, saveConfidentialConfig } from '../planner/planner-confidential.js';
 import { useProfile } from '../profile-context.jsx';
 import { useNexusData } from '../data-context.jsx';
@@ -309,9 +310,17 @@ function VsProfileEditor({ profile, onSave, onDelete, onExport, onClose, showOrg
 // profileApi is the per-platform profile-context value (useProfile()); injected
 // because the underlying provider differs (web REST /api/profiles vs app local).
 function VsProfiles({ profileApi, showOrgLabel = true }) {
-  const { profiles, activeId, switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile } = profileApi;
+  const { profiles, activeId, switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile,
+    deletedProfiles = [], restoreProfile, purgeProfile } = profileApi;
+  const { sync } = useAccount();
   const [editing, setEditing]   = useStateVS(null);
   const importRef               = useRefVS(null);
+
+  // Purging cannot be undone: it removes the profile, its data and its secrets on every device.
+  const handlePurge = (p) => {
+    if (!window.confirm(`Purge "${p.name}"? Its settings, content and saved sign-ins are removed from every device. This cannot be undone.`)) return;
+    purgeProfile(p.id, { sync: sync || null });
+  };
 
   const handleSave = (changes) => {
     if (editing === 'new') {
@@ -353,6 +362,23 @@ function VsProfiles({ profileApi, showOrgLabel = true }) {
         <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }}
           onChange={e => { const f = e.target.files?.[0]; if (f) importProfile(f); e.target.value = ''; }} />
     </VsCard>
+    {deletedProfiles.length > 0 && (
+      <VsCard title="Deleted profiles" icon="more">
+        {deletedProfiles.map(p => (
+          <div key={p.id} className="set-row" style={{ opacity: .75 }}>
+            <div style={{ width: 34, height: 34, borderRadius: '50%', background: p.color || 'var(--border)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+              {p.initials}
+            </div>
+            <div className="info">
+              <div className="t">{p.name}</div>
+              <div className="d">Deleted{p.deletedAt ? ` ${new Date(p.deletedAt).toLocaleDateString()}` : ''}. Its data is kept until you purge it.</div>
+            </div>
+            {restoreProfile && <button className="btn sm ghost" onClick={() => restoreProfile(p.id)}>Restore</button>}
+            {purgeProfile && <button className="btn sm ghost danger" onClick={() => handlePurge(p)}>Purge</button>}
+          </div>
+        ))}
+      </VsCard>
+    )}
     {/* Outside the card: "+ New profile" still works while the section is collapsed. */}
     {editing && (
       <VsProfileEditor

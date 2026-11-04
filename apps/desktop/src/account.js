@@ -77,13 +77,14 @@ export const account = {
   boundUserKey: USER_KEY,
   // An account switch is blocked while this device holds content not synced yet (AccountGate).
   unpushed: () => listUnpushed({ registry: keyRegistry, storage: localStorage, metaKey: META_KEY }),
-  // A .nmdprofile of every profile (purged ones excepted), with their secrets; true once saved.
-  exportBackup: async (password) => {
+  // A .nmdprofile with secrets: every profile but purged ones, or one profile by id (a purged one
+  // too: a pending purge still holds its data here). True once saved.
+  exportBackup: async (password, scope = 'all') => {
     let profiles = []
     try { profiles = JSON.parse(localStorage.getItem('nexusmd.profiles') || '[]') } catch { profiles = [] }
-    profiles = (Array.isArray(profiles) ? profiles : []).filter(p => p && typeof p.id === 'string' && !p.purgedAt)
+    profiles = (Array.isArray(profiles) ? profiles : []).filter(p => p && typeof p.id === 'string' && (scope !== 'all' || !p.purgedAt))
     const { filename, text } = await buildProfileBundle({
-      storage: localStorage, secure: bundleSecureStorage, namespace: 'nexusmd', profiles, scope: 'all',
+      storage: localStorage, secure: bundleSecureStorage, namespace: 'nexusmd', profiles, scope,
       activeId: localStorage.getItem('nexusmd.activeProfileId'), password,
     })
     return desktopFileIO.saveFile(filename, text)

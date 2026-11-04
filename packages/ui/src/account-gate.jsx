@@ -341,6 +341,43 @@ function SwitchScreen({ username, onContinue, onCancel, onSyncFirst, checkUnpush
   );
 }
 
+// "md_documents d1" for nexusmd:p.W.md_documents#d1, "ado.org" for p.W.ado.org.
+const itemLabel = (id) => String(id)
+  .replace(/^sec:(?:nexusmd|helm):/, '').replace(/^(?:nexusmd|helm)[:.]/, '').replace(/^p\.[^.#]+\./, '').replace('#', ' ');
+
+// A profile purged on another device while this one has edits to it (core pendingPurges): what will
+// be discarded, Export first (a .nmdprofile of that profile), then Discard (confirmed), or Later.
+function PendingPurgeNotice({ purge, exportBackup, onDiscard, onLater }) {
+  const [exporting, setExporting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+  const save = async (password) => {
+    setBusy(true); setNote('');
+    try { if (await exportBackup(password, purge.pid)) { setNote('Backup saved.'); setExporting(false); } }
+    catch (e) { setNote(e?.message || 'The backup could not be saved.'); }
+    setBusy(false);
+  };
+  const discard = async () => {
+    if (!window.confirm(`Discard what this device still holds of "${purge.name}"? This cannot be undone.`)) return;
+    setBusy(true);
+    await onDiscard(purge.pid);
+    setBusy(false);
+  };
+  return (
+    <div className="profile-setup__notice" role="dialog" aria-label="Profile purged elsewhere"
+      style={{ position: 'fixed', right: 16, bottom: 16, maxWidth: 420, zIndex: 1000, background: 'var(--surface, #fff)', border: '1px solid var(--border, #ccc)', borderRadius: 8, padding: 16, boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}>
+      <p><strong>{purge.name} was deleted for good on another device.</strong> This device has changes to it that
+        were never synced; discarding the profile here loses them:</p>
+      <ul>{purge.unpushed.map((id) => <li key={id}>{itemLabel(id)}</li>)}</ul>
+      {note && <p role="status">{note}</p>}
+      {exporting && <BackupForm busy={busy} onSave={save} />}
+      {exportBackup && !exporting && <button className="profile-setup__btn" disabled={busy} onClick={() => setExporting(true)}>Export first</button>}
+      <button className="profile-setup__type" disabled={busy} onClick={discard}>Discard</button>
+      <button className="profile-setup__type" disabled={busy} onClick={onLater}>Later</button>
+    </div>
+  );
+}
+
 /**
  * Gate that requires an account (or an explicit opt-out) before rendering `children`.
  * @param {{ account: {
@@ -349,7 +386,7 @@ function SwitchScreen({ username, onContinue, onCancel, onSyncFirst, checkUnpush
  *   boundUserKey?: string,           // localStorage key holding the userId this install's local data belongs to
  *   clearLocal?: () => Promise<void>, // removes the previous account's local data (see core clearAccountLocalData)
  *   unpushed?: () => Promise<Array<{ id, profileId }>>, // local content not synced yet (core listUnpushed): blocks a switch
- *   exportBackup?: (password: string) => Promise<boolean>, // saves a .nmdprofile of every profile; true once saved
+ *   exportBackup?: (password: string, scope?: string) => Promise<boolean>, // saves a .nmdprofile (every profile, or one id); true once saved
  *   createSync: (containerKey: object, deviceId: string) => object,
  *   platform: 'windows'|'android'|'web'|'other',
  *   deviceNameDefault: () => string, optOutKey: string },
@@ -378,6 +415,8 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
   const ckRef = React.useRef(null);
   ckRef.current = ck;
   const prevBound = React.useRef(undefined); // the bound user before this device pick (undefined: not bound yet)
+  const [purges, setPurges] = useState([]); // pending purges (profiles purged elsewhere with unsynced edits here)
+  const [purgesHidden, setPurgesHidden] = useState(false);
 
   const showAuth = useCallback(async (msg = '') => {
     setNotice(msg);
@@ -445,6 +484,11 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
       }
     })];
     if (reloadOnApplied) offs.push(sync.onApplied(() => window.location.reload()));
+    if (typeof sync.pendingPurges === 'function') {
+      const show = () => { setPurges(sync.pendingPurges()); setPurgesHidden(false); };
+      show();
+      if (typeof sync.onPendingPurge === 'function') offs.push(sync.onPendingPurge(show));
+    }
     sync.start();
     return () => { offs.forEach((off) => off && off()); sync.stop(); };
   }, [sync, reloadOnApplied, showAuth]);
@@ -510,7 +554,24 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
   const value = useMemo(() => ({ sync, session, signOut }), [sync, session, signOut]);
 
   if (phase === 'loading') return null;
-  if (phase === 'ready') return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
+  if (phase === 'ready') {
+    const purge = !purgesHidden && sync ? purges[0] : null;
+    return (
+      <AccountContext.Provider value={value}>
+        {children}
+        {purge && (
+          <PendingPurgeNotice key={purge.pid} purge={purge} exportBackup={account.exportBackup}
+            onLater={() => setPurgesHidden(true)}
+            onDiscard={async (pid) => {
+              const r = await sync.confirmPurge(pid);
+              if (r && r.error) return;
+              setPurges(sync.pendingPurges());
+              window.location.reload();
+            }} />
+        )}
+      </AccountContext.Provider>
+    );
+  }
   if (phase === 'device') {
     return (
       <DeviceScreen account={account} auth={authed} notice={deviceNotice} onDeviceStored={bindUser} onCancel={cancelUpload}
