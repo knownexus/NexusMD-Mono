@@ -143,7 +143,10 @@ async function getSqlPool(cfg, drivers) {
   const auth = interactive
     ? { authentication: { type: 'token-credential', options: { credential: await getInteractiveCredential(cfg, drivers) } } }
     : { user: cfg.user, password: cfg.password }
-  const pool = await sql.connect({
+  // A pool of its own for each connection. sql.connect() would share one global pool: every
+  // connection after the first came back as the first one's, so a second database showed the
+  // first database's tables.
+  const pool = await new sql.ConnectionPool({
     server:   cfg.server,
     port:     cfg.port ?? 1433,
     database: cfg.database,
@@ -154,7 +157,7 @@ async function getSqlPool(cfg, drivers) {
       connectTimeout:         15_000,
     },
     pool: { max: 10, min: 0, idleTimeoutMillis: 30_000 },
-  })
+  }).connect()
   sqlPools.set(key, pool)
   return pool
 }
