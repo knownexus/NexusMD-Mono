@@ -43,7 +43,9 @@ export { ProfileProvider, useProfile, localUpsertProfiles, buildProfileBundle } 
 export { ProfileGate } from './profile-gate.jsx'
 
 // Optional NexusMD account (settings sync): sign-in gate, settings card, and the useAccount() hook.
-export { AccountGate, useAccount, accountErrorMessage } from './account-gate.jsx'
+export { AccountGate, useAccount, accountErrorMessage, syncItemLabel } from './account-gate.jsx'
+export { SyncStatusCard } from './sync-status-card.jsx'
+export { SyncConflictsCard, ConflictDialog } from './sync-conflicts.jsx'
 export { AccountCard } from './account-card.jsx'
 
 

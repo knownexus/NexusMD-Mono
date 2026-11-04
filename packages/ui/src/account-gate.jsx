@@ -5,6 +5,7 @@
 import React from 'react';
 import { importContainerKey } from '@nexusmd/core';
 import { useProfile } from './profile-context.jsx';
+import { toast } from './toast.jsx';
 
 const { useState, useEffect, useMemo, useCallback, useContext, createContext } = React;
 
@@ -342,7 +343,7 @@ function SwitchScreen({ username, onContinue, onCancel, onSyncFirst, checkUnpush
 }
 
 // "md_documents d1" for nexusmd:p.W.md_documents#d1, "ado.org" for p.W.ado.org.
-const itemLabel = (id) => String(id)
+export const syncItemLabel = (id) => String(id)
   .replace(/^sec:(?:nexusmd|helm):/, '').replace(/^(?:nexusmd|helm)[:.]/, '').replace(/^p\.[^.#]+\./, '').replace('#', ' ');
 
 // A profile purged on another device while this one has edits to it (core pendingPurges): what will
@@ -368,7 +369,7 @@ function PendingPurgeNotice({ purge, exportBackup, onDiscard, onLater }) {
       style={{ position: 'fixed', right: 16, bottom: 16, maxWidth: 420, zIndex: 1000, background: 'var(--surface, #fff)', border: '1px solid var(--border, #ccc)', borderRadius: 8, padding: 16, boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}>
       <p><strong>{purge.name} was deleted for good on another device.</strong> This device has changes to it that
         were never synced; discarding the profile here loses them:</p>
-      <ul>{purge.unpushed.map((id) => <li key={id}>{itemLabel(id)}</li>)}</ul>
+      <ul>{purge.unpushed.map((id) => <li key={id}>{syncItemLabel(id)}</li>)}</ul>
       {note && <p role="status">{note}</p>}
       {exporting && <BackupForm busy={busy} onSave={save} />}
       {exportBackup && !exporting && <button className="profile-setup__btn" disabled={busy} onClick={() => setExporting(true)}>Export first</button>}
@@ -484,6 +485,10 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
       }
     })];
     if (reloadOnApplied) offs.push(sync.onApplied(() => window.location.reload()));
+    if (typeof sync.onConflict === 'function') {
+      offs.push(sync.onConflict(({ count }) => toast(
+        `${count} sync conflict${count === 1 ? ' needs' : 's need'} your decision — Settings › Data & sync`, 'info')));
+    }
     if (typeof sync.pendingPurges === 'function') {
       const show = () => { setPurges(sync.pendingPurges()); setPurgesHidden(false); };
       show();

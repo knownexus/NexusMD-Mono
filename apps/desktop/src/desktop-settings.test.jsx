@@ -36,6 +36,8 @@ vi.mock('@nexusmd/ui', () => ({
   VsProfiles: () => <div data-testid="vs-profiles">VsProfiles</div>,
   useAccount: () => ({ sync: null }),
   AccountCard: () => <div data-testid="account-card">AccountCard</div>,
+  SyncStatusCard: () => <div data-testid="sync-status-card">SyncStatusCard</div>,
+  SyncConflictsCard: () => <div data-testid="sync-conflicts-card">SyncConflictsCard</div>,
   BackupRestoreCard: ({ cloudProviders }) => <div data-testid="backup-restore" data-providers={(cloudProviders || []).length}>BackupRestoreCard</div>,
   BundlePasswordModal: () => null,
   CloudSyncCard: () => <div data-testid="cloud-sync">CloudSyncCard</div>,
@@ -139,6 +141,22 @@ describe('DesktopSettings tab navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Profiles' }))
     expect(screen.getByTestId('vs-profiles')).toBeTruthy()
     expect(screen.getByTestId('backup-restore')).toBeTruthy()
+  })
+
+  it('the Profiles tab shows the account card above the profiles', () => {
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Profiles' }))
+    const card = screen.getByTestId('account-card')
+    const profiles = screen.getByTestId('vs-profiles')
+    expect(card.compareDocumentPosition(profiles) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('Data & sync shows the account, per-profile sync status and conflicts', () => {
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Data & sync' }))
+    expect(screen.getByTestId('account-card')).toBeTruthy()
+    expect(screen.getByTestId('sync-status-card')).toBeTruthy()
+    expect(screen.getByTestId('sync-conflicts-card')).toBeTruthy()
   })
 
   it('with the flag off, no Cloud sync card or Drive/OneDrive buttons render', () => {

@@ -2,7 +2,7 @@ import React from 'react'
 import {
   Icon,
   VsRow, VsCard, VsFullRow, ThemeModeSettings,
-  VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView, AccountCard,
+  VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView, AccountCard, SyncStatusCard, SyncConflictsCard,
   PlToggle,
   toast,
 } from '@nexusmd/ui'
@@ -473,6 +473,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
 
           {tab === 'profiles' && (
             <>
+              <AccountCard account={account} />
               <VsProfiles profileApi={profileApi} />
               <BackupRestoreCard fileIO={desktopFileIO} cloudProviders={legacyCloudOn ? desktopCloudProviders : undefined} />
               {legacyCloudOn && <CloudSyncCard controller={desktopSync} providers={desktopCloudProviders} fileIO={desktopFileIO} />}
@@ -484,6 +485,8 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
           {tab === 'data' && (
             <>
               <AccountCard account={account} />
+              <SyncStatusCard />
+              <SyncConflictsCard account={account} />
               <DesktopDataSyncCard />
               <SettingsFileCard />
               <LogsCard />
