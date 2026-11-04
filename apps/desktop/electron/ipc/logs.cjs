@@ -3,6 +3,8 @@
 const { app } = require('electron');
 const fs = require('fs/promises');
 const path = require('path');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('core');
 
 // The shell's logger under this scope; plain console when run outside the app (tests).
 const logger = () => (globalThis.log?.scope ? globalThis.log.scope('logs') : console);
@@ -11,7 +13,7 @@ function register(ipcMain) {
   const logsDir = path.join(app.getPath('userData'), 'logs');
 
   // Ensure logs directory exists
-  fs.mkdir(logsDir, { recursive: true }).catch(() => {});
+  fs.mkdir(logsDir, { recursive: true }).catch(ignored(modLog, 'creating the logs folder', 'warn'));
 
   ipcMain.handle('logs:list', async () => {
     try {

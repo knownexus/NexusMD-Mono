@@ -13,6 +13,8 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { defaultBranchOf, isOwnRemote, createSourceReader } = require('./git-source.cjs');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('git');
 
 // ':' is git's own "no editor": nothing can wait on an editor. Interactive rebase swaps in the helper.
 const WRITE_ENV = { GIT_EDITOR: ':', GIT_SEQUENCE_EDITOR: ':', GIT_MERGE_AUTOEDIT: 'no' };
@@ -179,7 +181,7 @@ function registerActions(handle, ctx) {
     const dir = hooksPath ? path.resolve(wt, hooksPath) : common ? path.join(common, 'hooks') : null;
     if (dir) {
       let names = [];
-      try { names = fsx.readdirSync(dir, { withFileTypes: true }).filter(d => d.isFile() && !d.name.endsWith('.sample')).map(d => d.name); } catch { /* no hooks folder */ }
+      try { names = fsx.readdirSync(dir, { withFileTypes: true }).filter(d => d.isFile() && !d.name.endsWith('.sample')).map(d => d.name); } catch (err) { ignore(modLog, 'reading the hooks folder, which may not exist', err) }
       for (const n of names.sort()) list.push(`${n} hook`);
     }
     const cfg = await read(wt, ['config', '--local', '--get-regexp', '^(filter\\..*\\.(clean|smudge|process)|core\\.sshcommand|credential\\..*helper)$']);
@@ -677,8 +679,8 @@ function registerActions(handle, ctx) {
     try {
       const plan = fsx.readFileSync(markerFile, 'utf8').trim();
       if (plan) fsx.rmSync(plan, { force: true });
-    } catch { /* no plan recorded */ }
-    try { fsx.rmSync(markerFile, { force: true }); } catch { /* already gone */ }
+    } catch (err) { ignore(modLog, 'reading the rebase plan marker, which may not exist', err) }
+    try { fsx.rmSync(markerFile, { force: true }); } catch (err) { ignore(modLog, 'removing the rebase marker, which may already be gone', err) }
   }
 
   // Remembers which branch a rebase started here is rebasing onto; only a ref name is kept (an oid names nothing).
@@ -687,7 +689,7 @@ function registerActions(handle, ctx) {
     const full = out(await read(wt, ['rev-parse', '--symbolic-full-name', base]));
     const dir = await gitDirOf(wt);
     if (!dir || !full || !/^refs\/(heads|remotes)\//.test(full)) return;
-    try { fsx.writeFileSync(path.join(dir, BASE_MARKER), `${full}\n`); } catch { /* the name just won't be shown */ }
+    try { fsx.writeFileSync(path.join(dir, BASE_MARKER), `${full}\n`); } catch (err) { ignore(modLog, 'recording the base branch name, which then will not be shown', err, 'warn') }
   }
 
   // Shared by continue, abort and skip (through finish): once nothing is in progress the remembered base is stale.
@@ -695,9 +697,9 @@ function registerActions(handle, ctx) {
     const dir = await gitDirOf(wt);
     const { operation } = await inProgress(dir);
     if (dir && !operation) {
-      try { fsx.rmSync(path.join(dir, BASE_MARKER), { force: true }); } catch { /* already gone */ }
+      try { fsx.rmSync(path.join(dir, BASE_MARKER), { force: true }); } catch (err) { ignore(modLog, 'removing the stale base marker', err) }
       // git-conflicts.cjs's record of resolved files is just as stale.
-      try { fsx.rmSync(path.join(dir, 'nexusmd-resolutions.json'), { force: true }); } catch { /* already gone */ }
+      try { fsx.rmSync(path.join(dir, 'nexusmd-resolutions.json'), { force: true }); } catch (err) { ignore(modLog, 'removing the stale resolutions record', err) }
     }
     return operation;
   }
@@ -735,7 +737,7 @@ function registerActions(handle, ctx) {
       try {
         const planFile = fsx.readFileSync(marker, 'utf8').trim();
         if (planFile && fsx.existsSync(planFile)) { env = editorEnv(planFile); config = KEEP_HASH_LINES; }
-      } catch { /* a rebase NexusMD didn't start */ }
+      } catch (err) { ignore(modLog, 'reading the plan marker of a rebase NexusMD did not start', err) }
     }
     const r = await w(wt, [command, `--${verb}`], { timeout: verb === 'abort' ? SHORT : LONG, env, extraConfig: config });
     const res = await finish(wt, r);
@@ -768,7 +770,7 @@ function registerActions(handle, ctx) {
     }
     if (a.before) await forgetBaseIfIdle(wt);
     // The action itself worked, so a source that can't be recorded isn't worth reporting a failure for.
-    if (a.after) { try { await a.after(wt, o, state); } catch { /* status detects the source again later */ } }
+    if (a.after) { try { await a.after(wt, o, state); } catch (err) { ignore(modLog, 'recording the branch source after an action; status detects it again later', err, 'warn') } }
     return { ok: true, detail: outputs.filter(Boolean).join('\n') || 'Done' };
   }
 

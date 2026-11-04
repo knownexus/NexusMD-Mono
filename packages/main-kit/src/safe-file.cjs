@@ -10,6 +10,8 @@
 const path = require('path');
 const fsp = require('fs/promises');
 const crypto = require('crypto');
+const { moduleLogger, ignore, ignored } = require('./logging/index.cjs');
+const modLog = moduleLogger('core');
 
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 const RENAME_RETRIES = 3;
@@ -94,7 +96,7 @@ async function writeAtomic(full, realDir, body, notOk) {
       }
     }
   } catch (e) {
-    await fsp.rm(tmp, { force: true }).catch(() => {});
+    await fsp.rm(tmp, { force: true }).catch(ignored(modLog, 'removing the temp file after a failed write'));
     throw e;
   }
 }

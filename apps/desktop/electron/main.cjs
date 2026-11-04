@@ -67,11 +67,12 @@ app.disableHardwareAcceleration();
 // console-message on all webContents from the main process, no injection needed.
 log.initialize({ preload: false, spyRendererConsole: true });
 
-// Catch anything that would otherwise bypass console.* entirely: uncaught
-// exceptions and unhandled promise rejections in the main process. Keeps the
-// native "A JavaScript error occurred" dialog (showDialog defaults to true)
-// so a fatal main-process crash is still visible, not just silently logged.
-log.errorHandler.startCatching();
+// Catch anything that would otherwise bypass the logs: uncaught exceptions and unhandled rejections
+// in the main process, and windows and child processes that crash, hang or fail to load. Each is
+// logged under the app it belongs to (core when that can't be told). An uncaught exception still
+// shows the native "A JavaScript error occurred" dialog, so a fatal crash is visible.
+const { createProcessWatch } = require('./process-watch.cjs');
+createProcessWatch({ app, hub: logHub, dialog, ownerOf: wc => appModules?.ownerOf?.(wc) ?? null });
 const { createTray, updateTrayIcon } = require('./tray.cjs');
 const { initNotifications } = require('./notifications.cjs');
 const { initUpdater, registerUpdaterIpc } = require('./updater.cjs');
@@ -79,6 +80,8 @@ const { startAppUpdater } = require('./app-updater.cjs');
 const { pendingUpdates, applyAppUpdates } = require('./app-apply.cjs');
 
 const appRegistry    = require('./app-registry.cjs');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('core');
 
 // All-in-one, or apps installed as folders of their own (see app-registry.cjs).
 const appLayout = appRegistry.getLayout(process.env, {
@@ -225,8 +228,8 @@ function applyZoom(win, factor) {
   const f = clampZoomFactor(factor)
   win.webContents.setZoomFactor(f)
   prefs.zoomFactor = f
-  try { savePrefs(prefs) } catch { /* best-effort */ }
-  try { win.webContents.send('zoom:changed', f) } catch { /* best-effort */ }
+  try { savePrefs(prefs) } catch (err) { ignore(modLog, 'saving the zoom preference', err, 'warn') }
+  try { win.webContents.send('zoom:changed', f) } catch (err) { ignore(modLog, 'telling the window the zoom changed', err) }
 }
 
 // Downloaded app updates the window can apply without restarting NexusMD (app-apply.cjs). Without
@@ -451,7 +454,7 @@ app.whenReady().then(async () => {
 
   // Auto-updater (event wiring is packaged-only; the IPC contract is always registered)
   initUpdater(mainWindow);
-  registerUpdaterIpc(() => mainWindow);
+  registerUpdaterIpc(() => mainWindow, ipcMain);
 
   // App updates: newer versions of the installed apps, downloaded to run from the next launch, or
   // applied now from the window (registerAppUpdatesIpc). In an installed split build; elsewhere only

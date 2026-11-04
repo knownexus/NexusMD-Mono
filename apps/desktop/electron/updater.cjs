@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, dialog, ipcMain } = require('electron');
+const { app, dialog } = require('electron');
 
 // Loaded on first use: electron-updater reads the app's version as soon as it loads, which only
 // works inside Electron (and isn't needed at all in a development build).
@@ -58,9 +58,9 @@ function initUpdater(win) {
   // Silent check on startup
   useNewestDesktopRelease(autoUpdater)
     .then(() => autoUpdater.checkForUpdatesAndNotify())
-    .catch(() => {
-      // Network unavailable or no update — silently ignore
-    });
+    // Offline or no update is routine, so there is no dialog; but the reason is logged, because a
+    // release with no latest.yml (a 404) looks exactly like it.
+    .catch(err => logger().warn('startup update check failed', err));
 
   autoUpdater.on('update-available', info => {
     if (!win || win.isDestroyed()) return;
@@ -180,9 +180,10 @@ async function checkForUpdatesManually({
  * hang and the tray item always answers; in dev, or when no feed is configured, they resolve to
  * a safe "no update available".
  *
- * @param {() => Electron.BrowserWindow | null} [getWin]
+ * @param {() => Electron.BrowserWindow | null} getWin
+ * @param ipcMain  the shell's (logged) ipcMain
  */
-function registerUpdaterIpc(getWin = () => null) {
+function registerUpdaterIpc(getWin, ipcMain) {
   ipcMain.on('check-for-updates', () => { checkForUpdatesManually({ getWin }); });
 
   ipcMain.handle('updater:check', async () => {

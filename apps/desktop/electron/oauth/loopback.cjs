@@ -1,5 +1,7 @@
 'use strict';
 const http = require('http');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('core');
 
 const DONE_PAGE =
   '<!doctype html><html><body style="font-family:sans-serif;text-align:center;padding-top:3rem">' +
@@ -43,7 +45,7 @@ function startLoopback() {
             };
           });
         },
-        close() { try { server.close(); } catch { /* already closed */ } },
+        close() { try { server.close(); } catch (err) { ignore(modLog, 'closing a loopback server that may already be closed', err) } },
       });
     });
   });

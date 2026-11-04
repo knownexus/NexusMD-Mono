@@ -7,6 +7,7 @@
 const { createLogHub } = require('./hub.cjs');
 const { createLogger, createElectronLogTransport } = require('./logger.cjs');
 const { createLoggedIpc } = require('./ipc.cjs');
+const { moduleLogger, ignore, ignored } = require('./lazy.cjs');
 const { runWithCorrelation, currentCorrelation } = require('./context.cjs');
 const { redactString, redactValue } = require('./redact.cjs');
 const { LEVELS, isModuleId, normalizeLevel } = require('./entry.cjs');
@@ -28,6 +29,9 @@ module.exports = {
   createLogger,
   createElectronLogTransport,
   createLoggedIpc,
+  moduleLogger,
+  ignore,
+  ignored,
   runWithCorrelation,
   currentCorrelation,
   redactString,

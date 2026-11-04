@@ -318,12 +318,17 @@ function registerModules(ctx, env = process.env, modules = MODULES, log = consol
     disposeAll: () => Promise.allSettled([...started.entries()].map(async ([id, { handle }]) => {
       try { await handle?.dispose?.(); } catch (err) { fail(id, 'failed to shut down', err); }
     })),
+    // Which app a window (webContents) belongs to, or null: lets a crash or a failed load be logged under it.
+    ownerOf: (webContents) => {
+      for (const [id, { scope }] of started) if (scope.windows().some(w => w.webContents === webContents)) return id;
+      return null;
+    },
     // What stopping the app now would interrupt: work it reports (handle.busy(), optional) and its windows.
     busy: id => {
       const entry = started.get(id);
       if (!entry) return { running: false, windows: 0 };
       let running = false;
-      try { running = !!entry.handle?.busy?.(); } catch { /* an app that can't say is treated as idle */ }
+      try { running = !!entry.handle?.busy?.(); } catch (err) { (hub?.logger(id) ?? log).warn('ignored: busy() threw; treating the app as idle', err); }
       return { running, windows: entry.scope.windows().length };
     },
     // Stops the app and starts `next` (a MODULES entry) in its place. If the new version fails to
