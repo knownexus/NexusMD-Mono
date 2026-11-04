@@ -22,6 +22,21 @@ log.transports.file.resolvePathFn = () => {
   return path.join(logsDir, `${date}.log`);
 };
 
+// The structured log: one JSON-lines file per module under {userData}/logs/<module>/ (core for the
+// shell), written by the hub in @nexusmd/main-kit/logging. Everything that still goes through
+// electron-log (this file's log.*, the console patch below, renderer console messages, the
+// split-build apps' shimmed require('electron-log')) is routed into it by this transport, under the
+// module whose call chain it came from, else core. The flat file above stays until the Logs view
+// reads the per-module files.
+const { createLogHub, createElectronLogTransport } = require('@nexusmd/main-kit/logging');
+const logHub = createLogHub({ dir: logsDir, level: app.isPackaged ? 'info' : 'debug' });
+log.transports.hub = createElectronLogTransport(logHub);
+global.logHub = logHub;
+logHub.prune();
+setInterval(() => logHub.prune(), 24 * 60 * 60 * 1000).unref();
+// Entries are written in batches; make sure the last ones reach the disk however the process ends.
+process.on('exit', () => logHub.flush());
+
 // Patch console to use electron-log (all console.log → file + console)
 console.log = log.info;
 console.warn = log.warn;
@@ -627,6 +642,7 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   log.scope('lifecycle').info('windows closed; shutting down backends');
   appModules?.disposeAll().catch(err => log.scope('lifecycle').error('apps disposeAll failed', err));
+  logHub.flush();
 });
 
 // On macOS it is common to keep the app running even with no windows
