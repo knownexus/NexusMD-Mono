@@ -114,6 +114,20 @@ const RETRY_DELAYS_MS = [1500, 3000];
 const isNetworkError = err => /net::ERR_|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up/i.test(err?.message ?? '');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// What to tell a person when a check fails: one plain sentence, not the HTTP headers and stack
+// the error carries (those stay in the log).
+function friendlyUpdateError(err) {
+  const text = String(err?.message ?? err ?? '');
+  if (/HttpError: 404|Cannot find channel|latest[\w-]*\.yml/i.test(text)) {
+    return "The newest version is still being published. Try again in a few minutes.";
+  }
+  if (isNetworkError(err) || /HttpError: (5\d\d|429)|rate limit/i.test(text)) {
+    return "NexusMD couldn't reach the update server. Check your connection and try again.";
+  }
+  const first = text.split('\n')[0].trim();
+  return first.length > 160 ? `${first.slice(0, 157)}…` : first || 'Something went wrong. Try again later.';
+}
+
 async function checkWithRetry(autoUpdater, wait = sleep) {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -153,7 +167,7 @@ async function checkForUpdatesManually({
     return { available, version };
   } catch (err) {
     console.error('[updater] manual check failed:', err.message);
-    await show({ type: 'error', title, message: "Couldn't check for updates", detail: err.message });
+    await show({ type: 'info', title, message: "Couldn't check for updates right now", detail: friendlyUpdateError(err) });
     return { available: false, error: err.message };
   }
 }
@@ -192,4 +206,4 @@ function registerUpdaterIpc(getWin = () => null) {
   });
 }
 
-module.exports = { initUpdater, registerUpdaterIpc, checkForUpdatesManually, useNewestDesktopRelease };
+module.exports = { friendlyUpdateError, initUpdater, registerUpdaterIpc, checkForUpdatesManually, useNewestDesktopRelease };
