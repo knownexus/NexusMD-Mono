@@ -36,3 +36,12 @@ describe('confidential AES-GCM crypto', () => {
     await expect(decryptConfidentialFromServer(enc, await hashPassword('wrong'))).rejects.toThrow()
   })
 })
+
+describe('encryptConfidentialForServer with a large payload', () => {
+  it('encrypts and decrypts a 2 MB payload (a full profile backup) without overflowing the call stack', async () => {
+    const hash = 'ab'.repeat(32)
+    const big = { notes: 'x'.repeat(2 * 1024 * 1024) }
+    const enc = await encryptConfidentialForServer(big, hash)
+    expect(await decryptConfidentialFromServer(enc, hash)).toEqual(big)
+  })
+})
