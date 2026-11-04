@@ -12,6 +12,8 @@ const path = require('path');
 const crypto = require('crypto');
 const fsp = require('fs/promises');
 const { requireWorktreeFile } = require('./git-files.cjs');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('git');
 
 const MAX_ENTRIES = 20000;
 const RENAME_RETRIES = 3;
@@ -58,7 +60,7 @@ async function replaceFile(src, real) {
       }
     }
   } catch (e) {
-    await fsp.rm(tmp, { force: true }).catch(() => {});
+    await fsp.rm(tmp, { force: true }).catch(ignored(modLog, 'removing the temp file after a failed import'));
     throw e;
   }
 }

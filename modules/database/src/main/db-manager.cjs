@@ -18,6 +18,8 @@
 // inject fakes this way instead (same pattern as oauth.cjs's `deps` param).
 
 'use strict'
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('database');
 
 const { withLogging } = require('@nexusmd/main-kit/with-logging')
 
@@ -683,10 +685,10 @@ function makeHandlers(drivers) {
 
 async function closeAll() {
   for (const [, pool] of sqlPools) {
-    try { await pool.close() } catch {}
+    try { await pool.close() } catch (err) { ignore(modLog, 'closing a SQL Server pool at shutdown', err) }
   }
   for (const [, db] of sqliteDbs) {
-    try { db.close() } catch {}
+    try { db.close() } catch (err) { ignore(modLog, 'closing a SQLite database at shutdown', err) }
   }
   sqlPools.clear()
   sqliteDbs.clear()

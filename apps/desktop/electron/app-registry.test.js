@@ -137,6 +137,20 @@ describe('registerModules restart', () => {
     expect(listeners.map(l => l[0]).sort()).toEqual(['a:get:changed', 'b:get:changed'])
   })
 
+  it('says which app a window belongs to, so a crash can be logged under it', () => {
+    const { ctx } = electronFakes()
+    let win
+    const modules = {
+      a: fakeModule({}, { register: c => { win = new c.BrowserWindow(); win.webContents = { id: 1 }; return {} } }),
+      b: app('b:get'),
+    }
+    const started = registerModules(ctx, {}, modules, log)
+    expect(started.ownerOf(win.webContents)).toBe('a')
+    expect(started.ownerOf({ id: 99 })).toBeNull()
+    win.close()
+    expect(started.ownerOf(win.webContents)).toBeNull()
+  })
+
   it('says what an app is busy with: its own report and the windows it has open', () => {
     const { ctx } = electronFakes()
     let win

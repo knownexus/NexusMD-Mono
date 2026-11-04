@@ -20,6 +20,8 @@ const { registerImport } = require('./git-import.cjs');
 const { registerConflicts } = require('./git-conflicts.cjs');
 const { registerShell } = require('./git-shell.cjs');
 const { createSourceReader } = require('./git-source.cjs');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('git');
 
 const STRIP_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_PREFIX', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'];
 const BRANCH_FORMAT = '--format=%(refname)%00%(objectname)%00%(subject)%00%(upstream:short)';
@@ -308,19 +310,20 @@ function register(ipcMain, deps = {}) {
           fn();
         };
         timer = setTimeout(() => done(() => {
-          Promise.resolve(kill(child.pid)).catch(() => {});
+          modLog.warn('git timed out', { command: args[0], seconds: Math.round(timeout / 1000) });
+          Promise.resolve(kill(child.pid)).catch(ignored(modLog, 'stopping a timed-out git process'));
           reject(new Error(`git ${args[0]} timed out after ${Math.round(timeout / 1000)}s`));
         }), timeout);
         child.stdout.on('data', c => out.push(Buffer.from(c)));
         child.stderr.on('data', c => err.push(Buffer.from(c)));
-        child.on('error', e => done(() => reject(new Error(`Couldn't start git: ${e.message}`))));
+        child.on('error', e => done(() => { modLog.error('could not start git', e, { executable: exe }); reject(new Error(`Couldn't start git: ${e.message}`)); }));
         child.on('close', code => done(() => {
           const bytes = Buffer.concat(out);
           resolve({ code, stdout: bytes.toString('utf8'), raw: bytes, stderr: Buffer.concat(err).toString('utf8').trim(), bytes: bytes.length });
         }));
         if (input != null) {
           // A write to a process that already exited must not crash main.
-          child.stdin.on('error', () => {});
+          child.stdin.on('error', ignored(modLog, 'writing to a git process that already exited'));
           child.stdin.end(input);
         }
       });
@@ -638,7 +641,7 @@ function register(ipcMain, deps = {}) {
     const key = normalise(await resolveCommon(repo.path));
     const previous = locks.get(key) || Promise.resolve();
     const run = previous.then(fn, fn);
-    const tail = run.catch(() => {});
+    const tail = run.catch(ignored(modLog, 'keeping the repository lock queue going; the caller has the error'));
     locks.set(key, tail);
     try {
       return await run;
@@ -862,7 +865,7 @@ function register(ipcMain, deps = {}) {
     const known = new Map();
     for (const repo of Array.isArray(repos) ? repos : []) {
       if (typeof repo?.path !== 'string' || !path.isAbsolute(repo.path) || isRemoteOrDevicePath(repo.path)) continue;
-      try { known.set(normalise(await resolveCommon(repo.path)), repo.name); } catch { /* unavailable registrations can't match */ }
+      try { known.set(normalise(await resolveCommon(repo.path)), repo.name); } catch (err) { ignore(modLog, 'a registered repository that cannot be resolved', err) }
     }
     const seen = new Set();
     const found = [];
@@ -880,7 +883,7 @@ function register(ipcMain, deps = {}) {
           if (seen.has(key)) continue;
           seen.add(key);
           found.push({ name, path: dir.replace(/\\/g, '/'), commonDir, registeredAs: known.get(key) ?? null });
-        } catch { /* unreadable or not a repository after all: skip it */ }
+        } catch (err) { ignore(modLog, 'a folder that is not a readable repository', err) }
       }
     }
     return found;
@@ -1052,7 +1055,7 @@ function register(ipcMain, deps = {}) {
     let text = '';
     for (const n of names) {
       // Each file is marked so core can tell the git scripts from the rest.
-      try { text += `# nexusmd-file: ${n}\n${fs.readFileSync(path.join(dir, n), 'utf8')}\n`; } catch { /* unreadable: skip it */ }
+      try { text += `# nexusmd-file: ${n}\n${fs.readFileSync(path.join(dir, n), 'utf8')}\n`; } catch (err) { ignore(modLog, 'reading a git script from the profile folder', err, 'warn') }
       if (text.length > SHELL_ALIASES_CAP) break;
     }
     return text.slice(0, SHELL_ALIASES_CAP);
@@ -1092,7 +1095,7 @@ function register(ipcMain, deps = {}) {
       for (const w of waiting.splice(0)) w.reject(new Error('Git Workspace is shutting down'));
       const all = [...running];
       running.clear();
-      await Promise.all(all.map(c => Promise.resolve(kill(c.pid)).catch(() => {})));
+      await Promise.all(all.map(c => Promise.resolve(kill(c.pid)).catch(ignored(modLog, 'stopping a git process at shutdown'))));
       await shell.disposeAll();
     },
   };

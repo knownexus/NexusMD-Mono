@@ -1,6 +1,6 @@
 'use strict';
 
-const { BrowserWindow, WebContentsView, ipcMain } = require('electron');
+const { BrowserWindow, WebContentsView } = require('electron');
 const path = require('path');
 
 const TAB_STRIP_HEIGHT = 36;
@@ -180,7 +180,7 @@ function refreshTab(id) {
   if (tab && !tab.view.webContents.isDestroyed()) tab.view.webContents.reload();
 }
 
-function register(ipc = ipcMain) {
+function register(ipc) {
   ipc.on('link-window:switchTab', (_event, id) => switchTab(id));
   ipc.on('link-window:closeTab', (_event, id) => closeTab(id));
   ipc.on('link-window:refreshTab', (_event, id) => refreshTab(id));

@@ -15,6 +15,8 @@ const fs = require('fs');
 const { spawn: nodeSpawn, execFile } = require('child_process');
 const { StringDecoder } = require('string_decoder');
 const { withLogging } = require('@nexusmd/main-kit/with-logging');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('devenv');
 
 const PREFIX = '@@devenv ';
 // Files the module may open (reports, logs); never executables or scripts.
@@ -132,7 +134,7 @@ function register(ipcMain, deps = {}) {
     child.stdout.on('data', c => out.push(c));
     child.stderr.on('data', c => err.push(c));
     // An answer written just as the process exits must not crash the main process.
-    child.stdin.on?.('error', () => {});
+    child.stdin.on?.('error', ignored(modLog, 'writing to a process that already exited'));
     let finished = false;
     let graceTimer = null;
     const finish = code => {
@@ -142,9 +144,11 @@ function register(ipcMain, deps = {}) {
       out.end();
       err.end();
       runs.delete(runId);
+      if (code !== 0 && !run.cancelled) modLog.warn('a process exited with a non-zero code', { command: inv.command, code });
       send('devenv:exit', { runId, code, cancelled: run.cancelled });
     };
     child.on('error', e => {
+      modLog.error(`could not start ${inv.command}`, e);
       send('devenv:line', { runId, stream: 'stderr', line: `Couldn't start ${inv.command}: ${e.message}` });
       finish(-1);
     });
@@ -167,7 +171,7 @@ function register(ipcMain, deps = {}) {
         if (settled) return;
         settled = true;
         collectors.delete(child);
-        Promise.resolve(kill(child.pid)).catch(() => {});
+        Promise.resolve(kill(child.pid)).catch(ignored(modLog, 'stopping a timed-out process that may already have exited'));
         reject(new Error(timeoutMessage));
       }, catalogTimeoutMs);
       const lines = [];

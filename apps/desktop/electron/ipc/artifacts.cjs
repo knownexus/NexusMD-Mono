@@ -19,6 +19,8 @@ const fs = require('fs');
 const path = require('path');
 const { pipeline } = require('stream/promises');
 const { Transform } = require('stream');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('core');
 
 const API_ORIGINS = { ado: 'https://dev.azure.com', github: 'https://api.github.com' };
 const MAX_REDIRECTS = 5;
@@ -85,7 +87,7 @@ function netRequest(url, headers) {
 }
 
 function discard(body) {
-  try { body?.destroy?.(); } catch { /* already closed */ }
+  try { body?.destroy?.(); } catch (err) { ignore(modLog, 'closing a response body that may already be closed', err) }
 }
 
 function sizeLimit() {
@@ -108,7 +110,7 @@ async function writeTo(target, body) {
     await fs.promises.rename(tmp, target);
     return bytes();
   } catch (err) {
-    await fs.promises.rm(tmp, { force: true }).catch(() => {});
+    await fs.promises.rm(tmp, { force: true }).catch(ignored(modLog, 'removing the partial download'));
     throw err;
   }
 }
