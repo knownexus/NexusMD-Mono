@@ -1327,45 +1327,85 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
     return { columns: r.columns ?? [], foreignKeys: r.foreignKeys ?? [], indexes: r.indexes ?? [] }
   }
   // Every row of a table, a page at a time.
-  const allRowsOf = async (table) => {
-    if (isDemo) return structuredClone(demoData.current[table] ?? { columns: [], rows: [] })
+  // onRows hears how many rows each page brought, for the progress bar.
+  const allRowsOf = async (table, onRows) => {
+    if (isDemo) {
+      const data = structuredClone(demoData.current[table] ?? { columns: [], rows: [] })
+      onRows?.(data.rows.length)
+      return data
+    }
     const PAGE = 5000
     let columns = [], rows = []
     for (let offset = 0; ; offset += PAGE) {
       const page = await db.getRows(session.type, session.config, table, PAGE, offset)
       columns = page.columns
       rows = rows.concat(page.rows)
+      onRows?.(page.rows.length)
       if (page.rows.length < PAGE) return { columns, rows }
     }
   }
-  const [exporting, setExporting] = useState(null) // 'schema' | 'data' while a database export runs
+  // How many rows a table holds now, or null when the database won't say (the bar is then open-ended).
+  const rowCountOf = async (table) => {
+    if (isDemo) return demoData.current[table]?.rows.length ?? 0
+    try {
+      const n = Number((await db.runQuery(session.type, session.config, `SELECT COUNT(*) AS n FROM ${quoteTable(table)}`)).rows?.[0]?.[0])
+      return Number.isFinite(n) ? n : null
+    } catch { return null }
+  }
+  // { what, label, done, total } while a database export runs; total is null when it can't be known.
+  const [exporting, setExporting] = useState(null)
+  const exportCancelled = useRef(false)
   const exportDatabase = async (what) => {
     if (exporting) return
     const dialect = session.type === 'sqlserver' ? 'sqlserver' : 'sqlite'
     const database = sessionName(session)
     const names = tables.filter(t => !viewSet.has(t))
     if (!names.length) { notify('There are no tables to export', 'info'); return }
-    setExporting(what)
+    exportCancelled.current = false
+    const step = (label, done, total) => {
+      if (exportCancelled.current) throw Object.assign(new Error('cancelled'), { cancelled: true })
+      setExporting({ what, label, done, total })
+    }
     try {
       const structures = {}
-      for (const n of names) structures[n] = await structureFor(n)
+      for (const [i, n] of names.entries()) {
+        step(`Reading table definitions · ${n}`, i, names.length)
+        structures[n] = await structureFor(n)
+      }
       const ordered = orderByDependencies(names, structures)
       let text
       if (what === 'schema') {
+        step('Writing the script', names.length, names.length)
         text = buildSchemaScript(dialect, ordered.map(name => ({ name, ...structures[name] })), { database })
       } else {
+        const counts = []
+        for (const [i, n] of ordered.entries()) {
+          step(`Counting rows · ${n}`, i, ordered.length)
+          counts.push(await rowCountOf(n))
+        }
+        // One unknown count makes the total unknowable: show the rows read so far instead of a percentage.
+        let total = counts.every(c => c !== null) ? counts.reduce((a, b) => a + b, 0) : null
+        let read = 0
         const parts = []
         for (const name of ordered) {
-          const { columns, rows } = await allRowsOf(name)
+          step(`Reading rows · ${name}`, read, total)
+          const { columns, rows } = await allRowsOf(name, n => {
+            read += n
+            // Rows added while exporting never push the bar past its end.
+            if (total !== null && read > total) total = read
+            step(`Reading rows · ${name}`, read, total)
+          })
           parts.push(buildTableData(dialect, name, columns, rows, structures[name].columns))
         }
+        step('Writing the script', read, total ?? read)
         text = joinDataScript(parts, { database })
       }
       const file = `${database.replace(/[^\w.-]+/g, '_') || 'database'}-${what}.sql`
       if (downloadText(file, text, 'application/sql')) notify(`Exported ${what === 'schema' ? 'the schemas' : 'the data'} of ${plural(names.length, 'table')}`)
       else notify("Couldn't save the file", 'error')
     } catch (err) {
-      notify(`Export failed: ${err.message}`, 'error')
+      if (err.cancelled) notify('Export cancelled', 'info')
+      else notify(`Export failed: ${err.message}`, 'error')
     } finally {
       setExporting(null)
     }
@@ -1668,6 +1708,22 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
           {!isDemo && <button type="button" className="btn sm ghost" title="Read the table list again" onClick={refreshTables}>Reload tables</button>}
         </div>
       </header>
+      {exporting && (
+        <div className="nx-db-export-progress" role="status">
+          <span className="nx-db-export-label">{exporting.label}</span>
+          <span className="nx-db-count">
+            {exporting.total === null
+              ? `${exporting.done.toLocaleString()} rows so far`
+              : `${exporting.done.toLocaleString()} of ${exporting.total.toLocaleString()}`}
+          </span>
+          <div className="nx-db-export-bar" role="progressbar" aria-label="Export progress" aria-valuemin={0}
+            {...(exporting.total === null ? {} : { 'aria-valuemax': exporting.total, 'aria-valuenow': exporting.done })}
+            data-indeterminate={exporting.total === null || undefined}>
+            <span style={exporting.total === null ? undefined : { width: `${exporting.total ? Math.min(100, (exporting.done / exporting.total) * 100) : 100}%` }} />
+          </div>
+          <button type="button" className="btn sm ghost" onClick={() => { exportCancelled.current = true }}>Cancel</button>
+        </div>
+      )}
 
       <div className="nx-db-body" data-list={listHidden ? 'hidden' : 'shown'}>
         {!listHidden && (

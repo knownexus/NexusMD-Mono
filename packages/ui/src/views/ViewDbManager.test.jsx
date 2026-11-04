@@ -2064,6 +2064,33 @@ describe('ViewDbManager — new query, dry run, format and export', () => {
       expect(text).toContain('PRIMARY KEY ([id])')
     })
 
+    it('shows progress against the real row total, and can be cancelled', async () => {
+      const { createObjectURL } = URL
+      onTestFinished(() => Object.assign(URL, { createObjectURL }))
+      URL.createObjectURL = vi.fn(() => 'blob:x')
+      let release
+      const gate = new Promise(r => { release = r })
+      adapters.dbManager.runQuery.mockResolvedValue({ columns: ['n'], rows: [[2]], affected: null }) // each table holds 2 rows
+      adapters.dbManager.getRows.mockImplementation(async (_t, _c, table) => {
+        if (table === 'staff') await gate
+        return { columns: ['id', 'name'], rows: [[1, 'A'], [2, 'B']] }
+      })
+      await connect()
+      fireEvent.click(screen.getByRole('button', { name: /^Export/ }))
+      fireEvent.click(await screen.findByText('Export all data (.sql)'))
+      // patients is read (2 of the 4 rows); staff is held up.
+      await waitFor(() => {
+        const bar = screen.getByRole('progressbar', { name: 'Export progress' })
+        expect(bar.getAttribute('aria-valuemax')).toBe('4')
+        expect(bar.getAttribute('aria-valuenow')).toBe('2')
+      })
+      expect(screen.getByText('2 of 4')).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      release()
+      await waitFor(() => expect(screen.queryByRole('progressbar')).toBeNull())
+      expect(URL.createObjectURL).not.toHaveBeenCalled()
+    })
+
     it('saves every table’s rows as INSERTs', async () => {
       const { text, clicked } = await exportAs('Export all data (.sql)')
       expect(clicked[0]).toMatch(/-data\.sql$/)
