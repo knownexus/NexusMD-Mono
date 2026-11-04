@@ -8,6 +8,7 @@ import * as core from '../src/index.js'
 const EXPECTED = [
   'BUNDLE_EXT', 'BUNDLE_FORMAT', 'BUNDLE_FORMAT_ENC', 'BUNDLE_VERSION',
   'encodeBundle', 'decodeBundle', 'planProfileScopeMigration',
+  'migrateToProfileScopeV2', 'moveTokensToSecureStorage', 'profileTokenNames', 'MIGRATION_V2_MARKER', 'createSecretCache', 'profileCacheStorage',
   'stableStringify', 'contentHash',
   'mergeRows', 'mergeKeyVal', 'mergeText', 'mergeSet', 'mergePlannerWeek', 'mergeLists', 'reconcileItem',
   'encryptSync', 'decryptSync', 'plannerCollection', 'notesCollection', 'teamCustomCollection',
@@ -52,7 +53,7 @@ const EXPECTED = [
   'opaqueId', 'generateKeyPair', 'wrapPrivateKey', 'unwrapPrivateKey',
   'createAccountClient', 'AccountError',
   'createKeyRegistry', 'TWEAK_ACCOUNT_FIELDS', 'KEY_ALIASES', 'SYNC_SKIP', 'isSkippedKey',
-  'createAccountSync', 'clearAccountLocalData',
+  'createAccountSync', 'clearAccountLocalData', 'listUnpushed', 'purgeProfileLocal',
   // Field/column visibility catalogs + resolver (configurable cards & tables)
   'WI_CARD_FIELDS', 'WI_TABLE_COLUMNS', 'PR_CARD_FIELDS', 'BUILDS_TABLE_COLUMNS', 'TESTS_TABLE_COLUMNS',
   'defaultConfig', 'resolveFields', 'reorderField', 'toggleField',

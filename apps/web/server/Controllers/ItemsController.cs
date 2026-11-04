@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using NexusMDWeb.Api.Data;
 using NexusMDWeb.Api.Models;
 using NexusMDWeb.Api.Services.Auth;
+using NexusMDWeb.Api.Services.Sync;
 
 namespace NexusMDWeb.Api.Controllers;
 
@@ -50,6 +51,7 @@ public class ItemsController(AccountRepository accounts, IConfiguration config, 
     [ItemBodyLimit(batch: false)]
     public IActionResult Put(string id, [FromBody] PutItemRequest? req)
     {
+        if (SyncFormatGate.IsOutdated(Request, config)) return SyncFormatGate.Outdated();
         if (!IsValidId(id)) return Err(400, $"id must be 1-{MaxIdChars} characters of A-Z a-z 0-9 _ -");
         if (!DevicesController.TryReadIfMatch(Request, out var ifMatch)) return Err(400, "If-Match must be the current revision (a non-negative integer, 0 to create)");
         if (string.IsNullOrEmpty(req?.Ciphertext)) return InvalidCiphertext();
@@ -76,6 +78,7 @@ public class ItemsController(AccountRepository accounts, IConfiguration config, 
     [ItemBodyLimit(batch: true)]
     public IActionResult Batch([FromBody] BatchRequest? req)
     {
+        if (SyncFormatGate.IsOutdated(Request, config)) return SyncFormatGate.Outdated();
         if (req?.Items is null) return Err(400, "items is required");
         if (req.Items.Count > MaxBatchItems) return Err(400, $"at most {MaxBatchItems} items per batch");
 

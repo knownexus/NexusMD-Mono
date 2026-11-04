@@ -1,8 +1,9 @@
 # NexusMD accounts
 
-An account lets you log in on a new Windows or Android install and get your setup back: connections, API keys,
-sign-ins, theme, profiles and per-device preferences. This is milestone 1 of accounts. Syncing planners, notes
-and documents (milestone 2) and sharing (milestone 3) are not part of it yet.
+An account lets you log in on a new Windows or Android install and get your setup back. On Windows that is
+everything in every profile: settings, connections, tokens and sign-ins, and content (planner weeks, notes,
+lists, time log, calendar events, documents, saved queries). Android still syncs its milestone 1 set (settings,
+connections, sign-ins, theme, profiles). Sharing (milestone 3) is not part of it yet.
 
 Accounts live on a NexusMD server you or your team run. To deploy one, see [railway-deploy.md](railway-deploy.md).
 
@@ -30,13 +31,19 @@ which the desktop and Android apps use.
    - Otherwise it asks for username and password, with a tab to redeem an invite code.
    - "Use without an account" skips all of this. The app works exactly as before, nothing is uploaded, and you can
      sign in later.
-   - A different account on the same install. If this install last held another account's settings and a
-     different user signs in, the app warns: "This device has settings from another account. Continue as <name>
-     and remove them from this device?" Continue removes this install's synced settings and secrets (the items
-     listed as synced below) before the new account's settings are restored. Cancel signs out and changes nothing.
-     Data that milestone 1 does not sync (planner weeks and notes, calendar events, lists, time log) is not
-     removed, so it stays on the device and is visible to the next account. The install is tied to an account as
-     soon as a device is chosen, even if the first download then fails.
+   - A different account on the same install. If this install last held another account's data and a different
+     user signs in, the app first checks for content that was never synced to the previous account.
+     - Nothing unsynced: it warns "This device has settings from another account. Continue as <name> and remove
+       them from this device?" Continue removes everything the account syncs (on Windows that includes profile
+       content) before the new account's data is restored. Cancel signs out and changes nothing.
+     - Something unsynced: the switch is blocked. The screen lists each profile and how many items have not been
+       synced, and offers **Export a backup** (a password-protected `.nmdprofile` of every profile, including
+       its tokens; after saving it, **Continue and remove** appears), **Cancel and sync first** (signs out of the
+       new account: sign in with the previous account, let it sync, then switch) and **Cancel**. Tokens and
+       sign-ins are not counted, because they cannot be compared without the previous account's key and can be
+       typed again.
+     - On Android, content is not synced and is never removed on a switch.
+     The install is tied to an account as soon as a device is chosen, even if the first download then fails.
    - The same account again. Signing in as the same user never removes local data. If your session simply expired,
      signing back in goes straight into the app and skips the device picker. After you log out yourself, signing
      in again shows the device picker (step 2) and restores as usual.
@@ -60,10 +67,78 @@ Sync then runs in the background and when the app is shown again. If you are off
 what it has and syncs later. If your session has expired you see the gate again, and nothing local is wiped.
 Local data is only removed when a different account signs in, as described above.
 
-## What is synced, and at which level
+## Profiles on Windows
+
+Everything you keep in NexusMD belongs to a profile, and each profile syncs on its own: profiles never see each
+other's data. Settings that used to be shared by the whole app were copied into every profile at the upgrade, and
+content and credentials went to the profile that was active then (see "Upgrading" below).
+
+- **Deleting** a profile (Settings, Profiles, Edit, Delete) moves it to **Deleted profiles**. Its data stays and
+  keeps syncing, so you can **Restore** it from any computer. The last live profile cannot be deleted.
+- **Purge** (in Deleted profiles, after a confirmation) removes the profile, its content and its saved tokens from
+  every computer. It cannot be undone. Signed out, the purge happens on this computer and reaches the account the
+  next time you sign in.
+- If a profile is purged on one computer while another has changes to it that were never synced, the other
+  computer does not discard them straight away: it shows which items would be lost, offers **Export first** (a
+  `.nmdprofile` of that profile) and then **Discard**, or **Later**.
+
+### Backups (.nmdprofile)
+
+Settings, Profiles, Backup & Restore exports a password-protected `.nmdprofile` file. On Windows the file also
+carries each profile's saved tokens and sign-ins (decrypted inside the encrypted file), and restoring it puts them
+back into secure storage, so choose a strong password. If some tokens cannot be saved on the computer you restore
+on, NexusMD says so and you sign in again for those.
+
+### Upgrading
+
+The first start of this version moves the data that was still shared by the whole app into profiles, and moves
+plaintext tokens (Azure DevOps, GitHub and Jira tokens, OAuth sign-ins) into secure storage. Nothing is removed
+until every copy has been written and read back; if anything fails, nothing changes and the next start tries
+again. Where a profile already had a different copy of some content, the shared copy is kept on this computer
+(never synced) instead of being thrown away. Both Windows computers need this version before syncing again: the
+server refuses writes from older versions (see [railway-deploy.md](railway-deploy.md), `Sync__MinFormat`), and
+an older version shows "This version of NexusMD can no longer sync. Update NexusMD to keep syncing."
+
+## Sync status and conflicts
+
+Settings, Data & sync shows **Profile sync**: one row per profile with the time of its last sync (or why the last
+sync failed), items the server refused (larger than 25 MiB, or over the account's 1 GiB), its open conflicts, and
+one **Sync now** for all profiles.
+
+When the same thing changed on two computers between syncs, NexusMD never overwrites either side. The item is
+parked as a conflict, everything else keeps syncing, and a notice says "N sync conflicts need your decision —
+Settings › Data & sync". **Sync conflicts** lists them; **Resolve** opens:
+
+- for text (a note, a document, a plain value): the two versions line by line, "Use mine" or "Use theirs" for
+  each changed part, and the result, which you can edit before saving;
+- for structured items (a time-log entry, a list, a calendar event, a connection): the fields that differ, with a
+  choice for each;
+- for content records: **Keep both**, which keeps yours and adds the other version as
+  "<name> (conflicted copy, <device>, <date>)";
+- when one side deleted the item, or for a token (its values are never shown): keep this computer's version or
+  use the other one.
+
+Two computers that never synced content before the upgrade are handled the same way: different notes, lists or
+entries simply merge; the same record with different content becomes a conflict instead of one side winning.
+Identical values are never conflicts. Values the app writes on its own (token refreshes, "seen" flags, collapsed
+panels, last-used markers, open connections) do not ask: the newest wins.
+
+## Missing folders on this computer
+
+Git repositories and API client collection folders are part of the profile, so they appear on every computer. A
+folder that does not exist on this computer shows greyed out and cannot be opened (also from the keyboard) until
+the folder exists.
+
+## Google Drive / OneDrive backup
+
+The older Google Drive / OneDrive backup is behind a switch in Settings, Data & sync. It is off on new installs
+and on for installs where it was already set up. With it off, its buttons and its automatic backup do not run.
+
+## What is synced, and at which level (Android)
 
 Account level means every device on the account shares it. Device level means it is kept per device: a device you
-log in on restores its own value, and other devices do not see it.
+log in on restores its own value, and other devices do not see it. On Windows almost everything is account level
+and per profile (above); only the sidebar width, the active profile and the app preferences below stay per device.
 
 | Level | What |
 | --- | --- |
@@ -79,13 +154,13 @@ log in on restores its own value, and other devices do not see it.
 
 Not synced:
 
-- Planner weeks, notes, calendar events, lists, time log and documents. Milestone 2 covers them.
+- On Android: planner weeks, notes, calendar events, lists, time log and documents.
 - Anything that is a cache or in-flight state: caches, pending sign-in state, offline queues, git snapshots,
   migration markers, folder URIs that only mean something on one phone.
 - The account session itself (it stays on the device, in secure storage).
 
-Conflicts are settled per setting by the time the edit was first noticed on a device (last writer wins). A device
-that has never synced a value does not overwrite the account's value when it joins.
+On Android, conflicts are settled per setting by the time the edit was first noticed on a device (last writer
+wins). A device that has never synced a value does not overwrite the account's value when it joins.
 
 ## Invites
 
@@ -120,16 +195,24 @@ Android app use different registrations. For that reason the tokens are stored p
 ## Checking a server end to end
 
 `scripts/account-e2e.mjs` drives the real client library against a running server. It sets up the administrator,
-invites a second user, seeds one "device" with settings and secrets, restores them on a fresh second device, and
-scans the server's SQLite file to confirm none of the values or setting names are present in clear text. It
-exits with a non-zero status if anything fails.
+invites a second user, seeds a Windows "device" with two profiles (settings, a token, a sign-in, a note, tweaks),
+restores them on a fresh second device, checks that a third device's different notes are never lost (distinct
+notes merge, the same note conflicts), that a note edited on two devices becomes one conflict and Keep both leaves
+two notes everywhere, that a deleted profile shows as deleted elsewhere, restores and purges (the server keeps only
+tombstones), that a write without the current sync format gets 426, and scans the server's SQLite file to confirm
+none of the values or names are present in clear text. It exits with a non-zero status if anything fails.
 
-Start a server with a temporary database (the server needs the .NET 8 runtime):
+Start a server with a temporary database and `Sync__MinFormat=2` (the server needs the .NET 8 runtime):
 
 ```
 Accounts__SetupToken=<token> Jwt__SigningKey=<at least 32 characters> Accounts__DbPath=<dir>/accounts.db \
-Web__LegacyEndpoints=false Urls=http://127.0.0.1:5391 dotnet run --project apps/web/server
+Sync__MinFormat=2 RateLimit__PermitPerMinute=1000 Web__LegacyEndpoints=false Urls=http://127.0.0.1:5391 \
+dotnet run --project apps/web/server
 ```
+
+Without a local .NET 8, the script's header has the equivalent `docker run` with the `mcr.microsoft.com/dotnet/sdk:8.0`
+image (behind a TLS-inspecting proxy, add the proxy's root certificate to the container with
+`update-ca-certificates` so NuGet can restore).
 
 Then, from the repository root, with a database that has not been set up yet:
 

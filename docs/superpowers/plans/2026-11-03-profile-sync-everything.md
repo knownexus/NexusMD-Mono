@@ -248,7 +248,11 @@
 - Consumes: Task 5 `purgeProfile`, `pendingPurges`, `confirmPurge`, `onPendingPurge`, `purgeProfileLocal`; `useAccount()` for `sync` (null when signed out → local purge only).
 - Delete sets `deletedAt = now, updatedAt = now`; restore sets `deletedAt = null, updatedAt = now`. The last live profile cannot be deleted (existing toast).
 
+- **Account switch (owner decision 2026-11-03, "protect unsynced"):** when a different account signs in (the gate's existing switch warning), first ask the sync engine for unpushed local changes (`sync.unpushed() : Array<{ id, profileId }>` — add it in this task: ids whose local value differs from the last synced one, plus conflicted ids). If there are none, `clearLocal()` removes everything the registry syncs **including profile content** (drop the interim content-keeping rule `isContent` in `packages/core/src/modules/account/account-clear.js`). If there are some, the switch is blocked: the screen lists the profiles and item counts not yet synced and offers **Sync now** (runs `syncNow`, then re-checks), **Export** (`exportBundle` per affected profile) and **Cancel** (sign out of the new account, nothing cleared). Only when nothing is unpushed, or after an export, can the owner continue to clear. Signed out of the old account (no session): treat every local content key as unsynced.
+
 - [ ] **Step 1: Failing tests:**
+  - `account switch with nothing unsynced clears content too`.
+  - `account switch with unsynced notes is blocked and lists them; Sync now that succeeds unblocks; Export then Continue clears; Cancel clears nothing`.
   - `deleting moves the profile to Deleted profiles and keeps its data`.
   - `restore brings it back with its data`.
   - `purge asks for confirmation, then removes data and secrets (signed out: local only; signed in: sync.purgeProfile)`.

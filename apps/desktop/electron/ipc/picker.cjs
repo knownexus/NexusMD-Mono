@@ -33,8 +33,9 @@ function register(ipcMain, getMainWindow) {
     const { canceled, filePath } = await dialog.showSaveDialog(win, {
       defaultPath: name,
     });
-    if (canceled || !filePath) return;
+    if (canceled || !filePath) return false;
     await fs.writeFile(filePath, text, 'utf8');
+    return true;
   });
 }
 

@@ -5,6 +5,7 @@ import { CardFrame, Icon, SettField } from '@nexusmd/ui'
 import { makeJiraClient, fetchJiraBoards, JIRA_CACHE_KEY } from '@nexusmd/core'
 import { settInputStyle } from './form-style.js'
 import { getJiraConfig, saveJiraConfig, createJiraHttpAdapter } from './jira-client.js'
+import { workStorage } from './work-storage.js'
 
 const TOKEN_URL = 'https://id.atlassian.com/manage-profile/security/api-tokens'
 const splitKeys = (s) => s.split(/[,\s]+/).map(k => k.trim()).filter(Boolean)
@@ -78,7 +79,7 @@ export function JiraConnectionCard({ onRefreshData }) {
     setToken('')
     setStatus('Saved! Loading data…')
     // Drop the cache so the refresh refetches metadata for the new settings.
-    try { localStorage.removeItem(JIRA_CACHE_KEY) } catch {}
+    try { workStorage.remove(JIRA_CACHE_KEY) } catch {}
     onRefreshData?.().catch(() => {})
     setTimeout(() => setStatus(''), 3000)
   }

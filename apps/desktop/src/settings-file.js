@@ -8,7 +8,7 @@
 // Secrets are stored encrypted under a key that never leaves this machine's IndexedDB, so the
 // raw `nexusmd.sec.*` values would be useless elsewhere: they are decrypted on export, carried
 // inside the password-encrypted file, and re-encrypted with the new machine's key on import.
-import { encryptConfidentialForServer, decryptConfidentialFromServer, isSkippedKey } from '@nexusmd/core'
+import { encryptConfidentialForServer, decryptConfidentialFromServer, isSkippedKey, MIGRATION_V2_MARKER } from '@nexusmd/core'
 
 export const SETTINGS_FORMAT     = 'nexusmd-settings'
 export const SETTINGS_FORMAT_ENC = 'nexusmd-settings-enc'
@@ -25,7 +25,9 @@ const isAccountSecret = (name) => /(?:^|\.)account\./.test(name)
 // are rebuilt on their own and stale or wrong on another machine. The skip list is shared with
 // account sync and lives in @nexusmd/core.
 // `nexusmd.account.*` (device id, sync meta, bound user, opt-out) is this machine's own account state.
-export const isExported = (key) => !isSkippedKey(key) && !key.startsWith('nexusmd.account.')
+// `nexusmd.migrated.v2[.backup.*]` is this machine's own record of the move into profiles.
+const isMigrationState = (key) => key === MIGRATION_V2_MARKER || key.startsWith(MIGRATION_V2_MARKER + '.')
+export const isExported = (key) => !isSkippedKey(key) && !key.startsWith('nexusmd.account.') && !isMigrationState(key)
 
 // SHA-256(password + salt) as hex → AES-256-GCM key material. Own salt, so a settings file
 // password can't be tried against a profile bundle's keyspace or the other way round.
@@ -138,6 +140,10 @@ export async function applySettings(payload, { storage, secure, prefs, installed
     await secure.set(name, v)
     secrets++
   }
+
+  // A file written before profiles held everything carries shared keys (md_documents, nx-db:*, ...):
+  // the next start moves them into the profiles again (packages/core migrate-v2.js).
+  if (keys) storage.removeItem(MIGRATION_V2_MARKER)
 
   const disabledApps = await applyDesktopPrefs(payload.desktop || {}, prefs, installedApps)
 

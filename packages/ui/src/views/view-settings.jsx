@@ -10,6 +10,7 @@ import { Icon } from '../icons.jsx';
 import { NEXUSMD_THEMES, THEME_MODES } from '../themes.js';
 import { PlFld, PlModal } from '../planner-chips.jsx';
 import { toast } from '../toast.jsx';
+import { useAccount } from '../account-gate.jsx';
 import { hashPassword, loadConfidentialConfig, saveConfidentialConfig } from '../planner/planner-confidential.js';
 import { useProfile } from '../profile-context.jsx';
 import { useNexusData } from '../data-context.jsx';
@@ -41,20 +42,20 @@ function VsRow({ title, desc, children }) {
   );
 }
 
-// Which Settings sections are collapsed: one list of section ids, kept for this machine rather than
-// per profile (it is how the page is laid out, not a setting). Read and written in full each time
+// Which Settings sections are collapsed: one list of section ids, kept per profile, so the page is laid
+// out the same on every machine the profile is on. Read and written in full each time
 // so cards collapsed on different tabs never overwrite each other.
 const COLLAPSED_KEY = 'nexusmd.settings.collapsed';
-function readCollapsed() {
+function readCollapsed(key = COLLAPSED_KEY) {
   try {
-    const ids = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]');
+    const ids = JSON.parse(localStorage.getItem(key) || '[]');
     return Array.isArray(ids) ? ids : [];
   } catch { return []; }
 }
-function writeCollapsed(id, collapsed) {
+function writeCollapsed(id, collapsed, key = COLLAPSED_KEY) {
   try {
-    const ids = readCollapsed().filter(x => x !== id);
-    localStorage.setItem(COLLAPSED_KEY, JSON.stringify(collapsed ? [...ids, id] : ids));
+    const ids = readCollapsed(key).filter(x => x !== id);
+    localStorage.setItem(key, JSON.stringify(collapsed ? [...ids, id] : ids));
   } catch { /* storage unavailable: the section still collapses for this visit */ }
 }
 
@@ -63,12 +64,14 @@ function writeCollapsed(id, collapsed) {
 // `actions` sit at the right of the title bar; `flush` drops the body padding for rows (VsRow).
 function VsCard({ title, icon, children, id, actions, flush = true }) {
   const key = id || (typeof title === 'string' ? title : '');
-  const [collapsed, setCollapsed] = useStateVS(() => !!key && readCollapsed().includes(key));
+  const { getProfileKey } = useNexusData();
+  const storeKey = getProfileKey(COLLAPSED_KEY);
+  const [collapsed, setCollapsed] = useStateVS(() => !!key && readCollapsed(storeKey).includes(key));
   const bodyId = React.useId();
   const toggle = () => {
     const next = !collapsed;
     setCollapsed(next);
-    if (key) writeCollapsed(key, next);
+    if (key) writeCollapsed(key, next, storeKey);
   };
   return (
     <div className={`card set-card${collapsed ? ' collapsed' : ''}`}>
@@ -307,9 +310,17 @@ function VsProfileEditor({ profile, onSave, onDelete, onExport, onClose, showOrg
 // profileApi is the per-platform profile-context value (useProfile()); injected
 // because the underlying provider differs (web REST /api/profiles vs app local).
 function VsProfiles({ profileApi, showOrgLabel = true }) {
-  const { profiles, activeId, switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile } = profileApi;
+  const { profiles, activeId, switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile,
+    deletedProfiles = [], restoreProfile, purgeProfile } = profileApi;
+  const { sync } = useAccount();
   const [editing, setEditing]   = useStateVS(null);
   const importRef               = useRefVS(null);
+
+  // Purging cannot be undone: it removes the profile, its data and its secrets on every device.
+  const handlePurge = (p) => {
+    if (!window.confirm(`Purge "${p.name}"? Its settings, content and saved sign-ins are removed from every device. This cannot be undone.`)) return;
+    purgeProfile(p.id, { sync: sync || null });
+  };
 
   const handleSave = (changes) => {
     if (editing === 'new') {
@@ -351,6 +362,23 @@ function VsProfiles({ profileApi, showOrgLabel = true }) {
         <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }}
           onChange={e => { const f = e.target.files?.[0]; if (f) importProfile(f); e.target.value = ''; }} />
     </VsCard>
+    {deletedProfiles.length > 0 && (
+      <VsCard title="Deleted profiles" icon="more">
+        {deletedProfiles.map(p => (
+          <div key={p.id} className="set-row" style={{ opacity: .75 }}>
+            <div style={{ width: 34, height: 34, borderRadius: '50%', background: p.color || 'var(--border)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+              {p.initials}
+            </div>
+            <div className="info">
+              <div className="t">{p.name}</div>
+              <div className="d">Deleted{p.deletedAt ? ` ${new Date(p.deletedAt).toLocaleDateString()}` : ''}. Its data is kept until you purge it.</div>
+            </div>
+            {restoreProfile && <button className="btn sm ghost" onClick={() => restoreProfile(p.id)}>Restore</button>}
+            {purgeProfile && <button className="btn sm ghost danger" onClick={() => handlePurge(p)}>Purge</button>}
+          </div>
+        ))}
+      </VsCard>
+    )}
     {/* Outside the card: "+ New profile" still works while the section is collapsed. */}
     {editing && (
       <VsProfileEditor
@@ -435,7 +463,7 @@ function CloudPickerModal({ open, label, files, busy, onClose, onPick }) {
 // fileIO: { saveFile(name, text) → Promise, pickFile() → Promise<string|null> }
 // `accountSlot`: optional node rendered with the data/sync cards (the app passes its AccountCard here).
 function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [], accountSlot = null }) {
-  const { profiles, activeProfile, exportBundle, importBundle } = useProfile();
+  const { profiles, activeProfile, exportBundle, importBundle, bundlesCarrySecrets } = useProfile();
   const [mode, setMode] = useStateVS(null);     // 'export-all' | 'export-one' | 'import'
   const [pendingText, setPendingText] = useStateVS(null);
   const [busy, setBusy] = useStateVS(false);
@@ -468,6 +496,8 @@ function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [
     try {
       if (mode === 'import') {
         const res = await importBundle({ text: pendingText, password });
+        const failed = res.secretsFailed?.length || 0;
+        if (failed) toast?.(`${failed} saved sign-in${failed !== 1 ? 's or tokens' : ' or token'} could not be restored on this computer: sign in again in Settings after the reload.`, 'error');
         toast?.(`Imported ${res.imported} profile${res.imported !== 1 ? 's' : ''}. Reloading…`, 'success');
         setTimeout(() => window.location.reload(), 700);
       } else {
@@ -486,7 +516,7 @@ function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [
     <VsCard title="Backup & Restore" icon="send" flush={false}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-          Export a password-encrypted <code>.nmdprofile</code> file you can keep as a backup or open in the other apps.
+          Export a password-encrypted <code>.nmdprofile</code> file you can keep as a backup or open in the other apps.{bundlesCarrySecrets && ' It includes the saved tokens and sign-ins, so choose a strong password.'}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {showExportSingle && activeProfile && (

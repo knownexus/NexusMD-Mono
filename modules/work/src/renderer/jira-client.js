@@ -9,8 +9,9 @@ import {
   fetchJiraCreateTypes, fetchJiraCreateFields, fetchJiraLinkTypes, createJiraIssue,
   transitionJiraIssueToAny, fetchJiraBoards,
 } from '@nexusmd/core'
-import { localStorageAdapter } from '@nexusmd/web-adapters'
+import { workStorage } from './work-storage.js'
 import { getProfileKey } from '@nexusmd/shell-sdk'
+import { tokenStore } from './token-store.js'
 
 const rawStorage = {
   get: (k) => localStorage.getItem(k),
@@ -19,6 +20,7 @@ const rawStorage = {
 
 export const { getJiraConfig, saveJiraConfig, isJiraConfigured, isJiraActive } = makeJiraConfig({
   storage: rawStorage,
+  secrets: tokenStore,
   key: (name) => getProfileKey('jira.' + name),
 })
 
@@ -54,7 +56,7 @@ export function createJiraHttpAdapter({
   }
 }
 
-const cachedJira = () => loadCachedJiraData(getJiraConfig(), { storage: localStorageAdapter })
+const cachedJira = () => loadCachedJiraData(getJiraConfig(), { storage: workStorage })
 
 export function createJiraWorkItemSource({
   http = createJiraHttpAdapter(),

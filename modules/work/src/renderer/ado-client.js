@@ -1,5 +1,6 @@
 import { makeAdoConfig } from '@nexusmd/core';
 import { getProfileKey } from '@nexusmd/shell-sdk';
+import { tokenStore } from './token-store.js';
 
 // Raw string storage (ADO values are stored as plain strings, not JSON) under the
 // profile-namespaced `ado.*` keys. The read/write logic lives in @nexusmd/core.
@@ -10,6 +11,7 @@ const rawStorage = {
 
 export const { getAdoConfig, saveAdoConfig, isAdoConfigured, usesAdoWorkItems } = makeAdoConfig({
   storage: rawStorage,
+  secrets: tokenStore,
   key: (name) => getProfileKey('ado.' + name),
 });
 

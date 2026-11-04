@@ -643,11 +643,11 @@ describe('ViewDbManager — minimised columns', () => {
     openTable('patients')
     await waitFor(() => screen.getByRole('table'))
     expect(screen.getByRole('button', { name: 'Show name' })).toBeTruthy()
-    expect(JSON.parse(window.localStorage.getItem('nx-db:min-cols:uat:patients'))).toEqual(['name'])
+    expect(JSON.parse(window.localStorage.getItem('nexusmd.dbManager.minCols.uat.patients'))).toEqual(['name'])
   })
 
   it('ignores remembered names the table no longer has', async () => {
-    window.localStorage.setItem('nx-db:min-cols:uat:patients', JSON.stringify(['gone', 'name']))
+    window.localStorage.setItem('nexusmd.dbManager.minCols.uat.patients', JSON.stringify(['gone', 'name']))
     await openUatPatients()
     expect(screen.getByRole('button', { name: 'Show name' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Show gone' })).toBeNull()
@@ -937,7 +937,7 @@ describe('ViewDbManager — saved queries', () => {
     await demoQueryTab()
     fireEvent.change(screen.getByLabelText('SQL query'), { target: { value: "SELECT * FROM patients WHERE status = 'active'" } })
     saveAs('Active rows')
-    expect(JSON.parse(window.localStorage.getItem('nx-db:saved-queries'))[0]).toMatchObject({
+    expect(JSON.parse(window.localStorage.getItem('nexusmd.dbManager.savedQueries'))[0]).toMatchObject({
       name: 'Active rows', sql: "SELECT * FROM {table} WHERE status = 'active'", conn: null,
     })
 
@@ -972,7 +972,7 @@ describe('ViewDbManager — saved queries', () => {
     expect(screen.getByRole('button', { name: 'Run Everything' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Remove Everything' }))
     expect(screen.queryByRole('button', { name: 'Run Everything' })).not.toBeTruthy()
-    expect(JSON.parse(window.localStorage.getItem('nx-db:saved-queries'))).toEqual([])
+    expect(JSON.parse(window.localStorage.getItem('nexusmd.dbManager.savedQueries'))).toEqual([])
   })
 
   it('saving under an existing name replaces that query', async () => {
@@ -984,7 +984,7 @@ describe('ViewDbManager — saved queries', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'mine' } })
     expect(screen.getByText(/Replaces the saved query/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
-    const saved = JSON.parse(window.localStorage.getItem('nx-db:saved-queries'))
+    const saved = JSON.parse(window.localStorage.getItem('nexusmd.dbManager.savedQueries'))
     expect(saved).toHaveLength(1)
     expect(saved[0].sql).toBe('SELECT id FROM {table}')
   })
@@ -993,7 +993,7 @@ describe('ViewDbManager — saved queries', () => {
     await demoQueryTab()
     fireEvent.change(screen.getByLabelText('SQL query'), { target: { value: 'SELECT * FROM patients' } })
     saveAs('Just patients', { anyTable: false })
-    expect(JSON.parse(window.localStorage.getItem('nx-db:saved-queries'))[0]).toMatchObject({ sql: 'SELECT * FROM patients', conn: 'demo:/' })
+    expect(JSON.parse(window.localStorage.getItem('nexusmd.dbManager.savedQueries'))[0]).toMatchObject({ sql: 'SELECT * FROM patients', conn: 'demo:/' })
 
     fireEvent.click(screen.getByText('Disconnect'))
     fireEvent.click(screen.getByText(/Connect to database/i))
@@ -1006,7 +1006,7 @@ describe('ViewDbManager — saved queries', () => {
   })
 
   it('runs a saved query from the overview on the table chosen there', async () => {
-    window.localStorage.setItem('nx-db:saved-queries', JSON.stringify([{ id: 'q1', name: 'Count', sql: 'SELECT * FROM {table}', conn: null, at: 1 }]))
+    window.localStorage.setItem('nexusmd.dbManager.savedQueries', JSON.stringify([{ id: 'q1', name: 'Count', sql: 'SELECT * FROM {table}', conn: null, at: 1 }]))
     render(<ViewDbManager adapters={adapters} />)
     fireEvent.click(screen.getByText('Try the demo'))
     await waitFor(() => screen.getByRole('region', { name: 'Saved queries' }))
@@ -1028,7 +1028,7 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
 
   const saved = [{ id: 'uat', name: 'UAT', type: 'sqlite', inputMode: 'fields', filePath: '/a.db' }]
   const list = () => within(screen.getByRole('navigation', { name: 'Table list' }))
-  const prefsOf = conn => JSON.parse(window.localStorage.getItem(`nx-db:tables:${conn}`))
+  const prefsOf = conn => JSON.parse(window.localStorage.getItem(`nexusmd.dbManager.tables.${conn}`))
   // The newest open menu (a flyout opens on top of its parent).
   const topMenu = () => within(screen.getAllByRole('menu').at(-1))
   const openMenu = label => { fireEvent.click(list().getByRole('button', { name: label })); return topMenu() }
@@ -1107,7 +1107,7 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
   })
 
   it('opens a section menu with a right-click on its header: fold it, fold the others, group or hide its tables', async () => {
-    window.localStorage.setItem('nx-db:tables:uat', JSON.stringify({ groups: ['People'], assigned: { staff: 'People' } }))
+    window.localStorage.setItem('nexusmd.dbManager.tables.uat', JSON.stringify({ groups: ['People'], assigned: { staff: 'People' } }))
     await connectUat()
     fireEvent.contextMenu(list().getByRole('button', { name: /People/, expanded: true }))
     fireEvent.click(topMenu().getByRole('menuitem', { name: 'Collapse the others' }))
@@ -1154,7 +1154,7 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
   })
 
   it('remembers favourites, groups, hidden tables and folded groups the next time the connection opens', async () => {
-    window.localStorage.setItem('nx-db:tables:uat', JSON.stringify({
+    window.localStorage.setItem('nexusmd.dbManager.tables.uat', JSON.stringify({
       starred: ['patients'], hidden: ['staff'], groups: ['Clinical'], assigned: { patients: 'Clinical' }, collapsed: [],
     }))
     await connectUat()
@@ -1166,13 +1166,13 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
   })
 
   it('picks up stars saved before groups existed', async () => {
-    window.localStorage.setItem('nx-db:starred:uat', JSON.stringify(['staff']))
+    window.localStorage.setItem('nexusmd.dbManager.starred.uat', JSON.stringify(['staff']))
     await connectUat()
     expect(screen.getAllByRole('button', { name: 'Unstar staff' }).length).toBeGreaterThan(0)
   })
 
   it('folds every group with one button, which then unfolds them all, and remembers it', async () => {
-    window.localStorage.setItem('nx-db:tables:uat', JSON.stringify({ groups: ['People'], assigned: { staff: 'People' }, collapsed: [] }))
+    window.localStorage.setItem('nexusmd.dbManager.tables.uat', JSON.stringify({ groups: ['People'], assigned: { staff: 'People' }, collapsed: [] }))
     await connectUat()
     expect(list().queryByRole('button', { name: 'Expand all' })).not.toBeTruthy()
     fireEvent.click(list().getByRole('button', { name: 'Collapse all' }))
@@ -1190,7 +1190,7 @@ describe('ViewDbManager — grouping, favourites and hiding tables', () => {
   })
 
   it('keeps preferences apart per connection', async () => {
-    window.localStorage.setItem('nx-db:tables:other', JSON.stringify({ hidden: ['staff'] }))
+    window.localStorage.setItem('nexusmd.dbManager.tables.other', JSON.stringify({ hidden: ['staff'] }))
     await connectUat()
     expect(list().getByText('staff')).toBeTruthy()
   })
@@ -1317,7 +1317,7 @@ describe('ViewDbManager — creating and dropping tables and views', () => {
   })
 
   it('drops a table only once its name is typed, and forgets its stars and group', async () => {
-    window.localStorage.setItem('nx-db:tables:uat', JSON.stringify({ starred: ['staff'], groups: ['People'], assigned: { staff: 'People' } }))
+    window.localStorage.setItem('nexusmd.dbManager.tables.uat', JSON.stringify({ starred: ['staff'], groups: ['People'], assigned: { staff: 'People' } }))
     await connectUat()
     fireEvent.click(list().getAllByRole('button', { name: 'More for staff' })[0])
     fireEvent.click(topMenu().getByRole('menuitem', { name: 'Drop table…' }))
@@ -1328,7 +1328,7 @@ describe('ViewDbManager — creating and dropping tables and views', () => {
     fireEvent.change(dialog().getByLabelText(/Type staff to confirm/), { target: { value: 'staff' } })
     fireEvent.click(drop)
     await waitFor(() => expect(adapters.dbManager.runDdl).toHaveBeenCalledWith('sqlite', expect.anything(), 'DROP TABLE [staff]'))
-    await waitFor(() => expect(JSON.parse(window.localStorage.getItem('nx-db:tables:uat'))).toMatchObject({ starred: [], assigned: {}, groups: [] }))
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem('nexusmd.dbManager.tables.uat'))).toMatchObject({ starred: [], assigned: {}, groups: [] }))
   })
 
   it('drops a view with DROP VIEW', async () => {
@@ -1554,11 +1554,11 @@ describe('ViewDbManager — reopening connections from last time', () => {
     { id: 'c', name: 'Azure', type: 'sqlserver', inputMode: 'fields', host: 'x.database.windows.net', authentication: 'azure-ad-interactive' },
   ]
   const connTabs = () => within(screen.getByRole('tablist', { name: 'Connections' }))
-  const remembered = () => JSON.parse(window.localStorage.getItem('nx-db:open-connections'))
+  const remembered = () => JSON.parse(window.localStorage.getItem('nexusmd.dbManager.openConnections'))
   const renderView = () => render(<ViewDbManager adapters={adapters} savedConnections={saved} onResolveSecret={vi.fn().mockResolvedValue('')} />)
 
   it('reconnects the saved connections that were open, showing the one that was showing', async () => {
-    window.localStorage.setItem('nx-db:open-connections', JSON.stringify({ ids: ['a', 'b'], active: 'b' }))
+    window.localStorage.setItem('nexusmd.dbManager.openConnections', JSON.stringify({ ids: ['a', 'b'], active: 'b' }))
     renderView()
     await waitFor(() => expect(connTabs().getByRole('tab', { name: 'Prod', selected: true })).toBeTruthy())
     expect(connTabs().getByRole('tab', { name: 'UAT', selected: false })).toBeTruthy()
@@ -1567,7 +1567,7 @@ describe('ViewDbManager — reopening connections from last time', () => {
   })
 
   it('leaves a browser sign-in connection waiting for a click instead of opening a sign-in window', async () => {
-    window.localStorage.setItem('nx-db:open-connections', JSON.stringify({ ids: ['a', 'c'], active: 'a' }))
+    window.localStorage.setItem('nexusmd.dbManager.openConnections', JSON.stringify({ ids: ['a', 'c'], active: 'a' }))
     renderView()
     await waitFor(() => expect(connTabs().getByRole('tab', { name: 'UAT', selected: true })).toBeTruthy())
     expect(adapters.dbManager.connect).toHaveBeenCalledOnce()
@@ -1581,7 +1581,7 @@ describe('ViewDbManager — reopening connections from last time', () => {
   })
 
   it('marks waiting connections on the welcome screen when nothing else reopened', async () => {
-    window.localStorage.setItem('nx-db:open-connections', JSON.stringify({ ids: ['c'], active: 'c' }))
+    window.localStorage.setItem('nexusmd.dbManager.openConnections', JSON.stringify({ ids: ['c'], active: 'c' }))
     renderView()
     await waitFor(() => expect(within(screen.getByRole('region', { name: 'Quick connect' })).getByText('Was open')).toBeTruthy())
     expect(adapters.dbManager.connect).not.toHaveBeenCalled()
@@ -1598,7 +1598,7 @@ describe('ViewDbManager — reopening connections from last time', () => {
   })
 
   it('skips saved connections that no longer exist, and reports ones that fail', async () => {
-    window.localStorage.setItem('nx-db:open-connections', JSON.stringify({ ids: ['gone', 'a', 'b'], active: 'a' }))
+    window.localStorage.setItem('nexusmd.dbManager.openConnections', JSON.stringify({ ids: ['gone', 'a', 'b'], active: 'a' }))
     adapters.dbManager.connect.mockImplementation(async (_type, config) => {
       if (config.filePath === '/b.db') throw new Error('file locked')
       return { ok: true, tables: ['patients'] }
@@ -1610,7 +1610,7 @@ describe('ViewDbManager — reopening connections from last time', () => {
   })
 
   it('does not reopen one-off connections', async () => {
-    window.localStorage.setItem('nx-db:open-connections', JSON.stringify({ ids: [], active: null }))
+    window.localStorage.setItem('nexusmd.dbManager.openConnections', JSON.stringify({ ids: [], active: null }))
     renderView()
     expect(screen.getByText('Database Manager')).toBeTruthy()
     expect(adapters.dbManager.connect).not.toHaveBeenCalled()

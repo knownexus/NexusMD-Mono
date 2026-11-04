@@ -9,12 +9,15 @@ export const MAX_GITHUB_REPOS = 50
  * @param {object} opts
  * @param {{ get(k:string): (string|null), set(k:string, v:string): void }} opts.storage
  * @param {(name: string) => string} opts.key
+ * @param {{ get(k:string): (string|null), set(k:string, v:string): void }} [opts.secrets]
+ *   Where the PAT is kept instead of `storage`, under the same key (see ado/config.js).
  */
-export function makeGithubConfig({ storage, key }) {
+export function makeGithubConfig({ storage, key, secrets = null }) {
   if (!storage || typeof key !== 'function') {
     throw new Error('makeGithubConfig requires { storage, key }')
   }
-  const get = (name) => storage.get(key(name))
+  const storeOf = (name) => (secrets && name === 'pat' ? secrets : storage)
+  const get = (name) => storeOf(name).get(key(name))
 
   function getGithubConfig() {
     let repos = []
@@ -38,7 +41,7 @@ export function makeGithubConfig({ storage, key }) {
     if (values.repos !== undefined && values.repos.length > MAX_GITHUB_REPOS) {
       throw new Error(`Select at most ${MAX_GITHUB_REPOS} repositories`)
     }
-    const set = (name, v) => storage.set(key(name), v)
+    const set = (name, v) => storeOf(name).set(key(name), v)
     if (values.pat         !== undefined) set('pat',         values.pat)
     if (values.repos       !== undefined) set('repos',       JSON.stringify(values.repos))
     if (values.login       !== undefined) set('login',       values.login)

@@ -3,16 +3,17 @@ import { parseLog, historyQuery, sourceName } from '@nexusmd/core'
 import { ipcMessage } from './use-git-actions.js'
 import { buildEditItems, useCommitEdit } from './commit-edit-items.js'
 import { relativeTime } from './history-pane.jsx'
+import { getProfileKey } from '@nexusmd/shell-sdk'
 
-const COLLAPSED_KEY = 'nx-gw-branch-commits-collapsed'
+const COLLAPSED_KEY = 'nexusmd.branchCommitsCollapsed' // profile-scoped through getProfileKey
 // The strip lists this many; the rest are one click away in History.
 const SHOWN = 10
 
 function readCollapsed() {
-  try { return localStorage.getItem(COLLAPSED_KEY) === '1' } catch { return false }
+  try { return localStorage.getItem(getProfileKey(COLLAPSED_KEY)) === '1' } catch { return false }
 }
 function writeCollapsed(v) {
-  try { localStorage.setItem(COLLAPSED_KEY, v ? '1' : '0') } catch { /* storage unavailable: the choice lasts until reload */ }
+  try { localStorage.setItem(getProfileKey(COLLAPSED_KEY), v ? '1' : '0') } catch { /* storage unavailable: the choice lasts until reload */ }
 }
 
 const EMPTY = { key: null, commits: [], unpushed: null, truncated: false, error: null, loaded: false }

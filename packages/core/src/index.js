@@ -44,6 +44,8 @@ export {
   encodeBundle, decodeBundle, BUNDLE_FORMAT, BUNDLE_FORMAT_ENC, BUNDLE_VERSION, BUNDLE_EXT,
 } from './modules/profiles/bundle.js'
 export { planProfileScopeMigration } from './modules/profiles/migrate.js'
+export { migrateToProfileScopeV2, moveTokensToSecureStorage, profileTokenNames, MIGRATION_V2_MARKER } from './modules/profiles/migrate-v2.js'
+export { createSecretCache } from './modules/profiles/secret-cache.js'
 export { stableStringify, contentHash } from './modules/sync/hash.js'
 export {
   mergeRows, mergeKeyVal, mergeText, mergeSet, mergePlannerWeek, mergeLists,

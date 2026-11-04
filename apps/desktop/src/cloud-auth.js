@@ -21,16 +21,21 @@ const PROVIDERS = {
   github:    { keySuffix: 'github.auth',    api: '/api/github/auth', from: 'github' },
 }
 
+// OAuth tokens (`<provider>.auth`) are secrets: kept in secure storage under the profile-scoped
+// name (`nexusmd.p.<pid>.<provider>.auth`), read synchronously from the secret cache the shell
+// loads at start (secureStorageAdapter.peek), written through it (cache at once, then the store).
+const nameOf = (suffix) => { try { return getProfileKey('nexusmd.' + suffix) } catch { return null } }
 function read(suffix) {
-  try { const k = getProfileKey('nexusmd.' + suffix); return k ? JSON.parse(localStorage.getItem(k) || 'null') : null }
+  // (a plain key is left only while the start-up move into secure storage keeps failing)
+  try { const k = nameOf(suffix); return k ? JSON.parse(secureStorageAdapter.peek(k) ?? localStorage.getItem(k) ?? 'null') : null }
   catch { return null }
 }
-function write(suffix, auth) {
-  try { const k = getProfileKey('nexusmd.' + suffix); if (k) localStorage.setItem(k, JSON.stringify(auth)) }
+async function write(suffix, auth) {
+  try { const k = nameOf(suffix); if (k) await secureStorageAdapter.set(k, JSON.stringify(auth)) }
   catch (err) { console.warn(`[cloud-auth] failed to persist ${suffix}:`, err?.message || err) }
 }
-function clear(suffix) {
-  try { const k = getProfileKey('nexusmd.' + suffix); if (k) localStorage.removeItem(k) }
+async function clear(suffix) {
+  try { const k = nameOf(suffix); if (k) { localStorage.removeItem(k); await secureStorageAdapter.remove(k) } }
   catch (err) { console.warn(`[cloud-auth] failed to clear ${suffix}:`, err?.message || err) }
 }
 
@@ -56,7 +61,7 @@ function makeBinding(key) {
         toast?.('Sign-in failed. Please try again.', 'error') 
       }
     },
-    async disconnect() { clear(cfg.keySuffix) },
+    async disconnect() { await clear(cfg.keySuffix) },
     async getToken({ force } = {}) {
       const auth = read(cfg.keySuffix)
       if (!auth?.accessToken) return null
@@ -68,7 +73,7 @@ function makeBinding(key) {
         })
         if (!res.ok) return null
         const { accessToken } = await res.json()
-        write(cfg.keySuffix, { ...auth, accessToken })
+        await write(cfg.keySuffix, { ...auth, accessToken })
         return accessToken
       } catch (err) { console.warn('[cloud-auth] token refresh failed:', err?.message || err); return null }
     },
@@ -112,7 +117,7 @@ export async function redeem(url) {
     }
     const { accessToken, refreshToken } = await res.json()
     console.info(`[cloud-auth] OAuth successful, saved tokens`)
-    write(cfg.keySuffix, { accessToken, refreshToken })
+    await write(cfg.keySuffix, { accessToken, refreshToken }) // saved before the reload
     window.location.reload()
   } catch (err) { console.error('[cloud-auth] OAuth redeem failed:', err?.stack || err) }
 }
@@ -123,7 +128,7 @@ export function registerCloudDeepLink() {
 
 // Native desktop OAuth binding for any provider whose flow runs in the Electron
 // main process (PKCE loopback). `provider` is passed to the IPC bridge; tokens are
-// stored under localStorage `suffix`. Handles providers that rotate refresh tokens.
+// stored in secure storage under `suffix` (profile-scoped). Handles providers that rotate refresh tokens.
 export function makeNativeBinding({ provider, suffix }) {
   return {
     isConnected: () => Boolean(read(suffix)?.accessToken),
@@ -131,7 +136,7 @@ export function makeNativeBinding({ provider, suffix }) {
       try {
         console.info(`[cloud-auth] Initiating ${provider} OAuth connection (native)`)
         const tokens = await oauthAdapter.start(provider)
-        write(suffix, tokens)
+        await write(suffix, tokens)
         console.info(`[cloud-auth] ${provider} OAuth connected`)
         window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
       } catch (err) {
@@ -139,7 +144,7 @@ export function makeNativeBinding({ provider, suffix }) {
         toast?.('Sign-in failed. Please try again.', 'error')
       }
     },
-    async disconnect() { clear(suffix) },
+    async disconnect() { await clear(suffix) },
     async getToken({ force } = {}) {
       const auth = read(suffix)
       if (!auth?.accessToken) return null
@@ -148,7 +153,7 @@ export function makeNativeBinding({ provider, suffix }) {
       try {
         const next = await oauthAdapter.refresh(auth.refreshToken, provider)
         if (!next?.accessToken) return force ? null : auth.accessToken
-        write(suffix, { ...auth, ...next })   // ...next carries a rotated refreshToken when present
+        await write(suffix, { ...auth, ...next })   // ...next carries a rotated refreshToken when present
         return next.accessToken
       } catch (err) {
         console.error(`[cloud-auth] ${provider} token refresh failed:`, err?.stack || err)
@@ -223,7 +228,7 @@ export function makeDesktopOAuthService(from) {
       }
     },
     async disconnect() {
-      clear(cfg.keySuffix)
+      await clear(cfg.keySuffix)
       window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
     },
     // Retrieve the stored access token, refreshing it via the backend if force=true.
@@ -245,7 +250,7 @@ export function makeDesktopOAuthService(from) {
           return null
         }
         const { accessToken } = await res.json()
-        write(cfg.keySuffix, { ...auth, accessToken })
+        await write(cfg.keySuffix, { ...auth, accessToken })
         return accessToken
       } catch (err) { console.warn('[cloud-auth] token refresh failed:', err?.message || err); return null }
     },

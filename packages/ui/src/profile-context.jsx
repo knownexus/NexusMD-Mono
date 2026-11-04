@@ -7,8 +7,20 @@
 // purge/export/import (`${namespace}.p.${id}.*`), and switch/delete reload —
 // while `store` supplies only the platform-specific create/update/activate/
 // remove/load. Missing store ops are treated as local-only no-ops (ok=true).
+//
+// `secure` (optional, desktop) is the platform's secure storage: { names(): string[], get(name),
+// set(name, value) }. With it, a .nmdprofile bundle (password-encrypted) also carries each exported
+// profile's secrets (tokens, OAuth sign-ins, connection secrets: every secure name under
+// `<ns>.p.<id>.`) decrypted, and an import writes them back into secure storage, never as plain
+// keys. Without it, bundles carry no secrets and any in a file are skipped.
+//
+// `lifecycle` (desktop) turns on deleted profiles, synced through the account (core Task 5):
+// records carry updatedAt / deletedAt / purgedAt; `deleteProfile` only marks a profile deleted
+// (its data stays), `restoreProfile` brings it back, `purgeProfile(id, { sync })` removes it
+// everywhere (signed in: through the account sync; signed out: here, leaving a tombstone).
+// `profiles` lists live profiles only, `deletedProfiles` the deleted ones; edits bump updatedAt.
 import React from 'react';
-import { encodeBundle, decodeBundle, BUNDLE_EXT } from '@nexusmd/core';
+import { encodeBundle, decodeBundle, BUNDLE_EXT, purgeProfileLocal } from '@nexusmd/core';
 import { toast } from './toast.jsx';
 
 const { useState, useCallback, useMemo, useEffect, createContext, useContext, createElement: h } = React;
@@ -20,14 +32,77 @@ const defaultStorage = () => {
   return null;
 };
 
-export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = defaultStorage(), children }) {
+// A profile's keys (`<ns>.p.<id>.*`) by name without that prefix.
+function collectScopedFrom(storage, namespace, id) {
+  const pfx = `${namespace}.p.${id}.`;
+  const data = {};
+  try {
+    for (let i = 0; i < storage.length; i++) {
+      const k = storage.key(i);
+      if (k && k.startsWith(pfx)) data[k.slice(pfx.length)] = storage.getItem(k);
+    }
+  } catch (_) {}
+  return data;
+}
+
+// A profile's secrets, decrypted, by name without the `<ns>.p.<id>.` part.
+async function collectSecretsFrom(secure, namespace, id) {
+  const pfx = `${namespace}.p.${id}.`;
+  const out = {};
+  for (const name of secure.names()) {
+    if (!name.startsWith(pfx) || name.length === pfx.length) continue;
+    const v = await secure.get(name);
+    if (typeof v === 'string') out[name.slice(pfx.length)] = v;
+  }
+  return out;
+}
+
+/**
+ * Build an encrypted .nmdprofile bundle: `scope` 'all' (every record in `profiles`) or one id.
+ * `secure` (optional, see ProfileProvider) adds each profile's secrets. Resolves { filename, text }.
+ */
+export async function buildProfileBundle({ storage, secure = null, namespace = 'nexusmd', profiles, scope, activeId = null, password }) {
+  const picked = scope === 'all' ? profiles : profiles.filter(p => p.id === scope);
+  const out = [];
+  for (const p of picked) {
+    const rec = {
+      id: p.id, name: p.name, initials: p.initials, color: p.color, type: p.type,
+      orgLabel: p.orgLabel, createdAt: p.createdAt ?? Date.now(), config: p.config ?? null,
+      data: collectScopedFrom(storage, namespace, p.id),
+    };
+    if (secure) rec.secrets = await collectSecretsFrom(secure, namespace, p.id);
+    out.push(rec);
+  }
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    exportedBy: namespace === 'helm' ? 'app' : 'web',
+    activeId: scope === 'all' ? (activeId || null) : null,
+    profiles: out,
+  };
+  const text = await encodeBundle(payload, password);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const slug = (picked[0]?.name || 'profile').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  const filename = scope === 'all'
+    ? `nexusmd-backup-${stamp}${BUNDLE_EXT}`
+    : `nexusmd-profile-${slug}${BUNDLE_EXT}`;
+  return { filename, text };
+}
+
+const isLive = (p) => p && !p.deletedAt && !p.purgedAt;
+
+export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = defaultStorage(), secure = null, lifecycle = false, children }) {
   const PROFILES_KEY = `${namespace}.profiles`;
   const ACTIVE_KEY   = `${namespace}.activeProfileId`;
   const scopedPrefix = (id) => `${namespace}.p.${id}.`;
 
-  const [profiles, setProfiles] = useState(() => {
-    try { return JSON.parse(storage?.getItem(PROFILES_KEY) || '[]'); } catch (_) { return []; }
-  });
+  const readList = () => {
+    try { const l = JSON.parse(storage?.getItem(PROFILES_KEY) || '[]'); return Array.isArray(l) ? l : []; } catch (_) { return []; }
+  };
+  // Every record (with lifecycle: deleted ones and purged tombstones too).
+  const [all, setProfiles] = useState(readList);
+  const profiles = useMemo(() => (lifecycle ? all.filter(isLive) : all), [all, lifecycle]);
+  const deletedProfiles = useMemo(() => (lifecycle ? all.filter(p => p && p.deletedAt && !p.purgedAt) : []), [all, lifecycle]);
+  const stamp = (rec) => (lifecycle ? { ...rec, updatedAt: Math.max(Date.now(), (Number.isFinite(rec.updatedAt) ? rec.updatedAt : 0) + 1) } : rec);
   const [activeId, setActiveId] = useState(() => storage?.getItem(ACTIVE_KEY) || '');
   const [loading, setLoading]   = useState(!!store.load);
 
@@ -64,19 +139,19 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
 
   const createProfile = useCallback(async (opts) => {
     const { profile, entry } = await store.create(opts);
-    const next = [...profiles, entry];
+    const next = [...all, lifecycle ? stamp({ deletedAt: null, purgedAt: null, ...entry }) : entry];
     cacheList(next);
     setProfiles(next);
     return profile;
-  }, [profiles, store]);
+  }, [all, store, lifecycle]);
 
   const updateProfile = useCallback(async (id, changes) => {
     const ok = store.update ? await store.update(id, changes) : true;
     if (!ok) return;
-    const next = profiles.map(p => p.id === id ? { ...p, ...changes } : p);
+    const next = all.map(p => p.id === id ? stamp({ ...p, ...changes }) : p);
     cacheList(next);
     setProfiles(next);
-  }, [profiles, store]);
+  }, [all, store, lifecycle]);
 
   const purgeScoped = (id) => {
     const pfx = scopedPrefix(id);
@@ -90,6 +165,19 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
 
   const deleteProfile = useCallback(async (id) => {
     if (profiles.length <= 1) { toast?.('Cannot delete the only profile.', 'error'); return; }
+    if (lifecycle) {
+      // Soft delete: the data stays (and keeps syncing) until the profile is purged.
+      const now = Date.now();
+      const next = all.map(p => (p.id === id ? { ...p, deletedAt: now, updatedAt: now } : p));
+      cacheList(next);
+      setProfiles(next);
+      if (id === activeId) {
+        const other = next.find(p => p.id !== id && isLive(p));
+        try { storage.setItem(ACTIVE_KEY, other.id); } catch (_) {}
+        window.location.reload();
+      }
+      return;
+    }
     const ok = store.remove ? await store.remove(id) : true;
     if (!ok) { toast?.('Failed to delete profile.', 'error'); return; }
     purgeScoped(id);
@@ -100,7 +188,36 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
       try { storage.setItem(ACTIVE_KEY, next[0].id); } catch (_) {}
       window.location.reload();
     }
-  }, [profiles, activeId, store]);
+  }, [profiles, all, activeId, store, lifecycle]);
+
+  const restoreProfile = useCallback(async (id) => {
+    const next = all.map(p => (p.id === id && !p.purgedAt ? stamp({ ...p, deletedAt: null }) : p));
+    cacheList(next);
+    setProfiles(next);
+  }, [all, lifecycle]);
+
+  // Purge (the caller has confirmed): signed in, the account sync tombstones every item and removes
+  // the data here; signed out, the data is removed here and the record kept as a tombstone, so the
+  // purge reaches the account on the next sign-in.
+  const purgeProfile = useCallback(async (id, { sync = null } = {}) => {
+    if (sync && typeof sync.purgeProfile === 'function') {
+      const r = await sync.purgeProfile(id);
+      if (r && r.error && r.purgedLocally) {
+        toast?.('Purged on this computer. It reaches your other computers on the next sync.', 'info');
+      } else if (r && r.error) { toast?.(r.error.message || 'The profile could not be purged.', 'error'); return false; }
+      setProfiles(readList());
+      return true;
+    }
+    if (secure && typeof secure.remove === 'function') await purgeProfileLocal({ storage, secure, namespace, pid: id });
+    else purgeScoped(id);
+    const now = Date.now();
+    const next = all.map(p => (p.id === id
+      ? { id: p.id, name: p.name, updatedAt: Math.max(now, (Number.isFinite(p.updatedAt) ? p.updatedAt : 0) + 1), deletedAt: p.deletedAt ?? now, purgedAt: now }
+      : p));
+    cacheList(next);
+    setProfiles(next);
+    return true;
+  }, [all, storage, secure, namespace]);
 
   const exportProfile = useCallback(async (id) => {
     const profile = profiles.find(p => p.id === id);
@@ -142,39 +259,14 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
     }
   }, [createProfile, store, namespace]);
 
-  const collectScoped = (id) => {
-    const pfx = scopedPrefix(id);
-    const data = {};
-    try {
-      for (let i = 0; i < storage.length; i++) {
-        const k = storage.key(i);
-        if (k && k.startsWith(pfx)) data[k.slice(pfx.length)] = storage.getItem(k);
-      }
-    } catch (_) {}
-    return data;
-  };
-
-  const exportBundle = useCallback(async ({ scope, password }) => {
-    const picked = scope === 'all' ? profiles : profiles.filter(p => p.id === scope);
-    const out = picked.map(p => ({
-      id: p.id, name: p.name, initials: p.initials, color: p.color, type: p.type,
-      orgLabel: p.orgLabel, createdAt: p.createdAt ?? Date.now(), config: p.config ?? null,
-      data: collectScoped(p.id),
-    }));
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      exportedBy: namespace === 'helm' ? 'app' : 'web',
-      activeId: scope === 'all' ? (activeId || null) : null,
-      profiles: out,
-    };
-    const text = await encodeBundle(payload, password);
-    const stamp = new Date().toISOString().slice(0, 10);
-    const slug = (picked[0]?.name || 'profile').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-    const filename = scope === 'all'
-      ? `nexusmd-backup-${stamp}${BUNDLE_EXT}`
-      : `nexusmd-profile-${slug}${BUNDLE_EXT}`;
-    return { filename, text };
-  }, [profiles, activeId, namespace, storage]);
+  // 'all' backs up live and deleted profiles; one id exports that profile even when deleted or
+  // purged (a pending purge still has its data here until the owner discards it).
+  const exportBundle = useCallback(
+    ({ scope, password }) => buildProfileBundle({
+      storage, secure, namespace, scope, activeId, password,
+      profiles: scope === 'all' ? all.filter(p => p && !p.purgedAt) : all,
+    }),
+    [all, activeId, namespace, storage, secure]);
 
   const importBundle = useCallback(async ({ text, password }) => {
     const payload = await decodeBundle(text, password);
@@ -184,20 +276,27 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
     }));
     if (store.importProfiles) await store.importProfiles(records, payload.activeId ?? null);
     else localUpsertProfiles(storage, namespace, records, payload.activeId ?? null);
+    let secrets = 0;
+    const secretsFailed = [];
     for (const p of payload.profiles) {
       const pfx = scopedPrefix(p.id);
       for (const [k, v] of Object.entries(p.data || {})) {
         try { storage.setItem(pfx + k, v); } catch (_) {}
       }
+      if (!secure || !p.secrets || typeof p.secrets !== 'object') continue;
+      for (const [k, v] of Object.entries(p.secrets)) {
+        if (typeof v !== 'string' || !k) continue;
+        try { await secure.set(pfx + k, v); secrets++; } catch (_) { secretsFailed.push(k); }
+      }
     }
-    return { imported: records.length, names: records.map(r => r.name) };
-  }, [store, storage, namespace]);
+    return { imported: records.length, names: records.map(r => r.name), secrets, secretsFailed };
+  }, [store, storage, namespace, secure]);
 
   const value = useMemo(() => ({
-    profiles, activeProfile, activeId, loading,
-    switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile,
-    exportBundle, importBundle,
-  }), [profiles, activeProfile, activeId, loading, switchProfile, createProfile, updateProfile, deleteProfile, exportProfile, importProfile, exportBundle, importBundle]);
+    profiles, deletedProfiles, activeProfile, activeId, loading,
+    switchProfile, createProfile, updateProfile, deleteProfile, restoreProfile, purgeProfile, exportProfile, importProfile,
+    exportBundle, importBundle, bundlesCarrySecrets: !!secure, lifecycle,
+  }), [profiles, deletedProfiles, activeProfile, activeId, loading, switchProfile, createProfile, updateProfile, deleteProfile, restoreProfile, purgeProfile, exportProfile, importProfile, exportBundle, importBundle, secure, lifecycle]);
 
   return h(ProfileCtx.Provider, { value }, children);
 }

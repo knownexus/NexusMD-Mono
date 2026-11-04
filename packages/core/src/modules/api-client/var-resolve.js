@@ -20,8 +20,10 @@ export function resolveObjectVars(value, vars = {}) {
   return resolveVars(value, vars)
 }
 
-export function secretStorageKey(collectionId, envName, varName) {
-  return `nexusmd.apiClient.secret.${collectionId}.${envName}.${varName}`
+// `profileKey` is the host's getProfileKey: the secret belongs to the active profile
+// (`nexusmd.p.<pid>.apiClient.secret...`), so it follows the profile between machines.
+export function secretStorageKey(collectionId, envName, varName, profileKey = k => k) {
+  return profileKey(`nexusmd.apiClient.secret.${collectionId}.${envName}.${varName}`)
 }
 
 /**
@@ -29,12 +31,12 @@ export function secretStorageKey(collectionId, envName, varName) {
  * Plain values come straight from the file; secret-marked variables are looked
  * up in secureStorage instead (so their values never sit in the git-tracked file).
  */
-export async function resolveEnvironment(secureStorage, collectionId, envName, envDef) {
+export async function resolveEnvironment(secureStorage, collectionId, envName, envDef, profileKey) {
   const variables = envDef?.variables || {}
   const resolved = {}
   for (const [key, def] of Object.entries(variables)) {
     if (def && def.secret) {
-      resolved[key] = (await secureStorage?.get?.(secretStorageKey(collectionId, envName, key))) ?? ''
+      resolved[key] = (await secureStorage?.get?.(secretStorageKey(collectionId, envName, key, profileKey))) ?? ''
     } else {
       resolved[key] = def?.value ?? ''
     }
@@ -42,10 +44,10 @@ export async function resolveEnvironment(secureStorage, collectionId, envName, e
   return resolved
 }
 
-export async function setSecretVar(secureStorage, collectionId, envName, varName, value) {
-  await secureStorage?.set?.(secretStorageKey(collectionId, envName, varName), value)
+export async function setSecretVar(secureStorage, collectionId, envName, varName, value, profileKey) {
+  await secureStorage?.set?.(secretStorageKey(collectionId, envName, varName, profileKey), value)
 }
 
-export async function removeSecretVar(secureStorage, collectionId, envName, varName) {
-  await secureStorage?.remove?.(secretStorageKey(collectionId, envName, varName))
+export async function removeSecretVar(secureStorage, collectionId, envName, varName, profileKey) {
+  await secureStorage?.remove?.(secretStorageKey(collectionId, envName, varName, profileKey))
 }

@@ -296,6 +296,22 @@ describe('ViewGit shortcuts', () => {
     expect(screen.getAllByText('j', { selector: '.kbd' })).toHaveLength(1)
   })
 
+  it('j/k skips worktrees of a repo whose folder is missing', async () => {
+    configure()
+    window.electronAPI = { file: { exists: vi.fn(async p => p !== 'C:/repos/A') } }
+    try {
+      render(<ViewGit adapters={{ git: adapter() }} />)
+      await screen.findByRole('region', { name: 'B' })
+      await waitFor(() => expect(within(screen.getByRole('region', { name: 'A' })).getAllByRole('button')[0].getAttribute('aria-disabled')).toBe('true'))
+      press('j', {}, document.body)
+      expect(getGitConfig().view.selected).toBe('C:/repos/B')
+      press('j', {}, document.body)
+      expect(getGitConfig().view.selected).toBe('C:/repos/B')
+      press('k', {}, document.body)
+      expect(getGitConfig().view.selected).toBe('C:/repos/B')
+    } finally { delete window.electronAPI }
+  })
+
   it('focuses the command line with ` and opens New branch with b', async () => {
     configure()
     render(<ViewGit adapters={{ git: adapter({ refs: vi.fn(async () => ({ refs: '', originHead: null })) }) }} />)
@@ -437,6 +453,21 @@ describe('ViewGit GitHub view', () => {
     expect(getGitConfig().view).toMatchObject({ group: 'Registered repos', selected: 'C:/repos/A' })
     expect(getGitConfig().view.tab).toBeUndefined()
     expect(await screen.findByRole('region', { name: 'A' })).toBeTruthy()
+  })
+
+  it('openLocal does nothing for a missing repo', async () => {
+    configure()
+    window.electronAPI = { file: { exists: vi.fn(async p => p !== 'C:/repos/A') } }
+    try {
+      render(<ViewGit adapters={{ git: adapter({ remotes }) }} host={caps({ 'work.github': github })} />)
+      await screen.findByRole('region', { name: 'B' })
+      await waitFor(() => expect(within(screen.getByRole('region', { name: 'A' })).getAllByRole('button')[0].getAttribute('aria-disabled')).toBe('true'))
+      fireEvent.click(within(modeSwitch()).getByRole('tab', { name: 'GitHub' }))
+      const list = screen.getByRole('list', { name: 'GitHub repositories' })
+      fireEvent.click(await within(list).findByRole('button', { name: /Open local copy/ }))
+      expect(getGitConfig().view.tab).toBe('github')
+      expect(getGitConfig().view.selected).not.toBe('C:/repos/A')
+    } finally { delete window.electronAPI }
   })
 
   it('tells the top bar switch the mode, and switches when the top bar asks', async () => {

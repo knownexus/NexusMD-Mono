@@ -2,9 +2,9 @@ import React from 'react'
 import { Icon, TypeIcon, Avatar, useNexusData } from '@nexusmd/ui'
 import { displayIdOf } from '@nexusmd/core'
 
-function readTeamNotes(storage, devId) {
+function readTeamNotes(storage, devId, getProfileKey = k => k) {
   let all = []
-  try { all = JSON.parse(storage.getItem('nexusmd.team.notes') || '[]') } catch { all = [] }
+  try { all = JSON.parse(storage.getItem(getProfileKey('nexusmd.team.notes')) || '[]') } catch { all = [] }
   return all.filter(n => n.devId === devId)
 }
 
@@ -13,15 +13,15 @@ function formatNoteDate(iso) {
 }
 
 export function PersonSummary({ dev, onOpenItem, onOpenPR }) {
-  const { storage } = useNexusData()
-  const [notes, setNotes] = React.useState(() => readTeamNotes(storage, dev.id))
+  const { storage, getProfileKey } = useNexusData()
+  const [notes, setNotes] = React.useState(() => readTeamNotes(storage, dev.id, getProfileKey))
 
   React.useEffect(() => {
-    setNotes(readTeamNotes(storage, dev.id))
-    const onChanged = () => setNotes(readTeamNotes(storage, dev.id))
+    setNotes(readTeamNotes(storage, dev.id, getProfileKey))
+    const onChanged = () => setNotes(readTeamNotes(storage, dev.id, getProfileKey))
     window.addEventListener('nexusmd:team-notes-changed', onChanged)
     return () => window.removeEventListener('nexusmd:team-notes-changed', onChanged)
-  }, [storage, dev.id])
+  }, [storage, dev.id, getProfileKey])
 
   const deleteNote = (noteId) => {
     window.dispatchEvent(new CustomEvent('nexusmd:team-delete-note', { detail: { noteId } }))

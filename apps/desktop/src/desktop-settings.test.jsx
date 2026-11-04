@@ -2,18 +2,18 @@ import React from 'react'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 
-const { getToken } = vi.hoisted(() => ({ getToken: vi.fn() }))
+const { getToken, startAuto, stopAuto } = vi.hoisted(() => ({ getToken: vi.fn(), startAuto: vi.fn(), stopAuto: vi.fn() }))
 
 vi.mock('./profile-keys.js', () => ({ getProfileKey: k => k }))
 vi.mock('./profile-context.jsx', () => ({ useProfile: () => ({}) }))
 vi.mock('./cloud-auth.js', () => ({
-  desktopCloudProviders: [],
+  desktopCloudProviders: [{ id: 'google' }],
   makeDesktopOAuthService: () => ({ isConnected: false, connect: vi.fn(), disconnect: vi.fn() }),
   makeNativeGoogleBinding: () => ({ isConnected: () => false, connect: vi.fn(), disconnect: vi.fn() }),
   makeNativeMicrosoftBinding: () => ({ isConnected: () => false, connect: vi.fn(), disconnect: vi.fn(), getToken }),
   decodeJwtClaims: vi.fn(),
 }))
-vi.mock('./sync.js', () => ({ desktopSync: {} }))
+vi.mock('./sync.js', () => ({ desktopSync: { startAuto, stopAuto } }))
 vi.mock('./file-io.js', () => ({ desktopFileIO: {} }))
 vi.mock('./ado-client.js', () => ({
   getAdoConfig: () => ({ org: '', projects: [] }),
@@ -36,7 +36,9 @@ vi.mock('@nexusmd/ui', () => ({
   VsProfiles: () => <div data-testid="vs-profiles">VsProfiles</div>,
   useAccount: () => ({ sync: null }),
   AccountCard: () => <div data-testid="account-card">AccountCard</div>,
-  BackupRestoreCard: () => <div data-testid="backup-restore">BackupRestoreCard</div>,
+  SyncStatusCard: () => <div data-testid="sync-status-card">SyncStatusCard</div>,
+  SyncConflictsCard: () => <div data-testid="sync-conflicts-card">SyncConflictsCard</div>,
+  BackupRestoreCard: ({ cloudProviders }) => <div data-testid="backup-restore" data-providers={(cloudProviders || []).length}>BackupRestoreCard</div>,
   BundlePasswordModal: () => null,
   CloudSyncCard: () => <div data-testid="cloud-sync">CloudSyncCard</div>,
   BoardColumnsCard: () => <div data-testid="board-columns">BoardColumnsCard</div>,
@@ -59,7 +61,7 @@ beforeEach(() => {
     setZoomFactor: vi.fn(),
     onZoomChanged: vi.fn(() => () => {}),
   })
-  getToken.mockReset(); getToken.mockResolvedValue('fake.token.value')
+  startAuto.mockClear(); stopAuto.mockClear(); getToken.mockReset(); getToken.mockResolvedValue('fake.token.value')
 })
 afterEach(() => { cleanup(); localStorage.clear() })
 
@@ -139,7 +141,60 @@ describe('DesktopSettings tab navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Profiles' }))
     expect(screen.getByTestId('vs-profiles')).toBeTruthy()
     expect(screen.getByTestId('backup-restore')).toBeTruthy()
+  })
+
+  it('the Profiles tab shows the account card above the profiles', () => {
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Profiles' }))
+    const card = screen.getByTestId('account-card')
+    const profiles = screen.getByTestId('vs-profiles')
+    expect(card.compareDocumentPosition(profiles) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('Data & sync shows the account, per-profile sync status and conflicts', () => {
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Data & sync' }))
+    expect(screen.getByTestId('account-card')).toBeTruthy()
+    expect(screen.getByTestId('sync-status-card')).toBeTruthy()
+    expect(screen.getByTestId('sync-conflicts-card')).toBeTruthy()
+  })
+
+  it('with the flag off, no Cloud sync card or Drive/OneDrive buttons render', () => {
+    localStorage.setItem('nexusmd.feature.legacyCloudSync', '0')
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Profiles' }))
+    expect(screen.queryByTestId('cloud-sync')).toBeNull()
+    expect(screen.getByTestId('backup-restore').dataset.providers).toBe('0')
+  })
+
+  it('with the flag on, they render', () => {
+    localStorage.setItem('nexusmd.feature.legacyCloudSync', '1')
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Profiles' }))
     expect(screen.getByTestId('cloud-sync')).toBeTruthy()
+    expect(screen.getByTestId('backup-restore').dataset.providers).toBe('1')
+  })
+
+  it('default follows whether a provider was configured', () => {
+    localStorage.setItem('nexusmd.sync.provider', 'google')
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Profiles' }))
+    expect(screen.getByTestId('cloud-sync')).toBeTruthy()
+  })
+
+  it('the Data & sync switch turns the backup on and off', () => {
+    render(<DesktopSettings {...defaultProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Data & sync' }))
+    expect(screen.getByText('Google Drive / OneDrive backup')).toBeTruthy()
+    const sw = screen.getByRole('switch')
+    expect(sw.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(sw)
+    expect(localStorage.getItem('nexusmd.feature.legacyCloudSync')).toBe('1')
+    expect(startAuto).toHaveBeenCalledTimes(1)
+    expect(stopAuto).not.toHaveBeenCalled()
+    fireEvent.click(sw)
+    expect(localStorage.getItem('nexusmd.feature.legacyCloudSync')).toBe('0')
+    expect(stopAuto).toHaveBeenCalledTimes(1)
   })
 
   it('shows Confidential tab content when clicked', () => {

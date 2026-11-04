@@ -81,6 +81,18 @@ describe('settings file', () => {
     expect(isExported('nexusmd.p.p1.jira.apiToken')).toBe(true)
     expect(isExported('nexusmd.p.p1.wi.groupOrder')).toBe(true)
     expect(isExported('nx-db:saved-queries')).toBe(true)
+    // this machine's migration state (Task 8): never carried to another machine
+    expect(isExported('nexusmd.migrated.v2')).toBe(false)
+    expect(isExported('nexusmd.migrated.v2.backup.md_documents')).toBe(false)
+    expect(isExported('nexusmd.p.p1.ado.cache.v1')).toBe(false)
+    expect(isExported('nexusmd.p.p1.workitems.status.v1')).toBe(false)
+  })
+
+  it('an imported file may bring shared keys from before profiles: the next start moves them again', async () => {
+    const to = memStorage({ 'nexusmd.migrated.v2': '1' })
+    await applySettings({ storage: { 'md_documents': '{"docs":[]}', 'nexusmd.migrated.v2': '1' } }, { storage: to, secure: memSecure(to), prefs: {} })
+    expect(to.getItem('md_documents')).toBe('{"docs":[]}')
+    expect(to.getItem('nexusmd.migrated.v2')).toBeNull()
   })
 })
 

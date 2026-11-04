@@ -10,12 +10,16 @@
  * @param {{ get(k:string): (string|null), set(k:string, v:string): void }} opts.storage
  * @param {(name: string) => string} opts.key  Maps a logical name (e.g. 'org') to a storage key.
  * @param {{ uatBranch?: string, refreshSecs?: number }} [opts.defaults]
+ * @param {{ get(k:string): (string|null), set(k:string, v:string): void }} [opts.secrets]
+ *   Where the PAT is kept instead of `storage`, under the same key (desktop: a synchronously
+ *   readable cache over secure storage). Omitted, the PAT is in `storage` like the rest.
  */
-export function makeAdoConfig({ storage, key, defaults = {} }) {
+export function makeAdoConfig({ storage, key, defaults = {}, secrets = null }) {
   if (!storage || typeof key !== 'function') {
     throw new Error('makeAdoConfig requires { storage, key }')
   }
-  const get = (name) => storage.get(key(name))
+  const storeOf = (name) => (secrets && name === 'pat' ? secrets : storage)
+  const get = (name) => storeOf(name).get(key(name))
 
   function getAdoConfig() {
     let projects = []
@@ -36,7 +40,7 @@ export function makeAdoConfig({ storage, key, defaults = {} }) {
   }
 
   function saveAdoConfig(values = {}) {
-    const set = (name, v) => storage.set(key(name), v)
+    const set = (name, v) => storeOf(name).set(key(name), v)
     if (values.org           !== undefined) set('org',           values.org)
     if (values.pat           !== undefined) set('pat',           values.pat)
     if (values.projects      !== undefined) set('projects',      JSON.stringify(values.projects))

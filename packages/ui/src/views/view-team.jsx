@@ -333,7 +333,7 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
     try { return JSON.parse(storage.getItem(removedKey) || '[]') } catch { return [] }
   })
   const [customMembers, setCustomMembers] = useStateT(() => {
-    try { return JSON.parse(storage.getItem('nexusmd.team.custom') || '[]') } catch { return [] }
+    try { return JSON.parse(storage.getItem(getProfileKey('nexusmd.team.custom')) || '[]') } catch { return [] }
   })
   const [showRemoved, setShowRemoved] = useStateT(false)
   const [showAddModal, setShowAddModal] = useStateT(false)
@@ -341,13 +341,13 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
   const [timerNotePrefill, setTimerNotePrefill] = useStateT('')
   const [scheduleTarget, setScheduleTarget] = useStateT(null)
   const [teamNotes, setTeamNotes] = useStateT(() => {
-    try { return JSON.parse(storage.getItem('nexusmd.team.notes') || '[]') } catch { return [] }
+    try { return JSON.parse(storage.getItem(getProfileKey('nexusmd.team.notes')) || '[]') } catch { return [] }
   })
 
   const persistNotes = (next) => {
     setTeamNotes(next)
     const s = JSON.stringify(next)
-    storage.setItem('nexusmd.team.notes', s)
+    storage.setItem(getProfileKey('nexusmd.team.notes'), s)
     pushPref?.('nexusmd.team.notes', s)
     window.dispatchEvent(new CustomEvent('nexusmd:team-notes-changed', { detail: next }))
   }
@@ -403,7 +403,7 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
     const next = [...customMembers, member]
     setCustomMembers(next)
     const s = JSON.stringify(next)
-    storage.setItem('nexusmd.team.custom', s)
+    storage.setItem(getProfileKey('nexusmd.team.custom'), s)
     pushPref?.('nexusmd.team.custom', s)
   }
 
@@ -411,7 +411,7 @@ export function TeamView({ team, workItems, prs, onOpenItem, onOpenPerson, onTea
     const next = customMembers.filter(m => m.id !== id)
     setCustomMembers(next)
     const s = JSON.stringify(next)
-    storage.setItem('nexusmd.team.custom', s)
+    storage.setItem(getProfileKey('nexusmd.team.custom'), s)
     pushPref?.('nexusmd.team.custom', s)
   }
 

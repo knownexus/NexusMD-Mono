@@ -62,3 +62,15 @@ describe('repoListFromStub', () => {
     expect(repoListFromStub(undefined)).toEqual([])
   })
 })
+
+describe('makeGithubConfig with secrets', () => {
+  it('reads and writes only the PAT through secrets', () => {
+    const storage = memStorage()
+    const secrets = memStorage()
+    const cfg = makeGithubConfig({ storage, secrets, key: (n) => `g.${n}` })
+    cfg.saveGithubConfig({ pat: 'ghp', login: 'me' })
+    expect(secrets.get('g.pat')).toBe('ghp')
+    expect(storage.get('g.pat')).toBeNull()
+    expect(cfg.getGithubConfig()).toMatchObject({ pat: 'ghp', login: 'me' })
+  })
+})

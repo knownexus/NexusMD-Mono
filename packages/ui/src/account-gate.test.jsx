@@ -2,6 +2,8 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AccountGate, useAccount } from './account-gate.jsx';
+const toasts = vi.hoisted(() => []);
+vi.mock('./toast.jsx', async (orig) => ({ ...(await orig()), toast: (msg, type) => { toasts.push([type, msg]); } }));
 
 const CK_B64 = btoa('a'.repeat(32));
 const SESSION = { username: 'ann', userId: 'u1', role: 'user', containerKey: CK_B64, refreshToken: 'r' };
@@ -65,6 +67,12 @@ describe('AccountGate', () => {
     expect(await screen.findByText('Username or password is incorrect.')).toBeTruthy();
     expect(screen.queryByText('This is a new device')).toBeNull();
     expect(screen.getByLabelText('Password').value).toBe('');
+  });
+
+  it('shows the update message when the client is outdated', async () => {
+    mount(mkAccount({ login: vi.fn(async () => { throw err('client-outdated'); }) }));
+    await signIn();
+    expect(await screen.findByText('This version of NexusMD can no longer sync. Update NexusMD to keep syncing.')).toBeTruthy();
   });
 
   it('shows the lock message when locked', async () => {
@@ -368,6 +376,98 @@ describe('AccountGate', () => {
       expect(localStorage.getItem('test.bound')).toBeNull();
     });
 
+    it('account switch with nothing unsynced clears content too', async () => {
+      const a = withBinding('someone-else');
+      a.unpushed = vi.fn(async () => []);
+      mount(a);
+      await signIn();
+      fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+      expect(await screen.findByLabelText('This is a new device')).toBeTruthy();
+      expect(a.unpushed).toHaveBeenCalled();
+      expect(a.clearLocal).toHaveBeenCalledTimes(1);
+    });
+
+    describe('with unsynced content', () => {
+      const UNSYNCED = [
+        { id: 'nexusmd:p.W.md_documents#d1', profileId: 'W' },
+        { id: 'nexusmd:p.W.lists#l1', profileId: 'W' },
+        { id: 'p.H.ado.org', profileId: 'H' },
+      ];
+      const blocked = () => {
+        const a = withBinding('someone-else');
+        a.unpushed = vi.fn(async () => UNSYNCED);
+        a.exportBackup = vi.fn(async () => true);
+        return a;
+      };
+
+      it('is blocked and lists the profiles with what is not synced; no Continue', async () => {
+        const a = blocked();
+        mount(a);
+        await signIn();
+        expect(await screen.findByText(/not been synced/)).toBeTruthy();
+        expect(screen.getByText(/W: 2 items/)).toBeTruthy();
+        expect(screen.getByText(/H: 1 item\b/)).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+        expect(a.clearLocal).not.toHaveBeenCalled();
+      });
+
+      it('Cancel and sync first signs out, says what to do, clears nothing', async () => {
+        const a = blocked();
+        mount(a);
+        await signIn();
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancel and sync first' }));
+        expect(await screen.findByText(/Sign in with the account this device belongs to/)).toBeTruthy();
+        expect(a.client.logout).toHaveBeenCalled();
+        expect(a.clearLocal).not.toHaveBeenCalled();
+        expect(localStorage.getItem('test.bound')).toBe('someone-else');
+      });
+
+      it('Export then Continue clears', async () => {
+        const a = blocked();
+        mount(a);
+        await signIn();
+        fireEvent.click(await screen.findByRole('button', { name: 'Export a backup' }));
+        fireEvent.change(screen.getByLabelText('Backup password'), { target: { value: 'pw' } });
+        fireEvent.change(screen.getByLabelText('Repeat password'), { target: { value: 'pw' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save backup' }));
+        await waitFor(() => expect(a.exportBackup).toHaveBeenCalledWith('pw'));
+        fireEvent.click(await screen.findByRole('button', { name: 'Continue and remove' }));
+        expect(await screen.findByLabelText('This is a new device')).toBeTruthy();
+        expect(a.clearLocal).toHaveBeenCalledTimes(1);
+      });
+
+      it('an export that is cancelled keeps the switch blocked', async () => {
+        const a = blocked();
+        a.exportBackup = vi.fn(async () => false);
+        mount(a);
+        await signIn();
+        fireEvent.click(await screen.findByRole('button', { name: 'Export a backup' }));
+        fireEvent.change(screen.getByLabelText('Backup password'), { target: { value: 'pw' } });
+        fireEvent.change(screen.getByLabelText('Repeat password'), { target: { value: 'pw' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save backup' }));
+        await waitFor(() => expect(a.exportBackup).toHaveBeenCalledTimes(1));
+        expect(screen.queryByRole('button', { name: 'Continue and remove' })).toBeNull();
+      });
+
+      it('Cancel clears nothing', async () => {
+        const a = blocked();
+        mount(a);
+        await signIn();
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+        expect(await screen.findByLabelText('Username')).toBeTruthy();
+        expect(a.clearLocal).not.toHaveBeenCalled();
+      });
+
+      it('without an export, the only ways out sign out', async () => {
+        const a = blocked();
+        delete a.exportBackup;
+        mount(a);
+        await signIn();
+        expect(await screen.findByText(/not been synced/)).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Export a backup' })).toBeNull();
+      });
+    });
+
     it('Cancel logs out and returns to the login screen without clearing', async () => {
       const a = withBinding('someone-else');
       mount(a);
@@ -460,3 +560,78 @@ describe('AccountGate', () => {
     });
   });
 });
+
+describe('AccountGate pending purge', () => {
+  const PENDING = [{ pid: 'W', name: 'Work', unpushed: ['nexusmd:p.W.md_documents#d1', 'p.W.ado.org'] }];
+  const ready = (over = {}) => {
+    deviceId = 'd1';
+    let pendingCb = null;
+    const pending = [...PENDING];
+    const a = mkAccount({ getSession: vi.fn(async () => SESSION) }, {
+      pendingPurges: vi.fn(() => [...pending]),
+      onPendingPurge: vi.fn((cb) => { pendingCb = cb; return () => {}; }),
+      confirmPurge: vi.fn(async (pid) => { pending.splice(pending.findIndex(p => p.pid === pid), 1); return {}; }),
+      ...over,
+    });
+    a.exportBackup = vi.fn(async () => true);
+    return { a, fire: () => pendingCb && pendingCb({ count: pending.length }) };
+  };
+
+  it('a pending purge shows the names of discarded items and offers Export first, then Discard', async () => {
+    const { a } = ready();
+    mount(a);
+    expect(await screen.findByText('shell')).toBeTruthy();
+    expect(await screen.findByText(/Work was deleted for good on another device/)).toBeTruthy();
+    expect(screen.getByText('md_documents d1')).toBeTruthy();
+    expect(screen.getByText('ado.org')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Export first' }));
+    fireEvent.change(screen.getByLabelText('Backup password'), { target: { value: 'pw' } });
+    fireEvent.change(screen.getByLabelText('Repeat password'), { target: { value: 'pw' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save backup' }));
+    await waitFor(() => expect(a.exportBackup).toHaveBeenCalledWith('pw', 'W'));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(sync.confirmPurge).toHaveBeenCalledWith('W'));
+    expect(confirm).toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByText(/Work was deleted for good/)).toBeNull());
+    confirm.mockRestore();
+  });
+
+  it('Discard asks for confirmation; Later keeps the data and hides the notice', async () => {
+    const { a, fire } = ready();
+    mount(a);
+    await screen.findByText(/Work was deleted for good/);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(sync.confirmPurge).not.toHaveBeenCalled();
+    confirm.mockRestore();
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+    expect(screen.queryByText(/Work was deleted for good/)).toBeNull();
+    // a new pending purge brings it back
+    await React.act(async () => { fire(); });
+    expect(await screen.findByText(/Work was deleted for good/)).toBeTruthy();
+  });
+
+  it('no pending purge, no notice', async () => {
+    const { a } = ready({ pendingPurges: vi.fn(() => []) });
+    mount(a);
+    expect(await screen.findByText('shell')).toBeTruthy();
+    expect(screen.queryByText(/deleted for good/)).toBeNull();
+  });
+});
+
+describe('AccountGate conflicts', () => {
+  it('a growing conflict queue raises a toast pointing to Data & sync', async () => {
+    deviceId = 'd1';
+    toasts.length = 0;
+    let cb = null;
+    const a = mkAccount({ getSession: vi.fn(async () => SESSION) }, { onConflict: vi.fn((f) => { cb = f; return () => {}; }) });
+    mount(a);
+    expect(await screen.findByText('shell')).toBeTruthy();
+    await React.act(async () => { cb({ count: 2 }); });
+    expect(toasts).toContainEqual(['info', '2 sync conflicts need your decision — Settings › Data & sync']);
+    await React.act(async () => { cb({ count: 1 }); });
+    expect(toasts).toContainEqual(['info', '1 sync conflict needs your decision — Settings › Data & sync']);
+  });
+});
+

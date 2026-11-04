@@ -1,5 +1,6 @@
 import React from 'react'
 import { paletteFor as uiPaletteFor } from '@nexusmd/ui'
+import { getProfileKey } from '@nexusmd/shell-sdk'
 import { FileEditor } from './file-editor.jsx'
 import { ResolvePane } from './resolve-pane.jsx'
 import { DiffPane } from './diff-pane.jsx'
@@ -22,7 +23,7 @@ function usePalette() {
   React.useEffect(() => {
     let palette = paletteFor()
     try {
-      palette = paletteFor(JSON.parse(localStorage.getItem('nexusmd.tweaks') || '{}'))
+      palette = paletteFor(JSON.parse(localStorage.getItem(getProfileKey('nexusmd.tweaks')) || '{}'))
     } catch { /* the default palette */ }
     document.body.dataset.theme = palette
   }, [])

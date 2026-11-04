@@ -7,6 +7,7 @@ import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { MARKDOWN_CONTENT_CSS, followPreviewLink, renderPreview, useHighlightJs, useMarkdownTextSize, useCtrlWheelTextSize, TextSizeControls } from './markdown-preview.jsx';
 import { MarkdownDiff } from '../md-extras-ui.jsx';
+import { useNexusData } from '../data-context.jsx';
 import { MD_CHEAT_GROUPS, LEARN_ELEMENTS } from '@nexusmd/core';
 export { slugifyHeading, addHeadingAnchors, followPreviewLink } from './markdown-preview.jsx';
 const { useState: useStateMD, useEffect: useEffectMD, useRef: useRefMD, useCallback: useCallbackMD } = React;
@@ -16,8 +17,8 @@ const CHEAT_OPEN_KEY     = 'md_cheatsheet_open';
 const LEARN_MODE_KEY     = 'md_learn_mode';
 const PROGRESS_KEY       = 'md_learning_progress';
 
-function loadLearningProgress() {
-  try { return JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{}'); } catch { return {}; }
+function loadLearningProgress(key = PROGRESS_KEY) {
+  try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; }
 }
 
 const TRACKABLE_ELEMENTS = {
@@ -39,17 +40,17 @@ const TRACKABLE_ELEMENTS = {
 
 // ── Storage helpers ────────────────────────────────────────────────
 
-function loadDocs() {
+function loadDocs(key = STORAGE_KEY) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed.docs) ? parsed.docs : [];
   } catch { return []; }
 }
 
-function saveDocs(docs) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ docs }));
+function saveDocs(docs, key = STORAGE_KEY) {
+  localStorage.setItem(key, JSON.stringify({ docs }));
 }
 
 function generateId() {
@@ -560,6 +561,12 @@ function MarkdownToolbar({ onInsert }) {
 // ── MarkdownViewer ────────────────────────────────────────────────
 
 function MarkdownViewer() {
+  // Documents and learning state belong to the active profile.
+  const { getProfileKey } = useNexusData();
+  const KEYS = React.useMemo(() => ({
+    docs: getProfileKey(STORAGE_KEY), cheat: getProfileKey(CHEAT_OPEN_KEY),
+    learn: getProfileKey(LEARN_MODE_KEY), progress: getProfileKey(PROGRESS_KEY),
+  }), [getProfileKey]);
   const [markdown, setMarkdown]         = useStateMD('');
   const [view, setView]                 = useStateMD("split");
   const [copyVisible, setCopyVisible]   = useStateMD(false);
@@ -567,15 +574,15 @@ function MarkdownViewer() {
   const [editorWidth, setEditorWidth]   = useStateMD(null);
 
   // Document state
-  const [docs, setDocs]                 = useStateMD(loadDocs);
+  const [docs, setDocs]                 = useStateMD(() => loadDocs(KEYS.docs));
   const [currentDocId, setCurrentDocId] = useStateMD(null);
   const [compareDocId, setCompareDocId] = useStateMD(null);   // shown beside the open document in the Compare view
   const [compareShows, setCompareShows] = useStateMD('preview'); // the Compare pane: the other document's 'preview', or the 'diff' against it
   const [showModal, setShowModal]       = useStateMD(false);
   const [saveStatus, setSaveStatus]     = useStateMD('');
-  const [learnMode, setLearnMode]           = useStateMD(() => localStorage.getItem(LEARN_MODE_KEY) === 'true');
-  const [cheatSheetOpen, setCheatSheetOpen] = useStateMD(() => localStorage.getItem(CHEAT_OPEN_KEY) === 'true');
-  const [learningProgress, setLearningProgress] = useStateMD(loadLearningProgress);
+  const [learnMode, setLearnMode]           = useStateMD(() => localStorage.getItem(KEYS.learn) === 'true');
+  const [cheatSheetOpen, setCheatSheetOpen] = useStateMD(() => localStorage.getItem(KEYS.cheat) === 'true');
+  const [learningProgress, setLearningProgress] = useStateMD(() => loadLearningProgress(KEYS.progress));
   const [cheatSheetFilter, setCheatSheetFilter] = useStateMD('');
 
   const editorRef    = useRefMD(null);
@@ -612,10 +619,10 @@ function MarkdownViewer() {
   useEffectMD(() => { markdownRef.current = markdown; }, [markdown]);
 
   // Persist learnMode to localStorage
-  useEffectMD(() => { localStorage.setItem(LEARN_MODE_KEY, learnMode); }, [learnMode]);
+  useEffectMD(() => { localStorage.setItem(KEYS.learn, learnMode); }, [learnMode]);
 
   // Persist cheatSheetOpen to localStorage
-  useEffectMD(() => { localStorage.setItem(CHEAT_OPEN_KEY, cheatSheetOpen); }, [cheatSheetOpen]);
+  useEffectMD(() => { localStorage.setItem(KEYS.cheat, cheatSheetOpen); }, [cheatSheetOpen]);
 
   // Render markdown into preview div
   useEffectMD(() => {
@@ -660,7 +667,7 @@ function MarkdownViewer() {
             ? { ...d, content, autoName: extractAutoName(content), updatedAt: Date.now() }
             : d
           );
-          try { saveDocs(next); } catch { ok = false; return prev; }
+          try { saveDocs(next, KEYS.docs); } catch { ok = false; return prev; }
           return next;
         });
         if (ok) {
@@ -685,7 +692,7 @@ function MarkdownViewer() {
         setCurrentDocId(newDoc.id);
         setDocs(prev => {
           const next = [...prev, newDoc];
-          try { saveDocs(next); } catch { ok = false; return prev; }
+          try { saveDocs(next, KEYS.docs); } catch { ok = false; return prev; }
           return next;
         });
         if (ok) {
@@ -780,7 +787,7 @@ function MarkdownViewer() {
         if (!next[type] && container.querySelector(sel)) { next[type] = true; changed = true; }
       });
       if (!changed) return prev;
-      localStorage.setItem(PROGRESS_KEY, JSON.stringify(next));
+      localStorage.setItem(KEYS.progress, JSON.stringify(next));
       return next;
     });
   }, [markdown, markedReady, hljsReady]);
@@ -960,7 +967,7 @@ function MarkdownViewer() {
 
   function handleDeleteDoc(id) {
     const next = docs.filter(d => d.id !== id);
-    try { saveDocs(next); } catch {}
+    try { saveDocs(next, KEYS.docs); } catch {}
     setDocs(next);
     if (currentDocId === id) {
       isLoadingDoc.current = true;
@@ -972,7 +979,7 @@ function MarkdownViewer() {
 
   function handleRenameDoc(id, name) {
     const next = docs.map(d => d.id === id ? { ...d, name: name || null } : d);
-    try { saveDocs(next); } catch {}
+    try { saveDocs(next, KEYS.docs); } catch {}
     setDocs(next);
   }
 

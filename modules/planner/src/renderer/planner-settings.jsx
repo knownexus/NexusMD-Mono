@@ -40,7 +40,7 @@ export function DesktopPlannerPrefsCard() {
 export function DesktopConfidentialCard() {
   const [pwOpen, setPwOpen] = React.useState(false)
   const [autoRelock, setAutoRelock] = React.useState(() => {
-    try { return localStorage.getItem('nexusmd.confidential.autoRelock') || '0' } catch { return '0' }
+    try { return localStorage.getItem(getProfileKey('nexusmd.confidential.autoRelock')) || '0' } catch { return '0' }
   })
   const cfg = loadConfidentialConfig() || { sections: [], hash: null }
   const lockedCount = (cfg.sections || []).filter(s => s.locked).length
@@ -55,7 +55,7 @@ export function DesktopConfidentialCard() {
       <VsRow title="Auto re-lock" desc="Re-lock confidential sections when the app loses focus">
         <PlToggle checked={autoRelock === '1'} onChange={v => {
           const s = v ? '1' : '0'; setAutoRelock(s)
-          try { localStorage.setItem('nexusmd.confidential.autoRelock', s) } catch {}
+          try { localStorage.setItem(getProfileKey('nexusmd.confidential.autoRelock'), s) } catch {}
         }} />
       </VsRow>
       {lockedCount > 0 && (

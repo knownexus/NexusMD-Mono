@@ -64,3 +64,15 @@ describe('makeJiraConfig', () => {
     expect(makeJiraConfig({ storage, key: n => n }).getJiraConfig().projectKeys).toEqual([])
   })
 })
+
+describe('makeJiraConfig with secrets', () => {
+  it('reads and writes only the API token through secrets', () => {
+    const storage = memStorage()
+    const secrets = memStorage()
+    const cfg = makeJiraConfig({ storage, secrets, key: (n) => `j.${n}` })
+    cfg.saveJiraConfig({ apiToken: 'tok', email: 'a@b.c' })
+    expect(secrets.get('j.apiToken')).toBe('tok')
+    expect(storage.get('j.apiToken')).toBeNull()
+    expect(cfg.getJiraConfig()).toMatchObject({ apiToken: 'tok', email: 'a@b.c' })
+  })
+})

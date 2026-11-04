@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, within, waitFor, act } from '@testing-library/react'
 import { BranchList } from './branch-list.jsx'
 
 afterEach(cleanup)
@@ -126,5 +126,39 @@ describe('BranchList filtering', () => {
     expect(screen.getByText(/No branches match/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
     expect(onClearFilters).toHaveBeenCalled()
+  })
+})
+
+describe('BranchList repositories missing on this computer', () => {
+  const MISSING = 'C:/repos/Gone'
+  const repos = [{ name: 'A', path: 'C:/repos/A' }, { name: 'Gone', path: MISSING }]
+  const withFolders = existing => { window.electronAPI = { file: { exists: vi.fn(async p => existing.has(p)) } } }
+  afterEach(() => { delete window.electronAPI })
+  const goneHead = () => screen.getByRole('button', { name: /Gone/ })
+
+  it('a repo whose folder is missing is shown disabled and cannot be opened', async () => {
+    withFolders(new Set(['C:/repos/A']))
+    const onToggleRepo = vi.fn()
+    show([tree(), tree({ repo: 'Gone', repoRoot: MISSING, path: MISSING })], { repos, onToggleRepo })
+    await waitFor(() => expect(goneHead().getAttribute('aria-disabled')).toBe('true'))
+    expect(goneHead().getAttribute('title')).toBe(`Not on this computer: ${MISSING}`)
+    fireEvent.click(goneHead())
+    expect(onToggleRepo).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Gone → main|checkout → main.*Gone/ })).toBeNull()
+    expect(screen.getAllByRole('button', { name: /checkout → main/ })).toHaveLength(1)
+    // The repo that exists is untouched.
+    expect(head('A').getAttribute('aria-disabled')).toBeNull()
+  })
+
+  it('it enables once the folder exists', async () => {
+    withFolders(new Set(['C:/repos/A']))
+    const onToggleRepo = vi.fn()
+    show([tree(), tree({ repo: 'Gone', repoRoot: MISSING, path: MISSING })], { repos, onToggleRepo })
+    await waitFor(() => expect(goneHead().getAttribute('aria-disabled')).toBe('true'))
+    withFolders(new Set(['C:/repos/A', MISSING]))
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await waitFor(() => expect(goneHead().getAttribute('aria-disabled')).toBeNull())
+    fireEvent.click(goneHead())
+    expect(onToggleRepo).toHaveBeenCalledWith('Gone')
   })
 })

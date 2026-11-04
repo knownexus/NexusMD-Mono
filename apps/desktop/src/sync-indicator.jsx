@@ -1,7 +1,8 @@
 import React from 'react'
-import { core, syncLabel, offlineText, readProviderStatus } from '@nexusmd/core'
+import { core, syncLabel, offlineText, readProviderStatus, profileCacheStorage } from '@nexusmd/core'
 import { Icon } from '@nexusmd/ui'
 import { localStorageAdapter } from '@nexusmd/web-adapters'
+import { getProfileKey } from './profile-keys.js'
 import { appQueue } from './offline-queue-app.js'
 
 // How often the "Updated 5m ago" line is worked out again.
@@ -17,7 +18,9 @@ export function lastLoadedAt(status) {
   return times.length ? Math.max(...times) : null
 }
 
-const readLoadedAtFromStorage = () => lastLoadedAt(readProviderStatus(localStorageAdapter))
+// The status is kept per profile.
+const statusStorage = profileCacheStorage(localStorageAdapter, getProfileKey)
+const readLoadedAtFromStorage = () => lastLoadedAt(readProviderStatus(statusStorage))
 const readQueueCount = () => appQueue.count()
 const subscribeCoreData = (fn) => { core.on('data:updated', fn); return () => core.off('data:updated', fn) }
 const isOnline = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false)

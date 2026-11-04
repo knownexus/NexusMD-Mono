@@ -5,7 +5,7 @@ import {
 } from '@nexusmd/core'
 import { EMPTY_NEXUS_DATA } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
-import { localStorageAdapter } from '@nexusmd/web-adapters'
+import { workStorage } from './work-storage.js'
 import { createAdoHttpAdapter, getAdoConfig, isAdoConfigured, usesAdoWorkItems } from './ado-client.js'
 import { getJiraConfig, isJiraActive, createJiraHttpAdapter } from './jira-client.js'
 import { getGithubConfig, isGithubConfigured, usesGithubWorkItems, createGithubHttpAdapter } from './github-client.js'
@@ -19,15 +19,15 @@ export function makeRefreshAllData(cloud) {
   return async function refreshAllData() {
     try {
       await refreshProviders({
-        storage: localStorageAdapter,
+        storage: workStorage,
         providers: {
           ado: {
             configured: isAdoConfigured(),
             run: () => {
-              const priorData = loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter })
+              const priorData = loadCachedAdoData(getAdoConfig(), { storage: workStorage })
               return loadAdoData(
                 getAdoConfig(),
-                { http: createAdoHttpAdapter(), storage: localStorageAdapter },
+                { http: createAdoHttpAdapter(), storage: workStorage },
                 // Switched-off screens (Settings > Desktop > Work screens) aren't fetched.
                 { isRefresh: !!priorData && (priorData.TEAM?.length ?? 0) > 0, priorData, skip: { ...skippedFetches(), workItems: !usesAdoWorkItems() } },
               )
@@ -36,10 +36,10 @@ export function makeRefreshAllData(cloud) {
           jira: {
             configured: isJiraActive(),
             run: () => {
-              const priorData = loadCachedJiraData(getJiraConfig(), { storage: localStorageAdapter })
+              const priorData = loadCachedJiraData(getJiraConfig(), { storage: workStorage })
               return loadJiraData(
                 getJiraConfig(),
-                { http: createJiraHttpAdapter(), storage: localStorageAdapter },
+                { http: createJiraHttpAdapter(), storage: workStorage },
                 { isRefresh: !!priorData?._jiraMeta, priorData },
               )
             },
@@ -47,10 +47,10 @@ export function makeRefreshAllData(cloud) {
           github: {
             configured: isGithubConfigured(),
             run: () => {
-              const priorData = loadCachedGithubData(getGithubConfig(), { storage: localStorageAdapter })
+              const priorData = loadCachedGithubData(getGithubConfig(), { storage: workStorage })
               return loadGithubData(
                 getGithubConfig(),
-                { http: createGithubHttpAdapter(), storage: localStorageAdapter },
+                { http: createGithubHttpAdapter(), storage: workStorage },
                 // PRs and runs still load with "Load GitHub issues" off.
                 { isRefresh: !!priorData?.ME, priorData, skip: { ...skippedFetches(), workItems: !usesGithubWorkItems() } },
               )
@@ -75,7 +75,7 @@ export const desktopWorkItemSource = makeAdoWorkItemSource({
   http: { fetch: (path, options) => createAdoHttpAdapter().fetch(path, options) },
   getDefaultProject: () => (getAdoConfig().projects || [])[0] || '',
   getOrg: () => getAdoConfig().org,
-  loadProcessMeta: () => loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter })?._adoMeta,
+  loadProcessMeta: () => loadCachedAdoData(getAdoConfig(), { storage: workStorage })?._adoMeta,
   createWorkItem: submitNewWorkItem,
 })
 
@@ -97,7 +97,7 @@ export function useNexusSnapshot() {
         adoConfig: getAdoConfig(), adoConfigured: isAdoConfigured(), adoWorkItems: usesAdoWorkItems(),
         jiraConfig: getJiraConfig(), jiraActive: isJiraActive(),
         githubConfig: getGithubConfig(), githubActive: isGithubConfigured(), githubWorkItems: usesGithubWorkItems(), githubInWork: getGithubConfig().inWork,
-        storage: localStorageAdapter, empty: EMPTY_NEXUS_DATA,
+        storage: workStorage, empty: EMPTY_NEXUS_DATA,
         hiddenIds: readHiddenPeople(),
       }))
     } catch { setSnapshot(EMPTY_NEXUS_DATA) }

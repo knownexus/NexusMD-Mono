@@ -2,7 +2,7 @@ import React from 'react'
 import {
   Icon,
   VsRow, VsCard, VsFullRow, ThemeModeSettings,
-  VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView, AccountCard,
+  VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView, AccountCard, SyncStatusCard, SyncConflictsCard,
   PlToggle,
   toast,
 } from '@nexusmd/ui'
@@ -19,6 +19,7 @@ import { AppsCard } from './apps-card.jsx'
 import { AppUpdatesCard } from './app-updates.jsx'
 import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBinding, setManualMicrosoftToken, decodeJwtClaims } from './cloud-auth.js'
 import { desktopSync } from './sync.js'
+import { isLegacyCloudSyncOn, setLegacyCloudSyncOn } from './legacy-cloud-sync.js'
 import { moduleSettingsCards, modulePanels } from './shell/modules.js'
 import { registry } from './shell/registry.js'
 import { host } from './shell/host.js'
@@ -71,7 +72,7 @@ export function DesktopAppCard() {
   const [loginItem, setLoginItem] = React.useState(false)
   const [closeToTray, setCloseToTray] = React.useState(true)
   const [outputPath, setOutputPath] = React.useState(() => {
-    try { return localStorage.getItem('nexusmd.outputPath') || '' } catch { return '' }
+    try { return localStorage.getItem(getProfileKey('nexusmd.outputPath')) || '' } catch { return '' }
   })
 
   React.useEffect(() => {
@@ -86,12 +87,12 @@ export function DesktopAppCard() {
     const picked = await appPrefsAdapter.pickOutputFolder()
     if (!picked) return
     setOutputPath(picked)
-    try { localStorage.setItem('nexusmd.outputPath', picked) } catch {}
+    try { localStorage.setItem(getProfileKey('nexusmd.outputPath'), picked) } catch {}
   }
 
   const clearFolder = () => {
     setOutputPath('')
-    try { localStorage.removeItem('nexusmd.outputPath') } catch {}
+    try { localStorage.removeItem(getProfileKey('nexusmd.outputPath')) } catch {}
   }
 
   return (
@@ -122,6 +123,12 @@ export function DesktopAppCard() {
 
 export function DesktopDataSyncCard() {
   const [kbUsed, setKbUsed] = React.useState(0)
+  const [legacyOn, setLegacyOn] = React.useState(isLegacyCloudSyncOn)
+  const toggleLegacy = (on) => {
+    setLegacyCloudSyncOn(on)
+    setLegacyOn(on)
+    try { on ? desktopSync.startAuto?.() : desktopSync.stopAuto?.() } catch {}
+  }
 
   React.useEffect(() => {
     try {
@@ -154,6 +161,9 @@ export function DesktopDataSyncCard() {
       </VsRow>
       {/* Rows the installed apps add: Work's refresh interval and cache. */}
       {modulePanels('data-sync').map(({ id, Panel }) => <Panel key={id} host={host} />)}
+      <VsRow title="Google Drive / OneDrive backup" desc="The older backup to your own Google Drive or OneDrive. Off by default; your NexusMD account keeps your profiles in sync.">
+        <PlToggle checked={legacyOn} onChange={toggleLegacy} />
+      </VsRow>
       <VsRow title="Clear local data" desc="Remove all locally stored NexusMD data and reload">
         <button className="btn sm ghost danger" onClick={clearLocal}>Clear data…</button>
       </VsRow>
@@ -388,6 +398,7 @@ export const visibleSettingsTabs = (reg = registry) =>
 
 export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
   const profileApi = useProfile()
+  const legacyCloudOn = isLegacyCloudSyncOn()
   const [tab, setTab] = React.useState('profile')
   useObserveOnSettingsChange(tab)
 
@@ -462,9 +473,10 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
 
           {tab === 'profiles' && (
             <>
+              <AccountCard account={account} />
               <VsProfiles profileApi={profileApi} />
-              <BackupRestoreCard fileIO={desktopFileIO} cloudProviders={desktopCloudProviders} />
-              <CloudSyncCard controller={desktopSync} providers={desktopCloudProviders} fileIO={desktopFileIO} />
+              <BackupRestoreCard fileIO={desktopFileIO} cloudProviders={legacyCloudOn ? desktopCloudProviders : undefined} />
+              {legacyCloudOn && <CloudSyncCard controller={desktopSync} providers={desktopCloudProviders} fileIO={desktopFileIO} />}
             </>
           )}
 
@@ -473,6 +485,8 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
           {tab === 'data' && (
             <>
               <AccountCard account={account} />
+              <SyncStatusCard />
+              <SyncConflictsCard account={account} />
               <DesktopDataSyncCard />
               <SettingsFileCard />
               <LogsCard />

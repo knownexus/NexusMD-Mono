@@ -17,13 +17,13 @@ describe('minimised columns store', () => {
     writeMinCols('uat', 'patients', ['name'])
     writeMinCols('uat', 'patients', [])
     expect(readMinCols('uat', 'patients')).toEqual([])
-    expect(window.localStorage.getItem('nx-db:min-cols:uat:patients')).toBeNull()
+    expect(window.localStorage.getItem('nexusmd.dbManager.minCols.uat.patients')).toBeNull()
   })
 
   it('treats bad JSON or a non-list as none', () => {
-    window.localStorage.setItem('nx-db:min-cols:uat:patients', '{nope')
+    window.localStorage.setItem('nexusmd.dbManager.minCols.uat.patients', '{nope')
     expect(readMinCols('uat', 'patients')).toEqual([])
-    window.localStorage.setItem('nx-db:min-cols:uat:patients', '{"a":1}')
+    window.localStorage.setItem('nexusmd.dbManager.minCols.uat.patients', '{"a":1}')
     expect(readMinCols('uat', 'patients')).toEqual([])
   })
 

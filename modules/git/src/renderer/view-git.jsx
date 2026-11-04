@@ -9,6 +9,7 @@ import { useGitConfig } from './use-git-config.js'
 import { useGitSnapshot } from './use-git-snapshot.js'
 import { GroupTabs } from './group-tabs.jsx'
 import { BranchList, visibleTrees } from './branch-list.jsx'
+import { usePathsMissing } from '@nexusmd/ui'
 import { useGitShortcuts } from './use-git-shortcuts.js'
 import { FilterChips, BranchSearch } from './filter-chips.jsx'
 import { BranchSwitcher } from './branch-switcher.jsx'
@@ -59,6 +60,7 @@ export function ViewGit({ adapters, host = null }) {
 
 function GitWorkspace({ adapter, host }) {
   const config = useGitConfig()
+  const missing = usePathsMissing(config.repos.map(r => r.path))
   const registered = React.useMemo(() => config.repos.map(r => r.path), [config.repos])
   const [gitVersion, setGitVersion] = React.useState(undefined)
   // A group dialog from the ⋯ menu: { name, mode: rename | duplicate | delete }.
@@ -239,7 +241,7 @@ function GitWorkspace({ adapter, host }) {
   }
   // j / k walk the worktrees the list shows (all that pass the filter when it's hidden), wrapping at the ends.
   const step = by => {
-    const list = visibleTrees({ repos: config.repos, scoped, query, filter, collapsed: listHidden ? [] : view.collapsed })
+    const list = visibleTrees({ repos: config.repos, scoped, query, filter, collapsed: listHidden ? [] : view.collapsed, missing })
     if (!list.length) return
     const i = list.findIndex(t => worktreeId(t) === view.selected)
     const next = i < 0 ? (by > 0 ? 0 : list.length - 1) : (i + by + list.length) % list.length
@@ -248,6 +250,7 @@ function GitWorkspace({ adapter, host }) {
   // The GitHub tab's local copy: Registered repos, with that repository's main worktree selected.
   const openLocal = name => {
     const repo = config.repos.find(r => r.name === name)
+    if (repo && missing.has(repo.path)) return
     const usable = (snapshot?.worktrees ?? []).filter(t => t.repo === name && !t.prunable && !t.error)
     const tree = usable.find(t => repo && worktreeId(t) === worktreeId({ path: repo.path })) ?? usable[0]
     setView({ tab: undefined, group: ALL_PROJECTS, selected: tree ? worktreeId(tree) : null, collapsed: view.collapsed.filter(n => n !== name) })
@@ -321,7 +324,7 @@ function GitWorkspace({ adapter, host }) {
       <div className="nx-gw-body" data-list={listHidden ? 'hidden' : 'shown'} ref={bodyRef} style={{ '--gw-list': `${listWidth}px` }}>
         {!listHidden && (
           <nav aria-label="Branches" className="nx-gw-aside">
-            <BranchList repos={config.repos} scoped={scoped} query={query} filter={filter} onClearFilters={() => { setQuery(''); setFilter('all') }} errors={snapshot?.errors || []} collapsed={view.collapsed}
+            <BranchList missing={missing} repos={config.repos} scoped={scoped} query={query} filter={filter} onClearFilters={() => { setQuery(''); setFilter('all') }} errors={snapshot?.errors || []} collapsed={view.collapsed}
               onToggleRepo={name => setView({ collapsed: view.collapsed.includes(name) ? view.collapsed.filter(n => n !== name) : [...view.collapsed, name] })}
               onSetCollapsed={collapsed => setView({ collapsed })}
               selected={view.selected} onSelect={selectTree} />

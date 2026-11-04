@@ -2,7 +2,7 @@ import React from 'react'
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-vi.mock('@nexusmd/shell-sdk', () => ({ getProfileKey: k => `nexusmd.p.p1.${k}` }))
+vi.mock('@nexusmd/shell-sdk', async (orig) => ({ ...(await orig()), getProfileKey: k => `nexusmd.p.p1.${k}` }))
 vi.mock('@nexusmd/ui', () => ({
   VsCard: ({ children }) => <div>{children}</div>,
   VsRow: ({ title, desc, children }) => <div><span>{title}</span><span>{desc}</span>{children}</div>,

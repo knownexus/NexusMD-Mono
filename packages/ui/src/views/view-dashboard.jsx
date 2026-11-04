@@ -252,7 +252,7 @@ function TeamWorkloadCard({ team }) {
 }
 
 export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrder, quickLinks, density, team: teamProp, acknowledgedSet, needsMeCriteria, setPlannerData, widgetWidths = {}, setWidgetWidths, widgetHeights = {}, setWidgetHeights, offViews = [], renderWidgets, hiddenParts = [], setHiddenParts }) {
-  const { data: NexusMDData, api: NexusMDApi } = useNexusData();
+  const { data: NexusMDData, api: NexusMDApi, getProfileKey } = useNexusData();
   const effectiveNeedsMe = useEffectiveNeedsMe();
   const { PRS, BUILDS, WORK_ITEMS, ACTIVITY, SPRINT, RESOLVED_WI, AVG_RESOLUTION_DAYS } = NexusMDData;
   // Use the filtered team prop (respects hidden/custom members) rather than the raw global
@@ -359,7 +359,7 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
       const PR_SPARKLINE = NexusMDData.PR_SPARKLINE || [];
       const prevCount = (() => {
         try {
-          const s = localStorage.getItem('nexusmd_seen_pr');
+          const s = localStorage.getItem(getProfileKey('nexusmd.seenPr'));
           if (!s) return null;
           const parsed = JSON.parse(s);
           return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? Object.keys(parsed).length : null;

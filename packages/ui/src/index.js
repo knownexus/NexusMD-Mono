@@ -8,6 +8,7 @@
 export { Icon } from './icons.jsx'
 export { NEXUSMD_THEMES, THEME_MODES, paletteFor, nextThemeMode, isDarkPalette } from './themes.js'
 export { FoldAllButton } from './fold-all-button.jsx'
+export { usePathsMissing, notOnThisComputer } from './use-paths-missing.js'
 export {
   StatusChip, PrioChip, PlModal, PlFld, DueLabel,
 } from './planner-chips.jsx'
@@ -38,11 +39,13 @@ export { ViewDbManager } from './views/ViewDbManager.jsx'
 
 // Profile registry (active profile, CRUD, export/import). Each app wraps this
 // with a platform `store` (web REST vs app local) in its own profile-context.
-export { ProfileProvider, useProfile, localUpsertProfiles } from './profile-context.jsx'
+export { ProfileProvider, useProfile, localUpsertProfiles, buildProfileBundle } from './profile-context.jsx'
 export { ProfileGate } from './profile-gate.jsx'
 
 // Optional NexusMD account (settings sync): sign-in gate, settings card, and the useAccount() hook.
-export { AccountGate, useAccount, accountErrorMessage } from './account-gate.jsx'
+export { AccountGate, useAccount, accountErrorMessage, syncItemLabel } from './account-gate.jsx'
+export { SyncStatusCard } from './sync-status-card.jsx'
+export { SyncConflictsCard, ConflictDialog } from './sync-conflicts.jsx'
 export { AccountCard } from './account-card.jsx'
 
 

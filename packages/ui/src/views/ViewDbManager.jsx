@@ -63,6 +63,7 @@ import { Icon } from '../icons.jsx'
 import { FoldAllButton } from '../fold-all-button.jsx'
 import { DbMenu, menuPointFor } from './db-menu.jsx'
 import { readMinCols, writeMinCols } from './db-min-cols.js'
+import { useNexusData } from '../data-context.jsx'
 import { pushNav, popNav } from './db-nav.js'
 import { headerMenuItems, rowMenuItems } from './db-grid-menus.js'
 import { StructurePanel, typeLabelOf } from './db-structure-panel.jsx'
@@ -126,19 +127,30 @@ function sessionName(session) {
 
 // Starred tables are remembered per connection.
 const connectionKey = s => (s ? s.connectionId || `${s.type}:${s.config?.server ?? ''}/${s.config?.database ?? s.config?.filePath ?? ''}` : '')
-function readPref(key, fallback) {
-  try { const v = window.localStorage.getItem(key); return v == null ? fallback : JSON.parse(v) } catch { return fallback }
-}
-function writePref(key, value) {
-  try { window.localStorage.setItem(key, JSON.stringify(value)) } catch { /* storage unavailable */ }
+// Everything remembered here belongs to the active profile (so it follows the profile between
+// machines): `<namespace>.dbManager.<name>` through the host's getProfileKey.
+function usePrefs() {
+  const { namespace = 'nexusmd', getProfileKey } = useNexusData()
+  return useMemo(() => {
+    const keyOf = name => getProfileKey(`${namespace}.dbManager.${name}`)
+    return {
+      keyOf,
+      readPref(name, fallback) {
+        try { const v = window.localStorage.getItem(keyOf(name)); return v == null ? fallback : JSON.parse(v) } catch { return fallback }
+      },
+      writePref(name, value) {
+        try { window.localStorage.setItem(keyOf(name), JSON.stringify(value)) } catch { /* storage unavailable */ }
+      },
+    }
+  }, [namespace, getProfileKey])
 }
 
 // How a connection's table list is arranged (favourites, hidden tables, groups, folded sections).
 // Stars saved before groups existed are picked up from their old key.
-const tablePrefsKey = conn => `nx-db:tables:${conn}`
-function readTablePrefs(conn) {
+const tablePrefsKey = conn => `tables.${conn}`
+function readTablePrefs(readPref, conn) {
   const saved = readPref(tablePrefsKey(conn), null)
-  return normalizeTablePrefs(saved ?? { starred: readPref(`nx-db:starred:${conn}`, []) })
+  return normalizeTablePrefs(saved ?? { starred: readPref(`starred.${conn}`, []) })
 }
 
 const isNumeric = v => typeof v === 'number' || typeof v === 'bigint'
@@ -194,7 +206,7 @@ function matchesWords(text, query) {
 // ─── Saved queries ────────────────────────────────────────────────────────────
 // Kept in this browser profile. A query saved "for any table" stores {table} where the table
 // name was, and runs against whichever table is open; the others belong to their connection.
-const SAVED_KEY = 'nx-db:saved-queries'
+const SAVED_KEY = 'savedQueries'
 const TABLE_TOKEN = '{table}'
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 // The table name as a whole identifier, bare or quoted ([t], "t", `t`), and a schema table as
@@ -298,7 +310,7 @@ function sessionKey({ type, config, connectionId }) {
 }
 
 // The saved connections that were open (and which was showing), so they reopen next time.
-const OPEN_KEY = 'nx-db:open-connections'
+const OPEN_KEY = 'openConnections'
 
 // What a connection saved from the connect dialog keeps: the same metadata Settings saves, with
 // the password (or the whole connection string, which may hold one) kept apart as the secret.
@@ -315,6 +327,7 @@ function connectionToSave(type, fields, name) {
 // `SqlEditor` (optional) is the Query tab's editor, as { value, onChange, ariaLabel }: the desktop
 // passes a syntax-highlighting one. Without it the Query tab uses a plain text box.
 export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret, onSaveConnection, SqlEditor = null }) {
+  const { readPref, writePref, keyOf: prefKey } = usePrefs()
   const [sessions, setSessions]       = useState([])          // { key, type, config, tables, connectionId?, name? }, in tab order
   const [activeKey, setActiveKey]     = useState(null)
   const [connecting, setConnecting]   = useState(null)        // saved connection id, 'new', or null
@@ -615,6 +628,7 @@ export function ViewDbManager({ adapters, savedConnections = [], onResolveSecret
 // ─── One open connection ──────────────────────────────────────────────────────
 
 function DbSession({ session: openedSession, active, db, tabs, connecting, notify, onDisconnect, SqlEditor }) {
+  const { readPref, writePref, keyOf: prefKey } = usePrefs()
   const [dbState, setDbState]         = useState(() => applyConnected(createInitialState(), openedSession))
   const [activeTab, setActiveTab]     = useState('browse')
   const [search, setSearch]           = useState('')
@@ -641,10 +655,10 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [tableFilter, setTableFilter] = useState('')
   const [listFilter, setListFilter]   = useState('all')       // all | starred | opened | hidden
-  const [listHidden, setListHidden]   = useState(() => readPref('nx-db:list-hidden', false))
+  const [listHidden, setListHidden]   = useState(() => readPref('listHidden', false))
   const [paletteOpen, setPaletteOpen] = useState(false)
   // Favourites, hidden tables, the user's groups and folded sections, kept for this connection.
-  const [prefs, setPrefs]             = useState(() => readTablePrefs(connectionKey(openedSession)))
+  const [prefs, setPrefs]             = useState(() => readTablePrefs(readPref, connectionKey(openedSession)))
   const [recent, setRecent]           = useState([])          // tables opened this session, newest first
   const [tableMeta, setTableMeta]     = useState({})          // { [table]: { rows, cols, at } }
   // Each demo tab edits its own copy of the sample data.
@@ -1171,10 +1185,10 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const [minState, setMinState] = useState({ id: null, names: [] })
   let minCols = minState.names
   if (minState.id !== minId) {
-    minCols = minTable ? readMinCols(connKey, minTable) : []
+    minCols = minTable ? readMinCols(connKey, minTable, prefKey) : []
     setMinState({ id: minId, names: minCols })
   }
-  const setMinCols = (names) => { setMinState({ id: minId, names }); writeMinCols(connKey, minTable, names) }
+  const setMinCols = (names) => { setMinState({ id: minId, names }); writeMinCols(connKey, minTable, names, prefKey) }
   // Only names the open table still has count; a stale one stays remembered but does nothing.
   const minimised = useMemo(() => new Set((tableData?.columns ?? []).filter(c => minCols.includes(c))), [tableData, minCols])
 
@@ -1218,7 +1232,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
   const allTables = session?.tables ?? []
   const otherSchema = t => session?.type === 'sqlserver' && t.includes('.')
   const otherSchemaCount = allTables.filter(otherSchema).length
-  const schemasKey = `nx-db:other-schemas:${connectionKey(openedSession)}`
+  const schemasKey = `otherSchemas.${connectionKey(openedSession)}`
   const [showSchemas, setShowSchemasState] = useState(() => readPref(schemasKey, true))
   const setShowSchemas = (v) => { setShowSchemasState(v); writePref(schemasKey, v) }
   const tables = showSchemas ? allTables : allTables.filter(t => !otherSchema(t))
@@ -1249,7 +1263,7 @@ function DbSession({ session: openedSession, active, db, tabs, connecting, notif
       && (listFilter === 'all' || (listFilter === 'starred' ? starredSet.has(t) : !!tableMeta[t])))),
   [tables, tableFilter, listFilter, starredSet, hiddenSet, tableMeta])
   const hiddenCount = tables.filter(t => hiddenSet.has(t)).length
-  const setHidden = (v) => { setListHidden(v); writePref('nx-db:list-hidden', v) }
+  const setHidden = (v) => { setListHidden(v); writePref('listHidden', v) }
 
   // ── Opened tables ──────────────────────────────────────────────────────────
   // A table opened this session counts under "Opened" and Recently opened until it's closed;
@@ -2388,8 +2402,9 @@ const AUTH_OPTIONS = [[SQL_AUTH, 'SQL Server authentication'], [AZURE_AD_INTERAC
 // `editing` ({ entry, secret }) turns it into the editor for that saved connection: filled in from
 // it, always saved (under the same id, by onSaveEdit), and without the saved list or the demo.
 function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openConnectionIds = [], onClose, loading, error, canSave = false, editing = null, editingOpen = false, onSaveEdit }) {
+  const { readPref, writePref } = usePrefs()
   const entry = editing?.entry
-  const [dbType, setDbType]       = useState(() => entry?.type ?? readPref('nx-db:last-type', 'demo'))
+  const [dbType, setDbType]       = useState(() => entry?.type ?? readPref('lastType', 'demo'))
   const [inputMode, setInputMode] = useState(entry?.inputMode === 'connstr' ? 'connstr' : 'fields')
   const [connStr, setConnStr]     = useState(entry?.inputMode === 'connstr' ? editing.secret : '')
   const [fields, setFields]       = useState(() => {
@@ -2440,7 +2455,7 @@ function ConnectDialog({ onConnect, savedConnections = [], onConnectSaved, openC
     const params = inputMode === 'connstr' ? { connectionString: connStr } : fields
     // Editing can't take another saved connection's name: that would be two with one name.
     if (entry) { if (!nameTaken) onSaveEdit(dbType, params, saveName.trim() || suggestedName || entry.name); return }
-    writePref('nx-db:last-type', dbType)
+    writePref('lastType', dbType)
     if (dbType === 'demo') { onConnect('demo', {}); return }
     onConnect(dbType, params, canSave && saveIt ? { name: saveName.trim() || suggestedName || typeLabel(dbType) } : null)
   }

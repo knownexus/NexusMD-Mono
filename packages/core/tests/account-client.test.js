@@ -749,3 +749,21 @@ describe('malformed 2xx responses', () => {
     await expect(client.setUserDisabled('u', true)).resolves.toBeNull()
   })
 })
+
+describe('sync format', () => {
+  it('sends X-Sync-Format 2 on every request', async () => {
+    const { server, client } = setup()
+    await client.status()
+    await client.setup({ setupToken: 't', username: 'ada', password: 'pw' })
+    await client.status()
+    expect(server.state.requests.length).toBeGreaterThanOrEqual(3)
+    for (const r of server.state.requests) expect(r.headers['x-sync-format']).toBe('2')
+  })
+
+  it('maps 426 to AccountError client-outdated', async () => {
+    const { server, client } = setup()
+    await client.setup({ setupToken: 't', username: 'ada', password: 'pw' })
+    server.state.extra = () => json(426, { code: 'client_outdated', error: 'too old' })
+    await expect(client.listDevices()).rejects.toMatchObject({ name: 'AccountError', code: 'client-outdated', status: 426 })
+  })
+})

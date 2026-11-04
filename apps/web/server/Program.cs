@@ -93,7 +93,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("CapacitorApp", policy =>
     {
         policy.WithOrigins("https://nexusmd.app", "https://nexus.app", "null")
-              .WithHeaders("Content-Type", "Authorization", "X-Requested-With")
+              .WithHeaders("Content-Type", "Authorization", "X-Requested-With", "X-Sync-Format")
               .WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS");
     });
 });

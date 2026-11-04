@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-vi.mock('@nexusmd/shell-sdk', () => ({ getProfileKey: k => `p.${k}` }))
+vi.mock('@nexusmd/shell-sdk', async (orig) => ({ ...(await orig()), getProfileKey: k => `p.${k}` }))
 const refreshProviders = vi.hoisted(() => vi.fn(async () => {}))
 const loadGithubData = vi.hoisted(() => vi.fn(async () => ({})))
 const buildSnapshot = vi.hoisted(() => vi.fn(() => ({})))

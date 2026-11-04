@@ -87,3 +87,16 @@ describe('makeAdoConfig', () => {
     expect(out.refreshSecs).toBe(15)
   })
 })
+
+describe('makeAdoConfig with secrets (desktop: the PAT lives in secure storage)', () => {
+  it('reads and writes only the PAT through secrets, under the same key', () => {
+    const storage = memStorage()
+    const secrets = memStorage({ 'p.ado.pat': 'from-secure' })
+    const cfg = makeAdoConfig({ storage, secrets, key: (n) => `p.ado.${n}` })
+    expect(cfg.getAdoConfig().pat).toBe('from-secure')
+    cfg.saveAdoConfig({ org: 'acme', pat: 'new' })
+    expect(secrets.get('p.ado.pat')).toBe('new')
+    expect(storage.get('p.ado.pat')).toBeNull()
+    expect(storage.get('p.ado.org')).toBe('acme')
+  })
+})

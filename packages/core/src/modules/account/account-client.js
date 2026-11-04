@@ -38,7 +38,11 @@ export class AccountError extends Error {
 const MAX_ITERATIONS = 10_000_000 // mirrors the deriveKeys upper bound
 const SALT_BYTES = 16
 
+/** Sync format this client speaks; servers configured with Sync:MinFormat above it refuse writes (426). */
+const SYNC_FORMAT = 2
+
 function codeForStatus(status, login) {
+  if (status === 426) return 'client-outdated'
   if (status === 401 || status === 400) return 'invalid'
   if (status === 423) return 'locked'
   if (status === 403) return login ? 'disabled' : 'forbidden'
@@ -77,7 +81,7 @@ export function createAccountClient({
 
   /** One network round trip. Network failures become `offline`; HTTP errors are returned, not thrown. */
   async function send(method, path, { body, headers, token } = {}) {
-    const h = { ...(headers || {}) }
+    const h = { ...(headers || {}), 'X-Sync-Format': String(SYNC_FORMAT) }
     if (body !== undefined) h['Content-Type'] = 'application/json'
     if (token) h.Authorization = `Bearer ${token}`
     let res

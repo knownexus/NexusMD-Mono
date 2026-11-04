@@ -11,11 +11,14 @@ export function normaliseSite(input) {
 
 const normaliseKeys = (keys) => keys.map(k => String(k).trim().toUpperCase()).filter(Boolean)
 
-export function makeJiraConfig({ storage, key }) {
+// `secrets` (optional): where the API token is kept instead of `storage`, under the same key
+// (see ado/config.js).
+export function makeJiraConfig({ storage, key, secrets = null }) {
   if (!storage || typeof key !== 'function') {
     throw new Error('makeJiraConfig requires { storage, key }')
   }
-  const get = (name) => storage.get(key(name))
+  const storeOf = (name) => (secrets && name === 'apiToken' ? secrets : storage)
+  const get = (name) => storeOf(name).get(key(name))
 
   function getJiraConfig() {
     let projectKeys = []
@@ -33,7 +36,7 @@ export function makeJiraConfig({ storage, key }) {
   }
 
   function saveJiraConfig(values = {}) {
-    const set = (name, v) => storage.set(key(name), v)
+    const set = (name, v) => storeOf(name).set(key(name), v)
     if (values.site        !== undefined) set('site',        normaliseSite(values.site))
     if (values.email       !== undefined) set('email',       String(values.email).trim())
     if (values.apiToken    !== undefined) set('apiToken',    values.apiToken)
