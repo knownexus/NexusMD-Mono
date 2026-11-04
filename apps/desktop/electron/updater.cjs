@@ -5,6 +5,8 @@ const { app, dialog, ipcMain } = require('electron');
 // Loaded on first use: electron-updater reads the app's version as soon as it loads, which only
 // works inside Electron (and isn't needed at all in a development build).
 let updater = null;
+// The shell's logger under the updater's scope; plain console when run outside the app (tests).
+const logger = () => (globalThis.log?.scope ? globalThis.log.scope('updater') : console);
 const getAutoUpdater = () => (updater ??= require('electron-updater').autoUpdater);
 
 const REPO = 'knownexus/NexusMD-Mono';
@@ -33,7 +35,7 @@ async function useNewestDesktopRelease(autoUpdater, fetchFn = globalThis.fetch) 
       url: `https://github.com/${REPO}/releases/download/${encodeURIComponent(release.tag_name)}`,
     });
   } catch (err) {
-    console.warn('[updater] could not look up the newest desktop release:', err.message);
+    logger().warn('could not look up the newest desktop release', err);
   }
 }
 
@@ -97,7 +99,7 @@ function initUpdater(win) {
   });
 
   autoUpdater.on('error', err => {
-    console.error('[updater] Auto-update error:', err.message);
+    logger().error('auto-update error', err);
   });
 
   // Push update-available events to the renderer so the IUpdateAdapter can surface them.
@@ -135,7 +137,7 @@ async function checkWithRetry(autoUpdater, wait = sleep) {
       return await autoUpdater.checkForUpdates();
     } catch (err) {
       if (attempt >= RETRY_DELAYS_MS.length || !isNetworkError(err)) throw err;
-      console.warn(`[updater] check failed (${err.message}), retrying`);
+      logger().warn(`check failed (${err.message}), retrying`);
       await wait(RETRY_DELAYS_MS[attempt]);
     }
   }
@@ -166,7 +168,7 @@ async function checkForUpdatesManually({
     }
     return { available, version };
   } catch (err) {
-    console.error('[updater] manual check failed:', err.message);
+    logger().error('manual check failed', err);
     await show({ type: 'info', title, message: "Couldn't check for updates right now", detail: friendlyUpdateError(err) });
     return { available: false, error: err.message };
   }
@@ -201,7 +203,7 @@ function registerUpdaterIpc(getWin = () => null) {
       await getAutoUpdater().downloadUpdate();
       getAutoUpdater().quitAndInstall();
     } catch (err) {
-      console.error('[updater] install failed:', err.message);
+      logger().error('install failed', err);
     }
   });
 }

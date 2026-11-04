@@ -4,6 +4,7 @@
   "private": true,
   "description": "Electron main-process helpers shared by the shell and the installable apps (CommonJS)",
   "exports": {
+    "./logging": "./src/logging/index.cjs",
     "./safe-file": "./src/safe-file.cjs",
     "./with-logging": "./src/withLogging.cjs"
   },

@@ -4,6 +4,9 @@ const { app } = require('electron');
 const fs = require('fs/promises');
 const path = require('path');
 
+// The shell's logger under this scope; plain console when run outside the app (tests).
+const logger = () => (globalThis.log?.scope ? globalThis.log.scope('logs') : console);
+
 function register(ipcMain) {
   const logsDir = path.join(app.getPath('userData'), 'logs');
 
@@ -30,7 +33,7 @@ function register(ipcMain) {
       // Sort by date, newest first
       return list.sort((a, b) => b.date.localeCompare(a.date));
     } catch (err) {
-      console.error('[logs:list]', err.message);
+      logger().error('logs:list failed', err);
       return [];
     }
   });
@@ -44,7 +47,7 @@ function register(ipcMain) {
       const content = await fs.readFile(filePath, 'utf8');
       return content;
     } catch (err) {
-      console.error('[logs:read]', err.message);
+      logger().error('logs:read failed', err);
       return null;
     }
   });
@@ -58,7 +61,7 @@ function register(ipcMain) {
       await fs.unlink(filePath);
       return true;
     } catch (err) {
-      console.error('[logs:delete]', err.message);
+      logger().error('logs:delete failed', err);
       return false;
     }
   });
