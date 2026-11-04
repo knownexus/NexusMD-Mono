@@ -104,6 +104,7 @@ export {
   columnTypes, validateTableSpec, buildCreateTable, buildCreateView, buildDropStatement, formatDefault, isSingleStatement,
 } from './modules/db-manager/ddl.js'
 export { columnKind, isPartialInput, cellToInput, parseCellInput } from './modules/db-manager/cell-types.js'
+export { orderByDependencies, buildSchemaScript, buildTableData, joinDataScript } from './modules/db-manager/export-sql.js'
 export {
   formatSqlValue, formatCondition, quoteIdent, quoteTable,
   buildSearchQuery, buildInsertQuery, buildUpdateQuery, buildDeleteQuery,
