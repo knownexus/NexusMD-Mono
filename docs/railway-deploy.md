@@ -79,6 +79,17 @@ Optional tuning:
 5. Behaviour to know about: an account locks after 5 failed logins for 15 minutes (HTTP 423). Data is end-to-end
    encrypted, so a forgotten password cannot be recovered by the server or an admin.
 
+## Releasing a new sync format
+
+Desktop releases that change the sync format (the client sends `X-Sync-Format`; "profiles that sync everything"
+is format 2) ship with the server setting raised in the same window:
+
+1. Set `Sync__MinFormat=2` in the Railway variables and redeploy.
+2. Release the desktop build and update every Windows install. Until a computer is updated, its syncs are refused
+   (HTTP 426 `client_outdated`) and it shows "This version of NexusMD can no longer sync. Update NexusMD to keep
+   syncing."; nothing local is lost, and it syncs again once updated.
+3. Reads are not gated, so an old client can still sign in and see the account; only its writes are refused.
+
 ## 5. Security checks after the first deploy
 
 1. **Forwarded headers and exposure.** `Proxy__TrustForwardedHeaders=true` clears the known-proxy list and uses the
