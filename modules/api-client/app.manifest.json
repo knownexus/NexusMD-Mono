@@ -8,6 +8,7 @@
     "main": "src/main/index.cjs",
     "renderer": "src/renderer/index.js"
   },
+  "mainFiles": ["bruno-prelude.sandbox.js"],
   "ipc": {
     "preload": {
       "apiClient": {
