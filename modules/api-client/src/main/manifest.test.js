@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from 'vitest'
 import { createRequire } from 'node:module'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import manifest from '../../app.manifest.json'
 import { validateManifest } from '@nexusmd/shell-sdk'
 
@@ -20,6 +23,26 @@ function registerWithFakes() {
 }
 
 const methods = () => Object.values(manifest.ipc.preload).flatMap(ns => Object.values(ns))
+
+// The app's main code is bundled into one file, so a file it reads from beside itself at run time
+// (the Bruno sandbox prelude) is only there if the manifest lists it in mainFiles. Missing, the app
+// fails to start with ENOENT.
+describe('api-client files read beside the bundle', () => {
+  const dir = path.dirname(fileURLToPath(import.meta.url))
+  const reads = fs.readdirSync(dir).filter(f => f.endsWith('.cjs'))
+    .flatMap(f => [...fs.readFileSync(path.join(dir, f), 'utf8').matchAll(/readFileSync\(\s*path\.join\(__dirname,\s*'([^']+)'/g)].map(m => m[1]))
+
+  it('finds the prelude read it guards', () => {
+    expect(reads).toContain('bruno-prelude.sandbox.js')
+  })
+
+  it('lists each of them in mainFiles, and each exists in src/main', () => {
+    for (const file of reads) {
+      expect(manifest.mainFiles ?? [], file).toContain(file)
+      expect(fs.existsSync(path.join(dir, file)), file).toBe(true)
+    }
+  })
+})
 
 describe('api-client app manifest', () => {
   it('is a valid app manifest', () => {
