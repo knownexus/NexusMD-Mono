@@ -64,10 +64,13 @@ describe('checkForUpdatesManually', () => {
     expect(shown(d)).toEqual([])
   })
 
-  it('shows why the check failed', async () => {
-    const d = deps({ check: vi.fn(async () => { throw new Error('HttpError: 404') }) })
+  it('explains a release that is still being published, without the raw HTTP dump', async () => {
+    const raw = ['Cannot find channel "latest.yml" update info: HttpError: 404', 'Headers: {', '  "cache-control": "no-cache"', '}', '    at createHttpError'].join('\n')
+    const d = deps({ check: vi.fn(async () => { throw new Error(raw) }) })
     await checkForUpdatesManually(d)
-    expect(shown(d)).toEqual([expect.objectContaining({ type: 'error', message: "Couldn't check for updates", detail: expect.stringContaining('404') })])
+    const [box] = shown(d)
+    expect(box).toMatchObject({ type: 'info', message: "Couldn't check for updates right now", detail: 'The newest version is still being published. Try again in a few minutes.' })
+    expect(JSON.stringify(box)).not.toMatch(/Headers|createHttpError/)
   })
 
   it('retries a dropped connection before reporting anything', async () => {
@@ -86,7 +89,7 @@ describe('checkForUpdatesManually', () => {
     const d = deps({ check })
     await checkForUpdatesManually(d)
     expect(check).toHaveBeenCalledTimes(3)
-    expect(shown(d)).toEqual([expect.objectContaining({ type: 'error', detail: 'net::ERR_CONNECTION_RESET' })])
+    expect(shown(d)).toEqual([expect.objectContaining({ type: 'info', detail: expect.stringContaining('Check your connection') })])
   })
 
   it('does not retry an error that is not a network failure', async () => {
