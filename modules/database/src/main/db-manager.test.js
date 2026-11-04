@@ -407,10 +407,14 @@ describe('db-manager IPC — SQL Server authentication', () => {
 
   // Pools are cached for the process, so each test uses its own server name.
   const fakeMssql = () => ({
-    connect: vi.fn(async (config) => {
-      connectCalls.push(config)
-      return { request: () => ({ query: async () => ({ recordset: [{ TABLE_NAME: 'users' }] }) }) }
-    }),
+    ConnectionPool: class {
+      constructor(config) { this.config = config }
+      async connect() {
+        connectCalls.push(this.config)
+        this.request = () => ({ query: async () => ({ recordset: [{ TABLE_NAME: 'users' }] }) })
+        return this
+      }
+    },
   })
 
   beforeEach(() => {
@@ -464,6 +468,28 @@ describe('db-manager IPC — SQL Server authentication', () => {
   })
 })
 
+describe('db-manager IPC — one pool per connection', () => {
+  it('serves each database from its own pool, not the first one connected', async () => {
+    // mssql's sql.connect() hands back one global pool whatever config it is given.
+    const ipc = makeFakeIpcMain()
+    register(ipc, { drivers: { requireMssql: () => ({
+      connect: async () => { throw new Error('sql.connect() shares one global pool') },
+      ConnectionPool: class {
+        constructor(config) { this.config = config }
+        async connect() {
+          this.request = () => ({ query: async () => ({ recordset: [{ TABLE_NAME: `table_in_${this.config.database}` }] }) })
+          return this
+        }
+      },
+    }) } })
+    const base = { server: 'two-dbs-host', port: 1433, user: 'sa', password: 'pw', authentication: 'sql' }
+    const joiners = await ipc._invoke('db-manager:connect', { type: 'sqlserver', config: { ...base, database: 'Joiners' } })
+    const booking = await ipc._invoke('db-manager:connect', { type: 'sqlserver', config: { ...base, database: 'Booking' } })
+    expect(joiners.tables).toEqual(['table_in_Joiners'])
+    expect(booking.tables).toEqual(['table_in_Booking'])
+  })
+})
+
 describe('db-manager IPC — SQL Server statements', () => {
   let ipc, requests, nextResult, queuedResults
 
@@ -488,7 +514,7 @@ describe('db-manager IPC — SQL Server statements', () => {
     ipc = makeFakeIpcMain()
     txLog = []
     rollbackError = null
-    register(ipc, { drivers: { requireMssql: () => ({ connect: async () => ({ request: fakeRequest, transaction: fakeTransaction }) }) } })
+    register(ipc, { drivers: { requireMssql: () => ({ ConnectionPool: class { async connect() { this.request = fakeRequest; this.transaction = fakeTransaction; return this } } }) } })
   })
 
   // A transaction whose requests are recorded like the pool's, logging begin and rollback.
