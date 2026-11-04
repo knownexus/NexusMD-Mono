@@ -751,7 +751,12 @@ describe('createAccountSync', () => {
     const r = await a.sync.syncNow()
     expect(r.error.code).toBe('session-expired')
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'session-expired' }))
-    expect(a.storage.map).toEqual(before)
+    // nothing changes but the error noted for status() (Task 6)
+    const after = new Map(a.storage.map)
+    const { lastError, ...meta } = JSON.parse(after.get(META))
+    expect(lastError).toBeTruthy()
+    after.set(META, JSON.stringify(meta))
+    expect(after).toEqual(before)
   })
 
   it('ignores items whose ciphertext was swapped or whose payload id does not match the wire id', async () => {
@@ -1262,5 +1267,72 @@ describe('records and fields (registry v2)', () => {
     const b = device({ srv, ck, deviceId: 'dev-b', init: { [T]: JSON.stringify({ localOnly: 1 }) } })
     await b.sync.pull()
     expect(JSON.parse(b.storage.getItem(T))).toEqual({ localOnly: 1, theme: 'dark', layout: { a: 2, b: 1 } })
+  })
+})
+
+describe('per-profile sync status', () => {
+  const PROFILES = JSON.stringify([
+    { id: 'W', name: 'Work', updatedAt: 1 }, { id: 'H', name: 'Home', updatedAt: 1 },
+    { id: 'X', name: 'Gone', updatedAt: 1, purgedAt: 1 },
+  ])
+
+  it('status lists every profile with its last sync time after syncNow', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    let t = 5000
+    const a = device({ srv, ck, now: () => t, init: { 'nexusmd.profiles': PROFILES, 'nexusmd.p.W.ado.org': 'acme' } })
+    expect(a.sync.status()).toEqual({ lastSyncAt: null, profiles: {
+      W: { lastSyncAt: null, conflicts: 0, tooLarge: [], quota: [], error: null },
+      H: { lastSyncAt: null, conflicts: 0, tooLarge: [], quota: [], error: null },
+    } })
+    await a.sync.syncNow()
+    const s = a.sync.status()
+    expect(s.lastSyncAt).toBe(5000)
+    expect(Object.keys(s.profiles).sort()).toEqual(['H', 'W']) // a purged profile is not listed
+    expect(s.profiles.W).toEqual({ lastSyncAt: 5000, conflicts: 0, tooLarge: [], quota: [], error: null })
+    expect(s.profiles.H.lastSyncAt).toBe(5000)
+  })
+
+  it('a too-large planner version shows under its profile only', async () => {
+    const srv = fakeServer({ maxBytes: 4000 })
+    const ck = await generateContainerKey()
+    const a = device({
+      srv, ck,
+      init: { 'nexusmd.profiles': PROFILES, 'nexusmd.p.W.planner.versions': JSON.stringify([{ id: 'v1', body: 'x'.repeat(8000) }]) },
+    })
+    await a.sync.syncNow()
+    const s = a.sync.status()
+    expect(s.profiles.W.tooLarge).toEqual(['nexusmd:p.W.planner.versions#v1'])
+    expect(s.profiles.H.tooLarge).toEqual([])
+    expect(s.profiles.W.lastSyncAt).toEqual(expect.any(Number))
+  })
+
+  it('counts each profile\'s open conflicts', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, init: { 'nexusmd.profiles': PROFILES, 'nexusmd.p.W.ado.org': 'from-a' } })
+    await a.sync.syncNow()
+    const b = device({ srv, ck, deviceId: 'dev-b', init: { 'nexusmd.profiles': PROFILES, 'nexusmd.p.W.ado.org': 'from-b' } })
+    await b.sync.syncNow()
+    expect(b.sync.status().profiles.W.conflicts).toBe(1)
+    expect(b.sync.status().profiles.H.conflicts).toBe(0)
+  })
+
+  it('a failed sync sets error and keeps the previous lastSyncAt', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    let t = 5000
+    const a = device({ srv, ck, now: () => t, init: { 'nexusmd.profiles': PROFILES } })
+    await a.sync.syncNow()
+    t = 9000
+    srv.fail = 'offline'
+    expect((await a.sync.syncNow()).error.code).toBe('offline')
+    const s = a.sync.status()
+    expect(s.lastSyncAt).toBe(5000)
+    expect(s.profiles.W).toMatchObject({ lastSyncAt: 5000, error: expect.any(String) })
+    expect(s.profiles.H.error).toBe(s.profiles.W.error)
+    srv.fail = null
+    await a.sync.syncNow()
+    expect(a.sync.status().profiles.W).toMatchObject({ lastSyncAt: 9000, error: null })
   })
 })

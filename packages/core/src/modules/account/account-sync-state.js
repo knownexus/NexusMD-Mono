@@ -62,6 +62,8 @@ export function loadMeta(storage, metaKey) {
     pendingPurges: isPlainObject(m.pendingPurges) ? Object.fromEntries(Object.entries(m.pendingPurges).filter(([, c]) => isPlainObject(c))) : {},
     devicePrefs: { revision: 0, ...(isPlainObject(m.devicePrefs) ? m.devicePrefs : {}) },
     ...(m.lastSyncAt ? { lastSyncAt: m.lastSyncAt } : {}),
+    ...(isPlainObject(m.profileSync) ? { profileSync: { ...m.profileSync } } : {}),
+    ...(typeof m.lastError === 'string' && m.lastError ? { lastError: m.lastError } : {}),
   }
 }
 

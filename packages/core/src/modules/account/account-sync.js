@@ -692,16 +692,33 @@ export function createAccountSync({
 
   const observe = () => guarded(observeInner)
 
-  const syncNow = singleFlight(() => guarded(reportingRemoved(async () => {
+  // A failed syncNow leaves its message for status(); the next completed one clears it.
+  const recordingError = (fn) => async () => {
+    try {
+      return await fn()
+    } catch (e) {
+      const meta = load()
+      meta.lastError = String((e && (e.message || e.code)) || 'Sync failed')
+      save(meta)
+      throw e
+    }
+  }
+
+  const syncNow = singleFlight(() => guarded(recordingError(reportingRemoved(async () => {
     await observeInner() // stamps an offline edit even when the network calls below fail
     const pulled = await pullInner()
     const pushed = await pushInner(false)
     if (deviceRemoved) return null // reported by reportingRemoved; not a completed sync
     const meta = load()
-    meta.lastSyncAt = now()
+    const t = now()
+    meta.lastSyncAt = t
+    // one round covers every profile in the list (a purged one has nothing left to sync)
+    meta.profileSync = { ...(meta.profileSync || {}) }
+    for (const p of profilesList()) if (!p.purgedAt) meta.profileSync[p.id] = t
+    delete meta.lastError
     save(meta)
     return { applied: pulled.applied, ...pushed }
-  })))
+  }))))
 
   /** A sync, or (when one is already running) at least an observation of local edits. */
   const kick = () => syncNow().then((r) => (r && r.skipped ? observe() : r))
@@ -833,6 +850,32 @@ export function createAccountSync({
     onConflict(cb) {
       conflictListeners.add(cb)
       return () => conflictListeners.delete(cb)
+    },
+
+    /**
+     * { lastSyncAt, profiles: { [pid]: { lastSyncAt, conflicts, tooLarge, quota, error } } } for
+     * every profile in the list but purged ones. tooLarge / quota list the profile's ids the server
+     * refused; error is the last failed syncNow's message (shared: one round covers all profiles).
+     */
+    status() {
+      const meta = load()
+      const profiles = {}
+      for (const p of profilesList()) {
+        if (p.purgedAt) continue
+        profiles[p.id] = { lastSyncAt: (meta.profileSync && meta.profileSync[p.id]) || null, conflicts: 0, tooLarge: [], quota: [], error: meta.lastError || null }
+      }
+      for (const [id, c] of Object.entries(meta.conflicts)) {
+        const row = profiles[c.profileId ?? profileOfId(id)]
+        if (row) row.conflicts++
+      }
+      for (const [id, r] of Object.entries(meta.rejected)) {
+        const row = profiles[profileOfId(id)]
+        if (!row || !r) continue
+        if (r.status === 'too_large') row.tooLarge.push(id)
+        else if (r.status === 'quota') row.quota.push(id)
+      }
+      for (const row of Object.values(profiles)) { row.tooLarge.sort(); row.quota.sort() }
+      return { lastSyncAt: meta.lastSyncAt || null, profiles }
     },
 
     /** Last successful syncNow time (ms), or null. */
