@@ -72,7 +72,7 @@ describe('account-sync-state: records and fields', () => {
     expect(resolveTarget(registry, LID)).toBeNull() // the container itself is not an item
     expect(resolveTarget(registry, TID)).toBeNull()
     expect(resolveTarget(registry, 'nexusmd:p.A.team.custom#x')).toBeNull() // a plain key has no records
-    expect(resolveTarget(registry, 'nexusmd:p.A.team.custom')).toEqual({ kind: 'plain', key: 'nexusmd.p.A.team.custom', level: 'account' })
+    expect(resolveTarget(registry, 'nexusmd:p.A.team.custom')).toEqual({ kind: 'plain', key: 'nexusmd.p.A.team.custom', level: 'account', auto: false })
     expect(resolveTarget(registry, 'p.A.ado.pat')).toMatchObject({ kind: 'secret' })
   })
 

@@ -46,7 +46,7 @@ export const secretFingerprint = (value, ck) => opaqueId(`fp|${value}`, ck)
 export const fingerprint = (target, value, ck) => (target.kind === 'secret' ? secretFingerprint(value, ck) : hashOf(value))
 
 export function emptyMeta() {
-  return { cursor: 0, entries: {}, rejected: {}, devicePrefs: { revision: 0 } }
+  return { cursor: 0, entries: {}, rejected: {}, conflicts: {}, devicePrefs: { revision: 0 } }
 }
 
 export function loadMeta(storage, metaKey) {
@@ -58,6 +58,7 @@ export function loadMeta(storage, metaKey) {
     cursor: Number.isInteger(m.cursor) && m.cursor > 0 ? m.cursor : 0,
     entries,
     rejected: isPlainObject(m.rejected) ? { ...m.rejected } : {},
+    conflicts: isPlainObject(m.conflicts) ? Object.fromEntries(Object.entries(m.conflicts).filter(([, c]) => isPlainObject(c))) : {},
     devicePrefs: { revision: 0, ...(isPlainObject(m.devicePrefs) ? m.devicePrefs : {}) },
     ...(m.lastSyncAt ? { lastSyncAt: m.lastSyncAt } : {}),
   }
@@ -122,7 +123,7 @@ export function resolveTarget(registry, id) {
   if (typeof id !== 'string' || !id) return null
   if (registry.isSecretId(id)) {
     const name = registry.secretName(id)
-    return name ? { kind: 'secret', name, level: 'account' } : null
+    return name ? { kind: 'secret', name, level: 'account', auto: MACHINE_WRITTEN.some((re) => re.test(name)) } : null
   }
   const parts = id.includes('#') ? splitSubId(id) : null
   if (parts) {
@@ -145,7 +146,7 @@ export function resolveTarget(registry, id) {
     const half = id === c.accountId ? 'account' : id === c.deviceId ? 'device' : null
     return half ? { kind: 'tweaks', key, half, level: half } : null
   }
-  return { kind: 'plain', key, level: c.level }
+  return { kind: 'plain', key, level: c.level, auto: !!c.auto }
 }
 
 /**

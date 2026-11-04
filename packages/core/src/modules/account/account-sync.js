@@ -10,7 +10,9 @@
 //   - never seen from the server (no meta entry): the remote value wins on any conflict, so a
 //     joining device (push, seed or pull alike) never overwrites account values
 //   - local unchanged since the last sync: the remote change is applied
-//   - both changed: last writer wins by the time each edit was first OBSERVED (`changedAt`,
+//   - desktop (nexusmd), values the owner edits (`auto` false, account level): see the conflict
+//     queue below — two devices' different values are parked for the owner, never overwritten
+//   - otherwise, both changed: last writer wins by the time each edit was first OBSERVED (`changedAt`,
 //     stamped by observe()/every snapshot; the pushed updatedAt is that stamp); a tie goes to
 //     the remote; remote times more than 5 minutes ahead are clamped
 //   - lists with a registry merger (profiles) are merged, an unpushed local edit winning
@@ -18,13 +20,17 @@
 //     local removal is pushed only for an entry that was synced; tweaks halves never delete
 // Network failures never touch local data: every public method resolves to { error }.
 import { singleFlight } from '../sync/single-flight.js'
-import { encryptJson } from './crypto.js'
+import { encryptJson, decryptJson } from './crypto.js'
 import { AccountError } from './account-client.js'
 import {
   DEVICE_CONTEXT, isPlainObject, hashOf, fingerprint, loadMeta, saveMeta, readSnapshot,
   resolveTarget, validValue, localChanged, stampChanges, unchangedSince, writeLocal, mergeRaw,
-  encodeItem, decodeDeviceBlob, decodeChange, fetchFeed,
+  encodeItem, decodeDeviceBlob, decodeChange, fetchFeed, stableJson, readSnapshot as readState,
 } from './account-sync-state.js'
+
+// A secret's remote value in a conflict is kept sealed under the container key: meta lives in
+// plain localStorage.
+const CONFLICT_CONTEXT = 'nexusmd-conflict|'
 
 const BATCH = 50
 const MAX_SKEW_MS = 5 * 60 * 1000
@@ -49,6 +55,22 @@ export function createAccountSync({
     }
   }
   const emitApplied = (applied) => { if (applied) emit(appliedListeners, { applied }) }
+  const conflictListeners = new Set()
+  const conflictCount = () => Object.keys(load().conflicts).length
+
+  // ---- conflict queue (desktop) ------------------------------------------------------
+  // On nexusmd, an account-level value the owner edits (not `auto`, not a merged list) that
+  // differs between this device and the server is never overwritten by either side:
+  //   - identical fingerprints: synced, no conflict (a parked conflict clears on its own);
+  //   - never seen from the server: the remote value is taken when nothing is here, or when
+  //     the id was a per-device setting in Milestone 1 (a one-time adoption of the server's view
+  //     settings at the upgrade); any other local value conflicts;
+  //   - seen before: the remote change is taken when the local value is still the synced one,
+  //     otherwise it conflicts (a local or remote deletion included).
+  // A conflict is kept in meta.conflicts until resolve()/keepBoth(); its id is never pushed
+  // meanwhile, everything else keeps syncing. Android (helm) keeps last-writer-wins.
+  const queues = registry.namespace === 'nexusmd'
+  const ownerEdited = (target) => queues && target.level === 'account' && !target.auto && target.kind !== 'tweaks'
 
   // ---- local observation -------------------------------------------------------------
 
@@ -117,6 +139,7 @@ export function createAccountSync({
     const merger = target.kind === 'plain' && registry.mergers && registry.mergers[remote.id]
     const merged = !remote.deleted && local && merger
       ? mergeRaw(merger, local.value, remote.value, !!m && localChanged(m, local)) : null
+    if (!merger && ownerEdited(target) && !isUnavailable(remote.id)) return reconcileOwned(meta, state, target, remote, remoteHash)
     const write = merged != null || remoteWins(local, m, remote, remoteHash, isUnavailable(remote.id))
     if (write && !(await unchangedSince(ctx, target, rawOf(remote.id)))) return 'held'
     const rec = {
@@ -133,6 +156,136 @@ export function createAccountSync({
     const changed = await writeLocal(ctx, target, merged != null ? merged : remote.value, remote.deleted)
     if (changed && state.noteWritten) state.noteWritten(target) // the next record of this key compares against it
     return changed ? 'applied' : 'same'
+  }
+
+  async function reconcileOwned(meta, state, target, remote, remoteHash) {
+    const id = remote.id
+    const local = state.snap.get(id)
+    const m = meta.entries[id]
+    const record = () => ({
+      hash: remoteHash,
+      updatedAt: clampAt(remote.updatedAt),
+      ...(remote.revision != null ? { revision: remote.revision } : {}),
+      level: target.level,
+      deleted: !!remote.deleted,
+    })
+    if ((local ? local.hash : null) === remoteHash) {
+      meta.entries[id] = record()
+      delete meta.conflicts[id]
+      return 'same'
+    }
+    const take = m ? !localChanged(m, local) : (!local || !!(registry.wasDeviceLevelInM1 && registry.wasDeviceLevelInM1(id)))
+    if (take) {
+      if (!(await unchangedSince(ctx, target, state.rawOf(id)))) return 'held'
+      meta.entries[id] = record()
+      delete meta.conflicts[id]
+      const changed = await writeLocal(ctx, target, remote.value, remote.deleted)
+      if (changed && state.noteWritten) state.noteWritten(target)
+      return changed ? 'applied' : 'same'
+    }
+    const secret = target.kind === 'secret'
+    const prev = meta.conflicts[id]
+    meta.conflicts[id] = {
+      id,
+      profileId: registry.profileOf ? registry.profileOf(id) : null,
+      kind: target.kind,
+      local: { value: secret || !local ? null : local.value, deleted: !local },
+      remote: {
+        value: secret || remote.deleted ? null : remote.value,
+        ...(secret && !remote.deleted ? { sealed: await encryptJson({ v: remote.value }, ck, CONFLICT_CONTEXT + id) } : {}),
+        deleted: !!remote.deleted,
+        updatedAt: clampAt(remote.updatedAt),
+        revision: remote.revision ?? 0,
+      },
+      detectedAt: prev && prev.detectedAt ? prev.detectedAt : now(),
+    }
+    return 'kept'
+  }
+
+  /** A conflict's remote value (unsealed for a secret), or null for a deletion. */
+  async function remoteValueOf(c) {
+    if (c.remote.deleted) return null
+    if (c.remote.sealed) return (await decryptJson(c.remote.sealed, ck, CONFLICT_CONTEXT + c.id)).v
+    return c.remote.value
+  }
+
+  /** Write one item over the conflict's remote revision; throws AccountError when refused. */
+  async function pushResolved(c, value, deleted) {
+    const t = now()
+    const payload = deleted ? { id: c.id, value: null, updatedAt: t, deleted: true } : { id: c.id, value, updatedAt: t }
+    const { wid, ciphertext } = await encodeItem(ck, c.id, payload)
+    const results = await client.putItems([{ id: wid, ifMatch: c.remote.revision || 0, ciphertext, deleted }])
+    const res = (Array.isArray(results) ? results : []).find((r) => isPlainObject(r) && r.id === wid)
+    if (!res || res.status !== 'ok' || !Number.isInteger(res.revision)) {
+      const status = res && res.status
+      const full = status === 'too_large' || status === 'quota'
+      throw new AccountError(full ? status : 'conflict', 409,
+        full ? 'The account cannot hold this value' : 'The item changed again on another device; sync and try again')
+    }
+    return { revision: res.revision, updatedAt: t }
+  }
+
+  function openConflict(meta, id) {
+    const c = meta.conflicts[id]
+    const target = c && resolveTarget(registry, id)
+    if (!c || !target) throw new AccountError('not-found', 0, 'No such conflict')
+    return { c, target }
+  }
+
+  async function resolveInner(id, choice) {
+    const { c, target } = openConflict(load(), id)
+    if (choice && choice.take === 'remote') {
+      const value = await remoteValueOf(c)
+      if (!c.remote.deleted && !validValue(target, value)) throw new AccountError('invalid', 0, 'The stored remote value does not fit this item')
+      const changed = await writeLocal(ctx, target, value, c.remote.deleted)
+      const after = load()
+      after.entries[id] = {
+        hash: c.remote.deleted ? null : await fingerprint(target, value, ck),
+        updatedAt: c.remote.updatedAt, revision: c.remote.revision, level: target.level, deleted: c.remote.deleted,
+      }
+      delete after.conflicts[id]
+      save(after)
+      emitApplied(changed ? 1 : 0)
+      return {}
+    }
+    let value
+    let deleted = false
+    if (choice && choice.take === 'local') {
+      const e = (await readState(ctx, ck)).snap.get(id)
+      deleted = !e
+      value = e ? e.value : null
+    } else if (choice && typeof choice.value === 'string') {
+      value = choice.value
+      if (target.kind === 'record' || target.kind === 'field') {
+        try { value = stableJson(JSON.parse(value)) } catch { value = null }
+      }
+      if (value == null || !validValue(target, value)) throw new AccountError('invalid', 0, 'The value does not fit this item')
+    } else {
+      throw new AccountError('invalid', 0, 'Choose take: local, take: remote, or a value')
+    }
+    const pushed = await pushResolved(c, value, deleted)
+    const changed = choice.take === 'local' ? false : await writeLocal(ctx, target, value, false)
+    const after = load()
+    after.entries[id] = {
+      hash: deleted ? null : await fingerprint(target, value, ck),
+      updatedAt: pushed.updatedAt, revision: pushed.revision, level: 'account', deleted,
+    }
+    delete after.conflicts[id]
+    save(after)
+    emitApplied(changed ? 1 : 0)
+    return {}
+  }
+
+  async function keepBothInner(id, { copyName = (n) => n } = {}) {
+    const { c, target } = openConflict(load(), id)
+    if (c.kind !== 'record' || target.kind !== 'record') throw new AccountError('invalid', 0, 'Keep both is only for records')
+    const remoteRaw = await remoteValueOf(c)
+    await resolveInner(id, { take: 'local' }) // the original id keeps this device's version
+    if (remoteRaw == null) return {} // deleted elsewhere: nothing to copy
+    const copy = { ...JSON.parse(remoteRaw), id: `${target.recordId}-c${now()}` }
+    for (const f of ['name', 'title']) if (typeof copy[f] === 'string') copy[f] = copyName(copy[f])
+    if (await writeLocal(ctx, { ...target, recordId: copy.id }, stableJson(copy), false)) emitApplied(1)
+    return {} // the copy is a new local record: the next push sends it
   }
 
   // ---- pull --------------------------------------------------------------------------
@@ -301,7 +454,7 @@ export function createAccountSync({
     const rejected = { too_large: [], quota: [] }
     for (const id of Object.keys(meta.rejected)) if (!snap.has(id)) delete meta.rejected[id]
     for (const [id, e] of snap) {
-      if (e.level !== 'account') continue
+      if (e.level !== 'account' || meta.conflicts[id]) continue // a conflict waits for the owner
       const m = meta.entries[id]
       const changed = !m || localChanged(m, e)
       if (!force && !changed) continue
@@ -311,7 +464,7 @@ export function createAccountSync({
       out.push({ id, value: e.value, hash: e.hash, deleted: false, ifMatch: (m && m.revision) || 0, updatedAt })
     }
     for (const [id, m] of Object.entries(meta.entries)) {
-      if (m.level !== 'account' || m.deleted || !(m.revision > 0) || snap.has(id) || isUnavailable(id)) continue
+      if (m.level !== 'account' || m.deleted || !(m.revision > 0) || snap.has(id) || isUnavailable(id) || meta.conflicts[id]) continue
       const target = resolveTarget(registry, id)
       if (!target || target.kind === 'tweaks') continue // tweaks halves are never deleted
       out.push({ id, value: null, hash: null, deleted: true, ifMatch: m.revision, updatedAt: m.changedAt ?? t })
@@ -435,11 +588,15 @@ export function createAccountSync({
     return run
   }
   const guarded = (fn) => serial(async () => {
+    const before = conflictCount()
     try {
       return await fn()
     } catch (error) {
       emit(errorListeners, error)
       return { error }
+    } finally {
+      const count = conflictCount()
+      if (count > before) emit(conflictListeners, { count })
     }
   })
 
@@ -521,6 +678,39 @@ export function createAccountSync({
     onError(cb) {
       errorListeners.add(cb)
       return () => errorListeners.delete(cb)
+    },
+
+    /**
+     * Open conflicts: { id, profileId, kind: 'record'|'field'|'plain'|'secret', local: { value,
+     * deleted }, remote: { value, deleted, updatedAt, revision }, detectedAt }. A secret's values
+     * are null here (never shown); resolve() still takes either side.
+     */
+    conflicts() {
+      return Object.values(load().conflicts).map((c) => ({
+        id: c.id, profileId: c.profileId ?? null, kind: c.kind,
+        local: { value: c.local?.value ?? null, deleted: !!c.local?.deleted },
+        remote: { value: c.remote?.value ?? null, deleted: !!c.remote?.deleted, updatedAt: c.remote?.updatedAt ?? 0, revision: c.remote?.revision ?? 0 },
+        detectedAt: c.detectedAt ?? 0,
+      }))
+    },
+
+    /**
+     * Settle a conflict: { take: 'remote' } writes the server's value here; { take: 'local' } or
+     * { value } (a merged result) is pushed over the server's revision, then kept here. Resolves
+     * {} or { error } (code 'conflict' when the item changed again: sync, then resolve again).
+     */
+    resolve: (id, choice) => guarded(() => resolveInner(id, choice)),
+
+    /**
+     * Records only: this device's version keeps the id, the server's is added beside it as a new
+     * record (id `<record id>-c<time>`, name/title passed through copyName). Resolves {} or { error }.
+     */
+    keepBoth: (id, opts) => guarded(() => keepBothInner(id, opts)),
+
+    /** cb({ count }) whenever the conflict queue grows. Returns an unsubscribe. */
+    onConflict(cb) {
+      conflictListeners.add(cb)
+      return () => conflictListeners.delete(cb)
     },
 
     /** Last successful syncNow time (ms), or null. */

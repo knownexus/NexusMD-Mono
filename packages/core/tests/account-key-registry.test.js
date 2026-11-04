@@ -620,11 +620,11 @@ describe('registry v2 (nexusmd): profile scope, collections, field maps, machine
 
   it('a neutral token id resolves to a secret target, never a plain key', () => {
     const d = desktop()
-    expect(resolveTarget(d, 'p.A.ado.pat')).toEqual({ kind: 'secret', name: 'nexusmd.p.A.ado.pat', level: 'account' })
-    expect(resolveTarget(d, 'p.A.jira.apiToken')).toEqual({ kind: 'secret', name: 'nexusmd.p.A.jira.apiToken', level: 'account' })
-    expect(resolveTarget(d, 'p.A.ado.org')).toEqual({ kind: 'plain', key: 'nexusmd.p.A.ado.org', level: 'account' })
+    expect(resolveTarget(d, 'p.A.ado.pat')).toEqual({ kind: 'secret', name: 'nexusmd.p.A.ado.pat', level: 'account', auto: false })
+    expect(resolveTarget(d, 'p.A.jira.apiToken')).toEqual({ kind: 'secret', name: 'nexusmd.p.A.jira.apiToken', level: 'account', auto: false })
+    expect(resolveTarget(d, 'p.A.ado.org')).toEqual({ kind: 'plain', key: 'nexusmd.p.A.ado.org', level: 'account', auto: false })
     // Android keeps its M1 rules: the same id is a plain key there
-    expect(resolveTarget(android(), 'p.A.ado.pat')).toEqual({ kind: 'plain', key: 'helm.p.A.android.pat', level: 'account' })
+    expect(resolveTarget(android(), 'p.A.ado.pat')).toEqual({ kind: 'plain', key: 'helm.p.A.android.pat', level: 'account', auto: false })
   })
 
   it('secretId refuses a name holding the record separator', () => {

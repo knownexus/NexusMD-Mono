@@ -8,122 +8,7 @@ import * as core from '../src/index.js'
 
 const META = 'nexusmd.account.meta'
 
-// ---- fakes -------------------------------------------------------------------------------
-
-function fakeStorage(init = {}) {
-  const m = new Map(Object.entries(init))
-  return {
-    map: m,
-    get length() { return m.size },
-    key: (i) => [...m.keys()][i] ?? null,
-    getItem: (k) => (m.has(k) ? m.get(k) : null),
-    setItem: (k, v) => { m.set(k, String(v)) },
-    removeItem: (k) => { m.delete(k) },
-  }
-}
-
-// Mirrors the real adapter: values live elsewhere, `<ns>.sec.<name>` holds an opaque blob.
-function fakeSecure(storage, ns = 'nexusmd', init = {}) {
-  const vals = new Map()
-  const s = {
-    vals,
-    get: vi.fn(async (name) => (vals.has(name) ? vals.get(name) : null)),
-    set: vi.fn(async (name, v) => { vals.set(name, v); storage.setItem(`${ns}.sec.${name}`, 'opaque-blob') }),
-    remove: vi.fn(async (name) => { vals.delete(name); storage.removeItem(`${ns}.sec.${name}`) }),
-  }
-  for (const [k, v] of Object.entries(init)) { vals.set(k, v); storage.setItem(`${ns}.sec.${k}`, 'opaque-blob') }
-  return s
-}
-
-// In-memory server honouring revisions and cursors (task 5 API shape).
-// Pages are bounded by `limit` and by a byte budget (`pageBytes`, at least one item per page),
-// and say `hasMore` (Ruling 18) unless `legacy` emulates a server from before that field.
-// `quotaBytes` is a per-user storage quota answered with the 'quota' item status.
-function fakeServer({ maxBytes = Infinity, pageBytes = Infinity, legacy = false, quotaBytes = Infinity } = {}) {
-  const items = new Map()
-  const prefs = new Map()
-  let cursor = 0
-  const stored = () => [...items.values()].reduce((n, i) => n + (i.ciphertext || '').length, 0)
-  const srv = {
-    items, prefs, requests: [], fail: null, putCalls: 0, changesCalls: 0,
-    tamper: null,
-    check() {
-      if (srv.fail) throw new AccountError(srv.fail, srv.fail === 'session-expired' ? 401 : 0)
-    },
-    client: {
-      async putItems(list) {
-        srv.check()
-        srv.putCalls++
-        srv.requests.push(JSON.stringify(list))
-        return list.map((i) => {
-          const cur = items.get(i.id)
-          const rev = cur ? cur.revision : 0
-          if (i.ifMatch !== rev) return { id: i.id, status: 'conflict' }
-          if ((i.ciphertext || '').length > maxBytes) return { id: i.id, status: 'too_large' }
-          if (stored() - (cur ? (cur.ciphertext || '').length : 0) + (i.ciphertext || '').length > quotaBytes) {
-            return { id: i.id, status: 'quota' }
-          }
-          const next = { id: i.id, revision: rev + 1, cursor: ++cursor, ciphertext: i.ciphertext, deleted: !!i.deleted, updatedAt: new Date().toISOString() }
-          items.set(i.id, next)
-          return { id: i.id, status: 'ok', revision: next.revision, cursor: next.cursor }
-        })
-      },
-      async getChanges(since = 0, limit = 500) {
-        srv.check()
-        srv.changesCalls++
-        const newer = [...items.values()].filter((i) => i.cursor > since).sort((a, b) => a.cursor - b.cursor)
-        let list = []
-        let bytes = 0
-        for (const i of newer) {
-          if (list.length >= limit) break
-          const size = (i.ciphertext || '').length
-          if (list.length && bytes + size > pageBytes) break
-          list.push(i)
-          bytes += size
-        }
-        const hasMore = newer.length > list.length
-        if (srv.tamper) list = srv.tamper(list)
-        const page = { items: list.map((i) => ({ ...i })), cursor: list.length ? list[list.length - 1].cursor : since }
-        return legacy ? page : { ...page, hasMore }
-      },
-      async getDevicePrefs(id) {
-        srv.check()
-        return prefs.get(id) || { revision: 0, ciphertext: '' }
-      },
-      async putDevicePrefs(id, ciphertext, revision) {
-        srv.check()
-        srv.requests.push(JSON.stringify({ id, ciphertext }))
-        const cur = prefs.get(id) || { revision: 0 }
-        if (revision !== cur.revision) throw new AccountError('conflict', 409)
-        const next = { revision: cur.revision + 1, ciphertext }
-        prefs.set(id, next)
-        return { revision: next.revision }
-      },
-    },
-  }
-  return srv
-}
-
-async function decryptAll(srv, ck) {
-  const out = {}
-  for (const it of srv.items.values()) {
-    const p = await decryptJson(it.ciphertext, ck, `nexusmd-item|${it.id}`)
-    out[p.id] = p
-  }
-  return out
-}
-
-let clock = 1_000_000
-function device({ srv, ck, init = {}, secrets = {}, deviceId = 'dev-a', devicePrefs = null, ns = 'nexusmd', now, getActiveProfileId, pageSize }) {
-  const storage = fakeStorage(init)
-  const secure = fakeSecure(storage, ns, secrets)
-  const registry = createKeyRegistry({ namespace: ns, getActiveProfileId })
-  const sync = createAccountSync({
-    client: srv.client, containerKey: ck, registry, storage, secure, devicePrefs, deviceId,
-    metaKey: `${ns}.account.meta`, now: now || (() => (clock += 1000)), pageSize,
-  })
-  return { storage, secure, sync, registry }
-}
+import { fakeStorage, fakeSecure, fakeServer, decryptAll, device } from './helpers/account-fakes.js'
 
 const metaOf = (d) => JSON.parse(d.storage.getItem(META) || 'null')
 
@@ -241,8 +126,11 @@ describe('createAccountSync', () => {
     b.storage.setItem('nexusmd.p.1.ado.org', 'edited-on-b')
     await b.sync.pull()
     expect(b.storage.getItem('nexusmd.p.1.ado.org')).toBe('edited-on-b')
-    // and B's edit then resurrects the key on the server
-    expect((await b.sync.push()).pushed).toBe(1)
+    // a conflict for the owner (Task 4): nothing is pushed until it is resolved
+    expect(b.sync.conflicts()).toMatchObject([{ id: 'p.1.ado.org', remote: { deleted: true } }])
+    expect((await b.sync.push()).pushed).toBe(0)
+    // keeping B's edit resurrects the key on the server
+    expect(await b.sync.resolve('p.1.ado.org', { take: 'local' })).toEqual({})
     await a.sync.pull()
     expect(a.storage.getItem('nexusmd.p.1.ado.org')).toBe('edited-on-b')
   })
@@ -268,7 +156,7 @@ describe('createAccountSync', () => {
     expect(JSON.parse(a.storage.getItem('helm.tweaks'))).toEqual({ theme: 'dim', widgets: ['a1'] })
   })
 
-  it('first sync on B takes the remote value for shared keys and pushes B-only keys', async () => {
+  it('first sync on B keeps a differing shared value as a conflict and pushes B-only keys', async () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
     const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'from-a' } })
@@ -276,7 +164,8 @@ describe('createAccountSync', () => {
     const b = device({ srv, ck, deviceId: 'dev-b', init: { 'nexusmd.p.1.ado.org': 'from-b', 'nexusmd.p.1.github.login': 'b-only' } })
     const r = await b.sync.syncNow()
     expect(r.error).toBeUndefined()
-    expect(b.storage.getItem('nexusmd.p.1.ado.org')).toBe('from-a')
+    expect(b.storage.getItem('nexusmd.p.1.ado.org')).toBe('from-b')
+    expect(b.sync.conflicts().map(c => c.id)).toEqual(['p.1.ado.org'])
     const stored = await decryptAll(srv, ck)
     expect(stored['p.1.ado.org'].value).toBe('from-a')
     expect(stored['p.1.github.login'].value).toBe('b-only')
@@ -284,8 +173,11 @@ describe('createAccountSync', () => {
     expect(a.storage.getItem('nexusmd.p.1.github.login')).toBe('b-only')
   })
 
+  // On the desktop, last-writer-wins is the rule for machine-written values (owner-edited ones
+  // queue a conflict: account-sync-conflicts.test.js).
   describe('last writer wins by the time an edit was first observed', () => {
-    const ORG = 'nexusmd.p.1.ado.org'
+    const ORG = 'nexusmd.p.1.seenPr'
+    const OID = 'nexusmd:p.1.seenPr'
     async function pair() {
       const srv = fakeServer()
       const ck = await generateContainerKey()
@@ -311,7 +203,7 @@ describe('createAccountSync', () => {
       clockRef.t = 3000
       await a.sync.syncNow()
       expect(a.storage.getItem(ORG)).toBe('b-edit')
-      expect((await decryptAll(srv, ck))['p.1.ado.org'].value).toBe('b-edit')
+      expect((await decryptAll(srv, ck))[OID].value).toBe('b-edit')
       await b.sync.syncNow()
       expect(b.storage.getItem(ORG)).toBe('b-edit')
     })
@@ -326,11 +218,11 @@ describe('createAccountSync', () => {
       await a.sync.observe()
       clockRef.t = 2500
       await b.sync.syncNow() // pushes B's edit, stamped 1000
-      expect((await decryptAll(srv, ck))['p.1.ado.org'].updatedAt).toBe(1000)
+      expect((await decryptAll(srv, ck))[OID].updatedAt).toBe(1000)
       clockRef.t = 3000
       await a.sync.syncNow()
       expect(a.storage.getItem(ORG)).toBe('a-newer-edit')
-      const stored = (await decryptAll(srv, ck))['p.1.ado.org']
+      const stored = (await decryptAll(srv, ck))[OID]
       expect(stored.value).toBe('a-newer-edit')
       expect(stored.updatedAt).toBe(2000)
       clockRef.t = 3500
@@ -347,7 +239,7 @@ describe('createAccountSync', () => {
       await b.sync.syncNow()
       await a.sync.syncNow()
       expect(a.storage.getItem(ORG)).toBe('b-edit')
-      expect((await decryptAll(srv, ck))['p.1.ado.org'].value).toBe('b-edit')
+      expect((await decryptAll(srv, ck))[OID].value).toBe('b-edit')
     })
 
     it('a local deletion loses to a newer remote edit and beats an older one', async () => {
@@ -373,7 +265,7 @@ describe('createAccountSync', () => {
       clockRef.t = 6000
       await a.sync.syncNow()
       expect(a.storage.getItem(ORG)).toBeNull()
-      expect((await decryptAll(srv, ck))['p.1.ado.org'].deleted).toBe(true)
+      expect((await decryptAll(srv, ck))[OID].deleted).toBe(true)
       clockRef.t = 6500
       await b.sync.syncNow()
       expect(b.storage.getItem(ORG)).toBeNull()
@@ -388,11 +280,11 @@ describe('createAccountSync', () => {
       clockRef.t = 1000
       await a.sync.pull()
       expect(a.storage.getItem(ORG)).toBe('from-the-future')
-      const m = JSON.parse(a.storage.getItem(META)).entries['p.1.ado.org']
+      const m = JSON.parse(a.storage.getItem(META)).entries[OID]
       expect(m.updatedAt).toBe(1000 + 5 * 60 * 1000)
       // a forced re-push does not carry the far-future time on
       await a.sync.seed()
-      expect((await decryptAll(srv, ck))['p.1.ado.org'].updatedAt).toBeLessThanOrEqual(1000 + 5 * 60 * 1000)
+      expect((await decryptAll(srv, ck))[OID].updatedAt).toBeLessThanOrEqual(1000 + 5 * 60 * 1000)
       expect(b.storage.getItem(ORG)).toBe('base')
     })
   })
@@ -410,7 +302,9 @@ describe('createAccountSync', () => {
         const stored = await decryptAll(srv, ck)
         expect(stored['p.1.ado.org'].value).toBe('from-a')
         expect(stored['p.1.github.login'].value).toBe('b-only')
-        expect(b.storage.getItem('nexusmd.p.1.ado.org')).toBe('from-a')
+        // neither side is overwritten: B's differing value waits for the owner
+        expect(b.storage.getItem('nexusmd.p.1.ado.org')).toBe('from-b')
+        expect(b.sync.conflicts().map(c => c.id)).toEqual(['p.1.ado.org'])
       })
     }
   })
@@ -418,20 +312,21 @@ describe('createAccountSync', () => {
   it('a stale push conflicts, re-pulls, re-merges and retries once', async () => {
     const srv = fakeServer()
     const ck = await generateContainerKey()
-    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'base', 'nexusmd.p.1.ado.projects': 'pat' } })
+    // a machine-written value (last writer wins); an owner-edited one would queue a conflict
+    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'base', 'nexusmd.p.1.seenPr': 'pat' } })
     await a.sync.syncNow()
     const b = device({ srv, ck, deviceId: 'dev-b' })
     await b.sync.syncNow()
-    a.storage.setItem('nexusmd.p.1.ado.projects', 'pat-from-a')
+    a.storage.setItem('nexusmd.p.1.seenPr', 'pat-from-a')
     await a.sync.push()
-    b.storage.setItem('nexusmd.p.1.ado.projects', 'pat-from-b')
+    b.storage.setItem('nexusmd.p.1.seenPr', 'pat-from-b')
     const r = await b.sync.push() // B has not pulled A's write: ifMatch is stale
     expect(r.error).toBeUndefined()
     expect(r.conflicts).toBe(0)
     expect(r.pushed).toBe(1)
-    expect((await decryptAll(srv, ck))['p.1.ado.projects'].value).toBe('pat-from-b')
+    expect((await decryptAll(srv, ck))['nexusmd:p.1.seenPr'].value).toBe('pat-from-b')
     await a.sync.pull()
-    expect(a.storage.getItem('nexusmd.p.1.ado.projects')).toBe('pat-from-b')
+    expect(a.storage.getItem('nexusmd.p.1.seenPr')).toBe('pat-from-b')
   })
 
   it('quota rejections are reported and not re-sent until the value changes', async () => {
@@ -1158,9 +1053,10 @@ describe('createAccountSync data-safety rules', () => {
     b.storage.getItem = orig
     expect(r.applied).toBe(0)
     expect(b.storage.getItem(ORG)).toBe('typed-meanwhile')
-    await b.sync.syncNow() // the held-back item is seen again; B's edit is newer and is pushed
+    await b.sync.syncNow() // the held-back item is seen again: both sides edited, so a conflict
     expect(b.storage.getItem(ORG)).toBe('typed-meanwhile')
-    expect((await decryptAll(srv, ck))['p.1.ado.org'].value).toBe('typed-meanwhile')
+    expect(b.sync.conflicts().map(c => c.id)).toEqual(['p.1.ado.org'])
+    expect((await decryptAll(srv, ck))['p.1.ado.org'].value).toBe('v2')
   })
 
   it('skips a secret whose value changes while the pull is running', async () => {
