@@ -4,12 +4,21 @@
 
 export const LEVELS = ['error', 'warn', 'info', 'debug']
 
+// Twelve hues 30 degrees apart. The modules that ship have one each, so no two of them share a colour; a module
+// we do not know takes a slot from its name, steady from session to session.
+const HUES = [15, 45, 75, 105, 135, 165, 195, 225, 255, 285, 315, 345]
+const MODULE_HUE = { work: 255, git: 45, devenv: 165, planner: 315, time: 75, calendar: 195, notes: 345, documents: 135, database: 15, 'api-client': 285, editor: 105 }
+
 /** A stable colour per module, the same in every session; core stays neutral. */
 export function moduleColor(mod) {
   if (mod === 'core') return 'var(--text-muted)'
-  let h = 0
-  for (const ch of String(mod)) h = (h * 31 + ch.charCodeAt(0)) >>> 0
-  return `oklch(0.68 0.14 ${h % 360})`
+  let hue = MODULE_HUE[mod]
+  if (hue === undefined) {
+    let h = 0
+    for (const ch of String(mod)) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+    hue = HUES[h % HUES.length]
+  }
+  return `oklch(0.62 0.14 ${hue})`
 }
 
 export const entryKey = e => `${e.sid}:${e.seq}`
@@ -77,3 +86,25 @@ export function formatSize(bytes) {
 
 /** Today as the hub names its files (UTC). */
 export const todayUtc = (now = Date.now()) => new Date(now).toISOString().slice(0, 10)
+
+/** The first line of a message, and how many more lines it has. A browser console message's %c and style text are dropped. */
+export function messageParts(msg) {
+  const lines = String(msg ?? '').replace(/%c/g, '').replace(/\s*font-weight:\s*bold;\s*/g, ' ').split('\n').map(l => l.trim()).filter(Boolean)
+  return { first: lines[0] ?? '', more: Math.max(0, lines.length - 1) }
+}
+
+/** How long after the call began an entry was logged: +0 ms, +520 ms, +1.3 s. */
+export function offsetLabel(ts, startTs) {
+  const ms = Date.parse(ts) - Date.parse(startTs)
+  return Number.isNaN(ms) ? '' : `+${formatDuration(Math.max(0, ms))}`
+}
+
+/** The modules a call reached before this entry, in order, then the entry's own. */
+export const routeOf = e => [...(e.via ?? []).filter(m => m !== e.mod), e.mod]
+
+/** For each lane, the first and last row it is used in: a lane is drawn only between them. */
+export function laneSpans(rows, laneCount) {
+  const spans = Array.from({ length: laneCount }, () => ({ first: -1, last: -1 }))
+  rows.forEach(({ lane }, i) => { if (spans[lane].first < 0) spans[lane].first = i; spans[lane].last = i })
+  return spans
+}

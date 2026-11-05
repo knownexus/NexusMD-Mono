@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { moduleColor, entryMatches, mergeLive, laneLayout, describeTrail, formatTime, formatDuration, formatSize, todayUtc, entryKey } from './log-view.js'
+import { moduleColor, messageParts, offsetLabel, routeOf, laneSpans, entryMatches, mergeLive, laneLayout, describeTrail, formatTime, formatDuration, formatSize, todayUtc, entryKey } from './log-view.js'
 
 const e = (o = {}) => ({ sid: 's1', seq: 0, ts: '2026-11-04T12:00:00.000Z', lvl: 'info', mod: 'git', msg: 'hello', ...o })
 
@@ -8,7 +8,7 @@ describe('moduleColor', () => {
     expect(moduleColor('git')).toBe(moduleColor('git'))
     expect(moduleColor('git')).not.toBe(moduleColor('devenv'))
     expect(moduleColor('core')).toBe('var(--text-muted)')
-    expect(moduleColor('git')).toMatch(/^oklch\(0\.68 0\.14 \d+\)$/)
+    expect(moduleColor('git')).toMatch(/^oklch\(0\.\d+ 0\.\d+ \d+\)$/)
   })
 })
 
@@ -74,5 +74,56 @@ describe('formatting', () => {
     expect([formatDuration(412), formatDuration(3200), formatDuration(42000)]).toEqual(['412 ms', '3.2 s', '42 s'])
     expect([formatSize(512), formatSize(2048), formatSize(3 * 1024 * 1024)]).toEqual(['512 B', '2.0 KB', '3.0 MB'])
     expect(todayUtc(Date.parse('2026-11-04T23:59:59Z'))).toBe('2026-11-04')
+  })
+})
+
+describe('moduleColor palette', () => {
+  const mods = ['work', 'git', 'devenv', 'planner', 'time', 'calendar', 'notes', 'documents', 'database', 'api-client', 'editor']
+  const hue = (m) => Number(moduleColor(m).match(/ (\d+)\)$/)[1])
+  it('gives every shipped module its own hue, at least 25 degrees from any other', () => {
+    for (const a of mods) for (const b of mods) if (a < b) {
+      const d = Math.abs(hue(a) - hue(b)); expect(Math.min(d, 360 - d), `${a} vs ${b}`).toBeGreaterThanOrEqual(25)
+    }
+  })
+  it('still gives an unknown module a steady colour', () => {
+    expect(moduleColor('someday')).toBe(moduleColor('someday'))
+    expect(moduleColor('someday')).toMatch(/^oklch\(/)
+  })
+})
+
+describe('messageParts', () => {
+  it('takes the first line and counts the rest', () => {
+    expect(messageParts('first\nsecond\nthird')).toEqual({ first: 'first', more: 2 })
+    expect(messageParts('one line')).toEqual({ first: 'one line', more: 0 })
+  })
+  it('drops blank lines, and the %c and style text of a browser console message', () => {
+    expect(messageParts('%cElectron Security Warning font-weight: bold; This renderer\n\n  Policy set\nhelp')).toEqual({ first: 'Electron Security Warning This renderer', more: 2 })
+  })
+  it('copes with nothing', () => { expect(messageParts(undefined)).toEqual({ first: '', more: 0 }) })
+})
+
+describe('offsetLabel', () => {
+  const t0 = '2026-11-05T10:00:00.000Z'
+  it('is how long after the call began', () => {
+    expect(offsetLabel(t0, t0)).toBe('+0 ms')
+    expect(offsetLabel('2026-11-05T10:00:00.520Z', t0)).toBe('+520 ms')
+    expect(offsetLabel('2026-11-05T10:00:01.250Z', t0)).toBe('+1.3 s')
+    expect(offsetLabel('2026-11-05T10:00:42.000Z', t0)).toBe('+42 s')
+  })
+  it('falls back to nothing for a bad time', () => { expect(offsetLabel('x', t0)).toBe('') })
+})
+
+describe('routeOf', () => {
+  it('is the modules a call came through, then the entry\'s own', () => {
+    expect(routeOf({ mod: 'git', via: ['work', 'devenv'] })).toEqual(['work', 'devenv', 'git'])
+    expect(routeOf({ mod: 'git', via: ['git', 'core'] })).toEqual(['core', 'git'])
+    expect(routeOf({ mod: 'git' })).toEqual(['git'])
+  })
+})
+
+describe('laneSpans', () => {
+  it('says where in the call each lane is first and last used', () => {
+    const rows = [{ lane: 0 }, { lane: 1 }, { lane: 2 }, { lane: 1 }, { lane: 0 }]
+    expect(laneSpans(rows, 3)).toEqual([{ first: 0, last: 4 }, { first: 1, last: 3 }, { first: 2, last: 2 }])
   })
 })
