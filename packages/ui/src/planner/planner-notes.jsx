@@ -5,8 +5,8 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { useNexusData } from '../data-context.jsx';
 import { getPlannerRuntime } from './runtime.js';
-import { readJsonKeepingDamaged } from './damaged-copy.js';
-import { rendererLog, ignore } from '@nexusmd/core'
+
+import { rendererLog, ignore, readJsonKeepingDamaged } from '@nexusmd/core'
 
 const log = rendererLog('planner', 'notes')
 // planner-notes.jsx — Planner v2 markdown notes: multi-notes per row + week-agnostic notes library.
