@@ -31,21 +31,24 @@ const nameWords = (fn) => {
  */
 function createRedactor(rules = DEFAULT_DENY) {
   const open = new Map(); // id of a call that has started and not ended -> true when it, or a caller, was denied
+  const deniedIds = new Set(); // every denied call, for the whole recording: a callback or timer started inside one runs
+  //                              later, after it has returned, and still carries it as its parent
 
   function redact(event) {
     const out = { ...event };
     const replace = (field, why) => { out[field] = { $redacted: why }; return out; };
-    const parentDenied = event.p != null && open.get(event.p) === true;
+    const parentDenied = event.p != null && deniedIds.has(event.p);
 
     if (event.k === 'enter') {
       const denied = parentDenied || hides(rules.functions, nameWords(event.fn));
       open.set(event.id, denied);
+      if (denied) deniedIds.add(event.id);
       return denied ? replace('a', 'function') : (out.a = redactValue(event.a), out);
     }
     if (event.k === 'ret' || event.k === 'err') {
       const field = event.k === 'ret' ? 'v' : 'e';
       const known = open.has(event.id);
-      const denied = open.get(event.id) === true;
+      const denied = deniedIds.has(event.id);
       open.delete(event.id);
       if (!known) return replace(field, 'unknown frame'); // never saw it start: cannot tell what it was, so hide it
       return denied ? replace(field, 'function') : (out[field] = redactValue(event[field]), out);

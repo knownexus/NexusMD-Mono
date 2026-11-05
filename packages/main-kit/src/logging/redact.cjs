@@ -3,6 +3,9 @@
 
 const SECRET_KEY = /pass(word|wd)?|secret|token|authorization|api[-_ ]?key|cookie|private[-_ ]?key|connection[-_ ]?string|dsn|credential/i;
 const REDACTED = '[redacted]';
+// `"…key containing a secret word…": "value"` in a piece of JSON text that is not whole JSON. The same words as
+// SECRET_KEY, so the two cannot drift apart; the value may hold escaped quotes.
+const JSON_SECRET_PAIR = new RegExp(String.raw`("[^"]*(?:${SECRET_KEY.source})[^"]*"\s*:\s*)"(?:[^"\\]|\\.)*"`, 'gi');
 
 // V8 quotes the start of the text a failed JSON.parse choked on: `Unexpected token 's', "secret torn" is not
 // valid JSON`. That text is whatever was being parsed (a note, a profile, a response), so it is dropped
@@ -11,9 +14,21 @@ const REDACTED = '[redacted]';
 const JSON_QUOTE = /Unexpected token [\s\S]*?is not valid JSON/g;
 const JSON_QUOTE_GONE = 'not valid JSON (the text that failed to parse is not logged)';
 
+// JSON text that parses is redacted as a value (every key SECRET_KEY knows, any depth, escapes and all), then written
+// back out compact. Text that is not whole JSON (a fragment, a log line with JSON in it) goes through the patterns below.
+const MAX_JSON_TEXT = 1000000;
+function redactJsonText(text) {
+  const t = text.trim();
+  if (t.length > MAX_JSON_TEXT || (t[0] !== '{' && t[0] !== '[')) return null;
+  try { return JSON.stringify(redactValue(JSON.parse(t))); } catch { return null; }
+}
+
 /** Text with passwords, tokens and credentials in URLs, headers and connection strings blanked out. */
 function redactString(s) {
-  return String(s)
+  const text = String(s);
+  const json = redactJsonText(text);
+  if (json !== null) return json;
+  return text
     .replace(JSON_QUOTE, JSON_QUOTE_GONE)
     // scheme://user:password@host
     .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)([^\s/@:]+):([^\s/@]+)@/gi, `$1$2:${REDACTED}@`)
@@ -23,7 +38,7 @@ function redactString(s) {
     // (also access_token, refresh_token, id_token and client_secret: `_` is a word character, so a bare `token` misses them)
     .replace(/\b((?:access|refresh|id|auth|client)[-_]?(?:token|secret)|password|pwd|secret|token|api[-_]?key|accountkey|sharedaccesskey)\s*=\s*[^;\s&'"]+/gi, `$1=${REDACTED}`)
     // "password": "…" inside JSON text
-    .replace(/("(?:(?:access|refresh|id|auth|client)[-_]?(?:token|secret)|password|secret|token|api[-_]?key|authorization)"\s*:\s*)"[^"]*"/gi, `$1"${REDACTED}"`)
+    .replace(JSON_SECRET_PAIR, `$1"${REDACTED}"`)
     // Authorization: Basic …  (Bearer is handled above)
     .replace(/\b(authorization\s*:\s*)(?!Bearer)[^\r\n]+/gi, `$1${REDACTED}`);
 }

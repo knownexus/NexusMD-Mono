@@ -101,3 +101,38 @@ describe('redactString (shared with the logs): token names with an underscore', 
     expect(redactString('https://h/p?z=1&page=2')).toBe('https://h/p?z=1&page=2')
   })
 })
+
+describe('what a denied call leaves behind', () => {
+  it('work that runs under a denied call after it has returned is still hidden', () => {
+    const r = createRedactor()
+    r.redact(enter('auth.js:3:0:getAuthToken', ['x'], 'r1-1'))
+    r.redact(ret('r1-1', 'y'))
+    // a timer or callback started inside it runs later, still carrying its frame as the parent
+    expect(r.redact(enter('later.js:1:0:retry', ['plain-looking'], 'r1-5', 'r1-1')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(net({ url: 'https://api.example.com/ok', body: 'plain' }, 'r1-1', 'r1-6')).d).toEqual({ $redacted: 'function' })
+  })
+})
+
+describe('redactString: JSON text', () => {
+  it('hides a secret value that contains an escaped quote, and a key that merely contains a secret word', () => {
+    const out = redactString('{"accessToken":"abc\\"def-visible-tail","x_password_hint":"hint-text","ok":1}')
+    expect(out).not.toMatch(/def-visible-tail|hint-text/)
+    expect(JSON.parse(out).ok).toBe(1)
+  })
+
+  it('hides a whole object under a secret key, not only string values', () => {
+    const out = redactString('{"credentials":{"pin":"1234","user":"bob"},"title":"Fix rounding"}')
+    expect(out).not.toMatch(/1234|bob/)
+    expect(JSON.parse(out).title).toBe('Fix rounding')
+  })
+
+  it('JSON text with nothing secret keeps its content', () => {
+    expect(JSON.parse(redactString('{"a":1,"b":["x","y"]}'))).toEqual({ a: 1, b: ['x', 'y'] })
+    expect(redactString('plain words, not JSON {oops')).toBe('plain words, not JSON {oops')
+  })
+
+  it('a request body kept in a recording is hidden the same way', () => {
+    const out = createRedactor().redact(net({ method: 'POST', url: 'https://api.example.com/x', body: '{"client_secret":"hush-value","name":"n"}' }))
+    expect(out.d.body).not.toContain('hush-value')
+  })
+})
