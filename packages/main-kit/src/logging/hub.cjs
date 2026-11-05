@@ -53,7 +53,9 @@ function createLogHub({
       const lvl = normalizeLevel(raw.lvl);
       if (RANK[lvl] > minRank) return null;
       const mod = isModuleId(raw.mod) ? raw.mod : 'core';
-      const store = currentCorrelation();
+      // `detached`: not part of the call chain this happens to run in (an entry from a window, handled inside the
+      // shell's logged ipcMain, is not a call that went through core).
+      const store = raw.detached ? undefined : currentCorrelation();
       const cid = raw.cid ?? store?.cid;
       // The modules this call came through before reaching `mod`, in order (not for an entry that
       // names a different chain's cid). Written on the entry so the hop is still there on disk,
@@ -135,6 +137,7 @@ function createLogHub({
       clientTs: raw.ts,
       proc: 'renderer',
       win,
+      detached: true,
     });
   }
 
