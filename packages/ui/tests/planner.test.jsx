@@ -135,6 +135,25 @@ describe('promoted planner storage helpers (shared web + app)', () => {
     expect(getWeeksWithData().size).toBe(0)
   })
 
+  it('says when a saved week cannot be read or saved, and never logs its text', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const storage = makeEnumerableStorage()
+    withProvider(<div />, { storage, getProfileKey: (k) => k, namespace: 'helm' })
+    storage.setItem('helm.planner.week.2026-W26', '{ torn')
+    expect(loadWeekPlanner(2026, 26)).toBeNull()   // opens empty, as before
+    expect(warn.mock.calls.map(c => c[0])).toContain('[planner:storage] ignored: a saved planner week could not be read, so it opens empty (saving it replaces the damaged copy)')
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('torn')
+
+    warn.mockClear()
+    const setItem = storage.setItem
+    storage.setItem = () => { throw new Error('QuotaExceededError') }
+    saveWeekPlanner(2026, 27, { tasks: [] }, {})
+    storage.setItem = setItem
+    const hit = warn.mock.calls.find(c => String(c[0]).includes('could not be saved on this device'))
+    expect(hit?.[2]).toEqual({ year: 2026, week: 27 })
+    warn.mockRestore()
+  })
+
   it('legacy-migration flag round-trips under the namespaced key', () => {
     const storage = makeEnumerableStorage()
     withProvider(<div />, { storage, getProfileKey: (k) => `p.${k}`, namespace: 'helm' })
