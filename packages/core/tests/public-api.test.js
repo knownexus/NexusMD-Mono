@@ -10,7 +10,7 @@ const EXPECTED = [
   'encodeBundle', 'decodeBundle', 'planProfileScopeMigration',
   'migrateToProfileScopeV2', 'moveTokensToSecureStorage', 'profileTokenNames', 'MIGRATION_V2_MARKER', 'createSecretCache', 'profileCacheStorage',
   'stableStringify', 'contentHash',
-  'rendererLog', 'setActiveModule', 'getActiveModule', 'reportRenderError', 'installRendererErrorHooks', 'serializeError', 'sendEntry',
+  'ignore', 'ignored', 'rendererLog', 'setActiveModule', 'getActiveModule', 'reportRenderError', 'installRendererErrorHooks', 'serializeError', 'sendEntry',
   'mergeRows', 'mergeKeyVal', 'mergeText', 'mergeSet', 'mergePlannerWeek', 'mergeLists', 'reconcileItem',
   'encryptSync', 'decryptSync', 'plannerCollection', 'notesCollection', 'teamCustomCollection',
   'teamRemovedCollection', 'tweaksCollection', 'listsCollection', 'createSyncRuntime', 'startAutoSync', 'singleFlight',

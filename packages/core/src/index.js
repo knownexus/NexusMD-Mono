@@ -1,6 +1,6 @@
 export { core, initCore } from './core.js'
 export { registerModule } from './features/module-registry.js'
-export { rendererLog, setActiveModule, getActiveModule, reportRenderError, installRendererErrorHooks, serializeError, sendEntry } from './log.js'
+export { ignore, ignored, rendererLog, setActiveModule, getActiveModule, reportRenderError, installRendererErrorHooks, serializeError, sendEntry } from './log.js'
 export {
   IFileAdapter, IHttpAdapter, IStorageAdapter,
   INotificationAdapter, IPickerAdapter, IAuthAdapter, IClipboardAdapter,

@@ -96,3 +96,25 @@ export function installRendererErrorHooks(target = typeof window !== 'undefined'
     target.removeEventListener('unhandledrejection', onRejection)
   }
 }
+
+/**
+ * Logs an error that is being ignored on purpose, and why: the one sanctioned way to swallow an error in
+ * window code (the renderer's counterpart of ignore() in @nexusmd/main-kit/logging). The code carries on,
+ * and the log says what was ignored. Debug for the ordinary "it wasn't there / already gone" cases; warn
+ * when ignoring it could hide a real problem.
+ * @param log    a logger from rendererLog(...)
+ * @param level  'debug' (default) | 'info' | 'warn' | 'error'
+ * @param data   optional detail to file with it (a file name, an id: never content)
+ */
+export function ignore(log, reason, err, level = 'debug', data) {
+  try {
+    // The logger takes (msg, error?, data?); something thrown that is not an error goes in with the data.
+    if (looksLikeError(err) || err === undefined) log[level](`ignored: ${reason}`, err, data)
+    else log[level](`ignored: ${reason}`, { ...data, thrown: serializeError(err) })
+  } catch {
+    // ignoring an error must not itself throw
+  }
+}
+
+/** `.catch(ignored(log, 'saving the draft'))`: ignore() as a promise handler. */
+export const ignored = (log, reason, level = 'debug', data) => err => ignore(log, reason, err, level, data)

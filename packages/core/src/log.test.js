@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { setActiveModule, getActiveModule, serializeError, sendEntry, rendererLog, reportRenderError, installRendererErrorHooks } from './log.js'
+import { ignore, ignored, setActiveModule, getActiveModule, serializeError, sendEntry, rendererLog, reportRenderError, installRendererErrorHooks } from './log.js'
 
 function fakeTarget() {
   const handlers = {}
@@ -120,5 +120,36 @@ describe('renderer logging', () => {
     expect(Object.keys(target.handlers).sort()).toEqual(['error', 'unhandledrejection'])
     off()
     expect(target.handlers).toEqual({})
+  })
+})
+
+describe('ignore: the sanctioned way to swallow an error', () => {
+  const fakeLog = () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() })
+
+  it('logs what was ignored and why, at debug unless told otherwise', () => {
+    const log = fakeLog()
+    const err = new Error('gone')
+    ignore(log, 'removing a temp file', err)
+    ignore(log, 'saving the draft', err, 'warn', { id: 7 })
+    expect(log.debug).toHaveBeenCalledWith('ignored: removing a temp file', err, undefined)
+    expect(log.warn).toHaveBeenCalledWith('ignored: saving the draft', err, { id: 7 })
+  })
+
+  it('keeps the detail when what was thrown is not an error', () => {
+    const log = fakeLog()
+    ignore(log, 'parsing', 'just text', 'warn', { file: 'a.json' })
+    expect(log.warn).toHaveBeenCalledWith('ignored: parsing', { file: 'a.json', thrown: { name: 'NonError', message: 'just text' } })
+  })
+
+  it('works as a promise handler', async () => {
+    const log = fakeLog()
+    await Promise.reject(new Error('nope')).catch(ignored(log, 'a best-effort call', 'info'))
+    expect(log.info).toHaveBeenCalledWith('ignored: a best-effort call', expect.any(Error), undefined)
+  })
+
+  it('never throws, even when the logger does', () => {
+    const broken = { debug: () => { throw new Error('logger down') } }
+    expect(() => ignore(broken, 'x', new Error('y'))).not.toThrow()
+    expect(() => ignore(undefined, 'x', new Error('y'))).not.toThrow()
   })
 })

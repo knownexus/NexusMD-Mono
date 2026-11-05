@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { registerModule, clearRegistry } from '../src/features/module-registry.js'
 import {
   createProfile, activateProfile, deleteProfile, importProfile, exportProfile, listProfiles,
 } from '../src/profiles/profile-store.js'
@@ -179,5 +180,78 @@ describe('exportProfile', () => {
     expect(name).toBe('My_Work_Profile.json')
     expect(saved.name).toBe('My_Work_Profile.json')
     expect(JSON.parse(saved.text).id).toBe(p.id)
+  })
+})
+
+// A failure in here must leave a trace: the code carries on, and the log says what failed and where.
+describe('profile-store logs the failures it carries on through', () => {
+  let error, warn, debug
+  const seen = spy => spy.mock.calls.map(c => c[0])
+  beforeEach(() => {
+    clearRegistry()
+    error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
+  })
+  afterEach(() => { clearRegistry(); vi.restoreAllMocks() })
+
+  it('a module that fails to start is logged under its own id, and the others still start', async () => {
+    const fs = makeFs(), storage = makeStorage()
+    const p = await createProfile(fs, storage, { name: 'Work' })
+    const good = vi.fn()
+    registerModule({ id: 'bad', defaultEnabled: true, init: () => { throw new Error('init boom') } })
+    registerModule({ id: 'good', defaultEnabled: true, init: good })
+    const activated = await activateProfile(p.id, fs, storage, {})
+    expect(activated.id).toBe(p.id)
+    expect(good).toHaveBeenCalled()
+    expect(seen(error)).toEqual(['[bad:init] module init failed'])
+    expect(error.mock.calls[0][1].message).toBe('init boom')
+  })
+
+  it('a module that fails to shut down is logged under its own id, and the others still shut down', async () => {
+    const fs = makeFs(), storage = makeStorage()
+    const p = await createProfile(fs, storage, { name: 'Work' })
+    const dispose = vi.fn()
+    registerModule({ id: 'stuck', defaultEnabled: true, dispose: () => { throw new Error('dispose boom') } })
+    registerModule({ id: 'fine', defaultEnabled: true, dispose })
+    await activateProfile(p.id, fs, storage)           // enables both
+    await activateProfile(p.id, fs, storage)           // disposes both, then starts again
+    expect(dispose).toHaveBeenCalledTimes(1)
+    expect(seen(error)).toEqual(['[stuck:dispose] module dispose failed'])
+  })
+
+  it('says so when the profile file cannot be read, and still activates with no profile', async () => {
+    const fs = makeFs(), storage = makeStorage()
+    expect(await activateProfile('ghost', fs, storage)).toBeNull()
+    expect(seen(warn)).toEqual(['[core:profiles] ignored: could not read the profile file, activating without it'])
+  })
+
+  it('names the profile file it skips when listing', async () => {
+    const fs = makeFs({ '/profiles/broken.json': '{ not json', '/profiles/ok.json': JSON.stringify(buildProfile({ name: 'Ok', id: 'ok' })) })
+    const list = await listProfiles(fs, makeStorage())
+    expect(list.map(p => p.id)).toEqual(['ok'])
+    expect(seen(warn)).toEqual(['[core:profiles] ignored: skipped an unreadable profile file'])
+    expect(warn.mock.calls[0][2]).toEqual({ file: 'broken.json' })
+  })
+
+  it('logs, but does not stop on, a folder that cannot be created or a secret that cannot be removed', async () => {
+    const fs = { ...makeFs(), mkdir: async () => { throw new Error('exists') } }
+    const storage = makeStorage()
+    const p = await createProfile(fs, storage, { name: 'Work' })
+    expect(seen(debug)).toEqual(['[core:profiles] ignored: creating the profile folder (it may already exist)'])
+    const secure = { remove: async () => { throw new Error('locked') } }
+    await deleteProfile(p.id, fs, storage, secure)
+    expect(seen(warn)).toEqual([
+      '[core:profiles] ignored: removing a saved token for the deleted profile',
+      '[core:profiles] ignored: removing a saved token for the deleted profile',
+    ])
+  })
+
+  it('logs, but does not stop on, an active id that cannot be cleared', async () => {
+    const fs = makeFs()
+    const storage = { ...makeStorage({ 'nexusmd.activeProfileId': 'p1' }), remove: () => { throw new Error('read-only') } }
+    const p = await createProfile(fs, storage, { name: 'Work', id: 'p1' })
+    await deleteProfile(p.id, fs, storage)
+    expect(seen(warn)).toEqual(['[core:profiles] ignored: clearing the active profile id'])
   })
 })
