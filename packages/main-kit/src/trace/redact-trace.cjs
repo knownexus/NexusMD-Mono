@@ -10,13 +10,19 @@
 // One redactor per recording: it has to remember which calls are open and which were denied, because a return value
 // carries no function name and a call's children carry no sign of what their parent was.
 
-const { redactValue } = require('../logging/redact.cjs');
+const { redactValue, SECRET_KEY } = require('../logging/redact.cjs');
+
+// A short string that looks like a key or a setting's name (no spaces: not a sentence) and names a credential.
+const isCredentialName = (v) => typeof v === 'string' && v.length <= 80 && /^[\w.\-:@/]+$/.test(v) && SECRET_KEY.test(v);
 const deny = require('./deny.json');
 
 const rx = (list) => list.map((s) => new RegExp(s, 'i'));
-const DEFAULT_DENY = { urls: rx(deny.urls), functions: rx(deny.functions), channels: rx(deny.channels) };
+const DEFAULT_DENY = { urls: rx(deny.urls), functions: rx(deny.functions), channels: rx(deny.channels), files: rx(deny.files ?? []) };
 
 const hides = (list, text) => typeof text === 'string' && list.some((r) => r.test(text));
+
+// 'path/file.js:12:0:getAuthToken' -> 'path/file.js'
+const fileOf = (fn) => (typeof fn === 'string' ? fn.replace(/:d+:d+:.*$/, '') : '');
 
 // 'file.js:12:0:getAuthToken' -> 'get auth token'; 'sign_in' -> 'sign in'
 const nameWords = (fn) => {
@@ -51,10 +57,13 @@ function createRedactor(rules = DEFAULT_DENY) {
     if (event.k === 'enter') {
       // An IPC call is a frame named ipc:<channel>; its channel is judged as a channel, not as a function name.
       const channel = typeof event.fn === 'string' && event.fn.startsWith('ipc:') ? event.fn.slice(4) : null;
-      const denied = parentDenied || (channel !== null ? hides(rules.channels, channel) : hides(rules.functions, nameWords(event.fn)));
+      const byRule = channel !== null ? hides(rules.channels, channel) : hides(rules.functions, nameWords(event.fn)) || hides(rules.files ?? [], fileOf(event.fn));
+      // A call given the name of a credential ('pat', 'ado.pat') is handling it: set('pat', value) carries the value under no key.
+      const keyed = !byRule && !parentDenied && Array.isArray(event.a) && event.a.some(isCredentialName);
+      const denied = parentDenied || byRule || keyed;
       open.set(event.id, denied);
       if (denied) deniedIds.add(event.id);
-      return denied ? replace('a', why) : (out.a = redactValue(event.a), out);
+      return denied ? replace('a', keyed ? 'secret key' : why) : (out.a = redactValue(event.a), out);
     }
     if (event.k === 'ret' || event.k === 'err') {
       const field = event.k === 'ret' ? 'v' : 'e';

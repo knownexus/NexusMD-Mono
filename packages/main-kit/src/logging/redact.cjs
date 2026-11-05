@@ -1,7 +1,8 @@
 'use strict';
 // Secrets never reach a log file: the hub runs every entry through here, so no producer can bypass it.
 
-const SECRET_KEY = /pass(word|wd)?|secret|token|authorization|api[-_ ]?key|cookie|private[-_ ]?key|connection[-_ ]?string|dsn|credential/i;
+// (`pat`, this app's name for a personal access token, only as a whole word: not path, pattern or patch.)
+const SECRET_KEY = /pass(word|wd)?|secret|token|authorization|api[-_ ]?key|cookie|private[-_ ]?key|connection[-_ ]?string|dsn|credential|(?<![a-z])pat(?![a-z])/i;
 const REDACTED = '[redacted]';
 // `"…key containing a secret word…": "value"` in a piece of JSON text that is not whole JSON. The same words as
 // SECRET_KEY, so the two cannot drift apart; the value may hold escaped quotes.
@@ -42,7 +43,7 @@ function redactString(s) {
     .replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,})\b/g, REDACTED)
     // Password=…; Token=… (connection strings, query strings)
     // (also access_token, refresh_token, id_token and client_secret: `_` is a word character, so a bare `token` misses them)
-    .replace(/\b((?:access|refresh|id|auth|client)[-_]?(?:token|secret)|password|pwd|secret|token|api[-_]?key|accountkey|sharedaccesskey)\s*=\s*[^;\s&'"]+/gi, `$1=${REDACTED}`)
+    .replace(/\b((?:access|refresh|id|auth|client)[-_]?(?:token|secret)|password|pwd|secret|token|api[-_]?key|accountkey|sharedaccesskey|pat)\s*=\s*[^;\s&'"]+/gi, `$1=${REDACTED}`)
     // "password": "…" inside JSON text
     .replace(JSON_SECRET_PAIR, `$1"${REDACTED}"`)
     // Authorization: Basic …  (Bearer is handled above)
@@ -66,4 +67,4 @@ function redactValue(value, depth = 0, seen = new WeakSet()) {
   return out;
 }
 
-module.exports = { REDACTED, redactString, redactValue };
+module.exports = { REDACTED, SECRET_KEY, redactString, redactValue };

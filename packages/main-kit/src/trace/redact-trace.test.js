@@ -200,3 +200,50 @@ describe('a call whose parent has not been seen', () => {
     expect(createRedactor().redact(enter('x.js:1:0:f', ['plain'], 'm1-1', 'r9-9')).a).toEqual(['plain'])
   })
 })
+
+describe("this app's own credentials (a PAT, the token stores)", () => {
+  it('a value under the key pat is hidden, in an argument, a return value and JSON text, and path and pattern are not', () => {
+    const arg = createRedactor().redact(enter('c.js:1:0:saveAdoConfig', [{ org: 'acme', pat: 'SEEDED-PAT-0123', path: '/repo', pattern: 'x*' }]))
+    expect(arg.a[0]).toEqual({ org: 'acme', pat: '[redacted]', path: '/repo', pattern: 'x*' })
+    expect(redactString('{"pat":"SEEDED-PAT-0123","path":"/repo"}')).toBe('{"pat":"[redacted]","path":"/repo"}')
+    expect(redactString('https://x.example.com/a?pat=SEEDED-PAT-0123&path=/repo')).toBe('https://x.example.com/a?pat=[redacted]&path=/repo')
+  })
+
+  it('everything a token or secret store is given, returns, or calls is hidden, whatever its function is called', () => {
+    const r = createRedactor()
+    expect(r.redact(enter('modules/work/src/renderer/token-store.js:13:7:set', ['nexusmd.p.x.ado.pat', 'SEEDED-PAT-0123'], 'r1-1')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(enter('packages/shell-sdk/src/profile-secrets.js:20:2:save', ['plain-looking'], 'r1-2', 'r1-1')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(ret('r1-2', 'plain')).v).toEqual({ $redacted: 'function' })
+    expect(r.redact(enter('packages/core/src/modules/profiles/secret-cache.js:17:15:peek', ['k'], 'r1-3')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(ret('r1-3', 'SEEDED-PAT-0123')).v).toEqual({ $redacted: 'function' })
+  })
+
+  it('an ordinary file is not hidden because of what its neighbours are called', () => {
+    expect(createRedactor().redact(enter('modules/work/src/renderer/ado-client.js:8:7:get', ['x'], 'r1-1')).a).toEqual(['x'])
+  })
+})
+
+describe('a call that is given the name of a credential', () => {
+  it('has its arguments, its result and everything it calls hidden: set(\'pat\', value) carries the value under no key', () => {
+    const r = createRedactor()
+    expect(r.redact(enter('packages/core/src/modules/ado/config.js:46:16:set', ['pat', 'SEEDED-PAT-0123'], 'r1-1')).a).toEqual({ $redacted: 'secret key' })
+    expect(r.redact(enter('x.js:1:0:inner', ['plain-looking'], 'r1-2', 'r1-1')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(ret('r1-1', undefined)).v).toEqual({ $redacted: 'function' })
+  })
+
+  it('hides what get(\'pat\') returns, and what a storage call with a credential key returns or is given', () => {
+    const r = createRedactor()
+    r.redact(enter('c.js:25:14:get', ['pat'], 'r1-1'))
+    expect(r.redact(ret('r1-1', 'SEEDED-PAT-0123')).v).toEqual({ $redacted: 'function' })
+    expect(r.redact(enter('s.js:1:0:setItem', ['nexusmd.p.x.ado.pat', 'SEEDED-PAT-0123'], 'r1-2')).a).toEqual({ $redacted: 'secret key' })
+    expect(r.redact(enter('s.js:1:0:write', ['nexusmd.p.x.github.apiToken', 'v'], 'r1-3')).a).toEqual({ $redacted: 'secret key' })
+  })
+
+  it('leaves alone a call given an ordinary key, a path, or a sentence that mentions a PAT', () => {
+    const r = createRedactor()
+    expect(r.redact(enter('c.js:1:0:set', ['org', 'acme'], 'r1-1')).a).toEqual(['org', 'acme'])
+    expect(r.redact(enter('c.js:1:0:get', ['path'], 'r1-2')).a).toEqual(['path'])
+    expect(r.redact(enter('c.js:1:0:status', ['Enter org and PAT first.', 'plain'], 'r1-3')).a).toEqual(['Enter org and PAT first.', 'plain'])
+    expect(r.redact(enter('c.js:1:0:load', [{ tokens: 3 }, 'x'], 'r1-4')).a[1]).toBe('x')
+  })
+})
