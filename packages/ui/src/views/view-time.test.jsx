@@ -304,3 +304,37 @@ describe('Time: marks, splitting and assigning several timers', () => {
     expect(writeText.mock.calls[0][0]).toContain('Mark: email copy')
   })
 })
+
+describe('a damaged saved time log is kept aside before the view saves over it', () => {
+  const KEY = 'nexusmd.p.x.timelog.v1'
+  const DAMAGED = '{"entries":[{"id":"e1","ref":"PAY-12","start":1,"end":2},{"id":"e2","re'
+  const props = { storageKey: KEY, getProfileKey: k => k.replace('nexusmd.', 'nexusmd.p.x.'), namespace: 'nexusmd', getTickets }
+  const copies = () => Object.keys(localStorage).filter(k => k.startsWith('nexusmd.p.x.sync.quarantine.timelog.v1.'))
+  beforeEach(() => localStorage.clear())
+
+  it('opens empty, as before, but the damaged text survives the view saving its empty log', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    localStorage.setItem(KEY, DAMAGED)
+    render(<TimeView {...props}/>)
+    expect(JSON.parse(localStorage.getItem(KEY))).toEqual(expect.objectContaining({ entries: [] }))
+    expect(copies()).toHaveLength(1)
+    expect(localStorage.getItem(copies()[0])).toBe(DAMAGED)
+    expect(console.warn.mock.calls.map(c => c[0])).toContain('[time:view] ignored: the saved time log could not be read, so the view opens empty; the damaged text is kept aside')
+    console.warn.mockRestore()
+  })
+
+  it('opening it again does not pile up copies', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    localStorage.setItem(KEY, DAMAGED)
+    const a = render(<TimeView {...props}/>); a.unmount()
+    localStorage.setItem(KEY, DAMAGED)
+    render(<TimeView {...props}/>)
+    expect(copies()).toHaveLength(1)
+    console.warn.mockRestore()
+  })
+
+  it('a log that reads fine is not copied anywhere', () => {
+    render(<TimeView {...props}/>)
+    expect(copies()).toHaveLength(0)
+  })
+})

@@ -6,9 +6,9 @@
 // which now flow through the planner runtime, exactly like loadGlobalNotes.
 //
 // DOCX export (JSZip/DOM) stays in each app's part 1; it has no shared seam.
-import { weekKeyToOffset, PLANNER_SECTIONS, rendererLog, ignore } from '@nexusmd/core';
+import { weekKeyToOffset, PLANNER_SECTIONS, rendererLog, ignore, readJsonKeepingDamaged } from '@nexusmd/core';
 import { getPlannerRuntime } from './runtime.js';
-import { readJsonKeepingDamaged } from './damaged-copy.js';
+
 
 const log = rendererLog('planner', 'storage');
 

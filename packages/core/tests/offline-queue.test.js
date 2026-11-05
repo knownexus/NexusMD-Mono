@@ -69,3 +69,60 @@ describe('offline queue', () => {
     expect(isNetworkError(new Error('ADO 401: path'))).toBe(false)
   })
 })
+
+describe('a damaged saved queue is kept aside before anything replaces it', () => {
+  const full = () => {
+    const m = {}
+    return {
+      m, get length() { return Object.keys(m).length }, key: i => Object.keys(m)[i] ?? null,
+      getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v) }, removeItem: k => { delete m[k] },
+    }
+  }
+  const DAMAGED = '[{"id":"1_a","kind":"a","payload":{"vote":10},"at":1},{"id":"2_b","kin'
+  const kept = (s) => Object.keys(s.m).filter(k => k.startsWith('nexusmd.p.x.sync.quarantine.offline-queue.data.'))
+  const setup = (over = {}) => {
+    const storage = full(); storage.m['nexusmd.p.x.offlineQueue'] = DAMAGED
+    const q = createOfflineQueue({
+      storage, key: () => 'nexusmd.p.x.offlineQueue', handlers: { a: async () => {} }, isOnline: () => false,
+      getProfileKey: k => k.replace('nexusmd.', 'nexusmd.p.x.'), namespace: 'nexusmd', ...over,
+    })
+    return { storage, q }
+  }
+
+  it('a queue that cannot be read counts as empty, as before, and the damaged text is copied aside when the next action replaces it', async () => {
+    const { storage, q } = setup()
+    expect(q.count()).toBe(0)
+    await q.run('a', 'new')
+    expect(q.count()).toBe(1)
+    const copies = kept(storage)
+    expect(copies).toHaveLength(1)
+    expect(storage.m[copies[0]]).toBe(DAMAGED)
+  })
+
+  it('reading the same damaged queue again does not pile up copies or repeat the log', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { storage, q } = setup()
+    q.count(); q.list(); q.count()
+    expect(kept(storage)).toHaveLength(1)
+    const msgs = warn.mock.calls.map(c => c[0]).filter(m => String(m).includes('offline queue could not be read'))
+    expect(msgs).toEqual(['[sync:offline-queue] ignored: the offline queue could not be read, so it counts as empty; the damaged text is kept aside'])
+    warn.mockRestore()
+  })
+
+  it('says so when no copy could be kept, and still counts as empty', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { q } = setup({ getProfileKey: undefined })
+    expect(q.count()).toBe(0)
+    expect(warn.mock.calls.map(c => c[0])).toContain('[sync:offline-queue] ignored: the offline queue could not be read, so it counts as empty; no copy of the damaged text could be kept')
+    warn.mockRestore()
+  })
+
+  it('a queue that reads fine is not copied anywhere', async () => {
+    const storage = full()
+    const q = createOfflineQueue({ storage, key: () => 'nexusmd.p.x.offlineQueue', handlers: { a: async () => {} }, isOnline: () => false,
+      getProfileKey: k => k.replace('nexusmd.', 'nexusmd.p.x.'), namespace: 'nexusmd' })
+    await q.run('a', 1)
+    expect(q.count()).toBe(1)
+    expect(kept(storage)).toHaveLength(0)
+  })
+})
