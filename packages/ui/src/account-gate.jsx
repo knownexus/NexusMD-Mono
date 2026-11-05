@@ -3,11 +3,13 @@
 // It owns the sync lifecycle: it creates the sync, starts it while children are shown, stops it on
 // sign-out/unmount, and reloads the page when a pull changed local data.
 import React from 'react';
-import { importContainerKey } from '@nexusmd/core';
+import { importContainerKey, rendererLog, ignore } from '@nexusmd/core';
 import { useProfile } from './profile-context.jsx';
 import { toast } from './toast.jsx';
 
 const { useState, useEffect, useMemo, useCallback, useContext, createContext } = React;
+
+const log = rendererLog('account', 'gate');
 
 const MESSAGES = {
   invalid: 'Username or password is incorrect.',
@@ -434,7 +436,7 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
     let alive = true;
     (async () => {
       let optedOut = false;
-      try { optedOut = localStorage.getItem(optOutKey) === '1'; } catch { /* storage unavailable */ }
+      try { optedOut = localStorage.getItem(optOutKey) === '1'; } catch (err) { ignore(log, 'browser storage is unavailable', err); }
       if (optedOut) { setPhase('ready'); return; }
       try {
         const s = await client.getSession();
@@ -442,7 +444,7 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
           const key = await importContainerKey(s.containerKey);
           if (!alive) return;
           let bound = null;
-          try { bound = boundUserKey ? localStorage.getItem(boundUserKey) : null; } catch { /* storage unavailable */ }
+          try { bound = boundUserKey ? localStorage.getItem(boundUserKey) : null; } catch (err) { ignore(log, 'browser storage is unavailable', err); }
           if (bound && bound !== s.userId) {
             // The stored session belongs to a different user than this install's data (the app was
             // restarted on the switch warning): never sync until the data is cleared or sign-in is cancelled.
@@ -453,7 +455,7 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
           setSession(s); setCk(key); setPhase('ready');
           return;
         }
-      } catch { /* unreadable stored session: sign in again */ }
+      } catch (err) { ignore(log, 'the stored session is unreadable, so the person signs in again', err, 'warn'); }
       if (alive) await showAuth();
     })();
     return () => { alive = false; };
@@ -500,21 +502,21 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
 
   const signOut = useCallback(async () => {
     if (sync) sync.stop();
-    try { await client.logout(); } catch { /* local session is cleared regardless */ }
-    try { localStorage.removeItem(optOutKey); } catch { /* storage unavailable */ }
+    try { await client.logout(); } catch (err) { ignore(log, 'signing out failed; the local session is cleared regardless', err, 'warn'); }
+    try { localStorage.removeItem(optOutKey); } catch (err) { ignore(log, 'browser storage is unavailable', err); }
     setSession(null); setCk(null); setExpiredUser(null);
     await showAuth();
   }, [sync, client, optOutKey, showAuth]);
 
   const optOut = () => {
-    try { localStorage.setItem(optOutKey, '1'); } catch { /* storage unavailable */ }
+    try { localStorage.setItem(optOutKey, '1'); } catch (err) { ignore(log, 'browser storage is unavailable', err); }
     setPhase('ready');
   };
 
   const onAuthed = (r) => {
-    try { localStorage.removeItem(optOutKey); } catch { /* storage unavailable */ }
+    try { localStorage.removeItem(optOutKey); } catch (err) { ignore(log, 'browser storage is unavailable', err); }
     let foreign = false;
-    try { const b = boundUserKey ? localStorage.getItem(boundUserKey) : null; foreign = !!b && b !== r.session.userId; } catch { /* storage unavailable */ }
+    try { const b = boundUserKey ? localStorage.getItem(boundUserKey) : null; foreign = !!b && b !== r.session.userId; } catch (err) { ignore(log, 'browser storage is unavailable', err); }
     if (!foreign && expiredUser && r.session.userId === expiredUser && deviceStore.get()) {
       // The same user signing back in on this device after an expiry: nothing to restore, keep local data as is.
       setSession(r.session); setCk(r.containerKey); setExpiredUser(null); setPhase('ready');
@@ -526,11 +528,11 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
   };
 
   const cancelSwitch = async () => {
-    try { await client.logout(); } catch { /* local session is cleared regardless */ }
+    try { await client.logout(); } catch (err) { ignore(log, 'signing out failed; the local session is cleared regardless', err, 'warn'); }
     await showAuth();
   };
   const syncFirst = async () => {
-    try { await client.logout(); } catch { /* local session is cleared regardless */ }
+    try { await client.logout(); } catch (err) { ignore(log, 'signing out failed; the local session is cleared regardless', err, 'warn'); }
     await showAuth('Sign in with the account this device belongs to and let it sync, then switch accounts.');
   };
 
@@ -539,7 +541,7 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
       if (!boundUserKey || !authed) return;
       if (prevBound.current === undefined) prevBound.current = localStorage.getItem(boundUserKey);
       localStorage.setItem(boundUserKey, authed.session.userId);
-    } catch { /* storage unavailable */ }
+    } catch (err) { ignore(log, 'browser storage is unavailable', err); }
   };
 
   // Cancel on the upload screen: nothing was uploaded, so the install goes back to how it was.
@@ -550,9 +552,9 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
         if (prevBound.current == null) localStorage.removeItem(boundUserKey);
         else localStorage.setItem(boundUserKey, prevBound.current);
       }
-    } catch { /* storage unavailable */ }
+    } catch (err) { ignore(log, 'browser storage is unavailable', err); }
     prevBound.current = undefined;
-    try { await client.logout(); } catch { /* local session is cleared regardless */ }
+    try { await client.logout(); } catch (err) { ignore(log, 'signing out failed; the local session is cleared regardless', err, 'warn'); }
     await showAuth();
   };
 
@@ -589,7 +591,7 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
         checkUnpushed={account.unpushed} exportBackup={account.exportBackup} onContinue={clearLocal ? async () => {
         await clearLocal();
         deviceStore.set(null);
-        try { localStorage.removeItem(boundUserKey); } catch { /* storage unavailable */ }
+        try { localStorage.removeItem(boundUserKey); } catch (err) { ignore(log, 'browser storage is unavailable', err); }
         setPhase('device');
       } : undefined} />
     );
