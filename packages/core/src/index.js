@@ -1,5 +1,10 @@
 export { core, initCore } from './core.js'
 export { registerModule } from './features/module-registry.js'
+// Recording (a window's side of it): see trace/install.js
+export { installWindowRecording } from './trace/install.js'
+export { installClickCapture, accessibleName } from './trace/clicks.js'
+export { installFetchCapture } from './trace/fetch-capture.js'
+export { startShipper } from './trace/shipper.js'
 export { ignore, ignored, rendererLog, setActiveModule, getActiveModule, reportRenderError, installRendererErrorHooks, serializeError, sendEntry } from './log.js'
 export {
   IFileAdapter, IHttpAdapter, IStorageAdapter,

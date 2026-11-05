@@ -190,3 +190,39 @@ describe('install', () => {
     expect(() => nxt.enter('a.js:1:0:f', null, [proxy])).not.toThrow()
   })
 })
+
+describe('hold', () => {
+  it('makes a frame the running one until released, so everything entered meanwhile nests under it (a click\'s whole dispatch)', () => {
+    nxt.start({ proc: 'renderer', win: 1 })
+    const click = nxt.emit('click', { name: 'Merge' })
+    const release = nxt.hold(click)
+    expect(nxt.current()).toBe(click)
+    const f = nxt.enter('a.js:1:0:onMerge', null, []); nxt.ret(f, 0)
+    release()
+    expect(nxt.current()).toBeNull()
+    const g = nxt.enter('a.js:2:0:later', null, []); nxt.ret(g, 0)
+    const enters = nxt.drain().filter(e => e.k === 'enter')
+    expect(enters.find(e => e.fn.endsWith(':onMerge')).p).toBe(click)
+    expect(enters.find(e => e.fn.endsWith(':later')).p).toBeNull()
+  })
+
+  it('release puts back what was running before, and releasing twice does no harm', () => {
+    nxt.start({ proc: 'renderer', win: 1 })
+    const outer = nxt.enter('a.js:1:0:outer', null, [])
+    const release = nxt.hold('r1-99')
+    release(); release()
+    expect(nxt.current()).toBe(outer.id)
+  })
+})
+
+describe('emit limits', () => {
+  it('keeps a longer string when the caller asks for it (a network body), and cuts at the default otherwise', () => {
+    nxt.start({ proc: 'renderer', win: 1 })
+    const long = 'x'.repeat(20000)
+    nxt.emit('net', { body: long }, null, { str: 65536 })
+    nxt.emit('log', { body: long }, null)
+    const [net, log] = nxt.drain()
+    expect(net.d.body.length).toBe(20000)
+    expect(log.d.body.length).toBeLessThan(8100)
+  })
+})

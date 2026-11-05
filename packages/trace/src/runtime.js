@@ -208,11 +208,24 @@
     try { return fn(); } finally { curVar = prev; }
   };
 
-  api.emit = function (kind, d, parent) {
+  // Makes `id` the running frame until the returned function is called (everything entered meanwhile nests under it): for a
+  // click, whose handlers run one after another in one dispatch. Releasing puts back what was running before.
+  api.hold = function (id) {
+    var prev = getCur();
+    var released = false;
+    try { setCur(id); } catch (e) { /* the frame simply is not held */ }
+    return function release() {
+      if (released) return;
+      released = true;
+      try { setCur(prev); } catch (e) { /* nothing to put back */ }
+    };
+  };
+
+  api.emit = function (kind, d, parent, limits) {
     if (!api.on) return null;
     try {
       var id = nextId();
-      var ev = stamp({ k: kind, id: id, p: parent !== undefined ? parent : getCur(), d: cut(d, { depth: 6, str: 8000, items: 100 }) });
+      var ev = stamp({ k: kind, id: id, p: parent !== undefined ? parent : getCur(), d: cut(d, { depth: 6, str: (limits && limits.str) || 8000, items: 100 }) });
       return push(ev) ? id : null;
     } catch (e) { return null; }
   };
