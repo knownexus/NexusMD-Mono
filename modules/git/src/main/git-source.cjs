@@ -9,6 +9,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('git');
 
 const KEY = 'nexusBase';
 const OID = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
@@ -49,13 +51,13 @@ function readRefOid(commonDir, ref, fsx = fs) {
   try {
     const loose = String(fsx.readFileSync(path.join(commonDir, ...ref.split('/')), 'utf8')).trim();
     if (OID.test(loose)) return loose;
-  } catch { /* not a loose ref */ }
+  } catch (err) { ignore(modLog, 'reading a loose ref that is not there', err) }
   try {
     for (const line of lines(fsx.readFileSync(path.join(commonDir, 'packed-refs'), 'utf8'))) {
       const m = /^([0-9a-f]{40}(?:[0-9a-f]{24})?) (.+)$/.exec(line.trim());
       if (m && m[2] === ref) return m[1];
     }
-  } catch { /* no packed-refs */ }
+  } catch (err) { ignore(modLog, 'reading packed-refs, which may not exist', err) }
   return null;
 }
 
@@ -63,7 +65,7 @@ function defaultBranch(commonDir, fsx = fs) {
   try {
     const m = /^ref:\s*refs\/remotes\/origin\/(\S+)/.exec(String(fsx.readFileSync(path.join(commonDir, 'refs', 'remotes', 'origin', 'HEAD'), 'utf8')).trim());
     if (m) return m[1];
-  } catch { /* no origin/HEAD */ }
+  } catch (err) { ignore(modLog, 'reading origin/HEAD, which may not exist', err) }
   for (const name of ['main', 'master']) if (readRefOid(commonDir, `refs/heads/${name}`, fsx)) return name;
   return null;
 }
@@ -164,7 +166,7 @@ function createSourceReader({ run, commonDir, fsx = fs }) {
     const onDisk = tipOid !== null;
     const valid = ref => isBranchRef(ref) && ref !== self && (!onDisk || readRefOid(commonDir, ref, fsx) !== null);
     let ref = null;
-    try { ref = readConfigSource(fsx.readFileSync(path.join(commonDir, 'config'), 'utf8'), branch); } catch { /* no config */ }
+    try { ref = readConfigSource(fsx.readFileSync(path.join(commonDir, 'config'), 'utf8'), branch); } catch (err) { ignore(modLog, 'reading the repository config', err) }
     if (!valid(ref)) {
       const key = `${commonDir}\0${branch}\0${onDisk ? tipOid : head ?? null}`;
       if (!detected.has(key) || (detected.get(key) && !valid(detected.get(key)))) {
@@ -173,7 +175,7 @@ function createSourceReader({ run, commonDir, fsx = fs }) {
             const found = await detectSource(run, branch, commonDir);
             detected.set(key, found);
             // A failed write still leaves the answer cached above, so the next poll doesn't detect again.
-            if (found) { try { await write(branch, found); } catch { /* retried when the tip or ref changes */ } }
+            if (found) { try { await write(branch, found); } catch (err) { ignore(modLog, 'recording the detected branch source; retried when the tip or ref changes', err, 'warn') } }
           })().finally(() => detecting.delete(key)));
         }
         await detecting.get(key);

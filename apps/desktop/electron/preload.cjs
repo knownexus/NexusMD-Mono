@@ -249,6 +249,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
     list:   () => ipcRenderer.invoke('logs:list'),
     read:   (date) => ipcRenderer.invoke('logs:read', { date }),
     delete: (date) => ipcRenderer.invoke('logs:delete', { date }),
+    // The per-module logs (what the log hub wrote):
+    //   modules()          [{ mod, days: [{ date, size }] }]
+    //   query({ date, mods, levels, text, limit })   { entries, truncated, skipped }
+    //   follow(cid)        everything one call did across modules: { entries, modules, truncated, skipped }
+    //   tailStart()        starts the live tail; resolves with the most recent entries
+    //   onEntries(cb)      cb(batch) for each batch of new entries while the tail is on; returns unsubscribe
+    //   tailStop()
+    modules:   () => ipcRenderer.invoke('logs:modules'),
+    query:     (q) => ipcRenderer.invoke('logs:query', q),
+    follow:    (cid) => ipcRenderer.invoke('logs:follow', cid),
+    tailStart: () => ipcRenderer.invoke('logs:tail-start'),
+    tailStop:  () => ipcRenderer.invoke('logs:tail-stop'),
+    onEntries: (callback) => {
+      const handler = (_event, batch) => callback(batch);
+      ipcRenderer.on('logs:entries', handler);
+      return () => ipcRenderer.removeListener('logs:entries', handler);
+    },
+  },
+
+  // ── Renderer logging ───────────────────────────────────────────────────────
+  // ingest(entry): the renderer's logger and error hooks send entries to the shell's log hub, which
+  // files them under the module they name. Fire and forget (src/shell/renderer-log.js).
+  logging: {
+    ingest: (entry) => ipcRenderer.send('log:ingest', entry),
   },
 
   // ── OAuth (native desktop flow) ────────────────────────────────────────────

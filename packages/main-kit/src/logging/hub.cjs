@@ -55,6 +55,10 @@ function createLogHub({
       const mod = isModuleId(raw.mod) ? raw.mod : 'core';
       const store = currentCorrelation();
       const cid = raw.cid ?? store?.cid;
+      // The modules this call came through before reaching `mod`, in order (not for an entry that
+      // names a different chain's cid). Written on the entry so the hop is still there on disk,
+      // after the in-memory cidModules map has forgotten it.
+      const via = store && cid === store.cid ? store.path.filter(m => m !== mod) : [];
       const entry = {
         v: 1,
         seq: seq++,
@@ -66,6 +70,7 @@ function createLogHub({
         pid,
         ...(raw.win != null ? { win: raw.win } : {}),
         ...(cid ? { cid } : {}),
+        ...(via.length ? { via } : {}),
         ...(raw.scope ? { scope: cap(String(raw.scope), 120) } : {}),
         msg: cap(redactString(raw.msg ?? ''), MAX_MSG),
         ...(raw.err ? { err: redactValue(raw.err) } : {}),

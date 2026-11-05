@@ -11,6 +11,8 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('git');
 
 const PWSH = 'pwsh';
 const NAME = /^[A-Za-z0-9_.!?+-]+$/;
@@ -57,7 +59,7 @@ function registerShell(handle, ctx) {
     const gone = () => { s.dead = true; s.waiter?.(); if (sessions.get(folder) === s) sessions.delete(folder); };
     child.on('exit', gone);
     // A missing pwsh is only reported here, after spawn has returned.
-    child.on('error', e => { s.failure = `PowerShell 7 (pwsh) is needed to run DotFiles scripts: ${e.message}`; gone(); });
+    child.on('error', e => { modLog.error('could not start PowerShell (pwsh)', e); s.failure = `PowerShell 7 (pwsh) is needed to run DotFiles scripts: ${e.message}`; gone(); });
     // Load every profile script once, quietly: some (key bindings, prompt) only make sense in a terminal.
     s.ready = send(s, [
       "$ProgressPreference = 'SilentlyContinue'",
@@ -79,7 +81,8 @@ function registerShell(handle, ctx) {
         s.waiter = null;
         s.dead = true;
         sessions.delete(s.folder);
-        Promise.resolve(kill(s.child.pid)).catch(() => {});
+        modLog.warn('PowerShell timed out', { seconds: Math.round(ms / 1000) });
+        Promise.resolve(kill(s.child.pid)).catch(ignored(modLog, 'stopping a timed-out PowerShell'));
         reject(new Error(`It took longer than ${Math.round(ms / 1000)}s, so PowerShell was stopped.`));
       }, ms);
       s.waiter = () => {
@@ -94,7 +97,7 @@ function registerShell(handle, ctx) {
       s.child.stdin.write(`${line}; [Console]::Out.WriteLine("\`n${marker}" + $(if ($global:__nxOk -eq $false) { 'failed' } else { 'ok' }) + '>>')\n`);
     });
     const p = s.queue.then(run, run);
-    s.queue = p.catch(() => {});
+    s.queue = p.catch(ignored(modLog, 'keeping the PowerShell queue going; the caller has the error'));
     return p;
   }
 
@@ -135,7 +138,7 @@ function registerShell(handle, ctx) {
     async disposeAll() {
       const all = [...sessions.values()];
       sessions.clear();
-      await Promise.all(all.map(s => { s.dead = true; return Promise.resolve(kill(s.child.pid)).catch(() => {}); }));
+      await Promise.all(all.map(s => { s.dead = true; return Promise.resolve(kill(s.child.pid)).catch(ignored(modLog, 'stopping PowerShell at shutdown')); }));
     },
   };
 }

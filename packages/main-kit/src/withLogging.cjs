@@ -6,6 +6,9 @@ const defaultLog = require('electron-log');
 // The logger is injectable (defaults to electron-log) so it can be verified
 // in tests without relying on module mocking of the CJS require.
 function withLogging(ipcMain, logger = defaultLog) {
+  // An ipcMain from the shell already logs every handler's failure under its module (createLoggedIpc):
+  // wrapping again would log each error twice.
+  if (ipcMain.__logged) return (channel, fn) => ipcMain.handle(channel, fn);
   return function handle(channel, fn) {
     ipcMain.handle(channel, async (...args) => {
       try {

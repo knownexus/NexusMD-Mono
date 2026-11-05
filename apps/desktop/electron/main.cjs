@@ -3,7 +3,7 @@
 
 const log = require('electron-log');
 const path = require('path');
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeTheme, net, screen, shell } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain: rawIpcMain, nativeTheme, net, screen, shell } = require('electron');
 const { pinUserData } = require('./user-data.cjs');
 
 // Must run before anything reads app.getPath('userData') (logs, prefs, stores).
@@ -28,10 +28,13 @@ log.transports.file.resolvePathFn = () => {
 // split-build apps' shimmed require('electron-log')) is routed into it by this transport, under the
 // module whose call chain it came from, else core. The flat file above stays until the Logs view
 // reads the per-module files.
-const { createLogHub, createElectronLogTransport } = require('@nexusmd/main-kit/logging');
+const { createLogHub, createElectronLogTransport, createLoggedIpc } = require('@nexusmd/main-kit/logging');
 const logHub = createLogHub({ dir: logsDir, level: app.isPackaged ? 'info' : 'debug' });
 log.transports.hub = createElectronLogTransport(logHub);
 global.logHub = logHub;
+// The shell's own handlers log their failures too (under core). Every ipcMain.handle/on below goes
+// through this; the apps get the real one in ctx (below) and are wrapped under their own ids instead.
+const ipcMain = createLoggedIpc(rawIpcMain, { hub: logHub, moduleId: 'core' });
 logHub.prune();
 setInterval(() => logHub.prune(), 24 * 60 * 60 * 1000).unref();
 // Entries are written in batches; make sure the last ones reach the disk however the process ends.
@@ -64,11 +67,12 @@ app.disableHardwareAcceleration();
 // console-message on all webContents from the main process, no injection needed.
 log.initialize({ preload: false, spyRendererConsole: true });
 
-// Catch anything that would otherwise bypass console.* entirely: uncaught
-// exceptions and unhandled promise rejections in the main process. Keeps the
-// native "A JavaScript error occurred" dialog (showDialog defaults to true)
-// so a fatal main-process crash is still visible, not just silently logged.
-log.errorHandler.startCatching();
+// Catch anything that would otherwise bypass the logs: uncaught exceptions and unhandled rejections
+// in the main process, and windows and child processes that crash, hang or fail to load. Each is
+// logged under the app it belongs to (core when that can't be told). An uncaught exception still
+// shows the native "A JavaScript error occurred" dialog, so a fatal crash is visible.
+const { createProcessWatch } = require('./process-watch.cjs');
+createProcessWatch({ app, hub: logHub, dialog, ownerOf: wc => appModules?.ownerOf?.(wc) ?? null });
 const { createTray, updateTrayIcon } = require('./tray.cjs');
 const { initNotifications } = require('./notifications.cjs');
 const { initUpdater, registerUpdaterIpc } = require('./updater.cjs');
@@ -76,6 +80,8 @@ const { startAppUpdater } = require('./app-updater.cjs');
 const { pendingUpdates, applyAppUpdates } = require('./app-apply.cjs');
 
 const appRegistry    = require('./app-registry.cjs');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('core');
 
 // All-in-one, or apps installed as folders of their own (see app-registry.cjs).
 const appLayout = appRegistry.getLayout(process.env, {
@@ -222,8 +228,8 @@ function applyZoom(win, factor) {
   const f = clampZoomFactor(factor)
   win.webContents.setZoomFactor(f)
   prefs.zoomFactor = f
-  try { savePrefs(prefs) } catch { /* best-effort */ }
-  try { win.webContents.send('zoom:changed', f) } catch { /* best-effort */ }
+  try { savePrefs(prefs) } catch (err) { ignore(modLog, 'saving the zoom preference', err, 'warn') }
+  try { win.webContents.send('zoom:changed', f) } catch (err) { ignore(modLog, 'telling the window the zoom changed', err) }
 }
 
 // Downloaded app updates the window can apply without restarting NexusMD (app-apply.cjs). Without
@@ -448,7 +454,7 @@ app.whenReady().then(async () => {
 
   // Auto-updater (event wiring is packaged-only; the IPC contract is always registered)
   initUpdater(mainWindow);
-  registerUpdaterIpc(() => mainWindow);
+  registerUpdaterIpc(() => mainWindow, ipcMain);
 
   // App updates: newer versions of the installed apps, downloaded to run from the next launch, or
   // applied now from the window (registerAppUpdatesIpc). In an installed split build; elsewhere only
@@ -477,21 +483,21 @@ app.whenReady().then(async () => {
   badgeIpc.register(ipcMain);
   deepLinkIpc.register(ipcMain, () => mainWindow);
   trayIpc.register(ipcMain, () => mainWindow, () => tray);
-  logsIpc.register(ipcMain);
+  logsIpc.register(ipcMain, { hub: logHub });
   oauthIpc.register(ipcMain);
   // Which screen the window is on (the Dashboard keeps a layout per screen).
   displayWatch = displayIpc.register(ipcMain, { screen, getWindow: () => mainWindow });
   displayWatch.watch(mainWindow);
   // Apps split into their own package (Git Workspace, ...): each registers its own IPC and windows.
   appModules = appRegistry.registerModules({
-    ipcMain, BrowserWindow, dialog,
+    ipcMain: rawIpcMain, BrowserWindow, dialog,
     argv: process.argv,
     onSecondInstance: (fn) => { secondInstanceListeners.add(fn); return () => secondInstanceListeners.delete(fn); },
     send: (channel, msg) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, msg); },
     preloadPath: path.join(__dirname, 'preload.cjs'),
     windowIcon: () => windowIconPath(nativeTheme.shouldUseDarkColors),
     loadRenderer,
-  }, process.env, appTable, log.scope('apps'), disabledApps);
+  }, process.env, appTable, log.scope('apps'), disabledApps, { hub: logHub });
   loginItemIpc.register(ipcMain, { app });
   // Start-on-login keeps the exe that turned it on; a packaged build takes it over from an older
   // copy (which may open only to the tray). Not in dev, where execPath is electron.exe itself.

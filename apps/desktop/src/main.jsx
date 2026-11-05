@@ -38,6 +38,11 @@ import {
   moduleAdapters, moduleView, findPopout, ModuleProviders, useModuleBadges, useModuleOffViews, ModuleTopbar, ModuleBanners,
 } from './shell/modules.js'
 import { host, takeWaitingNavigation } from './shell/host.js'
+import { setActiveModule, reportRenderError, installRendererErrorHooks } from './shell/renderer-log.js'
+
+// Uncaught errors and unhandled rejections in this window reach the shell's log, filed under the app
+// whose screen is showing (setActiveModule, below).
+installRendererErrorHooks()
 import { AppUpdatesBanner } from './app-updates.jsx'
 import { account } from './account.js'
 import { useObserveForSync } from './observe-sync.js'
@@ -116,6 +121,9 @@ const BASE_DATA = { storage: window.localStorage, getProfileKey, pushPref: () =>
 
 // The body of a screen: an installed app's own view, or the shell's Settings.
 function ViewBody({ view, tweaks = DEFAULT_TWEAKS, setTweak = () => {} }) {
+  // Set while rendering, not in an effect, so an error thrown by this very render is filed under the right app.
+  setActiveModule(registry.appForView(view)?.id)
+
   // A view from an app that isn't installed on this machine (stale saved view, deep link, tray).
   if (isUninstalledView(view)) return <Placeholder label={(ALL_NAV.find(n => n.id === view) || ALL_NAV[0]).label} />
 
@@ -403,7 +411,8 @@ class AppErrorBoundary extends React.Component {
     return { error }
   }
   componentDidCatch(error, info) {
-    console.error('Uncaught render error:', error, info.componentStack)
+    // Filed under the app whose screen was showing; console.error is the fallback outside Electron.
+    if (!reportRenderError(error, info.componentStack)) console.error('Uncaught render error:', error, info.componentStack)
   }
   render() {
     if (!this.state.error) return this.props.children
@@ -429,6 +438,7 @@ class AppErrorBoundary extends React.Component {
 
 // An app's pop-out window (e.g. a Git editor, diff or conflict screen) shows one screen; it isn't the app.
 const popout = findPopout(window.location.hash)
+if (popout) setActiveModule(popout.id)
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

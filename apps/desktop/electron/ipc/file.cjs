@@ -3,6 +3,8 @@
 const { app } = require('electron');
 const fs = require('fs/promises');
 const path = require('path');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('core');
 
 function register(ipcMain) {
   const defaultDir = path.join(app.getPath('documents'), 'NexusMD', 'profiles');
@@ -39,7 +41,7 @@ function register(ipcMain) {
   });
 
   ipcMain.handle('file:delete', async (_e, filePath) => {
-    try { await fs.unlink(filePath); } catch { /* ignore missing */ }
+    try { await fs.unlink(filePath); } catch (err) { ignore(modLog, 'deleting a file that may already be gone', err) }
   });
 
   ipcMain.handle('file:mkdir', async (_e, dirPath) => {

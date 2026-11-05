@@ -8,6 +8,7 @@ import {
   parseInstalledIds, getRegistryInfo, installedModuleIds, getPreloadDescriptors, register, registerModules, MODULES,
   getLayout, scanApps, modulesFromScan, resolveApps, compareVersions,
 } from './app-registry.cjs'
+import { SHELL_API } from './shell-api.cjs'
 
 const fakeModule = (preload, main) => ({ manifest: () => ({ ipc: { preload } }), main: () => main })
 
@@ -134,6 +135,20 @@ describe('registerModules restart', () => {
     await expect(started.restart('a', next)).resolves.toEqual({ ok: true })
     expect([...handlers.keys()].sort()).toEqual(['a:get', 'b:get'])
     expect(listeners.map(l => l[0]).sort()).toEqual(['a:get:changed', 'b:get:changed'])
+  })
+
+  it('says which app a window belongs to, so a crash can be logged under it', () => {
+    const { ctx } = electronFakes()
+    let win
+    const modules = {
+      a: fakeModule({}, { register: c => { win = new c.BrowserWindow(); win.webContents = { id: 1 }; return {} } }),
+      b: app('b:get'),
+    }
+    const started = registerModules(ctx, {}, modules, log)
+    expect(started.ownerOf(win.webContents)).toBe('a')
+    expect(started.ownerOf({ id: 99 })).toBeNull()
+    win.close()
+    expect(started.ownerOf(win.webContents)).toBeNull()
   })
 
   it('says what an app is busy with: its own report and the windows it has open', () => {
@@ -393,6 +408,14 @@ describe('resolveApps', () => {
     expect(log.warn).toHaveBeenCalledWith(expect.stringMatching(/git.*2\.0\.0.*shell/))
   })
 
+  it('still runs an app built for the previous shell API, and waits for one built for a newer shell', () => {
+    installed('git', '1.0.0')
+    downloaded('git', '1.1.0', { requires: { shellApi: SHELL_API - 1 } })
+    downloaded('git', '1.2.0', { requires: { shellApi: SHELL_API + 1 } })
+    expect(resolve({ shellApi: SHELL_API })[0].version).toBe('1.1.0')
+    expect(SHELL_API).toBeGreaterThanOrEqual(5)
+  })
+
   it('skips a version marked bad', () => {
     installed('git', '1.0.0')
     downloaded('git', '1.1.0')
@@ -426,5 +449,67 @@ describe('resolveApps', () => {
     installed('git', '1.0.0')
     downloaded('notes', '1.0.0')
     expect(resolve().map(a => a.id)).toEqual(['git'])
+  })
+})
+
+describe('registerModules logging', () => {
+  // A hub that records what each module logged, and the real ipcMain's registrations.
+  function fakes() {
+    const entries = []
+    const make = (mod, scope = null) => {
+      const at = level => (...args) => entries.push({ mod, scope, level, args })
+      return { error: at('error'), warn: at('warn'), info: at('info'), debug: at('debug'), scope: name => make(mod, name) }
+    }
+    const handlers = new Map()
+    const listeners = []
+    const ipcMain = {
+      handle: (ch, fn) => handlers.set(ch, fn),
+      removeHandler: ch => handlers.delete(ch),
+      on: (ch, fn) => { listeners.push([ch, fn]); return ipcMain },
+      removeListener: (ch, fn) => { const i = listeners.findIndex(l => l[0] === ch && l[1] === fn); if (i >= 0) listeners.splice(i, 1); return ipcMain },
+    }
+    return { entries, handlers, listeners, hub: { logger: mod => make(mod) }, ctx: { ipcMain } }
+  }
+  const log = { error: vi.fn(), info: vi.fn() }
+
+  it('gives each app a logger of its own as ctx.log, and none without a hub', () => {
+    const { hub, ctx } = fakes()
+    const seen = {}
+    const mod = id => fakeModule({}, { register: c => { seen[id] = c.log; return {} } })
+    registerModules(ctx, {}, { a: mod('a'), b: mod('b') }, log, [], { hub })
+    expect(seen.a).toBeDefined()
+    expect(seen.a).not.toBe(seen.b)
+    const bare = {}
+    registerModules(fakes().ctx, {}, { c: fakeModule({}, { register: c => { bare.log = c.log; return {} } }) }, log)
+    expect(bare.log).toBeUndefined()
+  })
+
+  it('logs a failing handler of an app under that app, and rethrows it', async () => {
+    const { hub, ctx, handlers, entries } = fakes()
+    const a = fakeModule({}, { register: c => { c.ipcMain.handle('a:load', async () => { throw new Error('cannot load') }); return {} } })
+    registerModules(ctx, {}, { a }, log, [], { hub })
+    await expect(handlers.get('a:load')({})).rejects.toThrow('cannot load')
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({ mod: 'a', scope: 'ipc:a:load', level: 'error' })
+  })
+
+  it('still takes away every handler and listener when an app is stopped', async () => {
+    const { hub, ctx, handlers, listeners } = fakes()
+    const a = fakeModule({}, { register: (c) => { c.ipcMain.handle('a:get', () => 1); c.ipcMain.on('a:changed', () => {}); return {} } })
+    const started = registerModules(ctx, {}, { a }, log, [], { hub })
+    expect([...handlers.keys()]).toEqual(['a:get'])
+    expect(listeners).toHaveLength(1)
+    await started.restart('a', fakeModule({}, { register: () => ({}) }))
+    expect(handlers.size).toBe(0)
+    expect(listeners).toHaveLength(0)
+  })
+
+  it('reports an app that fails to start in the shell log and in its own log', () => {
+    const { hub, ctx, entries } = fakes()
+    const shellLog = { error: vi.fn(), info: vi.fn() }
+    const bad = fakeModule({}, { register: () => { throw new Error('ENOENT: bruno-prelude.sandbox.js') } })
+    registerModules(ctx, {}, { 'api-client': bad }, shellLog, [], { hub })
+    expect(shellLog.error).toHaveBeenCalledWith('app "api-client" failed to start', expect.objectContaining({ message: expect.stringContaining('ENOENT') }))
+    expect(entries).toEqual([expect.objectContaining({ mod: 'api-client', level: 'error', args: ['failed to start', expect.any(Error)] })])
   })
 })

@@ -2,6 +2,7 @@ import React from 'react'
 import { logsAdapter } from './adapters/logs.js'
 import { VsCard, VsRow, Icon } from '@nexusmd/ui'
 import { parseLog, filterEntries, LOG_LEVELS, NO_AREA } from './log-parse.js'
+import LogViewer from './log-viewer.jsx'
 
 const LEVEL_COLOR = {
   error:   'var(--danger)',
@@ -18,8 +19,10 @@ const controlStyle = {
   background: 'var(--surface-2)', outline: 'none', fontSize: 13, color: 'var(--text)',
 }
 
-export default function LogsCard() {
+// The daily files written before logs were kept per module. `hideWhenEmpty` shows the card only if there are such files.
+export function FlatLogsCard({ title = 'Application Logs', hideWhenEmpty = false } = {}) {
   const [logs, setLogs] = React.useState([])
+  const [listed, setListed] = React.useState(false)
   const [selectedDate, setSelectedDate] = React.useState(null)
   const [content, setContent] = React.useState('')
   const [loading, setLoading] = React.useState(false)
@@ -41,6 +44,7 @@ export default function LogsCard() {
       console.error('[LogsCard] Failed to list logs:', err)
     } finally {
       setLoading(false)
+      setListed(true)
     }
   }, [])
 
@@ -116,8 +120,10 @@ export default function LogsCard() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   }
 
+  if (hideWhenEmpty && (!listed || logs.length === 0)) return null
+
   return (
-    <VsCard title="Application Logs" icon="log">
+    <VsCard title={title} icon="log">
       <VsRow title="Available logs" desc={`${logs.length} log file${logs.length !== 1 ? 's' : ''} available`}>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn sm ghost" onClick={loadLogs} disabled={loading}>
@@ -231,5 +237,18 @@ export default function LogsCard() {
         </div>
       )}
     </VsCard>
+  )
+}
+
+// The logs of the shell and every app, kept per module: switch between modules, follow one call across
+// them, or watch live. Daily files from before that are still readable underneath, if there are any.
+export default function LogsCard() {
+  return (
+    <>
+      <VsCard title="Application Logs" icon="log">
+        <LogViewer />
+      </VsCard>
+      <FlatLogsCard title="Earlier logs" hideWhenEmpty />
+    </>
   )
 }

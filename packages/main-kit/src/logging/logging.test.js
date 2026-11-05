@@ -128,6 +128,31 @@ describe('log hub', () => {
     expect(hub.modulesOf(g.cid).sort()).toEqual(['devenv', 'git'])
   })
 
+  it('marks on each entry which modules the call came through (via), so the hop survives on disk', async () => {
+    const hub = hubWith()
+    await runWithCorrelation(async () => {
+      hub.logger('core').info('handler started')                       // first hop: nothing before it
+      await runWithCorrelation(async () => {
+        hub.logger('git').error('spawn failed')                        // reached from core
+        await runWithCorrelation(async () => {
+          hub.logger('devenv').error('exited 1')                       // reached from core, then git
+        }, { mod: 'devenv' })
+      }, { mod: 'git' })
+      hub.logger('core').info('handler finished')                      // back outside git: no via
+    }, { mod: 'core' })
+    hub.logger('work').info('outside any chain')
+    hub.flush()
+    const [coreStart, coreEnd] = readLines('core', '2026-11-04.jsonl')
+    const [g] = readLines('git', '2026-11-04.jsonl')
+    const [d] = readLines('devenv', '2026-11-04.jsonl')
+    const [w] = readLines('work', '2026-11-04.jsonl')
+    expect(coreStart.via).toBeUndefined()
+    expect(coreEnd.via).toBeUndefined()
+    expect(g.via).toEqual(['core'])
+    expect(d.via).toEqual(['core', 'git'])
+    expect(w.via).toBeUndefined()
+  })
+
   it('collapses identical consecutive entries into one with a repeat count', () => {
     const hub = hubWith()
     const log = hub.logger('git')

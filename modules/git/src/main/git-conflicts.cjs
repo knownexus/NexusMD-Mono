@@ -12,6 +12,8 @@ const fsp = require('fs/promises');
 const crypto = require('crypto');
 const { readText, writeAtomic, BOM } = require('@nexusmd/main-kit/safe-file');
 const { requireWorktreeFile } = require('./git-files.cjs');
+const { moduleLogger, ignore, ignored } = require('@nexusmd/main-kit/logging');
+const modLog = moduleLogger('git');
 
 const MAX_READ_BYTES = 1024 * 1024;
 const MAX_WRITE_BYTES = 2 * 1024 * 1024;
@@ -136,7 +138,7 @@ function registerConflicts(handle, { git, requireExactWorktree, requirePaths, wi
       const e = entries.find(x => x.path === rel && x.stage === '0');
       map[rel] = e ? { oid: e.oid, mode: e.mode } : { deleted: true };
       await writeRecords(dir, map);
-    } catch { /* without a record the file just can't be un-resolved */ }
+    } catch (err) { ignore(modLog, 'saving the resolved-file record; the file cannot be un-resolved', err, 'warn') }
   }
   const done = async (wt, rel, r) => { const out = result(r); if (out.ok) await remember(wt, rel); return out; };
 
