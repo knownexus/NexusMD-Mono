@@ -2,12 +2,7 @@ import React from 'react'
 import { Icon } from '../icons.jsx'
 import { NotificationBanner, Sheet } from '../app-components.jsx'
 import { getPlannerRuntime } from '../planner/runtime.js'
-import {
-  PLANNER_SECTIONS, PL_GROUPS, plSectionGroup,
-  getIsoWeek, getYearWeekForOffset, fmtDateShort,
-  buildEmptyPlannerData, hasMeaningfulPlannerData,
-  PL_OPEN, plIsOverdueYmd,
-} from '@nexusmd/core'
+import { PLANNER_SECTIONS, PL_GROUPS, plSectionGroup, getIsoWeek, getYearWeekForOffset, fmtDateShort, buildEmptyPlannerData, hasMeaningfulPlannerData, PL_OPEN, plIsOverdueYmd, rendererLog, ignore } from '@nexusmd/core'
 import { plNewRow, plScrollToEl } from '../planner/primitives.jsx'
 import { WorkItemCtxLayer, GlobalNotesView, loadGlobalNotes, saveGlobalNotes } from '../planner/planner-notes.jsx'
 import { SectionCard } from '../planner/planner-editors.jsx'
@@ -23,6 +18,8 @@ import {
   WeekCalendarPicker, PlHeaderMenu, PlMenuItem, PlMenuRadio, DeleteWeekModal,
 } from '../planner/planner-modals.jsx'
 import { plannerExportDocx as _defaultExportDocx } from '../planner/docx.js'
+
+const log = rendererLog('planner', 'view')
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React
 
@@ -355,18 +352,18 @@ function PlannerView({ data, setData, themes, setThemes, onExportDocx, showGloba
     setTimeout(() => setHighlightedRowId(null), 2500)
     const dismissKey = `${ns}.planner.reminderDismissed`
     const dismissed = new Set()
-    try { JSON.parse(rt.storage.getItem(dismissKey) || '[]').forEach(k => dismissed.add(k)) } catch {}
+    try { JSON.parse(rt.storage.getItem(dismissKey) || '[]').forEach(k => dismissed.add(k)) } catch (err) { ignore(log, 'the dismissed reminders could not be read, so none count as dismissed', err, 'warn') }
     dismissed.add(first.rowId + ':' + first.reminderDate)
-    try { rt.storage.setItem(dismissKey, JSON.stringify([...dismissed])) } catch {}
+    try { rt.storage.setItem(dismissKey, JSON.stringify([...dismissed])) } catch (err) { ignore(log, 'the dismissed reminder could not be saved (storage full or blocked)', err, 'warn') }
     setDueReminders(prev => prev.slice(1))
   }, [dueReminders, ns, rt])
 
   const handleDismissReminders = useCallback(() => {
     const dismissKey = `${ns}.planner.reminderDismissed`
     const dismissed = new Set()
-    try { JSON.parse(rt.storage.getItem(dismissKey) || '[]').forEach(k => dismissed.add(k)) } catch {}
+    try { JSON.parse(rt.storage.getItem(dismissKey) || '[]').forEach(k => dismissed.add(k)) } catch (err) { ignore(log, 'the dismissed reminders could not be read, so none count as dismissed', err, 'warn') }
     dueReminders.forEach(r => dismissed.add(r.rowId + ':' + r.reminderDate))
-    try { rt.storage.setItem(dismissKey, JSON.stringify([...dismissed])) } catch {}
+    try { rt.storage.setItem(dismissKey, JSON.stringify([...dismissed])) } catch (err) { ignore(log, 'the dismissed reminders could not be saved (storage full or blocked)', err, 'warn') }
     setDueReminders([])
   }, [dueReminders, ns, rt])
 

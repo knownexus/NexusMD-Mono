@@ -2,10 +2,12 @@
 // run. Shared by the apps: they reach storage and app actions only through props (a timer store, a notes store,
 // onCreateBug, an ArtifactsSheet component), so nothing here reads app globals or localStorage itself.
 import React from 'react';
-import { formatClock } from '@nexusmd/core';
+import { formatClock, rendererLog, ignore } from '@nexusmd/core';
 import { Icon } from './icons.jsx';
 import { runningEntries, startEntry, stopEntry, addMark, durationMs, emptyLog } from './views/time-log.js';
 import { loadGlobalNotes, saveGlobalNotes } from './planner/planner-notes.jsx';
+
+const rlog = rendererLog('core', 'dashboard-widgets')
 
 const { useState, useEffect } = React;
 const field = { flex: 1, minWidth: 0, height: 38, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit' };
@@ -17,9 +19,9 @@ const field = { flex: 1, minWidth: 0, height: 38, padding: '0 10px', borderRadiu
 export function storageTimerStore({ storage, logKey, pausedKey }) {
   return {
     load: () => { try { const r = storage.getItem(logKey); return r ? JSON.parse(r) : emptyLog(); } catch { return emptyLog(); } },
-    save: (log) => { try { storage.setItem(logKey, JSON.stringify(log)); } catch { /* storage full */ } },
+    save: (log) => { try { storage.setItem(logKey, JSON.stringify(log)); } catch (err) { ignore(rlog, 'a dashboard widget could not be saved (storage full)', err, 'warn') } },
     loadPaused: () => { try { return JSON.parse(storage.getItem(pausedKey) || '[]'); } catch { return []; } },
-    savePaused: (p) => { try { storage.setItem(pausedKey, JSON.stringify(p)); } catch { /* storage full */ } },
+    savePaused: (p) => { try { storage.setItem(pausedKey, JSON.stringify(p)); } catch (err) { ignore(rlog, 'a dashboard widget could not be saved (storage full)', err, 'warn') } },
   };
 }
 

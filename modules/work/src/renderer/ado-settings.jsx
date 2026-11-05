@@ -2,6 +2,9 @@ import React from 'react'
 import { Icon, CardFrame, SettField } from '@nexusmd/ui'
 import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
 import { settInputStyle } from './form-style.js'
+import { rendererLog, ignored } from '@nexusmd/core'
+
+const log = rendererLog('work', 'ado-settings')
 
 export function AdoConnectionCard({ onRefreshData }) {
   const [org, setOrg]           = React.useState('')
@@ -32,7 +35,7 @@ export function AdoConnectionCard({ onRefreshData }) {
       })
       setStatus('Saved! Loading data…')
       setPat('')
-      onRefreshData?.().catch(() => {})
+      onRefreshData?.().catch(ignored(log, 'refreshing the data after saving the settings failed', 'warn'))
       setTimeout(() => setStatus(''), 3000)
     } catch (e) {
       setStatus('Error: ' + e.message)

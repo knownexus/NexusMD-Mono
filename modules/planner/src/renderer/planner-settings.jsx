@@ -1,11 +1,14 @@
 import React from 'react'
 import { VsCard, VsRow, VsSeg, PlToggle, VsPasswordModal, loadConfidentialConfig } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('planner', 'settings')
 
 export function DesktopPlannerPrefsCard() {
   const pk = k => { try { return getProfileKey(k) } catch { return k } }
   const readPref = (key, def) => { try { return localStorage.getItem(pk(key)) || def } catch { return def } }
-  const savePref = (key, val) => { try { localStorage.setItem(pk(key), val) } catch {} }
+  const savePref = (key, val) => { try { localStorage.setItem(pk(key), val) } catch (err) { ignore(log, 'a planner setting could not be saved (storage full or blocked)', err, 'warn') } }
 
   const [landing, setLanding] = React.useState(() => readPref('nexusmd.planner.landing', 'glance'))
   const [nav,     setNav]     = React.useState(() => readPref('nexusmd.planner.nav', 'rail'))
@@ -55,7 +58,7 @@ export function DesktopConfidentialCard() {
       <VsRow title="Auto re-lock" desc="Re-lock confidential sections when the app loses focus">
         <PlToggle checked={autoRelock === '1'} onChange={v => {
           const s = v ? '1' : '0'; setAutoRelock(s)
-          try { localStorage.setItem(getProfileKey('nexusmd.confidential.autoRelock'), s) } catch {}
+          try { localStorage.setItem(getProfileKey('nexusmd.confidential.autoRelock'), s) } catch (err) { ignore(log, 'the auto-relock setting could not be saved (storage full or blocked)', err, 'warn') }
         }} />
       </VsRow>
       {lockedCount > 0 && (

@@ -1,5 +1,5 @@
 import React from 'react'
-import { core, nextHiddenIds } from '@nexusmd/core'
+import { core, nextHiddenIds, rendererLog, ignore } from '@nexusmd/core'
 import {
   useNexusData, DashboardView, WorkItemsView, PRView, BuildsView, TestsView, TeamView, TriageView, useProfile,
 } from '@nexusmd/ui'
@@ -10,6 +10,8 @@ import { NotConfigured } from './not-configured.jsx'
 import { useWork } from './work-context.js'
 import { useOffScreens } from './work-screens.js'
 import { HomeWidgets } from './home-widgets.jsx'
+
+const log = rendererLog('work', 'views')
 
 // Stable fallback so fullRoster (a memo dependency) doesn't change identity every render.
 const EMPTY = []
@@ -52,7 +54,7 @@ export function useTeamRoster(data) {
     try {
       localStorage.setItem(getProfileKey('nexusmd.team.custom'), JSON.stringify(newCustom))
       localStorage.setItem(getProfileKey('nexusmd.team.removed'), JSON.stringify(newRemoved))
-    } catch {}
+    } catch (err) { ignore(log, 'the team members could not be saved (storage full or blocked)', err, 'warn') }
     // Rebuild the snapshot so hidden/restored people apply immediately (skip no-op syncs)
     if (newRemoved.length !== removedIds.length || newRemoved.some(id => !removedIds.includes(id))) {
       core._emit?.('data:updated')

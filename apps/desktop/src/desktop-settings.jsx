@@ -6,7 +6,7 @@ import {
   PlToggle,
   toast,
 } from '@nexusmd/ui'
-import { graphJSON } from '@nexusmd/core'
+import { graphJSON, rendererLog, ignore, ignored } from '@nexusmd/core'
 import { appPrefsAdapter } from './adapters/appPrefs.js'
 import { useProfile } from './profile-context.jsx'
 import { getProfileKey } from './profile-keys.js'
@@ -27,6 +27,8 @@ import { pickerAdapter } from './adapters/picker.js'
 import { account } from './account.js'
 import { useObserveOnSettingsChange } from './observe-sync.js'
 
+const log = rendererLog('core', 'settings')
+
 const settInputStyle = {
   width: '100%', padding: '7px 10px',
   border: '1px solid var(--border)', borderRadius: 6,
@@ -37,7 +39,7 @@ const settInputStyle = {
 export function DesktopProfileCard() {
   const pk = k => { try { return getProfileKey(k) } catch { return k } }
   const readPref = (key, def) => { try { return localStorage.getItem(pk(key)) || def } catch { return def } }
-  const savePref = (key, val) => { try { localStorage.setItem(pk(key), val) } catch {} }
+  const savePref = (key, val) => { try { localStorage.setItem(pk(key), val) } catch (err) { ignore(log, 'a preference could not be saved (storage full or blocked)', err, 'warn', { key }) } }
 
   const [displayName, setDisplayName] = React.useState(() => readPref('nexusmd.profile.displayName', ''))
   const [role, setRole]               = React.useState(() => readPref('nexusmd.profile.role', 'Engineering Manager'))
@@ -77,8 +79,8 @@ export function DesktopAppCard() {
 
   React.useEffect(() => {
     if (!appPrefsAdapter.isAvailable()) return
-    Promise.resolve(appPrefsAdapter.getLoginItemEnabled()).then(v => { if (typeof v === 'boolean') setLoginItem(v) }).catch(() => {})
-    Promise.resolve(appPrefsAdapter.getCloseToTray()).then(v => { if (typeof v === 'boolean') setCloseToTray(v) }).catch(() => {})
+    Promise.resolve(appPrefsAdapter.getLoginItemEnabled()).then(v => { if (typeof v === 'boolean') setLoginItem(v) }).catch(ignored(log, 'could not read the launch-at-login setting, so the toggle shows its default', 'warn'))
+    Promise.resolve(appPrefsAdapter.getCloseToTray()).then(v => { if (typeof v === 'boolean') setCloseToTray(v) }).catch(ignored(log, 'could not read the close-to-tray setting, so the toggle shows its default', 'warn'))
   }, [])
 
   if (!appPrefsAdapter.isAvailable()) return null
@@ -87,12 +89,12 @@ export function DesktopAppCard() {
     const picked = await appPrefsAdapter.pickOutputFolder()
     if (!picked) return
     setOutputPath(picked)
-    try { localStorage.setItem(getProfileKey('nexusmd.outputPath'), picked) } catch {}
+    try { localStorage.setItem(getProfileKey('nexusmd.outputPath'), picked) } catch (err) { ignore(log, 'the output folder could not be saved (storage full or blocked)', err, 'warn') }
   }
 
   const clearFolder = () => {
     setOutputPath('')
-    try { localStorage.removeItem(getProfileKey('nexusmd.outputPath')) } catch {}
+    try { localStorage.removeItem(getProfileKey('nexusmd.outputPath')) } catch (err) { ignore(log, 'the saved output folder could not be cleared', err, 'warn') }
   }
 
   return (
@@ -100,13 +102,13 @@ export function DesktopAppCard() {
       <VsRow title="Start NexusMD when I sign in to Windows" desc="Launch NexusMD automatically when you sign in">
         <PlToggle checked={loginItem} onChange={v => {
           setLoginItem(v)
-          Promise.resolve(appPrefsAdapter.setLoginItemEnabled(v)).catch(() => {})
+          Promise.resolve(appPrefsAdapter.setLoginItemEnabled(v)).catch(ignored(log, 'the launch-at-login setting could not be applied', 'warn', { enabled: v }))
         }} />
       </VsRow>
       <VsRow title="Close to tray" desc="Minimise to the system tray instead of quitting when the window is closed">
         <PlToggle checked={closeToTray} onChange={v => {
           setCloseToTray(v)
-          Promise.resolve(appPrefsAdapter.setCloseToTray(v)).catch(() => {})
+          Promise.resolve(appPrefsAdapter.setCloseToTray(v)).catch(ignored(log, 'the close-to-tray setting could not be applied', 'warn', { enabled: v }))
         }} />
       </VsRow>
       <VsRow title="Output folder" desc={outputPath || 'Default download location'}>
@@ -127,7 +129,7 @@ export function DesktopDataSyncCard() {
   const toggleLegacy = (on) => {
     setLegacyCloudSyncOn(on)
     setLegacyOn(on)
-    try { on ? desktopSync.startAuto?.() : desktopSync.stopAuto?.() } catch {}
+    try { on ? desktopSync.startAuto?.() : desktopSync.stopAuto?.() } catch (err) { ignore(log, 'automatic cloud sync could not be started or stopped', err, 'warn', { on }) }
   }
 
   React.useEffect(() => {
@@ -138,7 +140,7 @@ export function DesktopDataSyncCard() {
         bytes += (localStorage.getItem(k) || '').length * 2
       }
       setKbUsed(Math.round(bytes / 1024))
-    } catch {}
+    } catch (err) { ignore(log, 'the size of the stored data could not be measured', err) }
   }, [])
 
   const clearLocal = () => {
@@ -151,7 +153,7 @@ export function DesktopDataSyncCard() {
       }
       toRemove.forEach(k => localStorage.removeItem(k))
       window.location.reload()
-    } catch {}
+    } catch (err) { ignore(log, 'clearing the stored data failed part-way', err, 'warn') }
   }
 
   return (

@@ -2,10 +2,12 @@
 import { linkAdapter, getProfileKey } from '@nexusmd/shell-sdk'
 import React from 'react'
 import { CardFrame, Icon, SettField } from '@nexusmd/ui'
-import { makeJiraClient, fetchJiraBoards, JIRA_CACHE_KEY } from '@nexusmd/core'
+import { makeJiraClient, fetchJiraBoards, JIRA_CACHE_KEY, rendererLog, ignore, ignored } from '@nexusmd/core'
 import { settInputStyle } from './form-style.js'
 import { getJiraConfig, saveJiraConfig, createJiraHttpAdapter } from './jira-client.js'
 import { workStorage } from './work-storage.js'
+
+const log = rendererLog('work', 'jira-settings')
 
 const TOKEN_URL = 'https://id.atlassian.com/manage-profile/security/api-tokens'
 const splitKeys = (s) => s.split(/[,\s]+/).map(k => k.trim()).filter(Boolean)
@@ -79,8 +81,8 @@ export function JiraConnectionCard({ onRefreshData }) {
     setToken('')
     setStatus('Saved! Loading data…')
     // Drop the cache so the refresh refetches metadata for the new settings.
-    try { workStorage.remove(JIRA_CACHE_KEY) } catch {}
-    onRefreshData?.().catch(() => {})
+    try { workStorage.remove(JIRA_CACHE_KEY) } catch (err) { ignore(log, 'the Jira metadata cache could not be dropped, so old metadata may show', err, 'warn') }
+    onRefreshData?.().catch(ignored(log, 'refreshing the data after saving the settings failed', 'warn'))
     setTimeout(() => setStatus(''), 3000)
   }
 
@@ -157,7 +159,7 @@ export function WorkItemsDisplayCard() {
   const [mode, setMode] = React.useState(read)
   const choose = (m) => {
     setMode(m)
-    try { localStorage.setItem(getProfileKey(DISPLAY_KEY), JSON.stringify(m)) } catch { /* quota */ }
+    try { localStorage.setItem(getProfileKey(DISPLAY_KEY), JSON.stringify(m)) } catch (err) { ignore(log, 'a Jira setting could not be saved (quota)', err, 'debug') }
   }
   return (
     <CardFrame title="Work Items Display" icon={<Icon name="list" size={16} />}>

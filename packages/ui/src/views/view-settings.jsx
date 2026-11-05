@@ -15,8 +15,10 @@ import { hashPassword, loadConfidentialConfig, saveConfidentialConfig } from '..
 import { useProfile } from '../profile-context.jsx';
 import { useNexusData } from '../data-context.jsx';
 import { usePersisted } from '../app-components.jsx';
-import { reorderColumns, toggleColumnHidden, addManualColumn, removeAutoAdded, resetToDetected, resolveFields, reorderField, toggleField, defaultConfig, WI_CARD_FIELDS, WI_TABLE_COLUMNS, PR_CARD_FIELDS, BUILDS_TABLE_COLUMNS, TESTS_TABLE_COLUMNS } from '@nexusmd/core';
+import { reorderColumns, toggleColumnHidden, addManualColumn, removeAutoAdded, resetToDetected, resolveFields, reorderField, toggleField, defaultConfig, WI_CARD_FIELDS, WI_TABLE_COLUMNS, PR_CARD_FIELDS, BUILDS_TABLE_COLUMNS, TESTS_TABLE_COLUMNS, rendererLog, ignore, ignored } from '@nexusmd/core';
 import { WI_TYPE_STATES_CACHE_KEY } from './wi-cache-key.js';
+
+const log = rendererLog('core', 'settings')
 
 const { useState: useStateVS, useEffect: useEffectVS, useRef: useRefVS, useCallback: useCallbackVS } = React;
 
@@ -56,7 +58,7 @@ function writeCollapsed(id, collapsed, key = COLLAPSED_KEY) {
   try {
     const ids = readCollapsed(key).filter(x => x !== id);
     localStorage.setItem(key, JSON.stringify(collapsed ? [...ids, id] : ids));
-  } catch { /* storage unavailable: the section still collapses for this visit */ }
+  } catch (err) { ignore(log, 'a section state could not be remembered (storage unavailable)', err, 'debug') }
 }
 
 // A Settings section. Its title bar collapses and expands it, and that is remembered by `id`
@@ -821,14 +823,14 @@ function OAuthServiceCard({ service }) {
       setCredsOpen(true);
       return;
     }
-    Promise.resolve(connect()).then(() => setConnected(isConnected())).catch(() => {});
+    Promise.resolve(connect()).then(() => setConnected(isConnected())).catch(ignored(log, 'connecting the account failed', 'warn'));
   };
 
   const handleDisconnect = () => {
     Promise.resolve(disconnect()).then(() => {
       setConnected(false);
       toast?.(`${label} disconnected.`, 'success');
-    }).catch(() => {});
+    }).catch(ignored(log, 'disconnecting the account failed', 'warn'));
   };
 
   const handleSaveCreds = () => {

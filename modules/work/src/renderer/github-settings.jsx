@@ -1,9 +1,11 @@
 import React from 'react'
 import { Icon, CardFrame, SettField } from '@nexusmd/ui'
-import { core, makeGithubClient, discoverGithubRepos, MAX_GITHUB_REPOS } from '@nexusmd/core'
+import { core, makeGithubClient, discoverGithubRepos, MAX_GITHUB_REPOS, rendererLog, ignored } from '@nexusmd/core'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { getGithubConfig, saveGithubConfig, createGithubHttpAdapter } from './github-client.js'
 import { settInputStyle } from './form-style.js'
+
+const log = rendererLog('work', 'github-settings')
 
 const defaultClient = (pat) => makeGithubClient(createGithubHttpAdapter({ getConfig: () => ({ pat }) }))
 
@@ -63,7 +65,7 @@ export function GithubConnectionCard({ onRefreshData, makeClient = defaultClient
       saveGithubConfig({ ...(newPat ? { pat: newPat } : {}), repos: selected, issues, login: me?.login || '' })
       setPat('')
       setStatus('Saved! Loading data…')
-      onRefreshData?.().catch(() => {})
+      onRefreshData?.().catch(ignored(log, 'refreshing the data after saving the settings failed', 'warn'))
       setTimeout(() => setStatus(''), 3000)
     } catch (e) {
       setStatus('Error: ' + (e.message || 'Save failed'))

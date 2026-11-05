@@ -1,5 +1,7 @@
 import React from 'react'
-import { ansiToSpans, stripAnsi, classifyLogLevel, filterLogLines } from '@nexusmd/core'
+import { ansiToSpans, stripAnsi, classifyLogLevel, filterLogLines, rendererLog, ignored } from '@nexusmd/core'
+
+const log = rendererLog('devenv', 'log-panel')
 
 const COLOR_VARS = {
   red: 'var(--danger)', green: 'var(--success)', yellow: 'var(--warning, #b8860b)', blue: 'var(--info)',
@@ -20,7 +22,7 @@ export function LogPanel({ state, filter, onStop }) {
     if (el && pinned) el.scrollTop = el.scrollHeight
   }, [state.lines, pinned])
 
-  const copy = () => navigator.clipboard?.writeText(shown.map(r => stripAnsi(r.line.text)).join('\n')).catch(() => {})
+  const copy = () => navigator.clipboard?.writeText(shown.map(r => stripAnsi(r.line.text)).join('\n')).catch(ignored(log, 'the clipboard refused the copy', 'debug'))
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, flex: 1 }}>

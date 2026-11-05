@@ -1,8 +1,10 @@
 import React from 'react'
-import { parentLabel } from '@nexusmd/core'
+import { parentLabel, rendererLog, ignore } from '@nexusmd/core'
 import { DiffPane } from './diff-pane.jsx'
 import { MISSING_COMMIT } from './use-commit.js'
 import { relativeTime } from './history-pane.jsx'
+
+const log = rendererLog('git', 'commit-detail')
 
 const short = oid => (oid ? oid.slice(0, 7) : '')
 const EMPTY_DIFF = { result: null, files: [], error: null, loading: false }
@@ -16,7 +18,7 @@ function CopyId({ oid }) {
     return () => clearTimeout(t)
   }, [copied])
   const copy = async () => {
-    try { await navigator.clipboard.writeText(oid); setCopied(true) } catch { /* clipboard refused; nothing to undo */ }
+    try { await navigator.clipboard.writeText(oid); setCopied(true) } catch (err) { ignore(log, 'the clipboard refused the copy', err, 'debug') }
   }
   return <button className="btn sm" onClick={copy}>{copied ? 'Copied' : 'Copy hash'}</button>
 }

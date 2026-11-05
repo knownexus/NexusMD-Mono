@@ -3,10 +3,10 @@
 // @nexusmd/core (hashPassword / encrypt / decrypt); here we add the two helpers
 // that touch storage + the per-platform pref-sync, namespaced via the planner
 // runtime (web 'nexusmd', app 'helm') exactly like loadGlobalNotes/saveGlobalNotes.
-import {
-  hashPassword, encryptConfidentialForServer, decryptConfidentialFromServer,
-} from '@nexusmd/core'
+import { hashPassword, encryptConfidentialForServer, decryptConfidentialFromServer, rendererLog, ignore } from '@nexusmd/core'
 import { getPlannerRuntime } from './runtime.js'
+
+const log = rendererLog('planner', 'confidential')
 
 // Re-export the core crypto so callers get the whole confidential surface from
 // one module (web's confidential.jsx stub + the app planner both import here).
@@ -28,13 +28,13 @@ export function loadConfidentialConfig() {
 
 export function saveConfidentialConfig(cfg) {
   const { storage, namespace, pushPref } = getPlannerRuntime()
-  try { storage.setItem(confidentialKey(), JSON.stringify(cfg)) } catch {}
+  try { storage.setItem(confidentialKey(), JSON.stringify(cfg)) } catch (err) { ignore(log, 'the confidential settings could not be saved on this device (storage full or blocked)', err, 'warn') }
   if (cfg.hash) {
     (async () => {
       try {
         const encrypted = await encryptConfidentialForServer(cfg, cfg.hash)
         pushPref?.(`${namespace}.planner.confidential`, JSON.stringify(encrypted))
-      } catch (_) {}
+      } catch (err) { ignore(log, 'the confidential settings could not be encrypted for sync, so they are not synced', err, 'warn') }
     })()
   }
 }

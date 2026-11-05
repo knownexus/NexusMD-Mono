@@ -18,6 +18,9 @@ import {
   wrapContainerKey, unwrapContainerKey,
   generateKeyPair, wrapPrivateKey, unwrapPrivateKey,
 } from './crypto.js'
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('account', 'client')
 
 export class AccountError extends Error {
   /**
@@ -313,8 +316,9 @@ export function createAccountClient({
           // The body is built per attempt so a mid-call refresh revokes the rotated token.
           await authed('POST', '/api/account/logout', { body: (cur) => ({ refreshToken: cur.refreshToken }) })
         }
-      } catch {
+      } catch (err) {
         // Offline or already expired: the local session is still cleared below.
+        ignore(log, 'the server could not revoke the session (offline or already expired); the local session is cleared anyway', err, 'warn')
       }
       await setSession(null)
     },

@@ -2,6 +2,10 @@
 // Without this, any web page could open a link carrying someone else's one-time code and sign the
 // app into the wrong account. The nonce travels in the return link (the server hands the link back
 // untouched after sign-in) and is checked, and used up, when the link comes back.
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('core', 'oauth')
+
 const KEY = 'nexusmd.oauth.pending'
 export const PENDING_TTL_MS = 10 * 60 * 1000
 
@@ -9,7 +13,7 @@ function load() {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {} } catch { return {} }
 }
 function save(all) {
-  try { localStorage.setItem(KEY, JSON.stringify(all)) } catch { /* the sign-in just cannot complete */ }
+  try { localStorage.setItem(KEY, JSON.stringify(all)) } catch (err) { ignore(log, 'the pending sign-in could not be saved, so the sign-in cannot complete', err, 'warn') }
 }
 
 // Starts a sign-in with `provider`; returns the return link to give the server.

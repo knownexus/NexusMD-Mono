@@ -11,6 +11,9 @@
 // state) are left alone on both, except the damaged copies a restore keeps (see isQuarantineKey).
 
 import { isQuarantineKey } from './key-registry.js'
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('account', 'clear')
 
 /**
  * Remove one profile from this device: every `<ns>.p.<pid>.*` key and every secret whose name
@@ -30,7 +33,7 @@ export async function purgeProfileLocal({ storage, secure, namespace, pid }) {
     else if (k.startsWith(secPrefix + keyPrefix)) secrets.push(k.slice(secPrefix.length))
   }
   for (const name of secrets) {
-    try { await secure.remove(name) } catch { /* the stored blob key is removed below */ }
+    try { await secure.remove(name) } catch (err) { ignore(log, 'a profile secret could not be removed from secure storage; its stored blob key is removed anyway', err, 'warn', { name }) }
     storage.removeItem(secPrefix + name)
   }
   for (const k of keys) storage.removeItem(k)
@@ -59,7 +62,7 @@ export async function clearAccountLocalData({ registry, storage, secure, metaKey
     }
   }
   for (const name of secrets) {
-    try { await secure.remove(name) } catch { /* the stored blob key is removed below */ }
+    try { await secure.remove(name) } catch (err) { ignore(log, 'an account secret could not be removed from secure storage; its stored blob key is removed anyway', err, 'warn', { name }) }
     storage.removeItem(registry.secPrefix + name)
   }
   for (const k of keys) storage.removeItem(k)

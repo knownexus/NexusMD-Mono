@@ -932,6 +932,22 @@ describe('createAccountSync', () => {
     expect(cb).toHaveBeenCalledTimes(1)
   })
 
+  it('a listener that throws does not break the pull, and is logged', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, init: { 'nexusmd.p.1.ado.org': 'x' } })
+    await a.sync.seed()
+    const b = device({ srv, ck, deviceId: 'dev-b' })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const second = vi.fn()
+    b.sync.onApplied(() => { throw new Error('listener bug') })
+    b.sync.onApplied(second)
+    await b.sync.pull()
+    expect(second).toHaveBeenCalledTimes(1)   // the next listener still runs
+    expect(warn.mock.calls.map((c) => c[0])).toContain('[sync:account] ignored: a sync listener threw; it must not break sync')
+    warn.mockRestore()
+  })
+
   it('start() syncs on an interval, on visibilitychange and online; overlapping syncs coalesce; stop() detaches', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     const docListeners = {}

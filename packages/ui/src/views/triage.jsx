@@ -7,8 +7,10 @@ import React from 'react';
 
 import { Icon } from '../icons.jsx';
 import { toast } from '../toast.jsx';
-import { timeAgo } from '@nexusmd/core';
+import { timeAgo, rendererLog, ignore } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
+
+const log = rendererLog('work', 'triage')
 
 // Tiny bus so a successful export tells any visible status lines to re-fetch.
 export const TriageEvents = (() => {
@@ -62,7 +64,7 @@ export function TriageStatusLine({ style }) {
     try {
       const r = await fetch('/api/triage/status');
       if (r.ok) setStatus(await r.json());
-    } catch (_) { /* leave previous status */ }
+    } catch (err) { ignore(log, 'the triage status could not be read, so the previous status stays', err, 'debug') }
   }, []);
 
   React.useEffect(() => { refresh(); return TriageEvents.sub(refresh); }, [refresh]);

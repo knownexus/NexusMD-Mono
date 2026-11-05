@@ -1,6 +1,8 @@
 // Git Workspace settings (registered repos, groups, search roots, view state), per NexusMD profile.
-import { ALL_PROJECTS, LEGACY_ALL_PROJECTS } from '@nexusmd/core'
+import { ALL_PROJECTS, LEGACY_ALL_PROJECTS, rendererLog, ignore } from '@nexusmd/core'
 import { getProfileKey } from '@nexusmd/shell-sdk'
+
+const log = rendererLog('git', 'config')
 
 const KEY = () => getProfileKey('git.config')
 export const GIT_CONFIG_EVENT = 'nexusmd:git-config'
@@ -72,7 +74,7 @@ export function setGitConfig(patch) {
   if (current.unsupported != null) return current
   const next = { ...current, ...patch }
   delete next.unsupported
-  try { localStorage.setItem(KEY(), JSON.stringify(next)) } catch {}
+  try { localStorage.setItem(KEY(), JSON.stringify(next)) } catch (err) { ignore(log, 'the git config could not be saved (storage full or blocked)', err, 'warn') }
   window.dispatchEvent(new Event(GIT_CONFIG_EVENT))
   return next
 }

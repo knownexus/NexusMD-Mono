@@ -6,8 +6,10 @@
 // which now flow through the planner runtime, exactly like loadGlobalNotes.
 //
 // DOCX export (JSZip/DOM) stays in each app's part 1; it has no shared seam.
-import { weekKeyToOffset, PLANNER_SECTIONS } from '@nexusmd/core';
+import { weekKeyToOffset, PLANNER_SECTIONS, rendererLog, ignore } from '@nexusmd/core';
 import { getPlannerRuntime } from './runtime.js';
+
+const log = rendererLog('planner', 'storage');
 
 // Bare (un-getProfileKey'd) namespaced key for a week's payload. Storage reads
 // scope it through getProfileKey; the pref-sync push uses the bare key — matching
@@ -22,7 +24,7 @@ export function loadWeekPlanner(year, week) {
   try {
     const raw = storage.getItem(getProfileKey(weekKeyBare(year, week)));
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch (err) { ignore(log, 'a saved planner week could not be read, so it opens empty (saving it replaces the damaged copy)', err, 'warn', { year, week }); }
   return null;
 }
 
@@ -30,7 +32,7 @@ export function saveWeekPlanner(year, week, data, themes) {
   const { storage, getProfileKey, pushPref, onWeekSaved } = getPlannerRuntime();
   const bare = weekKeyBare(year, week);
   const s = JSON.stringify({ data, themes });
-  try { storage.setItem(getProfileKey(bare), s); } catch {}
+  try { storage.setItem(getProfileKey(bare), s); } catch (err) { ignore(log, 'a planner week could not be saved on this device (storage full or blocked)', err, 'warn', { year, week }); }
   pushPref?.(bare, s);
   onWeekSaved?.(year, week);
 }
@@ -38,7 +40,7 @@ export function saveWeekPlanner(year, week, data, themes) {
 export function deleteWeekPlanner(year, week) {
   const { storage, getProfileKey, pushPref } = getPlannerRuntime();
   const bare = weekKeyBare(year, week);
-  try { storage.removeItem(getProfileKey(bare)); } catch {}
+  try { storage.removeItem(getProfileKey(bare)); } catch (err) { ignore(log, 'a planner week could not be removed from this device', err, 'warn', { year, week }); }
   pushPref?.(bare, null);
 }
 
@@ -51,7 +53,7 @@ export function getWeeksWithData() {
       const k = storage.key(i);
       if (k && k.startsWith(weekPrefix)) result.add(k.replace(weekPrefix, ''));
     }
-  } catch {}
+  } catch (err) { ignore(log, 'the saved planner weeks could not be listed', err, 'warn'); }
   return result;
 }
 
@@ -66,7 +68,7 @@ export function isLegacyMigrationDone() {
 export function markLegacyMigrationDone() {
   const { storage, getProfileKey, pushPref } = getPlannerRuntime();
   const flag = migrationFlagBare();
-  try { storage.setItem(getProfileKey(flag), '1'); } catch {}
+  try { storage.setItem(getProfileKey(flag), '1'); } catch (err) { ignore(log, 'the planner migration flag could not be saved, so the migration may run again', err, 'warn'); }
   pushPref?.(flag, '1');
 }
 
@@ -77,7 +79,7 @@ export function checkConfidentialReminders() {
   const { storage, getProfileKey, namespace } = getPlannerRuntime();
   const today = new Date().toISOString().slice(0, 10);
   const dismissed = new Set();
-  try { JSON.parse(storage.getItem(getProfileKey(`${namespace}.planner.reminderDismissed`)) || '[]').forEach(k => dismissed.add(k)); } catch {}
+  try { JSON.parse(storage.getItem(getProfileKey(`${namespace}.planner.reminderDismissed`)) || '[]').forEach(k => dismissed.add(k)); } catch (err) { ignore(log, 'the dismissed reminders could not be read, so none count as dismissed', err, 'warn'); }
   const due = [];
   try {
     const weekPrefix = getProfileKey(`${namespace}.planner.week.`);
@@ -95,8 +97,8 @@ export function checkConfidentialReminders() {
             }
           }
         }
-      } catch {}
+      } catch (err) { ignore(log, 'a planner week could not be read for reminders, so it is skipped', err, 'warn', { week: k }); }
     }
-  } catch {}
+  } catch (err) { ignore(log, 'the saved planner weeks could not be scanned for reminders', err, 'warn'); }
   return due;
 }

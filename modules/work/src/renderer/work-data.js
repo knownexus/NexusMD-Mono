@@ -1,8 +1,5 @@
 import React from 'react'
-import {
-  core, loadCachedAdoData, loadAdoData, makeAdoWorkItemSource, loadCachedJiraData, loadJiraData,
-  loadCachedGithubData, loadGithubData, buildSnapshot, refreshProviders,
-} from '@nexusmd/core'
+import { core, loadCachedAdoData, loadAdoData, makeAdoWorkItemSource, loadCachedJiraData, loadJiraData, loadCachedGithubData, loadGithubData, buildSnapshot, refreshProviders, rendererLog, ignored, ignore } from '@nexusmd/core'
 import { EMPTY_NEXUS_DATA } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { workStorage } from './work-storage.js'
@@ -11,6 +8,8 @@ import { getJiraConfig, isJiraActive, createJiraHttpAdapter } from './jira-clien
 import { getGithubConfig, isGithubConfigured, usesGithubWorkItems, createGithubHttpAdapter } from './github-client.js'
 import { submitNewWorkItem } from './ado-workitem-types.js'
 import { skippedFetches } from './work-screens.js'
+
+const log = rendererLog('work', 'data')
 
 // Manual + timed refresh for every work-item provider. ADO also loads PRs/builds/tests. Each
 // provider records its own outcome; a failure keeps its cached data. `cloud` is the shell's
@@ -63,9 +62,9 @@ export function makeRefreshAllData(cloud) {
     try {
       const ghService = cloud?.makeOAuthService('github')
       if (ghService?.getToken) {
-        await ghService.getToken({ force: true }).catch(() => {})
+        await ghService.getToken({ force: true }).catch(ignored(log, 'the GitHub token could not be refreshed', 'warn'))
       }
-    } catch {}
+    } catch (err) { ignore(log, 'the GitHub service could not be reached for a token refresh', err, 'warn') }
   }
 }
 

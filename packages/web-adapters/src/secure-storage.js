@@ -3,6 +3,10 @@
 // (structured-clone keeps it unexportable); only b64(iv‖ciphertext) is written to
 // localStorage under `${encPrefix}${key}`. get() returns null on any failure.
 
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('core', 'secure-storage')
+
 // Chunked base64 of a byte array. Avoids `btoa(String.fromCharCode(...bytes))`,
 // whose argument spread overflows the call stack for large buffers.
 export function bytesToBase64(bytes) {
@@ -87,10 +91,10 @@ export function createSecureStorageAdapter({ encPrefix, dbName, storeName = 'key
     },
     async set(storageKey, value) {
       try { localStorage.setItem(encPrefix + storageKey, await encrypt(await getKey(), value)) }
-      catch { /* ignore */ }
+      catch (err) { ignore(log, 'a secret could not be saved (storage full or blocked); get() will not find it', err, 'warn') }
     },
     async remove(storageKey) {
-      try { localStorage.removeItem(encPrefix + storageKey) } catch { /* ignore */ }
+      try { localStorage.removeItem(encPrefix + storageKey) } catch (err) { ignore(log, 'a secret could not be removed from browser storage', err, 'warn') }
     },
   }
 }

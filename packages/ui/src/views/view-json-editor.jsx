@@ -3,13 +3,12 @@
 // instead of the original's own hardcoded light palette.
 import React from 'react'
 import { Icon } from '../icons.jsx'
-import {
-  typeOf, setValueAtPath, deleteAtPath, allContainerPaths, highlightSegments, searchPaths,
-  pathKey as searchKey,
-} from '@nexusmd/core'
+import { typeOf, setValueAtPath, deleteAtPath, allContainerPaths, highlightSegments, searchPaths, pathKey as searchKey, rendererLog, ignore } from '@nexusmd/core'
 import { useDocumentAutosave, relativeTime } from './document-store.js'
 import { DocumentsModal } from './documents-modal.jsx'
 import { JsonNodeSheet } from '../json-tree-ui.jsx'
+
+const log = rendererLog('editor', 'json')
 
 const { useState, useEffect, useRef, useCallback, useMemo } = React
 
@@ -35,7 +34,7 @@ function jsonAutoName(text) {
       const nameField = parsed.name ?? parsed.title
       if (typeof nameField === 'string' && nameField.trim()) return nameField.trim().slice(0, 80)
     }
-  } catch { /* fall through to raw-text snippet */ }
+  } catch (err) { ignore(log, 'the error position could not be read, so a raw text snippet is shown', err, 'debug') }
   const snippet = text.trim().replace(/\s+/g, ' ')
   return snippet ? snippet.slice(0, 60) : 'Untitled'
 }
@@ -165,7 +164,7 @@ export function JsonEditorView() {
     try {
       JSON.parse(text)
       pushHistory(text)
-    } catch { /* data/rawError update via the rawText-driven effect above */ }
+    } catch (err) { ignore(log, 'the text is not valid JSON; the raw-text effect reports it', err, 'debug') }
   }
 
   function formatRaw() {

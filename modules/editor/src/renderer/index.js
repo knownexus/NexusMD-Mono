@@ -1,6 +1,9 @@
 import { EditorApp } from './editor-app.jsx'
 import { editorStore } from './editor-singleton.js'
 import { isDirty } from './editor-store.js'
+import { rendererLog, ignored } from '@nexusmd/core'
+
+const log = rendererLog('editor', 'launch')
 
 // What the shell gets from the Editor app (see apps/desktop/src/shell/modules.js).
 //   views     view id -> component, rendered as <View adapters={...} host={...} />
@@ -33,7 +36,7 @@ export default {
       if (paths.length) host.navigate('editor')
     }
     // Files the app was launched with, then any from later launches.
-    Promise.resolve(api.takePending?.()).then(paths => { if (Array.isArray(paths)) open(paths) }).catch(() => {})
+    Promise.resolve(api.takePending?.()).then(paths => { if (Array.isArray(paths)) open(paths) }).catch(ignored(log, 'the files the app was launched with could not be read', 'warn'))
     api.onOpenRequest?.(open)
 
     // Closing the window with unsaved edits asks first.

@@ -1,6 +1,9 @@
 import React from 'react'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import manifest from '../../app.manifest.json'
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('work', 'screens')
 
 // Which of Work's screens are switched off, per profile. A switched-off screen leaves the sidebar
 // and can't be opened (the shell reads this through useOffViews in index.js), its Dashboard widgets
@@ -34,7 +37,7 @@ export function getOffScreens(storage = localStorage) {
 export function setOffScreens(ids, storage = localStorage) {
   const next = [...new Set(ids)].filter(id => known.has(id))
   if (next.length >= WORK_SCREENS.length) return false
-  try { storage.setItem(KEY(), JSON.stringify(next)) } catch { /* kept for this session */ }
+  try { storage.setItem(KEY(), JSON.stringify(next)) } catch (err) { ignore(log, 'the screen choice could not be saved, so it is kept for this session', err, 'debug') }
   cache = next
   window.dispatchEvent(new Event(EVENT))
   return true

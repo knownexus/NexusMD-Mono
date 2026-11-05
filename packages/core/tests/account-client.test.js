@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   createAccountClient, AccountError,
 } from '../src/modules/account/account-client.js'
@@ -512,8 +512,11 @@ describe('authenticated calls and refresh', () => {
       sessionStore: memoryStore({ ...ctx.store.value }),
       minIterations: ITER,
     })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     await offline.logout()
     expect(await offline.getSession()).toBeNull()
+    expect(warn.mock.calls.map((c) => c[0])).toContain('[account:client] ignored: the server could not revoke the session (offline or already expired); the local session is cleared anyway')
+    warn.mockRestore()
   })
 })
 

@@ -6,7 +6,7 @@ import { contentHash } from './hash.js';
 import { encryptSync, decryptSync } from './crypto.js';
 import { badPassphrase } from './errors.js';
 import { CorruptLocalError } from './collections.js';
-import { rendererLog } from '../../log.js';
+import { rendererLog, ignore } from '../../log.js';
 
 const log = rendererLog('sync', 'restore');
 
@@ -25,7 +25,7 @@ export function createSyncRuntime({
     try { const raw = storage.getItem(baseKey(full)); return raw ? JSON.parse(raw) : null; } catch { return null; }
   };
   const writeBase = (full, value) => {
-    try { if (value == null) storage.removeItem(baseKey(full)); else storage.setItem(baseKey(full), JSON.stringify(value)); } catch {}
+    try { if (value == null) storage.removeItem(baseKey(full)); else storage.setItem(baseKey(full), JSON.stringify(value)); } catch (err) { ignore(log, 'the merge base for an item could not be saved (storage full or blocked); the next sync merges without it', err, 'warn'); }
   };
 
   async function syncNow() {

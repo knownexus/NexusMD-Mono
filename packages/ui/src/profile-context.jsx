@@ -20,15 +20,17 @@
 // everywhere (signed in: through the account sync; signed out: here, leaving a tombstone).
 // `profiles` lists live profiles only, `deletedProfiles` the deleted ones; edits bump updatedAt.
 import React from 'react';
-import { encodeBundle, decodeBundle, BUNDLE_EXT, purgeProfileLocal } from '@nexusmd/core';
+import { encodeBundle, decodeBundle, BUNDLE_EXT, purgeProfileLocal, rendererLog, ignore } from '@nexusmd/core';
 import { toast } from './toast.jsx';
+
+const log = rendererLog('profiles', 'context');
 
 const { useState, useCallback, useMemo, useEffect, createContext, useContext, createElement: h } = React;
 
 const ProfileCtx = createContext(null);
 
 const defaultStorage = () => {
-  try { if (typeof localStorage !== 'undefined' && localStorage) return localStorage; } catch (_) { /* sandboxed */ }
+  try { if (typeof localStorage !== 'undefined' && localStorage) return localStorage; } catch (err) { ignore(log, 'browser storage is not available here (sandboxed)', err); }
   return null;
 };
 
@@ -41,7 +43,7 @@ function collectScopedFrom(storage, namespace, id) {
       const k = storage.key(i);
       if (k && k.startsWith(pfx)) data[k.slice(pfx.length)] = storage.getItem(k);
     }
-  } catch (_) {}
+  } catch (err) { ignore(log, 'a profile\'s keys could not be read from browser storage, so its export is incomplete', err, 'warn'); }
   return data;
 }
 
@@ -117,23 +119,23 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
         if (res) {
           const list = res.profiles || [];
           const aid  = res.activeId || '';
-          try { storage.setItem(PROFILES_KEY, JSON.stringify(list)); storage.setItem(ACTIVE_KEY, aid); } catch (_) {}
+          try { storage.setItem(PROFILES_KEY, JSON.stringify(list)); storage.setItem(ACTIVE_KEY, aid); } catch (err) { ignore(log, 'browser storage could not be written (full or blocked)', err, 'warn'); }
           setProfiles(list); setActiveId(aid);
         }
         setLoading(false);
       })
-      .catch(() => { if (!cancelled) setLoading(false); });
+      .catch((err) => { ignore(log, 'the profile store could not be loaded, so the cached profiles are used', err, 'warn'); if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
-  const cacheList = (next) => { try { storage.setItem(PROFILES_KEY, JSON.stringify(next)); } catch (_) {} };
+  const cacheList = (next) => { try { storage.setItem(PROFILES_KEY, JSON.stringify(next)); } catch (err) { ignore(log, 'browser storage could not be written (full or blocked)', err, 'warn'); } };
 
   const activeProfile = profiles.find(p => p.id === activeId) || profiles[0] || null;
 
   const switchProfile = useCallback(async (id) => {
     const ok = store.activate ? await store.activate(id) : true;
     if (!ok) return;
-    try { storage.setItem(ACTIVE_KEY, id); } catch (_) {}
+    try { storage.setItem(ACTIVE_KEY, id); } catch (err) { ignore(log, 'browser storage could not be written (full or blocked)', err, 'warn'); }
     window.location.reload();
   }, [store]);
 
@@ -173,7 +175,7 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
       setProfiles(next);
       if (id === activeId) {
         const other = next.find(p => p.id !== id && isLive(p));
-        try { storage.setItem(ACTIVE_KEY, other.id); } catch (_) {}
+        try { storage.setItem(ACTIVE_KEY, other.id); } catch (err) { ignore(log, 'browser storage could not be written (full or blocked)', err, 'warn'); }
         window.location.reload();
       }
       return;
@@ -185,7 +187,7 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
     cacheList(next);
     setProfiles(next);
     if (id === activeId && next.length > 0) {
-      try { storage.setItem(ACTIVE_KEY, next[0].id); } catch (_) {}
+      try { storage.setItem(ACTIVE_KEY, next[0].id); } catch (err) { ignore(log, 'browser storage could not be written (full or blocked)', err, 'warn'); }
       window.location.reload();
     }
   }, [profiles, all, activeId, store, lifecycle]);
@@ -250,11 +252,11 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
     }
     const p = await createProfile(obj.profile);
     const pfx = scopedPrefix(p.id);
-    Object.entries(obj.data).forEach(([k, v]) => { try { storage.setItem(pfx + k, v); } catch (_) {} });
+    Object.entries(obj.data).forEach(([k, v]) => { try { storage.setItem(pfx + k, v); } catch (err) { ignore(log, 'browser storage could not be written (full or blocked)', err, 'warn'); } });
     toast?.(`Profile "${p.name}" imported.`, 'success');
     if (store.activateOnImport) {
       if (store.activate) await store.activate(p.id);
-      try { storage.setItem(ACTIVE_KEY, p.id); } catch (_) {}
+      try { storage.setItem(ACTIVE_KEY, p.id); } catch (err) { ignore(log, 'browser storage could not be written (full or blocked)', err, 'warn'); }
       window.location.reload();
     }
   }, [createProfile, store, namespace]);
@@ -281,7 +283,7 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
     for (const p of payload.profiles) {
       const pfx = scopedPrefix(p.id);
       for (const [k, v] of Object.entries(p.data || {})) {
-        try { storage.setItem(pfx + k, v); } catch (_) {}
+        try { storage.setItem(pfx + k, v); } catch (err) { ignore(log, 'browser storage could not be written (full or blocked)', err, 'warn'); }
       }
       if (!secure || !p.secrets || typeof p.secrets !== 'object') continue;
       for (const [k, v] of Object.entries(p.secrets)) {
@@ -306,11 +308,11 @@ export function ProfileProvider({ namespace = 'nexusmd', store = {}, storage = d
 export function localUpsertProfiles(storage, namespace, records, activeId) {
   const KEY = `${namespace}.profiles`;
   let list;
-  try { list = JSON.parse(storage.getItem(KEY) || '[]'); } catch (_) { list = []; }
+  try { list = JSON.parse(storage.getItem(KEY) || '[]'); } catch (err) { ignore(log, 'the saved profile list is not valid JSON, so the imported profiles replace it', err, 'warn'); list = []; }
   const byId = new Map(list.map(p => [p.id, p]));
   for (const r of records) byId.set(r.id, { ...byId.get(r.id), ...r });
-  try { storage.setItem(KEY, JSON.stringify([...byId.values()])); } catch (_) {}
-  if (activeId) { try { storage.setItem(`${namespace}.activeProfileId`, activeId); } catch (_) {} }
+  try { storage.setItem(KEY, JSON.stringify([...byId.values()])); } catch (err) { ignore(log, 'browser storage could not be written (full or blocked)', err, 'warn'); }
+  if (activeId) { try { storage.setItem(`${namespace}.activeProfileId`, activeId); } catch (err) { ignore(log, 'browser storage could not be written (full or blocked)', err, 'warn'); } }
 }
 
 export function useProfile() { return useContext(ProfileCtx); }

@@ -8,7 +8,9 @@ import DOMPurify from 'dompurify';
 import { MARKDOWN_CONTENT_CSS, followPreviewLink, renderPreview, useHighlightJs, useMarkdownTextSize, useCtrlWheelTextSize, TextSizeControls } from './markdown-preview.jsx';
 import { MarkdownDiff } from '../md-extras-ui.jsx';
 import { useNexusData } from '../data-context.jsx';
-import { MD_CHEAT_GROUPS, LEARN_ELEMENTS } from '@nexusmd/core';
+import { MD_CHEAT_GROUPS, LEARN_ELEMENTS, rendererLog, ignore } from '@nexusmd/core';
+
+const log = rendererLog('documents', 'viewer')
 export { slugifyHeading, addHeadingAnchors, followPreviewLink } from './markdown-preview.jsx';
 const { useState: useStateMD, useEffect: useEffectMD, useRef: useRefMD, useCallback: useCallbackMD } = React;
 
@@ -375,7 +377,7 @@ function annotatePreview(container) {
   LEARN_ELEMENTS.forEach(({ sel, source }) => {
     if (!sel) return;
     container.querySelectorAll(sel).forEach(el => {
-      try { el.setAttribute('data-md-source', source(el)); } catch {}
+      try { el.setAttribute('data-md-source', source(el)); } catch (err) { ignore(log, 'the source position of an element could not be set', err, 'debug') }
     });
   });
 }
@@ -967,7 +969,7 @@ function MarkdownViewer() {
 
   function handleDeleteDoc(id) {
     const next = docs.filter(d => d.id !== id);
-    try { saveDocs(next, KEYS.docs); } catch {}
+    try { saveDocs(next, KEYS.docs); } catch (err) { ignore(log, 'the documents could not be saved after a delete (storage full or blocked)', err, 'warn') }
     setDocs(next);
     if (currentDocId === id) {
       isLoadingDoc.current = true;
@@ -979,7 +981,7 @@ function MarkdownViewer() {
 
   function handleRenameDoc(id, name) {
     const next = docs.map(d => d.id === id ? { ...d, name: name || null } : d);
-    try { saveDocs(next, KEYS.docs); } catch {}
+    try { saveDocs(next, KEYS.docs); } catch (err) { ignore(log, 'the documents could not be saved after a rename (storage full or blocked)', err, 'warn') }
     setDocs(next);
   }
 

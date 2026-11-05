@@ -20,7 +20,7 @@
 //     local removal is pushed only for an entry that was synced; tweaks halves never delete
 // Network failures never touch local data: every public method resolves to { error }.
 import { singleFlight } from '../sync/single-flight.js'
-import { rendererLog } from '../../log.js'
+import { rendererLog, ignore } from '../../log.js'
 import { encryptJson, decryptJson } from './crypto.js'
 import { AccountError } from './account-client.js'
 import { purgeProfileLocal } from './account-clear.js'
@@ -55,7 +55,7 @@ export function createAccountSync({
 
   const emit = (set, arg) => {
     for (const cb of [...set]) {
-      try { cb(arg) } catch { /* a listener must not break sync */ }
+      try { cb(arg) } catch (err) { ignore(log, 'a sync listener threw; it must not break sync', err, 'warn') }
     }
   }
   const emitApplied = (applied) => { if (applied) emit(appliedListeners, { applied }) }

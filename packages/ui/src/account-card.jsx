@@ -4,6 +4,9 @@
 import React from 'react';
 import { VsCard, VsRow, VsFullRow } from './views/view-settings.jsx';
 import { useAccount, accountErrorMessage } from './account-gate.jsx';
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('account', 'card')
 
 const { useState, useEffect, useCallback } = React;
 
@@ -169,7 +172,7 @@ export function AccountCard({ account }) {
     return (
       <VsCard title="Account" icon="lock" flush={false}>
         <VsRow title="Not signed in" desc="Sign in to sync your settings across devices.">
-          <button className="btn sm" onClick={() => { try { localStorage.removeItem(optOutKey); } catch { /* ignore */ } window.location.reload(); }}>
+          <button className="btn sm" onClick={() => { try { localStorage.removeItem(optOutKey); } catch (err) { ignore(log, 'browser storage is unavailable', err, 'debug') } window.location.reload(); }}>
             Sign in
           </button>
         </VsRow>

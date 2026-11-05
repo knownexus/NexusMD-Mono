@@ -6,7 +6,9 @@
 import React from 'react'
 import { Icon } from './icons.jsx'
 import { useNexusData } from './data-context.jsx'
-import { slugify } from '@nexusmd/core'
+import { slugify, rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('core', 'app-components')
 
 const { useState, useEffect, useRef } = React
 
@@ -38,7 +40,7 @@ export function usePersisted(key, initial, { sync = false, enabled = true } = {}
     if (!enabled) return
     try {
       storage.setItem(k, JSON.stringify(value instanceof Set ? [...value] : value))
-    } catch { /* quota / private mode */ }
+    } catch (err) { ignore(log, 'a choice could not be remembered (storage full or private mode)', err, 'debug') }
   }, [k, value, enabled])
 
   useEffect(() => {
@@ -62,7 +64,7 @@ function readSeenMap(storage, key) {
 }
 
 function writeSeenMap(storage, key, map) {
-  try { storage.setItem(key, JSON.stringify(map)) } catch { /* quota / private mode */ }
+  try { storage.setItem(key, JSON.stringify(map)) } catch (err) { ignore(log, 'a choice could not be remembered (storage full or private mode)', err, 'debug') }
 }
 
 function diffUnseen(items, fingerprint, seenMap) {

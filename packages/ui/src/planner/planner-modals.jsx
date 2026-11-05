@@ -10,11 +10,13 @@
 import React from 'react';
 import { Icon } from '../icons.jsx';
 import { PlModal, PlFld } from '../planner-chips.jsx';
-import { getIsoWeek, getIsoYearWeek, getMondayOfDate, getYearWeekForOffset, PLANNER_SECTIONS } from '@nexusmd/core';
+import { getIsoWeek, getIsoYearWeek, getMondayOfDate, getYearWeekForOffset, PLANNER_SECTIONS, rendererLog, ignore } from '@nexusmd/core';
 import { getPlannerRuntime } from './runtime.js';
 import {
   hashPassword, loadConfidentialConfig, saveConfidentialConfig, decryptConfidentialFromServer,
 } from './planner-confidential.js';
+
+const log = rendererLog('planner', 'modals')
 
 const { useState, useEffect, useMemo, useRef } = React;
 
@@ -27,7 +29,7 @@ export function loadVersions() {
 export function saveVersions(versions) {
   const { storage, getProfileKey, namespace, pushPref } = getPlannerRuntime();
   const s = JSON.stringify(versions);
-  try { storage.setItem(getProfileKey(`${namespace}.planner.versions`), s); } catch (_) {}
+  try { storage.setItem(getProfileKey(`${namespace}.planner.versions`), s); } catch (err) { ignore(log, 'the planner versions could not be saved on this device (storage full or blocked)', err, 'warn') }
   pushPref?.(`${namespace}.planner.versions`, s);
 }
 export function describeSnapshot(data) {
@@ -272,7 +274,7 @@ export function ConfidentialUnlockModal({ open, onClose, onUnlocked }) {
           if (remote.iv && remote.ciphertext)
             remoteDecrypted = await decryptConfidentialFromServer(remote, hash);
         }
-      } catch (_) {}
+      } catch (err) { ignore(log, 'the confidential settings on the server could not be decrypted, so the local copy is kept', err, 'warn') }
 
       const localMatch  = !!cfg.hash && hash === cfg.hash;
       const remoteMatch = !!remoteDecrypted;
@@ -281,7 +283,7 @@ export function ConfidentialUnlockModal({ open, onClose, onUnlocked }) {
         if (remoteMatch) {
           const restored = { ...remoteDecrypted, hash: cfg.hash || hash };
           saveConfidentialConfig(restored);
-          try { storage.removeItem(remoteKey); } catch (_) {}
+          try { storage.removeItem(remoteKey); } catch (err) { ignore(log, 'the saved remote confidential copy could not be removed', err, 'warn') }
         }
         onUnlocked(); handleClose();
       } else {

@@ -1,9 +1,11 @@
 import React from 'react'
-import { normaliseLogTargets, captureFolder, DEVENV_CAPTURE_SINCE } from '@nexusmd/core'
+import { normaliseLogTargets, captureFolder, DEVENV_CAPTURE_SINCE, rendererLog, ignored } from '@nexusmd/core'
 import { useDevenvRunContext } from './devenv-run-context.jsx'
 import { useDevenvQuery } from './use-devenv-query.js'
 import { useDevenvRun } from './use-devenv-run.js'
 import { LogPanel } from './log-panel.jsx'
+
+const log = rendererLog('devenv', 'logs-view')
 
 const ARGV = ['logs', 'targets', '--json']
 const ACTIVE = ['starting', 'running']
@@ -45,7 +47,7 @@ export function LogsView({ adapter }) {
       setOpenError(null)
       // Log runs are non-exclusive, so the old tree's taskkill (10-18 s) need not be waited for;
       // cancel captures the old runId synchronously and the old run's late exit is dropped by runId.
-      if (activeRef.current) Promise.resolve(logs.cancel()).catch(() => {})
+      if (activeRef.current) Promise.resolve(logs.cancel()).catch(ignored(log, 'cancelling the previous log run failed', 'warn'))
       if (!mountedRef.current) return
       await logs.start(argv, { exclusive: false, label: `devenv ${argv.join(' ')}` })
       // The tab was left while the run id was resolving; the unmount cleanup had nothing to cancel yet.

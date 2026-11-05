@@ -7,13 +7,12 @@
 // keeps the views in @nexusmd/ui free of electron/capacitor/ASP.NET coupling.
 
 import React from 'react'
-import {
-  effectiveNeedsMe as coreEffectiveNeedsMe,
-  effectiveTeamActivity as coreEffectiveTeamActivity,
-} from '@nexusmd/core'
+import { effectiveNeedsMe as coreEffectiveNeedsMe, effectiveTeamActivity as coreEffectiveTeamActivity, rendererLog, ignore } from '@nexusmd/core'
 import { setPlannerRuntime } from './planner/runtime.js'
 import { apiWorkItemSource, setWorkItemSource } from './views/work-item-source.js'
 import { apiBuildSource } from './views/build-source.js'
+
+const log = rendererLog('core', 'data-context')
 
 // Shape every consumer can rely on even before data has loaded.
 export const EMPTY_NEXUS_DATA = {
@@ -42,7 +41,7 @@ export const EMPTY_NEXUS_DATA = {
 function defaultStorage() {
   try {
     if (typeof localStorage !== 'undefined' && localStorage) return localStorage
-  } catch { /* access can throw in sandboxed contexts */ }
+  } catch (err) { ignore(log, 'browser storage is not available here (sandboxed)', err, 'debug') }
   const mem = new Map()
   return {
     getItem: (k) => (mem.has(k) ? mem.get(k) : null),

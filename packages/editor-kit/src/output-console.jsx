@@ -1,6 +1,8 @@
 import React from 'react'
-import { ansiToSpans, stripAnsi } from '@nexusmd/core'
+import { ansiToSpans, stripAnsi, rendererLog, ignore, ignored } from '@nexusmd/core'
 import { ANSI_COLORS } from './run-drawer.jsx'
+
+const log = rendererLog('editor', 'output-console')
 
 const STICK_PX = 24
 const SIDE_KEY = 'nexusmd.outputSide'
@@ -77,7 +79,7 @@ export function OutputConsole({ lines = [], running = null, activity = [], onCle
     setSizes(cur => {
       const next = { ...cur }
       if (value == null) delete next[key]; else next[key] = value
-      try { localStorage.setItem(SIZE_KEY, JSON.stringify(next)) } catch { /* not remembered */ }
+      try { localStorage.setItem(SIZE_KEY, JSON.stringify(next)) } catch (err) { ignore(log, 'a console choice could not be remembered', err, 'debug') }
       return next
     })
   }
@@ -114,7 +116,7 @@ export function OutputConsole({ lines = [], running = null, activity = [], onCle
   const toggleSide = () => {
     const next = side === 'right' ? 'bottom' : 'right'
     setSide(next)
-    try { localStorage.setItem(SIDE_KEY, next) } catch { /* not remembered */ }
+    try { localStorage.setItem(SIDE_KEY, next) } catch (err) { ignore(log, 'a console choice could not be remembered', err, 'debug') }
   }
   const minimise = () => { setOpen(false); setMinimised(true); setUnread(0) }
   const restore = () => { stick.current = true; setAtBottom(true); setOpen(true); setMinimised(false); setUnread(0) }
@@ -128,7 +130,7 @@ export function OutputConsole({ lines = [], running = null, activity = [], onCle
   const entries = [...activity].reverse()
   const copy = () => {
     const text = tab === 'output' ? lines.map(l => stripAnsi(l.text)).join('\n') : entries.map(e => `${time(e.at)} ${e.ok ? '✓' : '✗'} ${e.label} — ${e.summary}\n${e.detail ?? ''}`).join('\n')
-    navigator.clipboard?.writeText(text).catch(() => {})
+    navigator.clipboard?.writeText(text).catch(ignored(log, 'the clipboard refused the copy', 'debug'))
   }
   const has = lines.length > 0 || activity.length > 0 || !!running
   // The last entry of each run with a failure carries its Retry failed.

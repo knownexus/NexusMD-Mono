@@ -9,11 +9,13 @@ import React from 'react';
 import { renderContent, sanitizeHtml, mdToHtml, stripStructural } from './render-content.js';
 import { Icon } from '../icons.jsx';
 import { toast } from '../toast.jsx';
-import { timeAgo, slugify, sourceOfId } from '@nexusmd/core';
+import { timeAgo, slugify, sourceOfId, rendererLog, ignore } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 import { getWorkItemSource } from './work-item-source.js';
 import { useProjectAreas } from '../project-areas.js';
 import { TagInput, AreaTreePicker } from './wi-field-pickers.jsx';
+
+const log = rendererLog('work', 'detail')
 
 // Prefetch cache: keyed by `${id}:${project||''}`, TTL 30s.
 // WorkItemDetail checks this before fetching; prefetchWorkItem populates it on hover.
@@ -31,7 +33,7 @@ async function prefetchWorkItem(id, project) {
       source.loadComments(id, project).catch(() => []),
     ]);
     _wiPrefetch.set(key, { detail, comments, ts: Date.now() });
-  } catch (_) {}
+  } catch (err) { ignore(log, 'a work item could not be prefetched, so it loads when opened', err, 'debug') }
 }
 
 // ── HtmlField ─────────────────────────────────────────────────────────────────

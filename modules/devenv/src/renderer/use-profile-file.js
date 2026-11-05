@@ -1,5 +1,7 @@
 import React from 'react'
-import { validateProfileFile, detectEol, toLf, fromLf } from '@nexusmd/core'
+import { validateProfileFile, detectEol, toLf, fromLf, rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('devenv', 'profile-file')
 
 const EMPTY = { status: 'loading', text: '', saved: '', eol: '\n', bom: false, stamp: null, missing: false, error: null, conflict: null, saving: false, restored: false }
 
@@ -54,7 +56,7 @@ export function useProfileFile({ adapter, config, path }) {
     const pending = pendingSaves.get(key)
     if (pending) {
       setS(p => ({ ...p, status: 'loading' }))
-      try { await pending } catch { /* the save reports its own failure */ }
+      try { await pending } catch (err) { ignore(log, 'the save reports its own failure', err, 'debug') }
       if (stale()) return
     }
     if (discardDraft) dropDraft(key)
@@ -71,7 +73,7 @@ export function useProfileFile({ adapter, config, path }) {
         } else if (d.missing || r.stamp !== d.stamp) {
           setS(p => ({ ...p, conflict: { stamp: r.stamp } }))
         }
-      } catch { /* the draft stays on screen; Save reports a real problem */ }
+      } catch (err) { ignore(log, 'the draft stays on screen; Save reports a real problem', err, 'debug') }
       return
     }
     setS(p => ({ ...p, status: 'loading', error: null, conflict: null }))

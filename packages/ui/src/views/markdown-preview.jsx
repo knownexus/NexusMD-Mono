@@ -5,6 +5,9 @@ import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { isDarkPalette } from '../themes.js';
 import { useNexusData } from '../data-context.jsx';
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('documents', 'preview')
 
 const HLJS_SCRIPT = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js";
 const HLJS_LIGHT  = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css";
@@ -90,7 +93,7 @@ export function followPreviewLink(e, container, {
   const href = a.getAttribute('href');
   if (href.startsWith('#')) {
     let anchor = href.slice(1);
-    try { anchor = decodeURIComponent(anchor); } catch { /* keep it as written */ }
+    try { anchor = decodeURIComponent(anchor); } catch (err) { ignore(log, 'the setting could not be applied, so the text is kept as written', err, 'debug') }
     const heading = [...container.querySelectorAll('[data-anchor]')]
       .find(h => h.getAttribute('data-anchor') === anchor.toLowerCase());
     heading?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -182,7 +185,7 @@ export function useMarkdownTextSize() {
     return () => { window.removeEventListener(TEXT_SIZE_EVENT, sync); window.removeEventListener('storage', sync); };
   }, [key]);
   const setSize = React.useCallback(next => {
-    try { localStorage.setItem(key, String(next)); } catch { /* still changes for this session's views */ }
+    try { localStorage.setItem(key, String(next)); } catch (err) { ignore(log, 'the setting could not be saved, so it only lasts for this session', err, 'debug') }
     setLocal(next);
     window.dispatchEvent(new Event(TEXT_SIZE_EVENT));
   }, [key]);

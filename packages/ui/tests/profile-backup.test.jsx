@@ -123,6 +123,22 @@ describe('profile backup export/import (provider)', () => {
     expect(list.map(p => `${p.id}:${p.name}`)).toEqual(['a:A', 'b:B2', 'c:C'])
     expect(storage.getItem('nexusmd.activeProfileId')).toBe('c')
   })
+
+  it('says so when the saved list is not valid JSON (the imported profiles replace it) or storage is full', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const storage = makeStorage({ 'nexusmd.profiles': '{ torn' })
+    localUpsertProfiles(storage, 'nexusmd', [{ id: 'c', name: 'C' }], null)
+    expect(JSON.parse(storage.getItem('nexusmd.profiles')).map(p => p.id)).toEqual(['c'])
+    const said = warn.mock.calls.map(c => c[0])
+    expect(said).toContain('[profiles:context] ignored: the saved profile list is not valid JSON, so the imported profiles replace it')
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('torn')   // never the saved text
+
+    warn.mockClear()
+    const full = { getItem: () => '[]', setItem: () => { throw new Error('QuotaExceededError') } }
+    localUpsertProfiles(full, 'nexusmd', [{ id: 'c' }], 'c')
+    expect(warn.mock.calls.map(c => c[0])).toContain('[profiles:context] ignored: browser storage could not be written (full or blocked)')
+    warn.mockRestore()
+  })
 })
 
 describe('BackupRestoreCard', () => {
