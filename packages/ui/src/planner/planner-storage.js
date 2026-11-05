@@ -8,6 +8,7 @@
 // DOCX export (JSZip/DOM) stays in each app's part 1; it has no shared seam.
 import { weekKeyToOffset, PLANNER_SECTIONS, rendererLog, ignore } from '@nexusmd/core';
 import { getPlannerRuntime } from './runtime.js';
+import { readJsonKeepingDamaged } from './damaged-copy.js';
 
 const log = rendererLog('planner', 'storage');
 
@@ -20,12 +21,13 @@ function weekKeyBare(year, week) {
 }
 
 export function loadWeekPlanner(year, week) {
-  const { storage, getProfileKey } = getPlannerRuntime();
-  try {
-    const raw = storage.getItem(getProfileKey(weekKeyBare(year, week)));
-    if (raw) return JSON.parse(raw);
-  } catch (err) { ignore(log, 'a saved planner week could not be read, so it opens empty (saving it replaces the damaged copy)', err, 'warn', { year, week }); }
-  return null;
+  const { storage, getProfileKey, namespace } = getPlannerRuntime();
+  const bare = weekKeyBare(year, week);
+  return readJsonKeepingDamaged({
+    storage, getProfileKey, namespace, log, storageKey: getProfileKey(bare),
+    collection: 'planner', itemKey: bare.slice(`${namespace}.planner.week.`.length), empty: null,
+    what: 'a saved planner week could not be read, so it opens empty', data: { year, week },
+  });
 }
 
 export function saveWeekPlanner(year, week, data, themes) {

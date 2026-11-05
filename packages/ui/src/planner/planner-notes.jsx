@@ -5,6 +5,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { useNexusData } from '../data-context.jsx';
 import { getPlannerRuntime } from './runtime.js';
+import { readJsonKeepingDamaged } from './damaged-copy.js';
 import { rendererLog, ignore } from '@nexusmd/core'
 
 const log = rendererLog('planner', 'notes')
@@ -217,12 +218,12 @@ function globalNotesKey() {
   return getProfileKey(`${namespace}.planner.globalNotes`);
 }
 export function loadGlobalNotes() {
-  const { storage } = getPlannerRuntime();
-  try {
-    const raw = storage.getItem(globalNotesKey());
-    if (raw) return JSON.parse(raw);
-  } catch (err) { ignore(log, 'the saved global notes could not be read, so they open empty', err, 'warn') }
-  return [];
+  const { storage, getProfileKey, namespace } = getPlannerRuntime();
+  return readJsonKeepingDamaged({
+    storage, getProfileKey, namespace, log, storageKey: globalNotesKey(),
+    collection: 'notes', itemKey: 'data', empty: [],
+    what: 'the saved global notes could not be read, so they open empty',
+  });
 }
 export function saveGlobalNotes(notes) {
   const { storage, namespace, pushPref } = getPlannerRuntime();

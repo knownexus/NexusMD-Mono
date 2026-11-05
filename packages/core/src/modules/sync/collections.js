@@ -15,19 +15,23 @@ const QUARANTINE_KEEP = 3; // copies kept per item; older ones go
  * The key is inside the profile (`<ns>.p.<pid>.sync.quarantine.<collection>.<item>.<time>`), so deleting the
  * profile deletes its copies (the damaged text can be private), and it is on the registry's skip list, so the
  * account sync and the settings file never carry it. No collection lists it as an item. Only the newest few
- * copies of an item are kept.
+ * copies of an item are kept, and text identical to a copy already kept is not copied again.
  */
-function quarantine(storage, getProfileKey, namespace, collection, itemKey, storageKey) {
+export function quarantine(storage, getProfileKey, namespace, collection, itemKey, storageKey) {
   const raw = storage.getItem(storageKey);
   if (raw == null) return null;
   const prefix = getProfileKey(`${namespace}.sync.quarantine.${collection}.${itemKey}.`);
-  const to = `${prefix}${Date.now()}`;
-  storage.setItem(to, raw);
-  const copies = [];
+  const existing = [];
   for (let i = 0; i < storage.length; i++) {
     const k = storage.key(i);
-    if (typeof k === 'string' && k.startsWith(prefix)) copies.push(k);
+    if (typeof k === 'string' && k.startsWith(prefix)) existing.push(k);
   }
+  // The same damaged text again (a view that re-reads it each time it opens) is not a new copy.
+  const same = existing.find((k) => storage.getItem(k) === raw);
+  if (same) return same;
+  const to = `${prefix}${Date.now()}`;
+  storage.setItem(to, raw);
+  const copies = [...existing, to];
   copies.sort((a, b) => Number(a.slice(prefix.length)) - Number(b.slice(prefix.length)));
   for (const old of copies.slice(0, Math.max(0, copies.length - QUARANTINE_KEEP))) {
     try { storage.removeItem(old); } catch (err) { ignore(log, 'removing an old backup copy', err); }

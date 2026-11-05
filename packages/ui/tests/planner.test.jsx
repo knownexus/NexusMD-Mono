@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import React from 'react'
+import { isQuarantineKey } from '../../core/src/modules/account/key-registry.js'
 import {
   NexusDataProvider, GlanceView, ColInput,
   loadGlobalNotes, saveGlobalNotes,
@@ -135,13 +136,95 @@ describe('promoted planner storage helpers (shared web + app)', () => {
     expect(getWeeksWithData().size).toBe(0)
   })
 
+  describe('a damaged saved week or notes list is kept aside before anything replaces it', () => {
+    const quarantined = (storage) => [...Array(storage.length)].map((_, i) => storage.key(i)).filter(k => k.includes('.sync.quarantine.'))
+    const setup = () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const storage = makeEnumerableStorage()
+      withProvider(<div />, { storage, getProfileKey: (k) => `p.${k}`, namespace: 'helm' })
+      return storage
+    }
+    afterEach(() => vi.restoreAllMocks())
+
+    it('week: the damaged text survives opening the week empty and saving over it', () => {
+      const storage = setup()
+      storage.setItem('p.helm.planner.week.2026-W26', '{"data":{"tasks":[{"id":"mine"')   // a torn write
+      expect(loadWeekPlanner(2026, 26)).toBeNull()                                          // opens empty, as before
+      const kept = quarantined(storage)
+      expect(kept).toHaveLength(1)
+      expect(kept[0].startsWith('p.helm.sync.quarantine.planner.2026-W26.')).toBe(true)     // where sync restore keeps its copies
+      expect(storage.getItem(kept[0])).toBe('{"data":{"tasks":[{"id":"mine"')
+
+      saveWeekPlanner(2026, 26, { tasks: [] }, {})                                          // the person starts the week afresh
+      expect(storage.getItem(kept[0])).toBe('{"data":{"tasks":[{"id":"mine"')               // the old text is still there
+      expect(JSON.parse(storage.getItem('p.helm.planner.week.2026-W26')).data.tasks).toEqual([])
+    })
+
+    it('week: opening the same damaged week again does not pile up copies', () => {
+      const storage = setup()
+      storage.setItem('p.helm.planner.week.2026-W26', '{ torn')
+      for (let i = 0; i < 5; i++) loadWeekPlanner(2026, 26)
+      expect(quarantined(storage)).toHaveLength(1)
+    })
+
+    it('week: says whether a copy was kept, and never logs the text', () => {
+      const storage = setup()
+      storage.setItem('p.helm.planner.week.2026-W26', '{ secret-torn')
+      loadWeekPlanner(2026, 26)
+      const msgs = console.warn.mock.calls.map(c => c[0])
+      expect(msgs).toContain('[planner:storage] ignored: a saved planner week could not be read, so it opens empty; the damaged text is kept aside')
+      expect(JSON.stringify(console.warn.mock.calls)).not.toContain('secret-torn')
+    })
+
+    it('week: when no copy can be kept it still opens empty, and says there is no copy', () => {
+      const storage = setup()
+      storage.setItem('p.helm.planner.week.2026-W26', '{ torn')
+      const real = storage.setItem
+      storage.setItem = () => { throw new Error('QuotaExceededError') }
+      expect(loadWeekPlanner(2026, 26)).toBeNull()
+      storage.setItem = real
+      expect(console.warn.mock.calls.map(c => c[0])).toContain('[planner:storage] ignored: a saved planner week could not be read, so it opens empty; no copy of the damaged text could be kept')
+    })
+
+    it('week: an absent or valid week keeps nothing', () => {
+      const storage = setup()
+      expect(loadWeekPlanner(2026, 30)).toBeNull()
+      saveWeekPlanner(2026, 31, { tasks: [] }, {})
+      expect(loadWeekPlanner(2026, 31)).not.toBeNull()
+      expect(quarantined(storage)).toHaveLength(0)
+    })
+
+    it('notes: the damaged list survives the next save', () => {
+      const storage = setup()
+      storage.setItem('p.helm.planner.globalNotes', '[{"id":"n1","body":"half')
+      expect(loadGlobalNotes()).toEqual([])
+      const kept = quarantined(storage)
+      expect(kept).toHaveLength(1)
+      expect(kept[0].startsWith('p.helm.sync.quarantine.notes.data.')).toBe(true)
+      expect(storage.getItem(kept[0])).toBe('[{"id":"n1","body":"half')
+      saveGlobalNotes([{ id: 'n2', body: 'new' }])
+      expect(storage.getItem(kept[0])).toBe('[{"id":"n1","body":"half')
+    })
+
+    it('the copies are on the sync skip list, so they never leave the device', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const storage = makeEnumerableStorage()
+      withProvider(<div />, { storage, getProfileKey: (k) => k.replace(/^nexusmd./, 'nexusmd.p.1.'), namespace: 'nexusmd' })
+      storage.setItem('nexusmd.p.1.planner.week.2026-W26', '{ torn')
+      loadWeekPlanner(2026, 26)
+      const kept = quarantined(storage)
+      expect(kept).toHaveLength(1)
+      expect(isQuarantineKey(kept[0])).toBe(true)
+    })
+  })
+
   it('says when a saved week cannot be read or saved, and never logs its text', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const storage = makeEnumerableStorage()
     withProvider(<div />, { storage, getProfileKey: (k) => k, namespace: 'helm' })
     storage.setItem('helm.planner.week.2026-W26', '{ torn')
     expect(loadWeekPlanner(2026, 26)).toBeNull()   // opens empty, as before
-    expect(warn.mock.calls.map(c => c[0])).toContain('[planner:storage] ignored: a saved planner week could not be read, so it opens empty (saving it replaces the damaged copy)')
+    expect(warn.mock.calls.map(c => c[0])).toContain('[planner:storage] ignored: a saved planner week could not be read, so it opens empty; the damaged text is kept aside')
     expect(JSON.stringify(warn.mock.calls)).not.toContain('torn')
 
     warn.mockClear()
