@@ -19,6 +19,8 @@ query, an API client request, a planner edit.
 - A **Record** control in the log viewer (next to Go live). While recording, everything is captured in full detail
   across the whole app (windows and main process, every module). Stop ends it and saves it.
 - A saved **recording** that can be reopened later, listed in the viewer, and deleted.
+- **Export**: a recording can be saved out as a single file (and a file like it opened again), complete and unaltered,
+  for the person's own use.
 - The recording opens as a **tree**. The top level is the person's actions ("Clicked Merge on PR 4411"). Under an
   action, in order: the functions it caused, each expandable to the functions it called in turn. A function node
   shows its arguments, its return value (or the error it threw), how long it took, and where it is in the source
@@ -36,7 +38,8 @@ query, an API client request, a planner edit.
 
 - Not a profiler. No sampling, flame graphs or performance analysis. Duration is shown only because "when" matters.
 - Not a debugger. No pausing, no breakpoints, no stepping, and no way to change anything.
-- No remote or shared recordings. A recording stays on the machine it was made on.
+- No sending or sharing of recordings by the app. Export writes a file the person keeps; the app does not upload
+  it, attach it anywhere, or strip or warn about its contents (it is for the person's own use).
 - Third-party library internals are not traced (React, the editor, the markdown library and the like). Calls from our
   code into them are visible as calls, and their results as return values.
 - Local variables that are not an argument, a return value, a thrown error, a request, a response or a log field are
@@ -45,8 +48,9 @@ query, an API client request, a planner edit.
 ## Anti-goals (a failure even if it technically works)
 
 - Slowing the app down when nobody is recording. The cost when not recording must be negligible.
-- A recording that leaks secrets. Tokens, passwords, keys, authorization headers and the like must be hidden the way
-  the existing logs hide them, in arguments, return values, requests and responses alike.
+- A recording that leaks secrets it could have recognised. Tokens, passwords, keys, authorization headers and the like
+  must be hidden the way the existing logs hide them, in arguments, return values, requests and responses alike.
+  (An unusual secret that matches no rule is shown; that is accepted.)
 - A recording that grinds the app to a halt or fills the disk. It must stop cleanly at a size limit and say so.
 - A tree that is unreadable because of noise. React's render and hook functions, and other functions that fire
   constantly without meaning, must not bury the action the person is looking for.
@@ -60,7 +64,10 @@ query, an API client request, a planner edit.
 - Function arguments and return values are required, in a nested call tree, in order. A flat list is not enough.
 - The main process is **in scope**, not a later extra: "anything in the app" includes git, devenv, database and the
   API client, whose work happens there.
-- Secrets are hidden as in the existing logs (their stated expectation, and an anti-goal above).
+- Secrets are hidden as in the existing logs (their stated expectation, and an anti-goal above). A value that cannot be
+  recognised as a secret is **shown**: a recording keeps request and response bodies by default, because the person
+  needs them to find a cause. There is no switch that hides bodies.
+- Recordings are for the person's own use only. Export keeps everything, with no warning and no data-minimising mode.
 
 ## The builder's calls that the person has not seen (change them if wrong)
 
