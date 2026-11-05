@@ -5,7 +5,7 @@ const SECRET_KEY = /pass(word|wd)?|secret|token|authorization|api[-_ ]?key|cooki
 const REDACTED = '[redacted]';
 // `"…key containing a secret word…": "value"` in a piece of JSON text that is not whole JSON. The same words as
 // SECRET_KEY, so the two cannot drift apart; the value may hold escaped quotes.
-const JSON_SECRET_PAIR = new RegExp(String.raw`("[^"]*(?:${SECRET_KEY.source})[^"]*"\s*:\s*)"(?:[^"\\]|\\.)*"`, 'gi');
+const JSON_SECRET_PAIR = new RegExp(String.raw`("[^"\n]{0,200}(?:${SECRET_KEY.source})[^"\n]{0,200}"\s*:\s*)"(?:[^"\\]|\\.)*"`, 'gi');
 
 // V8 quotes the start of the text a failed JSON.parse choked on: `Unexpected token 's', "secret torn" is not
 // valid JSON`. That text is whatever was being parsed (a note, a profile, a response), so it is dropped
@@ -16,7 +16,10 @@ const JSON_QUOTE_GONE = 'not valid JSON (the text that failed to parse is not lo
 
 // JSON text that parses is redacted as a value (every key SECRET_KEY knows, any depth, escapes and all), then written
 // back out compact. Text that is not whole JSON (a fragment, a log line with JSON in it) goes through the patterns below.
-const MAX_JSON_TEXT = 1000000;
+// Nothing downstream keeps more than a few KB of any one value (entry.cjs caps them, recordings cut them), so text past
+// this length is dropped before the patterns run: a huge string must not be able to make redaction slow.
+const MAX_REDACT_INPUT = 200000;
+const MAX_JSON_TEXT = MAX_REDACT_INPUT;
 function redactJsonText(text) {
   const t = text.trim();
   if (t.length > MAX_JSON_TEXT || (t[0] !== '{' && t[0] !== '[')) return null;
@@ -25,7 +28,8 @@ function redactJsonText(text) {
 
 /** Text with passwords, tokens and credentials in URLs, headers and connection strings blanked out. */
 function redactString(s) {
-  const text = String(s);
+  let text = String(s);
+  if (text.length > MAX_REDACT_INPUT) text = `${text.slice(0, MAX_REDACT_INPUT)}…(+${text.length - MAX_REDACT_INPUT} chars not shown)`;
   const json = redactJsonText(text);
   if (json !== null) return json;
   return text

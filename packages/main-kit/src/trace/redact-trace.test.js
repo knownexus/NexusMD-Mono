@@ -136,3 +136,17 @@ describe('redactString: JSON text', () => {
     expect(out.d.body).not.toContain('hush-value')
   })
 })
+
+describe('redactString: hostile input', () => {
+  it('a megabytes-long string full of quotes is redacted quickly and comes back bounded', () => {
+    const hostile = ('"' + 'x'.repeat(300)).repeat(4000)   // ~1.2 MB, 4000 quote starts with long quote-free runs
+    const t0 = Date.now()
+    const out = redactString(hostile)
+    expect(Date.now() - t0).toBeLessThan(1500)
+    expect(out.length).toBeLessThan(250000)
+  })
+
+  it('a secret key with an ordinary-length name is still caught next to such text', () => {
+    expect(redactString('junk "x" ... "api_key":"ABCD1234" tail')).not.toContain('ABCD1234')
+  })
+})
