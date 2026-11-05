@@ -15,24 +15,26 @@ const JSON_QUOTE = /Unexpected token [\s\S]*?is not valid JSON/g;
 const JSON_QUOTE_GONE = 'not valid JSON (the text that failed to parse is not logged)';
 
 // JSON text that parses is redacted as a value (every key SECRET_KEY knows, any depth, escapes and all), then written
-// back out compact. Text that is not whole JSON (a fragment, a log line with JSON in it) goes through the patterns below.
-// Nothing downstream keeps more than a few KB of any one value (entry.cjs caps them, recordings cut them), so text past
-// this length is dropped before the patterns run: a huge string must not be able to make redaction slow.
+// back out compact. That check always sees the whole text, up to MAX_JSON_TEXT; JSON text bigger than that is hidden
+// outright rather than passed on half-checked. Text that is not whole JSON (a fragment, a log line with JSON in it)
+// goes through the patterns below.
+//
+// Nothing downstream keeps more than a few KB of any one value (entry.cjs caps them, recordings cut them), so what is
+// kept is cut to MAX_REDACT_INPUT, and the patterns only ever run on that: a huge string must not be able to make
+// redaction slow.
 const MAX_REDACT_INPUT = 200000;
-const MAX_JSON_TEXT = MAX_REDACT_INPUT;
-function redactJsonText(text) {
-  const t = text.trim();
-  if (t.length > MAX_JSON_TEXT || (t[0] !== '{' && t[0] !== '[')) return null;
-  try { return JSON.stringify(redactValue(JSON.parse(t))); } catch { return null; }
-}
+const MAX_JSON_TEXT = 1000000;
+const cutText = (text) => (text.length > MAX_REDACT_INPUT ? `${text.slice(0, MAX_REDACT_INPUT)}…(+${text.length - MAX_REDACT_INPUT} chars not shown)` : text);
 
 /** Text with passwords, tokens and credentials in URLs, headers and connection strings blanked out. */
 function redactString(s) {
-  let text = String(s);
-  if (text.length > MAX_REDACT_INPUT) text = `${text.slice(0, MAX_REDACT_INPUT)}…(+${text.length - MAX_REDACT_INPUT} chars not shown)`;
-  const json = redactJsonText(text);
-  if (json !== null) return json;
-  return text
+  const whole = String(s);
+  const t = whole.trim();
+  if (t[0] === '{' || t[0] === '[') {
+    if (t.length > MAX_JSON_TEXT) return `[redacted: ${t.length} characters of JSON text, too large to check]`;
+    try { return cutText(JSON.stringify(redactValue(JSON.parse(t)))); } catch { /* not whole JSON: the patterns below */ }
+  }
+  return cutText(whole)
     .replace(JSON_QUOTE, JSON_QUOTE_GONE)
     // scheme://user:password@host
     .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)([^\s/@:]+):([^\s/@]+)@/gi, `$1$2:${REDACTED}@`)

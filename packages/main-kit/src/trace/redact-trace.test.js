@@ -146,6 +146,21 @@ describe('redactString: hostile input', () => {
     expect(out.length).toBeLessThan(250000)
   })
 
+  it('a long JSON text is still checked as JSON: a secret object near the start is hidden however long the text is', () => {
+    const body = '{"credentials":{"pin":"9876"},"pad":"' + 'x'.repeat(250000) + '"}'
+    const out = redactString(body)
+    expect(out).not.toContain('9876')
+    expect(out.length).toBeLessThan(260000)
+  })
+
+  it('JSON text too large to check is hidden, not passed on half-checked', () => {
+    const body = '{"credentials":{"pin":"9876"},"pad":"' + 'x'.repeat(1100000) + '"}'
+    const out = redactString(body)
+    expect(out).not.toContain('9876')
+    expect(out.length).toBeLessThan(200)
+    expect(out).toMatch(/too large to check/)
+  })
+
   it('a secret key with an ordinary-length name is still caught next to such text', () => {
     expect(redactString('junk "x" ... "api_key":"ABCD1234" tail')).not.toContain('ABCD1234')
   })
