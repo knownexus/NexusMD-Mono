@@ -237,6 +237,32 @@ describe('promoted planner storage helpers (shared web + app)', () => {
     warn.mockRestore()
   })
 
+  describe('a week that could not be saved on this device is not sent anywhere', () => {
+    const setup = () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const storage = makeEnumerableStorage()
+      const pushPref = vi.fn(); const onWeekSaved = vi.fn()
+      withProvider(<div />, { storage, getProfileKey: (k) => k, namespace: 'helm', pushPref, plannerOnWeekSaved: onWeekSaved })
+      return { storage, pushPref, onWeekSaved }
+    }
+    afterEach(() => console.warn.mockRestore())
+
+    it('does not push the week or fire onWeekSaved when the local save fails, and says so to the caller', () => {
+      const { storage, pushPref, onWeekSaved } = setup()
+      storage.setItem = () => { throw new Error('QuotaExceededError') }
+      expect(saveWeekPlanner(2026, 27, { tasks: [{ id: 'r1' }] }, {})).toBe(false)
+      expect(pushPref).not.toHaveBeenCalled()
+      expect(onWeekSaved).not.toHaveBeenCalled()
+    })
+
+    it('still pushes, fires onWeekSaved and reports success when the save works', () => {
+      const { pushPref, onWeekSaved } = setup()
+      expect(saveWeekPlanner(2026, 27, { tasks: [] }, {})).toBe(true)
+      expect(pushPref).toHaveBeenCalledWith('helm.planner.week.2026-W27', expect.any(String))
+      expect(onWeekSaved).toHaveBeenCalledWith(2026, 27)
+    })
+  })
+
   it('legacy-migration flag round-trips under the namespaced key', () => {
     const storage = makeEnumerableStorage()
     withProvider(<div />, { storage, getProfileKey: (k) => `p.${k}`, namespace: 'helm' })
