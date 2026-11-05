@@ -57,6 +57,7 @@ export function SyncStatusCard() {
         if (s?.conflicts) notes.push(plural(s.conflicts, 'conflict'));
         if (s?.tooLarge?.length) notes.push(`${plural(s.tooLarge.length, 'item')} too large to sync`);
         if (s?.quota?.length) notes.push(`${plural(s.quota.length, 'item')} over the account's storage limit`);
+        if (s?.unreadable?.length) notes.push(`${plural(s.unreadable.length, 'item')} could not be read on this device`);
         return (
           <div key={p.id} className="set-row" data-testid={`sync-row-${p.id}`}>
             <div className="info">
@@ -71,6 +72,16 @@ export function SyncStatusCard() {
           </div>
         );
       })}
+      {status?.unreadable?.length > 0 && (
+        <div className="set-row" data-testid="sync-unreadable">
+          <div className="info">
+            <div className="t" style={{ color: 'var(--danger, #c33)' }}>
+              {plural(status.unreadable.length, 'item')} that {status.unreadable.length === 1 ? 'belongs' : 'belong'} to no profile could not be read on this device
+            </div>
+            <div className="d">{status.unreadable.length === 1 ? 'It was' : 'They were'} left alone, so the damage is not copied to your account or your other devices.</div>
+          </div>
+        </div>
+      )}
       {msg && <div className="set-row" role="alert"><div className="info"><div className="d">{msg}</div></div></div>}
     </VsCard>
   );
