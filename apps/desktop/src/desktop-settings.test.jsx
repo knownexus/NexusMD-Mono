@@ -37,6 +37,7 @@ vi.mock('@nexusmd/ui', () => ({
   useAccount: () => ({ sync: null }),
   AccountCard: () => <div data-testid="account-card">AccountCard</div>,
   SyncStatusCard: () => <div data-testid="sync-status-card">SyncStatusCard</div>,
+  RecoveredCopiesCard: () => <div data-testid="recovered-copies-card">RecoveredCopiesCard</div>,
   SyncConflictsCard: () => <div data-testid="sync-conflicts-card">SyncConflictsCard</div>,
   BackupRestoreCard: ({ cloudProviders }) => <div data-testid="backup-restore" data-providers={(cloudProviders || []).length}>BackupRestoreCard</div>,
   BundlePasswordModal: () => null,
@@ -156,6 +157,7 @@ describe('DesktopSettings tab navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Data & sync' }))
     expect(screen.getByTestId('account-card')).toBeTruthy()
     expect(screen.getByTestId('sync-status-card')).toBeTruthy()
+    expect(screen.getByTestId('recovered-copies-card')).toBeTruthy()
     expect(screen.getByTestId('sync-conflicts-card')).toBeTruthy()
   })
 

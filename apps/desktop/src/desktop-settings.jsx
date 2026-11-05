@@ -2,7 +2,7 @@ import React from 'react'
 import {
   Icon,
   VsRow, VsCard, VsFullRow, ThemeModeSettings,
-  VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView, AccountCard, SyncStatusCard, SyncConflictsCard,
+  VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView, AccountCard, SyncStatusCard, RecoveredCopiesCard, SyncConflictsCard,
   PlToggle,
   toast,
 } from '@nexusmd/ui'
@@ -488,6 +488,7 @@ export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
             <>
               <AccountCard account={account} />
               <SyncStatusCard />
+              <RecoveredCopiesCard fileIO={desktopFileIO} />
               <SyncConflictsCard account={account} />
               <DesktopDataSyncCard />
               <SettingsFileCard />
