@@ -63,9 +63,11 @@ app.disableHardwareAcceleration();
 // OAuth flow's console.error() in cloud-auth.js never reach the log file.
 // preload: false — the default preload injection would run in every window's
 // session, including the sandboxed link-window tabs that load arbitrary
-// external sites (ADO work items, PRs). spyRendererConsole alone listens for
-// console-message on all webContents from the main process, no injection needed.
-log.initialize({ preload: false, spyRendererConsole: true });
+// external sites (ADO work items, PRs). Our own listener (renderer-console.cjs) reads console-message on all
+// webContents from the main process, no injection needed. electron-log's own `spyRendererConsole` is not used:
+// it listens with arguments Electron has deprecated and prints a warning at every start.
+log.initialize({ preload: false });
+require('./renderer-console.cjs').spyRendererConsole({ app, log, getAllWebContents: () => require('electron').webContents.getAllWebContents() });
 
 // Catch anything that would otherwise bypass the logs: uncaught exceptions and unhandled rejections
 // in the main process, and windows and child processes that crash, hang or fail to load. Each is
