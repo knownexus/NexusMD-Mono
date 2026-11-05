@@ -69,6 +69,7 @@
       if (v instanceof Date) return isNaN(v.getTime()) ? { $cut: 'date', value: 'invalid' } : v.toISOString();
       if (v instanceof Error) return { name: String(v.name), message: walk(String(v.message), depth + 1, ancestors, L) };
       kind = typeName(v);
+      if (kind === 'Promise') return { $cut: 'promise' };
       if (typeof v.nodeType === 'number' && typeof v.nodeName === 'string') return { $cut: 'dom', tag: String(v.nodeName).toLowerCase() };
     } catch (e) { return { $cut: 'unreadable' }; }
     if (depth > L.depth) return { $cut: 'depth' };

@@ -143,6 +143,9 @@ describe('cut', () => {
     expect(nxt.cut({ a: 1, b: ['x', null, true] })).toEqual({ a: 1, b: ['x', null, true] })
     expect(nxt.cut(undefined)).toEqual({ $cut: 'undefined' })
   })
+  it('says a Promise is a promise (its result is not known yet) instead of showing an empty object', () => {
+    expect(nxt.cut(Promise.resolve(1))).toEqual({ $cut: 'promise' })
+  })
   it('goes no deeper than the depth limit', () => {
     const deep = { a: { b: { c: { d: { e: { f: 1 } } } } } }
     expect(JSON.stringify(nxt.cut(deep))).toContain('$cut')
