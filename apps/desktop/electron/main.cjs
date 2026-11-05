@@ -44,6 +44,16 @@ setInterval(() => logHub.prune(), 24 * 60 * 60 * 1000).unref();
 // Entries are written in batches; make sure the last ones reach the disk however the process ends.
 process.on('exit', () => logHub.flush());
 
+// Recording (packages/main-kit/src/trace): one per app instance, kept in the logs folder under a name the log reader
+// never lists as a module. globalThis.traceLink is how the logged ipcMain finds out which window call made an IPC call.
+const { createRecorder, createTraceLink } = require('@nexusmd/main-kit/trace');
+const traceRecorder = createRecorder({ dir: path.join(logsDir, '_recordings'), appVersion: app.getVersion() });
+global.traceLink = createTraceLink();
+traceRecorder.store.prune({ days: 14 });
+setInterval(() => traceRecorder.store.prune({ days: 14 }), 24 * 60 * 60 * 1000).unref();
+// A recording still running when the app quits keeps what it has (it reads as unfinished).
+process.on('exit', () => traceRecorder.close());
+
 // Patch console to use electron-log (all console.log → file + console)
 console.log = log.info;
 console.warn = log.warn;
@@ -488,6 +498,11 @@ app.whenReady().then(async () => {
   deepLinkIpc.register(ipcMain, () => mainWindow);
   trayIpc.register(ipcMain, () => mainWindow, () => tray);
   logsIpc.register(ipcMain, { hub: logHub });
+  const recordingsApi = require('./ipc/recordings.cjs').register(ipcMain, {
+    recorder: traceRecorder, link: global.traceLink, dialog, getWebContents: () => require('electron').webContents.getAllWebContents(),
+  });
+  // A window opened (or reloaded) during a recording is told, so it records too.
+  app.on('web-contents-created', (_event, wc) => wc.on('did-finish-load', () => recordingsApi.sendStateTo(wc)));
   oauthIpc.register(ipcMain);
   // Which screen the window is on (the Dashboard keeps a layout per screen).
   displayWatch = displayIpc.register(ipcMain, { screen, getWindow: () => mainWindow });
