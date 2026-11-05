@@ -6,6 +6,10 @@
 import { contentHash } from './hash.js';
 import { encryptSync, decryptSync } from './crypto.js';
 import { badPassphrase } from './errors.js';
+import { CorruptLocalError } from './collections.js';
+import { rendererLog, ignore } from '../../log.js';
+
+const log = rendererLog('sync', 'bundle');
 
 const FORMAT = 'nexusmd-planner-bundle';
 
@@ -16,7 +20,12 @@ export async function exportBundle({ collections, getKey, profileId }) {
   for (const coll of collections) {
     const items = {};
     for (const itemKey of coll.listLocal()) {
-      const v = coll.readLocal(itemKey);
+      let v;
+      try { v = coll.readLocal(itemKey); }
+      catch (err) {
+        if (!(err instanceof CorruptLocalError)) throw err;
+        continue; // unreadable, so it cannot be exported; it was reported when it was read
+      }
       if (v != null) items[itemKey] = v;
     }
     if (Object.keys(items).length) out[coll.id] = items;
@@ -39,7 +48,14 @@ export async function importBundle({ collections, getKey, text, onChanged }) {
     if (!coll || !items) continue;
     let changed = false;
     for (const [itemKey, importedValue] of Object.entries(items)) {
-      const local = coll.readLocal(itemKey);
+      let local;
+      try { local = coll.readLocal(itemKey); }
+      catch (err) {
+        if (!(err instanceof CorruptLocalError)) throw err;
+        // Importing is how a user recovers: the unreadable value is replaced by the imported one.
+        ignore(log, 'replaced an unreadable local item with the imported one', err, 'warn', { collection: collId, key: itemKey });
+        local = null;
+      }
       const { merged } = coll.merge(null, local, importedValue, { from: 'import', prefer: 'local' });
       if (contentHash(merged) === contentHash(local)) continue; // no-op merge — skip the rewrite
       coll.writeLocal(itemKey, merged);

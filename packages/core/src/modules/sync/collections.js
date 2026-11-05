@@ -7,6 +7,42 @@ const log = rendererLog('sync', 'collections');
 const WRITE_FAILED = 'could not write a collection to local storage';
 const REMOVE_FAILED = 'could not remove a collection from local storage';
 
+/**
+ * A stored value that is not valid JSON (a torn write, a bad manual edit). It is not "nothing here": the
+ * sync engine takes an absent item for one deleted on this device and would propagate that deletion, so an
+ * unreadable item is reported and left alone instead.
+ */
+export class CorruptLocalError extends Error {
+  constructor(collection, key, cause) {
+    super(`the stored value for ${collection}/${key} is corrupt (not valid JSON)`);
+    this.name = 'CorruptLocalError';
+    this.collection = collection;
+    this.key = key;
+    this.cause = cause;
+  }
+}
+
+// Items already reported as corrupt, so a sync that runs every few minutes says it once (error), then at debug.
+const reportedCorrupt = new Set();
+
+/** The parsed value at a storage key: null when absent or empty; throws CorruptLocalError when it is not JSON. */
+function readJson(storage, storageKey, collection, key) {
+  const raw = storage.getItem(storageKey);
+  if (!raw) return null;
+  const id = `${collection}/${key}`;
+  try {
+    const value = JSON.parse(raw);
+    reportedCorrupt.delete(id);
+    return value;
+  } catch (cause) {
+    // sizes only: what is stored may be private
+    const data = { collection, key, bytes: raw.length };
+    if (reportedCorrupt.has(id)) log.debug('a stored value is still not valid JSON', cause, data);
+    else { reportedCorrupt.add(id); log.error('a stored value is not valid JSON and was left alone', cause, data); }
+    throw new CorruptLocalError(collection, key, cause);
+  }
+}
+
 export function plannerCollection({ storage, getProfileKey, namespace }) {
   const bare = (key) => `${namespace}.planner.week.${key}`;
   const full = (key) => getProfileKey(bare(key));
@@ -22,7 +58,7 @@ export function plannerCollection({ storage, getProfileKey, namespace }) {
       return out;
     },
     readLocal(key) {
-      try { const raw = storage.getItem(full(key)); return raw ? JSON.parse(raw) : null; } catch { return null; }
+      return readJson(storage, full(key), 'planner', key);
     },
     writeLocal(key, value) {
       try { storage.setItem(full(key), JSON.stringify(value)); } catch (err) { ignore(log, WRITE_FAILED, err, 'warn', { collection: 'planner', key }); }
@@ -42,7 +78,7 @@ export function singletonCollection({ id, bareKey, merge, storage, getProfileKey
     id,
     listLocal() { return storage.getItem(full) != null ? ['data'] : []; },
     readLocal() {
-      try { const raw = storage.getItem(full); return raw ? JSON.parse(raw) : null; } catch { return null; }
+      return readJson(storage, full, id, 'data');
     },
     writeLocal(_key, value) {
       try { storage.setItem(full, JSON.stringify(value)); } catch (err) { ignore(log, WRITE_FAILED, err, 'warn', { collection: id }); }

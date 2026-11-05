@@ -55,7 +55,7 @@ export { reconcileItem } from './modules/sync/reconcile.js'
 export { encryptSync, decryptSync } from './modules/sync/crypto.js'
 export {
   plannerCollection, notesCollection, teamCustomCollection, teamRemovedCollection, tweaksCollection,
-  listsCollection,
+  listsCollection, CorruptLocalError,
 } from './modules/sync/collections.js'
 export { createSyncRuntime } from './modules/sync/runtime.js'
 export { startAutoSync } from './modules/sync/auto.js'

@@ -5,6 +5,7 @@ import { reconcileItem } from './reconcile.js';
 import { contentHash } from './hash.js';
 import { encryptSync, decryptSync } from './crypto.js';
 import { badPassphrase } from './errors.js';
+import { CorruptLocalError } from './collections.js';
 
 const VERIFIER_TOKEN = 'nexusmd-sync-verifier';
 
@@ -57,7 +58,16 @@ export function createSyncRuntime({
         ]);
         for (const full of fullKeys) {
           const itemKey = full.slice(coll.id.length + 1);
-          const local = coll.readLocal(itemKey);
+          // An item whose stored value is unreadable is neither pushed, pulled nor deleted: reading it as
+          // "absent" would be taken for a deletion on this device and wipe it from the cloud and every other
+          // device. Leave it (and its manifest entry) exactly as it is, and say so in the result.
+          let local;
+          try { local = coll.readLocal(itemKey); }
+          catch (err) {
+            if (!(err instanceof CorruptLocalError)) throw err;
+            (stats.unreadable ??= []).push(full);
+            continue;
+          }
           const base = readBase(full);
           const entry = manifest.items[full];
           const isTomb = tomb.has(full);
