@@ -3,6 +3,7 @@ import { logsAdapter } from './adapters/logs.js'
 import { VsCard, VsRow, Icon } from '@nexusmd/ui'
 import { parseLog, filterEntries, LOG_LEVELS, NO_AREA } from './log-parse.js'
 import LogViewer from './log-viewer.jsx'
+import { RecordingsPanel } from './recordings-panel.jsx'
 import { rendererLog } from '@nexusmd/core'
 
 const log = rendererLog('core', 'logs-card')
@@ -249,6 +250,7 @@ export default function LogsCard() {
   return (
     <>
       <VsCard title="Application Logs" icon="log">
+        <RecordingsPanel />
         <LogViewer />
       </VsCard>
       <FlatLogsCard title="Earlier logs" hideWhenEmpty />

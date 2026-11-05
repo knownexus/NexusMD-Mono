@@ -150,6 +150,14 @@ describe('what is left alone', () => {
     expect(instrument(src, { filename: '/repo/packages/core/src/other.js', root: '/repo' })).not.toBeNull()
   })
 
+  it('by default the recording screens themselves are not traced (their polling would fill every recording)', () => {
+    const src = 'export function poll() { return 1 }'
+    for (const f of ['use-recording.js', 'recordings-panel.jsx', 'recording-indicator.jsx', 'recording-model.js', 'recording-tree.jsx', 'adapters/recordings.js']) {
+      expect(instrument(src, { filename: `/repo/apps/desktop/src/${f}`, root: '/repo' }), f).toBeNull()
+    }
+    expect(instrument(src, { filename: '/repo/apps/desktop/src/sidebar-nav.jsx', root: '/repo' })).not.toBeNull()
+  })
+
   it('transforming twice does not trace a function twice', () => {
     const once = traced('function f() { return 1 }')
     const again = instrument(once.code, { ...SKIP_OPTS, sourceType: 'script' })

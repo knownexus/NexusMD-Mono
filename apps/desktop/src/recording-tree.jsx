@@ -124,11 +124,12 @@ export function RecordingTree({ recording }) {
     return ids
   }, [tree])
 
-  const [selectedId, setSelectedId] = React.useState(() => failure?.id ?? tree.roots[0]?.id ?? null)
+  const [selectedId, setSelectedId] = React.useState(() => failure?.id ?? (tree.roots.find((r) => r.kind === 'click') ?? tree.roots[0])?.id ?? null)
   const [expanded, setExpanded] = React.useState(() => new Set(failure ? [...ancestorsOf(failure), failure.id] : []))
   const [errorsOnly, setErrorsOnly] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const [limits, setLimits] = React.useState({})
+  const [showBackground, setShowBackground] = React.useState(false)
   const treeRef = React.useRef(null)
 
   const searched = React.useMemo(() => searchTree(tree, query), [tree, query])
@@ -138,6 +139,13 @@ export function RecordingTree({ recording }) {
     if (!searched) return failedPath
     return new Set([...searched].filter((id) => failedPath.has(id)))
   }, [errorsOnly, searched, failedPath])
+
+  // The top level is what the person did. Work that nothing they did led to (timers, polling) is left out when they clicked
+  // something, unless it failed or a search found it, and can be shown on request. With no clicks at all it is everything there is.
+  const hasClicks = React.useMemo(() => tree.roots.some((r) => r.kind === 'click'), [tree])
+  const background = React.useMemo(() => tree.roots.filter((r) => r.kind !== 'click' && !failedPath.has(r.id)), [tree, failedPath])
+  const rootShown = (r) => !hasClicks || showBackground || r.kind === 'click' || failedPath.has(r.id) || !!searched?.has(r.id)
+  const hiddenCount = hasClicks && !showBackground ? background.filter((r) => !searched?.has(r.id)).length : 0
 
   const items = React.useMemo(() => {
     const out = []
@@ -150,9 +158,10 @@ export function RecordingTree({ recording }) {
       for (const k of kids.slice(0, limit)) walk(k, level + 1)
       if (kids.length > limit) out.push({ more: kids.length - limit, parent: node.id, level: level + 1 })
     }
-    for (const r of tree.roots) if (!filter || filter.has(r.id)) walk(r, 1)
+    for (const r of tree.roots) if ((!filter || filter.has(r.id)) && rootShown(r)) walk(r, 1)
     return out
-  }, [tree, filter, expanded, limits])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tree, filter, expanded, limits, hasClicks, showBackground, failedPath, searched])
 
   const rowsOnly = items.filter((i) => i.node)
   const selected = selectedId ? tree.byId.get(selectedId) : null
@@ -198,6 +207,7 @@ export function RecordingTree({ recording }) {
         <div className="rt-tools">
           <input className="rt-field" type="search" aria-label="Search recording" placeholder="Search calls, values, requests" value={query} onChange={(e) => setQuery(e.target.value)} />
           <button className="btn sm" aria-pressed={errorsOnly} onClick={() => setErrorsOnly((v) => !v)}>Errors only</button>
+          {hasClicks && background.length > 0 && <button className="btn sm" aria-pressed={showBackground} onClick={() => setShowBackground((v) => !v)}>Background activity</button>}
         </div>
       </div>
 
@@ -208,6 +218,7 @@ export function RecordingTree({ recording }) {
         </div>
       )}
       <p className="rt-note">Secrets that match a rule are hidden; everything else is shown.</p>
+      {hiddenCount > 0 && <p className="rt-note">{`${hiddenCount} background ${hiddenCount === 1 ? 'action' : 'actions'} hidden`}</p>}
 
       <div className="rt-body">
         <div ref={treeRef} className="rt-tree" role="tree" aria-label="Recorded calls" tabIndex={0} aria-activedescendant={selectedId ? `rt-row-${selectedId}` : undefined} onKeyDown={onKeyDown}>

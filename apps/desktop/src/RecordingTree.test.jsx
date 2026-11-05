@@ -154,3 +154,50 @@ describe('RecordingTree', () => {
     expect(screen.getByText(/nothing was recorded/i)).toBeTruthy()
   })
 })
+
+describe('background activity', () => {
+  const withTimers = () => [
+    ...quiet(),
+    enter('r1-50', null, 'apps/poll.js:3:0:tick', 200), ret('r1-50', null, 201),
+    enter('r1-51', null, 'apps/poll.js:3:0:tick', 700), ret('r1-51', null, 701),
+  ]
+
+  it('is left out of the top level when the person clicked something, and says how much is hidden', () => {
+    show(withTimers())
+    expect(rows().map(r => r.textContent)).toEqual([expect.stringContaining('Clicked Merge'), expect.stringContaining('Clicked Refresh')])
+    expect(screen.getByText('2 background actions hidden')).toBeTruthy()
+  })
+
+  it('does not describe something that is hidden: the first thing the person did is the one selected', () => {
+    show([enter('r1-40', null, 'apps/poll.js:3:0:early', -50), ret('r1-40', null, -49), ...quiet()])
+    expect(row('Clicked Merge').getAttribute('aria-selected')).toBe('true')
+    expect(within(screen.getByRole('region', { name: 'Details' })).getByRole('heading', { level: 3 }).textContent).toBe('Clicked Merge')
+  })
+
+  it('shows it again on request', () => {
+    show(withTimers())
+    const toggle = screen.getByRole('button', { name: 'Background activity' })
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    expect(rows()).toHaveLength(4)
+    expect(screen.queryByText(/background actions? hidden/)).toBeNull()
+  })
+
+  it('is shown anyway when it failed', () => {
+    show([...quiet(), enter('r1-60', null, 'apps/poll.js:9:0:sync', 300), err('r1-60', { name: 'Error', message: 'offline' }, 301)])
+    expect(rows().map(r => r.textContent).some(t => t.includes('sync'))).toBe(true)
+  })
+
+  it('is shown when a search finds it', () => {
+    show(withTimers())
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search recording' }), { target: { value: 'tick' } })
+    expect(rows()).toHaveLength(2)
+  })
+
+  it('is all there is when nothing was clicked, so nothing is hidden', () => {
+    show([enter('m1-1', null, 'x.js:1:0:startup', 1), ret('m1-1', null, 2)])
+    expect(rows()).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Background activity' })).toBeNull()
+  })
+})
