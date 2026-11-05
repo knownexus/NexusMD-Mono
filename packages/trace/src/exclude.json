@@ -1,1 +1,5 @@
-{ "files": [], "functions": [] }
+{
+  "_note": "Left alone by default: the window logger and the window recorder (they would trace themselves). Add a path (a folder ends with /) or a function name to leave it out; the busiest functions found by profiling go here.",
+  "files": ["packages/core/src/log.js", "packages/core/src/trace/"],
+  "functions": []
+}

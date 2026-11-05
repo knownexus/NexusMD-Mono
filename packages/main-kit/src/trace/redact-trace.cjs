@@ -31,13 +31,22 @@ const nameWords = (fn) => {
  */
 function createRedactor(rules = DEFAULT_DENY) {
   const open = new Map(); // id of a call that has started and not ended -> true when it, or a caller, was denied
+  const seen = new Set(); // every id this redactor has been given, so a call can be told whether its parent has been seen
   const deniedIds = new Set(); // every denied call, for the whole recording: a callback or timer started inside one runs
   //                              later, after it has returned, and still carries it as its parent
 
-  function redact(event) {
+  /** Whether the call this event belongs under has been seen (an event with no parent always has one). */
+  const parentKnown = (event) => event.p == null || seen.has(event.p);
+
+  // `hideUnknownParent`: write this event even though its parent has not been seen. Nothing says whether the parent was
+  // denied (it may be on its way from another process), so what the event holds is hidden.
+  function redact(event, { hideUnknownParent = false } = {}) {
     const out = { ...event };
     const replace = (field, why) => { out[field] = { $redacted: why }; return out; };
-    const parentDenied = event.p != null && deniedIds.has(event.p);
+    const orphan = hideUnknownParent && !parentKnown(event);
+    const parentDenied = (event.p != null && deniedIds.has(event.p)) || orphan;
+    const why = orphan ? 'parent unknown' : 'function';
+    if (typeof event.id === 'string' && event.k !== 'ret' && event.k !== 'err') seen.add(event.id);
 
     if (event.k === 'enter') {
       // An IPC call is a frame named ipc:<channel>; its channel is judged as a channel, not as a function name.
@@ -45,7 +54,7 @@ function createRedactor(rules = DEFAULT_DENY) {
       const denied = parentDenied || (channel !== null ? hides(rules.channels, channel) : hides(rules.functions, nameWords(event.fn)));
       open.set(event.id, denied);
       if (denied) deniedIds.add(event.id);
-      return denied ? replace('a', 'function') : (out.a = redactValue(event.a), out);
+      return denied ? replace('a', why) : (out.a = redactValue(event.a), out);
     }
     if (event.k === 'ret' || event.k === 'err') {
       const field = event.k === 'ret' ? 'v' : 'e';
@@ -57,7 +66,7 @@ function createRedactor(rules = DEFAULT_DENY) {
     }
     if (event.d !== undefined) {
       const d = event.d;
-      if (parentDenied) return replace('d', 'function');
+      if (parentDenied) return replace('d', why);
       if (d && typeof d === 'object') {
         if (hides(rules.urls, d.url)) return replace('d', 'url');
         if (hides(rules.channels, d.channel)) return replace('d', 'channel');
@@ -67,7 +76,7 @@ function createRedactor(rules = DEFAULT_DENY) {
     return out;
   }
 
-  return { redact };
+  return { redact, parentKnown };
 }
 
 module.exports = { createRedactor, DEFAULT_DENY };

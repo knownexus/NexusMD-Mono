@@ -47,7 +47,7 @@ process.on('exit', () => logHub.flush());
 // Recording (packages/main-kit/src/trace): one per app instance, kept in the logs folder under a name the log reader
 // never lists as a module. globalThis.traceLink is how the logged ipcMain finds out which window call made an IPC call.
 const { createRecorder, createTraceLink } = require('@nexusmd/main-kit/trace');
-const traceRecorder = createRecorder({ dir: path.join(logsDir, '_recordings'), appVersion: app.getVersion() });
+const traceRecorder = createRecorder({ dir: path.join(logsDir, '_recordings'), appVersion: app.getVersion(), hub: logHub });
 global.traceLink = createTraceLink();
 traceRecorder.store.prune({ days: 14 });
 setInterval(() => traceRecorder.store.prune({ days: 14 }), 24 * 60 * 60 * 1000).unref();

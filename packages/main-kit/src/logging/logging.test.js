@@ -345,3 +345,57 @@ describe('retention', () => {
     expect(prune({ dir: path.join(dir, 'nope'), now: clock })).toEqual({ deleted: [] })
   })
 })
+
+describe('verbose capture for a recording', () => {
+  const nxt = require('../../../trace/src/runtime.js')
+  afterEach(() => { nxt.stop(); nxt.drain() })
+
+  it('setVerbose(true) writes debug lines the level would drop, and setVerbose(false) puts the old level back', () => {
+    const hub = hubWith({ level: 'info' })
+    hub.write({ mod: 'git', lvl: 'debug', msg: 'before' })
+    hub.setVerbose(true)
+    hub.write({ mod: 'git', lvl: 'debug', msg: 'while recording' })
+    hub.setVerbose(false)
+    hub.write({ mod: 'git', lvl: 'debug', msg: 'after' })
+    expect(hub.recent().map(e => e.msg)).toEqual(['while recording'])
+  })
+
+  it('hands each written entry to the trace sink with the call that wrote it', () => {
+    const hub = hubWith({ level: 'info' })
+    const seen = []
+    hub.setTraceSink((entry, parent) => seen.push([entry.msg, parent]))
+    nxt.start({ proc: 'main' })
+    const f = nxt.enter('x.js:1:0:caller', null, [])
+    hub.write({ mod: 'git', lvl: 'info', msg: 'inside a call' })
+    nxt.ret(f, 1)
+    hub.write({ mod: 'git', lvl: 'info', msg: 'outside any call' })
+    expect(seen).toEqual([['inside a call', f.id], ['outside any call', null]])
+  })
+
+  it('only gives the sink what the hub keeps (an entry the level drops is not passed), and a sink that throws does not break logging', () => {
+    const hub = hubWith({ level: 'info' })
+    const sink = vi.fn(() => { throw new Error('sink broke') })
+    hub.setTraceSink(sink)
+    hub.write({ mod: 'git', lvl: 'debug', msg: 'dropped' })
+    expect(sink).not.toHaveBeenCalled()
+    expect(hub.write({ mod: 'git', lvl: 'info', msg: 'kept' })).toBeTruthy()
+    expect(hub.recent().map(e => e.msg)).toEqual(['kept'])
+  })
+
+  it('setTraceSink(null) stops it', () => {
+    const hub = hubWith({ level: 'info' })
+    const sink = vi.fn()
+    hub.setTraceSink(sink); hub.setTraceSink(null)
+    hub.write({ mod: 'git', lvl: 'info', msg: 'x' })
+    expect(sink).not.toHaveBeenCalled()
+  })
+
+  it('verbose entries are still redacted before the sink sees them', () => {
+    const hub = hubWith({ level: 'info' })
+    const seen = []
+    hub.setTraceSink((entry) => seen.push(entry.msg))
+    hub.setVerbose(true)
+    hub.write({ mod: 'git', lvl: 'debug', msg: 'sent Bearer abcdefghijklmnop1234' })
+    expect(seen[0]).not.toContain('abcdefghijklmnop1234')
+  })
+})

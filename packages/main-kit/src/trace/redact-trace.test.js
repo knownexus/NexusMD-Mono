@@ -178,3 +178,25 @@ describe('IPC calls in a recording (frames named ipc:<channel>)', () => {
     expect(createRedactor().redact(enter('ipc:git:status', ['C:/repo'], 'm1-1')).a).toEqual(['C:/repo'])
   })
 })
+
+describe('a call whose parent has not been seen', () => {
+  it('says whether the parent is known, by whether it has seen its start', () => {
+    const r = createRedactor()
+    expect(r.parentKnown(enter('x.js:1:0:f', [], 'r1-2', 'r1-1'))).toBe(false)
+    expect(r.parentKnown(enter('x.js:1:0:f', [], 'r1-1', null))).toBe(true)
+    r.redact(enter('x.js:1:0:parent', [], 'r1-1'))
+    expect(r.parentKnown(enter('x.js:1:0:f', [], 'r1-2', 'r1-1'))).toBe(true)
+  })
+
+  it('is hidden when asked to be written without its parent, and its subtree with it', () => {
+    const r = createRedactor()
+    const child = r.redact(enter('ipc:git:push', ['plain-looking'], 'm1-1', 'r1-1'), { hideUnknownParent: true })
+    expect(child.a).toEqual({ $redacted: 'parent unknown' })
+    expect(r.redact(enter('x.js:1:0:inner', ['plain-too'], 'm1-2', 'm1-1')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(ret('m1-1', 'plain'), { hideUnknownParent: true }).v).toEqual({ $redacted: 'function' })
+  })
+
+  it('is shown as usual when the option is not given (the default)', () => {
+    expect(createRedactor().redact(enter('x.js:1:0:f', ['plain'], 'm1-1', 'r9-9')).a).toEqual(['plain'])
+  })
+})

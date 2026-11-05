@@ -15,10 +15,11 @@ const { createStore, EXT, VERSION } = require('./store.cjs');
 
 const MAX_BATCH = 20000;
 const MAX_EVENT_BYTES = 256 * 1024; // one event bigger than this is not stored
+const PARENT_WAIT_MS = 5000;         // how long an event waits for its parent (from another process) before it is written hidden
 const log = moduleLogger('core', 'recorder');
 
 function createRecorder({
-  dir, now = Date.now, runtime = globalThis.__nxt, fs = nodeFs, appVersion = '',
+  dir, now = Date.now, runtime = globalThis.__nxt, hub, fs = nodeFs, appVersion = '',
   maxBytes = 64 * 1024 * 1024, maxEvents = 1000000, horizonMs = 1500, flushMs = 500,
 } = {}) {
   const store = createStore({ dir, fs });
@@ -37,10 +38,29 @@ function createRecorder({
     return `rec-${stamp}-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
   };
 
+  // The log hub keeps every level and tells the recording of each line, for as long as the recording runs.
+  function holdHub() {
+    if (!hub) return;
+    hub.setVerbose?.(true);
+    hub.setTraceSink?.((entry, parent) => {
+      if (entry.proc === 'renderer') return; // a window records its own lines, under the right call
+      runtime?.emit?.('log', {
+        lvl: entry.lvl, mod: entry.mod, scope: entry.scope, msg: entry.msg,
+        ...(entry.err ? { err: entry.err } : {}), ...(entry.data !== undefined ? { data: entry.data } : {}),
+      }, parent);
+    });
+  }
+  function releaseHub() {
+    if (!hub) return;
+    hub.setVerbose?.(false);
+    hub.setTraceSink?.(null);
+  }
+
   function cap(reason) {
     if (!current || current.capReason) return;
     current.capReason = reason;
     try { runtime?.stop?.(); } catch (err) { ignore(log, 'the call runtime could not be stopped when the recording was capped', err); }
+    releaseHub();
     notify();
   }
 
@@ -70,16 +90,22 @@ function createRecorder({
       let n = 0;
       while (n < c.pending.length && (c.pending[n].t ?? 0) <= cutoff) n++;
       const due = c.pending.splice(0, n);
-      for (const event of due) c.pendingBytes -= c.sizes.get(event) ?? 0;
+      const held = [];
       let chunk = '';
       for (const event of due) {
-        const line = JSON.stringify(c.redactor.redact(event)) + '\n';
+        // An event whose parent has not arrived (a window's events come in batches, and its clock is not ours) waits for
+        // it, so a child of a denied call is never written before the redactor knows the call was denied. If the parent
+        // does not come in time, or the recording is ending, the event is written with what it holds hidden.
+        if (!all && !c.capReason && !c.redactor.parentKnown(event) && now() - (event.t ?? 0) < PARENT_WAIT_MS) { held.push(event); continue; }
+        c.pendingBytes -= c.sizes.get(event) ?? 0;
+        const line = JSON.stringify(c.redactor.redact(event, { hideUnknownParent: true })) + '\n';
         if (c.bytes + chunk.length + line.length > maxBytes) { c.capReason ??= 'bytes'; cap('bytes'); break; }
         chunk += line;
         c.written++;
       }
       c.bytes += chunk.length;
       append(chunk);
+      c.pending.push(...held);
       if (c.capReason) { c.pending.length = 0; c.pendingBytes = 0; }
     }
     if (c.capReason && !c.capWritten) {
@@ -111,6 +137,7 @@ function createRecorder({
       runtime.onCap = () => cap('events');
       runtime.start?.({ proc: 'main', maxEvents });
     }
+    holdHub();
     current.timer = setInterval(() => { try { tick(false); } catch (err) { ignore(log, 'writing the recording failed; the next write tries again', err, 'warn'); } }, flushMs);
     current.timer.unref?.();
     notify();
@@ -141,6 +168,7 @@ function createRecorder({
       append(JSON.stringify({ end: true, status: c.capReason ? 'capped' : 'finished', endedAt: now(), events: c.written }) + '\n');
     } finally {
       if (runtime) runtime.onCap = c.prevOnCap;
+      releaseHub();
       current = null;
       notify();
     }
@@ -158,6 +186,7 @@ function createRecorder({
       tick(true);
     } finally {
       if (runtime) runtime.onCap = c.prevOnCap;
+      releaseHub();
       current = null;
       notify();
     }

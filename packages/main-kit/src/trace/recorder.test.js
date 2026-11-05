@@ -216,3 +216,93 @@ describe('the flush timer', () => {
     } finally { vi.useRealTimers() }
   })
 })
+
+describe('verbose capture while recording', () => {
+  const fakeHub = () => ({ verbose: [], sink: undefined, setVerbose(v) { this.verbose.push(v) }, setTraceSink(fn) { this.sink = fn } })
+  const entry = (over = {}) => ({ mod: 'git', lvl: 'debug', scope: 'git:fetch', msg: 'spawn', proc: 'main', ...over })
+  const withHub = () => { const hub = fakeHub(); runtime.emitted = []; runtime.emit = (k, d, p) => { runtime.emitted.push([k, d, p]); return 'm1-9' }; return { hub, r: createRecorder({ dir, now: () => clock.t, runtime, flushMs: 1e9, horizonMs: 0, hub }) } }
+
+  it('switches the hub to verbose and gives it a sink for the length of the recording, then puts both back', async () => {
+    const { hub, r } = withHub()
+    r.start()
+    expect(hub.verbose).toEqual([true])
+    expect(typeof hub.sink).toBe('function')
+    await r.stop()
+    expect(hub.verbose).toEqual([true, false])
+    expect(hub.sink).toBeNull()
+  })
+
+  it('the sink turns a main process log line into a log node under the call that wrote it', async () => {
+    const { hub, r } = withHub()
+    r.start()
+    hub.sink(entry({ lvl: 'error', err: { name: 'Error', message: 'x' } }), 'm1-3')
+    expect(runtime.emitted).toEqual([['log', { lvl: 'error', mod: 'git', scope: 'git:fetch', msg: 'spawn', err: { name: 'Error', message: 'x' } }, 'm1-3']])
+    await r.stop()
+  })
+
+  it('a line that came from a window is not added a second time (the window records its own, in the right place)', async () => {
+    const { hub, r } = withHub()
+    r.start()
+    hub.sink(entry({ proc: 'renderer' }), null)
+    expect(runtime.emitted).toEqual([])
+    await r.stop()
+  })
+
+  it('close() and a failed start put the hub back too', async () => {
+    const a = withHub(); a.r.start(); a.r.close()
+    expect(a.hub.verbose).toEqual([true, false])
+    const bad = createRecorder({ dir: join(dir, 'file.txt', 'sub'), now: () => clock.t, runtime, hub: fakeHub() })
+    require('node:fs').writeFileSync(join(dir, 'file.txt'), 'x')
+    expect(() => bad.start()).toThrow(/could not start/i)
+  })
+})
+
+describe('a call that arrives before its parent', () => {
+  const guarded = () => createRecorder({ dir, now: () => clock.t, runtime, flushMs: 1e9, horizonMs: 1500 })
+
+  it('waits for the parent, so a child of a denied call is hidden even when it came first', async () => {
+    const r = guarded()
+    const { id } = r.start()
+    clock.t = 1_010_000
+    r.add([enter('m1-5', 1_009_000, { fn: 'ipc:git:push', a: ['plain-looking-secret'], p: 'r1-1' })], { win: 1 })
+    clock.t += 2000; await r.flush()                       // the child is due, its parent is not here yet: it is held
+    expect(readFileSync(fileOf(id), 'utf8')).not.toContain('plain-looking-secret')
+    expect(lines(fileOf(id)).filter(e => e.k === 'enter')).toHaveLength(0)
+    r.add([enter('r1-1', 1_008_000, { fn: 'a.js:1:0:getAuthToken', proc: 'renderer', a: ['x'] })], { win: 1 })
+    await r.stop()
+    const text = readFileSync(fileOf(id), 'utf8')
+    expect(text).not.toContain('plain-looking-secret')
+    expect(lines(fileOf(id)).filter(e => e.k === 'enter').map(e => e.id).sort()).toEqual(['m1-5', 'r1-1'])
+  })
+
+  it('writes a child whose parent never arrives, hidden, at the end of the recording', async () => {
+    const r = guarded()
+    const { id } = r.start()
+    clock.t = 1_010_000
+    r.add([enter('m1-5', 1_009_000, { fn: 'ipc:git:push', a: ['plain-looking-secret'], p: 'r9-9' })], { win: 1 })
+    await r.stop()
+    const child = lines(fileOf(id)).find(e => e.id === 'm1-5')
+    expect(child.a).toEqual({ $redacted: 'parent unknown' })
+  })
+
+  it('does not wait for ever: past a few seconds it is written, hidden', async () => {
+    const r = guarded()
+    const { id } = r.start()
+    clock.t = 1_010_000
+    r.add([enter('m1-5', 1_009_000, { fn: 'ipc:git:push', a: ['plain-looking-secret'], p: 'r9-9' })], { win: 1 })
+    clock.t += 2000; await r.flush()
+    expect(lines(fileOf(id)).filter(e => e.id === 'm1-5')).toHaveLength(0)
+    clock.t += 6000; await r.flush()
+    expect(lines(fileOf(id)).find(e => e.id === 'm1-5').a).toEqual({ $redacted: 'parent unknown' })
+    await r.stop()
+  })
+
+  it('a call with a known parent, or none, is written as usual', async () => {
+    const r = guarded()
+    const { id } = r.start()
+    clock.t = 1_010_000
+    r.add([enter('r1-1', 1_008_000, { proc: 'renderer', fn: 'a.js:1:0:merge' }), enter('m1-5', 1_009_000, { fn: 'ipc:git:push', a: ['C:/repo'], p: 'r1-1' })], { win: 1 })
+    await r.stop()
+    expect(lines(fileOf(id)).find(e => e.id === 'm1-5').a).toEqual(['C:/repo'])
+  })
+})

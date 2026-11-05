@@ -19,14 +19,16 @@ describe('call tracing reaches the desktop builds only', () => {
     expect(read(file)).not.toMatch(/traceCalls|@nexusmd\/trace/)
   })
 
-  it('no web or Android source imports the trace package or mentions __nxt', () => {
+  // packages/core/src/log.js (and the window recorder beside it) read globalThis.__nxt when something put it there; that is
+  // not a call report. What must never appear is the report itself, or an import of the trace package.
+  it('no web or Android source imports the trace package or contains a call report', () => {
     const offenders = []
     const walk = (dir) => {
       for (const name of readdirSync(dir)) {
         if (['node_modules', 'dist', 'android', 'wwwroot', '.git'].includes(name)) continue
         const p = join(dir, name)
         if (statSync(p).isDirectory()) walk(p)
-        else if (/\.(jsx?|mjs|cjs|html)$/.test(name) && /__nxt|@nexusmd\/trace/.test(readFileSync(p, 'utf8'))) offenders.push(p)
+        else if (/\.(jsx?|mjs|cjs|html)$/.test(name) && /__nxt\.enter\(|@nexusmd\/trace/.test(readFileSync(p, 'utf8'))) offenders.push(p)
       }
     }
     for (const dir of ['apps/web', 'apps/app', 'packages/core', 'packages/ui', 'packages/web-adapters', 'packages/shell-sdk', 'packages/editor-kit']) {
@@ -40,7 +42,8 @@ describe('call tracing reaches the desktop builds only', () => {
       const assets = join(repo, dir, 'assets')
       if (!existsSync(assets)) continue
       for (const f of readdirSync(assets).filter(n => n.endsWith('.js'))) {
-        expect(readFileSync(join(assets, f), 'utf8'), `${dir}/assets/${f}`).not.toContain('__nxt')
+        // A call report's id names a source file, line and column, and survives minifying.
+        expect(readFileSync(join(assets, f), 'utf8'), `${dir}/assets/${f}`).not.toMatch(/(?:packages|apps|modules)\/[\w/.-]+\.jsx?:\d+:\d+:\w*/)
       }
     }
   })

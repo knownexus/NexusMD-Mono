@@ -143,6 +143,13 @@ describe('what is left alone', () => {
     expect(instrument(src, { ...SKIP_OPTS, exclude: { files: ['src/x.js'] } })).toBeNull()
   })
 
+  it('by default the window logger and the window recorder are not traced (they would trace themselves)', () => {
+    const src = 'export function emit() { return 1 }'
+    expect(instrument(src, { filename: '/repo/packages/core/src/log.js', root: '/repo' })).toBeNull()
+    expect(instrument(src, { filename: '/repo/packages/core/src/trace/clicks.js', root: '/repo' })).toBeNull()
+    expect(instrument(src, { filename: '/repo/packages/core/src/other.js', root: '/repo' })).not.toBeNull()
+  })
+
   it('transforming twice does not trace a function twice', () => {
     const once = traced('function f() { return 1 }')
     const again = instrument(once.code, { ...SKIP_OPTS, sourceType: 'script' })
