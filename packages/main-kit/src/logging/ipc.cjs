@@ -4,7 +4,7 @@
 // the channel, how long it ran and the shape (never the content) of its arguments, then rethrown so
 // the renderer still gets the rejection.
 
-const { runWithCorrelation } = require('./context.cjs');
+const { runWithCorrelation, currentCorrelation } = require('./context.cjs');
 
 // Errors already logged, so a handler that rethrows through another wrapped handler (or through
 // withLogging) is reported once.
@@ -32,19 +32,24 @@ function createLoggedIpc(ipc, { hub, moduleId, now = Date.now }) {
   const log = hub.logger(moduleId);
   const wrappedListeners = new Map(); // `${channel}` -> Map(original fn -> wrapped fn)
 
-  function report(channel, err, started, args) {
+  // The failure and slow-call lines are logged after the handler has finished, outside its correlation. Log them back
+  // inside it (same id, starting from this module alone, since they are this module's own lines and did not
+  // arrive through the modules the call went on to), or the call cannot be followed to its failure.
+  const inCall = (cid, fn) => (cid ? runWithCorrelation(fn, { mod: moduleId, cid }) : fn());
+
+  function report(channel, err, started, args, cid) {
     if (err && typeof err === 'object') {
       if (reported.has(err)) return;
       reported.add(err);
     }
     const expected = !!(err && err.expected === true);
-    log.scope(`ipc:${channel}`)[expected ? 'warn' : 'error'](`${channel} failed`, err instanceof Error ? err : new Error(String(err)), { channel, ms: now() - started, args: argShape(args) });
+    inCall(cid, () => log.scope(`ipc:${channel}`)[expected ? 'warn' : 'error'](`${channel} failed`, err instanceof Error ? err : new Error(String(err)), { channel, ms: now() - started, args: argShape(args) }));
   }
 
-  function noteDuration(channel, started) {
+  function noteDuration(channel, started, cid) {
     const ms = now() - started;
-    if (ms >= SLOW_WARN_MS) log.scope(`ipc:${channel}`).warn(`${channel} took ${ms} ms`, { channel, ms });
-    else if (ms >= SLOW_DEBUG_MS) log.scope(`ipc:${channel}`).debug(`${channel} took ${ms} ms`, { channel, ms });
+    if (ms >= SLOW_WARN_MS) inCall(cid, () => log.scope(`ipc:${channel}`).warn(`${channel} took ${ms} ms`, { channel, ms }));
+    else if (ms >= SLOW_DEBUG_MS) inCall(cid, () => log.scope(`ipc:${channel}`).debug(`${channel} took ${ms} ms`, { channel, ms }));
   }
 
   // fn wrapped: same arguments, same result (a promise stays a promise), failures logged.
@@ -52,19 +57,20 @@ function createLoggedIpc(ipc, { hub, moduleId, now = Date.now }) {
     return function loggedHandler(event, ...args) {
       const started = now();
       let result;
+      let cid; // this call's correlation id, to log its failure and its duration under
       try {
-        result = runWithCorrelation(() => fn.call(this, event, ...args), { mod: moduleId });
+        result = runWithCorrelation(() => { cid = currentCorrelation()?.cid; return fn.call(this, event, ...args); }, { mod: moduleId });
       } catch (err) {
-        report(channel, err, started, args);
+        report(channel, err, started, args, cid);
         throw err;
       }
       if (result && typeof result.then === 'function') {
         return result.then(
-          (value) => { noteDuration(channel, started); return value; },
-          (err) => { report(channel, err, started, args); throw err; },
+          (value) => { noteDuration(channel, started, cid); return value; },
+          (err) => { report(channel, err, started, args, cid); throw err; },
         );
       }
-      noteDuration(channel, started);
+      noteDuration(channel, started, cid);
       return result;
     };
   }

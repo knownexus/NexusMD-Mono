@@ -247,6 +247,27 @@ describe('log hub', () => {
 })
 
 describe('renderer ingest', () => {
+  // The ingest handler runs inside the shell's logged ipcMain, so a correlation is active when an entry arrives.
+  // It is the handler's, not the entry's: a renderer error was not "reached through core" and is not a call to follow.
+  it('an entry from a window does not take the call chain it was handled in', () => {
+    const hub = hubWith()
+    runWithCorrelation(() => hub.ingest({ mod: 'git', lvl: 'error', msg: 'ui failed' }, { win: 2 }), { mod: 'core' })
+    hub.flush()
+    const [e] = readLines('git', '2026-11-04.jsonl')
+    expect(e.proc).toBe('renderer')
+    expect(e.cid).toBeUndefined()
+    expect(e.via).toBeUndefined()
+    expect(hub.modulesOf('anything')).toEqual([])
+  })
+
+  it('keeps a call id the window supplies, if it is well formed', () => {
+    const hub = hubWith()
+    runWithCorrelation(() => hub.ingest({ mod: 'git', lvl: 'info', msg: 'a', cid: 'c-abc123' }), { mod: 'core' })
+    hub.flush()
+    const [e] = readLines('git', '2026-11-04.jsonl')
+    expect(e.cid).toBe('c-abc123')
+  })
+
   it('records a renderer entry for the module it names, marked as renderer', () => {
     const hub = hubWith()
     hub.ingest({ mod: 'database', lvl: 'error', msg: 'view crashed', err: { name: 'TypeError', message: 'x is undefined', stack: 'at y' }, scope: 'boundary' }, { win: 3 })

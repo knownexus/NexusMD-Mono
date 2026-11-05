@@ -7,14 +7,16 @@ const { createLoggedIpc, argShape } = require('./ipc.cjs')
 const { currentCorrelation, runWithCorrelation } = require('./context.cjs')
 const { withLogging } = require('../withLogging.cjs')
 
-// A hub that only records what was logged: { mod, scope, level, args }.
+// A hub that only records what was logged: { mod, scope, level, args }, and (in `corr`, same order) the
+// correlation the call was made in.
 function fakeHub() {
   const entries = []
+  const corr = []
   const make = (mod, scope = null) => {
-    const at = level => (...args) => entries.push({ mod, scope, level, args })
+    const at = level => (...args) => { corr.push(currentCorrelation()); entries.push({ mod, scope, level, args }) }
     return { error: at('error'), warn: at('warn'), info: at('info'), debug: at('debug'), scope: name => make(mod, name) }
   }
-  return { entries, logger: mod => make(mod) }
+  return { entries, corr, logger: mod => make(mod) }
 }
 
 function fakeIpc() {
@@ -117,6 +119,44 @@ describe('createLoggedIpc', () => {
     logged.handle('git:stuck', async () => { t += 15000 })
     for (const ch of ['git:fast', 'git:slow', 'git:stuck']) await ipc.handlers.get(ch)(event)
     expect(hub.entries.map(e => [e.args[1]?.channel ?? e.args[0], e.level])).toEqual([['git:slow', 'debug'], ['git:stuck', 'warn']])
+  })
+
+  // The point of a correlation id is to follow a call. The failure (and slow-call) lines are logged after the
+  // handler has finished, so they must be logged back inside its correlation, or they cannot be followed.
+  it('logs a failure under the id of the call that failed, as the first hop, not as one that went through its callees', async () => {
+    const { hub, ipc, logged } = setup('core')
+    logged.handle('x:run', async () => {
+      await runWithCorrelation(async () => { hub.logger('git').error('spawn failed') }, { mod: 'git' })
+      throw new Error('boom')
+    })
+    await expect(ipc.handlers.get('x:run')(event)).rejects.toThrow('boom')
+    const inner = hub.entries.findIndex(e => e.mod === 'git')
+    const failure = hub.entries.findIndex(e => e.scope === 'ipc:x:run')
+    expect(hub.corr[failure]?.cid).toBeTruthy()
+    expect(hub.corr[failure].cid).toBe(hub.corr[inner].cid)
+    expect(hub.corr[inner].path).toEqual(['core', 'git'])
+    expect(hub.corr[failure].path).toEqual(['core'])   // it is core's own line: not "via git"
+    expect(currentCorrelation()).toBeUndefined()        // and nothing leaks out of the call
+  })
+
+  it('does the same for a handler that throws synchronously', () => {
+    const { hub, ipc, logged } = setup('core')
+    let inside
+    logged.handle('x:sync', () => { inside = currentCorrelation().cid; throw new Error('sync boom') })
+    expect(() => ipc.handlers.get('x:sync')(event)).toThrow('sync boom')
+    const failure = hub.entries.findIndex(e => e.scope === 'ipc:x:sync')
+    expect(hub.corr[failure]?.cid).toBe(inside)
+  })
+
+  it('and for the slow-call note', async () => {
+    t = 0
+    const { hub, ipc, logged } = setup('core')
+    let inside
+    logged.handle('x:slow', async () => { inside = currentCorrelation().cid; t += 11000; return 1 })
+    await ipc.handlers.get('x:slow')(event)
+    const slow = hub.entries.findIndex(e => e.level === 'warn' && e.scope === 'ipc:x:slow')
+    expect(hub.corr[slow]?.cid).toBe(inside)
+    t = 0
   })
 
   it('removes a listener by the function the app registered', () => {
