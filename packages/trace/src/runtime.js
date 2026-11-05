@@ -70,6 +70,10 @@
       if (v instanceof Error) return { name: String(v.name), message: walk(String(v.message), depth + 1, ancestors, L) };
       kind = typeName(v);
       if (kind === 'Promise') return { $cut: 'promise' };
+      // An Electron IPC event (the first argument of every handler) and anything that is an EventEmitter (webContents,
+      // ipcMain, a stream) hold the whole process inside them: say what they are, not what they hold.
+      if (typeof v.processId === 'number' && typeof v.frameId === 'number' && v.sender) return { $cut: 'ipc-event', processId: v.processId };
+      if (typeof v.on === 'function' && typeof v.emit === 'function' && typeof v._events === 'object') return { $cut: 'EventEmitter', name: (v.constructor && v.constructor.name) || 'EventEmitter' };
       if (typeof v.nodeType === 'number' && typeof v.nodeName === 'string') return { $cut: 'dom', tag: String(v.nodeName).toLowerCase() };
     } catch (e) { return { $cut: 'unreadable' }; }
     if (depth > L.depth) return { $cut: 'depth' };

@@ -36,7 +36,7 @@ describe('what goes inside the installed application\'s asar', () => {
 
   it('lists only what the main process needs, and none of the apps', () => {
     const staged = stagedPackageJson(pkg)
-    expect(Object.keys(staged.dependencies).sort()).toEqual(['@nexusmd/main-kit', 'electron-log', 'electron-updater'])
+    expect(Object.keys(staged.dependencies).sort()).toEqual(['@nexusmd/main-kit', '@nexusmd/trace', 'electron-log', 'electron-updater'])
     expect(staged.version).toBe(pkg.version)
     expect(staged.main).toBe('electron/main.cjs')
   })

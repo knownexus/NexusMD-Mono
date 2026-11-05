@@ -143,6 +143,14 @@ describe('cut', () => {
     expect(nxt.cut({ a: 1, b: ['x', null, true] })).toEqual({ a: 1, b: ['x', null, true] })
     expect(nxt.cut(undefined)).toEqual({ $cut: 'undefined' })
   })
+  it("summarises an Electron IPC event and any EventEmitter (webContents, ipcMain...) instead of dumping their internals", () => {
+    const { EventEmitter } = require('node:events')
+    const ipcEvent = { type: 'frame', processId: 3, frameId: 1, sender: { id: 1, ipc: new EventEmitter() }, senderFrame: {} }
+    expect(nxt.cut(ipcEvent)).toEqual({ $cut: 'ipc-event', processId: 3 })
+    expect(nxt.cut(new EventEmitter())).toEqual({ $cut: 'EventEmitter', name: 'EventEmitter' })
+    class Emitter2 extends EventEmitter {}
+    expect(nxt.cut({ wc: new Emitter2() }).wc).toEqual({ $cut: 'EventEmitter', name: 'Emitter2' })
+  })
   it('says a Promise is a promise (its result is not known yet) instead of showing an empty object', () => {
     expect(nxt.cut(Promise.resolve(1))).toEqual({ $cut: 'promise' })
   })

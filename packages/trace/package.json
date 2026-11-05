@@ -7,14 +7,13 @@
     "./runtime": "./src/runtime.js",
     "./instrument": "./src/instrument.mjs",
     "./vite-plugin": "./src/vite-plugin.mjs",
+    "./main-rules": "./src/main-rules.cjs",
     "./exclude.json": "./src/exclude.json"
   },
   "files": ["src"],
   "scripts": { "test": "vitest run" },
-  "dependencies": {
-    "@babel/core": "^7.29.0"
-  },
   "devDependencies": {
+    "@babel/core": "^7.29.0",
     "@jridgewell/trace-mapping": "^0.3.28"
   }
 }
