@@ -1,3 +1,5 @@
+// The call-report runtime comes first: code that is traced captures it when it loads (packages/trace/src/runtime.js).
+import '@nexusmd/trace/runtime'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import '@nexusmd/ui/styles.css'
