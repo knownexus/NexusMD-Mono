@@ -25,6 +25,9 @@
 // platform's secure-storage adapter (async get/set/remove by name; set may fail silently, so
 // every secure write is verified with a get).
 
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('core', 'profiles')
 const NS = 'nexusmd'
 export const MIGRATION_V2_MARKER = `${NS}.migrated.v2`
 const BACKUP_PREFIX = `${MIGRATION_V2_MARKER}.backup.`
@@ -132,9 +135,9 @@ function makeJournal(storage, secure) {
     },
     async undo() {
       for (const { key, prev } of writes.reverse()) {
-        try { if (prev === null) storage.removeItem(key); else storage.setItem(key, prev) } catch { /* best effort */ }
+        try { if (prev === null) storage.removeItem(key); else storage.setItem(key, prev) } catch (err) { ignore(log, 'undoing a migration write failed (best effort)', err, 'warn', { key }) }
       }
-      for (const name of secureNew.reverse()) { try { await secure.remove(name) } catch { /* best effort */ } }
+      for (const name of secureNew.reverse()) { try { await secure.remove(name) } catch (err) { ignore(log, 'removing a secret written by a migration failed (best effort)', err, 'warn', { name }) } }
     },
   }
 }

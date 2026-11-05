@@ -3,6 +3,9 @@ import { slugify, PROJECT_COLORS } from '../ado/helpers.js'
 import { makeGithubClient } from './client.js'
 import { mapGithubIssue, mapGithubPR, mapGithubRun } from './mappers.js'
 import { extractIssueRefs } from './links.js'
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('github', 'loader')
 
 export const GITHUB_CACHE_KEY = 'nexusmd.github.cache.v1'
 
@@ -183,7 +186,7 @@ export async function loadGithubData(
   }
 
   if (storage) {
-    try { storage.set(GITHUB_CACHE_KEY, data) } catch (_) {}
+    try { storage.set(GITHUB_CACHE_KEY, data) } catch (err) { ignore(log, 'could not save the offline cache', err, 'debug') }
   }
 
   core._emit(isRefresh ? 'github:updated' : 'github:loaded', data)

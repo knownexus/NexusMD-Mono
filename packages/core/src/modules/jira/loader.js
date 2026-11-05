@@ -4,6 +4,9 @@ import { makeJiraClient } from './client.js'
 import { fetchJiraBoardConfig } from './boards.js'
 import { fetchJiraMetadata, fillMetadataFromIssues } from './metadata.js'
 import { mapJiraIssue, mapResolvedJiraIssue } from './mappers.js'
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('jira', 'loader')
 
 export const JIRA_CACHE_KEY = 'nexusmd.jira.cache.v1'
 export const JIRA_BASE_FIELDS = ['summary', 'issuetype', 'status', 'assignee', 'priority', 'labels', 'components', 'project', 'updated', 'created']
@@ -107,7 +110,7 @@ export async function loadJiraData(config, { http, storage, sleep } = {}, { isRe
   const candidates = meta.fieldIds?.storyPointsCandidates || [meta.fieldIds?.storyPoints]
   const pointsFieldOrder = Array.from(new Set([estimationFieldId, ...candidates].filter(Boolean)))
   const items = []
-  active.forEach(issue => { try { items.push(mapJiraIssue(issue, { meta, pointsFieldOrder })) } catch (_) {} })
+  active.forEach(issue => { try { items.push(mapJiraIssue(issue, { meta, pointsFieldOrder })) } catch (err) { ignore(log, 'an issue could not be read and was left out', err, 'warn', { key: issue?.key }) } })
 
   const data = {
     SITE: config.site,
@@ -130,7 +133,7 @@ export async function loadJiraData(config, { http, storage, sleep } = {}, { isRe
   }
 
   if (storage) {
-    try { storage.set(JIRA_CACHE_KEY, data) } catch (_) {}
+    try { storage.set(JIRA_CACHE_KEY, data) } catch (err) { ignore(log, 'could not save the offline cache', err, 'debug') }
   }
   core._emit(isRefresh ? 'jira:updated' : 'jira:loaded', data)
   return data

@@ -3,6 +3,9 @@
 // Headless like ado/config.js: storage and the key-naming strategy are injected.
 // Values are stored as raw strings; the PAT is never logged.
 
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('github', 'config')
 export const MAX_GITHUB_REPOS = 50
 
 /**
@@ -24,7 +27,7 @@ export function makeGithubConfig({ storage, key, secrets = null }) {
     try {
       const parsed = JSON.parse(get('repos') || '[]')
       if (Array.isArray(parsed)) repos = parsed
-    } catch { /* ignore */ }
+    } catch (err) { ignore(log, 'the saved repository list is not valid JSON, so none is used', err, 'warn') }
     const refresh = parseInt(get('refreshSecs') || '60', 10)
     return {
       pat:         get('pat') || '',

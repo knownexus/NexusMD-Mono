@@ -1,4 +1,7 @@
 import { worktreeId, activeBranchRef } from './parse.js'
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('git', 'groups')
 
 export const ALL_PROJECTS = 'Registered repos'
 // The tab's name before it was renamed; saved views may still name it, and no group may take it.
@@ -88,7 +91,7 @@ export async function registerRepo(config, path, adapter) {
   const { commonDir } = await adapter.resolve(path)
   for (const repo of config.repos) {
     let other = null
-    try { other = (await adapter.resolve(repo.path)).commonDir } catch { /* an unavailable registration can't clash */ }
+    try { other = (await adapter.resolve(repo.path)).commonDir } catch (err) { ignore(log, 'an unavailable repository registration cannot clash, so it is skipped', err, 'debug') }
     if (other && samePath(other, commonDir)) throw new Error(`That repository is already registered as ${repo.name}`)
   }
   const folder = String(path).replace(/[\\/]+$/, '').split(/[\\/]/).pop()

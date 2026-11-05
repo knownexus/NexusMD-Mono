@@ -1,3 +1,6 @@
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('github', 'client')
 export class GithubError extends Error {
   constructor(message, { status = 0, kind = 'other', ssoUrl } = {}) {
     super(message)
@@ -18,7 +21,7 @@ const hget = (headers, name) => {
 export function classifyGithubError(status, headers, bodyText) {
   const text = String(bodyText || '')
   let apiMsg = ''
-  try { apiMsg = String(JSON.parse(text)?.message || '') } catch { /* non-JSON body */ }
+  try { apiMsg = String(JSON.parse(text)?.message || '') } catch (err) { ignore(log, 'the error response is not JSON, so its message is not used', err, 'debug') }
   const detail = (apiMsg || '').slice(0, 160)
 
   if (status === 401) {
@@ -77,7 +80,7 @@ export function makeGithubClient(http) {
     const res = await http.fetch(path, { ...opts, headers: { ...baseHeaders(), ...(opts.headers || {}) } })
     if (!res.ok) {
       let text = ''
-      try { text = await res.text() } catch { /* unreadable body */ }
+      try { text = await res.text() } catch (err) { ignore(log, 'the error response body could not be read', err, 'debug') }
       const c = classifyGithubError(res.status, res.headers, text)
       throw new GithubError(c.message, { status: res.status, kind: c.kind, ssoUrl: c.ssoUrl })
     }

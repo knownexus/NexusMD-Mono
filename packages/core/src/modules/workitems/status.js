@@ -1,3 +1,6 @@
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('work', 'status')
 export const WORK_ITEM_STATUS_KEY = 'nexusmd.workitems.status.v1'
 
 export function describeProviderError(err) {
@@ -23,6 +26,6 @@ export function recordProviderStatus(storage, id, { ok, error } = {}) {
   all[id] = ok
     ? { status: 'ok', at: Date.now() }
     : { status: 'error', error: describeProviderError(error), at: Date.now() }
-  try { storage.set(WORK_ITEM_STATUS_KEY, all) } catch { /* quota */ }
+  try { storage.set(WORK_ITEM_STATUS_KEY, all) } catch (err) { ignore(log, 'could not save the provider status (storage quota)', err, 'debug') }
   return all
 }

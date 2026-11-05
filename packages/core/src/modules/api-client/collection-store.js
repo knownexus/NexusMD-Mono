@@ -8,6 +8,9 @@
 // { type: 'request', name, refId } nodes describing display order/grouping;
 // the request files themselves are the source of truth for request content.
 
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('api-client', 'collection-store')
 const COLLECTION_META_FILE = 'collection.json'
 const REQUESTS_DIR = 'requests'
 const ENVIRONMENTS_DIR = 'environments'
@@ -70,12 +73,12 @@ export async function loadCollection(file, dir) {
 
   const requests = {}
   for (const refId of await listRequestIds(file, dir)) {
-    try { requests[refId] = await readRequest(file, dir, refId) } catch { /* skip unreadable request */ }
+    try { requests[refId] = await readRequest(file, dir, refId) } catch (err) { ignore(log, 'a request could not be read and was left out of the collection', err, 'warn', { request: refId }) }
   }
 
   const environments = {}
   for (const name of await listEnvironmentNames(file, dir)) {
-    try { environments[name] = await readEnvironment(file, dir, name) } catch { /* skip unreadable environment */ }
+    try { environments[name] = await readEnvironment(file, dir, name) } catch (err) { ignore(log, 'an environment could not be read and was left out of the collection', err, 'warn', { environment: name }) }
   }
 
   return { dir, meta, requests, environments }

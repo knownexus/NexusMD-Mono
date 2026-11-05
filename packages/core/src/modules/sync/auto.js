@@ -1,4 +1,7 @@
 // auto.js — background sync scheduler: interval + foreground + change-debounce triggers.
+import { rendererLog, ignored } from '../../log.js'
+
+const log = rendererLog('sync', 'auto')
 export function startAutoSync({
   syncNow,
   intervalMs = 300000,
@@ -10,7 +13,7 @@ export function startAutoSync({
   let debounceTimer = null;
   const unsubscribes = [];
 
-  const safeSync = () => { syncNow().catch(() => {}); };
+  const safeSync = () => { syncNow().catch(ignored(log, 'a background sync failed; the next trigger tries again', 'warn')); };
 
   const intervalId = setInterval(() => {
     if (!stopped) safeSync();

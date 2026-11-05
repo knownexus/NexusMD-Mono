@@ -1,6 +1,9 @@
 // packages/core/src/modules/jira/config.js — read/write the local Jira Cloud connection.
 // Mirrors ado/config.js: storage and key naming are injected per platform.
 
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('jira', 'config')
 export function normaliseSite(input) {
   const raw = String(input || '').trim()
   if (!raw) return ''
@@ -22,7 +25,7 @@ export function makeJiraConfig({ storage, key, secrets = null }) {
 
   function getJiraConfig() {
     let projectKeys = []
-    try { projectKeys = JSON.parse(get('projectKeys') || '[]') } catch { /* ignore */ }
+    try { projectKeys = JSON.parse(get('projectKeys') || '[]') } catch (err) { ignore(log, 'the saved project keys are not valid JSON, so none are used', err, 'warn') }
     return {
       site:        get('site')     || '',
       email:       get('email')    || '',

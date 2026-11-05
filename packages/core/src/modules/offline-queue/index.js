@@ -1,6 +1,9 @@
 // offline-queue.js — provider writes (state changes, PR votes and comments) made while offline are
 // kept and sent when the connection is back. Pure: storage, the clock and the network check are
 // injected, and the handlers do the real work.
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('sync', 'offline-queue')
 export const isNetworkError = (e) => e instanceof TypeError || /failed to fetch|network|timed? ?out|offline|ERR_/i.test(String(e?.message || ''));
 
 export function createOfflineQueue({
@@ -8,7 +11,7 @@ export function createOfflineQueue({
   now = Date.now, emit = () => {},
 }) {
   const read = () => { try { const l = JSON.parse(storage.getItem(key()) || '[]'); return Array.isArray(l) ? l : []; } catch { return []; } };
-  const write = (list) => { try { storage.setItem(key(), JSON.stringify(list)); } catch { /* storage full */ } emit(list.length); };
+  const write = (list) => { try { storage.setItem(key(), JSON.stringify(list)); } catch (err) { ignore(log, 'the offline queue could not be saved (storage full or blocked)', err, 'warn') } emit(list.length); };
   const remove = (id) => write(read().filter(o => o.id !== id));
   const count = () => read().length;
 
