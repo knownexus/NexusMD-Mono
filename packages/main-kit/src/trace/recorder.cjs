@@ -14,6 +14,7 @@ const { moduleLogger, ignore } = require('../logging/lazy.cjs');
 const { createStore, EXT, VERSION } = require('./store.cjs');
 
 const MAX_BATCH = 20000;
+const MAX_EVENT_BYTES = 256 * 1024; // one event bigger than this is not stored
 const log = moduleLogger('core', 'recorder');
 
 function createRecorder({
@@ -45,18 +46,33 @@ function createRecorder({
 
   const append = (text) => { if (text) fs.appendFileSync(current.file, text); };
 
+  // Puts an event in the waiting list, counted against the size cap from this moment (not only once it is written), so
+  // a flood between two writes cannot fill memory. A time the sender made up is pulled back into the recording's span.
+  function queue(c, event) {
+    let size;
+    try { size = JSON.stringify(event).length; } catch { return false; } // an event that cannot be written is dropped
+    if (size > MAX_EVENT_BYTES) return false;
+    if (c.bytes + c.pendingBytes + size > maxBytes) { cap('bytes'); return false; }
+    const t = Number.isFinite(event.t) ? Math.min(Math.max(event.t, c.startedAt), now()) : now();
+    const stored = t === event.t ? event : { ...event, t };
+    c.sizes.set(stored, size);
+    c.pendingBytes += size;
+    c.pending.push(stored);
+    return true;
+  }
+
   // Writes what is old enough (or, at stop, everything), in time order, redacted.
   function writePending(all) {
     const c = current;
     if (c.pending.length) {
       c.pending.sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
-      const cutoff = all ? Infinity : now() - horizonMs;
+      const cutoff = all || c.capReason ? Infinity : now() - horizonMs; // once capped, what was accepted is written now
       let n = 0;
       while (n < c.pending.length && (c.pending[n].t ?? 0) <= cutoff) n++;
       const due = c.pending.splice(0, n);
+      for (const event of due) c.pendingBytes -= c.sizes.get(event) ?? 0;
       let chunk = '';
       for (const event of due) {
-        if (c.capReason === 'bytes') break;
         const line = JSON.stringify(c.redactor.redact(event)) + '\n';
         if (c.bytes + chunk.length + line.length > maxBytes) { c.capReason ??= 'bytes'; cap('bytes'); break; }
         chunk += line;
@@ -64,7 +80,7 @@ function createRecorder({
       }
       c.bytes += chunk.length;
       append(chunk);
-      if (c.capReason) c.pending.length = 0;
+      if (c.capReason) { c.pending.length = 0; c.pendingBytes = 0; }
     }
     if (c.capReason && !c.capWritten) {
       c.capWritten = true;
@@ -75,7 +91,7 @@ function createRecorder({
   function tick(all) {
     const c = current;
     if (!c) return;
-    try { for (const e of runtime?.drain?.() ?? []) c.pending.push(e); } catch (err) { ignore(log, 'the main process calls could not be read from the runtime, so this part of the recording is missing them', err, 'warn'); }
+    try { for (const e of runtime?.drain?.() ?? []) queue(c, e); } catch (err) { ignore(log, 'the main process calls could not be read from the runtime, so this part of the recording is missing them', err, 'warn'); }
     writePending(all);
   }
 
@@ -90,7 +106,7 @@ function createRecorder({
     } catch (err) {
       throw new Error(`The recording could not start: ${err.message}`);
     }
-    current = { id, file, startedAt: now(), pending: [], redactor: createRedactor(), bytes: header.length, accepted: 0, written: 0, capReason: null, capWritten: false, timer: null, prevOnCap: runtime?.onCap ?? null };
+    current = { id, file, startedAt: now(), pending: [], pendingBytes: 0, sizes: new WeakMap(), redactor: createRedactor(), bytes: header.length, accepted: 0, written: 0, capReason: null, capWritten: false, timer: null, prevOnCap: runtime?.onCap ?? null };
     if (runtime) {
       runtime.onCap = () => cap('events');
       runtime.start?.({ proc: 'main', maxEvents });
@@ -108,8 +124,9 @@ function createRecorder({
     for (const e of events.slice(0, MAX_BATCH)) {
       if (!e || typeof e !== 'object' || typeof e.k !== 'string' || typeof e.id !== 'string' && e.k !== 'cap') continue;
       if (c.accepted >= maxEvents) { cap('events'); return; }
-      c.accepted++;
-      c.pending.push({ ...e, t: Number.isFinite(e.t) ? e.t : now(), ...(win != null && e.win == null && e.proc === 'renderer' ? { win } : {}) });
+      const stamped = win != null && e.win == null && e.proc === 'renderer' ? { ...e, win } : e;
+      if (queue(c, stamped)) c.accepted++;
+      if (c.capReason) return;
     }
   }
 
@@ -130,7 +147,23 @@ function createRecorder({
     return store.get(c.id);
   }
 
-  return { start, stop, add, status, flush: async () => { if (current) tick(false); }, onState: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }, store };
+  /** For the app quitting: writes what is waiting, synchronously, and leaves the file without an end line (it reads as unfinished). */
+  function close() {
+    const c = current;
+    if (!c) return;
+    clearInterval(c.timer);
+    try {
+      tick(true);
+      try { runtime?.stop?.(); } catch (err) { ignore(log, 'the call runtime could not be stopped when the app quit', err); }
+      tick(true);
+    } finally {
+      if (runtime) runtime.onCap = c.prevOnCap;
+      current = null;
+      notify();
+    }
+  }
+
+  return { start, stop, add, close, status, flush: async () => { if (current) tick(false); }, onState: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }, store };
 }
 
 module.exports = { createRecorder };

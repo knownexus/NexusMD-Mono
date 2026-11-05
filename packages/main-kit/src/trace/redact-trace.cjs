@@ -40,7 +40,9 @@ function createRedactor(rules = DEFAULT_DENY) {
     const parentDenied = event.p != null && deniedIds.has(event.p);
 
     if (event.k === 'enter') {
-      const denied = parentDenied || hides(rules.functions, nameWords(event.fn));
+      // An IPC call is a frame named ipc:<channel>; its channel is judged as a channel, not as a function name.
+      const channel = typeof event.fn === 'string' && event.fn.startsWith('ipc:') ? event.fn.slice(4) : null;
+      const denied = parentDenied || (channel !== null ? hides(rules.channels, channel) : hides(rules.functions, nameWords(event.fn)));
       open.set(event.id, denied);
       if (denied) deniedIds.add(event.id);
       return denied ? replace('a', 'function') : (out.a = redactValue(event.a), out);

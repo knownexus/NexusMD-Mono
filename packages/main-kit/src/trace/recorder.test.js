@@ -27,6 +27,7 @@ afterEach(async () => { try { await rec.stop() } catch { /* not recording */ } r
 describe('a recording', () => {
   it('start then stop writes a header, the events in time order across two sources, and an end line', async () => {
     const { id } = rec.start('merge test')
+    clock.t = 1_000_100   // events are stamped between the start of the recording and now
     runtime.queue.push(enter('m1-2', 1_000_050), enter('m1-1', 1_000_010))
     // a window's batch arrives later but holds an earlier event
     rec.add([enter('r1-1', 1_000_020, { proc: 'renderer', win: 1 })], { win: 1 })
@@ -109,6 +110,46 @@ describe('a recording', () => {
     expect(readFileSync(fileOf(id)).length).toBeLessThan(2500)
   })
 
+  it('an event a window stamps far in the future is not held back forever: it is written once the horizon has passed', async () => {
+    const { id } = rec.start()
+    rec.add([enter('r1-1', clock.t + 1e12, { proc: 'renderer' })], { win: 1 })
+    clock.t += 2000
+    await rec.flush()
+    expect(lines(fileOf(id)).filter(e => e.k === 'enter').map(e => e.id)).toEqual(['r1-1'])
+  })
+
+  it('an event stamped before the recording began is placed at its start', async () => {
+    const { id } = rec.start()
+    rec.add([enter('r1-1', 5, { proc: 'renderer' })], { win: 1 })
+    await rec.stop()
+    expect(lines(fileOf(id)).find(e => e.k === 'enter').t).toBe(1_000_000)
+  })
+
+  it('what is waiting to be written counts against the size cap, so a flood cannot fill memory before a write', async () => {
+    const small = createRecorder({ dir, now: () => clock.t, runtime, flushMs: 1e9, horizonMs: 1500, maxBytes: 1500 })
+    small.start()
+    for (let i = 0; i < 40; i++) small.add([enter(`r1-${i}`, 1_000_000, { proc: 'renderer', a: ['x'.repeat(100)] })], { win: 1 })
+    expect(small.status().capped).toBe(true)   // no flush happened: the waiting events alone went past the cap
+    await small.stop()
+  })
+
+  it('a single enormous event is dropped, not stored', async () => {
+    const { id } = rec.start()
+    rec.add([enter('r1-1', 1_000_010, { proc: 'renderer', a: ['y'.repeat(400000)] }), enter('r1-2', 1_000_020, { proc: 'renderer' })], { win: 1 })
+    await rec.stop()
+    expect(lines(fileOf(id)).filter(e => e.k === 'enter').map(e => e.id)).toEqual(['r1-2'])
+  })
+
+  it('events that fit are written even when the cap is reached by what came after them', async () => {
+    const small = createRecorder({ dir, now: () => clock.t, runtime, flushMs: 1e9, horizonMs: 1500, maxBytes: 1500 })
+    const { id } = small.start()
+    for (let i = 0; i < 40; i++) small.add([enter(`r1-${i}`, 1_000_000, { proc: 'renderer', a: ['x'.repeat(100)] })], { win: 1 })
+    await small.stop()
+    const written = lines(fileOf(id)).filter(e => e.k === 'enter')
+    expect(written.length).toBeGreaterThan(0)
+    expect(written.length).toBeLessThan(40)
+  })
+
   it('past maxEvents it is capped too', async () => {
     const few = createRecorder({ dir, now: () => clock.t, runtime, flushMs: 1e9, horizonMs: 0, maxEvents: 3 })
     few.start()
@@ -141,12 +182,31 @@ describe('a recording', () => {
   })
 })
 
+describe('the app quitting mid-recording', () => {
+  it('close() writes what is waiting and leaves the file without an end line, so it is listed as unfinished and still reads', async () => {
+    const { id } = rec.start('quit test')
+    clock.t = 1_000_100
+    rec.add([enter('r1-1', 1_000_050, { proc: 'renderer' })], { win: 1 })
+    runtime.queue.push(enter('m1-1', 1_000_060))
+    rec.close()
+    expect(rec.status()).toEqual({ recording: false })
+    const info = createStore({ dir }).list()[0]
+    expect(info).toMatchObject({ id, status: 'unfinished', events: 2 })
+    expect((await createStore({ dir }).read(id)).events.map(e => e.id)).toEqual(['r1-1', 'm1-1'])
+  })
+
+  it('close() when nothing is recording does nothing', () => {
+    expect(() => rec.close()).not.toThrow()
+  })
+})
+
 describe('the flush timer', () => {
   it('writes what is older than the horizon while recording, and the rest on stop', async () => {
     vi.useFakeTimers()
     try {
       const timed = createRecorder({ dir, now: () => clock.t, runtime, flushMs: 100, horizonMs: 1500 })
       const { id } = timed.start()
+      clock.t += 10_000
       runtime.queue.push(enter('m1-1', clock.t - 5000), enter('m1-2', clock.t))
       await vi.advanceTimersByTimeAsync(150)
       const mid = lines(fileOf(id)).filter(e => e.k === 'enter').map(e => e.id)

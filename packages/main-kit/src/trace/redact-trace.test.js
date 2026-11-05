@@ -165,3 +165,16 @@ describe('redactString: hostile input', () => {
     expect(redactString('junk "x" ... "api_key":"ABCD1234" tail')).not.toContain('ABCD1234')
   })
 })
+
+describe('IPC calls in a recording (frames named ipc:<channel>)', () => {
+  it('a call on a credential channel has its arguments, result and everything it called hidden', () => {
+    const r = createRedactor()
+    expect(r.redact(enter('ipc:oauth:start', ['plain-looking'], 'm1-1')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(enter('x.js:1:0:inner', ['plain-too'], 'm1-2', 'm1-1')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(ret('m1-2', 'plain')).v).toEqual({ $redacted: 'function' })
+    expect(r.redact(ret('m1-1', 'plain')).v).toEqual({ $redacted: 'function' })
+  })
+  it('an ordinary channel is shown', () => {
+    expect(createRedactor().redact(enter('ipc:git:status', ['C:/repo'], 'm1-1')).a).toEqual(['C:/repo'])
+  })
+})
