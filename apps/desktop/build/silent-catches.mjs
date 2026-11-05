@@ -30,12 +30,12 @@ const EMPTY_ERROR_LISTENER = new RegExp(
   'g',
 )
 
-function* sourceFiles(dir) {
+function* sourceFiles(dir, { skip = SKIP_DIRS, ext = /\.(cjs|js|mjs)$/ } = {}) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name)
     if (entry.isDirectory()) {
-      if (!SKIP_DIRS.has(entry.name)) yield* sourceFiles(full)
-    } else if (/\.(cjs|js|mjs)$/.test(entry.name) && !/\.test\.[cm]?js$/.test(entry.name)) {
+      if (!skip.has(entry.name)) yield* sourceFiles(full, { skip, ext })
+    } else if (ext.test(entry.name) && !/\.test\.[cm]?jsx?$/.test(entry.name)) {
       yield full
     }
   }
@@ -90,6 +90,33 @@ export function readMainSources(root = repoRoot) {
   for (const dir of scanRoots(root)) {
     let files
     try { files = [...sourceFiles(dir)] } catch { continue } // an app with no main-process code
+    for (const file of files) out.push({ file: relative(root, file).split(sep).join('/'), text: readFileSync(file, 'utf8') })
+  }
+  return out
+}
+
+// Code that runs in a window: the shell's renderer, every app's src/renderer, and the shared packages
+// they load. (apps/web is the browser build, where the console is the right place to log.)
+export const RENDERER_ROOTS = [
+  'apps/desktop/src', 'packages/core/src', 'packages/ui/src', 'packages/shell-sdk/src', 'packages/web-adapters/src', 'packages/editor-kit/src',
+]
+const RENDERER_SKIP_DIRS = new Set(['node_modules', 'dist', 'assets', 'e2e'])
+
+/** The roots to scan for renderer code: RENDERER_ROOTS plus modules/<id>/src/renderer for each app. */
+export function rendererRoots(root = repoRoot) {
+  const roots = RENDERER_ROOTS.map(r => join(root, r))
+  for (const m of readdirSync(join(root, 'modules'), { withFileTypes: true })) {
+    if (m.isDirectory()) roots.push(join(root, 'modules', m.name, 'src', 'renderer'))
+  }
+  return roots
+}
+
+/** Every renderer source file as { file, text } (file relative to the repo, with forward slashes). */
+export function readRendererSources(root = repoRoot) {
+  const out = []
+  for (const dir of rendererRoots(root)) {
+    let files
+    try { files = [...sourceFiles(dir, { skip: RENDERER_SKIP_DIRS, ext: /\.(js|jsx|mjs)$/ })] } catch { continue } // an app with no renderer code
     for (const file of files) out.push({ file: relative(root, file).split(sep).join('/'), text: readFileSync(file, 'utf8') })
   }
   return out

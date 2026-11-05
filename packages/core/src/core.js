@@ -3,6 +3,7 @@ import {
 } from './features/module-registry.js'
 import { listProfiles } from './profiles/profile-store.js'
 import { emit, on, off } from './events.js'
+import { rendererLog } from './log.js'
 
 let _adapters = null
 
@@ -81,7 +82,7 @@ export async function initCore(adapters) {
   for (const m of getRegistry()) {
     if (m._enabled && hasRequiredAdapters(m, adapters)) {
       try { await m.init?.(adapters, profile?.modules?.[m.id]) }
-      catch (e) { console.error('[core] module init failed', m.id, e) }
+      catch (e) { rendererLog(m.id, 'init').error('module init failed', e) }  // filed under the module that failed
     }
   }
 

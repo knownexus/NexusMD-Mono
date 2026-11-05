@@ -38,7 +38,7 @@ import {
   moduleAdapters, moduleView, findPopout, ModuleProviders, useModuleBadges, useModuleOffViews, ModuleTopbar, ModuleBanners,
 } from './shell/modules.js'
 import { host, takeWaitingNavigation } from './shell/host.js'
-import { setActiveModule, reportRenderError, installRendererErrorHooks } from './shell/renderer-log.js'
+import { setActiveModule, reportRenderError, installRendererErrorHooks } from '@nexusmd/core'
 
 // Uncaught errors and unhandled rejections in this window reach the shell's log, filed under the app
 // whose screen is showing (setActiveModule, below).
@@ -411,8 +411,8 @@ class AppErrorBoundary extends React.Component {
     return { error }
   }
   componentDidCatch(error, info) {
-    // Filed under the app whose screen was showing; console.error is the fallback outside Electron.
-    if (!reportRenderError(error, info.componentStack)) console.error('Uncaught render error:', error, info.componentStack)
+    // Filed under the app whose screen was showing (the console, outside Electron).
+    reportRenderError(error, info.componentStack)
   }
   render() {
     if (!this.state.error) return this.props.children

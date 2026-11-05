@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { setActiveModule, getActiveModule, serializeError, sendEntry, rendererLog, reportRenderError, installRendererErrorHooks } from './renderer-log.js'
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { setActiveModule, getActiveModule, serializeError, sendEntry, rendererLog, reportRenderError, installRendererErrorHooks } from './log.js'
 
 function fakeTarget() {
   const handlers = {}
@@ -20,9 +21,44 @@ describe('renderer logging', () => {
     expect(serializeError(undefined).name).toBe('NonError')
   })
 
-  it('does nothing, and says so, when there is nowhere to send', () => {
+  it('reports that nothing was sent when there is nowhere to send', () => {
     expect(sendEntry({ msg: 'x' }, undefined)).toBe(false)
-    expect(() => rendererLog('git').error('nobody listening')).not.toThrow()
+  })
+
+  describe('without the desktop bridge (the web app, tests)', () => {
+    afterEach(() => vi.restoreAllMocks())
+
+    it('a logger call goes to the console, tagged with its module and scope', () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const err = new Error('boom')
+      rendererLog('git', 'diff').error('diff failed', err, { file: 'a.js' })
+      rendererLog('work').warn('slow', { ms: 900 })
+      expect(error).toHaveBeenCalledWith('[git:diff] diff failed', err, { file: 'a.js' })
+      expect(warn).toHaveBeenCalledWith('[work] slow', { ms: 900 })
+    })
+
+    it('a render error goes to the console and reports it was not sent', () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+      expect(reportRenderError(new Error('render blew up'), '\n  at Board', 'work')).toBe(false)
+      expect(error).toHaveBeenCalled()
+    })
+
+    it('does not also print what it has sent to the hub', () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+      window.electronAPI = { logging: { ingest: vi.fn() } }
+      rendererLog('git').error('sent')
+      delete window.electronAPI
+      expect(error).not.toHaveBeenCalled()
+    })
+  })
+
+  it('treats an error-like object from another realm as an error', () => {
+    const send = vi.fn()
+    window.electronAPI = { logging: { ingest: send } }
+    rendererLog('git').error('failed', { name: 'AbortError', message: 'aborted', stack: 's' })
+    delete window.electronAPI
+    expect(send.mock.calls[0][0]).toMatchObject({ err: { name: 'AbortError', message: 'aborted' } })
   })
 
   it('never throws into the caller when sending fails', () => {

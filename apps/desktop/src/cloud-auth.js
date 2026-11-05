@@ -3,13 +3,15 @@
 // redirects back via the nexusmd:// custom protocol with a one-time code, which
 // the renderer redeems for tokens. Requires VITE_API_BASE to point at the host.
 import { getProfileKey } from './profile-keys.js'
-import { makeGoogleDriveProvider, makeOneDriveProvider } from '@nexusmd/core'
+import { makeGoogleDriveProvider, makeOneDriveProvider, rendererLog } from '@nexusmd/core'
 import { toast } from '@nexusmd/ui'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 import { linkAdapter } from './adapters/link.js'
 import { oauthAdapter } from './adapters/oauth.js'
 import { deepLinkAdapter } from './adapters/deepLink.js'
 import { beginSignIn, finishSignIn } from './oauth-pending.js'
+
+const log = rendererLog('core', 'cloud-auth')
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd-api-production.up.railway.app'
 
@@ -32,11 +34,11 @@ function read(suffix) {
 }
 async function write(suffix, auth) {
   try { const k = nameOf(suffix); if (k) await secureStorageAdapter.set(k, JSON.stringify(auth)) }
-  catch (err) { console.warn(`[cloud-auth] failed to persist ${suffix}:`, err?.message || err) }
+  catch (err) { log.warn(`failed to persist ${suffix}`, err) }
 }
 async function clear(suffix) {
   try { const k = nameOf(suffix); if (k) { localStorage.removeItem(k); await secureStorageAdapter.remove(k) } }
-  catch (err) { console.warn(`[cloud-auth] failed to clear ${suffix}:`, err?.message || err) }
+  catch (err) { log.warn(`failed to clear ${suffix}`, err) }
 }
 
 function makeBinding(key) {
@@ -45,19 +47,19 @@ function makeBinding(key) {
     isConnected: () => Boolean(read(cfg.keySuffix)?.accessToken),
     async connect() {
       try {
-        console.info(`[cloud-auth] Initiating ${key} OAuth connection`)
+        log.info(`Initiating ${key} OAuth connection`)
         const returnUri = beginSignIn(cfg.from)
         const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
         if (!res.ok) { 
-          console.warn(`[cloud-auth] ${key} sign-in not configured on server`)
+          log.warn(`${key} sign-in not configured on server`)
           toast?.(`${key} sign-in is not configured on the server.`, 'error')
           return 
         }
         const { url } = await res.json()
-        console.info(`[cloud-auth] Redirecting to ${key} OAuth provider`)
+        log.info(`Redirecting to ${key} OAuth provider`)
         await linkAdapter.openExternal(url)
       } catch (err) { 
-        console.error(`[cloud-auth] Failed to initiate ${key} connection:`, err.message)
+        log.error(`Failed to initiate ${key} connection`, err)
         toast?.('Sign-in failed. Please try again.', 'error') 
       }
     },
@@ -75,7 +77,7 @@ function makeBinding(key) {
         const { accessToken } = await res.json()
         await write(cfg.keySuffix, { ...auth, accessToken })
         return accessToken
-      } catch (err) { console.warn('[cloud-auth] token refresh failed:', err?.message || err); return null }
+      } catch (err) { log.warn('token refresh failed', err); return null }
     },
   }
 }
@@ -93,7 +95,7 @@ const BY_FROM = {
 export async function redeem(url) {
   let u
   try { u = new URL(url) } catch { return }
-  console.info('[cloud-auth] Redeeming OAuth code')
+  log.info('Redeeming OAuth code')
   const params = u.searchParams
   const from = params.get('provider')
   const otc = params.get('otc')
@@ -102,7 +104,7 @@ export async function redeem(url) {
   // Only a sign-in this app started: the link carries the nonce given when it began.
   // (keyed by the link's own path, as the server may name the provider differently)
   if (!finishSignIn(u.pathname.replace(/^\/+|\/+$/g, ''), params.get('n'))) {
-    console.warn('[cloud-auth] Ignoring an OAuth link that no sign-in is waiting for')
+    log.warn('Ignoring an OAuth link that no sign-in is waiting for')
     return
   }
   try {
@@ -112,14 +114,14 @@ export async function redeem(url) {
     })
     if (!res.ok) {
       const errText = await res.text()
-      console.error(`[cloud-auth] OAuth exchange failed: HTTP ${res.status} - ${errText}`)
+      log.error(`OAuth exchange failed: HTTP ${res.status}`, { response: errText })
       return
     }
     const { accessToken, refreshToken } = await res.json()
-    console.info(`[cloud-auth] OAuth successful, saved tokens`)
+    log.info('OAuth successful, saved tokens')
     await write(cfg.keySuffix, { accessToken, refreshToken }) // saved before the reload
     window.location.reload()
-  } catch (err) { console.error('[cloud-auth] OAuth redeem failed:', err?.stack || err) }
+  } catch (err) { log.error('OAuth redeem failed', err) }
 }
 
 export function registerCloudDeepLink() {
@@ -134,13 +136,13 @@ export function makeNativeBinding({ provider, suffix }) {
     isConnected: () => Boolean(read(suffix)?.accessToken),
     async connect() {
       try {
-        console.info(`[cloud-auth] Initiating ${provider} OAuth connection (native)`)
+        log.info(`Initiating ${provider} OAuth connection (native)`)
         const tokens = await oauthAdapter.start(provider)
         await write(suffix, tokens)
-        console.info(`[cloud-auth] ${provider} OAuth connected`)
+        log.info(`${provider} OAuth connected`)
         window.dispatchEvent(new Event('nexusmd:cloud-auth-changed'))
       } catch (err) {
-        console.error(`[cloud-auth] Failed to connect ${provider}:`, err?.stack || err)
+        log.error(`Failed to connect ${provider}`, err)
         toast?.('Sign-in failed. Please try again.', 'error')
       }
     },
@@ -156,7 +158,7 @@ export function makeNativeBinding({ provider, suffix }) {
         await write(suffix, { ...auth, ...next })   // ...next carries a rotated refreshToken when present
         return next.accessToken
       } catch (err) {
-        console.error(`[cloud-auth] ${provider} token refresh failed:`, err?.stack || err)
+        log.error(`${provider} token refresh failed`, err)
         return force ? null : auth.accessToken
       }
     },
@@ -211,19 +213,19 @@ export function makeDesktopOAuthService(from) {
     isConnected: () => Boolean(read(cfg.keySuffix)?.accessToken),
     async connect() {
       try {
-        console.info(`[cloud-auth] Initiating ${from} OAuth connection`)
+        log.info(`Initiating ${from} OAuth connection`)
         const returnUri = beginSignIn(cfg.from)
         const res = await fetch(`${API_BASE}${cfg.api}/native-url?returnUri=${encodeURIComponent(returnUri)}`)
         if (!res.ok) { 
-          console.warn(`[cloud-auth] ${from} sign-in not configured on server`)
+          log.warn(`${from} sign-in not configured on server`)
           toast?.(`${from} sign-in is not configured on the server.`, 'error')
           return 
         }
         const { url } = await res.json()
-        console.info(`[cloud-auth] Redirecting to ${from} OAuth provider`)
+        log.info(`Redirecting to ${from} OAuth provider`)
         await linkAdapter.openExternal(url)
       } catch (err) { 
-        console.error(`[cloud-auth] Failed to initiate ${from} connection:`, err.message)
+        log.error(`Failed to initiate ${from} connection`, err)
         toast?.('Sign-in failed. Please try again.', 'error') 
       }
     },
@@ -252,7 +254,7 @@ export function makeDesktopOAuthService(from) {
         const { accessToken } = await res.json()
         await write(cfg.keySuffix, { ...auth, accessToken })
         return accessToken
-      } catch (err) { console.warn('[cloud-auth] token refresh failed:', err?.message || err); return null }
+      } catch (err) { log.warn('token refresh failed', err); return null }
     },
     async loadCreds() {
       try {
@@ -260,13 +262,13 @@ export function makeDesktopOAuthService(from) {
         if (!k) return {}
         const raw = await secureStorageAdapter.get(k)
         return raw ? JSON.parse(raw) : {}
-      } catch (err) { console.warn('[cloud-auth] loadCreds failed:', err?.message || err); return {} }
+      } catch (err) { log.warn('loadCreds failed', err); return {} }
     },
     async saveCreds(c) {
       try {
         const k = getProfileKey('nexusmd.' + from + '.oauthCreds')
         if (k) await secureStorageAdapter.set(k, JSON.stringify(c))
-      } catch (err) { console.warn('[cloud-auth] saveCreds failed:', err?.message || err) }
+      } catch (err) { log.warn('saveCreds failed', err) }
     },
   }
 }

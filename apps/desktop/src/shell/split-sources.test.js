@@ -46,7 +46,9 @@ describe('the split app sources', () => {
     const { appModules } = await import('./app-code.split.js')
     expect(appModules).toEqual([{ id: 'a' }])
     expect(error).toHaveBeenCalledTimes(2)
-    expect(error.mock.calls.map(c => c[0]).join(' ')).toMatch(/"broken".*"nodefault"/)
+    // each failure is filed under the app that failed
+    expect(error.mock.calls.map(c => c[0]).join(' ')).toMatch(/\[broken:load\].*\[nodefault:load\]/)
+    expect(error.mock.calls[1][1]).toEqual({ reason: 'it has no default export' })
   })
 
   it('adds each stylesheet once', async () => {

@@ -2,13 +2,16 @@
 // Kept in its own module so profile-store can emit without importing core.js
 // (which would create an import cycle).
 
+import { rendererLog } from './log.js'
+
+const log = rendererLog('core', 'events')
 const _listeners = new Map()
 
 export function emit(event, payload) {
   const handlers = _listeners.get(event)
   if (!handlers) return
   for (const cb of handlers) {
-    try { cb(payload) } catch (e) { console.error('[core] event handler threw', event, e) }
+    try { cb(payload) } catch (e) { log.error(`a handler for "${event}" threw`, e) }
   }
 }
 
