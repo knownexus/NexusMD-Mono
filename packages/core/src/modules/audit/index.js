@@ -1,4 +1,7 @@
 import { registerModule } from '../../features/module-registry.js'
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('core', 'audit')
 
 // Module-level state set during init so callers don't need to pass adapters every time.
 let _file       = null
@@ -31,7 +34,7 @@ export async function appendAuditEntry(entry, fileAdapter) {
     let existing = ''
     try { existing = (await file.read(path)) ?? '' } catch { existing = '' }
     await file.write(path, existing + line)
-  } catch { /* audit failures are always silent */ }
+  } catch (err) { ignore(log, 'an audit record could not be written (an audit failure never interrupts the app)', err, 'warn') }
 }
 
 /**
@@ -72,7 +75,7 @@ registerModule({
     _profileId  = storage.get('nexusmd.activeProfileId') ?? null
 
     if (_profileDir) {
-      try { await _file.mkdir(_profileDir) } catch { /* dir may already exist */ }
+      try { await _file.mkdir(_profileDir) } catch (err) { ignore(log, 'creating the audit folder (it may already exist)', err, 'debug') }
     }
   },
 

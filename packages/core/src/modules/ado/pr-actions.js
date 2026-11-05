@@ -2,6 +2,9 @@
 // Every function takes an injected `http.fetch(path, options)` adapter, like
 // pr-collab.js. Failures throw Error(<ADO message> or 'HTTP <status>').
 
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('ado', 'pr-actions')
 export const ADO_MERGE_STRATEGIES = [
   { id: 'noFastForward', label: 'Merge' },
   { id: 'squash', label: 'Squash' },
@@ -18,7 +21,7 @@ async function failure(res) {
   try {
     const body = JSON.parse(await res.text())
     if (body && typeof body.message === 'string') message = body.message
-  } catch { /* non-JSON body */ }
+  } catch (err) { ignore(log, 'the error response is not JSON, so its message is not used', err, 'debug') }
   return new Error(message || `HTTP ${res.status}`)
 }
 

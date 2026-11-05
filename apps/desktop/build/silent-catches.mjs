@@ -77,12 +77,6 @@ export function scanSilentCatches(root = repoRoot) {
   return result
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const result = scanSilentCatches()
-  let n = 0
-  for (const [file, hits] of Object.entries(result)) for (const h of hits) { n++; console.log(`${file}:${h.line}  ${h.snippet}`) }
-  console.log(`\n${n} silent catches in ${Object.keys(result).length} files`)
-}
 
 /** Every main-process source file as { file, text } (file relative to the repo, with forward slashes). */
 export function readMainSources(root = repoRoot) {
@@ -120,4 +114,44 @@ export function readRendererSources(root = repoRoot) {
     for (const file of files) out.push({ file: relative(root, file).split(sep).join('/'), text: readFileSync(file, 'utf8') })
   }
   return out
+}
+
+// Swallowed errors in window code that are deliberate and cannot go through ignore(): each with its reason.
+// (A swallow that can, goes through ignore() from @nexusmd/core, which logs it, so it is not found here.)
+export const RENDERER_SILENT_EXCEPTIONS = [
+  { file: 'packages/core/src/log.js', why: 'the logger cannot log its own failure, so it must never throw into the caller' },
+  { file: 'packages/core/src/modules/account/account-sync.js', line: 'chain = run.catch', why: 'only keeps the serial chain alive; the error still reaches the caller through `run`' },
+  { file: 'packages/core/src/modules/devenv/protocol.js', why: 'a malformed control line is shown as output, so nothing is lost' },
+]
+// `line`, when given, is text the source line holding the swallow must contain.
+const rendererExcepted = (file, lineText) => RENDERER_SILENT_EXCEPTIONS.some(r => r.file === file && (!r.line || lineText.includes(r.line)))
+
+/** { 'path/file.js': [{ line, snippet }] } for every window-code file with a swallowed error that is not an exception. */
+export function scanRendererSilentCatches(root = repoRoot) {
+  const out = {}
+  for (const { file, text } of readRendererSources(root)) {
+    const lines = text.split(/\r?\n/)
+    const hits = findSilentCatches(text).filter(h => !rendererExcepted(file, lines[h.line - 1] ?? ''))
+    if (hits.length) out[file] = hits
+  }
+  return out
+}
+
+/** { 'path/file.js': count }, the form the baseline is kept in. */
+export function rendererSilentCatchCounts(root = repoRoot) {
+  return Object.fromEntries(Object.entries(scanRendererSilentCatches(root)).map(([f, h]) => [f, h.length]).sort(([a], [b]) => a.localeCompare(b)))
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  if (process.argv.includes('--renderer-baseline')) {
+    // node apps/desktop/build/silent-catches.mjs --renderer-baseline > apps/desktop/electron/renderer-silent-catches.baseline.json
+    console.log(JSON.stringify(rendererSilentCatchCounts(), null, 2))
+  } else {
+    const renderer = process.argv.includes('--renderer')
+    const result = renderer ? scanRendererSilentCatches() : scanSilentCatches()
+    let n = 0
+    for (const [file, hits] of Object.entries(result)) for (const h of hits) { n++; console.log(`${file}:${h.line}  ${h.snippet}`) }
+    console.log(`
+${n} silent catches in ${Object.keys(result).length} files (${renderer ? 'window code' : 'main process'})`)
+  }
 }

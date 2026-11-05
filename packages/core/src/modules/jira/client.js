@@ -1,3 +1,6 @@
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('jira', 'client')
 export class JiraError extends Error {
   constructor(message, { status = 0, path = '' } = {}) {
     super(message)
@@ -34,9 +37,9 @@ export function makeJiraClient(http, { sleep = defaultSleep } = {}) {
     }
     if (!res.ok) {
       let text = ''
-      try { text = await res.text() } catch { /* unreadable body */ }
+      try { text = await res.text() } catch (err) { ignore(log, 'the error response body could not be read', err, 'debug') }
       let body = null
-      try { body = JSON.parse(text) } catch { /* non-JSON error body */ }
+      try { body = JSON.parse(text) } catch (err) { ignore(log, 'the error response is not JSON, so its message is not used', err, 'debug') }
       // Plain-text bodies (e.g. "XSRF check failed") explain more than the status
       // alone; HTML error pages don't, so they fall back to the status message.
       const plain = !body && text.trim() && !text.trim().startsWith('<') ? text.trim().slice(0, 200) : ''

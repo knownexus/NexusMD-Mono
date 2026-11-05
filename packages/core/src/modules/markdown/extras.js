@@ -7,6 +7,9 @@
 // (before/after/placeholder) and its learn-progress key, plus `format`, the phone formatting chip it
 // inserts (see FORMATS in md-phone.jsx), and the phone's wording (`phone`: name, syntax, note).
 // Each group names the phone group it falls under (`phoneGroup`); neighbouring groups may share one.
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('core', 'markdown')
 const e = (label, learnKey, syntax, description, before, after, placeholder, inline, format, phone) =>
   ({ label, learnKey, syntax, description, before, after, placeholder, inline, format, phone: { name: format, ...phone } });
 
@@ -93,7 +96,7 @@ export const LEARN_ELEMENTS = [
 export function markdownSourceOf(el) {
   let src = null;
   for (const r of LEARN_ELEMENTS) {
-    if (r.sel && el.matches(r.sel)) { try { src = r.source(el); } catch { /* keep what an earlier row gave */ } }
+    if (r.sel && el.matches(r.sel)) { try { src = r.source(el); } catch (err) { ignore(log, 'a learn-element source failed; what an earlier row gave is kept', err, 'debug') } }
   }
   return src;
 }

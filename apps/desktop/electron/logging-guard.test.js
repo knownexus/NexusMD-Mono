@@ -8,7 +8,8 @@
 // Every exception is listed here with the reason, and a stale exception fails too.
 
 import { describe, it, expect } from 'vitest'
-import { readMainSources, readRendererSources, findSilentCatches } from '../build/silent-catches.mjs'
+import { readMainSources, readRendererSources, findSilentCatches, rendererSilentCatchCounts, RENDERER_SILENT_EXCEPTIONS } from '../build/silent-catches.mjs'
+import rendererSilentBaseline from './renderer-silent-catches.baseline.json'
 
 const sources = readMainSources()
 
@@ -116,6 +117,30 @@ describe('logging guard', () => {
   it('has no stale exceptions for renderer console calls', () => {
     for (const rule of CONSOLE_ALLOWED_RENDERER) {
       const used = rendererSources.some(({ file, text }) => matches(rule, file) && findConsoleCalls(text).some(h => !rule.snippet || h.snippet.includes(rule.snippet)))
+      expect(used, `exception no longer needed: ${rule.file} (${rule.why})`).toBe(true)
+    }
+  })
+
+  // Window code still has swallowed errors from before this guard (a baseline per file). They are worked down by
+  // converting them to ignore(log, why, err) from @nexusmd/core, which logs what was ignored. The baseline only
+  // goes down: a new one fails here, and so does converting one without lowering the baseline, so it stays honest.
+  it('adds no swallowed error to window code (the baseline only goes down)', () => {
+    const counts = rendererSilentCatchCounts()
+    const grew = [], shrank = []
+    for (const file of new Set([...Object.keys(counts), ...Object.keys(rendererSilentBaseline)])) {
+      const now = counts[file] ?? 0, was = rendererSilentBaseline[file] ?? 0
+      if (now > was) grew.push(`${file}: ${now} (baseline ${was})`)
+      else if (now < was) shrank.push(`${file}: ${now} (baseline ${was})`)
+    }
+    expect(grew, `A swallowed error is new here. Use ignore(log, 'why', err) from @nexusmd/core instead of an empty catch or .catch(() => {}):\n${grew.join('\n')}`).toEqual([])
+    expect(shrank, `Fewer than the baseline, good. Lower it: node apps/desktop/build/silent-catches.mjs --renderer-baseline > apps/desktop/electron/renderer-silent-catches.baseline.json\n${shrank.join('\n')}`).toEqual([])
+  })
+
+  it('has no stale exceptions for swallowed errors in window code', () => {
+    for (const rule of RENDERER_SILENT_EXCEPTIONS) {
+      const src = rendererSources.find(s => s.file === rule.file)
+      const lines = src?.text.split(/\r?\n/) ?? []
+      const used = !!src && findSilentCatches(src.text).some(h => !rule.line || (lines[h.line - 1] ?? '').includes(rule.line))
       expect(used, `exception no longer needed: ${rule.file} (${rule.why})`).toBe(true)
     }
   })

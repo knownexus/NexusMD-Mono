@@ -1,3 +1,6 @@
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('github', 'repos')
 export async function discoverGithubRepos(client) {
   const rows = await client.getPaged(
     'user/repos?per_page=100&affiliation=owner,collaborator,organization_member&sort=full_name',
@@ -14,7 +17,7 @@ export async function discoverGithubRepos(client) {
 
   const ssoOrgs = []
   let orgs = []
-  try { orgs = await client.getPaged('user/orgs?per_page=100') } catch { /* org list is best-effort */ }
+  try { orgs = await client.getPaged('user/orgs?per_page=100') } catch (err) { ignore(log, 'could not list the organisations, so single sign-on organisations are not checked', err, 'warn') }
   for (const o of orgs) {
     try {
       await client.get(`orgs/${encodeURIComponent(o.login)}/repos?per_page=1`)

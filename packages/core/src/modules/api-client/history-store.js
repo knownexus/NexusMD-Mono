@@ -9,6 +9,9 @@
 //   <dir>/.history/.gitignore      "*"  (written once, on first append)
 //   <dir>/.history/<refId>.json    array of entries, oldest first, capped
 
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('api-client', 'history-store')
 const HISTORY_DIR = '.history'
 const MAX_ENTRIES = 50
 
@@ -42,5 +45,5 @@ export async function readHistory(file, dir, refId) {
 }
 
 export async function clearHistory(file, dir, refId) {
-  try { await file.delete(join(dir, HISTORY_DIR, `${refId}.json`)) } catch { /* nothing to clear */ }
+  try { await file.delete(join(dir, HISTORY_DIR, `${refId}.json`)) } catch (err) { ignore(log, 'clearing a request history that is not there', err, 'debug') }
 }

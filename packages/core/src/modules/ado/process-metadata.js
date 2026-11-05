@@ -4,6 +4,9 @@
 // drives terminal/done classification instead of matching on English state
 // names — a project can rename "Done" to "Verified" and this still works.
 
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('ado', 'process-metadata')
 const TERMINAL_CATEGORIES = new Set(['Resolved', 'Completed', 'Removed'])
 const DONE_CATEGORIES = new Set(['Resolved', 'Completed'])
 
@@ -34,7 +37,7 @@ export async function fetchAdoProcessMetadata(get, projects = []) {
         if (names.length) {
           typeStates[type] = Array.from(new Set([...(typeStates[type] || []), ...names]))
         }
-      } catch (_) {}
+      } catch (err) { ignore(log, 'could not load the states of a work item type', err, 'warn', { project: proj, type }) }
 
       try {
         const res = await get(`${encodeURIComponent(proj)}/_apis/wit/workitemtypes/${encodeURIComponent(type)}/fields?api-version=7.0`)
@@ -43,7 +46,7 @@ export async function fetchAdoProcessMetadata(get, projects = []) {
           const n = Number(v)
           if (Number.isFinite(n)) priorityValues.add(n)
         })
-      } catch (_) {}
+      } catch (err) { ignore(log, 'could not load the priority values of a work item type', err, 'warn', { project: proj, type }) }
     }))
   }))
 

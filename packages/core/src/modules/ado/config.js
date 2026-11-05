@@ -14,6 +14,9 @@
  *   Where the PAT is kept instead of `storage`, under the same key (desktop: a synchronously
  *   readable cache over secure storage). Omitted, the PAT is in `storage` like the rest.
  */
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('ado', 'config')
 export function makeAdoConfig({ storage, key, defaults = {}, secrets = null }) {
   if (!storage || typeof key !== 'function') {
     throw new Error('makeAdoConfig requires { storage, key }')
@@ -23,7 +26,7 @@ export function makeAdoConfig({ storage, key, defaults = {}, secrets = null }) {
 
   function getAdoConfig() {
     let projects = []
-    try { projects = JSON.parse(get('projects') || '[]') } catch { /* ignore */ }
+    try { projects = JSON.parse(get('projects') || '[]') } catch (err) { ignore(log, 'the saved project list is not valid JSON, so none is used', err, 'warn') }
     return {
       org:           get('org')         || '',
       pat:           get('pat')         || '',
