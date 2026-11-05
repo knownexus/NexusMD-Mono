@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { plannerCollection, notesCollection, createSyncRuntime, exportBundle, importBundle, decryptSync } from '../src/index.js'
+import { plannerCollection, notesCollection, createSyncRuntime, exportBundle, importBundle, decryptSync, serializeError } from '../src/index.js'
 
 // A stored value that is not valid JSON (a torn write, a bad manual edit) used to read as "nothing here".
 // The sync engine takes "nothing here" for "deleted on this device" and propagates the deletion: it removed
@@ -63,6 +63,13 @@ describe('reading a corrupt stored value', () => {
     expect(() => notes.readLocal('data')).toThrow(/corrupt/i)
   })
 
+  it('the error it throws carries no part of the stored text either', () => {
+    let err
+    try { plannerCollection(opts(memStorage({ [WEEK]: 'secret torn' }))).readLocal('2026-W26') } catch (e) { err = e }
+    expect(`${err.message} ${err.stack}`).not.toContain('secret')
+    expect(err.cause).toBeUndefined()
+  })
+
   it('still reads absent, empty and valid values as before', () => {
     const c = plannerCollection(opts(memStorage({ [WEEK]: week('hi'), 'nexusmd.p.p1.planner.week.2026-W28': '' })))
     expect(c.readLocal('2026-W26').data.tasks[0].txt).toBe('hi')
@@ -71,13 +78,16 @@ describe('reading a corrupt stored value', () => {
   })
 
   it('logs it as an error the first time, with sizes but never content, then at debug, and again after a repair', () => {
-    const storage = memStorage({ [WEEK]: '{ secret torn' })
+    const storage = memStorage({ [WEEK]: 'secret torn' })
     const c = plannerCollection(opts(storage))
     for (let i = 0; i < 3; i++) { try { c.readLocal('2026-W26') } catch { /* expected */ } }
     expect(error).toHaveBeenCalledTimes(1)
     expect(error.mock.calls[0][0]).toBe('[sync:collections] a stored value is not valid JSON and was left alone')
-    expect(error.mock.calls[0][2]).toEqual({ collection: 'planner', key: '2026-W26', bytes: 13 })
-    expect(JSON.stringify(error.mock.calls)).not.toContain('secret')
+    expect(error.mock.calls[0][2]).toEqual({ collection: 'planner', key: '2026-W26', bytes: 11 })
+    // the error handed to the logger is not the engine's JSON error: that quotes the start of the stored text
+    const logged = error.mock.calls[0][1]
+    expect(`${logged.name} ${logged.message} ${logged.stack ?? ''}`).not.toContain('secret')
+    expect(JSON.stringify(serializeError(logged))).not.toContain('secret')
     expect(debug).toHaveBeenCalledTimes(2)
 
     storage.setItem(WEEK, week('repaired'))

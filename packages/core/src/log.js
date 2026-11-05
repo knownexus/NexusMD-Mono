@@ -21,10 +21,16 @@ const sender = () => (typeof window !== 'undefined' ? window.electronAPI?.loggin
 
 const looksLikeError = v => v instanceof Error || (v && typeof v === 'object' && typeof v.message === 'string' && ('stack' in v || 'name' in v))
 
+// V8 quotes the start of the text a failed JSON.parse choked on: `Unexpected token 's', "secret torn" is not
+// valid JSON`. That text is whatever was being parsed (a note, a profile, a response), so it never goes
+// into a logged message or stack. (The log hub drops it too, in main-kit's redact.cjs.)
+const JSON_QUOTE = /Unexpected token [\s\S]*?is not valid JSON/g
+const scrub = text => text.replace(JSON_QUOTE, 'not valid JSON (the text that failed to parse is not logged)')
+
 /** { name, message, stack } for anything that was thrown (it may not be an Error). */
 export function serializeError(value) {
   if (value && typeof value === 'object' && 'message' in value) {
-    return { name: String(value.name || 'Error'), message: String(value.message), ...(value.stack ? { stack: String(value.stack) } : {}) }
+    return { name: String(value.name || 'Error'), message: scrub(String(value.message)), ...(value.stack ? { stack: scrub(String(value.stack)) } : {}) }
   }
   let message
   try { message = typeof value === 'string' ? value : JSON.stringify(value) } catch { message = String(value) }

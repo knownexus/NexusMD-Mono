@@ -123,6 +123,37 @@ describe('renderer logging', () => {
   })
 })
 
+describe('a failed JSON.parse does not put the text it failed on into the log', () => {
+  const quoted = () => { try { JSON.parse('secret torn') } catch (e) { return e } }
+
+  it('the premise: the engine does quote the start of the text', () => {
+    expect(quoted().message).toContain('secret')   // if a runtime stops doing this, the scrub below is just a no-op
+  })
+
+  it('serializeError drops it from the message and the stack, and keeps the rest', () => {
+    const out = serializeError(quoted())
+    expect(JSON.stringify(out)).not.toContain('secret')
+    expect(out.name).toBe('SyntaxError')
+    expect(out.message).toBe('not valid JSON (the text that failed to parse is not logged)')
+    expect(out.stack).toContain('SyntaxError')
+  })
+
+  it('a message without quoted text is unchanged', () => {
+    expect(serializeError(new Error('Unexpected end of JSON input')).message).toBe('Unexpected end of JSON input')
+    expect(serializeError(new Error('disk full')).message).toBe('disk full')
+  })
+
+  it('what a logger sends carries none of it', () => {
+    const send = vi.fn()
+    window.electronAPI = { logging: { ingest: send } }
+    rendererLog('core', 'profiles').warn('skipped a file', quoted(), { file: 'a.json' })
+    ignore(rendererLog('core'), 'parsing a note', quoted(), 'warn')
+    delete window.electronAPI
+    expect(JSON.stringify(send.mock.calls)).not.toContain('secret')
+    expect(send).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('ignore: the sanctioned way to swallow an error', () => {
   const fakeLog = () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() })
 

@@ -96,6 +96,18 @@ describe('log hub', () => {
     expect(readLines('git', '2026-11-04.jsonl').map(e => e.msg)).toEqual(['loud', 'now heard'])
   })
 
+  it('drops the text a failed JSON.parse quotes, since it may be private, and keeps the position-style messages', () => {
+    const quoted = `SyntaxError: Unexpected token 's', "secret torn" is not valid JSON` + '\n    at JSON.parse (<anonymous>)'
+    const out = redactString(quoted)
+    expect(out).not.toContain('secret')
+    expect(out).toContain('not valid JSON (the text that failed to parse is not logged)')
+    expect(out).toContain('at JSON.parse')
+    const multiline = redactString(`Unexpected token '<', "<!DOCTYPE "... is not valid JSON`)
+    expect(multiline).not.toContain('DOCTYPE')
+    expect(redactString("Expected property name or '}' in JSON at position 2 (line 1 column 3)")).toBe("Expected property name or '}' in JSON at position 2 (line 1 column 3)")
+    expect(redactString('Unexpected end of JSON input')).toBe('Unexpected end of JSON input')
+  })
+
   it('redacts before anything is written or handed to subscribers', () => {
     const hub = hubWith()
     const seen = []

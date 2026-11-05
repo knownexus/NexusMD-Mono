@@ -13,12 +13,12 @@ const REMOVE_FAILED = 'could not remove a collection from local storage';
  * unreadable item is reported and left alone instead.
  */
 export class CorruptLocalError extends Error {
-  constructor(collection, key, cause) {
+  // No `cause`: the engine's JSON error quotes the start of the stored text, which may be private.
+  constructor(collection, key) {
     super(`the stored value for ${collection}/${key} is corrupt (not valid JSON)`);
     this.name = 'CorruptLocalError';
     this.collection = collection;
     this.key = key;
-    this.cause = cause;
   }
 }
 
@@ -34,12 +34,13 @@ function readJson(storage, storageKey, collection, key) {
     const value = JSON.parse(raw);
     reportedCorrupt.delete(id);
     return value;
-  } catch (cause) {
-    // sizes only: what is stored may be private
+  } catch {
+    // What is stored may be private: log its size, and not the engine's error (it quotes the text).
     const data = { collection, key, bytes: raw.length };
-    if (reportedCorrupt.has(id)) log.debug('a stored value is still not valid JSON', cause, data);
-    else { reportedCorrupt.add(id); log.error('a stored value is not valid JSON and was left alone', cause, data); }
-    throw new CorruptLocalError(collection, key, cause);
+    const err = new CorruptLocalError(collection, key);
+    if (reportedCorrupt.has(id)) log.debug('a stored value is still not valid JSON', err, data);
+    else { reportedCorrupt.add(id); log.error('a stored value is not valid JSON and was left alone', err, data); }
+    throw err;
   }
 }
 
