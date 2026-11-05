@@ -70,13 +70,29 @@ describe('quarantineLocal: keeping the damaged bytes before anything replaces th
     expect(c.listLocal()).toEqual(['2026-W26'])
   })
 
+  it('does not copy the same damaged text twice, but does copy different text', () => {
+    vi.useFakeTimers()
+    try {
+      const storage = memStorage({ [WEEK]: '{ torn' })
+      const c = plannerCollection(opts(storage))
+      vi.setSystemTime(1_000_000); const first = c.quarantineLocal('2026-W26')
+      vi.setSystemTime(2_000_000); const again = c.quarantineLocal('2026-W26')
+      expect(again).toBe(first)
+      expect(storage.keys().filter(k => k.includes('sync.quarantine'))).toHaveLength(1)
+      storage.setItem(WEEK, '{ torn differently')
+      vi.setSystemTime(3_000_000); const other = c.quarantineLocal('2026-W26')
+      expect(other).not.toBe(first)
+      expect(storage.keys().filter(k => k.includes('sync.quarantine'))).toHaveLength(2)
+    } finally { vi.useRealTimers() }
+  })
+
   it('keeps only the newest few copies of one item, so they cannot pile up', () => {
     vi.useFakeTimers()
     try {
       const storage = memStorage({ [WEEK]: '{ torn' })
       const c = plannerCollection(opts(storage))
       const made = []
-      for (let i = 0; i < 5; i++) { vi.setSystemTime(1_000_000 + i * 1000); made.push(c.quarantineLocal('2026-W26')) }
+      for (let i = 0; i < 5; i++) { vi.setSystemTime(1_000_000 + i * 1000); storage.setItem(WEEK, '{ torn ' + i); made.push(c.quarantineLocal('2026-W26')) }
       const left = storage.keys().filter(k => k.includes('sync.quarantine'))
       expect(left).toEqual(made.slice(-3))
       // copies of a different item are not counted against it
