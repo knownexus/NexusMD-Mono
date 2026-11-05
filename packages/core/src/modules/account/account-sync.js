@@ -20,6 +20,7 @@
 //     local removal is pushed only for an entry that was synced; tweaks halves never delete
 // Network failures never touch local data: every public method resolves to { error }.
 import { singleFlight } from '../sync/single-flight.js'
+import { rendererLog } from '../../log.js'
 import { encryptJson, decryptJson } from './crypto.js'
 import { AccountError } from './account-client.js'
 import { purgeProfileLocal } from './account-clear.js'
@@ -39,6 +40,8 @@ const MAX_SKEW_MS = 5 * 60 * 1000
 const num = (v) => (Number.isFinite(v) ? v : 0)
 
 /** `pageSize` is the change-feed page limit requested from the server (default 500). */
+const log = rendererLog('sync', 'account')
+
 export function createAccountSync({
   client, containerKey: ck, registry, storage, secure, devicePrefs = null, deviceId, metaKey,
   now = Date.now, intervalMs = 60000, pageSize = 500,
@@ -137,9 +140,21 @@ export function createAccountSync({
 
   // ---- local observation -------------------------------------------------------------
 
+  // The items already reported as unreadable, so a sync every few minutes says it once, and again if an item
+  // is repaired and breaks again. Only the id is logged: what is stored may be private.
+  let reportedUnreadable = new Set()
+  function noteUnreadable(meta, ids) {
+    if (ids.length) meta.unreadable = ids; else delete meta.unreadable
+    for (const id of ids) {
+      if (!reportedUnreadable.has(id)) log.warn('an item could not be read on this device and was left alone', { id })
+    }
+    reportedUnreadable = new Set(ids)
+  }
+
   /** Snapshot plus change stamps (meta is mutated; the caller saves). */
   async function localState(meta) {
     const s = await readSnapshot(ctx, ck)
+    noteUnreadable(meta, s.unreadableIds())
     s.dirty = stampChanges(meta, s.snap, s.isUnavailable, now())
     s.purged = purgedProfiles()
     return s
@@ -883,7 +898,15 @@ export function createAccountSync({
         else if (r.status === 'quota') row.quota.push(id)
       }
       for (const row of Object.values(profiles)) { row.tooLarge.sort(); row.quota.sort() }
-      return { lastSyncAt: meta.lastSyncAt || null, profiles }
+      // Items this device could not read last round (left alone, never pushed or deleted). Shown under their
+      // profile; one that belongs to no profile is listed at the top. Present only when there are some.
+      const unattributed = []
+      for (const id of meta.unreadable || []) {
+        const row = profiles[profileOfId(id)]
+        if (row) (row.unreadable ??= []).push(id)
+        else unattributed.push(id)
+      }
+      return { lastSyncAt: meta.lastSyncAt || null, profiles, ...(unattributed.length ? { unreadable: unattributed } : {}) }
     },
 
     /** Last successful syncNow time (ms), or null. */

@@ -64,6 +64,8 @@ export function loadMeta(storage, metaKey) {
     ...(m.lastSyncAt ? { lastSyncAt: m.lastSyncAt } : {}),
     ...(isPlainObject(m.profileSync) ? { profileSync: { ...m.profileSync } } : {}),
     ...(typeof m.lastError === 'string' && m.lastError ? { lastError: m.lastError } : {}),
+    // ids of items the last round could not read on this device (left alone; see readSnapshot)
+    ...(Array.isArray(m.unreadable) && m.unreadable.length ? { unreadable: m.unreadable.filter((id) => typeof id === 'string') } : {}),
   }
 }
 
@@ -149,7 +151,7 @@ export function resolveTarget(registry, id) {
     const half = id === c.accountId ? 'account' : id === c.deviceId ? 'device' : null
     return half ? { kind: 'tweaks', key, half, level: half } : null
   }
-  return { kind: 'plain', key, level: c.level, auto: !!c.auto }
+  return { kind: 'plain', key, level: c.level, auto: !!c.auto, ...(JSON_PLAIN[c.id] ? { json: JSON_PLAIN[c.id] } : {}) }
 }
 
 /**
@@ -165,6 +167,7 @@ export function resolveTarget(registry, id) {
 export async function readSnapshot({ registry, storage, secure, metaKey }, ck) {
   const snap = new Map()
   const unreadable = new Map() // id -> raw value seen (null for a secret that does not open)
+  const reportable = new Set() // the ids of those worth reporting: one per stored value
   // Collection / field-map containers by base id: the storage key and its raw value (the
   // write-race baseline of every record or field in it), and the ones that do not parse.
   const containers = new Map() // base id -> { key, raw }
@@ -182,7 +185,7 @@ export async function readSnapshot({ registry, storage, secure, metaKey }, ck) {
       if (!id || registry.secretName(id) !== name) continue // account secrets never leave
       let value = null
       try { value = await secure.get(name) } catch { value = null }
-      if (typeof value !== 'string') { unreadable.set(id, null); continue }
+      if (typeof value !== 'string') { unreadable.set(id, null); reportable.add(id); continue }
       snap.set(id, { level: 'account', value, raw: value, storageKey: key, secret: true, name, hash: await secretFingerprint(value, ck) })
       continue
     }
@@ -192,7 +195,7 @@ export async function readSnapshot({ registry, storage, secure, metaKey }, ck) {
     if (raw == null) continue
     if (c.split) {
       const obj = parseJson(raw)
-      if (!isPlainObject(obj)) { unreadable.set(c.accountId, raw); unreadable.set(c.deviceId, raw); continue }
+      if (!isPlainObject(obj)) { unreadable.set(c.accountId, raw); unreadable.set(c.deviceId, raw); reportable.add(c.accountId); continue }
       const { account, device } = registry.splitTweaks(obj)
       snap.set(c.accountId, { level: 'account', value: account, raw, storageKey: key, secret: false, half: 'account', hash: hashOf(account) })
       snap.set(c.deviceId, { level: 'device', value: device, raw, storageKey: key, secret: false, half: 'device', hash: hashOf(device) })
@@ -224,6 +227,9 @@ export async function readSnapshot({ registry, storage, secure, metaKey }, ck) {
       }
       continue
     }
+    // A plain value that must hold JSON (the profile list) is judged like a collection: one that does not
+    // parse is left alone, not pushed as the text it is (it would replace the account's real value).
+    if (JSON_PLAIN[c.id] && !jsonFits(JSON_PLAIN[c.id], parseJson(raw))) { unreadable.set(c.id, raw); reportable.add(c.id); continue }
     snap.set(c.id, { level: c.level, value: raw, raw, storageKey: key, secret: false, hash: hashOf(raw) })
   }
   const baseOf = (id) => (typeof id === 'string' && id.includes('#') ? splitSubId(id)?.base : undefined)
@@ -244,7 +250,9 @@ export async function readSnapshot({ registry, storage, secure, metaKey }, ck) {
     const c = registry.classify(target.key)
     if (c && c.id) containers.set(c.id, { key: target.key, raw: storage.getItem(target.key) })
   }
-  return { snap, isUnavailable, isUnreadable, rawOf, noteWritten }
+  /** The items to tell the user about, one per stored value (tweaks count once, not once per half). */
+  const unreadableIds = () => [...new Set([...reportable, ...unreadableBases])].sort()
+  return { snap, isUnavailable, isUnreadable, unreadableIds, rawOf, noteWritten }
 }
 
 /**
@@ -488,10 +496,16 @@ export async function decodeDeviceBlob(ck, deviceId, ciphertext) {
   }
 }
 
+// Plain values (synced as the stored text) that must hold JSON of a given shape, by canonical id. Without this
+// a corrupt one is pushed as the text it is, and any string fits on the receiving side.
+const JSON_PLAIN = { profiles: 'array' }
+const jsonFits = (shape, parsed) => (shape === 'array' ? Array.isArray(parsed) : parsed !== undefined)
+
 /** A remote value fits its target: tweaks halves are objects, records a JSON object carrying the record's id. */
 export function validValue(target, value) {
   if (target.kind === 'tweaks') return isPlainObject(value)
   if (typeof value !== 'string') return false
+  if (target.json) return jsonFits(target.json, parseJson(value))
   if (target.kind === 'record') {
     const rec = parseJson(value)
     return isPlainObject(rec) && recordIdOf(rec) === target.recordId

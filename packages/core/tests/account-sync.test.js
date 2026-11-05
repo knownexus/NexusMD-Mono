@@ -4,6 +4,7 @@ import { createKeyRegistry } from '../src/modules/account/key-registry.js'
 import { AccountError } from '../src/modules/account/account-client.js'
 import { generateContainerKey, encryptJson, decryptJson, opaqueId } from '../src/modules/account/crypto.js'
 import { contentHash } from '../src/modules/sync/hash.js'
+import { resolveTarget, validValue } from '../src/modules/account/account-sync-state.js'
 import * as core from '../src/index.js'
 
 const META = 'nexusmd.account.meta'
@@ -1334,5 +1335,101 @@ describe('per-profile sync status', () => {
     srv.fail = null
     await a.sync.syncNow()
     expect(a.sync.status().profiles.W).toMatchObject({ lastSyncAt: 9000, error: null })
+  })
+})
+
+// The account sync already leaves a value it cannot read alone (never pushed, never tombstoned; see 'an
+// unreadable collection on the receiver' above). It must not do so silently: the status says which profile
+// has one, and the log says so once.
+describe('unreadable items are reported', () => {
+  const PROFILES = JSON.stringify([{ id: 'W', name: 'Work', updatedAt: 1 }, { id: 'H', name: 'Home', updatedAt: 1 }])
+  const LISTS_W = 'nexusmd.p.W.lists'
+  afterEach(() => vi.restoreAllMocks())
+
+  async function deviceWith(init) {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    return device({ srv, ck, init: { 'nexusmd.profiles': PROFILES, ...init } })
+  }
+
+  it('lists the item under its own profile only, and only when there is one', async () => {
+    const a = await deviceWith({ [LISTS_W]: '{ torn' })
+    await a.sync.syncNow()
+    const s = a.sync.status()
+    expect(s.profiles.W.unreadable).toEqual(['nexusmd:p.W.lists'])
+    expect(s.profiles.H).not.toHaveProperty('unreadable')
+    expect(s).not.toHaveProperty('unreadable')
+    expect(a.storage.getItem(LISTS_W)).toBe('{ torn') // and the value itself is untouched
+  })
+
+  it('clears once the value is readable again', async () => {
+    const a = await deviceWith({ [LISTS_W]: '{ torn' })
+    await a.sync.syncNow()
+    a.storage.setItem(LISTS_W, JSON.stringify({ lists: [] }))
+    await a.sync.syncNow()
+    expect(a.sync.status().profiles.W).not.toHaveProperty('unreadable')
+  })
+
+  it('logs it once per item, not every round, and again if it breaks again', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const a = await deviceWith({ [LISTS_W]: '{ torn' })
+    await a.sync.syncNow()
+    await a.sync.syncNow()
+    const mine = () => warn.mock.calls.filter((c) => String(c[0]).includes('could not be read on this device'))
+    expect(mine()).toHaveLength(1)
+    expect(mine()[0][0]).toBe('[sync:account] an item could not be read on this device and was left alone')
+    expect(mine()[0][1]).toEqual({ id: 'nexusmd:p.W.lists' })
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('torn') // never the stored text
+
+    a.storage.setItem(LISTS_W, JSON.stringify({ lists: [] }))
+    await a.sync.syncNow()
+    a.storage.setItem(LISTS_W, 'broken again')
+    await a.sync.syncNow()
+    expect(mine()).toHaveLength(2)
+  })
+
+  it('an item that belongs to no profile is listed at the top of the status', async () => {
+    const a = await deviceWith({ 'nexusmd.p.W.lists': JSON.stringify({ lists: [] }) })
+    await a.sync.syncNow()
+    a.storage.setItem('nexusmd.profiles', 'not json')
+    await a.sync.syncNow()
+    expect(a.sync.status().unreadable).toEqual(['profiles'])
+  })
+})
+
+// The profile list is synced as one plain value, so a corrupt one used to be pushed as the text itself,
+// replacing the account's real list, and every other device accepted it (any string fits a plain value).
+describe('a corrupt profile list', () => {
+  const GOOD = JSON.stringify([{ id: 'W', name: 'Work', updatedAt: 1 }])
+
+  it('is never pushed over the account\'s real list, and is repaired by the next sync once readable', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, init: { 'nexusmd.profiles': GOOD } })
+    await a.sync.syncNow()
+    expect((await decryptAll(srv, ck)).profiles.value).toBe(GOOD)
+
+    a.storage.setItem('nexusmd.profiles', '{ torn')
+    const r = await a.sync.syncNow()
+    expect(r.pushed).toBe(0)
+    expect((await decryptAll(srv, ck)).profiles.value).toBe(GOOD)        // the server still has the real list
+    expect((await decryptAll(srv, ck)).profiles.deleted).toBeUndefined()  // and no deletion
+    expect(a.storage.getItem('nexusmd.profiles')).toBe('{ torn')          // the damaged bytes are left alone
+
+    const edited = JSON.stringify([{ id: 'W', name: 'Work', updatedAt: 1 }, { id: 'H', name: 'Home', updatedAt: 2 }])
+    a.storage.setItem('nexusmd.profiles', edited)
+    await a.sync.syncNow()
+    expect((await decryptAll(srv, ck)).profiles.value).toBe(edited)       // an ordinary edit goes up again
+  })
+
+  it('is not taken from another device either: a value that is not a profile list does not fit', () => {
+    const registry = createKeyRegistry({ namespace: 'nexusmd' })
+    const target = resolveTarget(registry, 'profiles')
+    expect(target.json).toBe('array')
+    expect(validValue(target, GOOD)).toBe(true)
+    expect(validValue(target, '[]')).toBe(true)
+    expect(validValue(target, 'not json')).toBe(false)
+    expect(validValue(target, '{"id":"W"}')).toBe(false)   // JSON, but not a list
+    expect(validValue(target, null)).toBe(false)
   })
 })

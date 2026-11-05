@@ -57,6 +57,28 @@ describe('SyncStatusCard', () => {
     await waitFor(() => expect(sync.status).toHaveBeenCalledTimes(2)); // refreshed after the sync
   });
 
+  it('says when this device could not read an item, under its profile and for items that belong to none', async () => {
+    const sync = {
+      status: vi.fn(() => ({ ...status({ W: { lastSyncAt: T, conflicts: 0, tooLarge: [], quota: [], error: null, unreadable: ['nexusmd:p.W.lists', 'nexusmd:p.W.notes'] } }), unreadable: ['profiles'] })),
+      syncNow: vi.fn(), onApplied: vi.fn(() => () => {}),
+    };
+    withSync(<SyncStatusCard />, sync);
+    const work = await screen.findByTestId('sync-row-W');
+    expect(within(work).getByText(/2 items could not be read on this device/)).toBeTruthy();
+    expect(within(screen.getByTestId('sync-row-H')).queryByText(/could not be read/)).toBeNull();
+    const alone = screen.getByTestId('sync-unreadable');
+    expect(alone.textContent).toMatch(/1 item that belongs to no profile could not be read on this device/);
+    expect(alone.textContent).toMatch(/It was left alone/);
+  });
+
+  it('shows nothing about unreadable items when there are none', async () => {
+    const sync = { status: vi.fn(() => status()), syncNow: vi.fn(), onApplied: vi.fn(() => () => {}) };
+    withSync(<SyncStatusCard />, sync);
+    await screen.findByTestId('sync-row-W');
+    expect(screen.queryByTestId('sync-unreadable')).toBeNull();
+    expect(screen.queryByText(/could not be read/)).toBeNull();
+  });
+
   it('a profile whose last sync failed shows the error on its row', async () => {
     const sync = { status: vi.fn(() => status({ W: { lastSyncAt: T, conflicts: 0, tooLarge: [], quota: [], error: 'offline' } })), syncNow: vi.fn(), onApplied: vi.fn(() => () => {}) };
     withSync(<SyncStatusCard />, sync);
