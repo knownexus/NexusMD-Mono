@@ -1,9 +1,11 @@
 import React from 'react'
-import { parseLog, historyQuery, sourceName } from '@nexusmd/core'
+import { parseLog, historyQuery, sourceName, rendererLog, ignore } from '@nexusmd/core'
 import { ipcMessage } from './use-git-actions.js'
 import { buildEditItems, useCommitEdit } from './commit-edit-items.js'
 import { relativeTime } from './history-pane.jsx'
 import { getProfileKey } from '@nexusmd/shell-sdk'
+
+const log = rendererLog('git', 'branch-commits')
 
 const COLLAPSED_KEY = 'nexusmd.branchCommitsCollapsed' // profile-scoped through getProfileKey
 // The strip lists this many; the rest are one click away in History.
@@ -13,7 +15,7 @@ function readCollapsed() {
   try { return localStorage.getItem(getProfileKey(COLLAPSED_KEY)) === '1' } catch { return false }
 }
 function writeCollapsed(v) {
-  try { localStorage.setItem(getProfileKey(COLLAPSED_KEY), v ? '1' : '0') } catch { /* storage unavailable: the choice lasts until reload */ }
+  try { localStorage.setItem(getProfileKey(COLLAPSED_KEY), v ? '1' : '0') } catch (err) { ignore(log, 'the choice could not be remembered, so it lasts until reload', err, 'debug') }
 }
 
 const EMPTY = { key: null, commits: [], unpushed: null, truncated: false, error: null, loaded: false }

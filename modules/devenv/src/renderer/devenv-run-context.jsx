@@ -5,6 +5,9 @@ import React from 'react'
 import { useDevenvRun } from './use-devenv-run.js'
 import { useDevenvConfig } from './use-devenv-config.js'
 import { PromptHost } from './prompt-host.jsx'
+import { rendererLog, ignored, ignore } from '@nexusmd/core'
+
+const log = rendererLog('devenv', 'run-context')
 
 const DevenvRunContext = React.createContext(null)
 
@@ -21,7 +24,7 @@ function useLeftoverRuns(adapter) {
     let live = true
     Promise.resolve(adapter.active?.())
       .then(list => { if (live && Array.isArray(list)) setRuns(list) })
-      .catch(() => {})
+      .catch(ignored(log, 'the active runs could not be listed', 'warn'))
     return () => { live = false }
   }, [adapter])
 
@@ -36,7 +39,7 @@ function useLeftoverRuns(adapter) {
     try {
       const alive = await adapter.active()
       setRuns(rs => rs.filter(r => (alive || []).some(a => a.runId === r.runId)))
-    } catch { /* the exit events still clear the list */ }
+    } catch (err) { ignore(log, 'the active runs could not be cleared; the exit events clear the list', err, 'debug') }
   }, [adapter, runs])
 
   return { runs, error, cancelAll }

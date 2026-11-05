@@ -1,4 +1,6 @@
-import { toLf, fromLf } from '@nexusmd/core'
+import { toLf, fromLf, rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('editor', 'store')
 
 // What the Editor app holds: the open files (with their unsaved edits), which one is showing, the
 // folder in the tree, and recently opened paths. It lives outside React so other apps can open a
@@ -45,13 +47,13 @@ export function createEditorStore({ api, storage = null, recentKey = 'nexusmd.ed
   try {
     const saved = JSON.parse(storage?.get(recentKey) ?? 'null')
     if (saved && Array.isArray(saved.files) && Array.isArray(saved.folders)) state.recent = { files: saved.files.slice(0, RECENT_MAX), folders: saved.folders.slice(0, RECENT_MAX) }
-  } catch { /* an unreadable list starts empty */ }
+  } catch (err) { ignore(log, 'the saved list is not valid JSON, so it starts empty', err, 'warn') }
 
   function remember(kind, path) {
     const list = [path, ...state.recent[kind].filter(p => !sameDoc(p, path))].slice(0, RECENT_MAX)
     const recent = { ...state.recent, [kind]: list }
     set({ recent })
-    try { storage?.set(recentKey, JSON.stringify(recent)) } catch { /* not remembering is fine */ }
+    try { storage?.set(recentKey, JSON.stringify(recent)) } catch (err) { ignore(log, 'the list could not be remembered', err, 'debug') }
   }
 
   async function load(path, { line = null } = {}) {

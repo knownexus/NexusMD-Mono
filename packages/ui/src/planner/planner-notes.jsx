@@ -5,6 +5,9 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { useNexusData } from '../data-context.jsx';
 import { getPlannerRuntime } from './runtime.js';
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('planner', 'notes')
 // planner-notes.jsx — Planner v2 markdown notes: multi-notes per row + week-agnostic notes library.
 // Shared web + app. The "create work item" event name and the global-notes storage key
 // are namespaced via the data-context / planner runtime (web 'nexusmd', app 'helm').
@@ -218,17 +221,17 @@ export function loadGlobalNotes() {
   try {
     const raw = storage.getItem(globalNotesKey());
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch (err) { ignore(log, 'the saved global notes could not be read, so they open empty', err, 'warn') }
   return [];
 }
 export function saveGlobalNotes(notes) {
   const { storage, namespace, pushPref } = getPlannerRuntime();
   const key = globalNotesKey();
   const s = JSON.stringify(notes);
-  try { storage.setItem(key, s); } catch {}
+  try { storage.setItem(key, s); } catch (err) { ignore(log, 'the global notes could not be saved on this device (storage full or blocked)', err, 'warn') }
   pushPref?.(`${namespace}.planner.globalNotes`, s);
   // Signal the cloud-sync change trigger (web). No-op where nothing listens.
-  try { if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('nexusmd:data-changed', { detail: { collId: 'notes' } })); } catch {}
+  try { if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('nexusmd:data-changed', { detail: { collId: 'notes' } })); } catch (err) { ignore(log, 'the change signal for cloud sync could not be sent', err, 'debug') }
 }
 function noteSnippet(body) {
   return (body || '').replace(/[#>*`\-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 110);

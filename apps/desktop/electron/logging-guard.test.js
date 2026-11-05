@@ -174,4 +174,15 @@ describe('logging guard', () => {
     ].join('\n')
     expect(findSilentCatches(text).map(h => h.line)).toEqual([1, 2, 3, 4, 8, 9])
   })
+
+  it('does not take a catch that does something for an empty one, even when its comment mentions a block comment', () => {
+    const text = [
+      'try { a() } catch (e) {',
+      '  // not routed through /api/triage/*; see the file comment',
+      '  setError(e.message)',
+      '}',
+      'const x = 1 /* closes here */',
+    ].join('\n')
+    expect(findSilentCatches(text)).toEqual([])
+  })
 })

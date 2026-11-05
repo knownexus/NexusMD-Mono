@@ -8,6 +8,9 @@ import { useDiff } from './use-diff.js'
 import { useWorktreeStatus } from './use-worktree-status.js'
 import '@nexusmd/editor-kit/devenv-git.css'
 import './git-workspace.css'
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('git', 'popout')
 
 const HEADINGS = { editor: 'Edit', conflict: 'Resolve', diff: 'Diff' }
 const NOOP = () => {}
@@ -24,7 +27,7 @@ function usePalette() {
     let palette = paletteFor()
     try {
       palette = paletteFor(JSON.parse(localStorage.getItem(getProfileKey('nexusmd.tweaks')) || '{}'))
-    } catch { /* the default palette */ }
+    } catch (err) { ignore(log, 'the palette could not be read, so the default is used', err, 'debug') }
     document.body.dataset.theme = palette
   }, [])
 }

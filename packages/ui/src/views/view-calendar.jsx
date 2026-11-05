@@ -11,7 +11,9 @@ import React from 'react';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { Avatar } from '../app-components.jsx';
 import { Icon } from '../icons.jsx';
-import { graphJSON, graphFetch, eventBadge, isAllDayEvent } from '@nexusmd/core';
+import { graphJSON, graphFetch, eventBadge, isAllDayEvent, rendererLog, ignore } from '@nexusmd/core';
+
+const log = rendererLog('calendar', 'view')
 
 // ── OutlookService — MSAL + shared Graph client ─────────────────
 const OutlookService = (() => {
@@ -27,7 +29,7 @@ const OutlookService = (() => {
       try {
         const r = await _app.acquireTokenSilent({ scopes: SCOPES, account: _account });
         return r.accessToken;
-      } catch (_) { /* fall through to popup */ }
+      } catch (err) { ignore(log, 'a silent sign-in was not possible, so the sign-in popup is used', err, 'debug') }
     }
     const r = await _app.acquireTokenPopup({ scopes: SCOPES });
     _account = r.account;
@@ -55,7 +57,7 @@ const OutlookService = (() => {
     },
     async signOut() {
       if (!_app || !_account) return;
-      try { await _app.logoutPopup({ account: _account }); } catch (_) {}
+      try { await _app.logoutPopup({ account: _account }); } catch (err) { ignore(log, 'signing out of the calendar account failed', err, 'warn') }
       _account = null;
     },
     isConnected() { return _account != null; },

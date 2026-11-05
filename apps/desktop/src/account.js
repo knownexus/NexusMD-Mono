@@ -1,12 +1,14 @@
 // account.js — the desktop's NexusMD account wiring for <AccountGate> and <AccountCard>: where the
 // session and device id live, and how the sync engine reads this machine's settings.
-import { createAccountClient, createAccountSync, createKeyRegistry, clearAccountLocalData, listUnpushed } from '@nexusmd/core'
+import { createAccountClient, createAccountSync, createKeyRegistry, clearAccountLocalData, listUnpushed, rendererLog, ignore } from '@nexusmd/core'
 import { buildProfileBundle } from '@nexusmd/ui'
 import { secureStorageAdapter, bundleSecureStorage } from './adapters/secureStorage.js'
 import { desktopFileIO } from './file-io.js'
 import { appPrefsAdapter } from './adapters/appPrefs.js'
 import { collectDesktopPrefs, applyDesktopPrefs } from './settings-file.js'
 import { registry } from './shell/registry.js'
+
+const log = rendererLog('core', 'account')
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://nexusmd-api-production.up.railway.app'
 
@@ -36,7 +38,7 @@ const deviceStore = {
     try {
       if (id == null) localStorage.removeItem(DEVICE_KEY)
       else localStorage.setItem(DEVICE_KEY, id)
-    } catch { /* storage unavailable */ }
+    } catch (err) { ignore(log, 'browser storage is unavailable', err, 'debug') }
   },
 }
 

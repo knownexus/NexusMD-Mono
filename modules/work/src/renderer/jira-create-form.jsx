@@ -4,9 +4,11 @@
 import { linkAdapter } from '@nexusmd/shell-sdk'
 import React from 'react'
 import { mdToHtml, SettField } from '@nexusmd/ui'
-import { layoutCreateFields } from '@nexusmd/core'
+import { layoutCreateFields, rendererLog, ignored } from '@nexusmd/core'
 import { MarkdownField } from './create-work-item-drawer.jsx'
 import { settInputStyle } from './form-style.js'
+
+const log = rendererLog('work', 'jira-create')
 
 function JiraFieldInput({ field, value, onChange, people }) {
   const label = `${field.name}${field.required ? ' *' : ''}`
@@ -125,7 +127,7 @@ export function JiraCreateForm({ source, projectKeys = [], people = [], site = '
   React.useEffect(() => {
     source.getLinkTypes()
       .then(t => { setLinkTypes(t); setLinkType(t[0]?.name || '') })
-      .catch(() => {})
+      .catch(ignored(log, 'the Jira link types could not be loaded', 'warn'))
   }, [source])
 
   const layout = layoutCreateFields(fields)

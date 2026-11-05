@@ -7,8 +7,10 @@ import { CardFrame, Prio, Stat } from '../components.jsx';
 import { Avatar, TypeIcon } from '../app-components.jsx';
 import { Icon } from '../icons.jsx';
 import { TriageExportButton, TriageStatusLine } from './triage.jsx';
-import { isActiveItem, isBlockedItem, isReviewItem, isDoneItem, displayIdOf } from '@nexusmd/core';
+import { isActiveItem, isBlockedItem, isReviewItem, isDoneItem, displayIdOf, rendererLog, ignored, ignore } from '@nexusmd/core';
 import { useNexusData, useEffectiveNeedsMe } from '../data-context.jsx';
+
+const log = rendererLog('core', 'dashboard')
 
 const { useState: useStateD, useMemo: useMemoD, useEffect: useEffectD } = React;
 
@@ -332,7 +334,7 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
   const actionsEl = (
     <div className="page-head-actions">
       {!isOff('triage') && <TriageStatusLine style={{ marginRight: 4 }} />}
-      <button className="btn sm ghost" onClick={() => NexusMDApi?.load().catch(() => {})}><Icon name="refresh" size={13}/> Refresh</button>
+      <button className="btn sm ghost" onClick={() => NexusMDApi?.load().catch(ignored(log, 'refreshing the dashboard data failed', 'warn'))}><Icon name="refresh" size={13}/> Refresh</button>
       {!isOff('triage') && <TriageExportButton />}
       {setPlannerData && <QuickNotePopover setPlannerData={setPlannerData}/>}
       <AddWidgetPopover widgetOrder={widgetOrder} offViews={offViews} onAdd={id => setWidgetOrder(widgetOrder.includes(id) ? widgetOrder : [...widgetOrder, id])}/>
@@ -345,7 +347,7 @@ export function DashboardView({ onOpenItem, onOpenPR, widgetOrder, setWidgetOrde
       <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 4 }}>Quick links</span>
       {(quickLinks || []).filter(lnk => lnk.url && lnk.label).map((lnk, i) => {
         let safeHref = '#';
-        try { const u = new URL(lnk.url, location.origin); if (u.protocol === 'http:' || u.protocol === 'https:') safeHref = u.href; } catch (_) {}
+        try { const u = new URL(lnk.url, location.origin); if (u.protocol === 'http:' || u.protocol === 'https:') safeHref = u.href; } catch (err) { ignore(log, 'a quick link is not a valid URL, so it is shown as a placeholder', err, 'debug') }
         return (
           <a key={i} href={safeHref} target="_blank" rel="noopener noreferrer" className="btn sm ghost"
             style={{ textDecoration: 'none', borderColor: lnk.color, color: lnk.color }}>

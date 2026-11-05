@@ -1,6 +1,9 @@
 // regex-tester-helpers.js — pure, DOM-free regex-matching and code-gen logic
 // for RegexTesterView. Mirrors json-editor-helpers.js's pattern: no React, no
 // browser globals, independently unit-testable.
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('core', 'regex-tester')
 
 export function findMatches(pattern, flagsStr, str) {
   let re
@@ -30,7 +33,7 @@ export function findMatches(pattern, flagsStr, str) {
         const m = re2.exec(str)
         if (m) results.push(buildMatchFallback(m))
       }
-    } catch { /* pattern itself is invalid — already handled above */ }
+    } catch (err) { ignore(log, 'the pattern is not valid, so there are no fallback matches (reported by the caller)', err) }
   }
   return results
 }

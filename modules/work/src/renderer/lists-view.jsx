@@ -1,8 +1,10 @@
 import React from 'react'
-import { readLists, writeLists } from '@nexusmd/core'
+import { readLists, writeLists, rendererLog, ignore } from '@nexusmd/core'
 import { ListsView, useNexusData, useProfile, toast } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useTeamRoster } from './work-views.jsx'
+
+const log = rendererLog('work', 'lists')
 
 // Lists: the custom trackers of a manual profile (the shared Lists view, as on mobile). They live at
 // getProfileKey('nexusmd.lists') as the core Lists model, which is also the key the `lists` sync
@@ -37,7 +39,7 @@ export function ListsApp() {
     setData(next)
     try { writeLists(store(), next) } catch { toast?.('Could not save the list.', 'error'); return }
     // Tell the sync controller, so the edit goes out on the debounced change trigger.
-    try { document.dispatchEvent(new CustomEvent('nexusmd:data-changed', { detail: { collId: 'lists' } })) } catch {}
+    try { document.dispatchEvent(new CustomEvent('nexusmd:data-changed', { detail: { collId: 'lists' } })) } catch (err) { ignore(log, 'the change signal for cloud sync could not be sent', err, 'debug') }
   }
 
   return (

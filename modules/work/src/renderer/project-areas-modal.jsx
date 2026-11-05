@@ -1,6 +1,9 @@
 import React from 'react'
 import { Icon } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('work', 'project-areas')
 
 export function ProjectAreasModal({ open, onClose }) {
   const [areas, setAreas] = React.useState(() => {
@@ -15,7 +18,7 @@ export function ProjectAreasModal({ open, onClose }) {
 
   const save = (next) => {
     setAreas(next)
-    try { localStorage.setItem(getProfileKey('nexusmd.projectAreas.v3'), JSON.stringify(next)) } catch {}
+    try { localStorage.setItem(getProfileKey('nexusmd.projectAreas.v3'), JSON.stringify(next)) } catch (err) { ignore(log, 'the project areas could not be saved (storage full or blocked)', err, 'warn') }
   }
 
   if (!open) return null

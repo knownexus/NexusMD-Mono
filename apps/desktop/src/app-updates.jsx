@@ -1,5 +1,8 @@
 import React from 'react'
 import { Icon, VsCard, VsRow, toast } from '@nexusmd/ui'
+import { rendererLog, ignored } from '@nexusmd/core'
+
+const log = rendererLog('core', 'app-updates')
 
 const bridge = () => (typeof window !== 'undefined' ? window.electronAPI?.appUpdates : undefined)
 
@@ -33,7 +36,7 @@ export function useAppUpdates({ api = bridge(), confirm = q => window.confirm(q)
   React.useEffect(() => {
     if (!api) return undefined
     let live = true
-    Promise.resolve(api.pending()).then(p => { if (live) setPending(p || []) }).catch(() => {})
+    Promise.resolve(api.pending()).then(p => { if (live) setPending(p || []) }).catch(ignored(log, 'the pending update list could not be read, so none is shown', 'warn'))
     const off = api.onReady(ready => setPending(ready || []))
     return () => { live = false; off?.() }
   }, [api])

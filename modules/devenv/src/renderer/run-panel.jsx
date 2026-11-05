@@ -1,5 +1,7 @@
 import React from 'react'
-import { ansiToSpans, stripAnsi } from '@nexusmd/core'
+import { ansiToSpans, stripAnsi, rendererLog, ignored } from '@nexusmd/core'
+
+const log = rendererLog('devenv', 'run-panel')
 
 const COLOR_VARS = {
   red: 'var(--danger)', green: 'var(--success)', yellow: 'var(--warning, #b8860b)', blue: 'var(--info)',
@@ -26,7 +28,7 @@ export function RunPanel({ state, onCancel }) {
     if (el) el.scrollTop = el.scrollHeight
   }, [state.lines.length])
 
-  const copy = () => navigator.clipboard?.writeText(state.lines.map(l => stripAnsi(l.text)).join('\n')).catch(() => {})
+  const copy = () => navigator.clipboard?.writeText(state.lines.map(l => stripAnsi(l.text)).join('\n')).catch(ignored(log, 'the clipboard refused the copy', 'debug'))
 
   return (
     <section className="nx-run devenv-run" aria-label="Output">

@@ -1,4 +1,7 @@
 import { deepLinkAdapter } from '../adapters/deepLink.js'
+import { rendererLog, ignored } from '@nexusmd/core'
+
+const log = rendererLog('core', 'deep-links')
 
 // What nexusmd:// links do in the shell:
 //   nexusmd://open/<view>     switches to that screen (an app's id, or "settings"); one that is not
@@ -29,5 +32,5 @@ export function registerDeepLinks({ redeem, navigate, adapter = deepLinkAdapter 
     else if (isOAuthLink(url)) redeem(url)
   }
   adapter.onLink(handle)
-  adapter.takeInitial().then(url => { if (url) handle(url) }).catch(() => {})
+  adapter.takeInitial().then(url => { if (url) handle(url) }).catch(ignored(log, 'the link the app was launched with could not be read', 'warn'))
 }

@@ -1,6 +1,8 @@
 import React from 'react'
-import { toLf, fromLf } from '@nexusmd/core'
+import { toLf, fromLf, rendererLog, ignore } from '@nexusmd/core'
 import { ipcMessage } from './use-git-actions.js'
+
+const log = rendererLog('git', 'worktree-file')
 
 const EMPTY = { status: 'idle', text: '', saved: '', eol: '\n', bom: false, stamp: null, error: null, conflict: false, saving: false, restored: false }
 
@@ -91,7 +93,7 @@ export function useWorktreeFile({ adapter, repo, worktreePath, registered, path 
     setS({ ...EMPTY, status: 'loading' })
     const pending = pendingSaves.get(key)
     if (pending) {
-      try { await pending } catch { /* the save reports its own failure */ }
+      try { await pending } catch (err) { ignore(log, 'the save reports its own failure', err, 'debug') }
       if (gen.current !== mine) return
     }
     if (discardDraft) dropDraft(key)
@@ -105,7 +107,7 @@ export function useWorktreeFile({ adapter, repo, worktreePath, registered, path 
         if (gen.current !== mine) return
         if (r.missing) setS(p => ({ ...p, error: `${path} no longer exists.` }))
         else if (r.stamp !== draft.stamp) setS(p => ({ ...p, conflict: true }))
-      } catch { /* the draft stays on screen; Save reports a real problem */ }
+      } catch (err) { ignore(log, 'the draft stays on screen; Save reports a real problem', err, 'debug') }
       return
     }
     try {

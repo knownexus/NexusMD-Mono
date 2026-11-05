@@ -2,7 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import '@nexusmd/ui/styles.css'
 
-import { initCore, createNoOpAdapters, profileCacheStorage } from '@nexusmd/core'
+import { initCore, createNoOpAdapters, profileCacheStorage, rendererLog, ignore } from '@nexusmd/core'
 import {
   Icon, CardFrame, NexusDataProvider, ToastHost,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
@@ -46,6 +46,8 @@ installRendererErrorHooks()
 import { AppUpdatesBanner } from './app-updates.jsx'
 import { account } from './account.js'
 import { useObserveForSync } from './observe-sync.js'
+
+const log = rendererLog('core', 'main')
 
 const adapters = {
   ...createNoOpAdapters(),
@@ -204,7 +206,7 @@ function App() {
   const setTweak = React.useCallback((key, value) => {
     setTweaksState(prev => {
       const next = { ...prev, [key]: value }
-      try { localStorage.setItem(getProfileKey('nexusmd.tweaks'), JSON.stringify(next)) } catch (_) {}
+      try { localStorage.setItem(getProfileKey('nexusmd.tweaks'), JSON.stringify(next)) } catch (err) { ignore(log, 'the tweaks could not be saved (storage full or blocked)', err, 'warn') }
       return next
     })
   }, [])

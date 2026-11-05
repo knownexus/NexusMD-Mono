@@ -1,9 +1,11 @@
 import React from 'react'
 import { VsCard, VsRow } from '@nexusmd/ui'
-import { registerRepo, unregisterRepo, parseShellAliases } from '@nexusmd/core'
+import { registerRepo, unregisterRepo, parseShellAliases, rendererLog, ignored, ignore } from '@nexusmd/core'
 import { getGitConfig, setGitConfig, effectiveRoots, effectiveDotfiles, parseRoots } from './git-config.js'
 import { useGitConfig } from './use-git-config.js'
 import { gitAdapter } from './git-adapter.js'
+
+const log = rendererLog('git', 'settings')
 
 const inputStyle = {
   width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6,
@@ -45,7 +47,7 @@ export function GitSettingsCard({ adapter = gitAdapter, picker }) {
       .then(found => {
         if (id === checkRef.current) setMissing(new Set(found.filter(f => !f.exists).map(f => f.path)))
       })
-      .catch(() => { /* the flags are advisory; the view reports unavailable repos itself */ })
+      .catch(ignored(log, 'the repository flags could not be read; they are advisory', 'debug'))
   }, [adapter, available, checkKey])
 
   // Rescanned whenever the search folders or the registrations change, so the ticks follow the settings.
@@ -100,7 +102,7 @@ export function GitSettingsCard({ adapter = gitAdapter, picker }) {
     if (roots.length !== 1 || folder.includes(';')) { setMessage({ ok: false, text: `Use one absolute folder: ${folder}` }); return }
     setGitConfig({ dotfiles: folder })
     let shortcuts = null
-    try { shortcuts = parseShellAliases(await adapter.shellAliases(folder)).length } catch { /* reported below */ }
+    try { shortcuts = parseShellAliases(await adapter.shellAliases(folder)).length } catch (err) { ignore(log, 'the failure is reported below', err, 'debug') }
     setMessage(shortcuts ? { ok: true, text: `Saved · ${shortcuts} git shortcut${shortcuts === 1 ? '' : 's'} found` } : { ok: false, text: `Saved, but no git shortcuts were found in ${folder}/pwsh/profile.d` })
   }
   const saveRoots = async () => {

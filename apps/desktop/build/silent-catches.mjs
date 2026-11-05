@@ -17,7 +17,8 @@ export const repoRoot = join(here, '..', '..', '..')
 export const SCAN_ROOTS = ['apps/desktop/electron', 'packages/main-kit/src']
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'assets', 'renderer', 'e2e'])
 
-const COMMENTS = String.raw`(?:\s|//[^\n]*|/\*[\s\S]*?\*/)*`
+// (A `//` comment runs to the end of its line, so it cannot be cut short and have a `/*` inside it start a block comment.)
+const COMMENTS = String.raw`(?:\s|//[^\n]*(?![^\n])|/\*[\s\S]*?\*/)*`
 const EMPTY_CATCH = new RegExp(String.raw`\bcatch\s*(?:\([^)]*\))?\s*\{${COMMENTS}\}`, 'g')
 const EMPTY_PROMISE_CATCH = new RegExp(
   String.raw`\.catch\(\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)?\s*=>\s*\{${COMMENTS}\}\s*\)`,

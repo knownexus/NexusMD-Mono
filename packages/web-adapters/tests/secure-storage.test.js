@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createSecureStorageAdapter, bytesToBase64, base64ToBytes } from '../src/index.js'
 
 const helm    = createSecureStorageAdapter({ encPrefix: 'helm.sec.',    dbName: 'helm-keystore' })
@@ -17,6 +17,16 @@ describe('createSecureStorageAdapter (namespace wiring)', () => {
     await helm.remove('x')
     expect(localStorage.getItem('helm.sec.x')).toBe(null)        // removed
     expect(localStorage.getItem('nexusmd.sec.x')).toBe('cipher-b') // untouched
+  })
+
+  it('says when a secret could not be saved, and does not throw (the caller is not told)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const real = Storage.prototype.setItem
+    Storage.prototype.setItem = () => { throw new Error('QuotaExceededError') }
+    try { await expect(helm.set('x', 'secret-value')).resolves.toBeUndefined() } finally { Storage.prototype.setItem = real }
+    expect(warn.mock.calls.map(c => c[0])).toContain('[core:secure-storage] ignored: a secret could not be saved (storage full or blocked); get() will not find it')
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('secret-value')
+    warn.mockRestore()
   })
 
   it('exposes the get/set/remove contract', () => {

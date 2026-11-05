@@ -1,8 +1,10 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { ansiToSpans, stripAnsi } from '@nexusmd/core'
+import { ansiToSpans, stripAnsi, rendererLog, ignore } from '@nexusmd/core'
 import { Icon } from '@nexusmd/ui'
 import { usePopoutWindow } from './popout-window.js'
+
+const log = rendererLog('editor', 'run-drawer')
 
 // ansiToSpans colour names on the theme; the git command dock uses them too.
 export const ANSI_COLORS = {
@@ -24,7 +26,7 @@ function readPrefs() {
     return { width: Number.isFinite(p.width) ? Math.max(MIN_W, p.width) : DEFAULT_W, expanded: p.expanded === true }
   } catch { return { width: DEFAULT_W, expanded: false } }
 }
-function writePrefs(p) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)) } catch { /* private window: keep it in memory */ } }
+function writePrefs(p) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)) } catch (err) { ignore(log, 'the drawer size could not be remembered, so it stays in memory (private window)', err, 'debug') } }
 
 /**
  * The output of a run. Mount inside a .nx-shell, beside the .nx-page: docked it takes a

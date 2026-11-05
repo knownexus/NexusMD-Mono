@@ -1,4 +1,7 @@
 import React from 'react'
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('work', 'project-areas')
 
 // project-areas.js — the org's area-path tree. This is NOT fetched from ADO;
 // it's a hand-maintained constant describing the module/service structure,
@@ -92,7 +95,7 @@ export function useProjectAreas({ storage, getProfileKey }) {
       isFirstRender.current = false
       return
     }
-    try { storage.setItem(key, JSON.stringify(areas)) } catch { /* ignore */ }
+    try { storage.setItem(key, JSON.stringify(areas)) } catch (err) { ignore(log, 'the project areas could not be saved (storage full or blocked)', err, 'warn') }
   }, [key, areas])
 
   return [areas, setAreas]

@@ -1,5 +1,8 @@
 // Where devenv lives and how to run it, per NexusMD profile.
 import { getProfileKey } from '@nexusmd/shell-sdk'
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('devenv', 'config')
 
 const KEY = () => getProfileKey('devenv.config')
 
@@ -17,7 +20,7 @@ export function getDevenvConfig() {
 
 export function setDevenvConfig(patch) {
   const next = { ...getDevenvConfig(), ...patch }
-  try { localStorage.setItem(KEY(), JSON.stringify(next)) } catch {}
+  try { localStorage.setItem(KEY(), JSON.stringify(next)) } catch (err) { ignore(log, 'the devenv config could not be saved (storage full or blocked)', err, 'warn') }
   window.dispatchEvent(new Event('nexusmd:devenv-config'))
   return next
 }

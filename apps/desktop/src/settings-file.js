@@ -8,7 +8,9 @@
 // Secrets are stored encrypted under a key that never leaves this machine's IndexedDB, so the
 // raw `nexusmd.sec.*` values would be useless elsewhere: they are decrypted on export, carried
 // inside the password-encrypted file, and re-encrypted with the new machine's key on import.
-import { encryptConfidentialForServer, decryptConfidentialFromServer, isSkippedKey, MIGRATION_V2_MARKER } from '@nexusmd/core'
+import { encryptConfidentialForServer, decryptConfidentialFromServer, isSkippedKey, MIGRATION_V2_MARKER, rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('core', 'settings-file')
 
 export const SETTINGS_FORMAT     = 'nexusmd-settings'
 export const SETTINGS_FORMAT_ENC = 'nexusmd-settings-enc'
@@ -73,7 +75,7 @@ const storageKeys = (storage) => {
 export async function collectDesktopPrefs(prefs) {
   const desktop = {}
   const read = async (field, fn) => {
-    try { const v = await fn?.(); if (v !== undefined && v !== null) desktop[field] = v } catch { /* left out */ }
+    try { const v = await fn?.(); if (v !== undefined && v !== null) desktop[field] = v } catch (err) { ignore(log, 'a desktop preference could not be read, so it is left out of the settings file', err, 'warn') }
   }
   await read('closeToTray', () => prefs?.getCloseToTray())
   await read('zoomFactor',  () => prefs?.getZoomFactor())
@@ -85,7 +87,7 @@ export async function collectDesktopPrefs(prefs) {
 // Writes desktop prefs `d` through the main-process bridge. Returns the disabled-app list that was
 // applied (null when `d` has none). `installedApps` is the ids of the apps on this machine.
 export async function applyDesktopPrefs(d, prefs, installedApps = null) {
-  const write = async (fn) => { try { await fn() } catch { /* best-effort */ } }
+  const write = async (fn) => { try { await fn() } catch (err) { ignore(log, 'a desktop preference could not be applied', err, 'warn') } }
   if (typeof d.closeToTray === 'boolean') await write(() => prefs?.setCloseToTray(d.closeToTray))
   if (typeof d.zoomFactor === 'number')   await write(() => prefs?.setZoomFactor(d.zoomFactor))
   if (typeof d.openAtLogin === 'boolean') await write(() => prefs?.setLoginItemEnabled(d.openAtLogin))

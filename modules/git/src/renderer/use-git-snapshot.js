@@ -1,6 +1,8 @@
 import React from 'react'
-import { loadSnapshot, refreshRepos, worktreeId } from '@nexusmd/core'
+import { loadSnapshot, refreshRepos, worktreeId, rendererLog, ignore } from '@nexusmd/core'
 import { getProfileKey } from '@nexusmd/shell-sdk'
+
+const log = rendererLog('git', 'snapshot')
 
 // The last snapshot outlives the screen and the app: coming back, or starting NexusMD, shows it at
 // once while a quiet refresh runs (each git process costs about half a second on Windows, so a full
@@ -27,12 +29,12 @@ function remember(key, snapshot, persist = true) {
     const text = JSON.stringify(cached)
     if (text.length <= STORE_MAX) localStorage.setItem(STORE(), text)
     else localStorage.removeItem(STORE())
-  } catch { /* storage full or unavailable: the in-memory copy still serves this session */ }
+  } catch (err) { ignore(log, 'the snapshot could not be saved (storage full or unavailable); the in-memory copy serves this session', err, 'debug') }
 }
 
 export function clearGitSnapshotCache() {
   cached = null
-  try { localStorage.removeItem(STORE()) } catch { /* nothing kept */ }
+  try { localStorage.removeItem(STORE()) } catch (err) { ignore(log, 'the saved snapshot could not be cleared', err, 'debug') }
 }
 
 // Polls git status for every registered repo while the window is visible (devenv's query-hook

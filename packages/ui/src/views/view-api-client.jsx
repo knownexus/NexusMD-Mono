@@ -17,13 +17,9 @@ import { useApiClient } from '../api-client-context.jsx'
 import { usePathsMissing, notOnThisComputer } from '../use-paths-missing.js'
 import { JsonPretty } from '../json-pretty.jsx'
 import { EnvironmentEditor } from './api-client-env-editor.jsx'
-import {
-  loadCollection, createCollection, writeCollectionMeta, writeRequest,
-  addTreeNode, buildRunEntries,
-  resolveEnvironment, executeRequest, runCollection, importPostmanCollection,
-  importBrunoCollection, writeEnvironment, brunoRequestLookup, nextRuntimeVars,
-  appendHistoryEntry, readHistory, clearHistory,
-} from '@nexusmd/core'
+import { loadCollection, createCollection, writeCollectionMeta, writeRequest, addTreeNode, buildRunEntries, resolveEnvironment, executeRequest, runCollection, importPostmanCollection, importBrunoCollection, writeEnvironment, brunoRequestLookup, nextRuntimeVars, appendHistoryEntry, readHistory, clearHistory, rendererLog, ignored } from '@nexusmd/core'
+
+const log = rendererLog('api-client', 'view')
 
 const TABS = ['Params', 'Headers', 'Body', 'Auth', 'Scripts', 'Tests', 'History']
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD']
@@ -175,7 +171,7 @@ export function ApiClientView() {
       if (missingDirs.has(dir) || !collections[dir]?.error) return
       loadCollection(adapters.file, dir)
         .then(loaded => setCollections(prev => ({ ...prev, [dir]: { ...loaded, activeEnv: '' } })))
-        .catch(() => {})
+        .catch(ignored(log, 'a collection could not be loaded', 'warn'))
     })
     // Only a change in which folders exist should retry a collection that failed to load.
     // eslint-disable-next-line react-hooks/exhaustive-deps

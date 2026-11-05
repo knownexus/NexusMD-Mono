@@ -1,7 +1,9 @@
 import React from 'react'
-import { parseAliases, parseShellAliases, parseShellScripts } from '@nexusmd/core'
+import { parseAliases, parseShellAliases, parseShellScripts, rendererLog, ignored } from '@nexusmd/core'
 import { effectiveDotfiles } from './git-config.js'
 import { useGitConfig } from './use-git-config.js'
+
+const log = rendererLog('git', 'aliases')
 
 /**
  * The command line's aliases for a worktree: git's own, and the DotFiles PowerShell shortcuts and
@@ -19,7 +21,7 @@ export function useCommandAliases(adapter, repo, worktreePath, registered) {
     ])
     const scripts = adapter.shellRun ? parseShellScripts(profile) : []
     // PowerShell takes seconds to start and load the profile: have it ready before a script is typed.
-    if (scripts.length) adapter.shellWarm?.(dotfiles).catch(() => {})
+    if (scripts.length) adapter.shellWarm?.(dotfiles).catch(ignored(log, 'warming the shell failed; the first script is slower', 'debug'))
     return { git, shell: parseShellAliases(profile), scripts }
   } : null), [adapter, repoName, repoPath, worktreePath, registered, dotfiles])
 }

@@ -10,54 +10,7 @@
 //   Alt+← back to where a followed key came from
 
 import { useState, useRef, useCallback, useEffect, useMemo, forwardRef } from 'react'
-import {
-  resolveConnectionParams,
-  buildConfig,
-  createInitialState,
-  applyConnected,
-  applyTableSelected,
-  applyTableLoaded,
-  applyRowsDeleted,
-  applyCellUpdated,
-  applyError,
-  buildSearchQuery,
-  buildDeleteQuery,
-  buildInsertQuery,
-  buildUpdateQuery,
-  buildJoinQuery,
-  buildAggregateQuery,
-  SQL_AUTH,
-  AZURE_AD_INTERACTIVE,
-  connectionStringToFields,
-  normalizeTablePrefs,
-  toggleTableStarred,
-  toggleTableHidden,
-  setTableGroup,
-  renameTableGroup,
-  removeTableGroup,
-  toggleSectionCollapsed,
-  tableSections,
-  TABLE_GROUP_BY,
-  setTableGroupBy,
-  quoteTable,
-  columnTypes,
-  validateTableSpec,
-  buildCreateTable,
-  buildCreateView,
-  buildDropStatement,
-  columnKind,
-  isPartialInput,
-  cellToInput,
-  parseCellInput,
-  followTargets,
-  referencingTargets,
-  buildInsertStatements,
-  orderByDependencies,
-  buildSchemaScript,
-  buildTableData,
-  joinDataScript,
-  whereLabel,
-} from '@nexusmd/core'
+import { resolveConnectionParams, buildConfig, createInitialState, applyConnected, applyTableSelected, applyTableLoaded, applyRowsDeleted, applyCellUpdated, applyError, buildSearchQuery, buildDeleteQuery, buildInsertQuery, buildUpdateQuery, buildJoinQuery, buildAggregateQuery, SQL_AUTH, AZURE_AD_INTERACTIVE, connectionStringToFields, normalizeTablePrefs, toggleTableStarred, toggleTableHidden, setTableGroup, renameTableGroup, removeTableGroup, toggleSectionCollapsed, tableSections, TABLE_GROUP_BY, setTableGroupBy, quoteTable, columnTypes, validateTableSpec, buildCreateTable, buildCreateView, buildDropStatement, columnKind, isPartialInput, cellToInput, parseCellInput, followTargets, referencingTargets, buildInsertStatements, orderByDependencies, buildSchemaScript, buildTableData, joinDataScript, whereLabel, rendererLog, ignore } from '@nexusmd/core'
 import { PlModal } from '../planner-chips.jsx'
 import { Icon } from '../icons.jsx'
 import { FoldAllButton } from '../fold-all-button.jsx'
@@ -69,6 +22,8 @@ import { headerMenuItems, rowMenuItems } from './db-grid-menus.js'
 import { StructurePanel, typeLabelOf } from './db-structure-panel.jsx'
 import { formatSql } from './db-sql-format.js'
 import { FREE, newDocId, docsOf, activeDoc, addDoc, ensureDoc, updateDoc, selectDoc, closeDoc, renameDoc, placeDoc } from './db-query-docs.js'
+
+const log = rendererLog('database', 'manager')
 
 // ─── Demo data (shown when no real DB is connected) ───────────────────────────
 
@@ -139,7 +94,7 @@ function usePrefs() {
         try { const v = window.localStorage.getItem(keyOf(name)); return v == null ? fallback : JSON.parse(v) } catch { return fallback }
       },
       writePref(name, value) {
-        try { window.localStorage.setItem(keyOf(name), JSON.stringify(value)) } catch { /* storage unavailable */ }
+        try { window.localStorage.setItem(keyOf(name), JSON.stringify(value)) } catch (err) { ignore(log, 'browser storage is unavailable', err, 'debug') }
       },
     }
   }, [namespace, getProfileKey])

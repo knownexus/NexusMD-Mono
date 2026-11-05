@@ -1,6 +1,9 @@
 import React from 'react'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { createEditorStore } from './editor-store.js'
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('editor', 'singleton')
 
 // The file API the main process offers (window.electronAPI.editor), looked up when called.
 export const editorApi = {
@@ -13,7 +16,7 @@ export const editorApi = {
 // Recent files and folders are kept per profile, like the rest of the app's settings.
 const storage = {
   get: key => { try { return localStorage.getItem(getProfileKey(key)) } catch { return null } },
-  set: (key, value) => { try { localStorage.setItem(getProfileKey(key), value) } catch { /* ignore */ } },
+  set: (key, value) => { try { localStorage.setItem(getProfileKey(key), value) } catch (err) { ignore(log, 'an editor setting could not be saved (storage full or blocked)', err, 'debug') } },
 }
 
 // One store for the window: the screen shows it, and the editor.openPath capability feeds it.

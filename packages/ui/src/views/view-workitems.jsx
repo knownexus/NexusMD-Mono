@@ -8,7 +8,7 @@ import { Avatar, MenuButton, NotificationBanner, ProjectChip, TypeIcon, usePersi
 import { Icon } from '../icons.jsx';
 import { TriageExportButton, TriageStatusLine } from './triage.jsx';
 import { WorkItemDetail } from './work-item-detail.jsx';
-import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS, WI_TABLE_COLUMNS, indexPRsByWorkItem, CATEGORY_LANES, CATEGORY_LABELS, itemCategory, displayIdOf, isJiraId, jiraColumnForStatus } from '@nexusmd/core';
+import { adoTypeToHelm, adoStateToHelm, slugify, timeAgo, syncBoardColumns, getActiveLanes, resolveFields, WI_CARD_FIELDS, WI_TABLE_COLUMNS, indexPRsByWorkItem, CATEGORY_LANES, CATEGORY_LABELS, itemCategory, displayIdOf, isJiraId, jiraColumnForStatus, rendererLog, ignore, ignored } from '@nexusmd/core';
 import { useNexusData } from '../data-context.jsx';
 import { toast } from '../toast.jsx';
 import { GROUP_ORDER_MODES, orderGroups, moveGroup } from './wi-group-order.js';
@@ -54,6 +54,8 @@ export async function patchWorkItem(workItemSource, id, ops) {
 }
 
 import { WI_TYPE_STATES_CACHE_KEY } from './wi-cache-key.js';
+
+const log = rendererLog('work', 'workitems')
 export { WI_TYPE_STATES_CACHE_KEY };
 
 // Local aliases matching legacy global names used in this file
@@ -599,14 +601,14 @@ export function WorkItemsView({ items, setItems, onOpen, onCreate, team: teamPro
   // which 404s everywhere, silently forcing the hardcoded STATES fallback below).
   React.useEffect(() => {
     const cached = localStorage.getItem(WI_TYPE_STATES_CACHE_KEY);
-    if (cached) { try { setWiTypeStates(JSON.parse(cached)); } catch (_) {} }
+    if (cached) { try { setWiTypeStates(JSON.parse(cached)); } catch (err) { ignore(log, 'the cached work item states are not valid JSON, so they are reloaded', err, 'warn') } }
   }, []);
 
   React.useEffect(() => {
     const live = NexusMDData.WI_TYPE_STATES;
     if (!live || Object.keys(live).length === 0) return;
     setWiTypeStates(live);
-    try { localStorage.setItem(WI_TYPE_STATES_CACHE_KEY, JSON.stringify(live)); } catch (_) {}
+    try { localStorage.setItem(WI_TYPE_STATES_CACHE_KEY, JSON.stringify(live)); } catch (err) { ignore(log, 'the work item states could not be cached (storage full)', err, 'debug') }
   }, [NexusMDData.WI_TYPE_STATES]);
 
   React.useEffect(() => {
@@ -2057,7 +2059,7 @@ function WIBoard({ items, updateItem, moveState, onOpen, grouping = 'none', grou
             setReachable(new Set([...states, current]));
           }
         })
-        .catch(() => {});
+        .catch(ignored(log, 'a work item lookup failed', 'warn'));
     }
   };
   const endDrag = () => { setDragId(null); setOverKey(null); setReachable(null); dragRef.current = null; };

@@ -6,7 +6,9 @@ import { FilterChip } from '../components.jsx'
 import { Avatar, NotificationBanner, usePersisted } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
 import { useNexusData, useEffectiveNeedsMe, useEffectiveTeamActivity } from '../data-context.jsx'
-import { resolveFields, PR_CARD_FIELDS } from '@nexusmd/core'
+import { resolveFields, PR_CARD_FIELDS, rendererLog, ignored } from '@nexusmd/core'
+
+const log = rendererLog('work', 'prs')
 
 const { useState: useStatePR, useMemo: useMemoPR } = React
 
@@ -229,7 +231,7 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
         </div>
         <div className="page-head-actions">
           <button className="btn sm ghost"><Icon name="filter" size={13}/> Filter</button>
-          <button className="btn sm" onClick={() => NexusMDApi?.load().catch(() => {})}><Icon name="refresh" size={13}/> Refresh</button>
+          <button className="btn sm" onClick={() => NexusMDApi?.load().catch(ignored(log, 'refreshing the pull requests failed', 'warn'))}><Icon name="refresh" size={13}/> Refresh</button>
         </div>
       </div>
 

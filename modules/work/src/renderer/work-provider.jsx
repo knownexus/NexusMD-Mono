@@ -1,5 +1,5 @@
 import React from 'react'
-import { defaultCreateProvider, loadCachedGithubData } from '@nexusmd/core'
+import { defaultCreateProvider, loadCachedGithubData, rendererLog, ignore } from '@nexusmd/core'
 import { workStorage } from './work-storage.js'
 import { NexusDataProvider, useSeenTracking, SEEN_FINGERPRINTS } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
@@ -18,6 +18,8 @@ import { makeRefreshAllData, desktopWorkItemSource, useNexusSnapshot } from './w
 import { WorkContext } from './work-context.js'
 import { workBadges } from './work-store.js'
 import { useOffScreens, skippedFetches } from './work-screens.js'
+
+const log = rendererLog('work', 'provider')
 
 // The drawer's reviewer list reads reviewerDetails, so a vote cast from the drawer is
 // written there until the refreshed PR arrives.
@@ -278,7 +280,7 @@ export function WorkProvider({ host, view, children }) {
             jiraAvailable: jiraActive,
             githubAvailable: !!githubSource,
           })}
-          onProviderChange={(p) => { try { localStorage.setItem(getProfileKey('nexusmd.wi.createProvider'), JSON.stringify(p)) } catch {} }}
+          onProviderChange={(p) => { try { localStorage.setItem(getProfileKey('nexusmd.wi.createProvider'), JSON.stringify(p)) } catch (err) { ignore(log, 'the create provider choice could not be remembered', err, 'debug') } }}
           onJiraCreated={(result) => {
             if (!result.warnings?.length) setTimeout(() => setCreateWI(null), 600)
             refreshAllData()

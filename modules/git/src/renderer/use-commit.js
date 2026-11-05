@@ -1,7 +1,9 @@
 import React from 'react'
-import { parseCommitDetails, parseNameStatus, parseNumstat, parseDiff } from '@nexusmd/core'
+import { parseCommitDetails, parseNameStatus, parseNumstat, parseDiff, rendererLog, ignored } from '@nexusmd/core'
 import { ipcMessage } from './use-git-actions.js'
 import { historyCache } from './history-cache.js'
+
+const log = rendererLog('git', 'commit')
 
 export const MISSING_COMMIT = 'This commit no longer exists - refresh.'
 const PREFETCH = 5
@@ -133,7 +135,7 @@ export function useCommit({ adapter, repo, cwd, registered, oid, parentIndex = 0
     for (const o of nextKey.split(',')) {
       loaders.details(o, 'prefetch')
         .then(d => (d === MISSING ? null : loaders.fileList(o, d.parents[0] ?? null, 'prefetch')))
-        .catch(() => {})
+        .catch(ignored(log, 'prefetching a commit failed; it loads when opened', 'debug'))
     }
   }, [files, nextKey, loaders])
 

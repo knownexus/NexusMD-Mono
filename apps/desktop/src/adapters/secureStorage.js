@@ -8,6 +8,9 @@
 // keeps that cache current.
 import { createSecureStorageAdapter } from '@nexusmd/web-adapters'
 import { profileSecrets } from '@nexusmd/shell-sdk'
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('core', 'secure-storage')
 
 const encrypted = createSecureStorageAdapter({
   encPrefix: 'nexusmd.sec.',
@@ -29,7 +32,7 @@ export const bundleSecureStorage = {
         const k = localStorage.key(i)
         if (k && k.startsWith(SECRET_PREFIX)) out.push(k.slice(SECRET_PREFIX.length))
       }
-    } catch { /* storage unavailable: no secrets listed */ }
+    } catch (err) { ignore(log, 'browser storage is unavailable, so no secrets are listed', err, 'warn') }
     return out
   },
   get: (name) => secureStorageAdapter.get(name),

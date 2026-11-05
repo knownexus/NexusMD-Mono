@@ -1,5 +1,5 @@
 import React from 'react'
-import { formatClock } from '@nexusmd/core'
+import { formatClock, rendererLog, ignore } from '@nexusmd/core'
 import { Icon } from '../icons.jsx'
 import {
   emptyLog, runningEntries, startEntry, stopEntry, updateEntry, removeEntry, setTimes, addNote, removeNote, assignRef,
@@ -7,6 +7,8 @@ import {
   durationMs, unionMs, groupByDay, dayLabel, dayKey, weekTotals, totalsByTask, colorSlot, tapeLayout, formatHm, matchTickets,
   toHHMM, withClock, timesError, timelineEvents, timelineMarkdown,
 } from './time-log.js'
+
+const log = rendererLog('time', 'view')
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React
 
@@ -19,7 +21,7 @@ function useStoredLog(key) {
   const [value, setValue] = useState(() => {
     try { const raw = window.localStorage.getItem(key); return raw === null ? emptyLog() : JSON.parse(raw) } catch { return emptyLog() }
   })
-  useEffect(() => { try { window.localStorage.setItem(key, JSON.stringify(value)) } catch { /* quota or private mode */ } }, [key, value])
+  useEffect(() => { try { window.localStorage.setItem(key, JSON.stringify(value)) } catch (err) { ignore(log, 'the time log could not be saved (quota or private mode)', err, 'warn') } }, [key, value])
   return [value, setValue]
 }
 
