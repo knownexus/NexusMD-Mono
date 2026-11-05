@@ -104,7 +104,7 @@ export function createSyncController({
       collections: buildCollections(), getKey, text,
       onChanged: (collId) => dispatch('nexusmd:sync-applied', { collId }),
     });
-    syncOnce().catch(() => {});
+    syncOnce().catch(ignored(log, 'the sync after importing a bundle failed; the import itself is kept', 'warn'));
     return r;
   };
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { clearAccountLocalData } from '../src/modules/account/account-clear.js'
 import { createKeyRegistry } from '../src/modules/account/key-registry.js'
 import * as core from '../src/index.js'
@@ -89,5 +89,16 @@ describe('clearAccountLocalData', () => {
       expect(m.has(k), k).toBe(true)
     }
     expect(removed).toEqual(['ado.pat'])
+  })
+
+  it('removes the stored key of a secret that secure storage could not remove, and says so', async () => {
+    const { m, storage, registry } = setup()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const secure = { remove: async () => { throw new Error('keychain locked') } }
+    await clearAccountLocalData({ registry, storage, secure, metaKey: META })
+    expect(m.has('nexusmd.sec.ado.pat')).toBe(false)
+    const hit = warn.mock.calls.find((c) => String(c[0]).includes('an account secret could not be removed'))
+    expect(hit?.[2]).toEqual({ name: 'ado.pat' })
+    warn.mockRestore()
   })
 })
