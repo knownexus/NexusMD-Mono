@@ -1,5 +1,5 @@
 {
-  "_note": "Patterns (case-insensitive) for what a recording replaces outright, with no value shown: requests, functions and IPC channels that carry credentials. Everything else is shown, with secrets that match a pattern in redact.cjs hidden.",
+  "_note": "Patterns (case-insensitive) for what a recording replaces outright, with no value shown, and everything a denied function calls with it. `functions` are tested against the function's name split into lowercase words ('getAuthToken' becomes 'get auth token'), so 'tokenize' is not a credential but 'getAuthToken' is. Everything not matched is shown, with secrets that match a pattern in logging/redact.cjs hidden.",
   "urls": [
     "/oauth",
     "/connect/token",
@@ -9,11 +9,8 @@
     "/authorize(?:[/?#]|$)"
   ],
   "functions": [
-    "sign-?in",
-    "token",
-    "secret",
-    "password",
-    "credential"
+    "\\bsign ?in\\b",
+    "\\b(?:tokens?|secrets?|passwords?|passwd|credentials?)\\b"
   ],
   "channels": [
     "^oauth:",

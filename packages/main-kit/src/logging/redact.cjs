@@ -23,7 +23,7 @@ function redactString(s) {
     // (also access_token, refresh_token, id_token and client_secret: `_` is a word character, so a bare `token` misses them)
     .replace(/\b((?:access|refresh|id|auth|client)[-_]?(?:token|secret)|password|pwd|secret|token|api[-_]?key|accountkey|sharedaccesskey)\s*=\s*[^;\s&'"]+/gi, `$1=${REDACTED}`)
     // "password": "…" inside JSON text
-    .replace(/("(?:password|secret|token|api[-_]?key|authorization)"\s*:\s*)"[^"]*"/gi, `$1"${REDACTED}"`)
+    .replace(/("(?:(?:access|refresh|id|auth|client)[-_]?(?:token|secret)|password|secret|token|api[-_]?key|authorization)"\s*:\s*)"[^"]*"/gi, `$1"${REDACTED}"`)
     // Authorization: Basic …  (Bearer is handled above)
     .replace(/\b(authorization\s*:\s*)(?!Bearer)[^\r\n]+/gi, `$1${REDACTED}`);
 }
