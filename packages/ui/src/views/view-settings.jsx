@@ -587,6 +587,22 @@ function unreadableName(full) {
 }
 const itemCount = (n) => `${n} ${n === 1 ? 'item' : 'items'}`;
 
+// Why a restore left an item alone (the reasons restore() in the sync runtime gives).
+const RESTORE_REASONS = {
+  'not-in-cloud': 'the cloud has no copy',
+  'cloud-copy-unreadable': 'the cloud copy could not be read',
+  'could-not-back-up': 'this device has no room to keep the damaged copy first, so nothing was replaced',
+  'could-not-write': 'it could not be written',
+  readable: 'it can be read now',
+  unknown: 'it is not a known item',
+};
+function restoreMessage({ restored, failed }) {
+  const parts = [];
+  if (restored.length) parts.push(`Restored ${itemCount(restored.length)} from the cloud, and kept the damaged ${restored.length === 1 ? 'copy' : 'copies'} on this device.`);
+  if (failed.length) parts.push(`${itemCount(failed.length)} could not be restored: ${[...new Set(failed.map(f => RESTORE_REASONS[f.reason] || f.reason))].join('; ')}.`);
+  return { text: parts.join(' '), type: failed.length ? 'error' : 'success' };
+}
+
 // Cloud Sync card — continuous sync + encrypted local export/import. Driven by a
 // platform sync controller (createSyncController), the platform's cloud providers,
 // and its file I/O. Shared across web/desktop/app.
@@ -604,6 +620,7 @@ function CloudSyncCard({ controller, providers, fileIO }) {
     return () => document.removeEventListener('nexusmd:sync-finished', onFinished);
   }, []);
   const unreadable = lastResult && !lastResult.skipped && Array.isArray(lastResult.unreadable) ? lastResult.unreadable : [];
+  const [restoring, setRestoring] = React.useState(false);
 
   const provider = providers.find(p => p.id === selectedId) || null;
   const [connected, setConnected] = React.useState(false);
@@ -637,6 +654,21 @@ function CloudSyncCard({ controller, providers, fileIO }) {
   const handleDisconnect = async () => { if (!provider) return; await provider.disconnect(); setConnected(false); toast?.(`${provider.label} disconnected.`, 'success'); };
   const handleSavePassphrase = async () => { if (!passphrase) return; await controller.setSyncPassphrase(passphrase); setPassphrase(''); setHasKey(true); toast?.('Sync passphrase saved.', 'success'); };
   const handleForgetPassphrase = async () => { await controller.clearSyncKey(); setHasKey(false); toast?.('Sync passphrase forgotten.', 'success'); };
+
+  // Replaces the unreadable items with the cloud's copy. The sync runtime keeps the damaged text first and leaves
+  // alone anything it cannot restore, so this reports item by item rather than all or nothing.
+  const handleRestore = async () => {
+    setRestoring(true);
+    try {
+      const r = await controller.restoreUnreadable(unreadable);
+      if (r.skipped === 'no-key') toast?.('Set a sync passphrase first.', 'info');
+      else if (r.skipped === 'no-provider') toast?.('Select a cloud provider first.', 'info');
+      else if (r.skipped === 'not-connected') toast?.('Connect your cloud provider first.', 'info');
+      else if (r.skipped === 'bad-passphrase') toast?.('Wrong passphrase — enter the correct passphrase and try again.', 'error');
+      else { const m = restoreMessage(r); toast?.(m.text, m.type); }
+    } catch (err) { toast?.('Restore failed: ' + (err?.message || 'unknown error'), 'error'); }
+    finally { setRestoring(false); }
+  };
 
   const handleSyncNow = async () => {
     setSyncing(true); setLastResult(null);
@@ -724,9 +756,14 @@ function CloudSyncCard({ controller, providers, fileIO }) {
             <div className="d">{unreadable.map(unreadableName).join(', ')}</div>
             <div className="d">
               {unreadable.length === 1 ? 'It is' : 'They are'} damaged on this device, so {unreadable.length === 1 ? 'it was' : 'they were'} left alone and not synced:
-              your cloud and your other devices keep their copies. Importing a bundle that has an item replaces it.
+              your cloud and your other devices keep their copies.
+              {controller.restoreUnreadable && <> Restore from cloud replaces {unreadable.length === 1 ? 'it' : 'them'} with the copy in the cloud; the damaged copy is kept on this device.</>}
+              {' '}Importing a bundle that has an item replaces it too.
             </div>
           </div>
+          {controller.restoreUnreadable && (
+            <button className="btn sm" onClick={handleRestore} disabled={restoring}>{restoring ? 'Restoring…' : 'Restore from cloud'}</button>
+          )}
         </div>
       )}
       <VsRow title="Local file" desc={hasKey ? 'Export or import an encrypted planner bundle (.nmdplanner)' : 'Set a sync passphrase to encrypt local exports'}>

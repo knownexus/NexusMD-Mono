@@ -8,6 +8,20 @@ const WRITE_FAILED = 'could not write a collection to local storage';
 const REMOVE_FAILED = 'could not remove a collection from local storage';
 
 /**
+ * Copies the stored text at `storageKey` to a backup key and returns it (null when nothing is stored). Throws
+ * when the copy cannot be stored: a caller about to replace a value must stop then, not go on without a backup.
+ * The key is not under a profile (`<ns>.sync.quarantine.<the damaged key>.<time>`), so the account sync, which
+ * does sync the other keys under a profile, never picks it up, and no collection lists it as an item.
+ */
+function quarantine(storage, namespace, storageKey) {
+  const raw = storage.getItem(storageKey);
+  if (raw == null) return null;
+  const to = `${namespace}.sync.quarantine.${storageKey}.${Date.now()}`;
+  storage.setItem(to, raw);
+  return to;
+}
+
+/**
  * A stored value that is not valid JSON (a torn write, a bad manual edit). It is not "nothing here": the
  * sync engine takes an absent item for one deleted on this device and would propagate that deletion, so an
  * unreadable item is reported and left alone instead.
@@ -67,13 +81,14 @@ export function plannerCollection({ storage, getProfileKey, namespace }) {
     removeLocal(key) {
       try { storage.removeItem(full(key)); } catch (err) { ignore(log, REMOVE_FAILED, err, 'warn', { collection: 'planner', key }); }
     },
+    quarantineLocal(key) { return quarantine(storage, namespace, full(key)); },
     merge: (b, l, r, ctx) => mergePlannerWeek(b, l, r, ctx),
   };
 }
 
 // A single-item collection backed by one fixed storage key (notes/team/tweaks).
 // The item key is always the literal 'data'.
-export function singletonCollection({ id, bareKey, merge, storage, getProfileKey }) {
+export function singletonCollection({ id, bareKey, merge, storage, getProfileKey, namespace }) {
   const full = getProfileKey(bareKey);
   return {
     id,
@@ -87,6 +102,7 @@ export function singletonCollection({ id, bareKey, merge, storage, getProfileKey
     removeLocal() {
       try { storage.removeItem(full); } catch (err) { ignore(log, REMOVE_FAILED, err, 'warn', { collection: id }); }
     },
+    quarantineLocal() { return quarantine(storage, namespace, full); },
     merge,
   };
 }
@@ -94,28 +110,28 @@ export function singletonCollection({ id, bareKey, merge, storage, getProfileKey
 export function notesCollection({ storage, getProfileKey, namespace }) {
   return singletonCollection({
     id: 'notes', bareKey: `${namespace}.planner.globalNotes`,
-    merge: (b, l, r) => mergeRows(b, l, r, 'id'), storage, getProfileKey,
+    merge: (b, l, r) => mergeRows(b, l, r, 'id'), storage, getProfileKey, namespace,
   });
 }
 
 export function teamCustomCollection({ storage, getProfileKey, namespace }) {
   return singletonCollection({
     id: 'team-custom', bareKey: `${namespace}.team.custom`,
-    merge: (b, l, r) => mergeRows(b, l, r, 'id'), storage, getProfileKey,
+    merge: (b, l, r) => mergeRows(b, l, r, 'id'), storage, getProfileKey, namespace,
   });
 }
 
 export function teamRemovedCollection({ storage, getProfileKey, namespace }) {
   return singletonCollection({
     id: 'team-removed', bareKey: `${namespace}.team.removed`,
-    merge: (b, l, r) => mergeSet(b, l, r), storage, getProfileKey,
+    merge: (b, l, r) => mergeSet(b, l, r), storage, getProfileKey, namespace,
   });
 }
 
 export function tweaksCollection({ storage, getProfileKey, namespace }) {
   return singletonCollection({
     id: 'tweaks', bareKey: `${namespace}.tweaks`,
-    merge: (b, l, r, ctx) => mergeKeyVal(b, l, r, ctx), storage, getProfileKey,
+    merge: (b, l, r, ctx) => mergeKeyVal(b, l, r, ctx), storage, getProfileKey, namespace,
   });
 }
 
@@ -124,6 +140,6 @@ export function tweaksCollection({ storage, getProfileKey, namespace }) {
 export function listsCollection({ storage, getProfileKey, namespace }) {
   return singletonCollection({
     id: 'lists', bareKey: `${namespace}.lists`,
-    merge: (b, l, r, ctx) => mergeLists(b, l, r, ctx), storage, getProfileKey,
+    merge: (b, l, r, ctx) => mergeLists(b, l, r, ctx), storage, getProfileKey, namespace,
   });
 }

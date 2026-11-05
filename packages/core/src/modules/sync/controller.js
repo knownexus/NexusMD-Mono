@@ -11,6 +11,9 @@ import {
   teamRemovedCollection, tweaksCollection, listsCollection,
 } from './collections.js';
 import { hashPassword } from '../planner/confidential.js';
+import { rendererLog, ignored } from '../../log.js';
+
+const log = rendererLog('sync', 'controller');
 
 export function createSyncController({
   storage, namespace, getProfileKey, getActiveProfileId,
@@ -78,6 +81,21 @@ export function createSyncController({
     catch (err) { if (err && err.code === 'bad-passphrase') return { skipped: 'bad-passphrase' }; throw err; }
   });
 
+  // Replaces items this device cannot read with the cloud's copy (a user action; see runtime.restore). Skips for
+  // the same reasons syncOnce does, then syncs again so the last run (and any card showing it) is up to date.
+  const restoreUnreadable = async (items) => {
+    const key = await keyStore.get();
+    if (!key) return { skipped: 'no-key' };
+    const provider = getSyncProvider();
+    if (!provider) return { skipped: 'no-provider' };
+    if (!provider.isConnected()) return { skipped: 'not-connected' };
+    let result;
+    try { result = await buildRuntime(async () => key).restore(items); }
+    catch (err) { if (err && err.code === 'bad-passphrase') return { skipped: 'bad-passphrase' }; throw err; }
+    await syncOnce().catch(ignored(log, 'syncing again after a restore'));
+    return result;
+  };
+
   const exportLocalBundle = () => exportBundle({
     collections: buildCollections(), getKey, profileId: getActiveProfileId() || 'default',
   });
@@ -100,7 +118,7 @@ export function createSyncController({
   return {
     setSyncPassphrase, hasSyncKey, clearSyncKey,
     getSyncProvider, setSyncProvider,
-    syncOnce, getLastResult, exportLocalBundle, importLocalBundle,
+    syncOnce, getLastResult, restoreUnreadable, exportLocalBundle, importLocalBundle,
     getActiveProfileId, startAuto, stopAuto,
   };
 }
