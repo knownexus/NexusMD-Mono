@@ -23,7 +23,9 @@ export function traceCalls({ root = REPO, exclude } = {}) {
     name: 'nexusmd-trace-calls',
     enforce: 'pre',
     transform(code, id) {
-      if (id.startsWith('\0')) return null
+      // NEXUSMD_TRACE=0 builds without the reports, to measure what they cost (apps/desktop/scripts/trace-cost.mjs). It is not a
+      // way to ship without them: the shipped app always has them.
+      if (process.env.NEXUSMD_TRACE === '0' || id.startsWith('\0')) return null
       const file = norm(id.split('?')[0])
       if (!SOURCE.test(file) || !file.startsWith(base)) return null
       const rel = file.slice(base.length)

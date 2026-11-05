@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -55,5 +55,97 @@ describe('installTraceHook', () => {
     uninstall = installTraceHook(options({ instrument: () => { throw new Error('transform broke') } }))
     writeFileSync(join(dir, 'traced', 'd.cjs'), 'module.exports = { n: 4 }')
     expect(require(join(dir, 'traced', 'd.cjs')).n).toBe(4)
+  })
+})
+
+describe('installTraceHook: the cache of changed files', () => {
+  let cache
+  beforeEach(() => { cache = mkdtempSync(join(tmpdir(), 'nxt-cache-')) })
+  afterEach(() => rmSync(cache, { recursive: true, force: true }))
+  const withCache = (over = {}) => options({ cacheDir: cache, signature: 'v1', ...over })
+  const counting = () => { const calls = []; return { calls, instrument: (code, o) => { calls.push(o.filename); return instrument(code, o) } } }
+  const load = (file) => { delete require.cache[file]; return require(file) }
+
+  it('a file changed once is read back from the cache the next time, without changing it again, and still reports', () => {
+    const first = counting()
+    uninstall = installTraceHook(withCache({ instrument: first.instrument }))
+    load(join(dir, 'traced', 'a.cjs')); uninstall()
+    expect(first.calls).toHaveLength(1)
+
+    const second = counting()
+    uninstall = installTraceHook(withCache({ instrument: second.instrument }))
+    nxt.start({ proc: 'main' })
+    expect(load(join(dir, 'traced', 'a.cjs')).add(1, 2)).toBe(3)
+    expect(second.calls).toHaveLength(0)
+    expect(events()).toHaveLength(1)
+  })
+
+  it('a file that nothing needed changing in is remembered too', () => {
+    writeFileSync(join(dir, 'traced', 'plain-data.cjs'), 'module.exports = { n: 1 }')
+    const first = counting()
+    uninstall = installTraceHook(withCache({ instrument: first.instrument }))
+    load(join(dir, 'traced', 'plain-data.cjs')); uninstall()
+    const second = counting()
+    uninstall = installTraceHook(withCache({ instrument: second.instrument }))
+    expect(load(join(dir, 'traced', 'plain-data.cjs')).n).toBe(1)
+    expect(first.calls).toHaveLength(1)
+    expect(second.calls).toHaveLength(0)
+  })
+
+  it('a file that has been edited is changed again', () => {
+    const first = counting()
+    uninstall = installTraceHook(withCache({ instrument: first.instrument }))
+    load(join(dir, 'traced', 'a.cjs')); uninstall()
+    writeFileSync(join(dir, 'traced', 'a.cjs'), 'module.exports = { add(a, b) { return a + b + 1000 } }')
+    const second = counting()
+    uninstall = installTraceHook(withCache({ instrument: second.instrument }))
+    expect(load(join(dir, 'traced', 'a.cjs')).add(1, 2)).toBe(1003)
+    expect(second.calls).toHaveLength(1)
+  })
+
+  it('a different signature (the transform changed) starts again', () => {
+    const first = counting()
+    uninstall = installTraceHook(withCache({ instrument: first.instrument, signature: 'v1' }))
+    load(join(dir, 'traced', 'a.cjs')); uninstall()
+    const second = counting()
+    uninstall = installTraceHook(withCache({ instrument: second.instrument, signature: 'v2' }))
+    load(join(dir, 'traced', 'a.cjs'))
+    expect(second.calls).toHaveLength(1)
+  })
+
+  it('a damaged cache entry is ignored and the file is changed again', () => {
+    const first = counting()
+    uninstall = installTraceHook(withCache({ instrument: first.instrument }))
+    load(join(dir, 'traced', 'a.cjs')); uninstall()
+    for (const name of require('node:fs').readdirSync(cache)) writeFileSync(join(cache, name), 'this is not javascript (((')
+    const second = counting()
+    uninstall = installTraceHook(withCache({ instrument: second.instrument }))
+    expect(load(join(dir, 'traced', 'a.cjs')).add(1, 2)).toBe(3)
+    expect(second.calls).toHaveLength(1)
+  })
+
+  it('a cache folder that cannot be written does not stop the file loading', () => {
+    uninstall = installTraceHook(withCache({ cacheDir: join(cache, 'a-file', 'sub') }))
+    writeFileSync(join(cache, 'a-file'), 'x')
+    expect(load(join(dir, 'traced', 'a.cjs')).add(1, 2)).toBe(3)
+  })
+
+  it('cacheDir: false turns the cache off', () => {
+    const first = counting()
+    uninstall = installTraceHook(withCache({ instrument: first.instrument, cacheDir: false }))
+    load(join(dir, 'traced', 'a.cjs')); uninstall()
+    const second = counting()
+    uninstall = installTraceHook(withCache({ instrument: second.instrument, cacheDir: false }))
+    load(join(dir, 'traced', 'a.cjs'))
+    expect(second.calls).toHaveLength(1)
+  })
+
+  it('the transform is not even loaded when everything comes from the cache', () => {
+    uninstall = installTraceHook(withCache())
+    load(join(dir, 'traced', 'a.cjs')); uninstall()
+    const loadTransform = vi.fn(() => instrument)
+    uninstall = installTraceHook(withCache({ instrument: undefined, loadInstrument: loadTransform }))
+    load(join(dir, 'traced', 'a.cjs'))
+    expect(loadTransform).not.toHaveBeenCalled()
   })
 })

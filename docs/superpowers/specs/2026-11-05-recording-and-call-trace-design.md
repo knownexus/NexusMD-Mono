@@ -134,3 +134,25 @@ query, an API client request, a planner edit.
   is tested for every form above, including async.
 - **Format:** each recording carries a format version. An older or newer one that cannot be read says so and is
   kept, not deleted or migrated.
+
+## Measured (Task 12, with nothing recording)
+
+Measured on the development machine, the real app, window code built with and without the reports (`NEXUSMD_TRACE=0`),
+interleaved runs with the folder copied fresh before each (`apps/desktop/scripts/trace-cost.mjs`, 6 rounds each, medians):
+
+| | plain | with the reports |
+|---|---|---|
+| Window bundle | 3.17 MB | 4.35 MB (x1.37) |
+| Start-up to the first screen | 2.07 s | 2.12 s (x1.03); 2.33 s (x1.12) when run from source, where the main process's files are changed as they load |
+| 20 screen changes | 1.59 s | 1.48 s (x0.93) |
+
+- Plain's own start-ups ranged from 1.55 s to 2.30 s, so the start-up and screen-change differences are inside the run-to-run noise.
+- Per call, a traced function costs about 1 ns more than a plain one (up to x1.13 on the tightest loops): `packages/trace/bench/overhead.bench.mjs`;
+  `packages/trace/src/overhead.test.js` fails if it ever costs twice as much.
+- Run from source, changing the main process's files with Babel on every launch cost about 1.5 s at start-up. They are now kept in a cache
+  (`os.tmpdir()/nexusmd-trace-cache`, keyed by file size, time and the transform), so only the first launch after a change pays it. The
+  installed app does not do this: its main-process files are changed when it is staged.
+- Profiling a session of clicking through screens, `getProfileKey`, `getActiveProfileId`, `getActiveId` and `storeOf` were 40% of all calls and
+  said nothing, so they are left out by default (`packages/trace/src/exclude.json`): 10,081 calls in 8.3 s became 6,012.
+- The bundle is bigger by more than the "small cost" hoped for. Shorter report ids (the file path is repeated in each) would give back a few
+  percent of it; not done.

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { traceCalls } from './vite-plugin.mjs'
 
 const root = 'C:/repo'
@@ -30,6 +30,11 @@ describe('traceCalls', () => {
     expect(run('C:/repo/src/a.css', 'a { color: red }')).toBeNull()
     expect(run('\0virtual:thing')).toBeNull()
     expect(run('C:/repo/packages/trace/src/runtime.js')).toBeNull()
+  })
+
+  it('adds nothing when NEXUSMD_TRACE=0 (a build made to measure what the reports cost)', () => {
+    vi.stubEnv('NEXUSMD_TRACE', '0')
+    expect(run('C:/repo/packages/core/src/a.js')).toBeNull()
   })
 
   it('leaves a file with nothing to trace alone', () => {

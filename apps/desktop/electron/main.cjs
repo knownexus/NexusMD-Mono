@@ -7,7 +7,7 @@ const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain: rawIpcMain, native
 // The call-report runtime comes first, so everything loaded after it reports to it (packages/trace). Run from source,
 // main-process code gets its reports as it loads; the installed app has them added when it is staged (installer/stage.mjs).
 require('@nexusmd/trace/runtime');
-if (!app.isPackaged) require('./trace-hook.cjs').installTraceHook();
+if (!app.isPackaged && process.env.NEXUSMD_TRACE !== '0' && process.env.NEXUSMD_TRACE_HOOK !== '0') require('./trace-hook.cjs').installTraceHook();
 const { pinUserData } = require('./user-data.cjs');
 
 // Must run before anything reads app.getPath('userData') (logs, prefs, stores).

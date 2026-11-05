@@ -29,12 +29,13 @@ function* walk(dir, base = dir) {
 export function traceMainTree(srcDir, outDir = srcDir) {
   let files = 0
   let traced = 0
+  const off = process.env.NEXUSMD_TRACE === '0' // a build made to measure what the reports cost
   for (const { abs, rel } of walk(srcDir)) {
     const to = join(outDir, rel)
     const isCode = /\.c?js$/.test(rel)
     if (isCode) files++
     const source = isCode ? sourcePathOf(rel) : null
-    if (source && shouldTraceMain(source)) {
+    if (!off && source && shouldTraceMain(source)) {
       const out = instrument(readFileSync(abs, 'utf8'), { filename: join(REPO, source), root: REPO, sourceType: 'script' })
       if (out) {
         mkdirSync(dirname(to), { recursive: true })
@@ -55,7 +56,7 @@ export function traceMainPlugin({ root = REPO } = {}) {
     name: 'nexusmd-trace-main',
     transform(code, id) {
       const file = norm(id.split('?')[0])
-      if (!file.startsWith(base)) return null
+      if (process.env.NEXUSMD_TRACE === '0' || !file.startsWith(base)) return null
       if (!shouldTraceMain(file.slice(base.length))) return null
       const out = instrument(code, { filename: file, root, sourceType: 'unambiguous' })
       return out ? { code: out.code, map: out.map } : null
