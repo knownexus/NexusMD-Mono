@@ -57,13 +57,24 @@ export function createSyncController({
     onChanged: (collId) => dispatch('nexusmd:sync-applied', { collId }),
   });
 
+  // The last run that actually happened (not a skipped one), kept and announced so a background sync is
+  // not lost: auto-sync throws its result away, and a card can only show what it is told. It carries
+  // `unreadable` when items were left alone because their stored value could not be read.
+  let lastResult = null;
+  const finished = (result) => {
+    lastResult = result;
+    dispatch?.('nexusmd:sync-finished', result);
+    return result;
+  };
+  const getLastResult = () => lastResult;
+
   const syncOnce = singleFlight(async () => {
     const key = await keyStore.get(); // read once; reuse for the runtime (one secure-store decrypt)
     if (!key) return { skipped: 'no-key' };
     const provider = getSyncProvider();
     if (!provider) return { skipped: 'no-provider' };
     if (!provider.isConnected()) return { skipped: 'not-connected' };
-    try { return await buildRuntime(async () => key).syncNow(); }
+    try { return finished(await buildRuntime(async () => key).syncNow()); }
     catch (err) { if (err && err.code === 'bad-passphrase') return { skipped: 'bad-passphrase' }; throw err; }
   });
 
@@ -89,7 +100,7 @@ export function createSyncController({
   return {
     setSyncPassphrase, hasSyncKey, clearSyncKey,
     getSyncProvider, setSyncProvider,
-    syncOnce, exportLocalBundle, importLocalBundle,
+    syncOnce, getLastResult, exportLocalBundle, importLocalBundle,
     getActiveProfileId, startAuto, stopAuto,
   };
 }

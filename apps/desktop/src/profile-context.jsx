@@ -1,6 +1,6 @@
 import React from 'react'
 import { ProfileProvider as UiProfileProvider, useProfile, localUpsertProfiles } from '@nexusmd/ui'
-import { planProfileScopeMigration, migrateToProfileScopeV2, profileTokenNames } from '@nexusmd/core'
+import { planProfileScopeMigration, migrateToProfileScopeV2, profileTokenNames, rendererLog } from '@nexusmd/core'
 import { secureStorageAdapter, bundleSecureStorage } from './adapters/secureStorage.js'
 
 // Desktop is local-only (no server), like the app: the shared ProfileProvider's
@@ -25,6 +25,8 @@ function adoptFlatKeys(id, storage = window.localStorage) {
   }
 }
 
+const log = rendererLog('core', 'profiles')
+
 function profileIds(storage) {
   try {
     const list = JSON.parse(storage.getItem(`${NS}.profiles`) || '[]')
@@ -44,14 +46,14 @@ async function prepareProfileData({ storage = window.localStorage, secure = secu
   const activeProfileId = storage.getItem(`${NS}.activeProfileId`) || ''
   try {
     const { moved } = await migrateToProfileScopeV2({ storage, secure, namespace: NS, profiles, activeProfileId })
-    if (moved.length) console.info(`[profiles] moved ${moved.length} shared item(s) into profiles`)
+    if (moved.length) log.info(`moved ${moved.length} shared item(s) into profiles`)
   } catch (err) {
-    console.error('[profiles] moving shared data into profiles failed; nothing was changed, the next start tries again:', err)
+    log.error('moving shared data into profiles failed; nothing was changed, the next start tries again', err)
   }
   // Without an active profile, getProfileKey names a token without the `p.<pid>.` part.
   const bare = profileTokenNames(NS, '_').map(n => n.replace(`${NS}.p._.`, `${NS}.`))
   try { await secure.load?.([...profiles.flatMap(id => profileTokenNames(NS, id)), ...bare]) }
-  catch (err) { console.warn('[profiles] could not load the saved tokens:', err?.message || err) }
+  catch (err) { log.warn('could not load the saved tokens', err) }
 }
 
 let booting = null

@@ -5,6 +5,9 @@
 import { validateProfile, buildProfile, generateProfileId } from './profile-schema.js'
 import { applyEnabledModules, hasRequiredAdapters, getRegistry } from '../features/module-registry.js'
 import { emit } from '../events.js'
+import { rendererLog, ignore } from '../log.js'
+
+const log = rendererLog('core', 'profiles')
 
 const ACTIVE_ID_KEY = 'nexusmd.activeProfileId'
 
@@ -31,7 +34,7 @@ export async function listProfiles(fileAdapter, storageAdapter) {
       const text = await fileAdapter.read(`${dir}/${filename}`)
       const data = JSON.parse(text)
       if (data && typeof data.id === 'string') profiles.push(data)
-    } catch { /* skip corrupt or unreadable files silently */ }
+    } catch (err) { ignore(log, 'skipped an unreadable profile file', err, 'warn', { file: filename }) }
   }
   return profiles
 }
@@ -46,7 +49,7 @@ export async function createProfile(fileAdapter, storageAdapter, opts = {}) {
   const profile = buildProfile(opts)
   const check = validateProfile(profile)
   if (!check.valid) throw new Error(`createProfile: ${check.error}`)
-  if (typeof fileAdapter.mkdir === 'function') { try { await fileAdapter.mkdir(dir) } catch { /* dir may exist */ } }
+  if (typeof fileAdapter.mkdir === 'function') { try { await fileAdapter.mkdir(dir) } catch (err) { ignore(log, 'creating the profile folder (it may already exist)', err) } }
   await fileAdapter.write(profilePath(dir, profile.id), JSON.stringify(profile, null, 2))
   emit('profile:created', { profile })
   return profile
@@ -64,10 +67,10 @@ export async function activateProfile(id, fileAdapter, storageAdapter, adapters 
 
   const dir = await resolveProfileDir(fileAdapter, storageAdapter)
   let profile = null
-  try { profile = JSON.parse(await fileAdapter.read(profilePath(dir, id))) } catch { /* missing/corrupt */ }
+  try { profile = JSON.parse(await fileAdapter.read(profilePath(dir, id))) } catch (err) { ignore(log, 'could not read the profile file, activating without it', err, 'warn') }
 
   for (const m of getRegistry()) {
-    if (m._enabled) { try { await m.dispose?.() } catch { /* ignore dispose errors */ } }
+    if (m._enabled) { try { await m.dispose?.() } catch (err) { rendererLog(m.id, 'dispose').error('module dispose failed', err) } }
   }
 
   applyEnabledModules(profile)
@@ -75,7 +78,7 @@ export async function activateProfile(id, fileAdapter, storageAdapter, adapters 
   if (adapters) {
     for (const m of getRegistry()) {
       if (m._enabled && hasRequiredAdapters(m, adapters)) {
-        try { await m.init?.(adapters, profile?.modules?.[m.id]) } catch { /* ignore init errors */ }
+        try { await m.init?.(adapters, profile?.modules?.[m.id]) } catch (err) { rendererLog(m.id, 'init').error('module init failed', err) }
       }
     }
   }
@@ -94,13 +97,13 @@ export async function deleteProfile(id, fileAdapter, storageAdapter, secureStora
 
   if (secureStorageAdapter) {
     for (const key of [`nexusmd.ado.pat.${id}`, `nexusmd.github.pat.${id}`]) {
-      try { await secureStorageAdapter.remove(key) } catch { /* ignore */ }
+      try { await secureStorageAdapter.remove(key) } catch (err) { ignore(log, 'removing a saved token for the deleted profile', err, 'warn') }
     }
   }
 
   try {
     if (storageAdapter.get(ACTIVE_ID_KEY) === id) storageAdapter.remove(ACTIVE_ID_KEY)
-  } catch { /* ignore */ }
+  } catch (err) { ignore(log, 'clearing the active profile id', err, 'warn') }
 
   emit('profile:deleted', { profileId: id })
 }

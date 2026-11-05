@@ -270,7 +270,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Renderer logging ───────────────────────────────────────────────────────
   // ingest(entry): the renderer's logger and error hooks send entries to the shell's log hub, which
-  // files them under the module they name. Fire and forget (src/shell/renderer-log.js).
+  // files them under the module they name. Fire and forget (packages/core/src/log.js).
   logging: {
     ingest: (entry) => ipcRenderer.send('log:ingest', entry),
   },

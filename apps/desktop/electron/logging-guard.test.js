@@ -8,7 +8,7 @@
 // Every exception is listed here with the reason, and a stale exception fails too.
 
 import { describe, it, expect } from 'vitest'
-import { readMainSources, findSilentCatches } from '../build/silent-catches.mjs'
+import { readMainSources, readRendererSources, findSilentCatches } from '../build/silent-catches.mjs'
 
 const sources = readMainSources()
 
@@ -31,6 +31,23 @@ const CONSOLE_ALLOWED = [
   { file: /^packages\/main-kit\/src\/logging\//, why: 'the logger itself, where the console is the last resort' },
   { file: 'modules/api-client/src/main/bruno-prelude.sandbox.js', why: 'runs inside the script sandbox, where console is the script\'s own' },
 ]
+
+// Code that runs in a window (apps/desktop/src, each app's src/renderer, the shared packages). Its logs
+// reach the hub through rendererLog() in @nexusmd/core, so console calls are listed here with the reason.
+const rendererSources = readRendererSources()
+const CONSOLE_ALLOWED_RENDERER = [
+  { file: 'packages/ui/src/views/regex-tester-helpers.js', why: 'sample code shown to the user, inside a string' },
+]
+
+// console.<level>( at the start of a statement or after an operator, not in a comment or a string.
+function findConsoleCalls(text) {
+  const hits = []
+  text.split('\n').forEach((line, i) => {
+    if (/^\s*(\/\/|\*|\/\*)/.test(line)) return
+    if (/(^|[^\w$.'"`])(?:window\.|globalThis\.)?console\.(log|info|warn|error|debug)\s*\(/.test(line)) hits.push({ line: i + 1, snippet: line.trim().slice(0, 90) })
+  })
+  return hits
+}
 
 const matches = (rule, file) => (rule.file instanceof RegExp ? rule.file.test(file) : rule.file === file)
 
@@ -83,6 +100,37 @@ describe('logging guard', () => {
       text.split('\n').forEach((line, i) => { if (calls.test(line) && !/^\s*(\/\/|\*)/.test(line)) violations.push(`${file}:${i + 1}  ${line.trim().slice(0, 90)}`) })
     }
     expect(violations, `Use ctx.log or moduleLogger() from @nexusmd/main-kit/logging:\n${violations.join('\n')}`).toEqual([])
+  })
+
+  it('logs from windows through rendererLog, not console', () => {
+    const violations = []
+    for (const { file, text } of rendererSources) {
+      const allowed = CONSOLE_ALLOWED_RENDERER.filter(r => matches(r, file))
+      findConsoleCalls(text).forEach(hit => {
+        if (!allowed.some(r => !r.snippet || hit.snippet.includes(r.snippet))) violations.push(`${file}:${hit.line}  ${hit.snippet}`)
+      })
+    }
+    expect(violations, `Use rendererLog('<module>', '<scope>') from @nexusmd/core; it reaches the log hub under that module:\n${violations.join('\n')}`).toEqual([])
+  })
+
+  it('has no stale exceptions for renderer console calls', () => {
+    for (const rule of CONSOLE_ALLOWED_RENDERER) {
+      const used = rendererSources.some(({ file, text }) => matches(rule, file) && findConsoleCalls(text).some(h => !rule.snippet || h.snippet.includes(rule.snippet)))
+      expect(used, `exception no longer needed: ${rule.file} (${rule.why})`).toBe(true)
+    }
+  })
+
+  it('finds the console calls it is meant to', () => {
+    const text = [
+      "console.error('x')",
+      '  console.warn(`y`, err)',
+      "// console.log('commented out')",
+      " * console.info('in a doc comment')",
+      "const s = 'console.log is just text'",
+      "log.error('fine')",
+      "window.console.debug('z')",
+    ].join('\n')
+    expect(findConsoleCalls(text).map(h => h.line)).toEqual([1, 2, 7])
   })
 
   it('finds the patterns it is meant to', () => {

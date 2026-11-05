@@ -103,3 +103,56 @@ describe('createSyncController', () => {
     await p1;                         // let the first call settle
   });
 });
+
+describe('createSyncController: the last run is remembered and announced', () => {
+  const KEY = 'a'.repeat(64);
+  function connected(seed = {}, dispatch = () => {}) {
+    const cloud = new Map();
+    const provider = {
+      id: 'gdrive', label: 'Drive', isConnected: () => true,
+      async getText(name) { return cloud.has(name) ? cloud.get(name) : null; },
+      async upload(name, text) { cloud.set(name, text); },
+      async listNames() { return []; },
+      async remove(name) { cloud.delete(name); },
+    };
+    const storage = memStorage(seed);
+    const c = createSyncController({
+      storage, namespace: 'nexusmd', getProfileKey: k => k, getActiveProfileId: () => 'p1',
+      providers: [provider], keyStore: { get: async () => KEY, set: async () => {}, remove: async () => {} },
+      deviceIdPrefix: 'test', dispatch, subscribeForeground: () => () => {}, subscribeChange: () => () => {},
+    });
+    c.setSyncProvider('gdrive');
+    return { c, storage };
+  }
+
+  it('has no last run before anything has synced', () => {
+    expect(connected().c.getLastResult()).toBeNull();
+  });
+
+  it('keeps a finished run and announces it, so a background sync is not lost', async () => {
+    const events = [];
+    const { c } = connected({ 'nexusmd.planner.globalNotes': JSON.stringify([{ id: 'n1', body: 'x' }]) }, (name, detail) => events.push([name, detail]));
+    const result = await c.syncOnce();
+    expect(result.pushed).toBeGreaterThan(0);
+    expect(c.getLastResult()).toEqual(result);
+    expect(events.filter(([n]) => n === 'nexusmd:sync-finished')).toEqual([['nexusmd:sync-finished', result]]);
+  });
+
+  it('does not count a skipped run as the last run', async () => {
+    const events = [];
+    const c = ctrl({ dispatch: (name) => events.push(name) });
+    expect(await c.syncOnce()).toEqual({ skipped: 'no-key' });
+    expect(c.getLastResult()).toBeNull();
+    expect(events).not.toContain('nexusmd:sync-finished');
+  });
+
+  it('carries an unreadable item in the last run, and drops it once the item is repaired', async () => {
+    const { c, storage } = connected({ 'nexusmd.planner.week.2026-W26': '{ torn' });
+    await c.syncOnce();
+    expect(c.getLastResult().unreadable).toEqual(['planner/2026-W26']);
+
+    storage.setItem('nexusmd.planner.week.2026-W26', JSON.stringify({ data: {}, themes: { mon: 'a' } }));
+    await c.syncOnce();
+    expect(c.getLastResult().unreadable).toBeUndefined();
+  });
+});

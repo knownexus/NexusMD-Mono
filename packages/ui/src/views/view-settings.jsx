@@ -573,6 +573,20 @@ function BackupRestoreCard({ fileIO, showExportSingle = true, cloudProviders = [
   );
 }
 
+// What a sync run calls the items it left alone because their stored value could not be read ("planner/2026-W26").
+const SYNC_ITEM_NAMES = {
+  planner: 'Planner week', notes: 'Notes', 'team-custom': 'Custom team members',
+  'team-removed': 'Removed team members', tweaks: 'Appearance tweaks', lists: 'Lists',
+};
+function unreadableName(full) {
+  const slash = full.indexOf('/');
+  const id = slash < 0 ? full : full.slice(0, slash);
+  const label = SYNC_ITEM_NAMES[id];
+  if (!label) return full;
+  return id === 'planner' && slash >= 0 ? `${label} ${full.slice(slash + 1)}` : label;
+}
+const itemCount = (n) => `${n} ${n === 1 ? 'item' : 'items'}`;
+
 // Cloud Sync card — continuous sync + encrypted local export/import. Driven by a
 // platform sync controller (createSyncController), the platform's cloud providers,
 // and its file I/O. Shared across web/desktop/app.
@@ -581,7 +595,15 @@ function CloudSyncCard({ controller, providers, fileIO }) {
   const [hasKey, setHasKey] = React.useState(false);
   const [passphrase, setPassphrase] = React.useState('');
   const [syncing, setSyncing] = React.useState(false);
-  const [lastResult, setLastResult] = React.useState(null);
+  // The last run that happened, whoever started it: the controller keeps it and announces each one, so a
+  // background sync that skipped an item is shown here too, not only a manual "Sync now".
+  const [lastResult, setLastResult] = React.useState(() => controller.getLastResult?.() ?? null);
+  React.useEffect(() => {
+    const onFinished = (e) => setLastResult(e.detail ?? null);
+    document.addEventListener('nexusmd:sync-finished', onFinished);
+    return () => document.removeEventListener('nexusmd:sync-finished', onFinished);
+  }, []);
+  const unreadable = lastResult && !lastResult.skipped && Array.isArray(lastResult.unreadable) ? lastResult.unreadable : [];
 
   const provider = providers.find(p => p.id === selectedId) || null;
   const [connected, setConnected] = React.useState(false);
@@ -625,6 +647,7 @@ function CloudSyncCard({ controller, providers, fileIO }) {
       else if (result.skipped === 'no-provider') toast?.('Select a cloud provider first.', 'info');
       else if (result.skipped === 'not-connected') toast?.('Connect your cloud provider first.', 'info');
       else if (result.skipped === 'bad-passphrase') toast?.('Wrong passphrase — enter the correct passphrase and try again.', 'error');
+      else if (result.unreadable?.length) toast?.(`Synced, but ${itemCount(result.unreadable.length)} could not be read and ${result.unreadable.length === 1 ? 'was' : 'were'} left alone.`, 'error');
       else if (!result.skipped) toast?.(`Synced — pushed ${result.pushed}, pulled ${result.pulled}, merged ${result.merged}.`, 'success');
     } catch (err) { toast?.('Sync failed: ' + (err?.message || 'unknown error'), 'error'); }
     finally { setSyncing(false); }
@@ -651,7 +674,7 @@ function CloudSyncCard({ controller, providers, fileIO }) {
   };
 
   const lastDesc = lastResult && !lastResult.skipped
-    ? `Last: pushed ${lastResult.pushed}, pulled ${lastResult.pulled}, merged ${lastResult.merged}`
+    ? `Last: pushed ${lastResult.pushed}, pulled ${lastResult.pulled}, merged ${lastResult.merged}${unreadable.length ? ` and ${itemCount(unreadable.length)} could not be read` : ''}`
     : 'Push and pull encrypted changes with your cloud';
 
   return (
@@ -694,6 +717,18 @@ function CloudSyncCard({ controller, providers, fileIO }) {
       <VsRow title="Sync now" desc={lastDesc}>
         <button className="btn sm" onClick={handleSyncNow} disabled={syncing}>{syncing ? 'Syncing…' : 'Sync now'}</button>
       </VsRow>
+      {unreadable.length > 0 && (
+        <div className="set-row" role="alert">
+          <div className="info">
+            <div className="t" style={{ color: 'var(--danger, #c33)' }}>{itemCount(unreadable.length)} could not be read</div>
+            <div className="d">{unreadable.map(unreadableName).join(', ')}</div>
+            <div className="d">
+              {unreadable.length === 1 ? 'It is' : 'They are'} damaged on this device, so {unreadable.length === 1 ? 'it was' : 'they were'} left alone and not synced:
+              your cloud and your other devices keep their copies. Importing a bundle that has an item replaces it.
+            </div>
+          </div>
+        </div>
+      )}
       <VsRow title="Local file" desc={hasKey ? 'Export or import an encrypted planner bundle (.nmdplanner)' : 'Set a sync passphrase to encrypt local exports'}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button className="btn sm ghost" onClick={handleExport} disabled={!hasKey}>Export to file</button>

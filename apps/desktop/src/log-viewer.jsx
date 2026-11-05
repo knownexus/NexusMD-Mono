@@ -1,6 +1,6 @@
 import React from 'react'
 import { logsAdapter } from './adapters/logs.js'
-import { rendererLog } from './shell/renderer-log.js'
+import { rendererLog } from '@nexusmd/core'
 import {
   LEVELS, moduleColor, mergeLive, laneLayout, describeTrail, formatTime, formatDuration, formatSize, todayUtc, entryKey,
 } from './log-view.js'

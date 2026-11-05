@@ -12,7 +12,7 @@ const TAIL_BATCH_MS = 100; // how long new entries are gathered before they are 
 const logger = () => (globalThis.log?.scope ? globalThis.log.scope('logs') : console);
 
 function register(ipcMain, { hub } = {}) {
-  // Entries from the renderer's logger and its error hooks (src/shell/renderer-log.js). Fire and
+  // Entries from the renderer's logger and its error hooks (packages/core/src/log.js). Fire and
   // forget: a logging call never waits on the main process. The hub validates, attributes to the
   // module the entry names, rate-limits per window and marks it as coming from a renderer.
   if (hub) {

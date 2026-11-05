@@ -3,6 +3,9 @@ import { logsAdapter } from './adapters/logs.js'
 import { VsCard, VsRow, Icon } from '@nexusmd/ui'
 import { parseLog, filterEntries, LOG_LEVELS, NO_AREA } from './log-parse.js'
 import LogViewer from './log-viewer.jsx'
+import { rendererLog } from '@nexusmd/core'
+
+const log = rendererLog('core', 'logs-card')
 
 const LEVEL_COLOR = {
   error:   'var(--danger)',
@@ -41,7 +44,7 @@ export function FlatLogsCard({ title = 'Application Logs', hideWhenEmpty = false
       // Picking the first date doesn't change loadLogs, so it doesn't list the logs a second time.
       if (list?.length > 0) setSelectedDate(d => d ?? list[0].date)
     } catch (err) {
-      console.error('[LogsCard] Failed to list logs:', err)
+      log.error('Failed to list the daily logs', err)
     } finally {
       setLoading(false)
       setListed(true)
@@ -55,7 +58,7 @@ export function FlatLogsCard({ title = 'Application Logs', hideWhenEmpty = false
       const text = await logsAdapter.read(date)
       setContent(text || '')
     } catch (err) {
-      console.error('[LogsCard] Failed to read log:', err)
+      log.error('Failed to read a daily log', err)
       setContent('')
     } finally {
       setContentLoading(false)
@@ -110,7 +113,7 @@ export function FlatLogsCard({ title = 'Application Logs', hideWhenEmpty = false
       const success = await logsAdapter.delete(selectedDate)
       if (success) { setContent(''); setSelectedDate(null); loadLogs() }
     } catch (err) {
-      console.error('[LogsCard] Failed to delete log:', err)
+      log.error('Failed to delete a daily log', err)
     }
   }
 
