@@ -5,7 +5,7 @@
 // sync keeps its copies (`<ns>.p.<pid>.sync.quarantine.<collection>.<item>.<time>`): inside the profile, so
 // deleting the profile deletes it, and on the sync skip list, so it never leaves the device. The value itself is
 // left where it is (removing it would look like a deletion to the sync engine).
-import { ignore } from '../../log.js'
+import { ignore, rendererLog } from '../../log.js'
 import { quarantine } from './collections.js'
 
 /**
@@ -27,4 +27,35 @@ export function readJsonKeepingDamaged({ storage, getProfileKey, namespace, log,
     ignore(log, `${what}; ${kept ? 'the damaged text is kept aside' : 'no copy of the damaged text could be kept'}`, err, 'warn', { ...data, kept })
     return empty
   }
+}
+
+const keptLog = rendererLog('core', 'damaged-copies')
+const keptPrefix = (namespace, profileId) => `${namespace}.p.${profileId}.sync.quarantine.`
+const KEPT_KEY = /^(?:nexusmd|helm)\.p\.[^.]+\.sync\.quarantine\./
+
+/**
+ * The damaged copies kept for one profile, newest first: `{ key, collection, item, at, size }`. The key shape is
+ * `<ns>.p.<pid>.sync.quarantine.<collection>.<item>.<time>`; a collection may hold dots (`timelog.v1`).
+ */
+export function listDamagedCopies({ storage, namespace, profileId }) {
+  const prefix = keptPrefix(namespace, profileId)
+  const found = []
+  try {
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i)
+      if (typeof key !== 'string' || !key.startsWith(prefix)) continue
+      const parts = key.slice(prefix.length).split('.')
+      const at = Number(parts.pop())
+      const item = parts.pop()
+      if (!Number.isFinite(at) || !item || !parts.length) continue
+      found.push({ key, collection: parts.join('.'), item, at, size: (storage.getItem(key) || '').length })
+    }
+  } catch (err) { ignore(keptLog, 'the kept damaged copies could not be listed', err, 'warn') }
+  return found.sort((a, b) => b.at - a.at)
+}
+
+/** Removes one kept copy. Any other key is refused, so this can never remove a live value. */
+export function discardDamagedCopy(storage, key) {
+  if (typeof key !== 'string' || !KEPT_KEY.test(key)) return false
+  try { storage.removeItem(key); return true } catch (err) { ignore(keptLog, 'a kept damaged copy could not be removed', err, 'warn'); return false }
 }
