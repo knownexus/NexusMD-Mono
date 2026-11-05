@@ -1,0 +1,24 @@
+{
+  "_note": "Patterns (case-insensitive) for what a recording replaces outright, with no value shown: requests, functions and IPC channels that carry credentials. Everything else is shown, with secrets that match a pattern in redact.cjs hidden.",
+  "urls": [
+    "/oauth",
+    "/connect/token",
+    "/token(?:[/?#]|$)",
+    "login\\.microsoftonline\\.com",
+    "github\\.com/login",
+    "/authorize(?:[/?#]|$)"
+  ],
+  "functions": [
+    "sign-?in",
+    "token",
+    "secret",
+    "password",
+    "credential"
+  ],
+  "channels": [
+    "^oauth:",
+    "^secure-?storage",
+    "^secrets?:",
+    "^account:(?:login|token|refresh)"
+  ]
+}

@@ -20,7 +20,8 @@ function redactString(s) {
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, `Bearer ${REDACTED}`)
     .replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,})\b/g, REDACTED)
     // Password=…; Token=… (connection strings, query strings)
-    .replace(/\b(password|pwd|secret|token|api[-_]?key|accountkey|sharedaccesskey)\s*=\s*[^;\s&'"]+/gi, `$1=${REDACTED}`)
+    // (also access_token, refresh_token, id_token and client_secret: `_` is a word character, so a bare `token` misses them)
+    .replace(/\b((?:access|refresh|id|auth|client)[-_]?(?:token|secret)|password|pwd|secret|token|api[-_]?key|accountkey|sharedaccesskey)\s*=\s*[^;\s&'"]+/gi, `$1=${REDACTED}`)
     // "password": "…" inside JSON text
     .replace(/("(?:password|secret|token|api[-_]?key|authorization)"\s*:\s*)"[^"]*"/gi, `$1"${REDACTED}"`)
     // Authorization: Basic …  (Bearer is handled above)
