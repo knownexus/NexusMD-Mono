@@ -6,6 +6,9 @@ import { contentHash } from './hash.js';
 import { encryptSync, decryptSync } from './crypto.js';
 import { badPassphrase } from './errors.js';
 import { CorruptLocalError } from './collections.js';
+import { rendererLog } from '../../log.js';
+
+const log = rendererLog('sync', 'restore');
 
 const VERIFIER_TOKEN = 'nexusmd-sync-verifier';
 
@@ -126,5 +129,59 @@ export function createSyncRuntime({
     }
   }
 
-  return { syncNow };
+  /**
+   * Replaces items this device cannot read (see syncNow's `unreadable`) with the copy the cloud holds. A user
+   * action, since it overwrites: the damaged text is kept first (and nothing is replaced if that fails), a
+   * readable item or one the cloud does not have is left alone, and each item stands on its own.
+   * @param {string[]} items  "<collection>/<item>", as listed in `unreadable`
+   * @returns {{ restored: { item: string, backup: string }[], failed: { item: string, reason: string }[] }}
+   *   reasons: unknown, readable, not-in-cloud, cloud-copy-unreadable, could-not-back-up, could-not-write
+   */
+  async function restore(items) {
+    const key = await getKey();
+    if (!key) throw new Error('no sync key');
+    const mText = await cloud.getText(manifestName);
+    let manifest = { items: {}, tombstones: [] };
+    if (mText) {
+      try { manifest = await decryptSync(mText, key); }
+      catch { throw badPassphrase(); }
+    }
+    const tomb = new Set(manifest.tombstones || []);
+    const result = { restored: [], failed: [] };
+    const fail = (item, reason) => { result.failed.push({ item, reason }); };
+
+    for (const full of items) {
+      const slash = full.indexOf('/');
+      const coll = slash > 0 ? collections.find(c => c.id === full.slice(0, slash)) : null;
+      if (!coll) { fail(full, 'unknown'); continue; }
+      const itemKey = full.slice(slash + 1);
+
+      // only an item that cannot be read right now
+      try { coll.readLocal(itemKey); fail(full, 'readable'); continue; }
+      catch (err) { if (!(err instanceof CorruptLocalError)) throw err; }
+
+      if (!manifest.items?.[full] || tomb.has(full)) { fail(full, 'not-in-cloud'); continue; }
+      const rText = await cloud.getText(fileName(coll.id, itemKey));
+      if (!rText) { fail(full, 'not-in-cloud'); continue; }
+      let remote;
+      try { remote = await decryptSync(rText, key); }
+      catch (err) { log.warn('the cloud copy of an item could not be read, so it was not restored', { item: full }); fail(full, 'cloud-copy-unreadable'); continue; }
+      if (remote === null || remote === undefined) { fail(full, 'not-in-cloud'); continue; }
+
+      let backup;
+      try { backup = coll.quarantineLocal(itemKey); }
+      catch (err) { log.error('the damaged copy of an item could not be kept, so nothing was replaced', err, { item: full }); fail(full, 'could-not-back-up'); continue; }
+
+      coll.writeLocal(itemKey, remote);
+      try { coll.readLocal(itemKey); }
+      catch (err) { if (!(err instanceof CorruptLocalError)) throw err; fail(full, 'could-not-write'); continue; }
+      writeBase(full, remote);
+      onChanged?.(coll.id);
+      log.warn('restored an unreadable item from the cloud; the damaged copy was kept', { item: full, backup });
+      result.restored.push({ item: full, backup });
+    }
+    return result;
+  }
+
+  return { syncNow, restore };
 }

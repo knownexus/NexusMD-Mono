@@ -30,10 +30,17 @@ const NAMESPACES = ['nexusmd', 'helm']
 // Shared with the desktop settings file (apps/desktop/src/settings-file.js), which carries
 // secrets decrypted instead of as `<ns>.sec.*` keys. Namespace-aware: covers desktop
 // (`nexusmd.`) and Android (`helm.`) keys alike.
+// The damaged copy a restore keeps (see sync/collections.js): `<ns>.[p.<pid>.]sync.quarantine.<collection>.<item>.<time>`.
+// It is private text, so it is never synced or exported, and it lives inside its profile so deleting the
+// profile deletes it.
+export const QUARANTINE_KEY = /^(?:nexusmd|helm)\.(?:p\.[^.]+\.)?sync\.quarantine\./
+export const isQuarantineKey = (key) => QUARANTINE_KEY.test(key)
+
 export const SYNC_SKIP = [
   /^(?:nexusmd|helm)\.sec\./,
   /^(?:nexusmd|helm)\.oauth\.pending$/,
   /^(?:nexusmd|helm)\.sync\.base\./,
+  QUARANTINE_KEY,
   /\.cache(\.v\d+)?$/,
   /\.wiTypeDefs\./,
   /\.git\.snapshot$/,

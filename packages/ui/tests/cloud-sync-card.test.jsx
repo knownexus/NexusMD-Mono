@@ -91,3 +91,78 @@ describe('CloudSyncCard: items that could not be read', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });
+
+// Restore from cloud: an explicit action on the unreadable row, replacing the damaged items with the cloud's copy.
+describe('CloudSyncCard: restore from cloud', () => {
+  const result = { pushed: 0, pulled: 0, merged: 0, unreadable: ['planner/2026-W26', 'notes/data'] };
+  const withRestore = (restoreUnreadable) => ({ ...noKeyController, getLastResult: () => result, restoreUnreadable });
+  const restoreButton = () => screen.getByRole('button', { name: 'Restore from cloud' });
+
+  it('offers it on the row, and not when the controller cannot do it', async () => {
+    card(withRestore(vi.fn()));
+    await screen.findByRole('alert');
+    expect(restoreButton()).toBeTruthy();
+    cleanup();
+    card({ ...noKeyController, getLastResult: () => result });
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('button', { name: 'Restore from cloud' })).toBeNull();
+  });
+
+  it('says what it does: the cloud copy replaces it and the damaged one is kept', async () => {
+    card(withRestore(vi.fn()));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/Restore from cloud replaces them with the copy in the cloud/);
+    expect(alert.textContent).toMatch(/damaged copy is kept on this device/);
+  });
+
+  it('restores every listed item and reports success', async () => {
+    const restoreUnreadable = vi.fn(async () => ({ restored: [{ item: 'planner/2026-W26', backup: 'b1' }, { item: 'notes/data', backup: 'b2' }], failed: [] }));
+    card(withRestore(restoreUnreadable));
+    await screen.findByRole('alert');
+    fireEvent.click(restoreButton());
+    await waitFor(() => expect(toasts.length).toBe(1));
+    expect(restoreUnreadable).toHaveBeenCalledWith(['planner/2026-W26', 'notes/data']);
+    expect(toasts[0]).toEqual(['success', 'Restored 2 items from the cloud, and kept the damaged copies on this device.']);
+  });
+
+  it('reports what could not be restored, and why, as an error', async () => {
+    const restoreUnreadable = vi.fn(async () => ({
+      restored: [{ item: 'planner/2026-W26', backup: 'b1' }],
+      failed: [{ item: 'notes/data', reason: 'not-in-cloud' }],
+    }));
+    card(withRestore(restoreUnreadable));
+    await screen.findByRole('alert');
+    fireEvent.click(restoreButton());
+    await waitFor(() => expect(toasts.length).toBe(1));
+    expect(toasts[0][0]).toBe('error');
+    expect(toasts[0][1]).toBe('Restored 1 item from the cloud, and kept the damaged copy on this device. 1 item could not be restored: the cloud has no copy.');
+  });
+
+  it('explains a failure to keep the damaged copy first: nothing was replaced', async () => {
+    card(withRestore(vi.fn(async () => ({ restored: [], failed: [{ item: 'planner/2026-W26', reason: 'could-not-back-up' }] }))));
+    await screen.findByRole('alert');
+    fireEvent.click(restoreButton());
+    await waitFor(() => expect(toasts.length).toBe(1));
+    expect(toasts[0]).toEqual(['error', '1 item could not be restored: this device has no room to keep the damaged copy first, so nothing was replaced.']);
+  });
+
+  it('says why it could not run, the way Sync now does', async () => {
+    card(withRestore(vi.fn(async () => ({ skipped: 'not-connected' }))));
+    await screen.findByRole('alert');
+    fireEvent.click(restoreButton());
+    await waitFor(() => expect(toasts.length).toBe(1));
+    expect(toasts[0]).toEqual(['info', 'Connect your cloud provider first.']);
+  });
+
+  it('reports an unexpected failure, and is disabled while it runs', async () => {
+    let release;
+    const restoreUnreadable = vi.fn(() => new Promise((_, reject) => { release = () => reject(new Error('network')); }));
+    card(withRestore(restoreUnreadable));
+    await screen.findByRole('alert');
+    fireEvent.click(restoreButton());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Restoring…' }).disabled).toBe(true));
+    act(() => release());
+    await waitFor(() => expect(toasts).toEqual([['error', 'Restore failed: network']]));
+    expect(restoreButton().disabled).toBe(false);
+  });
+});

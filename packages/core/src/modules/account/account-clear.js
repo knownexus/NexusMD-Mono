@@ -8,7 +8,9 @@
 // unsynced (core listUnpushed) and blocks the switch until it is synced or exported.
 // Android (helm): content is kept, i.e. record collections (`kind: 'collection'`) and planner
 // weeks, even where the registry syncs them. Keys the registry skips (caches, device-local
-// state) are left alone on both.
+// state) are left alone on both, except the damaged copies a restore keeps (see isQuarantineKey).
+
+import { isQuarantineKey } from './key-registry.js'
 
 /**
  * Remove one profile from this device: every `<ns>.p.<pid>.*` key and every secret whose name
@@ -49,6 +51,9 @@ export async function clearAccountLocalData({ registry, storage, secure, metaKey
       const name = k.slice(registry.secPrefix.length)
       if (registry.secretId(name)) secrets.push(name)
     } else if (k !== metaKey) {
+      // The damaged copies a restore keeps are skipped by the registry (never synced), but they are profile
+      // content: on desktop, where content goes, they go with it.
+      if (registry.namespace === 'nexusmd' && isQuarantineKey(k)) { keys.push(k); continue }
       const c = registry.classify(k)
       if ((c && !isContent(registry, k, c)) || registry.isPlainTokenKey?.(k)) keys.push(k)
     }
