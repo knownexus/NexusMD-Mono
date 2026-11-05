@@ -1,5 +1,5 @@
 import React from 'react'
-import { formatClock, rendererLog, ignore } from '@nexusmd/core'
+import { formatClock, rendererLog, ignore, readJsonKeepingDamaged } from '@nexusmd/core'
 import { Icon } from '../icons.jsx'
 import {
   emptyLog, runningEntries, startEntry, stopEntry, updateEntry, removeEntry, setTimes, addNote, removeNote, assignRef,
@@ -16,11 +16,16 @@ const clockTime = ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', m
 const slotVar = ref => { const s = colorSlot(ref); return s < 0 ? 'var(--text-subtle)' : `var(--tl-c${s})` }
 const LANE_H = 22
 
-/** useState that survives restarts: the log lives in localStorage under `key` (each shell scopes it to the profile). */
-function useStoredLog(key) {
-  const [value, setValue] = useState(() => {
-    try { const raw = window.localStorage.getItem(key); return raw === null ? emptyLog() : JSON.parse(raw) } catch { return emptyLog() }
-  })
+/**
+ * useState that survives restarts: the log lives in localStorage under `key` (each shell scopes it to the profile).
+ * A saved log that is not valid JSON opens empty, and the effect below would save over it, so `keep` (profile key
+ * function and namespace) lets the damaged text be copied aside first.
+ */
+function useStoredLog(key, keep) {
+  const [value, setValue] = useState(() => readJsonKeepingDamaged({
+    storage: window.localStorage, getProfileKey: keep?.getProfileKey, namespace: keep?.namespace, log, storageKey: key,
+    collection: 'timelog.v1', itemKey: 'data', empty: emptyLog(), what: 'the saved time log could not be read, so the view opens empty',
+  }))
   useEffect(() => { try { window.localStorage.setItem(key, JSON.stringify(value)) } catch (err) { ignore(log, 'the time log could not be saved (quota or private mode)', err, 'warn') } }, [key, value])
   return [value, setValue]
 }
@@ -493,10 +498,10 @@ function WeekPanel({ entries, now, selected, onSelect }) {
 
 /**
  * Time tracking: several timers at once, notes, marks, a day tape and timeline.
- * @param {{ storageKey: string, getTickets?: () => Array<{id: string, title: string, source?: string}> }} props
+ * @param {{ storageKey: string, getProfileKey?: (k: string) => string, namespace?: string, getTickets?: () => Array<{id: string, title: string, source?: string}> }} props
  */
-export function TimeView({ storageKey, getTickets }) {
-  const [log, setLog] = useStoredLog(storageKey)
+export function TimeView({ storageKey, getProfileKey, namespace, getTickets }) {
+  const [log, setLog] = useStoredLog(storageKey, { getProfileKey, namespace })
   const running = useMemo(() => runningEntries(log), [log])
   const now = useNow(running.length > 0)
   const [tickets, setTickets] = useState([])

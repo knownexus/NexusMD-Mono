@@ -13,9 +13,10 @@ export const QUEUE_KINDS = ['ado-vote', 'ado-comment', 'github-vote', 'github-co
 export const SEND_CAPABILITY = 'work.offlineSend'
 
 // Pure: storage, key, the network check and the sender are injected.
-export function makeDesktopQueue({ storage, key, send, isOnline, emit }) {
+// `getProfileKey` and `namespace` let a damaged saved queue be copied aside before it is replaced.
+export function makeDesktopQueue({ storage, key, send, isOnline, emit, getProfileKey, namespace }) {
   const handlers = Object.fromEntries(QUEUE_KINDS.map(kind => [kind, payload => send(kind, payload)]))
-  return createOfflineQueue({ storage, key, handlers, ...(isOnline ? { isOnline } : {}), ...(emit ? { emit } : {}) })
+  return createOfflineQueue({ storage, key, handlers, getProfileKey, namespace, ...(isOnline ? { isOnline } : {}), ...(emit ? { emit } : {}) })
 }
 
 async function sendThroughWork(kind, payload) {
@@ -26,6 +27,7 @@ async function sendThroughWork(kind, payload) {
 export const appQueue = makeDesktopQueue({
   storage: localStorage,
   key: () => getProfileKey('nexusmd.offlineQueue'),
+  getProfileKey, namespace: 'nexusmd',
   send: sendThroughWork,
   emit: count => window.dispatchEvent(new CustomEvent('nexusmd:queue', { detail: { count } })),
 })

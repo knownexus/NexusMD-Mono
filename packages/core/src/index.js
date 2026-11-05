@@ -55,8 +55,9 @@ export { reconcileItem } from './modules/sync/reconcile.js'
 export { encryptSync, decryptSync } from './modules/sync/crypto.js'
 export {
   plannerCollection, notesCollection, teamCustomCollection, teamRemovedCollection, tweaksCollection,
-  listsCollection, CorruptLocalError,
+  listsCollection, CorruptLocalError, quarantine as quarantineStored,
 } from './modules/sync/collections.js'
+export { readJsonKeepingDamaged, listDamagedCopies, discardDamagedCopy } from './modules/sync/damaged-copy.js'
 export { createSyncRuntime } from './modules/sync/runtime.js'
 export { startAutoSync } from './modules/sync/auto.js'
 export { singleFlight } from './modules/sync/single-flight.js'

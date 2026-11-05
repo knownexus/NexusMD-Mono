@@ -13,6 +13,7 @@ const gh = () => makeGithubClient(createGithubHttpAdapter());
 export const appQueue = createOfflineQueue({
   storage: localStorage,
   key: () => getProfileKey('helm.offlineQueue'),
+  getProfileKey, namespace: 'helm',
   handlers: {
     'wi.state': ({ id, state }) => workItemSource.saveField(id, 'System.State', state),
     'pr.vote': ({ pr, vote, adoId }) => (pr.source === 'github' ? githubVote(gh(), pr, vote) : adoVote({ put: adoPut }, pr, adoId, vote)),

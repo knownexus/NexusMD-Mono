@@ -9,5 +9,5 @@ export function TimeApp({ host }) {
     const caps = host?.capabilities
     return caps?.has('work.items') ? caps.call('work.items') : []
   }, [host])
-  return <TimeView storageKey={getProfileKey('nexusmd.timelog.v1')} getTickets={getTickets}/>
+  return <TimeView storageKey={getProfileKey('nexusmd.timelog.v1')} getProfileKey={getProfileKey} namespace="nexusmd" getTickets={getTickets}/>
 }
