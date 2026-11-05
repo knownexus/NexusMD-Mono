@@ -1,6 +1,6 @@
 import React from 'react'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { buildEvent, defaultStart, localStamp, NewEventSheet } from './calendar-new-event.jsx'
 
 afterEach(cleanup)
@@ -27,6 +27,10 @@ describe('building an event', () => {
 })
 
 describe('New event sheet', () => {
+  // The sheet opens at the next whole hour when its day is today, and at 09:00 otherwise. Pin today to a day
+  // other than the one under test, so the test does not depend on the date it is run (only Date is faked).
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 10, 2, 13, 20)) })
+  afterEach(() => vi.useRealTimers())
   const mount = (over = {}) => {
     const onAdd = vi.fn(), onClose = vi.fn()
     render(<NewEventSheet open onClose={onClose} dayKey="2026-11-05" onAdd={onAdd} canAddToPlanner={() => true} outlookConnected={false} {...over}/>)
