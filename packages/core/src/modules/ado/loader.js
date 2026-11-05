@@ -3,6 +3,9 @@ import { slugify, timeAgo, isTerminalState, STATES } from './helpers.js'
 import { mapWorkItem, mapPR, mapBuild, mapTestBuild } from './mappers.js'
 import { deriveProjects, deriveSprint, deriveActivity, derivePrSparkline } from './derive.js'
 import { fetchAdoProcessMetadata } from './process-metadata.js'
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('ado', 'loader')
 
 export const ADO_CACHE_KEY = 'nexusmd.ado.cache.v1'
 
@@ -66,9 +69,9 @@ export async function loadAdoData(
               try {
                 const m = await get(`_apis/projects/${encodeURIComponent(proj)}/teams/${team.id}/members?api-version=7.0-preview.2&$top=500`)
                 ;(m.value || []).forEach(mem => { const n = mem.identity?.displayName || mem.displayName; if (n) names.add(n) })
-              } catch (_) {}
+              } catch (err) { ignore(log, "could not list a team's members", err, 'debug', { project: proj, team: team.id }) }
             }))
-          } catch (_) {}
+          } catch (err) { ignore(log, "could not list a project's teams", err, 'warn', { project: proj }) }
         }))
         return Array.from(names)
       })()
@@ -100,9 +103,9 @@ export async function loadAdoData(
           try {
             const r = await get(`_apis/wit/workitems?ids=${batch.join(',')}&fields=${encodeURIComponent(fields)}&api-version=7.0`)
             ;(r.value || []).forEach(wi => all.push(wi))
-          } catch (_) {}
+          } catch (err) { ignore(log, 'could not load a batch of work items', err, 'warn', { project: proj, count: batch.length }) }
         }))
-      } catch (_) {}
+      } catch (err) { ignore(log, "could not load a project's work items", err, 'warn', { project: proj }) }
     }))
     return all
   })
@@ -165,7 +168,7 @@ export async function loadAdoData(
       try {
         const r = await get(`${encodeURIComponent(proj)}/_apis/build/builds?$top=15&queryOrder=finishTimeDescending&api-version=7.0`)
         ;(r.value || []).forEach(b => all.push({ ...b, _project: proj }))
-      } catch (_) {}
+      } catch (err) { ignore(log, "could not load a project's builds", err, 'warn', { project: proj }) }
     }))
     return all
   })()
@@ -195,7 +198,7 @@ export async function loadAdoData(
           if (!ids.length) return
           const r = await get(`_apis/wit/workitems?ids=${ids.join(',')}&fields=System.Id,System.Title,System.WorkItemType,System.State,System.CreatedDate,Microsoft.VSTS.Common.ClosedDate&api-version=7.0`)
           ;(r.value || []).forEach(wi => all.push(wi))
-        } catch (_) {}
+        } catch (err) { ignore(log, "could not load a project's recently closed work items", err, 'warn', { project: proj }) }
       }))
       const items = all.map(wi => ({
         id: wi.id,
@@ -273,7 +276,7 @@ export async function loadAdoData(
 
   // ── Work items ────────────────────────────────────────────────────────────
   const helmWIs = []
-  ;(wiRaw || []).forEach(wi => { try { helmWIs.push(mapWorkItem(wi, nameToId, meta?.stateCategoryByName)) } catch (_) {} })
+  ;(wiRaw || []).forEach(wi => { try { helmWIs.push(mapWorkItem(wi, nameToId, meta?.stateCategoryByName)) } catch (err) { ignore(log, 'a work item could not be read and was left out', err, 'warn', { id: wi?.id }) } })
 
   helmTeam.forEach(member => {
     const assigned = helmWIs.filter(w => w.assignee === member.id && !isTerminalState(w.state, w.adoStateCategory))
@@ -314,7 +317,7 @@ export async function loadAdoData(
     : noRepos ? `All ${cfgProjects.length} configured project(s) returned 0 repositories` : null
   const helmPRs = []
   ;(prsRaw || []).filter(p => p.status === 'active').forEach(pr => {
-    try { helmPRs.push(mapPR(pr, nameToId, me?.name || '')) } catch (_) {}
+    try { helmPRs.push(mapPR(pr, nameToId, me?.name || '')) } catch (err) { ignore(log, 'a pull request could not be read and was left out', err, 'warn', { id: pr?.id }) }
   })
 
   // ── Builds ────────────────────────────────────────────────────────────────
@@ -384,7 +387,7 @@ export async function loadAdoData(
   }
 
   if (storage) {
-    try { storage.set(ADO_CACHE_KEY, data) } catch (_) {}
+    try { storage.set(ADO_CACHE_KEY, data) } catch (err) { ignore(log, 'could not save the offline cache', err) }
   }
 
   core._emit(isRefresh ? 'ado:updated' : 'ado:loaded', data)

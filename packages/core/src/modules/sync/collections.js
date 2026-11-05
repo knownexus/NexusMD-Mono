@@ -1,6 +1,11 @@
 // collections.js — sync collection adapters. Each adapter enumerates/reads/writes
 // a localStorage-backed data type and names its core merge strategy.
 import { mergePlannerWeek, mergeRows, mergeSet, mergeKeyVal, mergeLists } from './merge.js';
+import { rendererLog, ignore } from '../../log.js';
+
+const log = rendererLog('sync', 'collections');
+const WRITE_FAILED = 'could not write a collection to local storage';
+const REMOVE_FAILED = 'could not remove a collection from local storage';
 
 export function plannerCollection({ storage, getProfileKey, namespace }) {
   const bare = (key) => `${namespace}.planner.week.${key}`;
@@ -20,10 +25,10 @@ export function plannerCollection({ storage, getProfileKey, namespace }) {
       try { const raw = storage.getItem(full(key)); return raw ? JSON.parse(raw) : null; } catch { return null; }
     },
     writeLocal(key, value) {
-      try { storage.setItem(full(key), JSON.stringify(value)); } catch {}
+      try { storage.setItem(full(key), JSON.stringify(value)); } catch (err) { ignore(log, WRITE_FAILED, err, 'warn', { collection: 'planner', key }); }
     },
     removeLocal(key) {
-      try { storage.removeItem(full(key)); } catch {}
+      try { storage.removeItem(full(key)); } catch (err) { ignore(log, REMOVE_FAILED, err, 'warn', { collection: 'planner', key }); }
     },
     merge: (b, l, r, ctx) => mergePlannerWeek(b, l, r, ctx),
   };
@@ -40,10 +45,10 @@ export function singletonCollection({ id, bareKey, merge, storage, getProfileKey
       try { const raw = storage.getItem(full); return raw ? JSON.parse(raw) : null; } catch { return null; }
     },
     writeLocal(_key, value) {
-      try { storage.setItem(full, JSON.stringify(value)); } catch {}
+      try { storage.setItem(full, JSON.stringify(value)); } catch (err) { ignore(log, WRITE_FAILED, err, 'warn', { collection: id }); }
     },
     removeLocal() {
-      try { storage.removeItem(full); } catch {}
+      try { storage.removeItem(full); } catch (err) { ignore(log, REMOVE_FAILED, err, 'warn', { collection: id }); }
     },
     merge,
   };
