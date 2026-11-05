@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { plannerCollection, notesCollection, createSyncRuntime, createSyncController, decryptSync, encryptSync } from '../src/index.js'
 import { createKeyRegistry } from '../src/modules/account/key-registry.js'
+import { purgeProfileLocal, clearAccountLocalData } from '../src/modules/account/account-clear.js'
+import { isSkippedKey } from '../src/index.js'
 
 // Restore from cloud: a user action that replaces an item this device cannot read (see sync-corrupt-local)
 // with the copy the cloud holds. It overwrites, so: the damaged bytes are kept first, and if they cannot be
@@ -60,10 +62,53 @@ describe('quarantineLocal: keeping the damaged bytes before anything replaces th
     const q = c.quarantineLocal('2026-W26')
     expect(storage.getItem(q)).toBe('{ torn')
     expect(storage.getItem(WEEK)).toBe('{ torn') // a copy, not a move
-    // never picked up by the account sync, which does sync other keys under a profile
+    // inside the profile, so deleting the profile deletes it too, but never picked up by the account sync
+    expect(q.startsWith('nexusmd.p.p1.sync.quarantine.planner.2026-W26.')).toBe(true)
+    expect(isSkippedKey(q)).toBe(true)
     expect(createKeyRegistry({ namespace: 'nexusmd' }).classify(q)).toBeNull()
     // nor listed as a planner week by this engine
     expect(c.listLocal()).toEqual(['2026-W26'])
+  })
+
+  it('keeps only the newest few copies of one item, so they cannot pile up', () => {
+    vi.useFakeTimers()
+    try {
+      const storage = memStorage({ [WEEK]: '{ torn' })
+      const c = plannerCollection(opts(storage))
+      const made = []
+      for (let i = 0; i < 5; i++) { vi.setSystemTime(1_000_000 + i * 1000); made.push(c.quarantineLocal('2026-W26')) }
+      const left = storage.keys().filter(k => k.includes('sync.quarantine'))
+      expect(left).toEqual(made.slice(-3))
+      // copies of a different item are not counted against it
+      storage.setItem('nexusmd.p.p1.planner.week.2026-W27', '{ also torn')
+      vi.setSystemTime(2_000_000)
+      c.quarantineLocal('2026-W27')
+      expect(storage.keys().filter(k => k.includes('sync.quarantine')).length).toBe(4)
+    } finally { vi.useRealTimers() }
+  })
+
+  // The damaged text can be private (notes, plans). Whatever removes a profile's data, or the account's, must
+  // remove it too, not leave it behind.
+  it('goes when its profile is purged, and when the account data is cleared', async () => {
+    const storage = memStorage({ [WEEK]: 'private torn text', 'nexusmd.p.other.planner.week.2026-W26': 'another profile text' })
+    const q = plannerCollection(opts(storage)).quarantineLocal('2026-W26')
+    expect(storage.getItem(q)).toBe('private torn text')
+
+    await purgeProfileLocal({ storage, secure: { remove: async () => {} }, namespace: 'nexusmd', pid: 'p1' })
+    expect(storage.getItem(q)).toBeNull()
+    expect(storage.getItem('nexusmd.p.other.planner.week.2026-W26')).toBe('another profile text') // another profile is not touched
+
+    const again = plannerCollection(opts(memStorage({ [WEEK]: 'private torn text' })))
+    const s2 = memStorage({ [WEEK]: 'private torn text' })
+    const q2 = plannerCollection(opts(s2)).quarantineLocal('2026-W26')
+    await clearAccountLocalData({ registry: createKeyRegistry({ namespace: 'nexusmd' }), storage: s2, secure: { remove: async () => {} }, metaKey: 'nexusmd.sync.account.meta' })
+    expect(s2.getItem(q2)).toBeNull()
+    void again
+  })
+
+  it('is not carried by the settings file either (it skips what the account sync skips)', () => {
+    const q = plannerCollection(opts(memStorage({ [WEEK]: 'x' }))).quarantineLocal('2026-W26')
+    expect(isSkippedKey(q)).toBe(true)
   })
 
   it('works for a single-value collection, and gives null when there is nothing stored', () => {

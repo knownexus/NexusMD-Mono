@@ -7,17 +7,31 @@ const log = rendererLog('sync', 'collections');
 const WRITE_FAILED = 'could not write a collection to local storage';
 const REMOVE_FAILED = 'could not remove a collection from local storage';
 
+const QUARANTINE_KEEP = 3; // copies kept per item; older ones go
+
 /**
  * Copies the stored text at `storageKey` to a backup key and returns it (null when nothing is stored). Throws
  * when the copy cannot be stored: a caller about to replace a value must stop then, not go on without a backup.
- * The key is not under a profile (`<ns>.sync.quarantine.<the damaged key>.<time>`), so the account sync, which
- * does sync the other keys under a profile, never picks it up, and no collection lists it as an item.
+ * The key is inside the profile (`<ns>.p.<pid>.sync.quarantine.<collection>.<item>.<time>`), so deleting the
+ * profile deletes its copies (the damaged text can be private), and it is on the registry's skip list, so the
+ * account sync and the settings file never carry it. No collection lists it as an item. Only the newest few
+ * copies of an item are kept.
  */
-function quarantine(storage, namespace, storageKey) {
+function quarantine(storage, getProfileKey, namespace, collection, itemKey, storageKey) {
   const raw = storage.getItem(storageKey);
   if (raw == null) return null;
-  const to = `${namespace}.sync.quarantine.${storageKey}.${Date.now()}`;
+  const prefix = getProfileKey(`${namespace}.sync.quarantine.${collection}.${itemKey}.`);
+  const to = `${prefix}${Date.now()}`;
   storage.setItem(to, raw);
+  const copies = [];
+  for (let i = 0; i < storage.length; i++) {
+    const k = storage.key(i);
+    if (typeof k === 'string' && k.startsWith(prefix)) copies.push(k);
+  }
+  copies.sort((a, b) => Number(a.slice(prefix.length)) - Number(b.slice(prefix.length)));
+  for (const old of copies.slice(0, Math.max(0, copies.length - QUARANTINE_KEEP))) {
+    try { storage.removeItem(old); } catch (err) { ignore(log, 'removing an old backup copy', err); }
+  }
   return to;
 }
 
@@ -81,7 +95,7 @@ export function plannerCollection({ storage, getProfileKey, namespace }) {
     removeLocal(key) {
       try { storage.removeItem(full(key)); } catch (err) { ignore(log, REMOVE_FAILED, err, 'warn', { collection: 'planner', key }); }
     },
-    quarantineLocal(key) { return quarantine(storage, namespace, full(key)); },
+    quarantineLocal(key) { return quarantine(storage, getProfileKey, namespace, 'planner', key, full(key)); },
     merge: (b, l, r, ctx) => mergePlannerWeek(b, l, r, ctx),
   };
 }
@@ -102,7 +116,7 @@ export function singletonCollection({ id, bareKey, merge, storage, getProfileKey
     removeLocal() {
       try { storage.removeItem(full); } catch (err) { ignore(log, REMOVE_FAILED, err, 'warn', { collection: id }); }
     },
-    quarantineLocal() { return quarantine(storage, namespace, full); },
+    quarantineLocal() { return quarantine(storage, getProfileKey, namespace, id, 'data', full); },
     merge,
   };
 }
