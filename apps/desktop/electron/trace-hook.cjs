@@ -8,9 +8,13 @@
 // Changing a file means running Babel over it, which takes seconds for the whole main process. So what comes out is kept in a
 // cache folder, per file and keyed by the file's size and modified time and by what the transform is (`signature`), and a
 // launch where nothing changed reads it back without even loading Babel.
+//
+// What is in the cache is run as code, so the folder is the checkout's own (node_modules/.cache, as trusted as the source next to
+// it), is made private to the user, and is not used at all if it has been swapped for a link. It is never a shared temp folder,
+// where another user could leave an entry for this one to run. The checksum in each entry is against a torn or damaged file, not
+// against someone who can write the folder: that person could change the source as well.
 
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const Module = require('node:module');
@@ -30,6 +34,21 @@ function defaultSignature() {
   } catch (err) {
     ignore(log, 'what the transform is could not be worked out, so the cache is not shared with earlier runs', err);
     return `unknown-${process.pid}`;
+  }
+}
+
+// The folder, made if need be and private to the user; false when it cannot be made or has been swapped for a link.
+function usableDir(dir) {
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (fs.lstatSync(dir).isSymbolicLink()) {
+      ignore(log, `the cache folder ${dir} is a link, so it is not used`, new Error('cache folder is a link'), 'warn');
+      return false;
+    }
+    return true;
+  } catch (err) {
+    ignore(log, 'the cache folder for changed files could not be made, so files are changed on every launch', err, 'warn');
+    return false;
   }
 }
 
@@ -61,14 +80,15 @@ function writeEntry(file, code) {
  *           cacheDir?: string|false, signature?: string }} [opts]
  *   `root`: the repository root; `shouldTrace(rel)`: whether the file at `rel` (posix, from root) is traced;
  *   `instrument` / `loadInstrument`: the transform, or a function that loads it only when a file has to be changed;
- *   `cacheDir`: where changed files are kept (a folder in the system's temp folder by default; false for none).
+ *   `cacheDir`: where changed files are kept (node_modules/.cache/nexusmd-trace under `root` by default; false for none).
  * @returns {() => void} uninstall
  */
 function installTraceHook({ root = REPO, instrument, loadInstrument, shouldTrace, cacheDir, signature } = {}) {
   const decide = shouldTrace || require('@nexusmd/trace/main-rules').shouldTraceMain;
   let transform = instrument ?? null;
   const getTransform = () => (transform ??= (loadInstrument ?? (() => require('@nexusmd/trace/instrument').instrument))());
-  const dir = cacheDir === false ? null : (cacheDir ?? path.join(os.tmpdir(), 'nexusmd-trace-cache'));
+  const wanted = cacheDir === false ? null : (cacheDir ?? path.join(root, 'node_modules', '.cache', 'nexusmd-trace'));
+  const dir = wanted && usableDir(wanted) ? wanted : null;
   const sign = signature ?? (dir ? defaultSignature() : '');
   const extensions = Module._extensions;
   const original = new Map();

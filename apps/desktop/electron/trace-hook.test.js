@@ -125,8 +125,8 @@ describe('installTraceHook: the cache of changed files', () => {
   })
 
   it('a cache folder that cannot be written does not stop the file loading', () => {
+    writeFileSync(join(cache, 'a-file'), 'x')   // a file where the cache folder would have to go
     uninstall = installTraceHook(withCache({ cacheDir: join(cache, 'a-file', 'sub') }))
-    writeFileSync(join(cache, 'a-file'), 'x')
     expect(load(join(dir, 'traced', 'a.cjs')).add(1, 2)).toBe(3)
   })
 
@@ -147,5 +147,31 @@ describe('installTraceHook: the cache of changed files', () => {
     uninstall = installTraceHook(withCache({ instrument: undefined, loadInstrument: loadTransform }))
     load(join(dir, 'traced', 'a.cjs'))
     expect(loadTransform).not.toHaveBeenCalled()
+  })
+})
+
+describe('installTraceHook: where the cache lives', () => {
+  it('by default it is inside the checkout (node_modules/.cache), not in the shared temp folder, and is not used if it is a symlink', () => {
+    const fs = require('node:fs')
+    uninstall = installTraceHook({ root: dir, instrument, shouldTrace: (rel) => rel.startsWith('traced/'), signature: 'v1' })
+    delete require.cache[join(dir, 'traced', 'a.cjs')]
+    require(join(dir, 'traced', 'a.cjs'))
+    const folder = join(dir, 'node_modules', '.cache', 'nexusmd-trace')
+    expect(fs.readdirSync(folder).some(n => n.endsWith('.js'))).toBe(true)
+    if (process.platform !== 'win32') expect(fs.statSync(folder).mode & 0o077).toBe(0)   // private to the user
+    uninstall()
+
+    // a cache folder that has been swapped for a link is not trusted: files are changed in memory and nothing is read or written there
+    const elsewhere = mkdtempSync(join(tmpdir(), 'nxt-elsewhere-'))
+    try {
+      fs.rmSync(folder, { recursive: true, force: true })
+      try { fs.symlinkSync(elsewhere, folder, 'junction') } catch { return } // cannot make a link here: nothing more to check
+      writeFileSync(join(dir, 'traced', 'b.cjs'), 'module.exports = { n: 2 }')
+      const counted = []
+      uninstall = installTraceHook({ root: dir, instrument: (c, o) => { counted.push(o.filename); return instrument(c, o) }, shouldTrace: (rel) => rel.startsWith('traced/'), signature: 'v1' })
+      delete require.cache[join(dir, 'traced', 'b.cjs')]
+      expect(require(join(dir, 'traced', 'b.cjs')).n).toBe(2)
+      expect(fs.readdirSync(elsewhere)).toEqual([])
+    } finally { rmSync(elsewhere, { recursive: true, force: true }) }
   })
 })

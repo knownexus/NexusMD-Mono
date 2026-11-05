@@ -148,9 +148,11 @@ interleaved runs with the folder copied fresh before each (`apps/desktop/scripts
 
 - Plain's own start-ups ranged from 1.55 s to 2.30 s, so the start-up and screen-change differences are inside the run-to-run noise.
 - Per call, a traced function costs about 1 ns more than a plain one (up to x1.13 on the tightest loops): `packages/trace/bench/overhead.bench.mjs`;
-  `packages/trace/src/overhead.test.js` fails if it ever costs twice as much.
+  `packages/trace/src/overhead.test.js` checks that with nothing recording a traced function never calls the recorder (a test that measured time
+  was flaky under a full run).
 - Run from source, changing the main process's files with Babel on every launch cost about 1.5 s at start-up. They are now kept in a cache
-  (`os.tmpdir()/nexusmd-trace-cache`, keyed by file size, time and the transform), so only the first launch after a change pays it. The
+  (`node_modules/.cache/nexusmd-trace` in the checkout, private to the user and never used through a link; keyed by file size, time and the
+  transform), so only the first launch after a change pays it. The
   installed app does not do this: its main-process files are changed when it is staged.
 - Profiling a session of clicking through screens, `getProfileKey`, `getActiveProfileId`, `getActiveId` and `storeOf` were 40% of all calls and
   said nothing, so they are left out by default (`packages/trace/src/exclude.json`): 10,081 calls in 8.3 s became 6,012.

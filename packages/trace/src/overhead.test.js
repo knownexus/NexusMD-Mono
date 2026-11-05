@@ -4,36 +4,41 @@ import { createRequire } from 'node:module'
 import { instrument } from './instrument.mjs'
 
 const require = createRequire(import.meta.url)
-const nxt = require('./runtime.js')
-afterEach(() => { nxt.stop(); nxt.drain() })
+const real = require('./runtime.js')
+afterEach(() => { globalThis.__nxt = real; real.stop(); real.drain() })
 
-// The bound is loose (the bench in packages/trace/bench measures about 1.1x) because a test must not be flaky; what it guards is a
-// change that makes a traced function do real work when nothing is recording.
-const make = (src, traced) => {
-  const code = traced ? instrument(src, { filename: '/repo/x.js', root: '/repo', sourceType: 'script' }).code : src
+// A test that measured time would be flaky when the whole suite runs at once (it was: 2.06x against a bound of 2x), so this checks
+// the thing that makes a traced function cheap instead: when nothing is recording, it never asks the recorder to do anything.
+// What the cost comes to in time is measured by packages/trace/bench/overhead.bench.mjs and apps/desktop/scripts/trace-cost.mjs.
+const traced = (src, spy) => {
+  globalThis.__nxt = spy // the transformed file takes the runtime it finds when it loads
+  const { code } = instrument(src, { filename: '/repo/x.js', root: '/repo', sourceType: 'script' })
   const mod = { exports: {} }
   new Function('module', 'exports', 'require', `${code}\nmodule.exports = f`)(mod, mod.exports, require)
+  globalThis.__nxt = real
   return mod.exports
 }
-const run = (fn, n) => { const t0 = process.hrtime.bigint(); let s = 0; for (let i = 0; i < n; i++) s += fn(i, 2); return Number(process.hrtime.bigint() - t0) / 1e6 }
-const best = (fn, n, rounds = 5) => Math.min(...Array.from({ length: rounds }, () => run(fn, n)))
+const spy = (on) => {
+  const calls = { enter: 0, ret: 0, err: 0, aw: 0 }
+  return { calls, on, enter() { calls.enter++; return on ? { id: 'x-1' } : null }, ret(f, v) { calls.ret++; return v }, err() { calls.err++ }, aw(f, v) { calls.aw++; return v }, resume: (f, v) => v }
+}
 const SRC = 'function f(a, b) { const o = { x: a, y: b }; return o.x * 2 + o.y }'
 
-describe('the cost of a traced function', () => {
-  it('with nothing recording, a million calls take under twice as long as the same function without the reports', () => {
-    const plain = make(SRC, false)
-    const traced = make(SRC, true)
-    nxt.stop()
-    run(plain, 300000); run(traced, 300000) // warm up
-    const ratio = best(traced, 1_000_000) / best(plain, 1_000_000)
-    expect(ratio).toBeLessThan(2)
+describe('what a traced function does when nothing is recording', () => {
+  it('never calls enter (so it never builds the argument list, an id or an event), and still returns what it returns', () => {
+    const s = spy(false)
+    const f = traced(SRC, s)
+    let sum = 0
+    for (let i = 0; i < 1000; i++) sum += f(i, 2)
+    expect(sum).toBe(1000 * 999 + 2000)
+    expect(s.calls.enter).toBe(0)
+    expect(s.calls.err).toBe(0)
   })
 
-  it('this check can fail: with a recording running the same loop is many times slower', () => {
-    const plain = make(SRC, false)
-    const traced = make(SRC, true)
-    nxt.start({ proc: 'main', maxEvents: 5_000_000 })
-    const ratio = best(traced, 20000, 3) / best(plain, 20000, 3)
-    expect(ratio).toBeGreaterThan(5)
+  it('this check can fail: with a recording running it does call enter, once per call', () => {
+    const s = spy(true)
+    const f = traced(SRC, s)
+    for (let i = 0; i < 1000; i++) f(i, 2)
+    expect(s.calls.enter).toBe(1000)
   })
 })
