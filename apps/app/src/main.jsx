@@ -4,7 +4,8 @@ import '@nexusmd/ui/styles.css';
 import './styles/app-overrides.css';
 import './styles/helm-mobile.css';
 
-import { initCore, createNoOpAdapters } from '@nexusmd/core';
+import { initCore, createNoOpAdapters, installFetchLogging } from '@nexusmd/core';
+
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
@@ -17,6 +18,9 @@ import { secureStorageAdapter } from './adapters/secureStorage.js';
 import { authAdapter }          from './adapters/auth.js';
 import { badgeAdapter }         from './adapters/badge.js';
 import { fileAdapter }          from './adapters/file.js';
+
+// A request that fails or is refused is logged (to the console here: chrome://inspect shows it) even when the code handles it.
+installFetchLogging();
 
 initCore({
   ...createNoOpAdapters(),

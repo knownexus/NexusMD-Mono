@@ -10,6 +10,8 @@
 import { describe, it, expect } from 'vitest'
 import { readMainSources, readRendererSources, findSilentCatches, rendererSilentCatchCounts, RENDERER_SILENT_EXCEPTIONS } from '../build/silent-catches.mjs'
 import rendererSilentBaseline from './renderer-silent-catches.baseline.json'
+import { untracedCatchCounts, findUntracedCatches } from '../build/untraced-catches.mjs'
+import untracedBaseline from './untraced-catches.baseline.json'
 
 const sources = readMainSources()
 
@@ -134,6 +136,29 @@ describe('logging guard', () => {
     }
     expect(grew, `A swallowed error is new here. Use ignore(log, 'why', err) from @nexusmd/core instead of an empty catch or .catch(() => {}):\n${grew.join('\n')}`).toEqual([])
     expect(shrank, `Fewer than the baseline, good. Lower it: node apps/desktop/build/silent-catches.mjs --renderer-baseline > apps/desktop/electron/renderer-silent-catches.baseline.json\n${shrank.join('\n')}`).toEqual([])
+  })
+
+  // The wider rule behind "no error goes unlogged": handling an error is fine, handling it SILENTLY is not. A catch that
+  // returns a fallback, shows a message, or throws a different error without the cause leaves nothing to find afterwards
+  // (the sign-in screen that said "Cannot reach the server" and nothing else). Code from before this rule is a baseline per
+  // file, worked down by logging through ignore(log, why, err) or the logger; the baseline only goes down. A new
+  // handled error must log (log.warn(...), ignore(...)) or rethrow the error (throw e / { cause: e }).
+  it('adds no handled error that leaves no trace (the baseline only goes down)', () => {
+    const counts = untracedCatchCounts([...sources, ...rendererSources])
+    const grew = [], shrank = []
+    for (const file of new Set([...Object.keys(counts), ...Object.keys(untracedBaseline)])) {
+      const now = counts[file] ?? 0, was = untracedBaseline[file] ?? 0
+      if (now > was) grew.push(`${file}: ${now} (baseline ${was})`)
+      else if (now < was) shrank.push(`${file}: ${now} (baseline ${was})`)
+    }
+    const list = (rows) => rows.join('\n')
+    expect(grew, `A handled error here leaves no trace in the log. Log it (log.warn('what failed', err), or ignore(log, 'why it is fine', err) if it is expected), or rethrow it with its cause. See apps/desktop/build/untraced-catches.mjs for what counts. List: node apps/desktop/build/untraced-catches.mjs\n${list(grew)}`).toEqual([])
+    expect(shrank, `Fewer than the baseline, good. Lower it: node apps/desktop/build/untraced-catches.mjs --baseline > apps/desktop/electron/untraced-catches.baseline.json\n${list(shrank)}`).toEqual([])
+  })
+
+  it('finds the handled errors it is meant to', () => {
+    expect(findUntracedCatches('try { a() } catch { b = 1 }')).toHaveLength(1)
+    expect(findUntracedCatches("try { a() } catch (e) { log.warn('x', e) }")).toHaveLength(0)
   })
 
   it('has no stale exceptions for swallowed errors in window code', () => {

@@ -29,9 +29,10 @@ export class AccountError extends Error {
    *   'keys-corrupt' means the server accepted the credentials but the wrapped keys do not open.
    * @param {number} status HTTP status, or 0 when no response was received
    * @param {string} [message]
+   * @param {{ cause?: unknown }} [options] cause: the error this one stands for (the failed fetch behind 'offline'), so a log shows why
    */
-  constructor(code, status = 0, message) {
-    super(message || code)
+  constructor(code, status = 0, message, options) {
+    super(message || code, options)
     this.name = 'AccountError'
     this.code = code
     this.status = status
@@ -58,7 +59,9 @@ async function readBody(res) {
   try {
     const text = await res.text()
     return text ? JSON.parse(text) : null
-  } catch {
+  } catch (err) {
+    // A reply that is not JSON (a proxy's error page, a cut-off body) is treated as no body; the log says it happened.
+    ignore(log, 'a server reply could not be read as JSON; treated as having no body', err, 'warn', { status: res.status })
     return null
   }
 }
@@ -94,8 +97,9 @@ export function createAccountClient({
         headers: h,
         body: body === undefined ? undefined : JSON.stringify(body),
       })
-    } catch {
-      throw new AccountError('offline', 0, 'Network unavailable')
+    } catch (err) {
+      // (The failed request itself is already in the log: installFetchLogging.) The cause rides along for whoever logs this.
+      throw new AccountError('offline', 0, 'Network unavailable', { cause: err })
     }
     return { status: res.status, ok: res.ok, data: await readBody(res) }
   }
@@ -211,7 +215,8 @@ export function createAccountClient({
     let saltLength
     try {
       saltLength = atob(params.salt).length
-    } catch {
+    } catch (err) {
+      ignore(log, 'the server sent a salt that is not base64; the sign-in is refused below', err, 'warn')
       saltLength = -1
     }
     if (saltLength !== SALT_BYTES) {
@@ -257,8 +262,9 @@ export function createAccountClient({
     let keys
     try {
       keys = await deriveKeys(password, params.salt, params.iterations)
-    } catch {
-      throw new AccountError('server', 0, 'Could not derive keys from the server parameters')
+    } catch (err) {
+      log.error('keys could not be derived from the server parameters', err)
+      throw new AccountError('server', 0, 'Could not derive keys from the server parameters', { cause: err })
     }
     const { authKey, vaultKey } = keys
     const resp = check(await send('POST', '/api/account/login', { body: { username, authKey } }), { login: true })
@@ -294,9 +300,10 @@ export function createAccountClient({
       let ck
       try {
         ck = await unwrapContainerKey(resp.wrappedContainerKey, vaultKey)
-      } catch {
+      } catch (err) {
         // The server accepted the credentials, so this is damaged key material, not a wrong password.
-        throw new AccountError('keys-corrupt', 0, 'The stored account keys could not be opened')
+        log.error('the account keys could not be opened after the server accepted the sign-in', err)
+        throw new AccountError('keys-corrupt', 0, 'The stored account keys could not be opened', { cause: err })
       }
       const next = buildSession(resp, exportContainerKey(ck))
       await setSession(next)
@@ -338,8 +345,9 @@ export function createAccountClient({
       try {
         ck = await unwrapContainerKey(resp.wrappedContainerKey, oldVault)
         privateKey = await unwrapPrivateKey(resp.wrappedPrivateKey, oldVault)
-      } catch {
-        throw new AccountError('keys-corrupt', 0, 'The stored account keys could not be opened')
+      } catch (err) {
+        log.error('the account keys could not be opened while changing the password', err)
+        throw new AccountError('keys-corrupt', 0, 'The stored account keys could not be opened', { cause: err })
       }
       const iterations = minIterations
       const salt = randomSalt()
