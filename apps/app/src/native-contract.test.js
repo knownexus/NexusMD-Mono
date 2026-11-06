@@ -206,7 +206,28 @@ describe('Opening .txt and .md files with the app', () => {
   it('reads only content:// addresses, never the app\'s own file provider, and caps the size', () => {
     expect(java).toContain('SCHEME_CONTENT')
     expect(java).not.toMatch(/SCHEME_FILE/)
-    expect(java).toContain('.fileprovider')
+    expect(java).toContain('resolveContentProvider')
     expect(java).toMatch(/MAX_BYTES\s*=\s*2 \* 1024 \* 1024/)
+  })
+})
+
+describe('Opening files cannot be turned on the app\'s own files', () => {
+  const java = fs.readFileSync(path.join(javaDir, 'OpenedFilePlugin.java'), 'utf8')
+  const paths = read('android', 'app', 'src', 'main', 'res', 'xml', 'file_paths.xml')
+  const updater = fs.readFileSync(path.join(javaDir, 'AppUpdatePlugin.java'), 'utf8')
+
+  it('works out which app owns a content address instead of trusting its text', () => {
+    // content://10@com.knownexus.nexus.fileprovider/... names our own provider but is not equal to its authority.
+    expect(java).toContain('resolveContentProvider')
+    expect(java).toMatch(/getAuthority\(\)[\s\S]{0,200}contains\("@"\)|contains\("@"\)[\s\S]{0,200}getAuthority\(\)/)
+    expect(java).toMatch(/\.packageName\.equals\(getContext\(\)\.getPackageName\(\)\)/)
+  })
+
+  it('shares only the folder the updater puts its download in', () => {
+    const folder = updater.match(/new File\(ctx\.getCacheDir\(\), "([^"]+)"\)/)[1]
+    expect(paths).toMatch(new RegExp(`<cache-path[^>]*path="${folder}/?"`))
+    expect(paths).not.toMatch(/path="\.?"/)          // not the whole cache
+    expect(paths).not.toContain('<external-path')    // not shared storage
+    expect(paths).not.toContain('<files-path')
   })
 })

@@ -2,6 +2,7 @@ package com.knownexus.nexus;
 
 import android.content.ContentResolver;
 import android.content.Intent;
+import android.content.pm.ProviderInfo;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
@@ -23,7 +24,7 @@ import java.nio.charset.StandardCharsets;
  * event when a file arrives while the app is already running.
  *
  * Only content:// addresses are read. A file:// address could name the app's own private files, and
- * the app's own FileProvider is refused for the same reason. The file is read off the main thread
+ * any provider of this app is refused for the same reason (found by asking which package owns it). The file is read off the main thread
  * (a file kept in the cloud can be slow), capped at MAX_BYTES, and read as UTF-8.
  */
 @CapacitorPlugin(name = "OpenedFile")
@@ -101,7 +102,13 @@ public class OpenedFilePlugin extends Plugin {
                 : (Uri) intent.getParcelableExtra(Intent.EXTRA_STREAM);
         }
         if (uri == null || !ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())) return null;
-        if ((getContext().getPackageName() + ".fileprovider").equals(uri.getAuthority())) return null;
+        // A user id in front of the authority (content://10@com.knownexus.nexus.fileprovider/...) names a provider in a way
+        // that does not equal its authority, so ask which app owns the provider instead of comparing text. This app's
+        // own package is always visible to it, so a provider that does not resolve is not ours.
+        String authority = uri.getAuthority();
+        if (authority == null || authority.contains("@")) return null;
+        ProviderInfo provider = getContext().getPackageManager().resolveContentProvider(authority, 0);
+        if (provider != null && provider.packageName.equals(getContext().getPackageName())) return null;
         return uri;
     }
 
