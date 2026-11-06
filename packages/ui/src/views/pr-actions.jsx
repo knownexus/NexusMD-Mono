@@ -2,12 +2,13 @@
 // `actions` is the object returned by makePRActions (core). A host with an offline queue may wrap it:
 // an action that resolves with `queued: true` was kept for later, and says so.
 import React, { useState } from 'react'
+import { deleteBranchWarning, deleteBranchByDefault } from '@nexusmd/core'
 import { toast } from '../toast.jsx'
 import { QUEUED_TOAST } from '../offline-queued.js'
 
 export function PRActions({ pr, actions, onChanged, confirm = (...a) => window.confirm(...a) }) {
   const [busy, setBusy] = useState(false)
-  const [dlg, setDlg] = useState(null) // null | { loading, methods, method, deleteBranch }
+  const [dlg, setDlg] = useState(null) // null | { loading, methods, method, deleteBranch, warning }
 
   if (!pr || (pr.status !== 'active' && pr.status !== 'draft')) return null
 
@@ -46,8 +47,10 @@ export function PRActions({ pr, actions, onChanged, confirm = (...a) => window.c
     if (busy) return
     setDlg({ loading: true, methods: [], method: '', deleteBranch: true })
     try {
-      const { methods } = await actions.mergeOptions(pr)
-      setDlg(d => d && { ...d, loading: false, methods, method: methods[0]?.id || '' })
+      const options = await actions.mergeOptions(pr)
+      const { methods } = options
+      // Deleting the branch closes the PRs that target it: say which, and leave the branch unless asked.
+      setDlg(d => d && { ...d, loading: false, methods, method: methods[0]?.id || '', deleteBranch: deleteBranchByDefault(options), warning: deleteBranchWarning(options, pr) })
     } catch (e) {
       setDlg(null)
       toast?.(`Merge failed: ${e?.message || e}`, 'error')
@@ -81,6 +84,7 @@ export function PRActions({ pr, actions, onChanged, confirm = (...a) => window.c
               {dlg.methods.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
           )}
+          {dlg.warning && <div role="alert" style={{ fontSize: 12, color: 'var(--warning, #b45309)' }}>{dlg.warning}</div>}
           <label>
             <input type="checkbox" checked={dlg.deleteBranch} onChange={e => setDlg({ ...dlg, deleteBranch: e.target.checked })} /> Delete source branch
           </label>

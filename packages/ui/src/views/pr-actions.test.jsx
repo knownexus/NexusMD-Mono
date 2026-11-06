@@ -145,3 +145,71 @@ it('merge warnings toast separately', async () => {
   await waitFor(() => expect(toast).toHaveBeenCalledWith(w, 'warning'))
   expect(toast).toHaveBeenCalledWith('Merged', 'success')
 })
+
+// Merging with "Delete source branch" ticked closes every other open PR that targets that branch (GitHub), so the dialog
+// looks for them first, says which they are, and leaves the branch alone unless asked.
+const STACKED = [{ id: 8, label: '#8', title: 'Next in the stack' }, { id: 9, label: '#9', title: 'Another' }]
+const openDialog = async (actions, pr = PR) => {
+  setup({ actions, pr })
+  fireEvent.click(screen.getByText('Merge'))
+  const dlg = await screen.findByRole('dialog', { name: 'Merge pull request' })
+  await within(dlg).findByRole('option', { name: 'Squash' })
+  return dlg
+}
+
+it('merge dialog: with PRs that target the branch it warns, names them, and does not delete the branch by default', async () => {
+  const actions = mk({ mergeOptions: vi.fn(async () => ({ methods: METHODS, rejectConfirm: 'x', dependents: STACKED })) })
+  const dlg = await openDialog(actions, { ...PR, source: 'github' })
+  const alert = within(dlg).getByRole('alert')
+  expect(alert.textContent).toContain('2 open pull requests target this branch')
+  expect(alert.textContent).toContain('#8 Next in the stack')
+  expect(alert.textContent).toContain('#9 Another')
+  expect(alert.textContent).toContain('would close them')
+  expect(within(dlg).getByLabelText('Delete source branch').checked).toBe(false)
+  fireEvent.click(within(dlg).getByRole('button', { name: 'Merge' }))
+  await waitFor(() => expect(actions.merge).toHaveBeenCalled())
+  expect(actions.merge).toHaveBeenCalledWith({ ...PR, source: 'github' }, { method: 'squash', deleteBranch: false })
+})
+
+it('merge dialog: the branch can still be deleted on purpose', async () => {
+  const actions = mk({ mergeOptions: vi.fn(async () => ({ methods: METHODS, rejectConfirm: 'x', dependents: STACKED })) })
+  const dlg = await openDialog(actions)
+  fireEvent.click(within(dlg).getByLabelText('Delete source branch'))
+  fireEvent.click(within(dlg).getByRole('button', { name: 'Merge' }))
+  await waitFor(() => expect(actions.merge).toHaveBeenCalled())
+  expect(actions.merge).toHaveBeenCalledWith(PR, { method: 'squash', deleteBranch: true })
+})
+
+it('merge dialog: one dependent reads in the singular, and Azure DevOps says what really happens there', async () => {
+  const actions = mk({ mergeOptions: vi.fn(async () => ({ methods: METHODS, rejectConfirm: 'x', dependents: [STACKED[0]] })) })
+  const dlg = await openDialog(actions, { ...PR, source: 'ado' })
+  const text = within(dlg).getByRole('alert').textContent
+  expect(text).toContain('1 open pull request targets this branch')
+  expect(text).toContain('no target branch')
+  expect(text).not.toContain('would close them')
+})
+
+it('merge dialog: when the check could not be made it says so and keeps the branch', async () => {
+  const actions = mk({ mergeOptions: vi.fn(async () => ({ methods: METHODS, rejectConfirm: 'x', dependents: [], dependentsError: true })) })
+  const dlg = await openDialog(actions)
+  expect(within(dlg).getByRole('alert').textContent).toContain('could not check')
+  expect(within(dlg).getByLabelText('Delete source branch').checked).toBe(false)
+})
+
+it('merge dialog: with nothing depending on the branch there is no warning and the branch is deleted as before', async () => {
+  const actions = mk({ mergeOptions: vi.fn(async () => ({ methods: METHODS, rejectConfirm: 'x', dependents: [] })) })
+  const dlg = await openDialog(actions)
+  expect(within(dlg).queryByRole('alert')).toBeNull()
+  expect(within(dlg).getByLabelText('Delete source branch').checked).toBe(true)
+})
+
+it('merge dialog: a long list of dependents is cut short and says how many more', async () => {
+  const many = Array.from({ length: 8 }, (_, i) => ({ id: 20 + i, label: `#${20 + i}`, title: `T${i}` }))
+  const actions = mk({ mergeOptions: vi.fn(async () => ({ methods: METHODS, rejectConfirm: 'x', dependents: many })) })
+  const dlg = await openDialog(actions)
+  const text = within(dlg).getByRole('alert').textContent
+  expect(text).toContain('8 open pull requests target this branch')
+  expect(text).toContain('#24 T4')
+  expect(text).not.toContain('#25')
+  expect(text).toContain('and 3 more')
+})

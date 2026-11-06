@@ -31,6 +31,18 @@ export async function githubMergeMethods(client, repo) {
   return MERGE_METHODS.filter(m => info?.[m.flag]).map(({ id, label }) => ({ id, label }))
 }
 
+/**
+ * Open pull requests in this repository whose target is the source branch of this one. Deleting that branch after the merge makes
+ * GitHub close every one of them, so the merge dialog warns before it. A pull request from a fork deletes nothing here.
+ * @returns {Promise<{ id: number, label: string, title: string }[]>}
+ */
+export async function githubDependentPRs(client, { repo, branch, headRepo }) {
+  const sameRepo = !!headRepo && headRepo.toLowerCase() === repo.toLowerCase()
+  if (!branch || !sameRepo) return []
+  const list = await client.get(`repos/${repo}/pulls?state=open&base=${encodeURIComponent(branch)}&per_page=30`)
+  return Array.isArray(list) ? list.map(p => ({ id: p.number, label: `#${p.number}`, title: p.title || '' })) : []
+}
+
 export async function mergeGithubPR(client, { repo, number, branch, headRepo }, { method, deleteBranch }) {
   await client.put(`${pullPath(repo, number)}/merge`, { merge_method: method })
   const warnings = []
