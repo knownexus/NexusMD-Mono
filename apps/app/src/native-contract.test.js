@@ -142,3 +142,71 @@ describe('Google sign-in redirect', () => {
     expect(manifest).toContain(`<data android:scheme="${scheme}" />`)
   })
 })
+
+describe('Opening .txt and .md files with the app', () => {
+  const java = fs.readFileSync(path.join(javaDir, 'OpenedFilePlugin.java'), 'utf8')
+  const js = read('src', 'opened-file.js')
+  const name = java.match(/@CapacitorPlugin\(\s*name\s*=\s*"([^"]+)"/)[1]
+  const methods = [...java.matchAll(/@PluginMethod[^\n]*\n\s*public void (\w+)\(PluginCall/g)].map(m => m[1])
+  const activity = manifest.slice(manifest.indexOf('<activity'), manifest.indexOf('</activity>'))
+  const filters = [...activity.matchAll(/<intent-filter>([\s\S]*?)<\/intent-filter>/g)].map(m => m[1])
+  const forFiles = filters.filter(f => /android:mimeType=/.test(f) || /pathPattern/.test(f))
+
+  it('is offered for text and Markdown, when opened (View) and when shared (Send)', () => {
+    const text = forFiles.filter(f => /android:mimeType="text\/plain"/.test(f))
+    const markdown = forFiles.filter(f => /android:mimeType="text\/markdown"/.test(f))
+    for (const group of [text, markdown]) {
+      expect(group.length).toBeGreaterThan(0)
+      expect(group.some(f => f.includes('android.intent.action.VIEW'))).toBe(true)
+      expect(group.some(f => f.includes('android.intent.action.SEND'))).toBe(true)
+    }
+    expect(forFiles.join('')).toContain('text/x-markdown')
+  })
+
+  it('is offered for a .md file a file manager calls a generic file', () => {
+    const generic = forFiles.filter(f => /application\/octet-stream/.test(f))
+    expect(generic.length).toBeGreaterThan(0)
+    // In the XML the pattern's escape is doubled: `.*\\.md` is the pattern `.*\.md`, a literal dot.
+    expect(generic.join('')).toMatch(/pathPattern="\.\*\\\\\.md"/)
+    expect(generic.join('')).toMatch(/pathPattern="\.\*\\\\\.markdown"/)
+  })
+
+  it('every file filter can be picked from a chooser, and only takes content:// addresses', () => {
+    for (const f of forFiles) {
+      expect(f).toContain('android.intent.category.DEFAULT')
+      expect(f).not.toContain('android.intent.category.BROWSABLE') // a web page cannot start it
+      if (f.includes('android.intent.action.VIEW')) expect(f).toMatch(/android:scheme="content"/)
+      expect(f).not.toMatch(/android:scheme="file"/)
+    }
+  })
+
+  it('leaves the sign-in redirects as they were', () => {
+    expect(activity).toMatch(/android:scheme="nexusmd"[^>]*android:host="oauth"/)
+    expect(activity).toMatch(/android:scheme="com\.knownexus\.nexus"/)
+  })
+
+  it('registers under the name the JavaScript asks for and implements what it calls', () => {
+    expect(js).toContain(`registerPlugin('${name}')`)
+    const called = [...new Set([...js.matchAll(/\bplugin\.(\w+)\(/g)].map(x => x[1]))]
+    for (const m of called.filter(c => c !== 'addListener')) expect(methods).toContain(m)
+  })
+
+  it('tells the page with the event the JavaScript listens for', () => {
+    expect(js).toContain("'fileOpened'")
+    expect(java).toContain('"fileOpened"')
+    for (const key of ['name', 'text', 'error']) expect(java).toContain(`"${key}"`)
+  })
+
+  it('is registered by the activity before the bridge starts', () => {
+    const at = mainActivity.indexOf('registerPlugin(OpenedFilePlugin.class)')
+    expect(at).toBeGreaterThan(-1)
+    expect(at).toBeLessThan(mainActivity.search(/^\s*super\.onCreate\(/m))
+  })
+
+  it('reads only content:// addresses, never the app\'s own file provider, and caps the size', () => {
+    expect(java).toContain('SCHEME_CONTENT')
+    expect(java).not.toMatch(/SCHEME_FILE/)
+    expect(java).toContain('.fileprovider')
+    expect(java).toMatch(/MAX_BYTES\s*=\s*2 \* 1024 \* 1024/)
+  })
+})

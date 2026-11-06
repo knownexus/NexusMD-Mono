@@ -31,6 +31,7 @@ import { apiFileAdapter } from './adapters/api-file.js';
 import { scriptRunnerAdapter } from './adapters/api-script-runner.js';
 import { apiHttpAdapter } from './adapters/api-http.js';
 import { secureStorageAdapter } from './adapters/secureStorage.js';
+import { watchOpenedFiles } from './opened-file.js';
 import { registerCloudDeepLink, hydrateCloudTokens } from './cloud-auth.js';
 import { startAppAutoSync } from './sync.js';
 import { DashboardView } from './views/view-dashboard.jsx';
@@ -664,6 +665,19 @@ function AppShell() {
     return () => clearTimeout(t);
   }, [mobileFlash]);
 
+  // A .txt or .md file opened with the app (Open with / Share) is added to the documents and shown on the Documents page.
+  // Counted, so the page remounts on the file each time one arrives.
+  const [openedFiles, setOpenedFiles] = useState(0);
+  useEffect(() => watchOpenedFiles({
+    storageKey: device === 'phone' ? undefined : getProfileKey('md_documents'), // the phone layout keeps documents under the bare key
+    onOpen: ({ name }) => {
+      setOpenedFiles(n => n + 1);
+      navigate('markdown');
+      showFlash(name ? `Opened ${name}` : 'Opened the file', 'check');
+    },
+    onError: (message) => showFlash(message, 'alert'),
+  }), [device, navigate, showFlash]);
+
   // Changes made offline are sent when the connection returns; say what happened.
   useEffect(() => {
     const onFlushed = (e) => {
@@ -1194,7 +1208,7 @@ function AppShell() {
       case 'time': return withBar('Time', <TimeView storageKey={getProfileKey('nexusmd.timelog.v1')} getProfileKey={getProfileKey} namespace="nexusmd" getTickets={getTimeTickets}/>);
       case 'notes': return <NotesView onAddTask={addTaskFromNote} onFlash={showFlash}/>;
       case 'lists': return <ListsView device={device}/>;
-      case 'markdown': return device === 'phone' ? <DocumentsPhone onFlash={showFlash}/> : <DocumentsView/>;
+      case 'markdown': return device === 'phone' ? <DocumentsPhone key={openedFiles} opened={openedFiles} onFlash={showFlash}/> : <DocumentsView key={openedFiles}/>;
       case 'editor': return <EditorScreen onFlash={showFlash}/>;
       case 'git': return <GitView onFlash={showFlash}/>;
       case 'api': return withBar('API Client', <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>);

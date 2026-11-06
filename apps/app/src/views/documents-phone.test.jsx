@@ -131,3 +131,24 @@ describe('regex tool', () => {
     expect(document.querySelector('.m-rx-code').textContent).toMatch(/\w\+/)
   })
 })
+
+describe('Documents page when a file was opened with the app', () => {
+  it('shows the Markdown tool, even if another tool was last in use, on the document that was opened', async () => {
+    localStorage.setItem('md_documents', JSON.stringify({ docs: [
+      { id: 'a', autoName: 'Old', content: '# Old', updatedAt: 1 },
+      { id: 'b', name: 'notes', autoName: 'Opened', content: '# Opened\n\nfrom a file', updatedAt: 9 },
+    ] }))
+    const { rerender } = render(<DocumentsPhone/>)
+    fireEvent.click(screen.getByRole('tab', { name: 'JSON' }))
+    expect(await screen.findByLabelText('JSON')).toBeTruthy()
+    rerender(<DocumentsPhone opened={1} key={1}/>)
+    expect(screen.queryByLabelText('JSON')).toBeNull()
+    expect(screen.getByLabelText('Markdown').value).toBe('# Opened\n\nfrom a file')
+  })
+
+  it('does not take the tool over when nothing was opened', async () => {
+    render(<DocumentsPhone/>)
+    fireEvent.click(screen.getByRole('tab', { name: 'JSON' }))
+    expect(await screen.findByLabelText('JSON')).toBeTruthy()
+  })
+})
