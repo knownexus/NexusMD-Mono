@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SafFolderPlugin.class);
         registerPlugin(AppUpdatePlugin.class);
         registerPlugin(ArtifactDownloadPlugin.class);
+        registerPlugin(OpenedFilePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- What the FileProvider may hand to another app: only the update the in-app updater downloads (AppUpdatePlugin.java)
+     and gives to the system installer. Not the whole cache and not shared storage. -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <cache-path name="updates" path="updates/" />
 </paths>

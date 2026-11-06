@@ -142,3 +142,109 @@ describe('Google sign-in redirect', () => {
     expect(manifest).toContain(`<data android:scheme="${scheme}" />`)
   })
 })
+
+describe('Opening text files with the app', () => {
+  const java = fs.readFileSync(path.join(javaDir, 'OpenedFilePlugin.java'), 'utf8')
+  const js = read('src', 'opened-file.js')
+  const name = java.match(/@CapacitorPlugin\(\s*name\s*=\s*"([^"]+)"/)[1]
+  const methods = [...java.matchAll(/@PluginMethod[^\n]*\n\s*public void (\w+)\(PluginCall/g)].map(m => m[1])
+  const activity = manifest.slice(manifest.indexOf('<activity'), manifest.indexOf('</activity>'))
+  const filters = [...activity.matchAll(/<intent-filter>([\s\S]*?)<\/intent-filter>/g)].map(m => m[1])
+  const forFiles = filters.filter(f => /android:mimeType=/.test(f) || /pathPattern/.test(f))
+
+  it('is offered for any text type, when opened (View) and when shared (Send)', () => {
+    const text = forFiles.filter(f => /android:mimeType="text\/\*"/.test(f))
+    expect(text.some(f => f.includes('android.intent.action.VIEW'))).toBe(true)
+    expect(text.some(f => f.includes('android.intent.action.SEND'))).toBe(true)
+  })
+
+  it('is offered for the data formats that are text but not text/*', () => {
+    const all = forFiles.join('')
+    for (const type of ['application/json', 'application/xml', 'application/javascript', 'application/x-yaml', 'application/x-sh', 'application/sql']) expect(all).toContain('android:mimeType="' + type + '"')
+  })
+
+  it('is offered for a text file a file manager calls a generic file, by its name', () => {
+    const generic = forFiles.filter(f => /application\/octet-stream/.test(f))
+    expect(generic.length).toBeGreaterThan(0)
+    // Android reads the escape before the pattern does, so the XML doubles it: two backslashes then md is the pattern for a literal dot then md.
+    for (const ext of ['md', 'markdown', 'txt', 'log', 'json', 'csv', 'yml', 'yaml', 'xml', 'ini', 'toml', 'conf']) {
+      expect(generic.join('')).toContain('android:pathPattern=".*\\\\.' + ext + '"')
+    }
+  })
+
+  it('every file filter can be picked from a chooser, and only takes content:// addresses', () => {
+    for (const f of forFiles) {
+      expect(f).toContain('android.intent.category.DEFAULT')
+      expect(f).not.toContain('android.intent.category.BROWSABLE') // a web page cannot start it
+      if (f.includes('android.intent.action.VIEW')) expect(f).toMatch(/android:scheme="content"/)
+      expect(f).not.toMatch(/android:scheme="file"/)
+    }
+  })
+
+  it('leaves the sign-in redirects as they were', () => {
+    expect(activity).toMatch(/android:scheme="nexusmd"[^>]*android:host="oauth"/)
+    expect(activity).toMatch(/android:scheme="com\.knownexus\.nexus"/)
+  })
+
+  it('registers under the name the JavaScript asks for and implements what it calls', () => {
+    expect(js).toContain(`registerPlugin('${name}')`)
+    const called = [...new Set([...js.matchAll(/\bplugin\.(\w+)\(/g)].map(x => x[1]))]
+    for (const m of called.filter(c => c !== 'addListener')) expect(methods).toContain(m)
+  })
+
+  it('tells the page with the event the JavaScript listens for', () => {
+    expect(js).toContain("'fileOpened'")
+    expect(java).toContain('"fileOpened"')
+    for (const key of ['name', 'text', 'error']) expect(java).toContain(`"${key}"`)
+  })
+
+  it('is registered by the activity before the bridge starts', () => {
+    const at = mainActivity.indexOf('registerPlugin(OpenedFilePlugin.class)')
+    expect(at).toBeGreaterThan(-1)
+    expect(at).toBeLessThan(mainActivity.search(/^\s*super\.onCreate\(/m))
+  })
+
+  it('reads only content:// addresses, never the app\'s own file provider, and caps the size', () => {
+    expect(java).toContain('SCHEME_CONTENT')
+    expect(java).not.toMatch(/SCHEME_FILE/)
+    expect(java).toContain('resolveContentProvider')
+    expect(java).toMatch(/MAX_BYTES\s*=\s*2 \* 1024 \* 1024/)
+  })
+})
+
+describe('Opening files cannot be turned on the app\'s own files', () => {
+  const java = fs.readFileSync(path.join(javaDir, 'OpenedFilePlugin.java'), 'utf8')
+  const paths = read('android', 'app', 'src', 'main', 'res', 'xml', 'file_paths.xml')
+  const updater = fs.readFileSync(path.join(javaDir, 'AppUpdatePlugin.java'), 'utf8')
+
+  it('works out which app owns a content address instead of trusting its text', () => {
+    // content://10@com.knownexus.nexus.fileprovider/... names our own provider but is not equal to its authority.
+    expect(java).toContain('resolveContentProvider')
+    expect(java).toMatch(/getAuthority\(\)[\s\S]{0,200}contains\("@"\)|contains\("@"\)[\s\S]{0,200}getAuthority\(\)/)
+    expect(java).toMatch(/\.packageName\.equals\(getContext\(\)\.getPackageName\(\)\)/)
+  })
+
+  it('shares only the folder the updater puts its download in', () => {
+    const folder = updater.match(/new File\(ctx\.getCacheDir\(\), "([^"]+)"\)/)[1]
+    expect(paths).toMatch(new RegExp(`<cache-path[^>]*path="${folder}/?"`))
+    expect(paths).not.toMatch(/path="\.?"/)          // not the whole cache
+    expect(paths).not.toContain('<external-path')    // not shared storage
+    expect(paths).not.toContain('<files-path')
+  })
+})
+
+describe('Opening text files: only text is taken, and its type is passed on', () => {
+  const java = fs.readFileSync(path.join(javaDir, 'OpenedFilePlugin.java'), 'utf8')
+  const js = read('src', 'opened-file.js')
+
+  it('refuses a file with a zero byte or that is not UTF-8, rather than showing garbage', () => {
+    expect(java).toMatch(/b == 0/)
+    expect(java).toContain('CodingErrorAction.REPORT')
+    expect(java).toContain('"Only text files can be opened."')
+  })
+
+  it('sends the type the JavaScript uses to tell Markdown from the rest', () => {
+    expect(java).toContain('put("type"')
+    expect(js).toContain('isMarkdownFile(file)')
+  })
+})
