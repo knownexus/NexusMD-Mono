@@ -94,7 +94,7 @@ test('a recording shows what a click set off, hides the token, and survives expo
     await win.getByRole('button', { name: 'Delete for good' }).click()
     await expect(win.getByRole('button', { name: 'Open e2e discover projects' })).toHaveCount(0)
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }) }, exported)
-    await win.getByRole('button', { name: 'Import', exact: true }).click()
+    await win.getByRole('button', { name: 'Import recording' }).click()
     await expect(win.getByRole('button', { name: 'Open e2e discover projects' })).toBeVisible()
     expect(readFileSync(join(userData, 'logs', '_recordings', `${id}.nxrec`))).toEqual(readFileSync(exported))
   } finally {

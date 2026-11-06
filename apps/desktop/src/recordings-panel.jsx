@@ -84,7 +84,7 @@ function Panel() {
             <button className="btn sm" onClick={record}>Record</button>
           </>
         )}
-        <button className="btn sm ghost" onClick={importOne}>Import</button>
+        <button className="btn sm ghost" onClick={importOne}>Import recording</button>
       </div>
       <p className="rp-msg" style={{ color: 'var(--text-muted)' }}>Press Record, use the app, then press Stop to see every call that ran, with its values, in order.</p>
       {error && <p role="alert" className="rp-msg" style={{ color: 'var(--danger)' }}>{error}</p>}
