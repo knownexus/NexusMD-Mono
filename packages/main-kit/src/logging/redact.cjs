@@ -2,7 +2,7 @@
 // Secrets never reach a log file: the hub runs every entry through here, so no producer can bypass it.
 
 // (`pat`, this app's name for a personal access token, only as a whole word: not path, pattern or patch.)
-const SECRET_KEY = /pass(word|wd)?|secret|token|authorization|api[-_ ]?key|cookie|private[-_ ]?key|connection[-_ ]?string|dsn|credential|(?<![a-z])pat(?![a-z])/i;
+const SECRET_KEY = /pass(word|wd)?|secret|token|authorization|api[-_ ]?key|cookie|private[-_ ]?key|connection[-_ ]?string|dsn|credential|auth[-_ ]?key|vault[-_ ]?key|(?<![a-z])pat(?![a-z])/i;
 const REDACTED = '[redacted]';
 // `"…key containing a secret word…": "value"` in a piece of JSON text that is not whole JSON. The same words as
 // SECRET_KEY, so the two cannot drift apart; the value may hold escaped quotes.

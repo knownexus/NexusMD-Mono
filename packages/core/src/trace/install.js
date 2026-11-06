@@ -28,7 +28,7 @@ export function installWindowRecording({ api = typeof window !== 'undefined' ? w
     if (disposed) return;
     const want = !!state?.recording;
     if (want && !shipper) {
-      runtime.start({ proc: 'renderer', win: state.win });
+      runtime.start({ proc: 'renderer', win: state.win, maxBytes: 32 * 1024 * 1024 });
       shipper = startShipper({ send: (events) => trace.push(events) });
     } else if (!want && shipper) {
       runtime.stop();

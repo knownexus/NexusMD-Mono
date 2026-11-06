@@ -11,9 +11,10 @@ afterEach(() => { uninstall?.(); uninstall = undefined; nxt.stop(); nxt.drain() 
 const respond = (body, init = {}) => new Response(body, { status: 200, headers: { 'content-type': 'application/json' }, ...init })
 const fakeWindow = (impl) => ({ fetch: vi.fn(impl) })
 // The responses are read after the page has its own copy, and a large one takes longer: wait for `count` requests to appear.
-const nets = async (count = 1) => {
+const nets = async (count = 1, waitMs = 2000) => {
   const found = []
-  for (let i = 0; i < 400 && found.length < count; i++) { await new Promise(r => setTimeout(r, 5)); found.push(...nxt.drain().filter(e => e.k === 'net')) }
+  const started = Date.now()
+  for (let i = 0; Date.now() - started < waitMs && found.length < count; i++) { await new Promise(r => setTimeout(r, 5)); found.push(...nxt.drain().filter(e => e.k === 'net')) }
   return found
 }
 
@@ -113,5 +114,38 @@ describe('installFetchCapture', () => {
     const [ev] = await nets()
     expect(ev.d.status).toBe(200)
     expect(ev.d.responseBody).toBeUndefined()
+  })
+})
+
+describe('review finding: responses of unknown length and streams', () => {
+  const stream = (chunkBytes = 16 * 1024) => new ReadableStream({ pull(c) { c.enqueue(new Uint8Array(chunkBytes)) } })   // never ends
+
+  it('a response that never ends is read only so far, then given up on, and the request still shows', { timeout: 8000 }, async () => {
+    const w = fakeWindow(async () => new Response(stream(), { status: 200, headers: { 'content-type': 'application/octet-stream' } }))
+    uninstall = installFetchCapture(w)
+    await w.fetch('https://x.example.com/endless')
+    const [ev] = await nets(1, 6000)
+    expect(ev.d.status).toBe(200)
+    expect(ev.d.responseBody).toMatchObject({ $cut: 'body', atLeast: expect.any(Number) })
+  })
+
+  it('an event stream is not read at all, and the page still gets its response', async () => {
+    const res = new Response(stream(), { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    const clone = vi.spyOn(res, 'clone')
+    const w = fakeWindow(async () => res)
+    uninstall = installFetchCapture(w)
+    expect(await w.fetch('https://x.example.com/events')).toBe(res)
+    const [ev] = await nets()
+    expect(clone).not.toHaveBeenCalled()
+    expect(ev.d.responseBody).toEqual({ $cut: 'body', bytes: null })
+  })
+
+  it('a body that ends within the limit is still reported by its exact size', async () => {
+    const big = 'x'.repeat(2 * 1024 * 1024)
+    const w = fakeWindow(async () => respond(big, { headers: { 'content-type': 'text/plain' } }))
+    uninstall = installFetchCapture(w)
+    await w.fetch('https://x.example.com/two-mb')
+    const [ev] = await nets()
+    expect(ev.d.responseBody).toEqual({ $cut: 'body', bytes: big.length })
   })
 })

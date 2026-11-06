@@ -33,6 +33,8 @@
   var total = 0;
   var bytes = 0;
   var seq = 0;
+  // New for each load of this file, so a window that reloads (the update, Ctrl+R, a crash) does not hand out ids the page it replaced already used.
+  var nonce = Math.random().toString(36).slice(2, 6).padEnd(4, '0');
   var prefix = 'p';
   var proc = 'main';
   var win;
@@ -47,12 +49,15 @@
   // A JSON-safe copy of a value, cut to a size that can be shown. Never throws: whatever cannot be read becomes a
   // marker like { $cut: 'circular' }.
   function cut(value, limits) {
-    var L = { depth: LIMITS.depth, str: LIMITS.str, items: LIMITS.items };
-    if (limits) { if (limits.depth != null) L.depth = limits.depth; if (limits.str != null) L.str = limits.str; if (limits.items != null) L.items = limits.items; }
+    // `budget` is how many values one cut may look at in all: a value that is wide at every level (a list of lists of lists) would otherwise
+    // cost 50 to the power of the depth, for every call that is given it.
+    var L = { depth: LIMITS.depth, str: LIMITS.str, items: LIMITS.items, budget: 2000, nodes: 0 };
+    if (limits) { if (limits.budget != null) L.budget = limits.budget; if (limits.depth != null) L.depth = limits.depth; if (limits.str != null) L.str = limits.str; if (limits.items != null) L.items = limits.items; }
     try { return walk(value, 0, [], L); } catch (e) { return { $cut: 'unreadable' }; }
   }
 
   function walk(v, depth, ancestors, L) {
+    if (++L.nodes > L.budget) return { $cut: 'budget' };
     var t = typeof v;
     if (v === null || t === 'boolean') return v;
     if (t === 'undefined') return { $cut: 'undefined' };
@@ -82,7 +87,10 @@
       if (Array.isArray(v)) {
         var arr = [];
         var n = Math.min(v.length, L.items);
-        for (var i = 0; i < n; i++) arr.push(walk(v[i], depth + 1, ancestors, L));
+        for (var i = 0; i < n; i++) {
+          if (L.nodes >= L.budget) { arr.push({ $cut: 'budget' }); break; }
+          arr.push(walk(v[i], depth + 1, ancestors, L));
+        }
         if (v.length > n) arr.push({ $cut: 'items', more: v.length - n });
         return arr;
       }
@@ -99,6 +107,7 @@
       var obj = {};
       var shown = Math.min(keys.length, L.items);
       for (var k = 0; k < shown; k++) {
+        if (L.nodes >= L.budget) { obj.$cut = 'budget'; break; }
         var key = keys[k];
         var val;
         try { val = v[key]; } catch (e) { obj[key] = { $cut: 'getter-threw' }; continue; }
@@ -124,7 +133,7 @@
     } catch (x) { return { name: 'Error', message: 'unreadable error' }; }
   }
 
-  function nextId() { return prefix + (win != null ? win : (typeof process !== 'undefined' && process.pid ? process.pid : 0)) + '-' + (++seq); }
+  function nextId() { return prefix + (win != null ? win : (typeof process !== 'undefined' && process.pid ? process.pid : 0)) + nonce + '-' + (++seq); }
 
   // Adds one event, or stops the recording when the cap is hit (the cap event says so).
   function push(ev) {

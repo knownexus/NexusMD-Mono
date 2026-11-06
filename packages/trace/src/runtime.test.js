@@ -48,7 +48,7 @@ describe('frames', () => {
   it('ids carry the process kind and are unique', () => {
     nxt.start({ proc: 'renderer', win: 3 })
     const a = nxt.enter('a.js:1:0:a', null, []); const b = nxt.enter('a.js:1:0:b', null, [])
-    expect(a.id).toMatch(/^r3-\d+$/)
+    expect(a.id).toMatch(/^r3[a-z0-9]+-\d+$/)
     expect(a.id).not.toBe(b.id)
   })
 
@@ -224,5 +224,38 @@ describe('emit limits', () => {
     const [net, log] = nxt.drain()
     expect(net.d.body.length).toBe(20000)
     expect(log.d.body.length).toBeLessThan(8100)
+  })
+})
+
+describe('review finding: a window that reloads', () => {
+  it('does not reuse the ids of the page it replaced: each load of the runtime has its own', () => {
+    nxt.start({ proc: 'renderer', win: 1 })
+    const first = nxt.enter('a.js:1:0:f', null, []).id
+    nxt.stop(); nxt.drain()
+    delete globalThis.__nxt
+    const reloaded = load()
+    reloaded.start({ proc: 'renderer', win: 1 })
+    const second = reloaded.enter('a.js:1:0:f', null, []).id
+    reloaded.stop(); reloaded.drain()
+    expect(second).not.toBe(first)
+    for (const id of [first, second]) expect(id).toMatch(/^[a-z][A-Za-z0-9]{0,15}-\d{1,12}$/)
+    expect(first).toMatch(/^r1[a-z0-9]+-\d+$/)
+  })
+})
+
+describe('review finding: what one value may cost', () => {
+  it('a value that is wide at every level is cut to a budget of nodes, not walked in full', () => {
+    const leaf = Array(50).fill(1); const l2 = Array(50).fill(leaf); const l3 = Array(50).fill(l2); const l4 = Array(50).fill(l3) // 6 million numbers, all shared
+    const t0 = Date.now()
+    const out = nxt.cut(l4)
+    expect(Date.now() - t0).toBeLessThan(1000)
+    const text = JSON.stringify(out)
+    expect(text.length).toBeLessThan(60000)
+    expect(text).toContain('"$cut":"budget"')
+  })
+
+  it('a value within the budget is not touched by it', () => {
+    const modest = { items: Array.from({ length: 40 }, (_, i) => ({ id: i, tags: ['a', 'b'] })) }
+    expect(JSON.stringify(nxt.cut(modest))).not.toContain('budget')
   })
 })

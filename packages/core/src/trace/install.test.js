@@ -23,7 +23,7 @@ describe('installWindowRecording', () => {
     stateCb({ recording: true, win: 4 })
     expect(nxt.on).toBe(true)
     const f = nxt.enter('a.js:1:0:f', null, []); nxt.ret(f, 0)
-    expect(f.id).toMatch(/^r4-/)
+    expect(f.id).toMatch(/^r4[a-z0-9]+-/)
     vi.advanceTimersByTime(600)
     expect(api.trace.push).toHaveBeenCalled()
     stateCb({ recording: false, win: 4 })
@@ -70,5 +70,15 @@ describe('installWindowRecording', () => {
     stateCb?.({ recording: true, win: 1 })
     document.querySelector('button').dispatchEvent(new MouseEvent('click', { bubbles: true }))
     expect(nxt.drain().filter(e => e.k === 'click')).toEqual([])
+  })
+})
+
+describe('review finding: the window gives its runtime a size cap', () => {
+  it('starts the runtime with a byte limit as well as the default event limit', () => {
+    const start = vi.spyOn(nxt, 'start')
+    off = installWindowRecording({ api, doc: document })
+    stateCb({ recording: true, win: 2 })
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ proc: 'renderer', win: 2, maxBytes: expect.any(Number) }))
+    expect(start.mock.calls[0][0].maxBytes).toBeGreaterThan(1_000_000)
   })
 })

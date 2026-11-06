@@ -127,3 +127,10 @@ describe('searchTree and firstError', () => {
     expect(firstError(logged).id).toBe('r1-1')
   })
 })
+
+describe('review finding: events that were left out', () => {
+  it('buildTree says how many, and counts none as zero', () => {
+    expect(buildTree([{ k: 'drop', n: 3, t: 5, proc: 'main' }, { k: 'drop', n: 2, t: 6, proc: 'main' }]).dropped).toBe(5)
+    expect(buildTree([]).dropped).toBe(0)
+  })
+})

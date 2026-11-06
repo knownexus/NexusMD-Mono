@@ -3,7 +3,7 @@
 //
 // A body over 64 KB, and any binary body, is not kept: it becomes { $cut: 'body', bytes } so the recording says how much
 // was there. A response that says it is larger than that is not even read.
-import { rendererLog, ignore } from '../log.js';
+import { rendererLog, ignore, ignored } from '../log.js';
 
 const log = rendererLog('core', 'trace-fetch');
 const MAX_BODY = 64 * 1024;
@@ -34,15 +34,40 @@ function describeRequest(input, init) {
   return { method, url, headers, ...(body !== undefined ? { body } : {}) };
 }
 
+// Reads a copy of a body up to MAX_READ bytes: to its end (its exact size, and the first MAX_BODY bytes as text if it is small), or, for
+// a body that goes on past that (no length given, or a stream), until the limit, then lets go of it. Memory stays bounded either way.
+const MAX_READ = 8 * 1024 * 1024;
+async function readCapped(copy) {
+  const reader = copy.body?.getReader();
+  if (!reader) return { bytes: 0, head: new Uint8Array(0) };
+  const kept = [];
+  let keptBytes = 0;
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (keptBytes <= MAX_BODY) { kept.push(value); keptBytes += value.byteLength; }
+    // (Not awaited: cancelling one side of a copied stream only finishes when the page has let go of its side too.)
+    if (total > MAX_READ) { reader.cancel().catch(ignored(log, 'giving up on a very long response body')); return { atLeast: total }; }
+  }
+  const head = new Uint8Array(Math.min(keptBytes, MAX_BODY + 1));
+  let at = 0;
+  for (const chunk of kept) { if (at >= head.length) break; head.set(chunk.subarray(0, head.length - at), at); at += chunk.byteLength; }
+  return { bytes: total, head };
+}
+
 async function describeResponse(res) {
   const out = { status: res.status, statusText: res.statusText, responseHeaders: headersObject(res.headers) };
   try {
     const type = res.headers.get('content-type') ?? '';
     const declared = Number(res.headers.get('content-length'));
     if (Number.isFinite(declared) && declared > MAX_BODY) return { ...out, responseBody: cutBody(declared) };
-    const buffer = await res.clone().arrayBuffer();
-    if (buffer.byteLength > MAX_BODY || (type && !TEXTUAL.test(type))) return { ...out, responseBody: cutBody(buffer.byteLength) };
-    return { ...out, responseBody: new TextDecoder().decode(buffer) };
+    if (/text\/event-stream/i.test(type)) return { ...out, responseBody: cutBody(null) }; // a stream with no end: never read
+    const read = await readCapped(res.clone());
+    if (read.atLeast) return { ...out, responseBody: { $cut: 'body', atLeast: read.atLeast } };
+    if (read.bytes > MAX_BODY || (type && !TEXTUAL.test(type))) return { ...out, responseBody: cutBody(read.bytes) };
+    return { ...out, responseBody: new TextDecoder().decode(read.head) };
   } catch (err) {
     ignore(log, 'a response body could not be read for the recording (the page still gets it)', err);
     return out;
