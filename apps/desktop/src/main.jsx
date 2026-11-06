@@ -40,11 +40,13 @@ import {
   moduleAdapters, moduleView, findPopout, ModuleProviders, useModuleBadges, useModuleOffViews, ModuleTopbar, ModuleBanners,
 } from './shell/modules.js'
 import { host, takeWaitingNavigation } from './shell/host.js'
-import { setActiveModule, reportRenderError, installRendererErrorHooks, installWindowRecording } from '@nexusmd/core'
+import { setActiveModule, reportRenderError, installRendererErrorHooks, installFetchLogging, installWindowRecording } from '@nexusmd/core'
 
 // Uncaught errors and unhandled rejections in this window reach the shell's log, filed under the app
 // whose screen is showing (setActiveModule, below).
 installRendererErrorHooks()
+// A request that fails or is refused is logged even when the code that made it handles it (api, sync, sign-in).
+installFetchLogging()
 // When a recording is running (the log viewer's Record), this window records what it does and sends it to the main process.
 installWindowRecording()
 import { AppUpdatesBanner } from './app-updates.jsx'

@@ -10,7 +10,7 @@ const EXPECTED = [
   'encodeBundle', 'decodeBundle', 'planProfileScopeMigration',
   'migrateToProfileScopeV2', 'moveTokensToSecureStorage', 'profileTokenNames', 'MIGRATION_V2_MARKER', 'createSecretCache', 'profileCacheStorage',
   'stableStringify', 'contentHash',
-  'CorruptLocalError', 'quarantineStored', 'readJsonKeepingDamaged', 'installWindowRecording', 'installClickCapture', 'accessibleName', 'installFetchCapture', 'startShipper', 'listDamagedCopies', 'discardDamagedCopy', 'ignore', 'ignored', 'rendererLog', 'setActiveModule', 'getActiveModule', 'reportRenderError', 'installRendererErrorHooks', 'serializeError', 'sendEntry',
+  'CorruptLocalError', 'quarantineStored', 'readJsonKeepingDamaged', 'installWindowRecording', 'installClickCapture', 'accessibleName', 'installFetchCapture', 'startShipper', 'listDamagedCopies', 'discardDamagedCopy', 'ignore', 'ignored', 'rendererLog', 'setActiveModule', 'getActiveModule', 'reportRenderError', 'installRendererErrorHooks', 'installFetchLogging', 'serializeError', 'sendEntry',
   'mergeRows', 'mergeKeyVal', 'mergeText', 'mergeSet', 'mergePlannerWeek', 'mergeLists', 'reconcileItem',
   'encryptSync', 'decryptSync', 'plannerCollection', 'notesCollection', 'teamCustomCollection',
   'teamRemovedCollection', 'tweaksCollection', 'listsCollection', 'createSyncRuntime', 'startAutoSync', 'singleFlight',

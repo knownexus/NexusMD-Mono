@@ -6,6 +6,7 @@ export { installClickCapture, accessibleName } from './trace/clicks.js'
 export { installFetchCapture } from './trace/fetch-capture.js'
 export { startShipper } from './trace/shipper.js'
 export { ignore, ignored, rendererLog, setActiveModule, getActiveModule, reportRenderError, installRendererErrorHooks, serializeError, sendEntry } from './log.js'
+export { installFetchLogging } from './log-fetch.js'
 export {
   IFileAdapter, IHttpAdapter, IStorageAdapter,
   INotificationAdapter, IPickerAdapter, IAuthAdapter, IClipboardAdapter,

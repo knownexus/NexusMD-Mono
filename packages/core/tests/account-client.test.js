@@ -187,6 +187,14 @@ describe('status', () => {
     expect(await client.status()).toEqual({ needsSetup: true })
   })
 
+  it('keeps the real reason behind offline as the cause of the error, so whoever logs it can say why', async () => {
+    const boom = new TypeError('Failed to fetch')
+    const client = createAccountClient({ baseUrl: BASE, fetch: async () => { throw boom }, sessionStore: memoryStore() })
+    const err = await client.status().catch(e => e)
+    expect(err).toMatchObject({ name: 'AccountError', code: 'offline' })
+    expect(err.cause).toBe(boom)
+  })
+
   it('maps a network rejection to offline', async () => {
     const client = createAccountClient({
       baseUrl: BASE,

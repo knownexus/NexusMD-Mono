@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 
-import { initCore, createNoOpAdapters } from '@nexusmd/core'
+import { initCore, createNoOpAdapters, installFetchLogging } from '@nexusmd/core'
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
@@ -19,6 +19,9 @@ import { nexusMDPushPref } from './components.jsx'
 import { GoogleAuth } from './google-auth.js'
 import { startWebAutoSync } from './sync.js'
 import App from './app.jsx'
+
+// A request that fails or is refused is logged (to the console here) even when the code handles it.
+installFetchLogging()
 
 initCore({
   ...createNoOpAdapters(),
