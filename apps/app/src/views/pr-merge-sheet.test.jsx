@@ -95,3 +95,62 @@ describe('close sheet', () => {
     expect(screen.getByRole('button', { name: 'Abandon it' })).toBeTruthy()
   })
 })
+
+// Deleting the source branch closes every other open PR that targets it (GitHub), so the sheet looks for them first,
+// names them, and leaves the branch alone unless asked.
+describe('merge sheet: pull requests that target the branch', () => {
+  const methods = [{ id: 'squash', label: 'Squash' }, { id: 'merge', label: 'Merge' }]
+  const withOptions = (extra) => actions({ mergeOptions: vi.fn(async () => ({ methods, ...extra })) })
+  const STACKED = [{ id: 8, label: '#8', title: 'Next in the stack' }, { id: 9, label: '#9', title: 'Another' }]
+
+  it('warns, names them, and does not delete the branch by default', async () => {
+    const a = withOptions({ dependents: STACKED })
+    const onDone = vi.fn()
+    mount({ makeActions: () => a, onDone })
+    await screen.findByLabelText('Merge type')
+    const note = screen.getByRole('note')
+    expect(note.textContent).toContain('2 open pull requests target this branch')
+    expect(note.textContent).toContain('#8 Next in the stack')
+    expect(note.textContent).toContain('would close them')
+    expect(screen.getByLabelText(/Delete the source branch/).checked).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+    expect(a.merge).toHaveBeenCalledWith(gh, { method: 'squash', deleteBranch: false })
+  })
+
+  it('can still delete the branch on purpose', async () => {
+    const a = withOptions({ dependents: STACKED })
+    mount({ makeActions: () => a })
+    await screen.findByLabelText('Merge type')
+    fireEvent.click(screen.getByLabelText(/Delete the source branch/))
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    await waitFor(() => expect(a.merge).toHaveBeenCalled())
+    expect(a.merge).toHaveBeenCalledWith(gh, { method: 'squash', deleteBranch: true })
+  })
+
+  it('says so, and keeps the branch, when the check could not be made', async () => {
+    mount({ makeActions: () => withOptions({ dependents: [], dependentsError: true }) })
+    await screen.findByLabelText('Merge type')
+    expect(screen.getByRole('note').textContent).toContain('could not check')
+    expect(screen.getByLabelText(/Delete the source branch/).checked).toBe(false)
+  })
+
+  it('has no warning, and deletes the branch as before, when nothing depends on it', async () => {
+    mount({ makeActions: () => withOptions({ dependents: [] }) })
+    await screen.findByLabelText('Merge type')
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(screen.getByLabelText(/Delete the source branch/).checked).toBe(true)
+  })
+
+  it('uses what the next PR finds, not what the last one found', async () => {
+    const first = withOptions({ dependents: STACKED })
+    const second = withOptions({ dependents: [] })
+    const { rerender } = mount({ makeActions: () => first })
+    await screen.findByLabelText('Merge type')
+    expect(screen.getByLabelText(/Delete the source branch/).checked).toBe(false)
+    rerender(<PRMergeSheet pr={{ ...gh, id: 'gh:a/b#4', number: 4 }} mode="merge" adoMeId="me" onClose={() => {}} makeActions={() => second}/>)
+    await waitFor(() => expect(screen.queryByRole('note')).toBeNull())
+    await screen.findByLabelText('Merge type')
+    expect(screen.getByLabelText(/Delete the source branch/).checked).toBe(true)
+  })
+})

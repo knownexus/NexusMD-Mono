@@ -44,6 +44,22 @@ export async function abandonAdoPR(http, { project, repoId, prId }) {
   await send(http, `${prPath(project, repoId, prId)}?api-version=7.0`, 'PATCH', { status: 'abandoned' })
 }
 
+/**
+ * Active pull requests in the same repository that target the source branch of this one: they are left pointing at a branch that
+ * no longer exists if it is deleted when this one completes. `branch` is the source branch, as 'refs/heads/x' or 'x'.
+ * @returns {Promise<{ id: number, label: string, title: string }[]>}
+ */
+export async function adoDependentPRs(http, { project, repoId, prId, branch }) {
+  if (!branch) return []
+  const ref = branch.startsWith('refs/') ? branch : `refs/heads/${branch}`
+  const res = await http.fetch(`${encodeURIComponent(project)}/_apis/git/repositories/${repoId}/pullrequests?searchCriteria.status=active&searchCriteria.targetRefName=${encodeURIComponent(ref)}&api-version=7.0`)
+  if (!res.ok) throw await failure(res)
+  const body = await res.json()
+  return (Array.isArray(body?.value) ? body.value : [])
+    .filter(p => p.pullRequestId !== prId)
+    .map(p => ({ id: p.pullRequestId, label: `#${p.pullRequestId}`, title: p.title || '' }))
+}
+
 export async function completeAdoPR(http, { project, repoId, prId }, { mergeStrategy, deleteSourceBranch }) {
   const path = `${prPath(project, repoId, prId)}?api-version=7.0`
   const res = await http.fetch(path)

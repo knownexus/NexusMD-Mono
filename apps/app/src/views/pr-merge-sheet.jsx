@@ -2,7 +2,7 @@
 // for both providers, over the shared PR actions. These are never queued for later: merging a PR
 // that was reviewed hours ago is not something to replay on reconnect, so offline it says so.
 import React from 'react';
-import { makeGithubClient, makePRActions } from '@nexusmd/core';
+import { makeGithubClient, makePRActions, deleteBranchWarning, deleteBranchByDefault } from '@nexusmd/core';
 import { Sheet } from '../components.jsx';
 import { createAdoHttpAdapter } from '../ado-client.js';
 import { createGithubHttpAdapter } from '../github-client.js';
@@ -23,6 +23,7 @@ export function PRMergeSheet({ pr, mode, adoMeId, onClose, onDone, makeActions =
   const [methods, setMethods] = React.useState(null);
   const [method, setMethod] = React.useState('');
   const [deleteBranch, setDeleteBranch] = React.useState(true);
+  const [warning, setWarning] = React.useState(''); // other open PRs target this branch (deleting it closes them), or that could not be checked
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
   const open = !!mode;
@@ -31,10 +32,10 @@ export function PRMergeSheet({ pr, mode, adoMeId, onClose, onDone, makeActions =
 
   React.useEffect(() => {
     if (!open || !merging || !pr) return;
-    setMethods(null); setError(''); setBusy(false); setDeleteBranch(true);
+    setMethods(null); setError(''); setBusy(false); setDeleteBranch(true); setWarning('');
     let live = true;
     makeActions(adoMeId).mergeOptions(pr)
-      .then(r => { if (live) { setMethods(r.methods); setMethod(r.methods[0]?.id || ''); } })
+      .then(r => { if (live) { setMethods(r.methods); setMethod(r.methods[0]?.id || ''); setDeleteBranch(deleteBranchByDefault(r)); setWarning(deleteBranchWarning(r, pr)); } })
       .catch(e => { if (live) { setMethods([]); setError(e?.message || 'Could not load the merge options.'); } });
     return () => { live = false; };
   }, [open, merging, pr?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -78,6 +79,7 @@ export function PRMergeSheet({ pr, mode, adoMeId, onClose, onDone, makeActions =
                   {methods.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
                 </select>
               </div>
+              {warning && <div role="note" className="m-hint" style={{ marginTop: 0 }}>{warning}</div>}
               <label className="m-switchrow">
                 <input type="checkbox" checked={deleteBranch} onChange={e => setDeleteBranch(e.target.checked)}/>
                 <span>Delete the source branch after merging</span>
