@@ -132,16 +132,16 @@ describe('RecordingsPanel', () => {
     await mount()
     api.importFile.mockResolvedValueOnce(info({ id: 'rec-20261105-130000-eeee', label: 'imported' }))
     api.list.mockResolvedValue([info(), info({ id: 'rec-20261105-130000-eeee', label: 'imported' })])
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Import' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Import recording' })) })
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
     api.importFile.mockRejectedValueOnce(new Error("Error invoking remote method 'recording:import': Error: That file is not a NexusMD recording"))
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Import' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Import recording' })) })
     expect(screen.getByRole('alert').textContent).toBe('That file is not a NexusMD recording')
   })
 
   it('a cancelled import does nothing', async () => {
     await mount()
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Import' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Import recording' })) })
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
@@ -149,5 +149,13 @@ describe('RecordingsPanel', () => {
     api.list.mockResolvedValue([])
     await mount()
     expect(screen.getByText(/no recordings yet/i)).toBeTruthy()
+  })
+})
+
+describe('review finding: the page already has an Import button', () => {
+  it('the recordings Import is named for what it imports, so it cannot be taken for the settings file Import beside it', async () => {
+    await mount()
+    expect(screen.getByRole('button', { name: 'Import recording' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Import', exact: true })).toBeNull()
   })
 })
