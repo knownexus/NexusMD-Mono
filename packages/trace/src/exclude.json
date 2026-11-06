@@ -1,0 +1,14 @@
+{
+  "_note": "Left alone by default: the window logger and window recorder, and the recording screens themselves (they would trace themselves, and their polling would fill every recording); and plumbing that fires on every storage read and says nothing (found by profiling a session: together about 40% of all calls). Add a path (a folder ends with /) or a function name to leave it out.",
+  "files": [
+    "packages/core/src/log.js",
+    "packages/core/src/trace/",
+    "apps/desktop/src/use-recording.js",
+    "apps/desktop/src/recordings-panel.jsx",
+    "apps/desktop/src/recording-indicator.jsx",
+    "apps/desktop/src/recording-model.js",
+    "apps/desktop/src/recording-tree.jsx",
+    "apps/desktop/src/adapters/recordings.js"
+  ],
+  "functions": ["getProfileKey", "getActiveProfileId", "getActiveId", "storeOf"]
+}

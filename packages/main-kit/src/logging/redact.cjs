@@ -1,8 +1,12 @@
 'use strict';
 // Secrets never reach a log file: the hub runs every entry through here, so no producer can bypass it.
 
-const SECRET_KEY = /pass(word|wd)?|secret|token|authorization|api[-_ ]?key|cookie|private[-_ ]?key|connection[-_ ]?string|dsn|credential/i;
+// (`pat`, this app's name for a personal access token, only as a whole word: not path, pattern or patch.)
+const SECRET_KEY = /pass(word|wd)?|secret|token|authorization|api[-_ ]?key|cookie|private[-_ ]?key|connection[-_ ]?string|dsn|credential|auth[-_ ]?key|vault[-_ ]?key|(?<![a-z])pat(?![a-z])/i;
 const REDACTED = '[redacted]';
+// `"…key containing a secret word…": "value"` in a piece of JSON text that is not whole JSON. The same words as
+// SECRET_KEY, so the two cannot drift apart; the value may hold escaped quotes.
+const JSON_SECRET_PAIR = new RegExp(String.raw`("[^"\n]{0,200}(?:${SECRET_KEY.source})[^"\n]{0,200}"\s*:\s*)"(?:[^"\\]|\\.)*"`, 'gi');
 
 // V8 quotes the start of the text a failed JSON.parse choked on: `Unexpected token 's', "secret torn" is not
 // valid JSON`. That text is whatever was being parsed (a note, a profile, a response), so it is dropped
@@ -11,18 +15,37 @@ const REDACTED = '[redacted]';
 const JSON_QUOTE = /Unexpected token [\s\S]*?is not valid JSON/g;
 const JSON_QUOTE_GONE = 'not valid JSON (the text that failed to parse is not logged)';
 
+// JSON text that parses is redacted as a value (every key SECRET_KEY knows, any depth, escapes and all), then written
+// back out compact. That check always sees the whole text, up to MAX_JSON_TEXT; JSON text bigger than that is hidden
+// outright rather than passed on half-checked. Text that is not whole JSON (a fragment, a log line with JSON in it)
+// goes through the patterns below.
+//
+// Nothing downstream keeps more than a few KB of any one value (entry.cjs caps them, recordings cut them), so what is
+// kept is cut to MAX_REDACT_INPUT, and the patterns only ever run on that: a huge string must not be able to make
+// redaction slow.
+const MAX_REDACT_INPUT = 200000;
+const MAX_JSON_TEXT = 1000000;
+const cutText = (text) => (text.length > MAX_REDACT_INPUT ? `${text.slice(0, MAX_REDACT_INPUT)}…(+${text.length - MAX_REDACT_INPUT} chars not shown)` : text);
+
 /** Text with passwords, tokens and credentials in URLs, headers and connection strings blanked out. */
 function redactString(s) {
-  return String(s)
+  const whole = String(s);
+  const t = whole.trim();
+  if (t[0] === '{' || t[0] === '[') {
+    if (t.length > MAX_JSON_TEXT) return `[redacted: ${t.length} characters of JSON text, too large to check]`;
+    try { return cutText(JSON.stringify(redactValue(JSON.parse(t)))); } catch { /* not whole JSON: the patterns below */ }
+  }
+  return cutText(whole)
     .replace(JSON_QUOTE, JSON_QUOTE_GONE)
     // scheme://user:password@host
     .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)([^\s/@:]+):([^\s/@]+)@/gi, `$1$2:${REDACTED}@`)
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, `Bearer ${REDACTED}`)
     .replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,})\b/g, REDACTED)
     // Password=…; Token=… (connection strings, query strings)
-    .replace(/\b(password|pwd|secret|token|api[-_]?key|accountkey|sharedaccesskey)\s*=\s*[^;\s&'"]+/gi, `$1=${REDACTED}`)
+    // (also access_token, refresh_token, id_token and client_secret: `_` is a word character, so a bare `token` misses them)
+    .replace(/\b((?:access|refresh|id|auth|client)[-_]?(?:token|secret)|password|pwd|secret|token|api[-_]?key|accountkey|sharedaccesskey|pat)\s*=\s*[^;\s&'"]+/gi, `$1=${REDACTED}`)
     // "password": "…" inside JSON text
-    .replace(/("(?:password|secret|token|api[-_]?key|authorization)"\s*:\s*)"[^"]*"/gi, `$1"${REDACTED}"`)
+    .replace(JSON_SECRET_PAIR, `$1"${REDACTED}"`)
     // Authorization: Basic …  (Bearer is handled above)
     .replace(/\b(authorization\s*:\s*)(?!Bearer)[^\r\n]+/gi, `$1${REDACTED}`);
 }
@@ -44,4 +67,4 @@ function redactValue(value, depth = 0, seen = new WeakSet()) {
   return out;
 }
 
-module.exports = { REDACTED, redactString, redactValue };
+module.exports = { REDACTED, SECRET_KEY, redactString, redactValue };

@@ -16,6 +16,7 @@ export default defineConfig({
       'packages/web-adapters',
       'packages/shell-sdk',
       'packages/main-kit',
+      'packages/trace',
       'packages/editor-kit',
       'modules/api-client',
       'modules/calendar',

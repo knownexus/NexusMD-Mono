@@ -63,6 +63,9 @@ export function rendererLog(mod = 'core', scope = null) {
     const err = isErr ? a : undefined
     const data = isErr ? b : a
     const sent = sendEntry({ mod, lvl, scope, msg: String(msg), ...(isErr ? { err: serializeError(err) } : {}), data })
+    // While a recording runs, the line is also a node in it, under the call that wrote it (packages/trace).
+    const recorder = typeof globalThis !== 'undefined' ? globalThis.__nxt : undefined
+    if (recorder?.on) recorder.emit('log', { lvl, mod, scope, msg: String(msg), ...(isErr ? { err: serializeError(err) } : {}), ...(data !== undefined ? { data } : {}) })
     if (!sent) toConsole(lvl, mod, scope, String(msg), err, data)
   }
   return {

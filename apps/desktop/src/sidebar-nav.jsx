@@ -3,6 +3,7 @@ import { Icon } from '@nexusmd/ui'
 import { usePersistedState } from '@nexusmd/shell-sdk'
 import { sidebarGroups, shortcutNav } from './layout.js'
 import { SETTINGS_NAV } from './nav-config.js'
+import { RecordingIndicator } from './recording-indicator.jsx'
 
 // The number keys 1-9 open the screen with that number in `shortcutList` (shortcutNav: main, then
 // More, then footer, as the sidebar numbers them). Ignored while typing or with a modifier held.
@@ -120,6 +121,7 @@ export function SidebarNav({
             {footer.map(item => button(item, { number: numberOf(item) }))}
           </div>
         )}
+        <RecordingIndicator iconsOnly={iconsOnly} />
         {status}
         {button(SETTINGS_NAV)}
       </div>

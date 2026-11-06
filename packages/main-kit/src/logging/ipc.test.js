@@ -200,3 +200,102 @@ describe('withLogging on an ipcMain that already logs', () => {
     expect(calls).toEqual([['x:y', 'plain']])
   })
 })
+
+describe('createLoggedIpc: a call in a recording', () => {
+  const nxt = require('../../../trace/src/runtime.js')
+  const { createTraceLink } = require('../trace/link.cjs')
+  const evt = { sender: { id: 1 } }
+  const traced = (moduleId = 'git') => {
+    const hub = fakeHub(); const ipc = fakeIpc(); const link = createTraceLink()
+    const logged = createLoggedIpc(ipc, { hub, moduleId, now: () => 0, trace: link, runtime: nxt })
+    return { ipc, logged, link }
+  }
+  const enters = () => nxt.drain().filter(e => e.k !== 'ret' && e.k !== 'err' || true)
+  const start = () => { nxt.start({ proc: 'main' }); nxt.drain() }
+  const stop = () => { nxt.stop(); nxt.drain() }
+
+  it('becomes a node named after its channel, under the window call that made it, and what the handler calls is under it', async () => {
+    const { ipc, logged, link } = traced()
+    logged.handle('git:push', async (_e, repo) => { const f = nxt.enter('x.js:1:0:inner', null, [repo]); nxt.ret(f, 1); return 'pushed' })
+    start()
+    link.note(1, 'git:push', 'r1-5')
+    expect(await ipc.handlers.get('git:push')(evt, 'C:/repo')).toBe('pushed')
+    const evs = nxt.drain(); stop()
+    const node = evs.find(e => e.k === 'enter' && e.fn === 'ipc:git:push')
+    expect(node.p).toBe('r1-5')
+    expect(node.a).toEqual(['C:/repo'])                        // the event is not an argument
+    expect(evs.find(e => e.k === 'enter' && e.fn.endsWith(':inner')).p).toBe(node.id)
+    expect(evs.find(e => e.k === 'ret' && e.id === node.id).v).toBe('pushed')
+  })
+
+  it('is its own root when no window call was noted for it', async () => {
+    const { ipc, logged } = traced()
+    logged.handle('git:status', () => 'ok')
+    start()
+    ipc.handlers.get('git:status')(evt)
+    const node = nxt.drain().find(e => e.k === 'enter')
+    stop()
+    expect(node.p).toBeNull()
+  })
+
+  it('a handler that throws still rethrows, and the error is on the node', async () => {
+    const { ipc, logged } = traced()
+    const boom = new Error('rejected by remote')
+    logged.handle('git:push', async () => { throw boom })
+    start()
+    await expect(ipc.handlers.get('git:push')(evt)).rejects.toBe(boom)
+    const err = nxt.drain().find(e => e.k === 'err')
+    stop()
+    expect(err.e).toMatchObject({ name: 'Error', message: 'rejected by remote' })
+  })
+
+  it('a synchronous handler that throws is recorded and rethrown too', () => {
+    const { ipc, logged } = traced()
+    logged.handle('git:bad', () => { throw new RangeError('no') })
+    start()
+    expect(() => ipc.handlers.get('git:bad')(evt)).toThrow(RangeError)
+    expect(nxt.drain().some(e => e.k === 'err')).toBe(true)
+    stop()
+  })
+
+  it('not recording: nothing is recorded and a noted window call is left alone', async () => {
+    const { ipc, logged, link } = traced()
+    logged.handle('git:status', () => 'ok')
+    link.note(1, 'git:status', 'r1-5')
+    expect(ipc.handlers.get('git:status')(evt)).toBe('ok')
+    expect(nxt.drain()).toEqual([])
+    expect(link.take(1, 'git:status')).toBe('r1-5')
+  })
+
+  it("the recording's own channels (trace:, recording:, log:, logs:) are not recorded", () => {
+    const { ipc, logged } = traced('core')
+    for (const ch of ['trace:push', 'recording:start', 'log:ingest', 'logs:query']) logged.handle(ch, () => 1)
+    start()
+    for (const ch of ['trace:push', 'recording:start', 'log:ingest', 'logs:query']) ipc.handlers.get(ch)(evt)
+    expect(nxt.drain()).toEqual([])
+    stop()
+  })
+
+  it('two calls running at once keep what they call apart', async () => {
+    const { ipc, logged } = traced()
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+    logged.handle('git:slow', async (_e, name, ms) => { await sleep(ms); const f = nxt.enter(`x.js:1:0:leaf-${name}`, null, []); nxt.ret(f, 0) })
+    start()
+    await Promise.all([ipc.handlers.get('git:slow')(evt, 'a', 15), ipc.handlers.get('git:slow')(evt, 'b', 2)])
+    const evs = nxt.drain().filter(e => e.k === 'enter'); stop()
+    const nodes = evs.filter(e => e.fn === 'ipc:git:slow')
+    for (const leaf of evs.filter(e => e.fn.includes('leaf-'))) {
+      const owner = nodes.find(n => n.id === leaf.p)
+      expect(owner.a[0]).toBe(leaf.fn.slice(-1))
+    }
+  })
+
+  it('still logs a failure and keeps its correlation, as before', async () => {
+    const { hub, ipc, logged } = (() => { const hub = fakeHub(); const ipc = fakeIpc(); const logged = createLoggedIpc(ipc, { hub, moduleId: 'git', now: () => 0, trace: createTraceLink(), runtime: nxt }); return { hub, ipc, logged } })()
+    logged.handle('git:push', async () => { throw new Error('x') })
+    start()
+    await expect(ipc.handlers.get('git:push')(evt)).rejects.toThrow('x')
+    stop()
+    expect(hub.entries.some(e => e.level === 'error' && e.args[0] === 'git:push failed')).toBe(true)
+  })
+})

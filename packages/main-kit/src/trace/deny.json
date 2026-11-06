@@ -1,0 +1,36 @@
+{
+  "_note": "Patterns (case-insensitive) for what a recording replaces outright, with no value shown, and everything a denied function calls with it. `files` are the files of this app's own credential stores: every function in one has its arguments, result and calls hidden, whatever it is called (a store's `set(key, value)` carries a token under no name). `functions` are tested against the function's name split into lowercase words ('getAuthToken' becomes 'get auth token'), so 'tokenize' is not a credential but 'getAuthToken' is. Everything not matched is shown, with secrets that match a pattern in logging/redact.cjs hidden.",
+  "urls": [
+    "/oauth",
+    "/connect/token",
+    "/token(?:[/?#]|$)",
+    "login\\.microsoftonline\\.com",
+    "github\\.com/login",
+    "/authorize(?:[/?#]|$)",
+    "/api/account/"
+  ],
+  "functions": [
+    "\\bsign ?in\\b",
+    "\\b(?:authenticate|authenticate user|login|derive keys?)\\b",
+    "\\b(?:tokens?|secrets?|passwords?|passwd|credentials?)\\b"
+  ],
+  "files": [
+    "token-store",
+    "secret-cache",
+    "secure-storage",
+    "profile-secrets",
+    "account-client",
+    "account/crypto",
+    "profiles/bundle",
+    "sync/crypto",
+    "planner/confidential",
+    "settings-file",
+    "secrets?\\.c?js"
+  ],
+  "channels": [
+    "^oauth:",
+    "^secure-?storage",
+    "^secrets?:",
+    "^account:(?:login|token|refresh)"
+  ]
+}

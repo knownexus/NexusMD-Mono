@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest'
 import Module from 'module'
 import path from 'path'
 import gitManifest from '@nexusmd/app-git/manifest'
@@ -11,6 +11,7 @@ import workManifest from '@nexusmd/app-work/manifest'
 
 let exposed
 let ipcRenderer
+let stateHandler
 const origRequire = Module.prototype.require
 
 beforeAll(() => {
@@ -28,6 +29,7 @@ beforeAll(() => {
   const preloadPath = path.join(__dirname, 'preload.cjs')
   delete require.cache?.[preloadPath]
   origRequire.call(module, preloadPath)   // eslint-disable-line
+  stateHandler = ipcRenderer.on.mock.calls.find(c => c[0] === 'trace:state')?.[1]
 })
 
 afterAll(() => { Module.prototype.require = origRequire })
@@ -270,5 +272,85 @@ describe('preload bridge', () => {
     expect(ipcRenderer.removeListener).toHaveBeenCalledWith('devenv:line', handler)
     exposed.devenv.onExit(vi.fn())
     expect(ipcRenderer.on.mock.calls.at(-1)[0]).toBe('devenv:exit')
+  })
+})
+
+describe('preload bridge: recording', () => {
+  const state = (s) => stateHandler({}, s)
+  const sentTo = (channel) => ipcRenderer.send.mock.calls.filter(c => c[0] === channel)
+  beforeEach(() => { state({ recording: false }); exposed.trace.setContextProvider(null); ipcRenderer.send.mockClear(); ipcRenderer.invoke.mockClear() })
+
+  it('start, stop, status, list, read, remove, export and import call their channels', () => {
+    exposed.recording.start('merge test'); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('recording:start', 'merge test')
+    exposed.recording.stop(); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('recording:stop')
+    exposed.recording.status(); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('recording:status')
+    exposed.recording.list(); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('recording:list')
+    exposed.recording.read('rec-1'); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('recording:read', 'rec-1')
+    exposed.recording.remove('rec-1'); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('recording:remove', 'rec-1')
+    exposed.recording.exportTo('rec-1'); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('recording:export', 'rec-1')
+    exposed.recording.importFile(); expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('recording:import')
+  })
+
+  it('trace.push sends a batch of events to the main process', () => {
+    exposed.trace.push([{ k: 'enter' }])
+    expect(ipcRenderer.send).toHaveBeenLastCalledWith('trace:push', [{ k: 'enter' }])
+  })
+
+  it('knows whether a recording is running, and tells anyone listening when that changes', () => {
+    const seen = []
+    const off = exposed.trace.onState(s => seen.push(s.recording))
+    state({ recording: true, win: 3 })
+    expect(exposed.trace.state()).toEqual({ recording: true, win: 3 })
+    state({ recording: false, win: 3 }); off(); state({ recording: true, win: 3 })
+    expect(seen).toEqual([true, false])
+  })
+
+  it('while recording, notes which of its calls is making an IPC call, just before the call', () => {
+    state({ recording: true, win: 1 })
+    exposed.trace.setContextProvider(() => 'r1-5')
+    exposed.popout.open({ kind: 'editor' })
+    expect(sentTo('trace:ctx')).toEqual([['trace:ctx', { callId: 'r1-5', channel: 'popout:open' }]])
+    expect(ipcRenderer.send.mock.invocationCallOrder[0]).toBeLessThan(ipcRenderer.invoke.mock.invocationCallOrder[0])
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('popout:open', { kind: 'editor' })
+  })
+
+  it('does this for sends as well as invokes', () => {
+    state({ recording: true, win: 1 })
+    exposed.trace.setContextProvider(() => 'r1-6')
+    exposed.popout.changed('C:\repos\a')
+    expect(sentTo('trace:ctx')).toEqual([['trace:ctx', { callId: 'r1-6', channel: 'popout:changed' }]])
+  })
+
+  it('not recording, or with nothing to say which call it is, it notes nothing and the call goes through', () => {
+    exposed.trace.setContextProvider(() => 'r1-5')
+    exposed.popout.open({ kind: 'editor' })
+    state({ recording: true, win: 1 }); exposed.trace.setContextProvider(null)
+    exposed.popout.open({ kind: 'editor' })
+    expect(sentTo('trace:ctx')).toEqual([])
+    expect(ipcRenderer.invoke).toHaveBeenCalledTimes(2)
+  })
+
+  it('the channels of the recording itself are never noted', () => {
+    state({ recording: true, win: 1 })
+    exposed.trace.setContextProvider(() => 'r1-5')
+    exposed.recording.list(); exposed.trace.push([])
+    expect(sentTo('trace:ctx')).toEqual([])
+  })
+
+  it('a provider that throws is reported to the log and the call still goes through', () => {
+    state({ recording: true, win: 1 })
+    exposed.trace.setContextProvider(() => { throw new Error('page is gone') })
+    exposed.popout.open({ kind: 'editor' })
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('popout:open', { kind: 'editor' })
+    const logged = sentTo('log:ingest')
+    expect(logged).toHaveLength(1)
+    expect(logged[0][1]).toMatchObject({ lvl: 'warn', scope: 'preload', err: { message: 'page is gone' } })
+  })
+
+  it('a provider that answers with something that is not a frame id is ignored', () => {
+    state({ recording: true, win: 1 })
+    exposed.trace.setContextProvider(() => ({ not: 'an id' }))
+    exposed.popout.open({ kind: 'editor' })
+    expect(sentTo('trace:ctx')).toEqual([])
   })
 })

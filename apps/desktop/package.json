@@ -45,6 +45,7 @@
     "@nexusmd/app-planner": "*",
     "@nexusmd/app-work": "*",
     "@nexusmd/core": "*",
+    "@nexusmd/trace": "*",
     "@nexusmd/editor-kit": "*",
     "@nexusmd/main-kit": "*",
     "@nexusmd/shell-sdk": "*",

@@ -184,3 +184,26 @@ describe('ignore: the sanctioned way to swallow an error', () => {
     expect(() => ignore(undefined, 'x', new Error('y'))).not.toThrow()
   })
 })
+
+describe('a recording of window code', () => {
+  const { createRequire } = require('node:module')
+  const nxt = createRequire(import.meta.url)('../../trace/src/runtime.js')
+  afterEach(() => { nxt.stop(); nxt.drain() })
+
+  it('writes nothing extra when nothing is recording', () => {
+    rendererLog('git', 'diff').debug('quiet')
+    expect(nxt.drain()).toEqual([])
+  })
+
+  it('a log line becomes a log event under the call that wrote it, at any level, with its error and data', () => {
+    nxt.start({ proc: 'renderer', win: 1 })
+    const f = nxt.enter('a.js:1:0:caller', null, [])
+    rendererLog('git', 'diff').debug('opened a file', { file: 'a.js' })
+    rendererLog('git').error('diff failed', new TypeError('bad'))
+    nxt.ret(f, 0)
+    const logs = nxt.drain().filter(e => e.k === 'log')
+    expect(logs).toHaveLength(2)
+    expect(logs[0]).toMatchObject({ p: f.id, d: { lvl: 'debug', mod: 'git', scope: 'diff', msg: 'opened a file', data: { file: 'a.js' } } })
+    expect(logs[1].d).toMatchObject({ lvl: 'error', msg: 'diff failed', err: { name: 'TypeError', message: 'bad' } })
+  })
+})

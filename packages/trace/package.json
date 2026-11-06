@@ -1,0 +1,19 @@
+{
+  "name": "@nexusmd/trace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Call tracing: the runtime the instrumented code reports to, the transform that adds the reports, and the build plugin",
+  "exports": {
+    "./runtime": "./src/runtime.js",
+    "./instrument": "./src/instrument.mjs",
+    "./vite-plugin": "./src/vite-plugin.mjs",
+    "./main-rules": "./src/main-rules.cjs",
+    "./exclude.json": "./src/exclude.json"
+  },
+  "files": ["src"],
+  "scripts": { "test": "vitest run" },
+  "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@jridgewell/trace-mapping": "^0.3.28"
+  }
+}

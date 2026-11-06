@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { SHARED_SPECIFIERS, sharedName, importMap, sharedEntrySource } from './build/shared.mjs'
 import { analyzeUi, sharedUiEntrySource } from './build/ui-split.mjs'
 import { themePreload } from './build/theme-preload.mjs'
+import { traceCalls } from '@nexusmd/trace/vite-plugin'
 
 // The shell of the split build: the window's own code and the shared libraries, and NO app code.
 // Each app is built on its own (build/build-split.mjs) and loaded from its folder at runtime.
@@ -61,7 +62,7 @@ const injectImportMap = () => ({
 })
 
 export default defineConfig({
-  plugins: [react(), useSharedUi(), swapAppSources(), injectImportMap(), themePreload()],
+  plugins: [traceCalls(), react(), useSharedUi(), swapAppSources(), injectImportMap(), themePreload()],
   base: './',
   build: {
     outDir: '../../dist/desktop/split/shell',

@@ -5,6 +5,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { traceMainTree } from '../build/trace-main.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const desktop = resolve(here, '..')
@@ -12,7 +13,7 @@ const repo = resolve(desktop, '..', '..')
 export const stageDir = join(repo, 'dist', 'desktop', 'stage')
 
 // What electron/*.cjs requires from node_modules (not counting the apps, which are loaded from their folders).
-const MAIN_DEPENDENCIES = ['electron-log', 'electron-updater', '@nexusmd/main-kit']
+const MAIN_DEPENDENCIES = ['electron-log', 'electron-updater', '@nexusmd/main-kit', '@nexusmd/trace']
 
 export function stagedPackageJson(pkg) {
   const dependencies = {}
@@ -66,6 +67,8 @@ export function stage() {
     cpSync(dir, join(stageDir, 'node_modules', name), { recursive: true })
   }
   writeFileSync(join(stageDir, 'package.json'), JSON.stringify(stagedPackageJson(pkg), null, 2))
+  // The installed app can be recorded like the one run from source: its main-process code gets the call reports here.
+  traceMainTree(stageDir)
   return stageDir
 }
 

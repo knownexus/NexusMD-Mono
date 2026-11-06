@@ -10,6 +10,9 @@ const { runWithCorrelation, currentCorrelation } = require('./context.cjs');
 // withLogging) is reported once.
 const reported = new WeakSet();
 
+// The recording's own traffic, and the log's: never a node in a recording (it would record itself).
+const NOT_RECORDED = /^(?:trace|recording|log|logs):/;
+
 const SLOW_DEBUG_MS = 1000;   // worth a debug line
 const SLOW_WARN_MS = 10000;   // worth a warning (dialogs and long jobs sit between the two)
 
@@ -28,7 +31,12 @@ function argShape(args) {
  * @param ipc  the real ipcMain
  * @param {{ hub: object, moduleId: string, now?: () => number }} opts  `hub` from createLogHub
  */
-function createLoggedIpc(ipc, { hub, moduleId, now = Date.now }) {
+function createLoggedIpc(ipc, { hub, moduleId, now = Date.now, trace, runtime } = {}) {
+  // While a recording runs, a call becomes a node `ipc:<channel>`, under the window call that made it when the window
+  // said so (packages/main-kit/src/trace/link.cjs), and everything its handler calls is under it. Both are looked up
+  // when a call arrives, not when this is created: the shell makes its ipcMain before the recording machinery exists.
+  const linkOf = () => trace ?? globalThis.traceLink;
+  const runtimeOf = () => runtime ?? globalThis.__nxt;
   const log = hub.logger(moduleId);
   const wrappedListeners = new Map(); // `${channel}` -> Map(original fn -> wrapped fn)
 
@@ -54,7 +62,7 @@ function createLoggedIpc(ipc, { hub, moduleId, now = Date.now }) {
 
   // fn wrapped: same arguments, same result (a promise stays a promise), failures logged.
   function wrap(channel, fn) {
-    return function loggedHandler(event, ...args) {
+    const logged = function loggedHandler(event, ...args) {
       const started = now();
       let result;
       let cid; // this call's correlation id, to log its failure and its duration under
@@ -71,6 +79,28 @@ function createLoggedIpc(ipc, { hub, moduleId, now = Date.now }) {
         );
       }
       noteDuration(channel, started, cid);
+      return result;
+    };
+
+    return function recordedHandler(event, ...args) {
+      const rt = runtimeOf();
+      if (!rt || !rt.on || NOT_RECORDED.test(channel)) return logged.call(this, event, ...args);
+      const callId = linkOf()?.take(event?.sender?.id, channel) ?? null;
+      let frame = null;
+      const open = () => { frame = rt.enter(`ipc:${channel}`, null, args); };
+      if (callId) rt.run(callId, open); else open();
+      if (!frame) return logged.call(this, event, ...args);
+      let result;
+      try {
+        result = rt.run(frame.id, () => logged.call(this, event, ...args));
+      } catch (err) {
+        rt.err(frame, err);
+        throw err;
+      }
+      if (result && typeof result.then === 'function') {
+        return result.then((value) => { rt.ret(frame, value); return value; }, (err) => { rt.err(frame, err); throw err; });
+      }
+      rt.ret(frame, result);
       return result;
     };
   }

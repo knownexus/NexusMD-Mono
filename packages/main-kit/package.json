@@ -6,6 +6,7 @@
   "exports": {
     "./logging": "./src/logging/index.cjs",
     "./safe-file": "./src/safe-file.cjs",
+    "./trace": "./src/trace/index.cjs",
     "./with-logging": "./src/withLogging.cjs"
   },
   "files": [

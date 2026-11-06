@@ -20,6 +20,8 @@ function createLogHub({
   sid = `s-${Math.random().toString(36).slice(2, 8)}`, pid = process.pid, fallback = console,
 } = {}) {
   let minRank = RANK[normalizeLevel(level)];
+  let verbose = false;  // while a recording runs: keep every level, whatever the configured one
+  let traceSink = null; // while a recording runs: told of each entry kept, with the call that wrote it
   let seq = 0;
   let lastSyncFlush = 0;
   let timer = null;
@@ -51,7 +53,7 @@ function createLogHub({
   function write(raw) {
     try {
       const lvl = normalizeLevel(raw.lvl);
-      if (RANK[lvl] > minRank) return null;
+      if (RANK[lvl] > minRank && !verbose) return null;
       const mod = isModuleId(raw.mod) ? raw.mod : 'core';
       // `detached`: not part of the call chain this happens to run in (an entry from a window, handled inside the
       // shell's logged ipcMain, is not a call that went through core).
@@ -91,6 +93,9 @@ function createLogHub({
         if (cidModules.size > CID_MEMORY) cidModules.delete(cidModules.keys().next().value);
       }
 
+      if (traceSink) {
+        try { traceSink(entry, globalThis.__nxt?.current?.() ?? null); } catch (err) { fallback.error?.('[logging] the recording sink threw:', err.message); }
+      }
       ring.push(entry);
       if (ring.length > RING) ring.shift();
       writer.add(entry);
@@ -152,6 +157,10 @@ function createLogHub({
     /** Every module whose entries carried this correlation id. */
     modulesOf: cid => [...(cidModules.get(cid) ?? [])],
     setLevel(l) { minRank = RANK[normalizeLevel(l)]; },
+    /** While on, every level is kept (a recording wants the debug lines); off puts the configured level back. */
+    setVerbose(on) { verbose = !!on; },
+    /** `fn(entry, parentFrameId)` for each entry kept, so a recording can show it under the call that wrote it; null stops it. */
+    setTraceSink(fn) { traceSink = typeof fn === 'function' ? fn : null; },
     prune: () => prune({ dir, days: retention.days, maxBytes: retention.maxBytes, now: now(), fs, onError: () => {} }),
   };
 }
