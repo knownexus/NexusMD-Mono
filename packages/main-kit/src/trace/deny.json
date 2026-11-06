@@ -23,6 +23,8 @@
     "account/crypto",
     "profiles/bundle",
     "sync/crypto",
+    "planner/confidential",
+    "settings-file",
     "secrets?\\.c?js"
   ],
   "channels": [

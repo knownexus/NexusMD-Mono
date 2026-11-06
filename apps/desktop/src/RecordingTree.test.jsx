@@ -201,3 +201,10 @@ describe('background activity', () => {
     expect(screen.queryByRole('button', { name: 'Background activity' })).toBeNull()
   })
 })
+
+describe('review finding: events that were left out', () => {
+  it('says how many were left out and why', () => {
+    show([...quiet(), { k: 'drop', n: 3, t: T0 + 900, proc: 'main' }])
+    expect(screen.getByRole('status').textContent).toMatch(/3 events were left out/)
+  })
+})

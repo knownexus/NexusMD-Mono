@@ -242,3 +242,20 @@ describe('review finding: a window that reloads', () => {
     expect(first).toMatch(/^r1[a-z0-9]+-\d+$/)
   })
 })
+
+describe('review finding: what one value may cost', () => {
+  it('a value that is wide at every level is cut to a budget of nodes, not walked in full', () => {
+    const leaf = Array(50).fill(1); const l2 = Array(50).fill(leaf); const l3 = Array(50).fill(l2); const l4 = Array(50).fill(l3) // 6 million numbers, all shared
+    const t0 = Date.now()
+    const out = nxt.cut(l4)
+    expect(Date.now() - t0).toBeLessThan(1000)
+    const text = JSON.stringify(out)
+    expect(text.length).toBeLessThan(60000)
+    expect(text).toContain('"$cut":"budget"')
+  })
+
+  it('a value within the budget is not touched by it', () => {
+    const modest = { items: Array.from({ length: 40 }, (_, i) => ({ id: i, tags: ['a', 'b'] })) }
+    expect(JSON.stringify(nxt.cut(modest))).not.toContain('budget')
+  })
+})

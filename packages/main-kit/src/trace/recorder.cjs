@@ -70,8 +70,8 @@ function createRecorder({
   // a flood between two writes cannot fill memory. A time the sender made up is pulled back into the recording's span.
   function queue(c, event) {
     let size;
-    try { size = JSON.stringify(event).length; } catch { return false; } // an event that cannot be written is dropped
-    if (size > MAX_EVENT_BYTES) return false;
+    try { size = JSON.stringify(event).length; } catch { c.dropped++; return false; } // an event that cannot be written is dropped, and counted
+    if (size > MAX_EVENT_BYTES) { c.dropped++; return false; }
     if (c.bytes + c.pendingBytes + size > maxBytes) { cap('bytes'); return false; }
     const t = Number.isFinite(event.t) ? Math.min(Math.max(event.t, c.startedAt), now()) : now();
     const stored = t === event.t ? event : { ...event, t };
@@ -116,6 +116,11 @@ function createRecorder({
     }
   }
 
+  // Says in the file how many events were left out (too large to keep, or more in one batch than are taken).
+  function writeDrops(c) {
+    if (c.dropped) append(JSON.stringify({ k: 'drop', n: c.dropped, t: now(), proc: 'main' }) + '\n');
+  }
+
   function tick(all) {
     const c = current;
     if (!c) return;
@@ -134,10 +139,10 @@ function createRecorder({
     } catch (err) {
       throw new Error(`The recording could not start: ${err.message}`);
     }
-    current = { id, file, startedAt: now(), pending: [], pendingBytes: 0, sizes: new WeakMap(), redactor: createRedactor(), bytes: header.length, accepted: 0, written: 0, capReason: null, capWritten: false, timer: null, prevOnCap: runtime?.onCap ?? null };
+    current = { id, file, startedAt: now(), pending: [], pendingBytes: 0, sizes: new WeakMap(), redactor: createRedactor(), bytes: header.length, accepted: 0, written: 0, dropped: 0, capReason: null, capWritten: false, timer: null, prevOnCap: runtime?.onCap ?? null };
     if (runtime) {
       runtime.onCap = () => cap('events');
-      runtime.start?.({ proc: 'main', maxEvents });
+      runtime.start?.({ proc: 'main', maxEvents, maxBytes });
     }
     holdHub();
     current.timer = setInterval(() => { try { tick(false); } catch (err) { ignore(log, 'writing the recording failed; the next write tries again', err, 'warn'); } }, flushMs);
@@ -150,6 +155,7 @@ function createRecorder({
   function add(events, { win } = {}) {
     const c = current;
     if (!c || c.capReason || !Array.isArray(events)) return;
+    if (events.length > MAX_BATCH) c.dropped += events.length - MAX_BATCH; // taken in batches of this size at most: the rest is said to be left out
     for (const e of events.slice(0, MAX_BATCH)) {
       if (!e || typeof e !== 'object' || typeof e.k !== 'string' || typeof e.id !== 'string' && e.k !== 'cap') continue;
       if (c.accepted >= maxEvents) { cap('events'); return; }
@@ -167,6 +173,7 @@ function createRecorder({
       tick(true);
       try { runtime?.stop?.(); } catch (err) { ignore(log, 'the call runtime could not be stopped at the end of the recording', err); }
       tick(true); // anything the runtime held until it stopped
+      writeDrops(c);
       append(JSON.stringify({ end: true, status: c.capReason ? 'capped' : 'finished', endedAt: now(), events: c.written }) + '\n');
     } finally {
       if (runtime) runtime.onCap = c.prevOnCap;
@@ -186,6 +193,7 @@ function createRecorder({
       tick(true);
       try { runtime?.stop?.(); } catch (err) { ignore(log, 'the call runtime could not be stopped when the app quit', err); }
       tick(true);
+      writeDrops(c);
     } finally {
       if (runtime) runtime.onCap = c.prevOnCap;
       releaseHub();

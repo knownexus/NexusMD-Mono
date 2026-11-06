@@ -277,3 +277,12 @@ describe('review finding: account passwords and the keys made from them', () => 
     expect(once(enter('c.js:1:0:keyboardShortcut', ['plain'])).a).toEqual(['plain'])
   })
 })
+
+describe('review note: the other code that makes keys from passwords', () => {
+  it('hides the confidential planner and the settings export (they take a password and encrypt with it)', () => {
+    const r = createRedactor()
+    expect(r.redact(enter('packages/core/src/modules/planner/confidential.js:14:0:hashPassword', ['plain-pw'], 'r1-1')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(enter('packages/core/src/modules/planner/confidential.js:37:0:encryptConfidentialForServer', [{ rows: [] }, 'hash'], 'r1-2')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(enter('apps/desktop/src/settings-file.js:60:2:exportSettings', ['pw-for-the-file'], 'r1-3')).a).toEqual({ $redacted: 'function' })
+  })
+})

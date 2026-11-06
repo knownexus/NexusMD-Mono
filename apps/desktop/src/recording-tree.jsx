@@ -211,9 +211,10 @@ export function RecordingTree({ recording }) {
         </div>
       </div>
 
-      {(tree.capped || tree.unfinished.length > 0) && (
+      {(tree.capped || tree.dropped > 0 || tree.unfinished.length > 0) && (
         <div role="status" className="rt-banner">
           {tree.capped && <div>{`This recording stopped at its size limit (${tree.capReason ?? 'size'}): what happened after that is not here.`}</div>}
+          {tree.dropped > 0 && <div>{`${tree.dropped} ${tree.dropped === 1 ? 'event was' : 'events were'} left out: too large to keep, or sent faster than they could be taken.`}</div>}
           {tree.unfinished.length > 0 && <div>{`${tree.unfinished.length} ${tree.unfinished.length === 1 ? 'call' : 'calls'} did not finish: the recording ended, or the app closed, while they were running.`}</div>}
         </div>
       )}

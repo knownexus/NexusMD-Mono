@@ -350,3 +350,31 @@ describe('review findings: the cap, and a return that waits for its call', () =>
     expect(written[1].v).toBe('pushed')
   })
 })
+
+describe('review finding: limits are passed down, and what is dropped is said', () => {
+  it('the recorder gives the main runtime the size cap too, not only the event count', async () => {
+    const r = createRecorder({ dir, now: () => clock.t, runtime, flushMs: 1e9, maxBytes: 5_000_000, maxEvents: 777 })
+    r.start()
+    expect(runtime.started).toMatchObject({ proc: 'main', maxEvents: 777, maxBytes: 5_000_000 })
+    await r.stop()
+  })
+
+  it('an event too large to keep, and a batch with more events than are taken, are counted in the file', async () => {
+    const r = createRecorder({ dir, now: () => clock.t, runtime, flushMs: 1e9, horizonMs: 0 })
+    const { id } = r.start()
+    clock.t = 1_000_100
+    r.add([enter('r1-1', 1_000_050, { proc: 'renderer', a: ['y'.repeat(400000)] })], { win: 1 })
+    r.add(Array.from({ length: 20003 }, (_, i) => enter(`r2-${i}`, 1_000_050, { proc: 'renderer' })), { win: 2 })
+    await r.stop()
+    const drop = lines(fileOf(id)).find(e => e.k === 'drop')
+    expect(drop).toMatchObject({ k: 'drop', n: 4 })
+    const info = await createStore({ dir }).read(id)
+    expect(info.events.some(e => e.k === 'drop')).toBe(true)
+  })
+
+  it('nothing is written when nothing was dropped', async () => {
+    const r = createRecorder({ dir, now: () => clock.t, runtime, flushMs: 1e9 })
+    const { id } = r.start(); await r.stop()
+    expect(lines(fileOf(id)).some(e => e.k === 'drop')).toBe(false)
+  })
+})

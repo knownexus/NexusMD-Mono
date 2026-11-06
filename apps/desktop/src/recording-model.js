@@ -35,6 +35,7 @@ export function buildTree(events) {
   const ends = [];
   let capped = false;
   let capReason = null;
+  let dropped = 0;
 
   const add = (e, node) => {
     const full = { id: e.id, parent: e.p ?? null, start: e.t, proc: e.proc, win: e.win, children: [], ...node };
@@ -65,6 +66,7 @@ export function buildTree(events) {
       }
       case 'ret': case 'err': ends.push(e); break;
       case 'cap': capped = true; capReason = e.reason ?? null; break;
+      case 'drop': dropped += Number(e.n) || 0; break;
       default: break; // an event this version does not know is left out, not an error
     }
   }
@@ -92,7 +94,7 @@ export function buildTree(events) {
   for (const node of nodes) if (node.children.length > 1) node.children.sort(byStart);
 
   return {
-    roots, byId, capped, capReason, count: nodes.length,
+    roots, byId, capped, capReason, dropped, count: nodes.length,
     unfinished: nodes.filter((n) => (n.kind === 'call' || n.kind === 'ipc' || n.kind === 'action') && !n.done),
     start: nodes.length ? Math.min(...nodes.map((n) => n.start ?? Infinity)) : null,
   };
