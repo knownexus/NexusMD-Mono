@@ -143,7 +143,7 @@ describe('Google sign-in redirect', () => {
   })
 })
 
-describe('Opening .txt and .md files with the app', () => {
+describe('Opening text files with the app', () => {
   const java = fs.readFileSync(path.join(javaDir, 'OpenedFilePlugin.java'), 'utf8')
   const js = read('src', 'opened-file.js')
   const name = java.match(/@CapacitorPlugin\(\s*name\s*=\s*"([^"]+)"/)[1]
@@ -152,23 +152,24 @@ describe('Opening .txt and .md files with the app', () => {
   const filters = [...activity.matchAll(/<intent-filter>([\s\S]*?)<\/intent-filter>/g)].map(m => m[1])
   const forFiles = filters.filter(f => /android:mimeType=/.test(f) || /pathPattern/.test(f))
 
-  it('is offered for text and Markdown, when opened (View) and when shared (Send)', () => {
-    const text = forFiles.filter(f => /android:mimeType="text\/plain"/.test(f))
-    const markdown = forFiles.filter(f => /android:mimeType="text\/markdown"/.test(f))
-    for (const group of [text, markdown]) {
-      expect(group.length).toBeGreaterThan(0)
-      expect(group.some(f => f.includes('android.intent.action.VIEW'))).toBe(true)
-      expect(group.some(f => f.includes('android.intent.action.SEND'))).toBe(true)
-    }
-    expect(forFiles.join('')).toContain('text/x-markdown')
+  it('is offered for any text type, when opened (View) and when shared (Send)', () => {
+    const text = forFiles.filter(f => /android:mimeType="text\/\*"/.test(f))
+    expect(text.some(f => f.includes('android.intent.action.VIEW'))).toBe(true)
+    expect(text.some(f => f.includes('android.intent.action.SEND'))).toBe(true)
   })
 
-  it('is offered for a .md file a file manager calls a generic file', () => {
+  it('is offered for the data formats that are text but not text/*', () => {
+    const all = forFiles.join('')
+    for (const type of ['application/json', 'application/xml', 'application/javascript', 'application/x-yaml', 'application/x-sh', 'application/sql']) expect(all).toContain('android:mimeType="' + type + '"')
+  })
+
+  it('is offered for a text file a file manager calls a generic file, by its name', () => {
     const generic = forFiles.filter(f => /application\/octet-stream/.test(f))
     expect(generic.length).toBeGreaterThan(0)
-    // In the XML the pattern's escape is doubled: `.*\\.md` is the pattern `.*\.md`, a literal dot.
-    expect(generic.join('')).toMatch(/pathPattern="\.\*\\\\\.md"/)
-    expect(generic.join('')).toMatch(/pathPattern="\.\*\\\\\.markdown"/)
+    // Android reads the escape before the pattern does, so the XML doubles it: two backslashes then md is the pattern for a literal dot then md.
+    for (const ext of ['md', 'markdown', 'txt', 'log', 'json', 'csv', 'yml', 'yaml', 'xml', 'ini', 'toml', 'conf']) {
+      expect(generic.join('')).toContain('android:pathPattern=".*\\\\.' + ext + '"')
+    }
   })
 
   it('every file filter can be picked from a chooser, and only takes content:// addresses', () => {
@@ -229,5 +230,21 @@ describe('Opening files cannot be turned on the app\'s own files', () => {
     expect(paths).not.toMatch(/path="\.?"/)          // not the whole cache
     expect(paths).not.toContain('<external-path')    // not shared storage
     expect(paths).not.toContain('<files-path')
+  })
+})
+
+describe('Opening text files: only text is taken, and its type is passed on', () => {
+  const java = fs.readFileSync(path.join(javaDir, 'OpenedFilePlugin.java'), 'utf8')
+  const js = read('src', 'opened-file.js')
+
+  it('refuses a file with a zero byte or that is not UTF-8, rather than showing garbage', () => {
+    expect(java).toMatch(/b == 0/)
+    expect(java).toContain('CodingErrorAction.REPORT')
+    expect(java).toContain('"Only text files can be opened."')
+  })
+
+  it('sends the type the JavaScript uses to tell Markdown from the rest', () => {
+    expect(java).toContain('put("type"')
+    expect(js).toContain('isMarkdownFile(file)')
   })
 })

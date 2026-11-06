@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { addOpenedDocument, documentNameOf, MAX_OPEN_BYTES } from './open-text-file.js'
+import { addOpenedDocument, documentNameOf, isMarkdownFile, MAX_OPEN_BYTES } from './open-text-file.js'
 
 const store = (seed) => {
   const m = new Map(seed ? [['md_documents', JSON.stringify(seed)]] : [])
@@ -93,5 +93,14 @@ describe('addOpenedDocument: which store', () => {
     const s = { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }
     addOpenedDocument(s, { name: 'a.md', text: 'x' }, { now: 1, id: 'd1', key: 'helm.p1.md_documents' })
     expect([...m.keys()]).toEqual(['helm.p1.md_documents'])
+  })
+})
+
+describe('isMarkdownFile', () => {
+  it('is a Markdown file by its name or by what the file says it is', () => {
+    for (const f of [{ name: 'a.md' }, { name: 'A.MD' }, { name: 'b.markdown' }, { name: 'c.mdown' }, { name: 'x', type: 'text/markdown' }, { name: 'y.txt', type: 'text/x-markdown' }]) expect(isMarkdownFile(f)).toBe(true)
+  })
+  it('is not one for any other text file', () => {
+    for (const f of [{ name: 'a.txt' }, { name: 'a.json', type: 'application/json' }, { name: 'md' }, { name: 'a.md.bak' }, { name: '' }, {}, { name: 'notes.mdx' }]) expect(isMarkdownFile(f)).toBe(false)
   })
 })

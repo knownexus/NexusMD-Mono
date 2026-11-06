@@ -16,10 +16,13 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Hands the page a .txt or .md file the user opened with this app (Open with, or Share, from a file
+ * Hands the page a text file (.md, .txt, .json, .log, ...) the user opened with this app (Open with, or Share, from a file
  * manager, a download or another app). The page asks with take(), and is told by a "fileOpened"
  * event when a file arrives while the app is already running.
  *
@@ -130,8 +133,28 @@ public class OpenedFilePlugin extends Plugin {
                 }
                 bytes.write(buffer, 0, n);
             }
+            byte[] all = bytes.toByteArray();
+            // Only text: a zero byte, or bytes that are not UTF-8, mean a picture, a PDF or another binary file.
+            for (byte b : all) {
+                if (b == 0) {
+                    out.put("error", "Only text files can be opened.");
+                    return out;
+                }
+            }
+            String text;
+            try {
+                text = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(all)).toString();
+            } catch (CharacterCodingException e) {
+                out.put("error", "That file is not UTF-8 text, so it cannot be opened here.");
+                return out;
+            }
             out.put("name", displayName(resolver, uri));
-            out.put("text", new String(bytes.toByteArray(), StandardCharsets.UTF_8));
+            String type = resolver.getType(uri);
+            if (type != null) out.put("type", type);
+            out.put("text", text);
         } catch (Exception e) {
             out = new JSObject();
             out.put("error", "That file could not be read: " + e.getMessage());

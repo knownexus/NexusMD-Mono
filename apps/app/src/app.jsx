@@ -25,7 +25,7 @@ import './offline-queue-app.js';
 import { useFormAutosave, validateAdoForm } from './autosave-form.js';
 import { createGithubHttpAdapter } from './github-client.js';
 import { useOffScreens } from './work-screens.js';
-import { EditorScreen } from './editor-screen.jsx';
+import { EditorScreen, editorStore } from './editor-screen.jsx';
 import { GitView } from './git-view.jsx';
 import { apiFileAdapter } from './adapters/api-file.js';
 import { scriptRunnerAdapter } from './adapters/api-script-runner.js';
@@ -665,15 +665,21 @@ function AppShell() {
     return () => clearTimeout(t);
   }, [mobileFlash]);
 
-  // A .txt or .md file opened with the app (Open with / Share) is added to the documents and shown on the Documents page.
-  // Counted, so the page remounts on the file each time one arrives.
+  // A text file opened with the app (Open with / Share): a Markdown file is added to the documents and shown on the Documents page,
+  // any other text file is opened in the Editor. Counted, so the Documents page remounts on the file each time one arrives.
   const [openedFiles, setOpenedFiles] = useState(0);
   useEffect(() => watchOpenedFiles({
     storageKey: device === 'phone' ? undefined : getProfileKey('md_documents'), // the phone layout keeps documents under the bare key
-    onOpen: ({ name }) => {
+    onOpen: (opened) => {
+      if (opened.target === 'editor') {
+        editorStore.openPath(opened.path);
+        navigate('editor');
+        showFlash(`Opened ${opened.name} in the Editor`, 'check');
+        return;
+      }
       setOpenedFiles(n => n + 1);
       navigate('markdown');
-      showFlash(name ? `Opened ${name}` : 'Opened the file', 'check');
+      showFlash(opened.name ? `Opened ${opened.name}` : 'Opened the file', 'check');
     },
     onError: (message) => showFlash(message, 'alert'),
   }), [device, navigate, showFlash]);

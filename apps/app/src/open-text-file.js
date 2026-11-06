@@ -49,3 +49,9 @@ export function addOpenedDocument(storage, file, { now = Date.now(), id = random
   try { storage.setItem(key, JSON.stringify({ docs: next })) } catch { throw new Error('This file could not be saved: the browser storage is full.') }
   return same ? { id: same.id, created: false } : { id, created: true }
 }
+
+/** True for a Markdown file: by its extension, or by the type the sender gave it (some send .md as text/plain, some as text/markdown). */
+export function isMarkdownFile({ name, type } = {}) {
+  if (/^text\/(x-)?markdown$/i.test(String(type || ''))) return true
+  return /\.(md|markdown|mdown)$/i.test(String(name || '').split(/[\/]/).pop())
+}
