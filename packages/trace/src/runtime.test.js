@@ -48,7 +48,7 @@ describe('frames', () => {
   it('ids carry the process kind and are unique', () => {
     nxt.start({ proc: 'renderer', win: 3 })
     const a = nxt.enter('a.js:1:0:a', null, []); const b = nxt.enter('a.js:1:0:b', null, [])
-    expect(a.id).toMatch(/^r3-\d+$/)
+    expect(a.id).toMatch(/^r3[a-z0-9]+-\d+$/)
     expect(a.id).not.toBe(b.id)
   })
 
@@ -224,5 +224,21 @@ describe('emit limits', () => {
     const [net, log] = nxt.drain()
     expect(net.d.body.length).toBe(20000)
     expect(log.d.body.length).toBeLessThan(8100)
+  })
+})
+
+describe('review finding: a window that reloads', () => {
+  it('does not reuse the ids of the page it replaced: each load of the runtime has its own', () => {
+    nxt.start({ proc: 'renderer', win: 1 })
+    const first = nxt.enter('a.js:1:0:f', null, []).id
+    nxt.stop(); nxt.drain()
+    delete globalThis.__nxt
+    const reloaded = load()
+    reloaded.start({ proc: 'renderer', win: 1 })
+    const second = reloaded.enter('a.js:1:0:f', null, []).id
+    reloaded.stop(); reloaded.drain()
+    expect(second).not.toBe(first)
+    for (const id of [first, second]) expect(id).toMatch(/^[a-z][A-Za-z0-9]{0,15}-\d{1,12}$/)
+    expect(first).toMatch(/^r1[a-z0-9]+-\d+$/)
   })
 })

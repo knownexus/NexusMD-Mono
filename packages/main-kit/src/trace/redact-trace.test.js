@@ -247,3 +247,33 @@ describe('a call that is given the name of a credential', () => {
     expect(r.redact(enter('c.js:1:0:load', [{ tokens: 3 }, 'x'], 'r1-4')).a[1]).toBe('x')
   })
 })
+
+describe('review finding: account passwords and the keys made from them', () => {
+  const ACCOUNT = 'packages/core/src/modules/account/account-client.js'
+  it('hides what authenticate is given (a password by position), whatever file it is in', () => {
+    expect(createRedactor().redact(enter(`${ACCOUNT}:255:2:authenticate`, ['alice', 'hunter2-real'])).a).toEqual({ $redacted: 'function' })
+    expect(createRedactor().redact(enter('somewhere/else.js:1:0:authenticateUser', ['alice', 'hunter2-real'])).a).toEqual({ $redacted: 'function' })
+    expect(createRedactor().redact(enter('somewhere/else.js:1:0:login', ['alice', 'hunter2-real'])).a).toEqual({ $redacted: 'function' })
+  })
+
+  it('hides key derivation and the profile bundle code: what they take and what they return', () => {
+    const r = createRedactor()
+    expect(r.redact(enter('packages/core/src/modules/account/crypto.js:40:2:deriveKeys', ['pw', 'salt', 100000], 'r1-1')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(ret('r1-1', { authKey: 'k1', vaultKey: 'k2' })).v).toEqual({ $redacted: 'function' })
+    expect(r.redact(enter('packages/core/src/modules/profiles/bundle.js:10:0:encodeBundle', [{ profiles: [] }, 'bundle-password'], 'r1-2')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(enter('packages/core/src/modules/profiles/bundle.js:30:0:bundleKeyHash', ['bundle-password'], 'r1-3')).a).toEqual({ $redacted: 'function' })
+    expect(r.redact(enter('packages/core/src/modules/sync/crypto.js:10:0:encryptSync', ['plain-looking', 'key'], 'r1-4')).a).toEqual({ $redacted: 'function' })
+  })
+
+  it('hides a request to the account endpoints, and keys named authKey and vaultKey wherever they turn up', () => {
+    expect(once(net({ method: 'POST', url: 'https://server.example.com/api/account/login', body: '{"username":"alice","authKey":"k1"}' })).d).toEqual({ $redacted: 'url' })
+    expect(once(net({ method: 'POST', url: 'https://server.example.com/api/account/status' })).d).toEqual({ $redacted: 'url' })
+    expect(once(enter('c.js:1:0:save', [{ username: 'bob', authKey: 'k1', vaultKey: 'k2', sessionAuthKey: 'k3' }])).a[0]).toEqual({ username: 'bob', authKey: '[redacted]', vaultKey: '[redacted]', sessionAuthKey: '[redacted]' })
+  })
+
+  it('does not hide the names that merely look like these', () => {
+    expect(once(enter('c.js:1:0:authorSearch', ['plain'])).a).toEqual(['plain'])
+    expect(once(enter('c.js:1:0:loginPageTitle', ['plain'])).a).toEqual({ $redacted: 'function' })   // a login screen's own helper: hiding it is the safe side
+    expect(once(enter('c.js:1:0:keyboardShortcut', ['plain'])).a).toEqual(['plain'])
+  })
+})

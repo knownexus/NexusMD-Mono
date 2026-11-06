@@ -6,10 +6,12 @@
     "/token(?:[/?#]|$)",
     "login\\.microsoftonline\\.com",
     "github\\.com/login",
-    "/authorize(?:[/?#]|$)"
+    "/authorize(?:[/?#]|$)",
+    "/api/account/"
   ],
   "functions": [
     "\\bsign ?in\\b",
+    "\\b(?:authenticate|authenticate user|login|derive keys?)\\b",
     "\\b(?:tokens?|secrets?|passwords?|passwd|credentials?)\\b"
   ],
   "files": [
@@ -17,6 +19,10 @@
     "secret-cache",
     "secure-storage",
     "profile-secrets",
+    "account-client",
+    "account/crypto",
+    "profiles/bundle",
+    "sync/crypto",
     "secrets?\\.c?js"
   ],
   "channels": [

@@ -33,6 +33,8 @@
   var total = 0;
   var bytes = 0;
   var seq = 0;
+  // New for each load of this file, so a window that reloads (the update, Ctrl+R, a crash) does not hand out ids the page it replaced already used.
+  var nonce = Math.random().toString(36).slice(2, 6).padEnd(4, '0');
   var prefix = 'p';
   var proc = 'main';
   var win;
@@ -124,7 +126,7 @@
     } catch (x) { return { name: 'Error', message: 'unreadable error' }; }
   }
 
-  function nextId() { return prefix + (win != null ? win : (typeof process !== 'undefined' && process.pid ? process.pid : 0)) + '-' + (++seq); }
+  function nextId() { return prefix + (win != null ? win : (typeof process !== 'undefined' && process.pid ? process.pid : 0)) + nonce + '-' + (++seq); }
 
   // Adds one event, or stops the recording when the cap is hit (the cap event says so).
   function push(ev) {

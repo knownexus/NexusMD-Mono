@@ -91,15 +91,17 @@ function createRecorder({
       while (n < c.pending.length && (c.pending[n].t ?? 0) <= cutoff) n++;
       const due = c.pending.splice(0, n);
       const held = [];
+      const heldIds = new Set(); // calls waiting for their parent: their returns wait with them
       let chunk = '';
       for (const event of due) {
+        if ((event.k === 'ret' || event.k === 'err') && heldIds.has(event.id) && !all && !c.capReason) { held.push(event); continue; }
         // An event whose parent has not arrived (a window's events come in batches, and its clock is not ours) waits for
         // it, so a child of a denied call is never written before the redactor knows the call was denied. If the parent
         // does not come in time, or the recording is ending, the event is written with what it holds hidden.
-        if (!all && !c.capReason && !c.redactor.parentKnown(event) && now() - (event.t ?? 0) < PARENT_WAIT_MS) { held.push(event); continue; }
+        if (!all && !c.capReason && !c.redactor.parentKnown(event) && now() - (event.t ?? 0) < PARENT_WAIT_MS) { held.push(event); if (typeof event.id === 'string') heldIds.add(event.id); continue; }
         c.pendingBytes -= c.sizes.get(event) ?? 0;
         const line = JSON.stringify(c.redactor.redact(event, { hideUnknownParent: true })) + '\n';
-        if (c.bytes + chunk.length + line.length > maxBytes) { c.capReason ??= 'bytes'; cap('bytes'); break; }
+        if (c.bytes + chunk.length + line.length > maxBytes) { cap('bytes'); break; } // (cap sets the reason itself: it must be the one to stop the runtime and tell the listeners)
         chunk += line;
         c.written++;
       }

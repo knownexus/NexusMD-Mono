@@ -306,3 +306,47 @@ describe('a call that arrives before its parent', () => {
     expect(lines(fileOf(id)).find(e => e.id === 'm1-5').a).toEqual(['C:/repo'])
   })
 })
+
+describe('review findings: the cap, and a return that waits for its call', () => {
+  const stateful = () => ({ verbose: [], sink: undefined, setVerbose(v) { this.verbose.push(v) }, setTraceSink(fn) { this.sink = fn } })
+
+  it('a recording that is capped while it is being written stops the runtime, lets go of the log hub, and tells whoever is listening', async () => {
+    const hub = stateful()
+    const seen = []
+    // Each of these calls is a few bytes long as it arrives, and longer once it is hidden (a denied call's arguments become a marker),
+    // so the size check on arrival lets them in and the check on writing is the one that stops it.
+    const events = Array.from({ length: 7 }, (_, i) => enter(`r1-${i}`, 990_000 + i, { proc: 'renderer', fn: 'a.js:1:0:getAuthToken', a: [] }))
+    const probe = createRecorder({ dir, now: () => clock.t, runtime, flushMs: 1e9, horizonMs: 0, hub })
+    const { id: probeId } = probe.start()
+    const header = readFileSync(fileOf(probeId), 'utf8').length
+    await probe.stop()
+    const raw = events.reduce((n, e) => n + JSON.stringify(e).length, 0)
+
+    const r = createRecorder({ dir, now: () => clock.t, runtime, flushMs: 1e9, horizonMs: 0, hub, maxBytes: header + raw + 60 })
+    r.onState((s) => seen.push(s))
+    runtime.stopped = 0
+    r.start()
+    r.add(events, { win: 1 })
+    expect(r.status().capped).toBe(false)               // all of it was accepted on arrival
+    await r.flush()
+    expect(r.status().capped).toBe(true)                // and writing it went over
+    expect(runtime.stopped).toBeGreaterThan(0)
+    expect(hub.verbose.at(-1)).toBe(false)
+    expect(seen.at(-1)).toMatchObject({ recording: true, capped: true })
+    await r.stop()
+  })
+
+  it('the return of a call that is waiting for its parent waits too, so it keeps its value instead of being hidden as an unknown call', async () => {
+    const r = createRecorder({ dir, now: () => clock.t, runtime, flushMs: 1e9, horizonMs: 1500 })
+    const { id } = r.start()
+    clock.t = 1_010_000
+    r.add([enter('m1-5', 1_009_000, { fn: 'ipc:git:push', a: ['C:/repo'], p: 'r1-1' }), { k: 'ret', id: 'm1-5', v: 'pushed', ms: 4, t: 1_009_004, proc: 'main' }], { win: 1 })
+    clock.t += 2000; await r.flush()                         // both are due; the call's parent has not arrived, so neither is written
+    expect(lines(fileOf(id)).filter(e => e.id === 'm1-5')).toHaveLength(0)
+    r.add([enter('r1-1', 1_008_000, { fn: 'a.js:1:0:merge', proc: 'renderer' })], { win: 1 })
+    await r.stop()
+    const written = lines(fileOf(id)).filter(e => e.id === 'm1-5')
+    expect(written.map(e => e.k)).toEqual(['enter', 'ret'])
+    expect(written[1].v).toBe('pushed')
+  })
+})
