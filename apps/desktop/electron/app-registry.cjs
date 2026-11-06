@@ -42,7 +42,7 @@ const path = require('path');
 const nodeFs = require('fs');
 const { pathToFileURL } = require('url');
 const { SHELL_API } = require('./shell-api.cjs');
-const { createLoggedIpc } = require('@nexusmd/main-kit/logging');
+// (main-kit's logging is loaded where it is used: the release workflow requires this file on a machine with nothing installed.)
 
 function parseInstalledIds(raw) {
   if (typeof raw !== 'string') return null;
@@ -251,7 +251,7 @@ function scopeContext(ctx, appId = null, hub = null) {
   const listening = [];
   const windows = new Set();
   const scoped = { ...ctx };
-  const base = hub && appId && ctx.ipcMain ? createLoggedIpc(ctx.ipcMain, { hub, moduleId: appId }) : ctx.ipcMain;
+  const base = hub && appId && ctx.ipcMain ? require('@nexusmd/main-kit/logging').createLoggedIpc(ctx.ipcMain, { hub, moduleId: appId }) : ctx.ipcMain;
   if (hub && appId) scoped.log = hub.logger(appId);
   if (ctx.ipcMain) {
     const ipc = base;

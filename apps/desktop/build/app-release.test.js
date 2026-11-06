@@ -54,3 +54,19 @@ describe('app releases', () => {
     expect(obsoleteAssets(assets, 'git', ['git-1.0.2.nxapp', 'git-1.0.1.nxapp'])).toEqual(['git-1.0.0.nxapp'])
   })
 })
+
+// The release workflow's "Record this release in the app index" job runs this script with plain node and no `npm ci`,
+// so nothing under @nexusmd/* can be resolved there. It broke the v1.2.36 index step when the registry began to
+// require @nexusmd/main-kit/logging at load.
+describe('the release script on a machine with nothing installed', () => {
+  it('loads without resolving any @nexusmd/* workspace package', async () => {
+    const { execFileSync } = await import('node:child_process')
+    const script = `
+      const M = require('module'); const resolve = M._resolveFilename;
+      M._resolveFilename = function (request, ...rest) { if (request.startsWith('@nexusmd/')) throw new Error('not installed: ' + request); return resolve.call(this, request, ...rest) };
+      const registry = require(${JSON.stringify(path.resolve(import.meta.dirname, '../electron/app-registry.cjs'))});
+      if (typeof registry.SHELL_API === 'undefined' && !Object.keys(registry).length) throw new Error('empty');
+    `
+    expect(() => execFileSync(process.execPath, ['-e', script], { stdio: 'pipe' })).not.toThrow()
+  })
+})
