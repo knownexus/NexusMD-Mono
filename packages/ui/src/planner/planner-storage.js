@@ -30,13 +30,20 @@ export function loadWeekPlanner(year, week) {
   });
 }
 
+// Saves the week on this device, then pushes it and tells the host. When the device save fails (storage full or
+// blocked) nothing is pushed or announced: the account would hold a week this device cannot show, and the next
+// sync could take the older local one over it. Returns whether the week was saved here.
 export function saveWeekPlanner(year, week, data, themes) {
   const { storage, getProfileKey, pushPref, onWeekSaved } = getPlannerRuntime();
   const bare = weekKeyBare(year, week);
   const s = JSON.stringify({ data, themes });
-  try { storage.setItem(getProfileKey(bare), s); } catch (err) { ignore(log, 'a planner week could not be saved on this device (storage full or blocked)', err, 'warn', { year, week }); }
+  try { storage.setItem(getProfileKey(bare), s); } catch (err) {
+    ignore(log, 'a planner week could not be saved on this device (storage full or blocked), so it was not sent to the account either', err, 'warn', { year, week });
+    return false;
+  }
   pushPref?.(bare, s);
   onWeekSaved?.(year, week);
+  return true;
 }
 
 export function deleteWeekPlanner(year, week) {
