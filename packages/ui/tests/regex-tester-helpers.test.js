@@ -131,6 +131,39 @@ describe('genCode', () => {
   it('returns an empty string for an unrecognized language', () => {
     expect(genCode('COBOL', '\\d+', '')).toBe('')
   })
+
+  describe('with a replacement', () => {
+    it('is unchanged without one', () => {
+      expect(genCode('JS', '\\d+', 'g')).toBe(genCode('JS', '\\d+', 'g', undefined))
+      expect(genCode('JS', '\\d+', 'g')).toContain("str.replace(regex, '$1')")
+    })
+
+    it('puts it in the replace line in place of $1', () => {
+      const js = genCode('JS', '\\d+', 'g', '[$2]')
+      expect(js).toContain("str.replace(regex, '[$2]')")
+      expect(js).not.toContain("'$1'")
+      expect(genCode('PHP', '\\d+', 'g', '[$2]')).toContain("preg_replace($pattern, '[$2]', $text)")
+      expect(genCode('Go', '\\d+', 'g', '[$2]')).toContain('re.ReplaceAllString(s, "[$2]")')
+      expect(genCode('Java', '\\d+', 'g', '[$2]')).toContain('m.replaceAll("[$2]")')
+      expect(genCode('C#', '\\d+', 'g', '[$2]')).toContain('re.Replace(text, "[$2]")')
+    })
+
+    it('writes the group references as Python and Ruby spell them', () => {
+      expect(genCode('Python', '(\\d)(\\w)', 'g', '$2-$1-$&')).toContain('regex.sub(r"\\g<2>-\\g<1>-\\g<0>", text)')
+      const ruby = genCode('Ruby', '(\\d)(\\w)', 'g', '$2-$1')
+      expect(ruby).toContain("text.sub(pattern, '\\\\2-\\\\1')")
+      expect(ruby).toContain("text.gsub(pattern, '\\\\2-\\\\1')")
+    })
+
+    it('escapes the quote of the language it is written in', () => {
+      expect(genCode('JS', 'a', 'g', "it's")).toContain("'it\\'s'")
+      expect(genCode('Go', 'a', 'g', 'say "hi"')).toContain('"say \\"hi\\""')
+    })
+
+    it('uses an empty replacement as it is', () => {
+      expect(genCode('JS', '\\d+', 'g', '')).toContain("str.replace(regex, '')")
+    })
+  })
 })
 
 describe('REFERENCE_DATA', () => {

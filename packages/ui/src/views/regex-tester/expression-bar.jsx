@@ -21,7 +21,7 @@ function chipFor({ state, matches, error }) {
  * stepper (Match mode) and the Match | Replace switch; under it the error line when the pattern is invalid, and in
  * Replace mode the replacement row. `error` is the engine's message for the pattern (null when it compiles).
  */
-export function ExpressionBar({ state, patch, matches, selIdx, onStep, error, patternRef = null }) {
+export function ExpressionBar({ state, patch, matches, selIdx, onStep, error, patternRef = null, onCaret = null }) {
   const info = error ? regexErrorInfo(error, state.pattern) : null
   const chip = chipFor({ state, matches, error })
   const n = matches.length
@@ -31,7 +31,7 @@ export function ExpressionBar({ state, patch, matches, selIdx, onStep, error, pa
       <div className="nx-rt-bar-row">
         <div className="nx-rt-pattern-field" data-invalid={error ? 'true' : undefined}>
           <span className="nx-rt-slash">/</span>
-          <PatternInput value={state.pattern} onChange={pattern => patch({ pattern })} inputRef={patternRef} invalid={!!error} />
+          <PatternInput value={state.pattern} onChange={pattern => patch({ pattern })} inputRef={patternRef} invalid={!!error} onCaret={onCaret} />
           <span className="nx-rt-slash">/</span>
           <span className="nx-rt-flags">
             {FLAG_INFO.map(([f, tip]) => (

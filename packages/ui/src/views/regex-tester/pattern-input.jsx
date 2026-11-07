@@ -12,12 +12,16 @@ function Overlay({ overlayRef, children }) {
 /**
  * The pattern field: an input whose text is drawn transparent over a coloured copy. Escapes are the accent
  * colour, classes success, quantifiers warning, literals plain, each capture group's parentheses in the group's
- * colour, and the ( of a group never closed in the danger colour.
+ * colour, and the ( of a group never closed in the danger colour. `onCaret(start, end)` reports the selection as it
+ * moves, so the page knows where a Reference token goes.
  */
-export function PatternInput({ value, onChange, inputRef = null, invalid = false }) {
+export function PatternInput({ value, onChange, inputRef = null, invalid = false, onCaret = null }) {
   const overlay = React.useRef(null)
   const tokens = React.useMemo(() => tokenizePattern(value), [value])
-  const sync = e => { if (overlay.current) overlay.current.scrollLeft = e.target.scrollLeft }
+  const sync = e => {
+    if (overlay.current) overlay.current.scrollLeft = e.target.scrollLeft
+    onCaret?.(e.target.selectionStart, e.target.selectionEnd)
+  }
   return (
     <div className="nx-rt-pattern-wrap">
       <Overlay overlayRef={overlay}>
@@ -27,7 +31,7 @@ export function PatternInput({ value, onChange, inputRef = null, invalid = false
           return <span key={i} data-kind={t.kind} data-group={t.group} style={style}>{t.text}</span>
         })}
       </Overlay>
-      <input ref={inputRef} className="nx-rt-pattern-input" value={value} onChange={e => onChange(e.target.value)} onScroll={sync} onSelect={sync} onKeyUp={sync}
+      <input ref={inputRef} className="nx-rt-pattern-input" value={value} onChange={e => onChange(e.target.value)} onScroll={sync} onSelect={sync} onKeyUp={sync} onClick={sync}
         placeholder="Enter pattern…" spellCheck={false} aria-label="Pattern" aria-invalid={invalid || undefined} />
     </div>
   )

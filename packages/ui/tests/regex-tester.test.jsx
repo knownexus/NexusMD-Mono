@@ -65,25 +65,106 @@ describe('RegexTesterView — replace mode', () => {
   })
 })
 
-describe('RegexTesterView — bottom tabs', () => {
-  it('Code gen tab shows a JS snippet containing the current pattern', () => {
-    const { getByText } = renderRegexTester()
-    expect(getByText(/matchAll/)).toBeTruthy()
+describe('RegexTesterView — right-hand panel', () => {
+  const demo = '(\\w+)@([\\w.-]+\\.[a-z]{2,})'
+
+  it('starts on Matches, with a card per match', () => {
+    const { getByRole, container } = renderRegexTester()
+    expect(getByRole('tab', { name: 'Matches 3' }).getAttribute('aria-selected')).toBe('true')
+    expect(container.querySelectorAll('.nx-rt-match')).toHaveLength(3)
   })
 
-  it('switches to the Reference tab and inserts a token into the pattern on click', () => {
-    const { getByText, getByDisplayValue } = renderRegexTester()
-    fireEvent.click(getByText('Reference'))
+  it('Code shows a JS snippet containing the current pattern', () => {
+    const { getByRole, container } = renderRegexTester()
+    fireEvent.click(getByRole('tab', { name: 'Code' }))
+    expect(container.querySelector('.nx-rt-code').textContent).toContain('matchAll')
+  })
+
+  it('Code uses the Replace mode\'s replacement in the replace line', () => {
+    const { getByRole, getByPlaceholderText, container } = renderRegexTester()
+    fireEvent.click(getByRole('tab', { name: 'Replace' }))
+    fireEvent.change(getByPlaceholderText('$1, $2, $& …'), { target: { value: '[$2]' } })
+    fireEvent.click(getByRole('tab', { name: 'Code' }))
+    expect(container.querySelector('.nx-rt-code').textContent).toContain("str.replace(regex, '[$2]')")
+  })
+
+  it('Reference puts a token at the end of the pattern when the pattern field has not been used', () => {
+    const { getByRole, getByText, getByDisplayValue } = renderRegexTester()
+    fireEvent.click(getByRole('tab', { name: 'Reference' }))
     fireEvent.click(getByText('\\d'))
-    expect(getByDisplayValue('(\\w+)@([\\w.-]+\\.[a-z]{2,})\\d')).toBeTruthy()
+    expect(getByDisplayValue(demo + '\\d')).toBeTruthy()
   })
 
-  it('adds a unit test and shows it in the list', () => {
-    const { getByText, getByPlaceholderText } = renderRegexTester()
-    fireEvent.click(getByText('Unit tests'))
-    fireEvent.change(getByPlaceholderText('Test string…'), { target: { value: 'x@y.com' } })
-    fireEvent.click(getByText('Add'))
+  it('Reference puts a token where the caret is, not at the end', () => {
+    const { getByRole, getByText, getByLabelText } = renderRegexTester()
+    const box = getByLabelText('Pattern')
+    fireEvent.change(box, { target: { value: 'abcdef' } })
+    box.setSelectionRange(3, 3)
+    fireEvent.select(box)
+    fireEvent.click(getByRole('tab', { name: 'Reference' }))
+    fireEvent.click(getByText('\\d'))
+    expect(box.value).toBe('abc\\ddef')
+  })
+
+  it('Reference replaces a selection with the token', () => {
+    const { getByRole, getByText, getByLabelText } = renderRegexTester()
+    const box = getByLabelText('Pattern')
+    fireEvent.change(box, { target: { value: 'abcdef' } })
+    box.setSelectionRange(1, 4)
+    fireEvent.select(box)
+    fireEvent.click(getByRole('tab', { name: 'Reference' }))
+    fireEvent.click(getByText('\\w'))
+    expect(box.value).toBe('a\\wef')
+  })
+
+  it('adds a test with Enter and shows it in the list', () => {
+    const { getByRole, getByText, getByPlaceholderText } = renderRegexTester()
+    fireEvent.click(getByRole('tab', { name: /^Tests/ }))
+    const box = getByPlaceholderText('Test string…')
+    fireEvent.change(box, { target: { value: 'x@y.com' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
     expect(getByText('x@y.com')).toBeTruthy()
+  })
+
+  it('hides to a strip and back, and remembers it across a remount', () => {
+    const storage = memStorage()
+    const first = renderRegexTester(storage)
+    fireEvent.click(first.getByRole('button', { name: 'Hide panel' }))
+    expect(first.queryByRole('tab', { name: 'Code' })).toBeNull()
+    first.unmount()
+    const second = renderRegexTester(storage)
+    expect(second.queryByRole('tab', { name: 'Code' })).toBeNull()
+    fireEvent.click(second.getByRole('button', { name: /^Show Matches/ }))
+    expect(second.getByRole('tab', { name: 'Code' })).toBeTruthy()
+  })
+})
+
+describe('RegexTesterView — pattern the browser rejects', () => {
+  it('shows the error line, the invalid chip and plain text with no highlights, for an unclosed group', () => {
+    const { getByLabelText, getByRole, getByText, container } = renderRegexTester()
+    fireEvent.change(getByLabelText('Pattern'), { target: { value: '(abc' } })
+    expect(getByRole('alert').textContent).toMatch(/Unterminated group · column 1/)
+    expect(getByText('invalid pattern')).toBeTruthy()
+    expect(container.querySelectorAll('.nx-rt-editor-body mark')).toHaveLength(0)
+  })
+
+  it('copes with an empty pattern, an open class and a pattern that matches the empty string', () => {
+    const { getByLabelText, getByText, container } = renderRegexTester()
+    const box = getByLabelText('Pattern')
+    fireEvent.change(box, { target: { value: '' } })
+    expect(getByText('enter a pattern')).toBeTruthy()
+    fireEvent.change(box, { target: { value: '[abc' } })
+    expect(getByText('invalid pattern')).toBeTruthy()
+    fireEvent.change(box, { target: { value: 'x*' } })
+    expect(container.querySelector('.nx-rt-editor-body .nx-rt-overlay').textContent).toBe(container.querySelector('textarea').value)
+  })
+
+  it('numbers a named group and steps nothing when there are no matches', () => {
+    const { getByLabelText, getByText, getByTitle } = renderRegexTester()
+    fireEvent.change(getByLabelText('Pattern'), { target: { value: '(?<user>\\w+)@' } })
+    expect(getByText('Group 1')).toBeTruthy()
+    fireEvent.change(getByLabelText('Pattern'), { target: { value: 'qqqq' } })
+    expect(getByTitle('Next').disabled).toBe(true)
   })
 })
 

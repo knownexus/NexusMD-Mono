@@ -34,6 +34,15 @@ describe('ExpressionBar', () => {
     expect(p.patch).toHaveBeenCalledWith({ flags: { ...FLAGS, i: true } })
   })
 
+  it('tells the page where the caret is when it moves', () => {
+    const onCaret = vi.fn()
+    const p = show({ onCaret })
+    const box = p.getByDisplayValue('\\d+')
+    box.setSelectionRange(1, 2)
+    fireEvent.select(box)
+    expect(onCaret).toHaveBeenLastCalledWith(1, 2)
+  })
+
   it('types into the pattern through patch', () => {
     const p = show()
     fireEvent.change(p.getByDisplayValue('\\d+'), { target: { value: '\\w+' } })
