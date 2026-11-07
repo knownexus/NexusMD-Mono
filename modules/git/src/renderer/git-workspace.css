@@ -89,9 +89,14 @@
 }
 
 /* header */
-.nx-gw-head { display: flex; flex-direction: column; gap: 12px; padding: 14px 24px 12px; background: var(--surface); border-bottom: 1px solid var(--border); }
-.nx-gw-head-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; }
-.nx-gw-head-row > * { flex: none; white-space: nowrap; }
+/* The one top bar: 48px, never wraps. The shell's top bar draws the same controls beside its title. */
+.nx-gw-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 14px; height: 48px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex: none; }
+.nx-gw-bar > *, .topbar > .nx-gw-status, .topbar > .nx-gw-jumpbtn, .topbar > .nx-gw-bar-btn, .topbar > .nx-gw-bar-icon { flex: none; white-space: nowrap; }
+.nx-gw-bar-accent { color: var(--accent); flex: none; }
+.nx-gw-bar-btn { height: 28px; }
+.nx-gw-bar-btn[data-none] { opacity: .6; }
+.nx-gw-bar-icon { height: 28px; width: 28px; min-width: 28px; padding: 0; display: grid; place-items: center; }
+.nx-gw-bar-icon[aria-pressed="false"] { color: var(--accent); }
 .nx-gw-seg { display: flex; gap: 2px; padding: 3px; background: var(--surface-2); border-radius: var(--radius); }
 .nx-gw-seg > button, .nx-gw-seg-tabs > button { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer; }
 .nx-gw-seg > button[aria-selected="true"], .nx-gw-seg > button[aria-pressed="true"], .nx-gw-seg-tabs > button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
@@ -99,7 +104,7 @@
 .nx-gw-seg.sm { padding: 2px; border-radius: var(--radius-sm); }
 .nx-gw-seg.sm > button { height: 22px; padding: 0 9px; font-size: 11.5px; border-radius: 4px; }
 
-.nx-gw-title { margin: 0; font: 600 20px/1.2 var(--font-heading, 'Cinzel', Georgia, serif); color: var(--text); letter-spacing: .03em; }
+.nx-gw-title { margin: 0; font: 600 15px/1.2 var(--font-heading, 'Cinzel', Georgia, serif); color: var(--text); letter-spacing: .02em; white-space: nowrap; }
 .nx-gw-plus, .nx-gw-seg > .nx-gw-plus { height: 26px; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--accent); font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer; }
 .nx-gw-seg > .nx-gw-plus:hover:not([disabled]) { background: var(--surface-3); }
 .nx-gw-plus[disabled] { opacity: .5; cursor: default; }
@@ -107,11 +112,10 @@
 .nx-gw-icon-btn:hover { background: var(--surface-2); color: var(--text); }
 .nx-gw-spacer { flex: 1 1 0 !important; min-width: 0; }
 .nx-gw-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
-.nx-gw-jumpbtn { display: inline-flex; align-items: center; gap: 8px; min-width: 180px; height: 30px; padding: 0 8px 0 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text-muted); font-size: 12.5px; cursor: pointer; }
+.nx-gw-jumpbtn { display: inline-flex; align-items: center; gap: 8px; min-width: 170px; height: 28px; padding: 0 8px 0 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text-muted); font-size: 12.5px; cursor: pointer; }
 .nx-gw-jumpbtn:hover { border-color: var(--border-strong); }
 .nx-gw-jumpbtn .kbd { margin-left: auto; }
 .nx-gw-divider { width: 1px; height: 18px; background: var(--border); }
-.nx-gw-show { font-size: 12px; color: var(--text-muted); }
 
 /* Ctrl+K / Ctrl+P palette */
 .nx-gw-palette .nx-gw-pal-input { width: 100%; height: 46px; padding: 0 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); font-size: 14px; outline: none; }

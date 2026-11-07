@@ -5,7 +5,8 @@ import { core } from '@nexusmd/core'
 import { ViewGit } from './view-git.jsx'
 import { setGitConfig, getGitConfig } from './git-config.js'
 import { clearGitSnapshotCache } from './use-git-snapshot.js'
-import { githubMode } from './github/github-mode.jsx'
+import { githubMode, GitTopbar } from './github/github-mode.jsx'
+import { gitBar } from './git-bar.jsx'
 
 // Lets every promise callback already queued run (setImmediate comes after them all): ordering, not a wait on the clock.
 const flushPromises = () => act(() => new Promise(r => setImmediate(r)))
@@ -203,6 +204,39 @@ describe('ViewGit header', () => {
     await waitFor(() => expect(preview).toHaveBeenCalled())
     expect(preview.mock.calls.map(c => c[0].name)).toEqual(['B'])
     expect(within(dialog).getByRole('list', { name: 'Targets' }).children).toHaveLength(1)
+  })
+
+  describe('the one top bar', () => {
+    afterEach(() => { githubMode.reset(); gitBar.reset() })
+
+    it('draws one 48px bar with the title and the controls itself, and no old header rows', async () => {
+      configure()
+      const { container } = render(<ViewGit adapters={{ git: adapter() }} />)
+      await screen.findByRole('region', { name: 'A' })
+      expect(container.querySelector('.nx-gw-head')).toBeNull()
+      const bar = container.querySelector('.nx-gw-bar')
+      expect(within(bar).getByRole('heading', { name: 'Git Workspace' })).toBeTruthy()
+      for (const name of ['Fetch all', 'Refresh', 'Hide repositories']) expect(within(bar).getByRole('button', { name })).toBeTruthy()
+    })
+
+    it('hands the controls to the shell top bar and draws none of its own once that is there', async () => {
+      configure()
+      const { container } = render(<><GitTopbar view="git" /><ViewGit adapters={{ git: adapter() }} /></>)
+      await screen.findByRole('region', { name: 'A' })
+      await waitFor(() => expect(screen.getAllByRole('button', { name: 'Fetch all' })).toHaveLength(1))
+      expect(container.querySelector('.nx-gw-bar')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Fetch all' }))
+      expect(await screen.findByRole('dialog')).toBeTruthy()
+    })
+
+    it('takes the controls back out of the shell top bar when the page goes', async () => {
+      configure()
+      const { unmount } = render(<><GitTopbar view="git" /><ViewGit adapters={{ git: adapter() }} /></>)
+      await screen.findByRole('region', { name: 'A' })
+      await waitFor(() => expect(gitBar.get().active).toBe(true))
+      unmount()
+      expect(gitBar.get().active).toBe(false)
+    })
   })
 
   it('disables Pull all when nothing qualifies', async () => {

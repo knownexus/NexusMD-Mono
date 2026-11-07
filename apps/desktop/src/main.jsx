@@ -343,7 +343,7 @@ function App() {
 
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <header className="topbar" style={{
-            display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 10px 18px',
+            display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 10px 18px', minHeight: 48, boxSizing: 'border-box',
             borderBottom: '1px solid var(--border)',
           }}>
             {navHidden && !BARE && (

@@ -3,6 +3,7 @@
 // the screen's title. A shell too old to tell its top bar slots which view is showing never renders
 // the top bar switch, so the page keeps one of its own.
 import React from 'react'
+import { GitTopbarControls, useGitBar } from '../git-bar.jsx'
 
 const blank = { available: false, onGithub: false, request: () => {} }
 
@@ -39,11 +40,20 @@ export function ModeSwitch({ onGithub, request }) {
   )
 }
 
-/** The app's top bar slot: the switch, on Git Workspace's own screen, once GitHub is connected. */
+/**
+ * The app's top bar slot, on Git Workspace's own screen: the Local / GitHub switch (once GitHub is
+ * connected) and the page's controls (fetched status, Jump, Fetch all, Pull all…) once it has published them.
+ */
 export function GitTopbar({ view }) {
   const mode = useMode()
+  const bar = useGitBar()
   const named = view !== undefined
   React.useEffect(() => { if (named) githubMode.markTopbar() }, [named])
-  if (view !== 'git' || !mode.available) return null
-  return <ModeSwitch onGithub={mode.onGithub} request={mode.request} />
+  if (view !== 'git') return null
+  return (
+    <>
+      {mode.available && <ModeSwitch onGithub={mode.onGithub} request={mode.request} />}
+      {bar.active && <GitTopbarControls bar={bar} />}
+    </>
+  )
 }
