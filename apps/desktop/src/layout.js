@@ -11,8 +11,10 @@ export function effectiveSidebar(width, pref, breakpoint = SIDEBAR_BREAKPOINT) {
 }
 
 // Views that stay mounted (hidden) after the first visit, so leaving them keeps their state —
-// the Database screen's open connection, query and results live only in its component.
-export const KEEP_ALIVE_VIEWS = new Set(['db-manager'])
+// the Database screen's open connection, query and results live only in its component, and the
+// Git Workspace's open files, diffs and selections likewise. A kept view is told when it is hidden
+// (an `active` prop), so it can stop listening for keys and polling.
+export const KEEP_ALIVE_VIEWS = new Set(['db-manager', 'git'])
 
 // The views to render: every kept-alive view visited so far (shown only when current), plus the
 // current view. Visit order is kept so a kept view's place in the tree never moves.

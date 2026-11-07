@@ -16,7 +16,7 @@ import { SourcePicker } from './source-picker.jsx'
 import { PaneResizer, usePaneWidth, FILES_WIDTH } from './pane-resizer.jsx'
 import { CollapsibleRail, railColumns } from '@nexusmd/ui'
 import { ChangesRail, railLabel } from './changes-rail.jsx'
-import { useRail } from './use-rail.js'
+import { useRail, shown } from './use-rail.js'
 import { useLastCommit } from './use-last-commit.js'
 import { useCommitEdit } from './commit-edit-items.js'
 import { sourceName, checkoutName } from '@nexusmd/core'
@@ -143,6 +143,8 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   React.useEffect(() => {
     const key = e => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'p') return
+      // Hidden behind another screen: that screen's Ctrl+P (or the print dialog) is not this panel's to take.
+      if (!shown(rootRef.current)) return
       e.preventDefault()
       if (!document.querySelector('[aria-modal="true"]')) setGoTo(true)
     }

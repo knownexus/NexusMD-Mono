@@ -292,6 +292,44 @@ describe('ViewGit header', () => {
   })
 })
 
+describe('ViewGit while another screen is shown (active = false)', () => {
+  const press = (key, init = {}) => fireEvent.keyDown(document.body, { key, ...init })
+
+  it('leaves the keyboard to the screen in front, and takes it back when shown again', async () => {
+    configure()
+    const props = { adapters: { git: adapter() } }
+    const { rerender } = render(<ViewGit {...props} active={false} />)
+    await screen.findByRole('region', { name: 'B' })
+    const before = getGitConfig().view.selected
+    press('j')
+    press('k', { ctrlKey: true })
+    expect(getGitConfig().view.selected).toBe(before)
+    expect(screen.queryByRole('combobox', { name: 'Branch name' })).toBeNull()
+    rerender(<ViewGit {...props} active />)
+    press('k', { ctrlKey: true })
+    expect(screen.getByRole('combobox', { name: 'Branch name' })).toBeTruthy()
+  })
+
+  it('stops polling git while hidden, and reads again as soon as it is shown', async () => {
+    configure()
+    const git = adapter()
+    const props = { adapters: { git } }
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    try {
+      const { rerender } = render(<ViewGit {...props} />)
+      await act(() => vi.advanceTimersByTimeAsync(100))
+      rerender(<ViewGit {...props} active={false} />)
+      await act(() => vi.advanceTimersByTimeAsync(100))
+      const settled = git.status.mock.calls.length
+      await act(() => vi.advanceTimersByTimeAsync(60_000))
+      expect(git.status.mock.calls.length).toBe(settled)
+      rerender(<ViewGit {...props} active />)
+      await act(() => vi.advanceTimersByTimeAsync(100))
+      expect(git.status.mock.calls.length).toBeGreaterThan(settled)
+    } finally { vi.useRealTimers() }
+  })
+})
+
 describe('ViewGit shortcuts', () => {
   const press = (key, init = {}, target = document.activeElement ?? document.body) => fireEvent.keyDown(target, { key, ...init })
 

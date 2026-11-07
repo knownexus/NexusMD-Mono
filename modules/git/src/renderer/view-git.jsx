@@ -52,13 +52,14 @@ function readAt(iso) {
   return today ? d.toLocaleTimeString() : `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`
 }
 
-export function ViewGit({ adapters, host = null }) {
+// `active` is false while another screen is in front (the shell keeps this one mounted, hidden, so what was open is still there on return).
+export function ViewGit({ adapters, host = null, active = true }) {
   const adapter = adapters?.git
   if (!adapter?.isAvailable()) return <div className="nx-empty" style={{ padding: 16 }}>Git Workspace needs the desktop app.</div>
-  return <GitWorkspace adapter={adapter} host={host} />
+  return <GitWorkspace adapter={adapter} host={host} active={active} />
 }
 
-function GitWorkspace({ adapter, host }) {
+function GitWorkspace({ adapter, host, active }) {
   const config = useGitConfig()
   const missing = usePathsMissing(config.repos.map(r => r.path))
   const registered = React.useMemo(() => config.repos.map(r => r.path), [config.repos])
@@ -88,7 +89,8 @@ function GitWorkspace({ adapter, host }) {
   // The page's keys. The handlers are filled in below, once the snapshot's state is worked out; until
   // then (and on the error screens) there are none. Ctrl/⌘P stays with the worktree panel's Go to file.
   const keys = React.useRef({}).current
-  useGitShortcuts(keys)
+  // Only while this screen is in front: j, k, s, u, /, Ctrl+K belong to whatever is shown instead.
+  useGitShortcuts(keys, active)
   const detailsRef = React.useRef(null)
   // The GitHub view stays mounted once opened, hidden while on Local (and Local while on GitHub), so switching back finds each as it was left.
   const githubSeen = React.useRef(false)
@@ -100,7 +102,9 @@ function GitWorkspace({ adapter, host }) {
     adapter.version().then(v => { if (live) setGitVersion(v) }, () => { if (live) setGitVersion(null) })
     return () => { live = false }
   }, [adapter])
-  const { snapshot, stale, error, loading, refresh, reload } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported, full: config.view.selected })
+  const { snapshot, stale, error, loading, refresh, reload } = useGitSnapshot({ adapter, repos: config.repos, enabled: !!gitVersion && !config.unsupported, full: config.view.selected,
+    // No polling while hidden; coming back reads once at once (the effect runs again).
+    intervalMs: active ? 10000 : null })
   // A write's result (the commit summary, git's notes, a refusal) goes to the command log, not the Changes pane.
   const toLog = (text, tone) => text.replace(/\r?\n$/, '').split(/\r?\n/).map(t => ({ text: t, tone }))
   const actions = useGitActions({ adapter, registered, reload,

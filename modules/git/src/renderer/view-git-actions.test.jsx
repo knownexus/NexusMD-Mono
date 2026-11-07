@@ -339,6 +339,16 @@ describe('editing files', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
+  it('leaves Ctrl+P alone while the page is hidden behind another screen: no printing blocked, no dialog', async () => {
+    setupView({ ...files(), files: vi.fn(async () => ({ files: ['f.txt'], truncated: false })) })
+    await openWorktree()
+    document.body.firstElementChild.style.display = 'none'
+    const ev = new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true, cancelable: true })
+    act(() => { window.dispatchEvent(ev) })
+    expect(ev.defaultPrevented).toBe(false)
+    expect(screen.queryByRole('combobox', { name: 'File name' })).toBeNull()
+  })
+
   it('ignores Ctrl+P while another modal is open, but still prevents printing', async () => {
     setupView({ ...files(), files: vi.fn(async () => ({ files: ['f.txt'], truncated: false })) })
     await openWorktree()
