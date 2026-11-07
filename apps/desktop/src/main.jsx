@@ -128,7 +128,7 @@ function Placeholder({ label }) {
 const BASE_DATA = { storage: window.localStorage, getProfileKey, pushPref: () => {} }
 
 // The body of a screen: an installed app's own view, or the shell's Settings.
-function ViewBody({ view, tweaks = DEFAULT_TWEAKS, setTweak = () => {} }) {
+function ViewBody({ view, active = true, tweaks = DEFAULT_TWEAKS, setTweak = () => {} }) {
   // Set while rendering, not in an effect, so an error thrown by this very render is filed under the right app.
   setActiveModule(registry.appForView(view)?.id)
 
@@ -136,7 +136,7 @@ function ViewBody({ view, tweaks = DEFAULT_TWEAKS, setTweak = () => {} }) {
   if (isUninstalledView(view)) return <Placeholder label={(ALL_NAV.find(n => n.id === view) || ALL_NAV[0]).label} />
 
   const ModuleView = moduleView(view)
-  if (ModuleView) return <ModuleView adapters={adapters} host={host} tweaks={tweaks} setTweak={setTweak} />
+  if (ModuleView) return <ModuleView adapters={adapters} host={host} active={active} tweaks={tweaks} setTweak={setTweak} />
 
   if (view === 'settings') {
     return <DesktopSettings tweaks={tweaks} setTweak={setTweak} nav={INSTALLED_NAV} defaultNavOrder={DEFAULT_TWEAKS.navOrder} />
@@ -377,7 +377,7 @@ function App() {
           }}>
             {mountedViews(visited.filter(id => !offViews.includes(id)), view).map(id => (
             <div key={id} style={{ display: id === view ? 'contents' : 'none' }}>
-            <ViewBody view={id} tweaks={tweaks} setTweak={setTweak} />
+            <ViewBody view={id} active={id === view} tweaks={tweaks} setTweak={setTweak} />
             </div>
             ))}
           </section>

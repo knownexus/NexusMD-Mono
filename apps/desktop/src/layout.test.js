@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { effectiveSidebar, SIDEBAR_BREAKPOINT, orderedNav, visibleNav, toggledSidebar, mountedViews, mergeNavOrder, sidebarGroups, placedNav } from './layout.js'
+import { effectiveSidebar, SIDEBAR_BREAKPOINT, orderedNav, visibleNav, toggledSidebar, mountedViews, KEEP_ALIVE_VIEWS, mergeNavOrder, sidebarGroups, placedNav } from './layout.js'
 
 describe('mergeNavOrder', () => {
   it('keeps the places of apps that are not installed', () => {
@@ -46,6 +46,14 @@ describe('mountedViews', () => {
   })
   it('drops ordinary views once left', () => {
     expect(mountedViews(['dashboard', 'db'], 'git', keep)).toEqual(['db', 'git'])
+  })
+})
+
+describe('the Git Workspace is kept alive', () => {
+  it('stays mounted, with its open files and selections, while another screen is shown', () => {
+    expect(KEEP_ALIVE_VIEWS.has('git')).toBe(true)
+    expect(mountedViews(['git', 'dashboard'], 'dashboard')).toContain('git')
+    expect(mountedViews(['git', 'dashboard'], 'dashboard')).toEqual(['git', 'dashboard'])
   })
 })
 

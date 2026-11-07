@@ -6,7 +6,7 @@ import { useGitConfig } from './use-git-config.js'
 const KEYS = { changes: 'changes', files: 'files', 'github-files': 'githubFiles' }
 
 // Whether `el` is on screen: attached, with nothing hidden (display: none) at or above it.
-function shown(el) {
+export function shown(el) {
   if (!el || !el.isConnected) return false
   for (let n = el; n; n = n.parentElement) if (getComputedStyle(n).display === 'none') return false
   return true
