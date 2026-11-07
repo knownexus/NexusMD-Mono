@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
 import { ChangesPane } from './changes-pane.jsx'
+import { getGitConfig, setGitConfig } from './git-config.js'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); localStorage.clear() })
 
 const c = (area, path, extra = {}) => ({ path, originalPath: null, xy: area === 'staged' ? 'M.' : '.M', area, sub: 'N...', id: `${area}\0${path}`, ...extra })
 const A = c('staged', 'a.txt')
@@ -268,6 +269,8 @@ describe('ChangesPane conflicts', () => {
 })
 
 describe('ChangesPane with very many changes', () => {
+  // The flat list's cap: a big lane starts in Folders, so these ask for Flat.
+  beforeEach(() => setGitConfig({ view: { ...getGitConfig().view, laneMode: 'flat' } }))
   const many = Array.from({ length: 1000 }, (_, i) => c('untracked', `out/f${i}.js`))
 
   it('draws only the first rows and says how many are not shown', () => {
@@ -337,5 +340,70 @@ describe('ChangesPane pop-out menu', () => {
     await open('b.txt', onPopout)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Diff in new window' }))
     expect((await screen.findByRole('alert')).textContent).toBe("Can't open that window: no file.")
+  })
+})
+
+describe('ChangesPane large change sets', () => {
+  const many = Array.from({ length: 120 }, (_, i) => c('untracked', `apps/web/dist/f${i}.js`))
+  const withOthers = [...many, c('untracked', 'docs/readme.md'), c('untracked', 'top.txt')]
+  const pane = (changes = withOthers, props = {}) => renderPane({ tree: { path: 'C:/repos/A', changes }, ...props })
+  const notStaged = () => within(screen.getByRole('group', { name: /^Not staged/ }))
+
+  it('a small lane has neither the filter nor the Folders | Flat switch', () => {
+    renderPane()
+    expect(screen.queryByPlaceholderText('Filter files')).toBeNull()
+    expect(screen.queryByRole('tab', { name: 'Folders' })).toBeNull()
+  })
+
+  it('a lane over 50 changes starts in Folders, one row per folder with its file count', () => {
+    pane()
+    expect(screen.getByRole('tab', { name: 'Folders' }).getAttribute('aria-selected')).toBe('true')
+    const lane = notStaged()
+    expect(lane.getByText('apps/web/dist/')).toBeTruthy()
+    expect(lane.getByText('120')).toBeTruthy()
+    expect(lane.queryByText('f0.js')).toBeNull()
+  })
+
+  it('opening a folder lists its files, and the Flat view lists every file without folder rows', () => {
+    pane()
+    fireEvent.click(notStaged().getByText('apps/web/dist/'))
+    expect(notStaged().getByText('f0.js')).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: 'Flat' }))
+    expect(screen.queryByText('120')).toBeNull()
+    expect(notStaged().getByText('readme.md')).toBeTruthy()
+  })
+
+  it('selecting a folder row tells the page which folder and its files', () => {
+    const onFocusFolder = vi.fn()
+    pane(withOthers, { onFocusFolder })
+    fireEvent.click(notStaged().getByText('apps/web/dist/'))
+    expect(onFocusFolder).toHaveBeenCalledWith(expect.objectContaining({ path: 'apps/web/dist/', area: 'unstaged', ids: expect.any(Array) }))
+    expect(onFocusFolder.mock.calls[0][0].ids).toHaveLength(120)
+  })
+
+  it('filters by the start of words in the path, and Esc clears the filter', () => {
+    pane()
+    const box = screen.getByPlaceholderText('Filter files')
+    fireEvent.change(box, { target: { value: 'doc read' } })
+    expect(notStaged().getByText('docs/')).toBeTruthy()
+    expect(notStaged().queryByText('apps/web/dist/')).toBeNull()
+    fireEvent.keyDown(box, { key: 'Escape' })
+    expect(box.value).toBe('')
+    expect(notStaged().getByText('apps/web/dist/')).toBeTruthy()
+  })
+
+  it('a folder holding the focused file is open, and the file is drawn even past the per-folder cap', () => {
+    const lots = Array.from({ length: 5000 }, (_, i) => c('untracked', `out/f${i}.js`))
+    renderPane({ tree: { path: 'C:/repos/A', changes: lots }, focusId: lots[3000].id })
+    expect(screen.getByTitle('out/f3000.js')).toBeTruthy()
+    expect(document.querySelectorAll('.nx-gw-file').length).toBeLessThan(3200)
+  })
+
+  it('draws a bounded number of rows however many files there are, and offers more in the folder', () => {
+    const lots = Array.from({ length: 50000 }, (_, i) => c('untracked', `dist/f${i}.js`))
+    renderPane({ tree: { path: 'C:/repos/A', changes: lots } })
+    fireEvent.click(screen.getByText('dist/'))
+    expect(document.querySelectorAll('.nx-gw-file').length).toBe(300)
+    expect(screen.getByText('Show 1200 more in this folder')).toBeTruthy()
   })
 })

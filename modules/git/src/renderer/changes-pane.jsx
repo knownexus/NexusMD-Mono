@@ -2,7 +2,11 @@ import React from 'react'
 import { statusCode, groupChanges, actionsFor, isSubmodule, conflictLabels, conflictKind, checkoutName } from '@nexusmd/core'
 import { CommitComposer } from './commit-composer.jsx'
 import { ContextMenu, menuPoint } from './context-menu.jsx'
+import { Icon, Segmented } from '@nexusmd/ui'
 import { nextSelection } from './change-selection.js'
+import { groupByFolder, filterChanges, BIG_LANE } from './change-folders.js'
+import { useGitConfig } from './use-git-config.js'
+import { getGitConfig, setGitConfig } from './git-config.js'
 
 const ARROW = { stage: '↓', unstage: '↑' }
 // Only a conflict both sides changed gets whole-file takes on its row; one where a side deleted or added the file
@@ -43,7 +47,7 @@ function lanes(changes, operationKind) {
   ].filter(l => l.changes.length)
 }
 
-function ChangeRow({ c, selected, focused, onClick, draft, labels, busy, onResolve, onWrite, onFocus, onContext }) {
+function ChangeRow({ c, selected, focused, onRowClick, draft, labels, busy, onResolve, onWrite, onFocus, onContext }) {
   const { name, dir } = split(c.path)
   const sub = isSubmodule(c)
   const l = letter(c)
@@ -54,7 +58,7 @@ function ChangeRow({ c, selected, focused, onClick, draft, labels, busy, onResol
     : { label: ARROW.stage, title: `Stage ${c.path}`, run: () => onWrite('stage', [c.id]) }
   return (
     <div className="nx-gw-file" aria-current={focused ? 'true' : undefined} data-selected={selected || undefined} title={c.path}
-      onClick={onClick} onContextMenu={onContext ? e => onContext(e, c) : undefined}>
+      onClick={e => onRowClick(c, e)} onContextMenu={onContext ? e => onContext(e, c) : undefined}>
       <span className="nx-gw-file-code" data-tone={TONE[l] ?? 'warn'} title={statusCode(c)}>{l}</span>
       <span className="nx-gw-file-name">
         <span className="base">{name}</span>
@@ -85,18 +89,60 @@ function ChangeRow({ c, selected, focused, onClick, draft, labels, busy, onResol
   )
 }
 
-function Lane({ lane, selected, focusId, onRowClick, onFocus, drafts, labels, busy, onResolve, onWrite, onContext }) {
-  const { title, changes } = lane
-  const [limit, setLimit] = React.useState(ROWS_SHOWN)
-  const chosenSet = React.useMemo(() => new Set(selected), [selected])
-  const draftSet = React.useMemo(() => new Set(drafts), [drafts])
-  // The focused row is always drawn, so keyboard moves and reviews never land on a hidden file.
+// More files than ROWS_SHOWN in one list (or one folder) are not drawn until asked for.
+function Rows({ changes, focusId, limit, onMore, more, row }) {
   const focusAt = focusId ? changes.findIndex(c => c.id === focusId) : -1
   const shown = Math.min(changes.length, Math.max(limit, focusAt + 1))
+  return (
+    <>
+      {changes.slice(0, shown).map(c => (
+        <ChangeRow key={c.id} c={c} focused={c.id === focusId} selected={row.chosen.has(c.id)} draft={row.drafts.has(c.path)} {...row} />
+      ))}
+      {shown < changes.length && (
+        <button className="nx-gw-sec-btn nx-gw-more" onClick={() => onMore(shown + ROWS_SHOWN * 4)}>
+          {more(Math.min(ROWS_SHOWN * 4, changes.length - shown), changes.length - shown)}
+        </button>
+      )}
+    </>
+  )
+}
+
+function FolderRow({ folder, open, onToggle }) {
+  return (
+    <div className="nx-gw-folder" role="button" tabIndex={-1} aria-expanded={open} title={folder.path} onClick={onToggle}>
+      <Icon name={open ? 'chevron-down' : 'chevron-right'} size={11} />
+      <span className="nx-gw-file-code" data-tone={TONE[folder.letter] ?? 'warn'}>{folder.letter}</span>
+      <span className="nx-gw-folder-path">{folder.path}</span>
+      <span className="nx-gw-folder-n">{folder.count}</span>
+    </div>
+  )
+}
+
+function Lane({ lane, selected, focusId, onRowClick, onFocus, onFocusFolder, drafts, labels, busy, onResolve, onWrite, onContext, treeKey }) {
+  const { title, changes } = lane
+  const config = useGitConfig()
+  const mode = config.view.laneMode
+  const big = changes.length > BIG_LANE
+  const [limit, setLimit] = React.useState(ROWS_SHOWN)
+  const [query, setQuery] = React.useState('')
+  const [open, setOpen] = React.useState(() => new Set())
+  const [folderLimits, setFolderLimits] = React.useState({})
+  // Another worktree starts with its own filter and open folders.
+  const [shownFor, setShownFor] = React.useState(treeKey)
+  if (shownFor !== treeKey) { setShownFor(treeKey); setQuery(''); setOpen(new Set()); setFolderLimits({}); setLimit(ROWS_SHOWN) }
+  const chosen = React.useMemo(() => new Set(selected), [selected])
+  const draftSet = React.useMemo(() => new Set(drafts), [drafts])
+  const visible = React.useMemo(() => (big ? filterChanges(changes, query) : changes), [big, changes, query])
+  const folders = React.useMemo(() => (big && mode === 'folders' ? groupByFolder(visible) : null), [big, mode, visible])
   const movable = changes.filter(c => !isSubmodule(c))
-  const picked = movable.filter(c => chosenSet.has(c.id))
+  const picked = movable.filter(c => chosen.has(c.id))
   const verb = lane.bulk === 'stage' ? 'Stage' : 'Unstage'
   const bulkLabel = `${verb} ${picked.length ? picked.length : 'all'} ${ARROW[lane.bulk]}`
+  const row = { chosen, drafts: draftSet, labels, busy, onResolve, onWrite, onFocus, onContext, onRowClick }
+  const toggle = f => {
+    setOpen(prev => { const next = new Set(prev); if (!next.delete(f.path)) next.add(f.path); return next })
+    onFocusFolder?.({ path: f.path, area: lane.id, count: f.count, ids: f.files.filter(c => !isSubmodule(c)).map(c => c.id) })
+  }
   return (
     <div role="group" aria-label={`${title} (${changes.length})`} className="nx-gw-lane" data-lane={lane.id}>
       <div className="nx-gw-lane-head" data-tone={lane.tone}>
@@ -106,16 +152,39 @@ function Lane({ lane, selected, focusId, onRowClick, onFocus, drafts, labels, bu
           <button className="nx-gw-lane-btn" disabled={busy} onClick={() => onWrite(lane.bulk, (picked.length ? picked : movable).map(c => c.id))}>{bulkLabel}</button>
         )}
       </div>
+      {big && (
+        <div className="nx-gw-lane-tools">
+          <label className="nx-gw-lane-filter">
+            <Icon name="search" size={11} />
+            <input type="search" aria-label={`Filter ${title}`} placeholder="Filter files" value={query} spellCheck={false}
+              onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Escape' && query) { e.preventDefault(); e.stopPropagation(); setQuery('') } }} />
+          </label>
+          <Segmented size="sm" ariaLabel={`${title} view`} value={mode} onChange={laneMode => setGitConfig({ view: { ...getGitConfig().view, laneMode } })}
+            options={[{ id: 'folders', label: 'Folders' }, { id: 'flat', label: 'Flat' }]} />
+        </div>
+      )}
       <div className="nx-gw-lane-body">
         {lane.note && <div className="nx-gw-sec-note">{lane.note}</div>}
-        {changes.slice(0, shown).map(c => (
-          <ChangeRow key={c.id} c={c} selected={chosenSet.has(c.id)} focused={c.id === focusId} onClick={e => onRowClick(c, e)} onFocus={onFocus}
-            draft={draftSet.has(c.path)} labels={labels} busy={busy} onResolve={onResolve} onWrite={onWrite} onContext={onContext} />
-        ))}
-        {shown < changes.length && (
-          <button className="nx-gw-sec-btn" style={{ margin: '6px 8px' }} onClick={() => setLimit(shown + ROWS_SHOWN * 4)}>
-            {`Show ${Math.min(ROWS_SHOWN * 4, changes.length - shown)} more (${changes.length - shown} not shown)`}
-          </button>
+        {big && query && !visible.length && <div className="nx-gw-sec-note">No file matches.</div>}
+        {folders
+          ? folders.slice(0, limit).map(f => {
+            // A folder holding the focused file is open, so the file is never hidden.
+            const isOpen = open.has(f.path) || (!!focusId && f.files.some(c => c.id === focusId))
+            return (
+              <React.Fragment key={f.path}>
+                <FolderRow folder={f} open={isOpen} onToggle={() => toggle(f)} />
+                {isOpen && (
+                  <div className="nx-gw-folder-files">
+                    <Rows changes={f.files} focusId={focusId} limit={folderLimits[f.path] ?? ROWS_SHOWN} onMore={n => setFolderLimits(m => ({ ...m, [f.path]: n }))}
+                      more={n => `Show ${n} more in this folder`} row={row} />
+                  </div>
+                )}
+              </React.Fragment>
+            )
+          })
+          : <Rows changes={visible} focusId={focusId} limit={limit} onMore={setLimit} more={(n, left) => `Show ${n} more (${left} not shown)`} row={row} />}
+        {folders && folders.length > limit && (
+          <button className="nx-gw-sec-btn nx-gw-more" onClick={() => setLimit(limit + ROWS_SHOWN * 4)}>{`Show more folders (${folders.length - limit} not shown)`}</button>
         )}
       </div>
     </div>
@@ -133,7 +202,7 @@ const fileWord = n => (n > 1 ? ` ${n} files` : '')
  * `onCommit({ message, amend, push })` commits this worktree. `onPopout(kind, change)` (editor | conflict | diff),
  * when given, adds the pop-out items to the menu.
  */
-export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite = () => {}, onCommit, onResolve = null, busy = false, status = null, drafts = [], onPopout = null }) {
+export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite = () => {}, onCommit, onResolve = null, busy = false, status = null, drafts = [], onPopout = null, onFocusFolder = null }) {
   const [menu, setMenu] = React.useState(null)
   const [popError, setPopError] = React.useState(null)
   const closeMenu = React.useCallback(() => setMenu(null), [])
@@ -217,7 +286,7 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
             </div>
           )
           : list.map(l => (
-            <Lane key={l.id} lane={l} selected={selected} focusId={focusId} onRowClick={onRowClick} onFocus={onFocus}
+            <Lane key={l.id} lane={l} selected={selected} focusId={focusId} onRowClick={onRowClick} onFocus={onFocus} onFocusFolder={onFocusFolder} treeKey={tree.path}
               drafts={drafts} labels={labels} busy={busy} onResolve={onResolve} onWrite={write} onContext={onContext} />
           ))}
       </div>

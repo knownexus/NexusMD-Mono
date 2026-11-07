@@ -603,3 +603,16 @@
 .nx-gw-repo-head .nx-badge { height: 18px; border-radius: 4px; padding: 0 6px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 .nx-gw-row { gap: 9px; padding: 6px 8px; border-radius: 7px; }
 .nx-gw-row-title { font-size: 12.5px; }
+
+/* ---------- Large change sets: lane filter, Folders | Flat, folder rows (2c) ---------- */
+.nx-gw-lane-tools { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--surface-3); }
+.nx-gw-lane-filter { position: relative; flex: 1; min-width: 0; }
+.nx-gw-lane-filter > svg { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.nx-gw-lane-filter input { width: 100%; height: 26px; padding: 0 8px 0 24px !important; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); font-size: 12px; outline: none; }
+.nx-gw-lane-filter input:focus { border-color: var(--accent); }
+.nx-gw-folder { display: grid; grid-template-columns: 11px 14px minmax(0, 1fr) auto; gap: 8px; align-items: center; height: 28px; padding: 0 8px; border-radius: 5px; cursor: pointer; color: var(--text-muted); }
+.nx-gw-folder:hover { background: var(--surface-2); }
+.nx-gw-folder-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 500; color: var(--text); }
+.nx-gw-folder-n { font: 11px var(--mono); color: var(--text-muted); }
+.nx-gw-folder-files { padding-left: 24px; }
+.nx-gw-more { display: block; margin: 4px 8px 6px; color: var(--accent); font-size: 12px; }
