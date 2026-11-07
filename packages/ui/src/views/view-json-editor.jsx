@@ -68,6 +68,8 @@ export function JsonEditorView({ openNewest = false }) {
   // updates `data` on a successful parse, so the tree keeps showing the last
   // valid value while `rawText` is transiently invalid (e.g. mid-edit).
   useEffect(() => {
+    // Blank text is an empty document (an opened empty file, or everything deleted), not an error.
+    if (!rawText.trim()) { setData({}); setRawError(null); return }
     try {
       const parsed = JSON.parse(rawText)
       setData(parsed)

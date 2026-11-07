@@ -173,6 +173,14 @@ describe('JsonEditorView when a file was opened', () => {
     expect(queryByText('address')).toBeNull()
   })
 
+  it('an empty document is an empty document, not an Invalid one', () => {
+    const { container, queryByText, getByText } = renderJson(store([doc('')]), { openNewest: true })
+    expect(container.querySelector('textarea').value).toBe('')
+    expect(queryByText('Invalid')).toBeNull()
+    expect(getByText('Valid JSON')).toBeTruthy()
+    expect(queryByText('Alice Johnson')).toBeNull()
+  })
+
   it('without openNewest it still starts on the sample', () => {
     const { getByText } = renderJson(store([doc('{"city":"Oslo"}')]), {})
     expect(getByText('Alice Johnson')).toBeTruthy()

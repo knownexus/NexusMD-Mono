@@ -40,6 +40,11 @@ describe('json and regex helpers', () => {
     expect(jsonAutoName('[1,2]')).toBe('[1,2]')
     expect(jsonAutoName('  ')).toBe('Untitled')
   })
+  it('treats blank text as an empty document, not a JSON error', () => {
+    expect(parseJson('')).toEqual({ ok: true, value: {} })
+    expect(parseJson('  \n ')).toEqual({ ok: true, value: {} })
+    expect(parseJson('{"a":').ok).toBe(false)
+  })
   it('explains a bad pattern without the engine noise', () => {
     expect(patternError('', 'g')).toBe('')
     expect(patternError('\d+', 'g')).toBe('')
@@ -157,6 +162,14 @@ describe('Documents page when a file was opened with the app', () => {
     rerender(<DocumentsPhone opened={1} openedTool="json" key={1}/>)
     expect((await screen.findByLabelText('JSON')).value).toBe('{"opened":"yes"}')
     expect(screen.queryByLabelText('Markdown')).toBeNull()
+  })
+
+  it('shows an opened empty JSON file as an empty document, not as invalid', async () => {
+    localStorage.setItem('json_editor_documents', JSON.stringify([{ id: 'e', name: 'empty', autoName: 'Untitled', content: '', createdAt: 1, updatedAt: 9 }]))
+    render(<DocumentsPhone opened={1} openedTool="json" key={1}/>)
+    expect((await screen.findByLabelText('JSON')).value).toBe('')
+    expect(screen.queryByText('Invalid JSON')).toBeNull()
+    expect(screen.getByText('Valid JSON')).toBeTruthy()
   })
 
   it('does not take the tool over when nothing was opened', async () => {

@@ -27,6 +27,7 @@ const SAMPLE_TEXT = JSON.stringify({
 }, null, 2);
 
 export function parseJson(text) {
+  if (!String(text).trim()) return { ok: true, value: {} }; // blank text is an empty document, not an error
   try { return { ok: true, value: JSON.parse(text) }; } catch (e) { return { ok: false, message: e.message }; }
 }
 
