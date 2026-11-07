@@ -130,3 +130,27 @@ describe('FileExplorer pins and picking', () => {
     expect(onPick).toHaveBeenCalledWith('README.md')
   })
 })
+
+describe('FileExplorer rail', () => {
+  const rail = picked => <div>{`rail for ${picked}`}</div>
+
+  it('draws the rail beside the preview with what is picked, and a note before a pick', () => {
+    show({ rail, railLabel: 'File details', railOpen: true, onRailToggle: () => {} })
+    expect(screen.getByText('rail for null')).toBeTruthy()
+    fireEvent.click(row('README.md'))
+    expect(screen.getByText('rail for README.md')).toBeTruthy()
+  })
+
+  it('collapses to a strip named after its label and asks to be toggled', () => {
+    const onRailToggle = vi.fn()
+    show({ rail, railLabel: 'File details', railOpen: false, onRailToggle })
+    expect(screen.queryByText('rail for null')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Show File details' }))
+    expect(onRailToggle).toHaveBeenCalledTimes(1)
+  })
+
+  it('has no rail unless given one', () => {
+    show()
+    expect(screen.queryByRole('complementary')).toBeNull()
+  })
+})

@@ -8,6 +8,9 @@ import { fileMarks } from './file-marks.js'
 import { PathBar } from './path-bar.jsx'
 import { DiffPane } from './diff-pane.jsx'
 import { useDiff } from './use-diff.js'
+import { useFileHistory } from './use-file-history.js'
+import { FileRail } from './file-rail.jsx'
+import { useRail } from './use-rail.js'
 import { FileExplorer, forgetExplorerViews } from './file-explorer.jsx'
 import { useRecentFiles } from './use-recent-files.js'
 import { relativeTime } from './history-pane.jsx'
@@ -117,11 +120,30 @@ function addedLines(files) {
   return out
 }
 
+// Lines added and removed in a diff, for the panel's status card (null until the diff is read).
+function lineCounts(files) {
+  if (!files.length) return null
+  let add = 0
+  let del = 0
+  for (const f of files) for (const h of f.hunks) for (const l of h.lines) { if (l.kind === 'add') add++; else if (l.kind === 'del') del++ }
+  return { add, del }
+}
+
+// The picked file's right-hand panel: its change and line counts, its latest commits, and the ways to open it.
+function LocalRail({ path, change, d, worktreePath, version, onView, onWrite, onAction, onOpenCommit, onEdit, elsewhere, onElsewhere, onReveal, onNewWindow }) {
+  const history = useFileHistory({ adapter: d.adapter, repo: d.repo, cwd: worktreePath, registered: d.registered, path, version })
+  const diff = useDiff({ adapter: d.adapter, repo: d.repo, worktreePath, registered: d.registered, change, version })
+  return (
+    <FileRail path={path} change={change} counts={lineCounts(diff.files)} commits={history.commits} elsewhere={elsewhere}
+      onViewDiff={onView} onStage={c => onWrite?.('stage', [c.id])} onUnstage={c => onWrite?.('unstage', [c.id])}
+      onDiscard={c => onAction?.(c.area === 'untracked' ? 'delete' : 'discard', [c.id])} onOpenCommit={oid => onOpenCommit?.(oid)}
+      onEdit={onEdit} onElsewhere={onElsewhere} onReveal={onReveal} onNewWindow={onNewWindow} />
+  )
+}
+
 // The picked file: a path bar with File | Diff (Diff only for a changed file) and the file with its changed
 // lines tinted and a status footer, or the same diff as Changes.
-function LocalPreview({ path, change, d, worktreePath, version, repoName, viewKey, actions, image }) {
-  const [view, setView] = React.useState(() => fileViews.get(viewKey) ?? 'file')
-  const choose = v => { fileViews.set(viewKey, v); setView(v) }
+function LocalPreview({ path, change, d, worktreePath, version, repoName, view, onView, image }) {
   const diff = useDiff({ adapter: d.adapter, repo: d.repo, worktreePath, registered: d.registered, change: image ? null : change, version })
   const marked = React.useMemo(() => addedLines(diff.files), [diff.files])
   const showDiff = !!change && !image && view === 'diff'
@@ -129,11 +151,8 @@ function LocalPreview({ path, change, d, worktreePath, version, repoName, viewKe
     <>
       <PathBar segments={[repoName, ...path.split('/')]}>
         {change && !image && (
-          <Segmented size="sm" ariaLabel="File or diff" value={view} onChange={choose} options={[{ id: 'file', label: 'File' }, { id: 'diff', label: 'Diff' }]} />
+          <Segmented size="sm" ariaLabel="File or diff" value={view} onChange={onView} options={[{ id: 'file', label: 'File' }, { id: 'diff', label: 'Diff' }]} />
         )}
-        {actions.map(a => (
-          <button key={a.label} type="button" className={`btn sm${a.primary ? '' : ' ghost'}`} title={a.title} onClick={a.onSelect}>{a.label}</button>
-        ))}
       </PathBar>
       {image
         ? <div className="nx-gw-fx-pad"><ImageView name={path} loadKey={`${path}\0${version}`} load={() => d.adapter.readImage(d.repo, worktreePath, d.registered, path, 'working')} emptyText="This file isn’t there any more." /></div>
@@ -152,10 +171,12 @@ function LocalPreview({ path, change, d, worktreePath, version, repoName, viewKe
  * new files appear as untracked, replaced ones as unstaged. `onImported()` asks the workspace to read
  * the changes again. `changes` (the worktree's) marks each changed file by where its change is (staged,
  * not staged, untracked, conflicted) in the Changes tab's colours, and each folder holding one with a
- * dot. `onOpenFile(path)` edits a file in the workspace (double-click, Enter, Edit). What was open and
+ * dot. `onOpenFile(path)` edits a file in the workspace (double-click, Enter, Edit). `onWrite(action, ids)` and
+ * `onAction(action, ids)` stage / unstage and review a discard or delete for the panel's buttons; `onOpenCommit(oid)`
+ * shows a commit in History. What was open and
  * picked, the filter and the scroll are kept per worktree, so leaving the tab and coming back finds it as it was.
  */
-export function FilesPane({ adapter, host = null, repo, worktreePath, registered, version, onImported = () => {}, onOpenFile = null, changes = [] }) {
+export function FilesPane({ adapter, host = null, repo, worktreePath, registered, version, onImported = () => {}, onOpenFile = null, changes = [], onWrite = null, onAction = null, onOpenCommit = null }) {
   const [list, setList] = React.useState(null)
   const [error, setError] = React.useState(null)
   const [target, setTarget] = React.useState(null)
@@ -176,6 +197,11 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
   }, [worktreePath])
   React.useEffect(() => { load() }, [load, repoPath, repoName, version])
   const marks = React.useMemo(() => fileMarks(changes), [changes])
+  const rail = useRail('files')
+  const viewKey = `${repo?.path}|${worktreePath}`
+  const [, redraw] = React.useReducer(n => n + 1, 0)
+  const viewOf = () => fileViews.get(viewKey) ?? 'file'
+  const setView = v => { fileViews.set(viewKey, v); redraw() }
   const recent = useRecentFiles(`${repo?.path}|${worktreePath}`)
 
   const finish = async (dir, sources, replace) => {
@@ -250,15 +276,25 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
   ]
   const preview = path => (
     <LocalPreview key={path} path={path} change={changeFor(changes, path)} d={deps.current} worktreePath={worktreePath} version={version}
-      repoName={repo?.name || 'Repository'} viewKey={`${repo?.path}|${worktreePath}`} actions={fileActions(path)} image={isImagePath(path)} />
+      repoName={repo?.name || 'Repository'} view={viewOf()} onView={setView} image={isImagePath(path)} />
   )
+  const detailsFor = path => {
+    if (!path) return <div className="nx-gw-crail"><div className="nx-gw-rail-note">Pick a file to see its details.</div></div>
+    const other = elsewhere()
+    return (
+      <LocalRail key={path} path={path} change={changeFor(changes, path)} d={deps.current} worktreePath={worktreePath} version={version}
+        onView={() => setView('diff')} onWrite={onWrite} onAction={onAction} onOpenCommit={onOpenCommit}
+        onEdit={onOpenFile ? () => onOpenFile(path) : null} elsewhere={other} onElsewhere={() => attempt(() => other.run(path))}
+        onReveal={() => reveal(path)} onNewWindow={() => inWindow(path)} />
+    )
+  }
 
   const notes = note && <div role={note.bad ? 'alert' : 'status'} className={`nx-alert ${note.bad ? 'bad' : 'good'}`}>{note.text}</div>
   return (
     <div className="nx-gw-files-tab" data-dropping={target !== null || undefined} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       <FileExplorer label="Files" rootName={repo?.name || 'Repository'} files={list?.files ?? null} truncated={!!list?.truncated} error={error}
         viewKey={`local:${worktreePath}`} renderName={row => <RowName row={row} marks={marks} />} menuItems={menuItems}
-        onOpen={onOpenFile} preview={preview} notes={notes} onPick={recent.touch} highlightMatches
+        onOpen={onOpenFile} preview={preview} notes={notes} onPick={recent.touch} highlightMatches rail={detailsFor} railLabel="File details" railOpen={rail.open} onRailToggle={rail.toggle}
         pins={({ pick, picked }) => (
           <>
             <ChangedPin marks={marks} picked={picked} pick={pick} />

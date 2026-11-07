@@ -1,5 +1,5 @@
 import React from 'react'
-import { Icon } from '@nexusmd/ui'
+import { Icon, CollapsibleRail, railColumns } from '@nexusmd/ui'
 import { wordMatch } from '@nexusmd/core'
 import { matchSegments } from './match-segments.js'
 import { buildFileTree } from './file-tree.js'
@@ -69,11 +69,14 @@ function useKeptScroll(boxRef, viewKey, ready) {
  * "Pick a file" while none is picked. rowProps(row) / treeProps: extra props (drag and drop).
  * pins: a node, or ({ pick, picked }) => node, drawn between the filter and the tree (Changed, Recent).
  * onPick(path): a file was picked (row, pin or keyboard). highlightMatches: mark the matched word starts in names.
+ * rail(picked): the right-hand panel for the picked path (null before a pick), collapsible: railLabel names it,
+ * railOpen / onRailToggle are its state.
  */
 export function FileExplorer({
   label = 'Files', rootName, files, truncated = false, error = null, viewKey,
   renderName = null, menuItems = () => [], onOpen = null, preview,
   notes = null, footer = null, emptyNote = null, rowProps = () => ({}), treeProps = {}, pins = null, onPick = null, highlightMatches = false,
+  rail = null, railLabel = 'Details', railOpen = true, onRailToggle = () => {},
 }) {
   const [open, setOpen] = React.useState(() => new Set(viewOf(viewKey).open))
   const [selected, setSelected] = React.useState(() => viewOf(viewKey).selected)
@@ -153,7 +156,8 @@ export function FileExplorer({
     </span>
   ))
   return (
-    <section aria-label={label} className="nx-gw-fx" ref={box} style={{ '--gw-fx': `${side.width}px` }}>
+    <section aria-label={label} className="nx-gw-fx" ref={box} data-rail={rail ? '' : undefined}
+      style={{ '--gw-fx': `${side.width}px`, ...(rail ? { '--gw-rail': railColumns(railOpen, 290) } : null) }}>
       <div className="nx-gw-fx-side">
         <div className="nx-gw-fx-tools">
           <label className="nx-gw-fx-filter">
@@ -203,6 +207,7 @@ export function FileExplorer({
           </div>
         )}
       </div>
+      {rail && <CollapsibleRail open={railOpen} onToggle={onRailToggle} label={railLabel}>{rail(picked)}</CollapsibleRail>}
       <ContextMenu menu={menu} onClose={closeMenu} />
     </section>
   )

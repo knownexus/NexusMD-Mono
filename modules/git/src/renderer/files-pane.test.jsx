@@ -18,16 +18,17 @@ const files = ['README.md', 'docs/guide.md', 'src/app.jsx']
 const dropped = name => ({ name })
 const DIFF = ['diff --git a/src/app.jsx b/src/app.jsx', '--- a/src/app.jsx', '+++ b/src/app.jsx', '@@ -1,2 +1,3 @@', ' one', '+two', '+three', ''].join('\n')
 
-function setup({ plan = { total: 1, conflicts: [], failed: [] }, result = { added: 1, replaced: 0, skipped: 0, failed: [] }, changes, worktreePath = repo.path } = {}) {
+function setup({ extra = {}, plan = { total: 1, conflicts: [], failed: [] }, result = { added: 1, replaced: 0, skipped: 0, failed: [] }, changes, worktreePath = repo.path } = {}) {
   const adapter = {
     files: vi.fn(async () => ({ files, truncated: false })),
     pathForFile: vi.fn(f => (f.name === 'unknown' ? '' : `D:\\in\\${f.name}`)),
     importFiles: vi.fn(async (_r, _w, _g, _d, _s, options) => (options?.dryRun ? plan : result)),
     readFile: vi.fn(async () => ({ text: 'one\ntwo\nthree\n' })),
+    log: vi.fn(async () => ({ text: `* \x1e${'a'.repeat(40)}\x1f\x1fAna\x1fa@b\x1f1700000000\x1f\x1fFix the thing\n`, tip: 'x' })),
     diff: vi.fn(async () => ({ text: DIFF, stamp: 's1', truncated: false, binary: false, size: DIFF.length })),
   }
   const onImported = vi.fn()
-  render(<div className="nx-gw-files-body"><FilesPane adapter={adapter} repo={repo} worktreePath={worktreePath} registered={registered} version={1} onImported={onImported} changes={changes} /></div>)
+  render(<div className="nx-gw-files-body"><FilesPane adapter={adapter} repo={repo} worktreePath={worktreePath} registered={registered} version={1} onImported={onImported} changes={changes} {...extra} /></div>)
   return { adapter, onImported }
 }
 const dropOn = (el, names) => fireEvent.drop(el, { dataTransfer: { types: ['Files'], files: names.map(dropped) } })
@@ -317,7 +318,7 @@ describe('FilesPane', () => {
       openWindow: vi.fn(async () => ({})), ...extra,
     })
 
-    it('shows the picked file read-only, with Edit, Open in Editor and Open in new window', async () => {
+    it('shows the picked file read-only, with Edit here, Open in Editor and New window in the panel', async () => {
       const onOpenFile = vi.fn()
       const adapter = adapterWith()
       const calls = []
@@ -327,11 +328,11 @@ describe('FilesPane', () => {
       fireEvent.click(await row('README.md'))
       expect((await screen.findByRole('textbox', { name: 'Preview of README.md' })).value).toBe('text of README.md')
       expect(adapter.readFile).toHaveBeenCalledWith(repo, 'C:\\repos\\A', registered, 'README.md')
-      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+      fireEvent.click(screen.getByRole('button', { name: /^Edit here/ }))
       expect(onOpenFile).toHaveBeenLastCalledWith('README.md')
       fireEvent.click(screen.getByRole('button', { name: 'Open in Editor' }))
       await waitFor(() => expect(calls).toEqual([['editor.openPath', 'C:\\repos\\A\\README.md']]))
-      fireEvent.click(screen.getByRole('button', { name: 'Open in new window' }))
+      fireEvent.click(screen.getByRole('button', { name: 'New window' }))
       await waitFor(() => expect(adapter.openWindow).toHaveBeenCalled())
     })
 
@@ -430,6 +431,50 @@ describe('FilesPane preview', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'Diff' }))
     cleanup()
     setup({ changes })
+    expect(await screen.findByRole('region', { name: 'Diff' })).toBeTruthy()
+  })
+})
+
+describe('FilesPane right-hand panel', () => {
+  const change = (area, path, xy) => ({ id: `${area}\0${path}`, path, originalPath: null, area, xy, sub: 'N...' })
+  const changes = [change('unstaged', 'src/app.jsx', '.M')]
+  const pick = async name => { fireEvent.click(await row('src')); fireEvent.click(await row(name)) }
+
+  it('shows the picked file\'s details with its recent commits, and no preview actions in the path bar', async () => {
+    setup({ changes })
+    await pick('app.jsx')
+    const rail = await screen.findByRole('complementary', { name: 'File details' })
+    expect(rail.textContent).toContain('Modified · not staged')
+    expect(await screen.findByText('Fix the thing')).toBeTruthy()
+    expect(document.querySelector('.nx-gw-pathbar-end button[title]')).toBeNull()
+  })
+
+  it('hides to a strip that shows it again, remembered for the tab kind', async () => {
+    setup({ changes })
+    await pick('app.jsx')
+    fireEvent.click(await screen.findByRole('button', { name: 'Hide panel' }))
+    expect(screen.getByRole('button', { name: 'Show File details' })).toBeTruthy()
+    expect(JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.includes('git.config')))).view.railOpen.files).toBe(false)
+  })
+
+  it('stages and discards the picked change through the page, and opens a commit in History', async () => {
+    const onWrite = vi.fn()
+    const onAction = vi.fn()
+    const onOpenCommit = vi.fn()
+    setup({ changes, extra: { onWrite, onAction, onOpenCommit } })
+    await pick('app.jsx')
+    fireEvent.click(await screen.findByRole('button', { name: 'Stage' }))
+    expect(onWrite).toHaveBeenCalledWith('stage', [changes[0].id])
+    fireEvent.click(screen.getByRole('button', { name: 'Discard…' }))
+    expect(onAction).toHaveBeenCalledWith('discard', [changes[0].id])
+    fireEvent.click(await screen.findByText('Fix the thing'))
+    expect(onOpenCommit).toHaveBeenCalledWith('a'.repeat(40))
+  })
+
+  it('View diff in the panel switches the preview to the diff', async () => {
+    setup({ changes })
+    await pick('app.jsx')
+    fireEvent.click(await screen.findByRole('button', { name: 'View diff' }))
     expect(await screen.findByRole('region', { name: 'Diff' })).toBeTruthy()
   })
 })
