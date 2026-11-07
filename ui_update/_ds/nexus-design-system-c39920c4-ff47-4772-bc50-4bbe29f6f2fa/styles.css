@@ -1,0 +1,13 @@
+/* ═══════════════════════════════════════════════════════════
+   NEXUS COMMUNITY DESIGN SYSTEM — root entry stylesheet
+   Consumers can link this one file to get everything:
+   base type + element styles, all component chrome, and every
+   brand profile. Switch theme with <html data-brand="…">.
+
+   Load order matters: colors_and_type defines the default :root
+   tokens + element styles; components builds on those; profiles
+   adds the scoped :root[data-brand] overrides last so they win.
+   ═══════════════════════════════════════════════════════════ */
+@import url('colors_and_type.css');
+@import url('components.css');
+@import url('brand-profiles/profiles.css');
