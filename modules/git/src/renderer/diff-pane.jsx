@@ -6,13 +6,14 @@ import { isImagePath } from './image-types.js'
 import { ImageDiff } from './image-view.jsx'
 
 const LINE_STYLE = {
-  add: { background: 'color-mix(in srgb, var(--success) 18%, transparent)' },
-  del: { background: 'color-mix(in srgb, var(--danger) 18%, transparent)' },
+  add: { background: 'var(--success-soft)' },
+  del: { background: 'var(--danger-soft)' },
   context: {},
   meta: { color: 'var(--text-muted)', fontStyle: 'italic' },
 }
 const SIGN = { add: '+', del: '−', context: ' ', meta: ' ' }
-const GRID = { display: 'grid', gridTemplateColumns: '5ch 5ch 2ch 1fr', columnGap: 4 }
+const GRID = { display: 'grid', gridTemplateColumns: '40px 40px 18px 1fr', columnGap: 0, lineHeight: '20px' }
+const NUMBER = { color: 'var(--text-subtle)', opacity: 0.6, textAlign: 'right', paddingRight: 8 }
 const size = n => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.ceil(n / 1024))} KB`)
 const note = text => <div role="note" style={{ color: 'var(--text-muted)', padding: 8 }}>{text}</div>
 
@@ -63,6 +64,31 @@ function HunkHeader({ header, children }) {
   )
 }
 
+const FOLDER_KIND = { untracked: 'untracked', unstaged: 'changed', staged: 'staged', conflict: 'conflicted' }
+
+// A folder picked in a big lane: what it holds and what can be done to all of it, with nothing to diff.
+function FolderHeader({ folder, busy, onFolder }) {
+  const kind = FOLDER_KIND[folder.area] ?? 'changed'
+  const act = folder.area === 'staged' ? { action: 'unstage', label: 'Unstage folder' } : folder.area === 'conflict' ? null : { action: 'stage', label: 'Stage folder' }
+  return (
+    <section aria-label="Diff" className="nx-gw-diffbox">
+      <div className="nx-gw-diff-head">
+        <div className="nx-gw-diff-path">
+          <span className="p" title={folder.path}>{folder.path}</span>
+          <span className="dir">{`${folder.count} ${kind} file${folder.count === 1 ? '' : 's'}`}</span>
+        </div>
+        <div className="nx-gw-diff-actions">
+          {folder.area === 'untracked' && onFolder && (
+            <button className="btn sm ghost danger" disabled={busy} aria-label="Delete folder…" title={`Delete the untracked files in ${folder.path}`} onClick={() => onFolder('delete')}>Delete…</button>
+          )}
+          {act && onFolder && <button className="btn sm" disabled={busy} title={`${act.label} (${folder.path})`} onClick={() => onFolder(act.action)}>{act.label}</button>}
+        </div>
+      </div>
+      <div role="note" className="nx-gw-diff-note">Folder selected — pick a file inside it…</div>
+    </section>
+  )
+}
+
 // One row per line; memoised on the hunk's lines, which useDiff keeps when a reload brings the same diff.
 // With `onLine`, a row that has a new-side number opens the file there when clicked.
 const HunkLines = React.memo(function HunkLines({ lines, language, onLine }) {
@@ -70,9 +96,9 @@ const HunkLines = React.memo(function HunkLines({ lines, language, onLine }) {
   return lines.map((l, li) => (
     <div key={li} data-testid="diff-line" data-kind={l.kind} style={{ ...GRID, ...LINE_STYLE[l.kind], ...(onLine && l.newNo != null ? { cursor: 'pointer' } : null) }}
       title={onLine && l.newNo != null ? `Edit at line ${l.newNo}` : undefined} onClick={onLine && l.newNo != null ? () => onLine(l.newNo) : undefined}>
-      <span style={{ color: 'var(--text-muted)', textAlign: 'right' }}>{l.oldNo ?? ''}</span>
-      <span style={{ color: 'var(--text-muted)', textAlign: 'right' }}>{l.newNo ?? ''}</span>
-      <span>{SIGN[l.kind]}</span>
+      <span style={NUMBER}>{l.oldNo ?? ''}</span>
+      <span style={NUMBER}>{l.newNo ?? ''}</span>
+      <span style={{ textAlign: 'center' }}>{SIGN[l.kind]}</span>
       <span style={{ whiteSpace: 'pre' }}><Pieces pieces={pieces[li]} /></span>
     </div>
   ))
@@ -112,7 +138,7 @@ const HunkPairs = React.memo(function HunkPairs({ lines, language, onLine }) {
     const style = { ...LINE_STYLE[l.kind] }
     const click = onLine && no === 'newNo' && l.newNo != null ? () => onLine(l.newNo) : undefined
     return [
-      <span key="n" style={{ ...style, color: 'var(--text-muted)', textAlign: 'right' }}>{l[no] ?? ''}</span>,
+      <span key="n" style={{ ...style, ...NUMBER }}>{l[no] ?? ''}</span>,
       <span key="t" style={{ ...style, whiteSpace: 'pre', overflow: 'hidden', ...(click ? { cursor: 'pointer' } : null) }}
         title={click ? `Edit at line ${l.newNo}` : undefined} onClick={click}><Pieces pieces={pieces[i]} /></span>,
     ]
@@ -163,16 +189,20 @@ function wholeFileOnly(file, area) {
  * and file buttons and the staging advice. `images` ({ load(side, rel), key }) shows a changed image as
  * before and after above the text (an SVG's source still follows); without it a binary file is just noted.
  */
-export function DiffPane({ change, diff, onHunk, onLine = null, onFile = null, busy = false, sides: sidesOverride = null, readOnly = false, images = null }) {
+export function DiffPane({ change, diff, onHunk, onLine = null, onFile = null, busy = false, sides: sidesOverride = null, readOnly = false, images = null, folder = null, onFolder = null }) {
   // Stable for the memoised rows, which would otherwise re-render on every parent render.
   const lineRef = React.useRef(onLine)
   lineRef.current = onLine
   const clickLine = React.useCallback(n => lineRef.current?.(n), [])
   const [mode, setMode] = React.useState('unified')
+  if (folder && !change) return <FolderHeader folder={folder} busy={busy} onFolder={onFolder} />
   if (!change) return <div style={{ color: 'var(--text-muted)' }}>Select a file to see its diff.</div>
   const sides = sidesOverride ?? diffSides(change)
   const { result, files, error, loading } = diff
   const language = languageForPath(change.path)
+  const slash = change.path.lastIndexOf('/')
+  const base = change.path.slice(slash + 1)
+  const dir = slash < 0 ? '' : change.path.slice(0, slash)
   const counts = lineCounts(files)
   const buttons = readOnly || !onFile ? [] : fileButtons(change)
   const split = mode === 'split'
@@ -188,7 +218,8 @@ export function DiffPane({ change, diff, onHunk, onLine = null, onFile = null, b
       <div style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--bg)' }}>
         <div className="nx-gw-diff-head" style={{ padding: '4px 0 8px', fontFamily: 'var(--sans)' }}>
           <div className="nx-gw-diff-path">
-            <span className="p" title={change.path}>{change.path}</span>
+            <span className="p" title={change.path}>{base}</span>
+            {dir && <span className="dir">{dir}</span>}
             {languageLabel(language) && <span className="nx-gw-lang">{languageLabel(language)}</span>}
             {counts.add > 0 && <span className="add" aria-label={`${counts.add} added`}>{`+${counts.add}`}</span>}
             {counts.del > 0 && <span className="del" aria-label={`${counts.del} removed`}>{`−${counts.del}`}</span>}
@@ -204,13 +235,14 @@ export function DiffPane({ change, diff, onHunk, onLine = null, onFile = null, b
             ))}
           </div>
         </div>
+        {(readOnly || loading) && (
         <div aria-label="Diff legend" style={{ display: 'flex', gap: 16, padding: '4px 0' }}>
-          {sides?.old && <span style={{ color: 'var(--danger)' }}>{`− old: ${sides.old}`}</span>}
-          {sides && <span style={{ color: 'var(--success)' }}>{sides.old ? `+ new: ${sides.new}` : `+ ${sides.new}`}</span>}
+          {readOnly && sides?.old && <span style={{ color: 'var(--danger)' }}>{`− old: ${sides.old}`}</span>}
+          {readOnly && sides && <span style={{ color: 'var(--success)' }}>{sides.old ? `+ new: ${sides.new}` : `+ ${sides.new}`}</span>}
           {loading && <span style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>Loading…</span>}
         </div>
+        )}
       </div>
-      {sides?.old && !split && <div aria-hidden="true" style={{ ...GRID, color: 'var(--text-muted)' }}><span>old</span><span>new</span></div>}
       {error && <div role="alert" style={{ color: 'var(--danger)' }}>{error}</div>}
       {result?.gone && note('No longer changed.')}
       {images && isImagePath(change.path) && result && !result.gone && <ImageDiff change={change} load={images.load} loadKey={images.key} />}
@@ -227,7 +259,7 @@ export function DiffPane({ change, diff, onHunk, onLine = null, onFile = null, b
               <HunkHeader header={h.header}>
                 {showHunks && (
                   // Disabled while the diff (re)loads too: its stamp may be from before the last write.
-                  <button className="btn sm ghost" style={{ marginLeft: 'auto' }} disabled={busy || loading} onClick={() => onHunk(hi, result.stamp)}>{hunkLabel}</button>
+                  <button className="nx-hunk-btn" disabled={busy || loading} onClick={() => onHunk(hi, result.stamp)}>{hunkLabel}</button>
                 )}
               </HunkHeader>
               <Rows lines={h.lines} language={languageForPath(f.path || change.path)} onLine={onLine ? clickLine : null} />

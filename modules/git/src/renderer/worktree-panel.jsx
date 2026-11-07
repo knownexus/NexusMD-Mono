@@ -70,7 +70,9 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   const close = () => { setOpened(null); setMode('diff'); setJustResolved(null) }
   // Another worktree starts in Diff with nothing open (ViewGit asked about the edits before switching).
   const [shownTree, setShownTree] = React.useState(tree.path)
-  if (shownTree !== tree.path) { setShownTree(tree.path); close(); setRequest(null) }
+  // A folder picked in a big lane of the changes list (the centre then shows its header, not a diff).
+  const [folder, setFolder] = React.useState(null)
+  if (shownTree !== tree.path) { setShownTree(tree.path); close(); setRequest(null); setFolder(null) }
   const editor = !history && !filesTab && opened?.tree === tree.path ? opened : null
   const editing = mode === 'edit' && !!editor
   const dirty = React.useRef(false)
@@ -152,6 +154,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
       else close()
     }
     setJustResolved(null)
+    setFolder(null)
     onFocus(id)
   }
   const openResolve = c => {
@@ -244,7 +247,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
         : (
             <div className="nx-gw-changes" ref={changesRef} style={{ '--gw-files': `${files.width}px` }}>
               <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={focus} drafts={drafts}
-                onAction={onAction} onWrite={onWrite} onCommit={onCommit} onResolve={onResolve && resolve} busy={busy} status={status}
+                onAction={onAction} onWrite={onWrite} onCommit={onCommit} onResolve={onResolve && resolve} busy={busy} status={status} onFocusFolder={setFolder}
                 onPopout={adapter.openWindow ? (kind, c) => adapter.openWindow(popoutSpec(kind, { repo, worktree: tree.path, registered, path: c.path, change: c })) : null} />
               <PaneResizer label="Resize file list" width={files.width} fallback={FILES_WIDTH} boxRef={changesRef} onDrag={files.onDrag} onDone={files.onDone} className="nx-gw-files-resizer" />
               <div className="nx-gw-changes-main" data-mode={canEdit ? 'edit' : 'plain'}>
@@ -262,7 +265,8 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
                       onResolved={() => { setJustResolved({ tree: tree.path, path: resolvePath }); onSaved?.() }} />
                   : editor && !diffChange
                   ? <div role="note" style={{ color: 'var(--text-muted)' }}>No changes yet.</div>
-                  : <DiffPane change={diffChange} diff={diff} busy={busy}
+                  : <DiffPane change={folder ? null : diffChange} folder={folder} diff={diff} busy={busy}
+                      onFolder={action => (action === 'delete' ? onAction('delete', folder.ids) : onWrite(action, folder.ids))}
                       images={adapter.readImage ? { load: (side, rel) => adapter.readImage(repo, tree.path, registered, rel, side), key: `${tree.path}|${diff.result?.stamp ?? ''}` } : null} onHunk={(index, stamp) => onHunk(diffChange, index, stamp, diff.reload)}
                       onFile={diffChange && (action => (action === 'stage' || action === 'unstage' ? onWrite(action, [diffChange.id]) : onAction(action, [diffChange.id])))}
                       onLine={diffChange && diffChange.area !== 'conflict' ? n => openFile(diffChange.path, n) : null} />)}

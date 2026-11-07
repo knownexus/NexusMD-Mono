@@ -14,11 +14,10 @@ const change = (area, path = 'f.txt') => ({ path, originalPath: null, area, xy: 
 const loaded = (text, extra = {}) => ({ key: 'k', result: { text, stamp: 's1', truncated: false, binary: false, size: text.length, ...extra }, files: parseDiff(text).files, error: null, loading: false })
 
 describe('DiffPane', () => {
-  it('labels which side is old and which is new, with line-number gutters and +/− signs', () => {
+  it('has line-number gutters and +/− signs, and no old / new legend outside the history', () => {
     render(<DiffPane change={change('unstaged')} diff={loaded(TWO)} onHunk={vi.fn()} />)
-    const legend = screen.getByLabelText('Diff legend')
-    expect(within(legend).getByText('− old: index')).toBeTruthy()
-    expect(within(legend).getByText('+ new: working tree')).toBeTruthy()
+    expect(screen.queryByLabelText('Diff legend')).toBeNull()
+    expect(screen.queryByText(/old: /)).toBeNull()
     const rows = screen.getAllByTestId('diff-line')
     expect(rows.map(r => [r.dataset.kind, r.textContent])).toEqual([
       ['context', '11 keep'], ['del', '2−old line'], ['add', '2+new line'], ['context', '1010 ten'], ['add', '11+added'],
@@ -35,7 +34,6 @@ describe('DiffPane', () => {
     cleanup()
     render(<DiffPane change={change('staged')} diff={loaded(TWO)} onHunk={vi.fn()} />)
     expect(screen.getAllByRole('button', { name: 'Unstage hunk' })).toHaveLength(2)
-    expect(screen.getByText('− old: HEAD')).toBeTruthy()
   })
 
   it('disables hunk buttons while a write runs', () => {
@@ -74,7 +72,6 @@ describe('DiffPane', () => {
 
   it('shows untracked files as new with no hunk buttons', () => {
     render(<DiffPane change={change('untracked', 'n.txt')} diff={loaded('--- /dev/null\n+++ b/n.txt\n@@ -0,0 +1 @@\n+hi\n')} onHunk={vi.fn()} />)
-    expect(screen.getByText('+ new file')).toBeTruthy()
     expect(screen.queryByText(/old:/)).toBeNull()
     expect(screen.queryByRole('button', { name: /hunk/ })).toBeNull()
   })
@@ -114,7 +111,8 @@ describe('DiffPane', () => {
 describe('DiffPane header and side by side', () => {
   it('shows the path, its language and the lines added and removed', () => {
     render(<DiffPane change={change('unstaged', 'src/App.tsx')} diff={loaded(TWO)} onHunk={vi.fn()} />)
-    expect(screen.getByTitle('src/App.tsx').textContent).toBe('src/App.tsx')
+    expect(screen.getByTitle('src/App.tsx').textContent).toBe('App.tsx')
+    expect(screen.getByText('src').className).toBe('dir')
     expect(screen.getByText('TypeScript').className).toBe('nx-gw-lang')
     expect(screen.getByLabelText('2 added').textContent).toBe('+2')
     expect(screen.getByLabelText('1 removed').textContent).toBe('−1')
@@ -176,5 +174,52 @@ describe('DiffPane in the history (read-only)', () => {
     unmount()
     render(<DiffPane change={change} diff={view({ text: '', truncated: true, binary: false, size: 2 * 1024 * 1024 })} sides={{ old: 'a', new: 'b', staging: null }} readOnly />)
     expect(screen.getByText('This diff is too large to show (2.0 MB).')).toBeTruthy()
+  })
+})
+
+describe('DiffPane header', () => {
+  it('shows the file name and its folder apart, in one header', () => {
+    render(<DiffPane change={change('unstaged', 'src/deep/f.txt')} diff={loaded(TWO)} onHunk={vi.fn()} />)
+    const head = document.querySelector('.nx-gw-diff-head')
+    expect(within(head).getByText('f.txt').className).toBe('p')
+    expect(within(head).getByText('src/deep').className).toBe('dir')
+    expect(within(head).getByLabelText('2 added')).toBeTruthy()
+  })
+
+  it('offers Delete… instead of Discard… for an untracked file', () => {
+    render(<DiffPane change={change('untracked', 'n.txt')} diff={loaded('')} onHunk={vi.fn()} onFile={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Delete file…' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Discard file…' })).toBeNull()
+  })
+
+  it('keeps the old / new legend for a commit in the history', () => {
+    render(<DiffPane change={change('staged')} diff={loaded(TWO)} sides={{ old: 'a1', new: 'b2', staging: null }} readOnly />)
+    expect(screen.getByLabelText('Diff legend').textContent).toContain('− old: a1')
+  })
+})
+
+describe('DiffPane folder header', () => {
+  const folder = { path: 'apps/web/dist/', count: 142, area: 'untracked' }
+
+  it('names the folder and how many files of which kind it holds, and says to pick a file inside it', () => {
+    render(<DiffPane change={null} folder={folder} diff={{ files: [] }} onFolder={vi.fn()} />)
+    expect(screen.getByText('apps/web/dist/')).toBeTruthy()
+    expect(screen.getByText('142 untracked files')).toBeTruthy()
+    expect(screen.getByText('Folder selected — pick a file inside it…')).toBeTruthy()
+  })
+
+  it('Stage folder and Delete… tell the page what to do with the folder', () => {
+    const onFolder = vi.fn()
+    render(<DiffPane change={null} folder={folder} diff={{ files: [] }} onFolder={onFolder} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Stage folder' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete folder…' }))
+    expect(onFolder.mock.calls).toEqual([['stage'], ['delete']])
+  })
+
+  it('offers Unstage folder for a staged folder and no Delete…', () => {
+    render(<DiffPane change={null} folder={{ path: 'a/', count: 1, area: 'staged' }} diff={{ files: [] }} onFolder={vi.fn()} />)
+    expect(screen.getByText('1 staged file')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Unstage folder' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Delete/ })).toBeNull()
   })
 })
