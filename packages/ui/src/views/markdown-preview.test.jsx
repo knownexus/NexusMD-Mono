@@ -161,4 +161,46 @@ describe('followPreviewLink', () => {
     expect(svgLink.defaultPrevented).toBe(true)
     expect(open).toHaveBeenCalledTimes(1)
   })
+
+  it('catches an svg link whose address is a namespaced xlink:href, as the HTML parser really builds it', () => {
+    const open = vi.fn()
+    const box = document.createElement('div')
+    box.innerHTML = '<svg><a xlink:href="https://evil.example/x"><rect/></a></svg>'
+    // The parser moves xlink:href into the xlink namespace, so a plain [xlink\:href] selector would not see it.
+    const link = box.querySelector('a')
+    expect(link.hasAttributeNS('http://www.w3.org/1999/xlink', 'href')).toBe(true)
+    document.body.appendChild(box)
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'target', { value: box.querySelector('rect') })
+    followPreviewLink(event, box, { open, openExternal: undefined })
+    box.remove()
+    expect(event.defaultPrevented).toBe(true)
+    expect(open).toHaveBeenCalledWith('https://evil.example/x')
+  })
+
+  it('catches an xlink-namespaced href whatever prefix it was given, which a [xlink\\:href] selector cannot see', () => {
+    const open = vi.fn()
+    const box = document.createElement('div')
+    box.innerHTML = '<svg><a><rect/></a></svg>'
+    box.querySelector('a').setAttributeNS('http://www.w3.org/1999/xlink', 'x:href', 'https://evil.example/prefixed')
+    document.body.appendChild(box)
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'target', { value: box.querySelector('rect') })
+    followPreviewLink(event, box, { open, openExternal: undefined })
+    box.remove()
+    expect(event.defaultPrevented).toBe(true)
+    expect(open).toHaveBeenCalledWith('https://evil.example/prefixed')
+  })
+
+  it('walks past a nearer link without an address to the one that has it, including a namespaced one', () => {
+    const open = vi.fn()
+    const box = document.createElement('div')
+    box.innerHTML = '<svg><a xlink:href="https://evil.example/outer"><a><rect/></a></a></svg>'
+    document.body.appendChild(box)
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'target', { value: box.querySelector('rect') })
+    followPreviewLink(event, box, { open, openExternal: undefined })
+    box.remove()
+    expect(open).toHaveBeenCalledWith('https://evil.example/outer')
+  })
 })

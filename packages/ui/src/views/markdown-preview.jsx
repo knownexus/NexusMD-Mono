@@ -80,6 +80,10 @@ export function addHeadingAnchors(container) {
   });
 }
 
+const XLINK = 'http://www.w3.org/1999/xlink';
+// Where a link goes: its href, or an svg link's xlink:href whatever prefix it was written with; null when it has none.
+const linkAddress = el => el.getAttribute('href') ?? el.getAttributeNS(XLINK, 'href');
+
 // A click on a link in the preview. Web links open as the app's other links do (the link window
 // in the desktop app, a new tab on the web), mailto: in the mail app, and #anchors scroll to their
 // heading. Anything else is ignored, so a click can never navigate the app itself away.
@@ -89,9 +93,11 @@ export function followPreviewLink(e, container, {
 } = {}) {
   // Any element that links, not only <a>: an image map's <area> and an svg's <a xlink:href> would otherwise navigate the window.
   // The nearest one that has an address: a link without one (an svg <a>) inside a real link must not let that link navigate.
-  const a = e.target.closest?.('a[href], area[href], a[xlink\\:href]');
+  // An svg link's address is href in the xlink namespace, which no attribute selector written for plain HTML sees, so each candidate is asked directly.
+  let a = e.target.closest?.('a, area');
+  while (a && !linkAddress(a)) a = a.parentElement?.closest('a, area');
   if (!a || !container.contains(a)) return;
-  const href = a.getAttribute('href') ?? a.getAttribute('xlink:href');
+  const href = linkAddress(a);
   e.preventDefault();
   if (href.startsWith('#')) {
     let anchor = href.slice(1);
