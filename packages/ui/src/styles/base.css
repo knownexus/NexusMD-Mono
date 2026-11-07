@@ -1821,3 +1821,16 @@ button:focus-visible, .filter-chip:focus-visible { outline-offset: -1px; }
 .dash-hidden-text { flex: 1; min-width: 0; }
 .dash-hidden-title { font-size: 13px; font-weight: 500; }
 .dash-hidden-text .muted { font-size: 11.5px; }
+
+/* ---------- Shared: segmented control and collapsible rail ---------- */
+.nx-seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--bg); border-radius: 8px; }
+.nx-seg > button { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.nx-seg > button[aria-selected="true"] { background: var(--surface-2); color: var(--text); }
+.nx-seg.sm { padding: 2px; border-radius: 6px; }
+.nx-seg.sm > button { height: 20px; padding: 0 9px; font-size: 11.5px; border-radius: 4px; }
+.nx-rail { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); border-left: 1px solid var(--border); }
+.nx-rail-hide { position: absolute; top: 8px; right: 8px; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 5px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.nx-rail-hide:hover { background: var(--surface-2); color: var(--text); }
+.nx-rail-strip { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 40px; padding: 12px 0; border: 0; border-left: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; }
+.nx-rail-strip:hover { background: var(--surface-2); }
+.nx-rail-strip-label { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }

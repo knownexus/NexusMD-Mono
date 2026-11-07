@@ -9,9 +9,11 @@ export const GIT_CONFIG_EVENT = 'nexusmd:git-config'
 export const DEFAULT_ROOTS = Object.freeze(['C:/repos'])
 // Where the DotFiles repository is, for its PowerShell git shortcuts; an empty string turns them off.
 export const DEFAULT_DOTFILES = 'C:/repos/DotFiles'
+// Which right-hand panels are open, per tab kind, and how a long list of changes is grouped.
+export const DEFAULT_RAIL_OPEN = Object.freeze({ changes: true, files: true, githubFiles: true })
 export const DEFAULT_GIT_CONFIG = Object.freeze({
   version: 1, repos: [], groups: [], roots: null, dotfiles: null,
-  view: Object.freeze({ group: ALL_PROJECTS, collapsed: [], selected: null, split: 0.45, panel: 'changes', list: 'shown' }),
+  view: Object.freeze({ group: ALL_PROJECTS, collapsed: [], selected: null, split: 0.45, panel: 'changes', list: 'shown', railOpen: DEFAULT_RAIL_OPEN, laneMode: 'folders' }),
 })
 
 // The branch list's width: 330px unless dragged, never so narrow its rows are unreadable or so wide it
@@ -41,6 +43,8 @@ function normalise(saved) {
       split: typeof view.split === 'number' && view.split >= 0.2 && view.split <= 0.8 ? view.split : DEFAULT_GIT_CONFIG.view.split,
       panel: view.panel === 'history' || view.panel === 'files' ? view.panel : 'changes',
       list: view.list === 'hidden' ? 'hidden' : 'shown',
+      railOpen: Object.fromEntries(Object.keys(DEFAULT_RAIL_OPEN).map(k => [k, view.railOpen && typeof view.railOpen === 'object' && typeof view.railOpen[k] === 'boolean' ? view.railOpen[k] : DEFAULT_RAIL_OPEN[k]])),
+      laneMode: view.laneMode === 'flat' ? 'flat' : 'folders',
       // Where the History tab's divider was dragged to, and the branch list's width in pixels. Left out
       // when not set, so the screens use their own defaults. Anything not listed here is dropped on
       // read, which used to lose historySplit.
