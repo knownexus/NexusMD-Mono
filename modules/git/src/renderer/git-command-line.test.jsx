@@ -53,9 +53,31 @@ describe('GitCommandLine', () => {
   it('does nothing while disabled or empty', () => {
     const { onRun, input } = show({ disabled: true })
     expect(input.disabled).toBe(true)
-    expect(screen.getByRole('button', { name: 'Run' }).disabled).toBe(true)
+    expect(screen.getByRole('button', { name: 'status' }).disabled).toBe(true)
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(onRun).not.toHaveBeenCalled()
+  })
+
+  it('is one row: no hint line, no Run button, and the folder it runs in is the field\'s title', () => {
+    const { input } = show()
+    expect(document.body.textContent).not.toMatch(/Enter to run/)
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull()
+    expect(input.closest('.nx-cmd').getAttribute('title')).toBe('in C:/repos/A · Enter to run · ↑ previous · Esc minimises output')
+    expect(screen.getByRole('button', { name: 'status' }).closest('.nx-gw-cmdbar')).toBe(input.closest('.nx-gw-cmdbar'))
+  })
+
+  it('runs the quick commands status, log -5 and stash', () => {
+    const { onRun } = show()
+    fireEvent.click(screen.getByRole('button', { name: 'log -5' }))
+    expect(onRun).toHaveBeenLastCalledWith(['log', '--oneline', '-5'])
+    fireEvent.click(screen.getByRole('button', { name: 'status' }))
+    expect(onRun).toHaveBeenLastCalledWith(['status'])
+  })
+
+  it('puts the output chip it is given first in the row', () => {
+    show({ lead: <button type="button">Output ▴</button> })
+    const row = document.querySelector('.nx-gw-cmdbar')
+    expect(row.firstElementChild.textContent).toBe('Output ▴')
   })
 })
 
@@ -68,7 +90,7 @@ describe('GitCommandLine aliases', () => {
     const onRun = vi.fn()
     render(<GitCommandLine path="C:/repos/A" onRun={onRun} loadAliases={async () => aliases} />)
     const count = aliases.git.length + aliases.shell.length + (aliases.scripts?.length ?? 0)
-    await screen.findByRole('button', { name: `My aliases (${count}) ▾` })
+    await screen.findByRole('button', { name: `Aliases ${count} ▴` })
     const input = screen.getByLabelText('git command')
     const type = line => { fireEvent.change(input, { target: { value: line } }); fireEvent.keyDown(input, { key: 'Enter' }) }
     return { onRun, input, type }
@@ -103,7 +125,7 @@ describe('GitCommandLine aliases', () => {
     type('g! -v')
     type('git g!')
     expect(onRun.mock.calls).toEqual([[['g!', '-v'], { script: true }], [['g!']]])
-    fireEvent.click(screen.getByRole('button', { name: 'My aliases (1) ▾' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Aliases 1 ▴' }))
     expect(screen.getByRole('menu', { name: 'My aliases' }).textContent).toBe('DotFiles scriptsg!PowerShell script')
   })
 
@@ -115,22 +137,22 @@ describe('GitCommandLine aliases', () => {
 
   it('lists DotFiles shortcuts and git aliases; picking one fills it in', async () => {
     const { input } = await showAliases({ git: [co], shell: [ga, uncommit] })
-    fireEvent.click(screen.getByRole('button', { name: 'My aliases (3) ▾' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Aliases 3 ▴' }))
     const menu = screen.getByRole('menu', { name: 'My aliases' })
     expect(menu.textContent).toBe('DotFilesgagit adduncommitgit reset --soft HEAD^git configgit cogit checkout')
     fireEvent.click(screen.getByRole('menuitem', { name: 'ga' }))
     expect(input.value).toBe('ga ')
-    fireEvent.click(screen.getByRole('button', { name: 'My aliases (3) ▾' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Aliases 3 ▴' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'uncommit' }))
     expect(input.value).toBe('uncommit')
-    fireEvent.click(screen.getByRole('button', { name: 'My aliases (3) ▾' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Aliases 3 ▴' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'git co' }))
     expect(input.value).toBe('git co ')
   })
 
   it('draws the menu on the page, outside the panel that would clip it, and closes it on Escape or a click elsewhere', async () => {
     await showAliases({ git: [], shell: [ga] })
-    const chip = screen.getByRole('button', { name: 'My aliases (1) ▾' })
+    const chip = screen.getByRole('button', { name: 'Aliases 1 ▴' })
     fireEvent.click(chip)
     const menu = screen.getByRole('menu', { name: 'My aliases' })
     expect(menu.parentElement).toBe(document.body)
@@ -147,12 +169,12 @@ describe('GitCommandLine aliases', () => {
 
   it('says where aliases come from when none are found', async () => {
     await showAliases({ git: [], shell: [] })
-    fireEvent.click(screen.getByRole('button', { name: 'My aliases (0) ▾' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Aliases 0 ▴' }))
     expect(screen.getByRole('menu', { name: 'My aliases' }).textContent).toMatch(/Set your DotFiles folder in Settings/)
   })
 
   it('shows no alias picker without a loader', () => {
     render(<GitCommandLine path="C:/repos/A" onRun={vi.fn()} />)
-    expect(screen.queryByRole('button', { name: /My aliases/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Aliases/ })).toBeNull()
   })
 })

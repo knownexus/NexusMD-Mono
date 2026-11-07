@@ -414,13 +414,15 @@
    edge while the details scroll; the output floats above it, capped to the details' height (main is a
    size container), so neither moves the layout. */
 .nx-gw-main { container: nx-main / size; }
-.nx-gw-dock { position: sticky; bottom: 0; z-index: 20; margin-top: auto; flex: none; padding: 8px 20px 10px; border-top: 1px solid var(--border); background: var(--surface); }
-.nx-gw-dock .nx-cmd { align-items: center; background: var(--bg); }
+.nx-gw-dock { position: sticky; bottom: 0; z-index: 20; margin-top: auto; flex: none; padding: 0; border-top: 1px solid var(--border); background: var(--surface); }
+/* The command bar: one 42px row, the field growing and the chips after it. */
+.nx-gw-cmdbar { display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px; }
+.nx-gw-cmdbar > * { flex: none; }
+.nx-gw-cmdbar .nx-cmd { flex: 1 1 0; min-width: 0; height: 28px; align-items: center; background: var(--bg); border-radius: var(--radius-sm); }
+.nx-gw-cmdbar .nx-cmd input { padding: 0 8px !important; font-size: 12.5px; }
+.nx-gw-cmdbar .nx-chip { height: 24px; padding: 0 9px; border-radius: 6px; background: var(--surface-2); color: var(--text-muted); font: 11.5px var(--mono); }
 .nx-cmd-prompt { flex: none; padding-left: 10px; font: 600 13px var(--mono); color: var(--accent); white-space: nowrap; }
 .nx-cmd-kbd { flex: none; margin: 0 2px 0 4px; }
-.nx-gw-dock .nx-cmd-hint { flex-wrap: nowrap; }
-.nx-gw-dock .nx-cmd-hint > * { flex: none; }
-.nx-gw-dock .nx-cmd-hint > .nx-cmd-where { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-gw-act-retry { justify-self: start; margin: 2px 0 6px 92px; }
 .nx-gw-out { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 6px); height: 200px; max-height: max(96px, calc(100cqh - 100px)); z-index: 25; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-pop); overflow: hidden; }
 .nx-gw-out-grip { position: absolute; z-index: 1; touch-action: none; }
