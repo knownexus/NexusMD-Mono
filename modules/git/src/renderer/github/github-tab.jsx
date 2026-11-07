@@ -123,21 +123,21 @@ export function GithubTab({ host, adapter, config, snapshot, onOpenLocal }) {
       </nav>
       <PaneResizer label="Resize repository list" width={list.width} fallback={LIST_WIDTH} boxRef={bodyRef} onDrag={list.onDrag} onDone={list.onDone} />
       <section aria-label="GitHub repository" className="nx-gw-main">
-        <header className="nx-gw-dhead">
-          <div className="nx-gw-dhead-title">
+        <header className="nx-gw-dhead nx-gw-gh-head">
+          <div className="nx-gw-dhead-row">
             <div className="nx-gw-dhead-branch"><h3 className="nx-gw-branch-name">{chosen}</h3></div>
             <div className="nx-gw-dhead-meta">
               <span>{plural(counts.prs, 'open pull request', 'open pull requests')}</span>
               <span>{plural(counts.issues, 'open issue', 'open issues')}</span>
               {chosenLocal && <span>{`Local copy in ${chosenLocal}`}</span>}
             </div>
-          </div>
-          <div className="nx-gw-dhead-actions">
-            {chosenLocal && <button type="button" className="btn sm ghost" onClick={() => onOpenLocal(chosenLocal)}>Open local copy</button>}
-            <button type="button" className="btn sm ghost" aria-label="Refresh" title="Read this repository from GitHub again" onClick={() => setReloads(n => n + 1)}>
-              <Icon name="refresh" size={12} />Refresh
-            </button>
-            <a className="btn sm" href={`https://github.com/${chosen}`} target="_blank" rel="noopener noreferrer"><Icon name="link" size={12} />Open on GitHub</a>
+            <div className="nx-gw-dhead-actions">
+              {chosenLocal && <button type="button" className="btn sm ghost" onClick={() => onOpenLocal(chosenLocal)}>Open local copy</button>}
+              <a className="btn sm ghost" href={`https://github.com/${chosen}`} target="_blank" rel="noopener noreferrer"><Icon name="link" size={12} />Open on GitHub</a>
+              <button type="button" className="nx-gw-icon-btn nx-gw-sq" aria-label="Refresh" title="Read this repository from GitHub again" onClick={() => setReloads(n => n + 1)}>
+                <Icon name="refresh" size={14} />
+              </button>
+            </div>
           </div>
         </header>
         <GithubRepoPane key={chosen} repo={chosen} client={client} refreshKey={refreshKey} openPR={openPR} openItem={openItem} openBuild={openBuild}

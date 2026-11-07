@@ -2,10 +2,11 @@ import React from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { ListResizer } from './list-resizer.jsx'
+import { LIST_WIDTH } from './git-config.js'
 
 afterEach(cleanup)
 
-function setup(width = 330) {
+function setup(width = LIST_WIDTH) {
   const onDrag = vi.fn(), onDone = vi.fn()
   const body = { current: { getBoundingClientRect: () => ({ left: 100 }) } }
   render(<ListResizer width={width} bodyRef={body} onDrag={onDrag} onDone={onDone} />)
@@ -43,6 +44,6 @@ describe('ListResizer', () => {
     fireEvent.keyDown(handle, { key: 'ArrowLeft' })
     expect(onDone).toHaveBeenLastCalledWith(380)
     fireEvent.doubleClick(handle)
-    expect(onDone).toHaveBeenLastCalledWith(330)
+    expect(onDone).toHaveBeenLastCalledWith(LIST_WIDTH)
   })
 })

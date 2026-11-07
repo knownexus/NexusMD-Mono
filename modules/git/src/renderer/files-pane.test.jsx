@@ -1,29 +1,34 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react'
 // CodeMirror is tested on its own; the preview here is a plain read-only textarea.
 vi.mock('@nexusmd/editor-kit/code-editor.jsx', () => ({
   languageForPath: () => 'plaintext',
-  CodeEditor: ({ value, ariaLabel }) => <textarea aria-label={ariaLabel} value={value} readOnly />,
+  CodeEditor: ({ value, ariaLabel, lineClasses }) => <textarea aria-label={ariaLabel} value={value} readOnly data-lines={JSON.stringify((lineClasses ?? []).map(l => l[0]))} />,
 }))
 
 import { FilesPane, forgetFilesView } from './files-pane.jsx'
+import { forgetRecentFiles } from './use-recent-files.js'
 
 // The tab remembers open folders per worktree for the session; each test starts afresh.
-afterEach(() => { cleanup(); forgetFilesView() })
+afterEach(() => { cleanup(); forgetFilesView(); forgetRecentFiles() })
 
 const repo = { name: 'A', path: 'C:/repos/A' }
 const registered = ['C:/repos/A']
 const files = ['README.md', 'docs/guide.md', 'src/app.jsx']
 const dropped = name => ({ name })
+const DIFF = ['diff --git a/src/app.jsx b/src/app.jsx', '--- a/src/app.jsx', '+++ b/src/app.jsx', '@@ -1,2 +1,3 @@', ' one', '+two', '+three', ''].join('\n')
 
-function setup({ plan = { total: 1, conflicts: [], failed: [] }, result = { added: 1, replaced: 0, skipped: 0, failed: [] }, changes, worktreePath = repo.path } = {}) {
+function setup({ extra = {}, plan = { total: 1, conflicts: [], failed: [] }, result = { added: 1, replaced: 0, skipped: 0, failed: [] }, changes, worktreePath = repo.path } = {}) {
   const adapter = {
     files: vi.fn(async () => ({ files, truncated: false })),
     pathForFile: vi.fn(f => (f.name === 'unknown' ? '' : `D:\\in\\${f.name}`)),
     importFiles: vi.fn(async (_r, _w, _g, _d, _s, options) => (options?.dryRun ? plan : result)),
+    readFile: vi.fn(async () => ({ text: 'one\ntwo\nthree\n' })),
+    log: vi.fn(async () => ({ text: `* \x1e${'a'.repeat(40)}\x1f\x1fAna\x1fa@b\x1f1700000000\x1f\x1fFix the thing\n`, tip: 'x' })),
+    diff: vi.fn(async () => ({ text: DIFF, stamp: 's1', truncated: false, binary: false, size: DIFF.length })),
   }
   const onImported = vi.fn()
-  render(<div className="nx-gw-files-body"><FilesPane adapter={adapter} repo={repo} worktreePath={worktreePath} registered={registered} version={1} onImported={onImported} changes={changes} /></div>)
+  render(<div className="nx-gw-files-body"><FilesPane adapter={adapter} repo={repo} worktreePath={worktreePath} registered={registered} version={1} onImported={onImported} changes={changes} {...extra} /></div>)
   return { adapter, onImported }
 }
 const dropOn = (el, names) => fireEvent.drop(el, { dataTransfer: { types: ['Files'], files: names.map(dropped) } })
@@ -313,7 +318,7 @@ describe('FilesPane', () => {
       openWindow: vi.fn(async () => ({})), ...extra,
     })
 
-    it('shows the picked file read-only, with Edit, Open in Editor and Open in new window', async () => {
+    it('shows the picked file read-only, with Edit here, Open in Editor and New window in the panel', async () => {
       const onOpenFile = vi.fn()
       const adapter = adapterWith()
       const calls = []
@@ -323,11 +328,11 @@ describe('FilesPane', () => {
       fireEvent.click(await row('README.md'))
       expect((await screen.findByRole('textbox', { name: 'Preview of README.md' })).value).toBe('text of README.md')
       expect(adapter.readFile).toHaveBeenCalledWith(repo, 'C:\\repos\\A', registered, 'README.md')
-      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+      fireEvent.click(screen.getByRole('button', { name: /^Edit here/ }))
       expect(onOpenFile).toHaveBeenLastCalledWith('README.md')
       fireEvent.click(screen.getByRole('button', { name: 'Open in Editor' }))
       await waitFor(() => expect(calls).toEqual([['editor.openPath', 'C:\\repos\\A\\README.md']]))
-      fireEvent.click(screen.getByRole('button', { name: 'Open in new window' }))
+      fireEvent.click(screen.getByRole('button', { name: 'New window' }))
       await waitFor(() => expect(adapter.openWindow).toHaveBeenCalled())
     })
 
@@ -339,5 +344,165 @@ describe('FilesPane', () => {
       fireEvent.click(await row('README.md'))
       expect((await screen.findByRole('alert')).textContent).toBe("big.bin isn't a text file.")
     })
+  })
+})
+
+describe('FilesPane pinned groups', () => {
+  const change = (area, path, xy) => ({ id: `${area}\0${path}`, path, originalPath: null, area, xy, sub: 'N...' })
+  const changes = [change('unstaged', 'src/app.jsx', '.M'), change('staged', 'README.md', 'M.')]
+
+  it('lists the changed files above the tree with their letter, name and folder, and picks one on click', async () => {
+    setup({ changes })
+    const group = await screen.findByRole('group', { name: 'Changed 2' })
+    expect(group.textContent).toContain('app.jsx')
+    expect(group.textContent).toContain('src')
+    fireEvent.click(within(group).getByText('app.jsx'))
+    await waitFor(() => expect(screen.getByRole('navigation', { name: 'File path' }).textContent).toBe('A›src›app.jsx'))
+  })
+
+  it('tints a staged file in the staged colour', async () => {
+    setup({ changes })
+    const group = await screen.findByRole('group', { name: 'Changed 2' })
+    expect(within(group).getByText('README.md').closest('button').getAttribute('data-tone')).toBe('ok')
+    expect(within(group).getByText('app.jsx').closest('button').getAttribute('data-tone')).toBe('warn')
+  })
+
+  it('has no Changed group for a clean worktree', async () => {
+    setup({ changes: [] })
+    await row('docs')
+    expect(screen.queryByRole('group', { name: /^Changed/ })).toBeNull()
+  })
+
+  it('lists the files opened this session under Recent, newest first', async () => {
+    setup()
+    expect(screen.queryByRole('group', { name: 'Recent' })).toBeNull()
+    fireEvent.click(await row('README.md'))
+    fireEvent.click(await row('src'))
+    fireEvent.click(await row('app.jsx'))
+    const recent = screen.getByRole('group', { name: 'Recent' })
+    expect([...recent.querySelectorAll('button')].map(b => b.title)).toEqual(['src/app.jsx', 'README.md'])
+  })
+})
+
+describe('FilesPane preview', () => {
+  const change = (area, path, xy) => ({ id: `${area}\0${path}`, path, originalPath: null, area, xy, sub: 'N...' })
+  const changes = [change('unstaged', 'src/app.jsx', '.M')]
+  const pick = async name => { fireEvent.click(await row('src')); fireEvent.click(await row(name)) }
+
+  it('shows the path as crumbs from the repository down to the file', async () => {
+    setup()
+    await pick('app.jsx')
+    expect((await screen.findByRole('navigation', { name: 'File path' })).textContent).toBe('A›src›app.jsx')
+  })
+
+  it('shows language, lines, size, line ending and encoding in a status footer', async () => {
+    setup()
+    await pick('app.jsx')
+    const footer = await screen.findByRole('status', { name: 'File details' })
+    expect(footer.textContent).toContain('JavaScript')
+    expect(footer.textContent).toContain('3 lines')
+    expect(footer.textContent).toContain('14 B')
+    expect(footer.textContent).toContain('LF')
+    expect(footer.textContent).toContain('UTF-8')
+  })
+
+  it('has no File | Diff switch for a file that is not changed', async () => {
+    setup({ changes })
+    await pick('README.md')
+    await screen.findByRole('navigation', { name: 'File path' })
+    expect(screen.queryByRole('tab', { name: 'Diff' })).toBeNull()
+  })
+
+  it('marks the changed lines in the file, and switches to the same diff as Changes', async () => {
+    setup({ changes })
+    await pick('app.jsx')
+    expect(await screen.findByRole('tab', { name: 'Diff' })).toBeTruthy()
+    await waitFor(() => expect(screen.getByLabelText('Preview of src/app.jsx').getAttribute('data-lines')).toBe('[2,3]'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Diff' }))
+    expect(await screen.findByRole('region', { name: 'Diff' })).toBeTruthy()
+    expect(screen.getAllByTestId('diff-line').length).toBe(3)
+    fireEvent.click(screen.getByRole('tab', { name: 'File' }))
+    expect(await screen.findByLabelText('Preview of src/app.jsx')).toBeTruthy()
+  })
+
+  it('remembers File or Diff for the worktree when the tab is left and come back to', async () => {
+    setup({ changes })
+    await pick('app.jsx')
+    fireEvent.click(await screen.findByRole('tab', { name: 'Diff' }))
+    cleanup()
+    setup({ changes })
+    expect(await screen.findByRole('region', { name: 'Diff' })).toBeTruthy()
+  })
+})
+
+describe('FilesPane right-hand panel', () => {
+  const change = (area, path, xy) => ({ id: `${area}\0${path}`, path, originalPath: null, area, xy, sub: 'N...' })
+  const changes = [change('unstaged', 'src/app.jsx', '.M')]
+  const pick = async name => { fireEvent.click(await row('src')); fireEvent.click(await row(name)) }
+
+  it('shows the picked file\'s details with its recent commits, and no preview actions in the path bar', async () => {
+    setup({ changes })
+    await pick('app.jsx')
+    const rail = await screen.findByRole('complementary', { name: 'File details' })
+    expect(rail.textContent).toContain('Modified · not staged')
+    expect(await screen.findByText('Fix the thing')).toBeTruthy()
+    expect(document.querySelector('.nx-gw-pathbar-end button[title]')).toBeNull()
+  })
+
+  it('hides to a strip that shows it again, remembered for the tab kind', async () => {
+    setup({ changes })
+    await pick('app.jsx')
+    fireEvent.click(await screen.findByRole('button', { name: 'Hide panel' }))
+    expect(screen.getByRole('button', { name: 'Show File details' })).toBeTruthy()
+    expect(JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.includes('git.config')))).view.railOpen.files).toBe(false)
+  })
+
+  it('stages and discards the picked change through the page, and opens a commit in History', async () => {
+    const onWrite = vi.fn()
+    const onAction = vi.fn()
+    const onOpenCommit = vi.fn()
+    setup({ changes, extra: { onWrite, onAction, onOpenCommit } })
+    await pick('app.jsx')
+    fireEvent.click(await screen.findByRole('button', { name: 'Stage' }))
+    expect(onWrite).toHaveBeenCalledWith('stage', [changes[0].id])
+    fireEvent.click(screen.getByRole('button', { name: 'Discard…' }))
+    expect(onAction).toHaveBeenCalledWith('discard', [changes[0].id])
+    fireEvent.click(await screen.findByText('Fix the thing'))
+    expect(onOpenCommit).toHaveBeenCalledWith('a'.repeat(40))
+  })
+
+  it('View diff in the panel switches the preview to the diff', async () => {
+    setup({ changes })
+    await pick('app.jsx')
+    fireEvent.click(await screen.findByRole('button', { name: 'View diff' }))
+    expect(await screen.findByRole('region', { name: 'Diff' })).toBeTruthy()
+  })
+})
+
+describe('FilesPane Changed pin with many changes', () => {
+  const many = n => Array.from({ length: n }, (_, i) => ({ id: `unstaged\0f${i}.txt`, path: `f${i}.txt`, originalPath: null, area: 'unstaged', xy: '.M', sub: 'N...' }))
+
+  it('shows a few rows and offers the rest, so the tree keeps its room', async () => {
+    setup({ changes: many(40) })
+    const group = await screen.findByRole('group', { name: 'Changed 40' })
+    expect(group.querySelectorAll('.nx-gw-pin-row')).toHaveLength(8)
+    fireEvent.click(within(group).getByRole('button', { name: 'Show 32 more' }))
+    expect(group.querySelectorAll('.nx-gw-pin-row')).toHaveLength(40)
+    fireEvent.click(within(group).getByRole('button', { name: 'Show fewer' }))
+    expect(group.querySelectorAll('.nx-gw-pin-row')).toHaveLength(8)
+  })
+
+  it('never draws thousands of buttons: expanded, it stops at 300 and says how many are left', async () => {
+    setup({ changes: many(1000) })
+    const group = await screen.findByRole('group', { name: 'Changed 1000' })
+    fireEvent.click(within(group).getByRole('button', { name: 'Show 992 more' }))
+    expect(group.querySelectorAll('.nx-gw-pin-row')).toHaveLength(300)
+    expect(within(group).getByText('700 more in the Changes tab')).toBeTruthy()
+  })
+
+  it('has no toggle for a handful', async () => {
+    setup({ changes: many(5) })
+    const group = await screen.findByRole('group', { name: 'Changed 5' })
+    expect(within(group).queryByRole('button', { name: /Show/ })).toBeNull()
   })
 })

@@ -48,12 +48,20 @@ async function openWorktree() {
 const REPO = { name: 'A', path: 'C:/repos/A' }
 const REG = ['C:/repos/A']
 
+// A file is picked by clicking its row (which selects and focuses it); the key reviews the action for the selection.
+const pickFile = name => fireEvent.click(within(screen.getByLabelText('Changed files')).getByText(name))
+const review = key => fireEvent.keyDown(screen.getByLabelText('Changed files'), { key })
+const menuAction = (title, label) => {
+  fireEvent.contextMenu(within(screen.getByLabelText('Changed files')).getByTitle(title))
+  fireEvent.click(screen.getByRole('menuitem', { name: label }))
+}
+
 describe('file actions', () => {
   it('reviews, then stages the selected files and refreshes', async () => {
     const { a } = setupView()
     await openWorktree()
-    fireEvent.click(screen.getByLabelText('Select f.txt'))
-    fireEvent.click(screen.getByRole('button', { name: 'Stage 1' }))
+    pickFile('f.txt')
+    review('s')
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText('Stage 1 file')).toBeTruthy()
     expect(within(dialog).getByText('f.txt', { exact: false })).toBeTruthy()
@@ -71,8 +79,8 @@ describe('file actions', () => {
   it('requires typing DISCARD before discarding', async () => {
     const { a } = setupView()
     await openWorktree()
-    fireEvent.click(screen.getByLabelText('Select f.txt'))
-    fireEvent.click(screen.getByRole('button', { name: 'Discard 1…' }))
+    pickFile('f.txt')
+    menuAction('f.txt', 'Discard…')
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByRole('alert').textContent).toBe("Unstaged edits in these files will be lost. This can't be undone.")
     const run = within(dialog).getByRole('button', { name: 'Discard' })
@@ -89,8 +97,8 @@ describe('file actions', () => {
   it('requires typing DELETE before deleting untracked files', async () => {
     const { a } = setupView()
     await openWorktree()
-    fireEvent.click(screen.getByLabelText('Select new.txt'))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete 1…' }))
+    pickFile('new.txt')
+    menuAction('new.txt', 'Delete…')
     const dialog = screen.getByRole('dialog')
     await waitFor(() => expect(a.stamp).toHaveBeenCalled())
     fireEvent.change(within(dialog).getByLabelText('Type DELETE to confirm'), { target: { value: 'DELETE' } })
@@ -103,8 +111,8 @@ describe('file actions', () => {
   it('shows the stale message when the files changed after review', async () => {
     setupView({ stage: vi.fn(async () => ({ ok: false, stale: true, detail: STALE })) })
     await openWorktree()
-    fireEvent.click(screen.getByLabelText('Select f.txt'))
-    fireEvent.click(screen.getByRole('button', { name: 'Stage 1' }))
+    pickFile('f.txt')
+    review('s')
     const dialog = screen.getByRole('dialog')
     await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Stage' }).disabled).toBe(false))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Stage' }))
@@ -114,8 +122,8 @@ describe('file actions', () => {
   it('keeps the reviewed file list when a poll arrives while the dialog is open', async () => {
     const { state } = setupView()
     await openWorktree()
-    fireEvent.click(screen.getByLabelText('Select f.txt'))
-    fireEvent.click(screen.getByRole('button', { name: 'Stage 1' }))
+    pickFile('f.txt')
+    review('s')
     state.porcelain = '# branch.oid a\0# branch.head main\0'
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     await waitFor(() => expect(screen.getByText('Working tree clean')).toBeTruthy())
@@ -126,8 +134,8 @@ describe('file actions', () => {
     const pending = deferred()
     const { a } = setupView({ stage: vi.fn(() => pending.promise) })
     await openWorktree()
-    fireEvent.click(screen.getByLabelText('Select f.txt'))
-    fireEvent.click(screen.getByRole('button', { name: 'Stage 1' }))
+    pickFile('f.txt')
+    review('s')
     const run = within(screen.getByRole('dialog')).getByRole('button', { name: 'Stage' })
     await waitFor(() => expect(run.disabled).toBe(false))
     fireEvent.click(run)
@@ -152,8 +160,8 @@ describe('file actions', () => {
   it('reloads the snapshot after a write even when a load was already running', async () => {
     const { a } = setupView()
     await openWorktree()
-    fireEvent.click(screen.getByLabelText('Select f.txt'))
-    fireEvent.click(screen.getByRole('button', { name: 'Stage 1' }))
+    pickFile('f.txt')
+    review('s')
     const run = within(screen.getByRole('dialog')).getByRole('button', { name: 'Stage' })
     await waitFor(() => expect(run.disabled).toBe(false))
     const poll = deferred()
@@ -190,8 +198,8 @@ describe('file actions', () => {
   it('shows a thrown write error without Electron\'s remote-method prefix', async () => {
     setupView({ stage: vi.fn(async () => { throw new Error("Error invoking remote method 'git:stage': Error: git add timed out after 30s") }) })
     await openWorktree()
-    fireEvent.click(screen.getByLabelText('Select f.txt'))
-    fireEvent.click(screen.getByRole('button', { name: 'Stage 1' }))
+    pickFile('f.txt')
+    review('s')
     const run = within(screen.getByRole('dialog')).getByRole('button', { name: 'Stage' })
     await waitFor(() => expect(run.disabled).toBe(false))
     fireEvent.click(run)
@@ -276,15 +284,15 @@ describe('file actions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stage f.txt' }))
     await waitFor(() => expect(a.stage).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, ['f.txt'], 'stamp-1'))
     expect(screen.queryByRole('dialog')).toBeNull()
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Stage all' }).disabled).toBe(false))
-    fireEvent.click(screen.getByRole('button', { name: 'Stage all' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Stage all ↓' }).disabled).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Stage all ↓' }))
     await waitFor(() => expect(a.stage).toHaveBeenLastCalledWith(REPO, 'C:/repos/A', REG, ['f.txt', 'new.txt'], 'stamp-1'))
   })
 
   it('stages the focused file from the diff header, and reviews only it for Discard…, whatever is selected', async () => {
     const { a } = setupView()
     await openWorktree()
-    fireEvent.click(screen.getByLabelText('Select new.txt'))
+    pickFile('new.txt')
     fireEvent.click(screen.getByText('f.txt'))
     fireEvent.click(await screen.findByRole('button', { name: 'Stage file' }))
     await waitFor(() => expect(a.stage).toHaveBeenCalledWith(REPO, 'C:/repos/A', REG, ['f.txt'], 'stamp-1'))
@@ -446,8 +454,8 @@ describe('editing files', () => {
   it('asks before a group save would close unsaved edits, and saves nothing when declined', async () => {
     setupView(files())
     act(() => { setGitConfig({ groups: [{ name: 'Mine', repos: ['A'], worktrees: [], branches: [] }] }) })
-    const tabs = await screen.findByRole('tablist', { name: 'Project groups' })
-    fireEvent.click(within(tabs).getByRole('tab', { name: /^Mine/ }))
+    fireEvent.click(await screen.findByTitle('Switch project group'))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /^Mine/ }))
     await openWorktree()
     fireEvent.click(changes().getByText('f.txt'))
     fireEvent.click(pills().getByRole('button', { name: 'Edit' }))

@@ -88,7 +88,7 @@ describe('stage 4 in the Git Workspace view', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Switch ▾' }))
     expect(await screen.findByRole('combobox', { name: 'Branch name' })).toBeTruthy()
     fireEvent.keyDown(screen.getByRole('combobox', { name: 'Branch name' }), { key: 'Escape' })
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('button', { name: 'Overview' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Overview' }))
     expect(getGitConfig().view.selected).toBe(null)
     expect(screen.queryByRole('group', { name: 'Branch actions' })).toBeNull()
   })

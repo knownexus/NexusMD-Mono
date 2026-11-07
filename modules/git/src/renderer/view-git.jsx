@@ -7,11 +7,10 @@ import { setGitConfig, getGitConfig, effectiveRoots, effectiveDotfiles, LIST_WID
 import { ListResizer } from './list-resizer.jsx'
 import { useGitConfig } from './use-git-config.js'
 import { useGitSnapshot } from './use-git-snapshot.js'
-import { GroupTabs } from './group-tabs.jsx'
+import { GroupPicker } from './group-picker.jsx'
 import { BranchList, visibleTrees } from './branch-list.jsx'
-import { usePathsMissing } from '@nexusmd/ui'
+import { usePathsMissing, Icon } from '@nexusmd/ui'
 import { useGitShortcuts } from './use-git-shortcuts.js'
-import { FilterChips, BranchSearch } from './filter-chips.jsx'
 import { BranchSwitcher } from './branch-switcher.jsx'
 import { AttentionOverview } from './attention-overview.jsx'
 import { allFetchedText } from './fetched-ago.js'
@@ -31,6 +30,7 @@ import { useCommandAliases } from './use-command-aliases.js'
 import { useGithub } from './github/use-github.js'
 import { GithubTab } from './github/github-tab.jsx'
 import { githubMode, useTopbarShowsMode, ModeSwitch } from './github/github-mode.jsx'
+import { gitBar, GitTopbarControls, BLANK_BAR } from './git-bar.jsx'
 import '@nexusmd/editor-kit/devenv-git.css'
 import './git-workspace.css'
 
@@ -71,6 +71,8 @@ function GitWorkspace({ adapter, host }) {
   const [query, setQuery] = React.useState('')
   const [switcher, setSwitcher] = React.useState(false)
   const searchRef = React.useRef(null)
+  // `/` with the branch list hidden shows it, then focuses the filter once it is drawn.
+  const focusAfterShow = React.useRef(false)
   // Per worktree, for this session: which changes are ticked and which one shows its diff.
   const [selections, setSelections] = React.useState({})
   const [focus, setFocus] = React.useState({})
@@ -124,6 +126,17 @@ function GitWorkspace({ adapter, host }) {
     githubMode.publish({ available: !!github, onGithub: githubShown, request: mode => requestMode.current(mode) })
   }, [github, githubShown])
   React.useEffect(() => () => githubMode.publish({ available: false, onGithub: false, request: () => {} }), [])
+
+  React.useEffect(() => {
+    if (focusAfterShow.current && config.view.list !== 'hidden') { focusAfterShow.current = false; searchRef.current?.focus(); searchRef.current?.select() }
+  })
+
+  // The top bar's controls are worked out below, once there is a snapshot. This hands whatever they are to the
+  // shell's top bar after every render (an equal state is dropped) and takes them back when the page goes.
+  const barState = React.useRef(BLANK_BAR)
+  React.useEffect(() => { if (topbarShowsMode) gitBar.publish(barState.current) })
+  React.useEffect(() => () => gitBar.reset(), [])
+  barState.current = BLANK_BAR
 
   for (const k of Object.keys(keys)) delete keys[k]
   if (config.unsupported) return card(`These Git Workspace settings were saved by a newer NexusMD (version ${config.unsupported}). Update NexusMD to use them.`, 'alert')
@@ -265,50 +278,37 @@ function GitWorkspace({ adapter, host }) {
   // The page's keys work on the local branches, so the GitHub view has none.
   if (!onGithub) Object.assign(keys, {
     jumpToBranch: () => { if (scoped.worktrees.length) setSwitcher(true) },
-    focusFilter: () => { if (listHidden) setView({ list: 'shown' }); searchRef.current?.focus(); searchRef.current?.select() },
+    focusFilter: () => {
+      if (listHidden) { setView({ list: 'shown' }); focusAfterShow.current = true; return }
+      searchRef.current?.focus(); searchRef.current?.select()
+    },
     focusCommand: () => detailsRef.current?.querySelector('input[aria-label="git command"]')?.focus(),
     next: () => step(1),
     previous: () => step(-1),
     newBranch: () => { if (selectedTree && !selectedTree.error) syncTree(selectedTree, 'branch', { start: 'HEAD', checkout: true }) },
   })
+  // The top bar's controls, handed to the shell's top bar (or drawn above, without one).
+  const bar = {
+    ...BLANK_BAR, active: true, onGithub,
+    repoNote: onGithub && github ? `${github.repos.length} ${github.repos.length === 1 ? 'repository' : 'repositories'} from Work's GitHub connection` : null,
+    status: headStatus ? { text: headStatus, tone: loading || stale ? 'info' : 'ok' } : null,
+    canJump: scoped.worktrees.length > 0, onJump: () => setSwitcher(true),
+    fetchDisabled: !scoped.worktrees.length, onFetchAll: () => sync.open('fetch', actionTargets('fetch', scoped.worktrees, null)),
+    pullCount: pullable.length, onPullAll: pullAll, onRefresh: refresh,
+    listHidden, onToggleList: () => setView({ list: listHidden ? 'shown' : 'hidden' }),
+  }
+  barState.current = bar
   return (
     <div className="nx-shell">
     <div className="nx-gw-page">
-      <header className="nx-gw-head">
-        <div className="nx-gw-head-row">
+      {!topbarShowsMode && (
+        <header className="nx-gw-bar">
+          <Icon name="git-branch" size={16} className="nx-gw-bar-accent" />
           <h2 className="nx-gw-title">{onGithub ? 'GitHub' : 'Git Workspace'}</h2>
-          {github && !topbarShowsMode && <ModeSwitch onGithub={onGithub} request={mode => requestMode.current(mode)} />}
-          {onGithub
-            ? <span className="nx-gw-head-note">{`${github.repos.length} ${github.repos.length === 1 ? 'repository' : 'repositories'} from Work's GitHub connection`}</span>
-            : <GroupTabs tabs={tabs} active={activeTab?.name ?? ALL_PROJECTS} onSelect={selectTab} onNew={() => setEditing({ name: null })} busy={editBusy} />}
-          {!onGithub && activeTab?.editable && (
-            <GroupMenuButton name={activeTab.name} editBusy={editBusy} onEdit={() => setEditing({ name: activeTab.name })}
-              onOpen={mode => setMenuFor({ name: activeTab.name, mode })} />
-          )}
-          <span className="nx-gw-spacer" />
-          {!onGithub && (<>
-          {headStatus && <span className="nx-gw-status"><span className="nx-gw-dot" data-tone={loading || stale ? 'info' : 'ok'} />{headStatus}</span>}
-          <button type="button" className="nx-gw-jumpbtn" disabled={!scoped.worktrees.length} onClick={() => setSwitcher(true)}>
-            Jump to branch…<span className="kbd">Ctrl K</span>
-          </button>
-          <button className="btn sm ghost" title="git fetch --all --prune in every repository" disabled={!scoped.worktrees.length} onClick={() => sync.open('fetch', actionTargets('fetch', scoped.worktrees, null))}>Fetch all</button>
-          <button className="btn sm accent" title={pullable.length ? "Fast-forwards every branch that's behind and has no local changes" : 'No branch is behind with nothing local in the way'}
-            disabled={!pullable.length} onClick={pullAll}>{`Pull all (${pullable.length})`}</button>
-          </>)}
-        </div>
-        {!onGithub && (
-        <div className="nx-gw-head-row">
-          <BranchSearch ref={searchRef} value={query} onChange={setQuery} />
-          <span className="nx-gw-divider" />
-          <span className="nx-gw-show">Show</span>
-          <FilterChips trees={scoped.worktrees} value={filter} onChange={setFilter} />
-          <span className="nx-gw-spacer" />
-          <button className="btn sm ghost" aria-pressed={!listHidden} title={listHidden ? 'Show the repository list beside the details' : 'Hide the repository list to give the details the full width'}
-            onClick={() => setView({ list: listHidden ? 'shown' : 'hidden' })}>{listHidden ? 'Show repositories' : 'Hide repositories'}</button>
-          <button className="btn sm ghost" aria-label="Refresh" title="Read every repository's state again" onClick={refresh}>Refresh</button>
-        </div>
-        )}
-      </header>
+          {github && <ModeSwitch onGithub={onGithub} request={mode => requestMode.current(mode)} />}
+          <GitTopbarControls bar={bar} />
+        </header>
+      )}
 
       {githubSeen.current && github && (
         <div style={{ display: onGithub ? 'contents' : 'none' }}><GithubTab host={host} adapter={adapter} config={config} snapshot={snapshot} onOpenLocal={openLocal} /></div>
@@ -324,7 +324,17 @@ function GitWorkspace({ adapter, host }) {
       <div className="nx-gw-body" data-list={listHidden ? 'hidden' : 'shown'} ref={bodyRef} style={{ '--gw-list': `${listWidth}px` }}>
         {!listHidden && (
           <nav aria-label="Branches" className="nx-gw-aside">
-            <BranchList missing={missing} repos={config.repos} scoped={scoped} query={query} filter={filter} onClearFilters={() => { setQuery(''); setFilter('all') }} errors={snapshot?.errors || []} collapsed={view.collapsed}
+            <BranchList missing={missing} repos={config.repos} scoped={scoped} query={query} filter={filter} onClearFilters={() => { setQuery(''); setFilter('all') }}
+              searchRef={searchRef} onQuery={setQuery} onFilter={setFilter}
+              groupPicker={(
+                <div className="nx-gw-picker-row">
+                  <GroupPicker tabs={tabs} active={activeTab?.name ?? ALL_PROJECTS} onSelect={selectTab} onNew={() => setEditing({ name: null })} busy={editBusy} />
+                  {activeTab?.editable && (
+                    <GroupMenuButton name={activeTab.name} editBusy={editBusy} onEdit={() => setEditing({ name: activeTab.name })}
+                      onOpen={mode => setMenuFor({ name: activeTab.name, mode })} />
+                  )}
+                </div>
+              )} errors={snapshot?.errors || []} collapsed={view.collapsed}
               onToggleRepo={name => setView({ collapsed: view.collapsed.includes(name) ? view.collapsed.filter(n => n !== name) : [...view.collapsed, name] })}
               onSetCollapsed={collapsed => setView({ collapsed })}
               selected={view.selected} onSelect={selectTree} />
@@ -348,7 +358,7 @@ function GitWorkspace({ adapter, host }) {
                 panel={view.panel} onPanel={panel => setView({ panel })}
                 onSync={(kind, options) => syncTree(selectedTree, kind, options)}
                 onSaved={() => reload([selectedTree.repo])}
-                onOverview={() => { if (mayLeave()) setView({ selected: null }) }} onSwitch={() => setSwitcher(true)} />
+                onOverview={() => { if (mayLeave()) setView({ selected: null }) }} onSwitch={() => setSwitcher(true)} focusLayout={listHidden} />
             )
             : selectedBranch
             ? (

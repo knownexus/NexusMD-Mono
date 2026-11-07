@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/colors_and_type.css">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/components.css">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/brand-profiles/profiles.css">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/styles.css">
+  <script src="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/_ds_bundle.js"></script>
+  <style>span, p, label { font-family: inherit; }</style>
+</helmet>
+<div style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;padding:12px 10px;background:var(--page-bg);border-right:1px solid var(--border);font-family:var(--font-ui);color:var(--text);overflow:hidden;">
+  <div style="display:flex;align-items:center;gap:6px;">
+    <span style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 8px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:600 12.5px var(--font-ui);white-space:nowrap;">NexusMD<span style="font-weight:400;color:var(--text-muted);font-size:11.5px;">1 repo</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted);"><path d="m6 9 6 6 6-6"></path></svg></span>
+    <span style="flex:1;"></span>
+    <span title="New group" style="display:grid;place-items:center;width:28px;height:28px;border-radius:6px;color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px;height:28px;box-sizing:border-box;padding:0 6px 0 8px;border:1px solid var(--border);border-radius:6px;background:var(--container-bg);color:var(--text-muted);font-size:12.5px;">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+    <span style="flex:1;">Filter branches</span>
+    <span style="padding:0 5px;border:1px solid var(--border);border-radius:4px;font:10.5px 'Geist Mono',ui-monospace,monospace;">/</span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:4px;">
+    <span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;border:1px solid var(--accent);background:var(--accent-muted);color:var(--accent);font:500 11.5px var(--font-ui);">All <b>6</b></span>
+    <span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;border:1px solid var(--border);color:var(--text);font:500 11.5px var(--font-ui);"><span style="width:6px;height:6px;border-radius:50%;background:var(--warning);"></span>Uncommitted <b>{{ uncommitted }}</b></span>
+    <span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;border:1px solid var(--border);color:var(--text);font:500 11.5px var(--font-ui);"><span style="width:6px;height:6px;border-radius:50%;background:var(--text-muted);"></span>Not published <b>1</b></span>
+    <sc-if value="{{ rebasing }}" hint-placeholder-val="{{ false }}">
+      <span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;border:1px solid var(--border);color:var(--text);font:500 11.5px var(--font-ui);"><span style="width:6px;height:6px;border-radius:50%;background:var(--danger);"></span>In progress <b>1</b></span>
+    </sc-if>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:1px;min-height:0;">
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 6px 4px;">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2.5"><path d="m6 9 6 6 6-6"></path></svg>
+      <span style="font:600 11px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);">NexusMD-Mono</span>
+      <span style="font-size:11.5px;color:var(--text-muted);">6</span>
+      <span style="margin-left:auto;flex:none;white-space:nowrap;height:18px;display:inline-flex;align-items:center;padding:0 7px;border-radius:4px;background:var(--warning-bg);color:var(--warning);font:600 10.5px var(--font-ui);">{{ uncommittedLabel }}</span>
+    </div>
+    <sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+      <div style="display:grid;grid-template-columns:8px minmax(0,1fr);gap:9px;align-items:start;padding:6px 8px;border-radius:7px;border:1px solid {{ r.bd }};background:{{ r.bg }};">
+        <span style="width:7px;height:7px;margin-top:5px;border-radius:50%;background:{{ r.dot }};"></span>
+        <div style="display:flex;flex-direction:column;gap:1px;min-width:0;">
+          <span style="font:600 12.5px var(--font-ui);color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.name }}</span>
+          <span style="font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.up }}<span style="color:{{ r.mc }};">{{ r.meta }}</span></span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:272,&quot;height&quot;:600},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;changes&quot;,&quot;clean&quot;,&quot;rebase&quot;,&quot;large&quot;],&quot;default&quot;:&quot;changes&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.props.state ?? 'changes';
+    const master = st === 'clean' ? { meta: 'Up to date', dot: 'var(--success)', mc: 'var(--success)' }
+      : st === 'rebase' ? { meta: 'Rebasing 3/7 · 2 conflicts', dot: 'var(--danger)', mc: 'var(--danger)' }
+      : st === 'large' ? { meta: '248 files changed', dot: 'var(--warning)', mc: 'var(--warning)' }
+      : { meta: '6 files changed · 2 staged', dot: 'var(--warning)', mc: 'var(--warning)' };
+    const base = [
+      { name: 'fix/deep-link-oauth-nonce', up: 'feature/0-split · ', meta: 'Up to date', dot: 'var(--success)', mc: 'var(--success)' },
+      { name: 'feature/1-login', up: '', meta: 'Up to date', dot: 'var(--success)', mc: 'var(--success)' },
+      { name: 'feature/1-login-client', up: '', meta: 'not published', dot: 'var(--text-muted)', mc: 'var(--text-muted)' },
+      { name: 'fix/settings-phone-layout', up: 'fix/0-UpdateMobile · ', meta: '1 file changed', dot: 'var(--warning)', mc: 'var(--warning)' },
+      { name: 'master', up: '', ...master, sel: true },
+      { name: 'fix/merge-protects-dependent-prs', up: 'origin/feat/logging-ipc · ', meta: 'Up to date', dot: 'var(--success)', mc: 'var(--success)' },
+    ];
+    const rows = base.map(r => ({ ...r, bg: r.sel ? 'var(--accent-muted)' : 'transparent', bd: r.sel ? 'var(--accent-border-glow)' : 'transparent' }));
+    return { rows, rebasing: st === 'rebase', uncommitted: st === 'clean' ? 1 : 2, uncommittedLabel: (st === 'clean' ? 1 : 2) + ' uncommitted' };
+  }
+}
+</script>
+</body>
+</html>

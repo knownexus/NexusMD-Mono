@@ -36,8 +36,9 @@ const ROW = {
  * PowerShell, and anything else is git's, with or without a leading "git". Calls onRun(argv) without
  * the "git", plus the git alias when argv starts with one, or { script: true } for a script.
  * loadAliases() resolves to { git, shell, scripts }: core's parseAliases, parseShellAliases and
- * parseShellScripts lists. Up / Down step through this session's history. `lead` goes first in the
- * hint row (the dock's "Output ▴" chip).
+ * parseShellScripts lists. Up / Down step through this session's history. The whole bar is one 42px row:
+ * `lead` (the dock's "Output ▴" chip), the field (its title says where commands run), the quick chips and
+ * the aliases menu. `lead` goes first.
  */
 export function GitCommandLine({ path, onRun, disabled = false, loadAliases = null, lead = null }) {
   const [value, setValue] = React.useState('')
@@ -125,42 +126,37 @@ export function GitCommandLine({ path, onRun, disabled = false, loadAliases = nu
   const heading = text => <div style={{ gridColumn: '1 / -1', padding: '4px 8px 0', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em' }}>{text}</div>
 
   return (
-    <div>
-      <div className="nx-cmd">
+    <div className="nx-gw-cmdbar">
+      {lead}
+      <div className="nx-cmd" title={`in ${path} · Enter to run · ↑ previous · Esc minimises output`}>
         <span className="nx-cmd-prompt" aria-hidden="true">git ›</span>
         <input ref={input} aria-label="git command" value={value} disabled={disabled} spellCheck={false}
           placeholder="status, ga ., uncommit, log -5" onChange={e => setValue(e.target.value)} onKeyDown={onKeyDown} />
         <span className="kbd nx-cmd-kbd" title="Press ` to focus the command line">`</span>
-        <button className="btn sm" disabled={disabled || !value.trim()} onClick={() => submit()}>Run</button>
       </div>
-      <div className="nx-cmd-hint">
-        {lead}
-        <span className="nx-cmd-where" title={path}>in <span className="nx-mono" style={{ color: 'var(--text)' }}>{path}</span> · Enter to run · ↑ previous · Esc minimises output</span>
-        <span style={{ flex: 1 }} />
-        {QUICK.map(([label, cmd, text]) => (
-          <button key={label} className="nx-chip" disabled={disabled} title={cmd ?? text.trim()}
-            onClick={() => (cmd ? submit(cmd) : (setValue(text), input.current?.focus()))}>{label}</button>
-        ))}
-        {loadAliases && (
-          <span>
-            <button ref={chip} className="nx-chip" disabled={disabled} aria-haspopup="menu" aria-expanded={!!aliasMenu}
-              onClick={() => (aliasMenu ? setAliasMenu(null) : openMenu())}>{`My aliases (${count}) ▾`}</button>
-            {aliasMenu && createPortal(
-              <div ref={menu} role="menu" aria-label="My aliases" className="card" onKeyDown={e => { if (e.key === 'Escape') { setAliasMenu(null); chip.current?.focus() } }}
-                style={{ position: 'fixed', ...aliasMenu, zIndex: 1000, display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', alignContent: 'start', gap: 2, padding: 4, minWidth: 260, maxWidth: 560, overflow: 'auto', boxShadow: 'var(--shadow-lg)' }}>
-                {count === 0 && <span style={{ gridColumn: '1 / -1', padding: '4px 8px' }}>No aliases found. Set your DotFiles folder in Settings → Desktop → Git Workspace, or add a git alias with git config --global alias.&lt;name&gt; "&lt;command&gt;".</span>}
-                {aliases.shell.length > 0 && heading('DotFiles')}
-                {aliases.shell.map(a => item(a.name, a.expansion, `${a.name}${a.takesArgs ? ' ' : ''}`))}
-                {aliases.scripts.length > 0 && heading('DotFiles scripts')}
-                {aliases.scripts.map(a => item(a.name, null, `${a.name} `, 'PowerShell script'))}
-                {aliases.git.length > 0 && heading('git config')}
-                {aliases.git.map(a => item(`git ${a.name}`, a.expansion, `git ${a.name} `))}
-              </div>,
-              document.body,
-            )}
-          </span>
-        )}
-      </div>
+      {QUICK.map(([label, cmd, text]) => (
+        <button key={label} className="nx-chip" disabled={disabled} title={cmd ?? text.trim()}
+          onClick={() => (cmd ? submit(cmd) : (setValue(text), input.current?.focus()))}>{label}</button>
+      ))}
+      {loadAliases && (
+        <span>
+          <button ref={chip} className="nx-chip" disabled={disabled} aria-haspopup="menu" aria-expanded={!!aliasMenu}
+            onClick={() => (aliasMenu ? setAliasMenu(null) : openMenu())}>{`Aliases ${count} ▴`}</button>
+          {aliasMenu && createPortal(
+            <div ref={menu} role="menu" aria-label="My aliases" className="card" onKeyDown={e => { if (e.key === 'Escape') { setAliasMenu(null); chip.current?.focus() } }}
+              style={{ position: 'fixed', ...aliasMenu, zIndex: 1000, display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', alignContent: 'start', gap: 2, padding: 4, minWidth: 260, maxWidth: 560, overflow: 'auto', boxShadow: 'var(--shadow-lg)' }}>
+              {count === 0 && <span style={{ gridColumn: '1 / -1', padding: '4px 8px' }}>No aliases found. Set your DotFiles folder in Settings → Desktop → Git Workspace, or add a git alias with git config --global alias.&lt;name&gt; "&lt;command&gt;".</span>}
+              {aliases.shell.length > 0 && heading('DotFiles')}
+              {aliases.shell.map(a => item(a.name, a.expansion, `${a.name}${a.takesArgs ? ' ' : ''}`))}
+              {aliases.scripts.length > 0 && heading('DotFiles scripts')}
+              {aliases.scripts.map(a => item(a.name, null, `${a.name} `, 'PowerShell script'))}
+              {aliases.git.length > 0 && heading('git config')}
+              {aliases.git.map(a => item(`git ${a.name}`, a.expansion, `git ${a.name} `))}
+            </div>,
+            document.body,
+          )}
+        </span>
+      )}
     </div>
   )
 }

@@ -137,7 +137,8 @@ describe('GithubRepoPane', () => {
       pane(repoClient(), { initialTab: 'files' })
       expect(await screen.findByText('README.md')).toBeTruthy()
       expect(screen.getByText('src')).toBeTruthy()
-      expect(screen.getByLabelText('Branch').value).toBe('main')
+      expect(screen.getByRole('button', { name: /^⑂ main/ })).toBeTruthy()
+      expect(screen.queryByLabelText('Branch')).toBeNull()
     })
 
     it('falls back to the default branch when the picked branch is deleted on the Branches tab', async () => {

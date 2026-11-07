@@ -151,7 +151,8 @@ export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, ope
     if (branchError) return <Notice kind="error">{branchError}</Notice>
     if (!branches) return <Notice>Loading branches…</Notice>
     const sha = branches.find(b => b.name === branch)?.sha || ''
-    return <Component repo={repo} client={client} branch={branch} sha={sha} refreshKey={refreshKey} {...(fileActionsFor ? { fileActions: fileActionsFor(branch) } : {})} />
+    return <Component repo={repo} client={client} branch={branch} sha={sha} refreshKey={refreshKey} {...(fileActionsFor ? { fileActions: fileActionsFor(branch) } : {})}
+      {...(Component === GithubFiles ? { branches, onBranch: setPicked, openPRs: openPRs ?? [], onViewPrs: () => setTab('prs') } : {})} />
   }
   const count = { prs: counts.prs, issues: counts.issues }
 
@@ -165,7 +166,7 @@ export function GithubRepoPane({ repo, client, refreshKey, openPR, openItem, ope
             </button>
           ))}
         </div>
-        {needsBranches && branches && branches.length > 0 && (
+        {tab === 'history' && branches && branches.length > 0 && (
           <div className="nx-gw-tabs-end">
             <label className="nx-gw-gh-pick">
               <span>Branch</span>

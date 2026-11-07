@@ -195,7 +195,7 @@
   "packages/ui/src/views/view-builds.jsx": 3,
   "packages/ui/src/views/view-dashboard.jsx": 2,
   "packages/ui/src/views/view-json-editor.jsx": 4,
-  "packages/ui/src/views/view-regex-tester.jsx": 3,
+  "packages/ui/src/views/view-regex-tester.jsx": 2,
   "packages/ui/src/views/view-settings.jsx": 11,
   "packages/ui/src/views/view-team.jsx": 3,
   "packages/ui/src/views/view-time.jsx": 2,

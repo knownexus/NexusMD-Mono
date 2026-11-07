@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/colors_and_type.css">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/components.css">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/brand-profiles/profiles.css">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/styles.css">
+  <script src="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/_ds_bundle.js"></script>
+  <style>span, p, label { font-family: inherit; }</style>
+</helmet>
+<div style="height:48px;box-sizing:border-box;display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--container-bg);border-bottom:1px solid var(--border);font-family:var(--font-ui);color:var(--text);white-space:nowrap;">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>
+  <span style="font:600 15px var(--font-heading);letter-spacing:.02em;color:var(--text-bright);">Git Workspace</span>
+  <sc-if value="{{ isLocal }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;gap:2px;padding:3px;background:var(--page-bg);border:1px solid var(--border-subtle);border-radius:8px;">
+      <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;background:var(--container-raised);color:var(--text-bright);font:600 12px var(--font-ui);">Local</span>
+      <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;color:var(--text-muted);font:500 12px var(--font-ui);">GitHub</span>
+    </div>
+    <span style="flex:1;"></span>
+    <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);"><span style="width:7px;height:7px;border-radius:50%;background:var(--success);"></span>Fetched 2 min ago</span>
+    <span style="display:inline-flex;align-items:center;gap:8px;min-width:170px;height:28px;box-sizing:border-box;padding:0 6px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);color:var(--text-muted);font-size:12.5px;">Jump to branch...<span style="margin-left:auto;padding:1px 5px;border:1px solid var(--border);border-radius:4px;font:10.5px 'Geist Mono',ui-monospace,monospace;">Ctrl K</span></span>
+    <span style="display:inline-flex;align-items:center;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12.5px var(--font-ui);">Fetch all</span>
+    <span style="display:inline-flex;align-items:center;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-muted);font:500 12.5px var(--font-ui);opacity:.6;">Pull all (0)</span>
+  </sc-if>
+  <sc-if value="{{ isGithub }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;gap:2px;padding:3px;background:var(--page-bg);border:1px solid var(--border-subtle);border-radius:8px;">
+      <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;color:var(--text-muted);font:500 12px var(--font-ui);">Local</span>
+      <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;background:var(--container-raised);color:var(--text-bright);font:600 12px var(--font-ui);">GitHub</span>
+    </div>
+    <span style="font-size:12px;color:var(--text-muted);">5 repositories from Work's GitHub connection</span>
+    <span style="flex:1;"></span>
+    <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);"><span style="width:7px;height:7px;border-radius:50%;background:var(--success);"></span>Updated just now</span>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:48},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;local&quot;,&quot;github&quot;],&quot;default&quot;:&quot;local&quot;,&quot;tsType&quot;:&quot;'local'|'github'&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const m = this.props.mode ?? 'local';
+    return { isLocal: m === 'local', isGithub: m === 'github' };
+  }
+}
+</script>
+</body>
+</html>

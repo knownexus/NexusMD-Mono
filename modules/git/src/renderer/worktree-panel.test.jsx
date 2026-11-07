@@ -91,3 +91,61 @@ describe('WorktreePanel strip requests', () => {
     await waitFor(() => expect(selectedOid()).toBe(oid(3)))
   })
 })
+
+describe('WorktreePanel right-hand panel', () => {
+  const dirty = { ...tree('C:/repos/A', oid(3)), changes: [{ id: 's\0a', path: 'a.txt', area: 'staged', xy: 'M.', originalPath: null }] }
+  const open = t => render(<Harness adapter={adapterWith({ log: rec(3, 'Newest') })} t={t} />)
+
+  it('shows the commit form beside the diff, with the staged count in its label', () => {
+    open(dirty)
+    expect(screen.getByLabelText('Commit summary')).toBeTruthy()
+    expect(screen.getByRole('complementary', { name: 'Commit · 1 staged' })).toBeTruthy()
+  })
+
+  it('hides the panel from its button, leaves a strip that shows it again, and remembers the choice', () => {
+    const { unmount } = open(dirty)
+    fireEvent.click(screen.getByRole('button', { name: 'Hide panel' }))
+    expect(screen.queryByLabelText('Commit summary')).toBeNull()
+    expect(document.querySelector('.nx-gw-changes').style.getPropertyValue('--gw-rail')).toBe('40px')
+    unmount()
+    open(dirty)
+    expect(screen.queryByLabelText('Commit summary')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Show Commit · 1 staged' }))
+    expect(screen.getByLabelText('Commit summary')).toBeTruthy()
+  })
+
+  it('Ctrl+] toggles the panel', () => {
+    open(dirty)
+    fireEvent.keyDown(window, { key: ']', ctrlKey: true })
+    expect(screen.queryByLabelText('Commit summary')).toBeNull()
+    fireEvent.keyDown(window, { key: ']', ctrlKey: true })
+    expect(screen.getByLabelText('Commit summary')).toBeTruthy()
+  })
+
+  it('shows the last commit once the tree is clean, and says there is no diff to show', async () => {
+    open(tree('C:/repos/A', oid(3)))
+    expect(await screen.findByText('Newest')).toBeTruthy()
+    expect(screen.getByText('Last commit', { selector: '.nx-gw-eyebrow' })).toBeTruthy()
+    expect(screen.getByText('No diff to show.')).toBeTruthy()
+  })
+
+  it('has no Changes panel on the History tab', () => {
+    open(dirty)
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }))
+    expect(screen.queryByLabelText('Commit summary')).toBeNull()
+  })
+
+  it('shows the rebase controls in the panel while an operation is paused, and not the banner above', () => {
+    const op = { ...dirty, operation: 'Rebase in progress', operationInfo: { kind: 'rebase', step: 1, total: 2 }, changes: [] }
+    open(op)
+    expect(screen.getAllByRole('button', { name: 'Continue' })).toHaveLength(1)
+    expect(screen.getByRole('complementary', { name: 'Rebase 1 of 2' })).toBeTruthy()
+  })
+
+  it('keeps the banner on the History tab, where there is no panel', () => {
+    const op = { ...dirty, operation: 'Rebase in progress', operationInfo: { kind: 'rebase', step: 1, total: 2 }, changes: [] }
+    open(op)
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }))
+    expect(screen.getAllByRole('button', { name: 'Continue' })).toHaveLength(1)
+  })
+})

@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/colors_and_type.css">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/components.css">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/brand-profiles/profiles.css">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/styles.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap">
+  <script src="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/_ds_bundle.js"></script>
+  <style>
+    body { margin: 0; background: var(--nav-bg); }
+    span, p, label { font-family: inherit; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: var(--accent-bright); }
+  </style>
+</helmet>
+
+<section style="display:flex;flex-direction:column;gap:56px;padding:56px 56px 0;font-family:var(--font-ui);color:var(--text);">
+  <div style="display:flex;flex-direction:column;gap:6px;max-width:980px;">
+    <span style="font:600 11px var(--font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);">Turn 3 · Files tabs in the 1b layout</span>
+    <h1 style="margin:0;font:600 28px var(--font-heading);color:var(--text-bright);">Files and GitHub Files</h1>
+    <p style="margin:0;font-size:14px;line-height:1.55;color:var(--text-muted);text-wrap:pretty;">Same three columns as Changes: tree, content, rail. The rail carries the picked file's status, its recent commits and every open action, so the path bar above the preview stays short.</p>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:48px;">
+
+    <!-- 3a local files -->
+    <div id="3a" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">3a</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Files · local</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">Changed and Recent pinned above a compact tree. A changed file can be staged or diffed from the rail without leaving the tab.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="local" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <dc-import name="GwBranchList" state="changes" style="height:100%;min-height:0;" hint-size="272px,100%"></dc-import>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <dc-import name="GwDetailHead" tab="files" count="6" hint-size="100%,84px"></dc-import>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:290px minmax(0,1fr) {{ rail_3a.w }};transition:grid-template-columns .22s cubic-bezier(0.4,0,0.2,1);">
+              <div style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;align-items:center;gap:6px;padding:8px;">
+                  <div style="flex:1;height:26px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font-size:12px;color:var(--text-muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Filter 1,796 files</div>
+                  <span title="Collapse all folders" style="display:grid;place-items:center;width:26px;height:26px;color:var(--text-muted);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5"></path><path d="m7 4 5 5 5-5"></path></svg></span>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:0 6px 8px;">
+                  <div style="display:flex;align-items:center;gap:6px;padding:6px 6px 2px;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Changed<span style="font-weight:500;letter-spacing:0;">6</span></div>
+                  <sc-for list="{{ changedPins }}" as="f" hint-placeholder-count="6">
+                    <div style="display:flex;align-items:center;gap:6px;height:22px;padding:0 6px;border-radius:4px;font-size:12.5px;">
+                      <span style="width:12px;flex:none;font:600 10.5px 'Geist Mono',ui-monospace,monospace;text-align:center;color:{{ f.cc }};">{{ f.code }}</span>
+                      <span style="color:var(--text);white-space:nowrap;">{{ f.name }}</span>
+                      <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ f.short }}</span>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex;align-items:center;gap:6px;padding:10px 6px 2px;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Recent</div>
+                  <sc-for list="{{ recent }}" as="f" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;gap:6px;height:22px;padding:0 6px;border-radius:4px;font-size:12.5px;">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" style="flex:none;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                      <span style="color:var(--text);white-space:nowrap;">{{ f.name }}</span>
+                      <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">{{ f.when }}</span>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex;align-items:center;gap:6px;padding:10px 6px 2px;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">NexusMD-Mono</div>
+                  <sc-for list="{{ tree }}" as="r" hint-placeholder-count="16">
+                    <div style="display:flex;align-items:center;gap:5px;height:22px;padding:0 6px 0 {{ r.pad }};border-radius:4px;background:{{ r.bg }};font-size:12.5px;">
+                      <span style="width:10px;flex:none;display:grid;place-items:center;color:var(--text-muted);"><sc-if value="{{ r.isDir }}" hint-placeholder-val="{{ false }}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="transform:rotate({{ r.rot }}deg);"><path d="m9 18 6-6-6-6"></path></svg></sc-if></span>
+                      <sc-if value="{{ r.isDir }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round" style="flex:none;opacity:.8;"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg></sc-if>
+                      <sc-if value="{{ r.isFile }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.8" stroke-linejoin="round" style="flex:none;"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg></sc-if>
+                      <span style="color:{{ r.tc }};font-weight:{{ r.fw }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.name }}</span>
+                      <span style="margin-left:auto;display:flex;align-items:center;gap:4px;">
+                        <sc-if value="{{ r.hasDot }}" hint-placeholder-val="{{ false }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ r.dot }};"></span></sc-if>
+                        <span style="font:600 10.5px 'Geist Mono',ui-monospace,monospace;color:{{ r.cc }};">{{ r.code }}</span>
+                      </span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;padding:6px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);white-space:nowrap;">
+                  <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:6px;height:6px;border-radius:50%;background:var(--success);"></span>Staged</span>
+                  <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:6px;height:6px;border-radius:50%;background:var(--warning);"></span>Not staged</span>
+                  <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:6px;height:6px;border-radius:50%;background:var(--info);"></span>Untracked</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+                <div style="display:flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;font-size:12.5px;">
+                  <span style="flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;mask-image:linear-gradient(90deg,#000 85%,transparent);"><sc-for list="{{ crumbs }}" as="c" hint-placeholder-count="5">
+                    <span style="color:{{ c.c }};font-weight:{{ c.fw }};">{{ c.t }}</span><span style="color:var(--text-muted);opacity:{{ c.sepOp }};">›</span>
+                  </sc-for></span>
+                  <span style="flex:1;"></span>
+                  <div style="display:flex;gap:2px;padding:2px;border-radius:6px;background:var(--container-bg);border:1px solid var(--border-subtle);">
+                    <span style="height:22px;display:flex;align-items:center;padding:0 9px;border-radius:4px;background:var(--container-raised);font:500 11.5px var(--font-ui);color:var(--text-bright);">File</span>
+                    <span style="height:22px;display:flex;align-items:center;padding:0 9px;font:500 11.5px var(--font-ui);color:var(--text-muted);">Diff</span>
+                  </div>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:8px 0;background:var(--page-bg);">
+                  <sc-for list="{{ code }}" as="l" hint-placeholder-count="24">
+                    <div style="display:grid;grid-template-columns:48px minmax(0,1fr);font:12.5px/20px 'Geist Mono',ui-monospace,monospace;background:{{ l.bg }};">
+                      <span style="text-align:right;padding-right:14px;color:var(--text-muted);opacity:.55;box-shadow:{{ l.gut }};">{{ l.n }}</span>
+                      <span style="white-space:pre;overflow:hidden;"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;gap:14px;height:26px;padding:0 14px;border-top:1px solid var(--border);background:var(--container-bg);font-size:11px;color:var(--text-muted);white-space:nowrap;">
+                  <span>JavaScript (JSX)</span><span>74 lines</span><span>3.7 KB</span><span>LF</span><span>UTF-8</span>
+                </div>
+              </div>
+              <sc-if value="{{ rail_3a.open }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:12px;min-height:0;padding:10px 14px 14px;min-width:0;overflow:hidden;border-left:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;justify-content:flex-end;margin:0 -6px -6px 0;"><span title="Hide panel" onClick="{{ rail_3a.toggle }}" style="display:grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--text-muted);cursor:pointer;" style-hover="background:var(--container-hover);color:var(--text-bright);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m8 9 3 3-3 3"></path></svg></span></div>
+                <div style="display:flex;flex-direction:column;gap:3px;">
+                  <span style="font:600 14px var(--font-ui);color:var(--text-bright);">commit-composer.jsx</span>
+                  <span style="font:11px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);">modules/git/src/renderer</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid color-mix(in srgb, var(--warning) 35%, transparent);border-radius:8px;background:var(--warning-bg);">
+                  <span style="display:flex;align-items:center;justify-content:space-between;font-size:12px;"><span style="font:600 12px var(--font-ui);color:var(--warning);">Modified · not staged</span><span style="font-family:'Geist Mono',ui-monospace,monospace;"><span style="color:var(--success);">+9</span> <span style="color:var(--danger);">−5</span></span></span>
+                  <span style="font-size:11.5px;color:var(--text-muted);">Changed lines are marked in the gutter.</span>
+                  <span style="display:flex;gap:6px;">
+                    <span style="flex:1;display:flex;align-items:center;justify-content:center;height:26px;border:1px solid var(--border);border-radius:5px;background:var(--container-raised);font:500 12px var(--font-ui);">View diff</span>
+                    <span style="flex:1;display:flex;align-items:center;justify-content:center;height:26px;border:1px solid var(--border);border-radius:5px;background:var(--container-raised);font:500 12px var(--font-ui);">Stage</span>
+                    <span style="display:flex;align-items:center;justify-content:center;height:26px;padding:0 8px;font:500 12px var(--font-ui);color:var(--danger);">Discard...</span>
+                  </span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:2px;">
+                  <span style="padding-bottom:4px;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Recent commits</span>
+                  <sc-for list="{{ fileHist }}" as="h" hint-placeholder-count="3">
+                    <div style="display:flex;flex-direction:column;gap:1px;padding:6px 0;border-bottom:1px solid var(--border-subtle);">
+                      <span style="font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ h.s }}</span>
+                      <span style="font-size:11px;color:var(--text-muted);"><span style="font-family:'Geist Mono',ui-monospace,monospace;color:var(--accent);">{{ h.h }}</span> · {{ h.w }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <span style="flex:1;"></span>
+                <span style="display:flex;align-items:center;justify-content:center;gap:8px;height:32px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:600 12.5px var(--font-ui);">Edit here<span style="font:10.5px 'Geist Mono',ui-monospace,monospace;opacity:.7;">Enter</span></span>
+                <span style="display:flex;align-items:center;justify-content:center;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12.5px var(--font-ui);">Open in VS Code</span>
+                <span style="display:flex;gap:6px;">
+                  <span style="flex:1;display:flex;align-items:center;justify-content:center;height:28px;font:500 12px var(--font-ui);color:var(--text-muted);">Show in Explorer</span>
+                  <span style="flex:1;display:flex;align-items:center;justify-content:center;height:28px;font:500 12px var(--font-ui);color:var(--text-muted);">New window</span>
+                </span>
+              </div></sc-if>
+              <sc-if value="{{ rail_3a.closed }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ rail_3a.toggle }}" title="Show panel" style="display:flex;flex-direction:column;align-items:center;gap:14px;min-height:0;padding:10px 0;border-left:1px solid var(--border);background:var(--container-bg);cursor:pointer;" style-hover="background:var(--container-raised);">
+                <span style="display:grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m10 15-3-3 3-3"></path></svg></span>
+                <span style="writing-mode:vertical-rl;transform:rotate(180deg);font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap;">File details</span>
+              </div>
+            </sc-if>
+            </div>
+            <dc-import name="GwCmdBar" hint-size="100%,42px"></dc-import>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3b github files -->
+    <div id="3b" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">3b</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Files · GitHub</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">Same explorer as local. Branch picker sits in the path bar; the rail shows the file's history on that branch and any open pull request touching it.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="github" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <div style="display:flex;flex-direction:column;gap:2px;padding:12px 10px;background:var(--page-bg);border-right:1px solid var(--border);">
+            <div style="height:28px;box-sizing:border-box;display:flex;align-items:center;gap:6px;margin-bottom:8px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--container-bg);color:var(--text-muted);font-size:12.5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Filter repositories</div>
+            <sc-for list="{{ ghRepos }}" as="r" hint-placeholder-count="5">
+              <div style="display:flex;align-items:flex-start;gap:9px;padding:7px 8px;border-radius:7px;border:1px solid {{ r.bd }};background:{{ r.bg }};">
+                <span style="width:7px;height:7px;margin-top:5px;border-radius:50%;background:var(--text-muted);flex:none;"></span>
+                <span style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1;">
+                  <span style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="color:var(--text-muted);">knownexus/</span><b style="color:var(--text-bright);">{{ r.name }}</b></span>
+                  <span style="font-size:11.5px;color:var(--text-muted);">{{ r.meta }}</span>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <div style="display:flex;flex-direction:column;background:var(--container-bg);border-bottom:1px solid var(--border);white-space:nowrap;">
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 16px 4px;">
+                <span style="font:600 16px var(--font-ui);color:var(--text-bright);">knownexus/Pathweave</span>
+                <span style="font-size:12px;color:var(--text-muted);">1 open pull request · 0 open issues · Local copy in Pathweave</span>
+                <span style="flex:1;"></span>
+                <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Open local copy</span>
+                <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Open on GitHub</span>
+                <span title="Refresh" style="display:grid;place-items:center;width:26px;height:26px;color:var(--text-muted);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg></span>
+              </div>
+              <div style="display:flex;align-items:flex-end;gap:2px;padding:0 12px;height:34px;">
+                <sc-for list="{{ ghTabs }}" as="t" hint-placeholder-count="6">
+                  <span style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-bottom:2px solid {{ t.bd }};color:{{ t.c }};font:600 12.5px var(--font-ui);">{{ t.label }}<span style="font-weight:500;font-size:11px;color:var(--text-muted);">{{ t.n }}</span></span>
+                </sc-for>
+              </div>
+            </div>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:290px minmax(0,1fr) {{ rail_3b.w }};transition:grid-template-columns .22s cubic-bezier(0.4,0,0.2,1);">
+              <div style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;align-items:center;gap:6px;padding:8px;">
+                  <div style="flex:1;height:26px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 8px;border:1px solid var(--accent);border-radius:6px;background:var(--page-bg);font-size:12px;color:var(--text-bright);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>lock<span style="margin-left:auto;flex:none;white-space:nowrap;font-size:11px;color:var(--text-muted);">8 matches</span></div>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:0 6px 8px;">
+                  <sc-for list="{{ ghTree }}" as="r" hint-placeholder-count="16">
+                    <div style="display:flex;align-items:center;gap:5px;height:22px;padding:0 6px 0 {{ r.pad }};border-radius:4px;background:{{ r.bg }};font-size:12.5px;">
+                      <span style="width:10px;flex:none;display:grid;place-items:center;color:var(--text-muted);"><sc-if value="{{ r.isDir }}" hint-placeholder-val="{{ false }}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="transform:rotate(90deg);"><path d="m9 18 6-6-6-6"></path></svg></sc-if></span>
+                      <sc-if value="{{ r.isDir }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round" style="flex:none;opacity:.8;"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg></sc-if>
+                      <sc-if value="{{ r.isFile }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.8" stroke-linejoin="round" style="flex:none;"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg></sc-if>
+                      <span style="color:{{ r.tc }};font-weight:{{ r.fw }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.pre }}<mark style="background:var(--accent-muted);color:var(--accent-bright);border-radius:2px;">{{ r.hit }}</mark>{{ r.post }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="padding:6px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);">8 of 412 files match</div>
+              </div>
+              <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+                <div style="display:flex;align-items:center;gap:6px;height:40px;padding:0 14px 0 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;font-size:12.5px;">
+                  <span style="flex:none;display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border:1px solid var(--border);border-radius:5px;background:var(--container-raised);font:500 12px var(--font-ui);"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" x2="6" y1="3" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>main<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"></path></svg></span>
+                  <span style="width:4px;"></span>
+                  <span style="flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;mask-image:linear-gradient(90deg,#000 85%,transparent);"><sc-for list="{{ ghCrumbs }}" as="c" hint-placeholder-count="3">
+                    <span style="color:{{ c.c }};font-weight:{{ c.fw }};">{{ c.t }}</span><span style="color:var(--text-muted);opacity:{{ c.sepOp }};">›</span>
+                  </sc-for></span>
+                  <span style="flex:1;"></span>
+                  <div style="flex:none;display:flex;gap:2px;padding:2px;border-radius:6px;background:var(--container-bg);border:1px solid var(--border-subtle);">
+                    <span style="height:22px;display:flex;align-items:center;padding:0 9px;border-radius:4px;background:var(--container-raised);font:500 11.5px var(--font-ui);color:var(--text-bright);">Source</span>
+                    <span style="height:22px;display:flex;align-items:center;padding:0 9px;font:500 11.5px var(--font-ui);color:var(--text-muted);">Preview</span>
+                  </div>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:8px 0;background:var(--page-bg);">
+                  <sc-for list="{{ md }}" as="l" hint-placeholder-count="20">
+                    <div style="display:grid;grid-template-columns:48px minmax(0,1fr);font:12.5px/20px 'Geist Mono',ui-monospace,monospace;">
+                      <span style="text-align:right;padding-right:14px;color:var(--text-muted);opacity:.55;">{{ l.n }}</span>
+                      <span style="white-space:pre-wrap;padding-right:20px;"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};font-weight:{{ s.w }};">{{ s.t }}</span></sc-for></span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;gap:14px;height:26px;padding:0 14px;border-top:1px solid var(--border);background:var(--container-bg);font-size:11px;color:var(--text-muted);white-space:nowrap;">
+                  <span>Markdown</span><span>18 lines</span><span>1.1 KB</span>
+                </div>
+              </div>
+              <sc-if value="{{ rail_3b.open }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:12px;min-height:0;padding:10px 14px 14px;min-width:0;overflow:hidden;border-left:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;justify-content:flex-end;margin:0 -6px -6px 0;"><span title="Hide panel" onClick="{{ rail_3b.toggle }}" style="display:grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--text-muted);cursor:pointer;" style-hover="background:var(--container-hover);color:var(--text-bright);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m8 9 3 3-3 3"></path></svg></span></div>
+                <div style="display:flex;flex-direction:column;gap:3px;min-width:0;">
+                  <span style="font:600 14px var(--font-ui);line-height:1.3;color:var(--text-bright);overflow-wrap:anywhere;">Aeon_Clok_Visual_Identity_Lock.md</span>
+                  <span style="font:11px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);">canons/ASCENDANT · on main</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid var(--border-subtle);border-radius:8px;background:var(--page-bg);">
+                  <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Open pull request</span>
+                  <span style="font:500 12.5px var(--font-ui);color:var(--text-bright);"><span style="color:var(--text-muted);">#12</span> Update lock fields after review</span>
+                  <span style="font-size:11.5px;color:var(--text-muted);">Changes this file · <span style="font-family:'Geist Mono',ui-monospace,monospace;"><span style="color:var(--success);">+4</span> <span style="color:var(--danger);">−2</span></span></span>
+                  <span style="font:500 12px var(--font-ui);color:var(--accent);">View in Pull requests</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:2px;">
+                  <span style="padding-bottom:4px;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">History on main</span>
+                  <sc-for list="{{ ghHist }}" as="h" hint-placeholder-count="3">
+                    <div style="display:flex;flex-direction:column;gap:1px;padding:6px 0;border-bottom:1px solid var(--border-subtle);">
+                      <span style="font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ h.s }}</span>
+                      <span style="font-size:11px;color:var(--text-muted);"><span style="font-family:'Geist Mono',ui-monospace,monospace;color:var(--accent);">{{ h.h }}</span> · {{ h.w }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <span style="flex:1;"></span>
+                <span style="display:flex;align-items:center;justify-content:center;height:32px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:600 12.5px var(--font-ui);">Open in local copy</span>
+                <span style="display:flex;align-items:center;justify-content:center;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12.5px var(--font-ui);">Open on GitHub</span>
+                <span style="display:flex;align-items:center;justify-content:center;height:28px;font:500 12px var(--font-ui);color:var(--text-muted);">Copy permalink</span>
+              </div></sc-if>
+              <sc-if value="{{ rail_3b.closed }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ rail_3b.toggle }}" title="Show panel" style="display:flex;flex-direction:column;align-items:center;gap:14px;min-height:0;padding:10px 0;border-left:1px solid var(--border);background:var(--container-bg);cursor:pointer;" style-hover="background:var(--container-raised);">
+                <span style="display:grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m10 15-3-3 3-3"></path></svg></span>
+                <span style="writing-mode:vertical-rl;transform:rotate(180deg);font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap;">File details</span>
+              </div>
+            </sc-if>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:56px;padding:56px 56px 0;font-family:var(--font-ui);color:var(--text);">
+  <div style="display:flex;flex-direction:column;gap:6px;max-width:980px;">
+    <span style="font:600 11px var(--font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);">Turn 2 · 1b carried through</span>
+    <h1 style="margin:0;font:600 28px var(--font-heading);color:var(--text-bright);">Two lanes + commit rail: other states</h1>
+    <p style="margin:0;font-size:14px;line-height:1.55;color:var(--text-muted);text-wrap:pretty;">The right rail always holds the next step: the commit form, the last commit when there is nothing to commit, or rebase controls during an operation. The lanes swap to Conflicts while a rebase is paused.</p>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:48px;">
+
+    <!-- 2a clean -->
+    <div id="2a" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">2a</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Clean tree</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">Lanes stay in place with short empty notes. The rail shows the last commit with Amend.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="local" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <dc-import name="GwBranchList" state="clean" style="height:100%;min-height:0;" hint-size="272px,100%"></dc-import>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <dc-import name="GwDetailHead" tab="changes" count="" hint-size="100%,84px"></dc-import>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:320px minmax(0,1fr) {{ rail_2a.w }};transition:grid-template-columns .22s cubic-bezier(0.4,0,0.2,1);">
+              <div style="display:grid;grid-template-rows:minmax(0,1.3fr) minmax(0,1fr);min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;flex-direction:column;min-height:0;">
+                  <div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 14px;border-bottom:1px solid var(--border-subtle);">
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;">Not staged</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">0</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:4px;padding:18px 14px;font-size:12.5px;color:var(--text-muted);">
+                    <span style="display:flex;align-items:center;gap:8px;font:600 13px var(--font-ui);color:var(--text-bright);"><span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--success-bg);color:var(--success);"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>Working tree clean</span>
+                    <span>Edits to files on master appear here.</span>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--border);">
+                  <div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 14px;border-bottom:1px solid var(--border-subtle);">
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Staged</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">0</span>
+                  </div>
+                  <span style="padding:18px 14px;font-size:12.5px;color:var(--text-muted);">Nothing staged.</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:center;font-size:12.5px;color:var(--text-muted);">No diff to show.</div>
+              <sc-if value="{{ rail_2a.open }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:10px;min-height:0;padding:10px 14px 14px;min-width:0;overflow:hidden;border-left:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;justify-content:flex-end;margin:0 -6px -6px 0;"><span title="Hide panel" onClick="{{ rail_2a.toggle }}" style="display:grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--text-muted);cursor:pointer;" style-hover="background:var(--container-hover);color:var(--text-bright);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m8 9 3 3-3 3"></path></svg></span></div>
+                <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Last commit</span>
+                <div style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border-subtle);border-radius:8px;background:var(--page-bg);">
+                  <span style="font:600 13px var(--font-ui);line-height:1.35;color:var(--text-bright);">Show labelled branch counts in filter chips</span>
+                  <span style="font-size:11.5px;color:var(--text-muted);"><span style="font-family:'Geist Mono',ui-monospace,monospace;color:var(--accent);">d834db4</span> · 2 hours ago · pushed</span>
+                  <span style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);"><span>5 files</span><span style="font-family:'Geist Mono',ui-monospace,monospace;"><span style="color:var(--success);">+74</span> <span style="color:var(--danger);">−31</span></span></span>
+                </div>
+                <span style="display:flex;align-items:center;justify-content:center;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12.5px var(--font-ui);">Amend message...</span>
+                <span style="display:flex;align-items:center;justify-content:center;height:30px;font:500 12.5px var(--font-ui);color:var(--text-muted);">View in History</span>
+              </div></sc-if>
+              <sc-if value="{{ rail_2a.closed }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ rail_2a.toggle }}" title="Show panel" style="display:flex;flex-direction:column;align-items:center;gap:14px;min-height:0;padding:10px 0;border-left:1px solid var(--border);background:var(--container-bg);cursor:pointer;" style-hover="background:var(--container-raised);">
+                <span style="display:grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m10 15-3-3 3-3"></path></svg></span>
+                <span style="writing-mode:vertical-rl;transform:rotate(180deg);font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap;">Last commit</span>
+              </div>
+            </sc-if>
+            </div>
+            <dc-import name="GwCmdBar" hint-size="100%,42px"></dc-import>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2b rebase -->
+    <div id="2b" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">2b</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Mid-rebase conflicts</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">The top lane becomes Conflicts. The rail swaps the commit form for rebase progress and controls.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="local" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <dc-import name="GwBranchList" state="rebase" style="height:100%;min-height:0;" hint-size="272px,100%"></dc-import>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <dc-import name="GwDetailHead" tab="changes" count="3" op="rebase" hint-size="100%,84px"></dc-import>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:320px minmax(0,1fr) {{ rail_2b.w }};transition:grid-template-columns .22s cubic-bezier(0.4,0,0.2,1);">
+              <div style="display:grid;grid-template-rows:minmax(0,1.3fr) minmax(0,1fr);min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;flex-direction:column;min-height:0;">
+                  <div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 14px;border-bottom:1px solid var(--border-subtle);background:var(--danger-bg);">
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--danger);">Conflicts</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">2</span>
+                  </div>
+                  <span style="padding:8px 14px 2px;font-size:11.5px;color:var(--text-muted);">Resolve each file, then continue the rebase.</span>
+                  <div style="padding:6px;display:flex;flex-direction:column;gap:2px;">
+                    <sc-for list="{{ conflicts }}" as="f" hint-placeholder-count="2">
+                      <div style="display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:8px;align-items:center;height:28px;padding:0 4px 0 8px;border-radius:5px;background:{{ f.bg }};">
+                        <span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:var(--danger);">U</span>
+                        <span style="font:500 12.5px var(--font-ui);color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.name }}</span>
+                        <span style="font-size:11px;color:var(--text-muted);">{{ f.state }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--border);">
+                  <div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 14px;border-bottom:1px solid var(--border-subtle);background:var(--success-bg);">
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--success);">Staged</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">1</span>
+                  </div>
+                  <div style="padding:6px;">
+                    <div style="display:grid;grid-template-columns:14px minmax(0,1fr);gap:8px;align-items:center;height:28px;padding:0 8px;">
+                      <span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:var(--warning);">M</span>
+                      <span style="font:500 12.5px var(--font-ui);color:var(--text-bright);">parse.js</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;padding:14px 16px;overflow:hidden;">
+                <div style="display:flex;align-items:center;gap:10px;white-space:nowrap;">
+                  <span style="font:600 11px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--danger);">Conflict</span>
+                  <span style="font:600 12.5px 'Geist Mono',ui-monospace,monospace;color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;">packages/core/src/modules/git/status-meta.js</span>
+                  <span style="flex:1;"></span>
+                  <span style="font-size:12px;color:var(--text-muted);">File 1 of 2</span>
+                </div>
+                <p style="margin:0;font-size:12.5px;line-height:1.5;color:var(--text-muted);">Both sides changed the same lines. <b style="color:var(--info);">origin/master</b> is already in your branch; <b style="color:var(--warning);">your commit 580ddbd</b> is being replayed on top.</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                  <div style="border:1px solid var(--border);border-top:3px solid var(--info);border-radius:8px;overflow:hidden;background:var(--container-bg);">
+                    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border-subtle);">
+                      <span style="display:flex;flex-direction:column;flex:1;min-width:0;"><span style="font:600 10.5px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--info);white-space:nowrap;">Incoming</span><span style="font:600 12.5px var(--font-ui);">origin/master</span></span>
+                      <span style="display:inline-flex;align-items:center;height:24px;padding:0 9px;border:1px solid var(--border);border-radius:5px;background:var(--container-raised);font:600 11.5px var(--font-ui);white-space:nowrap;">Use theirs</span>
+                    </div>
+                    <sc-for list="{{ theirs }}" as="l" hint-placeholder-count="5">
+                      <div style="padding:0 10px;font:12px/20px 'Geist Mono',ui-monospace,monospace;white-space:pre;overflow:hidden;background:{{ l.bg }};"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></div>
+                    </sc-for>
+                  </div>
+                  <div style="border:1px solid var(--border);border-top:3px solid var(--warning);border-radius:8px;overflow:hidden;background:var(--container-bg);">
+                    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border-subtle);">
+                      <span style="display:flex;flex-direction:column;flex:1;min-width:0;"><span style="font:600 10.5px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--warning);white-space:nowrap;">Yours</span><span style="font:600 12.5px var(--font-ui);">580ddbd</span></span>
+                      <span style="display:inline-flex;align-items:center;height:24px;padding:0 9px;border:1px solid var(--border);border-radius:5px;background:var(--container-raised);font:600 11.5px var(--font-ui);white-space:nowrap;">Use mine</span>
+                    </div>
+                    <sc-for list="{{ mine }}" as="l" hint-placeholder-count="5">
+                      <div style="padding:0 10px;font:12px/20px 'Geist Mono',ui-monospace,monospace;white-space:pre;overflow:hidden;background:{{ l.bg }};"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Both, theirs first</span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Both, mine first</span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;font:500 12px var(--font-ui);color:var(--text-muted);">Edit result...</span>
+                  <span style="flex:1;"></span>
+                  <span style="display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:600 12px var(--font-ui);opacity:.45;">Mark resolved &amp; next</span>
+                </div>
+              </div>
+              <sc-if value="{{ rail_2b.open }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:10px;min-height:0;padding:10px 14px 14px;min-width:0;overflow:hidden;border-left:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;justify-content:flex-end;margin:0 -6px -6px 0;"><span title="Hide panel" onClick="{{ rail_2b.toggle }}" style="display:grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--text-muted);cursor:pointer;" style-hover="background:var(--container-hover);color:var(--text-bright);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m8 9 3 3-3 3"></path></svg></span></div>
+                <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--warning);">Rebase in progress</span>
+                <span style="font:600 13px var(--font-ui);line-height:1.35;color:var(--text-bright);">Rebasing onto origin/master</span>
+                <div style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border-subtle);border-radius:8px;background:var(--page-bg);">
+                  <span style="font-size:12px;color:var(--text-muted);">Commit 3 of 7</span>
+                  <span style="font-size:12.5px;color:var(--text);"><span style="font-family:'Geist Mono',ui-monospace,monospace;color:var(--accent);">580ddbd</span> Centralize status tones</span>
+                  <span style="display:flex;gap:3px;margin-top:2px;"><sc-for list="{{ steps }}" as="s" hint-placeholder-count="7"><span style="flex:1;height:5px;border-radius:3px;background:{{ s.c }};"></span></sc-for></span>
+                </div>
+                <span style="font:600 12px var(--font-ui);color:var(--danger);">0 of 2 conflicts resolved</span>
+                <span style="font-size:12px;line-height:1.5;color:var(--text-muted);">Committing is paused during the rebase. Resolved files go into the replayed commit.</span>
+                <span style="flex:1;"></span>
+                <span title="Resolve 2 remaining conflicts first" style="display:flex;align-items:center;justify-content:center;height:32px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:600 12.5px var(--font-ui);opacity:.45;">Continue rebase</span>
+                <span style="display:flex;align-items:center;justify-content:center;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12.5px var(--font-ui);">Skip this commit</span>
+                <span style="display:flex;align-items:center;justify-content:center;height:30px;font:500 12.5px var(--font-ui);color:var(--danger);">Abort rebase...</span>
+              </div></sc-if>
+              <sc-if value="{{ rail_2b.closed }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ rail_2b.toggle }}" title="Show panel" style="display:flex;flex-direction:column;align-items:center;gap:14px;min-height:0;padding:10px 0;border-left:1px solid var(--border);background:var(--container-bg);cursor:pointer;" style-hover="background:var(--container-raised);">
+                <span style="display:grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m10 15-3-3 3-3"></path></svg></span>
+                <span style="writing-mode:vertical-rl;transform:rotate(180deg);font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap;">Rebase 3 of 7</span>
+              </div>
+            </sc-if>
+            </div>
+            <dc-import name="GwCmdBar" hint-size="100%,42px"></dc-import>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2c large -->
+    <div id="2c" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">2c</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Large change set</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">The Not staged lane gets a filter and groups by folder; a whole folder moves down with one click.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="local" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <dc-import name="GwBranchList" state="large" style="height:100%;min-height:0;" hint-size="272px,100%"></dc-import>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <dc-import name="GwDetailHead" tab="changes" count="248" hint-size="100%,84px"></dc-import>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:320px minmax(0,1fr) {{ rail_2c.w }};transition:grid-template-columns .22s cubic-bezier(0.4,0,0.2,1);">
+              <div style="display:grid;grid-template-rows:minmax(0,1.6fr) minmax(0,1fr);min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;flex-direction:column;min-height:0;">
+                  <div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 14px;border-bottom:1px solid var(--border-subtle);">
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;">Not staged</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">234</span>
+                    <span style="flex:1;"></span>
+                    <span style="display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;font:500 11.5px var(--font-ui);color:var(--accent);">Stage all<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M19 12l-7 7-7-7"></path></svg></span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;padding:8px 8px 4px;">
+                    <div style="flex:1;height:26px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font-size:12px;color:var(--text-muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Filter</div>
+                    <div style="display:flex;gap:2px;padding:2px;border-radius:6px;background:var(--page-bg);border:1px solid var(--border-subtle);">
+                      <span style="height:20px;display:flex;align-items:center;padding:0 7px;border-radius:4px;background:var(--container-raised);font:500 11px var(--font-ui);color:var(--text-bright);">Folders</span>
+                      <span style="height:20px;display:flex;align-items:center;padding:0 7px;font:500 11px var(--font-ui);color:var(--text-muted);">Flat</span>
+                    </div>
+                  </div>
+                  <div style="padding:2px 6px;display:flex;flex-direction:column;gap:1px;overflow:hidden;">
+                    <sc-for list="{{ largeRowsB }}" as="r" hint-placeholder-count="12">
+                      <div style="display:grid;grid-template-columns:12px 14px minmax(0,1fr) auto;gap:6px;align-items:center;height:26px;padding:0 6px 0 {{ r.pad }};border-radius:5px;background:{{ r.bg }};">
+                        <span style="display:grid;place-items:center;color:var(--text-muted);"><sc-if value="{{ r.isDir }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transform:rotate({{ r.rot }}deg);"><path d="m9 18 6-6-6-6"></path></svg></sc-if></span>
+                        <span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:{{ r.cc }};">{{ r.code }}</span>
+                        <span style="font:{{ r.font }};color:{{ r.tc }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.name }}</span>
+                        <span style="font:11px 'Geist Mono',ui-monospace,monospace;color:{{ r.mc }};">{{ r.meta }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--border);">
+                  <div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 14px;border-bottom:1px solid var(--border-subtle);background:var(--success-bg);">
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--success);">Staged</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">14</span>
+                    <span style="flex:1;"></span>
+                    <span style="display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;font:500 11.5px var(--font-ui);color:var(--accent);">Unstage all<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7"></path></svg></span>
+                  </div>
+                  <div style="padding:6px;display:flex;flex-direction:column;gap:1px;overflow:hidden;">
+                    <sc-for list="{{ staged14 }}" as="r" hint-placeholder-count="5">
+                      <div style="display:grid;grid-template-columns:12px 14px minmax(0,1fr) auto;gap:6px;align-items:center;height:26px;padding:0 6px 0 {{ r.pad }};border-radius:5px;">
+                        <span style="display:grid;place-items:center;color:var(--text-muted);"><sc-if value="{{ r.isDir }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transform:rotate({{ r.rot }}deg);"><path d="m9 18 6-6-6-6"></path></svg></sc-if></span>
+                        <span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:{{ r.cc }};">{{ r.code }}</span>
+                        <span style="font:{{ r.font }};color:{{ r.tc }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.name }}</span>
+                        <span style="font:11px 'Geist Mono',ui-monospace,monospace;color:{{ r.mc }};">{{ r.meta }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+                <div style="display:flex;align-items:center;gap:10px;height:42px;padding:0 14px;border-bottom:1px solid var(--border);white-space:nowrap;">
+                  <span style="font:600 12.5px 'Geist Mono',ui-monospace,monospace;color:var(--text-bright);">apps/web/dist/</span>
+                  <span style="font-size:12px;color:var(--text-muted);">142 untracked files</span>
+                  <span style="flex:1;"></span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 8px;color:var(--danger);font:500 12px var(--font-ui);">Delete...</span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Stage folder</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;padding:28px;max-width:520px;font-size:12.5px;line-height:1.5;color:var(--text-muted);">
+                  <span style="font:600 13.5px var(--font-ui);color:var(--text-bright);">Folder selected</span>
+                  <span>Pick a file inside it to see its diff, or act on the whole folder from the bar above.</span>
+                </div>
+              </div>
+              <sc-if value="{{ rail_2c.open }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:10px;min-height:0;padding:10px 14px 14px;min-width:0;overflow:hidden;border-left:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;justify-content:flex-end;margin:0 -6px -6px 0;"><span title="Hide panel" onClick="{{ rail_2c.toggle }}" style="display:grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--text-muted);cursor:pointer;" style-hover="background:var(--container-hover);color:var(--text-bright);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m8 9 3 3-3 3"></path></svg></span></div>
+                <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Commit to master</span>
+                <div style="height:32px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font-size:13px;color:var(--text-muted);">Commit summary<span style="font:11px 'Geist Mono',ui-monospace,monospace;">0/72</span></div>
+                <div style="height:150px;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font-size:12.5px;color:var(--text-muted);opacity:.8;">Description (optional)</div>
+                <div style="display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid var(--border-subtle);border-radius:6px;font-size:12px;color:var(--text-muted);">
+                  <span style="display:flex;justify-content:space-between;"><span>14 files</span><span style="font-family:'Geist Mono',ui-monospace,monospace;"><span style="color:var(--success);">+612</span> <span style="color:var(--danger);">−208</span></span></span>
+                  <span>234 changes stay unstaged</span>
+                </div>
+                <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);"><span style="width:13px;height:13px;box-sizing:border-box;border:1px solid var(--border);border-radius:3px;background:var(--page-bg);"></span>Amend last commit</span>
+                <span style="flex:1;"></span>
+                <span style="font-size:11.5px;color:var(--warning);">Write a summary to commit</span>
+                <span style="display:flex;align-items:center;justify-content:center;height:32px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:600 12.5px var(--font-ui);opacity:.45;">Commit 14 files</span>
+                <span style="display:flex;align-items:center;justify-content:center;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12.5px var(--font-ui);opacity:.6;">Commit &amp; push</span>
+              </div></sc-if>
+              <sc-if value="{{ rail_2c.closed }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ rail_2c.toggle }}" title="Show panel" style="display:flex;flex-direction:column;align-items:center;gap:14px;min-height:0;padding:10px 0;border-left:1px solid var(--border);background:var(--container-bg);cursor:pointer;" style-hover="background:var(--container-raised);">
+                <span style="display:grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m10 15-3-3 3-3"></path></svg></span>
+                <span style="writing-mode:vertical-rl;transform:rotate(180deg);font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap;">Commit · 14 staged</span>
+              </div>
+            </sc-if>
+            </div>
+            <dc-import name="GwCmdBar" hint-size="100%,42px"></dc-import>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:56px;padding:56px;font-family:var(--font-ui);color:var(--text);">
+  <div style="display:flex;flex-direction:column;gap:6px;max-width:980px;">
+    <span style="font:600 11px var(--font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);">Turn 1 · Git Workspace redesign</span>
+    <h1 style="margin:0;font:600 28px var(--font-heading);color:var(--text-bright);">Changes, Files and GitHub Files</h1>
+    <p style="margin:0;font-size:14px;line-height:1.55;color:var(--text-muted);text-wrap:pretty;">Shared changes across every board: one top bar instead of three header rows, the branch filter and chips moved into the branch list they filter, the branch header and tabs merged into two short rows, and the command bar reduced to one line. <a href="#1a">1a</a>, <a href="#1b">1b</a> and <a href="#1c">1c</a> are three ways to lay out Changes. <a href="#1d">1d</a>–<a href="#1f">1f</a> show the other states using 1a. <a href="#1z">1z</a> is today's screen for comparison.</p>
+  </div>
+
+  <!-- ROW: three directions -->
+  <div style="display:flex;flex-wrap:wrap;gap:48px;">
+
+    <!-- 1a -->
+    <div id="1a" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">1a</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Commit first</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">Commit box at the top of a wider column. No toolbar: actions sit on the row, and a selection bar appears only when you pick several files.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="local" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <dc-import name="GwBranchList" state="changes" style="height:100%;min-height:0;" hint-size="272px,100%"></dc-import>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <dc-import name="GwDetailHead" tab="changes" count="6" hint-size="100%,84px"></dc-import>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:380px minmax(0,1fr);">
+              <div style="position:relative;display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border-bottom:1px solid var(--border);">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="white-space:nowrap;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Commit to master</span>
+                    <span style="margin-left:auto;white-space:nowrap;font-size:11.5px;color:var(--text-muted);">2 staged</span>
+                  </div>
+                  <div style="position:relative;">
+                    <div style="height:32px;box-sizing:border-box;display:flex;align-items:center;padding:0 52px 0 10px;border:1px solid var(--accent);border-radius:6px;background:var(--page-bg);font-size:13px;color:var(--text-bright);box-shadow:0 0 0 3px var(--accent-muted);">Move commit box above the file list</div>
+                    <span style="position:absolute;right:10px;top:9px;font:11px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);">35/72</span>
+                  </div>
+                  <div style="height:46px;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font-size:12.5px;color:var(--text-muted);opacity:.8;">Description (optional)</div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);"><span style="width:13px;height:13px;box-sizing:border-box;border:1px solid var(--border);border-radius:3px;background:var(--page-bg);"></span>Amend</span>
+                    <span style="flex:1;"></span>
+                    <span style="display:inline-flex;align-items:center;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Commit &amp; push</span>
+                    <span style="display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 12px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:var(--accent-text);font:600 12px var(--font-ui);">Commit 2 files<span style="font:10.5px 'Geist Mono',ui-monospace,monospace;opacity:.7;">Ctrl ⏎</span></span>
+                  </div>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:6px 6px 60px;display:flex;flex-direction:column;gap:2px;">
+                  <div style="display:flex;align-items:center;gap:8px;padding:6px 8px 4px;">
+                    <span style="width:7px;height:7px;border-radius:50%;background:var(--success);"></span>
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;">Staged</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">2</span>
+                    <span style="margin-left:auto;font:500 11.5px var(--font-ui);color:var(--accent);">Unstage all</span>
+                  </div>
+                  <sc-for list="{{ stagedA }}" as="f" hint-placeholder-count="2">
+                    <div style="display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:8px;align-items:center;height:26px;padding:0 8px;border-radius:5px;background:{{ f.bg }};">
+                      <span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:{{ f.cc }};">{{ f.code }}</span>
+                      <span style="display:flex;align-items:baseline;gap:6px;min-width:0;overflow:hidden;white-space:nowrap;font-size:12.5px;"><span style="font-weight:500;color:var(--text-bright);">{{ f.name }}</span><span style="font-size:11.5px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;">{{ f.dir }}</span></span>
+                      <span style="display:flex;gap:6px;font:11px 'Geist Mono',ui-monospace,monospace;"><span style="color:var(--success);">{{ f.addT }}</span><span style="color:var(--danger);">{{ f.delT }}</span></span>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex;align-items:center;gap:8px;padding:12px 8px 4px;">
+                    <span style="width:7px;height:7px;border-radius:50%;background:var(--warning);"></span>
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;">Not staged</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">4</span>
+                    <span style="margin-left:auto;font:500 11.5px var(--font-ui);color:var(--accent);">Stage all</span>
+                  </div>
+                  <sc-for list="{{ unstagedA }}" as="f" hint-placeholder-count="4">
+                    <div style="display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:8px;align-items:center;height:26px;padding:0 4px 0 8px;border-radius:5px;background:{{ f.bg }};box-shadow:{{ f.ring }};">
+                      <span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:{{ f.cc }};">{{ f.code }}</span>
+                      <span style="display:flex;align-items:baseline;gap:6px;min-width:0;overflow:hidden;white-space:nowrap;font-size:12.5px;"><span style="font-weight:500;color:var(--text-bright);">{{ f.name }}</span><span style="font-size:11.5px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;">{{ f.dir }}</span></span>
+                      <sc-if value="{{ f.focus }}" hint-placeholder-val="{{ false }}">
+                        <span style="display:flex;gap:2px;">
+                          <span title="Discard changes" style="display:grid;place-items:center;width:22px;height:22px;border-radius:4px;color:var(--text-muted);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg></span>
+                          <span title="Stage" style="display:grid;place-items:center;width:22px;height:22px;border-radius:4px;background:var(--container-hover);color:var(--text-bright);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span>
+                        </span>
+                      </sc-if>
+                      <sc-if value="{{ f.noFocus }}" hint-placeholder-val="{{ true }}">
+                        <span style="display:flex;gap:6px;padding-right:4px;font:11px 'Geist Mono',ui-monospace,monospace;"><span style="color:var(--success);">{{ f.addT }}</span><span style="color:var(--danger);">{{ f.delT }}</span></span>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;gap:6px;height:38px;box-sizing:border-box;padding:0 6px 0 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-raised);box-shadow:0 8px 24px rgba(0,0,0,.45);">
+                  <span style="font:600 12px var(--font-ui);color:var(--text-bright);">2 selected</span>
+                  <span style="flex:1;"></span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:5px;background:var(--accent);color:var(--accent-text);font:600 12px var(--font-ui);">Stage</span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:5px;color:var(--danger);font:500 12px var(--font-ui);">Discard...</span>
+                  <span style="display:grid;place-items:center;width:26px;height:26px;border-radius:5px;color:var(--text-muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--page-bg);">
+                <div style="display:flex;align-items:center;gap:10px;height:42px;padding:0 14px;border-bottom:1px solid var(--border);white-space:nowrap;">
+                  <span style="font:500 12.5px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;">modules/git/src/renderer/<span style="color:var(--text-bright);font-weight:600;">commit-composer.jsx</span></span>
+                  <span style="font:600 10.5px var(--font-ui);padding:1px 6px;border-radius:4px;background:var(--container-raised);color:var(--text-muted);">JSX</span>
+                  <span style="font:600 11.5px 'Geist Mono',ui-monospace,monospace;color:var(--success);">+9</span>
+                  <span style="font:600 11.5px 'Geist Mono',ui-monospace,monospace;color:var(--danger);">−5</span>
+                  <span style="flex:1;"></span>
+                  <div style="display:flex;gap:2px;padding:2px;border-radius:6px;background:var(--container-bg);border:1px solid var(--border-subtle);">
+                    <span style="height:22px;display:flex;align-items:center;padding:0 9px;border-radius:4px;background:var(--container-raised);font:500 11.5px var(--font-ui);color:var(--text-bright);">Unified</span>
+                    <span style="height:22px;display:flex;align-items:center;padding:0 9px;font:500 11.5px var(--font-ui);color:var(--text-muted);">Split</span>
+                  </div>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Stage file</span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 8px;color:var(--danger);font:500 12px var(--font-ui);">Discard...</span>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:12px 14px;">
+                  <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--container-bg);">
+                    <div style="display:flex;align-items:center;gap:10px;height:30px;padding:0 6px 0 10px;background:var(--container-raised);border-bottom:1px solid var(--border);">
+                      <span style="font:11px 'Geist Mono',ui-monospace,monospace;color:var(--accent);">@@ -37,21 +37,22 @@</span>
+                      <span style="font:600 12px var(--font-ui);color:var(--text-muted);">CommitComposer</span>
+                      <span style="flex:1;"></span>
+                      <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:4px;font:500 11.5px var(--font-ui);color:var(--accent);">Stage hunk</span>
+                    </div>
+                    <sc-for list="{{ diff }}" as="l" hint-placeholder-count="16">
+                      <div style="display:grid;grid-template-columns:40px 40px 18px minmax(0,1fr);font:12px/20px 'Geist Mono',ui-monospace,monospace;background:{{ l.bg }};">
+                        <span style="text-align:right;padding-right:8px;color:var(--text-muted);opacity:.6;">{{ l.o }}</span>
+                        <span style="text-align:right;padding-right:8px;color:var(--text-muted);opacity:.6;">{{ l.n }}</span>
+                        <span style="color:{{ l.sc }};">{{ l.sign }}</span>
+                        <span style="white-space:pre;overflow:hidden;"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <dc-import name="GwCmdBar" hint-size="100%,42px"></dc-import>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1b -->
+    <div id="1b" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">1b</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Two lanes + commit rail</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">Not staged and Staged as stacked panels you move files between. The commit form gets its own column with room for a full message.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="local" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <dc-import name="GwBranchList" state="changes" style="height:100%;min-height:0;" hint-size="272px,100%"></dc-import>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <dc-import name="GwDetailHead" tab="changes" count="6" hint-size="100%,84px"></dc-import>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:320px minmax(0,1fr) {{ rail_1b.w }};transition:grid-template-columns .22s cubic-bezier(0.4,0,0.2,1);">
+              <div style="display:grid;grid-template-rows:minmax(0,1.3fr) minmax(0,1fr);min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;flex-direction:column;min-height:0;">
+                  <div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 14px;border-bottom:1px solid var(--border-subtle);">
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;">Not staged</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">4</span>
+                    <span style="flex:1;"></span>
+                    <span style="display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:5px;font:500 11.5px var(--font-ui);color:var(--accent);">Stage all<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M19 12l-7 7-7-7"></path></svg></span>
+                  </div>
+                  <div style="padding:6px;display:flex;flex-direction:column;gap:2px;">
+                    <sc-for list="{{ unstagedB }}" as="f" hint-placeholder-count="4">
+                      <div style="display:grid;grid-template-columns:14px minmax(0,1fr) 22px;gap:8px;align-items:center;height:28px;padding:0 4px 0 8px;border-radius:5px;background:{{ f.bg }};">
+                        <span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:{{ f.cc }};">{{ f.code }}</span>
+                        <span style="display:flex;flex-direction:column;min-width:0;line-height:1.15;"><span style="font:500 12.5px var(--font-ui);color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.name }}</span></span>
+                        <span title="Stage" style="display:grid;place-items:center;width:22px;height:22px;border-radius:4px;background:{{ f.btnBg }};color:var(--text-muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M19 12l-7 7-7-7"></path></svg></span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--border);">
+                  <div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 14px;border-bottom:1px solid var(--border-subtle);background:var(--success-bg);">
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--success);">Staged</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">2</span>
+                    <span style="flex:1;"></span>
+                    <span style="display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:5px;font:500 11.5px var(--font-ui);color:var(--accent);">Unstage all<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7"></path></svg></span>
+                  </div>
+                  <div style="padding:6px;display:flex;flex-direction:column;gap:2px;">
+                    <sc-for list="{{ stagedA }}" as="f" hint-placeholder-count="2">
+                      <div style="display:grid;grid-template-columns:14px minmax(0,1fr) 22px;gap:8px;align-items:center;height:28px;padding:0 4px 0 8px;border-radius:5px;">
+                        <span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:{{ f.cc }};">{{ f.code }}</span>
+                        <span style="font:500 12.5px var(--font-ui);color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.name }}</span>
+                        <span title="Unstage" style="display:grid;place-items:center;width:22px;height:22px;border-radius:4px;color:var(--text-muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7"></path></svg></span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+                <div style="display:flex;align-items:center;gap:10px;height:42px;padding:0 14px;border-bottom:1px solid var(--border);white-space:nowrap;">
+                  <span style="font:600 12.5px 'Geist Mono',ui-monospace,monospace;color:var(--text-bright);">commit-composer.jsx</span>
+                  <span style="font-size:11.5px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;">modules/git/src/renderer</span>
+                  <span style="font:600 11.5px 'Geist Mono',ui-monospace,monospace;color:var(--success);">+9</span>
+                  <span style="font:600 11.5px 'Geist Mono',ui-monospace,monospace;color:var(--danger);">−5</span>
+                  <span style="flex:1;"></span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 8px;color:var(--danger);font:500 12px var(--font-ui);">Discard...</span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Stage file</span>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;">
+                  <div style="display:flex;align-items:center;gap:10px;height:28px;padding:0 10px;background:var(--container-bg);border-bottom:1px solid var(--border-subtle);">
+                    <span style="font:11px 'Geist Mono',ui-monospace,monospace;color:var(--accent);">@@ -37,21 +37,22 @@ CommitComposer</span>
+                    <span style="flex:1;"></span>
+                    <span style="font:500 11.5px var(--font-ui);color:var(--accent);">Stage hunk</span>
+                  </div>
+                  <sc-for list="{{ diff }}" as="l" hint-placeholder-count="16">
+                    <div style="display:grid;grid-template-columns:40px 40px 18px minmax(0,1fr);font:12px/20px 'Geist Mono',ui-monospace,monospace;background:{{ l.bg }};">
+                      <span style="text-align:right;padding-right:8px;color:var(--text-muted);opacity:.6;">{{ l.o }}</span>
+                      <span style="text-align:right;padding-right:8px;color:var(--text-muted);opacity:.6;">{{ l.n }}</span>
+                      <span style="color:{{ l.sc }};">{{ l.sign }}</span>
+                      <span style="white-space:pre;overflow:hidden;"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <sc-if value="{{ rail_1b.open }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:10px;min-height:0;padding:10px 14px 14px;min-width:0;overflow:hidden;border-left:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;justify-content:flex-end;margin:0 -6px -6px 0;"><span title="Hide panel" onClick="{{ rail_1b.toggle }}" style="display:grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--text-muted);cursor:pointer;" style-hover="background:var(--container-hover);color:var(--text-bright);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m8 9 3 3-3 3"></path></svg></span></div>
+                <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Commit to master</span>
+                <div style="position:relative;">
+                  <div style="height:32px;box-sizing:border-box;display:flex;align-items:center;padding:0 46px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font-size:13px;color:var(--text-bright);overflow:hidden;white-space:nowrap;">Split staging into two lanes</div>
+                  <span style="position:absolute;right:10px;top:9px;font:11px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);">28/72</span>
+                </div>
+                <div style="height:150px;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font-size:12.5px;line-height:1.5;color:var(--text);">Not staged and Staged are now stacked panels. Rows move between them with one click.</div>
+                <div style="display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid var(--border-subtle);border-radius:6px;font-size:12px;color:var(--text-muted);">
+                  <span style="display:flex;justify-content:space-between;"><span>2 files</span><span style="font-family:'Geist Mono',ui-monospace,monospace;"><span style="color:var(--success);">+130</span> <span style="color:var(--danger);">−18</span></span></span>
+                  <span>Pushes to origin/master</span>
+                </div>
+                <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);"><span style="width:13px;height:13px;box-sizing:border-box;border:1px solid var(--border);border-radius:3px;background:var(--page-bg);"></span>Amend last commit</span>
+                <span style="flex:1;"></span>
+                <span style="display:flex;align-items:center;justify-content:center;gap:8px;height:32px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:600 12.5px var(--font-ui);">Commit 2 files<span style="font:10.5px 'Geist Mono',ui-monospace,monospace;opacity:.7;">Ctrl ⏎</span></span>
+                <span style="display:flex;align-items:center;justify-content:center;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12.5px var(--font-ui);">Commit &amp; push</span>
+              </div></sc-if>
+              <sc-if value="{{ rail_1b.closed }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ rail_1b.toggle }}" title="Show panel" style="display:flex;flex-direction:column;align-items:center;gap:14px;min-height:0;padding:10px 0;border-left:1px solid var(--border);background:var(--container-bg);cursor:pointer;" style-hover="background:var(--container-raised);">
+                <span style="display:grid;place-items:center;width:24px;height:24px;border-radius:5px;color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m10 15-3-3 3-3"></path></svg></span>
+                <span style="writing-mode:vertical-rl;transform:rotate(180deg);font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap;">Commit · 2 staged</span>
+              </div>
+            </sc-if>
+            </div>
+            <dc-import name="GwCmdBar" hint-size="100%,42px"></dc-import>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1c -->
+    <div id="1c" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">1c</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Include list + commit bar</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">One list grouped by folder; the checkbox is the stage state. Commit runs along the bottom of the whole pane. Split diff shown.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="local" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <dc-import name="GwBranchList" state="changes" style="height:100%;min-height:0;" hint-size="272px,100%"></dc-import>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <dc-import name="GwDetailHead" tab="changes" count="6" hint-size="100%,84px"></dc-import>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:340px minmax(0,1fr);">
+              <div style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-bottom:1px solid var(--border-subtle);">
+                  <span style="display:grid;place-items:center;width:14px;height:14px;box-sizing:border-box;border-radius:3px;border:1px solid var(--accent);background:var(--accent-muted);color:var(--accent);"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M5 12h14"></path></svg></span>
+                  <span style="font:600 12px var(--font-ui);">6 changes</span>
+                  <span style="font-size:11.5px;color:var(--text-muted);">2 included</span>
+                  <span style="flex:1;"></span>
+                  <span style="display:grid;place-items:center;width:24px;height:24px;color:var(--text-muted);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg></span>
+                </div>
+                <div style="padding:6px;display:flex;flex-direction:column;gap:1px;">
+                  <sc-for list="{{ includeC }}" as="r" hint-placeholder-count="8">
+                    <div style="display:grid;grid-template-columns:14px 14px minmax(0,1fr) auto;gap:8px;align-items:center;height:26px;padding:0 8px 0 {{ r.pad }};border-radius:5px;background:{{ r.bg }};">
+                      <span style="display:grid;place-items:center;width:14px;height:14px;box-sizing:border-box;border-radius:3px;border:1px solid {{ r.cbBd }};background:{{ r.cbBg }};color:var(--accent-text);font:700 9px var(--font-ui);">{{ r.cbMark }}</span>
+                      <span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:{{ r.cc }};">{{ r.code }}</span>
+                      <span style="font:{{ r.font }};color:{{ r.tc }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.name }}</span>
+                      <span style="display:flex;gap:6px;font:11px 'Geist Mono',ui-monospace,monospace;"><span style="color:var(--success);">{{ r.addT }}</span><span style="color:var(--danger);">{{ r.delT }}</span></span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+                <div style="display:flex;align-items:center;gap:10px;height:42px;padding:0 14px;border-bottom:1px solid var(--border);white-space:nowrap;">
+                  <span style="font:500 12.5px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;">modules/git/src/renderer/<span style="color:var(--text-bright);font-weight:600;">commit-composer.jsx</span></span>
+                  <span style="font:600 11.5px 'Geist Mono',ui-monospace,monospace;color:var(--success);">+9</span>
+                  <span style="font:600 11.5px 'Geist Mono',ui-monospace,monospace;color:var(--danger);">−5</span>
+                  <span style="flex:1;"></span>
+                  <div style="display:flex;gap:2px;padding:2px;border-radius:6px;background:var(--container-bg);border:1px solid var(--border-subtle);">
+                    <span style="height:22px;display:flex;align-items:center;padding:0 9px;font:500 11.5px var(--font-ui);color:var(--text-muted);">Unified</span>
+                    <span style="height:22px;display:flex;align-items:center;padding:0 9px;border-radius:4px;background:var(--container-raised);font:500 11.5px var(--font-ui);color:var(--text-bright);">Split</span>
+                  </div>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 8px;color:var(--danger);font:500 12px var(--font-ui);">Discard...</span>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;">
+                  <sc-for list="{{ split }}" as="p" hint-placeholder-count="16">
+                    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);font:12px/20px 'Geist Mono',ui-monospace,monospace;">
+                      <div style="display:grid;grid-template-columns:36px minmax(0,1fr);background:{{ p.lbg }};border-right:1px solid var(--border);">
+                        <span style="text-align:right;padding-right:8px;color:var(--text-muted);opacity:.6;">{{ p.lo }}</span>
+                        <span style="white-space:pre;overflow:hidden;"><sc-for list="{{ p.lsegs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></span>
+                      </div>
+                      <div style="display:grid;grid-template-columns:36px minmax(0,1fr);background:{{ p.rbg }};">
+                        <span style="text-align:right;padding-right:8px;color:var(--text-muted);opacity:.6;">{{ p.rn }}</span>
+                        <span style="white-space:pre;overflow:hidden;"><sc-for list="{{ p.rsegs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--border);background:var(--container-bg);">
+              <div style="position:relative;flex:1 1 0;min-width:0;">
+                <div style="height:32px;box-sizing:border-box;display:flex;align-items:center;padding:0 50px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font-size:13px;color:var(--text-bright);white-space:nowrap;overflow:hidden;">Group changes by folder</div>
+                <span style="position:absolute;right:10px;top:9px;font:11px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);">23/72</span>
+              </div>
+              <div style="flex:1.3 1 0;min-width:0;height:32px;box-sizing:border-box;display:flex;align-items:center;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font-size:12.5px;color:var(--text-muted);opacity:.8;">Description (optional)</div>
+              <span style="display:inline-flex;align-items:center;gap:6px;padding:0 4px;font-size:12px;color:var(--text-muted);white-space:nowrap;"><span style="width:13px;height:13px;box-sizing:border-box;border:1px solid var(--border);border-radius:3px;background:var(--page-bg);"></span>Amend</span>
+              <span style="display:inline-flex;align-items:center;height:32px;padding:0 12px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12.5px var(--font-ui);white-space:nowrap;">Commit &amp; push</span>
+              <span style="display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 14px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:600 12.5px var(--font-ui);white-space:nowrap;">Commit 2 files<span style="font:10.5px 'Geist Mono',ui-monospace,monospace;opacity:.7;">Ctrl ⏎</span></span>
+            </div>
+            <dc-import name="GwCmdBar" hint-size="100%,42px"></dc-import>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW: states (1a) -->
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <span style="font:600 11px var(--font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);">Other states · built on 1a</span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:48px;margin-top:-40px;">
+
+    <!-- 1d clean -->
+    <div id="1d" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">1d</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Clean tree</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">Same two panes. The commit form steps aside; amend stays one click away.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="local" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <dc-import name="GwBranchList" state="clean" style="height:100%;min-height:0;" hint-size="272px,100%"></dc-import>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <dc-import name="GwDetailHead" tab="changes" count="" hint-size="100%,84px"></dc-import>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:380px minmax(0,1fr);">
+              <div style="display:flex;flex-direction:column;gap:6px;min-height:0;padding:28px 24px;border-right:1px solid var(--border);background:var(--container-bg);">
+                <span style="display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--success-bg);color:var(--success);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>
+                <span style="margin-top:6px;font:600 14px var(--font-ui);color:var(--text-bright);">Working tree clean</span>
+                <span style="font-size:12.5px;line-height:1.5;color:var(--text-muted);">Nothing to stage or commit on master.</span>
+                <div style="margin-top:18px;display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid var(--border-subtle);border-radius:8px;background:var(--page-bg);">
+                  <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Last commit</span>
+                  <span style="font:500 12.5px var(--font-ui);color:var(--text-bright);">Show labelled branch counts in filter chips</span>
+                  <span style="font-size:11.5px;color:var(--text-muted);"><span style="font-family:'Geist Mono',ui-monospace,monospace;color:var(--accent);">d834db4</span> · 2 hours ago</span>
+                  <span style="margin-top:6px;display:flex;gap:6px;">
+                    <span style="display:inline-flex;align-items:center;height:24px;padding:0 9px;border:1px solid var(--border);border-radius:5px;background:var(--container-raised);font:500 11.5px var(--font-ui);">Amend...</span>
+                    <span style="display:inline-flex;align-items:center;height:24px;padding:0 9px;font:500 11.5px var(--font-ui);color:var(--text-muted);">View in History</span>
+                  </span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12.5px;">No diff to show.</div>
+            </div>
+            <dc-import name="GwCmdBar" hint-size="100%,42px"></dc-import>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1e rebase -->
+    <div id="1e" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">1e</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Mid-rebase conflicts</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">The operation strip replaces the commit form, so the column keeps one job at a time.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="local" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <dc-import name="GwBranchList" state="rebase" style="height:100%;min-height:0;" hint-size="272px,100%"></dc-import>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <dc-import name="GwDetailHead" tab="changes" count="3" op="rebase" hint-size="100%,84px"></dc-import>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:380px minmax(0,1fr);">
+              <div style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border-bottom:1px solid var(--border);background:var(--warning-bg);">
+                  <span style="font:600 12.5px var(--font-ui);color:var(--text-bright);">Rebasing onto origin/master</span>
+                  <span style="font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Commit 3 of 7 · <span style="font-family:'Geist Mono',ui-monospace,monospace;color:var(--accent);">580ddbd</span> Centralize status tones</span>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="display:flex;gap:3px;"><sc-for list="{{ steps }}" as="s" hint-placeholder-count="7"><span style="width:18px;height:5px;border-radius:3px;background:{{ s.c }};"></span></sc-for></span>
+                    <span style="font:600 11.5px var(--font-ui);color:var(--danger);">0 of 2 resolved</span>
+                  </div>
+                  <div style="display:flex;gap:6px;">
+                    <span title="Resolve 2 remaining conflicts first" style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:600 12px var(--font-ui);opacity:.45;">Continue rebase</span>
+                    <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Skip commit</span>
+                    <span style="display:inline-flex;align-items:center;height:26px;padding:0 8px;color:var(--danger);font:500 12px var(--font-ui);">Abort...</span>
+                  </div>
+                </div>
+                <div style="padding:6px;display:flex;flex-direction:column;gap:2px;">
+                  <div style="display:flex;align-items:center;gap:8px;padding:6px 8px 2px;">
+                    <span style="width:7px;height:7px;border-radius:50%;background:var(--danger);"></span>
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;">Conflicts</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">2</span>
+                  </div>
+                  <span style="padding:0 8px 4px 23px;font-size:11.5px;color:var(--text-muted);">Resolve each file, then continue the rebase.</span>
+                  <sc-for list="{{ conflicts }}" as="f" hint-placeholder-count="2">
+                    <div style="display:grid;grid-template-columns:14px minmax(0,1fr);gap:8px;align-items:center;height:26px;padding:0 8px;border-radius:5px;background:{{ f.bg }};">
+                      <span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:var(--danger);">U</span>
+                      <span style="display:flex;align-items:baseline;gap:6px;min-width:0;overflow:hidden;white-space:nowrap;font-size:12.5px;"><span style="font-weight:500;color:var(--text-bright);">{{ f.name }}</span><span style="font-size:11.5px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;">{{ f.dir }}</span></span>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex;align-items:center;gap:8px;padding:12px 8px 4px;">
+                    <span style="width:7px;height:7px;border-radius:50%;background:var(--success);"></span>
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;">Staged</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">1</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:14px minmax(0,1fr);gap:8px;align-items:center;height:26px;padding:0 8px;">
+                    <span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:var(--warning);">M</span>
+                    <span style="display:flex;align-items:baseline;gap:6px;font-size:12.5px;white-space:nowrap;"><span style="font-weight:500;color:var(--text-bright);">parse.js</span><span style="font-size:11.5px;color:var(--text-muted);">packages/core/src/modules/git</span></span>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;padding:14px 16px;overflow:hidden;">
+                <div style="display:flex;align-items:center;gap:10px;white-space:nowrap;">
+                  <span style="font:600 11px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--danger);">Conflict</span>
+                  <span style="font:600 12.5px 'Geist Mono',ui-monospace,monospace;color:var(--text-bright);">packages/core/src/modules/git/status-meta.js</span>
+                  <span style="flex:1;"></span>
+                  <span style="font-size:12px;color:var(--text-muted);">File 1 of 2</span>
+                </div>
+                <p style="margin:0;font-size:12.5px;line-height:1.5;color:var(--text-muted);">Both sides changed the same lines. <b style="color:var(--info);">origin/master</b> is already in your branch; <b style="color:var(--warning);">your commit 580ddbd</b> is being replayed on top.</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                  <div style="border:1px solid var(--border);border-top:3px solid var(--info);border-radius:8px;overflow:hidden;background:var(--container-bg);">
+                    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border-subtle);">
+                      <span style="display:flex;flex-direction:column;flex:1;"><span style="font:600 10.5px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--info);">Incoming · already applied</span><span style="font:600 12.5px var(--font-ui);">origin/master</span></span>
+                      <span style="display:inline-flex;align-items:center;height:24px;padding:0 9px;border:1px solid var(--border);border-radius:5px;background:var(--container-raised);font:600 11.5px var(--font-ui);">Use theirs</span>
+                    </div>
+                    <sc-for list="{{ theirs }}" as="l" hint-placeholder-count="5">
+                      <div style="padding:0 10px;font:12px/20px 'Geist Mono',ui-monospace,monospace;white-space:pre;overflow:hidden;background:{{ l.bg }};"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></div>
+                    </sc-for>
+                  </div>
+                  <div style="border:1px solid var(--border);border-top:3px solid var(--warning);border-radius:8px;overflow:hidden;background:var(--container-bg);">
+                    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border-subtle);">
+                      <span style="display:flex;flex-direction:column;flex:1;"><span style="font:600 10.5px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--warning);">Yours · being replayed</span><span style="font:600 12.5px var(--font-ui);">580ddbd</span></span>
+                      <span style="display:inline-flex;align-items:center;height:24px;padding:0 9px;border:1px solid var(--border);border-radius:5px;background:var(--container-raised);font:600 11.5px var(--font-ui);">Use mine</span>
+                    </div>
+                    <sc-for list="{{ mine }}" as="l" hint-placeholder-count="5">
+                      <div style="padding:0 10px;font:12px/20px 'Geist Mono',ui-monospace,monospace;white-space:pre;overflow:hidden;background:{{ l.bg }};"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                  <span style="margin-right:4px;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;">Result</span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Both, theirs first</span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Both, mine first</span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;font:500 12px var(--font-ui);color:var(--text-muted);">Edit result...</span>
+                  <span style="flex:1;"></span>
+                  <span style="font-size:12px;color:var(--danger);">1 conflict block left</span>
+                  <span style="display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:600 12px var(--font-ui);opacity:.45;">Mark resolved &amp; next</span>
+                </div>
+              </div>
+            </div>
+            <dc-import name="GwCmdBar" hint-size="100%,42px"></dc-import>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1f large -->
+    <div id="1f" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">1f</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Large change set</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">Over 50 files, the list groups by folder with counts and a filter. Folders stage as a unit.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="local" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <dc-import name="GwBranchList" state="large" style="height:100%;min-height:0;" hint-size="272px,100%"></dc-import>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <dc-import name="GwDetailHead" tab="changes" count="248" hint-size="100%,84px"></dc-import>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:380px minmax(0,1fr);">
+              <div style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);">
+                  <div style="flex:1;height:28px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font-size:12.5px;color:var(--text-muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Filter 248 changes</div>
+                  <div style="display:flex;gap:2px;padding:2px;border-radius:6px;background:var(--page-bg);border:1px solid var(--border-subtle);">
+                    <span style="height:22px;display:flex;align-items:center;padding:0 8px;border-radius:4px;background:var(--container-raised);font:500 11.5px var(--font-ui);color:var(--text-bright);">Folders</span>
+                    <span style="height:22px;display:flex;align-items:center;padding:0 8px;font:500 11.5px var(--font-ui);color:var(--text-muted);">Flat</span>
+                  </div>
+                </div>
+                <div style="padding:6px;display:flex;flex-direction:column;gap:1px;overflow:hidden;">
+                  <div style="display:flex;align-items:center;gap:8px;padding:6px 8px 4px;">
+                    <span style="width:7px;height:7px;border-radius:50%;background:var(--success);"></span>
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;">Staged</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">14</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2.5"><path d="m9 18 6-6-6-6"></path></svg>
+                    <span style="margin-left:auto;font:500 11.5px var(--font-ui);color:var(--accent);">Unstage all</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;padding:10px 8px 4px;">
+                    <span style="width:7px;height:7px;border-radius:50%;background:var(--warning);"></span>
+                    <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;">Not staged</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">234</span>
+                    <span style="margin-left:auto;font:500 11.5px var(--font-ui);color:var(--accent);">Stage all</span>
+                  </div>
+                  <sc-for list="{{ largeRows }}" as="r" hint-placeholder-count="14">
+                    <div style="display:grid;grid-template-columns:12px 14px minmax(0,1fr) auto;gap:6px;align-items:center;height:26px;padding:0 8px 0 {{ r.pad }};border-radius:5px;background:{{ r.bg }};">
+                      <span style="display:grid;place-items:center;color:var(--text-muted);"><sc-if value="{{ r.isDir }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transform:rotate({{ r.rot }}deg);"><path d="m9 18 6-6-6-6"></path></svg></sc-if></span>
+                      <span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:{{ r.cc }};">{{ r.code }}</span>
+                      <span style="font:{{ r.font }};color:{{ r.tc }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.name }}</span>
+                      <span style="font:11px 'Geist Mono',ui-monospace,monospace;color:{{ r.mc }};">{{ r.meta }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+                <div style="display:flex;align-items:center;gap:10px;height:42px;padding:0 14px;border-bottom:1px solid var(--border);white-space:nowrap;">
+                  <span style="font:500 12.5px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);">apps/web/dist/</span>
+                  <span style="font-size:12px;color:var(--text-muted);">142 untracked files</span>
+                  <span style="flex:1;"></span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Stage folder</span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 8px;color:var(--danger);font:500 12px var(--font-ui);">Delete...</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;padding:28px;color:var(--text-muted);font-size:12.5px;line-height:1.5;max-width:520px;">
+                  <span style="font:600 13.5px var(--font-ui);color:var(--text-bright);">Folder selected</span>
+                  <span>Pick a file inside it to see its diff, or act on the whole folder from the bar above.</span>
+                </div>
+              </div>
+            </div>
+            <dc-import name="GwCmdBar" hint-size="100%,42px"></dc-import>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW: files -->
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <span style="font:600 11px var(--font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);">Files tabs</span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:48px;margin-top:-40px;">
+
+    <!-- 1g local files -->
+    <div id="1g" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">1g</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Files · local</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">Changed and Recent pinned above a compact tree. Preview fills the pane edge to edge with a path bar and highlighted code.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="local" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <dc-import name="GwBranchList" state="changes" style="height:100%;min-height:0;" hint-size="272px,100%"></dc-import>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <dc-import name="GwDetailHead" tab="files" count="6" hint-size="100%,84px"></dc-import>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:300px minmax(0,1fr);">
+              <div style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;align-items:center;gap:6px;padding:8px;">
+                  <div style="flex:1;height:26px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font-size:12px;color:var(--text-muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Filter 1,796 files</div>
+                  <span title="Collapse all folders" style="display:grid;place-items:center;width:26px;height:26px;color:var(--text-muted);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5"></path><path d="m7 4 5 5 5-5"></path></svg></span>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:0 6px 8px;">
+                  <div style="display:flex;align-items:center;gap:6px;padding:6px 6px 2px;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Changed<span style="font-weight:500;letter-spacing:0;">6</span></div>
+                  <sc-for list="{{ changedPins }}" as="f" hint-placeholder-count="6">
+                    <div style="display:flex;align-items:center;gap:6px;height:22px;padding:0 6px;border-radius:4px;font-size:12.5px;">
+                      <span style="width:12px;font:600 10.5px 'Geist Mono',ui-monospace,monospace;text-align:center;color:{{ f.cc }};">{{ f.code }}</span>
+                      <span style="color:var(--text);white-space:nowrap;">{{ f.name }}</span>
+                      <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ f.short }}</span>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex;align-items:center;gap:6px;padding:10px 6px 2px;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Recent</div>
+                  <sc-for list="{{ recent }}" as="f" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;gap:6px;height:22px;padding:0 6px;border-radius:4px;font-size:12.5px;">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" style="flex:none;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                      <span style="color:var(--text);white-space:nowrap;">{{ f.name }}</span>
+                      <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">{{ f.when }}</span>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex;align-items:center;gap:6px;padding:10px 6px 2px;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">NexusMD-Mono</div>
+                  <sc-for list="{{ tree }}" as="r" hint-placeholder-count="16">
+                    <div style="display:flex;align-items:center;gap:5px;height:22px;padding:0 6px 0 {{ r.pad }};border-radius:4px;background:{{ r.bg }};font-size:12.5px;">
+                      <span style="width:10px;flex:none;display:grid;place-items:center;color:var(--text-muted);"><sc-if value="{{ r.isDir }}" hint-placeholder-val="{{ false }}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="transform:rotate({{ r.rot }}deg);"><path d="m9 18 6-6-6-6"></path></svg></sc-if></span>
+                      <sc-if value="{{ r.isDir }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round" style="flex:none;opacity:.8;"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg></sc-if>
+                      <sc-if value="{{ r.isFile }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.8" stroke-linejoin="round" style="flex:none;"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg></sc-if>
+                      <span style="color:{{ r.tc }};font-weight:{{ r.fw }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.name }}</span>
+                      <span style="margin-left:auto;display:flex;align-items:center;gap:4px;">
+                        <sc-if value="{{ r.hasDot }}" hint-placeholder-val="{{ false }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ r.dot }};"></span></sc-if>
+                        <span style="font:600 10.5px 'Geist Mono',ui-monospace,monospace;color:{{ r.cc }};">{{ r.code }}</span>
+                      </span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:6px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);white-space:nowrap;">
+                  <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:6px;height:6px;border-radius:50%;background:var(--success);"></span>Staged</span>
+                  <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:6px;height:6px;border-radius:50%;background:var(--warning);"></span>Not staged</span>
+                  <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:6px;height:6px;border-radius:50%;background:var(--info);"></span>Untracked</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+                <div style="display:flex;align-items:center;gap:6px;height:40px;padding:0 10px 0 14px;border-bottom:1px solid var(--border);white-space:nowrap;font-size:12.5px;">
+                  <span style="flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;mask-image:linear-gradient(90deg,#000 85%,transparent);"><sc-for list="{{ crumbs }}" as="c" hint-placeholder-count="5">
+                    <span style="color:{{ c.c }};font-weight:{{ c.fw }};">{{ c.t }}</span><span style="color:var(--text-muted);opacity:{{ c.sepOp }};">›</span>
+                  </sc-for></span>
+                  <span style="margin-left:4px;display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:4px;background:var(--warning-bg);color:var(--warning);font:600 11px var(--font-ui);">M · Not staged</span>
+                  <span style="font:500 12px var(--font-ui);color:var(--accent);">View diff</span>
+                  <span style="flex:1;"></span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:600 12px var(--font-ui);">Edit</span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Open in VS Code</span>
+                  <span title="More" style="display:grid;place-items:center;width:26px;height:26px;border-radius:6px;color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></span>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:8px 0;background:var(--page-bg);">
+                  <sc-for list="{{ code }}" as="l" hint-placeholder-count="24">
+                    <div style="display:grid;grid-template-columns:52px minmax(0,1fr);font:12.5px/20px 'Geist Mono',ui-monospace,monospace;">
+                      <span style="text-align:right;padding-right:16px;color:var(--text-muted);opacity:.55;">{{ l.n }}</span>
+                      <span style="white-space:pre;overflow:hidden;"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;gap:14px;height:26px;padding:0 14px;border-top:1px solid var(--border);background:var(--container-bg);font-size:11px;color:var(--text-muted);white-space:nowrap;">
+                  <span>JavaScript (JSX)</span><span>74 lines</span><span>3.7 KB</span><span>LF</span><span>UTF-8</span>
+                  <span style="flex:1;"></span>
+                  <span>Double-click a file or press Enter to edit · Drop files on a folder to add them</span>
+                </div>
+              </div>
+            </div>
+            <dc-import name="GwCmdBar" hint-size="100%,42px"></dc-import>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1h github files -->
+    <div id="1h" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">1h</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Files · GitHub</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">Same explorer as local. Branch picker moves into the path bar; filter matches are highlighted.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <dc-import name="GwTopBar" mode="github" hint-size="100%,48px"></dc-import>
+        <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;">
+          <div style="display:flex;flex-direction:column;gap:2px;padding:12px 10px;background:var(--page-bg);border-right:1px solid var(--border);">
+            <div style="height:28px;box-sizing:border-box;display:flex;align-items:center;gap:6px;margin-bottom:8px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--container-bg);color:var(--text-muted);font-size:12.5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Filter repositories</div>
+            <sc-for list="{{ ghRepos }}" as="r" hint-placeholder-count="5">
+              <div style="display:flex;align-items:flex-start;gap:9px;padding:7px 8px;border-radius:7px;border:1px solid {{ r.bd }};background:{{ r.bg }};">
+                <span style="width:7px;height:7px;margin-top:5px;border-radius:50%;background:var(--text-muted);flex:none;"></span>
+                <span style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1;">
+                  <span style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="color:var(--text-muted);">knownexus/</span><b style="color:var(--text-bright);">{{ r.name }}</b></span>
+                  <span style="font-size:11.5px;color:var(--text-muted);">{{ r.meta }}</span>
+                </span>
+                <span title="Open local copy" style="display:grid;place-items:center;width:22px;height:22px;border-radius:4px;color:var(--text-muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg></span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <div style="display:flex;flex-direction:column;background:var(--container-bg);border-bottom:1px solid var(--border);white-space:nowrap;">
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 16px 4px;">
+                <span style="font:600 16px var(--font-ui);color:var(--text-bright);">knownexus/Pathweave</span>
+                <span style="font-size:12px;color:var(--text-muted);">1 open pull request · 0 open issues · Local copy in Pathweave</span>
+                <span style="flex:1;"></span>
+                <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Open local copy</span>
+                <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Open on GitHub</span>
+                <span title="Refresh" style="display:grid;place-items:center;width:26px;height:26px;color:var(--text-muted);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg></span>
+              </div>
+              <div style="display:flex;align-items:flex-end;gap:2px;padding:0 12px;height:34px;">
+                <sc-for list="{{ ghTabs }}" as="t" hint-placeholder-count="6">
+                  <span style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-bottom:2px solid {{ t.bd }};color:{{ t.c }};font:600 12.5px var(--font-ui);">{{ t.label }}<span style="font-weight:500;font-size:11px;color:var(--text-muted);">{{ t.n }}</span></span>
+                </sc-for>
+              </div>
+            </div>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:320px minmax(0,1fr);">
+              <div style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+                <div style="display:flex;align-items:center;gap:6px;padding:8px;">
+                  <div style="flex:1;height:26px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 8px;border:1px solid var(--accent);border-radius:6px;background:var(--page-bg);font-size:12px;color:var(--text-bright);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>lock<span style="margin-left:auto;flex:none;white-space:nowrap;font-size:11px;color:var(--text-muted);">8 matches</span></div>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:0 6px 8px;">
+                  <sc-for list="{{ ghTree }}" as="r" hint-placeholder-count="16">
+                    <div style="display:flex;align-items:center;gap:5px;height:22px;padding:0 6px 0 {{ r.pad }};border-radius:4px;background:{{ r.bg }};font-size:12.5px;">
+                      <span style="width:10px;flex:none;display:grid;place-items:center;color:var(--text-muted);"><sc-if value="{{ r.isDir }}" hint-placeholder-val="{{ false }}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="transform:rotate(90deg);"><path d="m9 18 6-6-6-6"></path></svg></sc-if></span>
+                      <sc-if value="{{ r.isDir }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round" style="flex:none;opacity:.8;"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg></sc-if>
+                      <sc-if value="{{ r.isFile }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.8" stroke-linejoin="round" style="flex:none;"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg></sc-if>
+                      <span style="color:{{ r.tc }};font-weight:{{ r.fw }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.pre }}<mark style="background:var(--accent-muted);color:var(--accent-bright);border-radius:2px;">{{ r.hit }}</mark>{{ r.post }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="padding:6px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);">8 of 412 files match</div>
+              </div>
+              <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+                <div style="display:flex;align-items:center;gap:6px;height:40px;padding:0 10px 0 10px;border-bottom:1px solid var(--border);white-space:nowrap;font-size:12.5px;">
+                  <span style="display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border:1px solid var(--border);border-radius:5px;background:var(--container-raised);font:500 12px var(--font-ui);"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" x2="6" y1="3" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>main<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"></path></svg></span>
+                  <span style="width:4px;"></span>
+                  <span style="flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;mask-image:linear-gradient(90deg,#000 85%,transparent);"><sc-for list="{{ ghCrumbs }}" as="c" hint-placeholder-count="3">
+                    <span style="color:{{ c.c }};font-weight:{{ c.fw }};">{{ c.t }}</span><span style="color:var(--text-muted);opacity:{{ c.sepOp }};">›</span>
+                  </sc-for></span>
+                  <span style="flex:1;"></span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Open in Editor</span>
+                  <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);">Open on GitHub</span>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:8px 0;background:var(--page-bg);">
+                  <sc-for list="{{ md }}" as="l" hint-placeholder-count="20">
+                    <div style="display:grid;grid-template-columns:52px minmax(0,1fr);font:12.5px/20px 'Geist Mono',ui-monospace,monospace;">
+                      <span style="text-align:right;padding-right:16px;color:var(--text-muted);opacity:.55;">{{ l.n }}</span>
+                      <span style="white-space:pre-wrap;padding-right:24px;"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};font-weight:{{ s.w }};">{{ s.t }}</span></sc-for></span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;gap:14px;height:26px;padding:0 14px;border-top:1px solid var(--border);background:var(--container-bg);font-size:11px;color:var(--text-muted);white-space:nowrap;">
+                  <span>Markdown</span><span>18 lines</span><span>1.1 KB</span><span>Last changed 2 days ago</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW: current -->
+  <sc-if value="{{ showBaseline }}" hint-placeholder-val="{{ true }}">
+  <div id="1z" style="display:flex;flex-direction:column;gap:12px;">
+    <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+      <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--container-raised);color:var(--text-bright);font:700 13px var(--font-ui);">1z</span>
+      <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Today, for comparison</span>
+      <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">Rebuilt from changes-pane.jsx, commit-composer.jsx and git-workspace.css with the same files, in the same palette.</span>
+    </div>
+    <div style="width:1440px;height:860px;display:flex;flex-direction:column;background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <div style="height:44px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid var(--border);background:var(--container-bg);white-space:nowrap;">
+        <span style="font:600 15px var(--font-ui);color:var(--text-bright);">Git Workspace</span><span style="font-size:12px;color:var(--text-muted);">43s</span>
+        <div style="display:flex;gap:2px;padding:3px;background:var(--container-raised);border-radius:8px;"><span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;background:var(--container-hover);font:600 12px var(--font-ui);">Local</span><span style="height:24px;display:flex;align-items:center;padding:0 12px;color:var(--text-muted);font:500 12px var(--font-ui);">GitHub</span></div>
+      </div>
+      <div style="flex:none;display:flex;flex-direction:column;gap:12px;padding:14px 24px 12px;background:var(--container-bg);border-bottom:1px solid var(--border);white-space:nowrap;">
+        <div style="display:flex;align-items:center;gap:16px;">
+          <span style="font:600 20px var(--font-heading);letter-spacing:.03em;color:var(--text-bright);">Git Workspace</span>
+          <div style="display:flex;gap:2px;padding:3px;background:var(--container-raised);border-radius:8px;font-size:12.5px;"><span style="height:26px;display:flex;align-items:center;gap:6px;padding:0 12px;color:var(--text-muted);">Registered repos <small>6 repos</small></span><span style="height:26px;display:flex;align-items:center;gap:6px;padding:0 12px;color:var(--text-muted);">New group <small>1 repo</small></span><span style="height:26px;display:flex;align-items:center;gap:6px;padding:0 12px;border-radius:6px;background:var(--container-bg);">NexusMD <small style="color:var(--text-muted);">1 repo</small></span><span style="height:26px;display:flex;align-items:center;padding:0 10px;color:var(--accent);">+ Group</span></div>
+          <span style="color:var(--text-muted);">⋯</span>
+          <span style="flex:1;"></span>
+          <span style="font-size:12px;color:var(--text-muted);"><span style="color:var(--success);">●</span> All fetched 25/10/2026</span>
+          <span style="display:inline-flex;align-items:center;min-width:180px;height:30px;box-sizing:border-box;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);color:var(--text-muted);font-size:12.5px;">Jump to branch...</span>
+          <span style="font:600 12.5px var(--font-ui);">Fetch all</span>
+          <span style="display:inline-flex;align-items:center;height:30px;padding:0 10px;border-radius:6px;background:var(--accent-dim);color:var(--text-bright);font:600 12.5px var(--font-ui);opacity:.7;">Pull all (0)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:12.5px;">
+          <span style="display:inline-flex;align-items:center;width:240px;height:30px;box-sizing:border-box;padding:0 10px;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);">Filter branches and repos</span>
+          <span style="width:1px;height:18px;background:var(--border);"></span><span style="color:var(--text-muted);">Show</span>
+          <span style="height:28px;display:inline-flex;align-items:center;padding:0 10px;border-radius:999px;border:1px solid var(--accent);background:var(--accent-muted);color:var(--accent);">● All 6</span>
+          <span style="height:28px;display:inline-flex;align-items:center;padding:0 10px;border-radius:999px;border:1px solid var(--border);"><span style="color:var(--danger);">●</span>&nbsp;In progress 0</span>
+          <span style="height:28px;display:inline-flex;align-items:center;padding:0 10px;border-radius:999px;border:1px solid var(--border);"><span style="color:var(--warning);">●</span>&nbsp;Uncommitted 2</span>
+          <span style="height:28px;display:inline-flex;align-items:center;padding:0 10px;border-radius:999px;border:1px solid var(--border);"><span style="color:var(--info);">●</span>&nbsp;To push 0</span>
+          <span style="height:28px;display:inline-flex;align-items:center;padding:0 10px;border-radius:999px;border:1px solid var(--border);"><span style="color:var(--info);">●</span>&nbsp;To pull 0</span>
+          <span style="height:28px;display:inline-flex;align-items:center;padding:0 10px;border-radius:999px;border:1px solid var(--border);"><span style="color:var(--text-muted);">●</span>&nbsp;Not published 1</span>
+          <span style="flex:1;"></span><span style="font-weight:600;">Hide repositories</span><span style="font-weight:600;">Refresh</span>
+        </div>
+      </div>
+      <div style="flex:1;min-height:0;display:grid;grid-template-columns:330px minmax(0,1fr);">
+        <dc-import name="GwBranchList" state="changes" style="height:100%;min-height:0;" hint-size="330px,100%"></dc-import>
+        <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+          <div style="flex:none;display:flex;align-items:flex-start;gap:20px;padding:14px 24px 12px;background:var(--container-bg);border-bottom:1px solid var(--border);white-space:nowrap;">
+            <div style="flex:1;display:flex;flex-direction:column;gap:5px;">
+              <span style="font-size:12px;color:var(--text-muted);"><span style="color:var(--accent);">Overview</span> › NexusMD-Mono</span>
+              <span style="display:flex;align-items:center;gap:10px;"><span style="font:600 18px var(--font-ui);color:var(--text-bright);">master</span><span style="height:22px;display:inline-flex;align-items:center;padding:0 8px;border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text-muted);">Switch ▾</span></span>
+              <span style="display:flex;gap:14px;font-size:12px;color:var(--text-muted);"><span style="font-family:'Geist Mono',ui-monospace,monospace;">C:/repos/NexusMD-Mono/master</span><span style="color:var(--accent);">Copy path</span><span>Tracks origin/master</span><span style="color:var(--success);">In sync</span><span>Fetched 25/10/2026</span></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font:600 12.5px var(--font-ui);">
+              <span style="height:30px;display:inline-flex;align-items:center;padding:0 10px;border:1px solid var(--border);border-radius:6px;">Fetch</span><span style="height:30px;display:inline-flex;align-items:center;padding:0 10px;border:1px solid var(--border);border-radius:6px;">Pull...</span><span style="height:30px;display:inline-flex;align-items:center;padding:0 10px;border:1px solid var(--border);border-radius:6px;">Rebase...</span><span style="height:30px;display:inline-flex;align-items:center;padding:0 10px;border:1px solid var(--border);border-radius:6px;">More ▾</span><span style="width:1px;height:18px;background:var(--border);"></span><span style="padding:0 8px;">Terminal</span><span style="padding:0 8px;">Editor</span>
+            </div>
+          </div>
+          <div style="flex:none;display:flex;align-items:flex-end;gap:2px;margin-top:10px;padding:0 20px;border-bottom:1px solid var(--border);">
+            <span style="height:34px;display:flex;align-items:center;padding:0 12px;border-bottom:2px solid var(--accent);font:600 13px var(--font-ui);color:var(--text-bright);">Changes</span>
+            <span style="height:34px;display:flex;align-items:center;padding:0 12px;font:600 13px var(--font-ui);color:var(--text-muted);">History</span>
+            <span style="height:34px;display:flex;align-items:center;padding:0 12px;font:600 13px var(--font-ui);color:var(--text-muted);">Files</span>
+            <span style="flex:1;"></span><span style="margin-bottom:6px;font-size:12.5px;color:var(--text-muted);">Go to file  Ctrl P</span>
+          </div>
+          <div style="flex:1;min-height:0;display:grid;grid-template-columns:320px 6px minmax(0,1fr);">
+            <div style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--container-bg);">
+              <div style="display:flex;flex-wrap:wrap;gap:4px;padding:8px 8px 0;font:500 12px var(--font-ui);">
+                <span style="height:26px;display:inline-flex;align-items:center;padding:0 8px;">Stage 2</span><span style="height:26px;display:inline-flex;align-items:center;padding:0 8px;color:var(--text-muted);">Unstage</span><span style="height:26px;display:inline-flex;align-items:center;padding:0 8px;color:var(--danger);">Discard 2...</span><span style="height:26px;display:inline-flex;align-items:center;padding:0 8px;color:var(--danger);opacity:.6;">Delete...</span>
+              </div>
+              <div style="flex:1;min-height:0;padding:8px 8px 12px;">
+                <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;"><span style="width:13px;height:13px;border:1px solid var(--border);border-radius:3px;"></span><span style="width:7px;height:7px;border-radius:50%;background:var(--success);"></span><span style="font:600 11px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;">Staged</span><span style="font-size:11.5px;color:var(--text-muted);">2</span><span style="margin-left:auto;font-size:12px;color:var(--accent);">Unstage all</span></div>
+                <sc-for list="{{ stagedA }}" as="f" hint-placeholder-count="2">
+                  <div style="display:grid;grid-template-columns:auto 18px minmax(0,1fr) auto;gap:8px;align-items:center;padding:4px 8px;font-size:12.5px;"><span style="width:13px;height:13px;border:1px solid var(--border);border-radius:3px;"></span><span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:{{ f.cc }};">{{ f.code }}</span><span style="display:flex;gap:6px;overflow:hidden;white-space:nowrap;"><span style="font-weight:500;">{{ f.name }}</span><span style="font-size:11.5px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;">{{ f.dir }}</span></span><span style="height:22px;display:inline-flex;align-items:center;padding:0 7px;border:1px solid var(--border);border-radius:6px;font-size:11.5px;">Unstage</span></div>
+                </sc-for>
+                <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;margin-top:10px;"><span style="width:13px;height:13px;border:1px solid var(--border);border-radius:3px;"></span><span style="width:7px;height:7px;border-radius:50%;background:var(--warning);"></span><span style="font:600 11px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;">Not staged</span><span style="font-size:11.5px;color:var(--text-muted);">4</span><span style="margin-left:auto;font-size:12px;color:var(--accent);">Stage all</span></div>
+                <sc-for list="{{ unstagedA }}" as="f" hint-placeholder-count="4">
+                  <div style="display:grid;grid-template-columns:auto 18px minmax(0,1fr) auto;gap:8px;align-items:center;padding:4px 8px;border-radius:6px;font-size:12.5px;background:{{ f.oldBg }};"><span style="width:13px;height:13px;box-sizing:border-box;border:1px solid var(--border);border-radius:3px;background:{{ f.oldCb }};"></span><span style="font:600 11px 'Geist Mono',ui-monospace,monospace;text-align:center;color:{{ f.cc }};">{{ f.code }}</span><span style="display:flex;gap:6px;overflow:hidden;white-space:nowrap;"><span style="font-weight:500;">{{ f.name }}</span><span style="font-size:11.5px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;">{{ f.dir }}</span></span><span style="height:22px;display:inline-flex;align-items:center;padding:0 7px;border:1px solid var(--border);border-radius:6px;font-size:11.5px;">Stage</span></div>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-top:1px solid var(--border);background:var(--page-bg);">
+                <div style="height:32px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-bg);font-size:13px;color:var(--text-muted);">Commit summary<span style="font:11px 'Geist Mono',ui-monospace,monospace;">0/72</span></div>
+                <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);"><span style="width:13px;height:13px;border:1px solid var(--border);border-radius:3px;"></span>Amend last commit</span>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font:600 12px var(--font-ui);"><span style="height:28px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;opacity:.6;">Commit &amp; push</span><span style="height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--accent-dim);opacity:.7;">Commit 2 files</span></div>
+                <span style="font-size:11.5px;color:var(--warning);">Write a summary to commit</span>
+              </div>
+            </div>
+            <span></span>
+            <div style="display:flex;flex-direction:column;min-width:0;padding:10px 16px;">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border-subtle);white-space:nowrap;">
+                <span style="font:600 12.5px 'Geist Mono',ui-monospace,monospace;">modules/git/src/renderer/commit-composer.jsx</span><span style="font:600 10.5px var(--font-ui);padding:1px 6px;border-radius:4px;background:var(--container-raised);color:var(--text-muted);">JSX</span><span style="font:600 11.5px 'Geist Mono',ui-monospace,monospace;color:var(--success);">+9</span><span style="font:600 11.5px 'Geist Mono',ui-monospace,monospace;color:var(--danger);">−5</span>
+                <span style="flex:1;"></span><span style="font-size:12px;color:var(--text-muted);">Unified | Side by side</span><span style="height:26px;display:inline-flex;align-items:center;padding:0 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;">Stage file</span><span style="font-size:12px;color:var(--danger);">Discard...</span>
+              </div>
+              <sc-for list="{{ diffShort }}" as="l" hint-placeholder-count="12">
+                <div style="display:grid;grid-template-columns:44px 44px 18px minmax(0,1fr);font:12px/20px 'Geist Mono',ui-monospace,monospace;background:{{ l.bg }};">
+                  <span style="text-align:right;padding-right:8px;color:var(--text-muted);opacity:.6;">{{ l.o }}</span><span style="text-align:right;padding-right:8px;color:var(--text-muted);opacity:.6;">{{ l.n }}</span><span style="color:{{ l.sc }};">{{ l.sign }}</span><span style="white-space:pre;overflow:hidden;color:var(--text);">{{ l.raw }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="flex:none;padding:8px 20px 10px;border-top:1px solid var(--border);background:var(--container-bg);">
+            <div style="display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font:12px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);"><b style="color:var(--accent);">git ›</b> status, ga ., uncommit, log -5<span style="flex:1;"></span><span style="font:600 12px var(--font-ui);color:var(--text);">Run</span></div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11.5px;color:var(--text-muted);white-space:nowrap;">in <b style="font-family:'Geist Mono',ui-monospace,monospace;">C:/repos/NexusMD-Mono/master</b> · Enter to run · ↑ previous · Esc minimises output<span style="flex:1;"></span><span style="font-family:'Geist Mono',ui-monospace,monospace;">status · log -5 · stash · switch -c · My aliases (105) ▾</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;brand&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;cobalt-lodge&quot;,&quot;nexus-default-dark&quot;,&quot;nexus-default-light&quot;,&quot;shattered-realms-dark&quot;,&quot;amethyst-court-dark&quot;,&quot;historia-normannis-dark&quot;],&quot;default&quot;:&quot;cobalt-lodge&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;showBaseline&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Board&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() { this.applyBrand(); }
+  componentDidUpdate() { this.applyBrand(); }
+  applyBrand() { document.documentElement.setAttribute('data-brand', this.props.brand ?? 'cobalt-lodge'); }
+
+  state = { rails: {} };
+  rail(id) {
+    const open = this.state.rails[id] !== false;
+    return { open, closed: !open, w: open ? '290px' : '40px', toggle: () => this.setState(st => ({ rails: { ...st.rails, [id]: !open } })) };
+  }
+
+  renderVals() {
+    const KW = new Set('import from export function const let var return if else await async new true false null undefined typeof of in for while class extends default'.split(' '));
+    const C = { text: 'var(--text)', kw: 'var(--accent)', str: 'var(--success)', num: 'var(--warning)', com: 'var(--text-muted)', type: 'var(--accent-bright)', fn: 'var(--text-bright)', punc: 'var(--text-muted)' };
+    const tok = (line) => {
+      const t = line.trim();
+      if (t.startsWith('/*') || t.startsWith('*')) return [{ t: line, c: C.com }];
+      const out = [];
+      const re = /(\/\/.*$)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`[^`]*`)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_$][\w$-]*)|([{}()[\]<>/=.,;:?&|!+*-]+)|(\s+|.)/g;
+      let m;
+      while ((m = re.exec(line))) {
+        let c = C.text;
+        if (m[1]) c = C.com; else if (m[2]) c = C.str; else if (m[3]) c = C.num;
+        else if (m[4]) c = KW.has(m[4]) ? C.kw : /^[A-Z]/.test(m[4]) ? C.type : line[re.lastIndex] === '(' ? C.fn : C.text;
+        else if (m[5]) c = C.punc;
+        const last = out[out.length - 1];
+        if (last && last.c === c) last.t += m[0]; else out.push({ t: m[0], c });
+      }
+      return out.length ? out : [{ t: ' ', c: C.text }];
+    };
+    const TONE = { M: 'var(--warning)', A: 'var(--success)', D: 'var(--danger)', '?': 'var(--info)', U: 'var(--danger)' };
+    const dirR = 'modules/git/src/renderer';
+    const fileRow = f => ({
+      ...f, cc: TONE[f.code], addT: f.add ? '+' + f.add : '', delT: f.del ? '−' + f.del : '',
+      bg: f.focus ? 'var(--accent-muted)' : f.sel ? 'var(--container-raised)' : 'transparent',
+      ring: f.focus ? 'inset 0 0 0 1px var(--accent-border-glow)' : 'none',
+      noFocus: !f.focus,
+      oldBg: f.focus ? 'var(--accent-muted)' : 'transparent',
+      oldCb: f.sel ? 'var(--accent)' : 'transparent',
+    });
+    const stagedA = [
+      { code: 'M', name: 'changes-pane.jsx', dir: dirR, add: 42, del: 18 },
+      { code: 'A', name: 'stage-bar.jsx', dir: dirR, add: 88, del: 0 },
+    ].map(fileRow);
+    const unstagedA = [
+      { code: 'M', name: 'commit-composer.jsx', dir: dirR, add: 9, del: 5, focus: true, sel: true },
+      { code: 'M', name: 'git-workspace.css', dir: dirR, add: 31, del: 12, sel: true },
+      { code: 'D', name: 'old-toolbar.jsx', dir: dirR, add: 0, del: 64 },
+      { code: '?', name: 'changes-notes.md', dir: 'docs', add: 12, del: 0 },
+    ].map(fileRow);
+    const unstagedB = unstagedA.map(f => ({ ...f, bg: f.focus ? 'var(--accent-muted)' : 'transparent', btnBg: f.focus ? 'var(--container-hover)' : 'transparent' }));
+
+    // diff
+    const D = [
+      ['c', '  return ('],
+      ['d', '    <div className="nx-gw-composer" onKeyDown={onKeyDown}>'],
+      ['a', '    <div className="nx-gw-composer" data-place="top" onKeyDown={onKeyDown}>'],
+      ['c', '      <div className="nx-gw-summary">'],
+      ['c', '        <input aria-label="Commit summary" value={summary}'],
+      ['c', '          onChange={e => setSummary(e.target.value)} onFocus={() => setOpen(true)} />'],
+      ['c', '        <span className="count">{`${len}/72`}</span>'],
+      ['c', '      </div>'],
+      ['d', '      {(open || description) && ('],
+      ['a', '      {(open || description || staged > 0) && ('],
+      ['c', '        <textarea aria-label="Commit description" rows={2} />'],
+      ['c', '      )}'],
+      ['d', '      <label><input type="checkbox" checked={amend} />Amend last commit</label>'],
+      ['d', '      <div className="nx-gw-commit-btns">'],
+      ['a', '      <div className="nx-gw-commit-foot">'],
+      ['a', '        <label><input type="checkbox" checked={amend} />Amend</label>'],
+      ['a', '        <span className="spacer" />'],
+      ['c', '        <button className="btn sm" onClick={() => submit(true)}>{pushLabel}</button>'],
+      ['c', '        <button className="btn sm accent" onClick={() => submit(false)}>{label}</button>'],
+      ['c', '      </div>'],
+      ['d', '      <div className="nx-gw-hint">{hint}</div>'],
+      ['a', '      <div className="nx-gw-hint" hidden={!disabled}>{hint}</div>'],
+      ['c', '    </div>'],
+      ['c', '  )'],
+      ['c', '}'],
+    ];
+    let o = 37, n = 37;
+    const diff = D.map(([k, raw]) => {
+      const row = { raw, segs: tok(raw), o: '', n: '', sign: ' ', sc: 'var(--text-muted)', bg: 'transparent' };
+      if (k === 'c') { row.o = o++; row.n = n++; }
+      if (k === 'd') { row.o = o++; row.sign = '−'; row.sc = 'var(--danger)'; row.bg = 'var(--danger-bg)'; }
+      if (k === 'a') { row.n = n++; row.sign = '+'; row.sc = 'var(--success)'; row.bg = 'var(--success-bg)'; }
+      return row;
+    });
+    const diffShort = diff.slice(0, 18);
+    // split view pairing
+    const split = [];
+    let i = 0;
+    while (i < diff.length) {
+      const r = diff[i];
+      if (r.sign === ' ') { split.push({ lo: r.o, rn: r.n, lsegs: r.segs, rsegs: r.segs, lbg: 'transparent', rbg: 'transparent' }); i++; continue; }
+      const dels = [], adds = [];
+      while (i < diff.length && diff[i].sign === '−') dels.push(diff[i++]);
+      while (i < diff.length && diff[i].sign === '+') adds.push(diff[i++]);
+      for (let j = 0; j < Math.max(dels.length, adds.length); j++) {
+        const d = dels[j], a = adds[j];
+        split.push({
+          lo: d ? d.o : '', lsegs: d ? d.segs : [{ t: ' ', c: C.text }], lbg: d ? 'var(--danger-bg)' : 'var(--container-bg)',
+          rn: a ? a.n : '', rsegs: a ? a.segs : [{ t: ' ', c: C.text }], rbg: a ? 'var(--success-bg)' : 'var(--container-bg)',
+        });
+      }
+    }
+
+    // 1c include list
+    const cb = state => state === 'on' ? { cbBd: 'var(--accent)', cbBg: 'var(--accent)', cbMark: '✓' } : state === 'mixed' ? { cbBd: 'var(--accent)', cbBg: 'var(--accent-muted)', cbMark: '' } : { cbBd: 'var(--border)', cbBg: 'var(--page-bg)', cbMark: '' };
+    const dirRow = (name, state) => ({ name, code: '', cc: C.text, pad: '8px', bg: 'transparent', font: '500 11.5px var(--font-ui)', tc: 'var(--text-muted)', addT: '', delT: '', ...cb(state) });
+    const fRow = (f, on) => ({ name: f.name, code: f.code, cc: TONE[f.code], pad: '26px', bg: f.focus ? 'var(--accent-muted)' : 'transparent', font: '500 12.5px var(--font-ui)', tc: 'var(--text-bright)', addT: f.add ? '+' + f.add : '', delT: f.del ? '−' + f.del : '', ...cb(on ? 'on' : 'off') });
+    const includeC = [
+      dirRow('docs', 'off'),
+      fRow({ code: '?', name: 'changes-notes.md', add: 12 }, false),
+      dirRow('modules/git/src/renderer', 'mixed'),
+      fRow({ code: 'M', name: 'changes-pane.jsx', add: 42, del: 18 }, true),
+      fRow({ code: 'M', name: 'commit-composer.jsx', add: 9, del: 5, focus: true }, false),
+      fRow({ code: 'M', name: 'git-workspace.css', add: 31, del: 12 }, false),
+      fRow({ code: 'D', name: 'old-toolbar.jsx', del: 64 }, false),
+      fRow({ code: 'A', name: 'stage-bar.jsx', add: 88 }, true),
+    ];
+
+    // 1e
+    const steps = ['done', 'done', 'now', 'todo', 'todo', 'todo', 'todo'].map(s => ({ c: s === 'done' ? 'var(--success)' : s === 'now' ? 'var(--warning)' : 'var(--container-hover)' }));
+    const conflicts = [
+      { name: 'status-meta.js', dir: 'packages/core/src/modules/git', bg: 'var(--accent-muted)', state: '1 block left' },
+      { name: 'branch-list.jsx', dir: dirR, bg: 'transparent', state: '2 blocks' },
+    ];
+    const side = (lines, mark) => lines.map((l, k) => ({ segs: tok(l), bg: mark.includes(k) ? (mark.bg) : 'transparent' }));
+    const theirsL = ["export const TONE = {", "  operation: 'danger',", "  dirty: 'warning',", "  ahead: 'info', behind: 'info',", "  clean: 'success',", "}"];
+    const mineL = ["export const TONE = {", "  operation: 'danger',", "  uncommitted: 'warning',", "  sync: 'info',", "  clean: 'success',", "}"];
+    const tm = [2, 3]; tm.bg = 'var(--info-bg)';
+    const mm = [2, 3]; mm.bg = 'var(--warning-bg)';
+    const theirs = side(theirsL, tm);
+    const mine = side(mineL, mm);
+
+    // 1f
+    const ldir = (name, n, code, open, sel) => ({ isDir: true, rot: open ? 90 : 0, name, code, cc: TONE[code] || 'var(--warning)', pad: '6px', font: '500 12.5px var(--font-ui)', tc: 'var(--text-bright)', meta: String(n), mc: 'var(--text-muted)', bg: sel ? 'var(--accent-muted)' : 'transparent' });
+    const lfile = (name, code, add, del) => ({ isDir: false, rot: 0, name, code, cc: TONE[code], pad: '24px', font: '400 12.5px var(--font-ui)', tc: 'var(--text)', meta: (add ? '+' + add : '') + (del ? ' −' + del : ''), mc: 'var(--text-muted)', bg: 'transparent' });
+    const largeRows = [
+      ldir('apps/web/dist', 142, '?', false, true),
+      ldir('modules/git/src/renderer', 38, 'M', true),
+      lfile('action-dialog.jsx', 'M', 14, 6), lfile('branch-header.jsx', 'M', 8, 3), lfile('changes-pane.jsx', 'M', 42, 18),
+      lfile('commit-composer.jsx', 'M', 9, 5), lfile('diff-pane.jsx', 'M', 22, 9), lfile('file-explorer.jsx', 'M', 17, 11),
+      { ...lfile('Show 30 more in this folder', 'M', 0, 0), code: '', tc: 'var(--accent)', font: '500 12px var(--font-ui)' },
+      ldir('packages/core/src/modules/git', 21, 'M', false),
+      ldir('docs/superpowers/plans', 12, '?', false),
+      ldir('packages/ui/src/styles', 9, 'M', false),
+      ldir('apps/desktop/e2e', 7, 'M', false),
+      ldir('packages/editor-kit/src', 5, 'M', false),
+    ];
+
+    const largeRowsB = largeRows.slice(0, 12);
+    const staged14 = [
+      ldir('packages/core/src/modules/git', 9, 'M', true),
+      lfile('file-filter.js', 'M', 41, 12), lfile('word-match.js', 'A', 58, 0), lfile('status-meta.js', 'M', 23, 17),
+      { ...lfile('Show 6 more in this folder', 'M', 0, 0), code: '', tc: 'var(--accent)', font: '500 12px var(--font-ui)' },
+      ldir('packages/ui/src/styles', 5, 'M', false),
+    ].map(r => ({ ...r, bg: 'transparent' }));
+
+    // 1g files
+    const changedPins = [
+      { code: 'M', name: 'commit-composer.jsx', short: 'git/src/renderer' },
+      { code: 'M', name: 'git-workspace.css', short: 'git/src/renderer' },
+      { code: 'D', name: 'old-toolbar.jsx', short: 'git/src/renderer' },
+      { code: '?', name: 'changes-notes.md', short: 'docs' },
+      { code: 'M', name: 'changes-pane.jsx', short: 'staged' },
+      { code: 'A', name: 'stage-bar.jsx', short: 'staged' },
+    ].map(f => ({ ...f, cc: f.short === 'staged' ? 'var(--success)' : TONE[f.code] }));
+    const recent = [{ name: 'file-explorer.jsx', when: '12 min ago' }, { name: 'files-pane.jsx', when: '1 h ago' }, { name: 'README.md', when: 'yesterday' }];
+    const T = (depth, kind, name, o = {}) => ({
+      isDir: kind === 'd', isFile: kind === 'f', name, pad: (6 + depth * 12) + 'px', rot: o.open ? 90 : 0,
+      tc: o.tc || (o.code ? TONE[o.code] : 'var(--text)'), fw: o.sel ? 600 : 400, bg: o.sel ? 'var(--accent-muted)' : 'transparent',
+      code: o.code || '', cc: o.staged ? 'var(--success)' : TONE[o.code] || 'var(--text)', hasDot: !!o.dot, dot: o.dot || 'transparent',
+    });
+    const tree = [
+      T(0, 'd', '.github'), T(0, 'd', 'apps'), T(0, 'd', 'docs', { dot: 'var(--info)' }),
+      T(0, 'd', 'modules', { open: true, dot: 'var(--warning)' }),
+      T(1, 'd', 'git', { open: true, dot: 'var(--warning)' }),
+      T(2, 'd', 'src', { open: true, dot: 'var(--warning)' }),
+      T(3, 'd', 'renderer', { open: true, dot: 'var(--warning)' }),
+      T(4, 'f', 'changes-pane.jsx', { code: 'M', staged: true, tc: 'var(--success)' }),
+      T(4, 'f', 'commit-composer.jsx', { code: 'M', sel: true }),
+      T(4, 'f', 'file-explorer.jsx'),
+      T(4, 'f', 'files-pane.jsx'),
+      T(4, 'f', 'git-workspace.css', { code: 'M' }),
+      T(4, 'f', 'stage-bar.jsx', { code: 'A', staged: true }),
+      T(0, 'd', 'packages'), T(0, 'd', 'scripts'), T(0, 'd', 'tools'),
+      T(0, 'f', '.gitignore'), T(0, 'f', 'package.json'), T(0, 'f', 'README.md'),
+    ];
+    const crumbsOf = (parts) => parts.map((t, k) => ({ t, c: k === parts.length - 1 ? 'var(--text-bright)' : 'var(--text-muted)', fw: k === parts.length - 1 ? 600 : 400, sepOp: k === parts.length - 1 ? 0 : 0.6 }));
+    const crumbs = crumbsOf(['NexusMD-Mono', 'modules', 'git', 'src', 'renderer', 'commit-composer.jsx']);
+    const SRC = [
+      "import React from 'react'",
+      "",
+      "const NOUN = { rebase: 'rebase', merge: 'merge', revert: 'revert', 'cherry-pick': 'cherry-pick' }",
+      "",
+      "/**",
+      " * The inline commit box at the bottom of the Changes column (sticky). Only the summary shows until it's",
+      " * focused or has text. A hint line always says why the buttons are disabled or what will happen.",
+      " * During an operation the whole form is replaced by one line.",
+      " */",
+      "export function CommitComposer({ tree, busy = false, onCommit }) {",
+      "  const [summary, setSummary] = React.useState('')",
+      "  const [description, setDescription] = React.useState('')",
+      "  const [amend, setAmend] = React.useState(false)",
+      "  const [open, setOpen] = React.useState(false)",
+      "  const id = tree?.path",
+      "  React.useEffect(() => { setSummary(''); setDescription(''); setAmend(false); setOpen(false) }, [id])",
+      "  if (!tree) return null",
+      "",
+      "  if (tree.operation) {",
+      "    const noun = NOUN[tree.operationInfo?.kind] ?? 'operation'",
+      "    return (",
+      "      <div className=\"nx-gw-composer\">",
+      "        <div className=\"nx-gw-paused\" role=\"note\">{`Committing is paused during the ${noun}.`}</div>",
+      "      </div>",
+      "    )",
+      "  }",
+      "",
+      "  const staged = tree.changes.filter(c => c.area === 'staged').length",
+      "  const len = summary.length",
+      "  const disabled = busy || (!staged && !amend) || !summary.trim()",
+    ];
+    const changedLines = new Set([10, 11, 12, 22, 23]);
+    const code = SRC.map((l, k) => ({ n: k + 1, segs: tok(l), bg: changedLines.has(k + 1) ? 'var(--warning-bg)' : 'transparent', gut: changedLines.has(k + 1) ? 'inset -2px 0 0 var(--warning)' : 'none' }));
+    const fileHist = [
+      { s: 'Show a hint line under the commit buttons', h: 'a3a686e', w: '3 days ago' },
+      { s: 'Keep the composer sticky at the bottom', h: '9f0c7ed', w: '1 week ago' },
+      { s: 'Add Commit & publish for unpublished branches', h: '5ca88db', w: '2 weeks ago' },
+    ];
+    const ghHist = [
+      { s: 'Lock palette after art review', h: 'a49a6cb', w: '2 days ago' },
+      { s: 'Add Do not change section', h: '71329b1', w: '5 days ago' },
+      { s: 'Create identity lock for Aeon Clok', h: '0e30c8f', w: '3 weeks ago' },
+    ];
+
+    // 1h github
+    const ghRepos = [
+      { name: 'Chronos', meta: '0 open PRs · 0 issues' },
+      { name: 'DotFiles', meta: '0 open PRs · 0 issues' },
+      { name: 'NexusMD-Mono', meta: '0 open PRs · 0 issues' },
+      { name: 'Pathweave', meta: '1 open PR · 0 issues', sel: true },
+      { name: 'NexusCommunity', meta: '2 open PRs · 0 issues' },
+    ].map(r => ({ ...r, bg: r.sel ? 'var(--accent-muted)' : 'transparent', bd: r.sel ? 'var(--accent-border-glow)' : 'transparent' }));
+    const ghTabs = [['Pull requests', '1'], ['Issues', ''], ['Builds', ''], ['Branches', ''], ['History', ''], ['Files', '']].map(([label, n]) => ({
+      label, n, bd: label === 'Files' ? 'var(--accent)' : 'transparent', c: label === 'Files' ? 'var(--text-bright)' : 'var(--text-muted)',
+    }));
+    const G = (depth, kind, name, sel) => {
+      const mm = /(^|[^a-z0-9])lock/i.exec(name); const k = mm ? mm.index + mm[1].length : -1;
+      const hasHit = kind === 'f' && k >= 0;
+      return {
+        isDir: kind === 'd', isFile: kind === 'f', pad: (6 + depth * 12) + 'px',
+        pre: hasHit ? name.slice(0, k) : name, hit: hasHit ? name.slice(k, k + 4) : '', post: hasHit ? name.slice(k + 4) : '',
+        tc: kind === 'd' ? 'var(--text-muted)' : 'var(--text)', fw: sel ? 600 : 400, bg: sel ? 'var(--accent-muted)' : 'transparent',
+      };
+    };
+    const ghTree = [
+      G(0, 'd', 'canons'), G(1, 'd', 'ASCENDANT'),
+      G(2, 'f', 'Aeon_Clok_Visual_Identity_Lock.md', true),
+      G(2, 'f', 'Caleb_Thayne_Visual_Identity_Lock.md'),
+      G(2, 'f', 'Jake_Thayne_Visual_Identity_Lock.md'),
+      G(2, 'f', 'Mira_Visual_Identity_Lock.md'),
+      G(2, 'f', 'Phill_Visual_Identity_Lock.md'),
+      G(2, 'f', 'Umbra_Visual_Identity_Lock.md'),
+      G(2, 'd', 'reference'), G(3, 'd', 'images'),
+      G(4, 'f', 'block_lock_sheet.png'),
+      G(0, 'd', 'docs'),
+      G(1, 'f', 'identity-lock-format.md'),
+    ];
+    const ghCrumbs = crumbsOf(['canons', 'ASCENDANT', 'Aeon_Clok_Visual_Identity_Lock.md']);
+    const MD = [
+      '# Aeon Clok — Visual Identity Lock',
+      '',
+      'Status: **locked** · Canon: ASCENDANT · Last review 2026-10-29',
+      '',
+      '## Silhouette',
+      '- Tall, narrow frame; long coat to mid-calf',
+      '- Collar always raised; no hood',
+      '',
+      '## Palette',
+      '- Coat: charcoal with a faint blue cast',
+      '- Accent: brass buttons, never gold',
+      '- Eyes: grey; no glow in any scene',
+      '',
+      '## Do not change',
+      '- The scar over the left eyebrow',
+      '- Hand-stitched patch on the right sleeve',
+      '',
+      'Changes need a **lock review** in docs/unlock-procedure.md.',
+    ];
+    const mdTok = l => {
+      if (l.startsWith('#')) return [{ t: l, c: 'var(--accent)', w: 600 }];
+      const segs = [];
+      let rest = l;
+      if (rest.startsWith('- ')) { segs.push({ t: '- ', c: 'var(--text-muted)', w: 400 }); rest = rest.slice(2); }
+      rest.split(/(\*\*[^*]+\*\*)/).forEach(p => { if (p) segs.push(p.startsWith('**') ? { t: p, c: 'var(--text-bright)', w: 700 } : { t: p, c: 'var(--text)', w: 400 }); });
+      return segs.length ? segs : [{ t: ' ', c: 'var(--text)', w: 400 }];
+    };
+    const md = MD.map((l, k) => ({ n: k + 1, segs: mdTok(l) }));
+
+    return {
+      stagedA, unstagedA, unstagedB, diff, diffShort, split, includeC,
+      steps, conflicts, theirs, mine, largeRows, largeRowsB, staged14,
+      changedPins, recent, tree, crumbs, code, fileHist, ghHist,
+      ghRepos, ghTabs, ghTree, ghCrumbs, md,
+      showBaseline: this.props.showBaseline ?? true,
+      ...Object.fromEntries(['1b','2a','2b','2c','3a','3b'].map(k => ['rail_' + k, this.rail(k)])),
+    };
+  }
+}
+</script>
+</body>
+</html>

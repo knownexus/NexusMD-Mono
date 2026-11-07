@@ -73,6 +73,9 @@ export const Icon = ({ name, size = 16, stroke = 1.6, className = '', style = {}
     case 'upload':    return (<svg {...props}><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/></svg>);
     case 'copy':      return (<svg {...props}><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>);
     case 'download':  return (<svg {...props}><path d="M12 3v12M7 10l5 5 5-5M4 19h16"/></svg>);
+    case 'panel-right-close': return (<svg {...props}><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16M8 10l2 2-2 2"/></svg>);
+    case 'panel-right-open':  return (<svg {...props}><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16M10 10l-2 2 2 2"/></svg>);
+    case 'terminal':  return (<svg {...props}><path d="m4 17 6-5-6-5M12 19h8"/></svg>);
     case 'wand':      return (<svg {...props}><path d="M4 20 18 6"/><path d="m17 3 1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/></svg>);
     case 'logo':      return (<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" opacity=".25"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>);
     default: return null;

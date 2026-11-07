@@ -1,5 +1,7 @@
 import React from 'react'
-import { Icon } from '@nexusmd/ui'
+import { Icon, CollapsibleRail, railColumns } from '@nexusmd/ui'
+import { wordMatch } from '@nexusmd/core'
+import { matchSegments } from './match-segments.js'
 import { buildFileTree } from './file-tree.js'
 import { ContextMenu, menuPoint } from './context-menu.jsx'
 import { PaneResizer, usePaneWidth, EXPLORER_WIDTH } from './pane-resizer.jsx'
@@ -25,11 +27,10 @@ function visibleRows(node, open, depth, out, match) {
   return out
 }
 
-// The files whose path holds `text` (any case), and every folder above one of them.
+// The files whose path has every typed term at the start of a word, and every folder above one of them.
 function matching(paths, text) {
-  const q = text.trim().toLowerCase()
-  if (!q) return null
-  const files = new Set(paths.filter(p => p.toLowerCase().includes(q)))
+  if (!text.trim()) return null
+  const files = new Set(paths.filter(p => wordMatch(p, text)))
   const dirs = new Set()
   for (const p of files) for (let i = p.indexOf('/'); i > 0; i = p.indexOf('/', i + 1)) dirs.add(p.slice(0, i))
   return { files, dirs }
@@ -66,11 +67,17 @@ function useKeptScroll(boxRef, viewKey, ready) {
  * onOpen(path): double-click or Enter on the picked file. preview(path): the right side for a file.
  * notes: shown above the tree (a message); footer: beside the file count (a legend); emptyNote: under
  * "Pick a file" while none is picked. rowProps(row) / treeProps: extra props (drag and drop).
+ * pins: a node, or ({ pick, picked }) => node, drawn between the filter and the tree (Changed, Recent).
+ * onPick(path): a file was picked (row, pin or keyboard). highlightMatches: mark the matched word starts in names.
+ * previewHead(picked): drawn at the top of the preview column, with or without a pick (a path bar).
+ * rail(picked): the right-hand panel for the picked path (null before a pick), collapsible: railLabel names it,
+ * railOpen / onRailToggle are its state.
  */
 export function FileExplorer({
   label = 'Files', rootName, files, truncated = false, error = null, viewKey,
-  renderName = row => <span className="nx-gw-tree-name">{row.name}</span>, menuItems = () => [], onOpen = null, preview,
-  notes = null, footer = null, emptyNote = null, rowProps = () => ({}), treeProps = {},
+  renderName = null, menuItems = () => [], onOpen = null, preview,
+  notes = null, footer = null, emptyNote = null, rowProps = () => ({}), treeProps = {}, pins = null, onPick = null, highlightMatches = false,
+  rail = null, railLabel = 'Details', railOpen = true, onRailToggle = () => {}, previewHead = null,
 }) {
   const [open, setOpen] = React.useState(() => new Set(viewOf(viewKey).open))
   const [selected, setSelected] = React.useState(() => viewOf(viewKey).selected)
@@ -101,6 +108,7 @@ export function FileExplorer({
   const collapseAll = () => setOpen(new Set())
   // Picking a file opens every folder above it, so it shows when the filter is cleared.
   const pick = path => {
+    onPick?.(path)
     setSelected(path)
     setOpen(prev => { const next = new Set(prev); for (let d = parentOf(path); d; d = parentOf(d)) next.add(d); return next })
   }
@@ -142,9 +150,15 @@ export function FileExplorer({
   // One row takes Tab into the tree: the focused one, else the picked file, else the first.
   const tabStop = rows.some(r => r.path === focused) ? focused : rows.some(r => r.path === picked) ? picked : rows[0]?.path
 
-  const count = files ? (match ? plural(match.files.size, 'match', 'matches') : plural(files.length, 'file', 'files')) : ''
+  const count = files ? (match ? `${match.files.size.toLocaleString()} of ${files.length.toLocaleString()} files match` : plural(files.length, 'file', 'files')) : ''
+  const nameOf = renderName ?? (row => (
+    <span className="nx-gw-tree-name">
+      {highlightMatches && filter.trim() ? matchSegments(row.name, filter).map((seg, i) => (seg.hit ? <mark key={i}>{seg.text}</mark> : seg.text)) : row.name}
+    </span>
+  ))
   return (
-    <section aria-label={label} className="nx-gw-fx" ref={box} style={{ '--gw-fx': `${side.width}px` }}>
+    <section aria-label={label} className="nx-gw-fx" ref={box} data-rail={rail ? '' : undefined}
+      style={{ '--gw-fx': `${side.width}px`, ...(rail ? { '--gw-rail': railColumns(railOpen, 290) } : null) }}>
       <div className="nx-gw-fx-side">
         <div className="nx-gw-fx-tools">
           <label className="nx-gw-fx-filter">
@@ -156,6 +170,7 @@ export function FileExplorer({
             <Icon name="collapse" size={13} />
           </button>
         </div>
+        {typeof pins === 'function' ? pins({ pick, picked }) : pins}
         {notes}
         <div ref={treeBox} className="nx-gw-fx-scroll" {...treeProps}>
           {error && <div role="alert" className="nx-alert bad">{error}</div>}
@@ -165,13 +180,13 @@ export function FileExplorer({
               {rows.map((r, i) => (
                 <div key={`${r.kind}:${r.path}`} role="treeitem" aria-level={r.depth + 1} aria-expanded={r.kind === 'dir' ? r.expanded : undefined}
                   aria-selected={r.kind === 'file' ? picked === r.path : undefined} tabIndex={r.path === tabStop ? 0 : -1}
-                  data-row={r.path} data-kind={r.kind} className="nx-gw-tree-row" style={{ paddingLeft: 6 + r.depth * 14 }}
+                  data-row={r.path} data-kind={r.kind} className="nx-gw-tree-row" style={{ paddingLeft: 6 + r.depth * 12 }}
                   onClick={() => (r.kind === 'dir' ? toggle(r.path) : pick(r.path))} onFocus={() => setFocused(r.path)}
                   onDoubleClick={r.kind === 'file' && onOpen ? () => onOpen(r.path) : undefined}
                   onContextMenu={e => openMenu(e, r)} onKeyDown={e => onRowKey(e, r, i)} {...rowProps(r)}>
-                  <span className="nx-gw-tree-twist" aria-hidden="true">{r.kind === 'dir' && <Icon name={r.expanded ? 'chevron-down' : 'chevron-right'} size={11} />}</span>
+                  <span className="nx-gw-tree-twist" aria-hidden="true">{r.kind === 'dir' && <Icon name={r.expanded ? "chevron-down" : "chevron-right"} size={9} />}</span>
                   <Icon name={r.kind === 'dir' ? 'folder' : 'doc'} size={13} className="nx-gw-tree-icon" />
-                  {renderName(r)}
+                  {nameOf(r)}
                 </div>
               ))}
               {match && !rows.length && <div className="nx-gw-fx-note">{`No file path holds “${filter.trim()}”.`}</div>}
@@ -184,6 +199,7 @@ export function FileExplorer({
       </div>
       <PaneResizer label="Resize file tree" width={side.width} fallback={EXPLORER_WIDTH} boxRef={box} onDrag={side.onDrag} onDone={side.onDone} className="nx-gw-fx-resizer" />
       <div className="nx-gw-fx-preview">
+        {previewHead?.(picked)}
         {picked ? preview(picked) : (
           <div className="nx-gw-fx-empty">
             <Icon name="doc" size={22} />
@@ -193,6 +209,7 @@ export function FileExplorer({
           </div>
         )}
       </div>
+      {rail && <CollapsibleRail open={railOpen} onToggle={onRailToggle} label={railLabel}>{rail(picked)}</CollapsibleRail>}
       <ContextMenu menu={menu} onClose={closeMenu} />
     </section>
   )

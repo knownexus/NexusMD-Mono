@@ -1,0 +1,582 @@
+/* ═══════════════════════════════════════════════════════════
+   NEXUS COMMUNITY — Brand profiles
+   Each profile is scoped to :root[data-brand="<slug>"] so multiple
+   profiles co-exist in a single stylesheet. Switch by setting the
+   data-brand attribute on <html>.
+
+   The default (no attribute) is nexus-default-dark, matching
+   colors_and_type.css.
+
+   Profiles:
+   - nexus-default-dark        ★ default
+   - nexus-default-light
+   - shattered-realms-dark
+   - shattered-realms-light
+   - historia-normannis-light  (from API brand-profile JSON)
+   - historia-normannis-dark   (from API brand-profile JSON)
+   - cobalt-lodge              (suggested — clean modern slate)
+   - verdant-reach             (suggested — botanical light)
+   ═══════════════════════════════════════════════════════════ */
+
+/* Font imports — every webfont used by any profile, loaded once.
+   System-font / self-hosted Cardinal still come from colors_and_type.css. */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cinzel+Decorative:wght@400;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600;700&family=Gentium+Plus:wght@400;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Spectral:wght@300;400;500;600;700&display=swap');
+
+/* ═══════════════════════════════════════════════════════════
+   1 · NEXUS DEFAULT — DARK ★
+   Warm dark navy + antique gold + parchment text.
+   Mood: restrained heritage, library at night, guild noticeboard.
+   ═══════════════════════════════════════════════════════════ */
+:root[data-brand="nexus-default-dark"], :root:not([data-brand]) {
+    --page-bg:           #07090f;
+    --nav-bg:            #0a0f17;
+    --container-bg:      #0d1219;
+    --container-raised:  #121a26;
+    --container-hover:   #182132;
+    --card-bg:           #0f1721;
+    --card-raised:       #182132;
+    --modal-bg:          #0f1721;
+
+    --border:            #1c2a3e;
+    --border-subtle:     #111c2b;
+
+    --accent:            #c9a84c;
+    --accent-bright:     #e8c76a;
+    --accent-dim:        #7d6830;
+    --accent-mid:        #967519;
+    --accent-text:       #07090f;
+    --accent-initial:    #c9a84c;
+    --accent-muted:      rgba(201,168,76,0.12);
+    --accent-glow:       rgba(201,168,76,0.18);
+    --accent-border-glow:rgba(201,168,76,0.35);
+
+    --text:              #d8cdb8;
+    --text-bright:       #f0e8d8;
+    --text-muted:        #5e7189;
+    --text-dim:          #344356;
+
+    --danger:            #c0392b;
+    --danger-bg:         rgba(192,57,43,0.12);
+    --success:           #27ae60;
+    --success-bg:        rgba(39,174,96,0.10);
+    --info:              #2980b9;
+    --info-bg:           rgba(41,128,185,0.10);
+    --warning:           #e67e22;
+    --warning-bg:        rgba(230,126,34,0.10);
+
+    --font-brand:        var(--font-heading);
+    --font-heading:      'Cinzel', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+    --font-body:         'Crimson Pro', Georgia, 'Times New Roman', serif;
+    --font-ui:           'Inter', system-ui, -apple-system, sans-serif;
+    --font-display:      'Cardinal', 'Cinzel', Georgia, serif;
+
+    --pattern-url:       url('../assets/pattern-rhombus.svg'); /* @kind other */
+    --pattern-opacity:   1; /* @kind other */
+}
+
+/* ═══════════════════════════════════════════════════════════
+   2 · NEXUS DEFAULT — LIGHT
+   Same warm gold + parchment system, inverted to a daylight
+   reading room. Body type sits on cream, not bright white.
+   ═══════════════════════════════════════════════════════════ */
+:root[data-brand="nexus-default-light"] {
+    --page-bg:           #f4f1e8;
+    --nav-bg:            #ece6d4;
+    --container-bg:      #ebe5d4;
+    --container-raised:  #e3dcc6;
+    --container-hover:   #ddd4ba;
+    --card-bg:           #fbf8ee;
+    --card-raised:       #f4eed8;
+    --modal-bg:          #ffffff;
+
+    --border:            #c9bd9c;
+    --border-subtle:     #ddd4b8;
+
+    --accent:            #9a7e22;
+    --accent-bright:     #b89a3a;
+    --accent-dim:        #6d5715;
+    --accent-mid:        #836a1c;
+    --accent-text:       #fbf8ee;
+    --accent-initial:    #9a7e22;
+    --accent-muted:      rgba(154,126,34,0.10);
+    --accent-glow:       rgba(154,126,34,0.20);
+    --accent-border-glow:rgba(154,126,34,0.40);
+
+    --text:              #2c2618;
+    --text-bright:       #0d0c08;
+    --text-muted:        #76705e;
+    --text-dim:          #a8a08a;
+
+    --danger:            #a02617;
+    --danger-bg:         rgba(160,38,23,0.08);
+    --success:           #1f7a48;
+    --success-bg:        rgba(31,122,72,0.08);
+    --info:              #1f5d8c;
+    --info-bg:           rgba(31,93,140,0.08);
+    --warning:           #a85e10;
+    --warning-bg:        rgba(168,94,16,0.08);
+
+    --font-brand:        var(--font-heading);
+    --font-heading:      'Cinzel', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+    --font-body:         'Crimson Pro', Georgia, 'Times New Roman', serif;
+    --font-ui:           'Inter', system-ui, -apple-system, sans-serif;
+    --font-display:      'Cardinal', 'Cinzel', Georgia, serif;
+
+    --pattern-url:       url('../assets/pattern-rhombus.svg'); /* @kind other */
+    --pattern-opacity:   0.6; /* @kind other */
+}
+
+/* ═══════════════════════════════════════════════════════════
+   3 · SHATTERED REALMS — DARK
+   Deep midnight-blue + bronze. Dark-ages, not sci-fi.
+   Mood: cracked plate armour, candle-lit hall, broken kingdoms.
+   ═══════════════════════════════════════════════════════════ */
+:root[data-brand="shattered-realms-dark"] {
+    --page-bg:           #0a121d;
+    --nav-bg:            #08101a;
+    --container-bg:      #102036;
+    --container-raised:  #15293f;
+    --container-hover:   #1d3551;
+    --card-bg:           #122638;
+    --card-raised:       #1a3046;
+    --modal-bg:          #0e2034;
+
+    --border:            #284363;
+    --border-subtle:     #1a2c44;
+
+    --accent:            #b87333;
+    --accent-bright:     #d6904f;
+    --accent-dim:        #6e4520;
+    --accent-mid:        #8f5828;
+    --accent-text:       #0a121d;
+    --accent-initial:    #b87333;
+    --accent-muted:      rgba(184,115,51,0.12);
+    --accent-glow:       rgba(184,115,51,0.20);
+    --accent-border-glow:rgba(184,115,51,0.40);
+
+    --text:              #cdd8e8;
+    --text-bright:       #eaf0f8;
+    --text-muted:        #7e8da3;
+    --text-dim:          #3d4d66;
+
+    --danger:            #c75545;
+    --danger-bg:         rgba(199,85,69,0.12);
+    --success:           #4e9c70;
+    --success-bg:        rgba(78,156,112,0.10);
+    --info:              #5b8bc8;
+    --info-bg:           rgba(91,139,200,0.10);
+    --warning:           #d4a050;
+    --warning-bg:        rgba(212,160,80,0.10);
+
+    --font-brand:        'Cinzel Decorative', 'Cinzel', 'Palatino Linotype', Georgia, serif;
+    --font-heading:      'Cinzel', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+    --font-body:         'Crimson Pro', Georgia, 'Times New Roman', serif;
+    --font-ui:           'Inter', system-ui, -apple-system, sans-serif;
+    --font-display:      'Cinzel Decorative', 'Cardinal', Georgia, serif;
+
+    --pattern-url:       url('../assets/pattern-shards.svg'); /* @kind other */
+    --pattern-opacity:   1; /* @kind other */
+}
+
+/* ═══════════════════════════════════════════════════════════
+   4 · SHATTERED REALMS — LIGHT
+   Same blue + bronze identity, but on a pale slate-stone canvas.
+   Reads as a daylight rendition of the same broken kingdom.
+   ═══════════════════════════════════════════════════════════ */
+:root[data-brand="shattered-realms-light"] {
+    --page-bg:           #e8edf5;
+    --nav-bg:            #dde4ef;
+    --container-bg:      #dde4ef;
+    --container-raised:  #d2dceb;
+    --container-hover:   #c1cee0;
+    --card-bg:           #f3f6fb;
+    --card-raised:       #e9eef7;
+    --modal-bg:          #ffffff;
+
+    --border:            #9aaac3;
+    --border-subtle:     #c1cee0;
+
+    --accent:            #8a5526;
+    --accent-bright:     #b87333;
+    --accent-dim:        #5e3a18;
+    --accent-mid:        #6e4520;
+    --accent-text:       #f3f6fb;
+    --accent-initial:    #8a5526;
+    --accent-muted:      rgba(138,85,38,0.10);
+    --accent-glow:       rgba(138,85,38,0.20);
+    --accent-border-glow:rgba(138,85,38,0.40);
+
+    --text:              #1a2536;
+    --text-bright:       #06101e;
+    --text-muted:        #5e6e88;
+    --text-dim:          #a3b1c8;
+
+    --danger:            #a02e20;
+    --danger-bg:         rgba(160,46,32,0.08);
+    --success:           #2e6a4f;
+    --success-bg:        rgba(46,106,79,0.08);
+    --info:              #2a548a;
+    --info-bg:           rgba(42,84,138,0.08);
+    --warning:           #9c6e10;
+    --warning-bg:        rgba(156,110,16,0.08);
+
+    --font-brand:        'Cinzel Decorative', 'Cinzel', 'Palatino Linotype', Georgia, serif;
+    --font-heading:      'Cinzel', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+    --font-body:         'Crimson Pro', Georgia, 'Times New Roman', serif;
+    --font-ui:           'Inter', system-ui, -apple-system, sans-serif;
+    --font-display:      'Cinzel Decorative', Georgia, serif;
+
+    --pattern-url:       url('../assets/pattern-shards.svg'); /* @kind other */
+    --pattern-opacity:   0.55; /* @kind other */
+}
+
+/* ═══════════════════════════════════════════════════════════
+   5 · HISTORIA NORMANNIS — LIGHT (from API JSON)
+   Red on warm linen. Manuscript / 12th-century scribal aesthetic.
+   Cardinal (display), Gentium Plus (heading), Cormorant Garamond
+   (body + UI — all serif, no Inter; this is the brand's signature).
+   ═══════════════════════════════════════════════════════════ */
+:root[data-brand="historia-normannis-light"] {
+    --page-bg:           #e9e6dc;
+    --nav-bg:            #ddd5c3;
+    --container-bg:      #ebe6dc;
+    --container-raised:  #ddd5c3;
+    --container-hover:   #f0e1b3;
+    --card-bg:           #f7e9d9;
+    --card-raised:       #f0e1b3;
+    --modal-bg:          #e5e0d6;
+
+    --border:            #8a7a62;
+    --border-subtle:     #b8a888;
+
+    --accent:            #c00000;
+    --accent-bright:     #e02828;
+    --accent-dim:        #8b0000;
+    --accent-mid:        #a60505;
+    --accent-text:       #f7e9d9;
+    --accent-initial:    #c00000;
+    --accent-muted:      rgba(192,0,0,0.08);
+    --accent-glow:       rgba(192,0,0,0.18);
+    --accent-border-glow:rgba(192,0,0,0.35);
+
+    --text:              #0f0000;
+    --text-bright:       #000000;
+    --text-muted:        #5e4e3a;
+    --text-dim:          #a09380;
+
+    --danger:            #b91c1c;
+    --danger-bg:         rgba(185,28,28,0.08);
+    --success:           #2d6a4f;
+    --success-bg:        rgba(45,106,79,0.08);
+    --info:              #5b6e8c;
+    --info-bg:           rgba(91,110,140,0.08);
+    --warning:           #9a7b3c;
+    --warning-bg:        rgba(154,123,60,0.08);
+
+    --font-brand:        'Cardinal', 'Palatino Linotype', Georgia, serif;
+    --font-heading:      'Gentium Plus', Georgia, serif;
+    --font-body:         'Cormorant Garamond', 'Palatino Linotype', Georgia, serif;
+    --font-ui:           'Cormorant Garamond', 'Palatino Linotype', Georgia, serif;
+    --font-display:      'Cardinal', 'Palatino Linotype', Georgia, serif;
+
+    --pattern-url:       url('../assets/pattern-manuscript.svg'); /* @kind other */
+    --pattern-opacity:   0.55; /* @kind other */
+}
+
+/* ═══════════════════════════════════════════════════════════
+   6 · HISTORIA NORMANNIS — DARK (from API JSON)
+   Same manuscript identity, but as aged parchment by candlelight.
+   Red goes warm + muted; surfaces go deep sepia.
+   ═══════════════════════════════════════════════════════════ */
+:root[data-brand="historia-normannis-dark"] {
+    --page-bg:           #18120b;
+    --nav-bg:            #1c160e;
+    --container-bg:      #241c12;
+    --container-raised:  #2e2418;
+    --container-hover:   #3d3020;
+    --card-bg:           #322515;
+    --card-raised:       #3d3020;
+    --modal-bg:          #1f1810;
+
+    --border:            #5a4a30;
+    --border-subtle:     #3a2a18;
+
+    --accent:            #d05048;
+    --accent-bright:     #ea6c64;
+    --accent-dim:        #8a2820;
+    --accent-mid:        #b53a30;
+    --accent-text:       #f5edd8;
+    --accent-initial:    #d05048;
+    --accent-muted:      rgba(208,80,72,0.12);
+    --accent-glow:       rgba(208,80,72,0.20);
+    --accent-border-glow:rgba(208,80,72,0.40);
+
+    --text:              #ece0ca;
+    --text-bright:       #f5edd8;
+    --text-muted:        #a09073;
+    --text-dim:          #5e4e3a;
+
+    --danger:            #d75c50;
+    --danger-bg:         rgba(215,92,80,0.14);
+    --success:           #4ea776;
+    --success-bg:        rgba(78,167,118,0.10);
+    --info:              #7da6d8;
+    --info-bg:           rgba(125,166,216,0.10);
+    --warning:           #d4a455;
+    --warning-bg:        rgba(212,164,85,0.10);
+
+    --font-brand:        'Cardinal', 'Palatino Linotype', Georgia, serif;
+    --font-heading:      'Gentium Plus', Georgia, serif;
+    --font-body:         'Cormorant Garamond', 'Palatino Linotype', Georgia, serif;
+    --font-ui:           'Cormorant Garamond', 'Palatino Linotype', Georgia, serif;
+    --font-display:      'Cardinal', 'Palatino Linotype', Georgia, serif;
+
+    --pattern-url:       url('../assets/pattern-manuscript.svg'); /* @kind other */
+    --pattern-opacity:   0.7; /* @kind other */
+}
+
+/* ═══════════════════════════════════════════════════════════
+   7 · COBALT LODGE — DARK (suggested)
+   Clean modern slate + cool cobalt-blue accent. No fantasy serif.
+   For a professional society, alumni group, modern tabletop /
+   wargame community, or any group that wants a quietly modern feel.
+   ═══════════════════════════════════════════════════════════ */
+:root[data-brand="cobalt-lodge"] {
+    --page-bg:           #0d1620;
+    --nav-bg:            #0a131c;
+    --container-bg:      #16202c;
+    --container-raised:  #1f2c3b;
+    --container-hover:   #25334a;
+    --card-bg:           #1a2532;
+    --card-raised:       #1f2c3b;
+    --modal-bg:          #1a2532;
+
+    --border:            #2e3e54;
+    --border-subtle:     #1c2735;
+
+    --accent:            #4a9eff;
+    --accent-bright:     #7fb8ff;
+    --accent-dim:        #2e6dc4;
+    --accent-mid:        #3a85e0;
+    --accent-text:       #0d1620;
+    --accent-initial:    #4a9eff;
+    --accent-muted:      rgba(74,158,255,0.10);
+    --accent-glow:       rgba(74,158,255,0.18);
+    --accent-border-glow:rgba(74,158,255,0.35);
+
+    --text:              #d6dfe8;
+    --text-bright:       #f5f8fc;
+    --text-muted:        #7a8aa0;
+    --text-dim:          #3e4d62;
+
+    --danger:            #e0533d;
+    --danger-bg:         rgba(224,83,61,0.10);
+    --success:           #3ec98e;
+    --success-bg:        rgba(62,201,142,0.10);
+    --info:              #4a9eff;
+    --info-bg:           rgba(74,158,255,0.10);
+    --warning:           #f0a83e;
+    --warning-bg:        rgba(240,168,62,0.10);
+
+    --font-brand:        'Inter', system-ui, -apple-system, sans-serif;
+    --font-heading:      'Inter', system-ui, -apple-system, sans-serif;
+    --font-body:         'Spectral', Georgia, serif;
+    --font-ui:           'Inter', system-ui, -apple-system, sans-serif;
+    --font-display:      'Inter', system-ui, sans-serif;
+
+    --pattern-url:       none; /* @kind other */
+    --pattern-opacity:   0; /* @kind other */
+}
+
+/* ═══════════════════════════════════════════════════════════
+   8 · VERDANT REACH — LIGHT (suggested)
+   Botanical, outdoorsy, warm cream + moss-green accent.
+   For a nature retreat, scouting / hiking club, ecological
+   society, garden community. No fantasy, no high-drama serif.
+   ═══════════════════════════════════════════════════════════ */
+:root[data-brand="verdant-reach"] {
+    --page-bg:           #f3f1e6;
+    --nav-bg:            #e9e5d2;
+    --container-bg:      #ebe7d8;
+    --container-raised:  #ddd6bd;
+    --container-hover:   #d6cdaa;
+    --card-bg:           #fbf9f0;
+    --card-raised:       #f3eee0;
+    --modal-bg:          #ffffff;
+
+    --border:            #b6ad88;
+    --border-subtle:     #d4cca8;
+
+    --accent:            #4a7a3a;
+    --accent-bright:     #6a9c58;
+    --accent-dim:        #2e5022;
+    --accent-mid:        #3d6a2e;
+    --accent-text:       #fbf9f0;
+    --accent-initial:    #4a7a3a;
+    --accent-muted:      rgba(74,122,58,0.10);
+    --accent-glow:       rgba(74,122,58,0.20);
+    --accent-border-glow:rgba(74,122,58,0.40);
+
+    --text:              #2d2c1e;
+    --text-bright:       #14130b;
+    --text-muted:        #6b6a52;
+    --text-dim:          #a39e7c;
+
+    --danger:            #9a3324;
+    --danger-bg:         rgba(154,51,36,0.08);
+    --success:           #2e6a4d;
+    --success-bg:        rgba(46,106,77,0.08);
+    --info:              #3a6592;
+    --info-bg:           rgba(58,101,146,0.08);
+    --warning:           #8e6a1a;
+    --warning-bg:        rgba(142,106,26,0.08);
+
+    --font-brand:        'Spectral', Georgia, serif;
+    --font-heading:      'Spectral', Georgia, serif;
+    --font-body:         'Spectral', Georgia, serif;
+    --font-ui:           'Inter', system-ui, -apple-system, sans-serif;
+    --font-display:      'Spectral', Georgia, serif;
+
+    --pattern-url:       url('../assets/pattern-botanical.svg'); /* @kind other */
+    --pattern-opacity:   0.5; /* @kind other */
+}
+
+/* ═══════════════════════════════════════════════════════════
+   9 · AMETHYST COURT — DARK (suggested)
+   Arcane, theatrical, scholarly. Cool obsidian + amethyst violet.
+   For a magickal-society / fantasy-fiction reading group / RPG
+   community whose vibe leans more "arcane study" than dark-ages.
+   ═══════════════════════════════════════════════════════════ */
+:root[data-brand="amethyst-court-dark"] {
+    --page-bg:           #0b0a14;
+    --nav-bg:            #0d0b1c;
+    --container-bg:      #14122a;
+    --container-raised:  #1d1a36;
+    --container-hover:   #29254a;
+    --card-bg:           #181530;
+    --card-raised:       #221e3e;
+    --modal-bg:          #181530;
+
+    --border:            #2e2b4c;
+    --border-subtle:     #1d1a36;
+
+    --accent:            #a37cf8;
+    --accent-bright:     #c4a7ff;
+    --accent-dim:        #5b4b96;
+    --accent-mid:        #7a5cd1;
+    --accent-text:       #0b0a14;
+    --accent-initial:    #a37cf8;
+    --accent-muted:      rgba(163,124,248,0.12);
+    --accent-glow:       rgba(163,124,248,0.20);
+    --accent-border-glow:rgba(163,124,248,0.40);
+
+    --text:              #d6cfe8;
+    --text-bright:       #efeaf8;
+    --text-muted:        #8c83a8;
+    --text-dim:          #4b4566;
+
+    --danger:            #d04450;
+    --danger-bg:         rgba(208,68,80,0.12);
+    --success:           #3fb47e;
+    --success-bg:        rgba(63,180,126,0.10);
+    --info:              #6c8cf2;
+    --info-bg:           rgba(108,140,242,0.10);
+    --warning:           #e8a648;
+    --warning-bg:        rgba(232,166,72,0.10);
+
+    --font-brand:        'Cinzel Decorative', 'Cinzel', 'Palatino Linotype', Georgia, serif;
+    --font-heading:      'Cinzel', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+    --font-body:         'Crimson Pro', Georgia, 'Times New Roman', serif;
+    --font-ui:           'Inter', system-ui, -apple-system, sans-serif;
+    --font-display:      'Cinzel Decorative', 'Cardinal', Georgia, serif;
+
+    --pattern-url:       url('../assets/pattern-amethyst.svg'); /* @kind other */
+    --pattern-opacity:   1; /* @kind other */
+}
+
+/* ═══════════════════════════════════════════════════════════
+   10 · AMETHYST COURT — LIGHT (suggested)
+   Same identity by day. Pale lavender canvas + deep violet ink.
+   ═══════════════════════════════════════════════════════════ */
+:root[data-brand="amethyst-court-light"] {
+    --page-bg:           #f3eff8;
+    --nav-bg:            #e9e1f4;
+    --container-bg:      #e9e2f3;
+    --container-raised:  #ddd2ec;
+    --container-hover:   #cfc1e3;
+    --card-bg:           #faf6ff;
+    --card-raised:       #f0ebfa;
+    --modal-bg:          #ffffff;
+
+    --border:            #c8bce0;
+    --border-subtle:     #d8cee9;
+
+    --accent:            #6a3ed4;
+    --accent-bright:     #8a5cf0;
+    --accent-dim:        #4a2598;
+    --accent-mid:        #5e35bf;
+    --accent-text:       #faf6ff;
+    --accent-initial:    #6a3ed4;
+    --accent-muted:      rgba(106,62,212,0.10);
+    --accent-glow:       rgba(106,62,212,0.20);
+    --accent-border-glow:rgba(106,62,212,0.40);
+
+    --text:              #221b3a;
+    --text-bright:       #0c081e;
+    --text-muted:        #6a648a;
+    --text-dim:          #a89dc7;
+
+    --danger:            #a02440;
+    --danger-bg:         rgba(160,36,64,0.08);
+    --success:           #1d7a52;
+    --success-bg:        rgba(29,122,82,0.08);
+    --info:              #2a4a9c;
+    --info-bg:           rgba(42,74,156,0.08);
+    --warning:           #9c5e1c;
+    --warning-bg:        rgba(156,94,28,0.08);
+
+    --font-brand:        'Cinzel Decorative', 'Cinzel', 'Palatino Linotype', Georgia, serif;
+    --font-heading:      'Cinzel', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+    --font-body:         'Crimson Pro', Georgia, 'Times New Roman', serif;
+    --font-ui:           'Inter', system-ui, -apple-system, sans-serif;
+    --font-display:      'Cinzel Decorative', Georgia, serif;
+
+    --pattern-url:       url('../assets/pattern-amethyst.svg'); /* @kind other */
+    --pattern-opacity:   0.55; /* @kind other */
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Shared base — applied regardless of profile.
+   ═══════════════════════════════════════════════════════════ */
+:root {
+    --radius-sm:   4px;
+    --radius:      8px;
+    --radius-lg:   12px;
+    --radius-xl:   16px;
+    --radius-pill: 999px;
+
+    --space-1: 0.25rem; --space-2: 0.5rem;  --space-3: 0.75rem;
+    --space-4: 1rem;    --space-5: 1.5rem;  --space-6: 2rem;   --space-7: 3rem;
+
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.5);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.6);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,0.7);
+
+    --ease:   cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+    --t-fast: 0.15s; /* @kind other */
+    --t-base: 0.18s; /* @kind other */
+    --t-slow: 0.25s; /* @kind other */
+}
+
+/* Light-mode shadow softening — light pages don't need heavy dark shadows */
+:root[data-brand$="-light"],
+:root[data-brand="nexus-default-light"],
+:root[data-brand="historia-normannis-light"],
+:root[data-brand="verdant-reach"] {
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.10);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,0.14);
+}
+
+/* Computed shadow-accent uses the accent-border-glow per profile */
+:root { --shadow-accent: 0 0 16px var(--accent-border-glow); }

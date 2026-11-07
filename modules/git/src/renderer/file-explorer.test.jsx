@@ -19,12 +19,12 @@ describe('FileExplorer', () => {
     expect(row('README.md').getAttribute('aria-selected')).toBe('true')
   })
 
-  it('filters by any part of the path, opening the folders above each match, and Esc clears it', () => {
+  it('filters by the start of words in the path, opening the folders above each match, and Esc clears it', () => {
     show()
     const filter = screen.getByRole('searchbox', { name: 'Filter files' })
     fireEvent.change(filter, { target: { value: 'REF' } })
     expect(rows()).toEqual(['docs', 'api', 'ref.md'])
-    expect(screen.getByText('1 match')).toBeTruthy()
+    expect(screen.getByText('1 of 5 files match')).toBeTruthy()
     fireEvent.change(filter, { target: { value: 'nothing' } })
     expect(screen.getByText('No file path holds “nothing”.')).toBeTruthy()
     fireEvent.keyDown(filter, { key: 'Escape' })
@@ -80,5 +80,77 @@ describe('FileExplorer', () => {
     cleanup()
     show({ files: ['src/app.jsx'] })
     expect(screen.getByText('Pick a file to see it here.')).toBeTruthy()
+  })
+})
+
+describe('FileExplorer word-start filter', () => {
+  const MORE = ['src/components/Button.jsx', 'src/util.js', 'docs/readme.md']
+  const typeFilter = value => fireEvent.change(screen.getByRole('searchbox', { name: 'Filter files' }), { target: { value } })
+
+  it('matches terms that start words anywhere in the path, in any order', () => {
+    show({ files: MORE })
+    typeFilter('comp src')
+    expect(rows()).toEqual(['src', 'components', 'Button.jsx'])
+  })
+
+  it('does not match inside a word', () => {
+    show({ files: MORE })
+    typeFilter('omp')
+    expect(screen.getByText('No file path holds “omp”.')).toBeTruthy()
+  })
+
+  it('marks the matched word starts in the names when asked to', () => {
+    show({ files: MORE, highlightMatches: true })
+    typeFilter('but')
+    const marks = [...document.querySelectorAll('mark')]
+    expect(marks.map(m => m.textContent)).toEqual(['But'])
+    expect(marks[0].closest('[role=treeitem]').textContent).toBe('Button.jsx')
+  })
+
+  it('draws no marks without highlightMatches', () => {
+    show({ files: MORE })
+    typeFilter('but')
+    expect(document.querySelector('mark')).toBeNull()
+  })
+})
+
+describe('FileExplorer pins and picking', () => {
+  it('draws pins above the tree, handing them pick() and the picked path', () => {
+    show({ pins: ({ pick, picked }) => <div><button onClick={() => pick('src/util.js')}>pin</button><span>{`picked: ${picked}`}</span></div> })
+    expect(screen.getByText('picked: null')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'pin' }))
+    expect(screen.getByText('preview of src/util.js')).toBeTruthy()
+    expect(screen.getByText('picked: src/util.js')).toBeTruthy()
+  })
+
+  it('tells the page each file picked, from a row or a pin', () => {
+    const onPick = vi.fn()
+    show({ onPick })
+    fireEvent.click(row('README.md'))
+    expect(onPick).toHaveBeenCalledWith('README.md')
+  })
+})
+
+describe('FileExplorer rail', () => {
+  const rail = picked => <div>{`rail for ${picked}`}</div>
+
+  it('draws the rail beside the preview with what is picked, and a note before a pick', () => {
+    show({ rail, railLabel: 'File details', railOpen: true, onRailToggle: () => {} })
+    expect(screen.getByText('rail for null')).toBeTruthy()
+    fireEvent.click(row('README.md'))
+    expect(screen.getByText('rail for README.md')).toBeTruthy()
+  })
+
+  it('collapses to a strip named after its label and asks to be toggled', () => {
+    const onRailToggle = vi.fn()
+    show({ rail, railLabel: 'File details', railOpen: false, onRailToggle })
+    expect(screen.queryByText('rail for null')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Show File details' }))
+    expect(onRailToggle).toHaveBeenCalledTimes(1)
+  })
+
+  it('has no rail unless given one', () => {
+    show()
+    expect(screen.queryByRole('complementary')).toBeNull()
   })
 })

@@ -80,6 +80,10 @@ export function addHeadingAnchors(container) {
   });
 }
 
+const XLINK = 'http://www.w3.org/1999/xlink';
+// Where a link goes: its href, or an svg link's xlink:href whatever prefix it was written with; null when it has none.
+const linkAddress = el => el.getAttribute('href') ?? el.getAttributeNS(XLINK, 'href');
+
 // A click on a link in the preview. Web links open as the app's other links do (the link window
 // in the desktop app, a new tab on the web), mailto: in the mail app, and #anchors scroll to their
 // heading. Anything else is ignored, so a click can never navigate the app itself away.
@@ -87,10 +91,15 @@ export function followPreviewLink(e, container, {
   open = url => window.open(url, '_blank', 'noopener'),
   openExternal = window.electronAPI?.openExternal,
 } = {}) {
-  const a = e.target.closest?.('a[href]');
+  // Any element that links, not only <a>: an image map's <area> and an svg's <a xlink:href> would otherwise navigate the window.
+  // The nearest one that has an address: a link without one (an svg <a>) inside a real link must not let that link navigate.
+  // An svg link's address is href in the xlink namespace, which no attribute selector written for plain HTML sees, so each candidate is asked directly.
+  let a = e.target.closest?.('a, area');
+  // Only a missing address is skipped: href="" is an address (the page itself), and a click on it must still be stopped.
+  while (a && linkAddress(a) == null) a =a.parentElement?.closest('a, area');
   if (!a || !container.contains(a)) return;
+  const href = linkAddress(a);
   e.preventDefault();
-  const href = a.getAttribute('href');
   if (href.startsWith('#')) {
     let anchor = href.slice(1);
     try { anchor = decodeURIComponent(anchor); } catch (err) { ignore(log, 'the setting could not be applied, so the text is kept as written', err, 'debug') }
@@ -105,10 +114,19 @@ export function followPreviewLink(e, container, {
   else if (url.protocol === 'mailto:') (openExternal ?? open)(url.href);
 }
 
+// What `strict` rendering removes on top of DOMPurify's defaults: anything that can submit a form or follow a link
+// other than an <a> (an image map, an svg link), which would navigate the window to an address the document chose;
+// anything that loads another page inside this one; and anything that can restyle the whole app (style blocks and
+// attributes).
+const STRICT = {
+  FORBID_TAGS: ['form', 'input', 'button', 'textarea', 'select', 'iframe', 'style', 'map', 'area', 'svg', 'math'],
+  FORBID_ATTR: ['action', 'formaction', 'style', 'usemap', 'xlink:href'],
+};
+
 // Renders markdown into a preview element: sanitized HTML, heading anchors, and highlighted code
-// when highlight.js is loaded.
-export function renderPreview(el, markdown, hljs) {
-  el.innerHTML = DOMPurify.sanitize(new Marked({ gfm: true }).parse(markdown || ''));
+// when highlight.js is loaded. `strict` is for Markdown someone else wrote (a repository's README).
+export function renderPreview(el, markdown, hljs, { strict = false } = {}) {
+  el.innerHTML = DOMPurify.sanitize(new Marked({ gfm: true }).parse(markdown || ''), strict ? STRICT : undefined);
   addHeadingAnchors(el);
   if (!hljs) return;
   el.querySelectorAll('pre code[class*="language-"]').forEach(block => {
@@ -234,14 +252,14 @@ export function useCtrlWheelTextSize(ref, size, setSize) {
 // Markdown, rendered. Code is highlighted once highlight.js has loaded; until then it shows plain.
 // The text is at the shared text size, which Ctrl+scroll over it changes (ctrlWheel false leaves
 // that to the page, e.g. to take it over the whole pane around the preview).
-export function MarkdownPreview({ markdown, className = '', style, ctrlWheel = true, ...rest }) {
+export function MarkdownPreview({ markdown, className = '', style, ctrlWheel = true, strict = false, ...rest }) {
   const ref = React.useRef(null);
   const hljsReady = useHighlightJs();
   const [textSize, setTextSize] = useMarkdownTextSize();
   useCtrlWheelTextSize(ctrlWheel ? ref : NO_ELEMENT, textSize, setTextSize);
   React.useEffect(() => {
-    if (ref.current) renderPreview(ref.current, markdown, hljsReady ? window.hljs : null);
-  }, [markdown, hljsReady]);
+    if (ref.current) renderPreview(ref.current, markdown, hljsReady ? window.hljs : null, { strict });
+  }, [markdown, hljsReady, strict]);
   return (
     <>
       <style>{MARKDOWN_CONTENT_CSS}</style>

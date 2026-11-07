@@ -14,6 +14,11 @@ import { BranchHeader } from './branch-header.jsx'
 import { BranchCommits, useBranchCommits } from './branch-commits.jsx'
 import { SourcePicker } from './source-picker.jsx'
 import { PaneResizer, usePaneWidth, FILES_WIDTH } from './pane-resizer.jsx'
+import { CollapsibleRail, railColumns } from '@nexusmd/ui'
+import { ChangesRail, railLabel } from './changes-rail.jsx'
+import { useRail } from './use-rail.js'
+import { useLastCommit } from './use-last-commit.js'
+import { useCommitEdit } from './commit-edit-items.js'
 import { sourceName, checkoutName } from '@nexusmd/core'
 import { discardWorktreeDraft, discardConflictDraft, worktreeDraftPaths, worktreeDraftsByEditor, useWorktreeDraftsVersion } from './use-worktree-file.js'
 
@@ -24,10 +29,13 @@ import { discardWorktreeDraft, discardConflictDraft, worktreeDraftPaths, worktre
  * `onAction(action, ids?)` reviews a file action for the selection, or for `ids`. The ref exposes
  * `confirmDiscard()`, which asks before unsaved edits would be lost, and `openFile(path, line)`.
  */
+// The Changes tab's right-hand panel (commit form, last commit or rebase controls).
+const RAIL_WIDTH = 290
+
 export const WorktreePanel = React.forwardRef(function WorktreePanel({
   adapter, host = null, repo, registered, version, tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite, onCommit, onResolve = null, onHunk,
   busy, status, split, onSplit, panel = 'changes', onPanel = () => {}, onSync = null, onSaved,
-  onOverview = () => {}, onSwitch = () => {},
+  onOverview = () => {}, onSwitch = () => {}, focusLayout = false,
 }, ref) {
   const [stashes, setStashes] = React.useState(false)
   // How many stashes the worktree has, for the More menu; read again with each snapshot.
@@ -63,6 +71,17 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   const [mode, setMode] = React.useState('diff')
   const files = usePaneWidth('filesWidth', FILES_WIDTH)
   const changesRef = React.useRef(null)
+  const rootRef = React.useRef(null)
+  const rail = useRail('changes', { active: panel === 'changes', rootRef })
+  // The last commit is read only when the panel shows it: a clean tree on the Changes tab.
+  const clean = !history && !filesTab && !tree.operation && tree.changes.length === 0
+  const lastCommit = useLastCommit({ adapter, repo, cwd: tree.path, registered, tree, version, enabled: clean && rail.open })
+  const commitEdit = useCommitEdit({ adapter, repo, cwd: tree.path, registered, onAction: (kind, options) => onSync?.(kind, options) })
+  // The c key goes to the commit summary, showing the panel first if it is hidden.
+  const compose = () => {
+    if (!rail.open) { rail.toggle(); return }
+    changesRef.current?.querySelector('input[aria-label="Commit summary"]')?.focus()
+  }
   // A file just marked resolved keeps its resolve screen (for Undo resolution) after the snapshot reload
   // drops its conflict entry, until another file is focused or the operation ends.
   const [justResolved, setJustResolved] = React.useState(null)
@@ -70,7 +89,9 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   const close = () => { setOpened(null); setMode('diff'); setJustResolved(null) }
   // Another worktree starts in Diff with nothing open (ViewGit asked about the edits before switching).
   const [shownTree, setShownTree] = React.useState(tree.path)
-  if (shownTree !== tree.path) { setShownTree(tree.path); close(); setRequest(null) }
+  // A folder picked in a big lane of the changes list (the centre then shows its header, not a diff).
+  const [folder, setFolder] = React.useState(null)
+  if (shownTree !== tree.path) { setShownTree(tree.path); close(); setRequest(null); setFolder(null) }
   const editor = !history && !filesTab && opened?.tree === tree.path ? opened : null
   const editing = mode === 'edit' && !!editor
   const dirty = React.useRef(false)
@@ -152,6 +173,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
       else close()
     }
     setJustResolved(null)
+    setFolder(null)
     onFocus(id)
   }
   const openResolve = c => {
@@ -196,9 +218,10 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   const diff = useDiff({ adapter, repo, worktreePath: tree.path, registered, change: diffChange, version })
   const canEdit = !!editor || (!!change && change.area !== 'conflict')
   return (
-    <div className="nx-gw-detail">
+    <div className="nx-gw-detail" ref={rootRef}>
       <BranchHeader tree={tree} stashCount={stashCount} onSync={onSync ?? (() => {})} onStashes={() => setStashes(true)}
         onOverview={onOverview} onSwitch={onSwitch} onEditor={() => setGoTo(true)} onSource={() => setPicking(true)}
+        panel={panel} onPanel={switchPanel} changeCount={tree.changes.length} onGoTo={() => setGoTo(true)} focusLayout={focusLayout}
         onTerminal={adapter.openTerminal ? () => adapter.openTerminal(repo, tree.path, registered) : null} />
       {goTo && <GoToFile adapter={adapter} repo={repo} worktreePath={tree.path} registered={registered} onOpen={goToFile} onClose={() => setGoTo(false)} />}
       {tree.error && <div role="alert" className="nx-alert bad" style={{ margin: '10px 16px 0' }}>{tree.error}</div>}
@@ -210,12 +233,6 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
         <BranchCommits tree={tree} adapter={adapter} repo={repo} registered={registered} data={branchCommits}
           onOpenCommit={oid => showInHistory({ oid })} onShowAll={() => showInHistory({ sinceBase: tree.source.ref })} onAction={onSync} />
       )}
-      <div className="nx-gw-tabs">
-        <PanelSwitch panel={panel} onPanel={switchPanel} count={tree.changes.length} />
-        <span className="nx-gw-tabs-end">
-          <button className="nx-gw-goto" title="Ctrl+P" onClick={() => setGoTo(true)}>Go to file<span className="kbd">Ctrl P</span></button>
-        </span>
-      </div>
       {elsewhere.length + keptResolves.length > 0 && (
         <div role="note" aria-label="Unsaved edits" className="nx-panel-section" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <span className="nx-badge warn">● Unsaved edits kept</span>
@@ -230,12 +247,14 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
             )))}
         </div>
       )}
-      {onSync && <div className="nx-gw-banner-slot"><OperationBanner tree={tree} onAction={operation} /></div>}
+      {/* In Changes the panel beside the diff carries the operation's controls; the other tabs have no panel. */}
+      {onSync && panel !== 'changes' && <div className="nx-gw-banner-slot"><OperationBanner tree={tree} onAction={operation} /></div>}
       {stashes && <StashList adapter={adapter} repo={repo} tree={tree} registered={registered} onAction={onSync} onClose={() => setStashes(false)} />}
       {filesTab
         ? (
           <div className="nx-gw-files-body">
-            <FilesPane adapter={adapter} host={host} repo={repo} worktreePath={tree.path} registered={registered} version={version} onImported={onSaved} onOpenFile={goToFile} changes={tree.changes} />
+            <FilesPane adapter={adapter} host={host} repo={repo} worktreePath={tree.path} registered={registered} version={version} onImported={onSaved} onOpenFile={goToFile} changes={tree.changes}
+              onWrite={onWrite} onAction={onAction} onOpenCommit={oid => showInHistory({ oid })} />
           </div>
         )
         : history
@@ -247,9 +266,9 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
           </div>
         )
         : (
-            <div className="nx-gw-changes" ref={changesRef} style={{ '--gw-files': `${files.width}px` }}>
+            <div className="nx-gw-changes" ref={changesRef} style={{ '--gw-files': `${files.width}px`, '--gw-rail': railColumns(rail.open, RAIL_WIDTH) }}>
               <ChangesPane tree={tree} selected={selected} onSelectionChange={onSelectionChange} focusId={focusId} onFocus={focus} drafts={drafts}
-                onAction={onAction} onWrite={onWrite} onCommit={onCommit} onResolve={onResolve && resolve} busy={busy} status={status}
+                onAction={onAction} onWrite={onWrite} onResolve={onResolve && resolve} busy={busy} status={status} onFocusFolder={setFolder} onCompose={compose}
                 onPopout={adapter.openWindow ? (kind, c) => adapter.openWindow(popoutSpec(kind, { repo, worktree: tree.path, registered, path: c.path, change: c })) : null} />
               <PaneResizer label="Resize file list" width={files.width} fallback={FILES_WIDTH} boxRef={changesRef} onDrag={files.onDrag} onDone={files.onDone} className="nx-gw-files-resizer" />
               <div className="nx-gw-changes-main" data-mode={canEdit ? 'edit' : 'plain'}>
@@ -267,13 +286,20 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
                       onResolved={() => { setJustResolved({ tree: tree.path, path: resolvePath }); onSaved?.() }} />
                   : editor && !diffChange
                   ? <div role="note" style={{ color: 'var(--text-muted)' }}>No changes yet.</div>
-                  : <DiffPane change={diffChange} diff={diff} busy={busy}
+                  : <DiffPane change={folder ? null : diffChange} folder={folder} diff={diff} busy={busy} emptyText={tree.changes.length ? undefined : 'No diff to show.'}
+                      onFolder={action => (action === 'delete' ? onAction('delete', folder.ids) : onWrite(action, folder.ids))}
                       images={adapter.readImage ? { load: (side, rel) => adapter.readImage(repo, tree.path, registered, rel, side), key: `${tree.path}|${diff.result?.stamp ?? ''}` } : null} onHunk={(index, stamp) => onHunk(diffChange, index, stamp, diff.reload)}
                       onFile={diffChange && (action => (action === 'stage' || action === 'unstage' ? onWrite(action, [diffChange.id]) : onAction(action, [diffChange.id])))}
                       onLine={diffChange && diffChange.area !== 'conflict' ? n => openFile(diffChange.path, n) : null} />)}
               </div>
+              <CollapsibleRail open={rail.open} onToggle={rail.toggle} label={railLabel(tree)}>
+                <ChangesRail tree={tree} busy={busy} onCommit={onCommit} onOperation={operation} lastCommit={lastCommit}
+                  onAmendMessage={() => commitEdit.start({ kind: 'reword', oid: lastCommit.commit.oid }, lastCommit.commits)}
+                  onShowInHistory={showInHistory} />
+              </CollapsibleRail>
             </div>
           )}
+      {commitEdit.dialog}
     </div>
   )
 })
@@ -283,18 +309,6 @@ function ModeSwitch({ editing, onDiff, onEdit }) {
     <div role="group" aria-label="Diff or edit" className="nx-pills">
       <button className="nx-pill" aria-pressed={!editing} onClick={onDiff} style={{ height: 26 }}>Diff</button>
       <button className="nx-pill" aria-pressed={editing} onClick={onEdit} style={{ height: 26 }}>Edit</button>
-    </div>
-  )
-}
-
-export function PanelSwitch({ panel, onPanel, count = 0 }) {
-  return (
-    <div role="tablist" aria-label="Panel" style={{ display: 'contents' }}>
-      {[['changes', 'Changes', count], ['history', 'History', 0], ['files', 'Files', 0]].map(([id, label, n]) => (
-        <button key={id} role="tab" className="nx-gw-tab" aria-selected={panel === id} onClick={() => onPanel(id)}>
-          {label}{n > 0 && <>{' '}<span className="n">{n}</span></>}
-        </button>
-      ))}
     </div>
   )
 }

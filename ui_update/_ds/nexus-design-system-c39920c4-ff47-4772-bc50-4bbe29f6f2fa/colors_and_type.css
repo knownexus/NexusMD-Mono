@@ -1,0 +1,187 @@
+/* ═══════════════════════════════════════════════════════════
+   NEXUS DESIGN SYSTEM — Foundations
+   Dark canvas + gold accent. Fantasy/heritage flavour.
+   Mirrors src/Nexus.Web/wwwroot/css/modern-styles.css :root
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Self-hosted display font ─────────────────────────────── */
+@font-face {
+    font-family: 'Cardinal';
+    src: url('fonts/Cardinal-Regular.woff') format('woff');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Webfonts — loaded dynamically from Google Fonts.
+   Use this @import OR the <link> in your HTML head. */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+    /* ─── Canvas / surfaces ─────────────────────────────────── */
+    --page-bg:           #07090f;   /* page background — near-black with cool tint */
+    --container-bg:      #0d1219;   /* sidebars, table backgrounds */
+    --container-raised:  #121a26;   /* slightly elevated containers */
+    --card-bg:           #0f1721;   /* default card */
+    --card-raised:       #182132;   /* card headers / hover states */
+    --container-hover:   #182132;   /* table-row hover */
+    --modal-bg:          #0f1721;   /* dialog */
+    --nav-bg:            #0a0f17;   /* sidebar slightly darker than page */
+
+    /* ─── Borders ───────────────────────────────────────────── */
+    --border:            #1c2a3e;   /* default border — cool desaturated navy */
+    --border-subtle:     #111c2b;   /* dividers */
+
+    /* ─── Accent (gold) ─────────────────────────────────────── */
+    --accent:            #c9a84c;   /* primary brand — antique gold */
+    --accent-bright:     #e8c76a;   /* hover / highlight */
+    --accent-dim:        #7d6830;   /* borders, disabled */
+    --accent-mid:        #967519;   /* gradient mid-point */
+    --accent-text:       #07090f;   /* text on gold buttons */
+    --accent-muted:      rgba(201,168,76,0.12);   /* tint backgrounds */
+    --accent-glow:       rgba(201,168,76,0.18);   /* spinner glow */
+    --accent-border-glow:rgba(201,168,76,0.35);   /* card hover border */
+    --accent-initial:    var(--accent);           /* drop-cap colour */
+
+    /* ─── Foreground / text ─────────────────────────────────── */
+    --text:              #d8cdb8;   /* default body — warm parchment */
+    --text-bright:       #f0e8d8;   /* emphasis */
+    --text-muted:        #5e7189;   /* secondary, captions, labels */
+    --text-dim:          #344356;   /* placeholders, breadcrumb sep */
+
+    /* ─── Semantic ──────────────────────────────────────────── */
+    --danger:            #c0392b;
+    --danger-bg:         rgba(192,57,43,0.12);
+    --success:           #27ae60;
+    --success-bg:        rgba(39,174,96,0.10);
+    --info:              #2980b9;
+    --info-bg:           rgba(41,128,185,0.10);
+    --warning:           #e67e22;
+    --warning-bg:        rgba(230,126,34,0.10);
+
+    /* ─── Typography ─────────────────────────────────────────── */
+    --font-brand:        var(--font-heading);
+    --font-heading:      'Cinzel', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+    --font-body:         'Crimson Pro', Georgia, 'Times New Roman', serif;
+    --font-ui:           'Inter', system-ui, -apple-system, sans-serif;
+    --font-display:      'Cardinal', 'Cinzel', Georgia, serif;   /* reserved for masthead-style uses */
+
+    /* ─── Radii ─────────────────────────────────────────────── */
+    --radius-sm:         4px;
+    --radius:            8px;
+    --radius-lg:         12px;
+    --radius-xl:         16px;
+    --radius-pill:       999px;
+
+    /* ─── Spacing scale (informal — derived from rem) ──────── */
+    --space-1:           0.25rem;
+    --space-2:           0.5rem;
+    --space-3:           0.75rem;
+    --space-4:           1rem;
+    --space-5:           1.5rem;
+    --space-6:           2rem;
+    --space-7:           3rem;
+
+    /* ─── Shadows ───────────────────────────────────────────── */
+    --shadow-sm:         0 1px 3px rgba(0,0,0,0.5);
+    --shadow-md:         0 4px 12px rgba(0,0,0,0.6);
+    --shadow-lg:         0 12px 32px rgba(0,0,0,0.7);
+    --shadow-accent:     0 0 16px var(--accent-border-glow);
+    --shadow-card-hover: 0 4px 24px rgba(0,0,0,0.5), 0 0 20px rgba(201,168,76,0.08);
+
+    /* ─── Motion ────────────────────────────────────────────── */
+    --ease:              cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+    --t-fast:            0.15s; /* @kind other */
+    --t-base:            0.18s; /* @kind other */
+    --t-slow:            0.25s; /* @kind other */
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Semantic typography — element-level styles
+   ═══════════════════════════════════════════════════════════ */
+
+html, body {
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.55;
+    color: var(--text);
+    background-color: var(--page-bg);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+/* Headings — Cinzel, all set in a tight uppercase-friendly tracking */
+h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    color: var(--text-bright);
+    letter-spacing: 0.03em;
+    line-height: 1.25;
+    margin: 0 0 0.75rem;
+}
+
+h1 { font-size: 1.875rem; }   /* 30px — page titles */
+h2 { font-size: 1.5rem;   }   /* 24px */
+h3 { font-size: 1.25rem;  }   /* 20px — card titles */
+h4 { font-size: 1.1rem;   }   /* 17.6px */
+h5 { font-size: 1rem;     }   /* 16px */
+h6 { font-size: 0.875rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+
+/* Display variant — used in heroes (gradient gold) */
+.display, .h-display {
+    font-family: var(--font-brand);
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text);
+}
+.display::first-letter, .h-display::first-letter { color: var(--accent-initial); }
+
+/* Eyebrow / kicker labels — Inter, tracked uppercase */
+.eyebrow, .kicker, .label-ui {
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+/* Body */
+p, li, td, th, label, span { font-family: var(--font-body); }
+p { margin: 0 0 1rem; }
+
+/* Lead — sub-headings under heroes; tracked uppercase Crimson */
+.lead {
+    font-family: var(--font-body);
+    font-size: 1.2rem;
+    color: var(--text-muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+}
+
+/* Small / caption */
+small, .small, .caption {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+/* Links */
+a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color var(--t-base) var(--ease);
+}
+a:hover { color: var(--accent-bright); }
+
+/* Code — UI font, monospace fallback */
+code, kbd, samp, pre {
+    font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    color: var(--accent-bright);
+    background: var(--container-raised);
+    padding: 0.1em 0.35em;
+    border-radius: var(--radius-sm);
+}
+pre { padding: 1rem; overflow-x: auto; line-height: 1.5; }
+pre code { background: none; padding: 0; }

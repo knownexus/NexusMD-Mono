@@ -21,6 +21,19 @@ describe('git config', () => {
     expect(getGitConfig().view.listWidth).toBeUndefined()
   })
 
+  it('keeps which rails are open and the lane mode, and defaults the rest', () => {
+    setGitConfig({ view: { ...getGitConfig().view, railOpen: { changes: false }, laneMode: 'flat' } })
+    const v = getGitConfig().view
+    expect(v.railOpen).toEqual({ changes: false, files: true, githubFiles: true })
+    expect(v.laneMode).toBe('flat')
+  })
+
+  it('normalises a garbage rail state and lane mode to the defaults', () => {
+    setGitConfig({ view: { ...getGitConfig().view, railOpen: 5, laneMode: 'x' } })
+    expect(getGitConfig().view.railOpen).toEqual({ changes: true, files: true, githubFiles: true })
+    expect(getGitConfig().view.laneMode).toBe('folders')
+  })
+
   it('starts empty with the default search root', () => {
     expect(getGitConfig()).toEqual(DEFAULT_GIT_CONFIG)
     expect(effectiveRoots(getGitConfig())).toEqual(['C:/repos'])

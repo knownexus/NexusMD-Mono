@@ -133,7 +133,7 @@ export const REFERENCE_DATA = [
 // (originally lines 504-719). l = language name, pat = pattern source,
 // fStr = flags string. Already pure (template strings only) in the
 // original — this port only adds `export`.
-export function genCode(l,pat,fStr){
+function baseCode(l,pat,fStr){
   const hi=fStr.includes('i'),hm=fStr.includes('m'),hs=fStr.includes('s'),hg=fStr.includes('g');
   const pg=hg?fStr:fStr+'g';
   const pe=pat.replace(/"/g,'\\"').replace(/\\/g,'\\\\');
@@ -348,4 +348,32 @@ puts result_all`
     );
   }
   return '';
+}
+
+// Escapes for a quoted string in the generated code: backslashes, the quote and newlines.
+const quoted = (q, text) => q + text.replace(/\\/g, '\\\\').split(q).join('\\' + q).replace(/\n/g, '\\n') + q
+// A replacement written with $1 / $& as Python's re (\g<1>) and Ruby (\1) read their group references.
+const groupRefs = (text, ref) => text.replace(/\$(\$|&|\d{1,2})/g, (_, w) => (w === '$' ? '$' : ref(w === '&' ? 0 : Number(w))))
+
+/**
+ * The code for `l` (JS, Python, PHP, Go, Java, C#, Ruby) that finds `pat` with the flags `fStr`. With
+ * `replacement` (a Replace-mode template using $1, $&, …) the replace line uses it in place of the stock one.
+ */
+export function genCode(l, pat, fStr, replacement) {
+  const code = baseCode(l, pat, fStr)
+  if (replacement === undefined || !code) return code
+  const swap = (from, to) => code.replace(from, () => to)
+  switch (l) {
+    case 'JS': return swap("str.replace(regex, '$1')", `str.replace(regex, ${quoted("'", replacement)})`)
+    case 'Python': return swap('regex.sub("replacement", text)', `regex.sub(r"${groupRefs(replacement, n => '\\g<' + n + '>').split('"').join('\\"')}", text)`)
+    case 'PHP': return swap("preg_replace($pattern, '$1', $text)", `preg_replace($pattern, ${quoted("'", replacement)}, $text)`)
+    case 'Go': return swap('re.ReplaceAllString(s, "$1")', `re.ReplaceAllString(s, ${quoted('"', replacement)})`)
+    case 'Java': return swap('m.replaceAll("$1")', `m.replaceAll(${quoted('"', replacement)})`)
+    case 'C#': return swap('re.Replace(text, "$1")', `re.Replace(text, ${quoted('"', replacement)})`)
+    case 'Ruby': {
+      const ruby = `'${groupRefs(replacement, n => '\\\\' + n).split("'").join("\\'")}'`
+      return code.split("'\\\\1'").join(ruby)
+    }
+    default: return code
+  }
 }

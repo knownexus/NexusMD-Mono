@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/colors_and_type.css">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/components.css">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/brand-profiles/profiles.css">
+  <link rel="stylesheet" href="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/styles.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap">
+  <script src="_ds/nexus-design-system-c39920c4-ff47-4772-bc50-4bbe29f6f2fa/_ds_bundle.js"></script>
+  <style>
+    body { margin: 0; background: var(--nav-bg); }
+    span, p, label { font-family: inherit; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: var(--accent-bright); }
+  </style>
+</helmet>
+
+<section style="display:flex;flex-direction:column;gap:56px;padding:56px;font-family:var(--font-ui);color:var(--text);">
+  <div style="display:flex;flex-direction:column;gap:6px;max-width:980px;">
+    <span style="font:600 11px var(--font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);">Turn 1 · Documents › Regex Tester</span>
+    <h1 style="margin:0;font:600 28px var(--font-heading);color:var(--text-bright);">Regex Tester in the Git Workspace layout</h1>
+    <p style="margin:0;font-size:14px;line-height:1.55;color:var(--text-muted);text-wrap:pretty;">Same moves as Git: one top bar holds the window title, the Documents tool tabs and the save state. Saved patterns become a list on the left instead of a modal. The pattern is written once, with flags after the closing slash. The test text fills the page, and matches, code, tests and reference share one collapsible rail. <a href="#4z">4z</a> is today's screen.</p>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:48px;">
+
+    <!-- 4a -->
+    <div id="4a" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">4a</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Match</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">Match 2 selected. Groups are coloured the same in the pattern, the text and the rail.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--container-bg);border-bottom:1px solid var(--border);white-space:nowrap;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg>
+          <span style="font:600 15px var(--font-heading);letter-spacing:.02em;color:var(--text-bright);">Documents</span>
+          <div style="display:flex;gap:2px;padding:3px;background:var(--page-bg);border:1px solid var(--border-subtle);border-radius:8px;">
+            <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;color:var(--text-muted);font:500 12px var(--font-ui);">Markdown</span>
+            <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;color:var(--text-muted);font:500 12px var(--font-ui);">JSON Editor</span>
+            <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;background:var(--container-raised);color:var(--text-bright);font:600 12px var(--font-ui);">Regex Tester</span>
+          </div>
+          <span style="flex:1;"></span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);"><span style="width:7px;height:7px;border-radius:50%;background:var(--success);"></span>Saved just now</span>
+        </div>
+        <div style="display:grid;grid-template-columns:240px minmax(0,1fr) {{ r4a.w }};transition:grid-template-columns .22s cubic-bezier(0.4,0,0.2,1);min-height:0;">
+          <div style="display:flex;flex-direction:column;gap:8px;padding:12px 10px;background:var(--page-bg);border-right:1px solid var(--border);min-height:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="white-space:nowrap;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Saved patterns</span>
+              <span style="font-size:11.5px;color:var(--text-muted);">4</span>
+              <span style="flex:1;"></span>
+              <span title="New pattern" style="display:grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--container-raised);color:var(--text);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;height:28px;box-sizing:border-box;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--container-bg);color:var(--text-muted);font-size:12.5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Filter</div>
+            <sc-for list="{{ docs }}" as="d" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:7px;border:1px solid {{ d.bd }};background:{{ d.bg }};">
+                <span style="display:flex;align-items:baseline;gap:6px;"><span style="flex:1;min-width:0;font:500 12.5px var(--font-ui);color:var(--text-bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ d.name }}</span><span style="flex:none;font-size:11px;color:var(--text-muted);">{{ d.when }}</span></span>
+                <span style="font:11px 'Geist Mono',ui-monospace,monospace;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ d.pat }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--container-bg);border-bottom:1px solid var(--border);white-space:nowrap;">
+              <div style="flex:1;min-width:0;display:flex;align-items:center;gap:2px;height:40px;box-sizing:border-box;padding:0 6px 0 12px;border:1px solid var(--accent);border-radius:8px;background:var(--page-bg);box-shadow:0 0 0 3px var(--accent-muted);font:500 15px 'Geist Mono',ui-monospace,monospace;overflow:hidden;">
+                <span style="color:var(--text-muted);">/</span>
+                <span style="flex:1;min-width:0;overflow:hidden;"><sc-for list="{{ patSegs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></span>
+                <span style="color:var(--text-muted);">/</span>
+                <span style="display:flex;gap:2px;margin-left:4px;"><sc-for list="{{ flagsOn }}" as="f" hint-placeholder-count="5"><span title="{{ f.tip }}" style="display:grid;place-items:center;width:22px;height:24px;border-radius:4px;background:{{ f.bg }};color:{{ f.c }};font:600 12.5px 'Geist Mono',ui-monospace,monospace;">{{ f.k }}</span></sc-for></span>
+              </div>
+              <span style="display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:5px;background:var(--success-bg);color:var(--success);font:600 11.5px 'Geist Mono',ui-monospace,monospace;">3 matches</span>
+              <div style="display:flex;align-items:center;height:28px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);">
+                <span style="display:grid;place-items:center;width:26px;height:26px;color:var(--text-muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"></path></svg></span>
+                <span style="min-width:36px;text-align:center;font:500 11.5px 'Geist Mono',ui-monospace,monospace;color:var(--text);">2 / 3</span>
+                <span style="display:grid;place-items:center;width:26px;height:26px;color:var(--text-muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"></path></svg></span>
+              </div>
+              <div style="display:flex;gap:2px;padding:2px;border-radius:7px;background:var(--page-bg);border:1px solid var(--border-subtle);">
+                <span style="height:24px;display:flex;align-items:center;padding:0 10px;border-radius:5px;background:var(--container-raised);font:600 12px var(--font-ui);color:var(--text-bright);">Match</span>
+                <span style="height:24px;display:flex;align-items:center;padding:0 10px;font:500 12px var(--font-ui);color:var(--text-muted);">Replace</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-end;gap:2px;height:36px;padding:0 12px;border-bottom:1px solid var(--border);background:var(--container-bg);">
+              <sc-for list="{{ cases }}" as="t" hint-placeholder-count="4">
+                <span style="display:inline-flex;align-items:center;height:34px;padding:0 10px;border-bottom:2px solid {{ t.bd }};color:{{ t.c }};font:600 12.5px var(--font-ui);">{{ t.name }}</span>
+              </sc-for>
+              <span title="New test case" style="display:grid;place-items:center;width:26px;height:26px;margin:0 0 4px 4px;border-radius:5px;color:var(--text-muted);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span>
+              <span style="flex:1;"></span>
+              <span style="display:flex;align-items:center;gap:10px;margin-bottom:9px;font-size:11px;color:var(--text-muted);">
+                <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:3px;border-radius:2px;background:#818cf8;"></span>Group 1</span>
+                <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:3px;border-radius:2px;background:#60a5fa;"></span>Group 2</span>
+              </span>
+            </div>
+            <div style="flex:1;min-height:0;overflow:hidden;padding:10px 0;background:var(--page-bg);">
+              <sc-for list="{{ textLines }}" as="l" hint-placeholder-count="5">
+                <div style="display:grid;grid-template-columns:48px minmax(0,1fr);font:13.5px/28px 'Geist Mono',ui-monospace,monospace;">
+                  <span style="text-align:right;padding-right:16px;color:var(--text-muted);opacity:.5;">{{ l.n }}</span>
+                  <span style="white-space:pre;"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};background:{{ s.bg }};box-shadow:{{ s.bb }};border-radius:{{ s.r }};padding:2px 0;">{{ s.t }}</span></sc-for></span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;height:28px;padding:0 16px;border-top:1px solid var(--border);background:var(--container-bg);font:11px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);white-space:nowrap;">
+              <span>{{ chars }}</span><span>Ln 2, Col 6</span>
+              <span style="flex:1;"></span>
+              <span>Click a match to select it · Ctrl ↑/↓ to step</span>
+            </div>
+          </div>
+          <sc-if value="{{ r4a.open }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;border-left:1px solid var(--border);background:var(--container-bg);">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:40px;padding:0 6px 0 8px;border-bottom:1px solid var(--border);">
+                <sc-for list="{{ tabsMatches }}" as="t" hint-placeholder-count="4">
+                  <span style="display:inline-flex;align-items:center;gap:5px;height:38px;padding:0 7px;border-bottom:2px solid {{ t.bd }};color:{{ t.c }};font:600 12px var(--font-ui);white-space:nowrap;">{{ t.label }}<span style="font-weight:500;font-size:11px;color:var(--text-muted);">{{ t.n }}</span></span>
+                </sc-for>
+                <span style="flex:1;"></span>
+                <span title="Hide panel" onClick="{{ r4a.toggle }}" style="flex:none;display:grid;place-items:center;width:26px;height:26px;margin-bottom:7px;border-radius:5px;color:var(--text-muted);cursor:pointer;" style-hover="background:var(--container-hover);color:var(--text-bright);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m8 9 3 3-3 3"></path></svg></span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px;padding:8px;overflow:hidden;">
+                <sc-for list="{{ matchRows }}" as="m" hint-placeholder-count="3">
+                  <div style="display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:7px;border:1px solid {{ m.bd }};background:{{ m.bg }};">
+                    <span style="display:flex;align-items:center;gap:8px;">
+                      <span style="flex:none;display:grid;place-items:center;min-width:18px;height:18px;border-radius:4px;background:var(--warning-bg);color:var(--warning);font:600 10.5px 'Geist Mono',ui-monospace,monospace;">{{ m.i }}</span>
+                      <span style="flex:1;min-width:0;font:500 12.5px 'Geist Mono',ui-monospace,monospace;color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ m.value }}</span>
+                      <span style="flex:none;font:10.5px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);">{{ m.range }}</span>
+                    </span>
+                    <sc-for list="{{ m.groups }}" as="g" hint-placeholder-count="2">
+                      <span style="display:grid;grid-template-columns:62px minmax(0,1fr);align-items:center;gap:8px;padding-left:26px;">
+                        <span style="display:inline-flex;align-items:center;gap:5px;font:500 10.5px var(--font-ui);color:var(--text-muted);"><span style="width:8px;height:8px;border-radius:2px;background:{{ g.c }};"></span>{{ g.label }}</span>
+                        <span style="font:12px 'Geist Mono',ui-monospace,monospace;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ g.t }}</span>
+                      </span>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ r4a.closed }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ r4a.toggle }}" title="Show panel" style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:10px 0;border-left:1px solid var(--border);background:var(--container-bg);cursor:pointer;" style-hover="background:var(--container-raised);">
+              <span style="display:grid;place-items:center;width:24px;height:24px;color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m10 15-3-3 3-3"></path></svg></span>
+              <span style="writing-mode:vertical-rl;transform:rotate(180deg);font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap;">Matches · 3</span>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4b -->
+    <div id="4b" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">4b</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Replace + Code</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">Replace adds one row under the pattern and splits the text into input and result. Code uses a language picker instead of seven buttons.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--container-bg);border-bottom:1px solid var(--border);white-space:nowrap;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg>
+          <span style="font:600 15px var(--font-heading);letter-spacing:.02em;color:var(--text-bright);">Documents</span>
+          <div style="display:flex;gap:2px;padding:3px;background:var(--page-bg);border:1px solid var(--border-subtle);border-radius:8px;">
+            <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;color:var(--text-muted);font:500 12px var(--font-ui);">Markdown</span>
+            <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;color:var(--text-muted);font:500 12px var(--font-ui);">JSON Editor</span>
+            <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;background:var(--container-raised);color:var(--text-bright);font:600 12px var(--font-ui);">Regex Tester</span>
+          </div>
+          <span style="flex:1;"></span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);"><span style="width:7px;height:7px;border-radius:50%;background:var(--success);"></span>Saved just now</span>
+        </div>
+        <div style="display:grid;grid-template-columns:240px minmax(0,1fr) {{ r4b.w }};transition:grid-template-columns .22s cubic-bezier(0.4,0,0.2,1);min-height:0;">
+          <div style="display:flex;flex-direction:column;gap:8px;padding:12px 10px;background:var(--page-bg);border-right:1px solid var(--border);min-height:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="white-space:nowrap;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Saved patterns</span>
+              <span style="font-size:11.5px;color:var(--text-muted);">4</span>
+              <span style="flex:1;"></span>
+              <span title="New pattern" style="display:grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--container-raised);color:var(--text);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;height:28px;box-sizing:border-box;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--container-bg);color:var(--text-muted);font-size:12.5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Filter</div>
+            <sc-for list="{{ docs }}" as="d" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:7px;border:1px solid {{ d.bd }};background:{{ d.bg }};">
+                <span style="display:flex;align-items:baseline;gap:6px;"><span style="flex:1;min-width:0;font:500 12.5px var(--font-ui);color:var(--text-bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ d.name }}</span><span style="flex:none;font-size:11px;color:var(--text-muted);">{{ d.when }}</span></span>
+                <span style="font:11px 'Geist Mono',ui-monospace,monospace;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ d.pat }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <div style="display:flex;flex-direction:column;gap:8px;padding:12px 16px;background:var(--container-bg);border-bottom:1px solid var(--border);white-space:nowrap;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="flex:1;min-width:0;display:flex;align-items:center;gap:2px;height:40px;box-sizing:border-box;padding:0 6px 0 12px;border:1px solid var(--border);border-radius:8px;background:var(--page-bg);font:500 15px 'Geist Mono',ui-monospace,monospace;overflow:hidden;">
+                  <span style="color:var(--text-muted);">/</span>
+                  <span style="flex:1;min-width:0;overflow:hidden;"><sc-for list="{{ patSegs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></span>
+                  <span style="color:var(--text-muted);">/</span>
+                  <span style="display:flex;gap:2px;margin-left:4px;"><sc-for list="{{ flagsOn }}" as="f" hint-placeholder-count="5"><span title="{{ f.tip }}" style="display:grid;place-items:center;width:22px;height:24px;border-radius:4px;background:{{ f.bg }};color:{{ f.c }};font:600 12.5px 'Geist Mono',ui-monospace,monospace;">{{ f.k }}</span></sc-for></span>
+                </div>
+                <span style="display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:5px;background:var(--success-bg);color:var(--success);font:600 11.5px 'Geist Mono',ui-monospace,monospace;">3 replaced</span>
+                <div style="display:flex;gap:2px;padding:2px;border-radius:7px;background:var(--page-bg);border:1px solid var(--border-subtle);">
+                  <span style="height:24px;display:flex;align-items:center;padding:0 10px;font:500 12px var(--font-ui);color:var(--text-muted);">Match</span>
+                  <span style="height:24px;display:flex;align-items:center;padding:0 10px;border-radius:5px;background:var(--container-raised);font:600 12px var(--font-ui);color:var(--text-bright);">Replace</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;height:36px;box-sizing:border-box;padding:0 12px;border:1px solid var(--accent);border-radius:8px;background:var(--page-bg);box-shadow:0 0 0 3px var(--accent-muted);">
+                <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">With</span>
+                <span style="flex:1;font:500 14px 'Geist Mono',ui-monospace,monospace;color:var(--text-bright);"><span style="color:#818cf8;">$1</span> at <span style="color:#60a5fa;">$2</span></span>
+                <span style="font-size:11px;color:var(--text-muted);">$&amp; whole match · $1 $2 groups · $&lt;name&gt;</span>
+              </div>
+            </div>
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);">
+              <div style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);">
+                <div style="display:flex;align-items:flex-end;gap:2px;height:36px;padding:0 12px;border-bottom:1px solid var(--border);background:var(--container-bg);">
+                  <sc-for list="{{ cases }}" as="t" hint-placeholder-count="4">
+                    <span style="display:inline-flex;align-items:center;height:34px;padding:0 10px;border-bottom:2px solid {{ t.bd }};color:{{ t.c }};font:600 12.5px var(--font-ui);">{{ t.name }}</span>
+                  </sc-for>
+                  <span title="New test case" style="display:grid;place-items:center;width:26px;height:26px;margin:0 0 4px 4px;color:var(--text-muted);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:10px 0;background:var(--page-bg);">
+                  <sc-for list="{{ textLinesNoSel }}" as="l" hint-placeholder-count="5">
+                    <div style="display:grid;grid-template-columns:40px minmax(0,1fr);font:13px/28px 'Geist Mono',ui-monospace,monospace;">
+                      <span style="text-align:right;padding-right:12px;color:var(--text-muted);opacity:.5;">{{ l.n }}</span>
+                      <span style="white-space:pre;overflow:hidden;"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};background:{{ s.bg }};box-shadow:{{ s.bb }};border-radius:{{ s.r }};padding:2px 0;">{{ s.t }}</span></sc-for></span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;min-height:0;">
+                <div style="display:flex;align-items:center;gap:8px;height:36px;box-sizing:border-box;padding:0 8px 0 14px;border-bottom:1px solid var(--border);background:var(--container-bg);">
+                  <span style="font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--success);">Result</span>
+                  <span style="flex:1;"></span>
+                  <span style="display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:5px;font:500 12px var(--font-ui);color:var(--text-muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>Copy</span>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:10px 0;background:var(--page-bg);">
+                  <sc-for list="{{ resultLines }}" as="l" hint-placeholder-count="5">
+                    <div style="display:grid;grid-template-columns:40px minmax(0,1fr);font:13px/28px 'Geist Mono',ui-monospace,monospace;">
+                      <span style="text-align:right;padding-right:12px;color:var(--text-muted);opacity:.5;">{{ l.n }}</span>
+                      <span style="white-space:pre;overflow:hidden;"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};background:{{ s.bg }};border-radius:3px;padding:2px 0;">{{ s.t }}</span></sc-for></span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;height:28px;padding:0 16px;border-top:1px solid var(--border);background:var(--container-bg);font:11px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);white-space:nowrap;">
+              <span>{{ chars }}</span><span>→ {{ resultChars }}</span>
+            </div>
+          </div>
+          <sc-if value="{{ r4b.open }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;border-left:1px solid var(--border);background:var(--container-bg);">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:40px;padding:0 6px 0 8px;border-bottom:1px solid var(--border);">
+                <sc-for list="{{ tabsCode }}" as="t" hint-placeholder-count="4">
+                  <span style="display:inline-flex;align-items:center;gap:5px;height:38px;padding:0 7px;border-bottom:2px solid {{ t.bd }};color:{{ t.c }};font:600 12px var(--font-ui);white-space:nowrap;">{{ t.label }}<span style="font-weight:500;font-size:11px;color:var(--text-muted);">{{ t.n }}</span></span>
+                </sc-for>
+                <span style="flex:1;"></span>
+                <span title="Hide panel" onClick="{{ r4b.toggle }}" style="flex:none;display:grid;place-items:center;width:26px;height:26px;margin-bottom:7px;border-radius:5px;color:var(--text-muted);cursor:pointer;" style-hover="background:var(--container-hover);color:var(--text-bright);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m8 9 3 3-3 3"></path></svg></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border-subtle);">
+                <span style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 8px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12.5px var(--font-ui);">Python<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--text-muted);"><path d="m6 9 6 6 6-6"></path></svg></span>
+                <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--text-muted);">with your flags and replacement</span>
+                <span style="flex:1;"></span>
+                <span style="display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:500 12px var(--font-ui);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>Copy</span>
+              </div>
+              <div style="flex:1;min-height:0;overflow:hidden;padding:10px 0;background:var(--page-bg);">
+                <sc-for list="{{ pyCode }}" as="l" hint-placeholder-count="20">
+                  <div style="padding:0 14px;font:12px/19px 'Geist Mono',ui-monospace,monospace;white-space:pre;overflow:hidden;"><sc-for list="{{ l.segs }}" as="s"><span style="color:{{ s.c }};">{{ s.t }}</span></sc-for></div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ r4b.closed }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ r4b.toggle }}" title="Show panel" style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:10px 0;border-left:1px solid var(--border);background:var(--container-bg);cursor:pointer;" style-hover="background:var(--container-raised);">
+              <span style="display:grid;place-items:center;width:24px;height:24px;color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m10 15-3-3 3-3"></path></svg></span>
+              <span style="writing-mode:vertical-rl;transform:rotate(180deg);font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap;">Code · Python</span>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4c -->
+    <div id="4c" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+        <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--accent);color:var(--accent-text);font:700 13px var(--font-ui);">4c</span>
+        <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Invalid pattern + Tests</span>
+        <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);text-wrap:pretty;">The error sits under the pattern and points at the column. Tests stay listed as pending until the pattern compiles.</span>
+      </div>
+      <div style="width:1440px;height:860px;display:grid;grid-template-rows:48px minmax(0,1fr);background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--container-bg);border-bottom:1px solid var(--border);white-space:nowrap;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg>
+          <span style="font:600 15px var(--font-heading);letter-spacing:.02em;color:var(--text-bright);">Documents</span>
+          <div style="display:flex;gap:2px;padding:3px;background:var(--page-bg);border:1px solid var(--border-subtle);border-radius:8px;">
+            <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;color:var(--text-muted);font:500 12px var(--font-ui);">Markdown</span>
+            <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;color:var(--text-muted);font:500 12px var(--font-ui);">JSON Editor</span>
+            <span style="height:24px;display:flex;align-items:center;padding:0 12px;border-radius:6px;background:var(--container-raised);color:var(--text-bright);font:600 12px var(--font-ui);">Regex Tester</span>
+          </div>
+          <span style="flex:1;"></span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);"><span style="width:7px;height:7px;border-radius:50%;background:var(--warning);"></span>Saving...</span>
+        </div>
+        <div style="display:grid;grid-template-columns:240px minmax(0,1fr) {{ r4c.w }};transition:grid-template-columns .22s cubic-bezier(0.4,0,0.2,1);min-height:0;">
+          <div style="display:flex;flex-direction:column;gap:8px;padding:12px 10px;background:var(--page-bg);border-right:1px solid var(--border);min-height:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="white-space:nowrap;font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Saved patterns</span>
+              <span style="font-size:11.5px;color:var(--text-muted);">4</span>
+              <span style="flex:1;"></span>
+              <span title="New pattern" style="display:grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--container-raised);color:var(--text);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;height:28px;box-sizing:border-box;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--container-bg);color:var(--text-muted);font-size:12.5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Filter</div>
+            <sc-for list="{{ docs }}" as="d" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:7px;border:1px solid {{ d.bd }};background:{{ d.bg }};">
+                <span style="display:flex;align-items:baseline;gap:6px;"><span style="flex:1;min-width:0;font:500 12.5px var(--font-ui);color:var(--text-bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ d.name }}</span><span style="flex:none;font-size:11px;color:var(--text-muted);">{{ d.when }}</span></span>
+                <span style="font:11px 'Geist Mono',ui-monospace,monospace;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ d.pat }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <div style="display:flex;flex-direction:column;gap:6px;padding:12px 16px;background:var(--container-bg);border-bottom:1px solid var(--border);white-space:nowrap;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="flex:1;min-width:0;display:flex;align-items:center;gap:2px;height:40px;box-sizing:border-box;padding:0 6px 0 12px;border:1px solid var(--danger);border-radius:8px;background:var(--page-bg);font:500 15px 'Geist Mono',ui-monospace,monospace;overflow:hidden;">
+                  <span style="color:var(--text-muted);">/</span>
+                  <span style="flex:1;min-width:0;overflow:hidden;"><sc-for list="{{ badSegs }}" as="s"><span style="color:{{ s.c }};background:{{ s.bg }};border-radius:3px;">{{ s.t }}</span></sc-for></span>
+                  <span style="color:var(--text-muted);">/</span>
+                  <span style="display:flex;gap:2px;margin-left:4px;"><sc-for list="{{ flagsOn }}" as="f" hint-placeholder-count="5"><span style="display:grid;place-items:center;width:22px;height:24px;border-radius:4px;background:{{ f.bg }};color:{{ f.c }};font:600 12.5px 'Geist Mono',ui-monospace,monospace;">{{ f.k }}</span></sc-for></span>
+                </div>
+                <span style="display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:5px;background:var(--danger-bg);color:var(--danger);font:600 11.5px 'Geist Mono',ui-monospace,monospace;">invalid pattern</span>
+                <div style="display:flex;gap:2px;padding:2px;border-radius:7px;background:var(--page-bg);border:1px solid var(--border-subtle);">
+                  <span style="height:24px;display:flex;align-items:center;padding:0 10px;border-radius:5px;background:var(--container-raised);font:600 12px var(--font-ui);color:var(--text-bright);">Match</span>
+                  <span style="height:24px;display:flex;align-items:center;padding:0 10px;font:500 12px var(--font-ui);color:var(--text-muted);">Replace</span>
+                </div>
+              </div>
+              <span style="display:flex;align-items:center;gap:8px;padding-left:2px;font:12px 'Geist Mono',ui-monospace,monospace;color:var(--danger);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>Unterminated group · column 7 · the ( opened here has no matching )</span>
+            </div>
+            <div style="display:flex;align-items:flex-end;gap:2px;height:36px;padding:0 12px;border-bottom:1px solid var(--border);background:var(--container-bg);">
+              <sc-for list="{{ cases }}" as="t" hint-placeholder-count="4">
+                <span style="display:inline-flex;align-items:center;height:34px;padding:0 10px;border-bottom:2px solid {{ t.bd }};color:{{ t.c }};font:600 12.5px var(--font-ui);">{{ t.name }}</span>
+              </sc-for>
+            </div>
+            <div style="flex:1;min-height:0;overflow:hidden;padding:10px 0;background:var(--page-bg);">
+              <sc-for list="{{ plainLines }}" as="l" hint-placeholder-count="5">
+                <div style="display:grid;grid-template-columns:48px minmax(0,1fr);font:13.5px/28px 'Geist Mono',ui-monospace,monospace;">
+                  <span style="text-align:right;padding-right:16px;color:var(--text-muted);opacity:.5;">{{ l.n }}</span>
+                  <span style="white-space:pre;color:var(--text);">{{ l.t }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;height:28px;padding:0 16px;border-top:1px solid var(--border);background:var(--container-bg);font:11px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);white-space:nowrap;">
+              <span>{{ chars }}</span><span>No highlights until the pattern is valid</span>
+            </div>
+          </div>
+          <sc-if value="{{ r4c.open }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;border-left:1px solid var(--border);background:var(--container-bg);">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:40px;padding:0 6px 0 8px;border-bottom:1px solid var(--border);">
+                <sc-for list="{{ tabsTests }}" as="t" hint-placeholder-count="4">
+                  <span style="display:inline-flex;align-items:center;gap:5px;height:38px;padding:0 7px;border-bottom:2px solid {{ t.bd }};color:{{ t.c }};font:600 12px var(--font-ui);white-space:nowrap;">{{ t.label }}<span style="font-weight:500;font-size:11px;color:var(--text-muted);">{{ t.n }}</span></span>
+                </sc-for>
+                <span style="flex:1;"></span>
+                <span title="Hide panel" onClick="{{ r4c.toggle }}" style="flex:none;display:grid;place-items:center;width:26px;height:26px;margin-bottom:7px;border-radius:5px;color:var(--text-muted);cursor:pointer;" style-hover="background:var(--container-hover);color:var(--text-bright);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m8 9 3 3-3 3"></path></svg></span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;padding:12px 12px 8px;">
+                <span style="font:600 12.5px var(--font-ui);color:var(--text-bright);">3 tests pending</span>
+                <span style="font-size:12px;color:var(--text-muted);">They run again as soon as the pattern compiles.</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px;padding:0 8px;">
+                <sc-for list="{{ tests }}" as="t" hint-placeholder-count="3">
+                  <div style="display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:8px;align-items:center;height:32px;padding:0 8px;border-radius:6px;">
+                    <span style="display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--container-raised);color:var(--text-muted);font:700 10px var(--font-ui);">?</span>
+                    <span style="font:12px 'Geist Mono',ui-monospace,monospace;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ t.str }}</span>
+                    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">{{ t.expect }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <span style="flex:1;"></span>
+              <div style="display:flex;align-items:center;gap:6px;padding:10px;border-top:1px solid var(--border);">
+                <div style="flex:1;min-width:0;height:30px;box-sizing:border-box;display:flex;align-items:center;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font:12px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);opacity:.8;">Test string</div>
+                <div style="display:flex;gap:2px;padding:2px;border-radius:6px;background:var(--page-bg);border:1px solid var(--border-subtle);">
+                  <span style="height:24px;display:flex;align-items:center;padding:0 7px;border-radius:4px;background:var(--success-bg);font:600 11px var(--font-ui);color:var(--success);">Match</span>
+                  <span style="height:24px;display:flex;align-items:center;padding:0 7px;font:500 11px var(--font-ui);color:var(--text-muted);">No match</span>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ r4c.closed }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ r4c.toggle }}" title="Show panel" style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:10px 0;border-left:1px solid var(--border);background:var(--container-bg);cursor:pointer;" style-hover="background:var(--container-raised);">
+              <span style="display:grid;place-items:center;width:24px;height:24px;color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path><path d="m10 15-3-3 3-3"></path></svg></span>
+              <span style="writing-mode:vertical-rl;transform:rotate(180deg);font:600 10.5px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap;">Tests · 3 pending</span>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4z current -->
+  <div id="4z" style="display:flex;flex-direction:column;gap:12px;">
+    <div style="display:flex;align-items:baseline;gap:12px;width:1440px;">
+      <span style="flex:none;padding:3px 9px;border-radius:6px;background:var(--container-raised);color:var(--text-bright);font:700 13px var(--font-ui);">4z</span>
+      <span style="flex:none;white-space:nowrap;font:600 17px var(--font-ui);color:var(--text-bright);">Today, for comparison</span>
+      <span style="flex:1;min-width:0;font-size:13px;color:var(--text-muted);">Rebuilt from view-documents.jsx and view-regex-tester.jsx in the same palette.</span>
+    </div>
+    <div style="width:1440px;height:860px;display:flex;flex-direction:column;background:var(--page-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <div style="flex:none;height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--border);background:var(--container-bg);"><span style="font:600 15px var(--font-ui);color:var(--text-bright);">Documents</span><span style="font-size:12px;color:var(--text-muted);">139s</span></div>
+      <div style="flex:none;display:flex;gap:4px;padding:6px 10px;background:var(--container-bg);border-bottom:1px solid var(--border);font:500 12.5px var(--font-ui);">
+        <span style="padding:6px 14px;color:var(--text-muted);">Markdown</span><span style="padding:6px 14px;color:var(--text-muted);">JSON Editor</span><span style="padding:6px 14px;border-radius:6px;background:var(--accent);color:var(--accent-text);">Regex Tester</span>
+      </div>
+      <div style="flex:1;min-height:0;display:flex;flex-direction:column;padding:16px;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;white-space:nowrap;">
+          <span style="font:600 15px 'Geist Mono',ui-monospace,monospace;">/<span style="color:var(--accent);">(\w+)@([\w.-]+\.[a-z]{2,})</span>/</span>
+          <span style="font:11px 'Geist Mono',ui-monospace,monospace;padding:3px 9px;border-radius:6px;border:1px solid var(--border);background:var(--success-bg);color:var(--success);">3 matches</span>
+          <span style="display:flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font:10px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);"><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;">‹</span><span style="min-width:34px;text-align:center;">3</span><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;">›</span></span>
+          <span style="flex:1;"></span>
+          <span style="display:flex;gap:2px;padding:2px;border:1px solid var(--border);border-radius:6px;background:var(--container-raised);font-size:11.5px;"><span style="padding:4px 10px;border-radius:6px;background:var(--accent-muted);color:var(--accent);">Match</span><span style="padding:4px 10px;color:var(--text-muted);">Substitution</span></span>
+          <span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text-muted);">+ New</span>
+          <span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text-muted);">Documents (1)</span>
+        </div>
+        <div style="background:var(--container-bg);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 13px;border-bottom:1px solid var(--border);font:600 10px var(--font-ui);letter-spacing:.7px;text-transform:uppercase;color:var(--text-muted);"><span>Expression</span><span style="display:flex;gap:3px;font:11.5px 'Geist Mono',ui-monospace,monospace;text-transform:none;"><span style="padding:2px 7px;border:1px solid var(--accent-border-glow);border-radius:6px;background:var(--accent-muted);color:var(--accent);">g</span><span style="padding:2px 7px;border:1px solid var(--border);border-radius:6px;">i</span><span style="padding:2px 7px;border:1px solid var(--border);border-radius:6px;">m</span><span style="padding:2px 7px;border:1px solid var(--border);border-radius:6px;">s</span><span style="padding:2px 7px;border:1px solid var(--border);border-radius:6px;">u</span></span></div>
+          <div style="display:flex;gap:7px;padding:10px 13px;font:14px 'Geist Mono',ui-monospace,monospace;"><span style="font-size:18px;color:var(--text-muted);">/</span><span style="flex:1;">(\w+)@([\w.-]+\.[a-z]{2,})</span><span style="font-size:18px;color:var(--text-muted);">/</span></div>
+        </div>
+        <div style="background:var(--container-bg);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
+          <div style="display:flex;gap:4px;padding:5px 8px;border-bottom:1px solid var(--border);font-size:11.5px;"><span style="padding:4px 10px;border:1px solid var(--accent-border-glow);border-radius:6px;background:var(--accent-muted);color:var(--accent);">Email</span><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);">URL</span><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);">Phone</span><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);">Dates</span><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);">+</span></div>
+          <div style="height:170px;padding:10px 13px;font:13px/1.75 'Geist Mono',ui-monospace,monospace;white-space:pre;overflow:hidden;"><sc-for list="{{ textLinesNoSel }}" as="l" hint-placeholder-count="5"><div><sc-for list="{{ l.segs }}" as="s"><span style="background:{{ s.bg }};box-shadow:{{ s.bb }};">{{ s.t }}</span></sc-for></div></sc-for></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 13px;border-top:1px solid var(--border);font:10px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);"><span>{{ chars }}</span><span>3 matches</span></div>
+        </div>
+        <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div style="background:var(--container-bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+            <div style="padding:6px 13px;border-bottom:1px solid var(--border);font:600 10px var(--font-ui);letter-spacing:.7px;text-transform:uppercase;color:var(--text-muted);">Match information</div>
+            <div style="padding:11px;display:flex;flex-direction:column;gap:6px;">
+              <sc-for list="{{ matchRows }}" as="m" hint-placeholder-count="3">
+                <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--page-bg);">
+                  <div style="display:flex;justify-content:space-between;padding:4px 9px;background:var(--container-raised);border-bottom:1px solid var(--border);font:10px 'Geist Mono',ui-monospace,monospace;"><span style="padding:1px 6px;border:1px solid var(--warning);border-radius:6px;background:var(--warning-bg);color:var(--warning);">Match {{ m.i }}</span><span style="color:var(--text-muted);">{{ m.range }}</span></div>
+                  <div style="padding:5px 9px;font:12px 'Geist Mono',ui-monospace,monospace;border-bottom:1px solid var(--border);">{{ m.value }}</div>
+                  <sc-for list="{{ m.groups }}" as="g" hint-placeholder-count="2"><div style="display:flex;gap:7px;padding:4px 9px;font:11.5px 'Geist Mono',ui-monospace,monospace;"><span style="font-size:10px;padding:1px 5px;border:1px solid {{ g.c }};border-radius:6px;color:{{ g.c }};">{{ g.label }}</span>{{ g.t }}</div></sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="background:var(--container-bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+            <div style="display:flex;border-bottom:1px solid var(--border);font:600 10.5px var(--font-ui);letter-spacing:.6px;text-transform:uppercase;"><span style="padding:7px 13px;border-bottom:2px solid var(--accent);color:var(--accent);">Code gen</span><span style="padding:7px 13px;color:var(--text-muted);">Unit tests</span><span style="padding:7px 13px;color:var(--text-muted);">Reference</span></div>
+            <div style="padding:11px;">
+              <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:9px;font-size:11.5px;"><span style="padding:4px 10px;border:1px solid var(--accent-border-glow);border-radius:6px;background:var(--accent-muted);color:var(--accent);">JS</span><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);">Python</span><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);">PHP</span><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);">Go</span><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);">Java</span><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);">C#</span><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);">Ruby</span></div>
+              <div style="display:flex;justify-content:flex-end;margin-bottom:5px;"><span style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text-muted);">Copy</span></div>
+              <div style="padding:11px;border:1px solid var(--border);border-radius:6px;background:var(--page-bg);font:11.5px/1.7 'Geist Mono',ui-monospace,monospace;white-space:pre;overflow:hidden;">{{ jsCode }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;brand&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;cobalt-lodge&quot;,&quot;nexus-default-dark&quot;,&quot;nexus-default-light&quot;,&quot;shattered-realms-dark&quot;,&quot;amethyst-court-dark&quot;,&quot;historia-normannis-dark&quot;],&quot;default&quot;:&quot;cobalt-lodge&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;}}">
+class Component extends DCLogic {
+  state = { rails: {} };
+  componentDidMount() { this.applyBrand(); }
+  componentDidUpdate() { this.applyBrand(); }
+  applyBrand() { document.documentElement.setAttribute('data-brand', this.props.brand ?? 'cobalt-lodge'); }
+  rail(id) {
+    const open = this.state.rails[id] !== false;
+    return { open, closed: !open, w: open ? '360px' : '40px', toggle: () => this.setState(st => ({ rails: { ...st.rails, [id]: !open } })) };
+  }
+
+  renderVals() {
+    const GC = ['#818cf8', '#60a5fa', '#34d399', '#fb923c', '#c084fc', '#f472b6'];
+    const PAT = '(\\w+)@([\\w.-]+\\.[a-z]{2,})';
+    const STR = 'support@example.com\nsales@company.org\njohn.doe@email.co.uk\n\nInvalid: notanemail, @nodomain.com';
+    const SEL = 1;
+
+    const patTok = (p, bad) => {
+      const out = []; let gi = 0; const stack = [];
+      for (let i = 0; i < p.length; i++) {
+        const ch = p[i];
+        if (ch === '\\') { out.push({ t: p.slice(i, i + 2), c: 'var(--accent)' }); i++; continue; }
+        if (ch === '[') { let j = i + 1; while (j < p.length && p[j] !== ']') { if (p[j] === '\\') j++; j++; } out.push({ t: p.slice(i, j + 1), c: 'var(--success)' }); i = j; continue; }
+        if (ch === '(') { const seg = { t: ch, c: GC[gi++ % 6], open: true }; stack.push(seg); out.push(seg); continue; }
+        if (ch === ')') { const o = stack.pop(); if (o) o.closed = true; out.push({ t: ch, c: o ? o.c : 'var(--danger)' }); continue; }
+        if (ch === '{') { const j = p.indexOf('}', i); out.push({ t: p.slice(i, j + 1), c: 'var(--warning)' }); i = j; continue; }
+        if ('+*?'.includes(ch)) { out.push({ t: ch, c: 'var(--warning)' }); continue; }
+        out.push({ t: ch, c: 'var(--text-bright)' });
+      }
+      if (bad) out.forEach(s => { if (s.open && !s.closed) { s.bg = 'var(--danger-bg)'; s.c = 'var(--danger)'; } });
+      return out.map(s => ({ bg: 'transparent', ...s }));
+    };
+    const patSegs = patTok(PAT);
+    const badSegs = patTok('(\\w+)@([\\w.-]+\\.[a-z]{2,}', true);
+    const FL = [['g', 'Global: find all matches', true], ['i', 'Case insensitive'], ['m', 'Multiline: ^ and $ match line ends'], ['s', 'Dotall: . matches newlines'], ['u', 'Unicode']];
+    const flagsOn = FL.map(([k, tip, on]) => ({ k, tip, bg: on ? 'var(--accent-muted)' : 'transparent', c: on ? 'var(--accent)' : 'var(--text-muted)' }));
+
+    const re = new RegExp(PAT, 'gd');
+    const ms = [...STR.matchAll(re)];
+    const ann = Array.from(STR, () => ({ m: -1, g: -1 }));
+    ms.forEach((m, mi) => {
+      for (let k = m.index; k < m.index + m[0].length; k++) ann[k].m = mi;
+      (m.indices || []).slice(1).forEach((r, gi) => { if (r) for (let k = r[0]; k < r[1]; k++) ann[k].g = gi; });
+    });
+    const buildLines = (sel) => {
+      const lines = []; let cur = []; let n = 1;
+      const style = (a) => {
+        if (a.m < 0) return { c: 'var(--text)', bg: 'transparent', bb: 'none', r: '0' };
+        const isSel = a.m === sel;
+        const bg = isSel ? 'color-mix(in srgb, var(--warning) 26%, transparent)' : 'var(--warning-bg)';
+        const line = a.g >= 0 ? GC[a.g % 6] : 'var(--warning)';
+        return { c: 'var(--text-bright)', bg, bb: 'inset 0 -2px 0 ' + line + (isSel ? ', 0 0 0 1px var(--warning)' : ''), r: '2px' };
+      };
+      let segT = '', segKey = null, segA = null;
+      const flush = () => { if (segT) cur.push({ t: segT, ...style(segA) }); segT = ''; };
+      for (let i = 0; i < STR.length; i++) {
+        const ch = STR[i];
+        if (ch === '\n') { flush(); lines.push({ n: n++, segs: cur.length ? cur : [{ t: ' ', c: 'var(--text)', bg: 'transparent', bb: 'none', r: '0' }] }); cur = []; segKey = null; continue; }
+        const a = ann[i]; const key = a.m + ':' + a.g;
+        if (key !== segKey) { flush(); segKey = key; segA = a; }
+        segT += ch;
+      }
+      flush(); lines.push({ n: n++, segs: cur });
+      return lines;
+    };
+    const textLines = buildLines(SEL);
+    const textLinesNoSel = buildLines(-1);
+    const plainLines = STR.split('\n').map((t, i) => ({ n: i + 1, t: t || ' ' }));
+
+    // replace result
+    const REP = '$1 at $2';
+    const rsegs = []; let pos = 0;
+    ms.forEach(m => {
+      if (m.index > pos) rsegs.push({ t: STR.slice(pos, m.index), c: 'var(--text)', bg: 'transparent' });
+      rsegs.push({ t: m[0].replace(new RegExp(PAT), REP), c: 'var(--text-bright)', bg: 'var(--success-bg)' });
+      pos = m.index + m[0].length;
+    });
+    if (pos < STR.length) rsegs.push({ t: STR.slice(pos), c: 'var(--text)', bg: 'transparent' });
+    const resultLines = []; let curL = []; let ln = 1;
+    rsegs.forEach(s => { s.t.split('\n').forEach((part, k, arr) => { if (part) curL.push({ ...s, t: part }); if (k < arr.length - 1) { resultLines.push({ n: ln++, segs: curL.length ? curL : [{ t: ' ', c: 'var(--text)', bg: 'transparent' }] }); curL = []; } }); });
+    resultLines.push({ n: ln++, segs: curL });
+    const resultStr = STR.replace(new RegExp(PAT, 'g'), REP);
+
+    const matchRows = ms.map((m, i) => ({
+      i: i + 1, value: m[0], range: `${m.index}–${m.index + m[0].length} · len ${m[0].length}`,
+      bg: i === SEL ? 'var(--warning-bg)' : 'transparent', bd: i === SEL ? 'color-mix(in srgb, var(--warning) 45%, transparent)' : 'transparent',
+      groups: [...m].slice(1).map((g, gi) => ({ t: g, c: GC[gi % 6], label: 'Group ' + (gi + 1) })),
+    }));
+
+    const tabsOf = (active, n) => [['Matches', '3'], ['Code', ''], ['Tests', n], ['Reference', '']].map(([label, c]) => ({
+      label, n: c, bd: label === active ? 'var(--accent)' : 'transparent', c: label === active ? 'var(--text-bright)' : 'var(--text-muted)',
+    }));
+    const cases = ['Email', 'URL', 'Phone', 'Dates'].map((name, i) => ({ name, bd: i === 0 ? 'var(--accent)' : 'transparent', c: i === 0 ? 'var(--text-bright)' : 'var(--text-muted)' }));
+    const docs = [
+      { name: 'Email addresses', pat: '/' + PAT + '/g', when: 'now', sel: true },
+      { name: 'URLs', pat: '/https?:\\/\\/[^\\s/$.?#][^\\s]*/gi', when: '2 d' },
+      { name: 'ISO dates', pat: '/(\\d{4})-(\\d{2})-(\\d{2})/g', when: '1 w' },
+      { name: 'UK phone numbers', pat: '/\\+44\\s?\\d{2,4}\\s?\\d{3,4}\\s?\\d{4}/g', when: '3 w' },
+    ].map(d => ({ ...d, bg: d.sel ? 'var(--accent-muted)' : 'transparent', bd: d.sel ? 'var(--accent-border-glow)' : 'transparent' }));
+
+    const PY = [
+      'import re', '',
+      `pattern = r"${PAT}"`, 'text = "your test string"', 'regex = re.compile(pattern)', '',
+      '# All matches',
+      'for m in regex.finditer(text):',
+      '    print(f"{m.group(0)} at {m.start()}-{m.end()}")',
+      '    print("Groups:", m.groups())', '',
+      '# Replace',
+      'result = regex.sub(r"\\1 at \\2", text)',
+      'print(result)',
+    ];
+    const PKW = new Set('import for in if print def return'.split(' '));
+    const pyTok = l => {
+      if (l.trim().startsWith('#')) return [{ t: l, c: 'var(--text-muted)' }];
+      const out = []; const rx = /([rf]?"(?:[^"\\]|\\.)*")|([A-Za-z_]\w*)|(\s+|.)/g; let m;
+      while ((m = rx.exec(l))) {
+        const c = m[1] ? 'var(--success)' : m[2] ? (PKW.has(m[2]) ? 'var(--accent)' : l[rx.lastIndex] === '(' ? 'var(--text-bright)' : 'var(--text)') : 'var(--text-muted)';
+        out.push({ t: m[0], c });
+      }
+      return out.length ? out : [{ t: ' ', c: 'var(--text)' }];
+    };
+    const pyCode = PY.map(l => ({ segs: pyTok(l) }));
+    const jsCode = `const regex = /${PAT}/g;\nconst str = \`your test string\`;\n\n// Test for a match\nconsole.log(regex.test(str));\n\n// First match with details\nconst m = /${PAT}/.exec(str);\nif (m) {\n  console.log('Match:', m[0], 'at index', m.index);\n}`;
+
+    const tests = [
+      { str: 'test@example.com', expect: 'should match' },
+      { str: 'not-an-email', expect: 'no match' },
+      { str: 'first.last@sub.example.org', expect: 'should match' },
+    ];
+
+    return {
+      patSegs, badSegs, flagsOn, textLines, textLinesNoSel, plainLines, resultLines, matchRows,
+      tabsMatches: tabsOf('Matches', '3/3'), tabsCode: tabsOf('Code', '3/3'), tabsTests: tabsOf('Tests', '3'),
+      cases, docs, pyCode, jsCode, tests,
+      chars: STR.length + ' chars', resultChars: resultStr.length + ' chars',
+      r4a: this.rail('4a'), r4b: this.rail('4b'), r4c: this.rail('4c'),
+    };
+  }
+}
+</script>
+</body>
+</html>

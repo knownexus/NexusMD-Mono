@@ -123,7 +123,7 @@ describe('aliases on the command line', () => {
     render(<ViewGit adapters={{ git }} />)
     const region = await screen.findByRole('region', { name: 'A' })
     fireEvent.click(await within(region).findByRole('button', { name: /checkout → main/ }))
-    await screen.findByRole('button', { name: 'My aliases (4) ▾' })
+    await screen.findByRole('button', { name: 'Aliases 4 ▴' })
     const input = screen.getByLabelText('git command')
     return line => { fireEvent.change(input, { target: { value: line } }); fireEvent.keyDown(input, { key: 'Enter' }) }
   }
@@ -162,7 +162,7 @@ ${PROFILE}function global:g! { gstat }
     render(<ViewGit adapters={{ git }} />)
     const region = await screen.findByRole('region', { name: 'A' })
     fireEvent.click(await within(region).findByRole('button', { name: /checkout → main/ }))
-    await screen.findByRole('button', { name: 'My aliases (5) ▾' })
+    await screen.findByRole('button', { name: 'Aliases 5 ▴' })
     expect(git.shellWarm).toHaveBeenCalledWith('C:/repos/DotFiles')
     const input = screen.getByLabelText('git command')
     fireEvent.change(input, { target: { value: 'g!' } })
@@ -181,7 +181,7 @@ ${PROFILE}function global:g! { gstat }
     render(<ViewGit adapters={{ git }} />)
     const region = await screen.findByRole('region', { name: 'A' })
     fireEvent.click(await within(region).findByRole('button', { name: /checkout → main/ }))
-    await screen.findByRole('button', { name: 'My aliases (2) ▾' })
+    await screen.findByRole('button', { name: 'Aliases 2 ▴' })
     expect(git.shellAliases).not.toHaveBeenCalled()
   })
 })
