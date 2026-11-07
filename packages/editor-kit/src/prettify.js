@@ -46,6 +46,9 @@ const loadPlugin = (name) => ({
 })[name]().then(esm)
 
 async function withPrettier(parser, text) {
+  // Prettier reads JSON like a JavaScript value, so it quietly accepts and "repairs" {a:1}, 'single quotes', trailing commas and
+  // comments. Real JSON is checked first, so a file the JSON editor calls invalid is refused here too.
+  if (parser === 'json-stringify') JSON.parse(text)
   const [prettier, ...plugins] = await Promise.all([import('prettier/standalone'), ...PRETTIER_PLUGINS[parser].map(loadPlugin)])
   return esm(prettier).format(text, { parser, plugins, tabWidth: 2, endOfLine: 'lf' })
 }
@@ -64,9 +67,16 @@ async function withXml(text) {
   return format(text, { indentation: '  ', lineSeparator: '\n', collapseContent: true })
 }
 
+// Standard SQL first, then the two dialects with their own syntax (@variables and [brackets] in SQL Server, $1 in PostgreSQL).
+// The file is refused only when none of them can read it; the reason given is the standard one's.
+const SQL_DIALECTS = ['sql', 'transactsql', 'postgresql']
 async function withSql(text) {
   const { format } = esm(await import('sql-formatter'))
-  return format(text, { tabWidth: 2, keywordCase: 'preserve' })
+  let first
+  for (const language of SQL_DIALECTS) {
+    try { return format(text, { language, tabWidth: 2, keywordCase: 'preserve' }) } catch (error) { ignore(log, `the ${language} dialect could not read this SQL, so the next is tried`, error, 'debug'); first ??= error }
+  }
+  throw first
 }
 
 // The first line of an error, kept short enough for one line of the screen.

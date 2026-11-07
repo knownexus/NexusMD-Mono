@@ -76,6 +76,22 @@ describe('prettify', () => {
     }
   })
 
+  it('refuses JSON that Prettier would quietly repair, and leaves it as it was', async () => {
+    for (const text of ['{a:1}', "{'a':'b'}", '{"a":1,}', '[1,2,]', '{"a":undefined}', '{"a":NaN}', '{"a":0x10}', '{"a":"tab\there"}', '// note\n{"a":1}']) {
+      const r = await prettify('a.json', text)
+      expect(r.ok, text).toBe(false)
+      expect(r.message, text).toMatch(/^Could not tidy: \S/)
+    }
+  })
+
+  it('tidies SQL written for SQL Server and PostgreSQL, not just standard SQL', async () => {
+    for (const text of ['select * from t where a = @x', 'SELECT TOP 10 * FROM [dbo].[t]', 'select * from t where a = $1']) {
+      const r = await prettify('a.sql', text)
+      expect(r.ok, text).toBe(true)
+      expect(r.text, text).toContain('\n')
+    }
+  })
+
   it('refuses C# and other types without a formatter', async () => {
     expect(await prettify('a.cs', 'class A{}')).toEqual({ ok: false, message: 'This file type cannot be tidied.' })
     expect(await prettify('a.py', 'x=1')).toEqual({ ok: false, message: 'This file type cannot be tidied.' })
