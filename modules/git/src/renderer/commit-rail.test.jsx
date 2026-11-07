@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
-import { CommitRail } from './commit-rail.jsx'
+import { CommitRail, forgetCommitDrafts } from './commit-rail.jsx'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); forgetCommitDrafts() })
 
 const tree = (over = {}) => ({ path: '/r/feat', branch: 'feat', upstream: 'origin/feat', operation: '', operationInfo: null, changes: [{ area: 'staged' }, { area: 'staged' }, { area: 'unstaged' }], ...over })
 const summary = () => screen.getByLabelText('Commit summary')
@@ -110,5 +110,48 @@ describe('CommitRail', () => {
     render(<CommitRail tree={tree()} busy onCommit={() => {}} />)
     expect(screen.getByRole('button', { name: 'Commit 2 files' }).disabled).toBe(true)
     expect(screen.getByText('Working…')).toBeTruthy()
+  })
+})
+
+describe('CommitRail draft', () => {
+  it('is still there when the panel is hidden and shown again (the rail unmounts while closed)', () => {
+    const first = render(<CommitRail tree={tree()} onCommit={() => {}} />)
+    fireEvent.change(summary(), { target: { value: 'Half done' } })
+    fireEvent.change(screen.getByLabelText('Commit description'), { target: { value: 'More to say' } })
+    fireEvent.click(screen.getByLabelText('Amend last commit'))
+    first.unmount()
+    render(<CommitRail tree={tree()} onCommit={() => {}} />)
+    expect(summary().value).toBe('Half done')
+    expect(screen.getByLabelText('Commit description').value).toBe('More to say')
+    expect(screen.getByLabelText('Amend last commit').checked).toBe(true)
+  })
+
+  it('belongs to its worktree: another one starts empty and the first still has its own', () => {
+    const { rerender } = render(<CommitRail tree={tree()} onCommit={() => {}} />)
+    fireEvent.change(summary(), { target: { value: 'for feat' } })
+    rerender(<CommitRail tree={tree({ path: '/r/other' })} onCommit={() => {}} />)
+    expect(summary().value).toBe('')
+    rerender(<CommitRail tree={tree()} onCommit={() => {}} />)
+    expect(summary().value).toBe('for feat')
+  })
+
+  it('is forgotten once it is committed', async () => {
+    const first = render(<CommitRail tree={tree()} onCommit={() => Promise.resolve(true)} />)
+    fireEvent.change(summary(), { target: { value: 'ship' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Commit 2 files' }))
+    await waitFor(() => expect(summary().value).toBe(''))
+    first.unmount()
+    render(<CommitRail tree={tree()} onCommit={() => {}} />)
+    expect(summary().value).toBe('')
+  })
+
+  it('is kept when the commit fails', async () => {
+    const first = render(<CommitRail tree={tree()} onCommit={() => Promise.resolve(false)} />)
+    fireEvent.change(summary(), { target: { value: 'retry me' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Commit 2 files' }))
+    await new Promise(r => setTimeout(r, 10))
+    first.unmount()
+    render(<CommitRail tree={tree()} onCommit={() => {}} />)
+    expect(summary().value).toBe('retry me')
   })
 })

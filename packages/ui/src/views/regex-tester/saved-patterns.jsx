@@ -14,6 +14,9 @@ const patternOf = doc => (doc.content?.pattern ? `/${doc.content.pattern}/${flag
 export function SavedPatterns({ docs, currentDocId, onOpen, onNew, onRename, onDuplicate, onDelete }) {
   const [query, setQuery] = React.useState('')
   const [menu, setMenu] = React.useState(null)
+  // The row being renamed in place: { id, value }. (Electron has no window.prompt.)
+  const [renaming, setRenaming] = React.useState(null)
+  const settled = React.useRef(false)
   React.useEffect(() => {
     if (!menu) return undefined
     const close = () => setMenu(null)
@@ -26,6 +29,14 @@ export function SavedPatterns({ docs, currentDocId, onOpen, onNew, onRename, onD
   const shown = docs.filter(d => wordMatch(`${displayName(d)} ${patternOf(d)}`, query))
   const target = menu ? docs.find(d => d.id === menu.id) : null
   const act = fn => () => { setMenu(null); fn() }
+  const finishRename = save => {
+    if (settled.current || !renaming) return
+    settled.current = true
+    const doc = docs.find(d => d.id === renaming.id)
+    const name = renaming.value.trim()
+    setRenaming(null)
+    if (save && doc && name && name !== displayName(doc)) onRename(doc.id, name)
+  }
   return (
     <aside className="nx-rt-saved" aria-label="Saved patterns column">
       <div className="nx-rt-saved-head">
@@ -40,7 +51,15 @@ export function SavedPatterns({ docs, currentDocId, onOpen, onNew, onRename, onD
       {!docs.length && <div className="nx-rt-note">No saved patterns yet.</div>}
       {!!docs.length && !shown.length && <div className="nx-rt-note">No pattern matches.</div>}
       <ul className="nx-rt-saved-list" aria-label="Saved patterns">
-        {shown.map(d => (
+        {shown.map(d => (renaming?.id === d.id
+          ? (
+            <li key={d.id} className="nx-rt-rename">
+              <input autoFocus aria-label="Rename pattern" value={renaming.value} spellCheck={false}
+                onChange={e => setRenaming({ ...renaming, value: e.target.value })} onBlur={() => finishRename(true)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); finishRename(true) } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finishRename(false) } }} />
+            </li>
+          )
+          : (
           <li key={d.id}>
             <button type="button" className="nx-rt-saved-row" title={displayName(d)} aria-current={d.id === currentDocId ? 'true' : undefined}
               onClick={() => onOpen(d.id)} onContextMenu={e => { e.preventDefault(); setMenu({ id: d.id, x: e.clientX, y: e.clientY }) }}>
@@ -51,11 +70,11 @@ export function SavedPatterns({ docs, currentDocId, onOpen, onNew, onRename, onD
               {patternOf(d) && <span className="nx-rt-pattern">{patternOf(d)}</span>}
             </button>
           </li>
-        ))}
+          )))}
       </ul>
       {menu && target && (
         <div role="menu" aria-label="Pattern options" className="nx-rt-menu" style={{ left: menu.x, top: menu.y }} onMouseDown={e => e.stopPropagation()}>
-          <button type="button" role="menuitem" onClick={act(() => { const name = window.prompt('Rename pattern:', displayName(target)); if (name != null && name.trim()) onRename(target.id, name.trim()) })}>Rename…</button>
+          <button type="button" role="menuitem" onClick={act(() => { settled.current = false; setRenaming({ id: target.id, value: displayName(target) }) })}>Rename…</button>
           <button type="button" role="menuitem" onClick={act(() => onDuplicate(target.id))}>Duplicate</button>
           <button type="button" role="menuitem" data-danger="" onClick={act(() => { if (window.confirm(`Delete “${displayName(target)}”?`)) onDelete(target.id) })}>Delete…</button>
         </div>

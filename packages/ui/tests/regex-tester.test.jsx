@@ -255,9 +255,11 @@ describe('RegexTesterView — saved patterns', () => {
     expect(list(r).getAllByRole('listitem')).toHaveLength(2)
     expect(list(r).getAllByText('/\\d+/g copy').length).toBeGreaterThan(0)
 
-    vi.spyOn(window, 'prompt').mockReturnValue('Digits')
     menuFor()
     fireEvent.click(r.getByRole('menuitem', { name: 'Rename…' }))
+    const field = r.getByRole('textbox', { name: 'Rename pattern' })
+    fireEvent.change(field, { target: { value: 'Digits' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
     expect(list(r).getByText('Digits')).toBeTruthy()
 
     vi.spyOn(window, 'confirm').mockReturnValue(true)

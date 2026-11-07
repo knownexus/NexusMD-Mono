@@ -1,5 +1,12 @@
 import React from 'react'
 
+// Each worktree's half-written commit, kept while the app runs: the panel unmounts when it is hidden, and its
+// text must not go with it.
+const drafts = new Map()
+
+/** Forgets every worktree's draft. */
+export function forgetCommitDrafts() { drafts.clear() }
+
 const fileCount = n => `${n} file${n === 1 ? '' : 's'}`
 
 /**
@@ -8,15 +15,25 @@ const fileCount = n => `${n} file${n === 1 ? '' : 's'}`
  * Commit is disabled, then Commit and Commit & push / publish / Amend & push.
  *
  * onCommit({ message, amend, push }) may return a promise; the form clears unless it resolves false.
- * Ctrl+Enter commits from anywhere in the Changes tab (the .nx-gw-changes box around the rail).
+ * Ctrl+Enter commits from anywhere in the Changes tab (the .nx-gw-changes box around the rail). The draft (summary,
+ * description, amend) is kept per worktree, so hiding the panel and showing it again finds it as it was.
  */
 export function CommitRail({ tree, busy = false, onCommit }) {
-  const [summary, setSummary] = React.useState('')
-  const [description, setDescription] = React.useState('')
-  const [amend, setAmend] = React.useState(false)
-  const root = React.useRef(null)
   const id = tree?.path
-  React.useEffect(() => { setSummary(''); setDescription(''); setAmend(false) }, [id])
+  const [summary, setSummary] = React.useState(drafts.get(id)?.summary ?? '')
+  const [description, setDescription] = React.useState(drafts.get(id)?.description ?? '')
+  const [amend, setAmend] = React.useState(!!drafts.get(id)?.amend)
+  const root = React.useRef(null)
+  // Another worktree shows its own draft, loaded as it is chosen so the old one is never written under the new name.
+  const [shownFor, setShownFor] = React.useState(id)
+  if (shownFor !== id) {
+    const d = drafts.get(id)
+    setShownFor(id); setSummary(d?.summary ?? ''); setDescription(d?.description ?? ''); setAmend(!!d?.amend)
+  }
+  React.useEffect(() => {
+    if (summary || description || amend) drafts.set(id, { summary, description, amend })
+    else drafts.delete(id)
+  }, [id, summary, description, amend])
 
   const staged = tree.changes.filter(c => c.area === 'staged').length
   const disabled = busy || (!staged && !amend) || !summary.trim()

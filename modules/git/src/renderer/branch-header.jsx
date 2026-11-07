@@ -26,7 +26,9 @@ function tracking(tree) {
   if (!tree.upstream) return [{ text: 'Not published yet' }]
   const info = tree.operationInfo
   if (tree.operation) {
-    const state = info?.kind === 'rebase' && info.onto ? `Rebasing onto ${info.onto}` : tree.operation
+    // onto is { oid, name } (a full ref name), not a string.
+    const onto = typeof info?.onto === 'string' ? info.onto : String(info?.onto?.name ?? '').replace(/^refs\/(heads|remotes|tags)\//, '')
+    const state = info?.kind === 'rebase' && onto ? `Rebasing onto ${onto}` : tree.operation
     return [{ text: tree.upstream }, { text: state, tone: 'bad' }]
   }
   const arrows = [tree.ahead ? `↑${tree.ahead}` : null, tree.behind ? `↓${tree.behind}` : null].filter(Boolean)

@@ -56,19 +56,31 @@ const baseOf = path => path.slice(path.lastIndexOf('/') + 1)
 const dirOf = path => path.slice(0, Math.max(0, path.lastIndexOf('/')))
 
 // The changed files, pinned above the tree: the letter, name and folder; a staged file in the staged colour.
+// A few rows are shown, so the tree keeps its room; Show more opens the list (still capped, like the Changes tab's).
+const PINNED = 8
+const PINNED_MAX = 300
+
 function ChangedPin({ marks, picked, pick }) {
+  const [all, setAll] = React.useState(false)
   const list = [...marks.files].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
   if (!list.length) return null
+  const shown = all ? list.slice(0, PINNED_MAX) : list.slice(0, PINNED)
   return (
     <div role="group" aria-label={`Changed ${list.length}`} className="nx-gw-pin">
       <div className="nx-gw-eyebrow">{`Changed ${list.length}`}</div>
-      {list.map(([path, f]) => (
+      <div className="nx-gw-pin-list" data-open={all || undefined}>
+      {shown.map(([path, f]) => (
         <button key={path} type="button" className="nx-gw-pin-row" title={path} data-tone={f.marks[0].tone} aria-current={picked === path ? 'true' : undefined} onClick={() => pick(path)}>
           <span className="nx-gw-file-code" data-tone={f.marks[0].tone}>{f.marks[0].letter}</span>
           <span className="nx-gw-pin-name">{baseOf(path)}</span>
           {dirOf(path) && <span className="nx-gw-pin-dir">{dirOf(path)}</span>}
         </button>
       ))}
+      </div>
+      {all && list.length > PINNED_MAX && <div className="nx-gw-fx-note">{`${list.length - PINNED_MAX} more in the Changes tab`}</div>}
+      {list.length > PINNED && (
+        <button type="button" className="nx-gw-pin-more" onClick={() => setAll(a => !a)}>{all ? 'Show fewer' : `Show ${list.length - PINNED} more`}</button>
+      )}
     </div>
   )
 }
@@ -197,7 +209,8 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
   }, [worktreePath])
   React.useEffect(() => { load() }, [load, repoPath, repoName, version])
   const marks = React.useMemo(() => fileMarks(changes), [changes])
-  const rail = useRail('files')
+  const rootRef = React.useRef(null)
+  const rail = useRail('files', { rootRef })
   const viewKey = `${repo?.path}|${worktreePath}`
   const [, redraw] = React.useReducer(n => n + 1, 0)
   const viewOf = () => fileViews.get(viewKey) ?? 'file'
@@ -291,7 +304,7 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
 
   const notes = note && <div role={note.bad ? 'alert' : 'status'} className={`nx-alert ${note.bad ? 'bad' : 'good'}`}>{note.text}</div>
   return (
-    <div className="nx-gw-files-tab" data-dropping={target !== null || undefined} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    <div className="nx-gw-files-tab" ref={rootRef} data-dropping={target !== null || undefined} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       <FileExplorer label="Files" rootName={repo?.name || 'Repository'} files={list?.files ?? null} truncated={!!list?.truncated} error={error}
         viewKey={`local:${worktreePath}`} renderName={row => <RowName row={row} marks={marks} />} menuItems={menuItems}
         onOpen={onOpenFile} preview={preview} notes={notes} onPick={recent.touch} highlightMatches rail={detailsFor} railLabel="File details" railOpen={rail.open} onRailToggle={rail.toggle}

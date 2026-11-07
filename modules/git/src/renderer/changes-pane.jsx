@@ -56,7 +56,7 @@ function ChangeRow({ c, selected, focused, onRowClick, draft, labels, busy, onRe
     : c.area === 'staged' ? { label: ARROW.unstage, title: `Unstage ${c.path}`, run: () => onWrite('unstage', [c.id]) }
     : { label: ARROW.stage, title: `Stage ${c.path}`, run: () => onWrite('stage', [c.id]) }
   return (
-    <div className="nx-gw-file" aria-current={focused ? 'true' : undefined} data-selected={selected || undefined} title={c.path}
+    <div className="nx-gw-file" data-change={encodeURIComponent(c.id)} aria-current={focused ? 'true' : undefined} data-selected={selected || undefined} title={c.path}
       onClick={e => onRowClick(c, e)} onContextMenu={onContext ? e => onContext(e, c) : undefined}>
       <span className="nx-gw-file-code" data-tone={TONE[l] ?? 'warn'} title={statusCode(c)}>{l}</span>
       <span className="nx-gw-file-name">
@@ -136,11 +136,16 @@ function Lane({ lane, selected, focusId, onRowClick, onFocus, onFocusFolder, dra
   const movable = changes.filter(c => !isSubmodule(c))
   const picked = movable.filter(c => chosen.has(c.id))
   const verb = lane.bulk === 'stage' ? 'Stage' : 'Unstage'
-  const bulkLabel = `${verb} ${picked.length ? picked.length : 'all'} ${ARROW[lane.bulk]}`
+  // With a filter set and nothing selected, the button acts on the files shown, and says how many.
+  const filtering = big && !!query.trim()
+  const shownMovable = visible.filter(c => !isSubmodule(c))
+  const targets = picked.length ? picked : filtering ? shownMovable : movable
+  const bulkLabel = `${verb} ${picked.length ? picked.length : filtering ? `${shownMovable.length} shown` : 'all'} ${ARROW[lane.bulk]}`
   const row = { chosen, drafts: draftSet, labels, busy, onResolve, onWrite, onFocus, onContext, onRowClick }
   const toggle = f => {
     setOpen(prev => { const next = new Set(prev); if (!next.delete(f.path)) next.add(f.path); return next })
-    onFocusFolder?.({ path: f.path, area: lane.id, count: f.count, ids: f.files.filter(c => !isSubmodule(c)).map(c => c.id) })
+    // A folder of only untracked files is untracked (it can be deleted); any mix is just changed.
+    onFocusFolder?.({ path: f.path, area: f.files.every(c => c.area === 'untracked') ? 'untracked' : lane.id, count: f.count, ids: f.files.filter(c => !isSubmodule(c)).map(c => c.id) })
   }
   return (
     <div role="group" aria-label={`${title} (${changes.length})`} className="nx-gw-lane" data-lane={lane.id}>
@@ -148,7 +153,7 @@ function Lane({ lane, selected, focusId, onRowClick, onFocus, onFocusFolder, dra
         <span className="nx-gw-lane-title">{title}</span>
         <span className="nx-gw-sec-n">{changes.length}</span>
         {lane.bulk && movable.length > 0 && (
-          <button className="nx-gw-lane-btn" disabled={busy} onClick={() => onWrite(lane.bulk, (picked.length ? picked : movable).map(c => c.id))}>{bulkLabel}</button>
+          <button className="nx-gw-lane-btn" disabled={busy || !targets.length} onClick={() => onWrite(lane.bulk, targets.map(c => c.id))}>{bulkLabel}</button>
         )}
       </div>
       {big && (
@@ -212,12 +217,20 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
   const list = lanes(tree.changes, tree.operationInfo?.kind)
   const labels = conflictLabels(tree.operationInfo, checkoutName(tree))
   const ordered = list.flatMap(s => s.changes)
+  const listRef = React.useRef(null)
+  // The changes in the order the lanes draw them (filtered, folder by folder, open folders only): what a Shift-click
+  // range and the arrow keys walk. The lanes' own order is the fallback while nothing is drawn.
+  const drawn = () => {
+    const byId = new Map(tree.changes.map(c => [c.id, c]))
+    const rows = [...(listRef.current?.querySelectorAll('[data-change]') ?? [])].map(n => byId.get(decodeURIComponent(n.getAttribute('data-change')))).filter(Boolean)
+    return rows.length ? rows : ordered
+  }
   const actions = actionsFor(tree.changes, selected)
   const write = (action, ids) => { if (!busy && ids.length) onWrite(action, ids) }
   const run = action => { if (!busy && actions[action].length) onAction(action) }
   const onRowClick = (c, e) => {
     const mods = { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }
-    onSelectionChange(nextSelection({ ordered, selected, focusId }, c.id, mods))
+    onSelectionChange(nextSelection({ ordered: drawn(), selected, focusId }, c.id, mods))
     if (!mods.shift) onFocus(c.id)
   }
   // The row's menu acts on the whole selection when the row is part of it, else on the row alone. A conflicted
@@ -253,8 +266,9 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
     if (e.target !== e.currentTarget && (e.target.tagName === 'INPUT' || e.target.closest('button'))) return
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
-      const i = ordered.findIndex(c => c.id === focusId)
-      const next = ordered[Math.min(ordered.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1)))]
+      const rows = drawn()
+      const i = rows.findIndex(c => c.id === focusId)
+      const next = rows[Math.min(rows.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1)))]
       if (next) onFocus(next.id)
     } else if (e.key === ' ' && focusId) {
       e.preventDefault()
@@ -273,7 +287,7 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
       )}
       {popError && <div role="alert" className="nx-gw-files-status" data-tone="bad">{popError}</div>}
       <ContextMenu menu={menu} onClose={closeMenu} />
-      <div tabIndex={0} aria-label="Changed files" onKeyDown={onKeyDown} className="nx-gw-lanes" style={{ gridTemplateRows: ROWS_BY_LANES[list.length || 2] }}>
+      <div ref={listRef} tabIndex={0} aria-label="Changed files" onKeyDown={onKeyDown} className="nx-gw-lanes" style={{ gridTemplateRows: ROWS_BY_LANES[list.length || 2] }}>
         {!list.length
           ? (
             <>

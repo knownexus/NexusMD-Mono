@@ -478,3 +478,31 @@ describe('FilesPane right-hand panel', () => {
     expect(await screen.findByRole('region', { name: 'Diff' })).toBeTruthy()
   })
 })
+
+describe('FilesPane Changed pin with many changes', () => {
+  const many = n => Array.from({ length: n }, (_, i) => ({ id: `unstaged\0f${i}.txt`, path: `f${i}.txt`, originalPath: null, area: 'unstaged', xy: '.M', sub: 'N...' }))
+
+  it('shows a few rows and offers the rest, so the tree keeps its room', async () => {
+    setup({ changes: many(40) })
+    const group = await screen.findByRole('group', { name: 'Changed 40' })
+    expect(group.querySelectorAll('.nx-gw-pin-row')).toHaveLength(8)
+    fireEvent.click(within(group).getByRole('button', { name: 'Show 32 more' }))
+    expect(group.querySelectorAll('.nx-gw-pin-row')).toHaveLength(40)
+    fireEvent.click(within(group).getByRole('button', { name: 'Show fewer' }))
+    expect(group.querySelectorAll('.nx-gw-pin-row')).toHaveLength(8)
+  })
+
+  it('never draws thousands of buttons: expanded, it stops at 300 and says how many are left', async () => {
+    setup({ changes: many(1000) })
+    const group = await screen.findByRole('group', { name: 'Changed 1000' })
+    fireEvent.click(within(group).getByRole('button', { name: 'Show 992 more' }))
+    expect(group.querySelectorAll('.nx-gw-pin-row')).toHaveLength(300)
+    expect(within(group).getByText('700 more in the Changes tab')).toBeTruthy()
+  })
+
+  it('has no toggle for a handful', async () => {
+    setup({ changes: many(5) })
+    const group = await screen.findByRole('group', { name: 'Changed 5' })
+    expect(within(group).queryByRole('button', { name: /Show/ })).toBeNull()
+  })
+})

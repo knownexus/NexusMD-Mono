@@ -41,3 +41,37 @@ describe('useRail', () => {
     modal.remove()
   })
 })
+
+describe('useRail only answers for the tab that is shown', () => {
+  it('does nothing while it is not active', () => {
+    const a = renderHook(() => useRail('files', { active: false }))
+    act(() => { fireEvent.keyDown(window, { key: ']', ctrlKey: true }) })
+    expect(a.result.current.open).toBe(true)
+  })
+
+  it('does nothing while its page is hidden (display: none above it), and works once it shows', () => {
+    const box = document.createElement('div')
+    box.style.display = 'none'
+    document.body.appendChild(box)
+    const a = renderHook(() => useRail('files', { rootRef: { current: box } }))
+    act(() => { fireEvent.keyDown(window, { key: ']', ctrlKey: true }) })
+    expect(a.result.current.open).toBe(true)
+    box.style.display = 'block'
+    act(() => { fireEvent.keyDown(window, { key: ']', ctrlKey: true }) })
+    expect(a.result.current.open).toBe(false)
+    box.remove()
+  })
+
+  it('one press moves one panel when two tabs are mounted, only one of them shown', () => {
+    const shown = document.createElement('div')
+    const hidden = document.createElement('div')
+    hidden.style.display = 'none'
+    document.body.append(shown, hidden)
+    const a = renderHook(() => useRail('changes', { rootRef: { current: shown } }))
+    const b = renderHook(() => useRail('files', { rootRef: { current: hidden } }))
+    act(() => { fireEvent.keyDown(window, { key: ']', ctrlKey: true }) })
+    expect(a.result.current.open).toBe(false)
+    expect(b.result.current.open).toBe(true)
+    shown.remove(); hidden.remove()
+  })
+})

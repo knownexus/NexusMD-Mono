@@ -87,10 +87,12 @@ export function followPreviewLink(e, container, {
   open = url => window.open(url, '_blank', 'noopener'),
   openExternal = window.electronAPI?.openExternal,
 } = {}) {
-  const a = e.target.closest?.('a[href]');
+  // Any element that links, not only <a>: an image map's <area> and an svg's <a xlink:href> would otherwise navigate the window.
+  const a = e.target.closest?.('a, area');
   if (!a || !container.contains(a)) return;
+  const href = a.getAttribute('href') ?? a.getAttribute('xlink:href');
+  if (href == null) return;
   e.preventDefault();
-  const href = a.getAttribute('href');
   if (href.startsWith('#')) {
     let anchor = href.slice(1);
     try { anchor = decodeURIComponent(anchor); } catch (err) { ignore(log, 'the setting could not be applied, so the text is kept as written', err, 'debug') }
@@ -105,9 +107,14 @@ export function followPreviewLink(e, container, {
   else if (url.protocol === 'mailto:') (openExternal ?? open)(url.href);
 }
 
-// What `strict` rendering removes on top of DOMPurify's defaults: anything that can submit a form (which
-// would navigate the window to an address the document chose) or load another page inside this one.
-const STRICT = { FORBID_TAGS: ['form', 'input', 'button', 'textarea', 'select', 'iframe'], FORBID_ATTR: ['action', 'formaction'] };
+// What `strict` rendering removes on top of DOMPurify's defaults: anything that can submit a form or follow a link
+// other than an <a> (an image map, an svg link), which would navigate the window to an address the document chose;
+// anything that loads another page inside this one; and anything that can restyle the whole app (style blocks and
+// attributes).
+const STRICT = {
+  FORBID_TAGS: ['form', 'input', 'button', 'textarea', 'select', 'iframe', 'style', 'map', 'area', 'svg', 'math'],
+  FORBID_ATTR: ['action', 'formaction', 'style', 'usemap', 'xlink:href'],
+};
 
 // Renders markdown into a preview element: sanitized HTML, heading anchors, and highlighted code
 // when highlight.js is loaded. `strict` is for Markdown someone else wrote (a repository's README).

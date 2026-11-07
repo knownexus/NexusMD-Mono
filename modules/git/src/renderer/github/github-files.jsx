@@ -51,7 +51,8 @@ export function GithubFiles({
 }) {
   const [state, setState] = React.useState({ key: null, files: null, truncated: false, error: null })
   const [note, setNote] = React.useState(null)
-  const rail = useRail('github-files')
+  const rootRef = React.useRef(null)
+  const rail = useRail('github-files', { rootRef })
   // Source or Preview for a Markdown file; another file starts at Source.
   const [md, setMd] = React.useState({ path: null, view: 'source' })
   const key = `${repo}@${sha || branch}#${refreshKey}`
@@ -96,7 +97,7 @@ export function GithubFiles({
     ? <FilesRail key={picked} repo={repo} client={client} branch={branch} sha={sha} path={picked} openPRs={openPRs} refreshKey={refreshKey} actions={actions} onViewPrs={onViewPrs} fail={setNote} />
     : <div className="nx-gw-crail"><div className="nx-gw-rail-note">Pick a file to see its details.</div></div>)
   return (
-    <div className="nx-gw-gh-files">
+    <div className="nx-gw-gh-files" ref={rootRef}>
       {note && <div role="alert" className="nx-alert bad">{note}</div>}
       <FileExplorer label="Files" rootName={repo.split('/').pop() || repo} files={current.files} truncated={current.truncated} error={current.error}
         viewKey={`github:${repo}@${branch}`} menuItems={row => (row.kind === 'file' ? actions(row.path).map(({ label, onSelect }) => ({ label, onSelect })) : [])}

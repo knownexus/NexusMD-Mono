@@ -1,9 +1,9 @@
 // Text size for rendered markdown: one size for every preview, changed by the A−/A+ controls or
 // Ctrl+scroll, and remembered.
 import React from 'react'
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { MarkdownPreview, TextSizeControls, useMarkdownTextSize, stepTextSize, TEXT_SIZES } from './markdown-preview.jsx'
+import { MarkdownPreview, TextSizeControls, useMarkdownTextSize, stepTextSize, TEXT_SIZES, followPreviewLink } from './markdown-preview.jsx'
 
 function Viewer({ label }) {
   const [size, setSize] = useMarkdownTextSize()
@@ -106,5 +106,47 @@ describe('strict rendering of untrusted Markdown', () => {
     const el = html(false)
     expect(el.querySelector('script')).toBeNull()
     expect(el.querySelector('[onerror]')).toBeNull()
+  })
+})
+
+describe('strict rendering: what else a README must not carry', () => {
+  const HOSTILE = [
+    '# Title', '',
+    '<img src="x.png" usemap="#m"><map name="m"><area shape="rect" coords="0,0,99,99" href="https://evil.example/"></map>', '',
+    '<svg viewBox="0 0 10 10"><a xlink:href="https://evil.example/"><rect width="10" height="10"/></a></svg>', '',
+    '<style>body { display: none }</style>', '',
+    '<p style="position:fixed;inset:0;z-index:9999">cover</p>', '',
+  ].join('\n')
+  const strictEl = () => render(<MarkdownPreview markdown={HOSTILE} strict />).container.querySelector('.md-content')
+
+  it('drops image maps, svg, style blocks and style attributes', () => {
+    const el = strictEl()
+    for (const tag of ['map', 'area', 'svg', 'style']) expect(el.querySelector(tag)).toBeNull()
+    expect(el.querySelector('[usemap], [style], [xlink\\:href]')).toBeNull()
+    expect(el.querySelector('h1').textContent).toBe('Title')
+  })
+})
+
+describe('followPreviewLink', () => {
+  const clickOn = (html, selector, options) => {
+    const box = document.createElement('div')
+    box.innerHTML = html
+    document.body.appendChild(box)
+    const target = box.querySelector(selector)
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'target', { value: target })
+    followPreviewLink(event, box, options)
+    box.remove()
+    return event
+  }
+
+  it('stops a click on an image-map area or an svg link from navigating the window, and opens http(s) as a tab', () => {
+    const open = vi.fn()
+    const area = clickOn('<map><area href="https://evil.example/x"></map>', 'area', { open, openExternal: undefined })
+    expect(area.defaultPrevented).toBe(true)
+    expect(open).toHaveBeenCalledWith('https://evil.example/x')
+    const svgLink = clickOn('<svg><a href="javascript:alert(1)"><rect/></a></svg>', 'a', { open, openExternal: undefined })
+    expect(svgLink.defaultPrevented).toBe(true)
+    expect(open).toHaveBeenCalledTimes(1)
   })
 })

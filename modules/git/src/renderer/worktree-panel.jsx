@@ -71,7 +71,8 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   const [mode, setMode] = React.useState('diff')
   const files = usePaneWidth('filesWidth', FILES_WIDTH)
   const changesRef = React.useRef(null)
-  const rail = useRail('changes')
+  const rootRef = React.useRef(null)
+  const rail = useRail('changes', { active: panel === 'changes', rootRef })
   // The last commit is read only when the panel shows it: a clean tree on the Changes tab.
   const clean = !history && !filesTab && !tree.operation && tree.changes.length === 0
   const lastCommit = useLastCommit({ adapter, repo, cwd: tree.path, registered, tree, version, enabled: clean && rail.open })
@@ -217,7 +218,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
   const diff = useDiff({ adapter, repo, worktreePath: tree.path, registered, change: diffChange, version })
   const canEdit = !!editor || (!!change && change.area !== 'conflict')
   return (
-    <div className="nx-gw-detail">
+    <div className="nx-gw-detail" ref={rootRef}>
       <BranchHeader tree={tree} stashCount={stashCount} onSync={onSync ?? (() => {})} onStashes={() => setStashes(true)}
         onOverview={onOverview} onSwitch={onSwitch} onEditor={() => setGoTo(true)} onSource={() => setPicking(true)}
         panel={panel} onPanel={switchPanel} changeCount={tree.changes.length} onGoTo={() => setGoTo(true)} focusLayout={focusLayout}

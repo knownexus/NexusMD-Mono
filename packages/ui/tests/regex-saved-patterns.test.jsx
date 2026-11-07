@@ -82,16 +82,37 @@ describe('SavedPatterns', () => {
       expect(p.queryByRole('menu')).toBeNull()
     })
 
-    it('Rename… asks for a name, and a cancelled prompt renames nothing', () => {
-      const prompt = vi.spyOn(window, 'prompt').mockReturnValueOnce('Bills').mockReturnValueOnce(null)
+    it('Rename… turns the row into a field; Enter saves the name, Escape and a blank name rename nothing', () => {
+      const prompt = vi.spyOn(window, 'prompt')
       const p = show()
       open(p)
       fireEvent.click(p.getByRole('menuitem', { name: 'Rename…' }))
-      expect(prompt).toHaveBeenCalledWith('Rename pattern:', 'Invoices')
+      const field = p.getByRole('textbox', { name: 'Rename pattern' })
+      expect(field.value).toBe('Invoices')
+      fireEvent.change(field, { target: { value: 'Bills' } })
+      fireEvent.keyDown(field, { key: 'Enter' })
       expect(p.onRename).toHaveBeenCalledWith('2', 'Bills')
+      expect(p.queryByRole('textbox', { name: 'Rename pattern' })).toBeNull()
       open(p)
       fireEvent.click(p.getByRole('menuitem', { name: 'Rename…' }))
+      fireEvent.keyDown(p.getByRole('textbox', { name: 'Rename pattern' }), { key: 'Escape' })
+      expect(p.queryByRole('textbox', { name: 'Rename pattern' })).toBeNull()
+      open(p)
+      fireEvent.click(p.getByRole('menuitem', { name: 'Rename…' }))
+      fireEvent.change(p.getByRole('textbox', { name: 'Rename pattern' }), { target: { value: '   ' } })
+      fireEvent.keyDown(p.getByRole('textbox', { name: 'Rename pattern' }), { key: 'Enter' })
       expect(p.onRename).toHaveBeenCalledTimes(1)
+      expect(prompt).not.toHaveBeenCalled()
+    })
+
+    it('saves a rename when the field loses focus', () => {
+      const p = show()
+      open(p)
+      fireEvent.click(p.getByRole('menuitem', { name: 'Rename…' }))
+      const field = p.getByRole('textbox', { name: 'Rename pattern' })
+      fireEvent.change(field, { target: { value: 'Kept' } })
+      fireEvent.blur(field)
+      expect(p.onRename).toHaveBeenCalledWith('2', 'Kept')
     })
 
     it('Delete… asks first', () => {

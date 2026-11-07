@@ -374,7 +374,7 @@ describe('ChangesPane large change sets', () => {
     const onFocusFolder = vi.fn()
     pane(withOthers, { onFocusFolder })
     fireEvent.click(notStaged().getByText('apps/web/dist/'))
-    expect(onFocusFolder).toHaveBeenCalledWith(expect.objectContaining({ path: 'apps/web/dist/', area: 'unstaged', ids: expect.any(Array) }))
+    expect(onFocusFolder).toHaveBeenCalledWith(expect.objectContaining({ path: 'apps/web/dist/', area: 'untracked', ids: expect.any(Array) }))
     expect(onFocusFolder.mock.calls[0][0].ids).toHaveLength(120)
   })
 
@@ -402,5 +402,56 @@ describe('ChangesPane large change sets', () => {
     fireEvent.click(screen.getByText('dist/'))
     expect(document.querySelectorAll('.nx-gw-file').length).toBe(300)
     expect(screen.getByText('Show 1200 more in this folder')).toBeTruthy()
+  })
+})
+
+describe('ChangesPane selection and Stage all follow what is shown', () => {
+  beforeEach(() => setGitConfig({ view: { ...getGitConfig().view, laneMode: 'flat' } }))
+  const pairs = Array.from({ length: 60 }, (_, i) => [c('untracked', `src/a${i}.js`), c('untracked', `lib/b${i}.js`)]).flat()
+  const filter = value => fireEvent.change(screen.getByPlaceholderText('Filter files'), { target: { value } })
+
+  it('Shift-click across a filtered list selects only the files that are shown', () => {
+    const h = renderPane({ tree: { path: 'C:/repos/A', changes: pairs }, focusId: pairs[0].id })
+    filter('src')
+    fireEvent.click(screen.getByTitle('src/a59.js'), { shiftKey: true })
+    const picked = h.onSelectionChange.mock.calls.at(-1)[0]
+    expect(picked).toHaveLength(60)
+    expect(picked.every(id => id.includes('src/'))).toBe(true)
+  })
+
+  it('the arrow keys step over the rows that are shown, not the ones the filter hid', () => {
+    const h = renderPane({ tree: { path: 'C:/repos/A', changes: pairs }, focusId: pairs[0].id })
+    filter('src')
+    fireEvent.keyDown(screen.getByLabelText('Changed files'), { key: 'ArrowDown' })
+    expect(h.onFocus).toHaveBeenLastCalledWith(pairs[2].id)
+  })
+
+  it('with a filter the lane button acts on the files shown and says how many', () => {
+    const h = renderPane({ tree: { path: 'C:/repos/A', changes: pairs } })
+    expect(screen.getByRole('button', { name: 'Stage all ↓' })).toBeTruthy()
+    filter('src')
+    fireEvent.click(screen.getByRole('button', { name: 'Stage 60 shown ↓' }))
+    const ids = h.onWrite.mock.calls.at(-1)[1]
+    expect(ids).toHaveLength(60)
+    expect(ids.every(id => id.includes('src/'))).toBe(true)
+  })
+
+  it('in Folders mode a Shift-click range covers the open folder\'s files in the order they are drawn', () => {
+    setGitConfig({ view: { ...getGitConfig().view, laneMode: 'folders' } })
+    const files = Array.from({ length: 30 }, (_, i) => [c('untracked', `x/f${i}.js`), c('untracked', `y/f${i}.js`)]).flat()
+    const h = renderPane({ tree: { path: 'C:/repos/A', changes: files }, focusId: files[0].id })
+    fireEvent.click(screen.getByText('x/'))
+    fireEvent.click(screen.getByText('y/'))
+    fireEvent.click(screen.getByTitle('y/f0.js'), { shiftKey: true })
+    expect(h.onSelectionChange.mock.calls.at(-1)[0]).toHaveLength(31)
+  })
+
+  it('names a folder of mixed files changed, not untracked', () => {
+    setGitConfig({ view: { ...getGitConfig().view, laneMode: 'folders' } })
+    const mixed = [...Array.from({ length: 55 }, (_, i) => c('untracked', `d/u${i}.js`)), c('unstaged', 'd/edited.js')]
+    const onFocusFolder = vi.fn()
+    renderPane({ tree: { path: 'C:/repos/A', changes: mixed }, onFocusFolder })
+    fireEvent.click(screen.getByText('d/'))
+    expect(onFocusFolder).toHaveBeenCalledWith(expect.objectContaining({ path: 'd/', area: 'unstaged' }))
   })
 })

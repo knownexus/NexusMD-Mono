@@ -136,4 +136,6 @@ mark.nx-rt-m.sel { background: color-mix(in srgb, var(--warning) 26%, transparen
 .nx-rt-ref-item:hover { background: var(--surface-2); }
 .nx-rt-ref-key { flex: none; min-width: 72px; font: 11px var(--mono); color: var(--accent); }
 .nx-rt-ref-desc { font-size: 11px; line-height: 1.5; color: var(--text-muted); }
+.nx-rt-rename { list-style: none; padding: 4px 0; }
+.nx-rt-rename input { width: 100%; height: 28px; padding: 0 8px; box-sizing: border-box; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font: inherit; font-size: 12.5px; outline: 0; }
 `

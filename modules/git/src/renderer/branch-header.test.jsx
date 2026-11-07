@@ -41,10 +41,16 @@ describe('BranchHeader', () => {
   })
 
   it('says it is rebasing onto the branch, in the danger tone, while a rebase is under way', () => {
-    setup(tree({ operation: 'Rebase in progress', operationInfo: { kind: 'rebase', onto: 'origin/master' } }))
+    setup(tree({ operation: 'Rebase in progress', operationInfo: { kind: 'rebase', onto: { name: 'refs/remotes/origin/master', oid: 'a'.repeat(40) } } }))
     const state = screen.getByText('Rebasing onto origin/master')
     expect(state.getAttribute('data-tone')).toBe('bad')
     expect(screen.queryByText('In sync')).toBeNull()
+  })
+
+  it('says the plain operation when a rebase names nothing it is onto', () => {
+    setup(tree({ operation: 'Rebase in progress', operationInfo: { kind: 'rebase', onto: null } }))
+    expect(screen.getByText('Rebase in progress', { selector: '.nx-gw-t' })).toBeTruthy()
+    expect(document.body.textContent).not.toContain('[object Object]')
   })
 
   it('has the Changes, History and Files tabs and Go to file in a second row', () => {
