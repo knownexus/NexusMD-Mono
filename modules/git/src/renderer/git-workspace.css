@@ -310,7 +310,7 @@
 .nx-gw-gh-files .nx-gw-fx { height: min(70vh, 720px); }
 
 .nx-gw-tree { display: grid; font-size: 13px; }
-.nx-gw-tree-row { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: var(--radius-sm); cursor: pointer; user-select: none; outline: none; }
+.nx-gw-tree-row { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: var(--radius-sm); cursor: pointer; user-select: none; outline: none; }
 .nx-gw-tree-twist { width: 11px; flex: none; display: grid; place-items: center; color: var(--text-muted); }
 .nx-gw-tree-icon { flex: none; color: var(--text-muted); }
 .nx-gw-tree-row[data-kind="dir"] .nx-gw-tree-icon { color: var(--accent); }
@@ -665,3 +665,19 @@
 .nx-gw-last-size .add { color: var(--success); }
 .nx-gw-last-size .del { color: var(--danger); }
 .nx-gw-clean-badge { display: grid; place-items: center; width: 20px; height: 20px; margin: 0 auto 4px; border-radius: 50%; background: var(--success-soft); color: var(--success); }
+
+/* ---------- Files tab: pinned groups, 22px tree rows, filter marks (3a) ---------- */
+.nx-gw-fx-filter { height: 26px; }
+.nx-gw-tree { font-size: 12.5px; }
+.nx-gw-tree-icon[data-kind], .nx-gw-tree-row[data-kind="dir"] .nx-gw-tree-icon { opacity: .8; }
+.nx-gw-tree-twist { width: 9px; }
+.nx-gw-fx mark { padding: 0 1px; border-radius: 2px; background: var(--accent-soft); color: var(--accent); }
+.nx-gw-pin { flex: none; padding: 0 6px 2px; }
+.nx-gw-pin .nx-gw-eyebrow { padding: 4px 6px 2px; line-height: 16px; }
+.nx-gw-pin-row { display: flex; align-items: center; gap: 6px; width: 100%; height: 22px; padding: 0 6px; border: 0; border-radius: 5px; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.nx-gw-pin-row:hover { background: var(--surface-3); }
+.nx-gw-pin-row[aria-current="true"] { background: var(--accent-soft); }
+.nx-gw-pin-row[data-tone="ok"] .nx-gw-pin-name { color: var(--success); }
+.nx-gw-pin-row > svg { flex: none; color: var(--text-muted); }
+.nx-gw-pin-name { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-gw-pin-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-muted); text-align: right; }

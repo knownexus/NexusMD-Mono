@@ -6,6 +6,9 @@ import { ipcMessage } from './use-git-actions.js'
 import { openElsewhere } from './open-elsewhere.js'
 import { fileMarks } from './file-marks.js'
 import { FileExplorer, PreviewHead, forgetExplorerViews } from './file-explorer.jsx'
+import { useRecentFiles } from './use-recent-files.js'
+import { relativeTime } from './history-pane.jsx'
+import { Icon } from '@nexusmd/ui'
 import { TextPreview } from './file-preview.jsx'
 import { ImageView } from './image-view.jsx'
 import { isImagePath } from './image-types.js'
@@ -40,6 +43,44 @@ function RowName({ row, marks }) {
         </span>
       )}
     </>
+  )
+}
+
+const baseOf = path => path.slice(path.lastIndexOf('/') + 1)
+const dirOf = path => path.slice(0, Math.max(0, path.lastIndexOf('/')))
+
+// The changed files, pinned above the tree: the letter, name and folder; a staged file in the staged colour.
+function ChangedPin({ marks, picked, pick }) {
+  const list = [...marks.files].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+  if (!list.length) return null
+  return (
+    <div role="group" aria-label={`Changed ${list.length}`} className="nx-gw-pin">
+      <div className="nx-gw-eyebrow">{`Changed ${list.length}`}</div>
+      {list.map(([path, f]) => (
+        <button key={path} type="button" className="nx-gw-pin-row" title={path} data-tone={f.marks[0].tone} aria-current={picked === path ? 'true' : undefined} onClick={() => pick(path)}>
+          <span className="nx-gw-file-code" data-tone={f.marks[0].tone}>{f.marks[0].letter}</span>
+          <span className="nx-gw-pin-name">{baseOf(path)}</span>
+          {dirOf(path) && <span className="nx-gw-pin-dir">{dirOf(path)}</span>}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// The last few files opened in this worktree this session.
+function RecentPin({ recent, picked, pick }) {
+  if (!recent.length) return null
+  return (
+    <div role="group" aria-label="Recent" className="nx-gw-pin">
+      <div className="nx-gw-eyebrow">Recent</div>
+      {recent.map(r => (
+        <button key={r.path} type="button" className="nx-gw-pin-row" title={r.path} aria-current={picked === r.path ? 'true' : undefined} onClick={() => pick(r.path)}>
+          <Icon name="clock" size={11} />
+          <span className="nx-gw-pin-name">{baseOf(r.path)}</span>
+          <span className="nx-gw-pin-dir">{relativeTime(r.openedAt)}</span>
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -92,6 +133,7 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
   }, [worktreePath])
   React.useEffect(() => { load() }, [load, repoPath, repoName, version])
   const marks = React.useMemo(() => fileMarks(changes), [changes])
+  const recent = useRecentFiles(`${repo?.path}|${worktreePath}`)
 
   const finish = async (dir, sources, replace) => {
     setBusy(true)
@@ -180,7 +222,13 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
     <div className="nx-gw-files-tab" data-dropping={target !== null || undefined} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       <FileExplorer label="Files" rootName={repo?.name || 'Repository'} files={list?.files ?? null} truncated={!!list?.truncated} error={error}
         viewKey={`local:${worktreePath}`} renderName={row => <RowName row={row} marks={marks} />} menuItems={menuItems}
-        onOpen={onOpenFile} preview={preview} notes={notes} footer={marks.files.size > 0 && <Legend marks={marks} />}
+        onOpen={onOpenFile} preview={preview} notes={notes} onPick={recent.touch} highlightMatches
+        pins={({ pick, picked }) => (
+          <>
+            <ChangedPin marks={marks} picked={picked} pick={pick} />
+            <RecentPin recent={recent.recent} picked={picked} pick={pick} />
+          </>
+        )} footer={marks.files.size > 0 && <Legend marks={marks} />}
         emptyNote="To add files, drag them here from your file explorer. Drop them on a folder to put them in it."
         rowProps={row => ({ 'data-drop': (row.kind === 'dir' && target === row.path) || undefined })} />
       {ask && (

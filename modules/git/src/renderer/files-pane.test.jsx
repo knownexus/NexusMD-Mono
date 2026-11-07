@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react'
 // CodeMirror is tested on its own; the preview here is a plain read-only textarea.
 vi.mock('@nexusmd/editor-kit/code-editor.jsx', () => ({
   languageForPath: () => 'plaintext',
@@ -7,9 +7,10 @@ vi.mock('@nexusmd/editor-kit/code-editor.jsx', () => ({
 }))
 
 import { FilesPane, forgetFilesView } from './files-pane.jsx'
+import { forgetRecentFiles } from './use-recent-files.js'
 
 // The tab remembers open folders per worktree for the session; each test starts afresh.
-afterEach(() => { cleanup(); forgetFilesView() })
+afterEach(() => { cleanup(); forgetFilesView(); forgetRecentFiles() })
 
 const repo = { name: 'A', path: 'C:/repos/A' }
 const registered = ['C:/repos/A']
@@ -339,5 +340,42 @@ describe('FilesPane', () => {
       fireEvent.click(await row('README.md'))
       expect((await screen.findByRole('alert')).textContent).toBe("big.bin isn't a text file.")
     })
+  })
+})
+
+describe('FilesPane pinned groups', () => {
+  const change = (area, path, xy) => ({ id: `${area}\0${path}`, path, originalPath: null, area, xy, sub: 'N...' })
+  const changes = [change('unstaged', 'src/app.jsx', '.M'), change('staged', 'README.md', 'M.')]
+
+  it('lists the changed files above the tree with their letter, name and folder, and picks one on click', async () => {
+    setup({ changes })
+    const group = await screen.findByRole('group', { name: 'Changed 2' })
+    expect(group.textContent).toContain('app.jsx')
+    expect(group.textContent).toContain('src')
+    fireEvent.click(within(group).getByText('app.jsx'))
+    await waitFor(() => expect(document.querySelector('.nx-gw-fx-name').textContent).toBe('app.jsx'))
+  })
+
+  it('tints a staged file in the staged colour', async () => {
+    setup({ changes })
+    const group = await screen.findByRole('group', { name: 'Changed 2' })
+    expect(within(group).getByText('README.md').closest('button').getAttribute('data-tone')).toBe('ok')
+    expect(within(group).getByText('app.jsx').closest('button').getAttribute('data-tone')).toBe('warn')
+  })
+
+  it('has no Changed group for a clean worktree', async () => {
+    setup({ changes: [] })
+    await row('docs')
+    expect(screen.queryByRole('group', { name: /^Changed/ })).toBeNull()
+  })
+
+  it('lists the files opened this session under Recent, newest first', async () => {
+    setup()
+    expect(screen.queryByRole('group', { name: 'Recent' })).toBeNull()
+    fireEvent.click(await row('README.md'))
+    fireEvent.click(await row('src'))
+    fireEvent.click(await row('app.jsx'))
+    const recent = screen.getByRole('group', { name: 'Recent' })
+    expect([...recent.querySelectorAll('button')].map(b => b.title)).toEqual(['src/app.jsx', 'README.md'])
   })
 })
