@@ -189,3 +189,32 @@ describe('useDocumentAutosave — object content (non-string, regex-shaped)', ()
     expect(captured.current.docs[0].autoName).toBe('/\\d+/')
   })
 })
+
+describe('useDocumentAutosave — openNewest', () => {
+  const seed = storage => storage.setItem('test_docs', JSON.stringify([
+    { id: 'a', name: null, autoName: 'Older', content: 'older text', createdAt: 1, updatedAt: 1 },
+    { id: 'b', name: null, autoName: 'Newer', content: 'newer text', createdAt: 2, updatedAt: 9 },
+  ]))
+
+  it('opens the newest saved document when openNewest is set', () => {
+    const storage = memStorage(); seed(storage)
+    const { captured } = renderHook({ ...stringConfig, openNewest: true }, storage)
+    expect(captured.current.content).toBe('newer text')
+    expect(captured.current.currentDocId).toBe('b')
+  })
+
+  it('does not rewrite the opened document', () => {
+    vi.useFakeTimers()
+    const storage = memStorage(); seed(storage)
+    renderHook({ ...stringConfig, openNewest: true }, storage)
+    act(() => { vi.advanceTimersByTime(2000) })
+    const saved = JSON.parse(storage.getItem('test_docs'))
+    expect(saved.find(d => d.id === 'b').updatedAt).toBe(9)
+  })
+
+  it('starts on the initial content when openNewest is set but nothing is saved', () => {
+    const { captured } = renderHook({ ...stringConfig, initialContent: 'start', openNewest: true })
+    expect(captured.current.content).toBe('start')
+    expect(captured.current.currentDocId).toBeNull()
+  })
+})

@@ -43,7 +43,9 @@ function parseOr(text, fallback) {
   try { return JSON.parse(text) } catch { return fallback }
 }
 
-export function JsonEditorView() {
+// `openNewest`: the app was opened with a file, which is the newest saved document. It is shown as it is, and a
+// document that is not valid JSON shows its error over an empty tree rather than the sample.
+export function JsonEditorView({ openNewest = false }) {
   const {
     content: rawText, setContent: setRawText, docs, currentDocId, hasUnsavedContent,
     openDoc, newDoc, deleteDoc, renameDoc,
@@ -53,10 +55,11 @@ export function JsonEditorView() {
     emptyContent: EMPTY_TEXT,
     isEmpty: t => !t.trim(),
     extractAutoName: jsonAutoName,
+    openNewest,
   })
 
   const [showDocsModal, setShowDocsModal] = useState(false)
-  const [data, setData] = useState(() => parseOr(rawText, SAMPLE))
+  const [data, setData] = useState(() => parseOr(rawText, openNewest ? {} : SAMPLE))
   const [rawError, setRawError] = useState(null)
   const [history, setHistory] = useState(() => [rawText])
   const [histIdx, setHistIdx] = useState(0)

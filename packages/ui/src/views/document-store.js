@@ -33,10 +33,15 @@ export function relativeTime(ts) {
 // create a new one once typing starts with nothing open. `isEmpty(content)`
 // and `extractAutoName(content)` let each caller define what "nothing to
 // save yet" and "a display name" mean for their content shape.
-export function useDocumentAutosave({ storageKey, initialContent, emptyContent, isEmpty, extractAutoName }) {
+export function useDocumentAutosave({ storageKey, initialContent, emptyContent, isEmpty, extractAutoName, openNewest = false }) {
   const [docs, setDocs] = usePersisted(storageKey, [])
-  const [content, setContent] = useState(initialContent)
-  const [currentDocId, setCurrentDocId] = useState(null)
+  // With `openNewest` (the app was opened with a file) the most recently saved document is open from the first
+  // render, instead of starting on `initialContent`.
+  const [newest] = useState(() => (openNewest && Array.isArray(docs) && docs.length
+    ? [...docs].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
+    : null))
+  const [content, setContent] = useState(newest ? newest.content : initialContent)
+  const [currentDocId, setCurrentDocId] = useState(newest ? newest.id : null)
   const [saveStatus, setSaveStatus] = useState('')
 
   // Kept fresh every render so the debounced timer callbacks below always
@@ -45,7 +50,7 @@ export function useDocumentAutosave({ storageKey, initialContent, emptyContent, 
   const contentRef = useRef(content)
   contentRef.current = content
 
-  const isLoadingDoc = useRef(false)
+  const isLoadingDoc = useRef(!!newest) // the opened document is loaded, not typed, so the first autosave pass skips it
   const saveTimerRef = useRef(null)
   const createDocTimerRef = useRef(null)
   const saveStatusTimerRef = useRef(null)

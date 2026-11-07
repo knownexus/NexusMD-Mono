@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { NexusDataProvider, DocumentsView } from '../src/index.js'
+import { JsonEditorView } from '../src/views/view-json-editor.jsx'
 
 function memStorage() {
   const m = new Map()
@@ -118,5 +119,34 @@ describe('DocumentsBar', () => {
     await findByText('Saving…')
     fireEvent.click(getByRole('tab', { name: 'Markdown' }))
     expect(container.querySelector('.nx-docs-save')).toBeNull()
+  })
+})
+
+describe('JsonEditorView when a file was opened', () => {
+  const store = docs => { const storage = memStorage(); storage.setItem('json_editor_documents', JSON.stringify(docs)); return storage }
+  const doc = (content, updatedAt = 5) => ({ id: 'd' + updatedAt, name: null, autoName: 'Opened', content, createdAt: 1, updatedAt })
+  const renderJson = (storage, props) => render(
+    <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {} }}>
+      <JsonEditorView {...props}/>
+    </NexusDataProvider>
+  )
+
+  it('shows the newest document, not the sample', () => {
+    const { container, queryByText } = renderJson(store([doc('{"city":"Oslo"}')]), { openNewest: true })
+    expect(container.querySelector('textarea').value).toBe('{"city":"Oslo"}')
+    expect(queryByText('Alice Johnson')).toBeNull()
+  })
+
+  it('a broken document shows Invalid and no sample tree', () => {
+    const { container, queryByText, getByText } = renderJson(store([doc('{ "a": ')]), { openNewest: true })
+    expect(container.querySelector('textarea').value).toBe('{ "a": ')
+    expect(getByText('Invalid')).toBeTruthy()
+    expect(queryByText('Alice Johnson')).toBeNull()
+    expect(queryByText('address')).toBeNull()
+  })
+
+  it('without openNewest it still starts on the sample', () => {
+    const { getByText } = renderJson(store([doc('{"city":"Oslo"}')]), {})
+    expect(getByText('Alice Johnson')).toBeTruthy()
   })
 })
