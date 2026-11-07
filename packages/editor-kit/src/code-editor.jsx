@@ -4,6 +4,7 @@ import { EditorState, Compartment, Annotation, Transaction } from '@codemirror/s
 import { Decoration } from '@codemirror/view'
 import { syntaxHighlighting } from '@codemirror/language'
 import { classHighlighter } from '@lezer/highlight'
+import { isolateHistory } from '@codemirror/commands'
 import { languageExtension, languageForPath } from './languages.js'
 
 export { languageForPath }
@@ -31,8 +32,11 @@ const lineDecorations = (doc, list) => {
 /**
  * `lineClasses` tints whole lines ([[line, className], …]); they apply to the document as it is
  * after `value`, so pass classes worked out from that same text.
+ *
+ * `apiRef` (a React ref) is given { replaceText(text) } while the editor is mounted. It replaces the whole document as one
+ * ordinary edit: reported through onChange and undoable, unlike a new `value`, which is the app setting the text (a Reload).
  */
-export function CodeEditor({ value, language, onChange, ariaLabel, line = null, readOnly = false, lineClasses = null }) {
+export function CodeEditor({ value, language, onChange, ariaLabel, line = null, readOnly = false, lineClasses = null, apiRef = null }) {
   const host = React.useRef(null)
   const view = React.useRef(null)
   const lang = React.useRef(new Compartment())
@@ -42,6 +46,8 @@ export function CodeEditor({ value, language, onChange, ariaLabel, line = null, 
   const jumped = React.useRef(null)
   const onChangeRef = React.useRef(onChange)
   onChangeRef.current = onChange
+  const apiRefRef = React.useRef(apiRef)
+  apiRefRef.current = apiRef
   const initial = React.useRef({ value, language, ariaLabel, readOnly })
 
   React.useEffect(() => {
@@ -62,7 +68,24 @@ export function CodeEditor({ value, language, onChange, ariaLabel, line = null, 
       }),
     })
     view.current = v
-    return () => { v.destroy(); view.current = null }
+    const api = {
+      replaceText(text) {
+        const next = normalize(text)
+        if (v.state.doc.toString() === next) return
+        const { anchor, head } = v.state.selection.main
+        v.dispatch({
+          changes: { from: 0, to: v.state.doc.length, insert: next },
+          selection: { anchor: Math.min(anchor, next.length), head: Math.min(head, next.length) },
+          annotations: isolateHistory.of('full'), // its own undo step, even straight after typing
+        })
+      },
+    }
+    const ref = apiRefRef.current
+    if (ref) ref.current = api
+    return () => {
+      if (ref && ref.current === api) ref.current = null
+      v.destroy(); view.current = null
+    }
   }, [])
 
   React.useEffect(() => {
