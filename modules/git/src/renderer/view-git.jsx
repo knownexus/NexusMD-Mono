@@ -358,7 +358,7 @@ function GitWorkspace({ adapter, host }) {
                 panel={view.panel} onPanel={panel => setView({ panel })}
                 onSync={(kind, options) => syncTree(selectedTree, kind, options)}
                 onSaved={() => reload([selectedTree.repo])}
-                onOverview={() => { if (mayLeave()) setView({ selected: null }) }} onSwitch={() => setSwitcher(true)} />
+                onOverview={() => { if (mayLeave()) setView({ selected: null }) }} onSwitch={() => setSwitcher(true)} focusLayout={listHidden} />
             )
             : selectedBranch
             ? (

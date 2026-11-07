@@ -364,20 +364,29 @@
 .nx-gw-diff-actions .btn { white-space: nowrap; }
 
 /* branch detail header */
-.nx-gw-dhead { flex: none; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 20px; padding: 14px 24px 12px; background: var(--surface); border-bottom: 1px solid var(--border); }
-.nx-gw-dhead-title { flex: 1 1 360px; min-width: min(100%, 360px); display: flex; flex-direction: column; gap: 5px; }
-.nx-gw-crumb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+/* The branch header: two short rows on --surface (row 1: branch, state, actions; row 2: the tabs). */
+.nx-gw-dhead { flex: none; display: flex; flex-direction: column; background: var(--surface); border-bottom: 1px solid var(--border); }
+.nx-gw-dhead-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 16px 4px; }
+.nx-gw-dhead .nx-gw-tabs { margin-top: 0; padding: 0 12px; border-bottom: 0; min-height: 34px; }
+.nx-gw-dhead .nx-gw-tab { height: 32px; padding: 0 10px; font-size: 12.5px; }
+.nx-gw-dhead .nx-gw-tabs-end { margin-bottom: 0; }
+.nx-gw-back, .nx-gw-sq { height: 26px; width: 26px; min-width: 26px; padding: 0; display: grid; place-items: center; }
+.nx-gw-pathbox { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.nx-gw-copy { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.nx-gw-copy:hover { background: var(--surface-2); color: var(--text); }
+.nx-gw-crumb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px 0; font-size: 12px; color: var(--text-muted); }
 .nx-gw-crumb-link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .nx-gw-crumb-link:hover { text-decoration: underline; }
 .nx-gw-dhead-branch { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.nx-gw-branch-name { margin: 0; min-width: 0; font-size: 18px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-gw-branch-name { margin: 0; min-width: 0; font-size: 16px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-gw-switch { flex: none; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-muted); font-size: 11.5px; white-space: nowrap; cursor: pointer; }
 .nx-gw-switch:hover { border-color: var(--border-strong); color: var(--text); }
-.nx-gw-dhead-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; min-width: 0; font-size: 12px; color: var(--text-muted); }
+.nx-gw-dhead-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; flex: 1 1 0; min-width: 0; font-size: 12px; color: var(--text-muted); }
 .nx-gw-dhead-meta > * { white-space: nowrap; }
 .nx-gw-path { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font: 11.5px var(--mono); }
 .nx-gw-dhead-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
-.nx-gw-dhead-actions .btn { white-space: nowrap; }
+.nx-gw-dhead-actions .btn { white-space: nowrap; height: 26px; font-size: 12px; font-weight: 500; }
+.nx-gw-dhead-actions .btn:disabled { opacity: .45; }
 .nx-gw-bc { flex: none; margin: 8px 20px 0; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); font-size: 12.5px; }
 .nx-gw-bc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; }
 .nx-gw-bc-title { display: flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 2px 0; font-weight: 600; font-size: 12px; color: var(--text); cursor: pointer; }

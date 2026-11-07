@@ -27,7 +27,7 @@ import { discardWorktreeDraft, discardConflictDraft, worktreeDraftPaths, worktre
 export const WorktreePanel = React.forwardRef(function WorktreePanel({
   adapter, host = null, repo, registered, version, tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite, onCommit, onResolve = null, onHunk,
   busy, status, split, onSplit, panel = 'changes', onPanel = () => {}, onSync = null, onSaved,
-  onOverview = () => {}, onSwitch = () => {},
+  onOverview = () => {}, onSwitch = () => {}, focusLayout = false,
 }, ref) {
   const [stashes, setStashes] = React.useState(false)
   // How many stashes the worktree has, for the More menu; read again with each snapshot.
@@ -199,6 +199,7 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
     <div className="nx-gw-detail">
       <BranchHeader tree={tree} stashCount={stashCount} onSync={onSync ?? (() => {})} onStashes={() => setStashes(true)}
         onOverview={onOverview} onSwitch={onSwitch} onEditor={() => setGoTo(true)} onSource={() => setPicking(true)}
+        panel={panel} onPanel={switchPanel} changeCount={tree.changes.length} onGoTo={() => setGoTo(true)} focusLayout={focusLayout}
         onTerminal={adapter.openTerminal ? () => adapter.openTerminal(repo, tree.path, registered) : null} />
       {goTo && <GoToFile adapter={adapter} repo={repo} worktreePath={tree.path} registered={registered} onOpen={goToFile} onClose={() => setGoTo(false)} />}
       {tree.error && <div role="alert" className="nx-alert bad" style={{ margin: '10px 16px 0' }}>{tree.error}</div>}
@@ -210,12 +211,6 @@ export const WorktreePanel = React.forwardRef(function WorktreePanel({
         <BranchCommits tree={tree} adapter={adapter} repo={repo} registered={registered} data={branchCommits}
           onOpenCommit={oid => showInHistory({ oid })} onShowAll={() => showInHistory({ sinceBase: tree.source.ref })} onAction={onSync} />
       )}
-      <div className="nx-gw-tabs">
-        <PanelSwitch panel={panel} onPanel={switchPanel} count={tree.changes.length} />
-        <span className="nx-gw-tabs-end">
-          <button className="nx-gw-goto" title="Ctrl+P" onClick={() => setGoTo(true)}>Go to file<span className="kbd">Ctrl P</span></button>
-        </span>
-      </div>
       {elsewhere.length + keptResolves.length > 0 && (
         <div role="note" aria-label="Unsaved edits" className="nx-panel-section" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <span className="nx-badge warn">● Unsaved edits kept</span>
@@ -283,18 +278,6 @@ function ModeSwitch({ editing, onDiff, onEdit }) {
     <div role="group" aria-label="Diff or edit" className="nx-pills">
       <button className="nx-pill" aria-pressed={!editing} onClick={onDiff} style={{ height: 26 }}>Diff</button>
       <button className="nx-pill" aria-pressed={editing} onClick={onEdit} style={{ height: 26 }}>Edit</button>
-    </div>
-  )
-}
-
-export function PanelSwitch({ panel, onPanel, count = 0 }) {
-  return (
-    <div role="tablist" aria-label="Panel" style={{ display: 'contents' }}>
-      {[['changes', 'Changes', count], ['history', 'History', 0], ['files', 'Files', 0]].map(([id, label, n]) => (
-        <button key={id} role="tab" className="nx-gw-tab" aria-selected={panel === id} onClick={() => onPanel(id)}>
-          {label}{n > 0 && <>{' '}<span className="n">{n}</span></>}
-        </button>
-      ))}
     </div>
   )
 }

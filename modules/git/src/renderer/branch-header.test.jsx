@@ -17,19 +17,49 @@ function setup(t, props = {}) {
 }
 
 describe('BranchHeader', () => {
-  it('shows the breadcrumb, branch, Switch chip, path and tracking line', () => {
+  it('puts the branch, Switch chip, upstream, sync state and path in the first row, with no breadcrumb', () => {
     const { onOverview, onSwitch } = setup(tree({ ahead: 2, behind: 1 }))
-    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' })
-    expect(crumb.textContent).toBe('Overview›Joiners›feature-x')
-    fireEvent.click(within(crumb).getByRole('button', { name: 'Overview' }))
-    expect(onOverview).toHaveBeenCalled()
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull()
     expect(screen.getByRole('heading', { name: 'feature/x' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /Switch/ }))
     expect(onSwitch).toHaveBeenCalled()
     expect(screen.getByTitle('C:/repos/Joiners/feature-x').textContent).toBe('C:/repos/Joiners/feature-x')
-    expect(screen.getByText('Tracks origin/feature/x')).toBeTruthy()
-    expect(screen.getByText('↑2 to push · ↓1 to pull')).toBeTruthy()
+    expect(screen.getByText('origin/feature/x')).toBeTruthy()
+    expect(screen.getByText('↑2 ↓1')).toBeTruthy()
     expect(screen.getByText('Never fetched')).toBeTruthy()
+    // The way back to the overview stays, as a back button beside the name.
+    fireEvent.click(screen.getByRole('button', { name: 'Overview' }))
+    expect(onOverview).toHaveBeenCalled()
+  })
+
+  it('shows the breadcrumb only in the focus layout', () => {
+    const { onOverview } = setup(tree(), { focusLayout: true })
+    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(crumb.textContent).toBe('Overview›Joiners›feature-x')
+    fireEvent.click(within(crumb).getByRole('button', { name: 'Overview' }))
+    expect(onOverview).toHaveBeenCalled()
+  })
+
+  it('says it is rebasing onto the branch, in the danger tone, while a rebase is under way', () => {
+    setup(tree({ operation: 'Rebase in progress', operationInfo: { kind: 'rebase', onto: 'origin/master' } }))
+    const state = screen.getByText('Rebasing onto origin/master')
+    expect(state.getAttribute('data-tone')).toBe('bad')
+    expect(screen.queryByText('In sync')).toBeNull()
+  })
+
+  it('has the Changes, History and Files tabs and Go to file in a second row', () => {
+    const { onPanel, onGoTo } = setup(tree(), { panel: 'changes', onPanel: vi.fn(), changeCount: 3, onGoTo: vi.fn() })
+    const tabs = within(screen.getByRole('tablist', { name: 'Panel' }))
+    expect(tabs.getByRole('tab', { name: 'Changes 3' }).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(tabs.getByRole('tab', { name: 'History' }))
+    expect(onPanel).toHaveBeenCalledWith('history')
+    fireEvent.click(screen.getByRole('button', { name: /Go to file/ }))
+    expect(onGoTo).toHaveBeenCalled()
+  })
+
+  it('draws no tabs row when it is not given a panel to switch', () => {
+    setup(tree())
+    expect(screen.queryByRole('tablist', { name: 'Panel' })).toBeNull()
   })
 
   it('shows from <source> only with a source, and opens the picker', () => {
@@ -45,7 +75,7 @@ describe('BranchHeader', () => {
   })
 
   it('omits the worktree from the breadcrumb for the main checkout or a folder named like the branch', () => {
-    setup(tree({ path: 'C:/repos/Joiners' }))
+    setup(tree({ path: 'C:/repos/Joiners' }), { focusLayout: true })
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' }).textContent).toBe('Overview›Joiners')
   })
 
@@ -60,7 +90,7 @@ describe('BranchHeader', () => {
     expect(screen.getByText('Upstream was deleted on origin')).toBeTruthy()
   })
 
-  it('copies the path', async () => {
+  it('copies the path from an icon button, and says so', async () => {
     const writeText = vi.fn(async () => {})
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     setup(tree())
