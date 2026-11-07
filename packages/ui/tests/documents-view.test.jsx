@@ -50,6 +50,34 @@ describe('DocumentsView when a file was opened with the app', () => {
     expect(container.querySelector('textarea').value).toBe('# Opened\n\nthe file that arrived')
   })
 
+  it('shows the JSON Editor tab on the opened document when a JSON file was opened, whichever tab was last in use', () => {
+    const storage = memStorage()
+    storage.setItem('documents_active_tab', JSON.stringify('markdown'))
+    storage.setItem('json_editor_documents', JSON.stringify([
+      { id: 'j', name: 'cfg', autoName: 'cfg', content: '{"city":"Oslo"}', createdAt: 1, updatedAt: 9 },
+    ]))
+    const { container, getByRole, queryByText } = render(
+      <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {} }}>
+        <DocumentsView opened={1} openedTool="json"/>
+      </NexusDataProvider>
+    )
+    expect(getByRole('tab', { name: 'JSON Editor' }).getAttribute('aria-selected')).toBe('true')
+    expect(container.querySelector('textarea').value).toBe('{"city":"Oslo"}')
+    expect(queryByText('Alice Johnson')).toBeNull()
+  })
+
+  it('lets the person pick another tool afterwards', () => {
+    seed()
+    const { getByRole, getByText } = render(
+      <NexusDataProvider value={{ storage: memStorage(), getProfileKey: k => k, pushPref: () => {} }}>
+        <DocumentsView opened={1}/>
+      </NexusDataProvider>
+    )
+    fireEvent.click(getByRole('tab', { name: 'JSON Editor' }))
+    expect(getByRole('tab', { name: 'JSON Editor' }).getAttribute('aria-selected')).toBe('true')
+    expect(getByText('Alice Johnson')).toBeTruthy()
+  })
+
   it('still starts on a blank page when nothing was opened', () => {
     seed()
     const { container } = renderDocuments()

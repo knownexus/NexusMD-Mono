@@ -147,6 +147,18 @@ describe('Documents page when a file was opened with the app', () => {
     expect(screen.getByLabelText('Markdown').value).toBe('# Opened\n\nfrom a file')
   })
 
+  it('shows the JSON tool on the document that was opened when a JSON file was opened, even if Markdown was showing', async () => {
+    localStorage.setItem('json_editor_documents', JSON.stringify([
+      { id: 'a', name: null, autoName: 'Old', content: '{"old":true}', createdAt: 1, updatedAt: 1 },
+      { id: 'b', name: 'cfg', autoName: 'cfg', content: '{"opened":"yes"}', createdAt: 2, updatedAt: 9 },
+    ]))
+    const { rerender } = render(<DocumentsPhone/>)
+    expect(await screen.findByLabelText('Markdown')).toBeTruthy()
+    rerender(<DocumentsPhone opened={1} openedTool="json" key={1}/>)
+    expect((await screen.findByLabelText('JSON')).value).toBe('{"opened":"yes"}')
+    expect(screen.queryByLabelText('Markdown')).toBeNull()
+  })
+
   it('does not take the tool over when nothing was opened', async () => {
     render(<DocumentsPhone/>)
     fireEvent.click(screen.getByRole('tab', { name: 'JSON' }))
