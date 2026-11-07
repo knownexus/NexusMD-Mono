@@ -1,6 +1,6 @@
 // github-files.jsx — a GitHub repository's files at a branch, in the same explorer as a local worktree's.
 import React from 'react'
-import { getGithubFile } from '@nexusmd/core'
+import { getGithubFile, rendererLog } from '@nexusmd/core'
 import { Segmented, MarkdownPreview } from '@nexusmd/ui'
 import { FileExplorer } from '../file-explorer.jsx'
 import { PathBar } from '../path-bar.jsx'
@@ -10,6 +10,8 @@ import { GithubFileRail } from './github-file-rail.jsx'
 import { useFilePrs, useFileCommits } from './use-file-prs.js'
 import { TextPreview } from '../file-preview.jsx'
 import { githubBlobUrl } from './github-open.js'
+
+const log = rendererLog('git', 'github-files')
 
 // Every file at a commit, from one call (git's recursive tree). GitHub cuts very large trees short.
 export async function listGithubTree(client, repo, sha) {
@@ -34,7 +36,7 @@ function FilesRail({ repo, client, branch, sha, path, openPRs, refreshKey, actio
   const github = list.find(a => a.label === 'Open on GitHub')
   const copy = () => {
     const done = navigator.clipboard?.writeText(githubBlobUrl(repo, sha || branch, path))
-    if (done) done.catch(e => fail(e?.message || String(e)))
+    if (done) done.catch(e => { log.warn('the permalink could not be copied', e); fail(e?.message || String(e)) })
   }
   return (
     <GithubFileRail branch={branch} path={path} prs={prs} commits={commits} primary={primary}

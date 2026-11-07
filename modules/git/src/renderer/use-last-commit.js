@@ -1,5 +1,7 @@
 import React from 'react'
-import { parseLog, parseNameStatus, parseNumstat, historyQuery, HISTORY_STEP } from '@nexusmd/core'
+import { parseLog, parseNameStatus, parseNumstat, historyQuery, HISTORY_STEP, rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('git', 'last-commit')
 
 /**
  * The worktree's newest commit for the clean-tree panel: its subject, time, how many files it changed and
@@ -29,9 +31,9 @@ export function useLastCommit({ adapter, repo, cwd, registered, tree, version, e
               const n = f.numstat != null ? parseNumstat(f.numstat) : null
               counts = { files: list.length, add: n ? list.reduce((t, e) => t + (n.get(e.path)?.added ?? 0), 0) : null, del: n ? list.reduce((t, e) => t + (n.get(e.path)?.removed ?? 0), 0) : null }
             }
-          } catch { counts = null }
+          } catch (err) { ignore(log, "the last commit's file counts could not be read, so the panel shows it without them", err, 'warn'); counts = null }
         }
-      } catch { commits = [] }
+      } catch (err) { ignore(log, 'the last commit could not be read, so the panel says there are none', err, 'warn'); commits = [] }
       if (live) setRead({ loading: false, commits, counts })
     })()
     return () => { live = false }
