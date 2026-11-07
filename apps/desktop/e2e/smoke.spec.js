@@ -90,7 +90,7 @@ test.describe('desktop shell smoke', () => {
 
     await win.getByText('Git Workspace').first().click()
     await expect(
-      win.getByRole('tablist', { name: 'Project groups' })
+      win.getByTitle('Switch project group')
         .or(win.getByText(/Git not found|Checking for git/)),
     ).toBeVisible({ timeout: 15_000 })
 
