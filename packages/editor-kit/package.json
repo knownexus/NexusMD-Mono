@@ -33,7 +33,10 @@
     "@lezer/highlight": "^1.2.5",
     "@nexusmd/core": "*",
     "@nexusmd/ui": "*",
-    "codemirror": "^6.0.2"
+    "codemirror": "^6.0.2",
+    "prettier": "^3.9.10",
+    "sql-formatter": "^15.9.0",
+    "xml-formatter": "^3.7.0"
   },
   "peerDependencies": {
     "react": "^18.3.1",
