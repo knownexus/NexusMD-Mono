@@ -681,3 +681,14 @@
 .nx-gw-pin-row > svg { flex: none; color: var(--text-muted); }
 .nx-gw-pin-name { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-gw-pin-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-muted); text-align: right; }
+
+/* ---------- Files preview: path bar, status footer, changed lines ---------- */
+.nx-gw-pathbar { flex: none; display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 14px; border-bottom: 1px solid var(--border); }
+.nx-gw-pathbar-crumbs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; font-size: 12.5px; color: var(--text-muted); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+.nx-gw-pathbar-crumbs .crumb { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nx-gw-pathbar-crumbs .crumb.last { flex: none; font-weight: 600; color: var(--text); }
+.nx-gw-pathbar-crumbs .sep { flex: none; color: var(--text-muted); }
+.nx-gw-pathbar-end { flex: none; display: flex; align-items: center; gap: 6px; }
+.nx-gw-fx-status { flex: none; display: flex; align-items: center; gap: 14px; height: 26px; padding: 0 14px; border-top: 1px solid var(--border); background: var(--surface); font: 11px var(--mono); color: var(--text-muted); }
+.nx-gw-fx-diff { flex: 1; min-height: 0; overflow: auto; padding: 0 8px; }
+.cm-line.nx-gw-changed-line { background: var(--warning-soft); box-shadow: inset 2px 0 0 var(--warning); }

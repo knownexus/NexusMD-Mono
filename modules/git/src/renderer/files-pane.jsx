@@ -5,10 +5,13 @@ import { popoutSpec } from './popout-spec.js'
 import { ipcMessage } from './use-git-actions.js'
 import { openElsewhere } from './open-elsewhere.js'
 import { fileMarks } from './file-marks.js'
-import { FileExplorer, PreviewHead, forgetExplorerViews } from './file-explorer.jsx'
+import { PathBar } from './path-bar.jsx'
+import { DiffPane } from './diff-pane.jsx'
+import { useDiff } from './use-diff.js'
+import { FileExplorer, forgetExplorerViews } from './file-explorer.jsx'
 import { useRecentFiles } from './use-recent-files.js'
 import { relativeTime } from './history-pane.jsx'
-import { Icon } from '@nexusmd/ui'
+import { Icon, Segmented } from '@nexusmd/ui'
 import { TextPreview } from './file-preview.jsx'
 import { ImageView } from './image-view.jsx'
 import { isImagePath } from './image-types.js'
@@ -98,8 +101,48 @@ function Legend({ marks }) {
   )
 }
 
-/** Forgets every remembered Files tab (open folders, picked file, filter, scroll). */
-export const forgetFilesView = forgetExplorerViews
+// File or Diff for each worktree's picked file, for the session.
+const fileViews = new Map()
+
+/** Forgets every remembered Files tab (open folders, picked file, filter, scroll, File or Diff). */
+export function forgetFilesView() { forgetExplorerViews(); fileViews.clear() }
+
+// The change a file's Diff shows: the unstaged one first, else the staged one (the same choice the editor makes).
+const changeFor = (changes, path) => changes.find(c => c.path === path && c.area !== 'staged') ?? changes.find(c => c.path === path) ?? null
+
+// The new-side line numbers of the added lines in a diff: the lines the file view tints as changed.
+function addedLines(files) {
+  const out = []
+  for (const f of files) for (const h of f.hunks) for (const l of h.lines) if (l.kind === 'add' && l.newNo != null) out.push(l.newNo)
+  return out
+}
+
+// The picked file: a path bar with File | Diff (Diff only for a changed file) and the file with its changed
+// lines tinted and a status footer, or the same diff as Changes.
+function LocalPreview({ path, change, d, worktreePath, version, repoName, viewKey, actions, image }) {
+  const [view, setView] = React.useState(() => fileViews.get(viewKey) ?? 'file')
+  const choose = v => { fileViews.set(viewKey, v); setView(v) }
+  const diff = useDiff({ adapter: d.adapter, repo: d.repo, worktreePath, registered: d.registered, change: image ? null : change, version })
+  const marked = React.useMemo(() => addedLines(diff.files), [diff.files])
+  const showDiff = !!change && !image && view === 'diff'
+  return (
+    <>
+      <PathBar segments={[repoName, ...path.split('/')]}>
+        {change && !image && (
+          <Segmented size="sm" ariaLabel="File or diff" value={view} onChange={choose} options={[{ id: 'file', label: 'File' }, { id: 'diff', label: 'Diff' }]} />
+        )}
+        {actions.map(a => (
+          <button key={a.label} type="button" className={`btn sm${a.primary ? '' : ' ghost'}`} title={a.title} onClick={a.onSelect}>{a.label}</button>
+        ))}
+      </PathBar>
+      {image
+        ? <div className="nx-gw-fx-pad"><ImageView name={path} loadKey={`${path}\0${version}`} load={() => d.adapter.readImage(d.repo, worktreePath, d.registered, path, 'working')} emptyText="This file isn’t there any more." /></div>
+        : showDiff
+          ? <div className="nx-gw-fx-diff"><DiffPane change={change} diff={diff} readOnly onHunk={() => {}} /></div>
+          : <TextPreview path={path} loadKey={version} markedLines={marked} showStatus load={() => d.adapter.readFile(d.repo, worktreePath, d.registered, path)} />}
+    </>
+  )
+}
 
 /**
  * The Files tab: the worktree's files in the shared explorer (tree and filter, the picked file's
@@ -205,17 +248,10 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
     ...(row.kind === 'file' ? fileActions(row.path).map(({ label, onSelect }) => ({ label: label === 'Edit' ? 'Open' : label, onSelect })) : []),
     { label: 'Show in Explorer', onSelect: () => reveal(row.path) },
   ]
-  const preview = path => {
-    const d = deps.current
-    return (
-      <>
-        <PreviewHead path={path} actions={fileActions(path)} />
-        {isImagePath(path)
-          ? <div className="nx-gw-fx-pad"><ImageView name={path} loadKey={`${path}\0${version}`} load={() => d.adapter.readImage(d.repo, worktreePath, d.registered, path, 'working')} emptyText="This file isn’t there any more." /></div>
-          : <TextPreview path={path} loadKey={version} load={() => d.adapter.readFile(d.repo, worktreePath, d.registered, path)} />}
-      </>
-    )
-  }
+  const preview = path => (
+    <LocalPreview key={path} path={path} change={changeFor(changes, path)} d={deps.current} worktreePath={worktreePath} version={version}
+      repoName={repo?.name || 'Repository'} viewKey={`${repo?.path}|${worktreePath}`} actions={fileActions(path)} image={isImagePath(path)} />
+  )
 
   const notes = note && <div role={note.bad ? 'alert' : 'status'} className={`nx-alert ${note.bad ? 'bad' : 'good'}`}>{note.text}</div>
   return (

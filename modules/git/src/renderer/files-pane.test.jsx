@@ -3,7 +3,7 @@ import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-li
 // CodeMirror is tested on its own; the preview here is a plain read-only textarea.
 vi.mock('@nexusmd/editor-kit/code-editor.jsx', () => ({
   languageForPath: () => 'plaintext',
-  CodeEditor: ({ value, ariaLabel }) => <textarea aria-label={ariaLabel} value={value} readOnly />,
+  CodeEditor: ({ value, ariaLabel, lineClasses }) => <textarea aria-label={ariaLabel} value={value} readOnly data-lines={JSON.stringify((lineClasses ?? []).map(l => l[0]))} />,
 }))
 
 import { FilesPane, forgetFilesView } from './files-pane.jsx'
@@ -16,12 +16,15 @@ const repo = { name: 'A', path: 'C:/repos/A' }
 const registered = ['C:/repos/A']
 const files = ['README.md', 'docs/guide.md', 'src/app.jsx']
 const dropped = name => ({ name })
+const DIFF = ['diff --git a/src/app.jsx b/src/app.jsx', '--- a/src/app.jsx', '+++ b/src/app.jsx', '@@ -1,2 +1,3 @@', ' one', '+two', '+three', ''].join('\n')
 
 function setup({ plan = { total: 1, conflicts: [], failed: [] }, result = { added: 1, replaced: 0, skipped: 0, failed: [] }, changes, worktreePath = repo.path } = {}) {
   const adapter = {
     files: vi.fn(async () => ({ files, truncated: false })),
     pathForFile: vi.fn(f => (f.name === 'unknown' ? '' : `D:\\in\\${f.name}`)),
     importFiles: vi.fn(async (_r, _w, _g, _d, _s, options) => (options?.dryRun ? plan : result)),
+    readFile: vi.fn(async () => ({ text: 'one\ntwo\nthree\n' })),
+    diff: vi.fn(async () => ({ text: DIFF, stamp: 's1', truncated: false, binary: false, size: DIFF.length })),
   }
   const onImported = vi.fn()
   render(<div className="nx-gw-files-body"><FilesPane adapter={adapter} repo={repo} worktreePath={worktreePath} registered={registered} version={1} onImported={onImported} changes={changes} /></div>)
@@ -353,7 +356,7 @@ describe('FilesPane pinned groups', () => {
     expect(group.textContent).toContain('app.jsx')
     expect(group.textContent).toContain('src')
     fireEvent.click(within(group).getByText('app.jsx'))
-    await waitFor(() => expect(document.querySelector('.nx-gw-fx-name').textContent).toBe('app.jsx'))
+    await waitFor(() => expect(screen.getByRole('navigation', { name: 'File path' }).textContent).toBe('A›src›app.jsx'))
   })
 
   it('tints a staged file in the staged colour', async () => {
@@ -377,5 +380,56 @@ describe('FilesPane pinned groups', () => {
     fireEvent.click(await row('app.jsx'))
     const recent = screen.getByRole('group', { name: 'Recent' })
     expect([...recent.querySelectorAll('button')].map(b => b.title)).toEqual(['src/app.jsx', 'README.md'])
+  })
+})
+
+describe('FilesPane preview', () => {
+  const change = (area, path, xy) => ({ id: `${area}\0${path}`, path, originalPath: null, area, xy, sub: 'N...' })
+  const changes = [change('unstaged', 'src/app.jsx', '.M')]
+  const pick = async name => { fireEvent.click(await row('src')); fireEvent.click(await row(name)) }
+
+  it('shows the path as crumbs from the repository down to the file', async () => {
+    setup()
+    await pick('app.jsx')
+    expect((await screen.findByRole('navigation', { name: 'File path' })).textContent).toBe('A›src›app.jsx')
+  })
+
+  it('shows language, lines, size, line ending and encoding in a status footer', async () => {
+    setup()
+    await pick('app.jsx')
+    const footer = await screen.findByRole('status', { name: 'File details' })
+    expect(footer.textContent).toContain('JavaScript')
+    expect(footer.textContent).toContain('3 lines')
+    expect(footer.textContent).toContain('14 B')
+    expect(footer.textContent).toContain('LF')
+    expect(footer.textContent).toContain('UTF-8')
+  })
+
+  it('has no File | Diff switch for a file that is not changed', async () => {
+    setup({ changes })
+    await pick('README.md')
+    await screen.findByRole('navigation', { name: 'File path' })
+    expect(screen.queryByRole('tab', { name: 'Diff' })).toBeNull()
+  })
+
+  it('marks the changed lines in the file, and switches to the same diff as Changes', async () => {
+    setup({ changes })
+    await pick('app.jsx')
+    expect(await screen.findByRole('tab', { name: 'Diff' })).toBeTruthy()
+    await waitFor(() => expect(screen.getByLabelText('Preview of src/app.jsx').getAttribute('data-lines')).toBe('[2,3]'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Diff' }))
+    expect(await screen.findByRole('region', { name: 'Diff' })).toBeTruthy()
+    expect(screen.getAllByTestId('diff-line').length).toBe(3)
+    fireEvent.click(screen.getByRole('tab', { name: 'File' }))
+    expect(await screen.findByLabelText('Preview of src/app.jsx')).toBeTruthy()
+  })
+
+  it('remembers File or Diff for the worktree when the tab is left and come back to', async () => {
+    setup({ changes })
+    await pick('app.jsx')
+    fireEvent.click(await screen.findByRole('tab', { name: 'Diff' }))
+    cleanup()
+    setup({ changes })
+    expect(await screen.findByRole('region', { name: 'Diff' })).toBeTruthy()
   })
 })
