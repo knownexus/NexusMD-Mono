@@ -16,7 +16,45 @@ function renderDocuments(storage = memStorage()) {
   )
 }
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); localStorage.clear() })
+
+// A file the app was opened with (Android "Open with") is added to the saved documents, then the Documents
+// page is shown with `opened` counting the files that arrived. The tablet layout must show that file.
+describe('DocumentsView when a file was opened with the app', () => {
+  const seed = () => localStorage.setItem('md_documents', JSON.stringify({ docs: [
+    { id: 'old', name: null, autoName: 'Old notes', content: '# Old notes\n\nfrom before', createdAt: 1, updatedAt: 1 },
+    { id: 'new', name: 'Opened', autoName: 'Opened', content: '# Opened\n\nthe file that arrived', createdAt: 2, updatedAt: 2 },
+  ] }))
+
+  it('shows the newest document in the editor, not an empty page', () => {
+    seed()
+    const { container } = render(
+      <NexusDataProvider value={{ storage: memStorage(), getProfileKey: k => k, pushPref: () => {} }}>
+        <DocumentsView opened={1}/>
+      </NexusDataProvider>
+    )
+    expect(container.querySelector('textarea').value).toBe('# Opened\n\nthe file that arrived')
+  })
+
+  it('switches to the Markdown tool when another tool was the last one in use', () => {
+    seed()
+    const storage = memStorage()
+    storage.setItem('documents_active_tab', JSON.stringify('json'))
+    const { container, getByRole } = render(
+      <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {} }}>
+        <DocumentsView opened={1}/>
+      </NexusDataProvider>
+    )
+    expect(getByRole('tab', { name: 'Markdown' }).getAttribute('aria-selected')).toBe('true')
+    expect(container.querySelector('textarea').value).toBe('# Opened\n\nthe file that arrived')
+  })
+
+  it('still starts on a blank page when nothing was opened', () => {
+    seed()
+    const { container } = renderDocuments()
+    expect(container.querySelector('textarea').value).toBe('')
+  })
+})
 
 describe('DocumentsView', () => {
   it('defaults to the Markdown tab and switches to JSON Editor on click', () => {

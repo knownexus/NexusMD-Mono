@@ -14,9 +14,12 @@ const TABS = [
 ]
 const STORAGE_KEY = 'documents_active_tab'
 
-export function DocumentsView() {
+// `opened` counts the files the app was opened with (Android "Open with" / Share). A file is added to the saved
+// documents, so the Markdown tool is shown with the newest one open, whichever tool was last in use.
+export function DocumentsView({ opened = 0 }) {
   const [activeTab, setActiveTab] = usePersisted(STORAGE_KEY, 'markdown')
-  const tab = TABS.some(t => t.id === activeTab) ? activeTab : 'markdown'
+  React.useLayoutEffect(() => { if (opened) setActiveTab('markdown') }, [opened]) // eslint-disable-line react-hooks/exhaustive-deps
+  const tab = opened ? 'markdown' : TABS.some(t => t.id === activeTab) ? activeTab : 'markdown'
   // The save state the active tool reports; null while it reports none.
   const [save, setSave] = React.useState(null)
   const context = React.useMemo(() => ({ setSave }), [])
@@ -26,7 +29,7 @@ export function DocumentsView() {
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
         <DocumentsBar tabs={TABS} tab={tab} onTab={setActiveTab} save={save} />
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          {tab === 'markdown' ? <MarkdownViewer/> : tab === 'json' ? <JsonEditorView/> : <RegexTesterView/>}
+          {tab === 'markdown' ? <MarkdownViewer openNewest={opened > 0}/> : tab === 'json' ? <JsonEditorView/> : <RegexTesterView/>}
         </div>
       </div>
     </DocumentsBarContext.Provider>

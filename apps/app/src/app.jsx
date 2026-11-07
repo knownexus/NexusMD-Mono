@@ -1214,7 +1214,7 @@ function AppShell() {
       case 'time': return withBar('Time', <TimeView storageKey={getProfileKey('nexusmd.timelog.v1')} getProfileKey={getProfileKey} namespace="nexusmd" getTickets={getTimeTickets}/>);
       case 'notes': return <NotesView onAddTask={addTaskFromNote} onFlash={showFlash}/>;
       case 'lists': return <ListsView device={device}/>;
-      case 'markdown': return device === 'phone' ? <DocumentsPhone key={openedFiles} opened={openedFiles} onFlash={showFlash}/> : <DocumentsView key={openedFiles}/>;
+      case 'markdown': return device === 'phone' ? <DocumentsPhone key={openedFiles} opened={openedFiles} onFlash={showFlash}/> : <DocumentsView key={openedFiles} opened={openedFiles}/>;
       case 'editor': return <EditorScreen onFlash={showFlash}/>;
       case 'git': return <GitView onFlash={showFlash}/>;
       case 'api': return withBar('API Client', <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>);
