@@ -1,5 +1,6 @@
 import React from 'react'
 import { CodeEditor, languageForPath } from '@nexusmd/editor-kit/code-editor.jsx'
+import { canPrettify, prettify } from '@nexusmd/editor-kit/prettify.js'
 import { MarkdownPreview, TextSizeControls, useMarkdownTextSize, useCtrlWheelTextSize } from '@nexusmd/ui'
 import { FolderTree } from './folder-tree.jsx'
 import { editorApi, editorStore, useEditorStore } from './editor-singleton.js'
@@ -87,6 +88,36 @@ function DocPane({ doc, store }) {
       </>
     )
   }
+  return <EditPane key={doc.path} doc={doc} store={store} view={view} />
+}
+
+// The editable file: its text in CodeEditor, and the status bar with Save and, for the types it can tidy, Prettify.
+// Prettify only changes the text when it is tapped; the tidy text goes in as an ordinary, undoable edit, unsaved until Save.
+function EditPane({ doc, store, view }) {
+  const apiRef = React.useRef(null)
+  const [tidying, setTidying] = React.useState(false)
+  const [tidyNote, setTidyNote] = React.useState(null) // { text, bad }: "Already tidy", or why the file could not be tidied
+  // The latest document, read when a tidy result arrives to see whether the person kept typing or switched files meanwhile.
+  const latest = React.useRef(doc)
+  latest.current = doc
+  // A note is about the text it was made for: any edit, or another file, clears it.
+  React.useEffect(() => { setTidyNote(null) }, [doc.path, doc.text])
+
+  async function tidy() {
+    const { path, text } = doc
+    setTidying(true)
+    setTidyNote(null)
+    try {
+      const result = await prettify(path, text)
+      if (latest.current.path !== path || latest.current.text !== text) return // out of date: the person kept typing; leave their text alone
+      if (!result.ok) setTidyNote({ text: result.message, bad: true })
+      else if (result.text === text) setTidyNote({ text: 'Already tidy', bad: false })
+      else apiRef.current?.replaceText(result.text)
+    } finally {
+      setTidying(false)
+    }
+  }
+
   const dirty = isDirty(doc)
   return (
     <>
@@ -98,16 +129,19 @@ function DocPane({ doc, store }) {
         </div>
       )}
       {doc.error && <div role="alert" className="nx-ed-banner nx-ed-bad">{doc.error}</div>}
+      {tidyNote?.bad && <div role="alert" className="nx-ed-banner nx-ed-bad">{tidyNote.text}</div>}
       {view === 'preview' ? <Preview doc={doc} /> : (
         <CodeEditor value={doc.text} language={languageForPath(doc.path)} ariaLabel={`Editing ${doc.name}`} line={doc.line}
-          onChange={text => store.setText(doc.path, text)} />
+          onChange={text => store.setText(doc.path, text)} apiRef={apiRef} />
       )}
       <div className="nx-ed-status">
         <span className="nx-ed-path" title={doc.path}>{doc.path}</span>
         {view === 'preview' && <PreviewTextSize />}
         {view && <ViewToggle doc={doc} view={view} store={store} />}
+        {tidyNote && !tidyNote.bad && <span role="status">{tidyNote.text}</span>}
         <span>{eolLabel(doc.eol)}{doc.bom ? ' · BOM' : ''}</span>
         <span>{doc.saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span>
+        {canPrettify(doc.path) && <button type="button" className="btn sm" disabled={doc.saving || tidying} onClick={tidy}>Prettify</button>}
         <button type="button" className="btn sm primary" disabled={!dirty || doc.saving} onClick={() => store.save(doc.path)}>Save</button>
       </div>
     </>
