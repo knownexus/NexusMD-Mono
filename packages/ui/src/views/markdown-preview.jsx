@@ -105,10 +105,14 @@ export function followPreviewLink(e, container, {
   else if (url.protocol === 'mailto:') (openExternal ?? open)(url.href);
 }
 
+// What `strict` rendering removes on top of DOMPurify's defaults: anything that can submit a form (which
+// would navigate the window to an address the document chose) or load another page inside this one.
+const STRICT = { FORBID_TAGS: ['form', 'input', 'button', 'textarea', 'select', 'iframe'], FORBID_ATTR: ['action', 'formaction'] };
+
 // Renders markdown into a preview element: sanitized HTML, heading anchors, and highlighted code
-// when highlight.js is loaded.
-export function renderPreview(el, markdown, hljs) {
-  el.innerHTML = DOMPurify.sanitize(new Marked({ gfm: true }).parse(markdown || ''));
+// when highlight.js is loaded. `strict` is for Markdown someone else wrote (a repository's README).
+export function renderPreview(el, markdown, hljs, { strict = false } = {}) {
+  el.innerHTML = DOMPurify.sanitize(new Marked({ gfm: true }).parse(markdown || ''), strict ? STRICT : undefined);
   addHeadingAnchors(el);
   if (!hljs) return;
   el.querySelectorAll('pre code[class*="language-"]').forEach(block => {
@@ -234,14 +238,14 @@ export function useCtrlWheelTextSize(ref, size, setSize) {
 // Markdown, rendered. Code is highlighted once highlight.js has loaded; until then it shows plain.
 // The text is at the shared text size, which Ctrl+scroll over it changes (ctrlWheel false leaves
 // that to the page, e.g. to take it over the whole pane around the preview).
-export function MarkdownPreview({ markdown, className = '', style, ctrlWheel = true, ...rest }) {
+export function MarkdownPreview({ markdown, className = '', style, ctrlWheel = true, strict = false, ...rest }) {
   const ref = React.useRef(null);
   const hljsReady = useHighlightJs();
   const [textSize, setTextSize] = useMarkdownTextSize();
   useCtrlWheelTextSize(ctrlWheel ? ref : NO_ELEMENT, textSize, setTextSize);
   React.useEffect(() => {
-    if (ref.current) renderPreview(ref.current, markdown, hljsReady ? window.hljs : null);
-  }, [markdown, hljsReady]);
+    if (ref.current) renderPreview(ref.current, markdown, hljsReady ? window.hljs : null, { strict });
+  }, [markdown, hljsReady, strict]);
   return (
     <>
       <style>{MARKDOWN_CONTENT_CSS}</style>

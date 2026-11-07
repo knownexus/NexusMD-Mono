@@ -143,3 +143,16 @@ describe('GithubFiles path bar and panel', () => {
     expect(screen.getByRole('button', { name: 'Show File details' })).toBeTruthy()
   })
 })
+
+describe('GithubFiles Markdown from a repository', () => {
+  it('renders it strictly: a form in a README cannot be submitted from the app', async () => {
+    getGithubFile.mockResolvedValue({ text: '# Title\n\n<form action="https://evil.example"><button>Go</button></form>', reason: null, url: '' })
+    const tree = { tree: [{ path: 'README.md', type: 'blob' }], truncated: false }
+    render(<GithubFiles repo="acme/web" client={clientWith(tree)} branch="main" sha="abc" />)
+    fireEvent.click(await row('README.md'))
+    await screen.findByRole('textbox', { name: 'Preview of README.md' })
+    fireEvent.click(screen.getByRole('tab', { name: 'Preview' }))
+    await screen.findByRole('heading', { name: 'Title' })
+    expect(document.querySelector('.nx-gw-fx-md form, .nx-gw-fx-md button, .nx-gw-fx-md [action]')).toBeNull()
+  })
+})
