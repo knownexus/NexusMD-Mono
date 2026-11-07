@@ -3,6 +3,10 @@
 // The formatters (Prettier, sql-formatter, xml-formatter) are large, so each is loaded with a dynamic import() the first time a
 // file of its kind is tidied, never at app start. A file with a syntax error is refused and left as it was, with the reason.
 
+import { rendererLog, ignore } from '@nexusmd/core'
+
+const log = rendererLog('editor', 'prettify')
+
 const MAX_CHARS = 1_000_000 // above this a phone would freeze while formatting
 const MESSAGE_LIMIT = 160
 
@@ -86,6 +90,7 @@ export async function prettify(path, text) {
     const tidy = formatter.kind === 'prettier' ? await withPrettier(formatter.parser, text) : formatter.kind === 'xml' ? await withXml(text) : await withSql(text)
     return { ok: true, text: tidy }
   } catch (error) {
+    ignore(log, 'a file that cannot be tidied is refused and left as it was, with the reason shown to the person', error, 'debug')
     return { ok: false, message: `Could not tidy: ${oneLine(error)}` }
   }
 }
