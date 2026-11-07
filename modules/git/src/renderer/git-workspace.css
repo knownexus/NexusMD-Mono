@@ -710,7 +710,8 @@
 .nx-gw-rail-commits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .nx-gw-rail-commits button { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 5px 6px; border: 0; border-radius: 5px; background: transparent; text-align: left; cursor: pointer; font: inherit; }
 .nx-gw-rail-commits button:hover { background: var(--surface-2); }
-.nx-gw-rail-commits .subject { font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-gw-rail-commits li { min-width: 0; }
+.nx-gw-rail-commits .subject { font-size: 12.5px; color: var(--text); overflow-wrap: anywhere; }
 .nx-gw-rail-commits .meta { font-size: 11px; color: var(--text-muted); }
 .nx-gw-rail-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex: none; }
 
@@ -720,7 +721,7 @@
 .nx-gw-fx-md { flex: 1; min-height: 0; overflow: auto; padding: 16px 20px; }
 .nx-gw-linkbtn { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--accent); font-size: 12px; cursor: pointer; }
 .nx-gw-linkbtn:hover { text-decoration: underline; }
-.nx-gw-rail-commits .row { display: flex; flex-direction: column; gap: 1px; padding: 5px 6px; }
+.nx-gw-rail-commits .row { display: flex; flex-direction: column; align-items: stretch; gap: 1px; min-width: 0; padding: 5px 6px; text-align: left; }
 .nx-gw-gh-head .nx-gw-dhead-row { padding-bottom: 8px; }
 
 /* ---------- The Changed pin: a few rows, then a scrolling list on request ---------- */
