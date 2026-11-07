@@ -128,11 +128,20 @@ export function useDocumentAutosave({ storageKey, initialContent, emptyContent, 
     }
   }
 
+  // A copy of a saved document, named "<name> copy"; it is added to the list, not opened. Gives the copy's id.
+  function duplicateDoc(id) {
+    const doc = docs.find(d => d.id === id)
+    if (!doc) return null
+    const copy = { ...doc, id: generateId(), name: `${displayName(doc)} copy`, createdAt: Date.now(), updatedAt: Date.now() }
+    setDocs(prev => [...prev, copy])
+    return copy.id
+  }
+
   function renameDoc(id, name) {
     setDocs(prev => prev.map(d => d.id === id ? { ...d, name: name || null } : d))
   }
 
   const hasUnsavedContent = !currentDocId && !isEmpty(content)
 
-  return { content, setContent, docs, currentDocId, saveStatus, hasUnsavedContent, openDoc, newDoc, deleteDoc, renameDoc }
+  return { content, setContent, docs, currentDocId, saveStatus, hasUnsavedContent, openDoc, newDoc, deleteDoc, duplicateDoc, renameDoc }
 }

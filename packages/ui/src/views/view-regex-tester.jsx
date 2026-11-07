@@ -7,24 +7,17 @@ import { Icon } from '../icons.jsx'
 import {
   findMatches, buildOverlaySegments, splitMatchByGroups, runUnitTests, genCode, REFERENCE_DATA,
 } from './regex-tester-helpers.js'
-import { useDocumentAutosave, relativeTime } from './document-store.js'
-import { DocumentsModal } from './documents-modal.jsx'
+import { useDocumentAutosave } from './document-store.js'
 import { useDocumentsBarSave } from './documents-bar.jsx'
+import { stepIndex } from './regex-syntax.js'
+import { GROUP_COLORS, flagsToString, regexAutoName } from './regex-tester/constants.js'
+import { SavedPatterns } from './regex-tester/saved-patterns.jsx'
+import { ExpressionBar } from './regex-tester/expression-bar.jsx'
+import { REGEX_CSS } from './regex-tester/styles.js'
 
 const { useState, useEffect, useMemo, useRef } = React
 
-const FLAG_INFO = [
-  ['g', 'Global — find all matches'],
-  ['i', 'Case insensitive'],
-  ['m', 'Multiline — ^ and $ match line ends'],
-  ['s', 'Dotall — . matches newlines'],
-  ['u', 'Unicode'],
-]
 const LANGS = ['JS', 'Python', 'PHP', 'Go', 'Java', 'C#', 'Ruby']
-// Per-capture-group highlight colors: a small fixed, theme-independent
-// palette (group N needs a stable, distinguishable color, not a semantic
-// theme color).
-const GROUP_COLORS = ['#818cf8', '#60a5fa', '#34d399', '#fb923c', '#c084fc', '#f472b6']
 const DOCS_STORAGE_KEY = 'regex_tester_documents'
 
 const DEFAULT_STATE = {
@@ -45,20 +38,10 @@ const DEFAULT_STATE = {
   ],
 }
 
-function flagsToString(flags) {
-  return Object.keys(flags).filter(f => flags[f]).join('')
-}
-
-// A saved doc's display name: the pattern itself, since that's the natural
-// identifier for a saved regex.
-function regexAutoName(state) {
-  return state.pattern ? `/${state.pattern}/${flagsToString(state.flags)}`.slice(0, 80) : 'Untitled'
-}
-
 export function RegexTesterView() {
   const {
     content: state, setContent: setState, docs, currentDocId, hasUnsavedContent, saveStatus,
-    openDoc, newDoc, deleteDoc, renameDoc,
+    openDoc, newDoc, deleteDoc, duplicateDoc, renameDoc,
   } = useDocumentAutosave({
     storageKey: DOCS_STORAGE_KEY,
     initialContent: DEFAULT_STATE,
@@ -67,7 +50,7 @@ export function RegexTesterView() {
     extractAutoName: regexAutoName,
   })
   useDocumentsBarSave(saveStatus)
-  const [showDocsModal, setShowDocsModal] = useState(false)
+  const patternRef = useRef(null)
   const [selIdx, setSelIdx] = useState(-1)
   const [bottomTab, setBottomTab] = useState('code')
   const [codeLang, setCodeLang] = useState('JS')
@@ -126,10 +109,13 @@ export function RegexTesterView() {
   function toggleFlag(f) { patch({ flags: { ...state.flags, [f]: !state.flags[f] } }) }
   function navMatch(dir) {
     if (!matches.length) return
-    setSelIdx(prev => {
-      if (prev < 0) return dir > 0 ? 0 : matches.length - 1
-      return (prev + dir + matches.length) % matches.length
-    })
+    setSelIdx(prev => stepIndex(prev, dir, matches.length))
+  }
+  // Ctrl+↑ / Ctrl+↓ step through the matches from anywhere in the tool.
+  function onKeyDown(e) {
+    if (!(e.ctrlKey || e.metaKey) || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || state.mode !== 'match') return
+    e.preventDefault()
+    navMatch(e.key === 'ArrowDown' ? 1 : -1)
   }
   function selectMatch(i) { setSelIdx(prev => prev === i ? -1 : i) }
   function insertToken(tok) { patch({ pattern: state.pattern + tok }) }
@@ -141,21 +127,13 @@ export function RegexTesterView() {
     patch({ unitTests: state.unitTests.filter((_, idx) => idx !== i) })
   }
 
-  const chip = !state.pattern
-    ? { text: 'enter a pattern', tone: 'muted' }
-    : patternError
-      ? { text: 'invalid pattern', tone: 'danger' }
-      : { text: `${matches.length} ${matches.length === 1 ? 'match' : 'matches'}`, tone: matches.length ? 'success' : 'warning' }
-
-  const chipColors = {
-    muted:   { color: 'var(--text-subtle)', background: 'var(--surface-2)' },
-    danger:  { color: 'var(--danger)', background: 'var(--danger-soft)' },
-    success: { color: 'var(--success)', background: 'var(--success-soft)' },
-    warning: { color: 'var(--warning)', background: 'var(--warning-soft)' },
-  }
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', background: 'var(--bg)', color: 'var(--text)', fontSize: 13, padding: 16, boxSizing: 'border-box' }}>
+    <div className="nx-rt-page" onKeyDown={onKeyDown}>
+      <style>{REGEX_CSS}</style>
+      <SavedPatterns docs={docs} currentDocId={currentDocId} onOpen={openDoc} onNew={newDoc} onRename={renameDoc} onDuplicate={duplicateDoc} onDelete={deleteDoc} />
+      <div className="nx-rt-main">
+        <ExpressionBar state={state} patch={patch} matches={matches} selIdx={selIdx} onStep={navMatch} error={patternError} patternRef={patternRef} />
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <style>{`
         .rt-btn { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font-size:11.5px; }
         .rt-btn:hover:not(:disabled) { background:var(--surface-2); color:var(--text); }
@@ -167,51 +145,6 @@ export function RegexTesterView() {
         mark.rt-m { background: var(--warning-soft); border-bottom:2px solid var(--warning); border-radius:2px; color:inherit; padding:0; }
         mark.rt-m.sel { filter: brightness(1.3); }
       `}</style>
-
-      {/* Top bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: 'var(--mono)', fontSize: 15, fontWeight: 600 }}>/<em style={{ fontStyle: 'normal', color: 'var(--accent)' }}>{state.pattern || '…'}</em>/</span>
-        <span style={{ fontFamily: 'var(--mono)', fontSize: 11, padding: '3px 9px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', ...chipColors[chip.tone] }}>{chip.text}</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 2 }}>
-          <button className="rt-btn" disabled={matches.length < 2} onClick={() => navMatch(-1)} title="Previous">‹</button>
-          <span style={{ fontFamily: 'var(--mono)', fontSize: 10, minWidth: 34, textAlign: 'center', color: 'var(--text-subtle)' }}>
-            {matches.length ? (selIdx < 0 ? `${matches.length}` : `${selIdx + 1}/${matches.length}`) : '—'}
-          </span>
-          <button className="rt-btn" disabled={matches.length < 2} onClick={() => navMatch(1)} title="Next">›</button>
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 2, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 2 }}>
-          <button className={`rt-btn${state.mode === 'match' ? ' on' : ''}`} onClick={() => patch({ mode: 'match' })}>Match</button>
-          <button className={`rt-btn${state.mode === 'sub' ? ' on' : ''}`} onClick={() => patch({ mode: 'sub' })}>Substitution</button>
-        </div>
-        <button className="rt-btn" onClick={newDoc}><Icon name="plus" size={12}/> New</button>
-        <button className="rt-btn" onClick={() => setShowDocsModal(true)}>
-          <Icon name="doc" size={12}/> Documents{docs.length > 0 ? ` (${docs.length})` : ''}
-        </button>
-      </div>
-
-      {/* Expression panel */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 10, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 13px', borderBottom: '1px solid var(--border)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.7px', color: 'var(--text-subtle)' }}>
-          <span>Expression</span>
-          <div style={{ display: 'flex', gap: 3 }}>
-            {FLAG_INFO.map(([f, tip]) => (
-              <button key={f} className={`rt-btn${state.flags[f] ? ' on' : ''}`} title={tip} onClick={() => toggleFlag(f)} style={{ padding: '2px 7px', fontFamily: 'var(--mono)' }}>{f}</button>
-            ))}
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 13px', gap: 7 }}>
-          <span style={{ fontFamily: 'var(--mono)', fontSize: 18, color: 'var(--text-subtle)' }}>/</span>
-          <input
-            value={state.pattern} onChange={e => patch({ pattern: e.target.value })}
-            placeholder="Enter pattern…" spellCheck={false}
-            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--mono)', fontSize: 14, color: 'var(--text)' }}
-          />
-          <span style={{ fontFamily: 'var(--mono)', fontSize: 18, color: 'var(--text-subtle)' }}>/</span>
-        </div>
-        {patternError && (
-          <div style={{ padding: '6px 13px', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--danger)', background: 'var(--danger-soft)', borderTop: '1px solid var(--border)' }}>{patternError}</div>
-        )}
-      </div>
 
       {/* Test string panel */}
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 10, overflow: 'hidden' }}>
@@ -263,15 +196,7 @@ export function RegexTesterView() {
       {/* Substitution panel */}
       {state.mode === 'sub' && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 10, overflow: 'hidden' }}>
-          <div style={{ padding: '6px 13px', borderBottom: '1px solid var(--border)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.7px', color: 'var(--text-subtle)' }}>Substitution</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 13px', borderBottom: '1px solid var(--border)' }}>
-            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.7px', color: 'var(--text-subtle)', fontWeight: 600, whiteSpace: 'nowrap' }}>Replace with</span>
-            <input
-              value={state.subReplacement} onChange={e => patch({ subReplacement: e.target.value })}
-              placeholder="$1, $2, $& …" spellCheck={false}
-              style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--success)' }}
-            />
-          </div>
+          <div style={{ padding: '6px 13px', borderBottom: '1px solid var(--border)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.7px', color: 'var(--success)' }}>Result</div>
           <div style={{ padding: '8px 13px', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'pre-wrap', lineHeight: 1.7, minHeight: 42 }}>
             {subResult === null
               ? <span style={{ color: 'var(--text-subtle)' }}>Result will appear here</span>
@@ -280,8 +205,11 @@ export function RegexTesterView() {
         </div>
       )}
 
+        </div>
+      </div>
+      <div className="nx-rt-rail" style={{ padding: 10 }}>
       {/* Bottom grid */}
-      <div className="rx-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div className="rx-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
         {/* Match info */}
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
           <div style={{ padding: '6px 13px', borderBottom: '1px solid var(--border)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.7px', color: 'var(--text-subtle)' }}>Match information</div>
@@ -357,37 +285,7 @@ export function RegexTesterView() {
         </div>
       </div>
 
-      {showDocsModal && (
-        <DocumentsModal
-          docs={docs}
-          currentDocId={currentDocId}
-          hasUnsavedContent={hasUnsavedContent}
-          onOpen={id => { openDoc(id); setShowDocsModal(false) }}
-          onNew={() => { newDoc(); setShowDocsModal(false) }}
-          onDelete={deleteDoc}
-          onRename={renameDoc}
-          onClose={() => setShowDocsModal(false)}
-          renderPreview={doc => {
-            const activeCase = doc.content.testCases?.[doc.content.tcIndex]
-            const firstLine = (activeCase?.content || '').split('\n')[0]
-            return (
-              <div style={{ padding: '14px 12px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 6 }}>
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--accent)', wordBreak: 'break-all' }}>
-                  {doc.content.pattern
-                    ? `/${doc.content.pattern}/${flagsToString(doc.content.flags)}`
-                    : <span style={{ color: 'var(--text-subtle)', fontStyle: 'italic' }}>Empty pattern</span>}
-                </div>
-                {firstLine && (
-                  <div style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-subtle)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {firstLine}
-                  </div>
-                )}
-              </div>
-            )
-          }}
-          metaText={doc => relativeTime(doc.updatedAt)}
-        />
-      )}
+      </div>
     </div>
   )
 }

@@ -39,7 +39,7 @@ describe('DocumentsView', () => {
   it('shows a third Regex Tester tab and switches to it', () => {
     const { getByText } = renderDocuments()
     fireEvent.click(getByText('Regex Tester'))
-    expect(getByText('Expression')).toBeTruthy()
+    expect(getByText('Saved patterns')).toBeTruthy()
   })
 })
 
