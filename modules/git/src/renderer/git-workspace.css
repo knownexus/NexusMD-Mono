@@ -22,10 +22,10 @@
 .nx-gw-alerts:empty { display: none; }
 /* The branch list's width is dragged with the divider beside it (--gw-list, list-resizer.jsx), but
    never past half the page, so the changes always keep room. */
-.nx-gw-body { flex: 1; min-height: 0; display: grid; grid-template-columns: min(var(--gw-list, 330px), 50%) 6px minmax(0, 1fr); }
+.nx-gw-body { flex: 1; min-height: 0; display: grid; grid-template-columns: min(var(--gw-list, 272px), 50%) 6px minmax(0, 1fr); }
 .nx-gw-body[data-list="hidden"] { grid-template-columns: minmax(0, 1fr); }
 /* GitHub: the repository list (no divider to drag) beside the chosen repository. */
-.nx-gw-body[data-list="github"] { grid-template-columns: min(var(--gw-list, 330px), 50%) 6px minmax(0, 1fr); }
+.nx-gw-body[data-list="github"] { grid-template-columns: min(var(--gw-list, 272px), 50%) 6px minmax(0, 1fr); }
 .nx-gw-body[data-list="github"] ul.nx-gw-list { list-style: none; margin: 0; padding: 0; gap: 4px; }
 .nx-gw-dhead-actions a.btn { text-decoration: none; }
 /* The Local / GitHub switch, beside the screen title in the top bar (or the page heading). */
@@ -551,3 +551,29 @@
 
 .nx-gw-bc-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .nx-gw-bc-menu { display: grid; gap: 2px; padding: 4px; margin: 2px 0 4px 12px; justify-self: start; width: max-content; }
+
+/* ---------- Branch list column head: group picker, filter, chips (G2) ---------- */
+.nx-gw-aside { padding: 12px 10px 24px; }
+.nx-gw-list { gap: 10px; }
+.nx-gw-list-head { display: flex; flex-direction: column; gap: 10px; }
+.nx-gw-picker-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.nx-gw-picker { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.nx-gw-picker .nx-gw-pop { flex: 1; min-width: 0; }
+.nx-gw-picker-btn { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; height: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.nx-gw-picker-btn .nx-gw-picker-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-gw-picker-btn .n, .nx-gw-menu-item .n { margin-left: 8px; font-size: 11.5px; font-weight: 400; color: var(--text-muted); white-space: nowrap; }
+.nx-gw-picker-btn svg { margin-left: auto; flex: none; }
+.nx-gw-plus-btn { width: 28px; height: 28px; flex: none; display: grid; place-items: center; background: var(--surface-2); color: var(--accent); }
+.nx-gw-menu-item[aria-checked="true"] { color: var(--accent); }
+.nx-gw-search { width: 100%; }
+.nx-gw-search > svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.nx-gw-search input { height: 28px; padding: 0 30px 0 28px !important; background: var(--surface); }
+.nx-gw-chips { gap: 4px; }
+.nx-gw-chip { height: 22px; padding: 0 8px; gap: 5px; font-size: 11.5px; }
+.nx-gw-chip .nx-gw-dot { width: 6px; height: 6px; }
+.nx-gw-chip .n { font-weight: 700; }
+.nx-gw-repo-head { flex-wrap: nowrap; }
+.nx-gw-repo-head .nx-gw-pills { margin-left: auto; }
+.nx-gw-repo-head .nx-badge { height: 18px; border-radius: 4px; padding: 0 6px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.nx-gw-row { gap: 9px; padding: 6px 8px; border-radius: 7px; }
+.nx-gw-row-title { font-size: 12.5px; }

@@ -1,15 +1,19 @@
 import React from 'react'
+import { Icon } from '@nexusmd/ui'
 import { BRANCH_FILTERS, filterCounts } from '@nexusmd/core'
 
 /**
- * The header's filter chips. Counts are branches (worktrees) in the active group. Clicking the
- * active chip again goes back to All.
+ * The branch list's filter chips. Counts are branches (worktrees) in the active group; only chips with
+ * something to show appear, and All always does. Clicking the active chip again goes back to All, and so
+ * does a chosen chip whose branches have all gone.
  */
 export function FilterChips({ trees, value = 'all', onChange }) {
   const counts = filterCounts(trees)
+  const gone = value !== 'all' && !counts[value]
+  React.useEffect(() => { if (gone) onChange('all') }, [gone]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="nx-gw-chips" role="group" aria-label="Show branches">
-      {BRANCH_FILTERS.map(f => {
+      {BRANCH_FILTERS.filter(f => f.id === 'all' || counts[f.id] > 0).map(f => {
         const on = value === f.id
         return (
           <button key={f.id} type="button" className="nx-gw-chip" aria-pressed={on} title={`${f.title} · count is branches`}
@@ -28,7 +32,8 @@ export function FilterChips({ trees, value = 'all', onChange }) {
 export const BranchSearch = React.forwardRef(function BranchSearch({ value, onChange, showKey = true }, ref) {
   return (
     <div className="nx-gw-search">
-      <input ref={ref} aria-label="Filter branches and repos" placeholder="Filter branches and repos" value={value}
+      <Icon name="search" size={12} />
+      <input ref={ref} aria-label="Filter branches and repos" placeholder="Filter branches" value={value}
         onChange={e => onChange(e.target.value)} onKeyDown={e => { if (e.key === 'Escape' && value) { e.stopPropagation(); onChange('') } }} />
       {showKey && <span className="kbd">/</span>}
     </div>

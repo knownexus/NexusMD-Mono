@@ -161,4 +161,46 @@ describe('BranchList repositories missing on this computer', () => {
     fireEvent.click(goneHead())
     expect(onToggleRepo).toHaveBeenCalledWith('Gone')
   })
+
+  describe('the column head (group picker, filter, chips)', () => {
+    const BEHIND = tree({ repo: 'A', branch: 'pull', path: 'C:/repos/A-pull', upstream: 'origin/pull', ahead: 0, behind: 2 })
+    const head = props => show([tree({ upstream: 'origin/main', ahead: 1 }), BEHIND], { groupPicker: <div>PICKER</div>, onQuery: () => {}, onFilter: () => {}, ...props })
+
+    it('puts the group picker, then the filter field, then the chips above the repositories', () => {
+      head()
+      const picker = screen.getByText('PICKER')
+      const field = screen.getByPlaceholderText('Filter branches')
+      const chips = screen.getByRole('group', { name: 'Show branches' })
+      const repo = screen.getByRole('region', { name: 'A' })
+      const before = (a, b) => expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      before(picker, field); before(field, chips); before(chips, repo)
+    })
+
+    it('shows only chips that have branches, and always All', () => {
+      head()
+      const chips = screen.getByRole('group', { name: 'Show branches' })
+      expect(within(chips).getByRole('button', { name: /^All/ })).toBeTruthy()
+      expect(within(chips).getByRole('button', { name: /^To push/ })).toBeTruthy()
+      expect(within(chips).getByRole('button', { name: /^To pull/ })).toBeTruthy()
+      for (const gone of [/^In progress/, /^Uncommitted/, /^Not published/]) expect(within(chips).queryByRole('button', { name: gone })).toBeNull()
+    })
+
+    it('goes back to All when the chosen chip has no branches left', async () => {
+      const onFilter = vi.fn()
+      head({ filter: 'changes', onFilter })
+      await waitFor(() => expect(onFilter).toHaveBeenCalledWith('all'))
+    })
+
+    it('types into the filter through onQuery', () => {
+      const onQuery = vi.fn()
+      head({ onQuery })
+      fireEvent.change(screen.getByPlaceholderText('Filter branches'), { target: { value: 'pu' } })
+      expect(onQuery).toHaveBeenCalledWith('pu')
+    })
+
+    it('has no head without onQuery (the list alone)', () => {
+      show([tree()])
+      expect(screen.queryByPlaceholderText('Filter branches')).toBeNull()
+    })
+  })
 })

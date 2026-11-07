@@ -16,9 +16,9 @@ export const DEFAULT_GIT_CONFIG = Object.freeze({
   view: Object.freeze({ group: ALL_PROJECTS, collapsed: [], selected: null, split: 0.45, panel: 'changes', list: 'shown', railOpen: DEFAULT_RAIL_OPEN, laneMode: 'folders' }),
 })
 
-// The branch list's width: 330px unless dragged, never so narrow its rows are unreadable or so wide it
+// The branch list's width: 272px unless dragged, never so narrow its rows are unreadable or so wide it
 // squeezes out the changes beside it (the page also caps it at half its width, in view-git.jsx).
-export const LIST_WIDTH = 330
+export const LIST_WIDTH = 272
 export const clampListWidth = w => Math.round(Math.min(720, Math.max(220, w)))
 
 const strings = v => Array.isArray(v) ? v.filter(x => typeof x === 'string') : []

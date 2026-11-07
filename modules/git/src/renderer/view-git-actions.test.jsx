@@ -446,8 +446,8 @@ describe('editing files', () => {
   it('asks before a group save would close unsaved edits, and saves nothing when declined', async () => {
     setupView(files())
     act(() => { setGitConfig({ groups: [{ name: 'Mine', repos: ['A'], worktrees: [], branches: [] }] }) })
-    const tabs = await screen.findByRole('tablist', { name: 'Project groups' })
-    fireEvent.click(within(tabs).getByRole('tab', { name: /^Mine/ }))
+    fireEvent.click(await screen.findByTitle('Switch project group'))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /^Mine/ }))
     await openWorktree()
     fireEvent.click(changes().getByText('f.txt'))
     fireEvent.click(pills().getByRole('button', { name: 'Edit' }))

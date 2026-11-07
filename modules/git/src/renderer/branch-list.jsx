@@ -1,6 +1,7 @@
 import React from 'react'
 import { worktreeName, branchLabel, worktreeId, wordMatch, matchesFilter, branchState, branchMeta, repoPills } from '@nexusmd/core'
 import { FoldAllButton, usePathsMissing, notOnThisComputer } from '@nexusmd/ui'
+import { FilterChips, BranchSearch } from './filter-chips.jsx'
 
 const TONE_BADGE = { bad: 'bad', warn: 'warn', info: 'info', ok: 'ok', muted: '' }
 
@@ -39,9 +40,10 @@ export function visibleTrees({ repos, scoped, query = '', filter = 'all', collap
 /**
  * The group's repositories and their branches, narrowed by query/filter. Repo headers show
  * "N branches" and status pills instead of a file count; rows show only non-default facts.
- * `query` word-matches "repo branch worktree"; `filter` is a BRANCH_FILTERS id.
+ * `query` word-matches "repo branch worktree"; `filter` is a BRANCH_FILTERS id. With `onQuery` the column
+ * starts with its head: `groupPicker`, the filter field (`searchRef` focuses it) and the chips.
  */
-export function BranchList({ repos, scoped, errors, collapsed, onToggleRepo, onSetCollapsed = () => {}, selected, onSelect, query = '', filter = 'all', onClearFilters = () => {}, missing: missingProp }) {
+export function BranchList({ repos, scoped, errors, collapsed, onToggleRepo, onSetCollapsed = () => {}, selected, onSelect, query = '', filter = 'all', onClearFilters = () => {}, missing: missingProp, groupPicker = null, searchRef = null, onQuery = null, onFilter = () => {} }) {
   // The selected row stays in view when j / k move past the list's edge.
   const listRef = React.useRef(null)
   React.useEffect(() => { listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest' }) }, [selected])
@@ -56,15 +58,28 @@ export function BranchList({ repos, scoped, errors, collapsed, onToggleRepo, onS
     return { name: r.name, path: r.path, gone: missing.has(r.path), all, trees, branches, error: errors.find(e => e.repo === r.name) }
   }).filter(g => g.gone ? !narrowed : (g.trees.length || g.branches.length || (g.error && !narrowed)))
 
+  const columnHead = onQuery && (
+    <div className="nx-gw-list-head">
+      {groupPicker}
+      <BranchSearch ref={searchRef} value={query} onChange={onQuery} />
+      <FilterChips trees={scoped.worktrees} value={filter} onChange={onFilter} />
+    </div>
+  )
   if (!groups.length) {
-    return narrowed
-      ? <div className="nx-empty">No branches match. <button type="button" className="nx-link" onClick={onClearFilters}>Clear filters</button></div>
-      : <div className="nx-empty">No repositories in this group yet.</div>
+    return (
+      <div className="nx-gw-list">
+        {columnHead}
+        {narrowed
+          ? <div className="nx-empty">No branches match. <button type="button" className="nx-link" onClick={onClearFilters}>Clear filters</button></div>
+          : <div className="nx-empty">No repositories in this group yet.</div>}
+      </div>
+    )
   }
   const shown = groups.map(g => g.name)
   const allCollapsed = shown.every(n => collapsed.includes(n))
   return (
     <div className="nx-gw-list" ref={listRef}>
+      {columnHead}
       <div role="group" aria-label="Fold repositories" style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <span className="nx-gw-list-keys" title="Next / previous branch"><span className="kbd">j</span><span className="kbd">k</span></span>
         {/* Repositories outside this view keep their own state. */}

@@ -2,8 +2,8 @@ import React from 'react'
 
 /**
  * A button that opens a small menu (replaces modal menus such as GroupMenu's first screen).
- * items: [{ heading }] or [{ label, onSelect, hint?, danger?, disabled?, reason? }]. A disabled item's
- * `reason` becomes its tooltip. Closes on outside click, Esc, or after a choice; ↑/↓ move between items.
+ * items: [{ heading }] or [{ label, onSelect, hint?, danger?, disabled?, reason?, content?, checked? }]. A disabled item's
+ * `reason` becomes its tooltip. `content` (a node) replaces the label's text in the item; `checked` makes it a radio item. Closes on outside click, Esc, or after a choice; ↑/↓ move between items.
  */
 export function PopoverMenu({ label, items, align = 'right', buttonClassName = 'btn sm', buttonProps = {}, menuLabel = label }) {
   const [open, setOpen] = React.useState(false)
@@ -32,10 +32,11 @@ export function PopoverMenu({ label, items, align = 'right', buttonClassName = '
           {items.map((it, i) => (it.heading
             ? <div key={`h${i}`} className="nx-gw-menu-head">{it.heading}</div>
             : (
-              <button key={it.label} type="button" role="menuitem" className="nx-gw-menu-item" data-danger={it.danger || undefined}
+              <button key={it.label} type="button" role={it.checked === undefined ? 'menuitem' : 'menuitemradio'} aria-checked={it.checked === undefined ? undefined : it.checked}
+                className="nx-gw-menu-item" data-danger={it.danger || undefined}
                 disabled={!!it.disabled} title={it.disabled ? it.reason : undefined}
                 onClick={() => { setOpen(false); it.onSelect() }}>
-                {it.label}{it.hint != null && it.hint !== '' && <span className="hint">{it.hint}</span>}
+                {it.content ?? it.label}{it.hint != null && it.hint !== '' && <span className="hint">{it.hint}</span>}
               </button>
             )))}
         </div>

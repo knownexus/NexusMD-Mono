@@ -37,22 +37,27 @@ function configure() {
   })
 }
 
-// Group options are offered for the active group, so its tab is selected first.
+// Picks a group from the picker at the top of the branch list.
+async function selectGroup(name) {
+  fireEvent.click(await screen.findByTitle('Switch project group'))
+  fireEvent.click(screen.getByRole('menuitemradio', { name: new RegExp(`^${name}`) }))
+}
+
+// Group options are offered for the active group, so it is selected first.
 async function openGroupMenu(name) {
-  const tabs = await screen.findByRole('tablist', { name: 'Project groups' })
-  fireEvent.click(within(tabs).getByRole('tab', { name: new RegExp(`^${name}`) }))
+  await selectGroup(name)
   fireEvent.click(screen.getByRole('button', { name: `Group options for ${name}` }))
 }
 
 describe('ViewGit', () => {
-  it('shows group tabs with repository counts and filters the repos by group', async () => {
+  it('lists the groups with repository counts in the picker and filters the repos by group', async () => {
     configure()
     render(<ViewGit adapters={{ git: adapter() }} />)
-    const tabs = await screen.findByRole('tablist', { name: 'Project groups' })
-    expect(await within(tabs).findByRole('tab', { name: 'Registered repos 3 repos' })).toBeTruthy()
-    expect(within(tabs).getByRole('tab', { name: 'Only B 1 repo' })).toBeTruthy()
+    fireEvent.click(await screen.findByTitle('Switch project group'))
+    expect(await screen.findByRole('menuitemradio', { name: 'Registered repos 3 repos' })).toBeTruthy()
+    expect(screen.getByRole('menuitemradio', { name: 'Only B 1 repo' })).toBeTruthy()
     expect(await screen.findByRole('region', { name: 'A' })).toBeTruthy()
-    fireEvent.click(within(tabs).getByRole('tab', { name: 'Only B 1 repo' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Only B 1 repo' }))
     expect(screen.queryByRole('region', { name: 'A' })).toBeNull()
     expect(screen.getByRole('region', { name: 'B' })).toBeTruthy()
     expect(getGitConfig().view.group).toBe('Only B')
@@ -111,8 +116,7 @@ describe('ViewGit', () => {
   it('renames the active group and keeps it selected in one write', async () => {
     configure()
     render(<ViewGit adapters={{ git: adapter() }} />)
-    const tabs = await screen.findByRole('tablist', { name: 'Project groups' })
-    fireEvent.click(within(tabs).getByRole('tab', { name: 'Only B 1 repo' }))
+    await selectGroup('Only B')
     fireEvent.click(screen.getByRole('button', { name: 'Group options for Only B' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
     fireEvent.change(screen.getByLabelText('New group name'), { target: { value: 'Team B' } })
@@ -407,7 +411,7 @@ describe('ViewGit GitHub view', () => {
   })
   const github = () => ({ repos: ['acme/web', 'acme/api'], http: { fetch: vi.fn() }, cached: { prs: [], issues: [] } })
   const remotes = vi.fn(async (repo) => (repo.name === 'A' ? 'origin\thttps://github.com/acme/web.git (fetch)\n' : ''))
-  const strip = () => screen.findByRole('tablist', { name: 'Project groups' })
+  const strip = () => screen.findByTitle('Switch project group')
   const modeSwitch = () => screen.queryByRole('tablist', { name: 'Git Workspace view' })
   afterEach(() => githubMode.reset())
 
@@ -436,16 +440,19 @@ describe('ViewGit GitHub view', () => {
   it('switches to GitHub from the Local / GitHub switch, not from the group tabs, and lists the ticked repositories', async () => {
     configure()
     render(<ViewGit adapters={{ git: adapter({ remotes }) }} host={caps({ 'work.github': github })} />)
-    const tabs = await strip()
+    await strip()
     await screen.findByRole('region', { name: 'A' })
-    expect(within(tabs).queryByRole('tab', { name: /^GitHub/ })).toBeNull()
+    fireEvent.click(await strip())
+    expect(screen.queryByRole('menuitemradio', { name: /^GitHub/ })).toBeNull()
+    fireEvent.keyDown(screen.getByRole('menu', { name: 'Project groups' }), { key: 'Escape' })
     fireEvent.click(within(modeSwitch()).getByRole('tab', { name: 'GitHub' }))
     const list = screen.getByRole('list', { name: 'GitHub repositories' })
     expect(within(list).getByRole('listitem', { name: 'acme/web' })).toBeTruthy()
     expect(within(list).getByRole('listitem', { name: 'acme/api' })).toBeTruthy()
     expect(screen.queryByRole('region', { name: 'A' })).toBeNull()
     // Groups are about local repositories, so their tabs go while GitHub is showing.
-    expect(screen.queryByRole('tablist', { name: 'Project groups' })).toBeNull()
+    // The picker belongs to the Local view, which stays mounted but hidden while GitHub shows.
+    expect(screen.getByTitle('Switch project group').closest('[style*="display: none"]')).not.toBeNull()
     expect(within(modeSwitch()).getByRole('tab', { name: 'GitHub' }).getAttribute('aria-selected')).toBe('true')
     expect(getGitConfig().view.tab).toBe('github')
     // Open local copy goes back to the registered repositories with that repository's worktree selected.
