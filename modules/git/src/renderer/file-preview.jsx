@@ -8,9 +8,10 @@ import { fileStats, formatSize } from './file-stats.js'
  * { text } or { missing: true } or { text: null, note } (why it isn't shown: binary, too large),
  * and is called again whenever `loadKey` changes. `extra` follows a note (e.g. a link to GitHub).
  * `markedLines` ([1-based line, …]) are tinted as changed; `showStatus` adds the footer (language, lines,
- * size, line endings, encoding).
+ * size, line endings, encoding). `renderText(text)` draws the text some other way than the code view (rendered
+ * Markdown).
  */
-export function TextPreview({ path, load, loadKey, extra = null, markedLines = null, showStatus = false }) {
+export function TextPreview({ path, load, loadKey, extra = null, markedLines = null, showStatus = false, renderText = null }) {
   const [state, setState] = React.useState({ status: 'loading' })
   const latest = React.useRef(load)
   latest.current = load
@@ -28,6 +29,7 @@ export function TextPreview({ path, load, loadKey, extra = null, markedLines = n
   if (state.status === 'error') return <div role="alert" className="nx-alert bad nx-gw-fx-pad">{state.error}</div>
   if (state.status === 'missing') return <div className="nx-gw-fx-note nx-gw-fx-pad">This file isn’t there any more.</div>
   if (state.status === 'note') return <div className="nx-gw-fx-note nx-gw-fx-pad">{state.note}{extra && <> {extra}</>}</div>
+  if (renderText) return renderText(state.text)
   const stats = showStatus ? fileStats(state.text, path) : null
   return (
     <>

@@ -69,6 +69,7 @@ function useKeptScroll(boxRef, viewKey, ready) {
  * "Pick a file" while none is picked. rowProps(row) / treeProps: extra props (drag and drop).
  * pins: a node, or ({ pick, picked }) => node, drawn between the filter and the tree (Changed, Recent).
  * onPick(path): a file was picked (row, pin or keyboard). highlightMatches: mark the matched word starts in names.
+ * previewHead(picked): drawn at the top of the preview column, with or without a pick (a path bar).
  * rail(picked): the right-hand panel for the picked path (null before a pick), collapsible: railLabel names it,
  * railOpen / onRailToggle are its state.
  */
@@ -76,7 +77,7 @@ export function FileExplorer({
   label = 'Files', rootName, files, truncated = false, error = null, viewKey,
   renderName = null, menuItems = () => [], onOpen = null, preview,
   notes = null, footer = null, emptyNote = null, rowProps = () => ({}), treeProps = {}, pins = null, onPick = null, highlightMatches = false,
-  rail = null, railLabel = 'Details', railOpen = true, onRailToggle = () => {},
+  rail = null, railLabel = 'Details', railOpen = true, onRailToggle = () => {}, previewHead = null,
 }) {
   const [open, setOpen] = React.useState(() => new Set(viewOf(viewKey).open))
   const [selected, setSelected] = React.useState(() => viewOf(viewKey).selected)
@@ -198,6 +199,7 @@ export function FileExplorer({
       </div>
       <PaneResizer label="Resize file tree" width={side.width} fallback={EXPLORER_WIDTH} boxRef={box} onDrag={side.onDrag} onDone={side.onDone} className="nx-gw-fx-resizer" />
       <div className="nx-gw-fx-preview">
+        {previewHead?.(picked)}
         {picked ? preview(picked) : (
           <div className="nx-gw-fx-empty">
             <Icon name="doc" size={22} />

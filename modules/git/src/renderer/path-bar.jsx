@@ -2,11 +2,13 @@ import React from 'react'
 
 /**
  * The preview's 40px path bar: the file's path as crumbs (the last one current), shrinking and fading at the
- * right edge when it is too long, and `children` (File | Diff, the branch picker) on the right.
+ * right edge when it is too long, `lead` (the branch picker) before it, and `children` (File | Diff,
+ * Source | Preview) on the right.
  */
-export function PathBar({ segments, children = null }) {
+export function PathBar({ segments, lead = null, children = null }) {
   return (
     <div className="nx-gw-pathbar">
+      {lead && <div className="nx-gw-pathbar-lead">{lead}</div>}
       <nav aria-label="File path" title={segments.join('/')} className="nx-gw-pathbar-crumbs">
         {segments.map((s, i) => {
           const last = i === segments.length - 1
