@@ -56,11 +56,12 @@ describe('RegexTesterView — test cases', () => {
 
 describe('RegexTesterView — replace mode', () => {
   it('shows a live replace preview', () => {
-    const { getByText, getByRole, getByPlaceholderText } = renderRegexTester()
+    const { container, getByRole, getByPlaceholderText } = renderRegexTester()
     fireEvent.click(getByRole('tab', { name: 'Replace' }))
     fireEvent.change(getByPlaceholderText('$1, $2, $& …'), { target: { value: '[EMAIL]' } })
-    expect(getByText('Result').nextElementSibling.textContent).toContain('[EMAIL]')
-    expect(getByText('Result').nextElementSibling.textContent).not.toContain('support@example.com')
+    const result = container.querySelector('.nx-rt-result-text').textContent
+    expect(result).toContain('[EMAIL]')
+    expect(result).not.toContain('support@example.com')
   })
 })
 

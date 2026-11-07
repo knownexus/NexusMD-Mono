@@ -4,15 +4,14 @@
 // design spec for why). Styled with the app's theme tokens.
 import React from 'react'
 import { Icon } from '../icons.jsx'
-import {
-  findMatches, buildOverlaySegments, splitMatchByGroups, runUnitTests, genCode, REFERENCE_DATA,
-} from './regex-tester-helpers.js'
+import { findMatches, runUnitTests, genCode, REFERENCE_DATA } from './regex-tester-helpers.js'
 import { useDocumentAutosave } from './document-store.js'
 import { useDocumentsBarSave } from './documents-bar.jsx'
-import { stepIndex } from './regex-syntax.js'
+import { stepIndex, replaceSegments } from './regex-syntax.js'
 import { GROUP_COLORS, flagsToString, regexAutoName } from './regex-tester/constants.js'
 import { SavedPatterns } from './regex-tester/saved-patterns.jsx'
 import { ExpressionBar } from './regex-tester/expression-bar.jsx'
+import { TestText } from './regex-tester/test-text.jsx'
 import { REGEX_CSS } from './regex-tester/styles.js'
 
 const { useState, useEffect, useMemo, useRef } = React
@@ -55,7 +54,6 @@ export function RegexTesterView() {
   const [bottomTab, setBottomTab] = useState('code')
   const [codeLang, setCodeLang] = useState('JS')
   const [refFilter, setRefFilter] = useState('')
-  const overlayRef = useRef(null)
 
   function patch(p) { setState(prev => ({ ...prev, ...p })) }
 
@@ -86,13 +84,11 @@ export function RegexTesterView() {
     try { return new RegExp(state.pattern, flagsStr) } catch { return null }
   }, [state.pattern, flagsStr, patternError])
 
-  const subResult = useMemo(() => {
-    if (!currentRe || !testStr) return null
-    try { return testStr.replace(currentRe, state.subReplacement) }
-    catch { return 'INVALID' }
-  }, [currentRe, testStr, state.subReplacement])
-
-  const overlaySegments = useMemo(() => buildOverlaySegments(testStr, matches), [testStr, matches])
+  // The test text with every match replaced, as untouched and replaced spans (null until the pattern compiles).
+  const resultSegments = useMemo(
+    () => (state.mode === 'sub' && currentRe ? replaceSegments(testStr, currentRe, state.subReplacement) : null),
+    [state.mode, currentRe, testStr, state.subReplacement],
+  )
 
   function setTestContent(content) {
     const next = state.testCases.map((tc, i) => i === state.tcIndex ? { ...tc, content } : tc)
@@ -133,79 +129,8 @@ export function RegexTesterView() {
       <SavedPatterns docs={docs} currentDocId={currentDocId} onOpen={openDoc} onNew={newDoc} onRename={renameDoc} onDuplicate={duplicateDoc} onDelete={deleteDoc} />
       <div className="nx-rt-main">
         <ExpressionBar state={state} patch={patch} matches={matches} selIdx={selIdx} onStep={navMatch} error={patternError} patternRef={patternRef} />
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <style>{`
-        .rt-btn { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font-size:11.5px; }
-        .rt-btn:hover:not(:disabled) { background:var(--surface-2); color:var(--text); }
-        .rt-btn:disabled { opacity:.35; cursor:default; }
-        .rt-btn.on { background:var(--accent-soft); border-color:var(--accent-border); color:var(--accent); }
-        .rt-tab { font-size:10.5px; font-weight:600; padding:7px 13px; background:none; border:none; border-bottom:2px solid transparent; color:var(--text-muted); text-transform:uppercase; letter-spacing:.6px; cursor:pointer; }
-        .rt-tab:hover { color:var(--text); }
-        .rt-tab.on { color:var(--accent); border-bottom-color:var(--accent); }
-        mark.rt-m { background: var(--warning-soft); border-bottom:2px solid var(--warning); border-radius:2px; color:inherit; padding:0; }
-        mark.rt-m.sel { filter: brightness(1.3); }
-      `}</style>
-
-      {/* Test string panel */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 10, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 8px', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
-          {state.testCases.map((tc, i) => (
-            <button key={i} className={`rt-btn${i === state.tcIndex ? ' on' : ''}`} onClick={() => switchTestCase(i)}>{tc.name}</button>
-          ))}
-          <button className="rt-btn" onClick={addTestCase} title="New test case" style={{ marginLeft: 4 }}><Icon name="plus" size={12}/></button>
-        </div>
-        <div style={{ position: 'relative', height: 190 }}>
-          <div aria-hidden="true" ref={overlayRef} style={{
-            position: 'absolute', inset: 0, pointerEvents: 'none', fontFamily: 'var(--mono)', fontSize: 13, lineHeight: 1.75,
-            padding: '10px 13px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden',
-          }}>
-            {overlaySegments.map((seg, i) => seg.matchIndex === null
-              ? <React.Fragment key={i}>{seg.text}</React.Fragment>
-              : (
-                <mark key={i} className={`rt-m${seg.matchIndex === selIdx ? ' sel' : ''}`}>
-                  {splitMatchByGroups(seg.text, seg.groupSpans).map((piece, pi) => piece.colorIndex === null
-                    ? <React.Fragment key={pi}>{piece.text}</React.Fragment>
-                    : <span key={pi} style={{ borderBottom: `2px solid ${GROUP_COLORS[piece.colorIndex]}`, background: `${GROUP_COLORS[piece.colorIndex]}18` }}>{piece.text}</span>
-                  )}
-                </mark>
-              )
-            )}
-          </div>
-          <textarea
-            value={testStr} onChange={e => setTestContent(e.target.value)}
-            onScroll={e => {
-              if (overlayRef.current) {
-                overlayRef.current.scrollTop = e.target.scrollTop
-                overlayRef.current.scrollLeft = e.target.scrollLeft
-              }
-            }}
-            placeholder="Enter test string…" spellCheck={false}
-            style={{
-              position: 'absolute', inset: 0, width: '100%', height: '100%', background: 'transparent', border: 'none', outline: 'none',
-              resize: 'none', fontFamily: 'var(--mono)', fontSize: 13, lineHeight: 1.75, padding: '10px 13px', color: 'transparent', caretColor: 'var(--text)',
-              whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowY: 'auto', boxSizing: 'border-box',
-            }}
-          />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 13px', borderTop: '1px solid var(--border)', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text-subtle)' }}>
-          <span>{testStr.length} chars</span>
-          <span>{matches.length ? `${matches.length} ${matches.length === 1 ? 'match' : 'matches'}` : (state.pattern ? 'no matches' : '–')}</span>
-        </div>
-      </div>
-
-      {/* Substitution panel */}
-      {state.mode === 'sub' && (
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 10, overflow: 'hidden' }}>
-          <div style={{ padding: '6px 13px', borderBottom: '1px solid var(--border)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.7px', color: 'var(--success)' }}>Result</div>
-          <div style={{ padding: '8px 13px', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'pre-wrap', lineHeight: 1.7, minHeight: 42 }}>
-            {subResult === null
-              ? <span style={{ color: 'var(--text-subtle)' }}>Result will appear here</span>
-              : subResult === 'INVALID' ? 'Invalid substitution pattern' : (subResult || '(empty string)')}
-          </div>
-        </div>
-      )}
-
-        </div>
+        <TestText state={state} matches={matches} selIdx={selIdx} onSelectMatch={selectMatch} error={patternError} resultSegments={resultSegments}
+          onCase={switchTestCase} onAddCase={addTestCase} onText={setTestContent} />
       </div>
       <div className="nx-rt-rail" style={{ padding: 10 }}>
       {/* Bottom grid */}
