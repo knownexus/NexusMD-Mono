@@ -42,3 +42,43 @@ describe('DocumentsView', () => {
     expect(getByText('Expression')).toBeTruthy()
   })
 })
+
+describe('DocumentsBar', () => {
+  it('is a tab strip of the three tools with the chosen one selected', () => {
+    const { getByRole } = renderDocuments()
+    expect(getByRole('tablist', { name: 'Documents tool' })).toBeTruthy()
+    expect(getByRole('tab', { name: 'Markdown' }).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(getByRole('tab', { name: 'Regex Tester' }))
+    expect(getByRole('tab', { name: 'Regex Tester' }).getAttribute('aria-selected')).toBe('true')
+    expect(getByRole('tab', { name: 'Markdown' }).getAttribute('aria-selected')).toBe('false')
+  })
+
+  it('is a 48px bar, not the accent-filled button row', () => {
+    const { container } = renderDocuments()
+    const bar = container.querySelector('.nx-docs-bar')
+    expect(bar.style.height).toBe('48px')
+    expect(bar.querySelector('button[style*="var(--accent)"]')).toBeNull()
+  })
+
+  it('says nothing about saving on a tool that does not report it', () => {
+    const { container } = renderDocuments()
+    expect(container.querySelector('.nx-docs-save')).toBeNull()
+  })
+
+  it('shows Saving… then Saved just now beside the tabs while the Regex Tester saves a pattern', async () => {
+    const { getByRole, getByDisplayValue, findByText, container } = renderDocuments()
+    fireEvent.click(getByRole('tab', { name: 'Regex Tester' }))
+    fireEvent.change(getByDisplayValue('(\\w+)@([\\w.-]+\\.[a-z]{2,})'), { target: { value: '\\d+' } })
+    expect(await findByText('Saving…')).toBeTruthy()
+    expect(await findByText('Saved just now', {}, { timeout: 4000 })).toBeTruthy()
+  })
+
+  it('draws no save text once the tool is left', async () => {
+    const { getByRole, getByDisplayValue, findByText, container } = renderDocuments()
+    fireEvent.click(getByRole('tab', { name: 'Regex Tester' }))
+    fireEvent.change(getByDisplayValue('(\\w+)@([\\w.-]+\\.[a-z]{2,})'), { target: { value: '\\d+' } })
+    await findByText('Saving…')
+    fireEvent.click(getByRole('tab', { name: 'Markdown' }))
+    expect(container.querySelector('.nx-docs-save')).toBeNull()
+  })
+})

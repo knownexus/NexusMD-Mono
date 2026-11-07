@@ -9,6 +9,7 @@ import {
 } from './regex-tester-helpers.js'
 import { useDocumentAutosave, relativeTime } from './document-store.js'
 import { DocumentsModal } from './documents-modal.jsx'
+import { useDocumentsBarSave } from './documents-bar.jsx'
 
 const { useState, useEffect, useMemo, useRef } = React
 
@@ -56,7 +57,7 @@ function regexAutoName(state) {
 
 export function RegexTesterView() {
   const {
-    content: state, setContent: setState, docs, currentDocId, hasUnsavedContent,
+    content: state, setContent: setState, docs, currentDocId, hasUnsavedContent, saveStatus,
     openDoc, newDoc, deleteDoc, renameDoc,
   } = useDocumentAutosave({
     storageKey: DOCS_STORAGE_KEY,
@@ -65,6 +66,7 @@ export function RegexTesterView() {
     isEmpty: s => !s.pattern,
     extractAutoName: regexAutoName,
   })
+  useDocumentsBarSave(saveStatus)
   const [showDocsModal, setShowDocsModal] = useState(false)
   const [selIdx, setSelIdx] = useState(-1)
   const [bottomTab, setBottomTab] = useState('code')
