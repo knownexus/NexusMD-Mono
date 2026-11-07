@@ -1,0 +1,17 @@
+/* Syntax colours (@lezer/highlight's classHighlighter classes), from the theme's own palette so
+   every theme gets colours that suit it: the editor, diffs and conflict sides all use these.
+   Strings, numbers and definitions are drawn a little toward the text colour so they stay readable
+   on the lightest themes (Paper, Dusk) as well as the dark ones. */
+.tok-keyword, .tok-modifier, .tok-controlKeyword { color: var(--violet); }
+.tok-string, .tok-string2, .tok-character, .tok-inserted { color: color-mix(in srgb, var(--success) 82%, var(--text)); }
+.tok-number, .tok-bool, .tok-atom, .tok-literal, .tok-null { color: color-mix(in srgb, var(--warning) 82%, var(--text)); }
+.tok-comment, .tok-meta { color: var(--text-muted); font-style: italic; }
+.tok-typeName, .tok-className, .tok-namespace, .tok-tagName { color: var(--info); }
+.tok-definition, .tok-function, .tok-macroName, .tok-labelName { color: color-mix(in srgb, var(--accent) 80%, var(--text)); }
+.tok-propertyName, .tok-attributeName { color: color-mix(in srgb, var(--info) 70%, var(--text)); }
+.tok-variableName2, .tok-self { color: color-mix(in srgb, var(--danger) 75%, var(--text)); }
+.tok-operator, .tok-punctuation { color: color-mix(in srgb, var(--text) 70%, var(--text-muted)); }
+.tok-heading, .tok-strong { font-weight: 700; color: var(--accent); }
+.tok-emphasis { font-style: italic; }
+.tok-link, .tok-url { color: var(--info); text-decoration: underline; }
+.tok-deleted, .tok-invalid { color: var(--danger); }

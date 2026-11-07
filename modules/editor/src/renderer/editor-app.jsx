@@ -4,6 +4,7 @@ import { MarkdownPreview, TextSizeControls, useMarkdownTextSize, useCtrlWheelTex
 import { FolderTree } from './folder-tree.jsx'
 import { editorApi, editorStore, useEditorStore } from './editor-singleton.js'
 import { isDirty, baseName } from './editor-store.js'
+import '@nexusmd/editor-kit/syntax-colours.css'
 import './editor.css'
 
 const eolLabel = eol => (eol === '\r\n' ? 'CRLF' : 'LF')

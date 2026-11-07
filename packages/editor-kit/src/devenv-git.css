@@ -1,3 +1,4 @@
+@import './syntax-colours.css';
 /* Dev Environment + Git Workspace redesign.
    Uses only the app's own tokens from @nexusmd/ui base.css, so every data-theme works.
    Headings use the Nexus heading face when present (--font-heading), else Cinzel, else serif. */
@@ -239,22 +240,6 @@ select.nx-input { padding-right: 4px; }
 .nx-resolve-base { display: flex; flex-direction: column; }
 .nx-resolve-whole { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
 @media (max-width: 720px) { .nx-resolve-sides { grid-template-columns: minmax(0, 1fr); } }
-
-/* Syntax colours (@lezer/highlight's classHighlighter classes), from the theme's own palette so
-   every theme gets colours that suit it: the editor, diffs and conflict sides all use these. */
-.tok-keyword, .tok-modifier, .tok-controlKeyword { color: var(--violet); }
-.tok-string, .tok-string2, .tok-character, .tok-inserted { color: var(--success); }
-.tok-number, .tok-bool, .tok-atom, .tok-literal, .tok-null { color: var(--warning); }
-.tok-comment, .tok-meta { color: var(--text-muted); font-style: italic; }
-.tok-typeName, .tok-className, .tok-namespace, .tok-tagName { color: var(--info); }
-.tok-definition, .tok-function, .tok-macroName, .tok-labelName { color: var(--accent); }
-.tok-propertyName, .tok-attributeName { color: color-mix(in srgb, var(--info) 70%, var(--text)); }
-.tok-variableName2, .tok-self { color: color-mix(in srgb, var(--danger) 75%, var(--text)); }
-.tok-operator, .tok-punctuation { color: color-mix(in srgb, var(--text) 70%, var(--text-muted)); }
-.tok-heading, .tok-strong { font-weight: 700; color: var(--accent); }
-.tok-emphasis { font-style: italic; }
-.tok-link, .tok-url { color: var(--info); text-decoration: underline; }
-.tok-deleted, .tok-invalid { color: var(--danger); }
 
 /* Diffs: the words changed within a removed or added line. */
 .nx-word-del { background: color-mix(in srgb, var(--danger) 32%, transparent); border-radius: 2px; }
