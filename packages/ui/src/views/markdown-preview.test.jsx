@@ -140,6 +140,18 @@ describe('followPreviewLink', () => {
     return event
   }
 
+  it('finds the link above a click even when something nearer is a link without an address', () => {
+    const open = vi.fn()
+    const outer = clickOn('<a href="https://evil.example/out"><svg><a><rect/></a></svg></a>', 'rect', { open, openExternal: undefined })
+    expect(outer.defaultPrevented).toBe(true)
+    expect(open).toHaveBeenCalledWith('https://evil.example/out')
+  })
+
+  it('leaves a click on text that is not in a link alone', () => {
+    const plain = clickOn('<p><a>no address</a></p>', 'a', { open: vi.fn(), openExternal: undefined })
+    expect(plain.defaultPrevented).toBe(false)
+  })
+
   it('stops a click on an image-map area or an svg link from navigating the window, and opens http(s) as a tab', () => {
     const open = vi.fn()
     const area = clickOn('<map><area href="https://evil.example/x"></map>', 'area', { open, openExternal: undefined })

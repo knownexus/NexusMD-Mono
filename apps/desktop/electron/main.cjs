@@ -333,7 +333,9 @@ function createMainWindow() {
     popoutOptions: { title: 'NexusMD output', icon: windowIconPath(isDark) },
   }));
   // The app window never navigates away from the app itself (a link in rendered content, a form, an image map).
-  win.webContents.on('will-navigate', createNavigationGuard(() => win.webContents.getURL()));
+  const guard = createNavigationGuard(() => win.webContents.getURL());
+  win.webContents.on('will-navigate', guard);
+  win.webContents.on('will-redirect', guard);
   // The pop-out stays blank apart from what the renderer writes into it: it can't
   // navigate away or open windows of its own.
   win.webContents.on('did-create-window', (child) => {

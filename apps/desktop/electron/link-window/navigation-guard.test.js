@@ -22,6 +22,12 @@ describe('createNavigationGuard', () => {
     expect(run('file:///app/index.html', 'data:text/html,<script>1</script>')).toBe(true)
   })
 
+  it('stops a file on another host: the same path under a UNC share is not the app', () => {
+    expect(run('file:///app/index.html', 'file://evil.example/app/index.html')).toBe(true)
+    expect(run('file://server/share/index.html', 'file://other/share/index.html')).toBe(true)
+    expect(run('file://server/share/index.html#a', 'file://server/share/index.html#b')).toBe(false)
+  })
+
   it('stops anything it cannot read as a address', () => {
     expect(run('file:///app/index.html', 'not a url')).toBe(true)
     expect(run('', 'https://evil.example/')).toBe(true)

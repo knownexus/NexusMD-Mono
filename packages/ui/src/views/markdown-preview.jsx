@@ -88,10 +88,10 @@ export function followPreviewLink(e, container, {
   openExternal = window.electronAPI?.openExternal,
 } = {}) {
   // Any element that links, not only <a>: an image map's <area> and an svg's <a xlink:href> would otherwise navigate the window.
-  const a = e.target.closest?.('a, area');
+  // The nearest one that has an address: a link without one (an svg <a>) inside a real link must not let that link navigate.
+  const a = e.target.closest?.('a[href], area[href], a[xlink\\:href]');
   if (!a || !container.contains(a)) return;
   const href = a.getAttribute('href') ?? a.getAttribute('xlink:href');
-  if (href == null) return;
   e.preventDefault();
   if (href.startsWith('#')) {
     let anchor = href.slice(1);

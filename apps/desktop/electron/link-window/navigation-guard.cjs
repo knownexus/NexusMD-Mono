@@ -16,7 +16,10 @@ function createNavigationGuard(getCurrentUrl) {
     const target = new URL(url);
     const current = new URL(from);
     const same = target.protocol === current.protocol
-      && (target.protocol === 'file:' ? target.pathname === current.pathname : target.origin === current.origin);
+      && (target.protocol === 'file:'
+        // The same file on the same host: a UNC share (file://server/…) with the same path is not the app.
+        ? target.host === current.host && target.pathname === current.pathname
+        : target.origin === current.origin);
     if (!same) event.preventDefault();
   };
 }
