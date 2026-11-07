@@ -3,7 +3,7 @@
 // instead of the original's own hardcoded light palette.
 import React from 'react'
 import { Icon } from '../icons.jsx'
-import { typeOf, setValueAtPath, deleteAtPath, allContainerPaths, highlightSegments, searchPaths, pathKey as searchKey, rendererLog, ignore } from '@nexusmd/core'
+import { jsonAutoName, typeOf, setValueAtPath, deleteAtPath, allContainerPaths, highlightSegments, searchPaths, pathKey as searchKey, rendererLog, ignore } from '@nexusmd/core'
 import { useDocumentAutosave, relativeTime } from './document-store.js'
 import { DocumentsModal } from './documents-modal.jsx'
 import { JsonNodeSheet } from '../json-tree-ui.jsx'
@@ -24,20 +24,6 @@ const SAMPLE = {
 const SAMPLE_TEXT = JSON.stringify(SAMPLE, null, 2)
 const EMPTY_TEXT = '{}'
 const DOCS_STORAGE_KEY = 'json_editor_documents'
-
-// A saved doc's display name: prefer a top-level "name"/"title" string field
-// if the JSON has one, otherwise a truncated one-line snippet of the text.
-function jsonAutoName(text) {
-  try {
-    const parsed = JSON.parse(text)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const nameField = parsed.name ?? parsed.title
-      if (typeof nameField === 'string' && nameField.trim()) return nameField.trim().slice(0, 80)
-    }
-  } catch (err) { ignore(log, 'the error position could not be read, so a raw text snippet is shown', err, 'debug') }
-  const snippet = text.trim().replace(/\s+/g, ' ')
-  return snippet ? snippet.slice(0, 60) : 'Untitled'
-}
 
 function parseOr(text, fallback) {
   try { return JSON.parse(text) } catch { return fallback }

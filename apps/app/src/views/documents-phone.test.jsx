@@ -6,7 +6,8 @@ vi.mock('@capacitor/core', () => ({ CapacitorHttp: undefined }))
 
 import { DocumentsPhone } from './documents-phone.jsx'
 import { applyFormat, autoNameOf, wordCount, FORMATS } from './md-phone.jsx'
-import { jsonAutoName, parseJson } from './json-phone.jsx'
+import { parseJson } from './json-phone.jsx'
+import { jsonAutoName } from '@nexusmd/core'
 import { patternError, regexAutoName, flagsToString, statusOf, groupLines, FLAGS } from './regex-phone.jsx'
 
 beforeEach(() => { localStorage.clear() })

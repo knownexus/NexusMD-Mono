@@ -1,8 +1,9 @@
-// opened-file.js — a .txt or .md file opened with the Android app (Open with / Share) arrives through the OpenedFile native
-// plugin (OpenedFilePlugin.java). A Markdown file is added to the saved documents (open-text-file.js); any other text file is put in
-// the Editor's workspace (open-in-editor.js). The app is told which, so it can show it.
+// opened-file.js — a text file opened with the Android app (Open with / Share) arrives through the OpenedFile native
+// plugin (OpenedFilePlugin.java). A Markdown file is added to the Markdown documents and a JSON file to the JSON editor's
+// documents (open-text-file.js); any other text file is put in the Editor's workspace (open-in-editor.js). The app is told
+// which, so it can show it.
 import { registerPlugin, Capacitor } from '@capacitor/core'
-import { addOpenedDocument, documentNameOf, isMarkdownFile } from './open-text-file.js'
+import { addOpenedDocument, addOpenedJsonDocument, documentNameOf, isMarkdownFile, isJsonFile } from './open-text-file.js'
 import { importIntoWorkspace } from './open-in-editor.js'
 import { editorWorkspace, WORKSPACE_ROOT } from './adapters/editor-workspace.js'
 
@@ -10,10 +11,10 @@ export const openedFilePlugin = Capacitor.isNativePlatform() ? registerPlugin('O
 
 /**
  * Takes each file the app is opened with, at start and whenever another arrives, and adds it to the documents.
- * @param {{ plugin?: object|null, storage?: Storage, storageKey?: string, workspace?: object, onOpen: (r: { target: 'documents', id: string, created: boolean, name: string|null } | { target: 'editor', path: string, name: string }) => void, onError: (message: string) => void }} o
+ * @param {{ plugin?: object|null, storage?: Storage, storageKey?: string, jsonStorageKey?: string, workspace?: object, onOpen: (r: { target: 'documents', tool: 'markdown'|'json', id: string, created: boolean, name: string|null } | { target: 'editor', path: string, name: string }) => void, onError: (message: string) => void }} o
  * @returns {() => void} stops listening
  */
-export function watchOpenedFiles({ plugin = openedFilePlugin, storage = globalThis.localStorage, storageKey, workspace = editorWorkspace, onOpen, onError }) {
+export function watchOpenedFiles({ plugin = openedFilePlugin, storage = globalThis.localStorage, storageKey, jsonStorageKey, workspace = editorWorkspace, onOpen, onError }) {
   if (!plugin) return () => {}
   let stopped = false
   let chain = Promise.resolve() // files are taken one at a time, so two arriving together are not read at once
@@ -27,7 +28,10 @@ export function watchOpenedFiles({ plugin = openedFilePlugin, storage = globalTh
       try {
         if (isMarkdownFile(file)) {
           const r = addOpenedDocument(storage, file, storageKey ? { key: storageKey } : {})
-          onOpen({ target: 'documents', ...r, name: documentNameOf(file.name) })
+          onOpen({ target: 'documents', tool: 'markdown', ...r, name: documentNameOf(file.name) })
+        } else if (isJsonFile(file)) {
+          const r = addOpenedJsonDocument(storage, file, jsonStorageKey ? { key: jsonStorageKey } : {})
+          onOpen({ target: 'documents', tool: 'json', ...r, name: documentNameOf(file.name) })
         } else {
           const path = await importIntoWorkspace(workspace, file, { root: WORKSPACE_ROOT })
           onOpen({ target: 'editor', path, name: String(file.name || '').split(/[\\/]/).pop() || 'Untitled.txt' })

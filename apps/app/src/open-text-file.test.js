@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { addOpenedDocument, documentNameOf, isMarkdownFile, MAX_OPEN_BYTES } from './open-text-file.js'
+import { addOpenedDocument, addOpenedJsonDocument, documentNameOf, isMarkdownFile, isJsonFile, MAX_OPEN_BYTES } from './open-text-file.js'
 
 const store = (seed) => {
   const m = new Map(seed ? [['md_documents', JSON.stringify(seed)]] : [])
@@ -102,5 +102,91 @@ describe('isMarkdownFile', () => {
   })
   it('is not one for any other text file', () => {
     for (const f of [{ name: 'a.txt' }, { name: 'a.json', type: 'application/json' }, { name: 'md' }, { name: 'a.md.bak' }, { name: '' }, {}, { name: 'notes.mdx' }]) expect(isMarkdownFile(f)).toBe(false)
+  })
+})
+
+describe('isJsonFile', () => {
+  it('is true for a .json name in any case, or the JSON type, and false for look-alikes', () => {
+    expect(isJsonFile({ name: 'a.json' })).toBe(true)
+    expect(isJsonFile({ name: 'A.JSON' })).toBe(true)
+    expect(isJsonFile({ name: 'x', type: 'application/json' })).toBe(true)
+    expect(isJsonFile({ name: 'dir/data.json', type: 'application/octet-stream' })).toBe(true)
+    for (const name of ['a.jsonc', 'a.json5', 'notes.md', 'a.txt', 'json']) expect(isJsonFile({ name })).toBe(false)
+    expect(isJsonFile()).toBe(false)
+  })
+})
+
+describe('addOpenedJsonDocument', () => {
+  const jstore = (seed) => {
+    const m = new Map(seed === undefined ? [] : [['json_editor_documents', typeof seed === 'string' ? seed : JSON.stringify(seed)]])
+    return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)) }, raw: () => m.get('json_editor_documents'), docs: () => JSON.parse(m.get('json_editor_documents') || '[]') }
+  }
+
+  it('stores a plain array under json_editor_documents, named after the file', () => {
+    const s = jstore()
+    const r = addOpenedJsonDocument(s, { name: 'config.json', text: '{"name":"Cfg"}' }, { now: 1000, id: 'j1' })
+    expect(r).toEqual({ id: 'j1', created: true })
+    expect(s.docs()).toEqual([{ id: 'j1', name: 'config', autoName: 'Cfg', content: '{"name":"Cfg"}', createdAt: 1000, updatedAt: 1000 }])
+  })
+
+  it('opening the same file twice makes one document with a newer updatedAt', () => {
+    const s = jstore()
+    addOpenedJsonDocument(s, { name: 'a.json', text: '{"a":1}' }, { now: 1, id: 'j1' })
+    expect(addOpenedJsonDocument(s, { name: 'a.json', text: '{"a":1}' }, { now: 9, id: 'j2' })).toEqual({ id: 'j1', created: false })
+    expect(s.docs()).toHaveLength(1)
+    expect(s.docs()[0].updatedAt).toBe(9)
+  })
+
+  it('stores a broken file instead of rejecting it', () => {
+    const s = jstore()
+    expect(addOpenedJsonDocument(s, { name: 'bad.json', text: '{ "a": ' }, { now: 1, id: 'j1' }).created).toBe(true)
+    expect(s.docs()[0].content).toBe('{ "a": ')
+  })
+
+  it('removes a byte order mark and turns Windows line endings into plain ones', () => {
+    const s = jstore()
+    addOpenedJsonDocument(s, { name: 'a.json', text: '﻿{"a":1,\r\n"b":2}' }, { now: 1, id: 'j1' })
+    expect(s.docs()[0].content).toBe('{"a":1,\n"b":2}')
+  })
+
+  it('a top-level array, a bare number and an empty file are stored without throwing', () => {
+    const s = jstore()
+    addOpenedJsonDocument(s, { name: 'arr.json', text: '[1,2]' }, { now: 1, id: 'a' })
+    addOpenedJsonDocument(s, { name: 'num.json', text: '42' }, { now: 2, id: 'b' })
+    addOpenedJsonDocument(s, { name: 'empty.json', text: '' }, { now: 3, id: 'c' })
+    expect(s.docs().map(d => [d.id, d.content, d.autoName])).toEqual([['a', '[1,2]', '[1,2]'], ['b', '42', '42'], ['c', '', 'Untitled']])
+  })
+
+  it('keeps the documents that are already there', () => {
+    const s = jstore([{ id: 'old', name: null, autoName: 'Old', content: '{}', createdAt: 1, updatedAt: 5 }])
+    addOpenedJsonDocument(s, { name: 'n.json', text: '{"n":1}' }, { now: 9, id: 'j2' })
+    expect(s.docs().map(d => d.id)).toEqual(['old', 'j2'])
+  })
+
+  it('treats an absent or empty stored value as no documents', () => {
+    const s = jstore('')
+    addOpenedJsonDocument(s, { name: 'a.json', text: '{}' }, { now: 1, id: 'j1' })
+    expect(s.docs()).toHaveLength(1)
+  })
+
+  it('refuses to overwrite a stored value that is not an array, and changes nothing', () => {
+    for (const bad of ['{"docs":[]}', 'not json', '"text"', '7']) {
+      const s = jstore(bad)
+      expect(() => addOpenedJsonDocument(s, { name: 'a.json', text: '{}' }, { now: 1, id: 'j1' })).toThrow(/could not be read.*Nothing has been changed/)
+      expect(s.raw()).toBe(bad)
+    }
+  })
+
+  it('refuses text over the size limit', () => {
+    const s = jstore()
+    expect(() => addOpenedJsonDocument(s, { name: 'big.json', text: '"' + 'x'.repeat(MAX_OPEN_BYTES) + '"' }, { now: 1, id: 'j1' })).toThrow(/too large/)
+    expect(s.docs()).toEqual([])
+  })
+
+  it('uses the key it is given', () => {
+    const m = new Map()
+    const storage = { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }
+    addOpenedJsonDocument(storage, { name: 'a.json', text: '{}' }, { now: 1, id: 'j1', key: 'helm.p1.json_editor_documents' })
+    expect([...m.keys()]).toEqual(['helm.p1.json_editor_documents'])
   })
 })
