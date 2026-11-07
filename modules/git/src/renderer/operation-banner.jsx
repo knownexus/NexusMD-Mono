@@ -7,7 +7,7 @@ const shortRef = r => String(r ?? '').replace(/^refs\/(heads|remotes|tags)\//, '
 const plural = (n, word) => `${word}${n === 1 ? '' : 's'}`
 
 // "Rebasing onto origin/master", "Merging topic", "Cherry-picking"…
-function heading(info) {
+export function operationHeading(info) {
   const verb = VERB[info?.kind] ?? 'Paused'
   if (info?.kind === 'rebase') { const onto = shortRef(info.onto?.name); return onto ? `${verb} onto ${onto}` : verb }
   if (info?.kind === 'merge') { const from = shortRef(info.merging?.name); return from ? `${verb} ${from}` : verb }
@@ -16,7 +16,7 @@ function heading(info) {
 
 // The conflicted files seen since this step stopped: the ones gone from the list since were resolved.
 // A new step (or another worktree, or another operation) starts the count again.
-function useConflictCount(tree) {
+export function useConflictCount(tree) {
   const info = tree?.operationInfo
   const key = `${tree?.path}|${tree?.operation}|${info?.step ?? ''}|${info?.replaying?.oid ?? info?.picked?.oid ?? ''}`
   const current = [...new Set((tree?.changes ?? []).filter(c => c.area === 'conflict').map(c => c.path))]
@@ -39,7 +39,7 @@ export function OperationBanner({ tree, onAction }) {
   const info = tree.operationInfo
   const kind = info?.kind
   const noun = NOUN[kind] ?? 'operation'
-  const title = info ? `${heading(info)} — ${left ? 'paused on conflicts' : 'ready to continue'}` : tree.operation
+  const title = info ? `${operationHeading(info)} — ${left ? 'paused on conflicts' : 'ready to continue'}` : tree.operation
   const detail = operationText(info, checkoutName(tree)) || tree.operation
   const commit = kind === 'rebase' && info.step != null && info.total != null
   const steps = info?.total ? Array.from({ length: info.total }, (_, i) => (i < info.step - 1 ? 'done' : i === info.step - 1 ? 'now' : 'todo')) : []

@@ -81,12 +81,9 @@ describe('ChangesPane', () => {
     expect(within(screen.getByLabelText('Changed files')).queryAllByRole('checkbox')).toHaveLength(0)
   })
 
-  it('commits from the composer at the bottom of the column', async () => {
-    const h = renderPane()
-    h.onCommit.mockResolvedValue(true)
-    fireEvent.change(screen.getByLabelText('Commit summary'), { target: { value: 'Ship it' } })
-    fireEvent.click(button('Commit 1 file'))
-    expect(h.onCommit).toHaveBeenCalledWith({ message: 'Ship it', amend: false, push: false })
+  it('has no commit form of its own: that lives in the panel beside the diff', () => {
+    renderPane()
+    expect(screen.queryByLabelText('Commit summary')).toBeNull()
   })
 
   it('a plain click focuses a file and selects only it', () => {
@@ -106,14 +103,15 @@ describe('ChangesPane', () => {
   })
 
   it('moves focus with the arrows through both lanes, selects with Space, runs s and u, and c goes to the commit summary', () => {
-    const h = renderPane({ selected: [B.id, A.id], focusId: NEW.id })
+    const onCompose = vi.fn()
+    const h = renderPane({ selected: [B.id, A.id], focusId: NEW.id, onCompose })
     const list = screen.getByLabelText('Changed files')
     fireEvent.keyDown(list, { key: 'ArrowDown' })
     expect(h.onFocus).toHaveBeenLastCalledWith(A.id)
     fireEvent.keyDown(list, { key: 'ArrowUp' })
     expect(h.onFocus).toHaveBeenLastCalledWith(LIB.id)
     cleanup()
-    const h2 = renderPane({ selected: [B.id, A.id], focusId: B.id })
+    const h2 = renderPane({ selected: [B.id, A.id], focusId: B.id, onCompose })
     const list2 = screen.getByLabelText('Changed files')
     fireEvent.keyDown(list2, { key: ' ' })
     expect(h2.onSelectionChange).toHaveBeenLastCalledWith([A.id])
@@ -122,7 +120,7 @@ describe('ChangesPane', () => {
     fireEvent.keyDown(list2, { key: 'u' })
     expect(h2.onAction).toHaveBeenLastCalledWith('unstage')
     fireEvent.keyDown(list2, { key: 'c' })
-    expect(document.activeElement).toBe(screen.getByLabelText('Commit summary'))
+    expect(onCompose).toHaveBeenCalledTimes(1)
     expect(h2.onCommit).not.toHaveBeenCalled()
   })
 
@@ -147,7 +145,6 @@ describe('ChangesPane', () => {
   it('locks the lane actions while a write runs and shows the last result', () => {
     renderPane({ selected: [B.id], busy: true, status: { ok: false, text: 'fatal: nope' } })
     expect(button('Stage 1 ↓').disabled).toBe(true)
-    expect(button('Commit 1 file').disabled).toBe(true)
     expect(screen.getAllByText('Working…').length).toBeGreaterThan(0)
     expect(screen.getByRole('alert').textContent).toBe('fatal: nope')
   })
@@ -155,8 +152,10 @@ describe('ChangesPane', () => {
   it('says when there are no changes', () => {
     renderPane({ tree: { path: 'C:/repos/A', changes: [] } })
     expect(screen.getByText('Working tree clean')).toBeTruthy()
-    expect(button('Commit').disabled).toBe(true)
-    expect(screen.getByText('Nothing to commit')).toBeTruthy()
+    expect(screen.getByText('Edits to files on this branch appear here.')).toBeTruthy()
+    expect(screen.getByText('Nothing staged.')).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Not staged (0)' })).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Staged (0)' })).toBeTruthy()
   })
 })
 
@@ -214,14 +213,12 @@ describe('ChangesPane conflicts', () => {
 
   afterEach(() => vi.restoreAllMocks())
 
-  it('notes how to finish, opens a conflict from its Resolve button, and pauses the composer', () => {
+  it('notes how to finish and opens a conflict from its Resolve button', () => {
     const h = renderPane({ tree: { ...ctree, operation: 'Rebase in progress' }, onResolve: vi.fn() })
     const conflicts = within(screen.getByRole('group', { name: 'Conflicts (2)' }))
     expect(conflicts.getByText('Resolve each file, then continue the rebase.')).toBeTruthy()
     fireEvent.click(conflicts.getByRole('button', { name: 'Resolve d.txt' }))
     expect(h.onFocus).toHaveBeenCalledWith(D.id)
-    expect(screen.queryByLabelText('Commit summary')).toBeNull()
-    expect(screen.getByRole('note').textContent).toBe('Committing is paused during the rebase — resolved files go into the replayed commit.')
   })
 
   it('lists conflicts first with whole-file choices', () => {

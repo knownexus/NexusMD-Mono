@@ -1,6 +1,5 @@
 import React from 'react'
 import { statusCode, groupChanges, actionsFor, isSubmodule, conflictLabels, conflictKind, checkoutName } from '@nexusmd/core'
-import { CommitComposer } from './commit-composer.jsx'
 import { ContextMenu, menuPoint } from './context-menu.jsx'
 import { Icon, Segmented } from '@nexusmd/ui'
 import { nextSelection } from './change-selection.js'
@@ -196,13 +195,13 @@ const fileWord = n => (n > 1 ? ` ${n} files` : '')
 /**
  * A worktree's changed files (the left column of the Changes tab): the Not staged and Staged lanes (and
  * Conflicts during one), each scrolling on its own, with a header action that stages or unstages the lane or
- * its selected files, the last result, and the commit composer stuck to the bottom. Click selects a file
+ * its selected files and the last result. Click selects a file
  * (Ctrl toggles, Shift ranges); the right-click menu stages, unstages, discards or deletes the selection.
  * `onAction(action, ids?)` reviews a file action; `onWrite(action, ids)` stages or unstages straight away;
- * `onCommit({ message, amend, push })` commits this worktree. `onPopout(kind, change)` (editor | conflict | diff),
+ * `onCompose()` (the c key) moves to the commit form. `onPopout(kind, change)` (editor | conflict | diff),
  * when given, adds the pop-out items to the menu.
  */
-export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite = () => {}, onCommit, onResolve = null, busy = false, status = null, drafts = [], onPopout = null, onFocusFolder = null }) {
+export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocus, onAction, onWrite = () => {}, onResolve = null, busy = false, status = null, drafts = [], onPopout = null, onFocusFolder = null, onCompose = null }) {
   const [menu, setMenu] = React.useState(null)
   const [popError, setPopError] = React.useState(null)
   const closeMenu = React.useCallback(() => setMenu(null), [])
@@ -214,7 +213,6 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
   const labels = conflictLabels(tree.operationInfo, checkoutName(tree))
   const ordered = list.flatMap(s => s.changes)
   const actions = actionsFor(tree.changes, selected)
-  const root = React.useRef(null)
   const write = (action, ids) => { if (!busy && ids.length) onWrite(action, ids) }
   const run = action => { if (!busy && actions[action].length) onAction(action) }
   const onRowClick = (c, e) => {
@@ -249,8 +247,6 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
     e.preventDefault()
     setMenu({ ...menuPoint(e), label: c.path, items })
   }
-  // c goes to the commit summary (absent during an operation, when committing is paused).
-  const compose = () => root.current?.querySelector('input[aria-label="Commit summary"]')?.focus()
   const onKeyDown = e => {
     // Ctrl+C is copy, not Commit; and keys on a row's own button belong to that button.
     if (e.ctrlKey || e.metaKey || e.altKey) return
@@ -265,10 +261,10 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
       onSelectionChange(nextSelection({ ordered, selected, focusId }, focusId, { ctrl: true }))
     } else if (e.key === 's') run('stage')
     else if (e.key === 'u') run('unstage')
-    else if (e.key === 'c') { e.preventDefault(); compose() }
+    else if (e.key === 'c' && onCompose) { e.preventDefault(); onCompose() }
   }
   return (
-    <section ref={root} aria-label="Changes" className="nx-gw-files">
+    <section aria-label="Changes" className="nx-gw-files">
       {busy && <div aria-live="polite" className="nx-gw-files-status">Working…</div>}
       {status && (
         <div role={status.ok ? 'status' : 'alert'} className="nx-gw-files-status" data-tone={status.ok ? undefined : 'bad'}>
@@ -277,20 +273,29 @@ export function ChangesPane({ tree, selected, onSelectionChange, focusId, onFocu
       )}
       {popError && <div role="alert" className="nx-gw-files-status" data-tone="bad">{popError}</div>}
       <ContextMenu menu={menu} onClose={closeMenu} />
-      <div tabIndex={0} aria-label="Changed files" onKeyDown={onKeyDown} className="nx-gw-lanes" style={{ gridTemplateRows: ROWS_BY_LANES[list.length] }}>
+      <div tabIndex={0} aria-label="Changed files" onKeyDown={onKeyDown} className="nx-gw-lanes" style={{ gridTemplateRows: ROWS_BY_LANES[list.length || 2] }}>
         {!list.length
           ? (
-            <div className="nx-gw-files-empty">
-              <strong>Working tree clean</strong>
-              <span>Nothing to stage or commit on this branch.</span>
-            </div>
+            <>
+              <div role="group" aria-label="Not staged (0)" className="nx-gw-lane" data-lane="unstaged">
+                <div className="nx-gw-lane-head"><span className="nx-gw-lane-title">Not staged</span><span className="nx-gw-sec-n">0</span></div>
+                <div className="nx-gw-files-empty">
+                  <span className="nx-gw-clean-badge"><Icon name="check" size={12} /></span>
+                  <strong>Working tree clean</strong>
+                  <span>{`Edits to files on ${tree.branch ?? 'this branch'} appear here.`}</span>
+                </div>
+              </div>
+              <div role="group" aria-label="Staged (0)" className="nx-gw-lane" data-lane="staged">
+                <div className="nx-gw-lane-head" data-tone="ok"><span className="nx-gw-lane-title">Staged</span><span className="nx-gw-sec-n">0</span></div>
+                <div className="nx-gw-files-empty"><span>Nothing staged.</span></div>
+              </div>
+            </>
           )
           : list.map(l => (
             <Lane key={l.id} lane={l} selected={selected} focusId={focusId} onRowClick={onRowClick} onFocus={onFocus} onFocusFolder={onFocusFolder} treeKey={tree.path}
               drafts={drafts} labels={labels} busy={busy} onResolve={onResolve} onWrite={write} onContext={onContext} />
           ))}
       </div>
-      <CommitComposer tree={tree} busy={busy} onCommit={onCommit} />
     </section>
   )
 }

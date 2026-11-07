@@ -189,14 +189,14 @@ function wholeFileOnly(file, area) {
  * and file buttons and the staging advice. `images` ({ load(side, rel), key }) shows a changed image as
  * before and after above the text (an SVG's source still follows); without it a binary file is just noted.
  */
-export function DiffPane({ change, diff, onHunk, onLine = null, onFile = null, busy = false, sides: sidesOverride = null, readOnly = false, images = null, folder = null, onFolder = null }) {
+export function DiffPane({ change, diff, onHunk, onLine = null, onFile = null, busy = false, sides: sidesOverride = null, readOnly = false, images = null, folder = null, onFolder = null, emptyText = 'Select a file to see its diff.' }) {
   // Stable for the memoised rows, which would otherwise re-render on every parent render.
   const lineRef = React.useRef(onLine)
   lineRef.current = onLine
   const clickLine = React.useCallback(n => lineRef.current?.(n), [])
   const [mode, setMode] = React.useState('unified')
   if (folder && !change) return <FolderHeader folder={folder} busy={busy} onFolder={onFolder} />
-  if (!change) return <div style={{ color: 'var(--text-muted)' }}>Select a file to see its diff.</div>
+  if (!change) return <div style={{ color: 'var(--text-muted)', textAlign: emptyText === 'Select a file to see its diff.' ? undefined : 'center', padding: emptyText === 'Select a file to see its diff.' ? undefined : 28 }}>{emptyText}</div>
   const sides = sidesOverride ?? diffSides(change)
   const { result, files, error, loading } = diff
   const language = languageForPath(change.path)

@@ -223,3 +223,13 @@ describe('DiffPane folder header', () => {
     expect(screen.queryByRole('button', { name: /Delete/ })).toBeNull()
   })
 })
+
+describe('DiffPane with nothing to show', () => {
+  it('says Select a file by default and the given text when there is nothing at all', () => {
+    render(<DiffPane change={null} diff={{ files: [] }} />)
+    expect(screen.getByText('Select a file to see its diff.')).toBeTruthy()
+    cleanup()
+    render(<DiffPane change={null} diff={{ files: [] }} emptyText="No diff to show." />)
+    expect(screen.getByText('No diff to show.')).toBeTruthy()
+  })
+})
