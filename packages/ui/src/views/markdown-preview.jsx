@@ -95,7 +95,8 @@ export function followPreviewLink(e, container, {
   // The nearest one that has an address: a link without one (an svg <a>) inside a real link must not let that link navigate.
   // An svg link's address is href in the xlink namespace, which no attribute selector written for plain HTML sees, so each candidate is asked directly.
   let a = e.target.closest?.('a, area');
-  while (a && !linkAddress(a)) a = a.parentElement?.closest('a, area');
+  // Only a missing address is skipped: href="" is an address (the page itself), and a click on it must still be stopped.
+  while (a && linkAddress(a) == null) a =a.parentElement?.closest('a, area');
   if (!a || !container.contains(a)) return;
   const href = linkAddress(a);
   e.preventDefault();

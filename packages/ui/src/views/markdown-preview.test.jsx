@@ -192,6 +192,16 @@ describe('followPreviewLink', () => {
     expect(open).toHaveBeenCalledWith('https://evil.example/prefixed')
   })
 
+  it('treats an empty href as an address: the click is stopped and nothing opens, rather than the window reloading', () => {
+    const open = vi.fn()
+    const plain = clickOn('<p><a href="">empty</a></p>', 'a', { open, openExternal: undefined })
+    expect(plain.defaultPrevented).toBe(true)
+    // And it does not hand the click to a link further out.
+    const nested = clickOn('<a href="https://evil.example/out"><svg><a href=""><rect/></a></svg></a>', 'rect', { open, openExternal: undefined })
+    expect(nested.defaultPrevented).toBe(true)
+    expect(open).not.toHaveBeenCalled()
+  })
+
   it('walks past a nearer link without an address to the one that has it, including a namespaced one', () => {
     const open = vi.fn()
     const box = document.createElement('div')
