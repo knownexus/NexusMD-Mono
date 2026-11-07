@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { FileRail } from './file-rail.jsx'
 
@@ -83,5 +85,26 @@ describe('FileRail', () => {
   it('has no Edit here without a way to edit', () => {
     show({ onEdit: null })
     expect(screen.queryByRole('button', { name: /^Edit here/ })).toBeNull()
+  })
+})
+
+// jsdom does not load stylesheets, so the layout rules are read from the file.
+describe('the rail commit list layout rules', () => {
+  const css = readFileSync(join(__dirname, 'git-workspace.css'), 'utf8')
+  const rule = sel => {
+    const line = css.split('\n').find(l => l.startsWith(`${sel} {`)) ?? ''
+    return line.slice(line.indexOf('{') + 1, line.lastIndexOf('}'))
+  }
+
+  it('wraps a long commit message inside the rail instead of running past it', () => {
+    // A flex item grows to its content unless told it may shrink: the list item, and the row inside it.
+    expect(rule('.nx-gw-rail-commits li')).toContain('min-width: 0')
+    expect(rule('.nx-gw-rail-commits .row')).toContain('min-width: 0')
+    // The shared .row is centred; the commit row's lines start at the left.
+    expect(rule('.nx-gw-rail-commits .row')).toContain('align-items: stretch')
+    expect(rule('.nx-gw-rail-commits .row')).toContain('text-align: left')
+    // The subject wraps, a very long word included, rather than staying on one line.
+    expect(rule('.nx-gw-rail-commits .subject')).not.toContain('nowrap')
+    expect(rule('.nx-gw-rail-commits .subject')).toContain('overflow-wrap: anywhere')
   })
 })
