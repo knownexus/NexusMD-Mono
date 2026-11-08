@@ -29,6 +29,7 @@
   margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.02em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.m-appbar .m-ab-lead > div { min-width: 0; } /* so a long title can shrink and end in an ellipsis */
 .m-appbar .m-ab-sub { font-size: 11.5px; color: var(--text-subtle); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .m-appbar .m-ab-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .m-brandmark { width: 30px; height: 30px; color: var(--accent); flex-shrink: 0; }

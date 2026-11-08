@@ -11,8 +11,11 @@ import './editor.css'
 const eolLabel = eol => (eol === '\r\n' ? 'CRLF' : 'LF')
 
 function Tab({ doc, active, onSelect, onClose }) {
+  const ref = React.useRef(null)
+  // With many files open the strip scrolls sideways; the open file's tab is kept in view.
+  React.useEffect(() => { if (active) ref.current?.scrollIntoView?.({ inline: 'nearest', block: 'nearest' }) }, [active])
   return (
-    <div role="tab" aria-selected={active} className={`nx-ed-tab${active ? ' nx-ed-active' : ''}`} title={doc.readOnly ? `${doc.origin} (read-only)` : doc.path}>
+    <div ref={ref} role="tab" aria-selected={active} className={`nx-ed-tab${active ? ' nx-ed-active' : ''}`} title={doc.readOnly ? `${doc.origin} (read-only)` : doc.path}>
       <button type="button" className="nx-ed-tab-name" onClick={onSelect}>
         {doc.name}{isDirty(doc) && <span className="nx-ed-dirty" title="Unsaved changes" aria-label="unsaved changes"> ●</span>}
       </button>
