@@ -126,6 +126,7 @@ const oauthIpc       = require('./ipc/oauth.cjs');
 const loginItemIpc   = require('./ipc/login-item.cjs');
 const displayIpc     = require('./ipc/display.cjs');
 const linkWindow     = require('./link-window/manager.cjs');
+const { createOpenFileQueue } = require('./open-file-queue.cjs');
 const { createWindowOpenHandler } = require('./link-window/window-open.cjs');
 const { createNavigationGuard } = require('./link-window/navigation-guard.cjs');
 const { buildLinkMenuTemplate } = require('./link-window/link-context-menu.cjs');
@@ -135,6 +136,7 @@ const { clampZoomFactor, nextZoom, ZOOM_DEFAULT } = require('./zoom.cjs')
 // Single-instance lock
 // ---------------------------------------------------------------------------
 const secondInstanceListeners = new Set();
+const macOpenFiles = createOpenFileQueue();
 const gotLock = app.requestSingleInstanceLock();
 
 if (!gotLock) {
@@ -143,16 +145,21 @@ if (!gotLock) {
 } else {
   // A second launch attempt focuses the existing window, and tells the installed apps what it was
   // launched with (e.g. the Editor opens a file given on the command line).
-  app.on('second-instance', (_event, argv) => {
-    for (const listener of secondInstanceListeners) {
-      try { listener(argv); } catch (err) { log.error('second-instance listener failed', err); }
-    }
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
+  app.on('second-instance', (_event, argv) => launchedAgain(argv));
+  // macOS hands a file opened with the app to the running (or starting) app as an event, not on a command line: it is treated
+  // as a launch with that file. Listened for from here, before the app is ready, so a file that starts the app is not missed.
+  app.on('open-file', (event, file) => { event.preventDefault(); macOpenFiles.add(file); });
+}
+
+function launchedAgain(argv) {
+  for (const listener of secondInstanceListeners) {
+    try { listener(argv); } catch (err) { log.error('second-instance listener failed', err); }
+  }
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -515,9 +522,12 @@ app.whenReady().then(async () => {
   displayWatch = displayIpc.register(ipcMain, { screen, getWindow: () => mainWindow });
   displayWatch.watch(mainWindow);
   // Apps split into their own package (Git Workspace, ...): each registers its own IPC and windows.
+  // Files macOS opened the app with before this point join the command line; later ones arrive as launches (launchedAgain).
+  const startupArgv = [...process.argv, ...macOpenFiles.take()];
+  macOpenFiles.listen(launchedAgain, process.execPath);
   appModules = appRegistry.registerModules({
     ipcMain: rawIpcMain, BrowserWindow, dialog,
-    argv: process.argv,
+    argv: startupArgv,
     onSecondInstance: (fn) => { secondInstanceListeners.add(fn); return () => secondInstanceListeners.delete(fn); },
     send: (channel, msg) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, msg); },
     preloadPath: path.join(__dirname, 'preload.cjs'),
