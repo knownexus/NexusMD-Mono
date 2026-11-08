@@ -91,7 +91,13 @@ jobs:
         env:
           VERSION_NAME: ${{ inputs.version_name }}
           RUN_NUMBER: ${{ github.run_number }}
-        run: ./gradlew assembleRelease --no-daemon -Psideload "-PversionCode=$RUN_NUMBER" "-PversionName=$VERSION_NAME"
+        # The run number plus 100, not the run number alone. Android never installs a lower version code over a higher one, and
+        # test builds installed from a computer reached 19 and 20 while releases were 12 and 13, so no release could update those
+        # devices ("App not installed as package appears to be invalid"). Keep the offset when you change this: lowering it, or
+        # dropping it, would put releases below builds already installed.
+        run: |
+          VERSION_CODE=$((RUN_NUMBER + 100))
+          ./gradlew assembleRelease --no-daemon -Psideload "-PversionCode=$VERSION_CODE" "-PversionName=$VERSION_NAME"
       - name: Check the APK is signed with that key (not unsigned, not the debug key)
         run: |
           apk=$(ls apps/app/android/app/build/outputs/apk/release/*.apk)
