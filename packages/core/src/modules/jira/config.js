@@ -12,6 +12,9 @@ export function normaliseSite(input) {
   return `https://${host}`
 }
 
+// Every name saveJiraConfig can write (the same set account sync carries; a test keeps them in step).
+export const JIRA_FIELDS = ['site', 'email', 'apiToken', 'projectKeys', 'jql', 'boardId', 'enabled', 'refreshSecs']
+
 const normaliseKeys = (keys) => keys.map(k => String(k).trim().toUpperCase()).filter(Boolean)
 
 // `secrets` (optional): where the API token is kept instead of `storage`, under the same key
@@ -50,6 +53,12 @@ export function makeJiraConfig({ storage, key, secrets = null }) {
     if (values.refreshSecs !== undefined) set('refreshSecs', String(values.refreshSecs))
   }
 
+  // Disconnects: takes every field out of storage (the API token out of `secrets`). Removed, not
+  // saved empty, so account sync sees a deletion. Needs `remove` on `storage` (and on `secrets`).
+  function removeJiraConfig() {
+    for (const name of JIRA_FIELDS) storeOf(name).remove(key(name))
+  }
+
   function isJiraConfigured() {
     const c = getJiraConfig()
     return !!(c.site && c.email && c.apiToken && c.projectKeys.length > 0)
@@ -57,5 +66,5 @@ export function makeJiraConfig({ storage, key, secrets = null }) {
 
   const isJiraActive = () => isJiraConfigured() && getJiraConfig().enabled
 
-  return { getJiraConfig, saveJiraConfig, isJiraConfigured, isJiraActive }
+  return { getJiraConfig, saveJiraConfig, removeJiraConfig, isJiraConfigured, isJiraActive }
 }

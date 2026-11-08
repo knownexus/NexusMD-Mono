@@ -5,6 +5,7 @@ import { SettField } from '@nexusmd/ui';
 import { Icon } from './icons.jsx';
 import { getJiraConfig, saveJiraConfig, createJiraHttpAdapter } from './jira-client.js';
 import { useFormAutosave, validateJiraForm } from './autosave-form.js';
+import { DisconnectButton } from './disconnect-button.jsx';
 
 const inputStyle = {
   width: '100%', padding: '7px 10px',
@@ -130,6 +131,7 @@ export function JiraSettingsModal({ open, onClose, onSaved }) {
             }}>{status}</div>
           )}
           {phone && <div role="status" style={{ fontSize: 12.5, color: Object.keys(fe).length ? 'var(--danger)' : 'var(--text-subtle)' }}>{form.label}</div>}
+          <div><DisconnectButton provider="jira" name="Jira" onDone={onClose}/></div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button className="btn ghost" onClick={test} disabled={busy}>{busy ? 'Testing…' : 'Test connection'}</button>
             {phone

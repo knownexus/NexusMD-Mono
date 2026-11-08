@@ -17,6 +17,8 @@
 import { rendererLog, ignore } from '../../log.js'
 
 const log = rendererLog('ado', 'config')
+// Every name saveAdoConfig can write (the same set account sync carries; a test keeps them in step).
+export const ADO_FIELDS = ['org', 'pat', 'projects', 'testProject', 'uatProject', 'uatPipelineId', 'uatBranch', 'refreshSecs', 'workItems']
 export function makeAdoConfig({ storage, key, defaults = {}, secrets = null }) {
   if (!storage || typeof key !== 'function') {
     throw new Error('makeAdoConfig requires { storage, key }')
@@ -55,6 +57,13 @@ export function makeAdoConfig({ storage, key, defaults = {}, secrets = null }) {
     if (values.workItems     !== undefined) set('workItems',     values.workItems ? '1' : '0')
   }
 
+  // Disconnects: takes every field out of storage (the PAT out of `secrets`). Removed, not saved
+  // empty, so account sync sees a deletion and the other devices disconnect too. Needs `remove`
+  // on `storage` (and on `secrets`).
+  function removeAdoConfig() {
+    for (const name of ADO_FIELDS) storeOf(name).remove(key(name))
+  }
+
   function isAdoConfigured() {
     const c = getAdoConfig()
     return !!(c.org && c.pat && c.projects.length > 0)
@@ -63,5 +72,5 @@ export function makeAdoConfig({ storage, key, defaults = {}, secrets = null }) {
   // Connected, and its work items are wanted.
   const usesAdoWorkItems = () => isAdoConfigured() && getAdoConfig().workItems
 
-  return { getAdoConfig, saveAdoConfig, isAdoConfigured, usesAdoWorkItems }
+  return { getAdoConfig, saveAdoConfig, removeAdoConfig, isAdoConfigured, usesAdoWorkItems }
 }

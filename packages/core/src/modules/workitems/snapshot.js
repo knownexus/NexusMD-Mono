@@ -13,7 +13,8 @@ import { applyHiddenPeople } from './people.js'
 // `githubInWork: false` keeps GitHub's issues and Actions runs for the Git tab only: they are
 // still loaded and cached, but left out of the snapshot Work's screens read. Its PRs stay.
 export function buildSnapshot({ adoConfig, adoConfigured, adoWorkItems = true, jiraConfig, jiraActive, githubConfig, githubActive, githubWorkItems = true, githubInWork = true, storage, empty, hiddenIds = [] }) {
-  const ado = loadCachedAdoData(adoConfig, { storage })
+  // Like Jira and GitHub: a connection that was removed leaves its cache behind, but not its data.
+  const ado = adoConfigured ? loadCachedAdoData(adoConfig, { storage }) : null
   const jira = jiraActive ? loadCachedJiraData(jiraConfig, { storage }) : null
   const github = githubActive ? loadCachedGithubData(githubConfig, { storage }) : null
   // Like ADO's switch: GitHub's PRs and runs stay, its issues and what hangs off them go.

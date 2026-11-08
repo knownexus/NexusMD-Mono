@@ -7,9 +7,10 @@ import { tokenStore } from './token-store.js';
 const rawStorage = {
   get: (k) => localStorage.getItem(k),
   set: (k, v) => localStorage.setItem(k, v),
+  remove: (k) => localStorage.removeItem(k),
 };
 
-export const { getAdoConfig, saveAdoConfig, isAdoConfigured, usesAdoWorkItems } = makeAdoConfig({
+export const { getAdoConfig, saveAdoConfig, removeAdoConfig, isAdoConfigured, usesAdoWorkItems } = makeAdoConfig({
   storage: rawStorage,
   secrets: tokenStore,
   key: (name) => getProfileKey('ado.' + name),

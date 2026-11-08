@@ -6,6 +6,7 @@ export { CATEGORY_LANES, CATEGORY_LABELS, itemCategory, adoStateForCategory } fr
 export { WORK_ITEM_STATUS_KEY, readProviderStatus, recordProviderStatus, describeProviderError } from './status.js'
 export { PROVIDER_LABELS, mergeTeam, mergeWorkItemData } from './merge.js'
 export { applyHiddenPeople } from './people.js'
+export { clearProviderData } from './disconnect.js'
 export { isDoneItem, isBlockedItem, isReviewItem, isActiveItem } from './classify.js'
 export { buildSnapshot, nextHiddenIds, refreshProviders, defaultCreateProvider } from './snapshot.js'
 export { makePRActions, deleteBranchWarning, deleteBranchByDefault } from './pr-actions.js'

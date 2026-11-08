@@ -14,4 +14,9 @@ export const tokenStore = {
   set: (k, v) => {
     profileSecrets.set(k, v).catch(err => log.warn('could not save a token', err))
   },
+  // Also the plain key `get` falls back to, or a removed token would come back from it.
+  remove: (k) => {
+    try { localStorage.removeItem(k) } catch (err) { log.warn('could not remove a plain token key', err) }
+    profileSecrets.remove(k).catch(err => log.warn('could not remove a token', err))
+  },
 }

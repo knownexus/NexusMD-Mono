@@ -3,7 +3,7 @@ import { normaliseSite, makeJiraConfig } from '../../src/modules/jira/config.js'
 
 function memStorage() {
   const m = new Map()
-  return { get: k => (m.has(k) ? m.get(k) : null), set: (k, v) => m.set(k, v), _m: m }
+  return { get: k => (m.has(k) ? m.get(k) : null), set: (k, v) => m.set(k, v), remove: k => { m.delete(k) }, _m: m }
 }
 
 describe('normaliseSite', () => {
@@ -74,5 +74,30 @@ describe('makeJiraConfig with secrets', () => {
     expect(secrets.get('j.apiToken')).toBe('tok')
     expect(storage.get('j.apiToken')).toBeNull()
     expect(cfg.getJiraConfig()).toMatchObject({ apiToken: 'tok', email: 'a@b.c' })
+  })
+})
+
+describe('removeJiraConfig', () => {
+  const all = { site: 'acme', email: 'a@b.c', apiToken: 'tok', projectKeys: ['AB'], jql: 'x', boardId: '4', enabled: false, refreshSecs: 20 }
+
+  it('removes every saved field and the API token, so nothing is left connected', () => {
+    const storage = memStorage()
+    const secrets = memStorage()
+    const cfg = makeJiraConfig({ storage, secrets, key: (n) => `j.${n}` })
+    cfg.saveJiraConfig(all)
+    expect(cfg.isJiraConfigured()).toBe(true)
+    cfg.removeJiraConfig()
+    expect(cfg.isJiraConfigured()).toBe(false)
+    expect(storage._m.size).toBe(0)
+    expect(secrets._m.size).toBe(0)
+  })
+
+  it('removes the token from the plain storage when there are no secrets (Android)', () => {
+    const storage = memStorage()
+    storage.set('other', 'x')
+    const cfg = makeJiraConfig({ storage, key: (n) => `j.${n}` })
+    cfg.saveJiraConfig(all)
+    cfg.removeJiraConfig()
+    expect([...storage._m.keys()]).toEqual(['other'])
   })
 })

@@ -74,3 +74,28 @@ describe('makeGithubConfig with secrets', () => {
     expect(cfg.getGithubConfig()).toMatchObject({ pat: 'ghp', login: 'me' })
   })
 })
+
+describe('removeGithubConfig', () => {
+  const all = { pat: 'ghp', repos: ['a/b'], login: 'me', refreshSecs: 90, issues: false, inWork: false }
+
+  it('removes every saved field and the PAT, so nothing is left connected', () => {
+    const storage = memStorage()
+    const secrets = memStorage()
+    const cfg = makeGithubConfig({ storage, secrets, key: (n) => `g.${n}` })
+    cfg.saveGithubConfig(all)
+    expect(cfg.isGithubConfigured()).toBe(true)
+    cfg.removeGithubConfig()
+    expect(cfg.isGithubConfigured()).toBe(false)
+    expect(storage.keys()).toEqual([])
+    expect(secrets.keys()).toEqual([])
+  })
+
+  it('removes the PAT from the plain storage when there are no secrets (Android)', () => {
+    const storage = memStorage()
+    storage.set('other', 'x')
+    const cfg = makeGithubConfig({ storage, key: (n) => `g.${n}` })
+    cfg.saveGithubConfig(all)
+    cfg.removeGithubConfig()
+    expect(storage.keys()).toEqual(['other'])
+  })
+})

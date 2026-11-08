@@ -6,6 +6,7 @@ import { makeJiraClient, fetchJiraBoards, JIRA_CACHE_KEY, rendererLog, ignore, i
 import { settInputStyle } from './form-style.js'
 import { getJiraConfig, saveJiraConfig, createJiraHttpAdapter } from './jira-client.js'
 import { workStorage } from './work-storage.js'
+import { DisconnectButton } from './disconnect-button.jsx'
 
 const log = rendererLog('work', 'jira-settings')
 
@@ -141,6 +142,11 @@ export function JiraConnectionCard({ onRefreshData }) {
             {busy ? 'Testing…' : 'Test connection'}
           </button>
           <button className="btn primary" onClick={save} disabled={busy}>Save &amp; connect</button>
+          <DisconnectButton provider="jira" name="Jira"
+            onDone={() => {
+              setSite(''); setEmail(''); setToken(''); setKeys(''); setJql(''); setEnabled(true); setBoardId('')
+              setAvailable([]); setBoards([]); setBoardHint(''); setStatus('Disconnected.'); setTimeout(() => setStatus(''), 3000)
+            }} />
           {status && (
             <span style={{ fontSize: 12.5, color: isError ? 'var(--danger)' : 'var(--success)' }}>{status}</span>
           )}

@@ -4,6 +4,7 @@ import { core, makeGithubClient, discoverGithubRepos, MAX_GITHUB_REPOS, renderer
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { getGithubConfig, saveGithubConfig, createGithubHttpAdapter } from './github-client.js'
 import { settInputStyle } from './form-style.js'
+import { DisconnectButton } from './disconnect-button.jsx'
 
 const log = rendererLog('work', 'github-settings')
 
@@ -162,6 +163,8 @@ export function GithubConnectionCard({ onRefreshData, makeClient = defaultClient
           <button className="btn primary" onClick={save} disabled={!!busy || overCap}>
             {busy === 'save' ? 'Saving…' : 'Save & connect'}
           </button>
+          <DisconnectButton provider="github" name="GitHub"
+            onDone={() => { setPat(''); setSelected([]); setFound(null); setSearch(''); setIssues(true); setInWork(true); setStatus('Disconnected.'); setTimeout(() => setStatus(''), 3000) }} />
           {message && (
             <span style={{ fontSize: 12.5, color: isError ? 'var(--danger)' : 'var(--success)' }}>
               {message}

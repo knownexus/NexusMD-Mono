@@ -2,11 +2,12 @@ import React from 'react'
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { GithubError } from '@nexusmd/core'
-import { saveGithubConfig, getGithubConfig } from './github-client.js'
+import { saveGithubConfig, getGithubConfig, removeGithubConfig } from './github-client.js'
 
 vi.mock('./github-client.js', () => ({
   getGithubConfig: vi.fn(() => ({ pat: '', repos: [], issues: true, login: '' })),
   saveGithubConfig: vi.fn(),
+  removeGithubConfig: vi.fn(),
   createGithubHttpAdapter: vi.fn(() => ({ fetch: vi.fn() })),
 }))
 vi.mock('./icons.jsx', () => ({ Icon: () => null }))
@@ -44,6 +45,16 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('GithubSettingsModal', () => {
+  it('disconnects after a confirmation, then closes', () => {
+    const onClose = vi.fn()
+    render(<GithubSettingsModal open onClose={onClose} onSaved={vi.fn()} makeClient={() => fakeClient()} discover={c => c.discover()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect GitHub' }))
+    expect(removeGithubConfig).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, disconnect' }))
+    expect(removeGithubConfig).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalled()
+  })
+
   it('saves the token, ticked repos, issues switch and login, then reloads data', async () => {
     const onSaved = mount(fakeClient())
     expect(screen.getByPlaceholderText('Leave blank to keep existing token').value).toBe('')

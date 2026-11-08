@@ -7,6 +7,8 @@ import { rendererLog, ignore } from '../../log.js'
 
 const log = rendererLog('github', 'config')
 export const MAX_GITHUB_REPOS = 50
+// Every name saveGithubConfig can write (the same set account sync carries; a test keeps them in step).
+export const GITHUB_FIELDS = ['pat', 'repos', 'issues', 'inWork', 'login', 'refreshSecs']
 
 /**
  * @param {object} opts
@@ -53,6 +55,12 @@ export function makeGithubConfig({ storage, key, secrets = null }) {
     if (values.inWork      !== undefined) set('inWork',      values.inWork ? '1' : '0')
   }
 
+  // Disconnects: takes every field out of storage (the PAT out of `secrets`). Removed, not saved
+  // empty, so account sync sees a deletion. Needs `remove` on `storage` (and on `secrets`).
+  function removeGithubConfig() {
+    for (const name of GITHUB_FIELDS) storeOf(name).remove(key(name))
+  }
+
   function isGithubConfigured() {
     const c = getGithubConfig()
     return !!(c.pat && c.repos.length > 0)
@@ -61,7 +69,7 @@ export function makeGithubConfig({ storage, key, secrets = null }) {
   // Connected, and its issues are wanted as work items.
   const usesGithubWorkItems = () => isGithubConfigured() && getGithubConfig().issues
 
-  return { getGithubConfig, saveGithubConfig, isGithubConfigured, usesGithubWorkItems }
+  return { getGithubConfig, saveGithubConfig, removeGithubConfig, isGithubConfigured, usesGithubWorkItems }
 }
 
 /** Selected repos from a profile stub `{ owner, repos }` as unique `owner/name` strings. */

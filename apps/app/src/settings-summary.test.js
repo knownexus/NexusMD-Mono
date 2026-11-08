@@ -1,16 +1,29 @@
 import { describe, it, expect } from 'vitest'
-import { connectionsSummary, privacySummary, dataSummary } from './settings-summary.js'
+import { connectionsSummary, connectedProviders, privacySummary, dataSummary } from './settings-summary.js'
+
+const ADO = { org: 'acme', pat: 'p', projects: ['P'] }
+const JIRA = { site: 'https://acme.atlassian.net/', email: 'a@b.c', apiToken: 't', projectKeys: ['AB'] }
 
 describe('settings summaries', () => {
   it('lists the connected providers', () => {
-    expect(connectionsSummary({ ado: { org: 'acme' }, jira: { site: 'https://acme.atlassian.net/' }, github: { pat: 't', repos: ['a/b', 'c/d'] } }))
+    expect(connectionsSummary({ ado: ADO, jira: JIRA, github: { pat: 't', repos: ['a/b', 'c/d'] } }))
       .toBe('Azure DevOps (acme) · Jira (acme) · GitHub (2 repos)')
     expect(connectionsSummary({ github: { pat: 't', repos: ['a/b'] } })).toBe('GitHub (1 repo)')
   })
-  it('says so when nothing is connected, and ignores GitHub with no token or repos', () => {
+  it('says so when nothing is connected, and ignores a provider with no token or nothing selected', () => {
     expect(connectionsSummary({})).toBe('Nothing connected yet')
     expect(connectionsSummary({ github: { pat: '', repos: ['a/b'] } })).toBe('Nothing connected yet')
     expect(connectionsSummary({ github: { pat: 't', repos: [] } })).toBe('Nothing connected yet')
+  })
+  it('does not list a provider whose token was removed, though its organisation or site is still saved', () => {
+    expect(connectionsSummary({ ado: { ...ADO, pat: '' }, jira: { ...JIRA, apiToken: '' } })).toBe('Nothing connected yet')
+    expect(connectionsSummary({ ado: { org: 'acme', pat: '', projects: [] } })).toBe('Nothing connected yet')
+  })
+  it('tells which providers are connected', () => {
+    expect(connectedProviders({ ado: ADO, jira: JIRA, github: { pat: 't', repos: ['a/b'] } })).toEqual({ ado: true, jira: true, github: true })
+    expect(connectedProviders({ ado: { ...ADO, projects: [] }, jira: { ...JIRA, email: '' }, github: { pat: 't', repos: [] } }))
+      .toEqual({ ado: false, jira: false, github: false })
+    expect(connectedProviders()).toEqual({ ado: false, jira: false, github: false })
   })
   it('describes confidential settings', () => {
     expect(privacySummary({ hasPassword: true, autoRelock: '1' })).toBe('Password set · auto re-lock on')

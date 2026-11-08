@@ -21,7 +21,7 @@ import { getGithubConfig } from '../github-client.js';
 import { checkForUpdate, installUpdate } from '../app-update.js';
 import { appQueue } from '../offline-queue-app.js';
 import { syncLabel } from '@nexusmd/core';
-import { connectionsSummary, privacySummary, dataSummary } from '../settings-summary.js';
+import { connectionsSummary, connectedProviders, privacySummary, dataSummary } from '../settings-summary.js';
 // view-settings.jsx — Settings & profile page (planner-redesign port)
 // Works with the app's existing infrastructure:
 //   - tweaks / setTweak        → helm.tweaks (theme, density, sidebar, typeLabels)
@@ -133,6 +133,8 @@ function AppUpdateRow() {
 function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onPlaceNav, onResetNav, onWorkScreensChanged, onOpenConnection, onOpenJira, onOpenGithub, onOpenProjectAreas, onGoPlanner }) {
   // Phone: a grouped list of categories, each opening as its own page. Wider screens keep the rail.
   const [phone, setPhone] = useStateVS(() => window.matchMedia('(max-width:600px)').matches);
+  // Read on every render: a connection can be removed from its sheet while this page is open.
+  const connected = connectedProviders({ ado: getAdoConfig(), jira: getJiraConfig(), github: getGithubConfig() });
   useEffectVS(() => {
     const mq = window.matchMedia('(max-width:600px)');
     const h = e => setPhone(e.matches);
@@ -383,20 +385,24 @@ function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onPlaceNav,
               </div>
               {!isManual && (
                 <VsRow title="Azure DevOps account"
-                  desc={me.email
+                  desc={connected.ado && me.email
                     ? `Connected as ${me.email}${me.org ? ` — ${me.org}` : ''}`
                     : 'Organisation, PAT, projects, email digest'}>
-                  <span className="pill success"><span className="dot"></span>Connected</span>
+                  {connected.ado
+                    ? <span className="pill success"><span className="dot"></span>Connected</span>
+                    : <span className="pill">Not connected</span>}
                   <button className="btn sm ghost" onClick={onOpenConnection}>Manage</button>
                 </VsRow>
               )}
               {!isManual && onOpenJira && (
                 <VsRow title="Jira account" desc="Site, email, API token and projects">
+                  {connected.jira && <span className="pill success"><span className="dot"></span>Connected</span>}
                   <button className="btn sm ghost" onClick={onOpenJira}>Manage</button>
                 </VsRow>
               )}
               {!isManual && onOpenGithub && (
                 <VsRow title="GitHub account" desc="Token, repositories, issues, pull requests and Actions runs">
+                  {connected.github && <span className="pill success"><span className="dot"></span>Connected</span>}
                   <button className="btn sm ghost" onClick={onOpenGithub}>Manage</button>
                 </VsRow>
               )}

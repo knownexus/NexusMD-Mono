@@ -11,9 +11,10 @@ import { nativeHttp } from './native-http.js';
 const rawStorage = {
   get: (k) => localStorage.getItem(k),
   set: (k, v) => localStorage.setItem(k, v),
+  remove: (k) => localStorage.removeItem(k),
 };
 
-const { getAdoConfig, saveAdoConfig, isAdoConfigured, usesAdoWorkItems } = makeAdoConfig({
+const { getAdoConfig, saveAdoConfig, removeAdoConfig, isAdoConfigured, usesAdoWorkItems } = makeAdoConfig({
   storage: rawStorage,
   key: (name) => getProfileKey('helm.android.' + name),
 });
@@ -108,4 +109,4 @@ export function createAdoHttpAdapter() {
   }
 }
 
-export { adoGet, adoPost, adoPatch, adoPut, getAdoConfig, saveAdoConfig, isAdoConfigured, usesAdoWorkItems };
+export { adoGet, adoPost, adoPatch, adoPut, getAdoConfig, saveAdoConfig, removeAdoConfig, isAdoConfigured, usesAdoWorkItems };

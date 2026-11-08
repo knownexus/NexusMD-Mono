@@ -20,6 +20,7 @@ import {
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
 import { GithubSettingsModal } from './github-settings.jsx';
+import { DisconnectButton } from './disconnect-button.jsx';
 import { DocumentsPhone } from './views/documents-phone.jsx';
 import './offline-queue-app.js';
 import { useFormAutosave, validateAdoForm } from './autosave-form.js';
@@ -544,6 +545,7 @@ function SettingsModal({ open, onClose, onSaved }) {
             }}>{status}</div>
           )}
           {phone && <div role="status" style={{ fontSize: 12.5, color: Object.keys(fe).length ? 'var(--danger)' : 'var(--text-subtle)' }}>{form.label}</div>}
+          <div><DisconnectButton provider="ado" name="Azure DevOps" onDone={onClose}/></div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             {!phone && <button className="btn ghost" onClick={onClose}>Cancel</button>}
             <button className="btn ghost" onClick={testConnection} disabled={testing || saving}>{testing ? 'Testing…' : 'Test connection'}</button>
