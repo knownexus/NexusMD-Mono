@@ -10,6 +10,12 @@ store review for most updates, available to named testers within minutes.
 - Release signing reads `apps/app/android/keystore.properties` (git-ignored) when it exists.
 - `-PversionCode` / `-PversionName` set the version; CI passes the run number as the code, so every
   upload is higher than the last. The local default is `3` / `1.2.0`.
+- The **Android APK release** workflow (the GitHub release the in-app updater reads) passes the run
+  number **plus 100**. Android never installs a lower version code over a higher one, so a build you
+  put on a device with `adb install` needs a code of its own: give it one below 100 (for example 20)
+  and every release stays above it. A test build numbered 100 or more can block the next release
+  ("App not installed as package appears to be invalid" is how the installer words
+  `INSTALL_FAILED_VERSION_DOWNGRADE`).
 - Android's cloud backup is off (`allowBackup=false`): the app keeps access tokens on the device and
   they should not be copied into Google backups.
 - CI builds an unsigned release bundle on every change, so a broken bundle shows up in the PR
