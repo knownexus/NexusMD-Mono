@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, act } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { createEditorStore } from './editor-store.js'
 import { EditorApp } from './editor-app.jsx'
@@ -73,6 +73,62 @@ describe('the Editor on a short screen', () => {
   })
   it('lets the Markdown preview shrink the same way', () => {
     expect(parseInt(rule('.nx-ed-preview').match(/min-height:\s*(\d+)px/)?.[1], 10)).toBeLessThanOrEqual(120)
+  })
+})
+
+describe('the Editor while typing on a short screen (soft keyboard up)', () => {
+  // With the keyboard open a phone has about 340px of height. The toolbar and tab strip are hidden while the person is typing in the
+  // text, so the status row with Prettify and Save keeps room. They must not vanish for a tap on a tab or on Prettify/Save, or the
+  // layout would jump under the finger.
+  async function open() {
+    const files = { '/w/a.js': 'a', '/w/b.js': 'b' }
+    const api = {
+      stat: vi.fn(async () => ({ exists: true, kind: 'file' })),
+      read: vi.fn(async p => ({ path: p, text: files[p], bom: false, stamp: 's' })),
+      write: vi.fn(), list: vi.fn(async () => ({ entries: [], truncated: false })),
+    }
+    const store = createEditorStore({ api })
+    render(<EditorApp host={{ adapters: { picker: {} } }} store={store} api={api} />)
+    await store.openFile('/w/a.js')
+    await store.openFile('/w/b.js')
+    await screen.findByRole('textbox', { name: /Editing / })
+    return { root: document.querySelector('.nx-ed') }
+  }
+  const typing = root => root.classList.contains('nx-ed-typing')
+
+  it('marks the Editor as typing while the text has focus, and clears it when focus leaves', async () => {
+    const { root } = await open()
+    expect(typing(root)).toBe(false)
+    act(() => { document.querySelector('.cm-content').focus() })
+    expect(typing(root)).toBe(true)
+    act(() => { document.activeElement.blur() })
+    expect(typing(root)).toBe(false)
+  })
+
+  it('stays typing when focus moves to Prettify or Save, so the layout does not move under a tap on them', async () => {
+    const { root } = await open()
+    act(() => { document.querySelector('.cm-content').focus() })
+    act(() => { screen.getByRole('button', { name: 'Prettify' }).focus() })
+    expect(typing(root)).toBe(true)
+    act(() => { screen.getByRole('button', { name: 'Save' }).focus() })
+    expect(typing(root)).toBe(true)
+  })
+
+  it('is not typing when focus moves to a tab or the toolbar, which stay on screen', async () => {
+    const { root } = await open()
+    act(() => { document.querySelector('.cm-content').focus() })
+    act(() => { screen.getAllByRole('tab')[0].querySelector('button').focus() })
+    expect(typing(root)).toBe(false)
+    act(() => { document.querySelector('.cm-content').focus() })
+    act(() => { screen.getByRole('button', { name: 'Open file…' }).focus() })
+    expect(typing(root)).toBe(false)
+  })
+
+  it('hides the toolbar and tab strip only while typing, and only on a short screen', () => {
+    const block = css.match(/@media \(max-height:\s*560px\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+    expect(block).toMatch(/\.nx-ed-typing \.nx-ed-bar/)
+    expect(block).toMatch(/\.nx-ed-typing \.nx-ed-tabs/)
+    expect(block).toMatch(/display:\s*none/)
   })
 })
 

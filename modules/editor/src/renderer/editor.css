@@ -37,3 +37,9 @@
 .nx-ed-view.nx-ed-active { background: var(--accent-soft, rgba(127, 127, 127, 0.18)); color: var(--accent); }
 .nx-ed-preview { flex: 1; min-height: 96px; overflow: auto; margin: 8px 12px 0; padding: 24px 32px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
 .nx-ed-preview-body { max-width: 820px; margin: 0 auto; }
+
+/* A short screen (a phone with the keyboard up, or turned sideways): while typing, the toolbar and tabs give their room to the text
+   and the status row with Prettify and Save. */
+@media (max-height: 560px) {
+  .nx-ed-typing .nx-ed-bar, .nx-ed-typing .nx-ed-tabs { display: none; }
+}

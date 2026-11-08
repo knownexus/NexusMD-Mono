@@ -167,6 +167,14 @@ export function EditorApp({ host, store = editorStore, api = editorApi }) {
   const requestClose = doc => (isDirty(doc) ? setClosing(doc.path) : store.close(doc.path))
   const closingDoc = closing ? s.docs.find(d => d.path === closing) : null
 
+  // True while focus is in the text or its status row (Prettify, Save). On a short screen (soft keyboard up, or a phone turned
+  // sideways) the CSS then hides the toolbar and tab strip to leave room. Focus on a tab or the toolbar is not typing, and focus
+  // moving from the text to Prettify or Save stays typing, so nothing moves under a tap.
+  const [typing, setTyping] = React.useState(false)
+  const inPane = el => !!el && !el.closest?.('.nx-ed-bar, .nx-ed-tabs, .nx-ed-side')
+  const onFocus = e => setTyping(inPane(e.target))
+  const onBlur = e => setTyping(inPane(e.relatedTarget) && e.currentTarget.contains(e.relatedTarget))
+
   const onKeyDown = e => {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's' && active) {
       e.preventDefault()
@@ -175,7 +183,7 @@ export function EditorApp({ host, store = editorStore, api = editorApi }) {
   }
 
   return (
-    <div className="nx-ed" onKeyDown={onKeyDown}>
+    <div className={`nx-ed${typing ? ' nx-ed-typing' : ''}`} onKeyDown={onKeyDown} onFocus={onFocus} onBlur={onBlur}>
       <div className="nx-ed-bar">
         <button type="button" className="btn sm" onClick={openFile}>Open file…</button>
         <button type="button" className="btn sm" onClick={openFolder}>Open folder…</button>
