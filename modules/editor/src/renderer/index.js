@@ -1,7 +1,9 @@
 import { EditorApp } from './editor-app.jsx'
-import { editorStore } from './editor-singleton.js'
+import { editorStore, editorApi } from './editor-singleton.js'
 import { isDirty } from './editor-store.js'
 import { rendererLog, ignored } from '@nexusmd/core'
+import { toast } from '@nexusmd/ui'
+import { createOpenHandler } from './open-files.js'
 
 const log = rendererLog('editor', 'launch')
 
@@ -31,10 +33,8 @@ export default {
     const isPopout = typeof location !== 'undefined' && /^#?popout=/.test(location.hash)
     if (!api || isPopout) return
 
-    const open = paths => {
-      for (const p of paths) editorStore.openPath(p)
-      if (paths.length) host.navigate('editor')
-    }
+    // Markdown and JSON files go to the Documents app (when installed), every other file to the Editor.
+    const open = createOpenHandler({ store: editorStore, api: editorApi, host, notify: toast })
     // Files the app was launched with, then any from later launches.
     Promise.resolve(api.takePending?.()).then(paths => { if (Array.isArray(paths)) open(paths) }).catch(ignored(log, 'the files the app was launched with could not be read', 'warn'))
     api.onOpenRequest?.(open)
