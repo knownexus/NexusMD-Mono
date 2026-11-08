@@ -281,7 +281,7 @@ export function JsonEditorView({ openNewest = false }) {
       `}</style>
 
       {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', height: 44, background: 'var(--surface)', borderBottom: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px', minHeight: 44, boxSizing: 'border-box', background: 'var(--surface)', borderBottom: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, fontWeight: 600, marginRight: 4 }}>JSON Editor</span>
         <div className="je-sep"/>
         <button className="je-btn" disabled={histIdx === 0} onClick={undo} title="Ctrl+Z"><Icon name="undo" size={13}/> Undo</button>
