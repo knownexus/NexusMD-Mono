@@ -1,6 +1,6 @@
 // git-view.jsx — read-only repository browser for Android: a searchable repo list, then a repo
 // with Files (folders, README, a file viewer) and Commits (grouped by day, with a commit sheet).
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { timeAgo } from '@nexusmd/core';
 import { MarkdownPreview } from '@nexusmd/ui';
 import { Icon } from './icons.jsx';
@@ -11,6 +11,7 @@ import { getGithubConfig, isGithubConfigured, createGithubHttpAdapter } from './
 import { groupCommitsByDay } from './git-browser.js';
 import { makeGitBackend, providerName, sourcesOf, pickSource, sourceLabel } from './git-backend.js';
 import { getProfileKey } from './profile-keys.js';
+import { readLayer, readDepth, layerOf, historyAction } from './git-layers.js';
 
 const errText = (e) => e?.message || String(e);
 export const listRepoChoices = () => backend.listRepos();
@@ -99,19 +100,22 @@ export function GitView({ onFlash }) {
   const [branchQuery, setBranchQuery] = useState('');
   const [commitSheet, setCommitSheet] = useState(null);
   const [error, setError] = useState('');
+  // True once the screen has taken its place from the history entry it was opened on (it may be
+  // returning from another tab); until then it writes nothing to the history.
+  const [placed, setPlaced] = useState(false);
 
   useEffect(() => {
     backend.listRepos().then(({ repos, errors }) => {
       setRepos(repos);
       if (errors.length) setError(errText(errors[0]));
-      // The Home repo widget names the repo to open.
+      // The Home repo widget names the repo to open; otherwise the screen goes back to where its history entry left it.
       const want = window.NexusMDNav?.repoId;
-      if (want) {
-        window.NexusMDNav = { ...window.NexusMDNav, repoId: null };
-        const hit = repos.find(r => r.id === want);
-        if (hit) pickRepo(hit);
-      }
-    }).catch(e => setError(errText(e)));
+      const hit = want && repos.find(r => r.id === want);
+      if (want) window.NexusMDNav = { ...window.NexusMDNav, repoId: null };
+      if (hit) pickRepo(hit);
+      else applyLayer(readLayer(window.history.state), repos);
+      setPlaced(true);
+    }).catch(e => { setError(errText(e)); setPlaced(true); });
   }, []);
 
   // Folder contents (and the README at the root) follow the repo, branch and path.
@@ -131,17 +135,66 @@ export function GitView({ onFlash }) {
     backend.listCommits(repo, branch).then(setCommits).catch(e => setError(errText(e)));
   }, [repo, branch, tab]);
 
+  // The branch list of a repo; `keep` is a branch already chosen, else the default one is taken.
+  const loadBranches = (r, keep = null) => {
+    backend.listBranches(r).then(bs => {
+      setBranches(bs);
+      const first = keep ? null : (bs.find(b => b.isDefault) || bs[0]);
+      if (first) setBranch(first.name);
+    }).catch(e => setError(errText(e)));
+  };
   const pickRepo = (r) => {
     const next = [r.id, ...recent.filter(id => id !== r.id)].slice(0, 3);
     setRecent(next); saveRecent(next);
     setRepo(r); setBranch(null); setBranches(null); setPath('/'); setTab('files'); setError('');
-    backend.listBranches(r).then(bs => {
-      setBranches(bs);
-      const first = bs.find(b => b.isDefault) || bs[0];
-      if (first) setBranch(first.name);
-    }).catch(e => setError(errText(e)));
+    loadBranches(r);
   };
-  const leaveRepo = () => { setRepo(null); setOpenFile(null); setError(''); };
+
+  // The screen's layers are history entries (see git-layers.js), so the back gesture goes up one layer.
+  // Moving the screen writes the entry; the history moving (a swipe back, or the Back buttons, which only
+  // call history.back) sets the screen from the entry it lands on.
+  const layer = layerOf({
+    repo, branch, tab, path, file: openFile,
+    sheet: commitSheet ? `commit:${commitSheet.id}` : branchSheet ? 'branch' : null,
+  });
+  const layerKey = JSON.stringify(layer);
+  useEffect(() => {
+    if (!placed) return;
+    const action = historyAction(readLayer(window.history.state), layer);
+    if (action === 'none') return;
+    const depth = readDepth(window.history.state);
+    const state = { git: layer, depth: action === 'push' ? depth + 1 : depth };
+    if (action === 'push') window.history.pushState(state, '', window.location.href);
+    else window.history.replaceState(state, '', window.location.href);
+  }, [placed, layerKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const applyLayer = (g, list) => {
+    const r = g.repo && (list || []).find(x => x.id === g.repo);
+    setBranchQuery('');
+    if (!r) { setRepo(null); setOpenFile(null); setBranchSheet(false); setCommitSheet(null); return; }
+    // The branch is a setting, not a place: going back within a repo keeps the one now chosen.
+    if (!repo || repo.id !== r.id) { setBranches(null); setCommits(null); setError(''); setBranch(g.branch); loadBranches(r, g.branch); }
+    setRepo(r); setTab(g.tab); setPath(g.path); setOpenFile(g.file);
+    setBranchSheet(g.sheet === 'branch');
+    const commitId = g.sheet?.startsWith('commit:') ? g.sheet.slice(7) : null;
+    setCommitSheet(commitId ? (commits || []).find(c => c.id === commitId) ?? null : null);
+  };
+  const latest = useRef({});
+  latest.current = { applyLayer, repos };
+  // A branch picked in the sheet: the sheet's entry is stepped back over first (so it is not left to swipe
+  // back to), then the branch is applied, from the root folder, on the screen that comes back.
+  const pickedBranch = useRef(null);
+  useEffect(() => {
+    const onPop = (e) => {
+      if (!latest.current.repos) return;
+      latest.current.applyLayer(readLayer(e.state), latest.current.repos);
+      if (pickedBranch.current) { setBranch(pickedBranch.current); setPath('/'); pickedBranch.current = null; }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  const back = () => window.history.back();
+  // "Back to repositories" from however deep: as many entries back as the screen has layers.
+  const leaveRepo = () => window.history.go(-(readDepth(window.history.state) || 1));
 
   // One source at a time: the switch appears only when both providers have repos.
   const sources = useMemo(() => sourcesOf(repos), [repos]);
@@ -155,7 +208,7 @@ export function GitView({ onFlash }) {
   const recentRepos = recent.map(id => inSource.find(r => r.id === id)).filter(Boolean);
 
   if (repo && openFile) {
-    return <FileViewer repo={repo} branch={branch} path={openFile} onBack={() => setOpenFile(null)} onFlash={onFlash}/>;
+    return <FileViewer repo={repo} branch={branch} path={openFile} onBack={back} onFlash={onFlash}/>;
   }
 
   if (!repo) {
@@ -289,14 +342,14 @@ export function GitView({ onFlash }) {
         )}
       </div>
 
-      <Sheet open={branchSheet} icon="git-branch" title="Switch branch" onClose={() => { setBranchSheet(false); setBranchQuery(''); }}>
+      <Sheet open={branchSheet} icon="git-branch" title="Switch branch" onClose={() => { if (branchSheet) back(); }}>
         <div className="m-search" style={{ marginBottom: 12 }}>
           <span className="si"><Icon name="search" size={16}/></span>
           <input type="search" value={branchQuery} onChange={e => setBranchQuery(e.target.value)} placeholder="Search branches…"/>
         </div>
         <div className="m-card flush">
           {shownBranches.map(b => (
-            <div key={b.name} className="m-row" onClick={() => { setBranch(b.name); setPath('/'); setBranchSheet(false); setBranchQuery(''); }}>
+            <div key={b.name} className="m-row" onClick={() => { pickedBranch.current = b.name; back(); }}>
               <div className="m-row-main"><div className="m-row-title">{b.name}</div></div>
               {b.isDefault && <span className="pill">default</span>}
               {b.name === branch && <Icon name="check" size={16}/>}
@@ -305,7 +358,7 @@ export function GitView({ onFlash }) {
         </div>
       </Sheet>
 
-      <Sheet open={!!commitSheet} icon="git-branch" title="Commit" sub={commitSheet?.shortId} onClose={() => setCommitSheet(null)}
+      <Sheet open={!!commitSheet} icon="git-branch" title="Commit" sub={commitSheet?.shortId} onClose={() => { if (commitSheet) back(); }}
         footer={commitSheet && (
           <>
             <button type="button" className="btn ghost m-btn-lg" onClick={() => { copy(commitSheet.id); onFlash?.('Commit id copied'); }}>Copy</button>
