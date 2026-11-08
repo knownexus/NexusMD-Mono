@@ -1,7 +1,10 @@
 import React from 'react'
 import { DocumentsView } from '@nexusmd/ui'
+import { openedFiles } from './opened.js'
 
 // The Documents screen: markdown documents, the JSON editor and the regex tester.
+// A Markdown or JSON file the app was opened with is a new saved document: the screen starts again on it, in its tool.
 export function DocumentsApp() {
-  return <DocumentsView />
+  const { count, tool } = React.useSyncExternalStore(openedFiles.subscribe, openedFiles.getSnapshot)
+  return <DocumentsView key={count} opened={count} openedTool={tool} />
 }
