@@ -8,6 +8,7 @@
 //
 // build-win.mjs stages the main process, builds the apps and runs electron-builder with this file.
 const path = require('path');
+const { fileAssociations } = require('./file-types.cjs');
 
 const repo = path.resolve(__dirname, '..', '..');
 const split = path.join(repo, 'dist', 'desktop', 'split');
@@ -47,6 +48,9 @@ module.exports = {
   // nexusmd:// links open this install; the uninstaller removes the registration. Not for the test
   // installer, which must not take the links over from a real install.
   ...(test ? {} : { protocols: [{ name: 'NexusMD', schemes: ['nexusmd'] }] }),
+  // NexusMD appears under "Open with" and in Default apps for these file types (file-types.cjs); the uninstaller removes the
+  // registration. Not for the test installer, for the same reason as the links.
+  ...(test ? {} : { fileAssociations }),
   // A draft, as package.json's config makes for Mac and Linux: every platform uploads into the same
   // draft, and the release workflow publishes it once all of them have (.github/workflows/
   // release-desktop.yml). Published straight away, the app's updater could find a release whose

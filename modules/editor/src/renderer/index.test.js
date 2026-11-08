@@ -98,3 +98,19 @@ describe('files the app is opened with', () => {
     expect(host.capabilities.has('editor.openPath')).toBe(true)
   })
 })
+
+describe('files the app is opened with, by type', () => {
+  it('sends a JSON or Markdown file to Documents when it is installed, and the rest to the Editor', async () => {
+    const api = {
+      takePending: vi.fn(async () => ['/n/a.json', '/n/b.ts']), onOpenRequest: vi.fn(),
+      stat: vi.fn(async () => ({ exists: true, kind: 'file' })), read: vi.fn(async () => ({ text: '{}' })),
+    }
+    window.electronAPI = { editor: api }
+    const host = hostWith()
+    const taken = []
+    host.capabilities.provide('documents.openFile', async f => { taken.push(f.name); return { tool: 'json', created: true } })
+    editor.activate(host)
+    await vi.waitFor(() => expect(taken).toEqual(['a.json']))
+    expect(editorStore.openPath.mock.calls.map(c => c[0])).toEqual(['/n/b.ts'])
+  })
+})

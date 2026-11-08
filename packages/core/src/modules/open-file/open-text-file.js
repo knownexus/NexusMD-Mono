@@ -5,7 +5,7 @@
 // A file opened again, unchanged, brings its document forward instead of making a copy; the newest document is the one the
 // Documents page opens on, so the file is what is showing when it appears.
 
-import { jsonAutoName } from '@nexusmd/core'
+import { jsonAutoName } from '../json/helpers.js'
 
 export const MAX_OPEN_BYTES = 2 * 1024 * 1024 // a text file bigger than this is not opened (it would fill the browser's storage)
 const DEFAULT_KEY = 'md_documents'
@@ -31,10 +31,11 @@ const JSON_SHAPE = { unwrap: (v) => (Array.isArray(v) ? v : undefined), wrap: (d
 function readDocs(storage, key, unwrap) {
   const raw = storage.getItem(key)
   if (raw === null || raw === undefined || raw === '') return []
+  const unreadable = 'Your saved documents could not be read, so this file was not added. Nothing has been changed.'
   let parsed
-  try { parsed = JSON.parse(raw) } catch { parsed = undefined }
+  try { parsed = JSON.parse(raw) } catch (err) { throw new Error(unreadable, { cause: err }) }
   const docs = unwrap(parsed)
-  if (!docs) throw new Error('Your saved documents could not be read, so this file was not added. Nothing has been changed.')
+  if (!docs) throw new Error(unreadable)
   return docs
 }
 
@@ -49,7 +50,7 @@ function addDocument(storage, file, { now, id, key, autoNameOf: nameFor, shape }
   const next = same
     ? docs.map((d) => (d.id === same.id ? { ...d, updatedAt: now } : d))
     : [...docs, { id, name, autoName: nameFor(text), content: text, createdAt: now, updatedAt: now }]
-  try { storage.setItem(key, JSON.stringify(shape.wrap(next))) } catch { throw new Error('This file could not be saved: the browser storage is full.') }
+  try { storage.setItem(key, JSON.stringify(shape.wrap(next))) } catch (err) { throw new Error('This file could not be saved: the browser storage is full.', { cause: err }) }
   return same ? { id: same.id, created: false } : { id, created: true }
 }
 
