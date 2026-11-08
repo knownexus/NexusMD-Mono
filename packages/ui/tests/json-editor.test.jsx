@@ -226,3 +226,16 @@ describe('JsonEditorView — documents', () => {
     vi.useRealTimers()
   })
 })
+
+describe('JsonEditorView — toolbar on a narrower screen', () => {
+  // On a tablet (about 850 CSS px wide) the buttons no longer fit on one line and wrap. A fixed-height bar would keep its 44px
+  // and the panes below would cover the second line, hiding New, Documents, Open, Copy and Save. jsdom has no layout, so the
+  // check is that the bar may grow: a minimum height, no fixed one.
+  it('lets the toolbar grow when its buttons wrap, so the second line is not covered by the panes', () => {
+    const { getByText } = renderEditor()
+    const bar = getByText('JSON Editor').parentElement
+    expect(bar.style.flexWrap).toBe('wrap')
+    expect(bar.style.height).toBe('')
+    expect(parseInt(bar.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
+  })
+})
