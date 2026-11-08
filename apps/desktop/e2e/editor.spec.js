@@ -169,3 +169,24 @@ test('launching the app again with a file opens it in the running Editor', async
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('Prettify tidies a file in the built app, where the formatters load on demand', async () => {
+  const dir = tempDir('nexusmd-prettify-')
+  const file = join(dir, 'a.js')
+  writeFileSync(file, 'const a={b:1,c:[1,2]}\n')
+  try {
+    await withApps('editor', { args: [file] }, async ({ win }) => {
+      const editor = win.getByRole('textbox', { name: 'Editing a.js' })
+      await expect(editor).toContainText('const a={b:1', { timeout: 20_000 })
+      await win.getByRole('button', { name: 'Prettify' }).click()
+      await expect(editor).toContainText('const a = {', { timeout: 30_000 })
+      // Tidied in the editor only, until Save (saved here too, so closing the window does not ask about unsaved changes).
+      await expect(win.getByText('Unsaved changes')).toBeVisible()
+      expect(readFileSync(file, 'utf8')).toBe('const a={b:1,c:[1,2]}\n')
+      await win.getByRole('button', { name: 'Save', exact: true }).click()
+      await expect.poll(() => readFileSync(file, 'utf8')).toBe('const a = { b: 1, c: [1, 2] };\n')
+    })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
