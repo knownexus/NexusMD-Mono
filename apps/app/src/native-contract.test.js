@@ -167,7 +167,8 @@ describe('Opening text files with the app', () => {
     const generic = forFiles.filter(f => /application\/octet-stream/.test(f))
     expect(generic.length).toBeGreaterThan(0)
     // Android reads the escape before the pattern does, so the XML doubles it: two backslashes then md is the pattern for a literal dot then md.
-    for (const ext of ['md', 'markdown', 'txt', 'log', 'json', 'csv', 'yml', 'yaml', 'xml', 'ini', 'toml', 'conf']) {
+    for (const ext of ['md', 'markdown', 'txt', 'log', 'json', 'csv', 'yml', 'yaml', 'xml', 'ini', 'toml', 'conf',
+      'cs', 'csx', 'js', 'mjs', 'jsx', 'ts', 'tsx', 'html', 'htm', 'css', 'scss', 'less', 'py', 'java', 'c', 'h', 'cpp', 'hpp', 'go', 'rs', 'php', 'rb', 'sh', 'sql', 'ps1', 'cfg', 'properties']) {
       expect(generic.join('')).toContain('android:pathPattern=".*\\\\.' + ext + '"')
     }
   })

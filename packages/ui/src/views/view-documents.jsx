@@ -14,9 +14,21 @@ const TABS = [
 ]
 const STORAGE_KEY = 'documents_active_tab'
 
-export function DocumentsView() {
+// `opened` counts the files the app was opened with (Android "Open with" / Share). A file is added to the saved documents of
+// the tool named by `openedTool` ('markdown' or 'json'), so that tool is shown with the newest document open, whichever tool
+// was last in use. The person can pick another tool afterwards.
+export function DocumentsView({ opened = 0, openedTool = 'markdown' }) {
   const [activeTab, setActiveTab] = usePersisted(STORAGE_KEY, 'markdown')
-  const tab = TABS.some(t => t.id === activeTab) ? activeTab : 'markdown'
+  // The tool the opened file is in, until the person picks another tab.
+  const [fileTool, setFileTool] = React.useState(opened ? openedTool : null)
+  React.useLayoutEffect(() => {
+    if (!opened) return
+    setFileTool(openedTool)
+    setActiveTab(openedTool)
+  }, [opened, openedTool]) // eslint-disable-line react-hooks/exhaustive-deps
+  const chosen = fileTool ?? activeTab
+  const tab = TABS.some(t => t.id === chosen) ? chosen : 'markdown'
+  const pickTab = (id) => { setFileTool(null); setActiveTab(id) }
   // The save state the active tool reports; null while it reports none.
   const [save, setSave] = React.useState(null)
   const context = React.useMemo(() => ({ setSave }), [])
@@ -24,9 +36,9 @@ export function DocumentsView() {
   return (
     <DocumentsBarContext.Provider value={context}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-        <DocumentsBar tabs={TABS} tab={tab} onTab={setActiveTab} save={save} />
+        <DocumentsBar tabs={TABS} tab={tab} onTab={pickTab} save={save} />
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          {tab === 'markdown' ? <MarkdownViewer/> : tab === 'json' ? <JsonEditorView/> : <RegexTesterView/>}
+          {tab === 'markdown' ? <MarkdownViewer openNewest={fileTool === 'markdown'}/> : tab === 'json' ? <JsonEditorView openNewest={fileTool === 'json'}/> : <RegexTesterView/>}
         </div>
       </div>
     </DocumentsBarContext.Provider>

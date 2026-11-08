@@ -1,16 +1,24 @@
 import React from 'react'
 import { CodeEditor, languageForPath } from '@nexusmd/editor-kit/code-editor.jsx'
+import { canPrettify, prettify } from '@nexusmd/editor-kit/prettify.js'
 import { MarkdownPreview, TextSizeControls, useMarkdownTextSize, useCtrlWheelTextSize } from '@nexusmd/ui'
 import { FolderTree } from './folder-tree.jsx'
 import { editorApi, editorStore, useEditorStore } from './editor-singleton.js'
 import { isDirty, baseName } from './editor-store.js'
+import '@nexusmd/editor-kit/syntax-colours.css'
 import './editor.css'
+
+// The text box may shrink to this on a short screen (a phone turned sideways), so the status row with Prettify and Save stays on screen.
+const EDIT_MIN_HEIGHT = 96
 
 const eolLabel = eol => (eol === '\r\n' ? 'CRLF' : 'LF')
 
 function Tab({ doc, active, onSelect, onClose }) {
+  const ref = React.useRef(null)
+  // With many files open the strip scrolls sideways; the open file's tab is kept in view.
+  React.useEffect(() => { if (active) ref.current?.scrollIntoView?.({ inline: 'nearest', block: 'nearest' }) }, [active])
   return (
-    <div role="tab" aria-selected={active} className={`nx-ed-tab${active ? ' nx-ed-active' : ''}`} title={doc.readOnly ? `${doc.origin} (read-only)` : doc.path}>
+    <div ref={ref} role="tab" aria-selected={active} className={`nx-ed-tab${active ? ' nx-ed-active' : ''}`} title={doc.readOnly ? `${doc.origin} (read-only)` : doc.path}>
       <button type="button" className="nx-ed-tab-name" onClick={onSelect}>
         {doc.name}{isDirty(doc) && <span className="nx-ed-dirty" title="Unsaved changes" aria-label="unsaved changes"> ●</span>}
       </button>
@@ -76,7 +84,7 @@ function DocPane({ doc, store }) {
   if (doc.readOnly) {
     return (
       <>
-        {view === 'preview' ? <Preview doc={doc} /> : <CodeEditor value={doc.text} language={languageForPath(doc.name)} ariaLabel={`Reading ${doc.name}`} readOnly />}
+        {view === 'preview' ? <Preview doc={doc} /> : <CodeEditor value={doc.text} language={languageForPath(doc.name)} ariaLabel={`Reading ${doc.name}`} readOnly minHeight={EDIT_MIN_HEIGHT} />}
         <div className="nx-ed-status">
           <span className="nx-ed-path" title={doc.origin}>{doc.origin}</span>
           {view === 'preview' && <PreviewTextSize />}
@@ -86,6 +94,36 @@ function DocPane({ doc, store }) {
       </>
     )
   }
+  return <EditPane key={doc.path} doc={doc} store={store} view={view} />
+}
+
+// The editable file: its text in CodeEditor, and the status bar with Save and, for the types it can tidy, Prettify.
+// Prettify only changes the text when it is tapped; the tidy text goes in as an ordinary, undoable edit, unsaved until Save.
+function EditPane({ doc, store, view }) {
+  const apiRef = React.useRef(null)
+  const [tidying, setTidying] = React.useState(false)
+  const [tidyNote, setTidyNote] = React.useState(null) // { text, bad }: "Already tidy", or why the file could not be tidied
+  // The latest document, read when a tidy result arrives to see whether the person kept typing or switched files meanwhile.
+  const latest = React.useRef(doc)
+  latest.current = doc
+  // A note is about the text it was made for: any edit, or another file, clears it.
+  React.useEffect(() => { setTidyNote(null) }, [doc.path, doc.text])
+
+  async function tidy() {
+    const { path, text } = doc
+    setTidying(true)
+    setTidyNote(null)
+    try {
+      const result = await prettify(path, text)
+      if (latest.current.path !== path || latest.current.text !== text) return // out of date: the person kept typing; leave their text alone
+      if (!result.ok) setTidyNote({ text: result.message, bad: true })
+      else if (result.text === text) setTidyNote({ text: 'Already tidy', bad: false })
+      else apiRef.current?.replaceText(result.text)
+    } finally {
+      setTidying(false)
+    }
+  }
+
   const dirty = isDirty(doc)
   return (
     <>
@@ -97,16 +135,19 @@ function DocPane({ doc, store }) {
         </div>
       )}
       {doc.error && <div role="alert" className="nx-ed-banner nx-ed-bad">{doc.error}</div>}
+      {tidyNote?.bad && <div role="alert" className="nx-ed-banner nx-ed-bad">{tidyNote.text}</div>}
       {view === 'preview' ? <Preview doc={doc} /> : (
         <CodeEditor value={doc.text} language={languageForPath(doc.path)} ariaLabel={`Editing ${doc.name}`} line={doc.line}
-          onChange={text => store.setText(doc.path, text)} />
+          onChange={text => store.setText(doc.path, text)} apiRef={apiRef} minHeight={EDIT_MIN_HEIGHT} />
       )}
       <div className="nx-ed-status">
         <span className="nx-ed-path" title={doc.path}>{doc.path}</span>
         {view === 'preview' && <PreviewTextSize />}
         {view && <ViewToggle doc={doc} view={view} store={store} />}
+        {tidyNote && !tidyNote.bad && <span role="status">{tidyNote.text}</span>}
         <span>{eolLabel(doc.eol)}{doc.bom ? ' · BOM' : ''}</span>
         <span>{doc.saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span>
+        {canPrettify(doc.path) && <button type="button" className="btn sm" disabled={doc.saving || tidying} onClick={tidy}>Prettify</button>}
         <button type="button" className="btn sm primary" disabled={!dirty || doc.saving} onClick={() => store.save(doc.path)}>Save</button>
       </div>
     </>
@@ -126,6 +167,14 @@ export function EditorApp({ host, store = editorStore, api = editorApi }) {
   const requestClose = doc => (isDirty(doc) ? setClosing(doc.path) : store.close(doc.path))
   const closingDoc = closing ? s.docs.find(d => d.path === closing) : null
 
+  // True while focus is in the text or its status row (Prettify, Save). On a short screen (soft keyboard up, or a phone turned
+  // sideways) the CSS then hides the toolbar and tab strip to leave room. Focus on a tab or the toolbar is not typing, and focus
+  // moving from the text to Prettify or Save stays typing, so nothing moves under a tap.
+  const [typing, setTyping] = React.useState(false)
+  const inPane = el => !!el && !el.closest?.('.nx-ed-bar, .nx-ed-tabs, .nx-ed-side')
+  const onFocus = e => setTyping(inPane(e.target))
+  const onBlur = e => setTyping(inPane(e.relatedTarget) && e.currentTarget.contains(e.relatedTarget))
+
   const onKeyDown = e => {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's' && active) {
       e.preventDefault()
@@ -134,7 +183,7 @@ export function EditorApp({ host, store = editorStore, api = editorApi }) {
   }
 
   return (
-    <div className="nx-ed" onKeyDown={onKeyDown}>
+    <div className={`nx-ed${typing ? ' nx-ed-typing' : ''}`} onKeyDown={onKeyDown} onFocus={onFocus} onBlur={onBlur}>
       <div className="nx-ed-bar">
         <button type="button" className="btn sm" onClick={openFile}>Open file…</button>
         <button type="button" className="btn sm" onClick={openFolder}>Open folder…</button>

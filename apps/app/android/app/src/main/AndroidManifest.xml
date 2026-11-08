@@ -84,6 +84,33 @@
                 <data android:pathPattern=".*\\.ini" />
                 <data android:pathPattern=".*\\.toml" />
                 <data android:pathPattern=".*\\.conf" />
+                <data android:pathPattern=".*\\.cs" />
+                <data android:pathPattern=".*\\.csx" />
+                <data android:pathPattern=".*\\.js" />
+                <data android:pathPattern=".*\\.mjs" />
+                <data android:pathPattern=".*\\.jsx" />
+                <data android:pathPattern=".*\\.ts" />
+                <data android:pathPattern=".*\\.tsx" />
+                <data android:pathPattern=".*\\.html" />
+                <data android:pathPattern=".*\\.htm" />
+                <data android:pathPattern=".*\\.css" />
+                <data android:pathPattern=".*\\.scss" />
+                <data android:pathPattern=".*\\.less" />
+                <data android:pathPattern=".*\\.py" />
+                <data android:pathPattern=".*\\.java" />
+                <data android:pathPattern=".*\\.c" />
+                <data android:pathPattern=".*\\.h" />
+                <data android:pathPattern=".*\\.cpp" />
+                <data android:pathPattern=".*\\.hpp" />
+                <data android:pathPattern=".*\\.go" />
+                <data android:pathPattern=".*\\.rs" />
+                <data android:pathPattern=".*\\.php" />
+                <data android:pathPattern=".*\\.rb" />
+                <data android:pathPattern=".*\\.sh" />
+                <data android:pathPattern=".*\\.sql" />
+                <data android:pathPattern=".*\\.ps1" />
+                <data android:pathPattern=".*\\.cfg" />
+                <data android:pathPattern=".*\\.properties" />
             </intent-filter>
 
         </activity>

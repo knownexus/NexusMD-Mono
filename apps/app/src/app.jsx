@@ -665,11 +665,13 @@ function AppShell() {
     return () => clearTimeout(t);
   }, [mobileFlash]);
 
-  // A text file opened with the app (Open with / Share): a Markdown file is added to the documents and shown on the Documents page,
-  // any other text file is opened in the Editor. Counted, so the Documents page remounts on the file each time one arrives.
+  // A text file opened with the app (Open with / Share): a Markdown or JSON file is added to that tool's documents and shown on the
+  // Documents page, any other text file is opened in the Editor. Counted, so the Documents page remounts on the file each time one arrives.
   const [openedFiles, setOpenedFiles] = useState(0);
+  const [openedTool, setOpenedTool] = useState('markdown'); // the Documents tool the last opened file is in
   useEffect(() => watchOpenedFiles({
     storageKey: device === 'phone' ? undefined : getProfileKey('md_documents'), // the phone layout keeps documents under the bare key
+    jsonStorageKey: getProfileKey('json_editor_documents'), // the JSON editor keeps its documents here on both layouts
     onOpen: (opened) => {
       if (opened.target === 'editor') {
         editorStore.openPath(opened.path);
@@ -677,6 +679,7 @@ function AppShell() {
         showFlash(`Opened ${opened.name} in the Editor`, 'check');
         return;
       }
+      setOpenedTool(opened.tool);
       setOpenedFiles(n => n + 1);
       navigate('markdown');
       showFlash(opened.name ? `Opened ${opened.name}` : 'Opened the file', 'check');
@@ -1214,7 +1217,7 @@ function AppShell() {
       case 'time': return withBar('Time', <TimeView storageKey={getProfileKey('nexusmd.timelog.v1')} getProfileKey={getProfileKey} namespace="nexusmd" getTickets={getTimeTickets}/>);
       case 'notes': return <NotesView onAddTask={addTaskFromNote} onFlash={showFlash}/>;
       case 'lists': return <ListsView device={device}/>;
-      case 'markdown': return device === 'phone' ? <DocumentsPhone key={openedFiles} opened={openedFiles} onFlash={showFlash}/> : <DocumentsView key={openedFiles}/>;
+      case 'markdown': return device === 'phone' ? <DocumentsPhone key={openedFiles} opened={openedFiles} openedTool={openedTool} onFlash={showFlash}/> : <DocumentsView key={openedFiles} opened={openedFiles} openedTool={openedTool}/>;
       case 'editor': return <EditorScreen onFlash={showFlash}/>;
       case 'git': return <GitView onFlash={showFlash}/>;
       case 'api': return withBar('API Client', <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>);

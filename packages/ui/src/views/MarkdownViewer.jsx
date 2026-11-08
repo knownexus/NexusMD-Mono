@@ -562,14 +562,17 @@ function MarkdownToolbar({ onInsert }) {
 
 // ── MarkdownViewer ────────────────────────────────────────────────
 
-function MarkdownViewer() {
+// `openNewest`: start with the most recently edited saved document open (a file the app was opened with is the newest),
+// instead of a blank page.
+function MarkdownViewer({ openNewest = false }) {
   // Documents and learning state belong to the active profile.
   const { getProfileKey } = useNexusData();
   const KEYS = React.useMemo(() => ({
     docs: getProfileKey(STORAGE_KEY), cheat: getProfileKey(CHEAT_OPEN_KEY),
     learn: getProfileKey(LEARN_MODE_KEY), progress: getProfileKey(PROGRESS_KEY),
   }), [getProfileKey]);
-  const [markdown, setMarkdown]         = useStateMD('');
+  const [newest] = useStateMD(() => (openNewest ? [...loadDocs(KEYS.docs)].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] ?? null : null));
+  const [markdown, setMarkdown]         = useStateMD(newest?.content ?? '');
   const [view, setView]                 = useStateMD("split");
   const [copyVisible, setCopyVisible]   = useStateMD(false);
   const [dragOver, setDragOver]         = useStateMD(false);
@@ -577,7 +580,7 @@ function MarkdownViewer() {
 
   // Document state
   const [docs, setDocs]                 = useStateMD(() => loadDocs(KEYS.docs));
-  const [currentDocId, setCurrentDocId] = useStateMD(null);
+  const [currentDocId, setCurrentDocId] = useStateMD(newest?.id ?? null);
   const [compareDocId, setCompareDocId] = useStateMD(null);   // shown beside the open document in the Compare view
   const [compareShows, setCompareShows] = useStateMD('preview'); // the Compare pane: the other document's 'preview', or the 'diff' against it
   const [showModal, setShowModal]       = useStateMD(false);
@@ -602,7 +605,7 @@ function MarkdownViewer() {
   const createDocTimerRef  = useRefMD(null);
   const saveStatusTimerRef = useRefMD(null);
   const markdownRef        = useRefMD('');
-  const isLoadingDoc       = useRefMD(false);
+  const isLoadingDoc       = useRefMD(!!newest); // a document opened at the start is not an edit, so it is not saved again
 
   // The Compare view's other document: the one picked, else the most recently edited other one.
   const otherDocs  = docs.filter(d => d.id !== currentDocId).sort((a, b) => b.updatedAt - a.updatedAt);

@@ -15,6 +15,14 @@ describe('CodeEditor', () => {
     expect(content.getAttribute('aria-label')).toBe('Edit environment.json')
     expect(content.textContent).toContain('"a": 1')
   })
+  it('is at least 240px tall by default, and a screen with less room can ask for a smaller minimum', () => {
+    const hostOf = (container) => container.querySelector('.cm-editor').parentElement
+    const { container, unmount } = render(<CodeEditor value="x" language="text" onChange={() => {}} ariaLabel="x" />)
+    expect(hostOf(container).style.minHeight).toBe('240px')
+    unmount()
+    const small = render(<CodeEditor value="x" language="text" onChange={() => {}} ariaLabel="x" minHeight={96} />)
+    expect(hostOf(small.container).style.minHeight).toBe('96px')
+  })
   it('replaces the document when the value changes from outside', () => {
     const { container, rerender } = render(<CodeEditor value="one" language="text" onChange={() => {}} ariaLabel="x" />)
     rerender(<CodeEditor value="two" language="text" onChange={() => {}} ariaLabel="x" />)
@@ -117,5 +125,67 @@ describe('CodeEditor', () => {
     view.dispatch({ selection: { anchor: 0 } })
     act(() => view.dispatch({ changes: { from: 5, insert: 'x' }, selection: { anchor: 6 } }))
     expect(view.state.selection.main.head).toBe(6)
+  })
+})
+
+describe('CodeEditor apiRef.replaceText', () => {
+  const viewOf = container => EditorView.findFromDOM(container.querySelector('.cm-editor'))
+
+  it('reports the new text through onChange', () => {
+    const onChange = vi.fn()
+    const apiRef = React.createRef()
+    const { container } = render(<CodeEditor value="a" language="text" onChange={onChange} ariaLabel="x" apiRef={apiRef} />)
+    act(() => apiRef.current.replaceText('b'))
+    expect(viewOf(container).state.doc.toString()).toBe('b')
+    expect(onChange).toHaveBeenCalledWith('b')
+  })
+
+  it('can be undone, in one step, and undo reports the original text', () => {
+    const onChange = vi.fn()
+    const apiRef = React.createRef()
+    const { container } = render(<CodeEditor value="original" language="text" onChange={onChange} ariaLabel="x" apiRef={apiRef} />)
+    const view = viewOf(container)
+    view.dispatch({ changes: { from: 8, insert: '!' } }) // typing just before, so the two could be merged into one undo step
+    act(() => apiRef.current.replaceText('tidy'))
+    expect(view.state.doc.toString()).toBe('tidy')
+    undo(view)
+    expect(view.state.doc.toString()).toBe('original!')
+    expect(onChange).toHaveBeenLastCalledWith('original!')
+  })
+
+  it('keeps the cursor, clamped to the new length', () => {
+    const apiRef = React.createRef()
+    const { container } = render(<CodeEditor value="a long line of text" language="text" onChange={() => {}} ariaLabel="x" apiRef={apiRef} />)
+    const view = viewOf(container)
+    view.dispatch({ selection: { anchor: 15 } })
+    act(() => apiRef.current.replaceText('short'))
+    expect(view.state.selection.main.head).toBe(5)
+    act(() => apiRef.current.replaceText('a much longer replacement'))
+    expect(view.state.selection.main.head).toBe(5)
+  })
+
+  it('does nothing when the text is already the same', () => {
+    const onChange = vi.fn()
+    const apiRef = React.createRef()
+    render(<CodeEditor value="same" language="text" onChange={onChange} ariaLabel="x" apiRef={apiRef} />)
+    act(() => apiRef.current.replaceText('same'))
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('is cleared on unmount', () => {
+    const apiRef = React.createRef()
+    const { unmount } = render(<CodeEditor value="a" language="text" onChange={() => {}} ariaLabel="x" apiRef={apiRef} />)
+    expect(apiRef.current).toBeTruthy()
+    unmount()
+    expect(apiRef.current).toBeNull()
+  })
+
+  it('leaves a props-driven replacement out of undo history', () => {
+    const apiRef = React.createRef()
+    const { container, rerender } = render(<CodeEditor value="one" language="text" onChange={() => {}} ariaLabel="x" apiRef={apiRef} />)
+    rerender(<CodeEditor value="two" language="text" onChange={() => {}} ariaLabel="x" apiRef={apiRef} />)
+    const view = viewOf(container)
+    undo(view)
+    expect(view.state.doc.toString()).toBe('two')
   })
 })

@@ -1,6 +1,9 @@
 // json-editor-helpers.js — pure, DOM-free JSON tree helpers for JsonEditorView.
 // Every path-mutation helper returns a NEW tree (never mutates its input), so
 // React state updates via setData(next) trigger re-renders correctly.
+import { rendererLog, ignore } from '../../log.js'
+
+const log = rendererLog('editor', 'json')
 
 export function typeOf(val) {
   if (Array.isArray(val)) return 'array'
@@ -121,4 +124,17 @@ export function highlightSegments(text, term) {
   }
   if (lastIndex < str.length) segments.push({ text: str.slice(lastIndex), match: false })
   return segments.length ? segments : [{ text: str, match: false }]
+}
+
+// A saved JSON document's name: a top-level "name"/"title" string if there is one, otherwise a one-line snippet of the text.
+export function jsonAutoName(text) {
+  try {
+    const parsed = JSON.parse(text)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const nameField = parsed.name ?? parsed.title
+      if (typeof nameField === 'string' && nameField.trim()) return nameField.trim().slice(0, 80)
+    }
+  } catch (err) { ignore(log, 'the text is not valid JSON (yet), so a snippet of it names the document', err, 'debug') }
+  const snippet = String(text).trim().replace(/\s+/g, ' ')
+  return snippet ? snippet.slice(0, 60) : 'Untitled'
 }

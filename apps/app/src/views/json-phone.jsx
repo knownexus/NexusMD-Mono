@@ -5,7 +5,7 @@ import { useDocumentAutosave, JsonNodeSheet } from '@nexusmd/ui';
 import { Icon } from '../icons.jsx';
 import { toast } from '../toast.jsx';
 import { ToolFrame, DocsSheet } from './docs-frame.jsx';
-import { typeOf, searchPaths, pathKey, isContainer } from '@nexusmd/core';
+import { jsonAutoName, typeOf, searchPaths, pathKey, isContainer } from '@nexusmd/core';
 
 const { useState, useMemo, useEffect } = React;
 const copy = (text) => (navigator.clipboard?.writeText(text) ?? Promise.reject(new Error('Copying is not available here.')))
@@ -26,20 +26,8 @@ const SAMPLE_TEXT = JSON.stringify({
   tags: ['developer', 'designer', 'mentor'], score: 94.5,
 }, null, 2);
 
-// A saved document's name: a top-level "name"/"title" string if there is one, else a snippet.
-export function jsonAutoName(text) {
-  try {
-    const p = JSON.parse(text);
-    if (p && typeof p === 'object' && !Array.isArray(p)) {
-      const n = p.name ?? p.title;
-      if (typeof n === 'string' && n.trim()) return n.trim().slice(0, 80);
-    }
-  } catch { /* fall through to the snippet */ }
-  const s = text.trim().replace(/\s+/g, ' ');
-  return s ? s.slice(0, 60) : 'Untitled';
-}
-
 export function parseJson(text) {
+  if (!String(text).trim()) return { ok: true, value: {} }; // blank text is an empty document, not an error
   try { return { ok: true, value: JSON.parse(text) }; } catch (e) { return { ok: false, message: e.message }; }
 }
 

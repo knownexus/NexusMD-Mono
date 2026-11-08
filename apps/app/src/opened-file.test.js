@@ -90,18 +90,54 @@ describe('watchOpenedFiles: where a file goes', () => {
     const storage = memory(); const workspace = workspaceOf(); const onOpen = vi.fn()
     watchOpenedFiles({ plugin, storage, workspace, onOpen, onError: vi.fn() })
     await tick(); await tick()
-    expect(onOpen.mock.calls[0][0]).toMatchObject({ target: 'documents', name: 'notes' })
+    expect(onOpen.mock.calls[0][0]).toMatchObject({ target: 'documents', tool: 'markdown', name: 'notes' })
     expect(storage.docs()).toHaveLength(1)
     expect(workspace.files.size).toBe(0)
   })
 
-  it('any other text file goes to the Editor, in the workspace, and is not made a document', async () => {
+  it('a JSON file goes to the JSON editor documents, not the Editor', async () => {
     const plugin = fakePlugin([{ name: 'config.json', text: '{"a":1}', type: 'application/json' }])
     const storage = memory(); const workspace = workspaceOf(); const onOpen = vi.fn()
     watchOpenedFiles({ plugin, storage, workspace, onOpen, onError: vi.fn() })
     await tick(); await tick(); await tick()
-    expect(onOpen.mock.calls[0][0]).toEqual({ target: 'editor', path: '/editor/config.json', name: 'config.json' })
-    expect(workspace.files.get('/editor/config.json')).toBe('{"a":1}')
+    expect(onOpen.mock.calls[0][0]).toMatchObject({ target: 'documents', tool: 'json', name: 'config', created: true })
+    expect(JSON.parse(storage.getItem('json_editor_documents'))).toHaveLength(1)
+    expect(storage.docs()).toEqual([])
+    expect(workspace.files.size).toBe(0)
+  })
+
+  it('a broken JSON file still goes to the JSON editor', async () => {
+    const plugin = fakePlugin([{ name: 'bad.json', text: '{ "a": ', type: 'application/json' }])
+    const storage = memory(); const onOpen = vi.fn(); const onError = vi.fn()
+    watchOpenedFiles({ plugin, storage, workspace: workspaceOf(), onOpen, onError })
+    await tick(); await tick(); await tick()
+    expect(onOpen.mock.calls[0][0]).toMatchObject({ target: 'documents', tool: 'json' })
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('a .JSON file routes to JSON', async () => {
+    const plugin = fakePlugin([{ name: 'DATA.JSON', text: '[]', type: 'application/octet-stream' }])
+    const onOpen = vi.fn()
+    watchOpenedFiles({ plugin, storage: memory(), workspace: workspaceOf(), onOpen, onError: vi.fn() })
+    await tick(); await tick(); await tick()
+    expect(onOpen.mock.calls[0][0]).toMatchObject({ target: 'documents', tool: 'json' })
+  })
+
+  it('uses the JSON storage key it is given', async () => {
+    const plugin = fakePlugin([{ name: 'k.json', text: '{}' }]); const m = new Map()
+    const storage = { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }
+    watchOpenedFiles({ plugin, storage, jsonStorageKey: 'helm.p1.json_editor_documents', workspace: workspaceOf(), onOpen: vi.fn(), onError: vi.fn() })
+    await tick(); await tick(); await tick()
+    expect([...m.keys()]).toEqual(['helm.p1.json_editor_documents'])
+  })
+
+  it('any other text file goes to the Editor, in the workspace, and is not made a document', async () => {
+    const plugin = fakePlugin([{ name: 'config.yaml', text: 'a: 1', type: 'text/plain' }])
+    const storage = memory(); const workspace = workspaceOf(); const onOpen = vi.fn()
+    watchOpenedFiles({ plugin, storage, workspace, onOpen, onError: vi.fn() })
+    await tick(); await tick(); await tick()
+    expect(onOpen.mock.calls[0][0]).toEqual({ target: 'editor', path: '/editor/config.yaml', name: 'config.yaml' })
+    expect(workspace.files.get('/editor/config.yaml')).toBe('a: 1')
     expect(storage.docs()).toEqual([])
   })
 

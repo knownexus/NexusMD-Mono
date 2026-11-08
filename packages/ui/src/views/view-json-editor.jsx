@@ -3,7 +3,7 @@
 // instead of the original's own hardcoded light palette.
 import React from 'react'
 import { Icon } from '../icons.jsx'
-import { typeOf, setValueAtPath, deleteAtPath, allContainerPaths, highlightSegments, searchPaths, pathKey as searchKey, rendererLog, ignore } from '@nexusmd/core'
+import { jsonAutoName, typeOf, setValueAtPath, deleteAtPath, allContainerPaths, highlightSegments, searchPaths, pathKey as searchKey, rendererLog, ignore } from '@nexusmd/core'
 import { useDocumentAutosave, relativeTime } from './document-store.js'
 import { DocumentsModal } from './documents-modal.jsx'
 import { JsonNodeSheet } from '../json-tree-ui.jsx'
@@ -25,25 +25,13 @@ const SAMPLE_TEXT = JSON.stringify(SAMPLE, null, 2)
 const EMPTY_TEXT = '{}'
 const DOCS_STORAGE_KEY = 'json_editor_documents'
 
-// A saved doc's display name: prefer a top-level "name"/"title" string field
-// if the JSON has one, otherwise a truncated one-line snippet of the text.
-function jsonAutoName(text) {
-  try {
-    const parsed = JSON.parse(text)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const nameField = parsed.name ?? parsed.title
-      if (typeof nameField === 'string' && nameField.trim()) return nameField.trim().slice(0, 80)
-    }
-  } catch (err) { ignore(log, 'the error position could not be read, so a raw text snippet is shown', err, 'debug') }
-  const snippet = text.trim().replace(/\s+/g, ' ')
-  return snippet ? snippet.slice(0, 60) : 'Untitled'
-}
-
 function parseOr(text, fallback) {
   try { return JSON.parse(text) } catch { return fallback }
 }
 
-export function JsonEditorView() {
+// `openNewest`: the app was opened with a file, which is the newest saved document. It is shown as it is, and a
+// document that is not valid JSON shows its error over an empty tree rather than the sample.
+export function JsonEditorView({ openNewest = false }) {
   const {
     content: rawText, setContent: setRawText, docs, currentDocId, hasUnsavedContent,
     openDoc, newDoc, deleteDoc, renameDoc,
@@ -53,10 +41,11 @@ export function JsonEditorView() {
     emptyContent: EMPTY_TEXT,
     isEmpty: t => !t.trim(),
     extractAutoName: jsonAutoName,
+    openNewest,
   })
 
   const [showDocsModal, setShowDocsModal] = useState(false)
-  const [data, setData] = useState(() => parseOr(rawText, SAMPLE))
+  const [data, setData] = useState(() => parseOr(rawText, openNewest ? {} : SAMPLE))
   const [rawError, setRawError] = useState(null)
   const [history, setHistory] = useState(() => [rawText])
   const [histIdx, setHistIdx] = useState(0)
@@ -79,6 +68,8 @@ export function JsonEditorView() {
   // updates `data` on a successful parse, so the tree keeps showing the last
   // valid value while `rawText` is transiently invalid (e.g. mid-edit).
   useEffect(() => {
+    // Blank text is an empty document (an opened empty file, or everything deleted), not an error.
+    if (!rawText.trim()) { setData({}); setRawError(null); return }
     try {
       const parsed = JSON.parse(rawText)
       setData(parsed)
