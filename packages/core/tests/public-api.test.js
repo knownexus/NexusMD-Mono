@@ -124,6 +124,8 @@ const EXPECTED = [
   'JIRA_ID_PREFIX', 'isJiraId', 'toJiraId', 'jiraKeyFromId', 'sourceOfId', 'displayIdOf',
   'GITHUB_ID_PREFIX', 'isGithubId', 'toGithubId', 'parseGithubId',
   'makeGithubConfig', 'MAX_GITHUB_REPOS', 'repoListFromStub',
+  'clearProviderData',
+  'MAX_OPEN_BYTES', 'addOpenedDocument', 'addOpenedJsonDocument', 'documentNameOf', 'isJsonFile', 'isMarkdownFile',
   'GithubError', 'classifyGithubError', 'makeGithubClient', 'discoverGithubRepos',
   'githubTypeFromLabels', 'mapGithubIssue', 'mapGithubPR', 'mapGithubRun', 'extractIssueRefs',
   'GITHUB_CACHE_KEY', 'loadCachedGithubData', 'loadGithubData',

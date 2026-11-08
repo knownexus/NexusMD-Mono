@@ -100,3 +100,35 @@ describe('makeAdoConfig with secrets (desktop: the PAT lives in secure storage)'
     expect(storage.get('p.ado.org')).toBe('acme')
   })
 })
+
+describe('removeAdoConfig', () => {
+  const all = { org: 'acme', pat: 't', projects: ['P'], testProject: 'T', uatProject: 'U', uatPipelineId: 3, uatBranch: 'b', refreshSecs: 10, workItems: false }
+
+  it('removes every saved field and the PAT, so nothing is left connected', () => {
+    const storage = memStorage()
+    const secrets = memStorage()
+    const cfg = makeAdoConfig({ storage, secrets, key: (n) => `p.ado.${n}` })
+    cfg.saveAdoConfig(all)
+    expect(cfg.isAdoConfigured()).toBe(true)
+    cfg.removeAdoConfig()
+    expect(cfg.isAdoConfigured()).toBe(false)
+    expect(storage._dump()).toEqual({})
+    expect(secrets._dump()).toEqual({})
+  })
+
+  it('removes the PAT from the plain storage when there are no secrets (Android)', () => {
+    const storage = memStorage()
+    const cfg = makeAdoConfig({ storage, key: (n) => `helm.android.${n}` })
+    cfg.saveAdoConfig(all)
+    cfg.removeAdoConfig()
+    expect(storage._dump()).toEqual({})
+  })
+
+  it('leaves other keys alone', () => {
+    const storage = memStorage({ other: 'x' })
+    const cfg = makeAdoConfig({ storage, key: (n) => `a.${n}` })
+    cfg.saveAdoConfig(all)
+    cfg.removeAdoConfig()
+    expect(storage._dump()).toEqual({ other: 'x' })
+  })
+})

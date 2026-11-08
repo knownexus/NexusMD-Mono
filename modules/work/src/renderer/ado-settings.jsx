@@ -2,6 +2,7 @@ import React from 'react'
 import { Icon, CardFrame, SettField } from '@nexusmd/ui'
 import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
 import { settInputStyle } from './form-style.js'
+import { DisconnectButton } from './disconnect-button.jsx'
 import { rendererLog, ignored } from '@nexusmd/core'
 
 const log = rendererLog('work', 'ado-settings')
@@ -100,6 +101,8 @@ export function AdoConnectionCard({ onRefreshData }) {
           <button className="btn primary" onClick={save} disabled={saving || discovering}>
             {saving ? 'Saving…' : 'Save & connect'}
           </button>
+          <DisconnectButton provider="ado" name="Azure DevOps"
+            onDone={() => { setOrg(''); setPat(''); setProjects(''); setWorkItems(true); setStatus('Disconnected.'); setTimeout(() => setStatus(''), 3000) }} />
           {status && (
             <span style={{ fontSize: 12.5, color: isError ? 'var(--danger)' : 'var(--success)' }}>
               {status}

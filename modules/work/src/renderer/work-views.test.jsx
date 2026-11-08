@@ -18,6 +18,12 @@ vi.mock('@nexusmd/ui', async importOriginal => ({
   TriageView: () => <div>triage view</div>,
 }))
 
+let githubOn = false
+vi.mock('./github-client.js', async importOriginal => ({
+  ...(await importOriginal()),
+  isGithubConfigured: () => githubOn,
+}))
+
 import { NexusDataProvider } from '@nexusmd/ui'
 import { WorkContext } from './work-context.js'
 import { DashboardApp, WorkItemsApp, PullRequestsApp, BuildsApp, TestsApp, TeamApp, TriageApp } from './work-views.jsx'
@@ -47,6 +53,7 @@ const tweaks = { widgetOrder: ['sprint'], quickLinks: [{ label: 'q' }], density:
 beforeEach(() => {
   for (const k of Object.keys(seen)) delete seen[k]
   profile = { activeProfile: { type: 'manual' } }
+  githubOn = false
   localStorage.clear()
 })
 afterEach(cleanup)
@@ -57,6 +64,22 @@ describe('Dashboard', () => {
     mount(<DashboardApp host={hostWith().host} tweaks={tweaks} setTweak={vi.fn()} />)
     expect(screen.getByText(/Welcome to NexusMD/)).toBeTruthy()
     expect(seen.dashboard).toBeUndefined()
+  })
+
+  it('shows the dashboard for a GitHub profile that is connected, not the Azure DevOps welcome', () => {
+    profile = { activeProfile: { type: 'github' } }
+    githubOn = true
+    mount(<DashboardApp host={hostWith().host} tweaks={tweaks} setTweak={vi.fn()} />)
+    expect(screen.queryByText(/Welcome to NexusMD/)).toBeNull()
+    expect(screen.getByText('dashboard view')).toBeTruthy()
+  })
+
+  it('asks a GitHub profile that is not connected to connect GitHub, not Azure DevOps', () => {
+    profile = { activeProfile: { type: 'github' } }
+    mount(<DashboardApp host={hostWith().host} tweaks={tweaks} setTweak={vi.fn()} />)
+    expect(screen.getByText(/Welcome to NexusMD/)).toBeTruthy()
+    expect(screen.getByText(/GitHub/)).toBeTruthy()
+    expect(screen.queryByText(/Azure DevOps organisation/)).toBeNull()
   })
 
   it('shows the dashboard for a manual profile, with the shell\'s display settings', () => {

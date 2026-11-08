@@ -3,13 +3,24 @@
 
 const hostOf = (site) => String(site || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/\.atlassian\.net$/, '');
 
-// Which providers are connected: "Azure DevOps (acme) · Jira (acme) · GitHub (3 repos)".
+// Which providers are connected: the same rule as core's isAdoConfigured / isJiraConfigured /
+// isGithubConfigured, so a provider whose token was removed is not shown as connected just because
+// its organisation or site is still saved.
+export function connectedProviders({ ado, jira, github } = {}) {
+  return {
+    ado: !!(ado?.org && ado.pat && ado.projects?.length),
+    jira: !!(jira?.site && jira.email && jira.apiToken && jira.projectKeys?.length),
+    github: !!(github?.pat && github.repos?.length),
+  };
+}
+
+// "Azure DevOps (acme) · Jira (acme) · GitHub (3 repos)".
 export function connectionsSummary({ ado, jira, github } = {}) {
+  const on = connectedProviders({ ado, jira, github });
   const parts = [];
-  if (ado?.org) parts.push(`Azure DevOps (${ado.org})`);
-  if (jira?.site) parts.push(`Jira (${hostOf(jira.site)})`);
-  const repos = github?.repos?.length || 0;
-  if (github?.pat && repos) parts.push(`GitHub (${repos} repo${repos === 1 ? '' : 's'})`);
+  if (on.ado) parts.push(`Azure DevOps (${ado.org})`);
+  if (on.jira) parts.push(`Jira (${hostOf(jira.site)})`);
+  if (on.github) { const n = github.repos.length; parts.push(`GitHub (${n} repo${n === 1 ? '' : 's'})`); }
   return parts.length ? parts.join(' · ') : 'Nothing connected yet';
 }
 

@@ -45,6 +45,17 @@ describe('buildSnapshot', () => {
     const snap = buildSnapshot({ adoConfig: {}, adoConfigured: false, jiraConfig: { site: 's' }, jiraActive: false, storage: st, empty: EMPTY })
     expect(snap.WORK_ITEMS).toEqual([])
   })
+
+  it('ignores the ADO cache when ADO is not configured (a removed connection leaves no PRs behind)', () => {
+    const st = storage({
+      [ADO_CACHE_KEY]: { ORG: 'o', WORK_ITEMS: [{ id: 1 }], PRS: [{ id: 9 }], BUILDS: [{ id: 'b' }], TEAM: [{ id: 'p1' }] },
+    })
+    const snap = buildSnapshot({ adoConfig: { org: '' }, adoConfigured: false, jiraConfig: {}, jiraActive: false, storage: st, empty: EMPTY })
+    expect(snap.PRS).toEqual([])
+    expect(snap.BUILDS).toEqual([])
+    expect(snap.WORK_ITEMS).toEqual([])
+    expect(snap.TEAM).toEqual([])
+  })
 })
 
 describe('refreshProviders', () => {

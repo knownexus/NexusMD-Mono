@@ -16,9 +16,10 @@ import { tokenStore } from './token-store.js'
 const rawStorage = {
   get: (k) => localStorage.getItem(k),
   set: (k, v) => localStorage.setItem(k, v),
+  remove: (k) => localStorage.removeItem(k),
 }
 
-export const { getJiraConfig, saveJiraConfig, isJiraConfigured, isJiraActive } = makeJiraConfig({
+export const { getJiraConfig, saveJiraConfig, removeJiraConfig, isJiraConfigured, isJiraActive } = makeJiraConfig({
   storage: rawStorage,
   secrets: tokenStore,
   key: (name) => getProfileKey('jira.' + name),

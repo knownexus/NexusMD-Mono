@@ -2,7 +2,7 @@
 // All ADO fetch/map/derive logic is in @nexusmd/core. Only planner/theme
 // storage helpers and the HelmData/HelmApi window shims live here.
 import {
-  loadAdoData, loadCachedAdoData, loadJiraData, loadCachedJiraData, loadCachedGithubData, loadGithubData, buildSnapshot, refreshProviders, readProviderStatus,
+  loadAdoData, loadJiraData, loadCachedJiraData, loadCachedGithubData, loadGithubData, buildSnapshot, refreshProviders, readProviderStatus,
   isTerminalState, isActiveState, isReviewState, isBlockedState, stateCategory,
   timeAgo, adoTypeToHelm, adoStateToHelm, slugify,
 } from '@nexusmd/core';
@@ -36,7 +36,8 @@ Object.assign(window, { timeAgo, adoTypeToHelm, adoStateToHelm, slugify, isTermi
 
 // ── HelmData compatibility shim ───────────────────────────────────────────────
 // Views read window.HelmData; data is populated by core then dispatched via event.
-export const HelmData = window.HelmData = {
+// What came from a service (a snapshot); the rest of HelmData (planner, themes, flags) is the app's own.
+const emptyServiceData = () => ({
   TEAM: [{ id: 'dev1', name: 'Loading…', role: 'Developer', initials: '…', tz: 'UTC', status: 'online', focus: '' }],
   ME: { id: 'me', name: 'Loading…', role: 'Eng Manager', initials: 'ME' },
   PROJECTS: [], CONFIG_PROJECTS: [],
@@ -47,9 +48,20 @@ export const HelmData = window.HelmData = {
   WORK_ITEMS: [], PRS: [], BUILDS: [], TESTS: [], ACTIVITY: [], ORG: '',
   RESOLVED_WI: [], AVG_RESOLUTION_DAYS: null,
   SPRINT: { name: 'Current Sprint', start: '—', end: '—', daysLeft: 0, totalPoints: 1, donePoints: 0, inProgPoints: 0, reviewPoints: 0, burndown: [] },
+});
+const OWN_KEYS = ['PLANNER_NOW', 'THEMES', 'loaded', 'configured', 'REFRESH_SECS', 'UAT_BRANCH'];
+
+export const HelmData = window.HelmData = {
+  ...emptyServiceData(),
   PLANNER_NOW: loadStoredPlanner(), THEMES: loadStoredThemes(),
   loaded: false, configured: false, REFRESH_SECS: 30, UAT_BRANCH: '',
 };
+
+// Drop everything a service gave (also what a snapshot added, e.g. GITHUB_ME), keeping the app's own.
+function clearServiceData() {
+  for (const k of Object.keys(HelmData)) if (!OWN_KEYS.includes(k)) delete HelmData[k];
+  Object.assign(HelmData, emptyServiceData());
+}
 
 function applyToShim(data) {
   Object.assign(HelmData, data);
@@ -72,6 +84,8 @@ async function runLoad(isRefresh = false) {
   const jiraOn = isJiraActive() && getActiveProfileType() !== 'manual';
   const githubOn = isGithubConfigured() && getActiveProfileType() !== 'manual';
   if (!adoOn && !jiraOn && !githubOn) {
+    // Nothing is connected (it never was, or the connection was just removed): show no one's data.
+    clearServiceData();
     HelmData.configured = false;
     HelmData.loaded = true;
     window.dispatchEvent(new CustomEvent('helmdata:loaded'));
@@ -130,7 +144,8 @@ export const HelmApi = window.HelmApi = {
 };
 
 // Stale-while-revalidate: show cache immediately, then fetch fresh data.
-const cached = (isAdoConfigured() || isJiraActive() || isGithubConfigured()) ? mergedSnapshot() : loadCachedAdoData(getAdoConfig(), { storage: localStorageAdapter });
+// Only while something is connected: the cache of a connection that was removed stays in storage.
+const cached = (isAdoConfigured() || isJiraActive() || isGithubConfigured()) ? mergedSnapshot() : null;
 if (cached && (cached.TEAM?.length || cached.WORK_ITEMS?.length || cached.PRS?.length)) {
   Object.assign(HelmData, cached, { loaded: true, configured: true });
   window.dispatchEvent(new CustomEvent('helmdata:loaded'));

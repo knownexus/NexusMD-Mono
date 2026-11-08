@@ -6,6 +6,7 @@ import {
 import { getProfileKey, linkAdapter, usePersistedState } from '@nexusmd/shell-sdk'
 import { isAdoConfigured } from './ado-client.js'
 import { isJiraActive } from './jira-client.js'
+import { isGithubConfigured } from './github-client.js'
 import { NotConfigured } from './not-configured.jsx'
 import { useWork } from './work-context.js'
 import { useOffScreens } from './work-screens.js'
@@ -64,16 +65,18 @@ export function useTeamRoster(data) {
   return { effectiveTeam, teamViewTeam, handleTeamChange }
 }
 
-// Manual profiles don't require ADO or Jira to be set up.
+// Manual profiles don't require a service to be set up; the others need any one of the three.
 function useConfigured() {
   const { activeProfile } = useProfile() || {}
-  return activeProfile?.type === 'manual' || (() => { try { return isAdoConfigured() || isJiraActive() } catch { return false } })()
+  return activeProfile?.type === 'manual'
+    || (() => { try { return isAdoConfigured() || isJiraActive() || isGithubConfigured() } catch { return false } })()
 }
 
 export function DashboardApp({ host, tweaks, setTweak }) {
   const { data } = useNexusData()
   const { openItem, openPR, newItemIds } = useWork()
   const configured = useConfigured()
+  const { activeProfile } = useProfile() || {}
   const { effectiveTeam } = useTeamRoster(data)
   const [needsMeCriteria] = usePersistedState('nexusmd.pr.needsMeCriteria', { votes: [0], includeDrafts: false })
   const [acknowledgedBuilds] = usePersistedState('nexusmd.builds.acknowledged', [])
@@ -82,7 +85,7 @@ export function DashboardApp({ host, tweaks, setTweak }) {
   const [widgetHeights, setWidgetHeights] = usePersistedState('nexusmd.dash.widgetHeights', {})
   const offViews = useOffScreens()
 
-  if (!configured) return <NotConfigured />
+  if (!configured) return <NotConfigured type={activeProfile?.type} />
   const acknowledgedSet = new Set([...acknowledgedBuilds, ...acknowledgedTests])
   const { capabilities } = host
   return (

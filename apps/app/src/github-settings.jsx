@@ -5,6 +5,7 @@ import { makeGithubClient, discoverGithubRepos, MAX_GITHUB_REPOS, GITHUB_CACHE_K
 import { Icon } from './icons.jsx';
 import { Sheet } from './components.jsx';
 import { getGithubConfig, saveGithubConfig, createGithubHttpAdapter } from './github-client.js';
+import { DisconnectButton } from './disconnect-button.jsx';
 
 const defaultClient = (pat) => makeGithubClient(createGithubHttpAdapter({ getConfig: () => ({ pat }) }));
 
@@ -80,6 +81,7 @@ export function GithubSettingsModal({ open, onClose, onSaved, makeClient = defau
     <Sheet open={open} size="tall" icon="pr" title="GitHub" sub="Issues, pull requests and Actions runs" onClose={onClose}
       footer={
         <>
+          <DisconnectButton provider="github" name="GitHub" onDone={onClose}/>
           <button type="button" className="btn ghost m-btn-lg" onClick={discoverRepos} disabled={!!busy}>
             {busy === 'discover' ? 'Discovering…' : 'Discover repositories'}
           </button>
