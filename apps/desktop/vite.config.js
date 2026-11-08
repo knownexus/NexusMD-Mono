@@ -12,6 +12,18 @@ export default defineConfig({
   build: {
     outDir: '../../dist/desktop/renderer',
     emptyOutDir: true,
+    rolldownOptions: {
+      output: {
+        // The trace reports make the entry chunk bigger, and Vite's import scan (a WebAssembly lexer) runs out of memory on a
+        // chunk that large (found building 1.2.42 on Linux and macOS). The libraries nobody here edits go in chunks of their own.
+        codeSplitting: {
+          groups: [
+            { name: 'vendor-editor', test: /node_modules[\\/](?:@codemirror|@lezer|codemirror)[\\/]/ },
+            { name: 'vendor-react', test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/ },
+          ],
+        },
+      },
+    },
   },
   server: {
     port: 5173,
