@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { createRequire } from 'node:module'
 import { appsNsh, readApps, checklistColumns, MAX_ROWS } from './gen-apps-nsh.mjs'
 import { stagedPackageJson, productionClosure } from './stage.mjs'
 
@@ -105,5 +106,46 @@ describe('publishing the Windows build', () => {
     const workflow = readFileSync(join(import.meta.dirname, '..', '..', '..', '.github', 'workflows', 'release-desktop.yml'), 'utf8')
     expect(workflow).toMatch(/^ {2}publish:\n(?: {4}.*\n)*? {4}needs: build\n/m)
     expect(workflow).toContain('gh release edit "$GITHUB_REF_NAME" --draft=false')
+  })
+})
+
+describe('offering NexusMD as an app to open files with', () => {
+  const root = join(import.meta.dirname, '..')
+  const require = createRequire(import.meta.url)
+  const winConfig = (testInstaller = false) => {
+    const file = require.resolve('../electron-builder.win.cjs')
+    const before = process.env.NEXUSMD_INSTALLER_TEST
+    delete require.cache[file]
+    if (testInstaller) process.env.NEXUSMD_INSTALLER_TEST = '1'; else delete process.env.NEXUSMD_INSTALLER_TEST
+    try { return require(file) } finally {
+      delete require.cache[file]
+      if (before === undefined) delete process.env.NEXUSMD_INSTALLER_TEST; else process.env.NEXUSMD_INSTALLER_TEST = before
+    }
+  }
+  const extensions = list => list.flatMap(a => [].concat(a.ext))
+  const pkg = () => JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+
+  it('lists the same file types as the Android app, so a file opens the same way on both', () => {
+    const manifest = readFileSync(join(root, '..', 'app', 'android', 'app', 'src', 'main', 'AndroidManifest.xml'), 'utf8')
+    const android = new Set([...manifest.matchAll(/pathPattern="\.\*\\\\\.([A-Za-z0-9]+)"/g)].map(m => m[1].toLowerCase()))
+    expect(android.size).toBeGreaterThan(20)
+    expect(new Set(extensions(require('../file-types.cjs').fileAssociations))).toEqual(android)
+  })
+
+  it('names Markdown and JSON on their own, and gives every type a name and a role', () => {
+    const list = require('../file-types.cjs').fileAssociations
+    expect(list.find(a => a.name === 'Markdown document').ext).toEqual(['md', 'markdown'])
+    expect(list.find(a => a.name === 'JSON file').ext).toEqual(['json'])
+    for (const a of list) { expect(a.name).toBeTruthy(); expect(a.role).toBe('Editor') }
+  })
+
+  it('registers them in the Windows installer, and in the Mac and Linux builds', () => {
+    const list = require('../file-types.cjs').fileAssociations
+    expect(winConfig().fileAssociations).toEqual(list)
+    expect(pkg().build.fileAssociations).toEqual(list)
+  })
+
+  it('does not take them over in the test installer, which must leave a real install alone', () => {
+    expect(winConfig(true).fileAssociations).toBeUndefined()
   })
 })

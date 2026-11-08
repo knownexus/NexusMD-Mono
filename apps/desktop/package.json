@@ -132,6 +132,65 @@
       "icon": "assets/icon.png",
       "executableName": "nexusmd"
     },
+    "fileAssociations": [
+      {
+        "ext": [
+          "md",
+          "markdown"
+        ],
+        "name": "Markdown document",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "json"
+        ],
+        "name": "JSON file",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "txt",
+          "log",
+          "csv",
+          "yml",
+          "yaml",
+          "xml",
+          "ini",
+          "toml",
+          "conf",
+          "cfg",
+          "properties",
+          "cs",
+          "csx",
+          "js",
+          "mjs",
+          "jsx",
+          "ts",
+          "tsx",
+          "html",
+          "htm",
+          "css",
+          "scss",
+          "less",
+          "py",
+          "java",
+          "c",
+          "h",
+          "cpp",
+          "hpp",
+          "go",
+          "rs",
+          "php",
+          "rb",
+          "sh",
+          "sql",
+          "ps1"
+        ],
+        "name": "Text or code file",
+        "role": "Editor"
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
