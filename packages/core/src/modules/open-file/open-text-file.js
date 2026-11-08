@@ -5,7 +5,7 @@
 // A file opened again, unchanged, brings its document forward instead of making a copy; the newest document is the one the
 // Documents page opens on, so the file is what is showing when it appears.
 
-import { jsonAutoName } from '@nexusmd/core'
+import { jsonAutoName } from '../json/helpers.js'
 
 export const MAX_OPEN_BYTES = 2 * 1024 * 1024 // a text file bigger than this is not opened (it would fill the browser's storage)
 const DEFAULT_KEY = 'md_documents'

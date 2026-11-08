@@ -4,7 +4,7 @@
 // The workspace may already hold a file of that name with edits made in the Editor, so a different file never replaces it: the
 // new one gets a numbered name. The same file opened again opens the copy that is there.
 
-import { MAX_OPEN_BYTES } from './open-text-file.js'
+import { MAX_OPEN_BYTES } from '@nexusmd/core'
 
 const MAX_COPIES = 99
 

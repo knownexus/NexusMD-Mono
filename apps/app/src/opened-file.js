@@ -1,9 +1,9 @@
 // opened-file.js — a text file opened with the Android app (Open with / Share) arrives through the OpenedFile native
 // plugin (OpenedFilePlugin.java). A Markdown file is added to the Markdown documents and a JSON file to the JSON editor's
-// documents (open-text-file.js); any other text file is put in the Editor's workspace (open-in-editor.js). The app is told
+// documents (open-text-file.js in @nexusmd/core); any other text file is put in the Editor's workspace (open-in-editor.js). The app is told
 // which, so it can show it.
 import { registerPlugin, Capacitor } from '@capacitor/core'
-import { addOpenedDocument, addOpenedJsonDocument, documentNameOf, isMarkdownFile, isJsonFile } from './open-text-file.js'
+import { addOpenedDocument, addOpenedJsonDocument, documentNameOf, isMarkdownFile, isJsonFile } from '@nexusmd/core'
 import { importIntoWorkspace } from './open-in-editor.js'
 import { editorWorkspace, WORKSPACE_ROOT } from './adapters/editor-workspace.js'
 
