@@ -1,5 +1,7 @@
-import { isMarkdownFile, isJsonFile } from '@nexusmd/core'
+import { isMarkdownFile, isJsonFile, rendererLog } from '@nexusmd/core'
 import { baseName, ipcMessage } from './editor-store.js'
+
+const log = rendererLog('editor', 'open-files')
 
 // Files the desktop app is opened with (double-click, "Open with"), routed as on Android: a Markdown or JSON file becomes a saved
 // document in the Documents app, anything else opens in the Editor. Documents is a separate app, so it is used only when it
@@ -19,6 +21,7 @@ export function createOpenHandler({ store, api, host, notify }) {
       if (st?.kind !== 'file') return toEditor(path)
       text = (await api.read(path)).text
     } catch (e) {
+      log.warn('a file the app was opened with could not be read', e)
       notify(`Could not open ${name}: ${ipcMessage(e) || 'the file could not be read.'}`, 'error')
       return
     }
@@ -26,6 +29,7 @@ export function createOpenHandler({ store, api, host, notify }) {
       await host.capabilities.call('documents.openFile', { name, text })
       notify(`Opened ${name}`, 'success')
     } catch (e) {
+      log.warn('a file the app was opened with could not be added to the documents', e)
       notify(ipcMessage(e) || `Could not open ${name}.`, 'error')
     }
   }
