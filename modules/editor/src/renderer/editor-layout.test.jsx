@@ -55,6 +55,27 @@ describe('the Editor tab strip', () => {
   })
 })
 
+describe('the Editor on a short screen', () => {
+  // A phone turned sideways is about 390px tall. The title, toolbar and tabs take about 160px, so a text box that insists on 240px
+  // pushes the status row (path, Saved, Prettify, Save) off the bottom of the screen with no way to scroll to it.
+  it('lets the text box shrink to leave the status row on screen', async () => {
+    const api = {
+      stat: vi.fn(async () => ({ exists: true, kind: 'file' })),
+      read: vi.fn(async p => ({ path: p, text: 'x', bom: false, stamp: 's' })),
+      write: vi.fn(), list: vi.fn(async () => ({ entries: [], truncated: false })),
+    }
+    const store = createEditorStore({ api })
+    render(<EditorApp host={{ adapters: { picker: {} } }} store={store} api={api} />)
+    await store.openFile('/w/a.js')
+    await screen.findByRole('textbox', { name: /Editing / })
+    const box = document.querySelector('.cm-editor').parentElement
+    expect(parseInt(box.style.minHeight, 10)).toBeLessThanOrEqual(120)
+  })
+  it('lets the Markdown preview shrink the same way', () => {
+    expect(parseInt(rule('.nx-ed-preview').match(/min-height:\s*(\d+)px/)?.[1], 10)).toBeLessThanOrEqual(120)
+  })
+})
+
 describe('the Editor toolbar', () => {
   it('wraps onto a second row instead of running off the edge, and lets the Recent list shrink', () => {
     expect(rule('.nx-ed-bar')).toMatch(/flex-wrap:\s*wrap/)

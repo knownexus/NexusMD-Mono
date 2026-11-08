@@ -15,6 +15,14 @@ describe('CodeEditor', () => {
     expect(content.getAttribute('aria-label')).toBe('Edit environment.json')
     expect(content.textContent).toContain('"a": 1')
   })
+  it('is at least 240px tall by default, and a screen with less room can ask for a smaller minimum', () => {
+    const hostOf = (container) => container.querySelector('.cm-editor').parentElement
+    const { container, unmount } = render(<CodeEditor value="x" language="text" onChange={() => {}} ariaLabel="x" />)
+    expect(hostOf(container).style.minHeight).toBe('240px')
+    unmount()
+    const small = render(<CodeEditor value="x" language="text" onChange={() => {}} ariaLabel="x" minHeight={96} />)
+    expect(hostOf(small.container).style.minHeight).toBe('96px')
+  })
   it('replaces the document when the value changes from outside', () => {
     const { container, rerender } = render(<CodeEditor value="one" language="text" onChange={() => {}} ariaLabel="x" />)
     rerender(<CodeEditor value="two" language="text" onChange={() => {}} ariaLabel="x" />)

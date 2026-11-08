@@ -8,6 +8,9 @@ import { isDirty, baseName } from './editor-store.js'
 import '@nexusmd/editor-kit/syntax-colours.css'
 import './editor.css'
 
+// The text box may shrink to this on a short screen (a phone turned sideways), so the status row with Prettify and Save stays on screen.
+const EDIT_MIN_HEIGHT = 96
+
 const eolLabel = eol => (eol === '\r\n' ? 'CRLF' : 'LF')
 
 function Tab({ doc, active, onSelect, onClose }) {
@@ -81,7 +84,7 @@ function DocPane({ doc, store }) {
   if (doc.readOnly) {
     return (
       <>
-        {view === 'preview' ? <Preview doc={doc} /> : <CodeEditor value={doc.text} language={languageForPath(doc.name)} ariaLabel={`Reading ${doc.name}`} readOnly />}
+        {view === 'preview' ? <Preview doc={doc} /> : <CodeEditor value={doc.text} language={languageForPath(doc.name)} ariaLabel={`Reading ${doc.name}`} readOnly minHeight={EDIT_MIN_HEIGHT} />}
         <div className="nx-ed-status">
           <span className="nx-ed-path" title={doc.origin}>{doc.origin}</span>
           {view === 'preview' && <PreviewTextSize />}
@@ -135,7 +138,7 @@ function EditPane({ doc, store, view }) {
       {tidyNote?.bad && <div role="alert" className="nx-ed-banner nx-ed-bad">{tidyNote.text}</div>}
       {view === 'preview' ? <Preview doc={doc} /> : (
         <CodeEditor value={doc.text} language={languageForPath(doc.path)} ariaLabel={`Editing ${doc.name}`} line={doc.line}
-          onChange={text => store.setText(doc.path, text)} apiRef={apiRef} />
+          onChange={text => store.setText(doc.path, text)} apiRef={apiRef} minHeight={EDIT_MIN_HEIGHT} />
       )}
       <div className="nx-ed-status">
         <span className="nx-ed-path" title={doc.path}>{doc.path}</span>

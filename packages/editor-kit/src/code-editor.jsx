@@ -36,7 +36,7 @@ const lineDecorations = (doc, list) => {
  * `apiRef` (a React ref) is given { replaceText(text) } while the editor is mounted. It replaces the whole document as one
  * ordinary edit: reported through onChange and undoable, unlike a new `value`, which is the app setting the text (a Reload).
  */
-export function CodeEditor({ value, language, onChange, ariaLabel, line = null, readOnly = false, lineClasses = null, apiRef = null }) {
+export function CodeEditor({ value, language, onChange, ariaLabel, line = null, readOnly = false, lineClasses = null, apiRef = null, minHeight = 240 }) {
   const host = React.useRef(null)
   const view = React.useRef(null)
   const lang = React.useRef(new Compartment())
@@ -126,5 +126,5 @@ export function CodeEditor({ value, language, onChange, ariaLabel, line = null, 
     v.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) })
   }, [line, value])
 
-  return <div ref={host} style={{ flex: 1, minHeight: 240, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6 }} />
+  return <div ref={host} style={{ flex: 1, minHeight, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6 }} />
 }
