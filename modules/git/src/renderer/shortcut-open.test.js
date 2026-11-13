@@ -7,11 +7,22 @@ beforeEach(() => { forgetRepoRemotes(); takeOpenRequest() })
 
 const listing = (url) => `origin\t${url} (fetch)\norigin\t${url} (push)\n`
 
+// `git worktree list --porcelain -z`: fields and records are separated by NULs.
+const NUL = String.fromCharCode(0)
+const record = (...fields) => fields.join(NUL) + NUL + NUL
+const checkout = (path, branch = 'main') => record(`worktree ${path}`, 'HEAD a', `branch refs/heads/${branch}`)
+const bare = (path) => record(`worktree ${path}`, 'bare')
+// An ordinary repository: its folder is its own worktree.
+const ordinary = async (repo) => checkout(repo.path)
+// A repository kept as a folder of worktrees: the folder is bare, the working copies are inside it.
+const folderOfWorktrees = (path, ...copies) => async () => bare(path) + copies.map(c => checkout(c)).join('')
+
 describe('listLocalRepos', () => {
   const repos = [{ name: 'nexus', path: 'C:/repos/nexus' }, { name: 'scratch', path: 'C:/repos/scratch' }]
+  const adapterOf = (remotes, worktrees = ordinary) => ({ worktrees: vi.fn(worktrees), remotes })
 
   it('gives each registered repository its normalized origin, without credentials', async () => {
-    const adapter = { remotes: vi.fn(async (repo) => (repo.name === 'nexus' ? listing('https://me:tok@github.com/KnownExus/Nexus.git') : '')) }
+    const adapter = adapterOf(vi.fn(async (repo) => (repo.name === 'nexus' ? listing('https://me:tok@github.com/KnownExus/Nexus.git') : '')))
     const list = await listLocalRepos(adapter, repos)
     expect(list).toEqual([
       { name: 'nexus', path: 'C:/repos/nexus', provider: 'local', remote: 'github.com/knownexus/nexus' },
@@ -20,14 +31,46 @@ describe('listLocalRepos', () => {
     expect(JSON.stringify(list)).not.toContain('tok')
   })
 
-  it('asks git for each repository in its own folder, with the registered paths', async () => {
-    const adapter = { remotes: vi.fn(async () => '') }
+  it('asks git in a worktree of each repository, with the registered paths', async () => {
+    const adapter = adapterOf(vi.fn(async () => ''))
     await listLocalRepos(adapter, repos)
     expect(adapter.remotes).toHaveBeenCalledWith({ name: 'nexus', path: 'C:/repos/nexus' }, 'C:/repos/nexus', ['C:/repos/nexus', 'C:/repos/scratch'])
   })
 
+  it('finds the worktree to ask in when the repository is a folder of worktrees, which is not itself one', async () => {
+    const adapter = adapterOf(
+      vi.fn(async () => listing('git@github.com:acme/pathweave.git')),
+      folderOfWorktrees('C:/repos/Pathweave', 'C:/repos/Pathweave/main', 'C:/repos/Pathweave/feature'),
+    )
+    const list = await listLocalRepos(adapter, [{ name: 'Pathweave', path: 'C:/repos/Pathweave' }])
+    expect(adapter.remotes).toHaveBeenCalledWith({ name: 'Pathweave', path: 'C:/repos/Pathweave' }, 'C:/repos/Pathweave/main', ['C:/repos/Pathweave'])
+    expect(list[0].remote).toBe('github.com/acme/pathweave')
+  })
+
+  it('prefers the worktree at the repository’s own path, and skips one git calls stale', async () => {
+    const stale = record('worktree C:/repos/nexus-gone', 'HEAD a', 'branch refs/heads/old', 'prunable gitdir file points to non-existent location')
+    const adapter = adapterOf(vi.fn(async () => ''), async () => stale + checkout('C:/repos/nexus-wt', 'feature') + checkout('C:/repos/nexus'))
+    await listLocalRepos(adapter, [repos[0]])
+    expect(adapter.remotes.mock.calls[0][1]).toBe('C:/repos/nexus')
+  })
+
+  it('does not ask for a remote when the repository has no worktree to ask in', async () => {
+    const adapter = adapterOf(vi.fn(async () => listing('git@github.com:o/n.git')), async () => bare('C:/repos/nexus'))
+    const list = await listLocalRepos(adapter, [repos[0]])
+    expect(list[0].remote).toBe('')
+    expect(adapter.remotes).not.toHaveBeenCalled()
+  })
+
+  it('treats a repository whose worktrees cannot be listed as having no remote, and carries on', async () => {
+    const adapter = adapterOf(
+      vi.fn(async () => listing('https://github.com/o/s.git')),
+      async (repo) => { if (repo.name === 'nexus') throw new Error('not a repository'); return checkout(repo.path) },
+    )
+    expect((await listLocalRepos(adapter, repos)).map(r => r.remote)).toEqual(['', 'github.com/o/s'])
+  })
+
   it('remembers a remote for a minute, then asks again', async () => {
-    const adapter = { remotes: vi.fn(async () => listing('git@github.com:o/n.git')) }
+    const adapter = adapterOf(vi.fn(async () => listing('git@github.com:o/n.git')))
     await listLocalRepos(adapter, repos, 1000)
     await listLocalRepos(adapter, repos, 1000 + 59_000)
     expect(adapter.remotes).toHaveBeenCalledTimes(2)
@@ -36,7 +79,7 @@ describe('listLocalRepos', () => {
   })
 
   it('treats a repository git cannot read as having no remote, and carries on', async () => {
-    const adapter = { remotes: vi.fn(async (repo) => { if (repo.name === 'nexus') throw new Error('not a worktree'); return listing('https://github.com/o/s.git') }) }
+    const adapter = adapterOf(vi.fn(async (repo) => { if (repo.name === 'nexus') throw new Error('not a worktree'); return listing('https://github.com/o/s.git') }))
     const list = await listLocalRepos(adapter, repos)
     expect(list.map(r => r.remote)).toEqual(['', 'github.com/o/s'])
   })
@@ -44,7 +87,7 @@ describe('listLocalRepos', () => {
   it('runs only a few git processes at once', async () => {
     let running = 0
     let peak = 0
-    const adapter = { remotes: async () => { running++; peak = Math.max(peak, running); await new Promise(r => setTimeout(r, 5)); running--; return '' } }
+    const adapter = adapterOf(async () => { running++; peak = Math.max(peak, running); await new Promise(r => setTimeout(r, 5)); running--; return '' })
     const many = Array.from({ length: 12 }, (_, i) => ({ name: `r${i}`, path: `C:/r${i}` }))
     const list = await listLocalRepos(adapter, many)
     expect(list).toHaveLength(12)
@@ -52,7 +95,7 @@ describe('listLocalRepos', () => {
   })
 
   it('is empty for no repositories', async () => {
-    expect(await listLocalRepos({ remotes: vi.fn() }, [])).toEqual([])
+    expect(await listLocalRepos(adapterOf(vi.fn()), [])).toEqual([])
   })
 })
 
@@ -163,21 +206,31 @@ describe('localPinTarget', () => {
 
 describe('listRepoFiles', () => {
   const repos = [{ name: 'nexus', path: 'C:/Repos/Nexus' }, { name: 'other', path: 'C:/repos/other' }]
+  const adapterOf = (files, worktrees = ordinary) => ({ worktrees: vi.fn(worktrees), files: vi.fn(files) })
 
   it('lists the files of the registered repository, however its path is written', async () => {
-    const adapter = { files: vi.fn(async () => ({ files: ['a.js', 'src/b.js'], truncated: false })) }
+    const adapter = adapterOf(async () => ({ files: ['a.js', 'src/b.js'], truncated: false }))
     expect(await listRepoFiles(adapter, repos, 'c:/repos/nexus/')).toEqual({ files: ['a.js', 'src/b.js'], truncated: false })
     expect(adapter.files).toHaveBeenCalledWith({ name: 'nexus', path: 'C:/Repos/Nexus' }, 'C:/Repos/Nexus', ['C:/Repos/Nexus', 'C:/repos/other'])
   })
+  it('lists them in a worktree when the repository is a folder of worktrees, which is not itself one', async () => {
+    const adapter = adapterOf(async () => ({ files: ['README.md'], truncated: false }), folderOfWorktrees('C:/Repos/Nexus', 'C:/Repos/Nexus/master'))
+    expect((await listRepoFiles(adapter, repos, 'C:/Repos/Nexus')).files).toEqual(['README.md'])
+    expect(adapter.files).toHaveBeenCalledWith({ name: 'nexus', path: 'C:/Repos/Nexus' }, 'C:/Repos/Nexus/master', ['C:/Repos/Nexus', 'C:/repos/other'])
+  })
+  it('says so when a repository has no worktree to list in', async () => {
+    const adapter = adapterOf(async () => ({ files: [] }), async () => bare('C:/Repos/Nexus'))
+    await expect(listRepoFiles(adapter, repos, 'C:/Repos/Nexus')).rejects.toThrow(/no worktree/)
+    expect(adapter.files).not.toHaveBeenCalled()
+  })
   it('says when a very large repository was cut short', async () => {
-    const adapter = { files: async () => ({ files: ['a'], truncated: true }) }
-    expect((await listRepoFiles(adapter, repos, 'C:/repos/other')).truncated).toBe(true)
+    expect((await listRepoFiles(adapterOf(async () => ({ files: ['a'], truncated: true })), repos, 'C:/repos/other')).truncated).toBe(true)
   })
   it('gives no files rather than rubbish when git gives something odd', async () => {
-    expect(await listRepoFiles({ files: async () => null }, repos, 'C:/repos/other')).toEqual({ files: [], truncated: false })
-    expect(await listRepoFiles({ files: async () => ({ files: 'x' }) }, repos, 'C:/repos/other')).toEqual({ files: [], truncated: false })
+    expect(await listRepoFiles(adapterOf(async () => null), repos, 'C:/repos/other')).toEqual({ files: [], truncated: false })
+    expect(await listRepoFiles(adapterOf(async () => ({ files: 'x' })), repos, 'C:/repos/other')).toEqual({ files: [], truncated: false })
   })
   it('refuses a repository that is not registered', async () => {
-    await expect(listRepoFiles({ files: vi.fn() }, repos, 'C:/repos/elsewhere')).rejects.toThrow(/not registered/)
+    await expect(listRepoFiles(adapterOf(vi.fn()), repos, 'C:/repos/elsewhere')).rejects.toThrow(/not registered/)
   })
 })

@@ -1,7 +1,7 @@
 // shortcut-open.js — what the Git Workspace does for a Home shortcut to a file or folder (core shortcuts):
 // the repositories it can offer to match one against, a request to open a place, and the plan for showing it.
 // The Dashboard asks through the git.listRepos / git.openPath capabilities (index.js); view-git.jsx carries the plan out.
-import { remoteFromRemotes, cloneRepoIdentity, worktreeId, ignore, rendererLog } from '@nexusmd/core'
+import { remoteFromRemotes, cloneRepoIdentity, parseWorktrees, worktreeId, ignore, rendererLog } from '@nexusmd/core'
 
 const log = rendererLog('git', 'shortcuts')
 
@@ -14,10 +14,30 @@ const POOL = 4
 const remotes = new Map()
 export const forgetRepoRemotes = () => remotes.clear()
 
+// A worktree of a registered repository that git can be asked in: the one at the repository's own path, else the first one
+// there is. A repository kept as a folder of worktrees (a bare repository with its working copies inside it) has none at its
+// own path, and git refuses to be asked about a folder that is not a worktree. null when there is none.
+async function usableWorktree(adapter, repo, registered) {
+  const listed = parseWorktrees(await adapter.worktrees({ name: repo.name, path: repo.path }, registered), repo, '')
+  const usable = listed.filter(t => !t.prunable)
+  return (usable.find(t => samePath(t.path, repo.path)) ?? usable[0])?.path ?? null
+}
+
 // The normalized origin of a repository; '' when it has none or git cannot be asked.
 async function readRemote(adapter, repo, worktreePath, registered) {
   try { return remoteFromRemotes(await adapter.remotes(repo, worktreePath, registered)) } catch (e) {
     ignore(log, 'a repository whose remotes cannot be read has none to match a shortcut against', e)
+    return ''
+  }
+}
+
+// The same, finding the worktree to ask in first.
+async function readRepoRemote(adapter, repo, registered) {
+  try {
+    const worktree = await usableWorktree(adapter, repo, registered)
+    return worktree ? await readRemote(adapter, { name: repo.name, path: repo.path }, worktree, registered) : ''
+  } catch (e) {
+    ignore(log, 'a repository whose worktrees cannot be listed has no remote to match a shortcut against', e)
     return ''
   }
 }
@@ -35,7 +55,7 @@ export async function listLocalRepos(adapter, repos, now = Date.now()) {
       let remote
       if (hit && now - hit.at < TTL) remote = hit.remote
       else {
-        remote = await readRemote(adapter, { name: r.name, path: r.path }, r.path, registered)
+        remote = await readRepoRemote(adapter, r, registered)
         remotes.set(r.path, { at: now, remote })
       }
       out[i] = { name: r.name, path: r.path, provider: 'local', remote }
@@ -63,7 +83,10 @@ export async function localPinTarget({ adapter, repo, worktreePath, registered, 
 export async function listRepoFiles(adapter, repos, repoPath) {
   const repo = repos.find(r => samePath(r.path, repoPath))
   if (!repo) throw new Error('That repository is not registered.')
-  const r = await adapter.files({ name: repo.name, path: repo.path }, repo.path, repos.map(x => x.path))
+  const registered = repos.map(x => x.path)
+  const worktree = await usableWorktree(adapter, repo, registered)
+  if (!worktree) throw new Error('That repository has no worktree to list the files of.')
+  const r = await adapter.files({ name: repo.name, path: repo.path }, worktree, registered)
   return { files: Array.isArray(r?.files) ? r.files : [], truncated: !!r?.truncated }
 }
 
