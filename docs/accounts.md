@@ -57,8 +57,8 @@ which the desktop and Android apps use.
    other devices. Continue uploads them; Cancel signs you out and nothing is uploaded. There is no way to sign in
    without uploading: once sync runs it uploads this device's settings.
 4. Account card. In Settings (the "Data & sync" tab on desktop, the settings screen on Android) the Account card
-   shows your sign-in, the time of the last sync, "Sync now", your devices (rename, remove), change password and
-   log out. Administrators can also create invites and disable or enable users. The device you are using cannot be
+   shows your sign-in, the server it goes to, the time of the last sync, your devices (rename, remove), change
+   password and log out. Saving and loading a profile are in the Profile sync card (see below). Administrators can also create invites and disable or enable users. The device you are using cannot be
    removed, and removing another device asks first. If a removed device is still in use, its next sync still
    uploads its account settings, then it stops syncing and shows the device picker so you can choose which device
    it is again.
@@ -101,9 +101,19 @@ an older version shows "This version of NexusMD can no longer sync. Update Nexus
 
 ## Sync status and conflicts
 
-Settings, Data & sync shows **Profile sync**: one row per profile with the time of its last sync (or why the last
-sync failed), items the server refused (larger than 25 MiB, or over the account's 1 GiB), its open conflicts, and
-one **Sync now** for all profiles.
+Settings shows **Profile sync** (the "Data & sync" tab on desktop; the Profiles page on Android). It says which
+account and server your profiles go to, and has one row per profile: its name (with **Active** on the one you are
+using), when it was last saved to and loaded from the server (or why the last sync failed), items the server refused
+(larger than 25 MiB, or over the account's 1 GiB), and its open conflicts. Each row has two buttons that act on that
+profile alone:
+
+- **Save to server** sends what changed on this device. Nothing on the server is overwritten: if the server's copy
+  changed too, that item becomes a conflict.
+- **Load from server** brings down what the server has newer. Your newer edits here are kept (a clash becomes a
+  conflict), and if it changes anything the app reloads and the row says what was loaded.
+
+Neither replaces one side with the other. Syncing also happens by itself in the background, for every profile, so
+these buttons are for doing it now, for one profile, with a clear direction.
 
 When the same thing changed on two computers between syncs, NexusMD never overwrites either side. The item is
 parked as a conflict, everything else keeps syncing, and a notice says "N sync conflicts need your decision —

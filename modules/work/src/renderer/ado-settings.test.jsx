@@ -12,7 +12,7 @@ vi.mock('./ado-client.js', () => ({
   isAdoConfigured: () => false,
 }))
 vi.mock('@nexusmd/ui', () => ({
-  VsCard: ({ children }) => <div>{children}</div>,
+  VsCard: ({ title, id, children }) => <div data-card={id}>{title ? <span>{title}</span> : null}{children}</div>,
   VsRow: ({ children }) => <div>{children}</div>,
   VsFullRow: ({ children }) => <div>{children}</div>,
   VsSeg: ({ options, onChange }) => (
@@ -29,7 +29,6 @@ vi.mock('@nexusmd/ui', () => ({
   ThemeChipPicker: () => <div>ThemeChipPicker</div>,
   VsPasswordModal: () => null,
   loadConfidentialConfig: vi.fn(() => ({ sections: [], hash: null })),
-  CardFrame: ({ title, children }) => <div><span>{title}</span>{children}</div>,
   Icon: () => null,
   SettField: ({ label, hint, children }) => <div><label>{label}</label>{children}{hint && <span>{hint}</span>}</div>,
 }))
@@ -103,5 +102,14 @@ describe('AdoConnectionCard', () => {
       const textarea = screen.getByPlaceholderText('Project1, Project2')
       expect(textarea.value).toBe('ProjectA, ProjectB')
     })
+  })
+})
+
+describe('AdoConnectionCard is a collapsible Settings card', () => {
+  it('is titled, with the id its open or closed state is remembered under', () => {
+    const { container } = render(<AdoConnectionCard onRefreshData={vi.fn()} />)
+    const card = container.querySelector('[data-card="integrations-ado"]')
+    expect(card).toBeTruthy()
+    expect(card.textContent).toMatch(/Azure DevOps Connection/)
   })
 })

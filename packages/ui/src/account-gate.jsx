@@ -392,7 +392,8 @@ function PendingPurgeNotice({ purge, exportBackup, onDiscard, onLater }) {
  *   exportBackup?: (password: string, scope?: string) => Promise<boolean>, // saves a .nmdprofile (every profile, or one id); true once saved
  *   createSync: (containerKey: object, deviceId: string) => object,
  *   platform: 'windows'|'android'|'web'|'other',
- *   deviceNameDefault: () => string, optOutKey: string },
+ *   deviceNameDefault: () => string, optOutKey: string,
+ *   serverName?: string },            // the server's host, shown in Data & sync so it is clear where profiles go
  *   reloadOnApplied?: boolean, children: React.ReactNode }} props
  *   When a different user signs in than `boundUserKey` records, the gate warns, then calls `clearLocal()`
  *   and `deviceStore.set(null)` before the device picker. With `boundUserKey` but no `clearLocal` the gate
@@ -558,7 +559,8 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
     await showAuth();
   };
 
-  const value = useMemo(() => ({ sync, session, signOut }), [sync, session, signOut]);
+  const serverName = account.serverName || '';
+  const value = useMemo(() => ({ sync, session, signOut, serverName }), [sync, session, signOut, serverName]);
 
   if (phase === 'loading') return null;
   if (phase === 'ready') {

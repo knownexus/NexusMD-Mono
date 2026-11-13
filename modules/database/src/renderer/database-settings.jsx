@@ -1,5 +1,5 @@
 import React from 'react'
-import { Icon, CardFrame, VsSeg, SettField } from '@nexusmd/ui'
+import { Icon, VsCard, VsSeg, SettField } from '@nexusmd/ui'
 import { buildConfig, resolveConnectionParams, buildConnectionString, connectionStringToFields, SQL_AUTH, AZURE_AD_INTERACTIVE } from '@nexusmd/core'
 import { dbManagerAdapter } from './db-manager-adapter.js'
 import { listSavedConnections, saveConnection, getConnectionSecret, deleteConnection } from './db-manager-config.js'
@@ -141,7 +141,7 @@ function ConnectionForm({ initial, onSaved, onCancel, secureStorage }) {
   const isError = status.startsWith('Error')
 
   return (
-    <CardFrame title={initial ? 'Edit Connection' : 'New Connection'} icon={<Icon name="database" size={16} />}>
+    <VsCard title={initial ? 'Edit Connection' : 'New Connection'} icon="database" id="integrations-database-edit" flush={false}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <SettField label="Name">
           <input value={name} onChange={e => setName(e.target.value)}
@@ -263,7 +263,7 @@ function ConnectionForm({ initial, onSaved, onCancel, secureStorage }) {
           )}
         </div>
       </div>
-    </CardFrame>
+    </VsCard>
   )
 }
 
@@ -331,7 +331,7 @@ export function DatabaseConnectionCard({ host }) {
   }
 
   return (
-    <CardFrame title="Database Connections" icon={<Icon name="database" size={16} />}>
+    <VsCard title="Database Connections" icon="database" id="integrations-database" flush={false}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {connections.length === 0 && (
           <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
@@ -368,7 +368,7 @@ export function DatabaseConnectionCard({ host }) {
           <button className="btn primary" onClick={() => setFormState('new')}>Add connection</button>
         </div>
       </div>
-    </CardFrame>
+    </VsCard>
   )
 }
 

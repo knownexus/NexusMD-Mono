@@ -1,5 +1,5 @@
 import React from 'react'
-import { Icon, CardFrame, SettField } from '@nexusmd/ui'
+import { VsCard, SettField } from '@nexusmd/ui'
 import { getAdoConfig, saveAdoConfig, createAdoHttpAdapter } from './ado-client.js'
 import { settInputStyle } from './form-style.js'
 import { DisconnectButton } from './disconnect-button.jsx'
@@ -70,7 +70,7 @@ export function AdoConnectionCard({ onRefreshData }) {
   const isError = status.startsWith('Error')
 
   return (
-    <CardFrame title="Azure DevOps Connection" icon={<Icon name="settings" size={16} />}>
+    <VsCard title="Azure DevOps Connection" icon="settings" id="integrations-ado" flush={false}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
           <input type="checkbox" checked={workItems} onChange={e => setWorkItems(e.target.checked)} />
@@ -110,6 +110,6 @@ export function AdoConnectionCard({ onRefreshData }) {
           )}
         </div>
       </div>
-    </CardFrame>
+    </VsCard>
   )
 }

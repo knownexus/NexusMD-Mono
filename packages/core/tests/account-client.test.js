@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
-  createAccountClient, AccountError,
+  createAccountClient, AccountError, serverNameOf,
 } from '../src/modules/account/account-client.js'
 import {
   MIN_ITERATIONS, deriveKeys, exportContainerKey, unwrapContainerKey, unwrapPrivateKey,
@@ -173,6 +173,20 @@ function setup(opts = {}, clientOpts = {}) {
   })
   return { server, store, client }
 }
+
+describe('serverNameOf', () => {
+  it('is the host of the server, with its port, and nothing else', () => {
+    expect(serverNameOf('https://nexusmd-api-production.up.railway.app')).toBe('nexusmd-api-production.up.railway.app')
+    expect(serverNameOf('https://api.example.com/v1/?x=1#top')).toBe('api.example.com')
+    expect(serverNameOf('http://localhost:8787')).toBe('localhost:8787')
+  })
+  it('never shows credentials written into the address', () => {
+    expect(serverNameOf('https://me:secret@api.example.com/')).toBe('api.example.com')
+  })
+  it('is empty for an address that is not a URL', () => {
+    for (const bad of ['', undefined, null, 'not a url', '/relative/path', 'api.example.com']) expect(serverNameOf(bad)).toBe('')
+  })
+})
 
 describe('public API', () => {
   it('exports the account client from the package root', () => {

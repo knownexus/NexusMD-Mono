@@ -1299,14 +1299,14 @@ describe('per-profile sync status', () => {
     let t = 5000
     const a = device({ srv, ck, now: () => t, init: { 'nexusmd.profiles': PROFILES, 'nexusmd.p.W.ado.org': 'acme' } })
     expect(a.sync.status()).toEqual({ lastSyncAt: null, profiles: {
-      W: { lastSyncAt: null, conflicts: 0, tooLarge: [], quota: [], error: null },
-      H: { lastSyncAt: null, conflicts: 0, tooLarge: [], quota: [], error: null },
+      W: { lastSyncAt: null, lastSavedAt: null, lastLoadedAt: null, conflicts: 0, tooLarge: [], quota: [], error: null },
+      H: { lastSyncAt: null, lastSavedAt: null, lastLoadedAt: null, conflicts: 0, tooLarge: [], quota: [], error: null },
     } })
     await a.sync.syncNow()
     const s = a.sync.status()
     expect(s.lastSyncAt).toBe(5000)
     expect(Object.keys(s.profiles).sort()).toEqual(['H', 'W']) // a purged profile is not listed
-    expect(s.profiles.W).toEqual({ lastSyncAt: 5000, conflicts: 0, tooLarge: [], quota: [], error: null })
+    expect(s.profiles.W).toEqual({ lastSyncAt: 5000, lastSavedAt: null, lastLoadedAt: null, conflicts: 0, tooLarge: [], quota: [], error: null })
     expect(s.profiles.H.lastSyncAt).toBe(5000)
   })
 

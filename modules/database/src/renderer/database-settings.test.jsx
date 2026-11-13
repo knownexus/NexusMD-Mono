@@ -23,7 +23,7 @@ vi.mock('./db-manager-config.js', () => ({
 }))
 
 vi.mock('@nexusmd/ui', () => ({
-  VsCard: ({ children }) => <div>{children}</div>,
+  VsCard: ({ title, id, children }) => <div data-card={id}>{title ? <span>{title}</span> : null}{children}</div>,
   VsRow: ({ children }) => <div>{children}</div>,
   VsFullRow: ({ children }) => <div>{children}</div>,
   VsSeg: ({ options, onChange, value }) => (
@@ -42,7 +42,6 @@ vi.mock('@nexusmd/ui', () => ({
   ThemeChipPicker: () => <div>ThemeChipPicker</div>,
   VsPasswordModal: () => null,
   loadConfidentialConfig: vi.fn(() => ({ sections: [], hash: null })),
-  CardFrame: ({ title, children }) => <div><span>{title}</span>{children}</div>,
   Icon: () => null,
   SettField: ({ label, hint, children }) => <div><label>{label}</label>{children}{hint && <span>{hint}</span>}</div>,
   settInputStyle: {},
@@ -313,5 +312,23 @@ describe('DatabaseConnectionCard — editing prefills the saved secret', () => {
       const textarea = screen.getByPlaceholderText('mssql://username:password@host:1433/database')
       expect(textarea.value).toBe('mssql://user:hunter2@h:1433/d')
     })
+  })
+})
+
+describe('the database cards are collapsible Settings cards', () => {
+  it('the list is titled, with the id its open or closed state is remembered under', () => {
+    const { container } = render(<DatabaseConnectionCard host={host} />)
+    const card = container.querySelector('[data-card="integrations-database"]')
+    expect(card).toBeTruthy()
+    expect(card.textContent).toMatch(/Database Connections/)
+  })
+
+  it('the New Connection form has an id of its own, so collapsing the list does not collapse it', () => {
+    const { container } = render(<DatabaseConnectionCard host={host} />)
+    fireEvent.click(screen.getByText('Add connection'))
+    const form = container.querySelector('[data-card="integrations-database-edit"]')
+    expect(form).toBeTruthy()
+    expect(form.textContent).toMatch(/New Connection/)
+    expect(container.querySelector('[data-card="integrations-database"]')).toBeNull()
   })
 })

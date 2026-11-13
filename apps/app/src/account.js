@@ -2,7 +2,7 @@
 // the session and device id live, and how the sync engine reads this phone's settings.
 // Runs after profile-migration.js (main.jsx imports that first), so profile ids are final here.
 import { Device } from '@capacitor/device'
-import { createAccountClient, createAccountSync, createKeyRegistry, clearAccountLocalData } from '@nexusmd/core'
+import { createAccountClient, createAccountSync, createKeyRegistry, clearAccountLocalData, serverNameOf } from '@nexusmd/core'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 import { getActiveProfileId } from './profile-keys.js'
 
@@ -82,6 +82,7 @@ function clearLocal() {
 export const account = {
   client, sessionStore, deviceStore, createSync,
   platform: 'android',
+  serverName: serverNameOf(API_BASE),
   deviceNameDefault,
   optOutKey: OPT_OUT_KEY,
   boundUserKey: USER_KEY,

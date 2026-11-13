@@ -162,11 +162,9 @@ function Admin({ client }) {
  * @param {{ account: { client: object, deviceStore: { get(): string|null }, optOutKey: string } }} props
  */
 export function AccountCard({ account }) {
-  const { sync, session, signOut } = useAccount();
+  const { sync, session, signOut, serverName } = useAccount();
   const { client, deviceStore, optOutKey } = account;
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-  const [last, setLast] = useState(() => (sync ? sync.lastSyncAt() : null));
+  const last = sync ? sync.lastSyncAt() : null;
 
   if (!session) {
     return (
@@ -180,25 +178,13 @@ export function AccountCard({ account }) {
     );
   }
 
-  const syncNow = async () => {
-    setBusy(true); setMsg('');
-    try {
-      const r = await sync.syncNow();
-      if (r && r.error) setMsg(accountErrorMessage(r.error));
-    } catch (e) { setMsg(accountErrorMessage(e)); }
-    setLast(sync.lastSyncAt());
-    setBusy(false);
-  };
-
   return (
     <VsCard title="Account" icon="lock" flush={false}>
-      <VsRow title={`Signed in as ${session.username}`} desc={`${session.role === 'admin' ? 'Administrator. ' : ''}Last synced: ${fmtTime(last)}`}>
+      <VsRow title={`Signed in as ${session.username}`} desc={`${session.role === 'admin' ? 'Administrator. ' : ''}${serverName ? `Server: ${serverName}. ` : ''}Last synced: ${fmtTime(last)}. Save and Load for each profile are under Profile sync.`}>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn sm" disabled={busy || !sync} onClick={syncNow}>Sync now</button>
           <button className="btn sm ghost" onClick={signOut}>Log out</button>
         </div>
       </VsRow>
-      <Msg text={msg} />
       <VsFullRow title="Devices" desc="Devices that sync with this account."><Devices client={client} currentId={deviceStore.get()} /></VsFullRow>
       <VsFullRow title="Change password" desc="Your other sessions are signed out."><PasswordForm client={client} /></VsFullRow>
       {session.role === 'admin' && <Admin client={client} />}

@@ -9,7 +9,7 @@ import { marked } from 'marked';
 import { WORK_SCREENS, useOffScreens, setOffScreens } from '../work-screens.js';
 import {
   PlToggle, VsRow, VsCard, VsFullRow, ThemeModeSettings, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard, CloudSyncCard,
-  AccountCard, IntegrationsView,
+  AccountCard, IntegrationsView, SyncStatusCard, SyncConflictsCard,
 } from '@nexusmd/ui';
 import { appFileIO } from '../file-io.js';
 import { appCloudProviders, makeAppOAuthService } from '../cloud-auth.js';
@@ -504,6 +504,8 @@ function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onPlaceNav,
               <VsProfiles profileApi={useProfile()} showOrgLabel={false} />
               <BackupRestoreCard fileIO={appFileIO} showExportSingle={true} cloudProviders={appCloudProviders}
                 accountSlot={<AccountCard account={account} />} />
+              <SyncStatusCard />
+              <SyncConflictsCard account={account} />
               <CloudSyncCard controller={appSync} providers={appCloudProviders} fileIO={appFileIO} />
             </>
           )}
