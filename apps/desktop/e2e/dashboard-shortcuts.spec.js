@@ -183,3 +183,52 @@ test('Pin to Dashboard from the Editor adds a shortcut that opens that file, and
     rmSync(notes, { recursive: true, force: true })
   }
 })
+
+// A repository kept as a folder of worktrees (a bare repository with its working copies inside it): the folder itself is not a
+// worktree, so git refuses to be asked about it, and the picker has to ask in one of the worktrees.
+function makeFolderOfWorktrees() {
+  const source = makeRepo()
+  const root = tempDir('nexusmd-shortcut-folder-')
+  git(root, 'clone', '-q', '--bare', source, 'Pathweave')
+  const bare = join(root, 'Pathweave')
+  git(bare, 'worktree', 'add', '-q', join(bare, 'main'), 'main')
+  return { source, root, bare }
+}
+
+test('the picker browses a repository kept as a folder of worktrees, and the shortcut it makes opens that file', async () => {
+  const { source, root, bare } = makeFolderOfWorktrees()
+  try {
+    const seed = {
+      'profile:git.config': { version: 1, repos: [{ name: 'Pathweave', path: bare }], groups: [], roots: null, dotfiles: null },
+      'nexusmd.tweaks': { homeWidgets: [] },
+    }
+    const { win, close } = await launchApp({ seed })
+    try {
+      await win.locator('button', { hasText: 'Add widget' }).last().click({ timeout: 30_000 })
+      const dialog = win.getByRole('dialog')
+      await dialog.getByText('File or folder').click()
+      await dialog.getByText('Repository file or folder').click()
+      await dialog.getByText('Pathweave', { exact: true }).click()
+
+      // Its files are listed, not an error about it not being a worktree.
+      await expect(dialog.getByText('docs', { exact: true })).toBeVisible({ timeout: 30_000 })
+      await expect(dialog.getByText('README.md', { exact: true })).toBeVisible()
+      await expect(dialog.getByText(/Not a worktree|Error invoking/)).toHaveCount(0)
+
+      await dialog.getByText('docs', { exact: true }).click()
+      await dialog.getByText('guide.md', { exact: true }).click()
+      await expect(dialog.getByText('Opens', { exact: true })).toBeVisible()
+      await dialog.getByRole('button', { name: 'Add widget' }).click()
+
+      const tile = tileIn(win)('guide.md')
+      await expect(tile).toBeVisible({ timeout: 20_000 })
+      await tile.click()
+      await expect(win.getByRole('treeitem', { name: /guide\.md/ })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 })
+    } finally {
+      await close()
+    }
+  } finally {
+    rmSync(source, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true })
+  }
+})
