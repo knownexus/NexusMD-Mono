@@ -100,6 +100,16 @@ export function githubRepoOf(repo) {
   return key ? key.slice('github.com/'.length) : ''
 }
 
+// How a clone of a repository is named in a shortcut. A clone of a GitHub repository is named by its owner/name, so any
+// device can find it, whatever its folder is called; any other clone by its folder name and remote, which the devices
+// that have the repository can match (the rest show it greyed out). `remote` is the normalized one, or ''.
+export function cloneRepoIdentity({ name, remote = '' }) {
+  const github = githubRepoOf({ provider: 'local', remote })
+  return github
+    ? { provider: 'github', name: github.split('/')[1], fullName: github, remote }
+    : { provider: 'local', name, ...(remote ? { remote } : {}) }
+}
+
 // The repo among `available` that a shortcut's repo means: same remote or provider identity, else the only
 // one with the same name. null when there is none (or the name is ambiguous).
 export function resolveRepo(shortcutRepo, available) {
@@ -159,9 +169,10 @@ export function targetPlace(config) {
   return { path: dir ? `/${dir}` : '/', file: t.path }
 }
 
-// The documents in a store's saved value, as { id }: the Markdown store keeps { docs: [...] }, the JSON one a bare
-// list. Anything that is not a document with an id is left out, and a value that is not JSON has none.
-export function savedDocIds(raw) {
+// The documents in a store's saved value, as { id, name, updatedAt } (name: the one it was given, else the one it was
+// named after): the Markdown store keeps { docs: [...] }, the JSON one a bare list. Anything that is not a document with
+// an id is left out, and a value that is not JSON has none.
+export function savedDocList(raw) {
   let value = raw
   if (typeof raw === 'string') {
     try { value = JSON.parse(raw) } catch (e) {
@@ -170,7 +181,35 @@ export function savedDocIds(raw) {
     }
   }
   const list = Array.isArray(value) ? value : Array.isArray(value?.docs) ? value.docs : []
-  return list.filter(d => d && typeof d.id === 'string' && d.id).map(d => ({ id: d.id }))
+  return list
+    .filter(d => d && typeof d.id === 'string' && d.id)
+    .map(d => ({ id: d.id, name: str(d.name) || str(d.autoName), updatedAt: Number(d.updatedAt) || 0 }))
+}
+
+// Just the ids of savedDocList.
+export const savedDocIds = (raw) => savedDocList(raw).map(({ id }) => ({ id }))
+
+// The files and folders directly inside `path` of a flat list of repo-relative file paths ("src/a.js"), folders first,
+// each by name, as { name, path ("/src/a.js"), isFolder }. For browsing a repository that was listed in one go.
+export function childrenAt(files, path = '/') {
+  const base = normalizeRepoPath(path)
+  const prefix = base === '/' ? '' : base.slice(1) + '/'
+  const folders = new Map()
+  const out = []
+  for (const f of Array.isArray(files) ? files : []) {
+    const rel = String(f ?? '')
+    if (!rel.startsWith(prefix)) continue
+    const rest = rel.slice(prefix.length)
+    if (!rest) continue
+    const slash = rest.indexOf('/')
+    if (slash < 0) out.push({ name: rest, path: '/' + prefix + rest, isFolder: false })
+    else if (slash > 0) {
+      const name = rest.slice(0, slash)
+      if (!folders.has(name)) folders.set(name, { name, path: '/' + prefix + name, isFolder: true })
+    }
+  }
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  return [...[...folders.values()].sort(byName), ...out.sort(byName)]
 }
 
 // The catalogue page a target lives on (core WIDGET_PAGES), so a host can tell whether that app is switched off.

@@ -22,6 +22,8 @@ const storage = {
 const saf = createSafApi();
 const editorApi = createEditorApi({ workspace: editorWorkspace, saf });
 export const editorStore = createEditorStore({ api: editorApi, storage });
+// The entries of a workspace folder, as { name, kind: 'dir' | 'file' } (the Home shortcut picker).
+export const listEditorFolder = (dir) => editorApi.list(dir).then(r => r?.entries || []);
 const useEditorStore = (store) => React.useSyncExternalStore(store.subscribe, store.getState);
 
 // The picker the EditorApp opens files and folders with, mapped onto the workspace.

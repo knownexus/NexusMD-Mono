@@ -157,8 +157,8 @@ const EXPECTED = [
   // Home widget configuration
   'WIDGET_PAGES', 'pageLabel', 'WIDGET_CONFIG_TYPES', 'newWidgetsAfterSave', 'widgetPage',
   // Dashboard shortcuts to a file, folder or document
-  'LINK_TARGETS', 'DOC_TOOLS', 'LINK_UNAVAILABLE', 'normalizeRepoPath', 'normalizeRemote', 'remoteFromRemotes', 'repoKeys', 'githubRepoOf', 'resolveRepo',
-  'readTarget', 'targetPlace', 'savedDocIds', 'linkPage', 'shortcutTitle', 'shortcutSub', 'shortcutIcon', 'linkId', 'makeLinkWidget', 'resolveLink',
+  'LINK_TARGETS', 'DOC_TOOLS', 'LINK_UNAVAILABLE', 'normalizeRepoPath', 'normalizeRemote', 'remoteFromRemotes', 'repoKeys', 'githubRepoOf', 'cloneRepoIdentity', 'resolveRepo',
+  'readTarget', 'targetPlace', 'savedDocList', 'savedDocIds', 'childrenAt', 'linkPage', 'shortcutTitle', 'shortcutSub', 'shortcutIcon', 'linkId', 'makeLinkWidget', 'resolveLink',
 ].sort()
 
 describe('public API surface', () => {

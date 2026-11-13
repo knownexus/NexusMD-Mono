@@ -1,8 +1,9 @@
 // shortcut-host.js — what a File-or-folder Home shortcut needs from the phone app: whether this device can open
 // one, and how it is opened. The shortcut model is core's (shortcuts); the destinations consume the target
 // from window.NexusMDNav.target (the git browser, the Documents page, the Editor).
-import { resolveLink, repoKeys, savedDocIds, LINK_UNAVAILABLE } from '@nexusmd/core';
+import { resolveLink, repoKeys, savedDocIds, savedDocList, LINK_UNAVAILABLE } from '@nexusmd/core';
 import { getProfileKey } from './profile-keys.js';
+import { isGithubRepo } from './git-backend.js';
 
 export const PLATFORM = 'mobile';
 const VIEW = { git: 'git', doc: 'markdown', editor: 'editor' };
@@ -24,6 +25,22 @@ export const savedDocs = () => ({
   markdown: unique([...idsAt(getProfileKey('md_documents')), ...idsAt('md_documents')]),
   json: unique(idsAt(getProfileKey('json_editor_documents'))),
 });
+
+// The saved documents of a tool, newest first, as { id, name, updatedAt } (read from the same stores as savedDocs).
+export function listSavedDocs(tool) {
+  const keys = tool === 'json' ? [getProfileKey('json_editor_documents')] : [getProfileKey('md_documents'), 'md_documents'];
+  const docs = [...new Map(keys.flatMap(k => {
+    let raw = null;
+    try { raw = localStorage.getItem(k); } catch { /* storage unavailable: no documents */ }
+    return savedDocList(raw);
+  }).map(d => [d.id, d])).values()];
+  return docs.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+// A repository as a Home shortcut names it: by who owns it, never by this device's ids.
+export const repoIdentity = (repo) => (isGithubRepo(repo)
+  ? { provider: 'github', name: repo.name, fullName: repo.fullName, project: repo.project }
+  : { provider: 'ado', name: repo.name, project: repo.project });
 
 export function resolveTarget(t) {
   if (t?.target === 'git') return browsable(t.repo || {}) ? { ok: true } : { ok: false, reason: LINK_UNAVAILABLE.repo };

@@ -16,6 +16,7 @@ import {
 import { Sheet as DefaultSheet } from './app-components.jsx';
 import { Icon } from './icons.jsx';
 import { Card, TimeWidget, NotesWidget, LatestBuild, LatestTest } from './dashboard-interactive-widgets.jsx';
+import { TargetPicker } from './target-picker.jsx';
 
 const { useState, useEffect } = React;
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -265,8 +266,9 @@ function RepoPicker({ value, onPick, listRepoChoices }) {
 // `Sheet` defaults to the shared bottom sheet; `listRepoChoices()` → Promise<{ repos: [{ id, name, project? }] }>
 // feeds the Repo widget's picker.
 // showWidth=false leaves out the half/full Width choice, for a host that sizes widgets itself (desktop).
-// `targetSources` is what lets a host create File-or-folder shortcuts here; without it that type is not offered
-// (the shortcuts a host pins from its viewers are still shown, and editable here).
+// `targetSources` is what lets a host create File-or-folder shortcuts here (what each kind can choose from: see
+// target-picker.jsx); without it that type is not offered (the shortcuts a host pins from its viewers are still shown,
+// and editable here).
 export function WidgetSheet({ open, widget, offScreens = [], onClose, onSave, onRemove, Sheet = DefaultSheet, listRepoChoices, targetSources, showWidth = true }) {
   const editing = !!widget;
   const [type, setType] = useState(null);
@@ -278,6 +280,8 @@ export function WidgetSheet({ open, widget, offScreens = [], onClose, onSave, on
   }, [open, widget]);
   const t = type && WIDGET_TYPES[type];
   const choose = (k) => { setType(k); setConfig({ ...WIDGET_TYPES[k].defaults }); };
+  // A File-or-folder shortcut being made is first picked (and can be picked again), then named.
+  const picking = !!t && t.needsTarget && !editing && !readTarget(config);
   const set = (patch) => setConfig(c => ({ ...c, ...patch }));
   const ready = t && (!t.needsRepo || config.repoId) && (!t.needsTarget || readTarget(config));
   return (
@@ -293,8 +297,16 @@ export function WidgetSheet({ open, widget, offScreens = [], onClose, onSave, on
           ))}
         </div>
       )}
-      {t && (
+      {picking && <TargetPicker sources={targetSources || []} onPick={target => set({ ...target })}/>}
+      {t && !picking && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '4px 2px 8px' }}>
+          {t.needsTarget && !editing && (
+            <div className="m-fld"><span>Opens</span>
+              <div className="m-row-title">{shortcutTitle({ ...config, label: '' })}</div>
+              <div className="m-row-sub">{shortcutSub(config)}</div>
+              <button type="button" className="m-linkbtn" style={{ marginTop: 4 }} onClick={() => setConfig({ ...t.defaults })}>Choose something else</button>
+            </div>
+          )}
           {t.needsRepo && (
             <label className="m-fld"><span>Repository{editing ? ' (fixed once made)' : ''}</span>
               {editing ? <div className="m-row-title">{config.repoName}</div> : <RepoPicker value={config.repoId} onPick={set} listRepoChoices={listRepoChoices}/>}

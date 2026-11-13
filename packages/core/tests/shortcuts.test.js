@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  normalizeRepoPath, normalizeRemote, remoteFromRemotes, repoKeys, githubRepoOf, savedDocIds, resolveRepo, readTarget, targetPlace, linkPage, shortcutTitle, shortcutSub,
+  normalizeRepoPath, normalizeRemote, remoteFromRemotes, repoKeys, githubRepoOf, cloneRepoIdentity, savedDocIds, savedDocList, childrenAt, resolveRepo, readTarget, targetPlace, linkPage, shortcutTitle, shortcutSub,
   shortcutIcon, linkId, makeLinkWidget, resolveLink, LINK_UNAVAILABLE, newWidgetsAfterSave,
 } from '../src/index.js'
 
@@ -79,6 +79,21 @@ describe('githubRepoOf', () => {
   })
 })
 
+describe('cloneRepoIdentity', () => {
+  it('names a clone of a GitHub repository by owner and name, whatever its folder is called', () => {
+    expect(cloneRepoIdentity({ name: 'my-checkout', remote: 'github.com/knownexus/nexus' })).toEqual({
+      provider: 'github', name: 'nexus', fullName: 'knownexus/nexus', remote: 'github.com/knownexus/nexus',
+    })
+  })
+  it('names any other clone by its folder and remote', () => {
+    expect(cloneRepoIdentity({ name: 'api', remote: 'dev.azure.com/org/core/api' })).toEqual({ provider: 'local', name: 'api', remote: 'dev.azure.com/org/core/api' })
+  })
+  it('names a clone with no remote by its folder alone', () => {
+    expect(cloneRepoIdentity({ name: 'scratch' })).toEqual({ provider: 'local', name: 'scratch' })
+    expect(cloneRepoIdentity({ name: 'scratch', remote: '' })).toEqual({ provider: 'local', name: 'scratch' })
+  })
+})
+
 describe('resolveRepo', () => {
   const gh = { id: 'gh:knownexus/nexus', name: 'nexus', project: 'knownexus', fullName: 'knownexus/nexus', provider: 'github' }
   const ado = { id: '7', name: 'api', project: 'Core', provider: 'ado' }
@@ -138,6 +153,53 @@ describe('readTarget', () => {
       { target: 'doc', tool: 'html', docId: 'd' }, { target: 'doc', tool: 'json', docId: '' }, { target: 'editor', path: '' }]) {
       expect(readTarget(bad)).toBe(null)
     }
+  })
+})
+
+describe('savedDocList', () => {
+  it('names each document by the name it was given, else the one it was named after', () => {
+    expect(savedDocList({ docs: [
+      { id: 'a', name: 'Plan', autoName: 'Auto', updatedAt: 5 },
+      { id: 'b', name: null, autoName: 'Auto B' },
+      { id: 'c' },
+    ] })).toEqual([
+      { id: 'a', name: 'Plan', updatedAt: 5 },
+      { id: 'b', name: 'Auto B', updatedAt: 0 },
+      { id: 'c', name: '', updatedAt: 0 },
+    ])
+  })
+  it('reads the bare list of the JSON store, and survives rubbish', () => {
+    expect(savedDocList(JSON.stringify([{ id: 'j', autoName: 'cfg', updatedAt: '9' }]))).toEqual([{ id: 'j', name: 'cfg', updatedAt: 9 }])
+    expect(savedDocList('{nope')).toEqual([])
+    expect(savedDocList(null)).toEqual([])
+  })
+})
+
+describe('childrenAt', () => {
+  const files = ['README.md', 'src/app.js', 'src/lib/a.js', 'src/lib/b.js', 'docs/guide.md', 'srcfile.txt']
+  it('lists the folders first, then the files, by name', () => {
+    expect(childrenAt(files, '/')).toEqual([
+      { name: 'docs', path: '/docs', isFolder: true },
+      { name: 'src', path: '/src', isFolder: true },
+      { name: 'README.md', path: '/README.md', isFolder: false },
+      { name: 'srcfile.txt', path: '/srcfile.txt', isFolder: false },
+    ])
+  })
+  it('lists one folder’s own children, not a sibling that starts with the same letters', () => {
+    expect(childrenAt(files, '/src')).toEqual([
+      { name: 'lib', path: '/src/lib', isFolder: true },
+      { name: 'app.js', path: '/src/app.js', isFolder: false },
+    ])
+    expect(childrenAt(files, 'src/lib/')).toEqual([
+      { name: 'a.js', path: '/src/lib/a.js', isFolder: false },
+      { name: 'b.js', path: '/src/lib/b.js', isFolder: false },
+    ])
+  })
+  it('is empty for a folder with nothing in it, or nothing to look in', () => {
+    expect(childrenAt(files, '/nope')).toEqual([])
+    expect(childrenAt([], '/')).toEqual([])
+    expect(childrenAt(undefined)).toEqual([])
+    expect(childrenAt(['', null, 'a.js'], '/')).toEqual([{ name: 'a.js', path: '/a.js', isFolder: false }])
   })
 })
 

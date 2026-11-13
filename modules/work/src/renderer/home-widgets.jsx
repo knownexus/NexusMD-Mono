@@ -12,6 +12,7 @@ import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useWork } from './work-context.js'
 import { useOffScreens } from './work-screens.js'
 import { DashboardGrid, useDisplay } from './dashboard-grid.jsx'
+import { createTargetSources } from './shortcut-sources.js'
 
 // The desktop Dashboard's widget grid: DashboardView's built-in cards (`cards`) and the optional Home
 // widgets, together in one grid (dashboard-grid.jsx) where each can be moved and resized, with a layout per
@@ -133,6 +134,10 @@ export function HomeWidgets({
     return () => { live = false }
   }, [wantsRepos, caps, stamp, profileId])
 
+  // What a File-or-folder shortcut can be made of here: only the apps that are installed. With none, the type is not offered.
+  const picker = host?.adapters?.picker
+  const targetSources = React.useMemo(() => createTargetSources({ caps, picker }), [caps, picker])
+
   // Whether this desktop can open a shortcut, and how: a repository that is not registered here can still be shown
   // on the GitHub tab when it is on GitHub.
   const resolveTarget = t => {
@@ -197,6 +202,7 @@ export function HomeWidgets({
           )} />
       )}
       <WidgetSheet open={!!sheet} widget={sheet?.widget || null} offScreens={offScreens} Sheet={OverlaySheet} showWidth={false}
+        targetSources={targetSources.length ? targetSources : undefined}
         onClose={() => setSheet(null)}
         onSave={w => { save(newWidgetsAfterSave(widgets, w)); setSheet(null) }}
         onRemove={w => { save(widgets.filter(x => x.id !== w.id)); setSheet(null) }} />

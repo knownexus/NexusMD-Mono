@@ -1,7 +1,7 @@
 // shortcut-open.js — what the Git Workspace does for a Home shortcut to a file or folder (core shortcuts):
 // the repositories it can offer to match one against, a request to open a place, and the plan for showing it.
 // The Dashboard asks through the git.listRepos / git.openPath capabilities (index.js); view-git.jsx carries the plan out.
-import { remoteFromRemotes, githubRepoOf, worktreeId, ignore, rendererLog } from '@nexusmd/core'
+import { remoteFromRemotes, cloneRepoIdentity, worktreeId, ignore, rendererLog } from '@nexusmd/core'
 
 const log = rendererLog('git', 'shortcuts')
 
@@ -53,13 +53,18 @@ export async function listLocalRepos(adapter, repos, now = Date.now()) {
  */
 export async function localPinTarget({ adapter, repo, worktreePath, registered, kind, path }) {
   const remote = await readRemote(adapter, repo, worktreePath, registered)
-  const github = githubRepoOf({ provider: 'local', remote })
   return {
     target: 'git', kind, path: '/' + String(path || '').replace(/^\/+/, ''),
-    repo: github
-      ? { provider: 'github', name: github.split('/')[1], fullName: github, remote }
-      : { provider: 'local', name: repo.name, ...(remote ? { remote } : {}) },
+    repo: cloneRepoIdentity({ name: repo.name, remote }),
   }
+}
+
+/** Every file of a registered repository (repo-relative paths), for choosing one: { files, truncated }. */
+export async function listRepoFiles(adapter, repos, repoPath) {
+  const repo = repos.find(r => samePath(r.path, repoPath))
+  if (!repo) throw new Error('That repository is not registered.')
+  const r = await adapter.files({ name: repo.name, path: repo.path }, repo.path, repos.map(x => x.path))
+  return { files: Array.isArray(r?.files) ? r.files : [], truncated: !!r?.truncated }
 }
 
 // ── The request: a place to show, waiting for the screen to take it ───────────────────────────────────────

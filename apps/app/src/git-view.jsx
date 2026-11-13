@@ -9,13 +9,25 @@ import { Sheet } from './components.jsx';
 import { adoGet, getAdoConfig } from './ado-client.js';
 import { getGithubConfig, isGithubConfigured, createGithubHttpAdapter } from './github-client.js';
 import { groupCommitsByDay } from './git-browser.js';
-import { makeGitBackend, providerName, sourcesOf, pickSource, sourceLabel, isGithubRepo } from './git-backend.js';
+import { makeGitBackend, providerName, sourcesOf, pickSource, sourceLabel } from './git-backend.js';
 import { getProfileKey } from './profile-keys.js';
 import { readLayer, readDepth, layerOf, historyAction } from './git-layers.js';
-import { takeTarget } from './shortcut-host.js';
+import { takeTarget, repoIdentity } from './shortcut-host.js';
 
 const errText = (e) => e?.message || String(e);
 export const listRepoChoices = () => backend.listRepos();
+// The folders and files of a repository on its default branch, as { name, path, isFolder } (the Home shortcut picker).
+const defaultBranches = new Map();
+export async function listRepoFolder(repo, path = '/') {
+  let branch = defaultBranches.get(repo.id);
+  if (!branch) {
+    const branches = await backend.listBranches(repo);
+    branch = (branches.find(b => b.isDefault) || branches[0])?.name;
+    if (!branch) throw new Error('That repository has no branches.');
+    defaultBranches.set(repo.id, branch);
+  }
+  return backend.listItems(repo, branch, path);
+}
 export const REPO_PICK = 'helm.dash.repo';
 const backend = makeGitBackend({
   adoGet, getAdoProjects: () => getAdoConfig().projects || [],
@@ -41,11 +53,6 @@ function RepoRow({ repo, onOpen }) {
     </div>
   );
 }
-
-// A repository as a Home shortcut names it: by who owns it, never by this device's ids.
-const repoIdentity = (repo) => (isGithubRepo(repo)
-  ? { provider: 'github', name: repo.name, fullName: repo.fullName, project: repo.project }
-  : { provider: 'ado', name: repo.name, project: repo.project });
 
 function FileViewer({ repo, branch, path, onBack, onFlash, onPin }) {
   const [text, setText] = useState(null);

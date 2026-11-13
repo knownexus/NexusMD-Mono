@@ -250,11 +250,6 @@ describe('File or folder shortcuts on the desktop Dashboard', () => {
     expect(screen.queryByText('todo.md')).toBeNull()
   })
 
-  it('does not offer to create one in the sheet until a picker exists', () => {
-    mount(<Harness host={hostWith().host} />)
-    fireEvent.click(screen.getByRole('button', { name: /Add widget/ }))
-    expect(within(screen.getByRole('dialog')).queryByText('File or folder')).toBeNull()
-  })
 })
 
 describe('Document shortcuts on the desktop Dashboard', () => {
@@ -308,5 +303,56 @@ describe('Document shortcuts on the desktop Dashboard', () => {
     const { host } = hostWith({ installed: id => id !== 'documents' })
     mount(<Harness host={host} initial={[docLink()]} />)
     expect(screen.queryByText('Settings')).toBeNull()
+  })
+})
+
+describe('Making a File or folder shortcut on the desktop Dashboard', () => {
+  const REPO = { name: 'nexus', path: 'C:/repos/nexus', provider: 'local', remote: 'github.com/knownexus/nexus' }
+  function hostWith(provides) {
+    const call = vi.fn(async name => (name === 'git.listRepos' ? [REPO] : name === 'git.listFiles' ? { files: ['src/app.js'], truncated: false } : true))
+    return { host: { isInstalled: () => true, adapters: { picker: { pickFile: vi.fn(), pickDirectory: vi.fn() } }, capabilities: { has: n => provides.includes(n), call } }, call }
+  }
+  const dialog = () => within(screen.getByRole('dialog'))
+
+  it('picks a repository file, names the clone by its GitHub owner and name, and adds it to the Dashboard', async () => {
+    const onSet = vi.fn()
+    const { host } = hostWith(['git.listRepos', 'git.listFiles', 'git.openPath'])
+    mount(<Harness host={host} onSet={onSet} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add widget/ }))
+    fireEvent.click(dialog().getByText('File or folder'))
+    fireEvent.click(await dialog().findByText('nexus'))
+    fireEvent.click(await dialog().findByText('src'))
+    fireEvent.click(await dialog().findByText('app.js'))
+    expect(await dialog().findByText('Opens')).toBeTruthy()
+    fireEvent.click(dialog().getByRole('button', { name: 'Add widget' }))
+    const saved = onSet.mock.calls.at(-1)
+    expect(saved[0]).toBe('homeWidgets')
+    expect(saved[1]).toEqual([{
+      id: expect.any(String), type: 'link',
+      config: {
+        target: 'git', kind: 'file', path: '/src/app.js',
+        repo: { provider: 'github', name: 'nexus', fullName: 'knownexus/nexus', remote: 'github.com/knownexus/nexus' },
+      },
+    }])
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(await screen.findByText('app.js')).toBeTruthy()
+  })
+
+  it('picks a whole repository as its top folder', async () => {
+    const onSet = vi.fn()
+    const { host } = hostWith(['git.listRepos', 'git.listFiles', 'git.openPath'])
+    mount(<Harness host={host} onSet={onSet} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add widget/ }))
+    fireEvent.click(dialog().getByText('File or folder'))
+    fireEvent.click(await dialog().findByText('nexus'))
+    fireEvent.click(await dialog().findByRole('button', { name: 'Choose this folder' }))
+    fireEvent.click(await dialog().findByRole('button', { name: 'Add widget' }))
+    expect(onSet.mock.calls.at(-1)[1][0].config).toMatchObject({ kind: 'folder', path: '/' })
+  })
+
+  it('does not offer the type when no app can supply anything to choose', () => {
+    mount(<Harness host={hostWith([]).host} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add widget/ }))
+    expect(dialog().queryByText('File or folder')).toBeNull()
   })
 })

@@ -11,6 +11,7 @@ import { getProfileKey } from '../profile-keys.js';
 import { listRepoChoices } from '../git-view.jsx';
 import { mobileTimerStore, createBug, BuildArtifactsSheet } from './dashboard-interactive-widgets.jsx';
 import { openTarget, resolveTarget } from '../shortcut-host.js';
+import { targetSources } from '../shortcut-sources.js';
 
 export { WIDGET_TYPES };
 
@@ -42,5 +43,5 @@ export function WidgetHost({ ctx, ...props }) {
 }
 
 export function WidgetSheet(props) {
-  return <SharedWidgetSheet Sheet={Sheet} listRepoChoices={listRepoChoices} {...props}/>;
+  return <SharedWidgetSheet Sheet={Sheet} listRepoChoices={listRepoChoices} targetSources={targetSources} {...props}/>;
 }

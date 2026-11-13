@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
-  listLocalRepos, forgetRepoRemotes, requestOpen, takeOpenRequest, OPEN_EVENT, explorerState, planOpen, localPinTarget,
+  listLocalRepos, forgetRepoRemotes, requestOpen, takeOpenRequest, OPEN_EVENT, explorerState, planOpen, localPinTarget, listRepoFiles,
 } from './shortcut-open.js'
 
 beforeEach(() => { forgetRepoRemotes(); takeOpenRequest() })
@@ -158,5 +158,26 @@ describe('localPinTarget', () => {
   })
   it('gives a path with a leading slash however it is written', async () => {
     expect((await pin('', { path: '/src/app.js' })).path).toBe('/src/app.js')
+  })
+})
+
+describe('listRepoFiles', () => {
+  const repos = [{ name: 'nexus', path: 'C:/Repos/Nexus' }, { name: 'other', path: 'C:/repos/other' }]
+
+  it('lists the files of the registered repository, however its path is written', async () => {
+    const adapter = { files: vi.fn(async () => ({ files: ['a.js', 'src/b.js'], truncated: false })) }
+    expect(await listRepoFiles(adapter, repos, 'c:/repos/nexus/')).toEqual({ files: ['a.js', 'src/b.js'], truncated: false })
+    expect(adapter.files).toHaveBeenCalledWith({ name: 'nexus', path: 'C:/Repos/Nexus' }, 'C:/Repos/Nexus', ['C:/Repos/Nexus', 'C:/repos/other'])
+  })
+  it('says when a very large repository was cut short', async () => {
+    const adapter = { files: async () => ({ files: ['a'], truncated: true }) }
+    expect((await listRepoFiles(adapter, repos, 'C:/repos/other')).truncated).toBe(true)
+  })
+  it('gives no files rather than rubbish when git gives something odd', async () => {
+    expect(await listRepoFiles({ files: async () => null }, repos, 'C:/repos/other')).toEqual({ files: [], truncated: false })
+    expect(await listRepoFiles({ files: async () => ({ files: 'x' }) }, repos, 'C:/repos/other')).toEqual({ files: [], truncated: false })
+  })
+  it('refuses a repository that is not registered', async () => {
+    await expect(listRepoFiles({ files: vi.fn() }, repos, 'C:/repos/elsewhere')).rejects.toThrow(/not registered/)
   })
 })
