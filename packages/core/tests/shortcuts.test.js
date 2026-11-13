@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  normalizeRepoPath, normalizeRemote, repoKeys, resolveRepo, readTarget, targetPlace, linkPage, shortcutTitle, shortcutSub,
+  normalizeRepoPath, normalizeRemote, remoteFromRemotes, repoKeys, githubRepoOf, resolveRepo, readTarget, targetPlace, linkPage, shortcutTitle, shortcutSub,
   shortcutIcon, linkId, makeLinkWidget, resolveLink, LINK_UNAVAILABLE, newWidgetsAfterSave,
 } from '../src/index.js'
 
@@ -40,6 +40,20 @@ describe('normalizeRemote', () => {
   })
 })
 
+describe('remoteFromRemotes', () => {
+  it('prefers origin, drops credentials, and falls back to the first remote', () => {
+    const text = 'fork\thttps://github.com/me/nexus.git (fetch)\nfork\thttps://github.com/me/nexus.git (push)\norigin\thttps://u:tok@github.com/knownexus/nexus.git (fetch)\norigin\thttps://u:tok@github.com/knownexus/nexus.git (push)\n'
+    expect(remoteFromRemotes(text)).toBe('github.com/knownexus/nexus')
+    expect(remoteFromRemotes('fork\tgit@github.com:me/nexus.git (fetch)\r\nfork\tgit@github.com:me/nexus.git (push)\r\n')).toBe('github.com/me/nexus')
+  })
+  it('is empty when there is no usable remote', () => {
+    expect(remoteFromRemotes('')).toBe('')
+    expect(remoteFromRemotes(undefined)).toBe('')
+    expect(remoteFromRemotes('origin\tC:\\local\\copy (fetch)')).toBe('')
+    expect(remoteFromRemotes('not a listing')).toBe('')
+  })
+})
+
 describe('repoKeys', () => {
   it('lists the remote and the provider identity', () => {
     expect(repoKeys({ provider: 'github', name: 'n', fullName: 'O/N', remote: 'git@github.com:o/n.git' })).toEqual(['github.com/o/n', 'github.com/o/n'])
@@ -47,6 +61,21 @@ describe('repoKeys', () => {
     expect(repoKeys({ provider: 'github', name: 'n', project: 'o' })).toEqual(['github.com/o/n'])
     expect(repoKeys({ provider: 'local', name: 'n' })).toEqual([])
     expect(repoKeys(null)).toEqual([])
+  })
+})
+
+describe('githubRepoOf', () => {
+  it('is owner/name for a GitHub repo, as written', () => {
+    expect(githubRepoOf({ provider: 'github', name: 'nexus', fullName: 'KnownExus/Nexus' })).toBe('KnownExus/Nexus')
+  })
+  it('reads it from a GitHub remote of a local clone', () => {
+    expect(githubRepoOf({ provider: 'local', name: 'n', remote: 'git@github.com:knownexus/nexus.git' })).toBe('knownexus/nexus')
+  })
+  it('is empty for anything not on GitHub', () => {
+    expect(githubRepoOf({ provider: 'ado', name: 'n', project: 'p' })).toBe('')
+    expect(githubRepoOf({ provider: 'local', name: 'n', remote: 'https://gitlab.com/o/n.git' })).toBe('')
+    expect(githubRepoOf({ provider: 'github', name: 'n', fullName: 'bad' })).toBe('')
+    expect(githubRepoOf(null)).toBe('')
   })
 })
 

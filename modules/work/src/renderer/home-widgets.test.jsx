@@ -4,11 +4,13 @@ import { render, screen, fireEvent, within, cleanup } from '@testing-library/rea
 
 let profile = { activeProfile: { type: 'manual' } }
 const hostCtx = []
+const toasts = []
 vi.mock('@nexusmd/ui', async importOriginal => {
   const ui = await importOriginal()
   return {
     ...ui,
     useProfile: () => profile,
+    toast: (...args) => { toasts.push(args) },
     // The real widget, recording the ctx it was given.
     WidgetBody: props => { hostCtx.push(props.ctx); return ui.WidgetBody(props) },
   }
@@ -50,6 +52,7 @@ beforeEach(() => {
   resetOffScreensCache()
   profile = { activeProfile: { type: 'manual' } }
   hostCtx.length = 0
+  toasts.length = 0
 })
 afterEach(cleanup)
 
@@ -136,5 +139,120 @@ describe('Home widgets on the desktop Dashboard', () => {
     const { timer } = hostCtx.at(-1)
     timer.save({ entries: [] })
     expect(localStorage.getItem('nexusmd.p.p1.nexusmd.timelog.v1')).toBe('{"entries":[]}')
+  })
+})
+
+describe('File or folder shortcuts on the desktop Dashboard', () => {
+  const REPOS = [
+    { name: 'nexus', path: 'C:/repos/nexus', provider: 'local', remote: 'github.com/knownexus/nexus' },
+    { name: 'scratch', path: 'C:/repos/scratch', provider: 'local', remote: '' },
+  ]
+  const gitLink = (over = {}) => ({
+    id: 'k1', type: 'link',
+    config: { target: 'git', kind: 'file', path: '/src/app.js', repo: { provider: 'github', name: 'nexus', fullName: 'knownexus/nexus' }, ...over },
+  })
+  const editorLink = (over = {}) => ({
+    id: 'k2', type: 'link', config: { target: 'editor', kind: 'file', path: 'C:\notes\todo.md', name: 'todo.md', platform: 'desktop', ...over },
+  })
+  // A host whose apps offer these capabilities; `call` records and answers them.
+  function hostWith({ provides = ['git.listRepos', 'git.openPath', 'editor.openPath'], repos = REPOS, editorOpens = true, installed = () => true } = {}) {
+    const calls = []
+    const call = vi.fn(async (name, ...args) => {
+      calls.push([name, ...args])
+      if (name === 'git.listRepos') return repos
+      if (name === 'editor.openPath') return editorOpens
+      return true
+    })
+    return { host: { isInstalled: installed, capabilities: { has: n => provides.includes(n), call } }, call, calls }
+  }
+  const tile = name => screen.getByRole('button', { name: new RegExp(`^${name}`) })
+
+  it('shows a repository shortcut although the Repo widget is not offered, and opens it in the local clone found by remote', async () => {
+    const { host, calls } = hostWith()
+    mount(<Harness host={host} initial={[gitLink()]} />)
+    await screen.findByText('app.js')
+    fireEvent.click(tile('app.js'))
+    await vi.waitFor(() => expect(calls.some(c => c[0] === 'git.openPath')).toBe(true))
+    expect(calls.find(c => c[0] === 'git.openPath')[1]).toEqual({
+      path: '/src/app.js', kind: 'file', repoPath: 'C:/repos/nexus', githubRepo: 'knownexus/nexus',
+    })
+  })
+
+  it('carries the shortcut’s branch', async () => {
+    const { host, calls } = hostWith()
+    mount(<Harness host={host} initial={[gitLink({ branch: 'dev' })]} />)
+    fireEvent.click(await screen.findByText('app.js'))
+    await vi.waitFor(() => expect(calls.some(c => c[0] === 'git.openPath')).toBe(true))
+    expect(calls.find(c => c[0] === 'git.openPath')[1].branch).toBe('dev')
+  })
+
+  it('falls back to GitHub for a GitHub repository with no local clone, and is not greyed', async () => {
+    const { host, calls } = hostWith({ repos: [REPOS[1]] })
+    mount(<Harness host={host} initial={[gitLink()]} />)
+    const t = await screen.findByText('app.js')
+    await vi.waitFor(() => expect(calls.some(c => c[0] === 'git.listRepos')).toBe(true))
+    expect(tile('app.js').getAttribute('aria-disabled')).toBe('false')
+    fireEvent.click(t)
+    await vi.waitFor(() => expect(calls.some(c => c[0] === 'git.openPath')).toBe(true))
+    const spec = calls.find(c => c[0] === 'git.openPath')[1]
+    expect(spec.githubRepo).toBe('knownexus/nexus')
+    expect(spec).not.toHaveProperty('repoPath')
+  })
+
+  it('greys out an Azure DevOps repository that is not cloned here, and says why instead of opening it', async () => {
+    const { host, calls } = hostWith({ repos: [REPOS[1]] })
+    mount(<Harness host={host} initial={[gitLink({ repo: { provider: 'ado', name: 'api', project: 'Core' } })]} />)
+    await vi.waitFor(() => expect(tile('app.js').getAttribute('aria-disabled')).toBe('true'))
+    fireEvent.click(tile('app.js'))
+    expect(await screen.findByText('This repository is not available on this device.')).toBeTruthy()
+    expect(calls.some(c => c[0] === 'git.openPath')).toBe(false)
+  })
+
+  it('asks Git Workspace for its repositories only when a shortcut needs them', async () => {
+    const { host, call } = hostWith()
+    mount(<Harness host={host} initial={[editorLink()]} />)
+    await screen.findByText('todo.md')
+    expect(call).not.toHaveBeenCalledWith('git.listRepos')
+  })
+
+  it('hides a repository shortcut when Git Workspace is not installed', () => {
+    const { host } = hostWith({ provides: [], installed: id => id !== 'git' })
+    mount(<Harness host={host} initial={[gitLink()]} />)
+    expect(screen.queryByText('app.js')).toBeNull()
+  })
+
+  it('opens an Editor shortcut through the Editor', async () => {
+    const { host, calls } = hostWith()
+    mount(<Harness host={host} initial={[editorLink()]} />)
+    fireEvent.click(await screen.findByText('todo.md'))
+    await vi.waitFor(() => expect(calls).toContainEqual(['editor.openPath', 'C:\notes\todo.md']))
+    expect(toasts).toEqual([])
+  })
+
+  it('says when the Editor’s file is gone, on the Dashboard', async () => {
+    const { host } = hostWith({ editorOpens: false })
+    mount(<Harness host={host} initial={[editorLink()]} />)
+    fireEvent.click(await screen.findByText('todo.md'))
+    await vi.waitFor(() => expect(toasts).toContainEqual(['todo.md no longer exists.', 'error']))
+  })
+
+  it('greys out an Editor shortcut made on the phone', async () => {
+    const { host, calls } = hostWith()
+    mount(<Harness host={host} initial={[editorLink({ path: '/editor/a.md', name: 'a.md', platform: 'mobile' })]} />)
+    fireEvent.click(await screen.findByText('a.md'))
+    expect(await screen.findByText('This was made on another kind of device and opens only there.')).toBeTruthy()
+    expect(calls.some(c => c[0] === 'editor.openPath')).toBe(false)
+  })
+
+  it('hides an Editor shortcut when the Editor app is not installed', () => {
+    const { host } = hostWith({ installed: id => id !== 'editor' })
+    mount(<Harness host={host} initial={[editorLink()]} />)
+    expect(screen.queryByText('todo.md')).toBeNull()
+  })
+
+  it('does not offer to create one in the sheet until a picker exists', () => {
+    mount(<Harness host={hostWith().host} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add widget/ }))
+    expect(within(screen.getByRole('dialog')).queryByText('File or folder')).toBeNull()
   })
 })

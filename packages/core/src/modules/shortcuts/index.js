@@ -6,6 +6,10 @@
 // The widget list syncs between devices, so a git target names the repo by identity (remote, owner/name) rather
 // than by anything local, and each device resolves it to what it has (resolveRepo / resolveLink).
 
+import { ignore, rendererLog } from '../../log.js'
+
+const log = rendererLog('core', 'shortcuts')
+
 export const LINK_TARGETS = ['git', 'doc', 'editor']
 export const DOC_TOOLS = ['markdown', 'json']
 export const LINK_UNAVAILABLE = {
@@ -43,7 +47,7 @@ export function normalizeRemote(url) {
   const slash = s.indexOf('/')
   const at = (slash < 0 ? s : s.slice(0, slash)).lastIndexOf('@')
   if (at >= 0) s = s.slice(at + 1)
-  try { s = decodeURIComponent(s) } catch { /* keep it as written */ }
+  try { s = decodeURIComponent(s) } catch (e) { ignore(log, 'a remote with a bad percent escape is kept as written', e) }
   s = s.replace(/[?#].*$/, '').replace(/\/+$/, '').replace(/\.git$/i, '').toLowerCase()
   let m = /^ssh\.dev\.azure\.com\/v3\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(s)
   if (m) return `dev.azure.com/${m[1]}/${m[2]}/${m[3]}`
@@ -52,6 +56,20 @@ export function normalizeRemote(url) {
   m = /^([^./]+)\.visualstudio\.com\/([^/]+)\/_git\/([^/]+)$/.exec(s)
   if (m) return `dev.azure.com/${m[1]}/${m[2]}/${m[3]}`
   return /^[^/\s]+\/.+/.test(s) ? s : ''
+}
+
+// The normalized remote of a repository from its `git remote -v` listing ("<name>\t<url> (fetch)" lines):
+// origin's, else the first one that is a remote. '' when there is none.
+// Only the normalized form is returned, so credentials in a URL go no further.
+export function remoteFromRemotes(text) {
+  const found = []
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const [name, raw, kind] = line.trim().split(/\s+/)
+    if (kind === '(push)') continue
+    const url = normalizeRemote(raw)
+    if (name && url) found.push({ name, url })
+  }
+  return (found.find(r => r.name === 'origin') || found[0] || {}).url || ''
 }
 
 // Every identity a repo can be known by: its remote, GitHub owner/name, Azure DevOps project/name.
@@ -68,6 +86,15 @@ export function repoKeys(repo) {
     keys.push(`ado:${lower(repo.project)}/${lower(repo.name)}`)
   }
   return keys
+}
+
+// The GitHub "owner/name" a repo is, from its provider identity or its remote; '' when it is not on GitHub.
+export function githubRepoOf(repo) {
+  if (!repo || typeof repo !== 'object') return ''
+  const own = str(repo.fullName)
+  if (lower(repo.provider) === 'github' && /^[^/\s]+\/[^/\s]+$/.test(own)) return own
+  const key = repoKeys(repo).find(k => /^github\.com\/[^/]+\/[^/]+$/.test(k))
+  return key ? key.slice('github.com/'.length) : ''
 }
 
 // The repo among `available` that a shortcut's repo means: same remote or provider identity, else the only

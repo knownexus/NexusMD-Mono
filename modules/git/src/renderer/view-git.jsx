@@ -9,7 +9,9 @@ import { useGitConfig } from './use-git-config.js'
 import { useGitSnapshot } from './use-git-snapshot.js'
 import { GroupPicker } from './group-picker.jsx'
 import { BranchList, visibleTrees } from './branch-list.jsx'
-import { usePathsMissing, Icon } from '@nexusmd/ui'
+import { usePathsMissing, Icon, toast } from '@nexusmd/ui'
+import { seedExplorerView } from './file-explorer.jsx'
+import { takeOpenRequest, planOpen, OPEN_EVENT } from './shortcut-open.js'
 import { useGitShortcuts } from './use-git-shortcuts.js'
 import { BranchSwitcher } from './branch-switcher.jsx'
 import { AttentionOverview } from './attention-overview.jsx'
@@ -111,6 +113,30 @@ function GitWorkspace({ adapter, host, active }) {
     onResult: r => setCmdLines(l => [...l, ...toLog(r.detail || '', r.ok ? 'ok' : 'bad'), ...(r.notes ? toLog(r.notes, 'muted') : [])].slice(-MAX_LINES)) })
   // Work's GitHub connection, when Work is installed and connected; otherwise there is no GitHub tab.
   const github = useGithub(host)
+  // A Home shortcut to a file or folder (shortcut-open.js): the request is heard here, or found waiting when the page
+  // opens, and carried out once there is a snapshot to find the worktree in. The Files tab then shows the place.
+  const [openReq, setOpenReq] = React.useState(null)
+  React.useEffect(() => {
+    const take = () => { const r = takeOpenRequest(); if (r) setOpenReq(r) }
+    take()
+    window.addEventListener(OPEN_EVENT, take)
+    return () => window.removeEventListener(OPEN_EVENT, take)
+  }, [])
+  React.useEffect(() => {
+    if (!openReq || !snapshot) return
+    const plan = planOpen(openReq, { repos: config.repos, trees: snapshot.worktrees ?? [] })
+    setOpenReq(null)
+    const current = getGitConfig().view
+    if (plan.kind === 'local') {
+      seedExplorerView(plan.viewKey, plan)
+      setGitConfig({ view: { ...current, tab: undefined, group: ALL_PROJECTS, selected: worktreeId(plan.tree), panel: 'files', collapsed: current.collapsed.filter(n => n !== plan.repo.name) } })
+    } else if (plan.kind === 'github' && github) {
+      if (plan.viewKey) seedExplorerView(plan.viewKey, plan)
+      setGitConfig({ view: { ...current, tab: 'github', githubRepo: plan.githubRepo } })
+    } else {
+      toast('That repository is not available here.', 'error')
+    }
+  }, [openReq, snapshot]) // eslint-disable-line react-hooks/exhaustive-deps
   const sync = useGitSync({ adapter, registered, reload })
   // A pop-out window saved or resolved a file: read that repository again.
   const reposRef = React.useRef(config.repos)

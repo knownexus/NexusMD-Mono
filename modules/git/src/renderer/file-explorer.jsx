@@ -14,6 +14,14 @@ const keep = (key, patch) => views.set(key, { ...viewOf(key), ...patch })
 /** Forgets every remembered explorer (open folders, picked file, filter, scroll). */
 export function forgetExplorerViews() { views.clear() }
 
+export const EXPLORER_SEED_EVENT = 'nexusmd:explorer-seed'
+/** Sets what the explorer remembered under `viewKey` shows: these folders open and this file picked (the filter
+ *  cleared). An explorer already showing that view takes it at once; one drawn later starts from it. */
+export function seedExplorerView(viewKey, { open = [], selected = null } = {}) {
+  keep(viewKey, { open, selected, filter: '' })
+  window.dispatchEvent(new CustomEvent(EXPLORER_SEED_EVENT, { detail: viewKey }))
+}
+
 // The tree flattened to the rows that show: folders open in `open`, in tree order. With a filter,
 // only files whose path holds it show, inside every folder above them, all open.
 function visibleRows(node, open, depth, out, match) {
@@ -94,6 +102,15 @@ export function FileExplorer({
     setOpen(new Set(v.open)); setSelected(v.selected); setFilter(v.filter)
   }, [viewKey])
   React.useEffect(() => { if (shownFor.current === viewKey) keep(viewKey, { open: [...open], selected, filter }) }, [open, selected, filter, viewKey])
+  React.useEffect(() => {
+    const seeded = e => {
+      if (e.detail !== viewKey) return
+      const v = viewOf(viewKey)
+      setOpen(new Set(v.open)); setSelected(v.selected); setFilter(v.filter)
+    }
+    window.addEventListener(EXPLORER_SEED_EVENT, seeded)
+    return () => window.removeEventListener(EXPLORER_SEED_EVENT, seeded)
+  }, [viewKey])
 
   const root = React.useMemo(() => buildFileTree(files ?? []), [files])
   const match = React.useMemo(() => matching(files ?? [], filter), [files, filter])
