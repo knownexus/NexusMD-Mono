@@ -1,6 +1,6 @@
 // account.js — the desktop's NexusMD account wiring for <AccountGate> and <AccountCard>: where the
 // session and device id live, and how the sync engine reads this machine's settings.
-import { createAccountClient, createAccountSync, createKeyRegistry, clearAccountLocalData, listUnpushed, rendererLog, ignore } from '@nexusmd/core'
+import { createAccountClient, createAccountSync, createKeyRegistry, clearAccountLocalData, listUnpushed, serverNameOf, rendererLog, ignore } from '@nexusmd/core'
 import { buildProfileBundle } from '@nexusmd/ui'
 import { secureStorageAdapter, bundleSecureStorage } from './adapters/secureStorage.js'
 import { desktopFileIO } from './file-io.js'
@@ -74,6 +74,7 @@ function deviceNameDefault() {
 export const account = {
   client, sessionStore, deviceStore, createSync,
   platform: 'windows',
+  serverName: serverNameOf(API_BASE),
   deviceNameDefault,
   optOutKey: OPT_OUT_KEY,
   boundUserKey: USER_KEY,

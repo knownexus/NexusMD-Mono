@@ -52,7 +52,7 @@ const EXPECTED = [
   'MIN_ITERATIONS', 'randomSalt', 'deriveKeys', 'generateContainerKey', 'exportContainerKey',
   'importContainerKey', 'wrapContainerKey', 'unwrapContainerKey', 'encryptJson', 'decryptJson',
   'opaqueId', 'generateKeyPair', 'wrapPrivateKey', 'unwrapPrivateKey',
-  'createAccountClient', 'AccountError',
+  'createAccountClient', 'AccountError', 'serverNameOf',
   'createKeyRegistry', 'TWEAK_ACCOUNT_FIELDS', 'KEY_ALIASES', 'SYNC_SKIP', 'isSkippedKey',
   'createAccountSync', 'clearAccountLocalData', 'listUnpushed', 'purgeProfileLocal',
   // Field/column visibility catalogs + resolver (configurable cards & tables)

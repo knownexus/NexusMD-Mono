@@ -63,6 +63,9 @@ export function loadMeta(storage, metaKey) {
     devicePrefs: { revision: 0, ...(isPlainObject(m.devicePrefs) ? m.devicePrefs : {}) },
     ...(m.lastSyncAt ? { lastSyncAt: m.lastSyncAt } : {}),
     ...(isPlainObject(m.profileSync) ? { profileSync: { ...m.profileSync } } : {}),
+    // when a profile was last saved to / loaded from the server on its own (pid -> time)
+    ...(isPlainObject(m.profileSaved) ? { profileSaved: { ...m.profileSaved } } : {}),
+    ...(isPlainObject(m.profileLoaded) ? { profileLoaded: { ...m.profileLoaded } } : {}),
     ...(typeof m.lastError === 'string' && m.lastError ? { lastError: m.lastError } : {}),
     // ids of items the last round could not read on this device (left alone; see readSnapshot)
     ...(Array.isArray(m.unreadable) && m.unreadable.length ? { unreadable: m.unreadable.filter((id) => typeof id === 'string') } : {}),

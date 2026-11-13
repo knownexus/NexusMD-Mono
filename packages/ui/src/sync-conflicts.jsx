@@ -128,7 +128,7 @@ export function ConflictDialog({ conflict: c, profileName, deviceName, sync, onC
     setBusy(false);
     if (r && r.error) {
       setError(r.error.code === 'conflict'
-        ? 'This changed again on another computer. Sync now, then resolve it again.'
+        ? 'This changed again on another computer. Load that profile from the server, then resolve it again.'
         : accountErrorMessage(r.error));
       return;
     }

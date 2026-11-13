@@ -19,10 +19,10 @@ const mkClient = (over = {}) => ({
 });
 const mkSync = () => ({ syncNow: vi.fn(async () => ({ applied: 0 })), lastSyncAt: vi.fn(() => 1700000000000) });
 
-const mount = ({ role = 'user', client = mkClient(), sync = mkSync(), signOut = vi.fn() } = {}) => {
+const mount = ({ role = 'user', client = mkClient(), sync = mkSync(), signOut = vi.fn(), serverName = '' } = {}) => {
   const account = { client, deviceStore: { get: () => 'd1' }, optOutKey: 'o' };
   render(
-    <AccountContext.Provider value={{ sync, session: { username: 'ann', role }, signOut }}>
+    <AccountContext.Provider value={{ sync, session: { username: 'ann', role }, signOut, serverName }}>
       <AccountCard account={account} />
     </AccountContext.Provider>,
   );
@@ -32,12 +32,26 @@ const mount = ({ role = 'user', client = mkClient(), sync = mkSync(), signOut = 
 beforeEach(() => localStorage.clear());
 
 describe('AccountCard', () => {
-  it('shows status and syncs now', async () => {
-    const { sync } = mount();
-    expect(screen.getByText(/ann/)).toBeTruthy();
+  it('shows who is signed in, to which server, and when it last synced', async () => {
+    mount({ serverName: 'api.example.com' });
+    expect(screen.getByText(/Signed in as ann/)).toBeTruthy();
+    expect(screen.getByText(/Server: api\.example\.com/)).toBeTruthy();
     expect(screen.getByText(/Last synced/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
-    await waitFor(() => expect(sync.syncNow).toHaveBeenCalled());
+    await screen.findByText('Laptop');
+  });
+
+  it('does not name a server when there is none to name', async () => {
+    mount();
+    expect(screen.queryByText(/Server:/)).toBeNull();
+    await screen.findByText('Laptop');
+  });
+
+  it('has no Sync now: saving and loading are per profile, under Profile sync', async () => {
+    const { sync } = mount();
+    expect(screen.queryByRole('button', { name: /sync now/i })).toBeNull();
+    expect(screen.getByText(/Save and Load for each profile are under Profile sync/)).toBeTruthy();
+    expect(sync.syncNow).not.toHaveBeenCalled();
+    await screen.findByText('Laptop');
   });
 
   it('hides admin sections for non-admins', async () => {

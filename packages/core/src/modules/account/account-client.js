@@ -442,3 +442,9 @@ export function createAccountClient({
     ),
   }
 }
+
+/** The host of the server an account lives on ("api.example.com"), for showing which one is in use; '' when the address is not a URL. */
+export function serverNameOf(baseUrl) {
+  const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(String(baseUrl ?? '').trim())
+  return m ? m[1].replace(/^[^@]*@/, '') : ''
+}

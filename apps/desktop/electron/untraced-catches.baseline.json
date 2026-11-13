@@ -165,7 +165,7 @@
   "packages/main-kit/src/trace/store.cjs": 2,
   "packages/shell-sdk/src/profile-keys.js": 1,
   "packages/shell-sdk/src/use-persisted-state.js": 1,
-  "packages/ui/src/account-card.jsx": 5,
+  "packages/ui/src/account-card.jsx": 4,
   "packages/ui/src/account-gate.jsx": 8,
   "packages/ui/src/app-components.jsx": 2,
   "packages/ui/src/dashboard-interactive-widgets.jsx": 2,

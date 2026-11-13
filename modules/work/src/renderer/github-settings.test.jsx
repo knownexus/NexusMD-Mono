@@ -10,7 +10,7 @@ vi.mock('./github-client.js', () => ({
   createGithubHttpAdapter: vi.fn(() => ({ fetch: vi.fn() })),
 }))
 vi.mock('@nexusmd/ui', () => ({
-  CardFrame: ({ title, children }) => <div><span>{title}</span>{children}</div>,
+  VsCard: ({ title, id, children }) => <div data-card={id}>{title ? <span>{title}</span> : null}{children}</div>,
   Icon: () => null,
   SettField: ({ label, hint, children }) => <div><label>{label}</label>{children}{hint && <span>{hint}</span>}</div>,
 }))
@@ -158,5 +158,14 @@ describe('GithubConnectionCard where issues and builds show', () => {
     getGithubConfig.mockReturnValueOnce({ pat: '', repos: [], issues: true, inWork: false, login: '' })
     mount(fakeClient())
     expect(screen.getByLabelText('Git only').checked).toBe(true)
+  })
+})
+
+describe('GithubConnectionCard is a collapsible Settings card', () => {
+  it('is titled, with the id its open or closed state is remembered under', () => {
+    mount(fakeClient())
+    const card = document.querySelector('[data-card="integrations-github"]')
+    expect(card).toBeTruthy()
+    expect(card.textContent).toMatch(/GitHub Connection/)
   })
 })

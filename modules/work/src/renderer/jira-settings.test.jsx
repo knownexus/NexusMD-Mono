@@ -145,3 +145,40 @@ describe('WorkItemsDisplayCard', () => {
     expect(localStorage.getItem('nexusmd.wi.displayMode')).toBe('"separate"')
   })
 })
+
+// These two cards are the real collapsible card (VsCard), not a stub, so collapsing is what a person sees.
+describe('the Jira cards collapse and stay collapsed', () => {
+  const collapsedIds = () => {
+    const key = Object.keys(localStorage).find(k => k.endsWith('nexusmd.settings.collapsed'))
+    return key ? JSON.parse(localStorage.getItem(key)) : []
+  }
+  const toggle = (title) => screen.getByRole('button', { name: new RegExp(title) })
+
+  it('Jira Cloud Connection folds away, is remembered under its own id, and is still folded when shown again', () => {
+    const first = render(<JiraConnectionCard />)
+    expect(toggle('Jira Cloud Connection').getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(toggle('Jira Cloud Connection'))
+    expect(toggle('Jira Cloud Connection').getAttribute('aria-expanded')).toBe('false')
+    expect(collapsedIds()).toEqual(['integrations-jira'])
+    first.unmount()
+    render(<JiraConnectionCard />)
+    expect(toggle('Jira Cloud Connection').getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('Work Items Display folds away on its own, leaving the Jira connection as it was', () => {
+    render(<><JiraConnectionCard /><WorkItemsDisplayCard /></>)
+    fireEvent.click(toggle('Work Items Display'))
+    expect(toggle('Work Items Display').getAttribute('aria-expanded')).toBe('false')
+    expect(toggle('Jira Cloud Connection').getAttribute('aria-expanded')).toBe('true')
+    expect(collapsedIds()).toEqual(['integrations-work-display'])
+  })
+
+  it('keeps a half-typed field while folded, and opens again with it', () => {
+    render(<JiraConnectionCard />)
+    const site = screen.getAllByRole('textbox')[0]
+    fireEvent.change(site, { target: { value: 'acme.atlassian.net' } })
+    fireEvent.click(toggle('Jira Cloud Connection'))
+    fireEvent.click(toggle('Jira Cloud Connection'))
+    expect(screen.getAllByRole('textbox')[0].value).toBe('acme.atlassian.net')
+  })
+})
