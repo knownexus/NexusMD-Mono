@@ -75,3 +75,74 @@ describe('PRView with GitHub pull requests', () => {
     expect(screen.queryByText('#gh:acme/web#7')).toBeNull()
   })
 })
+
+describe('PRView All and Mine tabs', () => {
+  const pr = (id, title, over = {}) => ({ ...basePr, id, title, author: 'sam-lee', ...over })
+  const PRS = [
+    pr(1, 'Mine, ready', { author: 'alex-doe' }),
+    pr(2, 'Mine, draft', { author: 'alex-doe', status: 'draft' }),
+    pr(3, 'Mine, merged', { author: 'alex-doe', status: 'merged' }),
+    pr(4, 'Theirs, ready'),
+    pr(5, 'Theirs, draft', { status: 'draft' }),
+  ]
+  function renderWith(props, { filter = 'needsMe', me = { name: 'Alex Doe' } } = {}) {
+    const storage = memStorage({ 'nexusmd.pr.filter': JSON.stringify(filter) })
+    return render(
+      <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {}, data: { ORG: 'o', TEAM: [], ME: me } }}>
+        <PRView onOpen={vi.fn()} onOpenLink={vi.fn()} {...props} />
+      </NexusDataProvider>,
+    )
+  }
+  // The tabs are plain divs, so they are found by their class and the start of their text.
+  const chip = name => {
+    const hit = [...document.querySelectorAll('.filter-chip')].find(el => el.textContent.startsWith(name))
+    if (!hit) throw new Error(`no ${name} tab`)
+    return hit
+  }
+  afterEach(() => { window.NexusMDNav = null })
+
+  it('All shows every pull request, drafts and merged ones too, and counts them', () => {
+    renderWith({ prs: PRS })
+    expect(chip('All').textContent).toMatch(/5/)
+    fireEvent.click(chip('All'))
+    for (const p of PRS) expect(screen.getByText(p.title)).toBeTruthy()
+  })
+
+  it('Mine shows only the ones I opened, whatever their state, and counts them', () => {
+    renderWith({ prs: PRS })
+    expect(chip('Mine').textContent).toMatch(/3/)
+    fireEvent.click(chip('Mine'))
+    for (const t of ['Mine, ready', 'Mine, draft', 'Mine, merged']) expect(screen.getByText(t)).toBeTruthy()
+    for (const t of ['Theirs, ready', 'Theirs, draft']) expect(screen.queryByText(t)).toBeNull()
+  })
+
+  it('moving between All and Mine changes the list', () => {
+    renderWith({ prs: PRS }, { filter: 'all' })
+    expect(screen.getByText('Theirs, ready')).toBeTruthy()
+    fireEvent.click(chip('Mine'))
+    expect(screen.queryByText('Theirs, ready')).toBeNull()
+    fireEvent.click(chip('All'))
+    expect(screen.getByText('Theirs, ready')).toBeTruthy()
+  })
+
+  it('opens on Mine or All when a link asks for it', () => {
+    window.NexusMDNav = { view: 'prs', pendingFilter: { preset: 'mine' } }
+    renderWith({ prs: PRS })
+    expect(screen.getByText('Mine, draft')).toBeTruthy()
+    expect(screen.queryByText('Theirs, ready')).toBeNull()
+  })
+
+  it('shows Mine as empty when the current user is not known, rather than guessing', () => {
+    renderWith({ prs: PRS }, { filter: 'mine', me: null })
+    expect(screen.getByText('No pull requests match.')).toBeTruthy()
+    expect(chip('Mine').textContent).toMatch(/0/)
+  })
+
+  it('leaves the other tabs as they were: Needs my review still holds only review requests, Active still no drafts', () => {
+    renderWith({ prs: PRS }, { filter: 'active' })
+    expect(screen.getByText('Mine, ready')).toBeTruthy()
+    expect(screen.queryByText('Mine, draft')).toBeNull()
+    fireEvent.click(chip('Needs my review'))
+    expect(screen.getByText('No pull requests match.')).toBeTruthy()
+  })
+})
