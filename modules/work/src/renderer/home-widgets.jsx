@@ -1,7 +1,7 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
 import {
-  isTerminalState, newWidgetsAfterSave, readLists, getYearWeekForOffset, widgetPage, linkPage, resolveLink, githubRepoOf,
+  isTerminalState, newWidgetsAfterSave, readLists, getYearWeekForOffset, widgetPage, linkPage, resolveLink, githubRepoOf, savedDocIds,
   ignore, rendererLog,
 } from '@nexusmd/core'
 import {
@@ -32,10 +32,15 @@ const PAGE_APPS = {
 const WORK_PAGE = { prs: 'pr' }
 // The desktop's view ids where the catalogue says something else.
 const DESKTOP_VIEW = { pr: 'prs', api: 'api-client' }
-// A File-or-folder shortcut opens through the capabilities its app offers (git.openPath, editor.openPath), as apps
+// A File-or-folder shortcut opens through the capabilities its app offers (git.openPath, editor.openPath, documents.openDoc), as apps
 // never import each other. A shortcut to a repository is shown whenever Git Workspace is installed, even though the
 // Repo widget (page 'git') is not offered: it is found among the registered repositories by its remote.
 const PLATFORM = 'desktop'
+// The saved documents of each tool, in the profile's own stores (the ones the Documents screen reads).
+const savedDocs = () => ({
+  markdown: savedDocIds(localStorage.getItem(getProfileKey('md_documents'))),
+  json: savedDocIds(localStorage.getItem(getProfileKey('json_editor_documents'))),
+})
 const GIT_PAGE_APP = 'git'
 
 // Widgets the desktop has nothing real to fill with, so it never offers them:
@@ -141,7 +146,8 @@ export function HomeWidgets({
       if (!caps?.has?.('editor.openPath')) return { ok: false, reason: 'The Editor is not installed.' }
       return resolveLink(t, { platform: PLATFORM })
     }
-    return { ok: false, reason: 'Opening this here is not available.' }
+    if (!caps?.has?.('documents.openDoc')) return { ok: false, reason: 'Documents is not installed.' }
+    return resolveLink(t, { docs: savedDocs(), platform: PLATFORM })
   }
   const openTarget = async t => {
     try {
@@ -156,6 +162,8 @@ export function HomeWidgets({
       } else if (t.target === 'editor') {
         // The Editor shows the file and goes to it; a path that is gone is said here, where the click was.
         if (!(await caps.call('editor.openPath', t.path))) toast(`${t.name || t.path} no longer exists.`, 'error')
+      } else if (t.target === 'doc') {
+        if (!(await caps.call('documents.openDoc', { tool: t.tool, docId: t.docId }))) toast(`${t.name || 'That document'} no longer exists.`, 'error')
       }
     } catch (e) {
       log.warn('a Home shortcut could not be opened', e)

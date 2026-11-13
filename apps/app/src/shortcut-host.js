@@ -1,7 +1,7 @@
 // shortcut-host.js — what a File-or-folder Home shortcut needs from the phone app: whether this device can open
 // one, and how it is opened. The shortcut model is core's (shortcuts); the destinations consume the target
 // from window.NexusMDNav.target (the git browser, the Documents page, the Editor).
-import { resolveLink, repoKeys, LINK_UNAVAILABLE } from '@nexusmd/core';
+import { resolveLink, repoKeys, savedDocIds, LINK_UNAVAILABLE } from '@nexusmd/core';
 import { getProfileKey } from './profile-keys.js';
 
 export const PLATFORM = 'mobile';
@@ -12,11 +12,9 @@ const browsable = (repo) => repo.provider === 'github' || repo.provider === 'ado
   || repoKeys(repo).some(k => k.startsWith('github.com/') || k.startsWith('dev.azure.com/'));
 
 const idsAt = (key) => {
-  try {
-    const p = JSON.parse(localStorage.getItem(key) || 'null');
-    const list = Array.isArray(p) ? p : Array.isArray(p?.docs) ? p.docs : [];
-    return list.filter(d => d && d.id).map(d => ({ id: d.id }));
-  } catch { return []; }
+  let raw = null;
+  try { raw = localStorage.getItem(key); } catch { /* storage unavailable: no documents */ }
+  return savedDocIds(raw);
 };
 
 // The saved documents of each tool. The phone's Markdown page keeps its documents under the bare key, the

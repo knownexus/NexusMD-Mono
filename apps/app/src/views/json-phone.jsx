@@ -66,10 +66,11 @@ function TreeNode({ k, v, depth, path, flipped, flip, onEdit, search }) {
   );
 }
 
-export function JsonPhone({ tool, setTool, onFlash }) {
+// `openDocId` (a Home shortcut) opens that saved document; the most recent one is resumed when it is gone.
+export function JsonPhone({ tool, setTool, onFlash, openDocId = null }) {
   const d = useDocumentAutosave({
     storageKey: 'json_editor_documents', initialContent: SAMPLE_TEXT, emptyContent: '{}',
-    isEmpty: t => !t.trim(), extractAutoName: jsonAutoName,
+    isEmpty: t => !t.trim(), extractAutoName: jsonAutoName, openDocId,
   });
   useResume(d.docs, d.currentDocId, d.openDoc);
   const [mode, setMode] = useState('edit');

@@ -10,11 +10,11 @@ import { JsonPhone } from './json-phone.jsx';
 import { RegexPhone } from './regex-phone.jsx';
 
 // `opened` counts the files the app was opened with (from a file manager); a file is shown in the tool named by `openedTool`
-// ('markdown' or 'json'), whichever tool was last in use.
-export function DocumentsPhone({ onFlash, opened = 0, openedTool = 'markdown' }) {
+// ('markdown' or 'json'), whichever tool was last in use. `openDocId` (a Home shortcut) names the document to show there.
+export function DocumentsPhone({ onFlash, opened = 0, openedTool = 'markdown', openDocId = null }) {
   const [tool, setTool] = usePersisted('documents_active_tab', 'markdown');
   React.useLayoutEffect(() => { if (opened) setTool(openedTool); }, [opened, openedTool]); // eslint-disable-line react-hooks/exhaustive-deps
   const active = TOOLS.some(([id]) => id === tool) ? tool : 'markdown';
-  const props = { tool: active, setTool, onFlash };
+  const props = { tool: active, setTool, onFlash, openDocId: opened && active === openedTool ? openDocId : null };
   return active === 'json' ? <JsonPhone {...props}/> : active === 'regex' ? <RegexPhone {...props}/> : <MarkdownPhone {...props}/>;
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  normalizeRepoPath, normalizeRemote, remoteFromRemotes, repoKeys, githubRepoOf, resolveRepo, readTarget, targetPlace, linkPage, shortcutTitle, shortcutSub,
+  normalizeRepoPath, normalizeRemote, remoteFromRemotes, repoKeys, githubRepoOf, savedDocIds, resolveRepo, readTarget, targetPlace, linkPage, shortcutTitle, shortcutSub,
   shortcutIcon, linkId, makeLinkWidget, resolveLink, LINK_UNAVAILABLE, newWidgetsAfterSave,
 } from '../src/index.js'
 
@@ -133,6 +133,25 @@ describe('readTarget', () => {
       { target: 'doc', tool: 'html', docId: 'd' }, { target: 'doc', tool: 'json', docId: '' }, { target: 'editor', path: '' }]) {
       expect(readTarget(bad)).toBe(null)
     }
+  })
+})
+
+describe('savedDocIds', () => {
+  it('reads both store shapes, from text or already parsed', () => {
+    expect(savedDocIds(JSON.stringify({ docs: [{ id: 'a', name: 'A' }, { id: 'b' }] }))).toEqual([{ id: 'a' }, { id: 'b' }])
+    expect(savedDocIds(JSON.stringify([{ id: 'j1', content: '{}' }]))).toEqual([{ id: 'j1' }])
+    expect(savedDocIds({ docs: [{ id: 'a' }] })).toEqual([{ id: 'a' }])
+    expect(savedDocIds([{ id: 'a' }])).toEqual([{ id: 'a' }])
+  })
+  it('leaves out anything that is not a document with an id', () => {
+    expect(savedDocIds([null, 3, 'x', {}, { id: '' }, { id: 7 }, { id: 'ok' }])).toEqual([{ id: 'ok' }])
+  })
+  it('has none for an empty, missing or unreadable store', () => {
+    expect(savedDocIds(null)).toEqual([])
+    expect(savedDocIds(undefined)).toEqual([])
+    expect(savedDocIds('')).toEqual([])
+    expect(savedDocIds('{not json')).toEqual([])
+    expect(savedDocIds('{"docs": 4}')).toEqual([])
   })
 })
 

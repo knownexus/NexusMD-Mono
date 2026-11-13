@@ -58,14 +58,60 @@ describe('files opened with the desktop app', () => {
     const { opened } = make()
     const seen = vi.fn()
     const off = opened.subscribe(seen)
-    expect(opened.getSnapshot()).toEqual({ count: 0, tool: 'markdown' })
+    expect(opened.getSnapshot()).toEqual({ count: 0, tool: 'markdown', docId: null })
     opened.add({ name: 'a.json', text: '{}' })
-    expect(opened.getSnapshot()).toEqual({ count: 1, tool: 'json' })
+    expect(opened.getSnapshot()).toEqual({ count: 1, tool: 'json', docId: null })
     opened.add({ name: 'b.md', text: 'b' })
-    expect(opened.getSnapshot()).toEqual({ count: 2, tool: 'markdown' })
+    expect(opened.getSnapshot()).toEqual({ count: 2, tool: 'markdown', docId: null })
     expect(seen).toHaveBeenCalledTimes(2)
     off()
     opened.add({ name: 'c.md', text: 'c' })
     expect(seen).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('showing one saved document (a Home shortcut)', () => {
+  const seed = (storage) => {
+    storage.setItem('p1:md_documents', JSON.stringify({ docs: [{ id: 'm1', name: null, autoName: 'Plan', content: '# Plan' }] }))
+    storage.setItem('p1:json_editor_documents', JSON.stringify([{ id: 'j1', name: 'cfg', autoName: 'cfg', content: '{}' }]))
+  }
+
+  it('asks the screen to show a saved Markdown or JSON document, in its tool', () => {
+    const { storage, opened } = make()
+    seed(storage)
+    const seen = vi.fn()
+    opened.subscribe(seen)
+    expect(opened.openDoc({ tool: 'markdown', docId: 'm1' })).toEqual({ ok: true })
+    expect(opened.getSnapshot()).toEqual({ count: 1, tool: 'markdown', docId: 'm1' })
+    expect(opened.openDoc({ tool: 'json', docId: 'j1' })).toEqual({ ok: true })
+    expect(opened.getSnapshot()).toEqual({ count: 2, tool: 'json', docId: 'j1' })
+    expect(seen).toHaveBeenCalledTimes(2)
+  })
+
+  it('says no, and changes nothing, for a document that is gone or in the other tool', () => {
+    const { storage, opened } = make()
+    seed(storage)
+    const seen = vi.fn()
+    opened.subscribe(seen)
+    for (const spec of [{ tool: 'markdown', docId: 'gone' }, { tool: 'json', docId: 'm1' }, { tool: 'regex', docId: 'm1' }, { tool: 'markdown' }, undefined]) {
+      expect(opened.openDoc(spec)).toEqual({ ok: false })
+    }
+    expect(opened.getSnapshot().count).toBe(0)
+    expect(seen).not.toHaveBeenCalled()
+  })
+
+  it('says no when the store is empty or unreadable', () => {
+    const { storage, opened } = make()
+    expect(opened.openDoc({ tool: 'markdown', docId: 'm1' })).toEqual({ ok: false })
+    storage.setItem('p1:md_documents', '{broken')
+    expect(opened.openDoc({ tool: 'markdown', docId: 'm1' })).toEqual({ ok: false })
+  })
+
+  it('a file opened afterwards shows its own newest document, not the named one', () => {
+    const { storage, opened } = make()
+    seed(storage)
+    opened.openDoc({ tool: 'markdown', docId: 'm1' })
+    opened.add({ name: 'new.md', text: 'fresh' })
+    expect(opened.getSnapshot().docId).toBeNull()
   })
 })

@@ -156,6 +156,20 @@ export function targetPlace(config) {
   return { path: dir ? `/${dir}` : '/', file: t.path }
 }
 
+// The documents in a store's saved value, as { id }: the Markdown store keeps { docs: [...] }, the JSON one a bare
+// list. Anything that is not a document with an id is left out, and a value that is not JSON has none.
+export function savedDocIds(raw) {
+  let value = raw
+  if (typeof raw === 'string') {
+    try { value = JSON.parse(raw) } catch (e) {
+      ignore(log, 'a documents store that is not JSON has no documents to match a shortcut against', e)
+      return []
+    }
+  }
+  const list = Array.isArray(value) ? value : Array.isArray(value?.docs) ? value.docs : []
+  return list.filter(d => d && typeof d.id === 'string' && d.id).map(d => ({ id: d.id }))
+}
+
 // The catalogue page a target lives on (core WIDGET_PAGES), so a host can tell whether that app is switched off.
 export function linkPage(config) {
   const t = readTarget(config)

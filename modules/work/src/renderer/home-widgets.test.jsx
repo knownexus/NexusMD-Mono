@@ -256,3 +256,57 @@ describe('File or folder shortcuts on the desktop Dashboard', () => {
     expect(within(screen.getByRole('dialog')).queryByText('File or folder')).toBeNull()
   })
 })
+
+describe('Document shortcuts on the desktop Dashboard', () => {
+  const docLink = (over = {}) => ({ id: 'k3', type: 'link', config: { target: 'doc', tool: 'json', docId: 'j1', name: 'Settings', ...over } })
+  const seedDocs = () => {
+    localStorage.setItem('nexusmd.p.p1.md_documents', JSON.stringify({ docs: [{ id: 'm1', autoName: 'Plan' }] }))
+    localStorage.setItem('nexusmd.p.p1.json_editor_documents', JSON.stringify([{ id: 'j1', autoName: 'Settings' }]))
+  }
+  function hostWith({ opens = true, provides = ['documents.openDoc'], installed = () => true } = {}) {
+    const calls = []
+    const call = vi.fn(async (name, ...args) => { calls.push([name, ...args]); return name === 'documents.openDoc' ? opens : true })
+    return { host: { isInstalled: installed, capabilities: { has: n => provides.includes(n), call } }, calls }
+  }
+
+  it('opens a saved document through Documents, in its own tool', async () => {
+    seedDocs()
+    const { host, calls } = hostWith()
+    mount(<Harness host={host} initial={[docLink()]} />)
+    fireEvent.click(await screen.findByText('Settings'))
+    await vi.waitFor(() => expect(calls).toContainEqual(['documents.openDoc', { tool: 'json', docId: 'j1' }]))
+    expect(toasts).toEqual([])
+  })
+
+  it('says so on the Dashboard when the document went between showing it and the click', async () => {
+    seedDocs()
+    const { host } = hostWith({ opens: false })
+    mount(<Harness host={host} initial={[docLink()]} />)
+    fireEvent.click(await screen.findByText('Settings'))
+    await vi.waitFor(() => expect(toasts).toContainEqual(['Settings no longer exists.', 'error']))
+  })
+
+  it('greys out a shortcut to a document that is no longer saved, and explains on tap', async () => {
+    seedDocs()
+    const { host, calls } = hostWith()
+    mount(<Harness host={host} initial={[docLink({ docId: 'deleted' })]} />)
+    fireEvent.click(await screen.findByText('Settings'))
+    expect(await screen.findByText('This document no longer exists.')).toBeTruthy()
+    expect(calls).toEqual([])
+  })
+
+  it('finds a Markdown document in the Markdown store, not the JSON one', async () => {
+    seedDocs()
+    const { host } = hostWith()
+    mount(<Harness host={host} initial={[docLink({ tool: 'markdown', docId: 'j1', name: 'Wrong tool' })]} />)
+    fireEvent.click(await screen.findByText('Wrong tool'))
+    expect(await screen.findByText('This document no longer exists.')).toBeTruthy()
+  })
+
+  it('hides a document shortcut when the Documents app is not installed', () => {
+    seedDocs()
+    const { host } = hostWith({ installed: id => id !== 'documents' })
+    mount(<Harness host={host} initial={[docLink()]} />)
+    expect(screen.queryByText('Settings')).toBeNull()
+  })
+})

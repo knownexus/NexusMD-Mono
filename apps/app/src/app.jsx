@@ -671,6 +671,7 @@ function AppShell() {
   // Documents page, any other text file is opened in the Editor. Counted, so the Documents page remounts on the file each time one arrives.
   const [openedFiles, setOpenedFiles] = useState(0);
   const [openedTool, setOpenedTool] = useState('markdown'); // the Documents tool the last opened file is in
+  const [openDocId, setOpenDocId] = useState(null); // the document a Home shortcut named, shown instead of the newest
   useEffect(() => watchOpenedFiles({
     storageKey: device === 'phone' ? undefined : getProfileKey('md_documents'), // the phone layout keeps documents under the bare key
     jsonStorageKey: getProfileKey('json_editor_documents'), // the JSON editor keeps its documents here on both layouts
@@ -682,6 +683,7 @@ function AppShell() {
         return;
       }
       setOpenedTool(opened.tool);
+      setOpenDocId(null);
       setOpenedFiles(n => n + 1);
       navigate('markdown');
       showFlash(opened.name ? `Opened ${opened.name}` : 'Opened the file', 'check');
@@ -1136,6 +1138,15 @@ function AppShell() {
       if (!target) return;
       const link = e.detail.target || null; // a Home shortcut to one file, folder or document (core shortcuts)
       window.NexusMDNav = { pendingFilter: e.detail.filter || null, view: target, repoId: e.detail.repoId || null, target: link };
+      if (link?.target === 'doc') {
+        // Shown by the Documents page, which is remounted on it (as for a file the app was opened with).
+        window.NexusMDNav = { ...window.NexusMDNav, target: null };
+        setOpenedTool(link.tool);
+        setOpenDocId(link.docId);
+        setOpenedFiles(n => n + 1);
+        navigate(target);
+        return;
+      }
       if (link?.target === 'editor') {
         // Opened first, so a file that is gone says so here rather than leaving an empty Editor.
         Promise.resolve(editorStore.openPath(link.path)).then(ok => {
@@ -1228,7 +1239,7 @@ function AppShell() {
       case 'time': return withBar('Time', <TimeView storageKey={getProfileKey('nexusmd.timelog.v1')} getProfileKey={getProfileKey} namespace="nexusmd" getTickets={getTimeTickets}/>);
       case 'notes': return <NotesView onAddTask={addTaskFromNote} onFlash={showFlash}/>;
       case 'lists': return <ListsView device={device}/>;
-      case 'markdown': return device === 'phone' ? <DocumentsPhone key={openedFiles} opened={openedFiles} openedTool={openedTool} onFlash={showFlash}/> : <DocumentsView key={openedFiles} opened={openedFiles} openedTool={openedTool}/>;
+      case 'markdown': return device === 'phone' ? <DocumentsPhone key={openedFiles} opened={openedFiles} openedTool={openedTool} openDocId={openDocId} onFlash={showFlash}/> : <DocumentsView key={openedFiles} opened={openedFiles} openedTool={openedTool} openDocId={openDocId}/>;
       case 'editor': return <EditorScreen onFlash={showFlash}/>;
       case 'git': return <GitView onFlash={showFlash}/>;
       case 'api': return withBar('API Client', <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>);

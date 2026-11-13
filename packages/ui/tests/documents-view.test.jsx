@@ -186,3 +186,56 @@ describe('JsonEditorView when a file was opened', () => {
     expect(getByText('Alice Johnson')).toBeTruthy()
   })
 })
+
+// A Home shortcut opens one particular saved document, in its own tool, rather than the newest.
+describe('DocumentsView opened on one document (a Home shortcut)', () => {
+  const provider = (storage, children) => (
+    <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {} }}>{children}</NexusDataProvider>
+  )
+  const seedMarkdown = () => localStorage.setItem('md_documents', JSON.stringify({ docs: [
+    { id: 'old', name: null, autoName: 'Old notes', content: '# Old notes\n\nfrom before', createdAt: 1, updatedAt: 1 },
+    { id: 'new', name: 'Newest', autoName: 'Newest', content: '# Newest\n\nlast edited', createdAt: 2, updatedAt: 9 },
+  ] }))
+  const seedJson = (storage) => storage.setItem('json_editor_documents', JSON.stringify([
+    { id: 'j1', name: 'one', autoName: 'one', content: '{"city":"Oslo"}', createdAt: 1, updatedAt: 1 },
+    { id: 'j2', name: 'two', autoName: 'two', content: '{"city":"Bergen"}', createdAt: 2, updatedAt: 9 },
+  ]))
+
+  it('shows the named Markdown document, not the newest', () => {
+    seedMarkdown()
+    const { container } = render(provider(memStorage(), <DocumentsView opened={1} openedTool="markdown" openDocId="old"/>))
+    expect(container.querySelector('textarea').value).toBe('# Old notes\n\nfrom before')
+  })
+
+  it('shows the named JSON document in the JSON tool, whichever tool was last in use', () => {
+    const storage = memStorage()
+    storage.setItem('documents_active_tab', JSON.stringify('markdown'))
+    seedJson(storage)
+    const { container, getByRole } = render(provider(storage, <DocumentsView opened={1} openedTool="json" openDocId="j1"/>))
+    expect(getByRole('tab', { name: 'JSON Editor' }).getAttribute('aria-selected')).toBe('true')
+    expect(container.querySelector('textarea').value).toBe('{"city":"Oslo"}')
+  })
+
+  it('starts on a fresh page, not the newest, when the document has gone', () => {
+    seedMarkdown()
+    const { container } = render(provider(memStorage(), <DocumentsView opened={1} openedTool="markdown" openDocId="gone"/>))
+    expect(container.querySelector('textarea').value).toBe('')
+  })
+
+  it('opens the newest as before when no document is named', () => {
+    seedMarkdown()
+    const { container } = render(provider(memStorage(), <DocumentsView opened={1} openedTool="markdown"/>))
+    expect(container.querySelector('textarea').value).toBe('# Newest\n\nlast edited')
+  })
+
+  it('does not hold the person to the shortcut’s document after they pick another tool', () => {
+    seedMarkdown()
+    const storage = memStorage()
+    seedJson(storage)
+    const { container, getByRole } = render(provider(storage, <DocumentsView opened={1} openedTool="markdown" openDocId="old"/>))
+    fireEvent.click(getByRole('tab', { name: 'JSON Editor' }))
+    expect(container.querySelector('textarea').value).not.toBe('# Old notes\n\nfrom before')
+    fireEvent.click(getByRole('tab', { name: 'Markdown' }))
+    expect(container.querySelector('textarea').value).toBe('')
+  })
+})

@@ -47,3 +47,51 @@ describe('Documents app: files opened with the desktop app', () => {
     expect(screen.getByText('Valid JSON')).toBeTruthy()
   })
 })
+
+describe('Documents app: a Home shortcut to one saved document', () => {
+  const fakeHost = () => {
+    const provided = {}
+    return { provided, navigate: vi.fn(), capabilities: { provide: (name, fn) => { provided[name] = fn } } }
+  }
+  const seed = () => {
+    localStorage.setItem(getProfileKey('md_documents'), JSON.stringify({ docs: [
+      { id: 'old', name: null, autoName: 'Old', content: '# Old\n\nfrom before', createdAt: 1, updatedAt: 1 },
+      { id: 'new', name: null, autoName: 'New', content: '# New\n\nlast edited', createdAt: 2, updatedAt: 9 },
+    ] }))
+    localStorage.setItem(getProfileKey('json_editor_documents'), JSON.stringify([
+      { id: 'j1', name: 'cfg', autoName: 'cfg', content: '{"theme":"dark"}', createdAt: 1, updatedAt: 1 },
+    ]))
+  }
+
+  it('offers documents.openDoc, which shows the screen for a saved document and says so', () => {
+    seed()
+    const host = fakeHost()
+    documents.activate(host)
+    expect(host.provided['documents.openDoc']({ tool: 'markdown', docId: 'old' })).toBe(true)
+    expect(host.navigate).toHaveBeenCalledWith('markdown')
+  })
+
+  it('does not go to the screen for a document that no longer exists', () => {
+    seed()
+    const host = fakeHost()
+    documents.activate(host)
+    expect(host.provided['documents.openDoc']({ tool: 'markdown', docId: 'gone' })).toBe(false)
+    expect(host.navigate).not.toHaveBeenCalled()
+  })
+
+  it('shows the named Markdown document, not the newest, on the screen', () => {
+    seed()
+    const Screen = documents.views.markdown
+    const { container } = render(<NexusDataProvider value={{ storage: localStorage, getProfileKey, pushPref: () => {} }}><Screen /></NexusDataProvider>)
+    act(() => { openedFiles.openDoc({ tool: 'markdown', docId: 'old' }) })
+    expect(container.querySelector('textarea').value).toBe('# Old\n\nfrom before')
+  })
+
+  it('shows the named JSON document on the JSON editor', () => {
+    seed()
+    const Screen = documents.views.markdown
+    render(<NexusDataProvider value={{ storage: localStorage, getProfileKey, pushPref: () => {} }}><Screen /></NexusDataProvider>)
+    act(() => { openedFiles.openDoc({ tool: 'json', docId: 'j1' }) })
+    expect(screen.getByText('dark')).toBeTruthy()
+  })
+})

@@ -33,13 +33,16 @@ export function relativeTime(ts) {
 // create a new one once typing starts with nothing open. `isEmpty(content)`
 // and `extractAutoName(content)` let each caller define what "nothing to
 // save yet" and "a display name" mean for their content shape.
-export function useDocumentAutosave({ storageKey, initialContent, emptyContent, isEmpty, extractAutoName, openNewest = false }) {
+export function useDocumentAutosave({ storageKey, initialContent, emptyContent, isEmpty, extractAutoName, openNewest = false, openDocId = null }) {
   const [docs, setDocs] = usePersisted(storageKey, [])
   // With `openNewest` (the app was opened with a file) the most recently saved document is open from the first
-  // render, instead of starting on `initialContent`.
-  const [newest] = useState(() => (openNewest && Array.isArray(docs) && docs.length
-    ? [...docs].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
-    : null))
+  // render, instead of starting on `initialContent`. `openDocId` (a Home shortcut) opens that document instead,
+  // and starts on `initialContent` when it is gone.
+  const [newest] = useState(() => {
+    if (!Array.isArray(docs) || !docs.length) return null
+    if (openDocId) return docs.find(d => d.id === openDocId) ?? null
+    return openNewest ? [...docs].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] : null
+  })
   const [content, setContent] = useState(newest ? newest.content : initialContent)
   const [currentDocId, setCurrentDocId] = useState(newest ? newest.id : null)
   const [saveStatus, setSaveStatus] = useState('')
