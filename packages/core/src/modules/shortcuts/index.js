@@ -119,6 +119,16 @@ export function readTarget(config) {
   return null
 }
 
+// Where a git target puts the file browser: the folder to show and the file to open in it (null for a folder
+// shortcut). A file opens inside its own folder, so going back from it lands there.
+export function targetPlace(config) {
+  const t = readTarget(config)
+  if (!t || t.target !== 'git') return null
+  if (t.kind === 'folder') return { path: t.path, file: null }
+  const dir = parentOf(t.path)
+  return { path: dir ? `/${dir}` : '/', file: t.path }
+}
+
 // The catalogue page a target lives on (core WIDGET_PAGES), so a host can tell whether that app is switched off.
 export function linkPage(config) {
   const t = readTarget(config)

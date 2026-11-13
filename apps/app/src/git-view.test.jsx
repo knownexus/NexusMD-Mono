@@ -128,3 +128,57 @@ describe('GitView and the back gesture', () => {
     expect(await screen.findByText('deep')).toBeTruthy()
   })
 })
+
+describe('GitView opened from a Home shortcut', () => {
+  const link = (over = {}) => ({
+    target: 'git', kind: 'file', path: '/src/b.js', repo: { provider: 'ado', name: 'alpha', project: 'P' }, ...over,
+  })
+  afterEach(() => { window.NexusMDNav = null })
+
+  it('opens the file in the repo the shortcut names, found by identity rather than id', async () => {
+    window.NexusMDNav = { view: 'git', target: link({ repo: { provider: 'local', name: 'alpha' } }) }
+    render(<GitView />)
+    expect(await screen.findByText('contents of /src/b.js')).toBeTruthy()
+    expect(window.NexusMDNav.target).toBeNull() // taken once
+  })
+
+  it('going back from the file lands in its folder, then the repo root', async () => {
+    window.NexusMDNav = { view: 'git', target: link() }
+    render(<GitView />)
+    await screen.findByText('contents of /src/b.js')
+    fireEvent.click(screen.getByLabelText('Back'))
+    expect(await screen.findByText('deep')).toBeTruthy()
+    expect(screen.queryByText('contents of /src/b.js')).toBeNull()
+  })
+
+  it('opens a folder shortcut at that folder', async () => {
+    window.NexusMDNav = { view: 'git', target: link({ kind: 'folder', path: '/src/deep' }) }
+    render(<GitView />)
+    expect(await screen.findByText('c.js')).toBeTruthy()
+  })
+
+  it('uses the branch the shortcut names', async () => {
+    const listItems = vi.spyOn(fake.backend, 'listItems')
+    window.NexusMDNav = { view: 'git', target: link({ kind: 'folder', path: '/src', branch: 'dev' }) }
+    render(<GitView />)
+    await screen.findByText('b.js')
+    expect(listItems.mock.calls.some(c => c[1] === 'dev')).toBe(true)
+    expect(listItems.mock.calls.some(c => c[1] === 'main')).toBe(false)
+    listItems.mockRestore()
+  })
+
+  it('says so, and shows the repo list, when its repository is not on this device', async () => {
+    const onFlash = vi.fn()
+    window.NexusMDNav = { view: 'git', target: link({ repo: { provider: 'github', name: 'zed', fullName: 'x/zed' } }) }
+    render(<GitView onFlash={onFlash} />)
+    await waitFor(() => expect(repoList()).toBeTruthy())
+    expect(onFlash).toHaveBeenCalledWith('That repository is not available on this device')
+  })
+
+  it('ignores a target meant for another screen and leaves it for that screen', async () => {
+    window.NexusMDNav = { view: 'git', target: { target: 'doc', tool: 'json', docId: 'd' } }
+    render(<GitView />)
+    await waitFor(() => expect(repoList()).toBeTruthy())
+    expect(window.NexusMDNav.target).toEqual({ target: 'doc', tool: 'json', docId: 'd' })
+  })
+})

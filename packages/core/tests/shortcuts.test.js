@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  normalizeRepoPath, normalizeRemote, repoKeys, resolveRepo, readTarget, linkPage, shortcutTitle, shortcutSub,
+  normalizeRepoPath, normalizeRemote, repoKeys, resolveRepo, readTarget, targetPlace, linkPage, shortcutTitle, shortcutSub,
   shortcutIcon, linkId, makeLinkWidget, resolveLink, LINK_UNAVAILABLE, newWidgetsAfterSave,
 } from '../src/index.js'
 
@@ -104,6 +104,19 @@ describe('readTarget', () => {
       { target: 'doc', tool: 'html', docId: 'd' }, { target: 'doc', tool: 'json', docId: '' }, { target: 'editor', path: '' }]) {
       expect(readTarget(bad)).toBe(null)
     }
+  })
+})
+
+describe('targetPlace', () => {
+  it('opens a file inside its own folder, and a folder as itself', () => {
+    expect(targetPlace(gitFile())).toEqual({ path: '/src', file: '/src/app.js' })
+    expect(targetPlace(gitFile({ path: '/README.md' }))).toEqual({ path: '/', file: '/README.md' })
+    expect(targetPlace(gitFile({ kind: 'folder', path: '/src/lib' }))).toEqual({ path: '/src/lib', file: null })
+    expect(targetPlace(gitFile({ kind: 'folder', path: '/' }))).toEqual({ path: '/', file: null })
+  })
+  it('is null for anything that is not a git target', () => {
+    expect(targetPlace({ target: 'doc', tool: 'json', docId: 'a' })).toBe(null)
+    expect(targetPlace(null)).toBe(null)
   })
 })
 

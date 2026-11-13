@@ -8,6 +8,7 @@ import { editorWorkspace, WORKSPACE_ROOT } from './adapters/editor-workspace.js'
 import { pickerAdapter } from './adapters/picker.js';
 import { createSafApi, createEditorApi, safAvailable } from './adapters/editor-saf.js';
 import { getProfileKey } from './profile-keys.js';
+import { takeTarget } from './shortcut-host.js';
 import { Icon } from './icons.jsx';
 import { toast } from './toast.jsx';
 import { Sheet } from './components.jsx';
@@ -39,6 +40,7 @@ const host = {
 function DesktopEditorScreen() {
   const s = useEditorStore(editorStore);
   const [name, setName] = React.useState('');
+  React.useEffect(() => { takeTarget('editor'); }, []); // a Home shortcut was already opened by the store
   const active = s.docs.find(d => d.path === s.active);
 
   const create = async () => {
@@ -78,7 +80,13 @@ const BAD_NAME = /[\\/:*?"<>|]/;
 
 function PhoneEditorScreen({ onFlash }) {
   const s = useEditorStore(editorStore);
-  const [dir, setDir] = React.useState(WORKSPACE_ROOT);
+  // A Home shortcut to a folder starts the browser there (a file is opened by the store, which the screen follows).
+  const [dir, setDir] = React.useState(() => {
+    const t = window.NexusMDNav?.target;
+    const inside = t?.target === 'editor' && t.kind === 'folder' && (t.path === WORKSPACE_ROOT || t.path.startsWith(WORKSPACE_ROOT + '/'));
+    return inside ? t.path.replace(/\/+$/, '') || WORKSPACE_ROOT : WORKSPACE_ROOT;
+  });
+  React.useEffect(() => { takeTarget('editor'); }, []);
   const [entries, setEntries] = React.useState(null);
   const [sheet, setSheet] = React.useState(false);
   const [name, setName] = React.useState('');

@@ -1134,12 +1134,21 @@ function AppShell() {
     const h = (e) => {
       const target = e.detail?.view;
       if (!target) return;
-      window.NexusMDNav = { pendingFilter: e.detail.filter || null, view: target, repoId: e.detail.repoId || null };
+      const link = e.detail.target || null; // a Home shortcut to one file, folder or document (core shortcuts)
+      window.NexusMDNav = { pendingFilter: e.detail.filter || null, view: target, repoId: e.detail.repoId || null, target: link };
+      if (link?.target === 'editor') {
+        // Opened first, so a file that is gone says so here rather than leaving an empty Editor.
+        Promise.resolve(editorStore.openPath(link.path)).then(ok => {
+          if (ok) navigate(target);
+          else { window.NexusMDNav = { ...window.NexusMDNav, target: null }; showFlash(`${link.name || link.path} no longer exists`, 'alert'); }
+        });
+        return;
+      }
       navigate(target);
     };
     window.addEventListener('helm:navigate', h);
     return () => window.removeEventListener('helm:navigate', h);
-  }, [navigate]);
+  }, [navigate, showFlash]);
 
   const configured = HelmData.configured;
 
