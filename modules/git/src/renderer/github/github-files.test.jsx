@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 
 vi.mock('@nexusmd/core', async (orig) => ({ ...(await orig()), getGithubFile: vi.fn() }))
@@ -154,5 +154,26 @@ describe('GithubFiles Markdown from a repository', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Preview' }))
     await screen.findByRole('heading', { name: 'Title' })
     expect(document.querySelector('.nx-gw-fx-md form, .nx-gw-fx-md button, .nx-gw-fx-md [action]')).toBeNull()
+  })
+})
+
+describe('GithubFiles: Pin to Dashboard', () => {
+  const pinned = []
+  const onPin = e => pinned.push(e.detail)
+  beforeEach(() => { pinned.length = 0; window.addEventListener('nexusmd:pin-shortcut', onPin) })
+  afterEach(() => window.removeEventListener('nexusmd:pin-shortcut', onPin))
+
+  it('pins a file on the branch being looked at', async () => {
+    render(<GithubFiles repo="acme/web" client={clientWith()} branch="feature/x" sha="abc" />)
+    fireEvent.contextMenu(await row('a.js'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin to Dashboard' }))
+    expect(pinned).toEqual([{ target: 'git', kind: 'file', path: '/a.js', branch: 'feature/x', repo: { provider: 'github', name: 'web', fullName: 'acme/web' } }])
+  })
+
+  it('pins a folder too, which had no menu before', async () => {
+    render(<GithubFiles repo="acme/web" client={clientWith()} branch="main" sha="abc" />)
+    fireEvent.contextMenu(await row('src'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin to Dashboard' }))
+    expect(pinned[0]).toMatchObject({ kind: 'folder', path: '/src', branch: 'main' })
   })
 })

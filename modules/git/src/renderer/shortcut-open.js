@@ -1,7 +1,7 @@
 // shortcut-open.js — what the Git Workspace does for a Home shortcut to a file or folder (core shortcuts):
 // the repositories it can offer to match one against, a request to open a place, and the plan for showing it.
 // The Dashboard asks through the git.listRepos / git.openPath capabilities (index.js); view-git.jsx carries the plan out.
-import { remoteFromRemotes, worktreeId, ignore, rendererLog } from '@nexusmd/core'
+import { remoteFromRemotes, githubRepoOf, worktreeId, ignore, rendererLog } from '@nexusmd/core'
 
 const log = rendererLog('git', 'shortcuts')
 
@@ -13,6 +13,14 @@ const TTL = 60_000
 const POOL = 4
 const remotes = new Map()
 export const forgetRepoRemotes = () => remotes.clear()
+
+// The normalized origin of a repository; '' when it has none or git cannot be asked.
+async function readRemote(adapter, repo, worktreePath, registered) {
+  try { return remoteFromRemotes(await adapter.remotes(repo, worktreePath, registered)) } catch (e) {
+    ignore(log, 'a repository whose remotes cannot be read has none to match a shortcut against', e)
+    return ''
+  }
+}
 
 /** The registered repositories as { name, path, provider: 'local', remote }, remote being the normalized `origin` ('' without one). */
 export async function listLocalRepos(adapter, repos, now = Date.now()) {
@@ -27,10 +35,7 @@ export async function listLocalRepos(adapter, repos, now = Date.now()) {
       let remote
       if (hit && now - hit.at < TTL) remote = hit.remote
       else {
-        try { remote = remoteFromRemotes(await adapter.remotes({ name: r.name, path: r.path }, r.path, registered)) } catch (e) {
-          ignore(log, 'a repository whose remotes cannot be read has none to match a shortcut against', e)
-          remote = ''
-        }
+        remote = await readRemote(adapter, { name: r.name, path: r.path }, r.path, registered)
         remotes.set(r.path, { at: now, remote })
       }
       out[i] = { name: r.name, path: r.path, provider: 'local', remote }
@@ -38,6 +43,23 @@ export async function listLocalRepos(adapter, repos, now = Date.now()) {
   }
   await Promise.all(Array.from({ length: Math.min(POOL, repos.length) }, worker))
   return out
+}
+
+// ── Pinning: a shortcut to a row of the Files tab ─────────────────────────────────────────────────────────────
+/**
+ * The shortcut target for a file or folder of a registered repository (`path` is repo-relative). A clone of a GitHub
+ * repository is named by its owner/name, so any device can find it; any other clone by its remote and folder name, which
+ * the devices that have the repository can match, and the rest show greyed out.
+ */
+export async function localPinTarget({ adapter, repo, worktreePath, registered, kind, path }) {
+  const remote = await readRemote(adapter, repo, worktreePath, registered)
+  const github = githubRepoOf({ provider: 'local', remote })
+  return {
+    target: 'git', kind, path: '/' + String(path || '').replace(/^\/+/, ''),
+    repo: github
+      ? { provider: 'github', name: github.split('/')[1], fullName: github, remote }
+      : { provider: 'local', name: repo.name, ...(remote ? { remote } : {}) },
+  }
 }
 
 // ── The request: a place to show, waiting for the screen to take it ───────────────────────────────────────

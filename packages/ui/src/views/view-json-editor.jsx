@@ -6,6 +6,7 @@ import { Icon } from '../icons.jsx'
 import { jsonAutoName, typeOf, setValueAtPath, deleteAtPath, allContainerPaths, highlightSegments, searchPaths, pathKey as searchKey, rendererLog, ignore } from '@nexusmd/core'
 import { useDocumentAutosave, relativeTime } from './document-store.js'
 import { DocumentsModal } from './documents-modal.jsx'
+import { pinToHome } from '../pin-shortcut.js'
 import { JsonNodeSheet } from '../json-tree-ui.jsx'
 
 const log = rendererLog('editor', 'json')
@@ -301,6 +302,12 @@ export function JsonEditorView({ openNewest = false, openDocId = null }) {
           <button className="je-btn" onClick={() => setShowDocsModal(true)}>
             <Icon name="doc" size={13}/> Documents{docs.length > 0 ? ` (${docs.length})` : ''}
           </button>
+          {currentDocId && (
+            <button className="je-btn" title="Put a shortcut to this document on Home"
+              onClick={() => { const d = docs.find(x => x.id === currentDocId); pinToHome({ target: 'doc', tool: 'json', docId: currentDocId, name: d ? (d.name ?? d.autoName ?? '') : '' }) }}>
+              <Icon name="pin" size={13}/> Pin
+            </button>
+          )}
           <div className="je-sep"/>
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 99, fontSize: 11.5, fontWeight: 600,

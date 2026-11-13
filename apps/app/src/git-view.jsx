@@ -2,14 +2,14 @@
 // with Files (folders, README, a file viewer) and Commits (grouped by day, with a commit sheet).
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { timeAgo, resolveRepo, targetPlace } from '@nexusmd/core';
-import { MarkdownPreview } from '@nexusmd/ui';
+import { MarkdownPreview, pinToHome } from '@nexusmd/ui';
 import { Icon } from './icons.jsx';
 import { toast } from './toast.jsx';
 import { Sheet } from './components.jsx';
 import { adoGet, getAdoConfig } from './ado-client.js';
 import { getGithubConfig, isGithubConfigured, createGithubHttpAdapter } from './github-client.js';
 import { groupCommitsByDay } from './git-browser.js';
-import { makeGitBackend, providerName, sourcesOf, pickSource, sourceLabel } from './git-backend.js';
+import { makeGitBackend, providerName, sourcesOf, pickSource, sourceLabel, isGithubRepo } from './git-backend.js';
 import { getProfileKey } from './profile-keys.js';
 import { readLayer, readDepth, layerOf, historyAction } from './git-layers.js';
 import { takeTarget } from './shortcut-host.js';
@@ -42,7 +42,12 @@ function RepoRow({ repo, onOpen }) {
   );
 }
 
-function FileViewer({ repo, branch, path, onBack, onFlash }) {
+// A repository as a Home shortcut names it: by who owns it, never by this device's ids.
+const repoIdentity = (repo) => (isGithubRepo(repo)
+  ? { provider: 'github', name: repo.name, fullName: repo.fullName, project: repo.project }
+  : { provider: 'ado', name: repo.name, project: repo.project });
+
+function FileViewer({ repo, branch, path, onBack, onFlash, onPin }) {
   const [text, setText] = useState(null);
   const [error, setError] = useState('');
   const [wrap, setWrap] = useState(false);
@@ -59,6 +64,7 @@ function FileViewer({ repo, branch, path, onBack, onFlash }) {
         <div className="m-ab-lead"><div><h1 style={{ fontSize: 16 }}>{path.split('/').pop()}</h1><div className="m-ab-sub">{path}</div></div></div>
         <div className="m-ab-actions">
           <button type="button" className="m-iconbtn" title="Copy path" onClick={() => { copy(path); onFlash?.('Path copied'); }}><Icon name="copy" size={17}/></button>
+          {onPin && <button type="button" className="m-iconbtn" title="Pin to Home" aria-label="Pin to Home" onClick={onPin}><Icon name="pin" size={17}/></button>}
           {!md || raw ? <button type="button" className={`m-iconbtn${wrap ? ' active' : ''}`} title="Wrap lines" onClick={() => setWrap(w => !w)}><Icon name="list" size={17}/></button> : null}
         </div>
       </div>
@@ -231,8 +237,14 @@ export function GitView({ onFlash }) {
   }, [inSource, query]);
   const recentRepos = recent.map(id => inSource.find(r => r.id === id)).filter(Boolean);
 
+  // A shortcut to this place on Home: on the branch being looked at, unless that is the repository's default one.
+  const pin = (kind, p) => pinToHome({
+    target: 'git', kind, path: p, repo: repoIdentity(repo),
+    ...(branch && branches && !branches.find(b => b.name === branch)?.isDefault ? { branch } : {}),
+  });
+
   if (repo && openFile) {
-    return <FileViewer repo={repo} branch={branch} path={openFile} onBack={back} onFlash={onFlash}/>;
+    return <FileViewer repo={repo} branch={branch} path={openFile} onBack={back} onFlash={onFlash} onPin={() => pin('file', openFile)}/>;
   }
 
   if (!repo) {
@@ -289,6 +301,9 @@ export function GitView({ onFlash }) {
         <button type="button" className="m-iconbtn" onClick={leaveRepo} aria-label="Back to repositories"><Icon name="chevron-left" size={18}/></button>
         <div className="m-ab-lead"><div><h1 style={{ fontSize: 17 }}>{repo.name}</h1><div className="m-ab-sub">{repo.project}</div></div></div>
         <div className="m-ab-actions">
+          {tab === 'files' && (
+            <button type="button" className="m-iconbtn" title="Pin to Home" aria-label="Pin this folder to Home" onClick={() => pin('folder', path)}><Icon name="pin" size={17}/></button>
+          )}
           <button type="button" className="m-chip" disabled={!branches} onClick={() => setBranchSheet(true)}>
             <span className="m-chip-ic"><Icon name="git-branch" size={13}/></span>{branch || '…'}
           </button>

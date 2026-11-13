@@ -506,3 +506,41 @@ describe('FilesPane Changed pin with many changes', () => {
     expect(within(group).queryByRole('button', { name: /Show/ })).toBeNull()
   })
 })
+
+describe('FilesPane: Pin to Dashboard', () => {
+  const adapterWith = remotes => ({ files: vi.fn(async () => ({ files, truncated: false })), pathForFile: vi.fn(), importFiles: vi.fn(), reveal: vi.fn(), remotes: vi.fn(async () => remotes) })
+  const pinned = []
+  const onPin = e => pinned.push(e.detail)
+  beforeEach(() => { pinned.length = 0; window.addEventListener('nexusmd:pin-shortcut', onPin) })
+  afterEach(() => window.removeEventListener('nexusmd:pin-shortcut', onPin))
+
+  it('pins a file of a GitHub clone by the repository’s owner and name', async () => {
+    const adapter = adapterWith('origin\tgit@github.com:acme/web.git (fetch)\norigin\tgit@github.com:acme/web.git (push)\n')
+    render(<FilesPane adapter={adapter} repo={repo} worktreePath={repo.path} registered={registered} version={1} />)
+    fireEvent.contextMenu(await row('README.md'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin to Dashboard' }))
+    await waitFor(() => expect(pinned).toHaveLength(1))
+    expect(pinned[0]).toEqual({
+      target: 'git', kind: 'file', path: '/README.md',
+      repo: { provider: 'github', name: 'web', fullName: 'acme/web', remote: 'github.com/acme/web' },
+    })
+    expect(adapter.remotes).toHaveBeenCalledWith(repo, repo.path, registered)
+  })
+
+  it('pins a folder, from its own row', async () => {
+    render(<FilesPane adapter={adapterWith('')} repo={repo} worktreePath={repo.path} registered={registered} version={1} />)
+    fireEvent.contextMenu(await row('docs'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin to Dashboard' }))
+    await waitFor(() => expect(pinned).toHaveLength(1))
+    expect(pinned[0]).toMatchObject({ kind: 'folder', path: '/docs', repo: { provider: 'local', name: 'A' } })
+  })
+
+  it('pins a file inside a folder with its whole path', async () => {
+    render(<FilesPane adapter={adapterWith('')} repo={repo} worktreePath={repo.path} registered={registered} version={1} />)
+    fireEvent.click(await row('docs'))
+    fireEvent.contextMenu(await row('guide.md'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin to Dashboard' }))
+    await waitFor(() => expect(pinned).toHaveLength(1))
+    expect(pinned[0]).toMatchObject({ kind: 'file', path: '/docs/guide.md' })
+  })
+})

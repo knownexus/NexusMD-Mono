@@ -226,3 +226,29 @@ describe('Documents page opened on one document (a Home shortcut)', () => {
     expect((await screen.findByLabelText('JSON')).value).toBe('{"city":"Bergen"}')
   })
 })
+
+describe('Pin to Home from the phone Documents page', () => {
+  const pinned = []
+  const onPin = e => pinned.push(e.detail)
+  beforeEach(() => { pinned.length = 0; window.addEventListener('nexusmd:pin-shortcut', onPin) })
+  afterEach(() => window.removeEventListener('nexusmd:pin-shortcut', onPin))
+
+  it('pins the open Markdown document', () => {
+    localStorage.setItem('md_documents', JSON.stringify({ docs: [{ id: 'a', name: 'Plan', autoName: 'Plan', content: '# Plan', updatedAt: 9 }] }))
+    render(<DocumentsPhone/>)
+    fireEvent.click(screen.getByRole('button', { name: 'Pin to Home' }))
+    expect(pinned).toEqual([{ target: 'doc', tool: 'markdown', docId: 'a', name: 'Plan' }])
+  })
+
+  it('has nothing to pin on a page that is not saved yet', () => {
+    render(<DocumentsPhone/>)
+    expect(screen.queryByRole('button', { name: 'Pin to Home' })).toBeNull()
+  })
+
+  it('pins the open JSON document', async () => {
+    localStorage.setItem('json_editor_documents', JSON.stringify([{ id: 'j1', name: null, autoName: 'cfg', content: '{"a":1}', createdAt: 1, updatedAt: 9 }]))
+    render(<DocumentsPhone opened={1} openedTool="json" key={1}/>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Pin to Home' }))
+    expect(pinned).toEqual([{ target: 'doc', tool: 'json', docId: 'j1', name: 'cfg' }])
+  })
+})

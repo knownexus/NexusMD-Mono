@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
-  listLocalRepos, forgetRepoRemotes, requestOpen, takeOpenRequest, OPEN_EVENT, explorerState, planOpen,
+  listLocalRepos, forgetRepoRemotes, requestOpen, takeOpenRequest, OPEN_EVENT, explorerState, planOpen, localPinTarget,
 } from './shortcut-open.js'
 
 beforeEach(() => { forgetRepoRemotes(); takeOpenRequest() })
@@ -122,5 +122,41 @@ describe('planOpen', () => {
     expect(planOpen(req({ repoPath: 'C:/repos/other' }), { repos, trees })).toEqual({ kind: 'missing' })
     expect(planOpen(null)).toEqual({ kind: 'missing' })
     expect(planOpen(req(), { repos, trees: [] })).toEqual({ kind: 'missing' })
+  })
+})
+
+describe('localPinTarget', () => {
+  const repo = { name: 'nexus-checkout', path: 'C:/repos/nexus-checkout' }
+  const pin = (remotes, over = {}) => localPinTarget({
+    adapter: { remotes: vi.fn(async () => remotes) }, repo, worktreePath: repo.path, registered: [repo.path],
+    kind: 'file', path: 'src/app.js', ...over,
+  })
+
+  it('names a clone of a GitHub repository by its owner and name, whatever the folder is called', async () => {
+    expect(await pin(listing('git@github.com:KnownExus/Nexus.git'))).toEqual({
+      target: 'git', kind: 'file', path: '/src/app.js',
+      repo: { provider: 'github', name: 'knownexus/nexus'.split('/')[1], fullName: 'knownexus/nexus', remote: 'github.com/knownexus/nexus' },
+    })
+  })
+  it('names a clone of anything else by its folder and remote', async () => {
+    expect((await pin(listing('https://org@dev.azure.com/org/Core/_git/api'))).repo).toEqual({
+      provider: 'local', name: 'nexus-checkout', remote: 'dev.azure.com/org/core/api',
+    })
+  })
+  it('names a clone with no remote by its folder alone, so only this computer can open it', async () => {
+    expect((await pin('')).repo).toEqual({ provider: 'local', name: 'nexus-checkout' })
+  })
+  it('still pins when git cannot be asked', async () => {
+    const t = await localPinTarget({
+      adapter: { remotes: vi.fn(async () => { throw new Error('boom') }) }, repo, worktreePath: repo.path, registered: [],
+      kind: 'folder', path: 'docs/deep',
+    })
+    expect(t).toMatchObject({ kind: 'folder', path: '/docs/deep', repo: { provider: 'local', name: 'nexus-checkout' } })
+  })
+  it('never carries credentials from the clone URL', async () => {
+    expect(JSON.stringify(await pin(listing('https://me:s3cret@github.com/o/n.git')))).not.toMatch(/s3cret|me:/)
+  })
+  it('gives a path with a leading slash however it is written', async () => {
+    expect((await pin('', { path: '/src/app.js' })).path).toBe('/src/app.js')
   })
 })

@@ -6,7 +6,7 @@ import { MarkdownPreview, MarkdownDiff, generateId } from '@nexusmd/ui';
 import { Icon } from '../icons.jsx';
 import { pickerAdapter } from '../adapters/picker.js';
 import { Sheet } from '../components.jsx';
-import { ToolFrame, DocsSheet } from './docs-frame.jsx';
+import { ToolFrame, DocsSheet, PinDocButton } from './docs-frame.jsx';
 import { CHEAT, learnTarget } from '@nexusmd/core';
 
 // The desktop layout's own setting, so learn mode is on or off in both.
@@ -129,7 +129,7 @@ export function MarkdownPhone({ tool, setTool, onFlash, openDocId = null }) {
   return (
     <>
       <ToolFrame sub={title} tool={tool} setTool={setTool} onDocs={() => setSheet(true)} onNew={() => { m.create(); setMode('edit'); }}
-        actions={<button type="button" className="m-iconbtn" aria-label="Export" onClick={exportDoc}><Icon name="send" size={17}/></button>}
+        actions={<><PinDocButton tool="markdown" doc={current}/><button type="button" className="m-iconbtn" aria-label="Export" onClick={exportDoc}><Icon name="send" size={17}/></button></>}
         footer={(
           <div className="m-docs-foot">
             <span>{wordCount(m.content).toLocaleString()} words · {m.content ? m.content.split('\n').length : 0} lines</span>

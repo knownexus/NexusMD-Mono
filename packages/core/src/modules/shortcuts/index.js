@@ -78,6 +78,9 @@ export function repoKeys(repo) {
   const keys = []
   const remote = normalizeRemote(repo.remote)
   if (remote) keys.push(remote)
+  // An Azure DevOps remote also names the project and repo the phone lists it by.
+  const azure = /^dev\.azure\.com\/[^/]+\/([^/]+)\/([^/]+)$/.exec(remote)
+  if (azure) keys.push(`ado:${azure[1]}/${azure[2]}`)
   const provider = lower(repo.provider)
   if (provider === 'github') {
     const full = lower(repo.fullName) || (repo.project && repo.name ? `${lower(repo.project)}/${lower(repo.name)}` : '')

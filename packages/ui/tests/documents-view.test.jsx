@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { render, cleanup, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { NexusDataProvider, DocumentsView } from '../src/index.js'
@@ -237,5 +237,42 @@ describe('DocumentsView opened on one document (a Home shortcut)', () => {
     expect(container.querySelector('textarea').value).not.toBe('# Old notes\n\nfrom before')
     fireEvent.click(getByRole('tab', { name: 'Markdown' }))
     expect(container.querySelector('textarea').value).toBe('')
+  })
+})
+
+describe('Pin to Home from the Documents page', () => {
+  const provider = (storage, children) => (
+    <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {} }}>{children}</NexusDataProvider>
+  )
+  const pinned = []
+  const onPin = e => pinned.push(e.detail)
+  beforeEach(() => { pinned.length = 0; window.addEventListener('nexusmd:pin-shortcut', onPin) })
+  afterEach(() => window.removeEventListener('nexusmd:pin-shortcut', onPin))
+
+  it('pins the open Markdown document', () => {
+    localStorage.setItem('md_documents', JSON.stringify({ docs: [{ id: 'new', name: 'Plan', autoName: 'Plan', content: '# Plan', createdAt: 2, updatedAt: 2 }] }))
+    const { getByRole } = render(provider(memStorage(), <DocumentsView opened={1} openedTool="markdown"/>))
+    fireEvent.click(getByRole('button', { name: 'Pin' }))
+    expect(pinned).toEqual([{ target: 'doc', tool: 'markdown', docId: 'new', name: 'Plan' }])
+  })
+
+  it('has nothing to pin until a Markdown document is saved', () => {
+    const { queryByRole } = render(provider(memStorage(), <DocumentsView/>))
+    expect(queryByRole('button', { name: 'Pin' })).toBeNull()
+  })
+
+  it('pins the open JSON document', () => {
+    const storage = memStorage()
+    storage.setItem('json_editor_documents', JSON.stringify([{ id: 'j1', name: null, autoName: 'cfg', content: '{"a":1}', createdAt: 1, updatedAt: 9 }]))
+    const { getByRole } = render(provider(storage, <DocumentsView opened={1} openedTool="json"/>))
+    fireEvent.click(getByRole('button', { name: 'Pin' }))
+    expect(pinned).toEqual([{ target: 'doc', tool: 'json', docId: 'j1', name: 'cfg' }])
+  })
+
+  it('has nothing to pin on the JSON sample', () => {
+    const storage = memStorage()
+    storage.setItem('documents_active_tab', JSON.stringify('json'))
+    const { queryByRole } = render(provider(storage, <DocumentsView/>))
+    expect(queryByRole('button', { name: 'Pin' })).toBeNull()
   })
 })

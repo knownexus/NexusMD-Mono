@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('@capacitor/core', async orig => ({ ...(await orig()), CapacitorHttp: undefined }))
@@ -60,5 +60,27 @@ describe('the tablet Editor opened from a Home shortcut', () => {
     window.NexusMDNav = { view: 'editor', target: { target: 'editor', kind: 'file', path: '/editor/top.md', platform: 'mobile' } }
     render(<EditorScreen />)
     await waitFor(() => expect(window.NexusMDNav.target).toBeNull())
+  })
+})
+
+describe('Pin to Home from the phone Editor', () => {
+  const pinned = []
+  const onPin = e => pinned.push(e.detail)
+  beforeEach(() => { pinned.length = 0; window.addEventListener('nexusmd:pin-shortcut', onPin) })
+  afterEach(() => window.removeEventListener('nexusmd:pin-shortcut', onPin))
+
+  it('pins the folder being browsed, the workspace included', async () => {
+    window.NexusMDNav = { view: 'editor', target: { target: 'editor', kind: 'folder', path: '/editor/notes', platform: 'mobile' } }
+    render(<EditorScreen />)
+    await screen.findByText('a.md')
+    fireEvent.click(screen.getByLabelText('Pin this folder to Home'))
+    expect(pinned).toEqual([{ target: 'editor', kind: 'folder', path: '/editor/notes', name: 'notes' }])
+  })
+
+  it('pins an open file', async () => {
+    render(<EditorScreen />)
+    fireEvent.click(await screen.findByText('top.md'))
+    fireEvent.click(await screen.findByLabelText('Pin to Home'))
+    expect(pinned).toEqual([{ target: 'editor', kind: 'file', path: '/editor/top.md', name: 'top.md' }])
   })
 })

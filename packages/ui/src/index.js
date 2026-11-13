@@ -126,6 +126,7 @@ export { DashboardView } from './views/view-dashboard.jsx'
 // its data and storage seams (see the headers of these files).
 export { ListsView } from './views/view-lists.jsx'
 export { WidgetHost, WidgetSheet, WidgetBody, WIDGET_TYPES } from './home-widgets.jsx'
+export { pinToHome, listenForPins, PIN_EVENT } from './pin-shortcut.js'
 export {
   Card as WidgetCard, TimeWidget, NotesWidget, LatestBuild, LatestTest, storageTimerStore,
 } from './dashboard-interactive-widgets.jsx'

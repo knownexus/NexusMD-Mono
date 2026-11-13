@@ -8,6 +8,7 @@ import DOMPurify from 'dompurify';
 import { MARKDOWN_CONTENT_CSS, followPreviewLink, renderPreview, useHighlightJs, useMarkdownTextSize, useCtrlWheelTextSize, TextSizeControls } from './markdown-preview.jsx';
 import { MarkdownDiff } from '../md-extras-ui.jsx';
 import { useNexusData } from '../data-context.jsx';
+import { pinToHome } from '../pin-shortcut.js';
 import { MD_CHEAT_GROUPS, LEARN_ELEMENTS, rendererLog, ignore } from '@nexusmd/core';
 
 const log = rendererLog('documents', 'viewer')
@@ -1189,6 +1190,17 @@ function MarkdownViewer({ openNewest = false, openDocId = null }) {
             </svg>
             Documents{docs.length > 0 ? ` (${docs.length})` : ''}
           </button>
+
+          {currentDoc && (
+            <button style={barBtnStyle} title="Put a shortcut to this document on Home"
+              onClick={() => pinToHome({ target: 'doc', tool: 'markdown', docId: currentDoc.id, name: currentDoc.name ?? currentDoc.autoName ?? '' })}>
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9.5 1.5l5 5-2 .5-2.5 2.5.5 3-1.5 1.5-3-3-4 4"/>
+                <path d="M5.5 5.5l5 5"/>
+              </svg>
+              Pin
+            </button>
+          )}
 
           <BarSep />
 

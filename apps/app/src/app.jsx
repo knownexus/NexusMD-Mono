@@ -6,7 +6,7 @@ import { toast } from './toast.jsx';
 import { createGoogleEvent } from './google-calendar.js';
 import { refreshNow } from './refresh.js';
 import { helmPushPref, effectiveNeedsMe, Flash, Sheet } from './components.jsx';
-import { getIsoYearWeek, getMondayOfDate, getYearWeekForOffset, orderTabs, moveTab, placeTabs } from '@nexusmd/core';
+import { getIsoYearWeek, getMondayOfDate, getYearWeekForOffset, orderTabs, moveTab, placeTabs, newWidgetsAfterSave } from '@nexusmd/core';
 import { HelmData, HelmApi } from './data.jsx';
 import { useProfile, ProfileProvider } from './profile-context.jsx';
 import { useTweaks } from './tweaks-panel.jsx';
@@ -15,7 +15,7 @@ import {
   NexusDataProvider, renderContent, SEEN_FINGERPRINTS, DEFAULT_PROJECT_AREAS,
   loadWeekPlanner, saveWeekPlanner, ProjectAreasModal, DocumentsView, ApiClientProvider, ApiClientView, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
   PRCommitsTab, PRFilesTab, PRTabs, CreateWIModal, WIDetail, PersonDetail, DetailDrawer, paletteFor,
-  TimeView, ticketsFromWorkItems,
+  TimeView, ticketsFromWorkItems, listenForPins,
 } from '@nexusmd/ui';
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
@@ -28,6 +28,7 @@ import { createGithubHttpAdapter } from './github-client.js';
 import { useOffScreens } from './work-screens.js';
 import { EditorScreen, editorStore } from './editor-screen.jsx';
 import { GitView } from './git-view.jsx';
+import { PLATFORM as SHORTCUT_PLATFORM } from './shortcut-host.js';
 import { apiFileAdapter } from './adapters/api-file.js';
 import { scriptRunnerAdapter } from './adapters/api-script-runner.js';
 import { apiHttpAdapter } from './adapters/api-http.js';
@@ -1131,6 +1132,17 @@ function AppShell() {
     window.addEventListener('helm:create-wi', h);
     return () => window.removeEventListener('helm:create-wi', h);
   }, []);
+
+  // "Pin to Home" from a viewer (a repo file, a document, an Editor file): the shortcut is added to the Home widgets, or
+  // left as it is when that exact place is already there.
+  const tweaksRef = useRef(tweaks); tweaksRef.current = tweaks;
+  const setTweakRef = useRef(setTweak); setTweakRef.current = setTweak;
+  useEffect(() => listenForPins((widget) => {
+    const current = Array.isArray(tweaksRef.current.homeWidgets) ? tweaksRef.current.homeWidgets : [];
+    const had = current.some(x => x.id === widget.id);
+    if (!had) setTweakRef.current('homeWidgets', newWidgetsAfterSave(current, widget));
+    showFlash(had ? 'Already on Home' : 'Pinned to Home', 'check');
+  }, SHORTCUT_PLATFORM), [showFlash]);
 
   useEffect(() => {
     const h = (e) => {

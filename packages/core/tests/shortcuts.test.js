@@ -90,6 +90,11 @@ describe('resolveRepo', () => {
   it('matches a GitHub repo on the phone from a shortcut made with a local remote', () => {
     expect(resolveRepo({ provider: 'local', name: 'nexus', remote: 'https://github.com/knownexus/nexus.git' }, [ado, gh])).toBe(gh)
   })
+  it('matches a desktop clone of an Azure DevOps repo to the phone’s listing of it by project and name', () => {
+    const clone = { provider: 'local', name: 'whatever-the-folder-is-called', remote: 'https://org@dev.azure.com/org/Core/_git/api' }
+    expect(resolveRepo(clone, [gh, ado])).toBe(ado)
+    expect(repoKeys(clone)).toContain('ado:core/api')
+  })
   it('matches Azure DevOps by project and name, ignoring case', () => {
     expect(resolveRepo({ provider: 'ado', name: 'API', project: 'core' }, [gh, ado])).toBe(ado)
   })
