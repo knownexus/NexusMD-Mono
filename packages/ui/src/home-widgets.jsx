@@ -4,12 +4,15 @@
 //
 // Everything a widget reads comes in through `ctx`, which the app builds:
 //   navTo(page, filter?, repoId?), onOpenPR(pr), onOpenItem(workItem), needsMe(pr), isTerminalState(state),
+//   openTarget(target) and resolveTarget(target) → { ok, reason? } for File-or-folder shortcuts (core shortcuts),
 //   prs, builds, tests, workItems, me (current user id), team, calendarEvents, plannerData, lists,
 //   timer (a store: load/save/loadPaused/savePaused, see storageTimerStore), notes ({ load, save }),
 //   onCreateBug(detail), ArtifactsSheet ({ build, onClose }).
 // Missing fields render as empty states; nothing here reads app globals or storage.
 import React from 'react';
-import { WIDGET_CONFIG_TYPES, pageLabel } from '@nexusmd/core';
+import {
+  WIDGET_CONFIG_TYPES, pageLabel, widgetPage, readTarget, shortcutTitle, shortcutSub, shortcutIcon, LINK_UNAVAILABLE,
+} from '@nexusmd/core';
 import { Sheet as DefaultSheet } from './app-components.jsx';
 import { Icon } from './icons.jsx';
 import { Card, TimeWidget, NotesWidget, LatestBuild, LatestTest } from './dashboard-interactive-widgets.jsx';
@@ -30,6 +33,30 @@ function Row({ title, sub, onClick }) {
 }
 const Empty = ({ text }) => <div className="m-row-sub" style={{ padding: 16 }}>{text}</div>;
 const nav = (x, ...a) => x.navTo?.(...a);
+
+// A File-or-folder shortcut. One the host cannot open here (its repo is not on this device, its document is
+// gone) is greyed, and tapping it says why instead of going anywhere.
+const ellipsis = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+function LinkTile({ config, ctx }) {
+  const [why, setWhy] = useState('');
+  const t = readTarget(config);
+  const res = !t ? { ok: false, reason: LINK_UNAVAILABLE.invalid } : ctx.resolveTarget ? ctx.resolveTarget(t) : { ok: true };
+  const ok = res?.ok !== false;
+  const go = () => { if (ok) { setWhy(''); ctx.openTarget?.(t); } else setWhy(res?.reason || LINK_UNAVAILABLE.invalid); };
+  return (
+    <div className="m-card" role="button" tabIndex={0} aria-disabled={!ok} style={{ marginBottom: 12, cursor: 'pointer', opacity: ok ? 1 : 0.55 }}
+      onClick={go} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }}>
+      <div className="m-card-h" style={{ borderBottom: 0, gap: 10, paddingRight: 36 }}>
+        <Icon name={shortcutIcon(t)} size={16}/>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <h3 style={ellipsis}>{shortcutTitle(t)}</h3>
+          <div className="m-row-sub" style={{ ...ellipsis, ...(why ? { whiteSpace: 'normal' } : {}) }}>{why || shortcutSub(t)}</div>
+        </div>
+        {ok && <Icon name="chevron-right" size={16} className="chev"/>}
+      </div>
+    </div>
+  );
+}
 
 // ── The renderers, keyed like WIDGET_CONFIG_TYPES ─────────────────────────────────────────────────────────────
 const WIDGET_RENDERERS = {
@@ -168,6 +195,9 @@ const WIDGET_RENDERERS = {
       </div>
     ),
   },
+  link: {
+    render: (c, x) => <LinkTile config={c} ctx={x}/>,
+  },
 };
 
 export const WIDGET_TYPES = Object.fromEntries(
@@ -197,7 +227,7 @@ export function WidgetBody({ widget: w, ctx = {}, onEdit }) {
 // ── Host: the widgets, in a grid so half-width ones sit side by side ─────────────────────────────────────────
 // Widgets of an unknown type, or whose page is in offScreens, are skipped.
 export function WidgetHost({ widgets = [], offScreens = [], ctx = {}, onEdit }) {
-  const shown = arr(widgets).filter(w => w && WIDGET_TYPES[w.type] && !offScreens.includes(WIDGET_TYPES[w.type].page));
+  const shown = arr(widgets).filter(w => w && WIDGET_TYPES[w.type] && !offScreens.includes(widgetPage(w)));
   if (!shown.length) return null;
   const x = ctx || {};
   return (
@@ -235,7 +265,9 @@ function RepoPicker({ value, onPick, listRepoChoices }) {
 // `Sheet` defaults to the shared bottom sheet; `listRepoChoices()` → Promise<{ repos: [{ id, name, project? }] }>
 // feeds the Repo widget's picker.
 // showWidth=false leaves out the half/full Width choice, for a host that sizes widgets itself (desktop).
-export function WidgetSheet({ open, widget, offScreens = [], onClose, onSave, onRemove, Sheet = DefaultSheet, listRepoChoices, showWidth = true }) {
+// `targetSources` is what lets a host create File-or-folder shortcuts here; without it that type is not offered
+// (the shortcuts a host pins from its viewers are still shown, and editable here).
+export function WidgetSheet({ open, widget, offScreens = [], onClose, onSave, onRemove, Sheet = DefaultSheet, listRepoChoices, targetSources, showWidth = true }) {
   const editing = !!widget;
   const [type, setType] = useState(null);
   const [config, setConfig] = useState({});
@@ -247,12 +279,12 @@ export function WidgetSheet({ open, widget, offScreens = [], onClose, onSave, on
   const t = type && WIDGET_TYPES[type];
   const choose = (k) => { setType(k); setConfig({ ...WIDGET_TYPES[k].defaults }); };
   const set = (patch) => setConfig(c => ({ ...c, ...patch }));
-  const ready = t && (!t.needsRepo || config.repoId);
+  const ready = t && (!t.needsRepo || config.repoId) && (!t.needsTarget || readTarget(config));
   return (
     <Sheet open={open} icon="plus" title={editing ? 'Widget settings' : t ? `New ${t.label.toLowerCase()} widget` : 'Add a widget'} sub={editing ? t?.label : undefined} onClose={onClose}>
       {!t && (
         <div>
-          {Object.entries(WIDGET_TYPES).filter(([, d]) => !d.page || !offScreens.includes(d.page)).map(([k, d]) => (
+          {Object.entries(WIDGET_TYPES).filter(([, d]) => (!d.page || !offScreens.includes(d.page)) && (!d.needsTarget || targetSources)).map(([k, d]) => (
             <div key={k} className="m-row" onClick={() => choose(k)}>
               <span className="m-fileic"><Icon name={d.icon} size={16}/></span>
               <div className="m-row-main"><div className="m-row-title">{d.label}</div><div className="m-row-sub">{d.desc}</div></div>
@@ -268,12 +300,20 @@ export function WidgetSheet({ open, widget, offScreens = [], onClose, onSave, on
               {editing ? <div className="m-row-title">{config.repoName}</div> : <RepoPicker value={config.repoId} onPick={set} listRepoChoices={listRepoChoices}/>}
             </label>
           )}
+          {t.needsTarget && editing && (
+            <div className="m-fld"><span>Opens (fixed once made)</span>
+              <div className="m-row-title">{shortcutTitle({ ...config, label: '' })}</div>
+              <div className="m-row-sub">{shortcutSub(config)}</div>
+            </div>
+          )}
           {t.fields.map(f => (
             <label key={f.key} className="m-fld"><span>{f.label}</span>
               {f.kind === 'select'
                 ? <select style={inputStyle} value={config[f.key]} onChange={e => set({ [f.key]: e.target.value })}>
                     {f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
+                : f.kind === 'text'
+                ? <input style={inputStyle} type="text" maxLength={60} value={config[f.key] ?? ''} onChange={e => set({ [f.key]: e.target.value })}/>
                 : <input style={inputStyle} type="number" inputMode="numeric" min={f.min} max={f.max} value={config[f.key]}
                     onChange={e => set({ [f.key]: Math.min(f.max, Math.max(f.min, Number(e.target.value) || f.min)) })}/>}
             </label>
@@ -288,7 +328,7 @@ export function WidgetSheet({ open, widget, offScreens = [], onClose, onSave, on
           <div style={{ display: 'flex', gap: 8 }}>
             {editing && <button type="button" className="btn m-btn-lg" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => onRemove(widget)}>Remove</button>}
             <button type="button" className="btn primary m-btn-lg" style={{ flex: 1 }} disabled={!ready}
-              onClick={() => onSave({ id: widget?.id || 'w' + Date.now().toString(36), type, config })}>{editing ? 'Save' : 'Add widget'}</button>
+              onClick={() => onSave({ id: widget?.id || 'w' + Date.now().toString(36), type, config: t.needsTarget ? readTarget(config) : config })}>{editing ? 'Save' : 'Add widget'}</button>
           </div>
         </div>
       )}

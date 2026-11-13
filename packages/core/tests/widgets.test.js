@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { newWidgetsAfterSave, WIDGET_PAGES, pageLabel, WIDGET_CONFIG_TYPES } from '../src/index.js'
+import { newWidgetsAfterSave, WIDGET_PAGES, pageLabel, WIDGET_CONFIG_TYPES, widgetPage } from '../src/index.js'
+
+describe('widgetPage', () => {
+  it('is the type page, or for a link the page its target lives on', () => {
+    expect(widgetPage({ type: 'pr' })).toBe('pr')
+    expect(widgetPage({ type: 'shortcut', config: { to: 'git' } })).toBeUndefined()
+    expect(widgetPage({ type: 'link', config: { target: 'doc', tool: 'json', docId: 'a' } })).toBe('markdown')
+    expect(widgetPage({ type: 'link', config: { target: 'git', path: '/a', repo: { name: 'r' } } })).toBe('git')
+    expect(widgetPage({ type: 'link', config: {} })).toBeUndefined()
+    expect(widgetPage(null)).toBeUndefined()
+  })
+})
 
 describe('newWidgetsAfterSave', () => {
   it('replaces a widget with the same id', () => {

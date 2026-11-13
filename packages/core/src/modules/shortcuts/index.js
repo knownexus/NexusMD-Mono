@@ -38,7 +38,11 @@ export function normalizeRemote(url) {
   if (!s) return ''
   const scp = /^[\w.-]+@([^:/\s]+):(?!\/)(.+)$/.exec(s)
   if (scp) s = `${scp[1]}/${scp[2]}`
-  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^[^@/]*@/, '')
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '')
+  // Credentials in the authority (`user:token@`) never survive; the host starts after the last "@" before the first "/".
+  const slash = s.indexOf('/')
+  const at = (slash < 0 ? s : s.slice(0, slash)).lastIndexOf('@')
+  if (at >= 0) s = s.slice(at + 1)
   try { s = decodeURIComponent(s) } catch { /* keep it as written */ }
   s = s.replace(/[?#].*$/, '').replace(/\/+$/, '').replace(/\.git$/i, '').toLowerCase()
   let m = /^ssh\.dev\.azure\.com\/v3\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(s)
@@ -92,7 +96,10 @@ export function readTarget(config) {
     const name = str(r?.name)
     if (!name) return null
     const repo = { provider: ['github', 'ado', 'local'].includes(r.provider) ? r.provider : 'local', name }
-    for (const k of ['fullName', 'project', 'remote']) if (str(r[k])) repo[k] = str(r[k])
+    for (const k of ['fullName', 'project']) if (str(r[k])) repo[k] = str(r[k])
+    // Only the normalized identity is kept: a raw remote URL can carry credentials, and this config syncs.
+    const remote = normalizeRemote(r.remote)
+    if (remote) repo.remote = remote
     const out = { target: 'git', kind: c.kind === 'file' ? 'file' : 'folder', path: normalizeRepoPath(c.path), repo }
     if (str(c.branch)) out.branch = str(c.branch)
     if (str(c.label)) out.label = str(c.label)

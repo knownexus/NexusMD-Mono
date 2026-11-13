@@ -25,6 +25,9 @@ describe('normalizeRemote', () => {
     ['git@github.com:knownexus/nexus.git', 'github.com/knownexus/nexus'],
     ['ssh://git@github.com/knownexus/nexus', 'github.com/knownexus/nexus'],
     ['https://user:tok@github.com/knownexus/nexus/', 'github.com/knownexus/nexus'],
+    ['https://user:p@ss@github.com/knownexus/nexus', 'github.com/knownexus/nexus'],
+    ['https://ghp_abc123@github.com/knownexus/nexus.git', 'github.com/knownexus/nexus'],
+    ['ghp_abc123@github.com:knownexus/nexus.git', 'github.com/knownexus/nexus'],
     ['https://dev.azure.com/org/My%20Proj/_git/repo', 'dev.azure.com/org/my proj/repo'],
     ['https://org@dev.azure.com/org/proj/_git/repo', 'dev.azure.com/org/proj/repo'],
     ['git@ssh.dev.azure.com:v3/org/proj/repo', 'dev.azure.com/org/proj/repo'],
@@ -78,6 +81,12 @@ describe('readTarget', () => {
       target: 'git', kind: 'file', path: '/src/app.js', branch: 'dev',
       repo: { provider: 'github', name: 'nexus', fullName: 'knownexus/nexus' },
     })
+  })
+  it('keeps only the normalized remote, never credentials from the URL', () => {
+    const t = readTarget(gitFile({ repo: { provider: 'github', name: 'nexus', remote: 'https://me:s3cret@github.com/KnownExus/Nexus.git' } }))
+    expect(t.repo.remote).toBe('github.com/knownexus/nexus')
+    expect(JSON.stringify(t)).not.toMatch(/s3cret|me:/)
+    expect(readTarget(gitFile({ repo: { provider: 'github', name: 'n', remote: 'not a remote' } })).repo).not.toHaveProperty('remote')
   })
   it('defaults an odd kind to folder and an odd provider to local', () => {
     const t = readTarget({ target: 'git', kind: 'x', path: '/a', repo: { provider: 'svn', name: 'r' } })
