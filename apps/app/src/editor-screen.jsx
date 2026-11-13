@@ -8,6 +8,8 @@ import { editorWorkspace, WORKSPACE_ROOT } from './adapters/editor-workspace.js'
 import { pickerAdapter } from './adapters/picker.js';
 import { createSafApi, createEditorApi, safAvailable } from './adapters/editor-saf.js';
 import { getProfileKey } from './profile-keys.js';
+import { takeTarget } from './shortcut-host.js';
+import { pinToHome } from '@nexusmd/ui';
 import { Icon } from './icons.jsx';
 import { toast } from './toast.jsx';
 import { Sheet } from './components.jsx';
@@ -20,6 +22,8 @@ const storage = {
 const saf = createSafApi();
 const editorApi = createEditorApi({ workspace: editorWorkspace, saf });
 export const editorStore = createEditorStore({ api: editorApi, storage });
+// The entries of a workspace folder, as { name, kind: 'dir' | 'file' } (the Home shortcut picker).
+export const listEditorFolder = (dir) => editorApi.list(dir).then(r => r?.entries || []);
 const useEditorStore = (store) => React.useSyncExternalStore(store.subscribe, store.getState);
 
 // The picker the EditorApp opens files and folders with, mapped onto the workspace.
@@ -39,6 +43,7 @@ const host = {
 function DesktopEditorScreen() {
   const s = useEditorStore(editorStore);
   const [name, setName] = React.useState('');
+  React.useEffect(() => { takeTarget('editor'); }, []); // a Home shortcut was already opened by the store
   const active = s.docs.find(d => d.path === s.active);
 
   const create = async () => {
@@ -78,7 +83,13 @@ const BAD_NAME = /[\\/:*?"<>|]/;
 
 function PhoneEditorScreen({ onFlash }) {
   const s = useEditorStore(editorStore);
-  const [dir, setDir] = React.useState(WORKSPACE_ROOT);
+  // A Home shortcut to a folder starts the browser there (a file is opened by the store, which the screen follows).
+  const [dir, setDir] = React.useState(() => {
+    const t = window.NexusMDNav?.target;
+    const inside = t?.target === 'editor' && t.kind === 'folder' && (t.path === WORKSPACE_ROOT || t.path.startsWith(WORKSPACE_ROOT + '/'));
+    return inside ? t.path.replace(/\/+$/, '') || WORKSPACE_ROOT : WORKSPACE_ROOT;
+  });
+  React.useEffect(() => { takeTarget('editor'); }, []);
   const [entries, setEntries] = React.useState(null);
   const [sheet, setSheet] = React.useState(false);
   const [name, setName] = React.useState('');
@@ -125,6 +136,7 @@ function PhoneEditorScreen({ onFlash }) {
           <button type="button" className="m-iconbtn" aria-label="Back" onClick={() => editorStore.close(active.path)}><Icon name="chevron-left" size={18}/></button>
           <div className="m-ab-lead"><div><h1 style={{ fontSize: 16 }}>{active.name}</h1></div></div>
           <div className="m-ab-actions">
+            {!active.readOnly && <button type="button" className="m-iconbtn" aria-label="Pin to Home" title="Pin to Home" onClick={() => pinToHome({ target: 'editor', kind: 'file', path: active.path, name: active.name })}><Icon name="pin" size={17}/></button>}
             {navigator.share && <button type="button" className="m-iconbtn" title="Share" disabled={active.status !== 'ready'} onClick={share}><Icon name="send" size={17}/></button>}
             <button type="button" className="m-linkbtn" disabled={active.status !== 'ready'}
               onClick={() => { pickerAdapter.saveFile(active.name, active.text); onFlash?.('Exported'); }}>Export</button>
@@ -140,6 +152,7 @@ function PhoneEditorScreen({ onFlash }) {
       <div className="m-appbar">
         <div className="m-ab-lead"><div><h1>Documents</h1><div className="m-ab-sub">{crumbs.length ? crumbs.join(' / ') : 'Workspace'}</div></div></div>
         <div className="m-ab-actions">
+          <button type="button" className="m-iconbtn" aria-label="Pin this folder to Home" title="Pin to Home" onClick={() => pinToHome({ target: 'editor', kind: 'folder', path: dir, name: dir.split('/').pop() })}><Icon name="pin" size={17}/></button>
           <button type="button" className="m-iconbtn" aria-label="New or import" onClick={() => { setNameError(''); setSheet(true); }}><Icon name="plus" size={20}/></button>
         </div>
       </div>

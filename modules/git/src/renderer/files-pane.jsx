@@ -14,7 +14,8 @@ import { useRail } from './use-rail.js'
 import { FileExplorer, forgetExplorerViews } from './file-explorer.jsx'
 import { useRecentFiles } from './use-recent-files.js'
 import { relativeTime } from './history-pane.jsx'
-import { Icon, Segmented } from '@nexusmd/ui'
+import { Icon, Segmented, pinToHome } from '@nexusmd/ui'
+import { localPinTarget } from './shortcut-open.js'
 import { TextPreview } from './file-preview.jsx'
 import { ImageView } from './image-view.jsx'
 import { isImagePath } from './image-types.js'
@@ -283,9 +284,15 @@ export function FilesPane({ adapter, host = null, repo, worktreePath, registered
       { label: 'Open in new window', onSelect: () => inWindow(path) },
     ]
   }
+  // A shortcut on the Dashboard to this file or folder (the Dashboard says it was pinned).
+  const pin = row => attempt(async () => {
+    const d = deps.current
+    pinToHome(await localPinTarget({ adapter: d.adapter, repo: d.repo, worktreePath, registered: d.registered, kind: row.kind === 'file' ? 'file' : 'folder', path: row.path }))
+  })
   const menuItems = row => [
     ...(row.kind === 'file' ? fileActions(row.path).map(({ label, onSelect }) => ({ label: label === 'Edit' ? 'Open' : label, onSelect })) : []),
     { label: 'Show in Explorer', onSelect: () => reveal(row.path) },
+    { label: 'Pin to Dashboard', onSelect: () => pin(row) },
   ]
   const preview = path => (
     <LocalPreview key={path} path={path} change={changeFor(changes, path)} d={deps.current} worktreePath={worktreePath} version={version}

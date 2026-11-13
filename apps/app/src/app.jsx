@@ -6,7 +6,7 @@ import { toast } from './toast.jsx';
 import { createGoogleEvent } from './google-calendar.js';
 import { refreshNow } from './refresh.js';
 import { helmPushPref, effectiveNeedsMe, Flash, Sheet } from './components.jsx';
-import { getIsoYearWeek, getMondayOfDate, getYearWeekForOffset, orderTabs, moveTab, placeTabs } from '@nexusmd/core';
+import { getIsoYearWeek, getMondayOfDate, getYearWeekForOffset, orderTabs, moveTab, placeTabs, newWidgetsAfterSave } from '@nexusmd/core';
 import { HelmData, HelmApi } from './data.jsx';
 import { useProfile, ProfileProvider } from './profile-context.jsx';
 import { useTweaks } from './tweaks-panel.jsx';
@@ -15,7 +15,7 @@ import {
   NexusDataProvider, renderContent, SEEN_FINGERPRINTS, DEFAULT_PROJECT_AREAS,
   loadWeekPlanner, saveWeekPlanner, ProjectAreasModal, DocumentsView, ApiClientProvider, ApiClientView, SettField, SetupScreen, LoadingScreen, ProfileMenu, WidgetOrderEditor, Mini,
   PRCommitsTab, PRFilesTab, PRTabs, CreateWIModal, WIDetail, PersonDetail, DetailDrawer, paletteFor,
-  TimeView, ticketsFromWorkItems,
+  TimeView, ticketsFromWorkItems, listenForPins,
 } from '@nexusmd/ui';
 import { workItemSource } from './work-item-source.js';
 import { JiraSettingsModal } from './jira-settings.jsx';
@@ -28,6 +28,7 @@ import { createGithubHttpAdapter } from './github-client.js';
 import { useOffScreens } from './work-screens.js';
 import { EditorScreen, editorStore } from './editor-screen.jsx';
 import { GitView } from './git-view.jsx';
+import { PLATFORM as SHORTCUT_PLATFORM } from './shortcut-host.js';
 import { apiFileAdapter } from './adapters/api-file.js';
 import { scriptRunnerAdapter } from './adapters/api-script-runner.js';
 import { apiHttpAdapter } from './adapters/api-http.js';
@@ -671,6 +672,7 @@ function AppShell() {
   // Documents page, any other text file is opened in the Editor. Counted, so the Documents page remounts on the file each time one arrives.
   const [openedFiles, setOpenedFiles] = useState(0);
   const [openedTool, setOpenedTool] = useState('markdown'); // the Documents tool the last opened file is in
+  const [openDocId, setOpenDocId] = useState(null); // the document a Home shortcut named, shown instead of the newest
   useEffect(() => watchOpenedFiles({
     storageKey: device === 'phone' ? undefined : getProfileKey('md_documents'), // the phone layout keeps documents under the bare key
     jsonStorageKey: getProfileKey('json_editor_documents'), // the JSON editor keeps its documents here on both layouts
@@ -682,6 +684,7 @@ function AppShell() {
         return;
       }
       setOpenedTool(opened.tool);
+      setOpenDocId(null);
       setOpenedFiles(n => n + 1);
       navigate('markdown');
       showFlash(opened.name ? `Opened ${opened.name}` : 'Opened the file', 'check');
@@ -1130,16 +1133,45 @@ function AppShell() {
     return () => window.removeEventListener('helm:create-wi', h);
   }, []);
 
+  // "Pin to Home" from a viewer (a repo file, a document, an Editor file): the shortcut is added to the Home widgets, or
+  // left as it is when that exact place is already there.
+  const tweaksRef = useRef(tweaks); tweaksRef.current = tweaks;
+  const setTweakRef = useRef(setTweak); setTweakRef.current = setTweak;
+  useEffect(() => listenForPins((widget) => {
+    const current = Array.isArray(tweaksRef.current.homeWidgets) ? tweaksRef.current.homeWidgets : [];
+    const had = current.some(x => x.id === widget.id);
+    if (!had) setTweakRef.current('homeWidgets', newWidgetsAfterSave(current, widget));
+    showFlash(had ? 'Already on Home' : 'Pinned to Home', 'check');
+  }, SHORTCUT_PLATFORM), [showFlash]);
+
   useEffect(() => {
     const h = (e) => {
       const target = e.detail?.view;
       if (!target) return;
-      window.NexusMDNav = { pendingFilter: e.detail.filter || null, view: target, repoId: e.detail.repoId || null };
+      const link = e.detail.target || null; // a Home shortcut to one file, folder or document (core shortcuts)
+      window.NexusMDNav = { pendingFilter: e.detail.filter || null, view: target, repoId: e.detail.repoId || null, target: link };
+      if (link?.target === 'doc') {
+        // Shown by the Documents page, which is remounted on it (as for a file the app was opened with).
+        window.NexusMDNav = { ...window.NexusMDNav, target: null };
+        setOpenedTool(link.tool);
+        setOpenDocId(link.docId);
+        setOpenedFiles(n => n + 1);
+        navigate(target);
+        return;
+      }
+      if (link?.target === 'editor') {
+        // Opened first, so a file that is gone says so here rather than leaving an empty Editor.
+        Promise.resolve(editorStore.openPath(link.path)).then(ok => {
+          if (ok) navigate(target);
+          else { window.NexusMDNav = { ...window.NexusMDNav, target: null }; showFlash(`${link.name || link.path} no longer exists`, 'alert'); }
+        });
+        return;
+      }
       navigate(target);
     };
     window.addEventListener('helm:navigate', h);
     return () => window.removeEventListener('helm:navigate', h);
-  }, [navigate]);
+  }, [navigate, showFlash]);
 
   const configured = HelmData.configured;
 
@@ -1219,7 +1251,7 @@ function AppShell() {
       case 'time': return withBar('Time', <TimeView storageKey={getProfileKey('nexusmd.timelog.v1')} getProfileKey={getProfileKey} namespace="nexusmd" getTickets={getTimeTickets}/>);
       case 'notes': return <NotesView onAddTask={addTaskFromNote} onFlash={showFlash}/>;
       case 'lists': return <ListsView device={device}/>;
-      case 'markdown': return device === 'phone' ? <DocumentsPhone key={openedFiles} opened={openedFiles} openedTool={openedTool} onFlash={showFlash}/> : <DocumentsView key={openedFiles} opened={openedFiles} openedTool={openedTool}/>;
+      case 'markdown': return device === 'phone' ? <DocumentsPhone key={openedFiles} opened={openedFiles} openedTool={openedTool} openDocId={openDocId} onFlash={showFlash}/> : <DocumentsView key={openedFiles} opened={openedFiles} openedTool={openedTool} openDocId={openDocId}/>;
       case 'editor': return <EditorScreen onFlash={showFlash}/>;
       case 'git': return <GitView onFlash={showFlash}/>;
       case 'api': return withBar('API Client', <ApiClientProvider adapters={API_CLIENT_ADAPTERS}><ApiClientView/></ApiClientProvider>);

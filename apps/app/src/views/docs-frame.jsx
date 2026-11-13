@@ -3,11 +3,22 @@
 // in a sheet. The tools reuse the shared logic and storage keys, so documents made on the desktop
 // layout are still here. The desktop layout (@nexusmd/ui's DocumentsView) is unchanged.
 import React from 'react';
-import { relativeTime } from '@nexusmd/ui';
+import { relativeTime, pinToHome } from '@nexusmd/ui';
 import { Icon } from '../icons.jsx';
 import { Sheet } from '../components.jsx';
 
 export const TOOLS = [['markdown', 'Markdown'], ['json', 'JSON'], ['regex', 'Regex']];
+
+// "Pin to Home" for the open saved document (nothing to pin until it is saved).
+export function PinDocButton({ tool, doc }) {
+  if (!doc) return null;
+  return (
+    <button type="button" className="m-iconbtn" aria-label="Pin to Home"
+      onClick={() => pinToHome({ target: 'doc', tool, docId: doc.id, name: doc.name ?? doc.autoName ?? '' })}>
+      <Icon name="pin" size={17}/>
+    </button>
+  );
+}
 
 // The page: app bar (title, the tool's own actions, saved documents, new), the tool switcher, then
 // the tool's body. Every tool renders through this so they all look the same.

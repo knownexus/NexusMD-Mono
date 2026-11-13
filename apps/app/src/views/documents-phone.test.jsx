@@ -178,3 +178,77 @@ describe('Documents page when a file was opened with the app', () => {
     expect(await screen.findByLabelText('JSON')).toBeTruthy()
   })
 })
+
+describe('Documents page opened on one document (a Home shortcut)', () => {
+  const md = () => localStorage.setItem('md_documents', JSON.stringify({ docs: [
+    { id: 'a', autoName: 'Old', content: '# Old\n\nfrom before', updatedAt: 1 },
+    { id: 'b', autoName: 'Newest', content: '# Newest\n\nlast edited', updatedAt: 9 },
+  ] }))
+  const json = () => localStorage.setItem('json_editor_documents', JSON.stringify([
+    { id: 'j1', name: 'one', autoName: 'one', content: '{"city":"Oslo"}', createdAt: 1, updatedAt: 1 },
+    { id: 'j2', name: 'two', autoName: 'two', content: '{"city":"Bergen"}', createdAt: 2, updatedAt: 9 },
+  ]))
+
+  it('shows the named Markdown document, not the most recent', () => {
+    md()
+    render(<DocumentsPhone opened={1} openedTool="markdown" openDocId="a" key={1}/>)
+    expect(screen.getByLabelText('Markdown').value).toBe('# Old\n\nfrom before')
+  })
+
+  it('shows the named JSON document in the JSON tool, even if Markdown was last in use', async () => {
+    json()
+    render(<DocumentsPhone opened={1} openedTool="json" openDocId="j1" key={1}/>)
+    expect((await screen.findByLabelText('JSON')).value).toBe('{"city":"Oslo"}')
+    expect(screen.queryByLabelText('Markdown')).toBeNull()
+  })
+
+  it('falls back to the most recent Markdown document when the named one has gone', () => {
+    md()
+    render(<DocumentsPhone opened={1} openedTool="markdown" openDocId="gone" key={1}/>)
+    expect(screen.getByLabelText('Markdown').value).toBe('# Newest\n\nlast edited')
+  })
+
+  it('falls back to the most recent JSON document when the named one has gone', async () => {
+    json()
+    render(<DocumentsPhone opened={1} openedTool="json" openDocId="gone" key={1}/>)
+    expect((await screen.findByLabelText('JSON')).value).toBe('{"city":"Bergen"}')
+  })
+
+  it('opens the most recent as before when no document is named', () => {
+    md()
+    render(<DocumentsPhone opened={1} openedTool="markdown" key={1}/>)
+    expect(screen.getByLabelText('Markdown').value).toBe('# Newest\n\nlast edited')
+  })
+
+  it('names a document of the other tool to nothing: the tool that was opened shows its own', async () => {
+    md(); json()
+    render(<DocumentsPhone opened={1} openedTool="json" openDocId="a" key={1}/>)
+    expect((await screen.findByLabelText('JSON')).value).toBe('{"city":"Bergen"}')
+  })
+})
+
+describe('Pin to Home from the phone Documents page', () => {
+  const pinned = []
+  const onPin = e => pinned.push(e.detail)
+  beforeEach(() => { pinned.length = 0; window.addEventListener('nexusmd:pin-shortcut', onPin) })
+  afterEach(() => window.removeEventListener('nexusmd:pin-shortcut', onPin))
+
+  it('pins the open Markdown document', () => {
+    localStorage.setItem('md_documents', JSON.stringify({ docs: [{ id: 'a', name: 'Plan', autoName: 'Plan', content: '# Plan', updatedAt: 9 }] }))
+    render(<DocumentsPhone/>)
+    fireEvent.click(screen.getByRole('button', { name: 'Pin to Home' }))
+    expect(pinned).toEqual([{ target: 'doc', tool: 'markdown', docId: 'a', name: 'Plan' }])
+  })
+
+  it('has nothing to pin on a page that is not saved yet', () => {
+    render(<DocumentsPhone/>)
+    expect(screen.queryByRole('button', { name: 'Pin to Home' })).toBeNull()
+  })
+
+  it('pins the open JSON document', async () => {
+    localStorage.setItem('json_editor_documents', JSON.stringify([{ id: 'j1', name: null, autoName: 'cfg', content: '{"a":1}', createdAt: 1, updatedAt: 9 }]))
+    render(<DocumentsPhone opened={1} openedTool="json" key={1}/>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Pin to Home' }))
+    expect(pinned).toEqual([{ target: 'doc', tool: 'json', docId: 'j1', name: 'cfg' }])
+  })
+})

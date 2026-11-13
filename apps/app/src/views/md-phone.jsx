@@ -6,7 +6,7 @@ import { MarkdownPreview, MarkdownDiff, generateId } from '@nexusmd/ui';
 import { Icon } from '../icons.jsx';
 import { pickerAdapter } from '../adapters/picker.js';
 import { Sheet } from '../components.jsx';
-import { ToolFrame, DocsSheet } from './docs-frame.jsx';
+import { ToolFrame, DocsSheet, PinDocButton } from './docs-frame.jsx';
 import { CHEAT, learnTarget } from '@nexusmd/core';
 
 // The desktop layout's own setting, so learn mode is on or off in both.
@@ -50,9 +50,10 @@ export function applyFormat(text, start, end, f) {
   return { next, from, to: from + sel.length };
 }
 
-function useMdDocs() {
+// `openDocId` (a Home shortcut) starts on that document instead of the most recent one; the most recent when it is gone.
+function useMdDocs(openDocId = null) {
   const [docs, setDocs] = React.useState(loadDocs);
-  const latest = React.useMemo(() => [...docs].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0], []); // eslint-disable-line react-hooks/exhaustive-deps
+  const latest = React.useMemo(() => (openDocId && docs.find(d => d.id === openDocId)) || [...docs].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0], []); // eslint-disable-line react-hooks/exhaustive-deps
   const [content, setContent] = React.useState(latest?.content || '');
   const [currentId, setCurrentId] = React.useState(latest?.id || null);
   const [status, setStatus] = React.useState('');
@@ -91,8 +92,8 @@ function useMdDocs() {
   };
 }
 
-export function MarkdownPhone({ tool, setTool, onFlash }) {
-  const m = useMdDocs();
+export function MarkdownPhone({ tool, setTool, onFlash, openDocId = null }) {
+  const m = useMdDocs(openDocId);
   const [mode, setMode] = React.useState('edit');
   const [sheet, setSheet] = React.useState(false);
   const ta = React.useRef(null);
@@ -128,7 +129,7 @@ export function MarkdownPhone({ tool, setTool, onFlash }) {
   return (
     <>
       <ToolFrame sub={title} tool={tool} setTool={setTool} onDocs={() => setSheet(true)} onNew={() => { m.create(); setMode('edit'); }}
-        actions={<button type="button" className="m-iconbtn" aria-label="Export" onClick={exportDoc}><Icon name="send" size={17}/></button>}
+        actions={<><PinDocButton tool="markdown" doc={current}/><button type="button" className="m-iconbtn" aria-label="Export" onClick={exportDoc}><Icon name="send" size={17}/></button></>}
         footer={(
           <div className="m-docs-foot">
             <span>{wordCount(m.content).toLocaleString()} words · {m.content ? m.content.split('\n').length : 0} lines</span>

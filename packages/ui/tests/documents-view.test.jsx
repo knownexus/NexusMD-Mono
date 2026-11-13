@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { render, cleanup, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { NexusDataProvider, DocumentsView } from '../src/index.js'
@@ -184,5 +184,95 @@ describe('JsonEditorView when a file was opened', () => {
   it('without openNewest it still starts on the sample', () => {
     const { getByText } = renderJson(store([doc('{"city":"Oslo"}')]), {})
     expect(getByText('Alice Johnson')).toBeTruthy()
+  })
+})
+
+// A Home shortcut opens one particular saved document, in its own tool, rather than the newest.
+describe('DocumentsView opened on one document (a Home shortcut)', () => {
+  const provider = (storage, children) => (
+    <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {} }}>{children}</NexusDataProvider>
+  )
+  const seedMarkdown = () => localStorage.setItem('md_documents', JSON.stringify({ docs: [
+    { id: 'old', name: null, autoName: 'Old notes', content: '# Old notes\n\nfrom before', createdAt: 1, updatedAt: 1 },
+    { id: 'new', name: 'Newest', autoName: 'Newest', content: '# Newest\n\nlast edited', createdAt: 2, updatedAt: 9 },
+  ] }))
+  const seedJson = (storage) => storage.setItem('json_editor_documents', JSON.stringify([
+    { id: 'j1', name: 'one', autoName: 'one', content: '{"city":"Oslo"}', createdAt: 1, updatedAt: 1 },
+    { id: 'j2', name: 'two', autoName: 'two', content: '{"city":"Bergen"}', createdAt: 2, updatedAt: 9 },
+  ]))
+
+  it('shows the named Markdown document, not the newest', () => {
+    seedMarkdown()
+    const { container } = render(provider(memStorage(), <DocumentsView opened={1} openedTool="markdown" openDocId="old"/>))
+    expect(container.querySelector('textarea').value).toBe('# Old notes\n\nfrom before')
+  })
+
+  it('shows the named JSON document in the JSON tool, whichever tool was last in use', () => {
+    const storage = memStorage()
+    storage.setItem('documents_active_tab', JSON.stringify('markdown'))
+    seedJson(storage)
+    const { container, getByRole } = render(provider(storage, <DocumentsView opened={1} openedTool="json" openDocId="j1"/>))
+    expect(getByRole('tab', { name: 'JSON Editor' }).getAttribute('aria-selected')).toBe('true')
+    expect(container.querySelector('textarea').value).toBe('{"city":"Oslo"}')
+  })
+
+  it('starts on a fresh page, not the newest, when the document has gone', () => {
+    seedMarkdown()
+    const { container } = render(provider(memStorage(), <DocumentsView opened={1} openedTool="markdown" openDocId="gone"/>))
+    expect(container.querySelector('textarea').value).toBe('')
+  })
+
+  it('opens the newest as before when no document is named', () => {
+    seedMarkdown()
+    const { container } = render(provider(memStorage(), <DocumentsView opened={1} openedTool="markdown"/>))
+    expect(container.querySelector('textarea').value).toBe('# Newest\n\nlast edited')
+  })
+
+  it('does not hold the person to the shortcut’s document after they pick another tool', () => {
+    seedMarkdown()
+    const storage = memStorage()
+    seedJson(storage)
+    const { container, getByRole } = render(provider(storage, <DocumentsView opened={1} openedTool="markdown" openDocId="old"/>))
+    fireEvent.click(getByRole('tab', { name: 'JSON Editor' }))
+    expect(container.querySelector('textarea').value).not.toBe('# Old notes\n\nfrom before')
+    fireEvent.click(getByRole('tab', { name: 'Markdown' }))
+    expect(container.querySelector('textarea').value).toBe('')
+  })
+})
+
+describe('Pin to Home from the Documents page', () => {
+  const provider = (storage, children) => (
+    <NexusDataProvider value={{ storage, getProfileKey: k => k, pushPref: () => {} }}>{children}</NexusDataProvider>
+  )
+  const pinned = []
+  const onPin = e => pinned.push(e.detail)
+  beforeEach(() => { pinned.length = 0; window.addEventListener('nexusmd:pin-shortcut', onPin) })
+  afterEach(() => window.removeEventListener('nexusmd:pin-shortcut', onPin))
+
+  it('pins the open Markdown document', () => {
+    localStorage.setItem('md_documents', JSON.stringify({ docs: [{ id: 'new', name: 'Plan', autoName: 'Plan', content: '# Plan', createdAt: 2, updatedAt: 2 }] }))
+    const { getByRole } = render(provider(memStorage(), <DocumentsView opened={1} openedTool="markdown"/>))
+    fireEvent.click(getByRole('button', { name: 'Pin' }))
+    expect(pinned).toEqual([{ target: 'doc', tool: 'markdown', docId: 'new', name: 'Plan' }])
+  })
+
+  it('has nothing to pin until a Markdown document is saved', () => {
+    const { queryByRole } = render(provider(memStorage(), <DocumentsView/>))
+    expect(queryByRole('button', { name: 'Pin' })).toBeNull()
+  })
+
+  it('pins the open JSON document', () => {
+    const storage = memStorage()
+    storage.setItem('json_editor_documents', JSON.stringify([{ id: 'j1', name: null, autoName: 'cfg', content: '{"a":1}', createdAt: 1, updatedAt: 9 }]))
+    const { getByRole } = render(provider(storage, <DocumentsView opened={1} openedTool="json"/>))
+    fireEvent.click(getByRole('button', { name: 'Pin' }))
+    expect(pinned).toEqual([{ target: 'doc', tool: 'json', docId: 'j1', name: 'cfg' }])
+  })
+
+  it('has nothing to pin on the JSON sample', () => {
+    const storage = memStorage()
+    storage.setItem('documents_active_tab', JSON.stringify('json'))
+    const { queryByRole } = render(provider(storage, <DocumentsView/>))
+    expect(queryByRole('button', { name: 'Pin' })).toBeNull()
   })
 })

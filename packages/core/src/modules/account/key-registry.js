@@ -90,9 +90,12 @@ export const ALIASES = Object.freeze([
 ].map(Object.freeze))
 
 // Everything in tweaks that follows the person; every other field (known device ones and any
-// the future adds) stays on the device.
+// the future adds) stays on the device. `homeWidgets` joined later (it was device level in M1), so a first
+// sync where both sides already hold different widgets raises a conflict rather than silently taking the
+// other side's.
 export const TWEAK_ACCOUNT_FIELDS = Object.freeze([
   'theme', 'lightTheme', 'dimTheme', 'darkTheme', 'density', 'typeLabels', 'quickLinks', 'showMarkdown',
+  'homeWidgets',
 ])
 
 // Per-device preferences, matched against the key name without its `<ns>.` / `p.<pid>.` prefix.

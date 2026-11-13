@@ -4,11 +4,11 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import '@nexusmd/ui/styles.css'
 
-import { initCore, createNoOpAdapters, profileCacheStorage, rendererLog, ignore } from '@nexusmd/core'
+import { initCore, createNoOpAdapters, profileCacheStorage, rendererLog, ignore, newWidgetsAfterSave } from '@nexusmd/core'
 import {
   Icon, CardFrame, NexusDataProvider, ToastHost,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
-  THEME_MODES, paletteFor, ProfileGate, AccountGate, toast,
+  THEME_MODES, paletteFor, ProfileGate, AccountGate, toast, listenForPins,
 } from '@nexusmd/ui'
 import { startQueueFlushing } from './offline-queue-app.js'
 import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, sidebarGroups, shortcutNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
@@ -209,13 +209,24 @@ function App() {
   // The window, and so the taskbar, is named for what is installed.
   React.useEffect(() => { document.title = registry.identity.productName }, [])
 
+  // A value may be a function of the one before it, for changes that must not overwrite each other.
   const setTweak = React.useCallback((key, value) => {
     setTweaksState(prev => {
-      const next = { ...prev, [key]: value }
+      const next = { ...prev, [key]: typeof value === 'function' ? value(prev[key]) : value }
       try { localStorage.setItem(getProfileKey('nexusmd.tweaks'), JSON.stringify(next)) } catch (err) { ignore(log, 'the tweaks could not be saved (storage full or blocked)', err, 'warn') }
       return next
     })
   }, [])
+
+  // "Pin to Dashboard" from an app's own screen (a repo file, a document, an Editor file): the shortcut joins the Home
+  // widgets, or is left as it is when that exact place is already there.
+  const tweaksRef = React.useRef(tweaks)
+  tweaksRef.current = tweaks
+  React.useEffect(() => listenForPins(widget => {
+    const had = (Array.isArray(tweaksRef.current.homeWidgets) ? tweaksRef.current.homeWidgets : []).some(x => x.id === widget.id)
+    setTweak('homeWidgets', list => newWidgetsAfterSave(Array.isArray(list) ? list : [], widget))
+    toast(had ? 'Already on the Dashboard' : 'Pinned to the Dashboard', 'success')
+  }, 'desktop'), [setTweak])
 
   React.useEffect(() => {
     document.body.dataset.theme = paletteFor(tweaks)

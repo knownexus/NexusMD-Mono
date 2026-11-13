@@ -218,3 +218,38 @@ describe('useDocumentAutosave — openNewest', () => {
     expect(captured.current.currentDocId).toBeNull()
   })
 })
+
+describe('useDocumentAutosave — openDocId', () => {
+  const seed = storage => storage.setItem('test_docs', JSON.stringify([
+    { id: 'a', name: null, autoName: 'Older', content: 'older text', createdAt: 1, updatedAt: 1 },
+    { id: 'b', name: null, autoName: 'Newer', content: 'newer text', createdAt: 2, updatedAt: 9 },
+  ]))
+
+  it('opens the named document, even when it is not the newest', () => {
+    const storage = memStorage(); seed(storage)
+    const { captured } = renderHook({ ...stringConfig, openDocId: 'a' }, storage)
+    expect(captured.current.content).toBe('older text')
+    expect(captured.current.currentDocId).toBe('a')
+  })
+
+  it('takes the named document over openNewest', () => {
+    const storage = memStorage(); seed(storage)
+    const { captured } = renderHook({ ...stringConfig, openNewest: true, openDocId: 'a' }, storage)
+    expect(captured.current.currentDocId).toBe('a')
+  })
+
+  it('starts on the initial content, not the newest, when the named document is gone', () => {
+    const storage = memStorage(); seed(storage)
+    const { captured } = renderHook({ ...stringConfig, initialContent: 'start', openNewest: true, openDocId: 'gone' }, storage)
+    expect(captured.current.content).toBe('start')
+    expect(captured.current.currentDocId).toBeNull()
+  })
+
+  it('does not rewrite the opened document', () => {
+    vi.useFakeTimers()
+    const storage = memStorage(); seed(storage)
+    renderHook({ ...stringConfig, openDocId: 'a' }, storage)
+    act(() => { vi.advanceTimersByTime(2000) })
+    expect(JSON.parse(storage.getItem('test_docs')).find(d => d.id === 'a').updatedAt).toBe(1)
+  })
+})

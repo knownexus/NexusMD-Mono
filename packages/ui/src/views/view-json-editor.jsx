@@ -6,6 +6,7 @@ import { Icon } from '../icons.jsx'
 import { jsonAutoName, typeOf, setValueAtPath, deleteAtPath, allContainerPaths, highlightSegments, searchPaths, pathKey as searchKey, rendererLog, ignore } from '@nexusmd/core'
 import { useDocumentAutosave, relativeTime } from './document-store.js'
 import { DocumentsModal } from './documents-modal.jsx'
+import { pinToHome } from '../pin-shortcut.js'
 import { JsonNodeSheet } from '../json-tree-ui.jsx'
 
 const log = rendererLog('editor', 'json')
@@ -30,8 +31,9 @@ function parseOr(text, fallback) {
 }
 
 // `openNewest`: the app was opened with a file, which is the newest saved document. It is shown as it is, and a
-// document that is not valid JSON shows its error over an empty tree rather than the sample.
-export function JsonEditorView({ openNewest = false }) {
+// document that is not valid JSON shows its error over an empty tree rather than the sample. `openDocId` opens that
+// saved document the same way (a Home shortcut to it).
+export function JsonEditorView({ openNewest = false, openDocId = null }) {
   const {
     content: rawText, setContent: setRawText, docs, currentDocId, hasUnsavedContent,
     openDoc, newDoc, deleteDoc, renameDoc,
@@ -42,10 +44,11 @@ export function JsonEditorView({ openNewest = false }) {
     isEmpty: t => !t.trim(),
     extractAutoName: jsonAutoName,
     openNewest,
+    openDocId,
   })
 
   const [showDocsModal, setShowDocsModal] = useState(false)
-  const [data, setData] = useState(() => parseOr(rawText, openNewest ? {} : SAMPLE))
+  const [data, setData] = useState(() => parseOr(rawText, openNewest || openDocId ? {} : SAMPLE))
   const [rawError, setRawError] = useState(null)
   const [history, setHistory] = useState(() => [rawText])
   const [histIdx, setHistIdx] = useState(0)
@@ -299,6 +302,12 @@ export function JsonEditorView({ openNewest = false }) {
           <button className="je-btn" onClick={() => setShowDocsModal(true)}>
             <Icon name="doc" size={13}/> Documents{docs.length > 0 ? ` (${docs.length})` : ''}
           </button>
+          {currentDocId && (
+            <button className="je-btn" title="Put a shortcut to this document on Home"
+              onClick={() => { const d = docs.find(x => x.id === currentDocId); pinToHome({ target: 'doc', tool: 'json', docId: currentDocId, name: d ? (d.name ?? d.autoName ?? '') : '' }) }}>
+              <Icon name="pin" size={13}/> Pin
+            </button>
+          )}
           <div className="je-sep"/>
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 99, fontSize: 11.5, fontWeight: 600,

@@ -1,7 +1,7 @@
 import React from 'react'
 import { CodeEditor, languageForPath } from '@nexusmd/editor-kit/code-editor.jsx'
 import { canPrettify, prettify } from '@nexusmd/editor-kit/prettify.js'
-import { MarkdownPreview, TextSizeControls, useMarkdownTextSize, useCtrlWheelTextSize } from '@nexusmd/ui'
+import { MarkdownPreview, TextSizeControls, useMarkdownTextSize, useCtrlWheelTextSize, pinToHome } from '@nexusmd/ui'
 import { FolderTree } from './folder-tree.jsx'
 import { editorApi, editorStore, useEditorStore } from './editor-singleton.js'
 import { isDirty, baseName } from './editor-store.js'
@@ -147,6 +147,7 @@ function EditPane({ doc, store, view }) {
         {tidyNote && !tidyNote.bad && <span role="status">{tidyNote.text}</span>}
         <span>{eolLabel(doc.eol)}{doc.bom ? ' · BOM' : ''}</span>
         <span>{doc.saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span>
+        {!doc.readOnly && <button type="button" className="btn sm" title="Put a shortcut to this file on Home" onClick={() => pinToHome({ target: 'editor', kind: 'file', path: doc.path, name: doc.name })}>Pin</button>}
         {canPrettify(doc.path) && <button type="button" className="btn sm" disabled={doc.saving || tidying} onClick={tidy}>Prettify</button>}
         <button type="button" className="btn sm primary" disabled={!dirty || doc.saving} onClick={() => store.save(doc.path)}>Save</button>
       </div>
@@ -204,6 +205,7 @@ export function EditorApp({ host, store = editorStore, api = editorApi }) {
           <aside className="nx-ed-side">
             <div className="nx-ed-side-head">
               <span title={s.folder}>{baseName(s.folder)}</span>
+              <button type="button" className="btn sm ghost" aria-label="Pin folder to Home" title="Put a shortcut to this folder on Home" onClick={() => pinToHome({ target: 'editor', kind: 'folder', path: s.folder, name: baseName(s.folder) })}>Pin</button>
               <button type="button" className="nx-ed-tab-close" aria-label="Close folder" onClick={() => store.closeFolder()}>×</button>
             </div>
             <FolderTree root={s.folder} api={api} activePath={s.active} onOpenFile={p => store.openFile(p)} />

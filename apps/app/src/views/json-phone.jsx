@@ -4,7 +4,7 @@ import React from 'react';
 import { useDocumentAutosave, JsonNodeSheet } from '@nexusmd/ui';
 import { Icon } from '../icons.jsx';
 import { toast } from '../toast.jsx';
-import { ToolFrame, DocsSheet } from './docs-frame.jsx';
+import { ToolFrame, DocsSheet, PinDocButton } from './docs-frame.jsx';
 import { jsonAutoName, typeOf, searchPaths, pathKey, isContainer } from '@nexusmd/core';
 
 const { useState, useMemo, useEffect } = React;
@@ -66,10 +66,11 @@ function TreeNode({ k, v, depth, path, flipped, flip, onEdit, search }) {
   );
 }
 
-export function JsonPhone({ tool, setTool, onFlash }) {
+// `openDocId` (a Home shortcut) opens that saved document; the most recent one is resumed when it is gone.
+export function JsonPhone({ tool, setTool, onFlash, openDocId = null }) {
   const d = useDocumentAutosave({
     storageKey: 'json_editor_documents', initialContent: SAMPLE_TEXT, emptyContent: '{}',
-    isEmpty: t => !t.trim(), extractAutoName: jsonAutoName,
+    isEmpty: t => !t.trim(), extractAutoName: jsonAutoName, openDocId,
   });
   useResume(d.docs, d.currentDocId, d.openDoc);
   const [mode, setMode] = useState('edit');
@@ -95,6 +96,7 @@ export function JsonPhone({ tool, setTool, onFlash }) {
   return (
     <>
       <ToolFrame sub={title} tool={tool} setTool={setTool} onDocs={() => setSheet(true)} onNew={() => { d.newDoc(); setMode('edit'); }}
+        actions={<PinDocButton tool="json" doc={current}/>}
         footer={(
           <div className="m-docs-foot">
             <span className={`m-json-state ${parsed.ok ? 'ok' : 'bad'}`}>{parsed.ok ? 'Valid JSON' : 'Invalid JSON'}</span>

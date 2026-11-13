@@ -1,8 +1,8 @@
 // git-view.jsx — read-only repository browser for Android: a searchable repo list, then a repo
 // with Files (folders, README, a file viewer) and Commits (grouped by day, with a commit sheet).
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { timeAgo } from '@nexusmd/core';
-import { MarkdownPreview } from '@nexusmd/ui';
+import { timeAgo, resolveRepo, targetPlace } from '@nexusmd/core';
+import { MarkdownPreview, pinToHome } from '@nexusmd/ui';
 import { Icon } from './icons.jsx';
 import { toast } from './toast.jsx';
 import { Sheet } from './components.jsx';
@@ -12,9 +12,22 @@ import { groupCommitsByDay } from './git-browser.js';
 import { makeGitBackend, providerName, sourcesOf, pickSource, sourceLabel } from './git-backend.js';
 import { getProfileKey } from './profile-keys.js';
 import { readLayer, readDepth, layerOf, historyAction } from './git-layers.js';
+import { takeTarget, repoIdentity } from './shortcut-host.js';
 
 const errText = (e) => e?.message || String(e);
 export const listRepoChoices = () => backend.listRepos();
+// The folders and files of a repository on its default branch, as { name, path, isFolder } (the Home shortcut picker).
+const defaultBranches = new Map();
+export async function listRepoFolder(repo, path = '/') {
+  let branch = defaultBranches.get(repo.id);
+  if (!branch) {
+    const branches = await backend.listBranches(repo);
+    branch = (branches.find(b => b.isDefault) || branches[0])?.name;
+    if (!branch) throw new Error('That repository has no branches.');
+    defaultBranches.set(repo.id, branch);
+  }
+  return backend.listItems(repo, branch, path);
+}
 export const REPO_PICK = 'helm.dash.repo';
 const backend = makeGitBackend({
   adoGet, getAdoProjects: () => getAdoConfig().projects || [],
@@ -41,7 +54,7 @@ function RepoRow({ repo, onOpen }) {
   );
 }
 
-function FileViewer({ repo, branch, path, onBack, onFlash }) {
+function FileViewer({ repo, branch, path, onBack, onFlash, onPin }) {
   const [text, setText] = useState(null);
   const [error, setError] = useState('');
   const [wrap, setWrap] = useState(false);
@@ -58,6 +71,7 @@ function FileViewer({ repo, branch, path, onBack, onFlash }) {
         <div className="m-ab-lead"><div><h1 style={{ fontSize: 16 }}>{path.split('/').pop()}</h1><div className="m-ab-sub">{path}</div></div></div>
         <div className="m-ab-actions">
           <button type="button" className="m-iconbtn" title="Copy path" onClick={() => { copy(path); onFlash?.('Path copied'); }}><Icon name="copy" size={17}/></button>
+          {onPin && <button type="button" className="m-iconbtn" title="Pin to Home" aria-label="Pin to Home" onClick={onPin}><Icon name="pin" size={17}/></button>}
           {!md || raw ? <button type="button" className={`m-iconbtn${wrap ? ' active' : ''}`} title="Wrap lines" onClick={() => setWrap(w => !w)}><Icon name="list" size={17}/></button> : null}
         </div>
       </div>
@@ -112,8 +126,15 @@ export function GitView({ onFlash }) {
       const want = window.NexusMDNav?.repoId;
       const hit = want && repos.find(r => r.id === want);
       if (want) window.NexusMDNav = { ...window.NexusMDNav, repoId: null };
-      if (hit) pickRepo(hit);
-      else applyLayer(readLayer(window.history.state), repos);
+      // A Home shortcut to a file or folder: its repository is found by identity (remote, owner/name), not by id.
+      const link = takeTarget('git');
+      const linked = link && resolveRepo(link.repo, repos);
+      if (linked) openLink(linked, link);
+      else if (hit) pickRepo(hit);
+      else {
+        if (link) onFlash?.('That repository is not available on this device');
+        applyLayer(readLayer(window.history.state), repos);
+      }
       setPlaced(true);
     }).catch(e => { setError(errText(e)); setPlaced(true); });
   }, []);
@@ -148,6 +169,22 @@ export function GitView({ onFlash }) {
     setRecent(next); saveRecent(next);
     setRepo(r); setBranch(null); setBranches(null); setPath('/'); setTab('files'); setError('');
     loadBranches(r);
+  };
+
+  // A Home shortcut: the repository on its branch (the default one when it names none), at the folder, or the file in its folder.
+  const openLink = (r, link) => {
+    const { path: dir, file } = targetPlace(link);
+    // A file is reached through its folder in the history too, so the back gesture goes file → folder as it does
+    // when the file was browsed to; the file's own entry is pushed by the layer effect below.
+    if (file) {
+      const folder = layerOf({ repo: r, branch: link.branch || null, tab: 'files', path: dir, file: null, sheet: null });
+      window.history.pushState({ git: folder, depth: readDepth(window.history.state) + 1 }, '', window.location.href);
+    }
+    const next = [r.id, ...recent.filter(id => id !== r.id)].slice(0, 3);
+    setRecent(next); saveRecent(next);
+    setRepo(r); setBranches(null); setTab('files'); setError('');
+    setPath(dir); setOpenFile(file); setBranch(link.branch || null);
+    loadBranches(r, link.branch || null);
   };
 
   // The screen's layers are history entries (see git-layers.js), so the back gesture goes up one layer.
@@ -207,8 +244,14 @@ export function GitView({ onFlash }) {
   }, [inSource, query]);
   const recentRepos = recent.map(id => inSource.find(r => r.id === id)).filter(Boolean);
 
+  // A shortcut to this place on Home: on the branch being looked at, unless that is the repository's default one.
+  const pin = (kind, p) => pinToHome({
+    target: 'git', kind, path: p, repo: repoIdentity(repo),
+    ...(branch && branches && !branches.find(b => b.name === branch)?.isDefault ? { branch } : {}),
+  });
+
   if (repo && openFile) {
-    return <FileViewer repo={repo} branch={branch} path={openFile} onBack={back} onFlash={onFlash}/>;
+    return <FileViewer repo={repo} branch={branch} path={openFile} onBack={back} onFlash={onFlash} onPin={() => pin('file', openFile)}/>;
   }
 
   if (!repo) {
@@ -265,6 +308,9 @@ export function GitView({ onFlash }) {
         <button type="button" className="m-iconbtn" onClick={leaveRepo} aria-label="Back to repositories"><Icon name="chevron-left" size={18}/></button>
         <div className="m-ab-lead"><div><h1 style={{ fontSize: 17 }}>{repo.name}</h1><div className="m-ab-sub">{repo.project}</div></div></div>
         <div className="m-ab-actions">
+          {tab === 'files' && (
+            <button type="button" className="m-iconbtn" title="Pin to Home" aria-label="Pin this folder to Home" onClick={() => pin('folder', path)}><Icon name="pin" size={17}/></button>
+          )}
           <button type="button" className="m-chip" disabled={!branches} onClick={() => setBranchSheet(true)}>
             <span className="m-chip-ic"><Icon name="git-branch" size={13}/></span>{branch || '…'}
           </button>

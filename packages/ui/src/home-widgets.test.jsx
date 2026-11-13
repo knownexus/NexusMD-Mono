@@ -72,3 +72,84 @@ describe('WidgetSheet', () => {
     expect(await screen.findByText('Repo One')).toBeTruthy()
   })
 })
+
+const fileLink = (over = {}) => ({
+  id: 'k1', type: 'link',
+  config: { target: 'git', kind: 'file', path: '/src/app.js', repo: { provider: 'github', name: 'nexus', fullName: 'knownexus/nexus' }, ...over },
+})
+
+describe('File or folder shortcut (link)', () => {
+  it('shows the file, where it is, and opens it with the cleaned target on tap', () => {
+    const openTarget = vi.fn()
+    render(<WidgetHost widgets={[fileLink()]} ctx={{ openTarget, resolveTarget: () => ({ ok: true }) }} onEdit={() => {}}/>)
+    expect(screen.getByText('app.js')).toBeTruthy()
+    expect(screen.getByText('nexus / src')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /^app\.js/ }))
+    expect(openTarget).toHaveBeenCalledWith(expect.objectContaining({ target: 'git', path: '/src/app.js' }))
+  })
+
+  it('opens from the keyboard too', () => {
+    const openTarget = vi.fn()
+    render(<WidgetHost widgets={[fileLink()]} ctx={{ openTarget }} onEdit={() => {}}/>)
+    fireEvent.keyDown(screen.getByRole('button', { name: /^app\.js/ }), { key: 'Enter' })
+    expect(openTarget).toHaveBeenCalledTimes(1)
+  })
+
+  it('greys out a shortcut this device cannot open, and a tap says why instead of opening it', () => {
+    const openTarget = vi.fn()
+    render(<WidgetHost widgets={[fileLink()]} ctx={{ openTarget, resolveTarget: () => ({ ok: false, reason: 'Not on this device.' }) }} onEdit={() => {}}/>)
+    const tile = screen.getByRole('button', { name: /^app\.js/ })
+    expect(tile.getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(tile)
+    expect(screen.getByText('Not on this device.')).toBeTruthy()
+    expect(openTarget).not.toHaveBeenCalled()
+  })
+
+  it('renders a malformed synced config as an incomplete shortcut, without throwing', () => {
+    const w = { id: 'k2', type: 'link', config: { target: 'git' } }
+    expect(() => render(<WidgetHost widgets={[w]} ctx={{ openTarget: vi.fn() }} onEdit={() => {}}/>)).not.toThrow()
+    fireEvent.click(screen.getByRole('button', { name: /^Shortcut/ }))
+    expect(screen.getByText('This shortcut is incomplete.')).toBeTruthy()
+  })
+
+  it('is left out when the page its target lives on is off', () => {
+    const doc = { id: 'k3', type: 'link', config: { target: 'doc', tool: 'json', docId: 'd', name: 'Config' } }
+    render(<WidgetHost widgets={[doc, fileLink()]} offScreens={['markdown']} ctx={{}} onEdit={() => {}}/>)
+    expect(screen.queryByText('Config')).toBeNull()
+    expect(screen.getByText('app.js')).toBeTruthy()
+  })
+})
+
+describe('WidgetSheet with a File or folder shortcut', () => {
+  const noop = () => {}
+  it('does not offer the type unless the host can pick targets', () => {
+    render(<WidgetSheet open widget={null} onClose={noop} onSave={noop} onRemove={noop}/>)
+    expect(screen.queryByText('File or folder')).toBeNull()
+  })
+
+  it('offers it when the host supplies targetSources', () => {
+    render(<WidgetSheet open widget={null} targetSources={{}} onClose={noop} onSave={noop} onRemove={noop}/>)
+    expect(screen.getByText('File or folder')).toBeTruthy()
+  })
+
+  it('edits only the name of an existing one, keeping its target, and trims an empty name away', () => {
+    const onSave = vi.fn()
+    render(<WidgetSheet open widget={fileLink()} onClose={noop} onSave={onSave} onRemove={noop}/>)
+    expect(screen.getByText('Opens (fixed once made)')).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Main entry' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSave).toHaveBeenCalledWith({
+      id: 'k1', type: 'link',
+      config: expect.objectContaining({ target: 'git', path: '/src/app.js', label: 'Main entry' }),
+    })
+    onSave.mockClear()
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '   ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSave.mock.calls[0][0].config).not.toHaveProperty('label')
+  })
+
+  it('cannot save one whose target is unusable', () => {
+    render(<WidgetSheet open widget={{ id: 'k9', type: 'link', config: { target: 'git' } }} onClose={noop} onSave={noop} onRemove={noop}/>)
+    expect(screen.getByRole('button', { name: 'Save' }).disabled).toBe(true)
+  })
+})

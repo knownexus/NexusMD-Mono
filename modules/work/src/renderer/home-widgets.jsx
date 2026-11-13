@@ -1,22 +1,26 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
 import {
-  isTerminalState, newWidgetsAfterSave, readLists, getYearWeekForOffset,
+  isTerminalState, newWidgetsAfterSave, readLists, getYearWeekForOffset, widgetPage, linkPage, resolveLink, githubRepoOf, savedDocIds,
+  ignore, rendererLog,
 } from '@nexusmd/core'
 import {
   WidgetSheet, Sheet, Icon, WIDGET_TYPES, storageTimerStore, useNexusData, useEffectiveNeedsMe, useProfile,
-  loadWeekPlanner,
+  loadWeekPlanner, toast,
 } from '@nexusmd/ui'
 import { getProfileKey } from '@nexusmd/shell-sdk'
 import { useWork } from './work-context.js'
 import { useOffScreens } from './work-screens.js'
 import { DashboardGrid, useDisplay } from './dashboard-grid.jsx'
+import { createTargetSources } from './shortcut-sources.js'
 
 // The desktop Dashboard's widget grid: DashboardView's built-in cards (`cards`) and the optional Home
 // widgets, together in one grid (dashboard-grid.jsx) where each can be moved and resized, with a layout per
 // screen (the `dashLayouts` tweak). The Home widgets and their sheet are shared with mobile (@nexusmd/ui);
 // the chosen ones are the `homeWidgets` tweak and the `ctx` they read is built here from what the desktop
 // holds. Widgets whose screen is switched off or not installed are neither shown nor offered.
+
+const log = rendererLog('work', 'home-widgets')
 
 const DEFAULT_CRITERIA = { votes: [0], includeDrafts: false }
 const NO_TEAM = []
@@ -29,6 +33,17 @@ const PAGE_APPS = {
 const WORK_PAGE = { prs: 'pr' }
 // The desktop's view ids where the catalogue says something else.
 const DESKTOP_VIEW = { pr: 'prs', api: 'api-client' }
+// A File-or-folder shortcut opens through the capabilities its app offers (git.openPath, editor.openPath, documents.openDoc), as apps
+// never import each other. A shortcut to a repository is shown whenever Git Workspace is installed, even though the
+// Repo widget (page 'git') is not offered: it is found among the registered repositories by its remote.
+const PLATFORM = 'desktop'
+// The saved documents of each tool, in the profile's own stores (the ones the Documents screen reads).
+const savedDocs = () => ({
+  markdown: savedDocIds(localStorage.getItem(getProfileKey('md_documents'))),
+  json: savedDocIds(localStorage.getItem(getProfileKey('json_editor_documents'))),
+})
+const GIT_PAGE_APP = 'git'
+
 // Widgets the desktop has nothing real to fill with, so it never offers them:
 //   calendar  the Calendar app keeps no events of its own on desktop (they are fetched from Outlook/Google
 //             inside its screen), so "Today" would always be empty;
@@ -102,15 +117,76 @@ export function HomeWidgets({
 
   const widgets = Array.isArray(tweaks.homeWidgets) ? tweaks.homeWidgets : []
   const save = next => setTweak?.('homeWidgets', next)
+
+  // The registered repositories (with their remotes), asked of Git Workspace only when a shortcut needs them. null until known.
+  const caps = host?.capabilities
+  const wantsRepos = widgets.some(w => w?.type === 'link' && linkPage(w.config) === 'git') && !!caps?.has?.('git.listRepos')
+  const [repos, setRepos] = React.useState(null)
+  React.useEffect(() => {
+    if (!wantsRepos) return undefined
+    let live = true
+    Promise.resolve().then(() => caps.call('git.listRepos'))
+      .then(r => { if (live) setRepos(Array.isArray(r) ? r : []) })
+      .catch(e => {
+        ignore(log, 'Git Workspace could not list its repositories, so a repository shortcut has none to match', e, 'warn')
+        if (live) setRepos([])
+      })
+    return () => { live = false }
+  }, [wantsRepos, caps, stamp, profileId])
+
+  // What a File-or-folder shortcut can be made of here: only the apps that are installed. With none, the type is not offered.
+  const picker = host?.adapters?.picker
+  const targetSources = React.useMemo(() => createTargetSources({ caps, picker }), [caps, picker])
+
+  // Whether this desktop can open a shortcut, and how: a repository that is not registered here can still be shown
+  // on the GitHub tab when it is on GitHub.
+  const resolveTarget = t => {
+    if (t.target === 'git') {
+      if (!caps?.has?.('git.openPath')) return { ok: false, reason: 'Git Workspace is not installed.' }
+      if (repos === null) return { ok: true }
+      const hit = resolveLink(t, { repos })
+      return hit.ok || githubRepoOf(t.repo) ? { ok: true } : hit
+    }
+    if (t.target === 'editor') {
+      if (!caps?.has?.('editor.openPath')) return { ok: false, reason: 'The Editor is not installed.' }
+      return resolveLink(t, { platform: PLATFORM })
+    }
+    if (!caps?.has?.('documents.openDoc')) return { ok: false, reason: 'Documents is not installed.' }
+    return resolveLink(t, { docs: savedDocs(), platform: PLATFORM })
+  }
+  const openTarget = async t => {
+    try {
+      if (t.target === 'git') {
+        const hit = resolveLink(t, { repos: repos || [] })
+        const spec = { path: t.path, kind: t.kind, ...(t.branch ? { branch: t.branch } : {}) }
+        if (hit.ok) spec.repoPath = hit.repo.path
+        const github = githubRepoOf(t.repo)
+        if (github) spec.githubRepo = github
+        if (!spec.repoPath && !spec.githubRepo) { toast(hit.reason, 'error'); return }
+        await caps.call('git.openPath', spec)
+      } else if (t.target === 'editor') {
+        // The Editor shows the file and goes to it; a path that is gone is said here, where the click was.
+        if (!(await caps.call('editor.openPath', t.path))) toast(`${t.name || t.path} no longer exists.`, 'error')
+      } else if (t.target === 'doc') {
+        if (!(await caps.call('documents.openDoc', { tool: t.tool, docId: t.docId }))) toast(`${t.name || 'That document'} no longer exists.`, 'error')
+      }
+    } catch (e) {
+      log.warn('a Home shortcut could not be opened', e)
+      toast(e?.message || 'Could not open that.', 'error')
+    }
+  }
+
   const ctx = {
-    navTo, onOpenPR: openPR, onOpenItem: openItem, isTerminalState,
+    navTo, onOpenPR: openPR, onOpenItem: openItem, isTerminalState, openTarget, resolveTarget,
     needsMe: p => effectiveNeedsMe(p, needsMeCriteria),
     prs: data.PRS || [], builds: data.BUILDS || [], tests: data.TESTS || [], workItems: data.WORK_ITEMS || [],
     me: data.ME?.id, team, lists, plannerData, timer,
     // notes: the shared default (loadGlobalNotes/saveGlobalNotes), which is what the Notes app uses.
   }
 
-  const shown = widgets.filter(w => w && WIDGET_TYPES[w.type] && !offScreens.includes(WIDGET_TYPES[w.type].page))
+  const gitInstalled = !!host?.isInstalled?.(GIT_PAGE_APP)
+  const isOff = w => (w.type === 'link' && linkPage(w.config) === 'git' ? !gitInstalled : offScreens.includes(widgetPage(w)))
+  const shown = widgets.filter(w => w && WIDGET_TYPES[w.type] && !isOff(w))
 
   // Until the screen is known, nothing is placed (so no layout is drawn for the wrong screen).
   return (
@@ -126,6 +202,7 @@ export function HomeWidgets({
           )} />
       )}
       <WidgetSheet open={!!sheet} widget={sheet?.widget || null} offScreens={offScreens} Sheet={OverlaySheet} showWidth={false}
+        targetSources={targetSources.length ? targetSources : undefined}
         onClose={() => setSheet(null)}
         onSave={w => { save(newWidgetsAfterSave(widgets, w)); setSheet(null) }}
         onRemove={w => { save(widgets.filter(x => x.id !== w.id)); setSheet(null) }} />

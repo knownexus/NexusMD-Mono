@@ -32,3 +32,24 @@ describe('Home widgets', () => {
     expect(screen.getByText('Time').closest('[style*="span 1"]')).toBeTruthy()
   })
 })
+
+describe('Home widgets: File or folder on the phone', () => {
+  it('offers to make one, choosing from repositories, documents and the Editor', () => {
+    render(<WidgetSheet open widget={null} onClose={() => {}} onSave={() => {}} onRemove={() => {}}/>)
+    fireEvent.click(screen.getByText('File or folder'))
+    for (const label of ['Repository file or folder', 'Markdown document', 'JSON document', 'Editor file or folder']) {
+      expect(screen.getByText(label)).toBeTruthy()
+    }
+  })
+
+  it('adds a shortcut to a saved document, end to end', async () => {
+    localStorage.setItem('json_editor_documents', JSON.stringify([{ id: 'j1', name: null, autoName: 'cfg', updatedAt: Date.now() }]))
+    const onSave = vi.fn()
+    render(<WidgetSheet open widget={null} onClose={() => {}} onSave={onSave} onRemove={() => {}}/>)
+    fireEvent.click(screen.getByText('File or folder'))
+    fireEvent.click(screen.getByText('JSON document'))
+    fireEvent.click(await screen.findByText('cfg'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add widget' }))
+    expect(onSave).toHaveBeenCalledWith({ id: expect.any(String), type: 'link', config: { target: 'doc', tool: 'json', docId: 'j1', name: 'cfg' } })
+  })
+})

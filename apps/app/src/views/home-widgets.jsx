@@ -10,6 +10,8 @@ import { HelmData } from '../data.jsx';
 import { getProfileKey } from '../profile-keys.js';
 import { listRepoChoices } from '../git-view.jsx';
 import { mobileTimerStore, createBug, BuildArtifactsSheet } from './dashboard-interactive-widgets.jsx';
+import { openTarget, resolveTarget } from '../shortcut-host.js';
+import { targetSources } from '../shortcut-sources.js';
 
 export { WIDGET_TYPES };
 
@@ -27,6 +29,8 @@ export function mobileWidgetCtx(ctx = {}, timer = mobileTimerStore(getProfileKey
     timer,
     onCreateBug: createBug,
     ArtifactsSheet: BuildArtifactsSheet,
+    openTarget,
+    resolveTarget,
     ...ctx,
     team: ctx.team?.length ? ctx.team : HelmData?.TEAM || [],
   };
@@ -39,5 +43,5 @@ export function WidgetHost({ ctx, ...props }) {
 }
 
 export function WidgetSheet(props) {
-  return <SharedWidgetSheet Sheet={Sheet} listRepoChoices={listRepoChoices} {...props}/>;
+  return <SharedWidgetSheet Sheet={Sheet} listRepoChoices={listRepoChoices} targetSources={targetSources} {...props}/>;
 }

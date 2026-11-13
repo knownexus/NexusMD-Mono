@@ -1,7 +1,7 @@
 // github-files.jsx — a GitHub repository's files at a branch, in the same explorer as a local worktree's.
 import React from 'react'
 import { getGithubFile, rendererLog } from '@nexusmd/core'
-import { Segmented, MarkdownPreview } from '@nexusmd/ui'
+import { Segmented, MarkdownPreview, pinToHome } from '@nexusmd/ui'
 import { FileExplorer } from '../file-explorer.jsx'
 import { PathBar } from '../path-bar.jsx'
 import { PopoverMenu } from '../popover-menu.jsx'
@@ -100,7 +100,11 @@ export function GithubFiles({
     <div className="nx-gw-gh-files" ref={rootRef}>
       {note && <div role="alert" className="nx-alert bad">{note}</div>}
       <FileExplorer label="Files" rootName={repo.split('/').pop() || repo} files={current.files} truncated={current.truncated} error={current.error}
-        viewKey={`github:${repo}@${branch}`} menuItems={row => (row.kind === 'file' ? actions(row.path).map(({ label, onSelect }) => ({ label, onSelect })) : [])}
+        viewKey={`github:${repo}@${branch}`} menuItems={row => [
+          ...(row.kind === 'file' ? actions(row.path).map(({ label, onSelect }) => ({ label, onSelect })) : []),
+          // On the branch being looked at, so the shortcut opens what was pinned.
+          { label: 'Pin to Dashboard', onSelect: () => pinToHome({ target: 'git', kind: row.kind === 'file' ? 'file' : 'folder', path: `/${row.path}`, branch, repo: { provider: 'github', name: repo.split('/').pop(), fullName: repo } }) },
+        ]}
         preview={preview} highlightMatches previewHead={head} rail={details} railLabel="File details" railOpen={rail.open} onRailToggle={rail.toggle} />
     </div>
   )

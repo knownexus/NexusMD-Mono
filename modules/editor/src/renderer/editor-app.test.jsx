@@ -291,3 +291,35 @@ describe('markdown', () => {
     expect(screen.getByRole('textbox', { name: 'Reading README.md' }).readOnly).toBe(true)
   })
 })
+
+describe('Pin to Home', () => {
+  const pinned = []
+  const onPin = e => pinned.push(e.detail)
+  afterEach(() => { window.removeEventListener('nexusmd:pin-shortcut', onPin); pinned.length = 0 })
+
+  it('pins the open file, by its path and name', async () => {
+    window.addEventListener('nexusmd:pin-shortcut', onPin)
+    const { store } = setup()
+    await store.openFile('/work/a.txt')
+    await screen.findByDisplayValue('alpha')
+    fireEvent.click(screen.getByRole('button', { name: 'Pin' }))
+    expect(pinned).toEqual([{ target: 'editor', kind: 'file', path: '/work/a.txt', name: 'a.txt' }])
+  })
+
+  it('pins the open folder', async () => {
+    window.addEventListener('nexusmd:pin-shortcut', onPin)
+    const { store } = setup({ folders: { '/work': [{ name: 'a.txt', kind: 'file' }] } })
+    await store.openFolder('/work')
+    fireEvent.click(await screen.findByRole('button', { name: 'Pin folder to Home' }))
+    expect(pinned).toEqual([{ target: 'editor', kind: 'folder', path: '/work', name: 'work' }])
+  })
+
+  it('has no file to pin before one is open, and none for text that is not on disk', async () => {
+    window.addEventListener('nexusmd:pin-shortcut', onPin)
+    const { store } = setup()
+    expect(screen.queryByRole('button', { name: 'Pin' })).toBeNull()
+    store.openText({ id: 'github:acme/web:a.js', name: 'a.js', text: 'copy', origin: 'GitHub' })
+    await screen.findByDisplayValue('copy')
+    expect(screen.queryByRole('button', { name: 'Pin' })).toBeNull()
+  })
+})

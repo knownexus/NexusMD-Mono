@@ -1,4 +1,5 @@
 // Home widgets: the pure configuration (no React). The render functions live in @nexusmd/ui (home-widgets.jsx).
+import { shortcutTitle, linkPage } from '../shortcuts/index.js'
 export const WIDGET_PAGES = [
   ['dashboard', 'Home'], ['work', 'Work items'], ['pr', 'Pull requests'], ['builds', 'Builds'], ['tests', 'Tests'],
   ['calendar', 'Calendar'], ['planner', 'Planner'], ['lists', 'Lists'], ['time', 'Time'], ['notes', 'Notes'],
@@ -35,6 +36,17 @@ export const WIDGET_CONFIG_TYPES = {
     fields: [{ key: 'to', label: 'Opens', kind: 'select', options: WIDGET_PAGES.filter(p => p[0] !== 'dashboard' && p[0] !== 'settings') }],
     title: (c) => pageLabel(c.to),
   },
+  // One file, folder or document, set up by pinning it or by picking it (see shortcuts/index.js). It has no
+  // `page` of its own: the page depends on the target (linkPage).
+  link: {
+    label: 'File or folder', desc: 'Open one file, folder or document', icon: 'link', half: true,
+    defaults: {}, needsTarget: true, fields: [{ key: 'label', label: 'Name (optional)', kind: 'text' }],
+    title: (c) => shortcutTitle(c),
+  },
 }
+
+// The catalogue page a widget belongs to (so a host can leave it out when that page is off): its type's page,
+// or for a File-or-folder shortcut the page its target lives on. undefined for a widget with none.
+export const widgetPage = (w) => (w && w.type === 'link' ? linkPage(w.config) : WIDGET_CONFIG_TYPES[w?.type]?.page) || undefined
 
 export const newWidgetsAfterSave = (list, w) => (list.some(x => x.id === w.id) ? list.map(x => (x.id === w.id ? w : x)) : [...list, w])
