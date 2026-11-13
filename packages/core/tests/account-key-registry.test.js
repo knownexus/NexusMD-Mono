@@ -281,6 +281,7 @@ describe('tweaks', () => {
   it('has the exact account field list', () => {
     expect(TWEAK_ACCOUNT_FIELDS).toEqual([
       'theme', 'lightTheme', 'dimTheme', 'darkTheme', 'density', 'typeLabels', 'quickLinks', 'showMarkdown',
+      'homeWidgets',
     ])
   })
 
@@ -335,7 +336,7 @@ describe('tweaks', () => {
   it('splitTweaks puts account fields in account and everything else, unknown included, in device', () => {
     const reg = desktop()
     const t = {
-      theme: 'dark', density: 'compact', quickLinks: ['a'], showMarkdown: true,
+      theme: 'dark', density: 'compact', quickLinks: ['a'], showMarkdown: true, homeWidgets: [],
       lightTheme: 'l', dimTheme: 'd', darkTheme: 'k', typeLabels: { Bug: 'B' },
       sidebarWidth: 200, someFutureField: 1, accent: 'red',
     }

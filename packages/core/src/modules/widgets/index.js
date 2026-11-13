@@ -1,4 +1,5 @@
 // Home widgets: the pure configuration (no React). The render functions live in @nexusmd/ui (home-widgets.jsx).
+import { shortcutTitle } from '../shortcuts/index.js'
 export const WIDGET_PAGES = [
   ['dashboard', 'Home'], ['work', 'Work items'], ['pr', 'Pull requests'], ['builds', 'Builds'], ['tests', 'Tests'],
   ['calendar', 'Calendar'], ['planner', 'Planner'], ['lists', 'Lists'], ['time', 'Time'], ['notes', 'Notes'],
@@ -34,6 +35,13 @@ export const WIDGET_CONFIG_TYPES = {
     defaults: { to: 'triage' },
     fields: [{ key: 'to', label: 'Opens', kind: 'select', options: WIDGET_PAGES.filter(p => p[0] !== 'dashboard' && p[0] !== 'settings') }],
     title: (c) => pageLabel(c.to),
+  },
+  // One file, folder or document, set up by pinning it or by picking it (see shortcuts/index.js). It has no
+  // `page` of its own: the page depends on the target (linkPage).
+  link: {
+    label: 'File or folder', desc: 'Open one file, folder or document', icon: 'link', half: true,
+    defaults: {}, needsTarget: true, fields: [],
+    title: (c) => shortcutTitle(c),
   },
 }
 

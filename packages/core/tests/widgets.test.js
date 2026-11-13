@@ -26,11 +26,12 @@ describe('WIDGET_CONFIG_TYPES', () => {
       expect(typeof t.defaults, k).toBe('object')
       expect(Array.isArray(t.fields), k).toBe(true)
       expect(t.render, k).toBeUndefined()
-      if (k !== 'shortcut') expect(t.page, k).toBeTruthy()
+      if (k !== 'shortcut' && k !== 'link') expect(t.page, k).toBeTruthy()
     }
   })
   it('titles derive from config', () => {
     expect(WIDGET_CONFIG_TYPES.pr.title({ filter: 'drafts' })).toBe('Draft PRs')
     expect(WIDGET_CONFIG_TYPES.shortcut.title({ to: 'git' })).toBe('Repos')
+    expect(WIDGET_CONFIG_TYPES.link.title({ target: 'doc', tool: 'json', docId: 'd1', name: 'Config' })).toBe('Config')
   })
 })
