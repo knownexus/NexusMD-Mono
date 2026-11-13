@@ -22,7 +22,8 @@ function passesCommonPrFilters(pr, criteria) {
   return true
 }
 
-function isAuthoredByMe(pr, me) {
+/** Did the current user open this PR? `me` is e.g. { name }; with no name nobody is "me", so none is. */
+export function isAuthoredByMe(pr, me) {
   const myId = slugify((me && me.name) || '')
   return !!myId && pr.author === myId
 }

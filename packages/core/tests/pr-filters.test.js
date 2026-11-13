@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { effectiveNeedsMe, effectiveTeamActivity } from '../src/index.js'
+import { effectiveNeedsMe, effectiveTeamActivity, isAuthoredByMe } from '../src/index.js'
 
 const me = { name: 'Alex Doe' }
 
@@ -82,5 +82,24 @@ describe('effectiveTeamActivity', () => {
   it('with no known user, nothing is "mine" so everything not otherwise filtered passes', () => {
     const pr = { author: 'jamie-lee' }
     expect(effectiveTeamActivity(pr, {}, null)).toBe(true)
+  })
+})
+
+describe('isAuthoredByMe', () => {
+  it('is true for a PR whose author is the current user, however the name is written', () => {
+    expect(isAuthoredByMe({ author: 'alex-doe' }, me)).toBe(true)
+    expect(isAuthoredByMe({ author: 'alex-doe' }, { name: 'ALEX  DOE' })).toBe(true)
+  })
+  it('is false for someone else’s PR', () => {
+    expect(isAuthoredByMe({ author: 'sam-lee' }, me)).toBe(false)
+  })
+  it('is false for everything when the current user has no name, or there is none', () => {
+    expect(isAuthoredByMe({ author: 'alex-doe' }, { name: '' })).toBe(false)
+    expect(isAuthoredByMe({ author: 'alex-doe' }, undefined)).toBe(false)
+    expect(isAuthoredByMe({ author: '' }, { name: '' })).toBe(false)
+  })
+  it('does not depend on the PR being active, or a draft', () => {
+    expect(isAuthoredByMe({ author: 'alex-doe', status: 'draft', draft: true }, me)).toBe(true)
+    expect(isAuthoredByMe({ author: 'alex-doe', status: 'merged' }, me)).toBe(true)
   })
 })

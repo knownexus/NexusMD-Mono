@@ -5,7 +5,7 @@ import React from 'react'
 import { FilterChip } from '../components.jsx'
 import { Avatar, NotificationBanner, usePersisted } from '../app-components.jsx'
 import { Icon } from '../icons.jsx'
-import { useNexusData, useEffectiveNeedsMe, useEffectiveTeamActivity } from '../data-context.jsx'
+import { useNexusData, useEffectiveNeedsMe, useEffectiveTeamActivity, useIsAuthoredByMe } from '../data-context.jsx'
 import { resolveFields, PR_CARD_FIELDS, rendererLog, ignored } from '@nexusmd/core'
 
 const log = rendererLog('work', 'prs')
@@ -130,12 +130,13 @@ function TeamActivityCriteriaPopover({ criteria, onChange, onClose }) {
 }
 
 // The filter tabs a link can open the PR list on (`{ preset }` in its filter).
-const PR_PRESETS = new Set(['needsMe', 'teamActivity', 'active', 'drafts', 'merged', 'stale', 'failing'])
+const PR_PRESETS = new Set(['all', 'mine', 'needsMe', 'teamActivity', 'active', 'drafts', 'merged', 'stale', 'failing'])
 
 export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCriteria, newItemIds = new Set() }) {
   const { data: NexusMDData, api: NexusMDApi } = useNexusData()
   const effectiveNeedsMe = useEffectiveNeedsMe()
   const effectiveTeamActivity = useEffectiveTeamActivity()
+  const isMine = useIsAuthoredByMe()
   const [initialNewCount] = useStatePR(() => newItemIds.size)
   const [bannerDismissed, setBannerDismissed] = useStatePR(false)
   const [filter,   setFilter]   = usePersisted('nexusmd.pr.filter',   'needsMe')
@@ -173,6 +174,7 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
 
   const counts = {
     all:       prs.length,
+    mine:      prs.filter(p => isMine(p)).length,
     needsMe:   prs.filter(p => effectiveNeedsMe(p, criteria)).length,
     teamActivity: prs.filter(p => effectiveTeamActivity(p, teamActivityCriteria)).length,
     active:    prs.filter(p => p.status === 'active').length,
@@ -188,7 +190,8 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
       return prs.filter(p => (p.linkedWorkItems || []).some(w => w.id === focusedWI))
     }
     let out = prs
-    if (filter === 'needsMe') out = out.filter(p => effectiveNeedsMe(p, criteria))
+    if (filter === 'mine') out = out.filter(p => isMine(p))
+    else if (filter === 'needsMe') out = out.filter(p => effectiveNeedsMe(p, criteria))
     else if (filter === 'teamActivity') out = out.filter(p => effectiveTeamActivity(p, teamActivityCriteria))
     else if (filter === 'active') out = out.filter(p => p.status === 'active')
     else if (filter === 'drafts') out = out.filter(p => p.status === 'draft')
@@ -265,6 +268,10 @@ export function PRView({ prs, onOpen, onOpenLink, needsMeCriteria, setNeedsMeCri
             height: 28, padding: '0 10px 0 28px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', fontSize: 12.5, outline: 'none', width: 220
           }}/>
         </div>
+        <div className="filter-sep"/>
+        <FilterChip active={filter === 'all'} count={counts.all} onClick={() => setFilter('all')}>All</FilterChip>
+        <FilterChip active={filter === 'mine'} count={counts.mine} onClick={() => setFilter('mine')}
+          icon={<Icon name="pin" size={11}/>}>Mine</FilterChip>
         <div className="filter-sep"/>
         <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
           <FilterChip active={filter === 'needsMe'} count={counts.needsMe} onClick={() => setFilter('needsMe')}

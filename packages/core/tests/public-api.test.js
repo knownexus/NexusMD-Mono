@@ -31,7 +31,7 @@ const EXPECTED = [
   'buildDigest', 'buildEmptyPlannerData', 'buildProfile', 'buildTriageCsv', 'core',
   'createNoOpAdapters', 'createOfflineQueue', 'isNetworkError', 'TYPE_OPTIONS', 'isContainer', 'pathKey', 'describePath', 'rawOf', 'searchPaths', 'validateKey', 'editNode', 'addChild', 'removeNode', 'typeOf', 'getAtPath', 'setValueAtPath', 'replaceAtPath', 'addFieldAtPath', 'deleteAtPath', 'coerceVal', 'allContainerPaths', 'highlightSegments', 'jsonAutoName', 'MD_CHEAT_GROUPS', 'CHEAT', 'LEARN_ELEMENTS', 'markdownSourceOf', 'learnTarget', 'MAX_DIFF_LINES', 'diffLines', 'diffCounts', 'collapseDiff', 'orderTabs', 'moveTab', 'placeTabs', 'syncLabel', 'offlineText', 'createProfile', 'createTimer', 'decryptConfidentialFromServer',
   'deleteProfile', 'deriveActivity',
-  'derivePrSparkline', 'deriveProjects', 'deriveSprint', 'effectiveNeedsMe', 'effectiveTeamActivity',
+  'derivePrSparkline', 'deriveProjects', 'deriveSprint', 'effectiveNeedsMe', 'effectiveTeamActivity', 'isAuthoredByMe',
   'elapsedMs', 'encryptConfidentialForServer',
   'filterFiles', 'wordMatch', 'filterByWords', 'filterFilesByWords',
   'BRANCH_FILTERS', 'branchState', 'matchesFilter', 'filterCounts', 'branchMeta', 'commitsOff', 'repoPills', 'primaryAction', 'rewordProblem', 'squashPreviousProblem', 'squashSelectedProblem', 'editPlan', 'squashMessage',

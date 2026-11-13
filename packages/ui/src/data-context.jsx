@@ -7,7 +7,7 @@
 // keeps the views in @nexusmd/ui free of electron/capacitor/ASP.NET coupling.
 
 import React from 'react'
-import { effectiveNeedsMe as coreEffectiveNeedsMe, effectiveTeamActivity as coreEffectiveTeamActivity, rendererLog, ignore } from '@nexusmd/core'
+import { effectiveNeedsMe as coreEffectiveNeedsMe, effectiveTeamActivity as coreEffectiveTeamActivity, isAuthoredByMe as coreIsAuthoredByMe, rendererLog, ignore } from '@nexusmd/core'
 import { setPlannerRuntime } from './planner/runtime.js'
 import { apiWorkItemSource, setWorkItemSource } from './views/work-item-source.js'
 import { apiBuildSource } from './views/build-source.js'
@@ -111,4 +111,13 @@ export function useEffectiveTeamActivity() {
   const { data } = useNexusData()
   const me = data.ME
   return React.useCallback((pr, criteria) => coreEffectiveTeamActivity(pr, criteria, me), [me])
+}
+
+/**
+ * "Did I open this PR?", bound to the current user. For the PR list's Mine tab.
+ */
+export function useIsAuthoredByMe() {
+  const { data } = useNexusData()
+  const me = data.ME
+  return React.useCallback((pr) => coreIsAuthoredByMe(pr, me), [me])
 }
