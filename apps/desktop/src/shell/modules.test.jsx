@@ -9,11 +9,12 @@ vi.mock('./host.js', async () => {
 })
 
 import {
-  loadModules, modulePanels, useModuleBadges, useModuleOffViews, ModuleTopbar, ModuleBanners, ModuleProviders, moduleView, moduleAdapters,
+  loadModules, modulePanels, moduleSettingsCards, useModuleBadges, useModuleOffViews, ModuleTopbar, ModuleBanners, ModuleProviders, moduleView, moduleAdapters,
 } from './modules.js'
 import { buildRegistry } from './registry.js'
+import { setDisabledApps, resetDisabledApps } from './apps-disabled.js'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); resetDisabledApps() })
 
 const mod = (id, extra = {}) => ({ id, ...extra })
 
@@ -120,5 +121,56 @@ describe('what the apps own', () => {
   })
   it('moduleAdapters merges what the apps bring', () => {
     expect(moduleAdapters([mod('a', { adapters: { http: 1 } }), mod('b'), mod('c', { adapters: { git: 2 } })])).toEqual({ http: 1, git: 2 })
+  })
+})
+
+// An app switched off in Settings leaves at once: no restart, so no reload of anything.
+describe('an app switched off since the window started', () => {
+  const reg = buildRegistry(['git', 'work'])
+  function OffProbe({ mods }) { return <div>{JSON.stringify(useModuleOffViews(mods, reg))}</div> }
+
+  it('puts every one of its views among the off views, next to what its own app switched off', () => {
+    const mods = [mod('work', { useOffViews: () => ['triage'] }), mod('git')]
+    setDisabledApps(['git'])
+    render(<OffProbe mods={mods} />)
+    expect(screen.getByText('["git","triage"]')).toBeTruthy()
+  })
+
+  it('shows it again when it is switched back on', () => {
+    const mods = [mod('work'), mod('git')]
+    setDisabledApps(['git'])
+    const { rerender } = render(<OffProbe mods={mods} />)
+    expect(screen.getByText('["git"]')).toBeTruthy()
+    React.act(() => setDisabledApps([]))
+    rerender(<OffProbe mods={mods} />)
+    expect(screen.getByText('[]')).toBeTruthy()
+  })
+
+  it('follows the change without being asked again (it re-renders itself)', () => {
+    render(<OffProbe mods={[mod('git')]} />)
+    expect(screen.getByText('[]')).toBeTruthy()
+    React.act(() => setDisabledApps(['git']))
+    expect(screen.getByText('["git"]')).toBeTruthy()
+  })
+
+  it('leaves its settings panels, cards and banner out, and keeps the others', () => {
+    const Panel = () => null
+    const mods = [
+      mod('git', { settingsPanels: { integrations: Panel }, settingsCard: Panel, banner: () => <p>git-banner</p> }),
+      mod('work', { settingsPanels: { integrations: Panel }, settingsCard: Panel, banner: () => <p>work-banner</p> }),
+    ]
+    setDisabledApps(['git'])
+    expect(modulePanels('integrations', mods).map(p => p.id)).toEqual(['work'])
+    expect(moduleSettingsCards(mods).map(c => c.id)).toEqual(['work'])
+    const { container } = render(<ModuleBanners mods={mods} />)
+    expect(container.textContent).toBe('work-banner')
+  })
+
+  it('leaves a module alone that is not installed to begin with (switching it "off" changes nothing)', () => {
+    const only = [mod('planner', { settingsPanels: { planner: () => null } })]
+    setDisabledApps(['planner'])
+    // planner is installed in the default registry, so it is hidden; an unknown id is not
+    expect(modulePanels('planner', only)).toEqual([])
+    expect(modulePanels('planner', [mod('nonesuch', { settingsPanels: { planner: () => null } })]).map(p => p.id)).toEqual(['nonesuch'])
   })
 })

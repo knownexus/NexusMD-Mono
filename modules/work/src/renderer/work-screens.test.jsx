@@ -61,3 +61,33 @@ describe('Work screens switched off', () => {
     expect(toast).toHaveBeenCalledWith('At least one Work screen has to stay on.', 'error')
   })
 })
+
+describe('Work screens when a change arrives from another computer', () => {
+  beforeEach(() => { localStorage.clear(); resetOffScreensCache() })
+  afterEach(() => { cleanup(); vi.clearAllMocks() })
+  function Probe() { return <div data-testid="off">{useOffScreens().join(',')}</div> }
+  const announce = (collId) => document.dispatchEvent(new CustomEvent('nexusmd:sync-applied', { detail: { collId } }))
+
+  it('reads the saved screens again when sync says they changed, with no reload', () => {
+    render(<Probe />)
+    expect(screen.getByTestId('off').textContent).toBe('')
+    // The sync has just written the other computer's choice under the profile.
+    localStorage.setItem(KEY, JSON.stringify(['triage', 'team']))
+    act(() => { announce('work-screens') })
+    expect(screen.getByTestId('off').textContent).toBe('triage,team')
+  })
+
+  it('ignores a sync announcement about something else', () => {
+    render(<Probe />)
+    localStorage.setItem(KEY, JSON.stringify(['team']))
+    act(() => { announce('tweaks') })
+    expect(screen.getByTestId('off').textContent).toBe('')
+  })
+
+  it('stops listening when the screen goes away', () => {
+    const { unmount } = render(<Probe />)
+    unmount()
+    localStorage.setItem(KEY, JSON.stringify(['team']))
+    expect(() => announce('work-screens')).not.toThrow()
+  })
+})

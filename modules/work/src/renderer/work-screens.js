@@ -51,9 +51,16 @@ export function skippedFetches(off = getOffScreens()) {
 function subscribe(fn) {
   // Another window (a pop-out) or an import changing the stored value: read it again.
   const onStorage = () => { cache = null; fn() }
+  // A change that arrived from another computer by sync (announced by AccountGate) is read the same way.
+  const onSync = (e) => { if (e.detail?.collId === 'work-screens') { cache = null; fn() } }
   window.addEventListener(EVENT, fn)
   window.addEventListener('storage', onStorage)
-  return () => { window.removeEventListener(EVENT, fn); window.removeEventListener('storage', onStorage) }
+  document.addEventListener('nexusmd:sync-applied', onSync)
+  return () => {
+    window.removeEventListener(EVENT, fn)
+    window.removeEventListener('storage', onStorage)
+    document.removeEventListener('nexusmd:sync-applied', onSync)
+  }
 }
 
 export function useOffScreens() {

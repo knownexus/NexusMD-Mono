@@ -58,7 +58,14 @@ export function createAccountSync({
       try { cb(arg) } catch (err) { ignore(log, 'a sync listener threw; it must not break sync', err, 'warn') }
     }
   }
-  const emitApplied = (applied) => { if (applied) emit(appliedListeners, { applied }) }
+  // cb({ applied, items, global }) after a pull changed local data. `items` are the ids that were written, each with the profile
+  // it belongs to ({ id, profileId }; null for one that belongs to none, such as the profiles list or this device's prefs), or
+  // null when it is not known which; `global` is true when any of them belongs to no profile, or when items is unknown.
+  const emitApplied = (applied, ids = null) => {
+    if (!applied) return
+    const items = Array.isArray(ids) ? ids.map((id) => ({ id, profileId: profileOfId(id) })) : null
+    emit(appliedListeners, { applied, items, global: !items || items.some((i) => !i.profileId) })
+  }
   const conflictListeners = new Set()
   const conflictCount = () => Object.keys(load().conflicts).length
 
@@ -335,7 +342,7 @@ export function createAccountSync({
       }
       delete after.conflicts[id]
       save(after)
-      emitApplied(changed ? 1 : 0)
+      emitApplied(changed ? 1 : 0, [id])
       return {}
     }
     let value
@@ -362,7 +369,7 @@ export function createAccountSync({
     }
     delete after.conflicts[id]
     save(after)
-    emitApplied(changed ? 1 : 0)
+    emitApplied(changed ? 1 : 0, [id])
     return {}
   }
 
@@ -374,7 +381,7 @@ export function createAccountSync({
     if (remoteRaw == null) return {} // deleted elsewhere: nothing to copy
     const copy = { ...JSON.parse(remoteRaw), id: `${target.recordId}-c${now()}` }
     for (const f of ['name', 'title']) if (typeof copy[f] === 'string') copy[f] = copyName(copy[f])
-    if (await writeLocal(ctx, { ...target, recordId: copy.id }, stableJson(copy), false)) emitApplied(1)
+    if (await writeLocal(ctx, { ...target, recordId: copy.id }, stableJson(copy), false)) emitApplied(1, [id])
     return {} // the copy is a new local record: the next push sends it
   }
 
@@ -404,7 +411,7 @@ export function createAccountSync({
 
   // `profileId` limits a pull to one profile (and the profiles list, so one made elsewhere shows up): every other
   // change is left for the next full sync, held like an entry that is looked at again, so the cursor cannot pass it.
-  async function pullItems(profileId = null) {
+  async function pullItems(profileId = null, collect = []) {
     const meta = load()
     const feed = await fetchFeed(client, meta.cursor, pageSize)
     const latest = new Map()
@@ -430,7 +437,8 @@ export function createAccountSync({
       settled = true
       state.purged = purgedProfiles()
       let reread = await applyPurges(meta, state)
-      if (profilesApplied && ensureActiveProfile()) { applied++; reread = true }
+      if (reread) collect.push('profiles') // a purge removed a profile's data here
+      if (profilesApplied && ensureActiveProfile()) { applied++; reread = true; collect.push('profiles') }
       if (reread) state = await localState(meta) // key names under the new active profile / purged data gone
     }
     for (const { c, remote } of decoded) {
@@ -447,6 +455,7 @@ export function createAccountSync({
       if (res === 'held') hold = Math.min(hold, num(c.cursor) - 1) // seen again next pull
       else if (res === 'applied') {
         applied++
+        collect.push(remote.id)
         if (remote.id === 'profiles') profilesApplied = true
       }
     }
@@ -475,7 +484,7 @@ export function createAccountSync({
     }
   }
 
-  async function pullDevice() {
+  async function pullDevice(collect = []) {
     if (!deviceId) return 0
     const r = await fetchDevicePrefs()
     if (r == null) return 0
@@ -493,20 +502,20 @@ export function createAccountSync({
     const entries = isPlainObject(blob.entries) ? blob.entries : {}
     let applied = 0
     let held = false
-    const count = (res) => { if (res === 'held') held = true; else if (res === 'applied') applied++ }
+    const count = (res, id) => { if (res === 'held') held = true; else if (res === 'applied') { applied++; collect.push(id) } }
     const seen = new Set()
     for (const [id, e] of Object.entries(entries)) {
       const target = resolveTarget(registry, id)
       if (!isPlainObject(e) || !target || target.level !== 'device') continue
       seen.add(id)
-      count(await reconcile(meta, state, target, { id, value: e.value, updatedAt: num(e.updatedAt), deleted: false }))
+      count(await reconcile(meta, state, target, { id, value: e.value, updatedAt: num(e.updatedAt), deleted: false }), id)
     }
     // A tracked device entry missing from a newer blob was removed by another install of this device.
     for (const [id, m] of Object.entries(meta.entries)) {
       if (m.level !== 'device' || m.deleted || seen.has(id) || state.isUnavailable(id)) continue
       const target = resolveTarget(registry, id)
       if (!target || target.kind === 'tweaks') continue
-      count(await reconcile(meta, state, target, { id, value: null, updatedAt: 0, deleted: true }))
+      count(await reconcile(meta, state, target, { id, value: null, updatedAt: 0, deleted: true }), id)
     }
     if (devicePrefs && isPlainObject(blob.prefs)) {
       const cur = await stampPrefs(meta)
@@ -517,6 +526,7 @@ export function createAccountSync({
         if (cur.hash !== remoteHash) {
           await devicePrefs.apply(blob.prefs)
           applied++
+          collect.push('device:prefs')
         }
         delete dp.prefsChangedAt
         delete dp.prefsChangedHash
@@ -531,12 +541,13 @@ export function createAccountSync({
 
   async function pullInner(profileId = null) {
     let applied = 0
+    const ids = []
     try {
-      applied += await pullItems(profileId)
-      if (!profileId) applied += await pullDevice() // a device's prefs are not a profile's
+      applied += await pullItems(profileId, ids)
+      if (!profileId) applied += await pullDevice(ids) // a device's prefs are not a profile's
       return { applied }
     } finally {
-      emitApplied(applied)
+      emitApplied(applied, ids)
     }
   }
 
@@ -675,7 +686,8 @@ export function createAccountSync({
     let conflicts = r.conflicts.length
     let d = await pushDeviceRound(force)
     if (d.conflict) {
-      emitApplied(await pullDevice())
+      const ids = []
+      emitApplied(await pullDevice(ids), ids)
       d = await pushDeviceRound(false)
       if (d.conflict) conflicts++
     }

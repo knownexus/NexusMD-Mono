@@ -4,6 +4,7 @@ import { appPrefsAdapter } from './adapters/appPrefs.js'
 import { secureStorageAdapter } from './adapters/secureStorage.js'
 import { pickerAdapter } from './adapters/picker.js'
 import { registry } from './shell/registry.js'
+import { setDisabledApps } from './shell/apps-disabled.js'
 import {
   collectSettings, applySettings, encodeSettings, decodeSettings, settingsFilename, SETTINGS_EXT,
 } from './settings-file.js'
@@ -38,10 +39,11 @@ export function SettingsFileCard() {
         const payload = await decodeSettings(pendingText, password)
         const { keys, secrets, disabledApps } = await applySettings(payload, sources())
         const running = registry.apps.map(a => a.id)
-        const appsChange = disabledApps && registry.installedApps.some(a => disabledApps.includes(a.id) === running.includes(a.id))
-        if (appsChange) {
-          // Switching apps on or off takes a restart, which also reloads everything else.
-          toast?.(`Imported ${keys} settings and ${secrets} secrets. Restarting to apply the apps…`, 'success')
+        // Only an app that was off when NexusMD started needs a restart to come on; the rest are shown or hidden live.
+        const needsRestart = disabledApps && registry.installedApps.some(a => !running.includes(a.id) && !disabledApps.includes(a.id))
+        if (disabledApps) setDisabledApps(disabledApps)
+        if (needsRestart) {
+          toast?.(`Imported ${keys} settings and ${secrets} secrets. Restarting to turn on the apps…`, 'success')
           setTimeout(() => appPrefsAdapter.restartApp(disabledApps), 700)
         } else {
           toast?.(`Imported ${keys} settings and ${secrets} secrets. Reloading…`, 'success')
