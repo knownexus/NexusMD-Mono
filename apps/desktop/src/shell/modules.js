@@ -2,6 +2,7 @@ import React from 'react'
 import { registry } from './registry.js'
 import { appModules } from './app-code.js'
 import { host } from './host.js'
+import { useDisabledApps, hiddenViewIds, isAppHidden } from './apps-disabled.js'
 
 // The installed apps in the apps' own order (the manifests' `order`), which is also the order of
 // their providers, panels and settings cards.
@@ -26,10 +27,11 @@ export function moduleView(viewId, mods = modules) {
 }
 
 // Settings panels that installed apps put into a named tab (e.g. 'planner'). A panel is a component
-// or { Panel, order }; lower orders come first, apps in their own order otherwise.
+// or { Panel, order }; lower orders come first, apps in their own order otherwise. An app switched off
+// in Settings since the window started is left out at once (see apps-disabled.js).
 export function modulePanels(tabId, mods = modules) {
   return mods
-    .filter(m => m.settingsPanels?.[tabId])
+    .filter(m => m.settingsPanels?.[tabId] && !isAppHidden(m.id))
     .map((m, i) => {
       const p = m.settingsPanels[tabId]
       return typeof p === 'function' ? { id: m.id, Panel: p, order: 0, i } : { id: m.id, Panel: p.Panel, order: p.order ?? 0, i }
@@ -49,10 +51,12 @@ export function useModuleBadges(mods = modules) {
   return out
 }
 
-// The views installed apps have switched off (e.g. Work's Triage). Like useModuleBadges, the apps and
-// their hooks are fixed for the session, so calling them in a loop is safe.
-export function useModuleOffViews(mods = modules) {
-  const out = []
+// The views installed apps have switched off (e.g. Work's Triage), and every view of an app switched off in
+// Settings since the window started, so it disappears at once. Like useModuleBadges, the apps and their hooks
+// are fixed for the session, so calling them in a loop is safe.
+export function useModuleOffViews(mods = modules, reg = registry) {
+  const disabled = useDisabledApps()
+  const out = [...hiddenViewIds(reg, disabled)]
   for (const m of mods) {
     const off = m.useOffViews?.()
     if (Array.isArray(off)) out.push(...off)
@@ -66,11 +70,12 @@ export function ModuleTopbar({ mods = modules, view }) {
   return mods.filter(m => m.topbar).map(m => React.createElement(m.topbar, { key: m.id, view }))
 }
 export function ModuleBanners({ mods = modules }) {
-  return mods.filter(m => m.banner).map(m => React.createElement(m.banner, { key: m.id }))
+  useDisabledApps() // follows an app being switched off
+  return mods.filter(m => m.banner && !isAppHidden(m.id)).map(m => React.createElement(m.banner, { key: m.id }))
 }
 
 export function moduleSettingsCards(mods = modules) {
-  return mods.filter(m => m.settingsCard).map(m => ({ id: m.id, Card: m.settingsCard }))
+  return mods.filter(m => m.settingsCard && !isAppHidden(m.id)).map(m => ({ id: m.id, Card: m.settingsCard }))
 }
 
 // If this page is an app's pop-out window, the app's component and the request it was opened with.

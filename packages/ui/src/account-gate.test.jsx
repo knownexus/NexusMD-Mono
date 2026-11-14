@@ -229,6 +229,52 @@ describe('AccountGate', () => {
     expect(sync.start).toHaveBeenCalledTimes(1);
   });
 
+  describe('when a pull from another device changed local data', () => {
+    // Signed in with a stored session; the test fires what the sync reports when it applies something.
+    async function applied(extra, info) {
+      deviceId = 'd1';
+      let cb;
+      const a = { ...mkAccount({ getSession: vi.fn(async () => SESSION) }, { onApplied: vi.fn((fn) => { cb = fn; return () => {}; }) }), ...extra };
+      mount(a);
+      await screen.findByText('shell');
+      const events = [];
+      const hear = (e) => events.push(e.detail.collId);
+      document.addEventListener('nexusmd:sync-applied', hear);
+      cb(info);
+      document.removeEventListener('nexusmd:sync-applied', hear);
+      return events;
+    }
+    const live = (id) => /tweaks#/.test(id);
+    const here = { activeProfileId: () => 'P1', isLiveSafe: live };
+
+    it('reloads, as it always did, when the app cannot tell what changed', async () => {
+      await applied({}, { applied: 1, items: [{ id: 'nexusmd:p.P1.tweaks#navHidden', profileId: 'P1' }], global: false });
+      expect(window.location.reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not reload for a profile that is not in use', async () => {
+      const events = await applied(here, { applied: 1, items: [{ id: 'p.P2.ado.org', profileId: 'P2' }], global: false });
+      expect(window.location.reload).not.toHaveBeenCalled();
+      expect(events).toEqual([]);
+    });
+
+    it('does not reload for settings the screens can read again: it tells them instead', async () => {
+      const events = await applied(here, { applied: 1, items: [{ id: 'nexusmd:p.P1.tweaks#navHidden', profileId: 'P1' }], global: false });
+      expect(window.location.reload).not.toHaveBeenCalled();
+      expect(events).toEqual(['tweaks']);
+    });
+
+    it('reloads for data of the profile in use that is read at start', async () => {
+      await applied(here, { applied: 1, items: [{ id: 'nexusmd:p.P1.md_documents#d1', profileId: 'P1' }], global: false });
+      expect(window.location.reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('reloads for the profiles list, which belongs to no profile', async () => {
+      await applied(here, { applied: 1, items: [{ id: 'profiles', profileId: null }], global: true });
+      expect(window.location.reload).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('an expired session shows the login screen and keeps local data', async () => {
     deviceId = 'd1';
     localStorage.setItem('keepme', '1');

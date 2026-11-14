@@ -21,6 +21,7 @@ import { desktopCloudProviders, makeNativeGoogleBinding, makeNativeMicrosoftBind
 import { desktopSync } from './sync.js'
 import { isLegacyCloudSyncOn, setLegacyCloudSyncOn } from './legacy-cloud-sync.js'
 import { moduleSettingsCards, modulePanels } from './shell/modules.js'
+import { useDisabledApps } from './shell/apps-disabled.js'
 import { registry } from './shell/registry.js'
 import { host } from './shell/host.js'
 import { pickerAdapter } from './adapters/picker.js'
@@ -124,6 +125,7 @@ export function DesktopAppCard() {
 }
 
 export function DesktopDataSyncCard() {
+  useDisabledApps()
   const [kbUsed, setKbUsed] = React.useState(0)
   const [legacyOn, setLegacyOn] = React.useState(isLegacyCloudSyncOn)
   const toggleLegacy = (on) => {
@@ -399,6 +401,7 @@ export const visibleSettingsTabs = (reg = registry) =>
   SETTINGS_TABS.filter(t => !TAB_NEEDS[t.id] || TAB_NEEDS[t.id].some(id => reg.isInstalled(id)))
 
 export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
+  useDisabledApps() // an app switched off drops its settings at once
   const profileApi = useProfile()
   const legacyCloudOn = isLegacyCloudSyncOn()
   const [tab, setTab] = React.useState('profile')

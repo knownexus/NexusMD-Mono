@@ -6,6 +6,7 @@ import React from 'react';
 import { importContainerKey, rendererLog, ignore } from '@nexusmd/core';
 import { useProfile } from './profile-context.jsx';
 import { toast } from './toast.jsx';
+import { appliedAction } from './applied-policy.js';
 
 const { useState, useEffect, useMemo, useCallback, useContext, createContext } = React;
 
@@ -393,7 +394,9 @@ function PendingPurgeNotice({ purge, exportBackup, onDiscard, onLater }) {
  *   createSync: (containerKey: object, deviceId: string) => object,
  *   platform: 'windows'|'android'|'web'|'other',
  *   deviceNameDefault: () => string, optOutKey: string,
- *   serverName?: string },            // the server's host, shown in Data & sync so it is clear where profiles go
+ *   serverName?: string,              // the server's host, shown in Data & sync so it is clear where profiles go
+ *   activeProfileId?: () => string|null,   // the profile in use: with isLiveSafe, lets a pull that touched only other
+ *   isLiveSafe?: (id: string) => boolean },  // profiles, or only settings screens can re-read, skip the reload
  *   reloadOnApplied?: boolean, children: React.ReactNode }} props
  *   When a different user signs in than `boundUserKey` records, the gate warns, then calls `clearLocal()`
  *   and `deviceStore.set(null)` before the device picker. With `boundUserKey` but no `clearLocal` the gate
@@ -487,7 +490,17 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
         setPhase('device');
       }
     })];
-    if (reloadOnApplied) offs.push(sync.onApplied(() => window.location.reload()));
+    if (reloadOnApplied) {
+      // Reload only when something needs it: see applied-policy.js. A change to a profile that is not in use needs nothing, and
+      // one to a setting the open screens can read again (the sidebar, layout, hidden pages) is announced to them instead.
+      offs.push(sync.onApplied((info) => {
+        const act = appliedAction(info, { active: account.activeProfileId?.(), isLiveSafe: account.isLiveSafe });
+        if (act.type === 'reload') window.location.reload();
+        else if (act.type === 'live') {
+          for (const collId of act.collIds) document.dispatchEvent(new CustomEvent('nexusmd:sync-applied', { detail: { collId } }));
+        }
+      }));
+    }
     if (typeof sync.onConflict === 'function') {
       offs.push(sync.onConflict(({ count }) => toast(
         `${count} sync conflict${count === 1 ? ' needs' : 's need'} your decision — Settings › Data & sync`, 'info')));

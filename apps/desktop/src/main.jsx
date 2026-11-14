@@ -22,6 +22,8 @@ import { registerDeepLinks } from './shell/deep-links.js'
 import { startDesktopAutoSync } from './sync.js'
 import { INSTALLED_NAV, SETTINGS_NAV, ALL_NAV, DEFAULT_NAV_ORDER } from './nav-config.js'
 import { isUninstalledView, registry, resolveView } from './shell/registry.js'
+import { refreshFromPrefs } from './shell/apps-disabled.js'
+import { appPrefsAdapter } from './adapters/appPrefs.js'
 import {
   localStorageAdapter, networkAdapter, lifecycleAdapter, themeAdapter,
   clipboardAdapter, shareAdapter, notificationAdapter,
@@ -206,6 +208,10 @@ function App() {
   React.useEffect(() => { setNavShown(false) }, [view])
   const navHidden = BARE || (NAV_HIDDEN.has(view) && !navShown)
 
+  // Which apps are switched off follows the saved list (it may have changed since this window started, for instance by
+  // a settings import), so turning an app on or off shows at once.
+  React.useEffect(() => { refreshFromPrefs(appPrefsAdapter) }, [])
+
   // The window, and so the taskbar, is named for what is installed.
   React.useEffect(() => { document.title = registry.identity.productName }, [])
 
@@ -216,6 +222,14 @@ function App() {
       try { localStorage.setItem(getProfileKey('nexusmd.tweaks'), JSON.stringify(next)) } catch (err) { ignore(log, 'the tweaks could not be saved (storage full or blocked)', err, 'warn') }
       return next
     })
+  }, [])
+
+  // Settings that arrive from another computer (a page hidden there, a changed layout) are taken in without a reload: the account
+  // sync announces them (see AccountGate) and the saved tweaks are read again.
+  React.useEffect(() => {
+    const onSyncApplied = (e) => { if (e.detail?.collId === 'tweaks') setTweaksState(loadTweaks()) }
+    document.addEventListener('nexusmd:sync-applied', onSyncApplied)
+    return () => document.removeEventListener('nexusmd:sync-applied', onSyncApplied)
   }, [])
 
   // "Pin to Dashboard" from an app's own screen (a repo file, a document, an Editor file): the shortcut joins the Home
