@@ -30,8 +30,15 @@ describe('settings summaries', () => {
     expect(privacySummary({ hasPassword: false, autoRelock: '0' })).toBe('No password yet · auto re-lock off')
   })
   it('describes data and sync', () => {
-    expect(dataSummary({ pending: 2, loadedLabel: 'Updated 5m ago' })).toBe('Updated 5m ago · 2 changes waiting to sync')
-    expect(dataSummary({ pending: 1 })).toBe('1 change waiting to sync')
+    expect(dataSummary({ pending: 2, loadedLabel: 'Work data updated 5m ago' })).toBe('Work data updated 5m ago · 2 changes waiting to be sent')
+    expect(dataSummary({ pending: 1 })).toBe('1 change waiting to be sent')
     expect(dataSummary({})).toBe('Storage, sync and versions')
+  })
+  it('adds the account sync: conflicts first, then what is not saved', () => {
+    expect(dataSummary({ conflicts: 1 })).toBe('1 sync conflict')
+    expect(dataSummary({ unsaved: 3 })).toBe('3 not saved to your account')
+    expect(dataSummary({ loadedLabel: 'Work data updated 1m ago', pending: 1, conflicts: 2, unsaved: 4 }))
+      .toBe('Work data updated 1m ago · 1 change waiting to be sent · 2 sync conflicts · 4 not saved to your account')
+    expect(dataSummary({ conflicts: 0, unsaved: 0 })).toBe('Storage, sync and versions')
   })
 })

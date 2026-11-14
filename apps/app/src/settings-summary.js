@@ -27,9 +27,13 @@ export function connectionsSummary({ ado, jira, github } = {}) {
 export const privacySummary = ({ hasPassword, autoRelock } = {}) =>
   `${hasPassword ? 'Password set' : 'No password yet'} · auto re-lock ${autoRelock === '1' ? 'on' : 'off'}`;
 
-export function dataSummary({ pending = 0, loadedLabel = '' } = {}) {
+// `pending` is what the offline queue still has to send; `unsaved` and `conflicts` are the account sync's (useSyncSummary),
+// absent without an account.
+export function dataSummary({ pending = 0, loadedLabel = '', unsaved = 0, conflicts = 0 } = {}) {
   const parts = [];
   if (loadedLabel) parts.push(loadedLabel);
-  if (pending > 0) parts.push(`${pending} change${pending === 1 ? '' : 's'} waiting to sync`);
+  if (pending > 0) parts.push(`${pending} change${pending === 1 ? '' : 's'} waiting to be sent`);
+  if (conflicts > 0) parts.push(`${conflicts} sync conflict${conflicts === 1 ? '' : 's'}`);
+  if (unsaved > 0) parts.push(`${unsaved} not saved to your account`);
   return parts.join(' · ') || 'Storage, sync and versions';
 }

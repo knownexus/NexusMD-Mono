@@ -334,3 +334,50 @@ describe('SyncConflictsCard', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
   });
 });
+
+describe('SyncStatusCard: what is not saved yet', () => {
+  afterEach(() => sessionStorage.clear());
+  const unsaved = (profiles, unattributed = 0) => ({ profiles, unattributed, total: unattributed + Object.values(profiles).reduce((a, b) => a + b, 0) });
+  const stub = (u, over = {}) => ({
+    status: vi.fn(() => status()),
+    onApplied: vi.fn(() => () => {}),
+    push: vi.fn(async () => ({ pushed: 3, conflicts: 0 })),
+    pull: vi.fn(async () => ({ applied: 0 })),
+    unsaved: vi.fn(async () => u),
+    ...over,
+  });
+  const row = (id) => within(screen.getByTestId(`sync-row-${id}`));
+
+  it('says how many changes each profile has not saved, and offers Save only where there is something to send', async () => {
+    withSync(<SyncStatusCard />, stub(unsaved({ W: 3 })));
+    await waitFor(() => expect(row('W').getByText(/3 changes not saved/)).toBeTruthy());
+    expect(row('W').getByRole('button', { name: 'Save Work to the server' }).disabled).toBe(false);
+    expect(row('W').getByRole('button', { name: 'Save Work to the server' }).textContent).toBe('Save to server');
+    const home = row('H').getByRole('button', { name: 'Save Home to the server' });
+    expect(home.disabled).toBe(true);
+    expect(home.textContent).toBe('Nothing to save');
+    expect(row('H').queryByText(/not saved/)).toBeNull();
+  });
+
+  it('says "1 change", not "1 changes"', async () => {
+    withSync(<SyncStatusCard />, stub(unsaved({ W: 1 })));
+    await waitFor(() => expect(row('W').getByText(/1 change not saved/)).toBeTruthy());
+  });
+
+  it('never says "Nothing to save" for a count it does not have: an engine that cannot count leaves Save on', async () => {
+    withSync(<SyncStatusCard />, stub(null, { unsaved: undefined }));
+    const btn = await screen.findByRole('button', { name: 'Save Home to the server' });
+    expect(btn.disabled).toBe(false);
+    expect(btn.textContent).toBe('Save to server');
+  });
+
+  it('counts down after a save: Save goes back to disabled once the count is read again', async () => {
+    const sync = stub(unsaved({ W: 3 }));
+    withSync(<SyncStatusCard />, sync);
+    await waitFor(() => expect(row('W').getByText(/3 changes not saved/)).toBeTruthy());
+    sync.unsaved.mockResolvedValue(unsaved({}));
+    fireEvent.click(row('W').getByRole('button', { name: 'Save Work to the server' }));
+    await waitFor(() => expect(row('W').getByRole('button', { name: 'Save Work to the server' }).textContent).toBe('Nothing to save'));
+    expect(row('W').queryByText(/not saved/)).toBeNull();
+  });
+});

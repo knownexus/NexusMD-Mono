@@ -35,6 +35,8 @@ vi.mock('@nexusmd/ui', () => ({
   ),
   VsProfiles: () => <div data-testid="vs-profiles">VsProfiles</div>,
   useAccount: () => ({ sync: null }),
+  takePendingSettingsTab: () => null,
+  OPEN_SETTINGS_EVENT: 'nexusmd:open-settings',
   AccountCard: () => <div data-testid="account-card">AccountCard</div>,
   SyncStatusCard: () => <div data-testid="sync-status-card">SyncStatusCard</div>,
   RecoveredCopiesCard: () => <div data-testid="recovered-copies-card">RecoveredCopiesCard</div>,
@@ -208,7 +210,7 @@ describe('DesktopSettings tab navigation', () => {
   it('shows Data & sync tab content when clicked', () => {
     render(<DesktopSettings {...defaultProps} />)
     fireEvent.click(screen.getByRole('button', { name: 'Data & sync' }))
-    expect(screen.getByTestId('vs-card-data-sync')).toBeTruthy()
+    expect(screen.getByTestId('vs-card-local-data')).toBeTruthy()
     expect(screen.getByTestId('logs-card')).toBeTruthy()
   })
 

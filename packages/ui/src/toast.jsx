@@ -3,6 +3,7 @@
 // Usage from anywhere:
 //   const id = toast('Saved', 'success');           // success | error | info | loading
 //   toast('Working…', 'loading', { duration: 0 });  // 0 = stays until dismissed
+//   toast('3 sync conflicts', 'info', { action: { label: 'Review', onClick: () => openSettings('data') } });  // a button; the toast closes when it is used
 //   toast.dismiss(id);
 //
 // <ToastHost/> is mounted once per app root.
@@ -22,7 +23,10 @@ export const toast = (message, type = 'info', opts = {}) => {
   const id = (typeof window !== 'undefined')
     ? (window.__nexusMDToastId = (window.__nexusMDToastId || 0) + 1)
     : Math.floor(performance.now())
-  NexusMDToastBus.emit({ id, message, type, duration: opts.duration ?? 4500 })
+  const a = opts.action
+  const action = a && typeof a.label === 'string' && typeof a.onClick === 'function' ? { label: a.label, onClick: a.onClick } : null
+  // A toast with a button stays a little longer: there is something to read and press.
+  NexusMDToastBus.emit({ id, message, type, action, duration: opts.duration ?? (action ? 9000 : 4500) })
   return id
 }
 toast.dismiss = (id) => NexusMDToastBus.emit({ __dismiss: id })
@@ -82,6 +86,12 @@ export function ToastHost() {
               <Icon name={p.icon} size={15} />
             </span>
             <span style={{ flex: 1, lineHeight: 1.4 }}>{t.message}</span>
+            {t.action && (
+              <button onClick={() => { remove(t.id); t.action.onClick() }} style={{
+                border: 'none', background: 'none', cursor: 'pointer', padding: '0 2px', flexShrink: 0,
+                color: p.accent, fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+              }}>{t.action.label}</button>
+            )}
             <button onClick={() => remove(t.id)} title="Dismiss" style={{
               border: 'none', background: 'none', cursor: 'pointer',
               color: 'var(--text-subtle, #999)', padding: 0, flexShrink: 0, display: 'inline-flex',

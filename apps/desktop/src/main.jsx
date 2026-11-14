@@ -8,7 +8,7 @@ import { initCore, createNoOpAdapters, profileCacheStorage, rendererLog, ignore,
 import {
   Icon, CardFrame, NexusDataProvider, ToastHost,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakButton,
-  THEME_MODES, paletteFor, ProfileGate, AccountGate, toast, listenForPins,
+  THEME_MODES, paletteFor, ProfileGate, AccountGate, toast, listenForPins, OPEN_SETTINGS_EVENT,
 } from '@nexusmd/ui'
 import { startQueueFlushing } from './offline-queue-app.js'
 import { isBareStandalone, effectiveSidebar, ICON_RAIL_WIDTH, sidebarGroups, shortcutNav, SIDEBAR_BREAKPOINT, toggledSidebar, mountedViews } from './layout.js'
@@ -263,6 +263,13 @@ function App() {
     }
     window.addEventListener('nexusmd:navigate', handler)
     return () => window.removeEventListener('nexusmd:navigate', handler)
+  }, [])
+
+  // openSettings(tab) from anywhere shows Settings; DesktopSettings picks the tab.
+  React.useEffect(() => {
+    const onOpen = () => setView(SETTINGS_NAV.id)
+    window.addEventListener(OPEN_SETTINGS_EVENT, onOpen)
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, onOpen)
   }, [])
 
   // What the sidebar shows, in its groups and order; the number keys jump to the entry with that number,

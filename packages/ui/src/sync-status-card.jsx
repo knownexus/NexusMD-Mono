@@ -10,6 +10,7 @@ import { ignore, rendererLog } from '@nexusmd/core';
 import { useAccount, accountErrorMessage } from './account-gate.jsx';
 import { useProfile } from './profile-context.jsx';
 import { VsCard } from './views/view-settings.jsx';
+import { useSyncSummary, refreshSyncSummary } from './sync-summary.js';
 
 const { useState, useEffect, useCallback } = React;
 
@@ -57,6 +58,7 @@ function outcome(kind, profile, r) {
 export function SyncStatusCard() {
   const { sync, session, serverName } = useAccount();
   const profileApi = useProfile();
+  const summary = useSyncSummary();
   const [status, setStatus] = useState(null); // read in the effect below
   const [running, setRunning] = useState(null); // { pid, kind } while a save or load is under way
   const [notes, setNotes] = useState(() => { const n = peekNotice(); return n ? { [n.profileId]: { text: n.text } } : {}; });
@@ -94,6 +96,7 @@ export function SyncStatusCard() {
     } finally {
       if (off) off();
       refresh();
+      refreshSyncSummary();
       setRunning(null);
     }
   };
@@ -112,7 +115,9 @@ export function SyncStatusCard() {
         </div>
       </div>
       {rows.map(({ p, s }) => {
+        const unsaved = summary.known ? (summary.unsaved.profiles[p.id] || 0) : null;
         const notesOf = [];
+        if (unsaved) notesOf.push(`${plural(unsaved, 'change')} not saved`);
         if (s?.conflicts) notesOf.push(plural(s.conflicts, 'conflict'));
         if (s?.tooLarge?.length) notesOf.push(`${plural(s.tooLarge.length, 'item')} too large to sync`);
         if (s?.quota?.length) notesOf.push(`${plural(s.quota.length, 'item')} over the account's storage limit`);
@@ -140,9 +145,9 @@ export function SyncStatusCard() {
                 <div className="d" role={note.bad ? 'alert' : 'status'} style={note.bad ? { color: 'var(--danger, #c33)' } : undefined}>{note.text}</div>
               )}
             </div>
-            <button className="btn sm" disabled={!!running} aria-label={`Save ${p.name} to the server`}
-              title="Send this profile's changes to your account. Nothing on the server is overwritten."
-              onClick={() => run('save', p)}>{mine === 'save' ? 'Saving…' : 'Save to server'}</button>
+            <button className="btn sm" disabled={!!running || unsaved === 0} aria-label={`Save ${p.name} to the server`}
+              title={unsaved === 0 ? 'Everything in this profile is already saved to your account.' : "Send this profile's changes to your account. Nothing on the server is overwritten."}
+              onClick={() => run('save', p)}>{mine === 'save' ? 'Saving…' : unsaved === 0 ? 'Nothing to save' : 'Save to server'}</button>
             <button className="btn sm" disabled={!!running} aria-label={`Load ${p.name} from the server`}
               title="Bring this profile's newer changes down from your account. Your newer edits here are kept."
               onClick={() => run('load', p)}>{mine === 'load' ? 'Loading…' : 'Load from server'}</button>

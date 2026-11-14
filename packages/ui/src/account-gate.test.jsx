@@ -1,9 +1,10 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { AccountGate, useAccount } from './account-gate.jsx';
 const toasts = vi.hoisted(() => []);
-vi.mock('./toast.jsx', async (orig) => ({ ...(await orig()), toast: (msg, type) => { toasts.push([type, msg]); } }));
+const toastOpts = vi.hoisted(() => []);
+vi.mock('./toast.jsx', async (orig) => ({ ...(await orig()), toast: (msg, type, opts) => { toasts.push([type, msg]); toastOpts.push(opts); } }));
 
 const CK_B64 = btoa('a'.repeat(32));
 const SESSION = { username: 'ann', userId: 'u1', role: 'user', containerKey: CK_B64, refreshToken: 'r' };
@@ -632,6 +633,27 @@ describe('AccountGate conflicts', () => {
     expect(toasts).toContainEqual(['info', '2 sync conflicts need your decision — Settings › Data & sync']);
     await React.act(async () => { cb({ count: 1 }); });
     expect(toasts).toContainEqual(['info', '1 sync conflict needs your decision — Settings › Data & sync']);
+  });
+
+  it('the conflict notice gets a Review button when the app can open Data & sync, and none when it cannot', async () => {
+    deviceId = 'd1';
+    toasts.length = 0; toastOpts.length = 0;
+    let cb = null;
+    const review = vi.fn();
+    const a = { ...mkAccount({ getSession: vi.fn(async () => SESSION) }, { onConflict: vi.fn((f) => { cb = f; return () => {}; }) }), reviewConflicts: review };
+    mount(a);
+    expect(await screen.findByText('shell')).toBeTruthy();
+    await React.act(async () => { cb({ count: 2 }); });
+    expect(toastOpts.at(-1).action.label).toBe('Review');
+    toastOpts.at(-1).action.onClick();
+    expect(review).toHaveBeenCalledTimes(1);
+    cleanup();
+    toastOpts.length = 0;
+    const b = mkAccount({ getSession: vi.fn(async () => SESSION) }, { onConflict: vi.fn((f) => { cb = f; return () => {}; }) });
+    mount(b);
+    expect(await screen.findByText('shell')).toBeTruthy();
+    await React.act(async () => { cb({ count: 1 }); });
+    expect(toastOpts.at(-1)).toBeUndefined();
   });
 });
 

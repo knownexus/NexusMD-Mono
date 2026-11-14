@@ -104,20 +104,27 @@ an older version shows "This version of NexusMD can no longer sync. Update Nexus
 Settings shows **Profile sync** (the "Data & sync" tab on desktop; the Profiles page on Android). It says which
 account and server your profiles go to, and has one row per profile: its name (with **Active** on the one you are
 using), when it was last saved to and loaded from the server (or why the last sync failed), items the server refused
-(larger than 25 MiB, or over the account's 1 GiB), and its open conflicts. Each row has two buttons that act on that
+(larger than 25 MiB, or over the account's 1 GiB), its open conflicts, and **N changes not saved**: what is on this device
+and not on the server yet (conflicts are not counted: they wait for your decision). Each row has two buttons that act on that
 profile alone:
 
 - **Save to server** sends what changed on this device. Nothing on the server is overwritten: if the server's copy
-  changed too, that item becomes a conflict.
+  changed too, that item becomes a conflict. It is disabled, and says **Nothing to save**, when the profile has nothing
+  unsaved; when the count cannot be worked out it stays available.
 - **Load from server** brings down what the server has newer. Your newer edits here are kept (a clash becomes a
   conflict), and if it changes anything the app reloads and the row says what was loaded.
 
 Neither replaces one side with the other. Syncing also happens by itself in the background, for every profile, so
 these buttons are for doing it now, for one profile, with a clear direction.
 
+The same state is shown outside Settings. On desktop a small badge under the sidebar says **Saved**, **N unsaved**, **N conflicts**
+or **Sync error** (the most pressing first) and opens Data & sync when clicked; it is not shown without an account. On Android the
+Data & sync line on the settings list carries the conflict and unsaved counts. The sidebar's "Work data updated 5m ago" is a
+different thing: when the work items and pull requests last loaded from Azure DevOps, Jira and GitHub.
+
 When the same thing changed on two computers between syncs, NexusMD never overwrites either side. The item is
 parked as a conflict, everything else keeps syncing, and a notice says "N sync conflicts need your decision —
-Settings › Data & sync". **Sync conflicts** lists them; **Resolve** opens:
+Settings › Data & sync" with a **Review** button that opens it. **Sync conflicts** lists them; **Resolve** opens:
 
 - for text (a note, a document, a plain value): the two versions line by line, "Use mine" or "Use theirs" for
   each changed part, and the result, which you can edit before saving;

@@ -653,7 +653,7 @@ function SettingsView({ tweaks, setTweak, onOpenConnection, onOpenProjectAreas, 
           )}
 
           {subPage === 'data' && (<>
-            <VsCard title="Data & sync" icon="inbox">
+            <VsCard title="Local data" icon="inbox">
               <VsRow title="Export this week" desc="Download as JSON or Word (.docx) from the planner header">
                 <button className="btn sm" onClick={() => {
                   onGoPlanner?.();

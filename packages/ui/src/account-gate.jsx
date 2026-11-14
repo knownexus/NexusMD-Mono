@@ -393,7 +393,8 @@ function PendingPurgeNotice({ purge, exportBackup, onDiscard, onLater }) {
  *   createSync: (containerKey: object, deviceId: string) => object,
  *   platform: 'windows'|'android'|'web'|'other',
  *   deviceNameDefault: () => string, optOutKey: string,
- *   serverName?: string },            // the server's host, shown in Data & sync so it is clear where profiles go
+ *   serverName?: string,              // the server's host, shown in Data & sync so it is clear where profiles go
+ *   reviewConflicts?: () => void },   // opens Settings › Data & sync: the conflict notice gets a Review button
  *   reloadOnApplied?: boolean, children: React.ReactNode }} props
  *   When a different user signs in than `boundUserKey` records, the gate warns, then calls `clearLocal()`
  *   and `deviceStore.set(null)` before the device picker. With `boundUserKey` but no `clearLocal` the gate
@@ -489,8 +490,10 @@ export function AccountGate({ account, reloadOnApplied = true, children }) {
     })];
     if (reloadOnApplied) offs.push(sync.onApplied(() => window.location.reload()));
     if (typeof sync.onConflict === 'function') {
+      // The app can offer a Review button that opens Data & sync (account.reviewConflicts).
+      const review = typeof account.reviewConflicts === 'function' ? { action: { label: 'Review', onClick: account.reviewConflicts } } : undefined;
       offs.push(sync.onConflict(({ count }) => toast(
-        `${count} sync conflict${count === 1 ? ' needs' : 's need'} your decision — Settings › Data & sync`, 'info')));
+        `${count} sync conflict${count === 1 ? ' needs' : 's need'} your decision — Settings › Data & sync`, 'info', review)));
     }
     if (typeof sync.pendingPurges === 'function') {
       const show = () => { setPurges(sync.pendingPurges()); setPurgesHidden(false); };

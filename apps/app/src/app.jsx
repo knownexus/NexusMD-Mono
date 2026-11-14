@@ -7,6 +7,7 @@ import { createGoogleEvent } from './google-calendar.js';
 import { refreshNow } from './refresh.js';
 import { helmPushPref, effectiveNeedsMe, Flash, Sheet } from './components.jsx';
 import { getIsoYearWeek, getMondayOfDate, getYearWeekForOffset, orderTabs, moveTab, placeTabs, newWidgetsAfterSave } from '@nexusmd/core';
+import { OPEN_SETTINGS_EVENT } from '@nexusmd/ui';
 import { HelmData, HelmApi } from './data.jsx';
 import { useProfile, ProfileProvider } from './profile-context.jsx';
 import { useTweaks } from './tweaks-panel.jsx';
@@ -712,6 +713,13 @@ function AppShell() {
     window.addEventListener('helmdata:loaded', handler);
     return () => window.removeEventListener('helmdata:loaded', handler);
   }, []);
+
+  // openSettings(tab) from anywhere (the sync conflict notice's Review button) shows Settings; the Settings page picks the category.
+  useEffect(() => {
+    const onOpen = () => navigate('settings');
+    window.addEventListener(OPEN_SETTINGS_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, onOpen);
+  }, [navigate]);
 
   // Re-hydrate open views after a cloud sync writes merged data to localStorage.
   // Team uses the dataVersion lever; tweaks are re-read into useTweaks state.

@@ -47,6 +47,8 @@ export { ProfileGate } from './profile-gate.jsx'
 // Optional NexusMD account (settings sync): sign-in gate, settings card, and the useAccount() hook.
 export { AccountGate, AccountContext, useAccount, accountErrorMessage, syncItemLabel } from './account-gate.jsx'
 export { SyncStatusCard } from './sync-status-card.jsx'
+export { useSyncSummary, refreshSyncSummary } from './sync-summary.js'
+export { openSettings, takePendingSettingsTab, OPEN_SETTINGS_EVENT } from './open-settings.js'
 export { RecoveredCopiesCard } from './recovered-copies-card.jsx'
 export { SyncConflictsCard, ConflictDialog } from './sync-conflicts.jsx'
 export { AccountCard } from './account-card.jsx'

@@ -1,6 +1,6 @@
 import React from 'react'
 import { core, syncLabel, offlineText, readProviderStatus, profileCacheStorage } from '@nexusmd/core'
-import { Icon } from '@nexusmd/ui'
+import { Icon, useSyncSummary, openSettings } from '@nexusmd/ui'
 import { localStorageAdapter } from '@nexusmd/web-adapters'
 import { getProfileKey } from './profile-keys.js'
 import { appQueue } from './offline-queue-app.js'
@@ -82,7 +82,46 @@ export function useSyncStatus({ readLoadedAt = readLoadedAtFromStorage, readPend
   return { loadedAt, pending, online }
 }
 
+// What the account sync is doing, in one word for the sidebar: the most pressing thing first.
+// null when there is no account (or the count is not known), so a signed-out app shows nothing.
+export function accountSyncLabel({ known, unsaved, conflicts, error } = {}) {
+  if (!known) return null
+  if (error) return { text: 'Sync error', tone: 'bad' }
+  if (conflicts > 0) return { text: `${conflicts} conflict${conflicts === 1 ? '' : 's'}`, tone: 'warn' }
+  const n = unsaved?.total || 0
+  if (n > 0) return { text: `${n} unsaved`, tone: 'warn' }
+  return { text: 'Saved', tone: 'ok' }
+}
+
+const TONE = { ok: 'var(--text-subtle)', warn: 'var(--warning, var(--accent))', bad: 'var(--danger, #c33)' }
+
+// The account's sync state beside the work-data line; a click opens Settings › Data & sync, where the per-profile
+// Save / Load buttons and the conflicts are. `summary` is injectable for tests.
+export function AccountSyncBadge({ iconsOnly = false, summary }) {
+  const live = useSyncSummary({ pollMs: summary ? 0 : undefined })
+  const label = accountSyncLabel(summary || live)
+  if (!label) return null
+  const title = `Account sync: ${label.text}. Open Data & sync.`
+  return (
+    <button type="button" className="sidebar-account-sync" data-tone={label.tone} title={title} aria-label={title}
+      onClick={() => openSettings('data')}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'none', cursor: 'pointer',
+        width: iconsOnly ? '100%' : 'auto', justifyContent: iconsOnly ? 'center' : 'flex-start',
+        padding: iconsOnly ? '6px 0' : '4px 10px', fontSize: 11, color: TONE[label.tone], fontFamily: 'inherit', textAlign: 'left',
+      }}>
+      <Icon name={label.tone === 'ok' ? 'check' : 'alert'} size={iconsOnly ? 14 : 12} />
+      {!iconsOnly && <span>{label.text}</span>}
+    </button>
+  )
+}
+
 export function SidebarSyncStatus({ iconsOnly = false, readLoadedAt, readPending, subscribeData }) {
   const status = useSyncStatus({ readLoadedAt, readPending, subscribeData })
-  return <SyncIndicator {...status} iconsOnly={iconsOnly} />
+  return (
+    <>
+      <SyncIndicator {...status} iconsOnly={iconsOnly} />
+      <AccountSyncBadge iconsOnly={iconsOnly} />
+    </>
+  )
 }

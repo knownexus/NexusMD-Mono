@@ -71,7 +71,7 @@ describe('CloudSyncCard: items that could not be read', () => {
   it('Sync now does not report success when an item was skipped', async () => {
     const syncOnce = vi.fn(async () => withUnreadable);
     card({ ...noKeyController, syncOnce });
-    fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sync with Drive / OneDrive' }));
     await waitFor(() => expect(toasts.length).toBe(1));
     expect(toasts[0][0]).toBe('error');
     expect(toasts[0][1]).toBe('Synced, but 2 items could not be read and were left alone.');
@@ -80,7 +80,7 @@ describe('CloudSyncCard: items that could not be read', () => {
 
   it('Sync now still reports plain success when everything was read', async () => {
     card({ ...noKeyController, syncOnce: async () => okResult });
-    fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sync with Drive / OneDrive' }));
     await waitFor(() => expect(toasts.length).toBe(1));
     expect(toasts[0]).toEqual(['success', 'Synced — pushed 1, pulled 0, merged 0.']);
   });

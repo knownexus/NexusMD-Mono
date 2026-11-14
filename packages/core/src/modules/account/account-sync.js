@@ -891,6 +891,24 @@ export function createAccountSync({
     /** Local values not on the server yet, plus open conflicts: [{ id, profileId }] (secrets not judged). */
     unpushed: () => listUnpushed({ registry, storage, metaKey }),
 
+    /**
+     * How many changes on this device are not saved to the server, per profile: { profiles: { [pid]: n }, unattributed, total }.
+     * Open conflicts are not counted (they are a decision, not something Save would send), and neither is a purged profile.
+     * `unattributed` is what belongs to no profile (the profiles list, ...). Secrets are not judged, as in unpushed().
+     */
+    async unsaved() {
+      const meta = load()
+      const purged = new Set(profilesList().filter((p) => p.purgedAt).map((p) => p.id))
+      const profiles = {}
+      let unattributed = 0
+      for (const { id, profileId } of await listUnpushed({ registry, storage, metaKey })) {
+        if (meta.conflicts[id]) continue
+        if (profileId == null) unattributed++
+        else if (!purged.has(profileId)) profiles[profileId] = (profiles[profileId] || 0) + 1
+      }
+      return { profiles, unattributed, total: unattributed + Object.values(profiles).reduce((a, b) => a + b, 0) }
+    },
+
     /** Purges brought by a pull that wait for the owner: [{ pid, name, unpushed: ids }]. */
     pendingPurges() {
       return Object.values(load().pendingPurges).map((p) => ({ pid: p.pid, name: p.name, unpushed: [...(p.unpushed || [])] }))

@@ -605,7 +605,7 @@ function restoreMessage({ restored, failed }) {
   return { text: parts.join(' '), type: failed.length ? 'error' : 'success' };
 }
 
-// Cloud Sync card — continuous sync + encrypted local export/import. Driven by a
+// Google Drive / OneDrive sync card — continuous sync + encrypted local export/import. Driven by a
 // platform sync controller (createSyncController), the platform's cloud providers,
 // and its file I/O. Shared across web/desktop/app.
 function CloudSyncCard({ controller, providers, fileIO }) {
@@ -712,7 +712,7 @@ function CloudSyncCard({ controller, providers, fileIO }) {
     : 'Push and pull encrypted changes with your cloud';
 
   return (
-    <VsCard title="Cloud Sync" icon="inbox">
+    <VsCard title="Google Drive / OneDrive sync" icon="inbox">
       <VsFullRow title="Cloud provider" desc="Where encrypted sync files are stored">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {providers.map(p => (
@@ -748,8 +748,8 @@ function CloudSyncCard({ controller, providers, fileIO }) {
           </div>
         )}
       </VsRow>
-      <VsRow title="Sync now" desc={lastDesc}>
-        <button className="btn sm" onClick={handleSyncNow} disabled={syncing}>{syncing ? 'Syncing…' : 'Sync now'}</button>
+      <VsRow title="Google Drive / OneDrive" desc={lastDesc}>
+        <button className="btn sm" onClick={handleSyncNow} disabled={syncing}>{syncing ? 'Syncing…' : 'Sync with Drive / OneDrive'}</button>
       </VsRow>
       {unreadable.length > 0 && (
         <div className="set-row" role="alert">

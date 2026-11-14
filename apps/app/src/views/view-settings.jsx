@@ -9,7 +9,7 @@ import { marked } from 'marked';
 import { WORK_SCREENS, useOffScreens, setOffScreens } from '../work-screens.js';
 import {
   PlToggle, VsRow, VsCard, VsFullRow, ThemeModeSettings, VsSeg, VsPasswordModal, VsProfiles, BackupRestoreCard, CloudSyncCard,
-  AccountCard, IntegrationsView, SyncStatusCard, SyncConflictsCard,
+  AccountCard, IntegrationsView, SyncStatusCard, SyncConflictsCard, takePendingSettingsTab, OPEN_SETTINGS_EVENT, useSyncSummary,
 } from '@nexusmd/ui';
 import { appFileIO } from '../file-io.js';
 import { appCloudProviders, makeAppOAuthService } from '../cloud-auth.js';
@@ -141,9 +141,16 @@ function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onPlaceNav,
     mq.addEventListener('change', h);
     return () => mq.removeEventListener('change', h);
   }, []);
-  const [subPage, setSubPage] = useStateVS(() => (window.matchMedia('(max-width:600px)').matches ? null : 'profile'));
+  const [subPage, setSubPage] = useStateVS(() => takePendingSettingsTab() || (window.matchMedia('(max-width:600px)').matches ? null : 'profile'));
+  // openSettings(tab) from elsewhere while this page is already open.
+  useEffectVS(() => {
+    const onOpen = (e) => { const asked = takePendingSettingsTab() || e.detail?.tab; if (asked) setSubPage(asked); };
+    window.addEventListener(OPEN_SETTINGS_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, onOpen);
+  }, []);
   const page = subPage || (phone ? null : 'profile');
   const offScreens = useOffScreens();
+  const accountSync = useSyncSummary();
   const [pwOpen, setPwOpen] = useStateVS(false);
   const isManual = useProfile?.()?.activeProfile?.type === 'manual';
   const photoInputRef = useRefVS(null);
@@ -302,7 +309,7 @@ function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onPlaceNav,
     planner:      () => 'Landing page, navigation, entry style',
     profiles:     () => 'Switch or add profiles',
     privacy:      () => privacySummary({ hasPassword: !!confCfg.hash, autoRelock }),
-    data:         () => dataSummary({ pending: appQueue.count(), loadedLabel: syncLabel(HelmData?.loadedAt) }),
+    data:         () => dataSummary({ pending: appQueue.count(), loadedLabel: syncLabel(HelmData?.loadedAt), unsaved: accountSync.unsaved.total, conflicts: accountSync.conflicts }),
     integrations: () => connectionsSummary({ ado: getAdoConfig(), jira: getJiraConfig(), github: getGithubConfig() }),
   };
   const shownName = displayName || me.name || '—';
@@ -532,7 +539,7 @@ function SettingsView({ tweaks, setTweak, navGroups = [], onMoveNav, onPlaceNav,
           )}
 
           {page === 'data' && (
-            <VsCard title="Data & sync" icon="inbox">
+            <VsCard title="Local data" icon="inbox">
               <AppUpdateRow />
               <VsRow title="Export this week" desc="Download as JSON or Word (.docx) from the planner header">
                 <button className="btn sm" onClick={() => {

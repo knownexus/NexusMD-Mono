@@ -4,7 +4,7 @@ import {
   VsRow, VsCard, VsFullRow, ThemeModeSettings,
   VsProfiles, BackupRestoreCard, CloudSyncCard, IntegrationsView, AccountCard, SyncStatusCard, RecoveredCopiesCard, SyncConflictsCard,
   PlToggle,
-  toast,
+  toast, takePendingSettingsTab, OPEN_SETTINGS_EVENT,
 } from '@nexusmd/ui'
 import { graphJSON, rendererLog, ignore, ignored } from '@nexusmd/core'
 import { appPrefsAdapter } from './adapters/appPrefs.js'
@@ -157,7 +157,7 @@ export function DesktopDataSyncCard() {
   }
 
   return (
-    <VsCard title="Data & sync" icon="dashboard">
+    <VsCard title="Local data" icon="dashboard">
       <VsRow title="Local storage used" desc="Approximate size of all NexusMD data in this profile">
         <span style={{ fontSize: 13, fontFamily: 'var(--mono)' }}>{kbUsed} KB</span>
       </VsRow>
@@ -401,8 +401,20 @@ export const visibleSettingsTabs = (reg = registry) =>
 export function DesktopSettings({ tweaks, setTweak, nav, defaultNavOrder }) {
   const profileApi = useProfile()
   const legacyCloudOn = isLegacyCloudSyncOn()
-  const [tab, setTab] = React.useState('profile')
+  const [tab, setTab] = React.useState(() => {
+    const asked = takePendingSettingsTab()
+    return asked && visibleSettingsTabs().some(t => t.id === asked) ? asked : 'profile'
+  })
   useObserveOnSettingsChange(tab)
+  // "Open Settings on this tab" from elsewhere (a toast's Review button, the sidebar's sync badge).
+  React.useEffect(() => {
+    const onOpen = (e) => {
+      const asked = takePendingSettingsTab() || e.detail?.tab
+      if (asked && visibleSettingsTabs().some(t => t.id === asked)) setTab(asked)
+    }
+    window.addEventListener(OPEN_SETTINGS_EVENT, onOpen)
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, onOpen)
+  }, [])
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>

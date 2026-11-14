@@ -40,3 +40,50 @@ describe('listUnpushed', () => {
     expect(await b.sync.unpushed()).toEqual([{ id: 'p.W.ado.org', profileId: 'W' }])
   })
 })
+
+describe('sync.unsaved: what Save would send, per profile', () => {
+  const PROFILES = 'nexusmd.profiles'
+  const P = (id, extra = {}) => ({ id, name: id, updatedAt: 100, deletedAt: null, purgedAt: null, ...extra })
+
+  it('is zero after a sync, counts edits per profile, and leaves out what belongs to no profile from the profiles', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, init: { [PROFILES]: JSON.stringify([P('W'), P('H')]), [ORG]: 'acme', 'nexusmd.p.H.ado.org': 'h' } })
+    await a.sync.syncNow()
+    expect(await a.sync.unsaved()).toEqual({ profiles: {}, unattributed: 0, total: 0 })
+    a.storage.setItem(ORG, 'acme2')
+    a.storage.setItem(D, docs('d1', 'd2'))
+    expect(await a.sync.unsaved()).toEqual({ profiles: { W: 3 }, unattributed: 0, total: 3 })
+    a.storage.setItem('nexusmd.p.H.ado.org', 'h2')
+    const u = await a.sync.unsaved()
+    expect(u.profiles).toEqual({ W: 3, H: 1 })
+    expect(u.total).toBe(4)
+  })
+
+  it('counts a change to the profiles list as unattributed', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, init: { [PROFILES]: JSON.stringify([P('W')]) } })
+    await a.sync.syncNow()
+    a.storage.setItem(PROFILES, JSON.stringify([P('W', { name: 'Renamed', updatedAt: 500 })]))
+    expect(await a.sync.unsaved()).toEqual({ profiles: {}, unattributed: 1, total: 1 })
+  })
+
+  it('does not count an open conflict: that is a decision, not something Save sends', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, init: { [ORG]: 'acme' } })
+    await a.sync.syncNow()
+    const b = device({ srv, ck, deviceId: 'dev-b', init: { [ORG]: 'other' } })
+    await b.sync.syncNow()
+    expect((await b.sync.unpushed()).length).toBe(1)
+    expect(await b.sync.unsaved()).toEqual({ profiles: {}, unattributed: 0, total: 0 })
+  })
+
+  it('does not count a purged profile', async () => {
+    const srv = fakeServer()
+    const ck = await generateContainerKey()
+    const a = device({ srv, ck, init: { [PROFILES]: JSON.stringify([P('W', { purgedAt: 50 })]), [ORG]: 'acme' } })
+    expect((await a.sync.unsaved()).profiles).toEqual({})
+  })
+})
